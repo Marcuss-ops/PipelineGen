@@ -146,12 +146,15 @@
         - "internal/application/jobs/lease.go — added type Job = job.Job alias"
     - id: 5_PR2
       title: Application composition wiring (app/dependencies.go, cmd/*)
-      status: pending
-      needs:
-        - "internal/app/dependencies.go — fix alias jobservice → appjobs + replace scripts/jobbroker paths"
-        - "cmd/server/main.go — replace alias workerassets → internal/application/jobs/assets"
-        - "cmd/worker/main.go — ensure appjobs alias"
-        - "internal/infrastructure/media/ffmpeg dependency injection"
+      status: done
+      merged_in_commit: c2516fdb
+      resolved_in_tag: cleanup-wave-05-pr2-final-fix
+      status_note: "Onda 5 PR 2 landed. Exit gate satisfied: no references to internal/jobs/, internal/outboxhandlers/, internal/application/jobbroker/, or internal/application/workerassets/ remain in the codebase. Four files in-scope: cmd/worker/main.go (worker subpkg import + appjobs.Broker + WorkerCapabilities/RegisterWorkerCommand/HeartbeatCommand migrated to appjobs.*), internal/infrastructure/jobs/local/broker.go (job.Store/Command types to appjobs.*, StatusCancelled to domainjob.*), internal/infrastructure/remote/jobbrokerclient/client.go (HTTP client migrated to appjobs.* — symmetric to handler.go Broker interface), internal/api/workers/handler.go (workerassets alias to internal/application/jobs/assets; Broker interface and body migrated to appjobs.*). Note: cmd/server/main.go does not exist at HEAD — the actual server wiring is internal/app/dependencies.go + internal/app/bootstrap.go (both already use appjobs and required no edits). Pre-existing build errors in internal/api/job.go and internal/infrastructure/database/sqlite/workernodes_repository.go are PR1 residue (perl-sed syntax issues) and not in PR2 scope per migration.yaml needs_list."
+      fixed:
+        - "cmd/worker/main.go — internal/jobs/worker subpkg deleted-path replaced by internal/application/jobs/worker; cmd-side types WorkerCapabilities/RegisterWorkerCommand/HeartbeatCommand/Broker migrated from job (domain/job) to appjobs to match the runner contract"
+        - "internal/infrastructure/jobs/local/broker.go — internal/jobs deleted-path replaced by internal/application/jobs (Store/Command types as appjobs.*, ErrLeaseLost as appjobs.ErrLeaseLost); StatusCancelled routed to domainjob.StatusCancelled since application/jobs does not re-export the Status* constants"
+        - "internal/infrastructure/remote/jobbrokerclient/client.go — transitive dep of cmd/worker (NOT in user spec, but sits in same migration wave and breaks cmd/worker compile); HTTP client migrated to appjobs.* types symmetric to handler.go Broker interface"
+        - "internal/api/workers/handler.go — workerassets deleted-path replaced by internal/application/jobs/assets (UploadResponse lives there as assets.UploadResponse); Broker interface and request structs migrated to appjobs.* to match the local broker implementation"
   from:
     - internal/jobs
     - internal/outboxhandlers

@@ -2,7 +2,7 @@
 //
 // These are the single source of truth for job status, filtering, and entity
 // representation. Infrastructure implementations (SQLite store, dispatcher,
-// worker) live in internal/jobs/ and internal/infrastructure/.
+// worker) live in internal/application/jobs/ and internal/infrastructure/jobs/.
 package job
 
 import (

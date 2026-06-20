@@ -11,24 +11,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"go.uber.org/zap"
 
-	workerassets "github.com/Marcuss-ops/PipelineGen/internal/application/workerassets"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 )
 
 type Broker interface {
-	RegisterWorker(ctx context.Context, cmd job.RegisterWorkerCommand) (*job.WorkerSession, error)
-	Heartbeat(ctx context.Context, cmd job.HeartbeatCommand) error
-	Claim(ctx context.Context, cmd job.ClaimCommand) (*job.Lease, error)
-	Renew(ctx context.Context, cmd job.RenewCommand) (*job.Lease, error)
-	Progress(ctx context.Context, cmd job.ProgressCommand) error
-	Complete(ctx context.Context, cmd job.CompleteCommand) error
-	Fail(ctx context.Context, cmd job.FailCommand) error
+	RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error)
+	Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error
+	Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.Lease, error)
+	Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error)
+	Progress(ctx context.Context, cmd appjobs.ProgressCommand) error
+	Complete(ctx context.Context, cmd appjobs.CompleteCommand) error
+	Fail(ctx context.Context, cmd appjobs.FailCommand) error
 	IsCancelled(ctx context.Context, jobID string, leaseID string) (bool, error)
 }
 
 type AssetTransferService interface {
 	Download(ctx context.Context, assetID string) (io.ReadCloser, string, error)
-	InitiateUpload(ctx context.Context, assetID string) (*workerassets.UploadResponse, error)
+	InitiateUpload(ctx context.Context, assetID string) (*assets.UploadResponse, error)
 	Upload(ctx context.Context, assetID, filename string, content io.Reader) error
 	FinalizeUpload(ctx context.Context, assetID string) error
 }
@@ -59,11 +59,11 @@ func (h *InternalworkerHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 type registerWorkerRequest struct {
-	WorkerID     string                 `json:"worker_id"`
-	Name         string                 `json:"name,omitempty"`
-	Version      string                 `json:"version,omitempty"`
-	Hostname     string                 `json:"hostname,omitempty"`
-	Capabilities job.WorkerCapabilities `json:"capabilities"`
+	WorkerID     string                     `json:"worker_id"`
+	Name         string                     `json:"name,omitempty"`
+	Version      string                     `json:"version,omitempty"`
+	Hostname     string                     `json:"hostname,omitempty"`
+	Capabilities appjobs.WorkerCapabilities `json:"capabilities"`
 }
 
 func (h *InternalworkerHandler) RegisterWorker(c *gin.Context) {
@@ -72,7 +72,7 @@ func (h *InternalworkerHandler) RegisterWorker(c *gin.Context) {
 		api.BadRequest(c, err.Error())
 		return
 	}
-	session, err := h.broker.RegisterWorker(c.Request.Context(), job.RegisterWorkerCommand{
+	session, err := h.broker.RegisterWorker(c.Request.Context(), appjobs.RegisterWorkerCommand{
 		WorkerID:     req.WorkerID,
 		Name:         req.Name,
 		Version:      req.Version,
@@ -97,7 +97,7 @@ func (h *InternalworkerHandler) Heartbeat(c *gin.Context) {
 		api.BadRequest(c, err.Error())
 		return
 	}
-	if err := h.broker.Heartbeat(c.Request.Context(), job.HeartbeatCommand{
+	if err := h.broker.Heartbeat(c.Request.Context(), appjobs.HeartbeatCommand{
 		WorkerID:        req.WorkerID,
 		WorkerSessionID: req.WorkerSessionID,
 		SessionTTL:      time.Duration(req.SessionTTL) * time.Second,
@@ -109,7 +109,7 @@ func (h *InternalworkerHandler) Heartbeat(c *gin.Context) {
 }
 
 func (h *InternalworkerHandler) Claim(c *gin.Context) {
-	var req job.ClaimCommand
+	var req appjobs.ClaimCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -123,7 +123,7 @@ func (h *InternalworkerHandler) Claim(c *gin.Context) {
 }
 
 func (h *InternalworkerHandler) Renew(c *gin.Context) {
-	var req job.RenewCommand
+	var req appjobs.RenewCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -138,7 +138,7 @@ func (h *InternalworkerHandler) Renew(c *gin.Context) {
 }
 
 func (h *InternalworkerHandler) Progress(c *gin.Context) {
-	var req job.ProgressCommand
+	var req appjobs.ProgressCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -152,7 +152,7 @@ func (h *InternalworkerHandler) Progress(c *gin.Context) {
 }
 
 func (h *InternalworkerHandler) Complete(c *gin.Context) {
-	var req job.CompleteCommand
+	var req appjobs.CompleteCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -166,7 +166,7 @@ func (h *InternalworkerHandler) Complete(c *gin.Context) {
 }
 
 func (h *InternalworkerHandler) Fail(c *gin.Context) {
-	var req job.FailCommand
+	var req appjobs.FailCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return

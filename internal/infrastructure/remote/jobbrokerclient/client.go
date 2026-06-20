@@ -1,5 +1,5 @@
 // Package jobbrokerclient provides an HTTP client implementation of the
-// job.Broker interface for remote workers.
+// appjobs.Broker interface for remote workers.
 package jobbrokerclient
 
 import (
@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
-// Client is an HTTP implementation of job.Broker for remote workers.
+// Client is an HTTP implementation of appjobs.Broker for remote workers.
 type Client struct {
 	baseURL    string
 	token      string
@@ -33,43 +33,43 @@ func New(baseURL, token string) *Client {
 	}
 }
 
-func (c *Client) RegisterWorker(ctx context.Context, cmd job.RegisterWorkerCommand) (*job.WorkerSession, error) {
-	var session job.WorkerSession
+func (c *Client) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
+	var session appjobs.WorkerSession
 	if err := c.post(ctx, "/api/workers/register", cmd, &session); err != nil {
 		return nil, err
 	}
 	return &session, nil
 }
 
-func (c *Client) Heartbeat(ctx context.Context, cmd job.HeartbeatCommand) error {
+func (c *Client) Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error {
 	return c.post(ctx, "/api/workers/heartbeat", cmd, nil)
 }
 
-func (c *Client) Claim(ctx context.Context, cmd job.ClaimCommand) (*job.Lease, error) {
-	var lease job.Lease
+func (c *Client) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.Lease, error) {
+	var lease appjobs.Lease
 	if err := c.post(ctx, "/api/jobs/claim", cmd, &lease); err != nil {
 		return nil, err
 	}
 	return &lease, nil
 }
 
-func (c *Client) Renew(ctx context.Context, cmd job.RenewCommand) (*job.Lease, error) {
-	var lease job.Lease
+func (c *Client) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error) {
+	var lease appjobs.Lease
 	if err := c.post(ctx, fmt.Sprintf("/api/jobs/%s/renew", cmd.JobID), cmd, &lease); err != nil {
 		return nil, err
 	}
 	return &lease, nil
 }
 
-func (c *Client) Progress(ctx context.Context, cmd job.ProgressCommand) error {
+func (c *Client) Progress(ctx context.Context, cmd appjobs.ProgressCommand) error {
 	return c.post(ctx, fmt.Sprintf("/api/jobs/%s/progress", cmd.JobID), cmd, nil)
 }
 
-func (c *Client) Complete(ctx context.Context, cmd job.CompleteCommand) error {
+func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) error {
 	return c.post(ctx, fmt.Sprintf("/api/jobs/%s/complete", cmd.JobID), cmd, nil)
 }
 
-func (c *Client) Fail(ctx context.Context, cmd job.FailCommand) error {
+func (c *Client) Fail(ctx context.Context, cmd appjobs.FailCommand) error {
 	return c.post(ctx, fmt.Sprintf("/api/jobs/%s/fail", cmd.JobID), cmd, nil)
 }
 

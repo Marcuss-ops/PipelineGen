@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	assettransferclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs/worker"
 	"go.uber.org/zap"
 )
 
@@ -49,7 +49,7 @@ func main() {
 		log.Fatal("workspace init failed", zap.Error(err))
 	}
 
-	session, err := broker.RegisterWorker(ctx, job.RegisterWorkerCommand{
+	session, err := broker.RegisterWorker(ctx, appjobs.RegisterWorkerCommand{
 		WorkerID:     workerID,
 		Name:         workerName,
 		Version:      version,
@@ -88,18 +88,18 @@ func hostnameFallback() string {
 	return host
 }
 
-func parseCaps(raw string) job.WorkerCapabilities {
+func parseCaps(raw string) appjobs.WorkerCapabilities {
 	if strings.TrimSpace(raw) == "" {
-		return job.WorkerCapabilities{}
+		return appjobs.WorkerCapabilities{}
 	}
-	var caps job.WorkerCapabilities
+	var caps appjobs.WorkerCapabilities
 	if err := json.Unmarshal([]byte(raw), &caps); err != nil {
-		return job.WorkerCapabilities{}
+		return appjobs.WorkerCapabilities{}
 	}
 	return caps
 }
 
-func heartbeatLoop(ctx context.Context, broker job.Broker, workerID, sessionID string, log *zap.Logger) {
+func heartbeatLoop(ctx context.Context, broker appjobs.Broker, workerID, sessionID string, log *zap.Logger) {
 	ticker := time.NewTicker(25 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -107,7 +107,7 @@ func heartbeatLoop(ctx context.Context, broker job.Broker, workerID, sessionID s
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := broker.Heartbeat(ctx, job.HeartbeatCommand{
+			if err := broker.Heartbeat(ctx, appjobs.HeartbeatCommand{
 				WorkerID:        workerID,
 				WorkerSessionID: sessionID,
 				SessionTTL:      90 * time.Second,
