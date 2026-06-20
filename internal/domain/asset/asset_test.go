@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
@@ -133,36 +134,56 @@ func TestProcessingConstantsMatchAssets(t *testing.T) {
 // zero-cost identity, breaking interchangeability between the two
 // packages. The round-trip via assignability without conversion is
 // the structural test.
+
 // TestFunctionRebindingsMatchAssets asserts that the two function
 // re-bindings (var X = assets.X) hold the same callable as the
-// legacy package. In Go, top-level function values are referenced by
-// pointer, so `actual != expected` on interface-typed function values
-// compares the underlying callable pointer (and rejects type drift
-// because different dynamic types make interface comparison fail).
-// Drift that would otherwise be silent — e.g. an unrelated `var` in
-// either package shadowing the function — gets caught here. Signature
-// drift is caught compile-time because `var X = assets.X` re-binds by
-// value; this test is the runtime-pointer backstop.
+// legacy package. Go's ==/!= operator PANICS when applied directly
+// to function values (including via interface{}/any typing),
+// so we use reflect.ValueOf().Pointer() to obtain the underlying
+// code pointer as uintptr, which IS comparable across the alias
+// boundary. Drift that would otherwise be silent — e.g. an
+// unrelated `var` in either package shadowing the function — gets
+// caught here. Signature drift is caught compile-time because
+// `var X = assets.X` re-binds by value; this test is the runtime
+// pointer backstop.
 // YAGNI added in Wave 12 follow-up Phase 2 PR-4 because two new
 // function re-bindings landed without parity coverage.
 func TestFunctionRebindingsMatchAssets(t *testing.T) {
-	type fnPair struct {
-		name string
-		a, b any
-	}
-	cases := []fnPair{
+	cases := []struct {
+		name     string
+		actual   any
+		expected any
+	}{
 		{"NewAssetStoreSQLite", NewAssetStoreSQLite, assets.NewAssetStoreSQLite},
 		{"ScanCanonicalAssetRowsPublic", ScanCanonicalAssetRowsPublic, assets.ScanCanonicalAssetRowsPublic},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.a != tc.b {
-				t.Errorf("drift detected: asset.%s pointer differs from assets.%s", tc.name, tc.name)
+			// Function values are not directly comparable in Go
+			// (panic on ==/!=). Extract the underlying code
+			// pointer via reflect.ValueOf(fn).Pointer() and
+			// compare uintptr. Two top-level functions in
+			// different packages that resolve to the same
+			// callable declaration return the same Pointer.
+			actualPtr := reflect.ValueOf(tc.actual).Pointer()
+			expectedPtr := reflect.ValueOf(tc.expected).Pointer()
+			if actualPtr != expectedPtr {
+				t.Errorf("drift detected: asset.%s points to a different callable than assets.%s (uintptr %d vs %d, treat as noise across ASLR re-runs)",
+					tc.name, tc.name, actualPtr, expectedPtr)
 			}
 		})
 	}
 }
 
+// TestAssetIsHardAlias confirms that asset.Asset is a type alias for
+// assets.Asset (i.e. the same type, not a named type struct holding
+// assets.Asset). If a future maintainer accidentally changes the
+// declaration to `type Asset struct { Item assets.Asset; ... }`,
+// the round-trip below would still compile but no longer be a
+// zero-cost identity, breaking interchangeability between the two
+// packages. The round-trip via assignability without conversion is
+// the structural test.
+// YAGNI added in Wave 12 follow-up Phase 1.
 func TestAssetIsHardAlias(t *testing.T) {
 	a := Asset{ID: "test-asset"}
 	var legacy assets.Asset = a // no conversion: same type via alias

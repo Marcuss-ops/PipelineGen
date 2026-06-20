@@ -42,8 +42,7 @@
 //     four bounded contexts. **Completes Phase 2 across the 4 bounded
 //     contexts scoped for the 73-importer Verdetto; the 27 residual
 //     importers of internal/assets in remaining folders are out of
-//     Phase 2 scope and tracked for follow-up waves (see the residual
-//     importer list at the bottom of CHANGELOG:73-importer-tracker).**
+//     Phase 2 scope and tracked for follow-up waves.**
 //     Parity covered by asset_test.go (TestState*,
 //     TestLocationKind*, TestProcessing*, TestFunctionRebindings*,
 //     TestAssetIsHardAlias).
