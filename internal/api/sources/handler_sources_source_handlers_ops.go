@@ -301,11 +301,18 @@ func (h *Handler) QdrantCleanup(c *gin.Context) {
 
 // GetDiagnostics returns system health and version information.
 func (h *Handler) GetDiagnostics(c *gin.Context) {
+	// Source providers are now resolved via providers.Registry;
+	// report registered providers rather than legacy singletons.
+	providerStatus := gin.H{}
+	if h.providerRegistry != nil {
+		for _, p := range h.providerRegistry.All() {
+			providerStatus[p.Name()] = true
+		}
+	}
 	results := gin.H{
 		"ok": true,
 		"services": gin.H{
-			"artlist":   h.artlistSvc != nil,
-			"youtube":   h.youtubeSvc != nil,
+			"providers": providerStatus,
 			"voiceover": h.voiceoverSvc != nil,
 			"jobs":      h.jobsSvc != nil,
 		},

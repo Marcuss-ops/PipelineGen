@@ -42,7 +42,6 @@ import (
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
 	"go.uber.org/zap"
@@ -187,19 +186,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 	coreDeps.MaintenanceService = maintenanceSvc
 
 	// ── Assets ─────────────────────────────────────────────────────────
-	var artlistService *artlistpkg.Service
-	if wiring.ArtlistSvc != nil {
-		artlistService = wiring.ArtlistSvc.Service
-	}
-	var youtubeClipService *youtube.Service
-	if wiring.YouTubeClip != nil {
-		youtubeClipService = wiring.YouTubeClip.Service
-	}
 	var voiceoverService *voiceover.Service
 	if coreDeps.VoiceoverService != nil {
 		voiceoverService = coreDeps.VoiceoverService
 	}
-	if aw, err := WireAssets(cfg, log, coreDeps, artlistService, youtubeClipService, voiceoverService, coreDeps.VoiceoverSync, coreDeps.JobsService, coreDeps.CatalogRepo, coreDeps.AssetIndexService, maintenanceSvc); err == nil && aw != nil {
+	if aw, err := WireAssets(cfg, log, coreDeps, voiceoverService, coreDeps.VoiceoverSync, coreDeps.JobsService, coreDeps.CatalogRepo, coreDeps.AssetIndexService, maintenanceSvc); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
 		coreDeps.DeletionService = aw.DeletionSvc
@@ -263,12 +254,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 	// only see CoreDeps) can resolve providers from the same frozen
 	// catalog.
 	coreDeps.ProviderRegistry = providerReg
-	// Wire registry into the already-constructed SourcesHandler so
-	// search handlers (handler_sources_search_handlers.go) can
-	// dispatch via ByCapability(CapabilitySearch) instead of legacy
-	// artlistSvc/youtubeSvc direct calls. Late-binding matches the
-	// existing Set* setter pattern (SetRealtimeService,
-	// SetClipIndexer, etc.).
+	// Wire registry into the already-constructed SourcesHandler.
+	// Search handlers (handler_sources_search_handlers.go) dispatch
+	// via ByCapability(CapabilitySearch) — this is the canonical
+	// path. Late-binding matches the existing Set* setter pattern
+	// (SetRealtimeService, SetClipIndexer, etc.).
 	if wiring.Assets != nil && wiring.Assets.Handler != nil {
 		wiring.Assets.Handler.SetProviderRegistry(providerReg)
 		log.Info("wired providers.Registry into SourcesHandler for Search dispatch")
