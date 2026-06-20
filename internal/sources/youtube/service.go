@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
@@ -166,13 +167,27 @@ func (s *Service) dispatchOrIndex(ctx context.Context, clip *assets.Asset, hash 
 
 // RegisterHandler registers this service as a handler for youtube_clip.extract jobs
 // and youtube.rebuild_search_text jobs.
-func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+// RegisterHandler registers this service as a handler for youtube_clip.extract jobs
+// and youtube.rebuild_search_text jobs.
+//
+// PR build-fix: `jobservice.Service` was a typo (opaque alias pointing at the
+// domain/job Job entity package). The Service struct lives in
+// internal/application/jobs (the canonical pattern replicated from
+// internal/infrastructure/jobs/local/broker.go), accessed via the `jobtools`
+// alias to keep the package internal to applications/jobs signal-bag (JobTools,
+// HandlerFunc, Service, Registry, ...). JobType constants stay under
+// `jobservice` since the canonical SSOT lives in internal/domain/job/job.go.
+func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(jobservice.JobTypeYouTubeClipExtract, s.HandleJob)
-		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobservice.JobTypeYouTubeClipExtract))
+		// PR build-fix: domain/job declares the SSOT constants as
+		// Type* (TypeYouTubeClipExtract, TypeYouTubeRebuildST), not
+		// JobType*. The previous `jobservice.JobTypeYouTube*` was
+		// undefined and blocked the package build.
+		jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, s.HandleJob)
+		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobservice.TypeYouTubeClipExtract))
 
-		jobsSvc.RegisterHandler(jobservice.JobTypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
-		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", jobservice.JobTypeYouTubeRebuildST))
+		jobsSvc.RegisterHandler(jobservice.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
+		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", jobservice.TypeYouTubeRebuildST))
 	}
 }
 
