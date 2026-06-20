@@ -2,7 +2,7 @@
 
 ## Status
 
-**pending** — deferred to Wave-15. Target: promoted into
+**in-progress** — deferred to Wave-15. Target: promoted into
 `internal/application/assets/providers/`.
 
 ## What exists
