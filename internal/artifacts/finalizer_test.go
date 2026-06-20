@@ -395,7 +395,7 @@ func TestFinalizerWritesToAssetIndex(t *testing.T) {
 		ContentHash: "contenthash123",
 		Source:      "artlist",
 		SourceID:    "clip-123",
-		Group:       "news",
+		Group:       "comedy",
 		Subfolder:   "politics",
 		Status:      "processed",
 	}

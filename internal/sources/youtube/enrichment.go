@@ -114,7 +114,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 		return
 	}
 
-	// Read the clip transcript so we can clean it and feed it into the embedding.
+	// Read the clip transcript so we can clean it and send it into the embedding.
 	var clipTranscript string
 	transcriptPath := strings.TrimSuffix(existing.LocalPath(), filepath.Ext(existing.LocalPath())) + ".txt"
 	if transcriptBytes, err := os.ReadFile(transcriptPath); err == nil && len(transcriptBytes) > 0 {
