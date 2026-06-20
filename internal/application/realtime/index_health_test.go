@@ -20,7 +20,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	// drive alias matches internal/application/scripts/clip_source_test.go
+	// which uses `drive.CanonicalMediaAssetsSchema`. The package's actual
+	// name is `storage` (see internal/infrastructure/database/canonical.go::package storage),
+	// so explicit aliasing is required.
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // indexHealthStore is a minimal fake of vectorstore.Store that lets the
