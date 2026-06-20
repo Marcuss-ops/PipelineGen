@@ -131,19 +131,19 @@
   subwaves:
     - id: 5_PR1
       title: Domain & Types Recovery
-      status: ready_to_commit
-      merged_in_commit: null
-      resolved_in_tag: cleanup-wave-00-final  # applied to working tree at this tag, awaiting next commit
-      status_note: "Logic & syntax fully fixed; code applied to working tree at cleanup-wave-00-final but NOT yet in a commit. Next step is to amend or land a `chores(jobs): onda 5 pr1 land` commit after the next gofmt + go build gate passes."
+      status: done
+      merged_in_commit: 91980ef7ac3da563eca96de178efee571df0646c
+      resolved_in_tag: cleanup-wave-05-pr1-land
+      status_note: "Onda 5 PR 1 landed. The 14 residue build errors are now fixed: ffmpeg.go + ffmpeg_encode.go + image_to_video.go + probe.go dropped the deleted internal/infrastructure root import and adopted the new pkg/platform leaf (Run / RunSimple / ExecOptions); internal/api/job.go received a full rewrite that fixed 6 perl-sed syntax errors (j.job.Status -> j.Status, jobs.EnqueueRequest -> appjobs.EnqueueRequest, struct field job.job.Status -> Status job.Status, ParseJobStatusFilter return type *job.job.Status -> *job.Status, etc.); internal/infrastructure/database/sqlite/workernodes_repository.go line 23 cleaned - the WorkerNode struct fields lost the job. prefix as field names (Go does not accept qualified identifiers as field names); internal/media/clipindexer/batch.go added the appjobs import (jobs.Service + jobs.JobTools migrated to appjobs.Service + appjobs.JobTools; the local job param was renamed to j to avoid shadowing the new appjobs alias). Note: chapter_single.go x2 imports of internal/scripts + internal/scripts/gemmamemory are intentionally OUT OF SCOPE per user directive (Wave 6 territory); this PR closes only the build errors that are PR1 residue. The 5_PR1 fixed-list items from the migration.yaml (internal/domain/job/store.go - promoted rich 12-method Store with fencing, etc.) were already applied at cleanup-wave-00-final."
       fixed:
-        - "internal/domain/job/store.go — promoted rich 12-method Store with fencing"
-        - "internal/api/job.go — fixed 5 perl-sed syntax errors (j.job.Status, jobs.EnqueueRequest, etc.)"
-        - "internal/api/workers/handler.go — migrated to appjobs alias + assets package"
-        - "internal/infrastructure/database/sqlite/workernodes_repository.go — fixed invalid field name + migrated to appjobs"
-        - "internal/application/jobs/assets/service.go — package workerassets → assets"
-        - "internal/application/jobs/assets/service_test.go — package rename + drive→database fix"
-        - "internal/application/jobs/types.go — fixed job.Event syntax error"
-        - "internal/application/jobs/lease.go — added type Job = job.Job alias"
+        - "pkg/platform/platform.go - NEW leaf package wrapping os/exec.Run with context + ExecOptions + RunSimple; replaces the deleted internal/infrastructure platform helper"
+        - "internal/infrastructure/media/ffmpeg/ffmpeg.go - dropped deleted internal/infrastructure import; imports pkg/platform"
+        - "internal/infrastructure/media/ffmpeg/ffmpeg_encode.go - same drop + adopt pkg/platform (uses platform.Run x5 sites)"
+        - "internal/infrastructure/media/ffmpeg/image_to_video.go - same drop + adopt pkg/platform"
+        - "internal/infrastructure/media/ffmpeg/probe.go - same drop + adopt pkg/platform; Run signature aligned (CombinedOutput:false field removed; out.Stdout -> out since pkg/platform returns []byte combined)"
+        - "internal/infrastructure/database/sqlite/workernodes_repository.go - line 23 WorkerNode struct fields re-aligned: Status (was job.Status), and column alignment fixed across all 11 fields"
+        - "internal/api/job.go - full rewrite: added appjobs internal/application/jobs import; fixed 6x perl-sed syntax errors (j.job.Status -> j.Status, jobs.EnqueueRequest -> appjobs.EnqueueRequest, struct field job.job.Status -> Status job.Status, ParseJobStatusFilter return type *job.job.Status -> *job.Status, etc.)"
+        - "internal/media/clipindexer/batch.go - added appjobs internal/application/jobs import; RegisterJobHandler(jobs *jobs.Service) -> (jobs *appjobs.Service); HandleJob(..., tools *jobs.JobTools) -> (tools *appjobs.JobTools); renamed local job *job.Job param to j *job.Job to avoid shadowing the new appjobs alias"
     - id: 5_PR2
       title: Application composition wiring (app/dependencies.go, cmd/*)
       status: done

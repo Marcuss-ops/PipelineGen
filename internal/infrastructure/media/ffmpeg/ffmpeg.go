@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
 )
 
 // ── Processor ───────────────────────────────────────────────────────────
@@ -282,5 +282,3 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 	})
 	return err
 }
-
-

@@ -1,4 +1,4 @@
-﻿package sqlite
+package sqlite
 
 import (
 	"context"
@@ -18,17 +18,17 @@ type WorkerNodesRepository struct {
 }
 
 type WorkerNode struct {
-	ID              string
-	Name            string
-	job.Status          string
-	SessionID       string
+	ID               string
+	Name             string
+	Status           string
+	SessionID        string
 	SessionExpiresAt time.Time
 	CapabilitiesJSON string
-	Version         string
-	Hostname        string
-	LastSeenAt      time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	Version          string
+	Hostname         string
+	LastSeenAt       time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 func NewWorkerNodesRepository(db *sql.DB) *WorkerNodesRepository {
@@ -135,5 +135,3 @@ func (r *WorkerNodesRepository) IsSessionActive(ctx context.Context, workerID, s
 	}
 	return !timeutil.ParseRFC3339(expiresAt).IsZero() && timeutil.ParseRFC3339(expiresAt).After(time.Now().UTC()), nil
 }
-
-

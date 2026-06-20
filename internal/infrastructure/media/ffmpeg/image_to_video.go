@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
 )
 
 // ImageToVideoOptions configures how a still image is converted to a video.

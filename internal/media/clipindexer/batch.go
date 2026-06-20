@@ -9,9 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // BatchReindexResult holds progress info for a batch reindex operation.
@@ -94,7 +95,7 @@ func (s *Service) BatchReindex(ctx context.Context, source, mediaType string, li
 const DefaultBatchConcurrency = 3
 
 // RegisterJobHandler registers the batch reindex job handler with the jobs service.
-func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
+func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) {
 	if jobsSvc != nil {
 		jobsSvc.RegisterHandler(job.TypeMediaReindex, s.HandleJob)
 		s.log.Info("registered media.reindex job handler")
@@ -104,13 +105,13 @@ func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
 // HandleJob processes a batch reindex job from the job system.
 // Payload: {"source": "artlist", "media_type": "video", "limit": 100}
 // Reports progress via tools.Progress(pct, msg).
-func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	var req struct {
 		Source    string `json:"source"`
 		MediaType string `json:"media_type"`
 		Limit     int    `json:"limit"`
 	}
-	if err := json.Unmarshal(job.Payload, &req); err != nil {
+	if err := json.Unmarshal(j.Payload, &req); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
 
