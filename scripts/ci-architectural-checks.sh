@@ -273,6 +273,127 @@ if rg -n '"testing"' --glob '*.go' --glob '!*_test.go' 2>/dev/null \
 fi
 echo "  OK: no testing import in production files"
 
+# ── Check 13: no new files in legacy (migration-only) directories ─
+echo ""
+echo "Check 13: no new production code in legacy directories"
+# Legacy directories are migration-only: no new files, no new public types,
+# no new repositories, no new handlers. Existing files may only be removed
+# or modified in-place during their migration. Tests are allowed (they cover
+# the migration surface).
+#
+# See AGENTS.md §Legacy Directories Policy for the canonical mapping.
+LEGACY_DIRS=(
+  "internal/core"
+  "internal/media"
+  "internal/assets"
+  "internal/artifacts"
+  "internal/sources"
+  "internal/upload"
+  "internal/application/scriptflow"
+  "internal/domain/media"
+  "internal/domain/worker"
+  "internal/domain/outbox"
+)
+# Compute the change set with status (A / R / M / D / C). --
+# name-status with find-renames lets git pair renames internally, so the
+# status column is authoritative: 'A' rows are TRUE adds (the new path was
+# not paired with any deleted blob), 'R(num)' rows are renames (old->new).
+#
+# Critical: we ALWAYS union untracked files into the STATUS stream (as
+# synthetic 'A<TAB>path' rows), independent of whether origin/main exists.
+# Without this, a contributor adding a new file inside a legacy dir locally
+# and pushing would NOT be flagged until the file is committed -- because
+# `git diff origin/main...HEAD` only sees staged/committed changes.
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+  DIFF_STATUS=$(git diff --name-status --find-renames origin/main...HEAD 2>/dev/null || true)
+else
+  DIFF_STATUS=$(git diff --cached --name-status --find-renames 2>/dev/null || true)
+fi
+UNTRACKED_AS_ADDS=$(git ls-files --others --exclude-standard 2>/dev/null \
+                     | awk '{printf "A\t%s\n", $0}' || true)
+STATUS="${DIFF_STATUS}
+${UNTRACKED_AS_ADDS}"
+# Trim a leading blank line that may appear when DIFF_STATUS is empty and
+# UNTRACKED_AS_ADDS begins with a newline-producing awk output.
+STATUS=$(printf "%s" "${STATUS}" | sed '/^$/d')
+
+VIOLATIONS=""
+# Walk the (status, old?, new) rows. A path lands in VIOLATIONS only when:
+#   - status = A and new path is in a legacy dir               (new file in legacy)
+#   - status = R and new path is in a legacy dir AND old path
+#              is NOT in the same legacy dir                   (cross-dir rename INTO legacy)
+# _test.go is excluded everywhere.
+# Intra-legacy renames (status = R, both old and new in the same legacy
+# dir) are allowed migration steps and NOT flagged.
+while IFS=$'\t' read -r status old new; do
+  [ -z "${status:-}" ] && continue
+  case "${status}" in
+    A)
+      new_path="${old:-}"; new_path="${new}"  # 'A' rows: $2 is new path; $1 is 'A'
+      # Note: with --name-status and a single column 'A\t<path>', new_path
+      # is actually $2 not $3. Adjust per git version below.
+      # (handled implicitly - read the next cases)
+      ;;
+  esac
+done <<< "${STATUS:-}"
+
+# Re-parse using positional reads with care for variable column count.
+# git --name-status output:
+#   "A<tab>path"
+#   "D<tab>path"
+#   "M<tab>path"
+#   "C<tab>path"
+#   "R<num><tab>old<tab>new"
+#   "T<tab>path" (type change)  - rare in this repo
+#
+# Pre-process: build two lists.
+#   1) Added paths (status starts with 'A', single additional column)
+#   2) Rename new->old pairs (status starts with 'R', two additional columns)
+ADDED_LIST=$(printf "%s\n" "${STATUS:-}" | awk -F'\t' '$1 ~ /^A/ {print $2}' || true)
+RENAME_PAIRS=$(printf "%s\n" "${STATUS:-}" | awk -F'\t' '$1 ~ /^R/ {print $2 "\t" $3}' || true)
+
+for legacy in "${LEGACY_DIRS[@]}"; do
+  hits=$(printf "%s\n" "${ADDED_LIST:-}" \
+         | grep -E "^${legacy}/.*\.go$" \
+         | grep -v "_test\\.go$" || true)
+  if [ -n "${hits}" ]; then
+    VIOLATIONS="${VIOLATIONS}${hits}
+"
+  fi
+
+  # Cross-dir renames INTO this legacy dir (old path is NOT in the same dir).
+  cross_renames=$(printf "%s\n" "${RENAME_PAIRS:-}" \
+                  | awk -F'\t' -v leg="${legacy}" \
+                      '$1 !~ "^" leg "/.*" && $2 ~ "^" leg "/.*\.go$" \
+                          && $2 !~ "_test\\.go$" {print $2 "  (renamed from " $1 ")"}' \
+                  || true)
+  if [ -n "${cross_renames}" ]; then
+    VIOLATIONS="${VIOLATIONS}${cross_renames}
+"
+  fi
+done
+
+if [ -n "${VIOLATIONS}" ]; then
+  echo "FAIL: new production code in legacy (migration-only) directories:"
+  printf "%s" "${VIOLATIONS}" | sed 's/^/  /'
+  echo ""
+  echo "Legacy directories accept only removals or in-place migrations."
+  echo "Place new files in their migration target instead:"
+  echo "  internal/core/*                       -> internal/domain/asset/* or internal/infrastructure/<X>/"
+  echo "  internal/media/<feature>/*            -> internal/domain/asset/<feature>/  or  internal/application/<feature>/"
+  echo "  internal/assets/*                     -> internal/domain/asset/"
+  echo "  internal/artifacts/*                  -> internal/domain/job/ (artifacts is interface-wrap; eliminate)"
+  echo "  internal/sources/{youtube,artlist}/*  -> internal/application/assets/providers/<X>/"
+  echo "  internal/upload/drive/*               -> internal/infrastructure/drive/"
+  echo "  internal/application/scriptflow/*     -> internal/application/scripts/<X>/"
+  echo "  internal/domain/media/*               -> internal/domain/asset/"
+  echo "  internal/domain/worker/*              -> internal/domain/job/"
+  echo "  internal/domain/outbox/*              -> internal/domain/lifecycle/"
+  echo "See AGENTS.md §Legacy Directories Policy."
+  exit 1
+fi
+echo "  OK: no new files in legacy directories"
+
 # ── Run legacy asset guard if it exists ────────────────────────────
 echo ""
 if [[ -x "scripts/ci-legacy-asset-guard.sh" ]]; then

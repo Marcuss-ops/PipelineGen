@@ -695,47 +695,18 @@ func composeIntegration(
 	}
 
 	// ── Jobs System ────────────────────────────────────────────────────
-	jobsRepo := appjobs.NewSQLiteStore(dbs.main.DB, log)
-	jobsDispatcher := appjobs.NewDispatcher()
-	jobsService := appjobs.NewService(jobsRepo, jobsDispatcher, log)
-
-	// Create domain job.Service facade wrapping appjobs.Service so that
-	// consumers expecting *job.Service (realtime, scriptpkg, scheduler, artlist)
-	// can still wire through the delegate-fn struct pattern.
-	jobServiceFacade := job.NewUnwiredService()
-	jobServiceFacade.EnqueueFn = func(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
-		return jobsService.Enqueue(ctx, &appjobs.EnqueueRequest{
-			Type:          req.Type,
-			Project:       req.Project,
-			VideoName:     req.VideoName,
-			Payload:       req.Payload,
-			Priority:      req.Priority,
-			MaxRetries:    req.MaxRetries,
-			ActiveKey:     req.ActiveKey,
-			CorrelationID: req.CorrelationID,
-		})
+	// Construction is owned by module_jobs.go::BuildJobsBundle (Phase-B
+	// ownership inversion). Local aliases below keep the late-binding sites
+	// (CatalogSync.RegisterHandler, YoutubeClip/Voiceover/Books/Lessons
+	// RegisterHandler, Realtime adapter, outboxdeps.Jobs, ...) unchanged.
+	jobsBundle, err := BuildJobsBundle(dbs.main.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build jobs bundle: %w", err)
 	}
-	jobServiceFacade.GetFn = jobsService.Get
-	jobServiceFacade.CancelFn = jobsService.Cancel
-	jobServiceFacade.ListFn = func(ctx context.Context, filter job.Filter) ([]*job.Job, error) {
-		jobs, err := jobsService.List(ctx, filter)
-		if err != nil {
-			return nil, err
-		}
-		result := make([]*job.Job, len(jobs))
-		for i := range jobs {
-			result[i] = &jobs[i]
-		}
-		return result, nil
-	}
-	jobServiceFacade.IsTerminalFn = func(status job.Status) bool { return status.IsTerminal() }
-	jobServiceFacade.SetRegisterHandler(func(jobType string, handler any) error {
-		h, ok := handler.(appjobs.HandlerFunc)
-		if !ok {
-			return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
-		}
-		return jobsService.RegisterHandler(jobType, h)
-	})
+	jobsRepo := jobsBundle.Repo
+	jobsDispatcher := jobsBundle.Dispatcher
+	jobsService := jobsBundle.Service
+	jobServiceFacade := jobsBundle.Facade
 
 	// Register Job Handlers
 	catalogSync.RegisterHandler(jobsService)

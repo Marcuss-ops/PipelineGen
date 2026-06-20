@@ -62,7 +62,6 @@
     "internal/domain",
     "internal/domain/job",
     "internal/domain/media",
-    "internal/domain/outbox",
     "internal/domain/script",
     "internal/domain/worker",
     "internal/infrastructure",
