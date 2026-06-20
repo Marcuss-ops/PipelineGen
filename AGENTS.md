@@ -162,6 +162,13 @@ the Python ReAct agent in the loop and can tolerate the 15-min sync timeout.
 6. ~~**Duplicate architecture docs**~~ ✅ **CONSOLIDATED** — MODULE_MAP.md and MODULE_OWNERSHIP.md deleted. ARCHITECTURE.md is canonical. AGENTS.md now points to it.
 7. ~~**.gitignore leaks**~~ ✅ **FIXED** — Added patterns for root binaries, logs, caches, cookies, `.bak` files.
 8. **Heavy AI-generated codebase**: ~80% of commits from AI agents. Bug diagnosis requires human oversight. Keep test coverage high.
+9. **Obsolete `TestExecuteBatchGeneration_*` tests** (SKIPPED): the partial test
+   fixture bypasses `SetBatchService`'s full producer chain at
+   `internal/app/{dependencies,registry}.go` (cfg + docClient + voiceoverService).
+   Resolution + restore-coverage plan:
+   [`docs/followups/2026-06-api-script-batch-tests-pre-existing.md`](docs/followups/2026-06-api-script-batch-tests-pre-existing.md);
+   on a rebase conflict during restore, see
+   [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
 
 ### Drive Token Regeneration
 If Google Drive authentication fails:
@@ -273,6 +280,121 @@ yourself in that loop:
 Canonical reference: the obsolete-batch-tests disposition shipped
 in commits `39071b40` + `a55e38f1` is the case where this lesson
 was learned.
+
+
+## Git-Lesson-1 (June 2026) — `git rebase -i` vs `--autosquash`
+
+When a sequence of commits needs collapsing (a "fix" commit
+merged back into its target, two adjacent commits squashed, a
+commit dropped), the interactive rebase editor is the canonical
+tool:
+
+- `git rebase -i <upstream>` opens `$EDITOR` so you manually
+  reorder lines and pick from `pick` / `squash` / `fixup` / `drop`.
+- `git rebase -i --autosquash <upstream>` is the **automatic**
+  variant: git scans each commit's **SUBJECT LINE** (not body
+  trailers) for prefixes like `fixup!` or `squash!` — typically
+  produced by `git commit --fixup=<sha>` — and pre-arranges the
+  todo list so `$EDITOR` opens with the right `pick` / `f` pairs
+  already in place.
+
+**Default to `--autosquash`** whenever your fix-up commits were
+created via `git commit --fixup=<sha>`. The hand-editing step
+on the todo list is the source of most "WTF just happened to
+my history" moments; `--autosquash` removes it while still
+leaving `$EDITOR` open as a final safety net.
+
+**Caveat**: `--autosquash` works on **subject-line prefixes**,
+**not** body trailers. A commit message whose body says
+`!fixup <msg>` after a blank line is a literal trailer and is
+not recognised by `--autosquash`. Body-trailer fixups fall
+back to plain `git rebase -i`.
+
+**When NOT to use either**: a branch that another agent or
+human has already pulled from — rewrite history is safe only
+when the rewritten commits are still local. On a shared
+branch after a force-push, see
+[`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
+
+
+## Git-Lesson-2 (June 2026) — `--no-ff` merge vs rebase on shared branches
+
+The choice between rebase and a `--no-ff` merge comes down to
+**what kind of merge you're doing**:
+
+- **Pulling remote updates into your local branch**:
+  `git pull --rebase` is **safe**. It replays your local,
+  unpushed commits on top of the remote tip and only rewrites
+  **your** copy; it never touches the shared branch itself.
+- **Integrating a completed feature branch into `main`**:
+  use `git merge --no-ff <feature-branch>`. The non-fast-
+  forward flag preserves the merge commit so the audit trail
+  shows **when** and **what** was integrated even after the
+  feature branch is deleted. Plain `git merge` quietly
+  fast-forwards and erases that signal.
+- **What is actually dangerous on shared branches**:
+  `git push --force`. Force-pushing rewrites remote history
+  and invalidates copies held by anyone who already pulled.
+  Use `git push --force-with-lease` only as the explicit exit
+  from the amend-loop anti-pattern documented in the
+  [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
+
+**Default for PipelineGen** (Operational Readiness PR):
+`main` is the active integration branch. Local work on a
+topic branch → `git pull --rebase` to stay current →
+ordinary `git push` of the topic branch → open PR/MR →
+host squash-merge, or local `git merge --no-ff` to land.
+Never `git push --force` against `origin/main`.
+
+
+## Git-Lesson-3 (June 2026) — `Co-authored-by:` trailers for agent commits
+
+Git parses **multiple `Co-authored-by:` trailers** in the body
+of a commit message and credits each author in `%(trailers)`
+formatting. This is the canonical way to mark a commit as an
+agent amend: the trailer keeps the agent's work attributable
+to the agent's identity in **local logs** (`git shortlog`,
+`git log --author=<agent>`, `git log --format='%(trailers)'`).
+
+Convention for agent commits in this repo:
+
+```
+<subject>
+
+<body>
+
+Co-authored-by: <AgentName> <agent@pipelinegen.local>
+```
+
+Where `<AgentName>` is the human-readable agent identity
+(Codebuff, Claude, Codex, etc.) and `<agent@pipelinegen.local>`
+is the canonical no-reply email. The agent runner sets it via:
+
+```
+git -c user.email='agent@pipelinegen.local' \
+    -c user.name='PipelineGen Agent' \
+    commit ...
+```
+
+**Caveat**: the `@pipelinegen.local` email is for **local-log
+attribution only**. GitHub and GitLab credit contributor
+avatars by **registered** email; unrecognised domains
+(anything not a `noreply.github.com` or verified-domain
+alias) will not render on the host's social graph. Use this
+trailer for internal audit; if you also need GitHub avatars,
+add the agent's verified email through the host's
+collaborator UI.
+
+**Format rule**: trailers must appear after a **blank line**
+following the body. A `Co-authored-by:` line in the subject
+is NOT parsed as a trailer. Verify with:
+
+```
+git log --format='%(trailers)' -1 <sha>
+```
+
+after committing. Empty output means the trailer landed in
+the wrong place.
 
 
 The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
