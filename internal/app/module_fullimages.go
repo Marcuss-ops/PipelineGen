@@ -3,7 +3,9 @@ package app
 import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	fullimageshandler "github.com/Marcuss-ops/PipelineGen/internal/api/fullimages"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	fullimagessvc "github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
 	"go.uber.org/zap"
@@ -16,15 +18,19 @@ type FullImagesWiring struct {
 }
 
 // WireFullImages creates the FullImages handler and module.
-func WireFullImages(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*FullImagesWiring, error) {
-	if coreDeps.ImageService == nil {
+//
+// PR4d-chunk1 (June 2026): narrow bundle signature. Takes the canonical
+// ImageService + MediaStore directly — sourced from root.Domains.ImageService
+// and root.Drive.MediaStore in WireRegistry. Zero *CoreDeps dependency.
+func WireFullImages(cfg *config.Config, log *zap.Logger, imageSvc *imgservice.Service, mediaStore *driveup.Store) (*FullImagesWiring, error) {
+	if imageSvc == nil {
 		log.Warn("fullimages: ImageService not available, skipping module")
 		return nil, nil
 	}
 	svc := fullimagessvc.NewService(
-		coreDeps.ImageService,
+		imageSvc,
 		ffmpeg.NewFromConfig(cfg),
-		coreDeps.MediaStore,
+		mediaStore,
 		cfg.Storage.ImagesPath(),
 		log,
 	)

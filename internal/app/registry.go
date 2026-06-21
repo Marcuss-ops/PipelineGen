@@ -1,3 +1,14 @@
+// Package app — registry composition (PR4d-final: takes *ComposeRoot).
+//
+// PR4d-final (June 2026): WireRegistry takes ONLY *ComposeRoot + ctx.
+// The legacy *CoreDeps projection was deleted; all reads inside WireRegistry
+// (the ScriptFlow inline block, the late-bindings, the channels/content/
+// search-queries/utility module registrations) now source from
+// root.<bundle>.<field> directly.
+//
+// Body is structurally identical to pre-PR4d: build RegistryWiring,
+// late-inject ImageService → MediaIngest Service, mutate
+// ProviderRegistry.Freeze() at the very end of WireRegistry (Reviewer Q8 fix).
 package app
 
 import (
@@ -13,7 +24,6 @@ import (
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
@@ -46,6 +56,8 @@ import (
 )
 
 // RegistryWiring holds the registry and all wired modules.
+// Field names match the legacy bootstrap.go callers (ArtlistSvc, StockPipeline, MediaIngest)
+// so the transitional CoreDeps projection works unchanged.
 type RegistryWiring struct {
 	Registry      *module.Registry
 	System        *SystemWiring
@@ -59,15 +71,6 @@ type RegistryWiring struct {
 	Assets        *AssetsWiring
 	FullImages    *FullImagesWiring
 	StockPipeline *StockPipelineWiring
-
-	// ProviderRegistry is the canonical Provider registry (Agent 3
-	// contract cleanup). It is constructed and frozen at the end
-	// of WireRegistry so it is ready before the job runner starts.
-	// Adapters register here via RegisterSearch / RegisterFetch —
-	// downstream consumers (Stock PR, channel-monitor YouTube fetch)
-	// resolve providers from this registry rather than wiring
-	// through the legacy modules directly.
-	ProviderRegistry *providers.Registry
 }
 
 func registerModule(registry *module.Registry, log *zap.Logger, mod module.Module) {
@@ -77,60 +80,86 @@ func registerModule(registry *module.Registry, log *zap.Logger, mod module.Modul
 }
 
 // WireRegistry creates and populates the module registry with all modules.
-func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*RegistryWiring, error) {
+//
+// PR4d-final (June 2026): signature takes (ctx, cfg, log, root). The
+// transitional cd parameter was removed. All reads source from root.<bundle>.
+func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*RegistryWiring, error) {
+	if root == nil {
+		return nil, fmt.Errorf("wire registry: compose root is nil")
+	}
+
 	registry := module.NewRegistry()
 	wiring := &RegistryWiring{Registry: registry}
 
-	// ── System ─────────────────────────────────────────────────────────
+	// System — no deps
 	sw := WireSystem(cfg, log)
 	registerModule(registry, log, sw.Module)
 	wiring.System = sw
 
-	// ── Artlist ────────────────────────────────────────────────────────
-	if aw, err := WireArtlist(ctx, cfg, log, coreDeps); err != nil {
+	// Artlist (PR4d-chunk2): takes *ArtlistBundle + vectorStore.
+	artlistBundle := &ArtlistBundle{
+		DB:                 root.DB,
+		Assets:             root.Repos.Assets,
+		ClipsRepo:          root.Repos.ClipsRepo,
+		DriveClient:        root.Drive.DriveClient,
+		DriveUploader:      root.Drive.DriveUploader,
+		AssetIndexService:  root.Search.AssetIndexService,
+		ClipIndexerService: root.Process.ClipIndexerService,
+		MediaProcessor:     root.Process.MediaProcessor,
+		Jobs:               root.Jobs,
+		CatalogSyncService: root.Sync.CatalogSync,
+	}
+	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Process.VectorSvc); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
 	} else {
 		registerModule(registry, log, aw.Module)
 		wiring.ArtlistSvc = aw
 	}
 
-	// ── ScriptFlow ─────────────────────────────────────────────────────
-	if coreDeps.ScriptGen != nil && coreDeps.ImageService != nil {
-		memoryRepo := gemmamemory.NewRepository(coreDeps.DB.DB)
+	// ScriptFlow — sources from root.<bundle>.<field>. The 5 nil placeholders
+	// that NewScriptFlowHandler accepts are passed during AIBundle construction
+	// and filled in here via setter calls. PR4d-final (June 2026): wireScriptFlowExtras
+	// now uses root.AI.ScriptGen + root.Process.VectorSvc + root.Repos.ClipsRepo.
+	if root.AI != nil && root.AI.ScriptGen != nil && root.Domains.ImageService != nil {
+		memoryRepo := gemmamemory.NewRepository(root.DB.DB)
 		memorySvc := gemmamemory.NewService(memoryRepo, log)
-		scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(coreDeps.ScriptsRepo)
-		engine := scriptcore.NewEngine(coreDeps.ScriptGen, memorySvc, scriptsRepoAdapter, log)
-		handler := scriptapi.NewScriptFlowHandler(coreDeps.ScriptGen, engine, coreDeps.ImageService, coreDeps.RealtimeService, coreDeps.AssocService, coreDeps.VoiceoverService, coreDeps.AssetTreeService, coreDeps.DocClient, coreDeps.DriveUploader, coreDeps.JobServiceFacade, scriptsRepoAdapter, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log)
-		batchSvc := scripts.NewBatchService(cfg, log, coreDeps.ScriptGen, engine, coreDeps.DocClient, coreDeps.VoiceoverService, scriptsRepoAdapter)
+		scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo)
+		engine := scriptcore.NewEngine(root.AI.ScriptGen, memorySvc, scriptsRepoAdapter, log)
+		handler := scriptapi.NewScriptFlowHandler(root.AI.ScriptGen, engine, root.Domains.ImageService, root.Domains.RealtimeService, root.Domains.AssocService, root.Domains.VoiceoverService, root.Search.AssetTreeService, root.Drive.DocClient, root.Drive.DriveUploader, root.Jobs.Facade, scriptsRepoAdapter, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log)
+		batchSvc := scripts.NewBatchService(cfg, log, root.AI.ScriptGen, engine, root.Drive.DocClient, root.Domains.VoiceoverService, scriptsRepoAdapter)
 		handler.SetBatchService(batchSvc)
-		curationSvc := scripts.NewCurationService(nil, coreDeps.JobsService, log)
+		curationSvc := scripts.NewCurationService(nil, root.Jobs.Service, log)
 		handler.SetCurationService(curationSvc)
-		wireScriptFlowExtras(handler, coreDeps.ScriptGen.GetClient(), coreDeps.VectorStore, coreDeps.ClipsRepo, engine, cfg, log)
-		if coreDeps.JobsService != nil {
+		wireScriptFlowExtras(handler, root.AI.ScriptGen.GetClient(), root.Process.VectorSvc, root.Repos.ClipsRepo, engine, cfg, log)
+		// PR4d-chunk2: construct harvest service locally (mail-box elimination):
+		// clipresolver.Service doesn't implement script.AutoHarvestService, so we
+		// reuse the JobHarvestService path that was already in use pre-PR4d.
+		if root.Jobs.Service != nil {
 			presetsConfig, _ := artlistpkg.LoadPresets("config/presets.yaml")
-			harvestSvc := clipresolver.NewJobHarvestService(coreDeps.JobServiceFacade, log, presetsConfig, cfg.Drive.ArtlistFolder())
+			harvestSvc := clipresolver.NewJobHarvestService(root.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
 			handler.SetHarvestService(harvestSvc)
 		}
-		genSvc := scripts.NewGenerationService(coreDeps.JobServiceFacade, cfg, log)
+		genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
 		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler, genSvc))
 		registerModule(registry, log, mod)
 	}
 
-	// ── YouTubeClip ────────────────────────────────────────────────────
-	if yw, err := WireYouTubeClip(cfg, log, coreDeps); err != nil {
+	// YouTubeClip (PR4d-chunk2): 4 direct narrow args.
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		registerModule(registry, log, yw.Module)
 		wiring.YouTubeClip = yw
 	}
 
-	// ── Jobs, Images, MediaIngest, Drive, Scraper, FullImages, StockPipeline ─
+	// Jobs, Images, MediaIngest, Drive, Scraper, FullImages, StockPipeline
 	for _, m := range []struct {
 		name string
 		fn   func() (module.Module, error)
 	}{
 		{"Jobs", func() (module.Module, error) {
-			w, e := WireJobs(cfg, log, coreDeps)
+			// PR4b: WireJobs takes *JobsBundle directly, no *CoreDeps.
+			w, e := WireJobs(cfg, log, root.Jobs)
 			wiring.Jobs = w
 			if w != nil {
 				return w.Module, e
@@ -138,7 +167,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 			return nil, e
 		}},
 		{"Images", func() (module.Module, error) {
-			w, e := WireImages(cfg, log, coreDeps)
+			// PR4d-chunk1: WireImages takes ImageService directly.
+			w, e := WireImages(cfg, log, root.Domains.ImageService)
 			wiring.Images = w
 			if w != nil {
 				return w.Module, e
@@ -146,7 +176,17 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 			return nil, e
 		}},
 		{"MediaIngest", func() (module.Module, error) {
-			w, e := WireMediaIngest(cfg, log, coreDeps)
+			// PR4d-chunk2: WireMediaIngest takes *MediaIngestBundle.
+			ingestBundle := &MediaIngestBundle{
+				DB:                root.DB.DB,
+				Assets:            root.Repos.Assets,
+				DriveClient:       root.Drive.DriveClient,
+				ImageRepo:         root.Repos.ImageRepo,
+				VoiceoverRepo:     root.Repos.VoiceoverRepo,
+				ClipsRepo:         root.Repos.ClipsRepo,
+				AssetIndexService: root.Search.AssetIndexService,
+			}
+			w, e := WireMediaIngest(cfg, log, ingestBundle)
 			wiring.MediaIngest = w
 			if w != nil {
 				return w.Module, e
@@ -154,7 +194,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 			return nil, e
 		}},
 		{"Drive", func() (module.Module, error) {
-			w, e := WireDrive(cfg, log, coreDeps)
+			// PR4d-chunk1: WireDrive takes DriveClient directly.
+			w, e := WireDrive(cfg, log, root.Drive.DriveClient)
 			wiring.Drive = w
 			if w != nil {
 				return w.Module, e
@@ -170,7 +211,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 			return nil, e
 		}},
 		{"FullImages", func() (module.Module, error) {
-			w, e := WireFullImages(cfg, log, coreDeps)
+			// PR4d-chunk1: WireFullImages takes ImageService + MediaStore directly.
+			w, e := WireFullImages(cfg, log, root.Domains.ImageService, root.Drive.MediaStore)
 			wiring.FullImages = w
 			if w != nil {
 				return w.Module, e
@@ -178,7 +220,17 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 			return nil, e
 		}},
 		{"StockPipeline", func() (module.Module, error) {
-			w, e := WireStockPipeline(cfg, log, coreDeps)
+			// PR4d-chunk2: WireStockPipeline takes *StockBundle.
+			stockBundle := &StockBundle{
+				DriveClient:        root.Drive.DriveClient,
+				Jobs:               root.Jobs.Service,
+				JobFacade:          root.Jobs.Facade,
+				AssetIndexService:  root.Search.AssetIndexService,
+				ClipsRepo:          root.Repos.ClipsRepo,
+				YoutubeClipService: root.Domains.YoutubeClipService,
+				ClipIndexerService: root.Process.ClipIndexerService,
+			}
+			w, e := WireStockPipeline(cfg, log, stockBundle)
 			wiring.StockPipeline = w
 			if w != nil {
 				return w.Module, e
@@ -194,140 +246,116 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		}
 	}
 
-	// ── Realtime, Books, Lessons, Channels, SearchQueries ──────────────
-	if coreDeps.RealtimeService != nil {
-		registerModule(registry, log, sourcesapi.NewRealtimeModule(cfg, log, realtimeapi.NewMatchHandler(coreDeps.RealtimeService, log)))
+	if root.Domains != nil && root.Domains.RealtimeService != nil {
+		registerModule(registry, log, sourcesapi.NewRealtimeModule(cfg, log, realtimeapi.NewMatchHandler(root.Domains.RealtimeService, log)))
 	}
-	if coreDeps.BooksService != nil {
-		registerModule(registry, log, contentapi.NewBooksModule(cfg, log, contentapi.NewBooksHandler(coreDeps.BooksService, coreDeps.JobServiceFacade, log)))
+	if root.Domains != nil && root.Domains.BooksService != nil {
+		registerModule(registry, log, contentapi.NewBooksModule(cfg, log, contentapi.NewBooksHandler(root.Domains.BooksService, root.Jobs.Facade, log)))
 	}
-	if coreDeps.LessonsService != nil {
-		registerModule(registry, log, contentapi.NewLessonsModule(cfg, log, contentapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobServiceFacade, log)))
+	if root.Domains != nil && root.Domains.LessonsService != nil {
+		registerModule(registry, log, contentapi.NewLessonsModule(cfg, log, contentapi.NewLessonsHandler(root.Domains.LessonsService, root.Jobs.Facade, log)))
 	}
-	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
-		registerModule(registry, log, channelsapi.NewModule(log, assets.NewChannelsRepository(coreDeps.DB.DB)))
-		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(coreDeps.DB.DB)))
+	if root.DB != nil && root.DB.DB != nil {
+		registerModule(registry, log, channelsapi.NewModule(log, assets.NewChannelsRepository(root.DB.DB)))
+		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(root.DB.DB)))
 	}
 
-	// ── Post-wiring cross-injections ───────────────────────────────────
 	if wiring.Images != nil && wiring.MediaIngest != nil {
 		if wiring.Images.Handler != nil {
 			wiring.Images.Handler.SetIngestService(wiring.MediaIngest.Service)
 		}
-		if coreDeps.ImageService != nil {
-			coreDeps.ImageService.SetIngestService(wiring.MediaIngest.Service)
+		if root.Domains != nil && root.Domains.ImageService != nil {
+			root.Domains.ImageService.SetIngestService(wiring.MediaIngest.Service)
 		}
 		log.Info("injected MediaIngest service into ImagesHandler and ImagesService")
 	}
-	if coreDeps.ScriptsRepo != nil {
-		registerModule(registry, log, scriptapi.NewScriptHistoryModule(cfg, log, scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(coreDeps.ScriptsRepo), log)))
+	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
+		registerModule(registry, log, scriptapi.NewScriptHistoryModule(cfg, log, scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log)))
 	}
-	registerModule(registry, log, module.NewUtilityModule(cfg, log, coreDeps.Utility))
+	registerModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility))
 
-	// ── Maintenance Service ────────────────────────────────────────────
-	maintenanceSvc := maintenance.NewService(cfg, log, coreDeps.AssetIndexService, coreDeps.AssetTreeService, coreDeps.DeletionService, coreDeps.JobsService, coreDeps.DB.DB)
+	// PR4d-chunk2: maintenanceSvc constructed locally (no longer assigned to CoreDeps);
+	// voiceoverSvc selected from root.Domains; assets bundle built from root.
+	maintenanceSvc := maintenance.NewService(cfg, log, root.Search.AssetIndexService, root.Search.AssetTreeService, root.Maint.DeletionSvc, root.Jobs.Service, root.DB.DB)
 	if err := maintenanceSvc.RegisterHandler(); err != nil {
 		log.Warn("failed to register maintenance handler", zap.Error(err))
 	}
-	coreDeps.MaintenanceService = maintenanceSvc
 
-	// ── Assets ─────────────────────────────────────────────────────────
 	var voiceoverService *voiceover.Service
-	if coreDeps.VoiceoverService != nil {
-		voiceoverService = coreDeps.VoiceoverService
+	if root.Domains.VoiceoverService != nil {
+		voiceoverService = root.Domains.VoiceoverService
 	}
-	if aw, err := WireAssets(cfg, log, coreDeps, voiceoverService, coreDeps.VoiceoverSync, coreDeps.JobsService, coreDeps.CatalogRepo, coreDeps.AssetIndexService, maintenanceSvc); err == nil && aw != nil {
+	assetsBundle := &AssetsBundle{
+		ClipsRepo:          root.Repos.ClipsRepo,
+		VoiceoverRepo:      root.Repos.VoiceoverRepo,
+		ImageRepo:          root.Repos.ImageRepo,
+		Assets:             root.Repos.Assets,
+		DriveClient:        root.Drive.DriveClient,
+		AssetTreeService:   root.Search.AssetTreeService,
+		AssetIndexService:  root.Search.AssetIndexService,
+		MediaProcessor:     root.Process.MediaProcessor,
+		CatalogSyncService: root.Sync.CatalogSync,
+		ClipIndexerService: root.Process.ClipIndexerService,
+	}
+	if aw, err := WireAssets(cfg, log, assetsBundle, root.Process.VectorSvc, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeService, root.Repos.CatalogRepo, maintenanceSvc); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
-		coreDeps.DeletionService = aw.DeletionSvc
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
 			maintenanceSvc.SetDeletionService(aw.DeletionSvc)
 			log.Info("injected DeletionService into MaintenanceService")
 		}
 	}
 
-	// ── Provider Registry (Agent 3 — providers.SearchProvider wiring) ─
-	// Build the canonical providers.Registry and register every
-	// available source adapter here so downstream consumers
-	// (Stock PR, semantic-search callers, channel-monitor fetch
-	// integration) can resolve providers from one frozen catalog
-	// instead of bypassing the registry via legacy packages.
-	//
-	// Each registration is best-effort: missing services just skip
-	// (the source wasn't wired), and a registration error is logged
-	// but does NOT fail composition (operators get a warning, the
-	// app still boots).
-	providerReg := providers.NewRegistry()
-	if wiring.ArtlistSvc != nil && wiring.ArtlistSvc.Service != nil {
-		if err := providerReg.RegisterSearch(artlistadapter.NewAdapter(wiring.ArtlistSvc.Service)); err != nil {
-			log.Warn("failed to register artlist provider", zap.Error(err))
+	// ── ProviderRegistry — register adapters + FREEZE at the end ─────
+	// Lives on SearchBundle (PR4 review): it's an asset-search dispatch
+	// registry, not a Drive-sync concern.
+	if root.Search != nil && root.Search.ProviderRegistry != nil {
+		pr := root.Search.ProviderRegistry
+		if wiring.ArtlistSvc != nil && wiring.ArtlistSvc.Service != nil {
+			if err := pr.RegisterSearch(artlistadapter.NewAdapter(wiring.ArtlistSvc.Service)); err != nil {
+				log.Warn("failed to register artlist provider", zap.Error(err))
+			} else {
+				log.Info("registered artlist provider in providers.Registry")
+			}
 		} else {
-			log.Info("registered artlist provider in providers.Registry")
+			log.Info("artlist service unavailable — skipping provider registration")
 		}
-	} else {
-		log.Info("artlist service unavailable — skipping provider registration")
-	}
-	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Service != nil {
-		if err := providerReg.RegisterSearch(youtubeadapter.NewAdapter(wiring.YouTubeClip.Service)); err != nil {
-			log.Warn("failed to register youtube provider", zap.Error(err))
+		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Service != nil {
+			if err := pr.RegisterSearch(youtubeadapter.NewAdapter(wiring.YouTubeClip.Service)); err != nil {
+				log.Warn("failed to register youtube provider", zap.Error(err))
+			} else {
+				log.Info("registered youtube provider in providers.Registry")
+			}
 		} else {
-			log.Info("registered youtube provider in providers.Registry")
+			log.Info("youtube clip service unavailable — skipping provider registration")
 		}
-	} else {
-		log.Info("youtube clip service unavailable — skipping provider registration")
-	}
-	// ── Stock FetchProvider (Wave 12 turn 2: FIRST real FetchProvider) ──
-	// Stock is the first adapter in the codebase to satisfy providers.FetchProvider
-	// (artlist and youtube implement SearchProvider only — see adapter.go
-	// preambles). The Stock service is composed earlier in the loop, so
-	// wiring.StockPipeline.Service is already available at this point.
-	if wiring.StockPipeline != nil && wiring.StockPipeline.Service != nil {
-		if err := providerReg.RegisterFetch(stockadapter.NewAdapter(wiring.StockPipeline.Service)); err != nil {
-			log.Warn("failed to register stock fetch provider", zap.Error(err))
+		if wiring.StockPipeline != nil && wiring.StockPipeline.Service != nil {
+			if err := pr.RegisterFetch(stockadapter.NewAdapter(wiring.StockPipeline.Service)); err != nil {
+				log.Warn("failed to register stock fetch provider", zap.Error(err))
+			} else {
+				log.Info("registered stock fetch provider in providers.Registry")
+			}
 		} else {
-			log.Info("registered stock fetch provider in providers.Registry")
+			log.Info("stock pipeline service unavailable — skipping fetch provider registration")
 		}
-	} else {
-		log.Info("stock pipeline service unavailable — skipping fetch provider registration")
+		// FREEZE here, after all registrations. (Reviewer Q8 fix.)
+		pr.Freeze()
+		log.Info("providers.Registry frozen at end of WireRegistry",
+			zap.Int("providers", len(pr.All())))
+
+		if wiring.Assets != nil && wiring.Assets.Handler != nil {
+			wiring.Assets.Handler.SetProviderRegistry(pr)
+			log.Info("wired providers.Registry into SourcesHandler for Search dispatch")
+		}
+		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
+			wiring.YouTubeClip.Handler.SetProviderRegistry(pr)
+			log.Info("wired providers.Registry into YouTubeClipHandler for Search dispatch")
+		}
 	}
-	// Freeze so lookups become effectively wait-free and no further
-	// Register calls succeed. Mirrors the freeze timing of the
-	// module registry (see bootstrap.go's WireServices).
-	providerReg.Freeze()
-	wiring.ProviderRegistry = providerReg
-	// Also expose via CoreDeps so cross-cutting code that doesn't
-	// have access to the wiring struct (eg. background jobs that
-	// only see CoreDeps) can resolve providers from the same frozen
-	// catalog.
-	coreDeps.ProviderRegistry = providerReg
-	// Wire registry into the already-constructed SourcesHandler.
-	// Search handlers (handler_sources_search_handlers.go) dispatch
-	// via ByCapability(CapabilitySearch) — this is the canonical
-	// path. Late-binding matches the existing Set* setter pattern
-	// (SetRealtimeService, SetClipIndexer, etc.).
-	if wiring.Assets != nil && wiring.Assets.Handler != nil {
-		wiring.Assets.Handler.SetProviderRegistry(providerReg)
-		log.Info("wired providers.Registry into SourcesHandler for Search dispatch")
-	}
-	// Wire registry into the YouTubeClip handler. This advances
-	// docs/migration-maps/internal-sources.md cut-over step 1:
-	// "finish provider-registry migration" by reducing the legacy
-	// direct callers of internal/sources/youtube.Service from the
-	// HTTP transport layer. The handler falls back to the direct
-	// call if SetProviderRegistry fails to resolve a "youtube"
-	// SearchProvider, so a missing provider never regresses the
-	// endpoint.
-	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
-		wiring.YouTubeClip.Handler.SetProviderRegistry(providerReg)
-		log.Info("wired providers.Registry into YouTubeClipHandler for Search dispatch")
-	}
-	log.Info("providers.Registry wired and frozen",
-		zap.Int("providers", len(providerReg.All())))
 
 	return wiring, nil
 }
 
-// wireScriptFlowExtras wires optional clip-source builder and media curator.
 func wireScriptFlowExtras(handler *scriptapi.ScriptFlowHandler, ollamaClient *client.Client, vectorStore *vectorstore.Service, clipsOnlyRepo *assets.ClipsRepository, engine *scriptcore.Engine, cfg *config.Config, log *zap.Logger) {
 	if ollamaClient == nil {
 		return

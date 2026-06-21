@@ -4,7 +4,10 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"go.uber.org/zap"
 )
@@ -17,16 +20,19 @@ type YouTubeClipWiring struct {
 }
 
 // WireYouTubeClip creates the YouTube Clip handler and module.
-func WireYouTubeClip(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(coreDeps.YoutubeClipService, log, coreDeps.JobServiceFacade)
+//
+// PR4d-chunk2 (June 2026): takes 4 direct narrow args (no bundle —
+// only 4 cross-bundle reads, no coherence warrant for a bundle).
+func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade *jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository) (*YouTubeClipWiring, error) {
+	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade)
 	var mod module.Module
-	if coreDeps.YoutubeClipService != nil {
-		mod = sources.NewClipsModule(cfg, log, coreDeps.YoutubeClipService, handler, coreDeps.JobServiceFacade)
+	if ytSvc != nil {
+		mod = sources.NewClipsModule(cfg, log, ytSvc, handler, jobFacade)
 		log.Info("created Clips module")
-		coreDeps.YoutubeClipService.RegisterHandler(coreDeps.JobsService)
+		ytSvc.RegisterHandler(jobs)
 	}
-	if coreDeps.ClipsRepo != nil {
-		handler.SetClipsRepo(coreDeps.ClipsRepo)
+	if clipsRepo != nil {
+		handler.SetClipsRepo(clipsRepo)
 	}
-	return &YouTubeClipWiring{Handler: handler, Module: mod, Service: coreDeps.YoutubeClipService}, nil
+	return &YouTubeClipWiring{Handler: handler, Module: mod, Service: ytSvc}, nil
 }

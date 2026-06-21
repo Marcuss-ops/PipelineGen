@@ -391,6 +391,44 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 ### Still Pending
 - Remove any remaining duplicates in legacy doc folders
 
+### Current wave status (June 2026 snapshot — source of truth: `architecture/migration.yaml`)
+
+Le wave dell'ordinamento operativo sono qui sotto riportate in
+formato leggibile. Per il ratchet canonico, le exit-gate e l'elenco dei
+`residuals:`, consultare direttamente `architecture/migration.yaml`.
+
+| Wave | Oggetto | Status al commit corrente | Avanzamento |
+|------|---------|--------------------------|-------------|
+| 4A   | Canonical asset model + ports | done | 7 residui solo in commenti Go (vedi `residuals:` in migration.yaml). Nessun import attivo. |
+| 4B   | Job/Worker/Outbox contracts into domain/job | done | 0 riferimenti residui all'uscita della exit-gate. |
+| 4C   | Remove internal/core + internal/domain/media | done | 10 commenti Go superstiti (zero import attivi), alcuni appartengono ad altre wave — cleanup in PR documentale complessiva. |
+| 5    | Full jobs consolidation | in_progress | sotto-onda 5_PR3 ancora aperta (alias zero-copy da collassare). |
+| 6    | Scripts consolidation | done | `internal/application/scriptflow/` e `internal/scripts/` rimossi. 1 solo commento residuo in `gemmamemory/stub.go`. |
+| 7    | Assets + Artifacts + Registry unification | done | 2 residui in commenti test (`artifacts/types_test.go`). |
+| 8    | Association + Realtime consolidation | in_progress | 21 call site da redirigere verso `internal/application/assets/{association,realtime}`. |
+| 10   | Storage + Drive + Qdrant adapters | in_progress | `mediaasset/` → `infrastructure/media/processor/` e `upload/drive/` → `infrastructure/drive/` già landed; rimangono `vectorstore/` e `storage/`. 33 file attivi. |
+| 11   | Catalog + Intelligence | in_progress | 2 sub-directory migrate (`ingest` Wave 11, `monitor` Wave 10); `mediaasset` è Wave 10 (vedi sopra). 44 file attivi. |
+| 12   | Provider registry + source consolidation | in_progress | registry tipizzato e adapter Artlist/YouTube/Stock landed; da completare l'estrazione infrastrutturale (yt-dlp, FFmpeg, Node scraper, downloader). |
+| 13   | Eliminate internal/media namespace | pending | 89 file in 19 sub-directory ancora attivi. Bloccata da 10 + 11. |
+
+**Regola di lettura**: "done" = migrazione fisicamente completata. I
+`residuals:` elencati sotto le wave 4A, 6, 7 sono commenti `//` puri, non
+import — non bloccanti, ripulibili in PR documentale separata.
+"in_progress" = contatore `active_files_remaining:` esposto nella
+sezione corrispondente di migration.yaml per audit di avanzamento.
+
+**Truth sources** (in ordine di autorità):
+1. `architecture/migration.yaml` — stato canonico per wave + exit-gate.
+2. `architecture/ownership.yaml` — chi possiede ogni package canonico.
+3. `docs/migration-maps/*.md` — manifest storici delle migrazioni passate.
+4. `scripts/archcheck/baseline.json` — snapshot ratchet (directory,
+   alias, wrapper) rigenerabile con `go run ./scripts/archcheck -update`.
+
+Se i tre layer sopra raccontano versioni diverse della stessa realtà,
+vince (1) ma è necessario aprire una PR di sincronizzazione come
+quella che ha prodotto questa tabella (vedi storico commit di giugno
+2026).
+
 ---
 
 ## Core Contracts
