@@ -41,8 +41,8 @@ func NewSQLiteStore(db *sql.DB, log *zap.Logger) *SQLiteStore {
 // DB returns the underlying *sql.DB for direct query access in tests + migrations.
 func (r *SQLiteStore) DB() *sql.DB { return r.db }
 
-// Compile-time check: Repository implements Repository.
-var _ Store = (*SQLiteStore)(nil)
+// Compile-time check: SQLiteStore satisfies the canonical job.Store contract.
+var _ job.Store = (*SQLiteStore)(nil)
 
 func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	query := `
