@@ -123,9 +123,15 @@ func (a *MetadataFetcherAdapter) GetVideoMetadata(ctx context.Context, videoURL 
 		ViewCount:    raw.ViewCount,
 		Language:     raw.Language,
 		ThumbnailURL: thumbURL,
-		Thumbnails:   nil, // raw.Thumbnails is anonymous-struct; keep nil here to avoid leaking infra shape
 		Categories:   raw.Categories,
 		Tags:         raw.Tags,
+	}
+	for _, t := range raw.Thumbnails {
+		dto.Thumbnails = append(dto.Thumbnails, youtubedto.VideoThumbnail{
+			URL:    t.URL,
+			Width:  t.Width,
+			Height: t.Height,
+		})
 	}
 	for _, ch := range raw.Chapters {
 		dto.Chapters = append(dto.Chapters, youtubedto.VideoChapter{
