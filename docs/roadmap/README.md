@@ -1,18 +1,19 @@
-# PipelineGen — Roadmap operativa PR0–PR4
+# PipelineGen — Roadmap operativa PR0–PR5
 
-Questa directory è la fonte operativa per il prossimo ciclo di consolidamento di PipelineGen.
+Questa directory è la fonte operativa per il prossimo ciclo di consolidamento e certificazione di PipelineGen.
 
 La roadmap descrive azioni verificabili, file reali, test ed exit gate. Non contiene istruzioni di branch, comandi di push o procedure Git: ogni documento definisce soltanto il lavoro tecnico da eseguire.
 
 ## Obiettivo del ciclo
 
-Portare il repository dallo stato attuale, già privo dei principali namespace legacy, a una struttura coerente e scalabile:
+Portare il repository dallo stato attuale, già privo dei principali namespace legacy, a una struttura coerente, scalabile e verificata end-to-end:
 
 - documentazione e tracker coerenti con il codice reale;
 - separazione netta tra use case e adapter concreti per YouTube e Artlist;
 - API organizzata per capability;
 - composition root modulare senza service locator globale;
-- nessuna nuova feature finché PR0–PR4 non sono concluse.
+- certificazione reale di workflow, recovery, backup, carico e deployment;
+- nessuna nuova feature finché PR0–PR5 non sono concluse.
 
 ## Ordine obbligatorio
 
@@ -23,8 +24,9 @@ Portare il repository dallo stato attuale, già privo dei principali namespace l
 | [PR2 — Artlist infrastructure](PR2_ARTLIST_INFRASTRUCTURE.md) | Estrarre scraper, processi, download e filesystem da `application/artlist` | Da fare | PR0 |
 | [PR3 — API compaction](PR3_API_COMPACTION.md) | Consolidare i package API per capability senza cambiare le route | Da fare | PR1, PR2 |
 | [PR4 — Composition root](PR4_COMPOSITION_ROOT.md) | Eliminare `services`/`CoreDeps` globali e costruire moduli capability-owned | Da fare | PR3 |
+| [PR5 — Full Working E2E](PR5_FULL_WORKING_E2E.md) | Certificare workflow reali, recovery, sicurezza, backup, carico e deployment | Da fare | PR0, PR1, PR2, PR3, PR4 |
 
-PR1 e PR2 possono essere sviluppate in parallelo soltanto se non modificano gli stessi file di wiring. PR3 inizia dopo la chiusura di entrambe. PR4 è l'ultimo blocco perché dipende dai package definitivi prodotti dalle PR precedenti.
+PR1 e PR2 possono essere sviluppate in parallelo soltanto se non modificano gli stessi file di wiring. PR3 inizia dopo la chiusura di entrambe. PR4 dipende dai package definitivi prodotti dalle PR precedenti. PR5 è la certificazione finale: non deve essere usata per nascondere refactor incompleti di PR0–PR4.
 
 ## Regole non negoziabili
 
@@ -36,6 +38,8 @@ PR1 e PR2 possono essere sviluppate in parallelo soltanto se non modificano gli 
 6. Ogni sotto-attività numerata deve chiudersi con test mirati e un criterio di accettazione verificabile.
 7. Non combinare refactor architetturale, feature e cleanup estraneo nella stessa unità operativa.
 8. Prima si rende verde il blocco corrente, poi si passa al successivo.
+9. Una capability non eseguita end-to-end viene marcata `NOT CERTIFIED`, non `PASS`.
+10. Nessun test reale usa database, cartelle Drive o credenziali di produzione.
 
 ## Definizione comune di completamento
 
@@ -49,6 +53,8 @@ Una PR è completata soltanto quando:
 - `go run ./scripts/archcheck` non introduce nuove violazioni;
 - la documentazione non dichiara completato lavoro ancora presente nel codice;
 - non rimangono TODO temporanei, test saltati o file di follow-up creati dalla stessa PR.
+
+PR5 aggiunge una condizione ulteriore: ogni risultato deve avere evidenza riproducibile nel report E2E. Un endpoint che risponde `200` senza controllo su database, file, Drive e stato job non costituisce un test completo.
 
 ## Stato reale di partenza
 
@@ -72,8 +78,11 @@ Debito ancora attivo:
 - API ancora frammentata tra `drive`, `realtime`, `searchqueries`, `sources`, `fullimages`, `workers`, `script`;
 - `internal/app/dependencies.go` contiene ancora il contenitore globale `services`;
 - il job system conserva alias temporanei verso SQLite;
-- numerosi package sotto `internal/media` devono ancora essere assegnati al proprietario finale.
+- numerosi package sotto `internal/media` devono ancora essere assegnati al proprietario finale;
+- non esiste ancora una certificazione automatizzata e ripetibile dei workflow reali completi.
 
 ## Aggiornamento della checklist
 
 Le checkbox devono essere aggiornate nella stessa modifica che completa il codice corrispondente. Non marcare un blocco come concluso basandosi soltanto su un commit message o su uno spostamento fisico: verificare sempre import, test ed exit gate.
+
+Per PR5, la checkbox può essere marcata soltanto dopo aver salvato nel report: commit SHA, ambiente, comando eseguito, risultato e percorso dell'evidenza.
