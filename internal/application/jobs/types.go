@@ -21,8 +21,9 @@ import (
 // The single in-tree consumer that switched to direct imports is
 // internal/infrastructure/jobs/local/broker.go. The application-layer
 // Runner/NewRunner are now typed against the canonical job.Store interface.
-// SQLiteStore type alias (in store.go) is intentionally retained and
-// scheduled for removal in Wave 16.
+// PR4.A2 (June 2026): removed the SQLiteStore/JobStats/ErrLeaseLost type
+// aliases (formerly this package's store.go). Callers now import
+// internal/infrastructure/database/sqlite/jobs directly as `sqljobs`.
 
 // ── HTTP-layer DTOs ─────────────────────────────────────────────────────
 
