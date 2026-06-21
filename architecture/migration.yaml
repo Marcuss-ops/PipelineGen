@@ -692,3 +692,91 @@
 #   * Wave 17 is the final verification gate; tag architecture-clean-v1
 #     remains the canonical success marker.
 # -----------------------------------------------------------------------------
+
+# ── Post-cascade operational followups (June 2026) ─────────────────────────────
+# Source of truth: docs/POST_CASCADE_OPERATIONAL_READINESS.md
+#
+# After PR1.7 cascade ship (`62ae9cd6` merge ✓), 3 latent-risk items are
+# BLOCKING and 5+ items are MEDIUM/LOW priority. These belong to waves in
+# flight and NEW followups. Tracked here as a non-wave exit-gate so the next
+# operator sees the full scope of remaining items without flipping wave
+# statuses prematurely.
+
+post_cascade_followups:
+  ref_doc: docs/POST_CASCADE_OPERATIONAL_READINESS.md
+  cascade_ship_commit: 62ae9cd62a8770e95f6e33b00318dc3ed203c685
+  theme: PR1.7 youtube port cascade +
+         PR2 canonical DownloaderMetadata DTO cleanup
+  blocking_items:
+    - id: CPR-LR-1
+      title: Thumbnails:nil data loss
+      location: internal/infrastructure/youtube/metadata.go::GetVideoMetadata
+      severity: BLOCKING
+      suggested_PR: pr/post-cascade-latent-risks-2026-06-21
+      fix: translate raw.Thumbnails (anonymous-struct array from yt-dlp) →
+           []youtubedto.VideoThumbnail at the seam
+    - id: CPR-LR-2
+      title: searchRunnerStub silent-empty
+      location: internal/app/youtube_adapters.go::searchRunnerStub
+      severity: BLOCKING
+      suggested_PR: pr/post-cascade-latent-risks-2026-06-21
+      fix: 1-line `if err := ctx.Err(); err != nil { return nil, err }`
+           at top of SearchLive + GetVideoInfo
+    - id: CPR-LR-3
+      title: Typed-nil composition panic
+      locations:
+        - internal/application/youtube/service.go::md5File
+        - internal/application/youtube/subtitles.go::sliceSubtitles
+        - internal/application/youtube/segment.go indexer block
+      severity: BLOCKING
+      suggested_PR: pr/post-cascade-typed-nil-guard-2026-06-21
+      fix: introduce pkg/portutil/isNilPort[T] utility +
+           audit composition.go::BuildDomainBundle for typed-nil casts
+    - id: CPR-CI-4
+      title: Verify gate expansion (api + worker)
+      locations:
+        - scripts/ci-architectural-checks.sh
+        - .github/workflows/ci.yml
+      severity: BLOCKING
+      fix: add `go vet ./internal/api/...` + `go build ./cmd/worker/...`
+           to both gates; future port/migration renames cannot slip through
+           unlinked handler/worker binaries
+  medium_items:
+    - id: CPR-CC-6
+      title: Split internal/application/youtube mega-package (43 files)
+      severity: MEDIUM
+      suggested_PR: pr/split-youtube-megapackage-2026-06-21
+      target_layout: see docs/POST_CASCADE_OPERATIONAL_READINESS.md §6.PR3
+      size_target: 5-8 production files per subdir per AGENTS.md Pattern 5
+    - id: CPR-CC-7
+      title: Relocate YouTubeCacheEntry DTO
+      severity: MEDIUM
+      from: internal/application/youtube/ports.go
+      to: internal/infrastructure/database/sqlite/assets/youtube_cache.go
+      reason: AGENTS.md Pattern 8 (application layer = thin transport only)
+    - id: CPR-TC-8
+      title: MetadataFetcherAdapter preserves Thumbnails array (round-trip)
+      severity: MEDIUM
+      co_landing: should land with CPR-LR-1 to verify the fix
+    - id: CPR-TC-9
+      title: searchRunnerStub empty-state + ctx.Err() coverage
+      severity: MEDIUM
+      co_landing: should land with CPR-LR-2 to verify the fix
+    - id: CPR-CC-10
+      title: archcheck --strict flag exposure
+      severity: MEDIUM
+      wave_precondition: Wave 16 (zero-redundancy strict)
+      fix: expose `-strict` in scripts/archcheck/main.go +
+           rerun baseline regeneration in strict mode
+  process_guide:
+    per_PR_descriptions: see docs/POST_CASCADE_OPERATIONAL_READINESS.md §5
+    dont_do_list: see docs/POST_CASCADE_OPERATIONAL_READINESS.md §6
+    day_1_commands_from_another_machine:
+      see docs/POST_CASCADE_OPERATIONAL_READINESS.md §7
+  cross_references:
+    - docs/migration-maps/internal-application-youtube.md  (per-cascade migration map)
+    - AGENTS.md §"Pattern 0 — Port abstraction layer"  (design rule)
+    - ARCHITECTURE.md §14  (post-cascade section)
+    - scripts/archcheck/baseline-justifications.md §"PR1.7 youtube port cascade ship (2026-06-21)"
+      (ratchet accounting doc)
+# -----------------------------------------------------------------------------
