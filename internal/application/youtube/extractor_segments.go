@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
@@ -62,6 +66,8 @@ func splitLongSegments(segs []Segment) []Segment {
 		for cur < endSec {
 			partEnd := cur + preferredSegmentDuration
 			remaining := endSec - partEnd
+			// If the remaining tail is shorter than minSegmentDuration,
+			// extend this chunk to include it instead of creating a tiny orphan.
 			if remaining > 0 && remaining < minSegmentDuration {
 				partEnd = endSec
 			}
@@ -69,6 +75,8 @@ func splitLongSegments(segs []Segment) []Segment {
 				partEnd = endSec
 			}
 			partNum++
+			// Generate a unique name for each split part (Part 2+, part 1 keeps original)
+			// so they don't all map to the same Drive file.
 			partName := seg.Name
 			if partNum > 1 {
 				partName = fmt.Sprintf("%s (Part %d)", seg.Name, partNum)
@@ -93,29 +101,30 @@ type timedEntry struct {
 }
 
 func (s *Service) getCachedSegments(ctx context.Context, videoID string) ([]Segment, bool) {
-	if s.cacheStore == nil {
+	if s.clips == nil || s.clips.DB() == nil {
 		return nil, false
 	}
-	segmentsJSON, err := s.cacheStore.GetSegmentsCache(ctx, videoID)
-	if err != nil {
-		return nil, false
-	}
-	var segments []Segment
-	if err := json.Unmarshal([]byte(segmentsJSON), &segments); err == nil {
-		return segments, true
+	var segmentsJSON string
+	err := s.clips.DB().QueryRowContext(ctx, "SELECT segments_json FROM youtube_segments_cache WHERE video_id = ?", videoID).Scan(&segmentsJSON)
+	if err == nil {
+		var segments []Segment
+		if err := json.Unmarshal([]byte(segmentsJSON), &segments); err == nil {
+			return segments, true
+		}
 	}
 	return nil, false
 }
 
 func (s *Service) setCachedSegments(ctx context.Context, videoID string, segments []Segment) {
-	if s.cacheStore == nil {
+	if s.clips == nil || s.clips.DB() == nil {
 		return
 	}
 	segmentsJSON, err := json.Marshal(segments)
 	if err != nil {
 		return
 	}
-	if err := s.cacheStore.UpsertSegmentsCache(ctx, videoID, string(segmentsJSON)); err != nil {
+	_, err = s.clips.DB().ExecContext(ctx, "INSERT OR REPLACE INTO youtube_segments_cache (video_id, segments_json, cached_at) VALUES (?, ?, datetime('now'))", videoID, string(segmentsJSON))
+	if err != nil {
 		s.log.Warn("failed to cache youtube segments", zap.Error(err))
 	}
 }
@@ -140,12 +149,7 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 	s.log.Info("downloading subtitles for segment analysis",
 		zap.String("url", videoURL))
 
-	// Download subtitles via the port
-	if s.subtitleFetcher == nil {
-		s.log.Debug("subtitle fetcher not wired, cannot analyze segments")
-		return nil
-	}
-
+	// Download subtitles via yt-dlp
 	tempDir, err := os.MkdirTemp("", "subs_segments_*")
 	if err != nil {
 		s.log.Debug("failed to create temp dir for subtitles", zap.Error(err))
@@ -153,10 +157,39 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 	}
 	defer os.RemoveAll(tempDir)
 
-	vttPath, err := s.subtitleFetcher.DownloadSubtitles(ctx, videoURL, "en", tempDir)
-	if err != nil || vttPath == "" {
+	ytdlpPath := s.cfg.External.ResolvedYtdlpPath()
+
+	subCmd := exec.CommandContext(ctx, ytdlpPath,
+		"--write-auto-subs", "--write-subs", "--skip-download",
+		"--sub-langs", "en", "--sub-format", "vtt",
+		"-o", filepath.Join(tempDir, "subs"),
+		videoURL,
+	)
+	out, err := subCmd.CombinedOutput()
+	outStr := string(out)
+	previewLen := min(len(outStr), 500)
+	if err != nil {
+		s.log.Info("subtitle download had issues, checking for partial results",
+			zap.String("url", videoURL),
+			zap.String("output_preview", outStr[:previewLen]))
+	}
+
+	// Find VTT file(s) — any language works
+	var vttPath string
+	dirEntries, err := os.ReadDir(tempDir)
+	if err != nil {
+		return nil
+	}
+	for _, de := range dirEntries {
+		if strings.HasPrefix(de.Name(), "subs.") && strings.HasSuffix(de.Name(), ".vtt") {
+			vttPath = filepath.Join(tempDir, de.Name())
+			break
+		}
+	}
+	if vttPath == "" {
 		s.log.Info("no VTT subtitle file found for video, cannot analyze segments",
-			zap.String("url", videoURL))
+			zap.String("url", videoURL),
+			zap.Int("dir_entries", len(dirEntries)))
 		return nil
 	}
 
@@ -221,13 +254,17 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 		return nil
 	}
 
+	// ── Determine total video duration ──────────────────────────────────
 	totalDuration := timedEntries[len(timedEntries)-1].end
 
 	s.log.Info("parsed subtitles successfully",
 		zap.Int("entries", len(timedEntries)),
 		zap.Float64("total_duration_sec", totalDuration))
 
-	const longVideoThreshold = 1800
+	// ── For videos LONGER than 30 minutes, split into sections ──────────
+	// Each section is analyzed independently so that interesting clips
+	// from the middle and end of long videos are not missed.
+	const longVideoThreshold = 1800 // 30 min in seconds
 	if totalDuration > longVideoThreshold {
 		s.log.Info("video is longer than 30 min, splitting subtitles into 3 sections",
 			zap.String("url", videoURL),
@@ -238,6 +275,9 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 
 		for i, section := range sections {
 			if len(section) < 5 {
+				s.log.Debug("section too few entries, skipping",
+					zap.Int("section", i+1),
+					zap.Int("entries", len(section)))
 				continue
 			}
 
@@ -247,6 +287,7 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 				zap.Float64("start_time", section[0].start),
 				zap.Float64("end_time", section[len(section)-1].end))
 
+			// Try Ollama-based analysis for this section
 			sectionID := fmt.Sprintf("%s_section_%d", videoID, i+1)
 			sectionResult := s.tryOllamaSegmentAnalysis(ctx, section, videoURL, sectionID, maxAutoSegmentsPerLongSection)
 			if len(sectionResult) > maxAutoSegmentsPerLongSection {
@@ -258,8 +299,10 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 				continue
 			}
 
+			// Fallback: heuristic segments for this section
 			s.log.Info("Ollama unavailable for section, generating heuristic segments",
-				zap.Int("section", i+1))
+				zap.Int("section", i+1),
+				zap.Int("entries", len(section)))
 
 			sectionHeuristic := generateHeuristicSegments(section, maxAutoSegmentsPerLongSection)
 			if len(sectionHeuristic) > maxAutoSegmentsPerLongSection {
@@ -282,16 +325,21 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 			return allSegments
 		}
 
+		// If sections failed entirely, fall through to single-pass analysis
 		s.log.Warn("section-based analysis produced no segments, falling back to full transcript",
 			zap.String("url", videoURL))
 	}
 
+	// ── Standard analysis for shorter videos (or fallback from sections) ─
+	// Try Ollama-based analysis first
 	ollamaResult := s.tryOllamaSegmentAnalysis(ctx, timedEntries, videoURL, videoID, maxAutoSegmentsPerVideo)
 	ollamaResult = filterLowValueSegments(ollamaResult)
 	if len(ollamaResult) > 0 {
 		return ollamaResult
 	}
 
+	// Fallback: when Ollama fails (timeout, overload, etc.) but we have subtitles,
+	// generate heuristic segments evenly spread across the video duration.
 	s.log.Info("Ollama unavailable for segment analysis, generating heuristic segments from subtitle timing",
 		zap.String("url", videoURL),
 		zap.Int("subtitle_entries", len(timedEntries)))
@@ -310,15 +358,16 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 
 // findInterestingSegments finds interesting segments for a YouTube video.
 // Priority:
-//  1. Subtitles + Gemma analysis (actual transcript -> real highlights)
+//  1. Subtitles + Gemma analysis (actual transcript → real highlights)
 //  2. YouTube chapters (timestamps from metadata)
-//  3. Returns nil (no segments - caller should skip this video)
+//  3. Returns nil (no segments — caller should skip this video)
 func (s *Service) findInterestingSegments(ctx context.Context, videoURL string) ([]Segment, error) {
 	videoID, err := urlutil.ExtractVideoID(videoURL)
 	if err != nil || videoID == "" {
-		videoID = s.md5String(videoURL)[:12]
+		videoID = hashutil.MD5String(videoURL)[:12]
 	}
 
+	// Check cache first
 	if segs, found := s.getCachedSegments(ctx, videoID); found {
 		s.log.Info("resolved YouTube segments from cache",
 			zap.String("video_id", videoID),
@@ -326,7 +375,8 @@ func (s *Service) findInterestingSegments(ctx context.Context, videoURL string) 
 		return segs, nil
 	}
 
-	// Priority 1: Subtitles + Gemma analysis
+	// ── Priority 1: Subtitles + Gemma analysis ───────────────────────────
+	// The actual transcript content tells us what's really interesting.
 	segments := s.findSegmentsFromSubtitles(ctx, videoURL)
 	if len(segments) > 0 {
 		s.setCachedSegments(ctx, videoID, segments)
@@ -335,50 +385,50 @@ func (s *Service) findInterestingSegments(ctx context.Context, videoURL string) 
 	s.log.Debug("subtitle analysis returned no segments, trying YouTube chapters",
 		zap.String("url", videoURL))
 
-	// Priority 2: YouTube Chapters — via the metadata fetcher port
-	if s.metaFetcher != nil {
-		meta, metaErr := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
-		if metaErr == nil && meta != nil && len(meta.Chapters) > 0 {
-			s.log.Info("found YouTube chapters, using them as segments",
-				zap.String("url", videoURL),
-				zap.Int("chapters", len(meta.Chapters)))
-			var chapterSegments []Segment
-			for _, ch := range meta.Chapters {
-				chapterDur := int(ch.EndTime - ch.StartTime)
-				if chapterDur < 15 {
-					continue
-				}
-				var segStart, segEnd float64
-				if chapterDur <= 60 {
-					segStart = ch.StartTime
+	// ── Priority 2: YouTube Chapters ─────────────────────────────────────
+	ytDlp := downloader.NewYTDLP(s.cfg)
+	meta, metaErr := ytDlp.GetVideoMetadata(ctx, videoURL)
+	if metaErr == nil && meta != nil && len(meta.Chapters) > 0 {
+		s.log.Info("found YouTube chapters, using them as segments",
+			zap.String("url", videoURL),
+			zap.Int("chapters", len(meta.Chapters)))
+		var segments []Segment
+		for _, ch := range meta.Chapters {
+			chapterDur := int(ch.EndTime - ch.StartTime)
+			if chapterDur < 15 {
+				continue
+			}
+			var segStart, segEnd float64
+			if chapterDur <= 60 {
+				segStart = ch.StartTime
+				segEnd = ch.EndTime
+			} else {
+				offset := (chapterDur - 60) / 2
+				segStart = ch.StartTime + float64(offset)
+				segEnd = segStart + 60
+				if segEnd > ch.EndTime {
 					segEnd = ch.EndTime
-				} else {
-					offset := (chapterDur - 60) / 2
-					segStart = ch.StartTime + float64(offset)
-					segEnd = segStart + 60
-					if segEnd > ch.EndTime {
-						segEnd = ch.EndTime
-					}
-				}
-				chapterSegments = append(chapterSegments, Segment{
-					Name:  ch.Title,
-					Start: fmt.Sprintf("%d", int(segStart)),
-					End:   fmt.Sprintf("%d", int(segEnd)),
-				})
-				if len(chapterSegments) >= 3 {
-					break
 				}
 			}
-			if len(chapterSegments) > 0 {
-				chapterSegments = filterLowValueSegments(chapterSegments)
+			segments = append(segments, Segment{
+				Name:  ch.Title,
+				Start: fmt.Sprintf("%d", int(segStart)),
+				End:   fmt.Sprintf("%d", int(segEnd)),
+			})
+			if len(segments) >= 3 {
+				break
 			}
-			if len(chapterSegments) > 0 {
-				s.setCachedSegments(ctx, videoID, chapterSegments)
-				return chapterSegments, nil
-			}
+		}
+		if len(segments) > 0 {
+			segments = filterLowValueSegments(segments)
+		}
+		if len(segments) > 0 {
+			s.setCachedSegments(ctx, videoID, segments)
+			return segments, nil
 		}
 	}
 
+	// No segments found from any source
 	s.log.Debug("no segments found via subtitles or chapters",
 		zap.String("url", videoURL))
 	return nil, nil
