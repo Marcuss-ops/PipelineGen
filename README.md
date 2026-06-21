@@ -74,13 +74,13 @@ Track job progress via the `/api/jobs` endpoints.
 
 ## 📁 Project Structure
 
-- `cmd/server/`: Entry point for the HTTP server and workers.
-- `internal/core/`: Canonical contracts and interfaces.
-- `internal/service/`: Business logic and service implementations.
-- `internal/api/handlers/`: REST API handlers (modularized).
-- `internal/media/`: Media processing pipelines (images, voiceover, semantic search).
-- `Removed: `: Data access layer (scripts, clips, jobs).
-- `pkg/`: Leaf utility packages (retry, textutil, hashutil, etc.).
+- `cmd/`: Entry points (`cmd/server/` HTTP + workers, `cmd/worker/` standalone worker, `cmd/admin/` CLI).
+- `internal/api/`: HTTP transport layer (thin — no business logic).
+- `internal/app/`: Composition root, wiring, bootstrap, module lifecycle.
+- `internal/application/`: Use-case orchestration (scripts, assets, images, content, voiceover, jobs, association, realtime).
+- `internal/domain/`: Canonical contracts and types (`domain/asset/`, `domain/job/`, `domain/script/`).
+- `internal/infrastructure/`: Adapters to external systems (`database/sqlite/`, `drive/`, `media/ffmpeg/`, `ai/`, `qdrant/`, `process/`).
+- `pkg/`: Leaf utility packages (retry, textutil, hashutil, concurrent, etc.).
 - `scripts/`: Utility and AI processing scripts.
 - `migrations/sqlite/`: SQLite migrations applied at startup.
 - `config/`: YAML configuration and presets.

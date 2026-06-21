@@ -184,7 +184,12 @@
 
 - id: 6
   title: Scripts domain + use-case + persistence consolidation
-  status: pending
+  status: in_progress
+  description: |
+    Eliminazione di internal/application/scriptflow/: completata.
+    Il flat-merge ha assorbito tutti i sub-package in internal/application/scripts/.
+    Eliminazione di internal/scripts/: ancora da verificare — 5 file contengono
+    ancora riferimenti in commenti ("Merged from internal/application/scriptflow/…").
   from:
     - internal/scripts/{models,repository,generators,validators,normalize,write_script}
     - internal/application/scriptflow/{batch,curation,documents,generate,jobs,scenes}
@@ -192,6 +197,10 @@
     - internal/domain/script
     - internal/application/scripts
     - internal/infrastructure/database/sqlite/scripts
+  completed:
+    - "internal/application/scriptflow/ directory eliminata (flat-merge in scripts/)"
+  pending:
+    - "internal/scripts/ → verifica riferimenti residui in commenti Go"
   exit_gate: "rg 'internal/(scripts|application/scriptflow)' --type go returns zero."
 
 # ── Wave 7 — Assets + Artifacts + Registry unification ───────────────────────
@@ -282,7 +291,19 @@
 
 - id: 12
   title: Provider registry + source consolidation
-  status: pending
+  status: in_progress
+  description: |
+    La provider migration è in corso. Il registry tipizzato esiste in
+    internal/application/assets/providers/ con adapter per Artlist e YouTube.
+    I SearchProvider e FetchProvider sono già disponibili via registry;
+    la ricerca generale usa solo il registry. Il fallback generale è stato rimosso.
+    register-from-youtube è migrato a FetchProvider.
+    
+    Restano da completare:
+    — estrazione YouTube infrastructure (extractor dal provider);
+    — estrazione Artlist scraper (separare provider dal Node scraper);
+    — eliminazione finale di internal/sources/ (caller diretti residui per
+      extractor, monitor e wiring).
   from:
     - internal/sources/artlist
     - internal/sources/youtube
@@ -292,6 +313,17 @@
   to:
     - internal/application/assets/providers/{artlist,youtube,stock}
     - scripts/artlist-scraper
+  completed:
+    - "Registry tipizzato in internal/application/assets/providers/"
+    - "Artlist SearchProvider (artlistadapter.NewAdapter)"
+    - "YouTube SearchProvider (youtubeadapter.NewAdapter)"
+    - "YouTube FetchProvider"
+    - "Rimozione fallback generale"
+    - "Migrazione register-from-youtube → FetchProvider"
+  pending:
+    - "Estrazione YouTube infrastructure (extractor → internal/infrastructure/youtube/)"
+    - "Estrazione Artlist scraper (provider surface → providers/artlist, infra → infrastructure/artlist/)"
+    - "Eliminazione internal/sources/"
   registry_contract: |
     type Provider interface {
       Name() string
@@ -320,7 +352,19 @@
 
 - id: 14
   title: API transport modules consolidation
-  status: pending
+  status: in_progress
+  description: |
+    Consolidamento dei moduli API in corso. Completati:
+    — api/books + api/lessons → api/content
+    — api/scraper + api/mediaingest → api/assets
+    — api/transport introdotto
+    
+    Ancora in sospeso:
+    — api/drive, api/realtime, api/searchqueries, api/sources,
+      api/fullimages, api/workers, api/script
+    
+    Stato attuale: api/ root = 11 file (sotto il limite di 15);
+    api/script/ = 32 file; api/sources/ = 26 file.
   target_subdirs:
     - api/assets
     - api/channels
@@ -333,6 +377,18 @@
     - api/transport
     - api/routes.go
     - api/server.go
+  completed:
+    - "api/books + api/lessons → api/content"
+    - "api/scraper + api/mediaingest → api/assets"
+    - "api/transport introdotto"
+  pending:
+    - "api/drive → api/assets"
+    - "api/realtime → api/assets"
+    - "api/searchqueries → api/assets"
+    - "api/sources → api/assets"
+    - "api/fullimages → api/images"
+    - "api/workers → api/jobs"
+    - "api/script → api/scripts"
   merges:
     - {from: internal/api/drive,        to: internal/api/assets}
     - {from: internal/api/mediaingest,  to: internal/api/assets}
