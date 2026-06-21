@@ -207,7 +207,7 @@ the CI guard with the migration target printed inline.
 | `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/`        | TBD |
 | `internal/upload/drive/`          | `internal/infrastructure/drive/`                               | TBD |
 | `internal/application/scriptflow/` | `internal/application/scripts/` (flat-merge completato; directory eliminata) | Wave 6 ✅ |
-| `internal/domain/media/`          | `internal/domain/asset/`                                       | TBD |
+| `internal/domain/media/`          | `internal/domain/asset/` (tipi duplicati — directory eliminata June 2026) | Wave 4C ✅ |
 | `internal/domain/worker/`         | `internal/domain/job/`                                         | TBD |
 | `internal/domain/outbox/`         | `internal/domain/lifecycle/`                                   | TBD |
 
