@@ -36,7 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/mediaasset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -379,7 +379,7 @@ func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Reposit
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
 	clipsRegistry := artifacts.NewClipsRegistry(db, assetsRepo, querySvc, locations, processing)
-	return mediaasset.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, mediaasset.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
+	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
 }
 
 func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository) []catalogsync.Target {

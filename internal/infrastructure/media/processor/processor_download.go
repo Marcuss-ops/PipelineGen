@@ -1,4 +1,4 @@
-package mediaasset
+package processor
 
 import (
 	"bytes"
