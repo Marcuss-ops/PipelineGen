@@ -116,7 +116,7 @@ func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, lim
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return gathered.ToDomainList(), nil
+	return ToMonitoredSourceDomainList(gathered), nil
 }
 
 func (r *MonitorsRepository) MarkChecked(ctx context.Context, id string) error {
