@@ -2,13 +2,51 @@ package youtube
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/media/classifier"
 )
 
-// classifyCategory classifies the video title using the wired CategoryClassifierPort.
-// Returns "general" when no classifier is wired.
+// youtubeCategoryCache implements classifier.CategoryCache backed by SQLite.
+type youtubeCategoryCache struct {
+	svc *Service
+}
+
+func (c *youtubeCategoryCache) Get(ctx context.Context, title string) (string, bool) {
+	if c.svc.clips == nil || c.svc.clips.DB() == nil {
+		return "", false
+	}
+	var category string
+	err := c.svc.clips.DB().QueryRowContext(ctx, "SELECT category FROM youtube_category_cache WHERE video_title = ?", title).Scan(&category)
+	if err == nil {
+		return category, true
+	}
+	return "", false
+}
+
+func (c *youtubeCategoryCache) Set(ctx context.Context, title, category string) error {
+	if c.svc.clips == nil || c.svc.clips.DB() == nil {
+		return fmt.Errorf("clipsRepo not initialized")
+	}
+	_, err := c.svc.clips.DB().ExecContext(ctx, "INSERT OR REPLACE INTO youtube_category_cache (video_title, category, cached_at) VALUES (?, ?, datetime('now'))", title, category)
+	return err
+}
+
+// classifyCategory classifies the video title using the shared classifier with SQLite cache.
 func (s *Service) classifyCategory(ctx context.Context, title string) string {
-	if s.classifier == nil {
+	if s.ollama == nil {
 		return "general"
 	}
-	return s.classifier.Classify(ctx, title)
+	return classifier.CachedClassify(ctx, s.log, s.ollama, title, classifier.Options{
+		DataDir:          s.cfg.Storage.DataDir,
+		Model:            s.cfg.External.OllamaModel,
+		FallbackCategory: "general",
+		ExcludeCategories: []string{
+			"interviews", "general", "other", "clips", "youtube", "videos",
+		},
+		EnsureCategories:  []string{"rap", "music"},
+		DefaultCategories: []string{"boxe", "crime", "discovery", "rap", "music"},
+		Cache:             &youtubeCategoryCache{svc: s},
+		Semaphore:         ollamaSem,
+	})
 }

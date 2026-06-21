@@ -44,9 +44,27 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 	// Query all YouTube clips that have been enriched (have youtube_title).
 	// We only target clips with youtube_title because enrichYouTubeClipWithMetadata
 	// needs either pre-fetched metadata or a YouTube URL to fetch from.
-	clipIDs, err := s.clips.ListEnrichedYouTubeClipIDs(ctx, p.Limit, p.Offset)
+	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
+	if p.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", p.Limit)
+	}
+	if p.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", p.Offset)
+	}
+
+	rows, err := s.clips.DB().QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query youtube clips: %w", err)
+	}
+	defer rows.Close()
+
+	var clipIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		clipIDs = append(clipIDs, id)
 	}
 
 	if len(clipIDs) == 0 {
