@@ -17,6 +17,13 @@ import (
 
 // ScraperProvider performs live searches via the persistent Node.js scraper
 // server (preferred) or falls back to exec.Command (cold start).
+//
+// PR2: LEGACY — superseded by internal/infrastructure/artlist/scraper.Provider.
+// Kept only because the current application wiring (application/artlist.Service
+// and SearchLive fallback chain) still constructs ScraperProvider directly.
+// Will be deleted once the wiring switches to the new ports.Searcher
+// interface and internal/infrastructure/artlist/scraper is adopted by
+// internal/app/module_artlist.go. Do NOT add features here.
 type ScraperProvider struct {
 	cfg scraperConfig
 	log *zap.Logger
