@@ -5,8 +5,16 @@ package urlutil
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 )
+
+// driveFolderIDRegex matches the folder id in Drive folder URLs:
+// https://drive.google.com/drive/folders/<id>.
+// Mirrors the regex that had been living in
+// internal/api/sources/clips/upload_helpers.go (now an alias to this
+// function) so behaviour is unchanged post-migration.
+var driveFolderIDRegex = regexp.MustCompile(`/folders/([a-zA-Z0-9_-]+)`)
 
 // ExtractVideoID extracts the video ID from a YouTube URL.
 // Supports youtu.be, youtube.com/watch, /shorts/, /embed/, /live/,
@@ -130,4 +138,42 @@ func FileIDFromDriveLink(rawLink string) (string, error) {
 	}
 
 	return "", fmt.Errorf("unrecognised Drive URL path: %q", parsed.Path)
+}
+
+// FolderIDFromDriveLink extracts the folder ID from a Google Drive folder
+// URL. Behaviour is permissive: if the input is empty, the function
+// returns "". If the input is not a URL (or is a URL whose path doesn't
+// match the folder regex), the function returns the input unchanged,
+// preserving the legacy contract of
+// internal/api/sources/clips.ExtractDriveFolderID — callers in admin
+// handlers (CreateFolders, ResolveByIDs) treat the return value as an
+// opaque folder-id-or-input.
+//
+// Supported URL shapes:
+//
+//   - https://drive.google.com/drive/folders/<id>
+//   - bare <id>  (returned as-is)
+//
+// Returns "" only when input is empty after TrimSpace.
+//
+// This function is the canonical replacement for
+// internal/api/sources/clips.ExtractDriveFolderID, which is now an
+// alias (clips/upload_helpers.go::ExtractDriveFolderID → this fn).
+func FolderIDFromDriveLink(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
+	if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
+		return trimmed
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return trimmed
+	}
+	matches := driveFolderIDRegex.FindStringSubmatch(parsed.Path)
+	if len(matches) < 2 {
+		return trimmed
+	}
+	return matches[1]
 }
