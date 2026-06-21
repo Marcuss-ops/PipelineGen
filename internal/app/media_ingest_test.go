@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/ingest"
 )
 
 func TestIsAIImageIngestSource(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"

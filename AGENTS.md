@@ -202,7 +202,7 @@ the CI guard with the migration target printed inline.
 |---|---|---|
 | `internal/core/`                  | `internal/domain/asset/` (contracts) or `internal/infrastructure/<X>/` (concrete) | PR4 ✅ |
 | `internal/media/monitor/`         | `internal/application/monitor/` (lift-and-shift completato) | Wave 10 ✅ |
-| `internal/media/ingest/`          | `internal/application/` or `internal/infrastructure/` (audit pending) | TBD |
+| `internal/media/ingest/`          | `internal/application/ingest/` (lift-and-shift completato) | Wave 11 ✅ |
 | `internal/media/mediaasset/`      | `internal/domain/asset/` or `internal/infrastructure/` (audit pending) | TBD |
 | `internal/assets/`                | `internal/domain/asset/` (directory already eliminated; content absorbed) | Pre-wave-7 ✅ |
 | `internal/artifacts/`             | `internal/application/assets/artifacts/` (lift-and-shift completato) | Wave 7 ✅ |
