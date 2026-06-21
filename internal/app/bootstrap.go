@@ -21,8 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
@@ -127,7 +126,7 @@ type CoreDeps struct {
 	AssocService       *association.Service
 	JobsService        *appjobs.Service
 	JobServiceFacade   *job.Service // domain facade wrapping JobsService
-	MediaProcessor     processor.Processor
+	MediaProcessor     asset.Processor
 	YoutubeClipService *youtube.Service
 	AssetIndexService  *assetindex.Service
 	AssetTreeService   *assettree.Service

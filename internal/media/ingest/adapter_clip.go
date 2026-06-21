@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )

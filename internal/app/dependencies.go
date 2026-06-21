@@ -9,8 +9,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -35,7 +34,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
@@ -89,7 +87,7 @@ type services struct {
 	jobServiceFacade   *job.Service
 	jobsDispatcher     *appjobs.Dispatcher
 	memoryRepo         *gemmamemory.Repository
-	mediaProcessor     processor.Processor
+	mediaProcessor     asset.Processor
 	ollamaClient       *client.Client
 	youtubeClipService *youtube.Service
 	assetIndexService  *assetindex.Service
@@ -163,7 +161,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 func initVoiceoverService(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger,
 	driveClient *gdrive.Service, driveUploader *drive.Uploader,
 	assetIndexService *assetindex.Service, clipIndexerService *clipindexer.Service,
-	destResolver destination.Resolver) (*voiceover.Service, *assets.VoiceoversRepository) {
+	destResolver asset.Resolver) (*voiceover.Service, *assets.VoiceoversRepository) {
 
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
@@ -269,14 +267,14 @@ type CoreInfra struct {
 	AssetLocationRepo   asset.LocationRepository
 	AssetProcessingRepo asset.ProcessingRepository
 	AssetsSvc           *asset.Service
-	MediaProcessor      processor.Processor
+	MediaProcessor      asset.Processor
 	AssetIndexService   *assetindex.Service
 	AssetTreeService    *assettree.Service
 	ClipIndexerService  *clipindexer.Service
 	VLMClient           *vlm.Client
 	VectorSvc           *vectorstore.Service
 	MediaStore          *drive.Store
-	DestResolver        destination.Resolver
+	DestResolver        asset.Resolver
 }
 
 // composeCoreInfra initializes all core infrastructure services.

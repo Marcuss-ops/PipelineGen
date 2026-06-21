@@ -17,7 +17,7 @@ import (
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -284,16 +284,16 @@ func TestSearchNormalizationLimitsToFourWords(t *testing.T) {
 type fakeMediaProcessor struct {
 	called bool
 	err    error
-	result *processor.ProcessResult
-	inputs []*processor.ProcessInput
+	result *asset.ProcessResult
+	inputs []*asset.ProcessInput
 }
 
-func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.ProcessInput) (*processor.ProcessResult, error) {
+func (f *fakeMediaProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	f.called = true
 	f.inputs = append(f.inputs, input)
 
 	if f.err != nil {
-		return &processor.ProcessResult{
+		return &asset.ProcessResult{
 			ID:     input.ID,
 			Status: "failed",
 			Error:  f.err.Error(),
@@ -304,7 +304,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.Proce
 		return f.result, nil
 	}
 
-	return &processor.ProcessResult{
+	return &asset.ProcessResult{
 		ID:        input.ID,
 		Filename:  input.Name + ".mp4",
 		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",

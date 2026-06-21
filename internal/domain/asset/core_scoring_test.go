@@ -1,4 +1,4 @@
-package scoring
+package asset
 
 import (
 	"testing"

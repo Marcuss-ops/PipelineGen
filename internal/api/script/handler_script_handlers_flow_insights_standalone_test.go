@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
@@ -18,11 +18,11 @@ import (
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 type mockEntityExtractor struct {
-	result *core.FullEntityAnalysis
+	result *asset.FullEntityAnalysis
 	err    error
 }
 
-func (m *mockEntityExtractor) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*core.FullEntityAnalysis, error) {
+func (m *mockEntityExtractor) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*asset.FullEntityAnalysis, error) {
 	return m.result, m.err
 }
 
@@ -163,16 +163,16 @@ func TestExtractScriptEntities_ExtractorError(t *testing.T) {
 
 func TestExtractScriptEntities_EmptyScript(t *testing.T) {
 	extractor := &mockEntityExtractor{
-		result: &core.FullEntityAnalysis{
+		result: &asset.FullEntityAnalysis{
 			TotalSegments:   0,
-			SegmentEntities: []core.SegmentEntities{},
+			SegmentEntities: []asset.SegmentEntities{},
 		},
 	}
 	result, err := ExtractScriptEntities(context.Background(), extractor, "", "model")
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	var analysis core.FullEntityAnalysis
+	var analysis asset.FullEntityAnalysis
 	if err := json.Unmarshal([]byte(result), &analysis); err != nil {
 		t.Fatalf("expected valid JSON, got error: %v", err)
 	}
@@ -183,9 +183,9 @@ func TestExtractScriptEntities_EmptyScript(t *testing.T) {
 
 func TestExtractScriptEntities_Success(t *testing.T) {
 	extractor := &mockEntityExtractor{
-		result: &core.FullEntityAnalysis{
+		result: &asset.FullEntityAnalysis{
 			TotalSegments: 1,
-			SegmentEntities: []core.SegmentEntities{
+			SegmentEntities: []asset.SegmentEntities{
 				{
 					SegmentIndex:     0,
 					SegmentText:      "This is a test script about Rome.",
@@ -201,7 +201,7 @@ func TestExtractScriptEntities_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	var analysis core.FullEntityAnalysis
+	var analysis asset.FullEntityAnalysis
 	if err := json.Unmarshal([]byte(result), &analysis); err != nil {
 		t.Fatalf("expected valid JSON, got error: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestExtractScriptEntities_Success(t *testing.T) {
 func TestExtractScriptEntities_SuccessWithModel(t *testing.T) {
 	var capturedModel string
 	extractor := &mockEntityExtractor{
-		result: &core.FullEntityAnalysis{TotalSegments: 1},
+		result: &asset.FullEntityAnalysis{TotalSegments: 1},
 	}
 	// Override with custom mock that captures the model
 	extractorWithCapture := &entityExtractorCapture{
@@ -248,7 +248,7 @@ type entityExtractorCapture struct {
 	captureModel *string
 }
 
-func (m *entityExtractorCapture) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*core.FullEntityAnalysis, error) {
+func (m *entityExtractorCapture) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*asset.FullEntityAnalysis, error) {
 	*m.captureModel = model
 	return m.EntityScriptExtractor.ExtractEntitiesFromScriptWithModel(ctx, segments, entityCount, model)
 }

@@ -21,8 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -375,7 +374,7 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), VideoAIRoot: cfg.Drive.VideoAIRootFolder, SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder(), videoAIFolder: cfg.Drive.VideoAIFolder()}
 }
 
-func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) processor.Processor {
+func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)

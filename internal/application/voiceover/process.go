@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -165,7 +165,7 @@ func (s *Service) processLanguage(
 		RemoveSilence: ptrutil.BoolDefault(req.RemoveSilence, false),
 	}
 	if dest != nil && dest.FolderID != "" {
-		audioInput.Destination = &destination.ResolveRequest{
+		audioInput.Destination = &asset.ResolveRequest{
 			Source:     "voiceover",
 			FolderID:   dest.FolderID,
 			FolderPath: dest.FolderPath,
@@ -282,7 +282,7 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 		return &ResolvedDestination{}, nil
 	}
 
-	resolved, err := s.assetDestResolver.Resolve(ctx, &destination.ResolveRequest{
+	resolved, err := s.assetDestResolver.Resolve(ctx, &asset.ResolveRequest{
 		Source:          "voiceover",
 		Group:           dest.Group,
 		FolderID:        dest.FolderID,

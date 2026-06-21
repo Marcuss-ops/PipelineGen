@@ -11,7 +11,7 @@
 // sidecar HTTP server — it depends on this interface and receives the
 // concrete implementation at construction time from internal/app/
 // composition root.
-package embedding
+package asset
 
 import "context"
 

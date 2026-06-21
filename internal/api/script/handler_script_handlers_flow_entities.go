@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // EntityScriptExtractor extracts entities from a script.
 type EntityScriptExtractor interface {
-	ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*core.FullEntityAnalysis, error)
+	ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*asset.FullEntityAnalysis, error)
 }
 
 // ExtractScriptEntities extracts entities from a script text and returns

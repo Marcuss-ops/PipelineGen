@@ -1,4 +1,4 @@
-package destination
+package asset
 
 import "context"
 

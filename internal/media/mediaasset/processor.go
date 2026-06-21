@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -22,7 +22,7 @@ var driveMetaMu sync.Mutex
 
 // Processor orchestrates download via yt-dlp or HTTP, optional ffmpeg
 // normalization, perceptual deduplication, file hashing, and Drive upload.
-// It implements the canonical core/processor.Processor contract directly.
+// It implements the canonical core/asset.Processor contract directly.
 type Processor struct {
 	dl            YTDLP
 	httpDL        HTTPDownloader
@@ -37,7 +37,7 @@ type Processor struct {
 	driveUploader *drive.Uploader
 }
 
-var _ processor.Processor = (*Processor)(nil)
+var _ asset.Processor = (*Processor)(nil)
 
 // ProcessorConfig holds the constructor dependencies for Processor.
 type ProcessorConfig struct {
@@ -84,13 +84,13 @@ func NewProcessor(
 // Process orchestrates the full pipeline: download, process, hash, and upload.
 // It validates inputs, downloads the asset, optionally normalizes via ffmpeg,
 // checks for perceptual duplicates, computes the file hash, and returns metadata.
-func (p *Processor) Process(ctx context.Context, input *processor.ProcessInput) (*processor.ProcessResult, error) {
+func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	if input == nil {
-		err := fmt.Errorf("processor.ProcessInput is required")
-		return &processor.ProcessResult{Status: "failed", Error: err.Error()}, err
+		err := fmt.Errorf("asset.ProcessInput is required")
+		return &asset.ProcessResult{Status: "failed", Error: err.Error()}, err
 	}
 
-	result := &processor.ProcessResult{
+	result := &asset.ProcessResult{
 		ID:     input.ID,
 		Status: "failed",
 	}
@@ -246,7 +246,7 @@ func (p *Processor) Process(ctx context.Context, input *processor.ProcessInput) 
 }
 
 // setupDirectories creates temp and save directories, returning their paths.
-func (p *Processor) setupDirectories(input *processor.ProcessInput) (tmpDir, saveDir string) {
+func (p *Processor) setupDirectories(input *asset.ProcessInput) (tmpDir, saveDir string) {
 	tmpDir = filepath.Join(p.dataDir, p.tempDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		p.log.Error("failed to create temp directory", zap.String("dir", tmpDir), zap.Error(err))

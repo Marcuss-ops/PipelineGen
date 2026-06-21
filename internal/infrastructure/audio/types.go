@@ -1,6 +1,6 @@
 package audioasset
 
-import "github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+import "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 
 type AudioInput struct {
 	Text          string
@@ -8,7 +8,7 @@ type AudioInput struct {
 	Voice         string
 	Filename      string
 	OutputDir     string
-	Destination   *destination.ResolveRequest
+	Destination   *asset.ResolveRequest
 	Strategy      string // "replace", "skip", "fail"
 	RemoveSilence bool
 }

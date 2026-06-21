@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
@@ -34,14 +34,14 @@ type Service struct {
 	// Embedding generation used to live inside this Service as os/exec
 	// (embeddings.go). It is now behind an interface per AGENTS.md
 	// architectural split so os/exec stays out of application/.
-	embedder embedding.Embedder
+	embedder asset.Embedder
 }
 
-// SetEmbedder injects the canonical embedding.Embedder used by
+// SetEmbedder injects the canonical asset.Embedder used by
 // Service.GenerateEmbedding. Called once during composition in
 // internal/app/dependencies.go after NewService; the field is private
 // to keep the post-PR-D.1 contract unchanged for external callers.
-func (s *Service) SetEmbedder(e embedding.Embedder) {
+func (s *Service) SetEmbedder(e asset.Embedder) {
 	s.embedder = e
 }
 

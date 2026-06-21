@@ -1,4 +1,4 @@
-package processor_test
+package asset_test
 
 import (
 	"errors"
@@ -46,6 +46,11 @@ func TestLegacyMediaAssetProcessorContractsStayRemoved(t *testing.T) {
 
 	for _, path := range productionFiles {
 		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		// Skip files that no longer exist (e.g. legacy media_processor.go
+		// was eliminated in the core→domain migration).
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		content, err := os.ReadFile(path)

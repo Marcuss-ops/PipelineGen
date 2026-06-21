@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -19,14 +19,14 @@ import (
 type Processor struct {
 	pythonScriptsDir  string
 	driveUploader     *drive.Uploader
-	assetDestResolver destination.Resolver
+	assetDestResolver asset.Resolver
 	log               *zap.Logger
 }
 
 func NewProcessor(
 	pythonScriptsDir string,
 	driveUploader *drive.Uploader,
-	assetDestResolver destination.Resolver,
+	assetDestResolver asset.Resolver,
 	log *zap.Logger,
 ) *Processor {
 	return &Processor{

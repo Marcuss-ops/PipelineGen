@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

@@ -4,16 +4,16 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func fallbackEntityExtractionResult(segment string, segmentIndex, entityCount int) *core.EntityExtractionResult {
+func fallbackEntityExtractionResult(segment string, segmentIndex, entityCount int) *asset.EntityExtractionResult {
 	segment = strings.TrimSpace(segment)
 	if entityCount <= 0 {
 		entityCount = 2
 	}
-	result := &core.EntityExtractionResult{
+	result := &asset.EntityExtractionResult{
 		SegmentIndex:     segmentIndex,
 		FrasiImportanti:  []string{},
 		EntitaSenzaTesto: make(map[string]string),

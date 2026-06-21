@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
@@ -339,8 +339,8 @@ func boolPtr(b bool) *bool {
 type fakeMediaProcessor struct {
 	called bool
 	err    error
-	result *processor.ProcessResult
-	inputs []*processor.ProcessInput
+	result *asset.ProcessResult
+	inputs []*asset.ProcessInput
 }
 
 type fakeVideoPipeline struct {
@@ -367,12 +367,12 @@ func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req 
 	}, nil
 }
 
-func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.ProcessInput) (*processor.ProcessResult, error) {
+func (f *fakeMediaProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	f.called = true
 	f.inputs = append(f.inputs, input)
 
 	if f.err != nil {
-		return &processor.ProcessResult{
+		return &asset.ProcessResult{
 			ID:     input.ID,
 			Status: "failed",
 			Error:  f.err.Error(),
@@ -383,7 +383,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.Proce
 		return f.result, nil
 	}
 
-	return &processor.ProcessResult{
+	return &asset.ProcessResult{
 		ID:        input.ID,
 		Filename:  input.Name + ".mp4",
 		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",

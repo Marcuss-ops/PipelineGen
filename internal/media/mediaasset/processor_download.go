@@ -13,12 +13,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 
 // downloadStep downloads the asset from the source URL.
-func (p *Processor) downloadStep(ctx context.Context, input *processor.ProcessInput, rawPath string) (actualPath string, err error) {
+func (p *Processor) downloadStep(ctx context.Context, input *asset.ProcessInput, rawPath string) (actualPath string, err error) {
 	// Try HTTP download first for direct URLs (e.g., Artlist with direct links).
 	if p.httpDL != nil && p.isDirectURL(input.SourceURL) {
 		p.log.Info("using HTTP downloader for direct URL", zap.String("id", input.ID), zap.String("url", input.SourceURL))
@@ -134,7 +134,7 @@ func (p *Processor) isArtlistURL(url string) bool {
 
 // downloadViaScraper calls the Node.js scraper /download endpoint to download
 // an Artlist clip with browser authentication (cookies).
-func (p *Processor) downloadViaScraper(ctx context.Context, input *processor.ProcessInput, rawPath string) (string, error) {
+func (p *Processor) downloadViaScraper(ctx context.Context, input *asset.ProcessInput, rawPath string) (string, error) {
 	scraperURL := strings.TrimSuffix(p.scraperURL, "/") + "/download"
 
 	// Use ClipPageURL if available (the actual Artlist clip page URL for browser navigation).

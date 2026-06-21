@@ -107,7 +107,7 @@ type ResolvedDest struct {
 }
 
 // Destination is the lightweight, locally-resolved destination shape.
-// Used by DestinationResolver.Resolve. Distinct from destination.ResolveResult
+// Used by DestinationResolver.Resolve. Distinct from asset.ResolveResult
 // so consumers can keep the JSON shape stable while the canonical
 // destination package continues to evolve.
 type Destination struct {

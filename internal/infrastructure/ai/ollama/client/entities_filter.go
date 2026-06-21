@@ -4,11 +4,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func sanitizeEntityExtractionResult(segment string, result *core.EntityExtractionResult, limit int) *core.EntityExtractionResult {
+func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtractionResult, limit int) *asset.EntityExtractionResult {
 	if result == nil {
 		return nil
 	}
