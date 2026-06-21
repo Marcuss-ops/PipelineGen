@@ -24,7 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
@@ -42,7 +42,7 @@ type Deps struct {
 	AssetTreeSvc   *assettree.Service
 	MetaWriter     *semantic.MetadataWriter
 	ClipIndexer    *clipindexer.Service
-	VectorStore    *vectorstore.Service
+	VectorStore    *qdrant.Service
 	JobsSvc        *jobservice.Service
 	Cfg            *config.Config
 	Log            *zap.Logger
@@ -73,7 +73,7 @@ type Handler struct {
 	assetTreeSvc   *assettree.Service
 	metaWriter     *semantic.MetadataWriter
 	clipIndexer    *clipindexer.Service
-	vectorStore    *vectorstore.Service
+	vectorStore    *qdrant.Service
 	jobsSvc        *jobservice.Service
 	cfg            *config.Config
 	log            *zap.Logger
@@ -166,7 +166,7 @@ func (h *Handler) SetClipIndexer(ci *clipindexer.Service) {
 
 // SetVectorStore is a post-construction setter for late-binding the vector
 // store service. SourcesHandler.SetVectorStore delegates here.
-func (h *Handler) SetVectorStore(vs *vectorstore.Service) {
+func (h *Handler) SetVectorStore(vs *qdrant.Service) {
 	h.vectorStore = vs
 }
 
