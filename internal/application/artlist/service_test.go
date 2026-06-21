@@ -105,8 +105,16 @@ func TestArtlistServiceCreation(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
-	// Create service with minimal dependencies
-	svc, err := NewService(cfg, db, db, artlistRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, logger)
+	// PR2.5: NewService takes ServiceDeps (struct) instead of 14
+	// positional arguments. AssetStore (port) is wired via the same
+	// repo instance that satisfies it.
+	svc, err := NewService(ServiceDeps{
+		Cfg:         cfg,
+		MainDB:      db,
+		ArtlistDB:   db,
+		Log:         logger,
+		AssetStore:  artlistRepo,
+	})
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -126,7 +134,13 @@ func TestArtlistSearchRequest(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
-	svc, err := NewService(cfg, db, db, artlistRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, logger)
+	svc, err := NewService(ServiceDeps{
+		Cfg:        cfg,
+		MainDB:     db,
+		ArtlistDB:  db,
+		Log:        logger,
+		AssetStore: artlistRepo,
+	})
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -362,22 +376,14 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		err: errors.New("download failed"),
 	}
 
-	svc, err := NewService(
-		cfg,
-		db,
-		db,
-		artlistRepo,
-		processor,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		logger,
-	)
+	svc, err := NewService(ServiceDeps{
+		Cfg:            cfg,
+		MainDB:         db,
+		ArtlistDB:      db,
+		Log:            logger,
+		AssetStore:     artlistRepo,
+		MediaProcessor: processor,
+	})
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -444,22 +450,14 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 
 	processor := &fakeMediaProcessor{}
 
-	svc, err := NewService(
-		cfg,
-		db,
-		db,
-		artlistRepo,
-		processor,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		logger,
-	)
+	svc, err := NewService(ServiceDeps{
+		Cfg:            cfg,
+		MainDB:         db,
+		ArtlistDB:      db,
+		Log:            logger,
+		AssetStore:     artlistRepo,
+		MediaProcessor: processor,
+	})
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -532,22 +530,14 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		err: errors.New("download failed"),
 	}
 
-	svc, err := NewService(
-		cfg,
-		db,
-		db,
-		artlistRepo,
-		processor,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		logger,
-	)
+	svc, err := NewService(ServiceDeps{
+		Cfg:            cfg,
+		MainDB:         db,
+		ArtlistDB:      db,
+		Log:            logger,
+		AssetStore:     artlistRepo,
+		MediaProcessor: processor,
+	})
 	require.NoError(t, err)
 	defer svc.Close()
 

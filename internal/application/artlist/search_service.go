@@ -65,7 +65,7 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 		return resp, nil
 	}
 
-	clipsList, err := s.artlistRepo.SearchClips(ctx, "artlist", term)
+	clipsList, err := s.assetStore.SearchClips(ctx, "artlist", term)
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -137,7 +137,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		}
 		clip.SetDownloadLink(c.PrimaryURL)
 
-		if existing, err := s.artlistRepo.Get(ctx, clip.ID); err == nil && existing != nil {
+		if existing, err := s.assetStore.Get(ctx, clip.ID); err == nil && existing != nil {
 			// Preserve existing Drive metadata (upload results)
 			if existing.LocalPath() != "" {
 				clip.SetLocalPath(existing.LocalPath())
@@ -164,7 +164,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			}
 		}
 
-		if err := s.artlistRepo.Upsert(ctx, clip); err == nil {
+		if err := s.assetStore.Upsert(ctx, clip); err == nil {
 			if a := toDomain(clip); a != nil {
 				resp.Clips = append(resp.Clips, *a)
 			}
@@ -172,7 +172,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			// Update search terms index: use normalizedTerm for indexed search
 			// (faster AND matching) but also include originalTerm for broader LIKE hits.
 			searchText := clip.Name + " " + originalTerm
-			if updateErr := s.artlistRepo.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
+			if updateErr := s.assetStore.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
 				s.log.Debug("failed to update search terms for clip", zap.String("clip_id", clip.ID), zap.Error(updateErr))
 			}
 
@@ -180,9 +180,9 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			// senza bloccare il flusso di risposta all'utente.
 			// Dopo l'enrichment, semantic_enricher.go chiama UpdateSearchTerms di nuovo
 			// con i termini ricchi del tagger.
-			if s.semanticEnricher != nil {
-				s.semanticEnricher.EnrichAsync(ctx, clip, normalizedTerm)
-			}
+		if s.metadataWriter != nil {
+			s.metadataWriter.EnrichAsync(ctx, clip, normalizedTerm)
+		}
 		}
 	}
 
@@ -251,7 +251,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.Asset {
 	s := ss.service
 	term = normalizeSearchTerm(term)
-	clips, err := s.artlistRepo.SearchClips(ctx, "artlist", term)
+	clips, err := s.assetStore.SearchClips(ctx, "artlist", term)
 	if err != nil {
 		s.log.Error("failed to search clips", zap.Error(err), zap.String("term", term))
 		return nil
@@ -278,5 +278,8 @@ func (ss *SearchService) UpsertClip(ctx context.Context, clip *asset.Asset) erro
 		return ss.assetRepo.Upsert(ctx, clip)
 	}
 	s := ss.service
-	return s.artlistRepo.Upsert(ctx, clip)
+	if s.assetStore != nil {
+		return s.assetStore.Upsert(ctx, clip)
+	}
+	return nil
 }

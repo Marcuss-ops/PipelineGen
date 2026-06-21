@@ -98,18 +98,39 @@ type Downloader interface {
 // AssetStore MUST NOT publish indexing or upload side-effects — that's
 // the application's job via Indexer and Uploader.
 //
-// TODO(infrastructure): surface the canonical asset.Repository instead of
-// the legacy shapes; remove SearchByTerms/CountClips/LastUpdatedAtForTerm
-// once sources/artlist.Service stops being the binding surface and the
+// PR2.5: ports extended to mirror *assets.ClipsRepository's full
+// surface so the legacy repo concretes in application/artlist.Service
+// can be swapped for AssetStore without breaking callers. New methods
+// (UpsertClip / SearchClips / UpdateSearchTerms) keep the legacy
+// signatures so consumers in service_test.go + diagnostics_service.go
+// + search_fallback.go continue to compile against the port. Once the
 // ProviderRegistry (providers/artlist/adapter) is rebuilt on the new
-// searcher port. Until then these are the minimum columns the existing
-// artlist callers need.
+// searcher port, the SearchByTerms/CountClips/LastUpdatedAtForTerm
+// trio can be deleted.
 type AssetStore interface {
 	Get(ctx context.Context, id string) (*asset.Asset, error)
+	// Upsert is the canonical write entry point. Mirrors the
+	// application-level upsert contract used by SearchLiveAndSave.
 	Upsert(ctx context.Context, clip *asset.Asset) error
+	// UpsertClip mirrors *assets.ClipsRepository.UpsertClip (legacy
+	// dispatch_bridge.go uses it directly). Both Upsert and
+	// UpsertClip write the same row + emit the same outbox event;
+	// the suffix distinguishes caller intent.
+	UpsertClip(ctx context.Context, clip *asset.Asset) error
 	SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error)
+	// SearchClips is the term-exact variant used by Search /
+	// Diagnostics. The mismatch with SearchByTerms (term vs keywords)
+	// comes from the legacy split between "term of interest" and
+	// "tokens to index"; until search unification lands, both shapes
+	// coexist on the port.
+	SearchClips(ctx context.Context, source string, term string) ([]*asset.Asset, error)
 	CountClips(ctx context.Context) (int, error)
 	LastUpdatedAtForTerm(ctx context.Context, term string) (*string, error)
+	// UpdateSearchTerms keeps the clip_search_terms index in lockstep
+	// with semantic enrichment. Called twice per fresh search hit:
+	// once after Upsert (raw title + term) and once after the
+	// semantic_enricher (rich search_text).
+	UpdateSearchTerms(ctx context.Context, clipID string, source string, name string, tags []string, searchText string) error
 }
 
 // Uploader uploads a local file to a destination folder. The application

@@ -16,6 +16,11 @@
 // The bridge logs WARN when the legacy fallback is taken. In production,
 // when the dispatcher is properly wired, those warnings should never
 // appear, so a CI grep for them is a cheap integration check.
+//
+// PR2.5: clipsRepo → assetStore (AssetStore port), clipIndexer → indexer
+// (Indexer port). Both ports declare exactly the methods this bridge
+// uses (UpsertClip + IndexClip + IsEnabled) so the swap is mechanical
+// with no behavior change.
 package artlist
 
 import (
@@ -24,9 +29,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 )
 
 // dispatchBridge consolidates the canonical-vs-legacy write/index
@@ -42,20 +45,31 @@ import (
 //	    clipIndexer.IndexClip(ctx, clip.ID)
 //	}
 type dispatchBridge struct {
-	dispatcher  *outbox.Dispatcher
-	clipsRepo   *assets.ClipsRepository
-	clipIndexer *clipindexer.Service
-	log         *zap.Logger
+	dispatcher *outbox.Dispatcher
+	// assetStore is the canonical port (PR2.5). Replaces the
+	// concrete *assets.ClipsRepository — the port declares UpsertClip
+	// with the same signature so callers don't need to know whether
+	// the implementation is the canonical ExtendedRepo or a test stub.
+	assetStore AssetStore
+	// indexer is the canonical port (PR2.5). Replaces the concrete
+	// *clipindexer.Service. Declares IndexClip + IsEnabled with the
+	// same signatures so the dispatch bridge logic is unchanged.
+	indexer Indexer
+	log     *zap.Logger
 }
 
 // newDispatchBridge returns a bridge wired to the Service's current
 // upstream dependencies. Cheap to construct — does not capture state.
+//
+// PR2.5: pulls ports (assetStore, indexer, dispatcher) from the
+// surrounding Service. The legacy concrete fields are gone; this is
+// the only path the rest of the package uses.
 func (s *Service) newDispatchBridge() *dispatchBridge {
 	return &dispatchBridge{
-		dispatcher:  s.dispatcher,
-		clipsRepo:   s.artlistRepo,
-		clipIndexer: s.clipIndexer,
-		log:         s.log,
+		dispatcher: s.dispatcher,
+		assetStore: s.assetStore,
+		indexer:    s.indexer,
+		log:        s.log,
 	}
 }
 
@@ -81,14 +95,17 @@ func (b *dispatchBridge) EnqueueOrFallback(ctx context.Context, clip *asset.Asse
 	}
 	b.log.Warn("dispatch_bridge: legacy fallback (UpsertClip + IndexClip) — canonical dispatcher should be wired in production",
 		zap.String("clip_id", clip.ID))
-	if b.clipsRepo != nil {
-		if err := b.clipsRepo.UpsertClip(ctx, clip); err != nil {
+	if b.assetStore != nil {
+		if err := b.assetStore.UpsertClip(ctx, clip); err != nil {
 			b.log.Warn("dispatch_bridge: legacy UpsertClip failed",
 				zap.String("clip_id", clip.ID), zap.Error(err))
 		}
 	}
-	if b.clipIndexer != nil {
-		if err := b.clipIndexer.IndexClip(ctx, clip.ID); err != nil {
+	// Fallback to legacy indexing only when there's no dispatcher
+	// (the canonical path takes over via EnqueueAndIndex above).
+	// PR2.5: indexer is the port; IsEnabled + IndexClip unchanged.
+	if b.indexer != nil && b.indexer.IsEnabled() {
+		if err := b.indexer.IndexClip(ctx, clip.ID); err != nil {
 			b.log.Warn("dispatch_bridge: legacy IndexClip failed",
 				zap.String("clip_id", clip.ID), zap.Error(err))
 		}

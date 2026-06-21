@@ -3,28 +3,34 @@ package artlist
 import (
 	"context"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // DBProvider searches the local database for indexed clips.
+//
+// PR2.5: holds the canonical AssetStore port instead of the concrete
+// *assets.ClipsRepository. The port declares SearchByTerms with the
+// same signature so the Search() body is unchanged.
 type DBProvider struct {
-	repo *assets.ClipsRepository
+	store AssetStore
 }
 
-// NewDBProvider creates a new DBProvider.
-func NewDBProvider(repo *assets.ClipsRepository) *DBProvider {
-	return &DBProvider{repo: repo}
+// NewDBProvider creates a new DBProvider backed by the canonical
+// AssetStore port. Production wiring passes bundle.ClipsRepo which
+// satisfies AssetStore automatically (its SearchByTerms / SearchClips
+// / CountClips / LastUpdatedAtForTerm / Get / Upsert / UpsertClip /
+// UpdateSearchTerms surface fully covers the port).
+func NewDBProvider(store AssetStore) *DBProvider {
+	return &DBProvider{store: store}
 }
 
 func (p *DBProvider) Name() string { return "database" }
 
 func (p *DBProvider) Search(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
-	if p.repo == nil {
+	if p.store == nil {
 		return nil, nil
 	}
 	keywords := strings.Fields(term)
-	dbClips, err := p.repo.SearchByTerms(ctx, "artlist", keywords, limit)
+	dbClips, err := p.store.SearchByTerms(ctx, "artlist", keywords, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -109,7 +109,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		Jobs:               root.Jobs,
 		CatalogSyncService: root.Sync.CatalogSync,
 	}
-	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Process.VectorSvc); err != nil {
+	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Process.VectorSvc, root.Outbox.Dispatcher); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
 	} else {
 		registerModule(registry, log, aw.Module)
