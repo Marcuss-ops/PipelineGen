@@ -84,7 +84,6 @@
   from:
     - internal/assets
     - internal/artifacts
-    - internal/domain/media
     - internal/core/assetop
     - internal/core/audio
     - internal/core/destination
@@ -94,7 +93,7 @@
   to:
     - internal/domain/asset
     - internal/application/assets
-  exit_gate: "rg 'internal/(assets|artifacts|domain/media|core/assetop|core/audio|core/destination|core/embedding|core/processor|core/scoring)' --type go returns zero."
+  exit_gate: "rg 'internal/(assets|artifacts|core/assetop|core/audio|core/destination|core/embedding|core/processor|core/scoring)' --type go returns zero."
 
 # ── Wave 4B — Job/Worker/Outbox contracts consolidation ──────────────────────
 
@@ -110,14 +109,21 @@
 
 - id: "4C"
   title: Remove internal/core + internal/domain/media
-  status: pending
+  status: in_progress
+  description: |
+    internal/domain/media/ eliminato (June 2026). Tutti i tipi erano già
+    duplicati in internal/domain/asset/ (SourceType, AssetStatus, AssetNode,
+    AssetExecutionResult, ClipFolder, ClipManifest, IndexingCheckpoint,
+    PipelineStrategy, NormalizeStrategy, ActiveKey, MonitoredSource,
+    Subject, ImageAsset, ImageUsage, ImageTag, CategoryChannel, SearchQuery,
+    SearchQueryResult). internal/core/ ancora da eliminare.
   blocked_by: ["4A", "4B"]
   moves:
     - {from: internal/core/lifecycle,   to: internal/application/assets/lifecycle.go}
     - {from: internal/core/maintenance, to: internal/application/assets/maintenance.go}
     - {from: internal/core/workspace,   to: internal/domain/job/workspace.go}
     - {from: internal/core/analysis.go, to: internal/domain/asset/analysis.go}
-  exit_gate: "rg 'internal/core' --type go returns zero; rg 'internal/domain/media' --type go returns zero."
+  exit_gate: "rg 'internal/core' --type go returns zero."
 
 # ── Wave 5 — Jobs consolidation ──────────────────────────────────────────────
 

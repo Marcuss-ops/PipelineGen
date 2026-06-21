@@ -1,8 +1,13 @@
-# `internal/domain/media/` — Pending Migration
+# `internal/domain/media/` — Completed Migration
 
 ## Status
 
-**pending** — deferred to Wave-14. Target: `internal/domain/asset/`.
+**done** (June 2026) — directory eliminata. Tutti i tipi (SourceType, AssetStatus,
+AssetNode, AssetExecutionResult, ClipFolder, ClipManifest, PipeelineStrategy,
+NormalizeStrategy, ActiveKey, MonitoredSource, Subject, ImageAsset, ImageUsage,
+ImageTag, CategoryChannel, SearchQuery, SearchQueryResult, GenerationStyle,
+MediaType) erano già duplicati in `internal/domain/asset/`. Nessun importatore
+residuo in codice Go. Target: `internal/domain/asset/`.
 
 ## What exists
 

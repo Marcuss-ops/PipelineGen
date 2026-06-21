@@ -20,7 +20,7 @@ This directory contains the per-directory migration maps referenced from
 | `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<X>/`             | in-progress | Wave 12          | [internal-sources.md](internal-sources.md) |
 | `internal/upload/drive/`         | `internal/infrastructure/drive/`                            | pending | Wave-15          | [internal-upload.md](internal-upload.md) |
 | `internal/application/scriptflow/` | `internal/application/scripts/<X>/`                      | **done** | Wave 6 | [internal-application-scriptflow.md](internal-application-scriptflow.md) |
-| `internal/domain/media/`         | `internal/domain/asset/`                                    | pending | Wave-14          | [internal-domain-media.md](internal-domain-media.md) |
+| `internal/domain/media/`         | `internal/domain/asset/` (tipi duplicati — directory eliminata) | **done** | Wave 4C          | [internal-domain-media.md](internal-domain-media.md) |
 | `internal/domain/worker/`        | `internal/domain/job/` (DELETE — duplicates `domain/job`)   | **done** | this PR         | [internal-domain-worker.md](internal-domain-worker.md) |
 | `internal/domain/outbox/`        | `internal/domain/lifecycle/` (DELETE — duplicates `outboxevents`) | **done** | this PR         | [internal-domain-outbox.md](internal-domain-outbox.md) |
 
