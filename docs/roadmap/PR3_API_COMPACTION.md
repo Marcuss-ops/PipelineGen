@@ -1,187 +1,85 @@
-# PR3 — API compaction per capability
+# PR3 — API compaction residua
 
 ## Obiettivo
 
-Ridurre la frammentazione del trasporto HTTP consolidando i package API per capability, senza cambiare route, payload o semantica degli endpoint.
+Eliminare i sette package API legacy ancora presenti, consolidando il trasporto per capability senza cambiare method, path, payload, autenticazione o semantica degli endpoint.
 
-## Stato iniziale verificato
+## Stato verificato
 
-Restano package separati:
+Sono già stati consolidati `books`/`lessons` in `api/content` e `scraper`/`mediaingest` in `api/assets`; esiste `api/transport`. Restano:
 
-- `internal/api/drive`
-- `internal/api/realtime`
-- `internal/api/searchqueries`
-- `internal/api/sources`
-- `internal/api/fullimages`
-- `internal/api/workers`
-- `internal/api/script`
+- `internal/api/drive`;
+- `internal/api/realtime`;
+- `internal/api/searchqueries`;
+- `internal/api/sources`;
+- `internal/api/fullimages`;
+- `internal/api/workers`;
+- `internal/api/script`.
 
-Target:
+## Checklist residua
 
-```text
-internal/api/assets/
-internal/api/images/
-internal/api/jobs/
-internal/api/scripts/
-internal/api/content/
-internal/api/channels/
-internal/api/system/
-internal/api/middleware/
-internal/api/transport/
-```
+### PR3.0 — Congelare e verificare il contratto HTTP
 
-## Regole di compatibilità
+- [ ] Rigenerare `docs/api/ACTIVE_API_GENERATED.md` dallo stato precedente agli spostamenti.
+- [ ] Salvare una matrice method, path, handler, middleware e auth.
+- [ ] Aggiungere contract test per tutte le route dei sette package residui.
+- [ ] Identificare route duplicate, handler con business logic e costruzioni concrete nel transport.
+- [ ] Impedire che ogni spostamento modifichi l'output API generato.
 
-- nessuna route pubblica cambia path;
-- nessun campo JSON viene rimosso o rinominato senza contract test;
-- i package API non costruiscono service o repository;
-- nessun accesso SQL, filesystem, processo o goroutine orchestration nel transport;
-- ogni capability espone un solo punto di registrazione route.
+### PR3.1 — Consolidare asset transport
 
-## Checklist operativa
+- [ ] Spostare `api/drive` in `api/assets` e usare use case già costruiti.
+- [ ] Spostare `api/realtime` e `api/searchqueries` in `api/assets` mantenendo lifecycle realtime separato.
+- [ ] Spostare `api/sources` in `api/assets` per vertical slice, senza ricreare sottopackage paralleli.
+- [ ] Usare provider registry come unico dispatch per YouTube, Artlist e stock.
+- [ ] Eliminare dipendenze tra package API e fallback diretti verso service concreti.
+- [ ] Eliminare fisicamente i quattro package originari quando gli import sono zero.
 
-### PR3.0 — Congelare il contratto HTTP
+### PR3.2 — Consolidare images, jobs e scripts
 
-- [ ] Generare `docs/api/ACTIVE_API_GENERATED.md` dallo stato iniziale.
-- [ ] Salvare un inventario di metodo, path, handler e middleware.
-- [ ] Aggiungere contract test per le route che verranno spostate.
-- [ ] Identificare route duplicate o registrate da più moduli.
-- [ ] Identificare handler che costruiscono dipendenze concrete.
-- [ ] Identificare handler con business logic, SQL o process invocation.
+- [ ] Spostare `api/fullimages` in `api/images` e dipendere da un use case immagini.
+- [ ] Spostare `api/workers` in `api/jobs`, mantenendo DTO HTTP distinti dai modelli `domain/job`.
+- [ ] Rinominare `api/script` in `api/scripts`, mantenendo invariati i path `/api/script/...`.
+- [ ] Tenere job handler applicativi fuori dal transport.
+- [ ] Eliminare fisicamente i tre package originari quando gli import sono zero.
 
-**Accettazione PR3.0**
+### PR3.3 — Rendere il transport sottile e uniforme
 
-Esiste una baseline testabile delle route. Ogni spostamento successivo deve produrre lo stesso output API generato.
+- [ ] Ogni capability espone un solo punto pubblico di registrazione route.
+- [ ] Eliminare `NewService`, `NewRepository`, SQL, filesystem, process execution e goroutine orchestration dai package API.
+- [ ] Iniettare dipendenze già costruite dal composition root.
+- [ ] Centralizzare bind, validation, error mapping e response soltanto quando sostituiscono duplicazione reale.
+- [ ] Non introdurre framework generici, reflection o mega handler condivisi.
+- [ ] Propagare sempre il request context ai use case.
 
-### PR3.1 — Consolidare `api/drive` in `api/assets`
+### PR3.4 — Chiudere il debito `internal/media` richiesto dalle route
 
-- [ ] Spostare handler e module registration sotto `internal/api/assets`.
-- [ ] Mantenere invariati i path `/api/...` esistenti.
-- [ ] Sostituire import interni tra package API con dipendenze verso use case/porte.
-- [ ] Eliminare dipendenze da `api/sources/clips` se possono essere sostituite da un use case asset.
-- [ ] Unificare error mapping e response helpers con `api/transport`.
-- [ ] Eliminare `internal/api/drive` quando gli import sono zero.
+- [ ] Rimuovere gli import transport verso `internal/media/fullimages`, `stockpipeline`, `clipresolver`, `vectorstore` e altri package coinvolti.
+- [ ] Collegare le route ai nuovi owner application/infrastructure.
+- [ ] Non spostare business logic dentro `api/assets` o `api/images` per eliminare un import.
+- [ ] Aggiornare `architecture/migration.yaml` con i package `internal/media` eliminati dalla stessa vertical slice.
 
-**Exit gate PR3.1**
+### PR3.5 — Contract e regression test
 
-```bash
-test ! -d internal/api/drive
-rg 'internal/api/drive' --type go
-go test ./internal/api/assets/... -count=1
-```
+- [ ] Verificare auth admin e worker.
+- [ ] Verificare bind error, validation error, not found, conflict e internal error.
+- [ ] Verificare endpoint asincroni, job IDs e progress.
+- [ ] Verificare SSE/realtime start e shutdown senza goroutine leak.
+- [ ] Confrontare documentazione API prima/dopo e richiedere zero variazioni non approvate.
 
-### PR3.2 — Consolidare `api/realtime` e `api/searchqueries` in `api/assets`
-
-- [ ] Spostare route realtime asset/search sotto `api/assets`.
-- [ ] Spostare search query handlers sotto `api/assets`.
-- [ ] Mantenere SSE/websocket lifecycle separato dal business logic.
-- [ ] Non avviare goroutine nel costruttore del modulo API.
-- [ ] Iniettare service già costruiti dal composition root.
-- [ ] Eliminare i due package originari quando gli import sono zero.
-
-**Exit gate PR3.2**
-
-```bash
-test ! -d internal/api/realtime
-test ! -d internal/api/searchqueries
-rg 'internal/api/(realtime|searchqueries)' --type go
-go test ./internal/api/assets/... -count=1
-```
-
-### PR3.3 — Consolidare `api/sources` in `api/assets`
-
-- [ ] Inventariare i sotto-package `artlist`, `youtube`, `clips`, `internal`, `root`.
-- [ ] Spostare gli handler per provider/search sotto file capability-specifici in `api/assets`.
-- [ ] Mantenere provider registry come unico punto di dispatch.
-- [ ] Eliminare fallback diretti verso service YouTube/Artlist.
-- [ ] Eliminare dipendenze tra sotto-package API.
-- [ ] Conservare paginazione, diagnostics e payload esistenti.
-- [ ] Eliminare `internal/api/sources` quando gli import sono zero.
-
-**Exit gate PR3.3**
-
-```bash
-test ! -d internal/api/sources
-rg 'internal/api/sources' --type go
-go test ./internal/api/assets/... -count=1
-go test ./internal/application/assets/providers/... -count=1
-```
-
-### PR3.4 — Consolidare `api/fullimages` in `api/images`
-
-- [ ] Spostare route full-image sotto `internal/api/images`.
-- [ ] Rimuovere import diretto di `internal/media/fullimages` dal transport.
-- [ ] Iniettare un use case immagini già costruito.
-- [ ] Unificare validazione e response mapping con `api/transport`.
-- [ ] Eliminare `internal/api/fullimages`.
-
-**Exit gate PR3.4**
-
-```bash
-test ! -d internal/api/fullimages
-rg 'internal/api/fullimages' --type go
-go test ./internal/api/images/... -count=1
-```
-
-### PR3.5 — Consolidare `api/workers` in `api/jobs`
-
-- [ ] Spostare registrazione worker, heartbeat, capability e asset transfer sotto `api/jobs`.
-- [ ] Mantenere separati DTO HTTP e modelli `domain/job`.
-- [ ] Non importare repository SQLite dal transport.
-- [ ] Conservare autenticazione worker e middleware esistenti.
-- [ ] Eliminare `internal/api/workers`.
-
-**Exit gate PR3.5**
-
-```bash
-test ! -d internal/api/workers
-rg 'internal/api/workers' --type go
-go test ./internal/api/jobs/... -count=1
-go test ./internal/application/jobs/... -count=1
-```
-
-### PR3.6 — Rinominare `api/script` in `api/scripts`
-
-- [ ] Spostare package root e sotto-package `catalog`/`curation` sotto `internal/api/scripts`.
-- [ ] Mantenere tutti i path `/api/script/...` invariati.
-- [ ] Eliminare logica applicativa residua dagli handler.
-- [ ] Usare `api/transport` per bind/validate/invoke/map/respond dove applicabile.
-- [ ] Mantenere job handlers applicativi fuori dal transport quando non sono route HTTP.
-- [ ] Eliminare `internal/api/script`.
-
-**Exit gate PR3.6**
-
-```bash
-test ! -d internal/api/script
-rg 'internal/api/script' --type go
-go test ./internal/api/scripts/... -count=1
-go test ./internal/application/scripts/... -count=1
-```
-
-### PR3.7 — Uniformare i moduli API
-
-- [ ] Ogni capability espone al massimo un `RegisterRoutes` pubblico.
-- [ ] Ogni capability ha un handler root o un gruppo piccolo di handler interni non esportati.
-- [ ] Eliminare `NewService` e `NewRepository` dai package API.
-- [ ] Eliminare accessi diretti a config globale quando i valori possono essere iniettati.
-- [ ] Eliminare helper duplicati di binding, validation e response.
-- [ ] Aggiungere `transport.Query` o equivalente soltanto se sostituisce duplicazione reale in almeno due handler.
-- [ ] Non creare una nuova astrazione generica senza consumer immediati.
-
-### PR3.8 — Rigenerare documentazione e contract test
-
-- [ ] Rigenerare `docs/api/ACTIVE_API_GENERATED.md`.
-- [ ] Confrontare metodo e path con la baseline PR3.0.
-- [ ] Verificare middleware auth per admin e worker.
-- [ ] Verificare status code e body per errori di validazione.
-- [ ] Verificare endpoints asincroni e job IDs.
-- [ ] Verificare SSE/realtime shutdown.
-
-### PR3.9 — Validazione finale
+### PR3.6 — Validazione finale
 
 - [ ] Eseguire:
 
 ```bash
+test ! -d internal/api/drive
+test ! -d internal/api/realtime
+test ! -d internal/api/searchqueries
+test ! -d internal/api/sources
+test ! -d internal/api/fullimages
+test ! -d internal/api/workers
+test ! -d internal/api/script
+rg 'database/sql|internal/infrastructure/database/sqlite|os/exec' internal/api
 go test ./internal/api/... -count=1
 go test -race ./internal/api/...
 go vet ./internal/api/...
@@ -191,21 +89,6 @@ git diff --exit-code docs/api/ACTIVE_API_GENERATED.md
 go run ./scripts/archcheck
 ```
 
-- [ ] Cercare violazioni di layer:
+## Exit gate
 
-```bash
-rg 'database/sql|internal/infrastructure/database/sqlite|os/exec' internal/api
-```
-
-- [ ] Verificare che non esistano i sette package originari.
-
-## Exit gate finale
-
-PR3 è completata quando:
-
-- le route sono organizzate per capability;
-- le route pubbliche sono compatibili con la baseline;
-- nessun package API costruisce dipendenze concrete;
-- nessun package API accede a SQL o processi;
-- `api/drive`, `api/realtime`, `api/searchqueries`, `api/sources`, `api/fullimages`, `api/workers` e `api/script` non esistono più;
-- documentazione API, test e build sono verdi.
+PR3 è chiusa quando i sette package originari non esistono più, ogni capability ha un unico route registrar, il transport non contiene business logic o adapter concreti e il contratto HTTP è invariato e coperto da test.
