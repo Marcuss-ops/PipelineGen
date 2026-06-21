@@ -69,7 +69,7 @@ voiceover synthesis, image generation, and Google Drive synchronization.
 
 PipelineGen uses a unified job system for all long-running operations. Jobs are
 stored in `data/media/media.db.sqlite` and processed by background workers.
-See `docs/ARCHITECTURE.md` for the full system diagram and module registry.
+See `ARCHITECTURE.md` for the full system diagram and module registry.
 Track job progress via the `/api/jobs` endpoints.
 
 ## 📁 Project Structure
@@ -89,6 +89,8 @@ Track job progress via the `/api/jobs` endpoints.
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md): Canonical system architecture, data flows,
   module registry, and day-1 commands.
+- [Operational roadmap PR0–PR4](./docs/roadmap/README.md): Concrete numbered TODOs,
+  validation commands, dependencies, and exit gates for the current consolidation cycle.
 - [AGENTS.md](./AGENTS.md): Critical system rules and instructions for AI agents.
 - [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Italian language getting started guide.
 - [docs/SCRIPT_PIPELINE.md](./docs/SCRIPT_PIPELINE.md): Complete script pipeline
