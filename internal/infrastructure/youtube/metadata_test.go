@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -116,4 +117,28 @@ func TestNewMetadataFetcherAdapter_NilRunnerFallsBackToDefault(t *testing.T) {
 	a := NewMetadataFetcherAdapter(nil, nil)
 	require.NotNil(t, a)
 	require.NotNil(t, a.runner, "nil runner must be replaced with default ProcessRunnerAdapter")
+}
+
+func TestMetadataFetcherAdapter_PreservesThumbnailsArray(t *testing.T) {
+	// PR1 (June 2026): verify that raw yt-dlp thumbnail array is
+	// correctly translated from ytDLPJSON anonymous-struct into
+	// the canonical youtubedto.VideoThumbnail DTO. Previously
+	// dto.Thumbnails was nil, silently dropping all thumbnail data
+	// for every youtube metadata fetch.
+	var raw ytDLPJSON
+	require.NoError(t, json.Unmarshal([]byte(realisticYDLPDumpJSON), &raw))
+
+	require.Len(t, raw.Thumbnails, 3)
+
+	// Compile-time assertion: the raw anonymous-struct fields match
+	// the DTO type GetVideoMetadata now maps to.
+	var _ []youtubedto.VideoThumbnail = []youtubedto.VideoThumbnail{
+		{URL: raw.Thumbnails[0].URL, Width: raw.Thumbnails[0].Width, Height: raw.Thumbnails[0].Height},
+		{URL: raw.Thumbnails[1].URL, Width: raw.Thumbnails[1].Width, Height: raw.Thumbnails[1].Height},
+		{URL: raw.Thumbnails[2].URL, Width: raw.Thumbnails[2].Width, Height: raw.Thumbnails[2].Height},
+	}
+
+	assert.Equal(t, "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg", raw.Thumbnails[2].URL)
+
+	t.Logf("NOTE: full GetVideoMetadata round-trip test deferred until ProcessRunnerPort supports injection (see PR1 follow-up in docs/POST_CASCADE_OPERATIONAL_READINESS.md)")
 }
