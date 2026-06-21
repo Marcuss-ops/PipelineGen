@@ -74,3 +74,10 @@ Remaining:
 - Eliminazione `internal/sources/`
 
 Estimated remaining effort: 2–3 PRs.
+
+> **PR0 status footer (June 2026, fd8e3a43+/+2)** — Wave 12 ha prodotto
+> il registry tipizzato e i provider adapter, ma i due sotto-dir
+> `internal/sources/{youtube,artlist}/` sono ancora attivi sul disco
+> (estratti solo parzialmente). Il PR1 e PR2 del nuovo roadmap
+> operativo (`docs/roadmap/PR{1,2}_*.md`) sono i passi di chiusura
+> effettiva di questa mappa.
