@@ -69,6 +69,7 @@
     "internal/infrastructure/ai/vlm",
     "internal/infrastructure/artlist",
     "internal/infrastructure/artlist/scraper",
+    "internal/infrastructure/artlist/downloader",
     "internal/infrastructure/audio",
     "internal/infrastructure/config",
     "internal/infrastructure/database",
