@@ -39,7 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 
@@ -176,7 +176,7 @@ func initImageService(
 	ctx context.Context, cfg *config.Config, log *zap.Logger,
 	driveClient *gdrive.Service, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository,
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
-	mediaStore *drive.Store, vectorSvc *vectorstore.Service, imageRepo *assets.ImagesRepository,
+	mediaStore *drive.Store, vectorSvc *qdrant.Service, imageRepo *assets.ImagesRepository,
 	voMetaWriter *semantic.MetadataWriter,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
 

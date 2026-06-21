@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -37,14 +36,4 @@ func BindJSON[T any](c *gin.Context) (T, bool) {
 		return req, false
 	}
 	return req, true
-}
-
-// ParseJSON decodes raw JSON bytes into a map. Returns nil on error.
-func ParseJSON(data []byte) map[string]any {
-	var m map[string]any
-	if len(data) == 0 {
-		return nil
-	}
-	_ = json.Unmarshal(data, &m)
-	return m
 }

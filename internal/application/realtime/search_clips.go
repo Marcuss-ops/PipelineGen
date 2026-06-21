@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 func (s *Service) SearchClips(ctx context.Context, query string, source string, mediaType string, limit int, minScore float64) ([]MatchAsset, error) {
@@ -43,7 +43,7 @@ func (s *Service) SearchClips(ctx context.Context, query string, source string, 
 	if topK <= 0 {
 		topK = 30
 	}
-	searchResults, err := s.vectorSvc.HybridSearch(ctx, vectorstore.HybridSearchRequest{
+	searchResults, err := s.vectorSvc.HybridSearch(ctx, qdrant.HybridSearchRequest{
 		QueryText:            normalizedQuery,
 		DenseVector:          queryVec,
 		DenseVectorName:      s.cfg.TextVectorName,
@@ -87,7 +87,7 @@ func (s *Service) SearchClips(ctx context.Context, query string, source string, 
 			}
 
 			type scored struct {
-				r     vectorstore.SearchResult
+				r     qdrant.SearchResult
 				score float64
 			}
 			sorted := make([]scored, 0, len(searchResults))
@@ -98,7 +98,7 @@ func (s *Service) SearchClips(ctx context.Context, query string, source string, 
 				return cmp.Compare(b.score, a.score)
 			})
 
-			reordered := make([]vectorstore.SearchResult, 0, len(sorted))
+			reordered := make([]qdrant.SearchResult, 0, len(sorted))
 			for _, sc := range sorted {
 				sc.r.Score = sc.score
 				reordered = append(reordered, sc.r)

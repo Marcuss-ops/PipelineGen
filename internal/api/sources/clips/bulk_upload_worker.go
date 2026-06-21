@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by
@@ -424,7 +424,7 @@ func (h *Handler) processOneClip(
 			}
 		} else if h.vectorStore != nil && clip.SearchText != "" && !payload.SkipQdrant {
 			// Direct vector store upsert (fallback)
-			asset := vectorstore.VectorAsset{
+			asset := qdrant.VectorAsset{
 				AssetID:    clip.ID,
 				Source:     string(clip.Source),
 				Name:       clip.Name,

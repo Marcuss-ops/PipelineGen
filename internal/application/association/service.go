@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/termutil"
@@ -46,7 +46,7 @@ func NewService(
 	dataDir, nodeScraperDir, scriptsDir string,
 	stockRepo, artlistRepo, clipsRepo *assets.ClipsRepository,
 	catalogRepo *catalog.Repository,
-	vectorSvc *vectorstore.Service,
+	vectorSvc *qdrant.Service,
 	embedder asset.Embedder,
 ) *Service {
 	s := &Service{

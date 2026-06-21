@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -66,7 +66,7 @@ type SourcesHandler struct {
 	maintenanceSvc *maintenance.Service
 	realtimeSvc    *realtime.Service
 	clipIndexer    *clipindexer.Service
-	vectorStore    *vectorstore.Service
+	vectorStore    *qdrant.Service
 	metaWriter     *semantic.MetadataWriter
 	artifactSvc    *artifacts.Service
 	assetRepo      asset.Repository
@@ -106,7 +106,7 @@ func (h *SourcesHandler) SetClipIndexer(ci *clipindexer.Service) {
 
 // SetVectorStore sets the vector store for Qdrant upsert after indexing.
 // Forwards to h.clips (same reach from clips.Handler).
-func (h *SourcesHandler) SetVectorStore(vs *vectorstore.Service) {
+func (h *SourcesHandler) SetVectorStore(vs *qdrant.Service) {
 	h.vectorStore = vs
 	if h.clips != nil {
 		h.clips.SetVectorStore(vs)
