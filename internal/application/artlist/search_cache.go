@@ -15,7 +15,7 @@ import (
 
 // liveSearchCacheEntry holds a cached live search result for a term.
 type liveSearchCacheEntry struct {
-	Clips    []ScraperClip
+	Clips    []Candidate
 	CachedAt time.Time
 }
 
@@ -88,7 +88,7 @@ func (c *liveSearchCache) warmFromDB(parentCtx context.Context) {
 			if time.Since(cachedAt) > 48*time.Hour {
 				continue
 			}
-			var clips []ScraperClip
+			var clips []Candidate
 			if err := json.Unmarshal([]byte(clipsJSON), &clips); err != nil {
 				continue
 			}
@@ -109,7 +109,7 @@ func (c *liveSearchCache) warmFromDB(parentCtx context.Context) {
 
 // get returns cached clips and whether the entry exists.
 // Keys are lowercased for case-insensitive matching.
-func (c *liveSearchCache) get(term string) ([]ScraperClip, bool) {
+func (c *liveSearchCache) get(term string) ([]Candidate, bool) {
 	key := strings.ToLower(term)
 	c.mu.RLock()
 	entry, ok := c.items[key]
@@ -132,7 +132,7 @@ func (c *liveSearchCache) get(term string) ([]ScraperClip, bool) {
 }
 
 // getFromDB fetches a cache entry from SQLite.
-func (c *liveSearchCache) getFromDB(term string) ([]ScraperClip, bool) {
+func (c *liveSearchCache) getFromDB(term string) ([]Candidate, bool) {
 	if c.db == nil {
 		return nil, false
 	}
@@ -153,7 +153,7 @@ func (c *liveSearchCache) getFromDB(term string) ([]ScraperClip, bool) {
 		c.deleteFromDB(term)
 		return nil, false
 	}
-	var clips []ScraperClip
+	var clips []Candidate
 	if err := json.Unmarshal([]byte(clipsJSON), &clips); err != nil {
 		return nil, false
 	}
@@ -174,7 +174,7 @@ func (c *liveSearchCache) age(term string) time.Duration {
 
 // set stores a fresh live search result in both in-memory and SQLite cache.
 // Keys are lowercased for case-insensitive matching.
-func (c *liveSearchCache) set(term string, clips []ScraperClip) {
+func (c *liveSearchCache) set(term string, clips []Candidate) {
 	key := strings.ToLower(term)
 	c.mu.Lock()
 	c.items[key] = liveSearchCacheEntry{
@@ -190,7 +190,7 @@ func (c *liveSearchCache) set(term string, clips []ScraperClip) {
 }
 
 // persistToDB writes the cache entry to SQLite.
-func (c *liveSearchCache) persistToDB(term string, clips []ScraperClip) {
+func (c *liveSearchCache) persistToDB(term string, clips []Candidate) {
 	data, err := json.Marshal(clips)
 	if err != nil {
 		return
