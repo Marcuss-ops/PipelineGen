@@ -71,10 +71,9 @@ func minimalConfig(dataDir string) *config.Config {
 		Security: config.SecurityConfig{EnableAuth: false},
 		Server:   config.ServerConfig{Port: 8080, ReadTimeout: 600, WriteTimeout: 600},
 		External: config.ExternalConfig{
-			OllamaURL:             "http://localhost:11434",
-			OllamaModel:           "llama3.2",
-			OllamaTimeoutSeconds:  30,
-			OllamaEmbeddingModel:  "nomic-embed-text",
+			OllamaURL:            "http://localhost:11434",
+			OllamaModel:          "llama3.2",
+			OllamaTimeoutSeconds: 30,
 		},
 		Paths:   config.PathsConfig{},
 		Storage: config.StorageConfig{DataDir: dataDir},
