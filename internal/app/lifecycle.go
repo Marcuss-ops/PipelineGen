@@ -277,6 +277,16 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		})
 	}
 
+	// PR4.E — outbox events pool lifecycle. Construction is pure
+	// (composition.go::BuildOutboxBundle no longer starts goroutines);
+	// Start() is invoked here. Stop() is wired via the parent context
+	// (the pool watches ctx.Done internally).
+	if root.Outbox != nil && root.Outbox.EventsPool != nil {
+		evPool := root.Outbox.EventsPool
+		concurrent.SafeGo("outbox-events-pool", func() { evPool.Start(ctx, 1) })
+		log.Info("outbox events pool started by lifecycle (per PR4 no-goroutine-in-constructor)")
+	}
+
 	if runMaintenance {
 		if root.Repos.ScriptsRepo != nil {
 			concurrent.SafeGo("research-cache-sweeper", func() {
