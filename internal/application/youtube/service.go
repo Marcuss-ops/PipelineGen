@@ -78,6 +78,10 @@ type Service struct {
 	classifier   CategoryClassifierPort
 }
 
+// NewService constructs a youtube.Service. The asset lifecycle repositories
+// (assetProcessing, assetVersions) are wired via constructor injection;
+// the post-construction SetAssetRepos setter has been removed in PR4-H
+// Commit 2.
 func NewService(
 	cfg *config.Config,
 	log *zap.Logger,
@@ -85,6 +89,8 @@ func NewService(
 	videoPipeline VideoPipeline,
 	lifecycleService *lifecycle.Service,
 	assetDestResolver asset.Resolver,
+	assetProcessing asset.ProcessingRepository,
+	assetVersions asset.VersionRepository,
 ) *Service {
 	return &Service{
 		cfg:               cfg,
@@ -93,6 +99,8 @@ func NewService(
 		videoPipeline:     videoPipeline,
 		lifecycleService:  lifecycleService,
 		assetDestResolver: assetDestResolver,
+		assetProcessing:   assetProcessing,
+		assetVersions:     assetVersions,
 	}
 }
 
@@ -115,11 +123,6 @@ func (s *Service) SetOllamaClient(o OllamaClientPort)           { s.ollamaClient
 func (s *Service) SetDispatcher(d DispatcherPort)               { s.disp = d }
 func (s *Service) SetDriveClient(d DriveClientPort)             { s.driveClient = d }
 func (s *Service) SetClassifier(c CategoryClassifierPort)       { s.classifier = c }
-
-func (s *Service) SetAssetRepos(assetProc asset.ProcessingRepository, assetVer asset.VersionRepository) {
-	s.assetProcessing = assetProc
-	s.assetVersions = assetVer
-}
 
 func (s *Service) SetAssetRepo(r asset.Repository) {
 	s.assetRepo = r
