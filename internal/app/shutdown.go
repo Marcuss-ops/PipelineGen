@@ -1,3 +1,10 @@
+// Package app — graceful shutdown (PR4: takes *ComposeRoot).
+//
+// Before PR4 this file took *services + *backgroundJobs. After PR4 it takes
+// *ComposeRoot + the backgroundJobs handle returned from
+// lifecycle.go::startBackgroundJobs. The body is structurally identical
+// (LIFO orchestration, 100ms settle, goroutine Stop with timeout, DB close)
+// but consumes the new types.
 package app
 
 import (
@@ -12,27 +19,39 @@ import (
 
 // buildCleanup constructs a cleanup function that stops background jobs,
 // waits for graceful shutdown, and closes the database.
-func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) CleanupFunc {
+//
+// PR4a: Takes the assembled *ComposeRoot + the backgroundJobs handle +
+// cancel + log. The signature replaces the previous
+// `buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger)`.
+//
+// Orchestration order (LIFO):
+//   1. cancel() — signals all goroutines
+//   2. settle 100ms — give goroutines time to notice
+//   3. parallel Stop for: channelMonitor, driveSyncSchedule
+//   4. wait (5-second timeout)
+//   5. close main database
+func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) CleanupFunc {
+	_ = root // placeholder: future per-bundle teardown hooks (Outbox pool stop, etc.) live here
 	return func() {
-		// Cancel context to signal all background jobs to stop
+		// 1. Cancel parent context to signal all background jobs to stop
 		if cancel != nil {
 			cancel()
 		}
 
-		// Give jobs a moment to stop
+		// 2. Give jobs a moment to stop
 		time.Sleep(100 * time.Millisecond)
 
-		// Stop services
+		// 3. Stop services in parallel
 		var wg sync.WaitGroup
 
-		if jobs.channelMonitor != nil {
+		if jobs != nil && jobs.channelMonitor != nil {
 			wg.Add(1)
 			concurrent.SafeGo("cleanup-channel-monitor", func() {
 				defer wg.Done()
 				jobs.channelMonitor.Stop()
 			})
 		}
-		if jobs.driveSyncSchedule != nil {
+		if jobs != nil && jobs.driveSyncSchedule != nil {
 			wg.Add(1)
 			concurrent.SafeGo("cleanup-drive-sync", func() {
 				defer wg.Done()
@@ -40,7 +59,7 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 			})
 		}
 
-		// Wait for all stop operations with timeout
+		// 4. Wait for all stop operations with timeout
 		done := make(chan struct{})
 		go func() {
 			defer func() {
@@ -58,6 +77,7 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 			log.Warn("Timeout waiting for background jobs to stop")
 		}
 
+		// 5. Close database connection
 		if dbs.main != nil {
 			if err := dbs.main.Close(); err != nil {
 				log.Error("Failed to close main database", zap.Error(err))

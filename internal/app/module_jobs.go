@@ -122,13 +122,13 @@ func BuildJobsBundle(db *sql.DB, log *zap.Logger) (*JobsBundle, error) {
 
 // WireJobs creates the Jobs HTTP handler and registers the module.
 //
-// Phase-B pilot: still takes *CoreDeps (back-compat). The underlying service
-// is now built by BuildJobsBundle → CoreDeps.JobsService, so the only thing
-// this function does is mount the HTTP handler on top of an already-wired
-// bundle. Once all sibling modules invert, WireJobs will take `(cfg, log,
-// *JobsBundle, ctx)` directly and CoreDeps will shed its JobsService field.
-func WireJobs(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*JobsWiring, error) {
-	handler := jobs.NewJobsHandler(coreDeps.JobsService, log)
+// PR4b (June 2026): migrated to a bundle-only consumer. Reads exclusively
+// from the *JobsBundle it receives; no *CoreDeps dependency. WireRegistry
+// now passes `root.Jobs` directly. This is the smallest, cleanest module
+// signature in the app package and is the template the wider PR4b migration
+// of the other 6 Wire<Module>() functions will follow.
+func WireJobs(cfg *config.Config, log *zap.Logger, jobsBundle *JobsBundle) (*JobsWiring, error) {
+	handler := jobs.NewJobsHandler(jobsBundle.Service, log)
 	mod := jobs.NewModule(cfg, log, handler)
 	log.Info("created Jobs module using api/jobs")
 	return &JobsWiring{Handler: handler, Module: mod}, nil

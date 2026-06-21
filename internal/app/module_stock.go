@@ -3,11 +3,31 @@ package app
 import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
+	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	gdrive "google.golang.org/api/drive/v3"
 	"go.uber.org/zap"
 )
+
+// StockBundle is the capability bundle for the stock-pipeline module.
+//
+// PR4d-chunk2 (June 2026): wraps the 7 cross-bundle reads of WireStockPipeline.
+type StockBundle struct {
+	DriveClient        *gdrive.Service
+	Jobs               *appjobs.Service
+	JobFacade          *jobdomain.Service
+	AssetIndexService  *assetindex.Service
+	ClipsRepo          *assets.ClipsRepository
+	YoutubeClipService *ytService.Service
+	ClipIndexerService *clipindexer.Service
+}
 
 // StockPipelineWiring holds the StockPipeline module wiring.
 type StockPipelineWiring struct {
@@ -17,22 +37,24 @@ type StockPipelineWiring struct {
 }
 
 // WireStockPipeline creates the StockPipeline service, handler, and module.
-func WireStockPipeline(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*StockPipelineWiring, error) {
-	if coreDeps.DriveClient == nil {
+//
+// PR4d-chunk2 (June 2026): takes *StockBundle.
+func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle) (*StockPipelineWiring, error) {
+	if bundle.DriveClient == nil {
 		log.Warn("stock pipeline not wired: missing drive client")
 		return nil, nil
 	}
-	svc := stockpipeline.NewService(cfg, log, coreDeps.DriveClient)
-	svc.SetJobsSvc(coreDeps.JobsService)
-	svc.SetAssetIndex(coreDeps.AssetIndexService)
-	if coreDeps.ClipsRepo != nil {
-		svc.SetClipsRepo(coreDeps.ClipsRepo)
+	svc := stockpipeline.NewService(cfg, log, bundle.DriveClient)
+	svc.SetJobsSvc(bundle.Jobs)
+	svc.SetAssetIndex(bundle.AssetIndexService)
+	if bundle.ClipsRepo != nil {
+		svc.SetClipsRepo(bundle.ClipsRepo)
 	}
-	if coreDeps.YoutubeClipService != nil {
-		svc.SetYoutubeService(coreDeps.YoutubeClipService)
+	if bundle.YoutubeClipService != nil {
+		svc.SetYoutubeService(bundle.YoutubeClipService)
 	}
-	if coreDeps.ClipIndexerService != nil {
-		svc.SetClipIndexer(coreDeps.ClipIndexerService)
+	if bundle.ClipIndexerService != nil {
+		svc.SetClipIndexer(bundle.ClipIndexerService)
 	}
 	metaWriter := semantic.NewMetadataWriter(
 		cfg.Paths.PythonScriptsDir,
@@ -43,8 +65,8 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) 
 	)
 	svc.SetMetadataWriter(metaWriter)
 	log.Info("metadata writer wired into stock pipeline")
-	handler := sources.NewStockHandler(svc, coreDeps.JobServiceFacade, log)
+	handler := sources.NewStockHandler(svc, bundle.JobFacade, log)
 	mod := sources.NewStockPipelineModule(cfg, log, handler)
-	svc.RegisterHandler(coreDeps.JobsService)
+	svc.RegisterHandler(bundle.Jobs)
 	return &StockPipelineWiring{Handler: handler, Module: mod, Service: svc}, nil
 }

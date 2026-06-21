@@ -14,6 +14,10 @@ type ScraperWiring struct {
 }
 
 // WireScraper creates the Scraper handler and module.
+//
+// PR4b (June 2026): narrow bundle surface. Takes only (cfg, log) and no
+// *CoreDeps — the Scraper module has zero downstream service dependencies.
+// WireRegistry calls this signature directly.
 func WireScraper(cfg *config.Config, log *zap.Logger) (*ScraperWiring, error) {
 	handler := assets.NewScraperHandler(cfg.External.NodeScraperDir)
 	mod := assets.NewScraperModule(log, handler)

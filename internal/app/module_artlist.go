@@ -18,6 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -25,6 +26,13 @@ import (
 )
 
 // ArtlistWiring holds the Artlist module wiring.
+//
+// PR4d-chunk2 (June 2026): Resolver field removed. clipresolver.Service
+// does not implement script.AutoHarvestService (no EnqueueHarvest method),
+// so the harvest service is constructed locally in WireRegistry from
+// root.Jobs.Facade (the same path used pre-PR4d). WireArtlist remains the
+// canonical owner of the clipresolver construction; ArtlistWiring no longer
+// needs to expose it.
 type ArtlistWiring struct {
 	Handler *artsources.ArtlistHandler
 	Module  module.Module
@@ -32,30 +40,32 @@ type ArtlistWiring struct {
 }
 
 // WireArtlist creates the Artlist service, handler, and module.
-func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*ArtlistWiring, error) {
-	artlistLifecycle := wireArtlistLifecycle(coreDeps, log)
-	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, coreDeps, log)
-	assetDestResolver := wireAssetDestinationResolver(cfg, coreDeps, log)
+//
+// PR4d-chunk2 (June 2026): accepts *ArtlistBundle (10 cross-bundle deps)
+// + vectorStore (1 of 2 cross-bundle deps that didn't fit). Returns
+// ArtlistWiring with Resolver populated so caller can use the clipresolver
+// for ScriptFlow late-binding without round-tripping through CoreDeps.
+func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, vectorStore *vectorstore.Service) (*ArtlistWiring, error) {
+	artlistLifecycle := wireArtlistLifecycle(bundle, log)
+	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
+	assetDestResolver := wireAssetDestinationResolver(cfg, bundle, log)
 	presetsConfig, _ := artlistPkg.LoadPresets("config/artlist_presets.yaml")
 	if presetsConfig == nil {
 		log.Warn("failed to load artlist presets, using defaults")
 	}
-	artlistSvc, err := wireArtlistService(cfg, coreDeps, artlistLifecycle, assetDestResolver, clipIndexerSvc, log)
+	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, log)
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err
 	}
-	if artlistSvc != nil && coreDeps.ClipsRepo != nil && clipIndexerSvc != nil {
+	if artlistSvc != nil && bundle.ClipsRepo != nil && clipIndexerSvc != nil {
 		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-		enricher := artlistPkg.NewSemanticEnricher(coreDeps.ClipsRepo, clipIndexerSvc, metaWriter, coreDeps.DriveUploader, log)
+		enricher := artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, bundle.DriveUploader, log)
 		artlistSvc.SetSemanticEnricher(enricher)
 		log.Info("wired semantic enricher into artlist service")
 	}
-	clipResolver := wireClipResolver(cfg, coreDeps, clipCatalogRepo, presetsConfig, log)
-	if clipResolver != nil {
-		coreDeps.ClipResolver = clipResolver
-	}
-	handler := wireArtlistHandler(cfg, artlistSvc, coreDeps, clipResolver, log)
+	clipResolver := wireClipResolver(cfg, bundle, clipCatalogRepo, presetsConfig, vectorStore, log)
+	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
 	var mod module.Module
 	if artlistSvc != nil && handler != nil {
 		mod = sourcesapi.NewArtlistModule(cfg, log, artlistSvc, handler)
@@ -64,34 +74,34 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, coreD
 	return &ArtlistWiring{Handler: handler, Module: mod, Service: artlistSvc}, nil
 }
 
-func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, coreDeps *CoreDeps, clipResolver *clipresolver.Service, log *zap.Logger) *artsources.ArtlistHandler {
+func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bundle *ArtlistBundle, clipResolver *clipresolver.Service, log *zap.Logger) *artsources.ArtlistHandler {
 	if artlistSvc == nil {
 		return nil
 	}
-	return artsources.NewArtlistHandler(artlistSvc, coreDeps.CatalogSyncService, coreDeps.JobServiceFacade, clipResolver, "node-scraper", log, cfg)
+	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, clipResolver, "node-scraper", log, cfg)
 }
 
-func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Service {
-	clipsRegistry := artifacts.NewClipsRegistry(coreDeps.DB.DB, coreDeps.Assets.Repository(), coreDeps.Assets, coreDeps.Assets.LocationRepository(), coreDeps.Assets.ProcessingRepository())
-	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, DriveClient: coreDeps.DriveClient, AssetIndex: coreDeps.AssetIndexService}, log)
+func wireArtlistLifecycle(bundle *ArtlistBundle, log *zap.Logger) *lifecycle.Service {
+	clipsRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
+	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService}, log)
 }
 
-func wireAssetDestinationResolver(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) asset.Resolver {
-	if coreDeps.DriveClient != nil {
+func wireAssetDestinationResolver(cfg *config.Config, bundle *ArtlistBundle, log *zap.Logger) asset.Resolver {
+	if bundle.DriveClient != nil {
 		storageResolver := drive.NewResolver(drive.MediaRoot(cfg.Storage.MediaPath()), drive.DriveRoot(cfg.Drive.RootFolder()))
-		mediaStore := drive.NewStore(storageResolver, &driveutil.Uploader{Service: coreDeps.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsFolder(), log)
+		mediaStore := drive.NewStore(storageResolver, &driveutil.Uploader{Service: bundle.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsFolder(), log)
 		return drive.NewDestinationResolver(mediaStore)
 	}
 	return nil
 }
 
-func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, log *zap.Logger) *clipresolver.Service {
+func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, vectorStore *vectorstore.Service, log *zap.Logger) *clipresolver.Service {
 	if clipCatalogRepo == nil {
 		return nil
 	}
 	var harvestSvc clipresolver.ArtlistHarvestService
-	if coreDeps.JobsService != nil {
-		harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobServiceFacade, log, presetsConfig, cfg.Drive.ArtlistFolder())
+	if bundle.Jobs.Service != nil {
+		harvestSvc = clipresolver.NewJobHarvestService(bundle.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
 	}
 	matchingCfg, err := config.LoadMatchingConfig("config/matching.yaml")
 	if err != nil {
@@ -110,17 +120,17 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	}
 	embedProvider := clipresolver.NewPythonEmbeddingProvider(embedServerURL)
 	var vectorStoreSearcher clipresolver.VectorStoreSearcher
-	if coreDeps.VectorStore != nil && coreDeps.VectorStore.Enabled() {
-		vectorStoreSearcher = clipresolver.NewVectorStoreAdapter(coreDeps.VectorStore)
+	if vectorStore != nil && vectorStore.Enabled() {
+		vectorStoreSearcher = clipresolver.NewVectorStoreAdapter(vectorStore)
 		log.Info("vector store searcher enabled for clip resolver")
 	}
 	repos := make(map[string]*clipcatalog.Repository)
-	if coreDeps.ClipsRepo != nil && coreDeps.ClipsRepo.DB() != nil {
-		repos["stock"] = clipcatalog.NewRepository(coreDeps.ClipsRepo.DB(), log)
+	if bundle.ClipsRepo != nil && bundle.ClipsRepo.DB() != nil {
+		repos["stock"] = clipcatalog.NewRepository(bundle.ClipsRepo.DB(), log)
 		repos["stock"].SetSource("stock")
 	}
-	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
-		repos["youtube"] = clipcatalog.NewRepository(coreDeps.DB.DB, log)
+	if bundle.DB != nil && bundle.DB.DB != nil {
+		repos["youtube"] = clipcatalog.NewRepository(bundle.DB.DB, log)
 		repos["youtube"].SetSource("youtube")
 	}
 	repos["artlist"] = clipCatalogRepo
@@ -137,29 +147,29 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	return clipresolver.NewService(repos, harvestSvc, embedProvider, ontologyScorer, matchingCfg, vectorStoreSearcher, llmDecision)
 }
 
-func wireArtlistService(cfg *config.Config, coreDeps *CoreDeps, artlistLifecycle *lifecycle.Service, assetDestResolver asset.Resolver, clipIndexerSvc *clipindexer.Service, log *zap.Logger) (*artlistPkg.Service, error) {
-	artlistSvc, err := artlistPkg.NewService(cfg, coreDeps.DB.DB, coreDeps.DB.DB, coreDeps.ClipsRepo, coreDeps.MediaProcessor, artlistLifecycle, assetDestResolver, clipIndexerSvc, coreDeps.JobServiceFacade, coreDeps.DriveClient, coreDeps.Assets.ProcessingRepository(), coreDeps.Assets.VersionRepository(), coreDeps.Assets.LocationRepository(), log)
+func wireArtlistService(cfg *config.Config, bundle *ArtlistBundle, artlistLifecycle *lifecycle.Service, assetDestResolver asset.Resolver, clipIndexerSvc *clipindexer.Service, log *zap.Logger) (*artlistPkg.Service, error) {
+	artlistSvc, err := artlistPkg.NewService(cfg, bundle.DB.DB, bundle.DB.DB, bundle.ClipsRepo, bundle.MediaProcessor, artlistLifecycle, assetDestResolver, clipIndexerSvc, bundle.Jobs.Facade, bundle.DriveClient, bundle.Assets.ProcessingRepository(), bundle.Assets.VersionRepository(), bundle.Assets.LocationRepository(), log)
 	if err != nil {
 		return nil, err
 	}
-	if artlistSvc != nil && coreDeps.JobsService != nil {
-		coreDeps.JobsService.RegisterHandler(svcjobs.TypeArtlistRun, artlistSvc.HandleJob)
+	if artlistSvc != nil && bundle.Jobs.Service != nil {
+		bundle.Jobs.Service.RegisterHandler(svcjobs.TypeArtlistRun, artlistSvc.HandleJob)
 		log.Info("registered artlist job handler")
 	}
 	return artlistSvc, nil
 }
 
-func wireArtlistCatalog(ctx context.Context, cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {
-	if coreDeps.ClipIndexerService != nil {
-		return clipcatalog.NewRepository(coreDeps.DB.DB, log), coreDeps.ClipIndexerService
+func wireArtlistCatalog(ctx context.Context, cfg *config.Config, bundle *ArtlistBundle, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {
+	if bundle.ClipIndexerService != nil {
+		return clipcatalog.NewRepository(bundle.DB.DB, log), bundle.ClipIndexerService
 	}
-	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
-		if err := clipcatalog.EnsureSchema(ctx, coreDeps.DB.DB, log); err != nil {
+	if bundle.DB != nil && bundle.DB.DB != nil {
+		if err := clipcatalog.EnsureSchema(ctx, bundle.DB.DB, log); err != nil {
 			log.Warn("failed to ensure clipcatalog schema", zap.Error(err))
 		}
 	}
-	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.DB.DB, log)
-	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{Enabled: cfg.ClipIndexer.Enabled, ServerURL: cfg.ClipIndexer.ServerURL, ScriptPath: cfg.ClipIndexer.ScriptPath, PythonBin: cfg.ClipIndexer.PythonBin, AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist, DBPath: coreDeps.DB.Path()}, coreDeps.DB.DB, coreDeps.DB.Path(), log)
+	clipCatalogRepo := clipcatalog.NewRepository(bundle.DB.DB, log)
+	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{Enabled: cfg.ClipIndexer.Enabled, ServerURL: cfg.ClipIndexer.ServerURL, ScriptPath: cfg.ClipIndexer.ScriptPath, PythonBin: cfg.ClipIndexer.PythonBin, AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist, DBPath: bundle.DB.Path()}, bundle.DB.DB, bundle.DB.Path(), log)
 	if err := clipIndexerSvc.StartServer(ctx); err != nil {
 		log.Warn("failed to start embedding server", zap.Error(err))
 	} else {
