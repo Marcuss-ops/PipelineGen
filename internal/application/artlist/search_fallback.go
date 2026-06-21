@@ -56,9 +56,11 @@ func (ss *SearchService) buildFallbackChain() *FallbackChain {
 
 	var providers []SourceProvider
 
-	// Level 1: DB search (fast, indexed)
-	if s.artlistRepo != nil {
-		providers = append(providers, NewDBProvider(s.artlistRepo))
+	// Level 1: DB search (fast, indexed). PR2.5: AssetStore port
+	// (was *assets.ClipsRepository concrete). DBProvider.NewDBProvider
+	// signature was extended to take the AssetStore port.
+	if s.assetStore != nil {
+		providers = append(providers, NewDBProvider(s.assetStore))
 	}
 
 	// Level 2: Cached scraper (in-memory with background refresh)

@@ -13,6 +13,7 @@ import (
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
@@ -42,10 +43,12 @@ type ArtlistWiring struct {
 // WireArtlist creates the Artlist service, handler, and module.
 //
 // PR4d-chunk2 (June 2026): accepts *ArtlistBundle (10 cross-bundle deps)
-// + vectorStore (1 of 2 cross-bundle deps that didn't fit). Returns
-// ArtlistWiring with Resolver populated so caller can use the clipresolver
-// for ScriptFlow late-binding without round-tripping through CoreDeps.
-func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, vectorStore *vectorstore.Service) (*ArtlistWiring, error) {
+// + vectorStore (1 of 2 cross-bundle deps that didn't fit) +
+// dispatcher (PR2.5: was SetDispatcher setter, now constructor arg so
+// the canonical UpsertClip + IndexClip path stays wired in production).
+// Returns ArtlistWiring with Resolver populated so caller can use the
+// clipresolver for ScriptFlow late-binding without round-tripping.
+func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, vectorStore *vectorstore.Service, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
 	artlistLifecycle := wireArtlistLifecycle(bundle, log)
 	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
 	assetDestResolver := wireAssetDestinationResolver(cfg, bundle, log)
@@ -53,16 +56,30 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	if presetsConfig == nil {
 		log.Warn("failed to load artlist presets, using defaults")
 	}
-	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, log)
+
+	// PR2.5: build the SemanticEnricher BEFORE NewService so its
+	// Dispatcher constructor argument captures the canonical
+	// outbox.Dispatcher at composition time. No setter is called
+	// afterwards — the enricher is passed via ServiceDeps.MetadataWriter.
+	// Dispatcher is the canonical media_index_outbox dispatcher from
+	// root.Outbox (already built by BuildOutboxBundle before WireRegistry
+	// runs). When dispatcher is nil (e.g. test fixtures), the dispatchBridge
+	// falls back to the legacy UpsertClip + IndexClip path.
+	var enricher artlistPkg.MetadataWriter
+	if bundle.ClipsRepo != nil {
+		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
+		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, bundle.DriveUploader, dispatcher, log)
+		if dispatcher != nil {
+			log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active")
+		} else {
+			log.Warn("wired semantic enricher with nil dispatcher — legacy UpsertClip + IndexClip fallback will be used at runtime")
+		}
+	}
+
+	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, enricher, dispatcher, log)
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err
-	}
-	if artlistSvc != nil && bundle.ClipsRepo != nil && clipIndexerSvc != nil {
-		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-		enricher := artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, bundle.DriveUploader, log)
-		artlistSvc.SetSemanticEnricher(enricher)
-		log.Info("wired semantic enricher into artlist service")
 	}
 	clipResolver := wireClipResolver(cfg, bundle, clipCatalogRepo, presetsConfig, vectorStore, log)
 	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
@@ -147,8 +164,41 @@ func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo
 	return clipresolver.NewService(repos, harvestSvc, embedProvider, ontologyScorer, matchingCfg, vectorStoreSearcher, llmDecision)
 }
 
-func wireArtlistService(cfg *config.Config, bundle *ArtlistBundle, artlistLifecycle *lifecycle.Service, assetDestResolver asset.Resolver, clipIndexerSvc *clipindexer.Service, log *zap.Logger) (*artlistPkg.Service, error) {
-	artlistSvc, err := artlistPkg.NewService(cfg, bundle.DB.DB, bundle.DB.DB, bundle.ClipsRepo, bundle.MediaProcessor, artlistLifecycle, assetDestResolver, clipIndexerSvc, bundle.Jobs.Facade, bundle.DriveClient, bundle.Assets.ProcessingRepository(), bundle.Assets.VersionRepository(), bundle.Assets.LocationRepository(), log)
+// wireArtlistService composes the artlist service via ServiceDeps (PR2.5).
+// All cross-cutting dependencies are injected through the deps struct —
+// no setters, no late-binding. The SemanticEnricher is built above (in
+// WireArtlist) so its Dispatcher hookup is the composition root's only
+// source of truth. clipIndexerSvc satisfies the Indexer port directly
+// (IndexClip + IsEnabled match). dispatcher is the canonical
+// outbox.Dispatcher from root.Outbox (passed through from WireArtlist).
+func wireArtlistService(
+	cfg *config.Config,
+	bundle *ArtlistBundle,
+	artlistLifecycle *lifecycle.Service,
+	assetDestResolver asset.Resolver,
+	clipIndexerSvc *clipindexer.Service,
+	enricher artlistPkg.MetadataWriter,
+	dispatcher *outbox.Dispatcher,
+	log *zap.Logger,
+) (*artlistPkg.Service, error) {
+	artlistSvc, err := artlistPkg.NewService(artlistPkg.ServiceDeps{
+		Cfg:              cfg,
+		MainDB:           bundle.DB.DB,
+		ArtlistDB:        bundle.DB.DB,
+		Log:              log,
+		AssetStore:       bundle.ClipsRepo, // *assets.ClipsRepository implements AssetStore
+		Indexer:          clipIndexerSvc,   // *clipindexer.Service implements Indexer
+		MetadataWriter:   enricher,
+		Dispatcher:       dispatcher,
+		DriveClient:      bundle.DriveClient,
+		MediaProcessor:   bundle.MediaProcessor,
+		LifecycleService: artlistLifecycle,
+		AssetDestResolver: assetDestResolver,
+		JobsSvc:          bundle.Jobs.Facade,
+		AssetProcRepo:    bundle.Assets.ProcessingRepository(),
+		AssetVerRepo:     bundle.Assets.VersionRepository(),
+		AssetLocRepo:     bundle.Assets.LocationRepository(),
+	})
 	if err != nil {
 		return nil, err
 	}

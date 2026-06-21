@@ -158,7 +158,7 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 	clip.SetLocalPath("data/artlist/pr12b-artlist-001.mp4")
 	clip.SetDriveLink("https://drive.google.com/file/d/pr12b-artlist-001")
 
-	svc := &Service{log: zap.NewNop(), artlistRepo: clipsRepo}
+	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo}
 	ss := NewSearchService(svc)
 	ss.SetAssetRepo(assetRepo)
 
@@ -244,7 +244,7 @@ func TestArtlistPR12b_UpsertClipWithoutAssetRepoFallsBack(t *testing.T) {
 	// path so legacy test fixtures and callers continue to work unchanged.
 	_, clipsRepo, _ := setupArtlistPR12b(t)
 
-	svc := &Service{log: zap.NewNop(), artlistRepo: clipsRepo}
+	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo}
 	ss := NewSearchService(svc)
 	// (No SetAssetRepo call)
 

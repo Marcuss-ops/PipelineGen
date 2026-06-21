@@ -112,7 +112,15 @@ func TestSolarPanelSearch(t *testing.T) {
 		},
 	}
 
-	svc, err := NewService(cfg, db, db, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, logger)
+	// PR2.5: NewService takes ServiceDeps struct instead of 14
+	// positional args. AssetStore (port) is satisfied by *assets.ClipsRepository.
+	svc, err := NewService(ServiceDeps{
+		Cfg:        cfg,
+		MainDB:     db,
+		ArtlistDB:  db,
+		Log:        logger,
+		AssetStore: repo,
+	})
 	require.NoError(t, err)
 	defer svc.Close()
 

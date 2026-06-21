@@ -233,7 +233,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 // Routing goes through dispatchBridge so the canonical-vs-legacy decision
 // lives in one place. See dispatch_bridge.go for canonical semantics.
 func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
-	if o.svc.artlistRepo == nil {
+	if o.svc.assetStore == nil {
 		return
 	}
 
@@ -241,7 +241,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
-		existingClip, err := o.svc.artlistRepo.Get(ctx, item.ClipID)
+		existingClip, err := o.svc.assetStore.Get(ctx, item.ClipID)
 		if err != nil {
 			o.svc.log.Warn("stagePersistResults: artlistRepo.GetClip failed",
 				zap.String("clip_id", item.ClipID), zap.Error(err))
@@ -271,14 +271,14 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 // an inline &models.MediaAsset{} allocation. This drops one of the few
 // remaining direct constructions of the legacy type in the artlist path.
 func (o *RunOrchestratorService) stageEnrichAsync(ctx context.Context, resp *RunTagResponse) {
-	if o.svc.semanticEnricher == nil {
+	if o.svc.metadataWriter == nil {
 		return
 	}
 	for _, item := range resp.Items {
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
-		existing, err := o.svc.artlistRepo.GetClip(ctx, item.ClipID)
+		existing, err := o.svc.assetStore.Get(ctx, item.ClipID)
 		if err != nil {
 			o.svc.log.Warn("stageEnrichAsync: artlistRepo.GetClip failed",
 				zap.String("clip_id", item.ClipID), zap.Error(err))
@@ -289,7 +289,7 @@ func (o *RunOrchestratorService) stageEnrichAsync(ctx context.Context, resp *Run
 				zap.String("clip_id", item.ClipID))
 			continue
 		}
-		o.svc.semanticEnricher.EnrichAsync(ctx, existing, resp.Term)
+		o.svc.metadataWriter.EnrichAsync(ctx, existing, resp.Term)
 	}
 }
 
@@ -297,8 +297,11 @@ func (o *RunOrchestratorService) stageEnrichAsync(ctx context.Context, resp *Run
 // When the dispatcher is wired, the atomic UpsertClip + IndexClip is already
 // done by stagePersistResults (via dispatchBridge.EnqueueOrFallback); this
 // stage is skipped to avoid double-indexing. On the legacy path
-// (dispatcher nil), this is the async SafeGoFunc(clipIndexer.IndexClip)
+// (dispatcher nil), this is the async SafeGoFunc(Indexer.IndexClip)
 // that callers used to rely on.
+//
+// PR2.5: clipIndexer → indexer (Indexer port). Same IsEnabled + IndexClip
+// surface, no behavior change.
 func (o *RunOrchestratorService) stageIndexAsync(ctx context.Context, resp *RunTagResponse) {
 	b := o.svc.newDispatchBridge()
 	if b.IsCanonical() {
@@ -306,10 +309,10 @@ func (o *RunOrchestratorService) stageIndexAsync(ctx context.Context, resp *RunT
 		// the canonical dispatcher through EnqueueOrFallback.
 		return
 	}
-	if b.clipIndexer == nil || !b.clipIndexer.IsEnabled() {
+	if b.indexer == nil || !b.indexer.IsEnabled() {
 		return
 	}
-	clipIndexer := b.clipIndexer
+	indexer := b.indexer
 	log := b.log
 	for _, item := range resp.Items {
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
@@ -325,7 +328,7 @@ func (o *RunOrchestratorService) stageIndexAsync(ctx context.Context, resp *RunT
 		}) {
 			idxCtx, cancel := context.WithTimeout(context.WithoutCancel(idxArg.Ctx), 30*time.Second)
 			defer cancel()
-			if err := clipIndexer.IndexClip(idxCtx, idxArg.ID); err != nil {
+			if err := indexer.IndexClip(idxCtx, idxArg.ID); err != nil {
 				log.Warn("clipindexer failed after pipeline",
 					zap.String("clip_id", idxArg.ID),
 					zap.Duration("timeout", 30*time.Second),

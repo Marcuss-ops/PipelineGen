@@ -18,7 +18,7 @@ func NewDiagnosticsService(svc *Service) *DiagnosticsService {
 
 // GetStats ottiene statistiche generali sul catalogo
 func (d *DiagnosticsService) GetStats(ctx context.Context) (*Stats, error) {
-	totalClips, err := d.svc.artlistRepo.CountClips(ctx)
+	totalClips, err := d.svc.assetStore.CountClips(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count clips: %w", err)
 	}
@@ -42,8 +42,8 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 		MainDBReady:    d.svc.mainDB != nil,
 	}
 
-	if d.svc.artlistRepo != nil {
-		if total, err := d.svc.artlistRepo.CountClips(ctx); err == nil {
+	if d.svc.assetStore != nil {
+		if total, err := d.svc.assetStore.CountClips(ctx); err == nil {
 			resp.ClipsTotal = total
 			resp.ArtlistClipsTotal = total
 		}
@@ -52,12 +52,12 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 	term = strings.TrimSpace(term)
 	if term != "" {
 		resp.SearchTerm = term
-		if matches, err := d.svc.artlistRepo.SearchClips(ctx, "artlist", term); err == nil {
+		if matches, err := d.svc.assetStore.SearchClips(ctx, "artlist", term); err == nil {
 			resp.MatchingClips = len(matches)
 			resp.EstimatedSize = len(matches)
 		}
 
-		if lastProcessedAt, err := d.svc.artlistRepo.LastUpdatedAtForTerm(ctx, term); err == nil {
+		if lastProcessedAt, err := d.svc.assetStore.LastUpdatedAtForTerm(ctx, term); err == nil {
 			resp.LastProcessedAt = lastProcessedAt
 		}
 	}

@@ -22,11 +22,14 @@ type DestinationService struct {
 	cfg      *config.Config
 }
 
-// NewDestinationService crea un nuovo servizio di destinazione
+// NewDestinationService crea un nuovo servizio di destinazione.
+//
+// PR2.5: reads s.driveClient (raw Google Drive SDK) — was s.driveSvc,
+// renamed in line with the rest of the service's port refactor.
 func NewDestinationService(svc *Service) *DestinationService {
 	var uploader *drive.Uploader
-	if svc.driveSvc != nil {
-		uploader = &drive.Uploader{Service: svc.driveSvc, Log: svc.log}
+	if svc.driveClient != nil {
+		uploader = &drive.Uploader{Service: svc.driveClient, Log: svc.log}
 	}
 	return &DestinationService{uploader: uploader, cfg: svc.cfg}
 }

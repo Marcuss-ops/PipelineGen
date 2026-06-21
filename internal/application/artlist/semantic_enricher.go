@@ -13,9 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -30,27 +28,51 @@ var enrichMetaMu sync.Mutex
 //
 // L'enrichment viene eseguito in background dopo il salvataggio iniziale del clip,
 // quindi non blocca mai la pipeline principale di download.
+//
+// PR2.5: dispatcher is now a constructor argument (was SetDispatcher
+// setter previously — removed). The composition root in
+// module_artlist.go wires the canonical outbox.Dispatcher at
+// construction time so Enrich() can atomically combine UpsertClip +
+// indexed-Qdrant in a single transaction. Indexer is the canonical
+// port (was *clipindexer.Service concrete); nil-fallback path remains.
 type SemanticEnricher struct {
-	repo          *assets.ClipsRepository
-	clipIndexer   *clipindexer.Service
+	repo          AssetStore
+	indexer       Indexer
 	metaWriter    *semantic.MetadataWriter
 	driveUploader *drive.Uploader
 	log           *zap.Logger
 	// dispatcher is the canonical media_index_outbox dispatcher used by
 	// Enrich() to combine UpsertClip + indexed-Qdrant in a single tx.
-	// When nil, falls back to the legacy clipIndexer.IndexClip path.
+	// When nil, falls back to the legacy indexer path. PR2.5: this is
+	// a constructor argument (no SetDispatcher setter anymore).
 	dispatcher *outbox.Dispatcher
 }
 
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
 // Usa semantic.MetadataWriter (chiamato GeneratePayload) invece di chiamare Tagger() direttamente,
 // per garantire che tutto il metadata passi dal percorso centralizzato.
-func NewSemanticEnricher(repo *assets.ClipsRepository, clipIndexer *clipindexer.Service, metaWriter *semantic.MetadataWriter, driveUploader *drive.Uploader, log *zap.Logger) *SemanticEnricher {
+//
+// PR2.5: dispatcher param added. Pass nil only in tests / for the
+// legacy fallback path; production wiring always passes the canonical
+// outbox.Dispatcher so Enrich() routes UpsertClip + IndexClip through
+// the dispatcher rather than the legacy clipIndexer.IndexClip.
+// Indexer is the canonical port (PR2.5 wiring: bundle.ClipIndexerService
+// satisfies it directly because *clipindexer.Service has IndexClip +
+// IsEnabled matching the port).
+func NewSemanticEnricher(
+	repo AssetStore,
+	indexer Indexer,
+	metaWriter *semantic.MetadataWriter,
+	driveUploader *drive.Uploader,
+	dispatcher *outbox.Dispatcher,
+	log *zap.Logger,
+) *SemanticEnricher {
 	return &SemanticEnricher{
 		repo:          repo,
-		clipIndexer:   clipIndexer,
+		indexer:       indexer,
 		metaWriter:    metaWriter,
 		driveUploader: driveUploader,
+		dispatcher:    dispatcher,
 		log:           log,
 	}
 }
@@ -77,16 +99,9 @@ func (e *SemanticEnricher) EnrichAsync(parentCtx context.Context, clip *asset.As
 	})
 }
 
-// SetDispatcher injects the canonical media_index_outbox dispatcher.
-// Falls back to legacy clipIndexer.IndexClip path when nil. Mirrors
-// the Service.SetDispatcher contract.
-func (e *SemanticEnricher) SetDispatcher(d *outbox.Dispatcher) {
-	e.dispatcher = d
-}
-
 // dispatchOrIndexAndUpsert performs UpsertClip + IndexClip atomically via
 // the canonical media_index_outbox dispatcher when wired, otherwise falls
-// back to the legacy (UpsertClip + clipIndexer.IndexClip) pair.
+// back to the legacy (UpsertClip + indexer.IndexClip) pair.
 //
 // The decision logic lives in dispatchBridge (dispatch_bridge.go) so this
 // method is a thin alias and can be removed in a follow-up once all
@@ -100,11 +115,15 @@ func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *a
 // callers don't have to construct dispatchBridge{} by hand. Symmetric with
 // the Service variant; if the enricher is ever refactored to hold a *Service
 // reference, both methods collapse into one.
+//
+// PR2.5: clipsRepo → repo (AssetStore port), clipIndexer → indexer
+// (Indexer port), both swapped cleanly because both ports declare the
+// methods this bridge uses (UpsertClip / IndexClip + IsEnabled).
 func (e *SemanticEnricher) newDispatchBridge() *dispatchBridge {
 	return &dispatchBridge{
 		dispatcher:  e.dispatcher,
-		clipsRepo:   e.repo,
-		clipIndexer: e.clipIndexer,
+		assetStore:  e.repo,
+		indexer:     e.indexer,
 		log:         e.log,
 	}
 }
