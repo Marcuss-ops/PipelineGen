@@ -25,6 +25,15 @@ const (
 //   - ID        — Drive file ID for the document.
 //   - Title     — document title (configurable on creation/update).
 //   - URL       — human-facing web view URL.
+//   - Content   — last-known content (HTML or plain text) stored at creation.
+//   - CreatedAt — RFC3339 timestamp returned by Drive's createdTime.
+type Doc struct {
+	ID        string
+	Title     string
+	URL       string
+	Content   string
+	CreatedAt string
+}
 
 // DocClient is an interface for Google Docs operations.
 type DocClient interface {
