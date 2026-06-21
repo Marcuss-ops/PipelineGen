@@ -7,28 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"go.uber.org/zap"
 )
 
-// clipRichMetadata is the structured result from Ollama metadata generation.
-type clipRichMetadata struct {
-	ClipSummary      string   `json:"clip_summary"`
-	Topics           []string `json:"topics"`
-	Speakers         []string `json:"speakers"`
-	MentionedPeople  []string `json:"mentioned_people"`
-	SourceTags       []string `json:"source_tags"`
-	ClipTags         []string `json:"clip_tags"`
-	SearchKeywords   []string `json:"search_keywords"`
-	People           []string `json:"people"`
-	Hook             string   `json:"hook"`
-	CleanTitle       string   `json:"clean_title"`
-	ShortTitle       string   `json:"short_title"`
-	CleanTranscript  string   `json:"clean_transcript"`
-	EmbeddingText    string   `json:"embedding_text"`
-	Tags             []string `json:"tags"`
-	QualityScore     float64  `json:"quality_score"`
-	SearchVisibility string   `json:"search_visibility"`
-}
+// clipRichMetadata is a zero-copy alias to types.ClipRichMetadata.
+// Canonical definition extracted to youtube/types/ per PR3 Phase 2 (June 2026).
+type clipRichMetadata = types.ClipRichMetadata
 
 // generateClipMetadata generates rich metadata for a clip using Ollama.
 // Returns clip_summary, topics, speakers, mentioned_people, source_tags,
