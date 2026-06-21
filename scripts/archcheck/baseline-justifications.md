@@ -308,6 +308,63 @@ JSON validation: parses clean. Archcheck exits 0 (verified
 post-update). `stash@{0}` (`WIP-PR1.5-bystander-2026-06-21-pre-rebase`)
 NOT touched — pop deferred to dedicated PR1.5 follow-up session.
 
+## PR1.7 youtube port cascade ship (2026-06-21)
+
+**Audit timeline**: Merge commit `62ae9cd6` (feature commit `e52bf89b`)
+landed `--no-ff` on `origin/main`. Workspace: 15 files modified,
+13 in-flight cascade fixes plus 2 test rewrites. Ratchet audit belongs
+to `chore(archcheck)` followup.
+
+**Cycle artefacts captured at $62ae9cd6$**:
+- Cascade scope: `internal/application/youtube` ports rewrite +
+  canonical `DownloaderMetadata` DTO + `NewService(ServiceDeps{...})`
+  constructor collapse.
+- 12 structural ports: `ClipStore`, `MonitorsStore`,
+  `VideoMetadataFetcher`, `DriveFolderManager`, `FolderMemory`,
+  `OllamaClient`, `SearchRunner`, `ClipIndexer`, `WhisperTranscriber`,
+  `ClipFiles`, `HashService`, `SubtitleFetcher`. Empty-marker retained:
+  `TempFileManager`, `YouTubeCacheStore`.
+- Construction wiring: `internal/app/youtube_adapters.go::clipStoreAdapter`,
+  `monitorsStoreAdapter`, `cacheStoreAdapter`, `clipIndexerAdapter`,
+  `ollamaClientAdapter`, `driveFolderMgrAdapter`, `folderMemoryAdapter`,
+  `searchRunnerStub`. Dead-code dropped: unused `youtubeadapter` +
+  `ytinfra` imports.
+- Composition change: `internal/app/composition.go::BuildDomainBundle`
+  narrowed to ~13 fields wired + 8 nil-tolerant empty-marker fields.
+
+**Expected ratchet delta post-`--update`**: **+8 aliases**, **-4 pre-PR1.5 PR1.7 stale entries** (the 4 entries from the `## Pre-existing aliases since Wave 15 PR4d-final landing` section plus the PR1.5 series entries that the cascade regression-cleanup correctly drops because their source files were split/reorganized under `internal/application/youtube/`).
+
+**Per-file audit (current Linux tree at 62ae9cd6)**:
+
+| File:line (expected after `--update`) | Alias | Target | Pattern | Co-landing |
+|---|---|---|---|---|
+| `internal/application/youtube/ports.go:19` (`youtubedto`) | `youtubedto` | `internal/application/youtube` | (self-package alias — likely dropped by `--update` automatically since they live in the same compile unit) | n/a |
+| `internal/infrastructure/youtube/metadata.go:12` | `youtubedto` | `internal/application/youtube` | HexArch adapter imports application DTO | PR1.7 cascade |
+| `internal/infrastructure/youtube/videopipeline_adapter.go:N` | `youtubedto` | `internal/application/youtube` | HexArch adapter imports application DTO | PR1.7 cascade |
+| `internal/app/youtube_adapters.go:N` (composition-side) | `youtubedto` | `internal/application/youtube` | Composition root reads declared ports | PR1.7 cascade |
+| `internal/app/composition.go:N` | `ytinfra`, `youtubedto` (if composition now references both `internal/infrastructure/youtube` and `internal/application/youtube` directly) | infra + app | Bundle composition | PR1.7 cascade |
+
+**Decision (per-cycle policy - "accepte what comes")**:
+
+1. **`youtubedto` adapter-pattern aliases**: ACCEPTED into baseline. Rationale mirrors PR1.5 cycle: HexArch adapter imports application DTO at the seam; canonical infrastructure→application DTO direction is the proper inversion of AGENTS.md Pattern 8.
+2. **Composition-side pair of `ytinfra`/`youtubedto`**: ACCEPTED with sidecar entry. The composition root legitimately reads from both directions (infra concrete + app DTO contract); this is structural, not transient.
+3. **Any self-package aliases (e.g. `import <this-package> as <alias>`)**: ARCHCHECK SHOULD auto-drop these. If not, manual removal required.
+
+**Trigger conditions for relocation**: Same as PR1.5 cycle:
+- Future infrastructure consolidation (`internal/infrastructure/youtube` → `internal/infrastructure/media`).
+- Rename of `youtubedto` alias (HexArch could enforce stricter naming).
+- Restructure of composition-side bundles.
+
+**Cross-reference**:
+- For the operation-ready checklist + per-PR plans:
+  `docs/POST_CASCADE_OPERATIONAL_READINESS.md` §5.
+- For the per-cascade migration map:
+  `docs/migration-maps/internal-application-youtube.md`.
+- For the post-cascade ratchet (this section):
+  run `go run ./scripts/archcheck --update` in a follow-up commit
+  titled `chore(archcheck): post-PR1.7 baseline refresh + sidecar`,
+  preserving this sidecar in its corrected form.
+
 ## PR1.5 Service Thinning (atomic commit series, 2026-06-21)
 
 **Audit timeline**: PR1.5 atomic commit series on branch

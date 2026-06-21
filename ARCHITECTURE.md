@@ -321,5 +321,65 @@ and follow the OAuth flow. CI: `.github/workflows/`.
 
 ---
 
+## 14. Port abstraction layer (June 2026, PR1.7 cascade)
+
+Per PR1.7 (June 2026) `internal/application/youtube/` adotta
+**port abstraction** come pattern canonico per le dipendenze esterne
+di `Service`. In sintesi:
+
+- **Port interface** dichiarato in `internal/application/youtube/ports.go`
+  (application layer; **mai** nell'infrastruttura).
+- **Concrete adapter** in `internal/infrastructure/youtube/` (o
+  `internal/infrastructure/<bounded-context>/`).
+- **Compile-time assertion** nel file adapter:
+  `var _ youtubedto.VideoMetadataFetcherPort = (*MetadataFetcherAdapter)(nil)`.
+- **Composition-side wiring** in `internal/app/youtube_adapters.go`
+  (`newClipStoreAdapter`, `newDriveFolderMgrAdapter`, ecc) —
+  invocato da `internal/app/composition.go::BuildDomainBundle`.
+- **Constructor injection** via `NewService(ServiceDeps{...})`.
+
+### Ports esistenti (12 strutturali — June 2026)
+
+| Port | Adapter canonical | Model |
+|------|-------------------|-------|
+| `ClipStorePort` | `internal/app/youtube_adapters.go::clipStoreAdapter` | wraps `*assets.ClipsRepository` |
+| `MonitorsStorePort` | `internal/app/youtube_adapters.go::monitorsStoreAdapter` | wraps `*assets.MonitorsRepository` |
+| `VideoMetadataFetcherPort` | `internal/infrastructure/youtube/metadata.go::MetadataFetcherAdapter` | shells yt-dlp `--dump-json` |
+| `DriveFolderManagerPort` | `internal/app/youtube_adapters.go::driveFolderMgrAdapter` | wraps `*drive.Uploader` |
+| `FolderMemoryPort` | passes-through `*foldermemory.Service` directly | canonical impl lives at `internal/media/foldermemory/` |
+| `OllamaClientPort` | passes-through `*client.Client` directly | canonical impl lives at `internal/ml/ollama/client/` |
+| `SearchRunnerPort` | `internal/app/youtube_adapters.go::searchRunnerStub` (stub; real implementation deferred) | returns empty + warn-log |
+| `ClipIndexerPort` | `internal/app/youtube_adapters.go::clipIndexerAdapter` | wraps `*clipindexer.Service` |
+| `WhisperTranscriberPort` | reserved; nil-by-default; segment.go nil-guards before call | — |
+| `ClipFilesPort` | reserved; nil-by-default; segment_cache.go nil-guards before call | — |
+| `HashServicePort` | reserved; nil-by-default; service.go::md5String/md5File fallback chain | leaf via `pkg/hashutil` |
+| `SubtitleFetcherPort` | reserved; nil-by-default; subtitles.go nil-guards before call | — |
+
+Empty-marker (opaque injection tokens, no method signature): 
+`TempFileManagerPort`, `YouTubeCacheStorePort`.
+
+### Canonical DTO
+
+Un solo DTO per i metadata video: `*youtubedto.DownloaderMetadata`
+(con 14 fields + `CachedAt`). Back-compat per i nomi legacy:
+`type VideoMetadata = DownloaderMetadata`,
+`type YouTubeMetadataPort = DownloaderMetadata`.
+
+### Constructor collapse
+
+La precedente setter cascade (`Service.SetSearchRunner(...)`,
+`SetClipFiles(...)`, ...) è collassata in
+`NewService(ServiceDeps{...})` con 21 campi (13 wired esplicitamente,
+8 nil-tolerant per port opzionali).
+
+### Stato post-cascade (June 2026 — vedi anche `docs/POST_CASCADE_OPERATIONAL_READINESS.md`)
+
+- Settore verde sul cascade package scope (5 packages + cmd/server + cmd/worker).
+- `go test ./...` ha 7 packages falliti FUORI dal cascade scope — investigazione separata.
+- `internal/application/youtube/` è ancora un mega-package di 43 file (target 5-8) — split pianificato.
+- 3 latent-risk fissano l'agenda post-cascade (Thumbnails:nil, searchRunnerStub silent-empty, typed-nil panic).
+
+---
+
 *If you change the architecture, update this file in the same commit. The
 diagram is the contract.*
