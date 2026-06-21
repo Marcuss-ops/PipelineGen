@@ -89,8 +89,8 @@ Track job progress via the `/api/jobs` endpoints.
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md): Canonical system architecture, data flows,
   module registry, and day-1 commands.
-- [Operational roadmap PR0–PR4](./docs/roadmap/README.md): Concrete numbered TODOs,
-  validation commands, dependencies, and exit gates for the current consolidation cycle.
+- [Operational roadmap PR0–PR5](./docs/roadmap/README.md): Concrete numbered TODOs,
+  architecture exit gates, and the final full-working end-to-end certification plan.
 - [AGENTS.md](./AGENTS.md): Critical system rules and instructions for AI agents.
 - [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Italian language getting started guide.
 - [docs/SCRIPT_PIPELINE.md](./docs/SCRIPT_PIPELINE.md): Complete script pipeline
