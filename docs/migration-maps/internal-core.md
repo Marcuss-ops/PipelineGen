@@ -69,3 +69,9 @@ implement". After Phase-2, the same exports live in their final layered home
 
 Wave-13 follow-up PR. Estimated effort: 9 small PRs, each touching fewer than
 20 importers. Not safe to bundle.
+
+> **PR0 status footer (June 2026, fd8e3a43+/+2)** — L'intestazione
+> `✅ COMPLETED` sopra è già coerente con il codice: `internal/core/` non
+> esiste più, tutto assorbito da `internal/domain/asset/` e
+> `internal/infrastructure/{drive,media/processor}/` (vedi Wave 4C status
+> `done` nel `architecture/migration.yaml`).

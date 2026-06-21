@@ -70,3 +70,9 @@ whole adds ceremony without adding abstraction.
 ## Owner
 
 Wave-15. Estimated effort: 4–6 PRs. Highest payoff of any wave.
+
+> **PR0 status footer (June 2026, fd8e3a43+/+2)** — Wave 7 ha spostato
+> `internal/artifacts/` → `internal/application/assets/artifacts/`
+> (vedi Wave 7 status `done` nel `architecture/migration.yaml`). Il
+> piano sotto (eliminare invece di muovere) è riferimento storico; lo
+> split finale è coordinato da Wave 7's status + Wave 15 + future wave.

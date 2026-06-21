@@ -39,3 +39,8 @@ name should become `asset` (no `s`) for consistency with the rest of
 
 Wave-14. Estimated effort: single PR (mechanical rename), plus 1 deletion PR
 when zero importers remain.
+
+> **PR0 status footer (June 2026, fd8e3a43+/+2)** — L'intestazione
+> `✅ COMPLETED` sopra è già coerente con il codice: `internal/assets/`
+> non esiste più, tutti i consumer vivono in `internal/domain/asset/`
+> (vedi Wave 4A status `done` nel `architecture/migration.yaml`).
