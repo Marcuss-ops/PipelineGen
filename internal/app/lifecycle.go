@@ -783,7 +783,7 @@ func NewLifecycleFromDeps(
 	log *zap.Logger,
 ) *lifecycle.Service {
 	if deps.DriveVerifier == nil && deps.DriveClient != nil {
-		deps.DriveVerifier = artifacts.NewAPIDriveVerifier(deps.DriveClient)
+		deps.DriveVerifier = drive.NewDriveVerifierAdapter(deps.DriveClient)
 	}
 
 	if deps.Finalizer == nil && deps.Registry != nil && deps.DriveVerifier != nil && deps.AssetIndex != nil {
