@@ -54,6 +54,11 @@ type Service struct {
 // TranslatorFunc translates text to a target language. Used by GeneratePromo.
 type TranslatorFunc func(ctx context.Context, text, targetLanguage string) (string, error)
 
+// NewService constructs a voiceover.Service. The optional callbacks
+// (semanticTagger, translator, clipIndexer) are wired at construction
+// time. Pass nil for any callback that the caller does not need — the
+// service guards nil at call sites so the optional behaviour degrades
+// gracefully.
 func NewService(
 	cfg *config.Config,
 	db *sql.DB,
@@ -63,6 +68,9 @@ func NewService(
 	driveUploader *drive.Uploader,
 	lifecycleService *lifecycle.Service,
 	assetDestResolver asset.Resolver,
+	semanticTagger SemanticTaggerFunc,
+	translator TranslatorFunc,
+	clipIndexer ClipIndexFunc,
 ) *Service {
 	// Create audio asset processor
 	audioProcessor := audioasset.NewProcessor(
@@ -82,6 +90,9 @@ func NewService(
 		assetDestResolver: assetDestResolver,
 		audioProcessor:    audioProcessor,
 		lifecycleService:  lifecycleService,
+		semanticTagger:    semanticTagger,
+		translator:        translator,
+		clipIndexer:       clipIndexer,
 	}
 }
 
@@ -91,23 +102,6 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverBatch, s.HandleJob)
 		s.log.Info("registered voiceover job handler")
 	}
-}
-
-// SetSemanticTagger sets the callback function for semantic metadata enrichment.
-// Must be called after construction to enable search_text/tags on voiceovers.
-func (s *Service) SetSemanticTagger(fn SemanticTaggerFunc) {
-	s.semanticTagger = fn
-}
-
-// SetClipIndexer sets the callback for triggering embedding generation + Qdrant upsert.
-// Called after semantic enrichment to make voiceovers searchable via semantic search.
-func (s *Service) SetClipIndexer(fn ClipIndexFunc) {
-	s.clipIndexer = fn
-}
-
-// SetTranslator sets the translation callback for promo voiceover generation.
-func (s *Service) SetTranslator(fn TranslatorFunc) {
-	s.translator = fn
 }
 
 func (s *Service) Cfg() *config.Config {
