@@ -62,7 +62,7 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *asset.Asset) {
 	}
 }
 
-func writeFakeArtlistScraper(t *testing.T, clips []ScraperClip) string {
+func writeFakeArtlistScraper(t *testing.T, clips []Candidate) string {
 	t.Helper()
 
 	scraperDir := filepath.Join(t.TempDir(), "node-scraper")
@@ -342,12 +342,12 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	// Add test hosts to security allowlist
 	security.AddAllowedHost("cdn.artlist.io")
 
-	scraperDir := writeFakeArtlistScraper(t, []ScraperClip{
+	scraperDir := writeFakeArtlistScraper(t, []Candidate{
 		{
 			ID:          "clip-1",
 			Title:       "City Night",
-			PrimaryURL:  "https://cdn.artlist.io/video.m3u8",
-			ClipPageURL: "https://artlist.io/clip/city-night",
+			SourceRef:  "https://cdn.artlist.io/video.m3u8",
+			PageURL: "https://artlist.io/clip/city-night",
 		},
 	})
 
@@ -421,12 +421,12 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	// Add test hosts to security allowlist
 	security.AddAllowedHost("cdn.artlist.io")
 
-	scraperDir := writeFakeArtlistScraper(t, []ScraperClip{
+	scraperDir := writeFakeArtlistScraper(t, []Candidate{
 		{
 			ID:          "clip-1",
 			Title:       "City Night",
-			PrimaryURL:  "https://cdn.artlist.io/video.m3u8",
-			ClipPageURL: "https://artlist.io/clip/city-night",
+			SourceRef:  "https://cdn.artlist.io/video.m3u8",
+			PageURL: "https://artlist.io/clip/city-night",
 		},
 	})
 
@@ -502,12 +502,12 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	// Add test hosts to security allowlist
 	security.AddAllowedHost("cdn.artlist.io")
 
-	scraperDir := writeFakeArtlistScraper(t, []ScraperClip{
+	scraperDir := writeFakeArtlistScraper(t, []Candidate{
 		{
 			ID:          "clip-1",
 			Title:       "City Night",
-			PrimaryURL:  "https://cdn.artlist.io/video.m3u8",
-			ClipPageURL: "https://artlist.io/clip/city-night",
+			SourceRef:  "https://cdn.artlist.io/video.m3u8",
+			PageURL: "https://artlist.io/clip/city-night",
 		},
 	})
 
