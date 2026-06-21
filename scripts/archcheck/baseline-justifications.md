@@ -39,23 +39,38 @@ time).
 | Baseline entry | File / line | Owner / decision | Re-evaluation target |
 |---|---|---|---|
 | `metadata.go:10` `import alias ytcfg -> "<...>/internal/infrastructure/config"` | `internal/infrastructure/youtube/metadata.go` line 10 | pre-existing (faaf9226) | PR1 — YouTube infrastructure extraction consolidates/downloadstream utils out of `application/youtube` into `internal/infrastructure/youtube/`. After PR1 lands, the alias should still exist (this package already lives there) but the surrounding sibling package may be reduced. |
-| `metadata.go:11` `import alias urlutil -> "<...>/pkg/urlutil"` | `internal/infrastructure/youtube/metadata.go` line 11 | pre-existing (faaf9226) | PR1 — `pkg/urlutil` is a leaf-only shared utility (AGENTS.md). Cannot be eliminated; ratchet stays at 1 for this entry forever. |
+| `metadata.go:12` `import alias urlutil -> "<...>/pkg/urlutil"` | `internal/infrastructure/youtube/metadata.go` line 12 | pre-existing (faaf9226) | PR1 — `pkg/urlutil` is a leaf-only shared utility (AGENTS.md). Cannot be eliminated; ratchet stays at 1 for this entry forever. |
 | `subtitles.go:13` `import alias ytcfg -> "<...>/internal/infrastructure/config"` | `internal/infrastructure/youtube/subtitles.go` line 13 | pre-existing (faaf9226) | PR1 — see `metadata.go:10` rationale. |
 | `subtitles.go:14` `import alias textutil -> "<...>/pkg/textutil"` | `internal/infrastructure/youtube/subtitles.go` line 14 | pre-existing (faaf9226) | PR1 — `pkg/textutil` is a leaf-only shared utility (AGENTS.md). Cannot be eliminated; ratchet stays at 1 for this entry forever. |
 
 **Consequence**: archcheck `--update` will not change these lines
 (`--update` would only ADD new violations, never remove pre-existing ones).
 
-## Other entries (no explanation added yet)
+## Other entries (unclassified)
 
-All other entries in `baseline.json` follow the AGENTS.md canonical ratchet
-pattern. They are either:
-- (a) cross-package aliasing required by Go's import rules (collisions on
-  the package name from different modules), or
-- (b) forever-acceptable leaf-only utilities (`pkg/*` aliases).
+The remaining ~250 entries in `baseline.json` are **NOT individually audited
+in this sidecar** — only entries flagged during explicit audit cycles are
+recorded in the curated section above. Future operators should NOT read the
+absence of explanation here as a blanket ratchet-justification for any other
+entry.
 
-When a future operator needs to investigate a specific alias, they should
-add an entry above this section documenting the finding.
+**Strong claim** (always true): every alias that points into `pkg/*` leaf-only
+utilities follows AGENTS.md "Leaf-only — zero imports from internal/" and
+remains acceptable for the lifetime of the codebase. These ARE blanket
+ratchet-acceptable but are **not enumerated here**.
+
+**Weak claim** (must be individually reviewed): a small fraction of the
+remaining entries are cross-package aliasing from imported package-name
+collisions (e.g. two `drive` packages from different paths, or `jobs` from
+`internal/application/jobs` vs `internal/domain/job`). These cases need
+per-entry review.
+
+**Baseline refresh protocol**: when `go run ./scripts/archcheck --update`
+regenerates `baseline.json`, every NEW entry (anything not previously in the
+baseline) MUST be walked through by an operator and added to this sidecar
+under its proper bucket before the regenerated baseline is committed.
+The presence of an entry in `baseline.json` without a sidecar entry IS a
+defect, not an implicit justification.
 
 ## Re-audit triggers (when to re-evaluate this sidecar)
 
@@ -63,3 +78,20 @@ add an entry above this section documenting the finding.
 - A new capability package is migrated (PR1, PR2, PR3, PR4).
 - An import alias in `internal/infrastructure/youtube/{metadata.go,
   subtitles.go, ytdlp.go}` is changed or removed.
+
+## Verification of the 4 line numbers above
+
+Line numbers in the table above were verified at commit `000c40c4` (HEAD
+during the PR0 → baseline-audit cycle) via:
+
+```
+grep -nE '^\s*(ytcfg|urlutil|textutil|hashutil|slicer|process)' \
+  internal/infrastructure/youtube/metadata.go \
+  internal/infrastructure/youtube/subtitles.go
+```
+
+Result: `metadata.go:10 ytcfg`, `metadata.go:12 urlutil`, `subtitles.go:13
+ytcfg`, `subtitles.go:14 textutil`. These line numbers are informational only
+(archcheck's `stableAliases` strips them from the ratchet key per
+`scripts/archcheck/main.go:71-77`), so a future drift does not break the
+build — but the sidecar reflects them as cosmetic accuracy.
