@@ -1,285 +1,106 @@
-# PR4 — Composition root modulare
-
-> **Prerequisites (June 2026, post-PR4d-final)** — Molti item di PR4 sono
-> gi\u00e0 **completati da Wave 15 PR4d-final**, landed prima di PR #26.
-> Prima di procedere marcare come `[x] (fatto da Wave 15 PR4d-final)` i
-> checkbox gi\u00e0 soddisfatti e lasciare solo i residui.
->
-> **Gi\u00e0 completati da Wave 15 PR4d-final** (vedi
-> `architecture/migration.yaml` sezione Wave 15 `completed_in_PR4d_final`):
->
-> - `type services struct` rimosso da `internal/app/dependencies.go`
-> - `type CoreDeps struct` rimosso da `internal/app/bootstrap.go`
-> - Tutti i 9 `Wire<Module>()` migrati a narrow bundle signatures
-> - `WireRegistry(ctx, cfg, log, root *ComposeRoot)` uniforme
-> - `ComposeRoot` con `Ctx context.Context` field
-> - `startJobRunner()` schedulato dopo `Registry.Freeze()`
->
-> **Residuo effettivo di PR4** (PR4.0..PR4.12 sotto):
->
-> - PR4.0 — mappatura completa del grafo (non ancora formalizzata)
-> - PR4.1 — alias `appjobs.SQLiteStore` (Wave 5_PR3 deferred a Wave 16)
-> - PR4.2 — refactor `BuildAssetBundle` (oggi inline in `composition.go`)
-> - PR4.3 — refactor `BuildContentBundle` (libri/lezioni oggi shared helpers)
-> - PR4.7 — riorganizzare `Modules` aggregato (oggi \u00e8 `*ComposeRoot`)
-> - PR4.8 — separare bootstrap/lifecycle/shutdown (lifecycle ancora legato
->   a `*backgroundJobs` closure)
-> - PR4.10 — test di composizione espliciti
-> - PR4.11 — audit budget 8\u201310 dipendenze per builder
-> - PR4.12 — smoke test server con `curl /api/health/deep`
+# PR4 — Composition root residua
 
 ## Obiettivo
 
-Eliminare il contenitore globale `services`, ridurre `CoreDeps` e costruire moduli capability-owned. `internal/app` deve essere l'unico punto in cui vengono creati adapter concreti.
+Chiudere il lavoro rimasto dopo la rimozione di `type services struct` e `CoreDeps`. Il composition root deve costruire adapter concreti una sola volta, esporre bundle capability-owned piccoli e separare completamente costruzione, avvio e shutdown.
 
-## Addendum (post code-review, June 2026, commit fd8e3a43+1)
+## Stato verificato
 
-> 5 bullet mancanti dall'elenco sopra, identificati dal code-reviewer del
-> primo batch di modifiche PR0:
+Sono già completati e quindi rimossi dalla checklist:
 
-**Già fatti da Wave 15 PR4d-final ma non elencati sopra:**
+- eliminazione di `type services struct`;
+- eliminazione di `CoreDeps`;
+- introduzione di `ComposeRoot` e bundle principali;
+- migrazione dei `Wire<Module>` a firme più strette;
+- `WireRegistry` sul root corrente;
+- freeze di registry/dispatcher prima dell'avvio del job runner;
+- introduzione di `bootstrap.go`, `lifecycle.go` e `shutdown.go`.
 
-- BREAKING API CHANGE: `app.InitComposition` return tuple è passata da
-  `(*ComposeRoot, CleanupFunc, error)` → `(*ComposeRoot, *backgroundJobs,
-  CleanupFunc, error)`.
-- `WireServices` + `WireMinimal` in `bootstrap.go` sono stati migrati al
-  path `initCompositionMinimal(...) → (ComposeRoot, backgroundJobs,
-  CleanupFunc, error)`.
+Restano alias, helper condivisi, alcuni late binding, lifecycle basato su closure, goroutine avviate durante la costruzione e test di composizione incompleti.
 
-**Residuo PR4 non elencato sopra:**
+## Checklist residua
 
-- PR4.4 — refactor `BuildImagesBundle` + `BuildVoiceoverBundle` in
-  `modules/{images,voiceover}.go` (oggi helpers in `dependencies.go`).
-- PR4.5 — refactor `BuildScriptsBundle` in `modules/scripts.go` con
-  `SetBatchService` rimosso (oggi partial inline in `composition.go`).
-- PR4.6 — refactor `BuildSystemBundle` in `modules/system.go` con
-  config+doctor+health+metrics isolati (oggi helper condiviso).
+### PR4.0 — Eliminare alias e re-export residui
 
-Questa PR non cambia il comportamento dei use case e non aggiunge nuove capability.
+- [ ] Eliminare `type JobsWireBundle = JobsBundle`.
+- [ ] Eliminare `appjobs.SQLiteStore`, `JobStats` ed `ErrLeaseLost` come alias/re-export infrastructure.
+- [ ] Fare importare al composition root l'implementazione SQLite concreta e ai consumer il contratto `domain/job.Store`.
+- [ ] Spostare `JobStats` in un DTO/application owner appropriato.
+- [ ] Cercare ed eliminare altri alias, function rebinding e compat wrapper dentro `internal/app` e `internal/application/jobs`.
 
-## Stato iniziale verificato
+### PR4.1 — Rendere i bundle realmente capability-owned
 
-`internal/app/dependencies.go` contiene ancora:
+- [ ] Verificare che ogni bundle contenga solo campi della propria capability.
+- [ ] Rimuovere riferimenti mirror come registry posseduti da un bundle ma copiati in un altro.
+- [ ] Costruire asset repository, provider registry, indexer e resolver nel modulo assets.
+- [ ] Portare Books/Lessons in un builder content dedicato.
+- [ ] Portare images e voiceover fuori dagli helper generici rimasti in `dependencies.go`.
+- [ ] Portare scripts, system e observability in builder espliciti e piccoli.
+- [ ] Eliminare helper condivisi rimasti in `dependencies.go` quando fanno composizione di capability.
 
-- `type services struct` con decine di campi;
-- composer che costruiscono più capability insieme;
-- late binding tramite setter;
-- dipendenze concrete SQLite, Drive, provider, media, jobs, scripts e content nello stesso grafo;
-- `JobsBundle` come unico pilot parziale.
+### PR4.2 — Ridurre dipendenze e late binding
 
-## Struttura target
+- [ ] Verificare un budget massimo di 8–10 dipendenze dirette per builder.
+- [ ] Non aggirare il budget tramite struct `Dependencies` eterogenee o embedding.
+- [ ] Eliminare `SetBatchService`, `SetIngestService`, `SetHarvestService` e setter equivalenti quando il ciclo può essere risolto con ordine topologico o interfacce più piccole.
+- [ ] Documentare gli eventuali cicli reali rimasti e aggiungere test che ne proteggano il lifecycle.
+- [ ] Non passare `ComposeRoot` o un intero bundle ai use case e agli handler.
 
-```text
-internal/app/
-  app.go
-  bootstrap.go
-  lifecycle.go
-  shutdown.go
-  modules/
-    assets.go
-    content.go
-    images.go
-    jobs.go
-    scripts.go
-    system.go
-    voiceover.go
-```
+### PR4.3 — Separare costruzione e lifecycle
 
-Il nome dei file può adattarsi al codice esistente, ma ogni modulo deve possedere costruzione, superficie runtime e lifecycle della propria capability.
+- [ ] Nessun `Build*Bundle` o costruttore deve avviare goroutine.
+- [ ] Spostare `ensureStyleDriveFolders` e attività equivalenti in un componente `Start(ctx)` esplicito.
+- [ ] Sostituire la closure `startJobRunner func()` con un lifecycle component tipizzato.
+- [ ] Rendere `Start` e `Stop` idempotenti o protetti esplicitamente.
+- [ ] Propagare il context root a worker, scheduler, monitor, outbox e maintenance.
+- [ ] Eliminare `context.Background()` dai path lifecycle quando esiste il context applicativo.
+- [ ] Fermare i componenti in ordine inverso e verificare cleanup parziale dopo bootstrap fallito.
 
-## Checklist operativa
+### PR4.4 — Rimuovere SQL dal dominio
 
-### PR4.0 — Mappare il grafo attuale
+- [ ] Spostare `AssetStoreSQLite`, query, scan e JSON persistence fuori da `internal/domain/asset`.
+- [ ] Lasciare nel dominio soltanto modelli, invarianti, errori e contratti repository.
+- [ ] Usare `internal/infrastructure/database/sqlite/assets` come unico owner SQLite.
+- [ ] Aggiornare i consumer verso porte domain/application senza wrapper di compatibilità.
+- [ ] Verificare zero import `database/sql` e SQLite dentro `internal/domain`.
 
-- [ ] Elencare tutti i campi di `services`.
-- [ ] Elencare tutti i campi di `CoreDeps` e altri contenitori globali.
-- [ ] Per ogni campo, assegnare un owner:
-  - assets;
-  - content;
-  - images;
-  - jobs;
-  - scripts;
-  - system;
-  - voiceover;
-  - shared infrastructure.
-- [ ] Identificare tutte le costruzioni concrete fuori da `internal/app`.
-- [ ] Identificare tutti i setter di late binding.
-- [ ] Identificare cicli reali e dipendenze soltanto accidentali.
-- [ ] Creare un diagramma semplice nel documento o nei commenti del codice, senza introdurre un secondo framework DI.
+### PR4.5 — Chiudere i moduli ancora legati a `internal/media`
 
-**Accettazione PR4.0**
+- [ ] Assegnare un owner finale a catalog, tree, index, resolver, semantic, vectorstore, stockpipeline, books, lessons, generation e voiceover sync.
+- [ ] Migrare soltanto i package richiesti dalle capability PR1–PR4, senza mega spostamenti non testabili.
+- [ ] Eliminare il package originario e i relativi import nella stessa vertical slice.
+- [ ] Non creare package nuovi che duplicano temporaneamente la stessa logica.
 
-Ogni campo globale ha un owner e un piano di rimozione. Nessun modulo viene creato come semplice copia dell'intero `services`.
-
-### PR4.1 — Finalizzare il modulo Jobs
-
-- [ ] Rendere `JobsBundle` indipendente da `CoreDeps`.
-- [ ] Costruire `sqljobs.SQLiteStore` direttamente nel composition root.
-- [ ] Iniettare `job.Store` nei service applicativi.
-- [ ] Eliminare l'alias `appjobs.SQLiteStore` se non più necessario.
-- [ ] Spostare `JobStats` nel layer proprietario corretto o mappare a DTO applicativo.
-- [ ] Eliminare la facade `job.Service` se è solo un pass-through a funzioni delegate.
-- [ ] Iniettare `appjobs.Service` o una porta minima nei consumer.
-- [ ] Mantenere dispatcher freeze dopo la registrazione di tutti gli handler.
-- [ ] Separare costruzione da avvio worker.
-
-**Exit gate PR4.1**
-
-```bash
-rg 'type SQLiteStore =|type JobStats =|var ErrLeaseLost =' internal/application/jobs
-rg 'CoreDeps.*Jobs|JobsService' internal/app
-go test ./internal/application/jobs/... ./internal/app/... -count=1
-```
-
-Gli alias temporanei devono essere zero oppure accompagnati da un owner e una motivazione non pass-through.
-
-### PR4.2 — Creare modulo Assets
-
-- [ ] Creare un bundle assets con solo le dipendenze realmente esportate.
-- [ ] Costruire repository asset SQLite nel modulo assets.
-- [ ] Costruire provider registry nel modulo assets.
-- [ ] Costruire indexer, tree, catalog, ingest e artifact services nei rispettivi owner.
-- [ ] Non esporre repository concreti a moduli che necessitano solo di porte.
-- [ ] Non passare l'intero bundle assets ai consumer; passare il singolo contratto richiesto.
-- [ ] Congelare il provider registry dopo il wiring.
-- [ ] Separare lifecycle di monitor/indexer dalla costruzione.
-
-### PR4.3 — Creare modulo Content
-
-- [ ] Costruire Books e Lessons nel modulo content.
-- [ ] Spostare le dipendenze condivise esplicite in parametri piccoli.
-- [ ] Iniettare job registration senza accedere al contenitore globale.
-- [ ] Rimuovere import diretti dei vecchi package media dal composition root quando esiste il nuovo owner application.
-- [ ] Esporre soltanto use case/handler necessari al bootstrap API.
-
-### PR4.4 — Creare moduli Images e Voiceover
-
-- [ ] Creare il modulo images con repository, generator, style registry e handler.
-- [ ] Creare il modulo voiceover con repository, service, sync e handler.
-- [ ] Spostare integrazioni concrete Drive/FFmpeg nei builder app, non nei package API.
-- [ ] Evitare dipendenze reciproche tra images e voiceover; usare porte se necessarie.
-- [ ] Separare worker/job handler dal trasporto HTTP.
-
-### PR4.5 — Creare modulo Scripts
-
-- [ ] Costruire repository scripts SQLite nel modulo scripts.
-- [ ] Costruire generator, memory, batch, curation e document services in ordine esplicito.
-- [ ] Iniettare job service e asset provider tramite porte minime.
-- [ ] Eliminare duplicazione tra `scripts` e alias come `scriptcore`.
-- [ ] Rimuovere setter `SetBatchService` o equivalenti quando il costruttore può ricevere la dipendenza.
-- [ ] Esporre handler API e job handlers come superfici separate.
-
-### PR4.6 — Creare modulo System
-
-- [ ] Raggruppare config read-only, doctor, health, metrics e diagnostics.
-- [ ] Non trasformare System in un contenitore globale.
-- [ ] Esporre health checks come funzioni/porte piccole.
-- [ ] Mantenere logging e observability come shared infrastructure costruita una volta.
-- [ ] Non permettere a System di importare tutti gli altri moduli per accedere ai loro internals.
-
-### PR4.7 — Introdurre l'aggregato `Modules`
-
-- [ ] Creare un aggregato usato soltanto da bootstrap/lifecycle/shutdown.
-- [ ] Includere solo bundle capability-owned.
-- [ ] Vietare l'uso di `Modules` come parametro dei use case.
-- [ ] Vietare l'uso di `Modules` come service locator negli handler.
-- [ ] Costruire i moduli in ordine topologico esplicito.
-- [ ] Rendere opzionali solo capability realmente opzionali.
-- [ ] Fallire rapidamente su dipendenze obbligatorie nil.
-
-Esempio di forma:
-
-```go
-type Modules struct {
-    Assets    *modules.Assets
-    Content   *modules.Content
-    Images    *modules.Images
-    Jobs      *modules.Jobs
-    Scripts   *modules.Scripts
-    System    *modules.System
-    Voiceover *modules.Voiceover
-}
-```
-
-### PR4.8 — Separare bootstrap, lifecycle e shutdown
-
-- [ ] `bootstrap.go` costruisce dipendenze e registra route/handler.
-- [ ] `lifecycle.go` avvia worker, scheduler, monitor, outbox e maintenance.
-- [ ] `shutdown.go` ferma componenti in ordine inverso.
-- [ ] Nessun costruttore avvia goroutine.
-- [ ] Start e Stop devono essere idempotenti o protetti esplicitamente.
-- [ ] Propagare il context root a tutti i componenti long-running.
-- [ ] Eliminare `context.Background()` dai lifecycle quando esiste il context applicativo.
-
-### PR4.9 — Eliminare `services` e `CoreDeps`
-
-- [ ] Migrare tutti i consumer di `*services` verso bundle/porte specifiche.
-- [ ] Migrare tutti i consumer di `*CoreDeps` verso parametri espliciti.
-- [ ] Eliminare `type services struct`.
-- [ ] Eliminare `CoreDeps` se diventa vuoto o puramente pass-through.
-- [ ] Eliminare composer che aggregano capability non correlate.
-- [ ] Eliminare setter rimasti senza ciclo reale.
-- [ ] Eliminare commenti “temporary”, “back-compat” e “follow-up” risolti dalla PR.
-
-**Exit gate PR4.9**
-
-```bash
-rg 'type services struct|\*services|CoreDeps' internal/app
-```
-
-Il risultato deve essere zero, salvo un eventuale tipo nuovo con responsabilità chiaramente diversa e non service locator.
-
-### PR4.10 — Test di composizione
+### PR4.6 — Test di composizione
 
 - [ ] Testare ogni builder con dipendenze obbligatorie nil.
-- [ ] Testare che ogni bundle abbia campi obbligatori non nil.
-- [ ] Testare che costruire i moduli non avvii goroutine.
-- [ ] Testare registrazione duplicata di job/provider.
-- [ ] Testare freeze registry/dispatcher.
-- [ ] Testare Start/Stop applicativo.
-- [ ] Testare shutdown parziale dopo errore di bootstrap.
-- [ ] Testare configurazione senza capability opzionali.
+- [ ] Testare campi obbligatori dei bundle.
+- [ ] Testare che la costruzione non avvii goroutine o processi.
+- [ ] Testare duplicate registration e freeze di provider/job handler.
+- [ ] Testare Start/Stop, shutdown parziale e capability opzionali.
+- [ ] Testare che API e use case non ricevano `ComposeRoot` come service locator.
 
-### PR4.11 — Budget di dipendenze
-
-- [ ] Ogni builder modulo riceve massimo 8–10 dipendenze dirette.
-- [ ] Se supera il limite, creare una porta coerente, non un generico `Dependencies`.
-- [ ] Nessun bundle contiene campi di capability non propria.
-- [ ] Nessun modulo importa package API di un'altra capability.
-- [ ] Nessun package API costruisce adapter concreti.
-
-### PR4.12 — Validazione finale
+### PR4.7 — Validazione finale
 
 - [ ] Eseguire:
 
 ```bash
+rg 'type JobsWireBundle =|type SQLiteStore =|type JobStats =|var ErrLeaseLost =' internal/app internal/application/jobs
+rg 'type services struct|CoreDeps' internal/app
+rg 'database/sql|internal/infrastructure/database/sqlite' internal/domain
+rg 'go ensureStyleDriveFolders|startJobRunner func\(' internal/app
 go test ./internal/app/... -count=1
 go test -race ./internal/app/...
 go test ./internal/api/... ./internal/application/... -count=1
-go vet ./internal/app/... ./internal/application/...
-go build ./cmd/server ./cmd/worker ./cmd/admin
+go vet ./internal/app/... ./internal/application/... ./internal/domain/...
 go build ./...
 go run ./scripts/archcheck
 ```
 
-- [ ] Eseguire smoke test server:
+- [ ] Avviare il server e verificare `/api/health/deep`.
+- [ ] Verificare documentazione API invariata.
+- [ ] Verificare zero nuovi alias, wrapper pass-through e service locator.
 
-```bash
-go run ./cmd/server --mode all
-curl -f http://127.0.0.1:${VELOX_PORT:-8080}/api/health/deep
-```
+## Exit gate
 
-- [ ] Verificare che la documentazione API sia invariata.
-- [ ] Verificare assenza di nuovi alias e wrapper pass-through.
-
-## Exit gate finale
-
-PR4 è completata quando:
-
-- `type services struct` non esiste;
-- `CoreDeps` non è più un service locator;
-- ogni capability ha un modulo proprietario;
-- costruzione, avvio e shutdown sono separati;
-- nessun handler costruisce service concreti;
-- ogni builder rispetta il budget di dipendenze;
-- test, race test, build, smoke test e archcheck sono verdi.
+PR4 è chiusa quando ogni capability ha un owner di composizione chiaro, non esistono alias o mega dependency bundle, nessun costruttore avvia goroutine, il dominio non contiene SQL e lifecycle/shutdown sono espliciti e coperti da test.
