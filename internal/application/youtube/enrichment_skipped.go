@@ -3,9 +3,6 @@ package youtube
 import (
 	"context"
 
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-
 	"go.uber.org/zap"
 )
 
@@ -14,7 +11,7 @@ import (
 // (e.g., before the yt-dlp metadata fetch was fixed).
 func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, videoID string) {
 	// Check if clip needs enrichment
-	existing, err := s.clipsRepo.GetClip(ctx, clipID)
+	existing, err := s.clips.GetClip(ctx, clipID)
 	if err != nil || existing == nil {
 		return
 	}
@@ -28,8 +25,10 @@ func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, video
 		zap.String("video_id", videoID))
 
 	// Fetch YouTube metadata directly
-	ytDlp := downloader.NewYTDLP(s.cfg)
-	meta, err := ytDlp.GetVideoMetadata(ctx, videoURL)
+	if s.metaFetcher == nil {
+		return
+	}
+	meta, err := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
 	if err != nil {
 		s.log.Warn("failed to fetch YouTube metadata for skipped clip",
 			zap.String("clip_id", clipID),
@@ -38,7 +37,7 @@ func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, video
 	}
 
 	// Build result with just metadata (no local path needed for enrichment)
-	result := &videomuscles.YouTubeCutResult{
+	result := &VideoCutResult{
 		Metadata: meta,
 	}
 

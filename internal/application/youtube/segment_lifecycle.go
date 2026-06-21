@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 )
 
 // buildClipMetadata creates the lifecycle.FinalizeInput for a processed clip.
@@ -19,7 +18,7 @@ func buildClipMetadata(clipID, name, localPath, videoID, start, end string,
 	shouldNormalize, keepAudio bool,
 	driveFolderID, resolvedPath, fileHash string,
 	dest *DestinationRequest,
-	youtubeMeta *downloader.YouTubeMetadata,
+	youtubeMeta *YouTubeMetadataPort,
 	seg *Segment) *lifecycle.FinalizeInput {
 
 	metadataMap := map[string]any{

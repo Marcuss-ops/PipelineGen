@@ -4,89 +4,18 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-
-	"go.uber.org/zap"
 )
 
-// sliceSubtitles downloads VTT subtitles for the video ID and extracts text matching the clip window.
+// sliceSubtitles delegates to SubtitleFetcherPort for downloading and slicing VTT subtitles.
 func (s *Service) sliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error {
-	tempDir, err := os.MkdirTemp("", "yt_subs_")
-	if err != nil {
-		return err
+	if s.subtitleFetcher == nil {
+		return fmt.Errorf("youtube: subtitle fetcher not wired")
 	}
-	defer os.RemoveAll(tempDir)
-
-	subPrefix := filepath.Join(tempDir, "subs")
-
-	ytdlpPath := s.cfg.External.ResolvedYtdlpPath()
-	cookiesPath := s.cfg.External.YouTubeCookiesPath
-	if cookiesPath == "" {
-		cookiesPath = "config/youtube_cookies.txt"
-	}
-
-	// We run yt-dlp to write both automatic and manual subtitles (EN and IT)
-	args := []string{
-		"--write-auto-subs", "--write-subs", "--skip-download",
-		"--sub-langs", "en,it", "--sub-format", "vtt",
-		"--no-warnings",
-	}
-	if _, err := os.Stat(cookiesPath); err == nil {
-		args = append(args, "--cookies", cookiesPath)
-	}
-	if jsRuntime := s.cfg.External.YouTubeJSRuntimePath; jsRuntime != "" {
-		args = append(args, "--js-runtime", jsRuntime)
-		args = append(args, "--remote-components", "ejs:github")
-	}
-	args = append(args, "-o", subPrefix, fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID))
-	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
-
-	s.log.Info("Downloading subtitles for slicing", zap.String("video_id", videoID))
-	if err := cmd.Run(); err != nil {
-		s.log.Warn("Failed to download all subtitles for video (some might still have downloaded)", zap.String("video_id", videoID), zap.Error(err))
-	}
-
-	// Scan tempDir for VTT files
-	files, err := os.ReadDir(tempDir)
-	if err != nil {
-		return err
-	}
-
-	var vttPath string
-	for _, f := range files {
-		if strings.HasPrefix(f.Name(), "subs.") && strings.HasSuffix(f.Name(), ".vtt") {
-			vttPath = filepath.Join(tempDir, f.Name())
-			break
-		}
-	}
-
-	if vttPath == "" {
-		return fmt.Errorf("no subtitles file found for video %s", videoID)
-	}
-
-	s.log.Info("Parsing subtitle VTT file", zap.String("path", vttPath))
-	transcript, err := parseVTTFile(vttPath, float64(startSec), float64(endSec))
-	if err != nil {
-		return err
-	}
-
-	if transcript == "" {
-		return fmt.Errorf("no subtitles found in the specified time window %d-%d", startSec, endSec)
-	}
-
-	// Write transcript text file
-	txtPath := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".txt"
-	if err := os.WriteFile(txtPath, []byte(transcript), 0644); err != nil {
-		return fmt.Errorf("failed to write transcription text file: %w", err)
-	}
-
-	s.log.Info("Successfully wrote sliced subtitles to text file", zap.String("path", txtPath))
-	return nil
+	return s.subtitleFetcher.SliceSubtitles(ctx, videoID, startSec, endSec, outputPath)
 }
 
 // VTT cue with parsed text and timing
@@ -143,9 +72,6 @@ func parseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
 		cueStart := textutil.ParseVTTTimestamp(matches[1])
 		cueEnd := textutil.ParseVTTTimestamp(matches[2])
 
-		// Use OVERLAP instead of strict containment — include any cue that overlaps
-		// the clip window, even partially. This ensures no spoken content is lost
-		// at clip boundaries (e.g., a cue starting at 59.9s for a 60s clip).
 		if cueEnd > startSec && cueStart < endSec {
 			text := textutil.CleanSubtitleText(strings.Join(textLines, " "))
 			if text != "" {
@@ -159,29 +85,15 @@ func parseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
 	}
 
 	// ── Handle YouTube's "rolling" VTT format ────────────────────────────
-	// YouTube auto-generated VTT has a distinctive pattern:
-	//   Cue A (short "trigger"):   00:01:00.389 --> 00:01:00.399  "text1"
-	//   Cue B (content):           00:01:00.399 --> 00:01:02.310  "text1 text2"
-	//   Cue C (short "trigger"):   00:01:02.310 --> 00:01:02.320  "text2"
-	//   Cue D (content):           00:01:02.320 --> 00:01:04.630  "text2 text3"
-	//
-	// Each content cue INCLUDES the text from the previous trigger cue + new text.
-	// This creates "rolling" text that repeats across successive cues.
-	//
-	// Solution: group overlapping cues and keep only the LONGEST text in each group.
-	// Since content cues are always longer (more text) than trigger cues,
-	// this effectively keeps only the content cues, removing duplicates.
 	var dedupedCues []vttCue
 	for i := 0; i < len(cues); i++ {
-		// Find the longest text among overlapping cues
 		longest := cues[i]
 		for j := i + 1; j < len(cues); j++ {
 			if cues[j].start < longest.end || cues[j].start < longest.start+0.5 {
-				// Overlapping — pick the longer text
 				if len(cues[j].text) > len(longest.text) {
 					longest = cues[j]
 				}
-				i = j // skip the overlapping cue
+				i = j
 			} else {
 				break
 			}
@@ -189,19 +101,10 @@ func parseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
 		dedupedCues = append(dedupedCues, longest)
 	}
 
-	// ── Strip suffix-prefix overlap between content cues ────────────────
-	// After removing trigger cues, consecutive content cues still overlap:
-	//   Content B: "going to be asking why is the smartest man in the"
-	//   Content D: "the smartest man in the asking why"
-	//             → "asking why" (overlap stripped)
-	//
-	// This happens because each content cue includes the PREVIOUS trigger
-	// cue's text, which was already part of the previous content cue's tail.
 	for i := 1; i < len(dedupedCues); i++ {
 		dedupedCues[i].text = stripCueOverlap(dedupedCues[i-1].text, dedupedCues[i].text)
 	}
 
-	// Build transcript from deduped cues
 	var parts []string
 	for _, c := range dedupedCues {
 		if c.text != "" {
@@ -210,15 +113,7 @@ func parseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
 	}
 	result := strings.Join(parts, " ")
 
-	// Remove repeated >> sections ("text. >> text. >> text." → "text. >> text.")
 	result = collapseRepeatedSections(result)
-
-	// ── Final pass: collapse immediate word repetitions ───────────────────
-	// After all dedup passes, there may still be isolated within-cue
-	// repetitions like "30-day 30-day challenges" → "30-day challenges" or
-	// "challenge challenge I" → "challenge I".
-	// These are artifact of YouTube's auto-sub generator, not natural speech.
-	// Natural repeated words in speech are separated by other text.
 	result = collapseImmediateWordRepetitions(result)
 
 	return result, nil
@@ -226,17 +121,6 @@ func parseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
 
 // stripCueOverlap removes the overlapping suffix-prefix text between
 // consecutive deduped cues from YouTube's rolling VTT format.
-//
-// After removing trigger cues (short cues that are subsets of content cues),
-// consecutive content cues still overlap. For example:
-//
-//	Content B: "I know people are going to be asking why"
-//	Content D: "asking why is the smartest man in the world"
-//	          → "is the smartest man in the world" ("asking why" stripped)
-//
-// Uses WORD-LEVEL matching with a minimum of 2 overlapping words.
-// This catches all rolling-cue overlaps (even short ones like "30-day")
-// while safely ignoring single-word coincidences in speech.
 func stripCueOverlap(prev, curr string) string {
 	if prev == "" || curr == "" {
 		return curr
@@ -249,8 +133,6 @@ func stripCueOverlap(prev, curr string) string {
 		return curr
 	}
 
-	// Find the longest suffix of prevWords that matches a prefix of currWords.
-	// Minimum 2 words to avoid stripping single-word coincidences ("the", "I", "and").
 	maxMatch := len(currWords)
 	if maxMatch > len(prevWords) {
 		maxMatch = len(prevWords)
@@ -276,11 +158,9 @@ func stripCueOverlap(prev, curr string) string {
 	}
 
 	if bestMatch > 0 {
-		// Reconstruct curr without the overlapping words,
-		// preserving original (non-lowercased) text from curr.
 		origFields := strings.Fields(curr)
 		if bestMatch >= len(origFields) {
-			return curr // Overlap covers everything, keep original
+			return curr
 		}
 		stripped := strings.Join(origFields[bestMatch:], " ")
 		if stripped == "" {
@@ -291,19 +171,38 @@ func stripCueOverlap(prev, curr string) string {
 	return curr
 }
 
-// collapseRepeatedSections removes duplicate >>-delimited sections from VTT text.
-// After the rolling-cue dedup, there may still be residual repetitions where
-// a content cue's trailing text matches the next trigger cue (e.g.,
-// "text1 >> text2 >> text2 text3" → "text1 >> text2 text3").
-// collapseImmediateWordRepetitions removes consecutive duplicate words from VTT transcript.
-// YouTube auto-generated subtitles sometimes produce within-cue word stutters like
-// "30-day 30-day challenges" or "challenge challenge I" where a word is immediately
-// repeated. This is an artifact of the subtitle generator, not natural speech.
-// Natural repeated words ("no no", "it's it's", "yeah yeah") always have the same
-// word immediately adjacent, so this regex removes ALL immediate duplicates.
-// The risk of removing legitimately duplicated words is negligible in practice
-// because repeated words in speech either have a pause (period/comma) or are
-// intentional emphasis (which should be preserved and the user can re-add).
+func collapseRepeatedSections(text string) string {
+	if len(text) < 20 || !strings.Contains(text, ">>") {
+		return text
+	}
+
+	parts := strings.Split(text, ">>")
+	var deduped []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed == "" {
+			continue
+		}
+		last := ""
+		if len(deduped) > 0 {
+			last = deduped[len(deduped)-1]
+		}
+		normalizedTrimmed := strings.ToLower(trimmed)
+		normalizedLast := strings.ToLower(last)
+		if strings.Contains(normalizedLast, normalizedTrimmed) {
+			continue
+		}
+		if strings.Contains(normalizedTrimmed, normalizedLast) {
+			deduped[len(deduped)-1] = trimmed
+			continue
+		}
+		if normalizedTrimmed != normalizedLast {
+			deduped = append(deduped, trimmed)
+		}
+	}
+	return strings.Join(deduped, " >> ")
+}
+
 func collapseImmediateWordRepetitions(text string) string {
 	if len(text) < 5 {
 		return text
@@ -383,40 +282,4 @@ func collapseImmediateWordRepetitions(text string) string {
 		sb.WriteString(t.text)
 	}
 	return sb.String()
-}
-
-func collapseRepeatedSections(text string) string {
-	if len(text) < 20 || !strings.Contains(text, ">>") {
-		return text
-	}
-
-	parts := strings.Split(text, ">>")
-	var deduped []string
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed == "" {
-			continue
-		}
-		last := ""
-		if len(deduped) > 0 {
-			last = deduped[len(deduped)-1]
-		}
-		// Check if current text is a SUBSET of the previous (contained within it)
-		// This handles: "text2" vs "text2 text3" → keep the longer one
-		normalizedTrimmed := strings.ToLower(trimmed)
-		normalizedLast := strings.ToLower(last)
-		if strings.Contains(normalizedLast, normalizedTrimmed) {
-			// Current text is subset of previous — skip it
-			continue
-		}
-		if strings.Contains(normalizedTrimmed, normalizedLast) {
-			// Previous text is subset of current — replace with current
-			deduped[len(deduped)-1] = trimmed
-			continue
-		}
-		if normalizedTrimmed != normalizedLast {
-			deduped = append(deduped, trimmed)
-		}
-	}
-	return strings.Join(deduped, " >> ")
 }

@@ -16,7 +16,7 @@ import (
 
 // {"concurrency": 1}    – parallel workers (default 1, safe for yt-dlp rate limits)
 func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, tools *jobtools.JobTools) (map[string]any, error) {
-	if s.clipsRepo == nil {
+	if s.clips == nil {
 		return nil, fmt.Errorf("clips repository not available")
 	}
 
@@ -44,27 +44,9 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 	// Query all YouTube clips that have been enriched (have youtube_title).
 	// We only target clips with youtube_title because enrichYouTubeClipWithMetadata
 	// needs either pre-fetched metadata or a YouTube URL to fetch from.
-	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
-	if p.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", p.Limit)
-	}
-	if p.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", p.Offset)
-	}
-
-	rows, err := s.clipsRepo.DB().QueryContext(ctx, query)
+	clipIDs, err := s.clips.ListEnrichedYouTubeClipIDs(ctx, p.Limit, p.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("query youtube clips: %w", err)
-	}
-	defer rows.Close()
-
-	var clipIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
-		}
-		clipIDs = append(clipIDs, id)
 	}
 
 	if len(clipIDs) == 0 {

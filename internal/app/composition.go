@@ -80,6 +80,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -536,16 +539,27 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	clipProcessor := pkgffmpeg.NewFromConfig(cfg)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
+	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
 
 	youtubeClipService := youtube.NewService(
 		cfg, log,
-		repos.ClipsRepo, repos.MonitorsRepo,
-		drive.DriveClient, process.MediaProcessor,
-		videoPipeline, youtubeLifecycle,
-		process.ClipIndexerService, drive.DestResolver,
-		ai.OllamaClient,
-		nil, nil,
+		process.MediaProcessor,
+		videoPipelineAdapter, youtubeLifecycle,
+		drive.DestResolver,
 	)
+
+	// Wire PR1 port-based dependencies into the youtube service.
+	youtubeClipService.SetClipStore(newClipStoreAdapter(repos.ClipsRepo))
+	youtubeClipService.SetMonitorsStore(newMonitorsStoreAdapter(repos.MonitorsRepo))
+	youtubeClipService.SetCacheStore(newCacheStoreAdapter(repos.ClipsRepo))
+	if process.ClipIndexerService != nil {
+		youtubeClipService.SetIndexer(&clipIndexerAdapter{inner: process.ClipIndexerService})
+	}
+	youtubeClipService.SetOllamaClient(ai.OllamaClient)
+	youtubeClipService.SetClassifier(newClassifierAdapter(cfg, log, repos.ClipsRepo, ai.OllamaClient))
+	if drive.DriveClient != nil {
+		youtubeClipService.SetDriveClient(newDriveClientAdapter(drive.DriveClient, log))
+	}
 
 	voiceoverSvc, voiceoverRepo := initVoiceoverService(ctx, cfg, dbs, log,
 		drive.DriveClient, drive.DriveUploader,
@@ -694,7 +708,16 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		ReclaimInterval: cfgReclaim,
 	}
 	eventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, eventsRegistry, log, outboxEventsCfg)
-	log.Info("outbox events pool constructed (started in lifecycle.go)", zap.Duration("poll_interval", outboxEventsCfg.PollInterval))
+	concurrent.SafeGo("outbox-events-pool", func() {
+		eventsPool.Start(ctx, 1)
+	})
+	concurrent.SafeGo("outbox-events-shutdown", func() {
+		<-ctx.Done()
+		if err := eventsPool.Stop(15 * time.Second); err != nil {
+			log.Warn("outbox events pool stop returned error", zap.Error(err))
+		}
+	})
+	log.Info("outbox events pool started", zap.Duration("poll_interval", outboxEventsCfg.PollInterval))
 
 	return &OutboxBundle{
 		Dispatcher:     dispatcher,

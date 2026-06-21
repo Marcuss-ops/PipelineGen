@@ -25,6 +25,36 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
+// testClipStoreAdapter wraps *assets.ClipsRepository for tests.
+type testClipStoreAdapter struct {
+	inner *assets.ClipsRepository
+}
+
+func (a *testClipStoreAdapter) Get(ctx context.Context, id string) (*asset.Asset, error) {
+	return a.inner.Get(ctx, id)
+}
+func (a *testClipStoreAdapter) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
+	return a.inner.GetClip(ctx, id)
+}
+func (a *testClipStoreAdapter) Upsert(ctx context.Context, clip *asset.Asset) error {
+	return a.inner.Upsert(ctx, clip)
+}
+func (a *testClipStoreAdapter) DeleteClip(ctx context.Context, id string) error {
+	return a.inner.DeleteClip(ctx, id)
+}
+func (a *testClipStoreAdapter) UpdateSearchTerms(ctx context.Context, id, source, title string, tags []string, searchText string) error {
+	return a.inner.UpdateSearchTerms(ctx, id, source, title, tags, searchText)
+}
+func (a *testClipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
+	return a.inner.GetFolder(ctx, folderID)
+}
+func (a *testClipStoreAdapter) ListYouTubeClipIDs(ctx context.Context, limit, offset int) ([]string, error) {
+	return nil, nil
+}
+func (a *testClipStoreAdapter) ListEnrichedYouTubeClipIDs(ctx context.Context, limit, offset int) ([]string, error) {
+	return nil, nil
+}
+
 // pr12bYoutubeSchema mirrors the full production table definitions for testing.
 const pr12bYoutubeSchema = `
 CREATE TABLE IF NOT EXISTS media_assets (
@@ -165,9 +195,9 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	}
 
 	svc := &Service{
-		log:       zap.NewNop(),
-		clipsRepo: clipsRepo,
+		log: zap.NewNop(),
 	}
+	svc.SetClipStore(&testClipStoreAdapter{inner: clipsRepo})
 	svc.SetAssetRepo(assetRepo)
 
 	ctx := context.Background()
@@ -243,9 +273,9 @@ func TestYoutubePR12b_DispatchOrIndexWithoutAssetRepoFallsBack(t *testing.T) {
 	_, clipsRepo, _ := setupYoutubePR12b(t)
 
 	svc := &Service{
-		log:       zap.NewNop(),
-		clipsRepo: clipsRepo,
+		log: zap.NewNop(),
 	}
+	svc.SetClipStore(&testClipStoreAdapter{inner: clipsRepo})
 	// (No SetAssetRepo, no SetDispatcher calls)
 
 	clip := &asset.Asset{
