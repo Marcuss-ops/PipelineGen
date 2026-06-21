@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +40,7 @@ func (s *Service) indexAssetInVectorStore(ctx context.Context, assetID, source, 
 	}
 
 	// 3. Upsert to Qdrant
-	vAsset := vectorstore.VectorAsset{
+	vAsset := qdrant.VectorAsset{
 		AssetID:       assetID,
 		Source:        source,
 		Name:          name,

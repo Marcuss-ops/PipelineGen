@@ -3,6 +3,7 @@ package gemmamemory
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -140,8 +141,14 @@ func TestBuildFreshVariantPrompt_WithOutput(t *testing.T) {
 	basePrompt := "Write a summary"
 	out := &GenerationOutput{OutputText: "Previously generated text"}
 	result := BuildFreshVariantPrompt(basePrompt, out)
-	if result != basePrompt {
-		t.Error("BuildFreshVariantPrompt stub should return basePrompt even with output")
+	// The real implementation appends variant instructions; the base prompt
+	// should still be present at the start of the result.
+	if len(result) <= len(basePrompt) || result[:len(basePrompt)] != basePrompt {
+		t.Errorf("BuildFreshVariantPrompt should start with basePrompt, got %q", result)
+	}
+	// Verify variant instructions are present.
+	if !strings.Contains(result, "[FRESH_VARIANT_INSTRUCTIONS]") && !strings.Contains(result, "PREVIOUS_RUN_AVOID_LIST") {
+		t.Error("BuildFreshVariantPrompt should inject variant instructions when output is provided")
 	}
 }
 

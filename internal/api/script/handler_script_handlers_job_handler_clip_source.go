@@ -44,11 +44,9 @@ func stageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 	}
 }
 
-// scriptGenSemaphore limits the number of concurrent script generation processes to 2
-// to prevent overloading CPU/GPU models and Playwright browser instances.
-var scriptGenSemaphore = make(chan struct{}, 2)
+// scriptGenSem is the per-handler semaphore for script generation, configured
+// via ConcurrencyConfig.MaxConcurrentScriptGenerations.
 
-// wrapPostGeneration adapts handlePostGeneration to the Pipeline's callback
 // signature (returns any instead of ScriptInsights, []scripts.VideoMetadata
 // instead of []VideoMetadata). The real pathResult is passed through so
 // handlePostGeneration has access to all path result fields.
@@ -106,12 +104,13 @@ func (h *ScriptFlowHandler) wrapPostGenerationWithPath(
 func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	h.log.Info("handling unified script generation job", zap.String("job_id", job.ID))
 
-	h.log.Info("waiting for script generation slot (max 2 concurrent)", zap.String("job_id", job.ID))
+	maxCap := cap(h.scriptGenSem)
+	h.log.Info("waiting for script generation slot", zap.String("job_id", job.ID), zap.Int("max_concurrent", maxCap))
 	select {
-	case scriptGenSemaphore <- struct{}{}:
+	case h.scriptGenSem <- struct{}{}:
 		h.log.Info("acquired script generation slot", zap.String("job_id", job.ID))
 		defer func() {
-			<-scriptGenSemaphore
+			<-h.scriptGenSem
 			h.log.Info("released script generation slot", zap.String("job_id", job.ID))
 		}()
 	case <-ctx.Done():

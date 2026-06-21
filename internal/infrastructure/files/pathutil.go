@@ -1,9 +1,7 @@
 package files
 
 import (
-	"fmt"
 	"strings"
-	"time"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -13,15 +11,6 @@ import (
 // also converts hyphens, underscores, and dots to spaces.
 func SafeFolderName(name string) string {
 	return textutil.SafeName(name)
-}
-
-// BuildTimestampedSlug creates a timestamped slug from a name and time.
-func BuildTimestampedSlug(name string, t time.Time) string {
-	slug := textutil.Slugify(name)
-	if slug == "" {
-		slug = "generated-script"
-	}
-	return fmt.Sprintf("%s_%s", t.Format("20060102_150405"), slug)
 }
 
 // ExtractStyleFromPath extracts the style segment from a relative image path.

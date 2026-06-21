@@ -19,19 +19,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// videoExtractSem serializes YouTube clip extraction so only one video is
-// processed at a time. Multiple videos in parallel cause "database is locked"
-// errors because each segment writes to the same SQLite database.
-var videoExtractSem = make(chan struct{}, 1)
-
 // Extract processes a YouTube clip extraction request.
 func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractResponse, error) {
-	// Acquire the global video extraction semaphore — wait if another video
-	// is currently being extracted. This ensures truly sequential processing
-	// across all workers.
+	// Acquire the video extraction semaphore — configured via ConcurrencyConfig
+	// (was hardcoded at 1). Prevents SQLite contention across parallel extracts.
 	select {
-	case videoExtractSem <- struct{}{}:
-		defer func() { <-videoExtractSem }()
+	case s.videoExtractSem <- struct{}{}:
+		defer func() { <-s.videoExtractSem }()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

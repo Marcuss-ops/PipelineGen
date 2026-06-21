@@ -76,7 +76,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
@@ -130,7 +130,7 @@ type SearchBundle struct {
 type ProcessBundle struct {
 	MediaProcessor     asset.Processor
 	ClipIndexerService *clipindexer.Service
-	VectorSvc          *vectorstore.Service
+	VectorSvc          *qdrant.Service
 	VLMClient          *vlm.Client
 }
 
@@ -407,12 +407,13 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		ScriptPath:            cfg.ClipIndexer.ScriptPath,
 		PythonBin:             cfg.ClipIndexer.PythonBin,
 		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
+		MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing,
 		DBPath:                dbs.main.Path(),
 	}, dbs.main.DB, dbs.main.Path(), log)
 
-	var vectorSvc *vectorstore.Service
+	var vectorSvc *qdrant.Service
 	if cfg.VectorSearch.Enabled {
-		qdrantCfg := vectorstore.Config{
+		qdrantCfg := qdrant.Config{
 			URL:                  cfg.VectorSearch.URL,
 			Collection:           cfg.VectorSearch.Collection,
 			TextVectorName:       cfg.VectorSearch.TextVectorName,
@@ -441,8 +442,8 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 				zap.String("alias", cfg.VectorSearch.CollectionAlias),
 				zap.String("routing", mode))
 		}
-		qdrantClient := vectorstore.NewQdrantClient(qdrantCfg)
-		vectorSvc = vectorstore.NewService(qdrantClient, qdrantCfg, log)
+		qdrantClient := qdrant.NewQdrantClient(qdrantCfg)
+		vectorSvc = qdrant.NewService(qdrantClient, qdrantCfg, log)
 		vectorSvc.SetRetryPolicy(
 			cfg.VectorSearch.RetryAttempts,
 			time.Duration(cfg.VectorSearch.RetryInitialWaitMs)*time.Millisecond,
@@ -456,7 +457,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		if err := vectorSvc.EnsureCollection(ctx); err != nil {
 			log.Warn("vector store collection setup failed (will retry on upsert)", zap.Error(err))
 		}
-		clipIndexerAdapter := vectorstore.NewClipIndexerAdapter(dbs.main.DB, vectorSvc, qdrantCfg, log)
+		clipIndexerAdapter := qdrant.NewClipIndexerAdapter(dbs.main.DB, vectorSvc, qdrantCfg, log)
 		if clipIndexerAdapter != nil {
 			clipIndexerService.SetVectorStore(clipIndexerAdapter)
 			log.Info("vector store enabled for clip indexer")

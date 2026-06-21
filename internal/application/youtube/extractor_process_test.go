@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
 	"errors"
 	"os"
@@ -14,7 +15,7 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ===== cleanClipName tests =====
+// ===== tagutil.CleanClipName tests =====
 
 func TestCleanClipName_HTMLEntities(t *testing.T) {
 	tests := []struct {
@@ -29,8 +30,8 @@ func TestCleanClipName_HTMLEntities(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cleanClipName(tt.in); got != tt.want {
-				t.Errorf("cleanClipName(%q) = %q, want %q", tt.in, got, tt.want)
+			if got := tagutil.CleanClipName(tt.in); got != tt.want {
+				t.Errorf("tagutil.CleanClipName(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}
@@ -52,15 +53,15 @@ func TestCleanClipName_SubtitleArtifacts(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cleanClipName(tt.in); got != tt.want {
-				t.Errorf("cleanClipName(%q) = %q, want %q", tt.in, got, tt.want)
+			if got := tagutil.CleanClipName(tt.in); got != tt.want {
+				t.Errorf("tagutil.CleanClipName(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}
 }
 
 func TestCleanClipName_WhitespaceCollapse(t *testing.T) {
-	got := cleanClipName("  hello   world  ")
+	got := tagutil.CleanClipName("  hello   world  ")
 	want := "hello world"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -68,14 +69,14 @@ func TestCleanClipName_WhitespaceCollapse(t *testing.T) {
 }
 
 func TestCleanClipName_Empty(t *testing.T) {
-	got := cleanClipName("")
+	got := tagutil.CleanClipName("")
 	if got != "clip" {
 		t.Errorf("empty name should default to 'clip', got %q", got)
 	}
 }
 
 func TestCleanClipName_OnlyArtifacts(t *testing.T) {
-	got := cleanClipName("[music] &gt;&gt; gt gt")
+	got := tagutil.CleanClipName("[music] &gt;&gt; gt gt")
 	if got != "clip" {
 		t.Errorf("artifacts-only name should default to 'clip', got %q", got)
 	}
@@ -84,7 +85,7 @@ func TestCleanClipName_OnlyArtifacts(t *testing.T) {
 func TestCleanClipName_Truncation(t *testing.T) {
 	// Create a name longer than 80 runes
 	longName := strings.Repeat("a", 100)
-	got := cleanClipName(longName)
+	got := tagutil.CleanClipName(longName)
 	runes := []rune(got)
 	if len(runes) > 80 {
 		t.Errorf("name should be truncated to 80 runes, got %d", len(runes))
@@ -97,14 +98,14 @@ func TestCleanClipName_Truncation(t *testing.T) {
 func TestCleanClipName_TruncationPreservesWords(t *testing.T) {
 	// Name with words, truncation should trim trailing dashes
 	name := strings.Repeat("hello-", 20) + "end"
-	got := cleanClipName(name)
+	got := tagutil.CleanClipName(name)
 	if strings.HasSuffix(got, "-") {
 		t.Errorf("truncated name should not end with dash, got %q", got)
 	}
 }
 
 func TestCleanClipName_Unicode(t *testing.T) {
-	got := cleanClipName("ciao mondo 🎬 test")
+	got := tagutil.CleanClipName("ciao mondo 🎬 test")
 	want := "ciao mondo 🎬 test"
 	if got != want {
 		t.Errorf("unicode should be preserved, got %q", got)
@@ -114,7 +115,7 @@ func TestCleanClipName_Unicode(t *testing.T) {
 func TestCleanClipName_UnicodeTruncation(t *testing.T) {
 	// Unicode chars count as 1 rune each
 	name := "🎬" + strings.Repeat("x", 80)
-	got := cleanClipName(name)
+	got := tagutil.CleanClipName(name)
 	runes := []rune(got)
 	if len(runes) > 80 {
 		t.Errorf("unicode name should be truncated to 80 runes, got %d runes: %q", len(runes), got)

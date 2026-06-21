@@ -217,8 +217,10 @@ func (c *Cache) Put(ctx context.Context, term string, raw []byte) {
 	}
 	// Best-effort persistence. Errors are logged at debug level and
 	// do not surface as cache faults; L1 still serves the entry.
+	// Use withoutCancel(parent) to preserve tracing IDs while
+	// detaching from the caller's cancellation.
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		bgCtx, cancel := context.WithTimeout(withoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		_, err := c.db.ExecContext(bgCtx,
 			`INSERT INTO artlist_search_cache (term, clips_json, cached_at) VALUES (?, ?, datetime('now'))

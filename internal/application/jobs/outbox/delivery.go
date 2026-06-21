@@ -335,7 +335,7 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 			zap.String("idempotency_key", req.IdempotencyKey),
 			zap.String("endpoint", req.Destination.DestinationID),
 		)
-		_ = h.recordDelivery(req, 0, "", "refused:hmac_not_configured")
+		_ = h.recordDelivery(ctx, req, 0, "", "refused:hmac_not_configured")
 		// Terminal — retry won't bring the secret into existence.
 		return fmt.Errorf("delivery.requested: HMAC not configured (refusing): %w", ErrSchemaVersionMismatch)
 	case len(h.hmacSecrets) == 0 && h.insecureDev:
@@ -359,7 +359,7 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 			zap.Int("attempt", evt.AttemptCount),
 			zap.Error(err),
 		)
-		_ = h.recordDelivery(req, statusCode, "", "network:"+err.Error())
+		_ = h.recordDelivery(ctx, req, statusCode, "", "network:"+err.Error())
 		return fmt.Errorf("delivery.requested POST %s: %w", req.Destination.DestinationID, err)
 	}
 	defer resp.Body.Close()
@@ -367,7 +367,7 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 	// Read response body, capped. A greedy receiver cannot OOM the worker.
 	responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, maxDeliveryResponseBytes))
 	statusCode = resp.StatusCode
-	_ = h.recordDelivery(req, statusCode, hashBody(responseBody), "ok")
+	_ = h.recordDelivery(ctx, req, statusCode, hashBody(responseBody), "ok")
 
 	switch {
 	case statusCode >= 200 && statusCode < 300:
@@ -410,12 +410,15 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 // re-deliveries (e.g. after a 5xx retry) onto the same audit row. When
 // db is nil the write is silently skipped so unit tests can construct
 // the handler without a fixture.
-func (h *DeliveryHandler) recordDelivery(req *deliveryRequest, statusCode int, responseHash, note string) error {
+func (h *DeliveryHandler) recordDelivery(ctx context.Context, req *deliveryRequest, statusCode int, responseHash, note string) error {
 	if h.db == nil {
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := h.db.ExecContext(context.Background(), `
+	// Use a detached context so the audit write is not cancelled when
+	// the caller's HTTP request context expires. The write is
+	// idempotent (ON CONFLICT DO UPDATE) so retries are safe.
+	_, err := h.db.ExecContext(context.WithoutCancel(ctx), `
 		INSERT INTO delivery_log (asset_id, endpoint_url, delivery_id, status_code, response_hash, delivered_at, created_at, note)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(delivery_id) DO UPDATE SET

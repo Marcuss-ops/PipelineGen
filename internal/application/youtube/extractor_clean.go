@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"regexp"
 	"strings"
 )
@@ -30,111 +31,7 @@ var (
 	excessWhitespaceRegex = regexp.MustCompile(`\n{3,}`)
 )
 
-// cleanYouTubeDescription strips sponsor blocks, links, timestamps, and other noise
-// from YouTube descriptions before embedding. Returns cleaned text.
-func cleanYouTubeDescription(desc string) string {
-	if desc == "" {
-		return ""
-	}
 
-	lines := strings.Split(desc, "\n")
-	var cleaned []string
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Skip empty lines
-		if trimmed == "" {
-			continue
-		}
-
-		// Skip timestamp-only lines (e.g., "00:00", "1:23:45")
-		if timestampRegex.MatchString(trimmed) {
-			continue
-		}
-
-		// Skip timestamp with context lines (e.g., "00:00 Intro", "1:23:45 - Chapter Title")
-		if timestampContextRegex.MatchString(trimmed) {
-			continue
-		}
-
-		// Skip pure URL lines
-		if urlRegex.MatchString(trimmed) && len(trimmed) < 200 {
-			// Check if line is primarily a URL
-			noURL := urlRegex.ReplaceAllString(trimmed, "")
-			if strings.TrimSpace(noURL) == "" {
-				continue
-			}
-		}
-
-		// Skip social media/CTA patterns
-		if socialPatterns.MatchString(trimmed) {
-			continue
-		}
-
-		// Skip sponsor/promo patterns
-		if sponsorPatterns.MatchString(trimmed) {
-			continue
-		}
-
-		// Clean emojis from the line
-		trimmed = emojiRegex.ReplaceAllString(trimmed, "")
-
-		// Collapse multiple spaces
-		trimmed = regexp.MustCompile(`\s{2,}`).ReplaceAllString(trimmed, " ")
-
-		if trimmed != "" {
-			cleaned = append(cleaned, trimmed)
-		}
-	}
-
-	result := strings.Join(cleaned, "\n")
-
-	// Collapse excessive newlines
-	result = excessWhitespaceRegex.ReplaceAllString(result, "\n\n")
-
-	return strings.TrimSpace(result)
-}
-
-// extractKeyPhrases extracts the most important phrases from cleaned description
-// for keyword-based search. Returns top N phrases.
-func extractKeyPhrases(desc string, maxPhrases int) []string {
-	if desc == "" {
-		return nil
-	}
-
-	// Simple approach: split by newlines and take non-trivial lines
-	lines := strings.Split(desc, "\n")
-	var phrases []string
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		// Skip very short lines (likely noise)
-		if len(trimmed) < 10 {
-			continue
-		}
-
-		// Skip lines that look like lists/bullets (often navigation)
-		if strings.HasPrefix(trimmed, "•") || strings.HasPrefix(trimmed, "-") || strings.HasPrefix(trimmed, "►") {
-			trimmed = strings.TrimLeft(trimmed, "•-►→ ")
-			if len(trimmed) < 10 {
-				continue
-			}
-		}
-
-		phrases = append(phrases, trimmed)
-
-		if len(phrases) >= maxPhrases {
-			break
-		}
-	}
-
-	return phrases
-}
 
 // isSponsorSegment returns true if the text contains obvious sponsor content
 func isSponsorSegment(text string) bool {
@@ -259,7 +156,7 @@ func calculateHeuristicQualityScore(transcript, title, description string, tags 
 		if meta.Hook != "" {
 			score += 0.10
 		}
-		if meta.CleanTitle != "" && normalizeClipTag(meta.CleanTitle) != normalizeClipTag(title) {
+		if meta.CleanTitle != "" && tagutil.NormalizeClipTag(meta.CleanTitle) != tagutil.NormalizeClipTag(title) {
 			score += 0.06
 		}
 		switch {

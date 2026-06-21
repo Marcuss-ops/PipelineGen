@@ -18,7 +18,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // ── Style Presets (caricati da config/style_presets.yaml) ────────────────
@@ -149,7 +149,7 @@ func (r *CurateRequest) defaults() {
 // It is self-sufficient: creates its own embedding client and searches
 // directly via the vectorstore, without requiring the realtime service.
 type MediaCurator struct {
-	vectorSvc   *vectorstore.Service
+	vectorSvc   *qdrant.Service
 	embedder    realtime.EmbeddingClient
 	clipsRepo   *assets.ClipsRepository
 	clipBuilder *ClipSourceBuilder
@@ -160,7 +160,7 @@ type MediaCurator struct {
 
 // NewMediaCurator creates a MediaCurator service.
 func NewMediaCurator(
-	vectorSvc *vectorstore.Service,
+	vectorSvc *qdrant.Service,
 	embedderURL string,
 	clipsRepo *assets.ClipsRepository,
 	clipBuilder *ClipSourceBuilder,

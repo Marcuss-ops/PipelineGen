@@ -11,57 +11,57 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // ── Mock vector store for testing hybrid search ─────────────────────────
 
-// mockQdrantStore implements vectorstore.Store with configurable HybridSearch results.
+// mockQdrantStore implements qdrant.Store with configurable HybridSearch results.
 type mockQdrantStore struct {
-	hybridSearchResults []vectorstore.SearchResult
+	hybridSearchResults []qdrant.SearchResult
 	hybridSearchErr     error
 }
 
 func (m *mockQdrantStore) EnsureCollection(ctx context.Context) error { return nil }
-func (m *mockQdrantStore) UpsertAsset(ctx context.Context, a vectorstore.VectorAsset) error {
+func (m *mockQdrantStore) UpsertAsset(ctx context.Context, a qdrant.VectorAsset) error {
 	return nil
 }
-func (m *mockQdrantStore) UpsertAssets(ctx context.Context, a []vectorstore.VectorAsset) error {
+func (m *mockQdrantStore) UpsertAssets(ctx context.Context, a []qdrant.VectorAsset) error {
 	return nil
 }
-func (m *mockQdrantStore) Search(ctx context.Context, req vectorstore.SearchRequest) ([]vectorstore.SearchResult, error) {
+func (m *mockQdrantStore) Search(ctx context.Context, req qdrant.SearchRequest) ([]qdrant.SearchResult, error) {
 	return m.hybridSearchResults, m.hybridSearchErr
 }
 func (m *mockQdrantStore) DeleteAsset(ctx context.Context, id string) error { return nil }
 func (m *mockQdrantStore) Health(ctx context.Context) error                 { return nil }
-func (m *mockQdrantStore) CollectionInfo(ctx context.Context) (*vectorstore.CollectionInfo, error) {
-	return &vectorstore.CollectionInfo{PointsCount: 0}, nil
+func (m *mockQdrantStore) CollectionInfo(ctx context.Context) (*qdrant.CollectionInfo, error) {
+	return &qdrant.CollectionInfo{PointsCount: 0}, nil
 }
 func (m *mockQdrantStore) Close() error { return nil }
-func (m *mockQdrantStore) HybridSearch(ctx context.Context, req vectorstore.HybridSearchRequest) ([]vectorstore.SearchResult, error) {
+func (m *mockQdrantStore) HybridSearch(ctx context.Context, req qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error) {
 	return m.hybridSearchResults, m.hybridSearchErr
 }
-func (m *mockQdrantStore) IndexHealth(ctx context.Context) (*vectorstore.IndexHealthReport, error) {
-	return &vectorstore.IndexHealthReport{OK: true}, nil
+func (m *mockQdrantStore) IndexHealth(ctx context.Context) (*qdrant.IndexHealthReport, error) {
+	return &qdrant.IndexHealthReport{OK: true}, nil
 }
 func (m *mockQdrantStore) CleanupStalePoints(ctx context.Context, fn func(assetID, driveFileID, driveLink string) (bool, error)) (int, error) {
 	return 0, nil
 }
 
-// DeletePoints satisfies vectorstore.Store (PR3-5b batch-delete). Stub: the
+// DeletePoints satisfies qdrant.Store (PR3-5b batch-delete). Stub: the
 // test scope never asserts on DeletePoints behaviour, only on the build
 // succeeding.
 func (m *mockQdrantStore) DeletePoints(ctx context.Context, assetIDs []string) error {
 	return nil
 }
 
-// ListPointIDs satisfies vectorstore.Store (PR3-5b cross-check sampling).
+// ListPointIDs satisfies qdrant.Store (PR3-5b cross-check sampling).
 // Stub: the test scope never inspects the returned slice.
 func (m *mockQdrantStore) ListPointIDs(ctx context.Context, limit int) ([]string, error) {
 	return nil, nil
 }
 
-// ScrollAssetIDsPage satisfies vectorstore.Store (ghost sweeper, internal/app).
+// ScrollAssetIDsPage satisfies qdrant.Store (ghost sweeper, internal/app).
 // Stub: calls fn with a single empty batch and returns nil.
 func (m *mockQdrantStore) ScrollAssetIDsPage(ctx context.Context, batchSize int, fn func([]string) error) error {
 	if fn != nil {
@@ -165,19 +165,19 @@ func TestSelectClipsForTopic_QdrantOnly(t *testing.T) {
 		"A clip only discoverable via vector search.", `["hidden","semantic"]`))
 
 	// Qdrant mock returns the clip
-	qdrantResults := []vectorstore.SearchResult{
+	qdrantResults := []qdrant.SearchResult{
 		{AssetID: "qdrant-clip", Score: 0.85, Name: "Hidden Gem"},
 	}
 
 	mock := &mockQdrantStore{
 		hybridSearchResults: qdrantResults,
 	}
-	vecCfg := vectorstore.Config{
+	vecCfg := qdrant.Config{
 		URL:              "http://mock:6333",
 		Collection:       "test",
 		SparseVectorName: "bm25_text",
 	}
-	svc := vectorstore.NewService(mock, vecCfg, zap.NewNop())
+	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	builder.SetVectorStore(svc)
@@ -213,7 +213,7 @@ func TestSelectClipsForTopic_MergeWithDedup(t *testing.T) {
 		"The ruins of Pompeii.", "Exploring ruins.", `["archaeology"]`))
 
 	// Qdrant also returns pompeii-1 (overlap) and a unique clip
-	qdrantResults := []vectorstore.SearchResult{
+	qdrantResults := []qdrant.SearchResult{
 		{AssetID: "pompeii-1", Score: 0.92},
 		{AssetID: "qdrant-only-clip", Score: 0.88},
 	}
@@ -224,8 +224,8 @@ func TestSelectClipsForTopic_MergeWithDedup(t *testing.T) {
 		"Found only by Qdrant.", `["secret"]`))
 
 	mock := &mockQdrantStore{hybridSearchResults: qdrantResults}
-	vecCfg := vectorstore.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
-	svc := vectorstore.NewService(mock, vecCfg, zap.NewNop())
+	vecCfg := qdrant.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
+	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	builder.SetVectorStore(svc)
@@ -276,14 +276,14 @@ func TestSelectClipsForTopic_MergeQdrantAddsNewClips(t *testing.T) {
 		"A recent discovery in Pompeii.",
 		"New findings.", `["discovery"]`))
 
-	qdrantResults := []vectorstore.SearchResult{
+	qdrantResults := []qdrant.SearchResult{
 		{AssetID: "like-only", Score: 0.85},
 		{AssetID: "qdrant-new", Score: 0.78},
 	}
 
 	mock := &mockQdrantStore{hybridSearchResults: qdrantResults}
-	vecCfg := vectorstore.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
-	svc := vectorstore.NewService(mock, vecCfg, zap.NewNop())
+	vecCfg := qdrant.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
+	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	builder.SetVectorStore(svc)
@@ -321,13 +321,13 @@ func TestSelectClipsForTopic_LIKEFailsQdrantFallback(t *testing.T) {
 	insertTestClipFrom(t, repo, makeClip("q-clip", "Qdrant Result",
 		"This clip is found by Qdrant.", "Qdrant fallback.", `[]`))
 
-	qdrantResults := []vectorstore.SearchResult{
+	qdrantResults := []qdrant.SearchResult{
 		{AssetID: "q-clip", Score: 0.75},
 	}
 
 	mock := &mockQdrantStore{hybridSearchResults: qdrantResults}
-	vecCfg := vectorstore.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
-	svc := vectorstore.NewService(mock, vecCfg, zap.NewNop())
+	vecCfg := qdrant.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
+	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	builder.SetVectorStore(svc)
@@ -362,8 +362,8 @@ func TestSelectClipsForTopic_QdrantFailsLIKEOnly(t *testing.T) {
 		hybridSearchResults: nil,
 		hybridSearchErr:     context.DeadlineExceeded,
 	}
-	vecCfg := vectorstore.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
-	svc := vectorstore.NewService(mock, vecCfg, zap.NewNop())
+	vecCfg := qdrant.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
+	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 	builder.SetVectorStore(svc)
 
 	clipIDs, report, err := builder.SelectClipsForTopic(ctx, "Pompeii", 10)
@@ -533,14 +533,14 @@ func TestSelectClipsForTopic_DedupWithQdrantAndLIKE(t *testing.T) {
 		"Various videos about Pompeii.", "Videos.", `["pompeii"]`))
 
 	// Qdrant also returns dup-1 (overlap) and dup-2 (overlap) — both already in LIKE
-	qdrantResults := []vectorstore.SearchResult{
+	qdrantResults := []qdrant.SearchResult{
 		{AssetID: "dup-1", Score: 0.90},
 		{AssetID: "dup-2", Score: 0.85},
 	}
 
 	mock := &mockQdrantStore{hybridSearchResults: qdrantResults}
-	vecCfg := vectorstore.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
-	svc := vectorstore.NewService(mock, vecCfg, zap.NewNop())
+	vecCfg := qdrant.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
+	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	builder.SetVectorStore(svc)
@@ -571,14 +571,14 @@ func TestSelectClipsForTopic_QdrantGetClipNotFound(t *testing.T) {
 		"This clip exists in DB.", "Exists.", `[]`))
 
 	// Qdrant returns one clip that exists and one that doesn't
-	qdrantResults := []vectorstore.SearchResult{
+	qdrantResults := []qdrant.SearchResult{
 		{AssetID: "exists", Score: 0.90},
 		{AssetID: "does-not-exist", Score: 0.80},
 	}
 
 	mock := &mockQdrantStore{hybridSearchResults: qdrantResults}
-	vecCfg := vectorstore.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
-	svc := vectorstore.NewService(mock, vecCfg, zap.NewNop())
+	vecCfg := qdrant.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
+	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	builder.SetVectorStore(svc)
@@ -656,10 +656,10 @@ func TestToSearchSummary_FiltersNoTranscript(t *testing.T) {
 	}
 }
 
-func (m *mockQdrantStore) OperationCollectionInfo(ctx context.Context) (*vectorstore.CollectionInfo, error) {
-	return &vectorstore.CollectionInfo{PointsCount: 0}, nil
+func (m *mockQdrantStore) OperationCollectionInfo(ctx context.Context) (*qdrant.CollectionInfo, error) {
+	return &qdrant.CollectionInfo{PointsCount: 0}, nil
 }
 
-func (m *mockQdrantStore) PhysicalCollectionInfo(ctx context.Context) (*vectorstore.CollectionInfo, error) {
-	return &vectorstore.CollectionInfo{PointsCount: 0}, nil
+func (m *mockQdrantStore) PhysicalCollectionInfo(ctx context.Context) (*qdrant.CollectionInfo, error) {
+	return &qdrant.CollectionInfo{PointsCount: 0}, nil
 }

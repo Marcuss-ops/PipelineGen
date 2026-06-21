@@ -11,7 +11,10 @@
 // they belong in youtube/ports/ports.go.
 package youtube
 
-import ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+import (
+	metadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+)
 
 // DTOs — canonical definitions in youtube/ports/ports.go
 type DownloaderMetadata = ports.DownloaderMetadata
@@ -39,3 +42,7 @@ type ClipFilesPort = ports.ClipFilesPort
 type HashServicePort = ports.HashServicePort
 type TempFileManagerPort = ports.TempFileManagerPort
 type YouTubeCacheStorePort = ports.YouTubeCacheStorePort
+
+// ClipMetadataFile is a zero-copy alias to the canonical type in youtube/metadata/.
+// Extracted during PR4 Phase 1 (June 2026).
+type ClipMetadataFile = metadata.ClipMetadataFile

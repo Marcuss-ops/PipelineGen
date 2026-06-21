@@ -2,7 +2,6 @@ package files
 
 import (
 	"testing"
-	"time"
 )
 
 func TestSafeFolderName(t *testing.T) {
@@ -45,26 +44,6 @@ func TestExtractStyleFromPath(t *testing.T) {
 			got := ExtractStyleFromPath(tt.path)
 			if got != tt.expected {
 				t.Errorf("ExtractStyleFromPath(%q) = %q, want %q", tt.path, got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestBuildTimestampedSlug(t *testing.T) {
-	fixedTime := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC)
-	tests := []struct {
-		name     string
-		expected string
-	}{
-		{"My Script", "20240615_103000_my-script"},
-		{"", "20240615_103000_generated-script"},
-		{"C# & .NET", "20240615_103000_c-net"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := BuildTimestampedSlug(tt.name, fixedTime)
-			if got != tt.expected {
-				t.Errorf("BuildTimestampedSlug(%q, %v) = %q, want %q", tt.name, fixedTime, got, tt.expected)
 			}
 		})
 	}

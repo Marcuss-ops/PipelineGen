@@ -3,16 +3,16 @@ package clipresolver
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
-// VectorStoreAdapter wraps a vectorstore.Service to implement VectorStoreSearcher.
+// VectorStoreAdapter wraps a qdrant.Service to implement VectorStoreSearcher.
 type VectorStoreAdapter struct {
-	svc *vectorstore.Service
+	svc *qdrant.Service
 }
 
-// NewVectorStoreAdapter creates an adapter from vectorstore.Service to VectorStoreSearcher.
-func NewVectorStoreAdapter(svc *vectorstore.Service) *VectorStoreAdapter {
+// NewVectorStoreAdapter creates an adapter from qdrant.Service to VectorStoreSearcher.
+func NewVectorStoreAdapter(svc *qdrant.Service) *VectorStoreAdapter {
 	return &VectorStoreAdapter{svc: svc}
 }
 
@@ -22,7 +22,7 @@ func (a *VectorStoreAdapter) Search(ctx context.Context, req SearchRequest) ([]S
 		return nil, nil
 	}
 
-	results, err := a.svc.Search(ctx, vectorstore.SearchRequest{
+	results, err := a.svc.Search(ctx, qdrant.SearchRequest{
 		QueryVector: req.QueryVector,
 		VectorName:  req.VectorName,
 		Limit:       req.Limit,

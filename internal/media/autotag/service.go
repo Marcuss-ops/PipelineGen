@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 )
 
 type Service struct {
@@ -154,10 +155,10 @@ func (s *Service) TagAsset(ctx context.Context, a *asset.Asset) error {
 		return fmt.Errorf("repo upsert: %w", err)
 	}
 
-	// 5. Trigger Qdrant Re-index
+	// 5. Trigger Qdrant Re-index (post-write: must survive caller context cancellation)
 	if s.vectorStore != nil {
 		go func() {
-			indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			indexCtx, cancel := contextutil.PostWriteContext(ctx, s.log, "vector reindex", 2*time.Minute)
 			defer cancel()
 			if err := s.vectorStore.UpsertFromClip(indexCtx, a.ID); err != nil {
 				s.log.Error("failed to trigger vector re-indexing for tagged asset", zap.String("id", a.ID), zap.Error(err))

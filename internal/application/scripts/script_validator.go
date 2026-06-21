@@ -2,10 +2,10 @@ package scripts
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -59,17 +59,6 @@ type ScriptValidationResult struct {
 
 // ── Markers ─────────────────────────────────────────────────────────────
 
-// clipMarkerRe matches `[Clip: <id>]` at the start of a line.
-// The capture group is `.*?` (zero or more) so that whitespace-only IDs
-// like `[Clip:   ]` are matched; the structural check then flags them
-// as empty clip IDs. The previous `+?` (one or more) silently skipped
-// such markers, hiding real failures.
-var clipMarkerRe = regexp.MustCompile(`(?m)^\[Clip:\s*(.*?)\s*\]\s*$`)
-
-// narrationMarkerRe matches `[Narration: <role>]` where role is one of
-// the known narration scene kinds (opening, closing, transition, etc.).
-var narrationMarkerRe = regexp.MustCompile(`(?m)^\[Narration:\s*([a-z_]+)\s*\]\s*$`)
-
 // validNarrationRoles are the only allowed values inside [Narration: ...].
 // Keep this list small and explicit to prevent LLM drift.
 var validNarrationRoles = map[string]bool{
@@ -121,11 +110,11 @@ func ParseScenes(script string) []ParsedScene {
 	var hits []markerHit
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if m := clipMarkerRe.FindStringSubmatch(trimmed); m != nil {
+		if m := textutil.ClipMarkerRe.FindStringSubmatch(trimmed); m != nil {
 			hits = append(hits, markerHit{lineIdx: i, marker: trimmed, kind: "clip", clipID: m[1]})
 			continue
 		}
-		if m := narrationMarkerRe.FindStringSubmatch(trimmed); m != nil {
+		if m := textutil.NarrationMarkerRe.FindStringSubmatch(trimmed); m != nil {
 			hits = append(hits, markerHit{lineIdx: i, marker: trimmed, kind: "narration", role: m[1]})
 		}
 	}

@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // ── Catalog types ──────────────────────────────────────────────────────
@@ -331,7 +331,7 @@ func (b *ClipSourceBuilder) searchViaQdrant(ctx context.Context, topic string) (
 	// a BM25 sparse vector from the text for token-level matching.
 	// This catches clips the LIKE search misses: different wording,
 	// synonyms, or languages.
-	results, err := b.vectorSvc.HybridSearch(ctx, vectorstore.HybridSearchRequest{
+	results, err := b.vectorSvc.HybridSearch(ctx, qdrant.HybridSearchRequest{
 		QueryText: topic,
 		Limit:     30, // Fetch more than needed for dedup with LIKE
 		MinScore:  0.1,

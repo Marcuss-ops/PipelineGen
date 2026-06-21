@@ -23,6 +23,8 @@ type Config struct {
 	PythonBin             string `yaml:"python_bin"`
 	DBPath                string `yaml:"db_path"`
 	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist"`
+	// MaxConcurrentIndexing limits parallel Python subprocesses for clip indexing.
+	MaxConcurrentIndexing int `yaml:"max_concurrent_indexing"`
 }
 
 // DefaultConfig returns default clipindexer config
@@ -33,11 +35,9 @@ func DefaultConfig() *Config {
 		ScriptPath:            "scripts/bridges/index_clips.py",
 		PythonBin:             "python3",
 		AutoIndexAfterArtlist: true,
+		MaxConcurrentIndexing: 10,
 	}
 }
-
-// Global semaphore to restrict python indexing processes to at most 2 system-wide
-var globalScriptSem = make(chan struct{}, 2)
 
 // Service provides clip indexing functionality
 type Service struct {
@@ -47,6 +47,9 @@ type Service struct {
 	log         *zap.Logger
 	scriptPath  string
 	vectorStore VectorStoreIndexer
+
+	// Semaphore for concurrent Python indexing subprocesses, configured via Config.
+	scriptSem chan struct{}
 }
 
 // NewService constructs a clip indexer bound to a database path and script directory.
@@ -54,12 +57,17 @@ func NewService(cfg *Config, db *sql.DB, dbPath string, log *zap.Logger) *Servic
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
+	maxIndexing := cfg.MaxConcurrentIndexing
+	if maxIndexing <= 0 {
+		maxIndexing = 1
+	}
 	return &Service{
 		db:         db,
 		dbPath:     dbPath,
 		cfg:        cfg,
 		log:        log,
 		scriptPath: cfg.ScriptPath,
+		scriptSem:  make(chan struct{}, maxIndexing),
 	}
 }
 

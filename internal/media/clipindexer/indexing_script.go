@@ -16,8 +16,8 @@ import (
 // kinds in subprocess space.
 func (s *Service) indexViaScript(ctx context.Context, clipID string) error {
 	select {
-	case globalScriptSem <- struct{}{}:
-		defer func() { <-globalScriptSem }()
+	case s.scriptSem <- struct{}{}:
+		defer func() { <-s.scriptSem }()
 	case <-ctx.Done():
 		return ctx.Err()
 	}

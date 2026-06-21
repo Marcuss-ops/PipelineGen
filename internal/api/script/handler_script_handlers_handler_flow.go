@@ -50,6 +50,9 @@ type ScriptFlowHandler struct {
 	cfg                *config.Config
 	log                *zap.Logger
 	metadataModel      string
+
+	// Semaphore for concurrent script generation, configured via ConcurrencyConfig.
+	scriptGenSem chan struct{}
 }
 
 // AutoHarvestService abstracts the clip harvest functionality.
@@ -145,6 +148,11 @@ func NewScriptFlowHandler(
 		log.Info("ScriptFlowHandler groups_resolver disabled: assetTreeSvc nil (topic-by-DB routing disabled)")
 	}
 
+	maxScriptGen := cfg.Concurrency.MaxConcurrentScriptGenerations
+	if maxScriptGen <= 0 {
+		maxScriptGen = 1
+	}
+
 	h := &ScriptFlowHandler{
 		generator:          gen,
 		engine:             engine,
@@ -171,6 +179,7 @@ func NewScriptFlowHandler(
 		log:                log,
 		metadataModel:      metaModel,
 		clipServices:       clipSvc,
+		scriptGenSem:       make(chan struct{}, maxScriptGen),
 		insightBuilder: &ScriptInsightBuilder{
 			Logger:      log,
 			MaxEntities: maxEntities,

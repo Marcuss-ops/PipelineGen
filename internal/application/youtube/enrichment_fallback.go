@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -34,9 +35,9 @@ func (s *Service) buildFallbackSearchText(clip *asset.Asset) {
 	// the "transcript" named vector for hybrid search.
 	ytDesc := clip.GetMetadataString("youtube_description")
 	if ytDesc != "" {
-		cleanedDesc := cleanYouTubeDescription(ytDesc)
+		cleanedDesc := tagutil.CleanYouTubeDescription(ytDesc)
 		if cleanedDesc != "" {
-			if phrases := extractKeyPhrases(cleanedDesc, 5); len(phrases) > 0 {
+			if phrases := tagutil.ExtractKeyPhrases(cleanedDesc, 5); len(phrases) > 0 {
 				parts = append(parts, "Description keywords: "+strings.Join(phrases, ", "))
 			}
 		}

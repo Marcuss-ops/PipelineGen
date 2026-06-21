@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
 	"go.uber.org/zap"
 )
@@ -161,7 +161,7 @@ type ClipGenerationOptions struct {
 type ClipSourceBuilder struct {
 	clipsRepo   *assets.ClipsRepository
 	ollamaCli   *client.Client
-	vectorSvc   *vectorstore.Service
+	vectorSvc   *qdrant.Service
 	rerankerCli *reranker.Client
 	log         *zap.Logger
 }
@@ -176,7 +176,7 @@ func NewClipSourceBuilder(clipsRepo *assets.ClipsRepository, ollamaCli *client.C
 }
 
 // SetVectorStore sets the optional vector store for semantic search.
-func (b *ClipSourceBuilder) SetVectorStore(vs *vectorstore.Service) {
+func (b *ClipSourceBuilder) SetVectorStore(vs *qdrant.Service) {
 	b.vectorSvc = vs
 }
 
