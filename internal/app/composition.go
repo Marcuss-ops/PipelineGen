@@ -80,8 +80,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -696,16 +694,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		ReclaimInterval: cfgReclaim,
 	}
 	eventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, eventsRegistry, log, outboxEventsCfg)
-	concurrent.SafeGo("outbox-events-pool", func() {
-		eventsPool.Start(ctx, 1)
-	})
-	concurrent.SafeGo("outbox-events-shutdown", func() {
-		<-ctx.Done()
-		if err := eventsPool.Stop(15 * time.Second); err != nil {
-			log.Warn("outbox events pool stop returned error", zap.Error(err))
-		}
-	})
-	log.Info("outbox events pool started", zap.Duration("poll_interval", outboxEventsCfg.PollInterval))
+	log.Info("outbox events pool constructed (started in lifecycle.go)", zap.Duration("poll_interval", outboxEventsCfg.PollInterval))
 
 	return &OutboxBundle{
 		Dispatcher:     dispatcher,
