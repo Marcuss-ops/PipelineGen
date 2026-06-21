@@ -1,4 +1,10 @@
-# `internal/core/` — Pending Migration
+# `internal/core/` — ✅ COMPLETED (PR4)
+
+**Status**: Directory eliminated June 2026. Contracts moved to `internal/domain/asset/`, services to `internal/application/assets/`.
+
+---
+
+## Original plan
 
 ## Status
 

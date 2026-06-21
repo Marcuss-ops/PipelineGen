@@ -1,4 +1,10 @@
-# `internal/assets/` — Pending Migration
+# `internal/assets/` — ✅ COMPLETED (Pre-wave-7)
+
+**Status**: Directory eliminated. Content absorbed into `internal/domain/asset/`.
+
+---
+
+## Original plan
 
 ## Status
 
