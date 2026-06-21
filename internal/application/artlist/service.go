@@ -5,7 +5,6 @@ import (
 	"database/sql"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -15,42 +14,51 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
-// ServicePorts collects the three canonical ports PR2.1-PR2.5 lifted out
-// of the legacy concrete dependencies. Sized at 3 fields — well under the
-// AGENTS.md 10-per-bundle cap.
+// ServicePorts collects the four canonical ports PR2.1-PR2.7 lifted out
+// of the legacy concrete dependencies. Sized at 4 fields — well under
+// the AGENTS.md 10-per-bundle cap.
 //
 // The composition root in module_artlist.go builds the SemanticEnricher
 // first (so its dispatcher hookup is captured at creation) and wires it
 // here as MetadataWriter. AssetStore is satisfied by *assets.ClipsRepository;
 // Indexer is satisfied by *clipindexer.Service directly (the port declares
-// IndexClip + IsEnabled which both implementations provide).
+// IndexClip + IsEnabled which both implementations provide);
+// DriveFolderManager (PR2.7) is satisfied by *drive.DriveFolderManagerAdapter
+// which wraps *driveapi.Service so callers never see SDK types.
 type ServicePorts struct {
 	AssetStore     AssetStore
 	Indexer        Indexer
 	MetadataWriter MetadataWriter
+	// DriveFolderManager is the wide Drive port (PR2.7). Replaces
+	// the raw *driveapi.Service concrete that previously lived in
+	// ServiceDependencies as "DriveClient". Hides the SDK from
+	// callers (semantic_enricher, destination_service) so the
+	// application layer no longer reaches through a concrete to
+	// call Files.List/Trash/Download/Create.
+	DriveFolderManager DriveFolderManager
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
-// not yet portified: tracker/Oracle scopes raw SDK plus concrete domain
-// services that pre-date the ports effort. Sized at 12 fields — slightly
-// above AGENTS.md's 10-per-bundle cap. The directive accepts this
-// because DriveClient + Dispatcher are concrete integration points with
-// their own surface discussions (PR2.7 will move DriveClient to a
-// dedicated DriveFolderManager port; Dispatcher stays because it is the
-// canonical media_index_outbox dispatcher and any portification would
-// just rename it).
+// not yet portified: tracker/Oracle scopes concrete domain services
+// that pre-date the ports effort. Sized at 11 fields — slightly above
+// AGENTS.md's 10-per-bundle cap. The PR2.7 directive accepts this
+// because Dispatcher is the only remaining concrete integration point
+// (the media_index_outbox dispatcher) and any portification would
+// just rename it; PR2.7 retired DriveClient, the previous concrete
+// transport integration point, by lifting it into ServicePorts as
+// DriveFolderManager.
 //
-// Cfg, MainDB, Log are pure data. Dispatcher, DriveClient are transport
-// integration points. MediaProcessor, LifecycleService, AssetDestResolver,
-// JobsSvc are cross-cutting domain services that already implement
-// interfaces in internal/core but whose concrete instances the application
-// holds directly. AssetProcRepo / AssetVerRepo / AssetLocRepo are the
+// Cfg, MainDB, Log are pure data. Dispatcher is a transport integration
+// point. MediaProcessor, LifecycleService, AssetDestResolver, JobsSvc
+// are cross-cutting domain services that already implement interfaces
+// in internal/core but whose concrete instances the application holds
+// directly. AssetProcRepo / AssetVerRepo / AssetLocRepo are the
 // canonical asset-lifecycle repositories from internal/domain/asset.
 //
 // ArtlistDB was removed (PR2.6): after the media.db.sqlite unification,
 // MainDB is the only DB handle in the system.
 //
-// PR2.5+PR2.6 notes:
+// PR2.5+PR2.6+PR2.7 notes:
 //   - No setters; all dependencies are constructor arguments.
 //   - Field promotion makes the embedded-syntax construction
 //     `ServiceDeps{AssetStore: ..., Cfg: ..., MainDB: ...}` work without
@@ -61,7 +69,6 @@ type ServiceDependencies struct {
 	MainDB            *sql.DB
 	Log               *zap.Logger
 	Dispatcher        *outbox.Dispatcher
-	DriveClient       *driveapi.Service
 	MediaProcessor    asset.Processor
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
@@ -135,14 +142,14 @@ type Service struct {
 	// pair (see dispatch_bridge.go). Wired via ServiceDeps.Dispatcher.
 	dispatcher *outbox.Dispatcher
 
-	// driveClient is the raw Google Drive SDK service. Concrete
-	// dependency used by DestinationService (to build the
-	// *drive.Uploader wrapper for EnsureFolder calls) and by
-	// SemanticEnricher (for Files.List/TrashFile/DownloadFile/
-	// UploadFile during metadata.json cumulative sync). PR2.7 will
-	// lift the need for the raw SDK into a dedicated
-	// DriveFolderManager port.
-	driveClient *driveapi.Service
+	// driveFolderManager is the canonical DriveFolderManager port
+	// (PR2.7). Replaces the raw *driveapi.Service concrete that
+	// lived here pre-PR2.7. The adapter
+	// (DriveFolderManagerAdapter in internal/infrastructure/drive)
+	// wraps the SDK so callers (semantic_enricher,
+	// destination_service) never see *driveapi types. Wired via
+	// ServiceDeps.ServicePorts.DriveFolderManager.
+	driveFolderManager DriveFolderManager
 
 	// Cross-cutting domain services.
 	mediaProcessor    asset.Processor
@@ -172,7 +179,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		indexer:           deps.Indexer,
 		metadataWriter:    deps.MetadataWriter,
 		dispatcher:        deps.Dispatcher,
-		driveClient:       deps.DriveClient,
+		driveFolderManager: deps.DriveFolderManager,
 		mediaProcessor:    deps.MediaProcessor,
 		lifecycleService:  deps.LifecycleService,
 		assetDestResolver: deps.AssetDestResolver,

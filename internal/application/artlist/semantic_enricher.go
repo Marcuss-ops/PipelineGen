@@ -15,7 +15,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -35,12 +34,16 @@ var enrichMetaMu sync.Mutex
 // construction time so Enrich() can atomically combine UpsertClip +
 // indexed-Qdrant in a single transaction. Indexer is the canonical
 // port (was *clipindexer.Service concrete); nil-fallback path remains.
+// PR2.7: driveUploader (*drive.Uploader concrete) is replaced by
+// driveManager (DriveFolderManager port). The port hides the SDK so
+// updateCumulativeMetadataJSON can no longer reach through the
+// concrete to call raw Files.List/Trash/Download/Create methods.
 type SemanticEnricher struct {
-	repo          AssetStore
-	indexer       Indexer
-	metaWriter    *semantic.MetadataWriter
-	driveUploader *drive.Uploader
-	log           *zap.Logger
+	repo         AssetStore
+	indexer      Indexer
+	metaWriter   *semantic.MetadataWriter
+	driveManager DriveFolderManager
+	log          *zap.Logger
 	// dispatcher is the canonical media_index_outbox dispatcher used by
 	// Enrich() to combine UpsertClip + indexed-Qdrant in a single tx.
 	// When nil, falls back to the legacy indexer path. PR2.5: this is
@@ -59,21 +62,24 @@ type SemanticEnricher struct {
 // Indexer is the canonical port (PR2.5 wiring: bundle.ClipIndexerService
 // satisfies it directly because *clipindexer.Service has IndexClip +
 // IsEnabled matching the port).
+// PR2.7: driveUploader param replaced by driveManager
+// (DriveFolderManager port). Pass nil for tests; production wiring
+// always passes the adapter constructed in module_artlist.go.
 func NewSemanticEnricher(
 	repo AssetStore,
 	indexer Indexer,
 	metaWriter *semantic.MetadataWriter,
-	driveUploader *drive.Uploader,
+	driveManager DriveFolderManager,
 	dispatcher *outbox.Dispatcher,
 	log *zap.Logger,
 ) *SemanticEnricher {
 	return &SemanticEnricher{
-		repo:          repo,
-		indexer:       indexer,
-		metaWriter:    metaWriter,
-		driveUploader: driveUploader,
-		dispatcher:    dispatcher,
-		log:           log,
+		repo:         repo,
+		indexer:      indexer,
+		metaWriter:   metaWriter,
+		driveManager: driveManager,
+		dispatcher:   dispatcher,
+		log:          log,
 	}
 }
 
@@ -273,7 +279,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 		if folderID == "" {
 			folderID = existing.ParentFolderID()
 		}
-		if e.driveUploader != nil && folderID != "" {
+		if e.driveManager != nil && folderID != "" {
 			e.updateCumulativeMetadataJSON(ctx, folderID, existing.ID, metaData)
 		}
 		enrichMetaMu.Unlock()
@@ -305,22 +311,28 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 	return nil
 }
 
-// updateCumulativeMetadataJSON maintains a single metadata.json per folder on Google Drive.
+// updateCumulativeMetadataJSON maintains a single metadata.json per
+// folder on Google Drive. PR2.7: this function no longer reaches
+// through to raw Drive SDK calls. All 4 operations (List, Download,
+// Trash, Upload) go through the DriveFolderManager port so the
+// application layer stays decoupled from google.golang.org/api/drive/v3.
+// Nil-tolerance: callers (test fixtures) can pass nil for driveManager
+// to opt out of Drive sync entirely.
 func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, folderID, clipID string, newEntry map[string]any) {
 	const metaFilename = "metadata.json"
 
-	if e.driveUploader == nil || e.driveUploader.Service == nil {
+	if e.driveManager == nil {
 		return
 	}
 
 	var existing []map[string]any
 	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
-	list, err := e.driveUploader.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	files, err := e.driveManager.ListByQuery(ctx, query)
 	if err != nil {
 		e.log.Warn("failed to list metadata.json", zap.Error(err))
-	} else if len(list.Files) > 0 {
-		existingFileID := list.Files[0].Id
-		body, _, dlErr := e.driveUploader.DownloadFile(ctx, existingFileID)
+	} else if len(files) > 0 {
+		existingFileID := files[0].ID
+		body, _, dlErr := e.driveManager.Download(ctx, existingFileID)
 		if dlErr == nil && body != nil {
 			defer body.Close()
 			var raw []map[string]any
@@ -328,8 +340,8 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 				existing = raw
 			}
 		}
-		if err := e.driveUploader.TrashFile(ctx, existingFileID); err != nil {
-			e.log.Warn("failed to trash old metadata.json", zap.Error(err))
+		if trashErr := e.driveManager.Trash(ctx, existingFileID); trashErr != nil {
+			e.log.Warn("failed to trash old metadata.json", zap.Error(trashErr))
 		}
 	}
 
@@ -357,7 +369,7 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 	}
 	defer os.Remove(metaTempPath)
 
-	if _, err := e.driveUploader.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
+	if _, err := e.driveManager.Upload(ctx, metaTempPath, folderID, metaFilename); err != nil {
 		e.log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
 	} else {
 		e.log.Info("uploaded cumulative metadata.json to Drive (enriched)", zap.Int("entries", len(existing)))

@@ -6,7 +6,6 @@ import (
 	"path"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -16,22 +15,37 @@ type DestinationInfo struct {
 	FolderPath string
 }
 
-// DestinationService risolve le destinazioni Drive per i clip
+// DestinationService risolve le destinazioni Drive per i clip.
+//
+// PR2.7: drive is the canonical DriveFolderManager port (was
+// *drive.Uploader concrete). Pre-PR2.7 this service built a narrow
+// *drive.Uploader{Service: svc.driveClient, Log: svc.log} inline and
+// delegated to drive.EnsureFolderPath. PR2.7 closes the loop: DestinationService
+// receives the same port instance NewService wires via ServiceDeps
+// (built once in module_artlist.go::WireArtlist from bundle.DriveClient),
+// and calls EnsureFolder directly.
+//
+// Folding this service onto the port completes the directive
+// "inietta porte invece di concrezioni" for artlist: the only remaining
+// raw-SDK reach-through in the artlist package was this struct +
+// drive.EnsureFolderPath. Both are gone post-PR2.7.
 type DestinationService struct {
-	uploader *drive.Uploader
-	cfg      *config.Config
+	driveManager DriveFolderManager
+	cfg          *config.Config
 }
 
 // NewDestinationService crea un nuovo servizio di destinazione.
 //
-// PR2.5: reads s.driveClient (raw Google Drive SDK) — was s.driveSvc,
-// renamed in line with the rest of the service's port refactor.
+// PR2.7: reads s.driveFolderManager (port) instead of constructing a
+// *drive.Uploader concrete from s.driveClient. The port is wired at the
+// composition root (module_artlist.go::WireArtlist builds the adapter
+// from bundle.DriveClient once) and threaded into ServiceDeps.
+// ServicePorts.DriveFolderManager. When the port is nil (test fixtures
+// without Drive), ResolveDestination returns the requested folder path
+// without making any Drive calls — same nil-tolerance behaviour callers
+// already depended on.
 func NewDestinationService(svc *Service) *DestinationService {
-	var uploader *drive.Uploader
-	if svc.driveClient != nil {
-		uploader = &drive.Uploader{Service: svc.driveClient, Log: svc.log}
-	}
-	return &DestinationService{uploader: uploader, cfg: svc.cfg}
+	return &DestinationService{driveManager: svc.driveFolderManager, cfg: svc.cfg}
 }
 
 // ResolveDestination risolve la cartella Drive per un termine
@@ -47,7 +61,7 @@ func (d *DestinationService) ResolveDestination(ctx context.Context, term, rootF
 	folderName := textutil.SafeName(term)
 	folderPath := path.Join("/Artlist", folderName)
 
-	if d.uploader == nil {
+	if d.driveManager == nil {
 		return &DestinationInfo{
 			FolderID:   rootFolderID,
 			FolderPath: folderPath,
@@ -61,7 +75,11 @@ func (d *DestinationService) ResolveDestination(ctx context.Context, term, rootF
 		segments = append([]string{"Artlist"}, segments...)
 	}
 
-	folderID, err := drive.EnsureFolderPath(ctx, d.uploader, rootFolderID, segments...)
+	// PR2.7: call the port's EnsureFolder directly (was drive.EnsureFolderPath).
+	// textutil.SafeName sanitises the term so it matches the canonical name
+	// DriveFolderManagerAdapter.findOrCreateFolder uses (exact name match —
+	// the legacy *drive.Uploader.GetOrCreateFolder fuzzy fallback is gone).
+	folderID, err := d.driveManager.EnsureFolder(ctx, rootFolderID, segments...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure folder path: %w", err)
 	}

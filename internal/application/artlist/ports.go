@@ -19,8 +19,10 @@ package artlist
 import (
 	"context"
 	"errors"
+	"io"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // Sentinel errors that ports must return. Implementations map transport
@@ -136,8 +138,91 @@ type AssetStore interface {
 // Uploader uploads a local file to a destination folder. The application
 // decides *where* to upload (which Drive folder); infrastructure owns the
 // Drive SDK.
+//
+// PR2.7 cross-reference: the wider DriveFolderManager port (above) also
+// satisfies this interface — *DriveFolderManagerAdapter implements both
+// Uploader (EnsureFolder + Upload) and DriveFolderManager (the full
+// 5-method Drive surface). When a consumer needs only upload/folder
+// ensure (e.g. composition-root bundle assembly), prefer Uploader for
+// the narrower contract. When a consumer needs List/Trash/Download as
+// well (e.g. semantic_enricher metadata.json flow, destination_service
+// folder resolution with pre-existence checks), prefer
+// DriveFolderManager. Kept as separate interfaces to avoid forcing
+// callers to stub methods they don't use — the adapter satisfies both,
+// so wiring at the composition root can hand out the wider port and
+// the narrower consumers simply ignore the extra methods. In practice
+// the composition root instantiates one DriveFolderManager and passes
+// it to consumers needing narrower views via a compile-time widening
+// (the adapter satisfies Uploader too).
 type Uploader interface {
 	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
+	Upload(ctx context.Context, localPath, folderID, filename string) (string, error)
+}
+
+// DriveFileRef is the application-level reference to a Drive file.
+// PR2.7 declares it as a Go type alias to the canonical struct in
+// infrastructure/drive (drivepkg.DriveFileRef) so the DriveFolderManager
+// port can return []DriveFileRef without the infrastructure adapter
+// importing the application package. Callers continue to write
+// artlist.DriveFileRef — the alias is transparent; method sets, struct
+// fields, and interface-style return values stay interchangeable.
+//
+// Why an alias and not a parallel struct: a parallel struct would either
+// (a) duplicate the field set and require conversion at every seam
+// (expensive to maintain, easy to drift) or (b) be imported into
+// ports.go anyway (no cycle benefit). The alias keeps a single source of
+// truth (drive.DriveFileRef) while preserving the developer-facing
+// name callers expect. The "Name" field is currently used only by
+// diagnostic logging; semantic_enricher reads .ID — kept broad enough
+// for future callers that need to identify siblings by filename.
+type DriveFileRef = drivepkg.DriveFileRef
+
+// DriveFolderManager is the wide port covering all Drive folder/file
+// operations the application needs. PR2.7 introduced this port to
+// replace (a) the raw *google.golang.org/api/drive/v3 Service previously
+// held in ServiceDeps.DriveClient (a concrete SDK leak) and (b) the
+// narrow *drive.Uploader concrete previously held by SemanticEnricher.
+//
+// Application decides WHAT (which file, which folder); infrastructure
+// owns HOW (the SDK, retries, transport). Domain shape (DriveFileRef +
+// io.ReadCloser) hides the SDK types from callers.
+//
+// All errors must map to the package's sentinel errors (ErrEmpty,
+// ErrUnavailable, ErrTimeout, ErrInvalidResponse) so callers can't leak
+// transport jargon. Where SDK errors don't fit a sentinel cleanly, the
+// wrapped error chain keeps the SDK message accessible via errors.Is/
+// errors.As for diagnostic logging.
+type DriveFolderManager interface {
+	// EnsureFolder creates (or reuses) a folder whose path is
+	// composed from parent + segments. Idempotent: when a folder
+	// already exists at any level of the path, it is reused rather
+	// than creating a duplicate. Returns the resolved folder ID.
+	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
+
+	// ListByQuery returns DriveFileRef entries matching the supplied
+	// raw query string (e.g. "'XYZ' in parents and trashed = false and
+	// name = 'metadata.json'"). Server-side filtering of trashed
+	// entries is the caller's responsibility (include
+	// "and trashed = false" in the query). The domain result shape
+	// avoids leaking *driveapi.File into business logic.
+	ListByQuery(ctx context.Context, query string) ([]DriveFileRef, error)
+
+	// Trash moves a file to Drive's trash. Safer than permanent
+	// deletion — the user can recover. Empty fileID is rejected.
+	Trash(ctx context.Context, fileID string) error
+
+	// Download fetches a file's content as a stream. The caller MUST
+	// close the returned io.ReadCloser. Content-type is returned as a
+	// convenience for callers that branch on MIME (rare; metadata.json
+	// downloads don't need this).
+	Download(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+
+	// Upload uploads a local file to a Drive folder. Returns the
+	// webViewLink of the new/updated file (callers that just want
+	// "did it work" discard it). When a file with the same name
+	// already exists in the folder, the implementation MUST update
+	// in place rather than create a duplicate (matches the legacy
+	// upload-on-conflict behaviour callers depended on).
 	Upload(ctx context.Context, localPath, folderID, filename string) (string, error)
 }
 
