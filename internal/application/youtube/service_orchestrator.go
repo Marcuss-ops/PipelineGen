@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
 // VideoCutRequest contains all parameters for downloading and cutting a video segment.
@@ -193,7 +194,10 @@ func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.Asset, _ stri
 	if clip == nil {
 		return fmt.Errorf("youtube.dispatchOrIndex: nil clip")
 	}
-	if s.assetRepo == nil {
+	// typed-nil guard: portutil.IsNilPort catches (*Concrete)(nil) casts
+	// to interface that pass == nil. Composition audit (June 2026) confirmed
+	// all adapter constructors return bare nil, so this is defensive.
+	if s.assetRepo == nil || portutil.IsNilPort(s.assetRepo) {
 		return fmt.Errorf("youtube: canonical assetRepo not wired — composition root must include AssetRepo in ServiceDeps")
 	}
 	return s.assetRepo.Upsert(ctx, clip)
