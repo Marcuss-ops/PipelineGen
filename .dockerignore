@@ -1,0 +1,17 @@
+.git
+.github
+node-scraper/node_modules
+data
+logs
+tmp
+scratch
+coverage.out
+coverage.html
+*.db
+*.sqlite
+*.sqlite-*
+*.log
+*.bak
+profiles
+sessions
+deliverables
