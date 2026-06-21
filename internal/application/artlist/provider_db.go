@@ -5,32 +5,35 @@ import (
 	"strings"
 )
 
-// DBProvider searches the local database for indexed clips.
-//
-// PR2.5: holds the canonical AssetStore port instead of the concrete
-// *assets.ClipsRepository. The port declares SearchByTerms with the
-// same signature so the Search() body is unchanged.
-type DBProvider struct {
+// DBSearcher searches the local database for indexed clips.
+// It implements Searcher so it can plug directly into SearcherFallbackChain.
+type DBSearcher struct {
 	store AssetStore
 }
 
-// NewDBProvider creates a new DBProvider backed by the canonical
-// AssetStore port. Production wiring passes bundle.ClipsRepo which
-// satisfies AssetStore automatically (its SearchByTerms / SearchClips
-// / CountClips / LastUpdatedAtForTerm / Get / Upsert / UpsertClip /
-// UpdateSearchTerms surface fully covers the port).
-func NewDBProvider(store AssetStore) *DBProvider {
-	return &DBProvider{store: store}
+// NewDBSearcher creates a new DBSearcher.
+func NewDBSearcher(store AssetStore) *DBSearcher {
+	return &DBSearcher{store: store}
 }
 
-func (p *DBProvider) Name() string { return "database" }
-
-func (p *DBProvider) Search(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
-	if p.store == nil {
+func (s *DBSearcher) Search(ctx context.Context, req SearchRequest) ([]Candidate, error) {
+	if s.store == nil {
 		return nil, nil
 	}
+	term := strings.TrimSpace(req.Term)
+	if term == "" {
+		return nil, nil
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
 	keywords := strings.Fields(term)
-	dbClips, err := p.store.SearchByTerms(ctx, "artlist", keywords, limit)
+	dbClips, err := s.store.SearchByTerms(ctx, "artlist", keywords, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -38,16 +41,15 @@ func (p *DBProvider) Search(ctx context.Context, term string, limit int) ([]Scra
 		return nil, nil
 	}
 
-	results := make([]ScraperClip, 0, len(dbClips))
+	candidates := make([]Candidate, 0, len(dbClips))
 	for _, clip := range dbClips {
-		results = append(results, ScraperClip{
-			ClipID:      clip.ID,
-			ID:          clip.ID,
-			Title:       clip.Name,
-			Name:        clip.Name,
-			PrimaryURL:  clip.ExternalURL(),
-			ClipPageURL: clip.GetMetadataString("external_url"),
+		candidates = append(candidates, Candidate{
+			ID:         clip.ID,
+			Title:      clip.Name,
+			SourceRef:  clip.ExternalURL(),
+			PageURL:    clip.GetMetadataString("external_url"),
+			SourceName: "database",
 		})
 	}
-	return results, nil
+	return candidates, nil
 }

@@ -8,18 +8,17 @@ import (
 	"go.uber.org/zap"
 )
 
-// searchLiveWithFallbacks orchestrates the fallback chain:
-//  1. DB search (fast, indexed terms)
-//  2. Cached scraper results (in-memory with background refresh)
-//  3. Pixabay API (free fallback)
-//  4. Pexels API (free fallback)
-func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
+// searchLiveWithFallbacks orchestrates the fallback chain using the
+// Searcher port. Implementations come from infrastructure:
+//   - DB: in-memory indexed terms (fast)
+//   - CachedSearcher: wraps infrastructure/scraper with L1/L2 cache
+//   - Pixabay HTTP (free fallback)
+//   - Pexels HTTP (free fallback)
+func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int) ([]Candidate, error) {
 	normalizedTerm := normalizeSearchTerm(term)
 	if normalizedTerm == "" {
 		return nil, fmt.Errorf("term is required")
 	}
-	// Single-character terms are too short for meaningful search and would be
-	// silently dropped by the LIKE fallback (tokens < 2 chars are skipped).
 	if len(normalizedTerm) < 2 {
 		return nil, fmt.Errorf("term must be at least 2 characters, got %q", normalizedTerm)
 	}
@@ -30,13 +29,12 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 		limit = 50
 	}
 
-	// Build the fallback chain lazily (cheap — no allocations for providers)
-	chain := ss.buildFallbackChain()
+	chain := ss.buildSearcherChain()
 	if chain == nil {
 		return nil, fmt.Errorf("no search providers configured")
 	}
 
-	clips, err := chain.Search(ctx, normalizedTerm, limit)
+	candidates, err := chain.Search(ctx, SearchRequest{Term: normalizedTerm, Limit: limit})
 	if err != nil {
 		ss.service.log.Warn("all search providers failed",
 			zap.String("term", term),
@@ -44,56 +42,49 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 		)
 		return nil, err
 	}
-	if len(clips) == 0 {
+	if len(candidates) == 0 {
 		return nil, fmt.Errorf("no results from any search provider for %q", normalizedTerm)
 	}
-	return clips, nil
+	return candidates, nil
 }
 
-// buildFallbackChain constructs the provider fallback chain from the service configuration.
-func (ss *SearchService) buildFallbackChain() *FallbackChain {
+// buildSearcherChain constructs the Searcher fallback chain from the service
+// configuration. Infrastructure searchers are injected here so the application
+// layer stays decoupled from concrete implementations.
+func (ss *SearchService) buildSearcherChain() *SearcherFallbackChain {
 	s := ss.service
 
-	var providers []SourceProvider
+	var searchers []Searcher
 
-	// Level 1: DB search (fast, indexed). PR2.5: AssetStore port
-	// (was *assets.ClipsRepository concrete). DBProvider.NewDBProvider
-	// signature was extended to take the AssetStore port.
+	// Level 1: DB search (fast, indexed).
 	if s.assetStore != nil {
-		providers = append(providers, NewDBProvider(s.assetStore))
+		searchers = append(searchers, NewDBSearcher(s.assetStore))
 	}
 
-	// Level 2: Cached scraper (in-memory with background refresh)
-	scraperProvider := NewScraperProvider(
-		s.cfg.External.ArtlistScraperServerURL,
-		s.cfg.External.NodeScraperDir,
-		s.log,
-	)
-	ttlHours := 24
-	if s.cfg != nil && s.cfg.External.ArtlistLiveSearchCacheTTLHours > 0 {
-		ttlHours = s.cfg.External.ArtlistLiveSearchCacheTTLHours
-	}
-	cachedScraper := NewCachedScraperProvider(scraperProvider, s.liveCache, ttlHours, s.log)
-	providers = append(providers, cachedScraper)
-
-	// Level 3: Pixabay API (free fallback)
-	if s.cfg != nil && strings.TrimSpace(s.cfg.External.PixabayAPIKey) != "" {
-		providers = append(providers, NewPixabayProvider(
-			s.cfg.External.PixabayAPIKey,
-			s.cfg.External.PixabayBaseURL,
-		))
+	// Level 2: Cached scraper (in-memory with background refresh).
+	// The infrastructure scraper.Provider satisfies Searcher directly.
+	// We wrap it with CachedSearcher for L1 in-memory caching.
+	if s.scraperSearcher != nil {
+		ttlHours := 24
+		if s.cfg != nil && s.cfg.External.ArtlistLiveSearchCacheTTLHours > 0 {
+			ttlHours = s.cfg.External.ArtlistLiveSearchCacheTTLHours
+		}
+		cached := NewCachedSearcher(s.scraperSearcher, s.liveCache, ttlHours, s.log)
+		searchers = append(searchers, cached)
 	}
 
-	// Level 4: Pexels API (free fallback)
-	if s.cfg != nil && strings.TrimSpace(s.cfg.External.PexelsAPIKey) != "" {
-		providers = append(providers, NewPexelsProvider(
-			s.cfg.External.PexelsAPIKey,
-			s.cfg.External.PexelsBaseURL,
-		))
+	// Level 3: Pixabay API (free fallback).
+	if s.pixabaySearcher != nil {
+		searchers = append(searchers, s.pixabaySearcher)
 	}
 
-	if len(providers) == 0 {
+	// Level 4: Pexels API (free fallback).
+	if s.pexelsSearcher != nil {
+		searchers = append(searchers, s.pexelsSearcher)
+	}
+
+	if len(searchers) == 0 {
 		return nil
 	}
-	return NewFallbackChain(providers...)
+	return NewSearcherFallbackChain(searchers...)
 }

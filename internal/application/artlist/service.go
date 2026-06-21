@@ -11,7 +11,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
 // ServicePorts collects the four canonical ports PR2.1-PR2.7 lifted out
@@ -36,6 +35,11 @@ type ServicePorts struct {
 	// application layer no longer reaches through a concrete to
 	// call Files.List/Trash/Download/Create.
 	DriveFolderManager DriveFolderManager
+	// PR2: Searcher implementations injected from infrastructure.
+	// Nil means that level is skipped in the fallback chain.
+	ScraperSearcher Searcher
+	PixabaySearcher Searcher
+	PexelsSearcher  Searcher
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
@@ -68,7 +72,7 @@ type ServiceDependencies struct {
 	Cfg               *config.Config
 	MainDB            *sql.DB
 	Log               *zap.Logger
-	Dispatcher        *outbox.Dispatcher
+	Dispatcher        Dispatcher
 	MediaProcessor    asset.Processor
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
@@ -140,7 +144,7 @@ type Service struct {
 	// Dispatcher is the canonical outbox dispatcher; nil means
 	// dispatchBridge falls back to the legacy UpsertClip + IndexClip
 	// pair (see dispatch_bridge.go). Wired via ServiceDeps.Dispatcher.
-	dispatcher *outbox.Dispatcher
+	dispatcher Dispatcher
 
 	// driveFolderManager is the canonical DriveFolderManager port
 	// (PR2.7). Replaces the raw *driveapi.Service concrete that
@@ -150,6 +154,11 @@ type Service struct {
 	// destination_service) never see *driveapi types. Wired via
 	// ServiceDeps.ServicePorts.DriveFolderManager.
 	driveFolderManager DriveFolderManager
+
+	// PR2: infrastructure Searcher implementations for the fallback chain.
+	scraperSearcher Searcher
+	pixabaySearcher Searcher
+	pexelsSearcher  Searcher
 
 	// Cross-cutting domain services.
 	mediaProcessor    asset.Processor

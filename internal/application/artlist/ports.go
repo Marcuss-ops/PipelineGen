@@ -243,3 +243,15 @@ type MetadataWriter interface {
 	EnrichAsync(ctx context.Context, clip *asset.Asset, term string)
 }
 
+// Dispatcher is the port for the media_index_outbox that atomically
+// combines UpsertClip + IndexClip in a single transaction. PR2.4
+// introduces this port so the application layer does not depend on
+// the concrete *outbox.Dispatcher from infrastructure.
+//
+// When nil, dispatchBridge falls back to the legacy UpsertClip +
+// IndexClip pair (see dispatch_bridge.go). Production wiring always
+// provides a non-nil implementation.
+type Dispatcher interface {
+	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, hash string) error
+}
+
