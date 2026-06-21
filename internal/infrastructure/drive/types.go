@@ -30,3 +30,15 @@ type DriveFileRef struct {
 	ID   string
 	Name string
 }
+
+// Doc is the canonical Google Docs reference returned by DocClient
+// (internal/infrastructure/drive/doc_client.go). It bundles the IDs
+// and human-facing metadata needed by callers (CreateDoc, ListRecentDocs,
+// UpdateDoc) — content is populated only for newly created docs.
+type Doc struct {
+	ID        string
+	Title     string
+	URL       string
+	Content   string
+	CreatedAt string
+}
