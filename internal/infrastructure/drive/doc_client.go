@@ -16,6 +16,25 @@ const (
 	googleDocsBaseURL = "https://docs.google.com/document/d/%s/edit"
 )
 
+// Doc is the canonical cross-package DTO returned by DocClient. Defined
+// locally in package `drive` so application callers (e.g.
+// internal/application/scripts) can consume *Doc / []Doc through the
+// DocClient interface without importing google.golang.org/api/docs/v1.
+//
+// Fields:
+//   - ID        — Drive file ID for the document.
+//   - Title     — document title (configurable on creation/update).
+//   - URL       — human-facing web view URL.
+//   - Content   — last-known content (HTML or plain text) stored at creation.
+//   - CreatedAt — RFC3339 timestamp returned by Drive's createdTime.
+type Doc struct {
+	ID        string
+	Title     string
+	URL       string
+	Content   string
+	CreatedAt string
+}
+
 // DocClient is an interface for Google Docs operations.
 type DocClient interface {
 	CreateDoc(ctx context.Context, title, content, folderID string) (*Doc, error)
