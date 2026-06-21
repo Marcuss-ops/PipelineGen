@@ -1,8 +1,59 @@
 # PR4 — Composition root modulare
 
+> **Prerequisites (June 2026, post-PR4d-final)** — Molti item di PR4 sono
+> gi\u00e0 **completati da Wave 15 PR4d-final**, landed prima di PR #26.
+> Prima di procedere marcare come `[x] (fatto da Wave 15 PR4d-final)` i
+> checkbox gi\u00e0 soddisfatti e lasciare solo i residui.
+>
+> **Gi\u00e0 completati da Wave 15 PR4d-final** (vedi
+> `architecture/migration.yaml` sezione Wave 15 `completed_in_PR4d_final`):
+>
+> - `type services struct` rimosso da `internal/app/dependencies.go`
+> - `type CoreDeps struct` rimosso da `internal/app/bootstrap.go`
+> - Tutti i 9 `Wire<Module>()` migrati a narrow bundle signatures
+> - `WireRegistry(ctx, cfg, log, root *ComposeRoot)` uniforme
+> - `ComposeRoot` con `Ctx context.Context` field
+> - `startJobRunner()` schedulato dopo `Registry.Freeze()`
+>
+> **Residuo effettivo di PR4** (PR4.0..PR4.12 sotto):
+>
+> - PR4.0 — mappatura completa del grafo (non ancora formalizzata)
+> - PR4.1 — alias `appjobs.SQLiteStore` (Wave 5_PR3 deferred a Wave 16)
+> - PR4.2 — refactor `BuildAssetBundle` (oggi inline in `composition.go`)
+> - PR4.3 — refactor `BuildContentBundle` (libri/lezioni oggi shared helpers)
+> - PR4.7 — riorganizzare `Modules` aggregato (oggi \u00e8 `*ComposeRoot`)
+> - PR4.8 — separare bootstrap/lifecycle/shutdown (lifecycle ancora legato
+>   a `*backgroundJobs` closure)
+> - PR4.10 — test di composizione espliciti
+> - PR4.11 — audit budget 8\u201310 dipendenze per builder
+> - PR4.12 — smoke test server con `curl /api/health/deep`
+
 ## Obiettivo
 
 Eliminare il contenitore globale `services`, ridurre `CoreDeps` e costruire moduli capability-owned. `internal/app` deve essere l'unico punto in cui vengono creati adapter concreti.
+
+## Addendum (post code-review, June 2026, commit fd8e3a43+1)
+
+> 5 bullet mancanti dall'elenco sopra, identificati dal code-reviewer del
+> primo batch di modifiche PR0:
+
+**Già fatti da Wave 15 PR4d-final ma non elencati sopra:**
+
+- BREAKING API CHANGE: `app.InitComposition` return tuple è passata da
+  `(*ComposeRoot, CleanupFunc, error)` → `(*ComposeRoot, *backgroundJobs,
+  CleanupFunc, error)`.
+- `WireServices` + `WireMinimal` in `bootstrap.go` sono stati migrati al
+  path `initCompositionMinimal(...) → (ComposeRoot, backgroundJobs,
+  CleanupFunc, error)`.
+
+**Residuo PR4 non elencato sopra:**
+
+- PR4.4 — refactor `BuildImagesBundle` + `BuildVoiceoverBundle` in
+  `modules/{images,voiceover}.go` (oggi helpers in `dependencies.go`).
+- PR4.5 — refactor `BuildScriptsBundle` in `modules/scripts.go` con
+  `SetBatchService` rimosso (oggi partial inline in `composition.go`).
+- PR4.6 — refactor `BuildSystemBundle` in `modules/system.go` con
+  config+doctor+health+metrics isolati (oggi helper condiviso).
 
 Questa PR non cambia il comportamento dei use case e non aggiunge nuove capability.
 

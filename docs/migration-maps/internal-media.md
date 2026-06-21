@@ -72,3 +72,11 @@ inventory + the canonical decision rule.
 ## Owner
 
 Wave-14+ (multi-quarter). Not blocking for Phase A or Phase-B work.
+
+> **PR0 status footer (June 2026, fd8e3a43+/+2)** — Questa mappa elenca
+> 19 sotto-dir di `internal/media/` + `deletion.go` ancora attivi
+> (102 file `.go` totali, conteggio verificato). L'intestazione
+> `✅ COMPLETED` sopra si riferisce solo ai 3 sotto-dir già migrati
+> (`monitor/`, `ingest/`, `mediaasset/`). Il resto è ancora PR1/PR2/PR11+
+> work — vedere Wave 10/11 del `architecture/migration.yaml` e
+> `docs/roadmap/PR{1,2}_*.md`.

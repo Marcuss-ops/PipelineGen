@@ -60,3 +60,10 @@ the migration:
 
 Wave-15. Estimated effort: 1 mechanical PR + 1 small wiring PR +
 1 deletion PR.
+
+> **PR0 status footer (June 2026, fd8e3a43+/+2)** — L'intestazione
+> `✅ COMPLETED` sopra è già coerente con il codice: `internal/upload/`
+> non esiste più, tutti i 14 file sono in `internal/infrastructure/drive/`
+> (vedi Wave 10 sub-migrazione `internal/upload/drive/ →
+> internal/infrastructure/drive/` completata; Wave 10 complessivo è
+> `in_progress` perché storage e Qdrant adapter restano aperti).
