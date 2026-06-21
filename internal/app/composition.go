@@ -612,18 +612,20 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		)
 	}
 
-	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, log)
+	var autotagVectorStore clipindexer.VectorStoreIndexer
 	if process.ClipIndexerService != nil {
-		autotagSvc.SetVectorStore(process.ClipIndexerService.VectorStore())
+		autotagVectorStore = process.ClipIndexerService.VectorStore()
 	}
+	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, autotagVectorStore, log)
 
-	assocService := associationpkg.NewService(cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir,
-		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.CatalogRepo)
 	embedder := embeddings.NewPythonScriptEmbedder("python3", cfg.Paths.PythonScriptsDir)
-	assocService.SetEmbedder(embedder)
+	assocService := associationpkg.NewService(
+		cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir,
+		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.CatalogRepo,
+		process.VectorSvc, embedder,
+	)
 	log.Info("embedding.Embedder injected into association service (infrastructure/embeddings/python)")
 	if process.VectorSvc != nil {
-		assocService.SetVectorStore(process.VectorSvc)
 		log.Info("vector store wired into association service for hybrid search")
 	}
 

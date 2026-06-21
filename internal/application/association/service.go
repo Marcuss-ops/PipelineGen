@@ -37,16 +37,18 @@ type Service struct {
 	embedder asset.Embedder
 }
 
-// SetEmbedder injects the canonical asset.Embedder used by
-// Service.GenerateEmbedding. Called once during composition in
-// internal/app/dependencies.go after NewService; the field is private
-// to keep the post-PR-D.1 contract unchanged for external callers.
-func (s *Service) SetEmbedder(e asset.Embedder) {
-	s.embedder = e
-}
-
 // NewService creates an association service with the default engine and sources.
-func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRepo, clipsRepo *assets.ClipsRepository, catalogRepo *catalog.Repository) *Service {
+//
+// PR4-H (June 2026): the SetVectorStore and SetEmbedder post-construction
+// setters have been removed — both dependencies are now passed as the
+// final 2 ctor args (vectorSvc, embedder).
+func NewService(
+	dataDir, nodeScraperDir, scriptsDir string,
+	stockRepo, artlistRepo, clipsRepo *assets.ClipsRepository,
+	catalogRepo *catalog.Repository,
+	vectorSvc *vectorstore.Service,
+	embedder asset.Embedder,
+) *Service {
 	s := &Service{
 		dataDir:        dataDir,
 		nodeScraperDir: nodeScraperDir,
@@ -55,6 +57,7 @@ func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRe
 		artlistRepo:    artlistRepo,
 		clipsRepo:      clipsRepo,
 		catalogRepo:    catalogRepo,
+		embedder:       embedder,
 	}
 
 	// Create clip search association (Artlist clips only)
@@ -67,6 +70,10 @@ func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRe
 		NewClipDriveAssociation(clipsRepo),
 		s.clipSearch,
 	)
+	// Wire vector store (optional) for Qdrant hybrid search via the engine.
+	if vectorSvc != nil {
+		s.engine.SetVectorStore(vectorSvc)
+	}
 
 	return s
 }
@@ -96,11 +103,6 @@ func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMat
 // when configured, falling back to local ad-hoc linear+semantic fusion.
 func (s *Service) ScoreMedia(ctx context.Context, query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
 	return s.engine.ScoreMedia(ctx, query, queryEmb, candidates)
-}
-
-// SetVectorStore injects the vector store for Qdrant hybrid search into the engine.
-func (s *Service) SetVectorStore(vs *vectorstore.Service) {
-	s.engine.SetVectorStore(vs)
 }
 
 // ResolvePreferredStockMatch returns the best direct stock folder match for the primary focus entity.
