@@ -163,13 +163,7 @@ the Python ReAct agent in the loop and can tolerate the 15-min sync timeout.
 6. ~~**Duplicate architecture docs**~~ ✅ **CONSOLIDATED** — MODULE_MAP.md and MODULE_OWNERSHIP.md deleted. ARCHITECTURE.md is canonical. AGENTS.md now points to it.
 7. ~~**.gitignore leaks**~~ ✅ **FIXED** — Added patterns for root binaries, logs, caches, cookies, `.bak` files.
 8. **Heavy AI-generated codebase**: ~80% of commits from AI agents. Bug diagnosis requires human oversight. Keep test coverage high.
-9. **Obsolete `TestExecuteBatchGeneration_*` tests** (SKIPPED): the partial test
-   fixture bypasses `SetBatchService`'s full producer chain at
-   `internal/app/{dependencies,registry}.go` (cfg + docClient + voiceoverService).
-   Resolution + restore-coverage plan:
-   [`docs/followups/2026-06-api-script-batch-tests-pre-existing.md`](docs/followups/2026-06-api-script-batch-tests-pre-existing.md);
-   on a rebase conflict during restore, see
-   [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
+9. **Batch script tests restored** (June 2026): coverage moved from handler layer to `internal/application/scripts/batch_persistence_test.go` + `doc_creation_test.go` at the BatchService unit level.
 
 ### Drive Token Regeneration
 If Google Drive authentication fails:
