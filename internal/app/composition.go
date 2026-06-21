@@ -533,6 +533,19 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		AssetIndex:  search.AssetIndexService,
 	}, log)
 
+	// voMetaWriter: shared *semantic.MetadataWriter used by initVoiceoverService
+	// for the SemanticTaggerFunc callback (voiceover promo enrichment). In
+	// PR4-H Commit 1 we declare it inline here; Commit 3 will consolidate
+	// initImageService onto this single metaWriter instance, eliminating the
+	// temporary dual-instance currently held by initImageService.
+	voMetaWriter := semantic.NewMetadataWriter(
+		cfg.Paths.PythonScriptsDir,
+		cfg.Storage.TempPath(),
+		cfg.External.OllamaURL,
+		cfg.External.OllamaModel,
+		log,
+	)
+
 	clipProcessor := pkgffmpeg.NewFromConfig(cfg)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
@@ -561,6 +574,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		drive.DriveClient, drive.DriveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
+		voMetaWriter, ai.ScriptGen,
 	)
 
 	booksSvc := initBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
@@ -849,35 +863,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if domains.YoutubeClipService != nil {
 		domains.YoutubeClipService.SetAssetRepos(repos.Assets.ProcessingRepository(), repos.Assets.VersionRepository())
 		log.Debug("asset lifecycle repos wired into youtube service")
-	}
-
-	if domains.VoiceoverService != nil && domains.MetaWriter != nil {
-		domains.VoiceoverService.SetSemanticTagger(func(ctx context.Context, prompt, style, mediaType, generator string) (*voiceover.SemanticTaggerResult, error) {
-			payload, _, err := domains.MetaWriter.GeneratePayload(ctx, semantic.WriteRequest{
-				AssetID:   "",
-				AssetType: "voiceover",
-				MediaType: mediaType,
-				Source:    "voiceover",
-				Generator: generator,
-				Style:     style,
-				Prompt:    prompt,
-			})
-			if err != nil {
-				return nil, err
-			}
-			return &voiceover.SemanticTaggerResult{
-				SearchText: payload.SearchText,
-				Tags:       payload.Tags,
-				Subjects:   payload.Subjects,
-				Mood:       payload.Mood,
-			}, nil
-		})
-	}
-	if domains.VoiceoverService != nil && ai.ScriptGen != nil {
-		domains.VoiceoverService.SetTranslator(func(ctx context.Context, text, targetLanguage string) (string, error) {
-			return ai.ScriptGen.TranslateText(ctx, text, targetLanguage)
-		})
-		log.Info("Ollama translator wired into voiceover service for promo generation")
 	}
 
 	root := &ComposeRoot{
