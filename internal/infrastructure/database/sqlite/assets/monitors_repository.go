@@ -9,6 +9,10 @@ import (
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
+// MonitorsRepository owns the monitored_sources table. The schema
+// (column names + table identity) lives on MonitoredSourceRow; callers
+// exchange domain types via FromMonitoredSourceDomain / row.ToDomain so
+// the domain layer never sees a `db:"..."` tag (PR4.B, June 2026).
 type MonitorsRepository struct {
 	db *sql.DB
 }
@@ -18,12 +22,16 @@ func NewMonitorsRepository(db *sql.DB) *MonitorsRepository {
 }
 
 func (r *MonitorsRepository) UpsertSource(ctx context.Context, source *asset.MonitoredSource) error {
+	if source == nil {
+		return nil
+	}
 	now := timeutil.FormatRFC3339(time.Now())
 	if source.CreatedAt == "" {
 		source.CreatedAt = now
 	}
 	source.UpdatedAt = now
 
+	row := FromMonitoredSourceDomain(source)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO monitored_sources (
 			id, source, external_id, external_url, title, channel_id, channel_url,
@@ -47,15 +55,15 @@ func (r *MonitorsRepository) UpsertSource(ctx context.Context, source *asset.Mon
 			processed_count = EXCLUDED.processed_count,
 			metadata_json = EXCLUDED.metadata_json,
 			updated_at = EXCLUDED.updated_at
-	`, source.ID, source.Source, source.ExternalID, source.ExternalURL, source.Title,
-		source.ChannelID, source.ChannelURL, source.Keyword, source.GroupName, source.Category,
-		source.Status, source.LastSeenAt, source.LastCheckedAt, source.ProcessedCount,
-		source.MetadataJSON, source.CreatedAt, source.UpdatedAt)
+	`, row.ID, row.Source, row.ExternalID, row.ExternalURL, row.Title,
+		row.ChannelID, row.ChannelURL, row.Keyword, row.GroupName, row.Category,
+		row.Status, row.LastSeenAt, row.LastCheckedAt, row.ProcessedCount,
+		row.MetadataJSON, row.CreatedAt, row.UpdatedAt)
 	return err
 }
 
 func (r *MonitorsRepository) GetByExternalURL(ctx context.Context, sourceType, externalURL string) (*asset.MonitoredSource, error) {
-	var s asset.MonitoredSource
+	var row MonitoredSourceRow
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, source, external_id, external_url, title, channel_id, channel_url,
 			keyword, group_name, category, status, last_seen_at, last_checked_at,
@@ -63,15 +71,18 @@ func (r *MonitorsRepository) GetByExternalURL(ctx context.Context, sourceType, e
 		FROM monitored_sources
 		WHERE source = ? AND external_url = ?
 	`, sourceType, externalURL).Scan(
-		&s.ID, &s.Source, &s.ExternalID, &s.ExternalURL, &s.Title,
-		&s.ChannelID, &s.ChannelURL, &s.Keyword, &s.GroupName, &s.Category,
-		&s.Status, &s.LastSeenAt, &s.LastCheckedAt, &s.ProcessedCount,
-		&s.MetadataJSON, &s.CreatedAt, &s.UpdatedAt,
+		&row.ID, &row.Source, &row.ExternalID, &row.ExternalURL, &row.Title,
+		&row.ChannelID, &row.ChannelURL, &row.Keyword, &row.GroupName, &row.Category,
+		&row.Status, &row.LastSeenAt, &row.LastCheckedAt, &row.ProcessedCount,
+		&row.MetadataJSON, &row.CreatedAt, &row.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return &s, err
+	if err != nil {
+		return nil, err
+	}
+	return row.ToDomain(), nil
 }
 
 func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, limit int) ([]*asset.MonitoredSource, error) {
@@ -89,21 +100,23 @@ func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, lim
 	}
 	defer rows.Close()
 
-	var sources []*asset.MonitoredSource
+	var gathered []MonitoredSourceRow
 	for rows.Next() {
-		var s asset.MonitoredSource
-		err := rows.Scan(
-			&s.ID, &s.Source, &s.ExternalID, &s.ExternalURL, &s.Title,
-			&s.ChannelID, &s.ChannelURL, &s.Keyword, &s.GroupName, &s.Category,
-			&s.Status, &s.LastSeenAt, &s.LastCheckedAt, &s.ProcessedCount,
-			&s.MetadataJSON, &s.CreatedAt, &s.UpdatedAt,
-		)
-		if err != nil {
+		var row MonitoredSourceRow
+		if err := rows.Scan(
+			&row.ID, &row.Source, &row.ExternalID, &row.ExternalURL, &row.Title,
+			&row.ChannelID, &row.ChannelURL, &row.Keyword, &row.GroupName, &row.Category,
+			&row.Status, &row.LastSeenAt, &row.LastCheckedAt, &row.ProcessedCount,
+			&row.MetadataJSON, &row.CreatedAt, &row.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
-		sources = append(sources, &s)
+		gathered = append(gathered, row)
 	}
-	return sources, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return gathered.ToDomainList(), nil
 }
 
 func (r *MonitorsRepository) MarkChecked(ctx context.Context, id string) error {

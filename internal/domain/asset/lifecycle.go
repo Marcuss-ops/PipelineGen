@@ -132,31 +132,31 @@ func ActiveKey(prefix, term, folderID string, strategy string, dryRun bool) stri
 	)
 }
 
-// ── Monitored source (DB-backed) ────────────────────────────────────
+// ── Monitored source ─────────────────────────────────────────────────
 
 // MonitoredSource represents a discovered external source (YouTube video,
-// Artlist asset, Drive file, etc.)
+// Artlist asset, Drive file, etc.). The SQLite persistence shape (column
+// names, table name) lives in
+// internal/infrastructure/database/sqlite/assets.MonitoredSourceRow; the
+// repository converts via FromMonitoredSourceDomain / row.ToDomain so the
+// domain layer has zero knowledge of the underlying schema (PR4.B,
+// June 2026).
 type MonitoredSource struct {
-	ID             string `json:"id" db:"id"`
-	Source         string `json:"source" db:"source"`
-	ExternalID     string `json:"external_id" db:"external_id"`
-	ExternalURL    string `json:"external_url" db:"external_url"`
-	Title          string `json:"title" db:"title"`
-	ChannelID      string `json:"channel_id" db:"channel_id"`
-	ChannelURL     string `json:"channel_url" db:"channel_url"`
-	Keyword        string `json:"keyword" db:"keyword"`
-	GroupName      string `json:"group_name" db:"group_name"`
-	Category       string `json:"category" db:"category"`
-	Status         string `json:"status" db:"status"`
-	LastSeenAt     string `json:"last_seen_at" db:"last_seen_at"`
-	LastCheckedAt  string `json:"last_checked_at" db:"last_checked_at"`
-	ProcessedCount int    `json:"processed_count" db:"processed_count"`
-	MetadataJSON   string `json:"metadata_json" db:"metadata_json"`
-	CreatedAt      string `json:"created_at" db:"created_at"`
-	UpdatedAt      string `json:"updated_at" db:"updated_at"`
-}
-
-// TableName returns the database table name for the MonitoredSource model.
-func (MonitoredSource) TableName() string {
-	return "monitored_sources"
+	ID             string `json:"id"`
+	Source         string `json:"source"`
+	ExternalID     string `json:"external_id"`
+	ExternalURL    string `json:"external_url"`
+	Title          string `json:"title"`
+	ChannelID      string `json:"channel_id"`
+	ChannelURL     string `json:"channel_url"`
+	Keyword        string `json:"keyword"`
+	GroupName      string `json:"group_name"`
+	Category       string `json:"category"`
+	Status         string `json:"status"`
+	LastSeenAt     string `json:"last_seen_at"`
+	LastCheckedAt  string `json:"last_checked_at"`
+	ProcessedCount int    `json:"processed_count"`
+	MetadataJSON   string `json:"metadata_json"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
