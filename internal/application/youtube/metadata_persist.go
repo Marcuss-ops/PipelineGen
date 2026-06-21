@@ -12,7 +12,7 @@ import (
 
 // ymDescription returns a cleaned YouTube description for human-readable metadata.
 // It intentionally strips sponsor/link boilerplate so Drive metadata stays clip-focused.
-func ymDescription(ym *YouTubeMetadataPort, clip *asset.Asset) string {
+func ymDescription(ym *DownloaderMetadata, clip *asset.Asset) string {
 	if ym != nil && ym.Description != "" {
 		return compactYouTubeDescription(ym.Description)
 	}
@@ -24,7 +24,7 @@ func ymDescription(ym *YouTubeMetadataPort, clip *asset.Asset) string {
 }
 
 // ymTags returns tags from ym or falls back to clip DB metadata.
-func ymTags(ym *YouTubeMetadataPort, clip *asset.Asset) []string {
+func ymTags(ym *DownloaderMetadata, clip *asset.Asset) []string {
 	if ym != nil && len(ym.Tags) > 0 {
 		return normalizeClipTagList(ym.Tags)
 	}
@@ -43,7 +43,7 @@ func ymTags(ym *YouTubeMetadataPort, clip *asset.Asset) []string {
 }
 
 // ymCategories returns categories from ym or falls back to clip DB metadata.
-func ymCategories(ym *YouTubeMetadataPort, clip *asset.Asset) []string {
+func ymCategories(ym *DownloaderMetadata, clip *asset.Asset) []string {
 	if ym != nil && len(ym.Categories) > 0 {
 		return ym.Categories
 	}
@@ -57,7 +57,7 @@ func ymCategories(ym *YouTubeMetadataPort, clip *asset.Asset) []string {
 }
 
 // ymViewCount returns view count from ym or falls back to clip DB metadata.
-func ymViewCount(ym *YouTubeMetadataPort, clip *asset.Asset) int64 {
+func ymViewCount(ym *DownloaderMetadata, clip *asset.Asset) int64 {
 	if ym != nil {
 		return ym.ViewCount
 	}
@@ -71,7 +71,7 @@ func ymViewCount(ym *YouTubeMetadataPort, clip *asset.Asset) int64 {
 }
 
 // ymUploadDate returns upload date from ym or falls back to clip DB metadata.
-func ymUploadDate(ym *YouTubeMetadataPort, clip *asset.Asset) string {
+func ymUploadDate(ym *DownloaderMetadata, clip *asset.Asset) string {
 	if ym != nil && ym.UploadDate != "" {
 		return ym.UploadDate
 	}
@@ -79,7 +79,7 @@ func ymUploadDate(ym *YouTubeMetadataPort, clip *asset.Asset) string {
 }
 
 // ymThumbnailURL returns the thumbnail URL from ym or falls back to clip DB metadata.
-func ymThumbnailURL(ym *YouTubeMetadataPort, clip *asset.Asset) string {
+func ymThumbnailURL(ym *DownloaderMetadata, clip *asset.Asset) string {
 	if ym != nil && ym.ThumbnailURL != "" {
 		return ym.ThumbnailURL
 	}
