@@ -4,39 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	"go.uber.org/zap"
+	"net/url"
+	"strings"
 
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
-// MetadataFetcher fetches YouTube video metadata via yt-dlp --dump-json.
-// Implements youtube.VideoMetadataFetcherPort from the application layer.
-type MetadataFetcher struct {
-	cfg *ytcfg.Config
-	log *zap.Logger
-}
-
-// NewMetadataFetcher constructs the adapter.
-func NewMetadataFetcher(cfg *ytcfg.Config, log *zap.Logger) *MetadataFetcher {
-	return &MetadataFetcher{cfg: cfg, log: log}
-}
-
-// ytDlpMeta is the raw JSON shape returned by yt-dlp --dump-json.
-type ytDlpMeta struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	Description string  `json:"description"`
-	Duration    float64 `json:"duration"`
-	Uploader    string  `json:"uploader"`
-	UploadDate  string  `json:"upload_date"`
-	ViewCount   int64   `json:"view_count"`
-	Language    string  `json:"language"`
-	Thumbnail   string  `json:"thumbnail"`
-	Thumbnails  []struct {
+// YouTubeMetadata is the infrastructure-layer DTO for the yt-dlp
+// --dump-json output.
+type YouTubeMetadata struct {
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Description  string   `json:"description"`
+	Duration     float64  `json:"duration"`
+	Uploader     string   `json:"uploader"`
+	UploadDate   string   `json:"upload_date"`
+	ViewCount    int64    `json:"view_count"`
+	Language     string   `json:"language"`
+	ThumbnailURL string   `json:"thumbnail"`
+	Thumbnails   []struct {
 		URL    string `json:"url"`
 		Width  int    `json:"width"`
 		Height int    `json:"height"`
@@ -50,66 +36,97 @@ type ytDlpMeta struct {
 	Tags       []string `json:"tags"`
 }
 
-// GetVideoMetadata fetches full metadata for a YouTube video without downloading it.
-// Returns *YouTubeMetadataPort (the application-layer DTO defined in ports.go).
-func (f *MetadataFetcher) GetVideoMetadata(ctx context.Context, videoURL string) (*youtubeapp.YouTubeMetadataPort, error) {
+// MetadataFetcherAdapter implements MetadataFetcherPort. It shells out
+// to yt-dlp --dump-json via the injected ProcessRunnerPort.
+type MetadataFetcherAdapter struct {
+	cfg    *ytcfg.Config
+	runner ProcessRunnerPort
+}
+
+// Compile-time assertion: *MetadataFetcherAdapter satisfies the port.
+var _ MetadataFetcherPort = (*MetadataFetcherAdapter)(nil)
+
+// NewMetadataFetcherAdapter wires the adapter. cfg.External.ResolvedYtdlpPath()
+// must be set (composition root guarantees it). A nil runner falls back
+// to a fresh ProcessRunnerAdapter.
+func NewMetadataFetcherAdapter(cfg *ytcfg.Config, runner ProcessRunnerPort) *MetadataFetcherAdapter {
+	if runner == nil {
+		runner = NewProcessRunnerAdapter()
+	}
+	return &MetadataFetcherAdapter{cfg: cfg, runner: runner}
+}
+
+// GetVideoMetadata runs yt-dlp --dump-json for videoURL and parses its
+// JSON output.
+func (a *MetadataFetcherAdapter) GetVideoMetadata(ctx context.Context, videoURL string) (*YouTubeMetadata, error) {
 	if videoURL == "" {
-		return nil, fmt.Errorf("url is required")
-	}
-	if err := security.ValidateDownloadURL(videoURL); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("metadata: videoURL is required")
 	}
 
-	videoID, _ := urlutil.ExtractVideoID(videoURL)
-	ytdlpPath := f.cfg.External.ResolvedYtdlpPath()
-
+	path := a.cfg.External.ResolvedYtdlpPath()
 	args := []string{
 		videoURL,
 		"--dump-json",
 		"--no-playlist",
 		"--no-warnings",
 	}
-	if f.cfg.External.YouTubeJSRuntimePath != "" {
-		args = append(args, "--js-runtime", f.cfg.External.YouTubeJSRuntimePath)
+	if a.cfg.External.YouTubeJSRuntimePath != "" {
+		args = append(args, "--js-runtime", a.cfg.External.YouTubeJSRuntimePath)
 	}
 	args = append(args, "--extractor-args", "youtube:player_client=android,web")
 
-	runner := NewProcessRunner(f.log)
-	stdout, stderr, err := runner.Run(ctx, ytdlpPath, args)
+	stdout, stderr, err := a.runner.Run(ctx, path, args)
 	if err != nil {
-		f.log.Error("yt-dlp info failed", zap.Error(err), zap.String("stderr", stderr))
-		return nil, fmt.Errorf("failed to get video info: %w", err)
+		return nil, fmt.Errorf("yt-dlp dump-json failed for %s: %w (stderr: %s)",
+			sanitizedURL(videoURL), err, truncate(stderr, 512))
 	}
 
-	var raw ytDlpMeta
+	var raw YouTubeMetadata
 	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse video info: %w", err)
+		return nil, fmt.Errorf("metadata: parse yt-dlp dump-json for %s: %w", sanitizedURL(videoURL), err)
 	}
+	if raw.ID == "" {
+		raw.ID = extractIDFromURL(videoURL)
+	}
+	if raw.ThumbnailURL == "" && len(raw.Thumbnails) > 0 {
+		raw.ThumbnailURL = raw.Thumbnails[len(raw.Thumbnails)-1].URL
+	}
+	return &raw, nil
+}
 
-	meta := &youtubeapp.YouTubeMetadataPort{
-		ID:          raw.ID,
-		Title:       raw.Title,
-		Description: raw.Description,
-		Duration:    raw.Duration,
-		Uploader:    raw.Uploader,
-		UploadDate:  raw.UploadDate,
-		ViewCount:   raw.ViewCount,
-		Language:    raw.Language,
-		Categories:  raw.Categories,
-		Tags:        raw.Tags,
+// sanitizedURL strips the query string so errors don't echo signed
+// cookies / oauth tokens.
+func sanitizedURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
 	}
-	if videoID != "" {
-		meta.ID = videoID
+	u.RawQuery = ""
+	return u.String()
+}
+
+// extractIDFromURL pulls the YouTube video ID from common URL shapes.
+func extractIDFromURL(raw string) string {
+	markers := []string{"v=", "/shorts/", "/embed/", "/live/", "youtu.be/"}
+	for _, m := range markers {
+		if idx := strings.Index(raw, m); idx >= 0 {
+			rest := raw[idx+len(m):]
+			if stop := strings.IndexAny(rest, "?&/ "); stop >= 0 {
+				return rest[:stop]
+			}
+			return rest
+		}
 	}
-	if raw.Thumbnail != "" {
-		meta.ThumbnailURL = raw.Thumbnail
-	} else if len(raw.Thumbnails) > 0 {
-		meta.ThumbnailURL = raw.Thumbnails[len(raw.Thumbnails)-1].URL
+	return ""
+}
+
+// truncate caps s at max bytes, suffixing with "…" when shortened.
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
 	}
-	for _, c := range raw.Chapters {
-		meta.Chapters = append(meta.Chapters, youtubeapp.VideoChapterPort{
-			Title: c.Title, StartTime: c.StartTime, EndTime: c.EndTime,
-		})
+	if max < 4 {
+		return s[:max]
 	}
-	return meta, nil
+	return s[:max-1] + "…"
 }

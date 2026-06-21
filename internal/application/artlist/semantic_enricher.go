@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -48,7 +47,8 @@ type SemanticEnricher struct {
 	// Enrich() to combine UpsertClip + indexed-Qdrant in a single tx.
 	// When nil, falls back to the legacy indexer path. PR2.5: this is
 	// a constructor argument (no SetDispatcher setter anymore).
-	dispatcher *outbox.Dispatcher
+	// PR2.4: typed as Dispatcher port (was *outbox.Dispatcher concrete).
+	dispatcher Dispatcher
 }
 
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
@@ -70,7 +70,7 @@ func NewSemanticEnricher(
 	indexer Indexer,
 	metaWriter *semantic.MetadataWriter,
 	driveManager DriveFolderManager,
-	dispatcher *outbox.Dispatcher,
+	dispatcher Dispatcher,
 	log *zap.Logger,
 ) *SemanticEnricher {
 	return &SemanticEnricher{
