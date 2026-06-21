@@ -556,9 +556,18 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	// PR2 cascade (June 2026): youtube.NewService(ServiceDeps) is the canonical
 	// constructor. Composition wires every port here once — no setter cascade.
-	// Empty-marker ports (SearchRunner/SubtitleFetcher/Whisper/ClipFiles/
-	// HashSvc/TempFiles) are passed nil because they are opaque injection
-	// tokens and nil assignment is safe.
+	//
+	// typed-nil guard audit (June 2026): all adapter constructors below
+	// (newClipStoreAdapter, newMonitorsStoreAdapter, newCacheStoreAdapter,
+	// newDriveFolderMgrAdapter, newFolderMemoryAdapter, newSearchRunnerStub)
+	// return bare nil when their inner value is nil, so typed-nil cannot leak
+	// into ServiceDeps. clipIndexerAdapterValue is declared as the interface
+	// type directly (var clipIndexerAdapterValue youtube.ClipIndexerPort),
+	// which produces bare nil when uninitialized. metaFetcher always returns
+	// a non-nil *MetadataFetcherAdapter. ai.OllamaClient always returns
+	// a non-nil *client.Client. Result: zero typed-nil surfaces in this
+	// wiring block. Future port additions can use pkg/portutil.IsNilPort
+	// as a defensive typed-nil guard at construction time.
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
 	driveFolderMgr := newDriveFolderMgrAdapter(drive.DriveUploader, log)
