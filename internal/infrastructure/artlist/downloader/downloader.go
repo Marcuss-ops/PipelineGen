@@ -115,7 +115,9 @@ func (p *Provider) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	if filepath.IsAbs(req.Filename) {
 		return nil, fmt.Errorf("%w: filename must not be absolute", artapp.ErrInvalidResponse)
 	}
-	if cleaned := filepath.Clean(req.Filename); cleaned != req.Filename || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+	// Reject "." too: filepath.Clean(".") == "." and HasPrefix(".", "../") is
+	// false, so it would otherwise slip through and collide with DestinationID.
+	if cleaned := filepath.Clean(req.Filename); cleaned != req.Filename || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return nil, fmt.Errorf("%w: filename must not escape destination", artapp.ErrInvalidResponse)
 	}
 	if strings.TrimSpace(req.DestinationID) == "" {
