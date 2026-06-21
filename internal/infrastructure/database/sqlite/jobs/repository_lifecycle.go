@@ -61,10 +61,10 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 
 	// Atomic update
 	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = 'completed', completed_at = ?, result_json = ?,
+		`UPDATE jobs SET status = 'SUCCEEDED', completed_at = ?, result_json = ?,
 		 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		 WHERE id = ? AND status = 'RUNNING' AND worker_id = ? AND lease_id = ? AND revision = ?`,
 		nowStr, resultJSON, nowStr,
 		id, workerID, leaseID, expectedRevision)
 	if err != nil {
@@ -115,10 +115,10 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 	}
 
 	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = 'failed', completed_at = ?, error = ?,
+		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'running' AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		 WHERE id = ? AND status = 'RUNNING' AND worker_id = ? AND lease_id = ? AND revision = ?`,
 		nowStr, errMsg, nowStr,
 		id, workerID, leaseID, expectedRevision)
 	if err != nil {
@@ -163,10 +163,10 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = 'retry_wait', error = ?,
+		`UPDATE jobs SET status = 'RETRY_WAIT', error = ?,
 		 retry_count = retry_count + 1, worker_id = '', lease_id = '',
 		 lease_expiry = NULL, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'running'
+		 WHERE id = ? AND status = 'RUNNING'
 		 AND worker_id = ? AND lease_id = ? AND revision = ?`,
 		"scheduled for retry by worker "+workerID, nowStr,
 		id, workerID, leaseID, expectedRevision)
@@ -194,9 +194,9 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 	now := time.Now().UTC()
 	nowStr := timeutil.FormatRFC3339(now)
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE jobs SET status = 'cancelled', cancelled_at = ?, worker_id = '',
+		`UPDATE jobs SET status = 'CANCELLED', cancelled_at = ?, worker_id = '',
 		 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status IN ('queued', 'leased', 'running', 'retry_wait')`,
+		 WHERE id = ? AND status IN ('QUEUED', 'LEASED', 'RUNNING', 'RETRY_WAIT')`,
 		nowStr, nowStr, id)
 	if err != nil {
 		return fmt.Errorf("cancel: %w", err)
@@ -252,10 +252,10 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 
 	now := timeutil.FormatRFC3339(time.Now())
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE jobs SET status = 'queued', progress = 0, error = '',
+		`UPDATE jobs SET status = 'QUEUED', progress = 0, error = '',
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status IN ('retry_wait', 'failed') AND revision = ?`,
+		 WHERE id = ? AND status IN ('RETRY_WAIT', 'FAILED') AND revision = ?`,
 		now, id, j.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("retry: %w", err)
@@ -285,10 +285,10 @@ func (r *SQLiteStore) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff
 	now := timeutil.FormatRFC3339(time.Now())
 	cutoffStr := timeutil.FormatRFC3339(cutoff)
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE jobs SET status = 'failed', completed_at = ?, error = ?,
+		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
 		 revision = revision + 1, updated_at = ?
-		 WHERE status IN ('leased', 'running') AND lease_expiry < ?`,
+		 WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < ?`,
 		now, reason, now, cutoffStr)
 	if err != nil {
 		return 0, fmt.Errorf("markRunningJobsOlderThanFailed: %w", err)
