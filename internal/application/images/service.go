@@ -91,7 +91,11 @@ type DiagnosticsReport struct {
 // (SetNvidiaConfig, SetRemoteImageEndpointURL, SetVeloxBaseURL,
 // SetGoogleAccountingConfig, SetMediaStore, SetLLMGenerator,
 // SetVectorStore, SetMetadataWriter) have been removed in PR4-H Commit 3 —
-// their fields are initialised directly in this ctor.
+// their fields are initialised directly in this ctor. PR4.D (June 2026) then
+// collapsed the loose `nvidiaAPIKey/nvidiaModel/gaServerURL/gaDownloadDir/
+// vidsProjectID` scalars into two group structs (NvidiaConfig +
+// GoogleAccountingConfig) so the ctor signature stays readable as
+// integrations grow.
 //
 // SetIngestService is retained (called from registry.go's WireRegistry after
 // MediaIngest has been constructed — composition root has documented this as
@@ -102,13 +106,10 @@ func NewService(
 	stockRepo *assets.ClipsRepository,
 	driveSvc *driveapi.Service,
 	styleRegistry *generation.StyleRegistry,
-	nvidiaAPIKey string,
-	nvidiaModel string,
+	nvidiaCfg NvidiaConfig,
 	remoteImageEndpointURL string,
 	veloxBaseURL string,
-	gaServerURL string,
-	gaDownloadDir string,
-	vidsProjectID string,
+	gaCfg GoogleAccountingConfig,
 	mediaStore *drive.Store,
 	llmGen *ollama.Generator,
 	vectorSvc *vectorstore.Service,
@@ -129,14 +130,14 @@ func NewService(
 		},
 
 		scriptsDir:             cfg.Paths.PythonScriptsDir,
-		nvidiaAPIKey:           nvidiaAPIKey,
-		nvidiaModel:            nvidiaModel,
+		nvidiaAPIKey:           nvidiaCfg.APIKey,
+		nvidiaModel:            nvidiaCfg.Model,
 		nvidiaLocalNIMURL:      cfg.External.NvidiaLocalNIMURL,
 		remoteImageEndpointURL: remoteImageEndpointURL,
 		veloxBaseURL:           veloxBaseURL,
-		gaServerURL:            gaServerURL,
-		gaDownloadDir:          gaDownloadDir,
-		vidsProjectID:          vidsProjectID,
+		gaServerURL:            gaCfg.ServerURL,
+		gaDownloadDir:          gaCfg.DownloadDir,
+		vidsProjectID:          gaCfg.VidsProjectID,
 		animationsDir:          cfg.Storage.AnimationsPath(),
 		styleRegistry:          styleRegistry,
 		mediaStore:             mediaStore,
