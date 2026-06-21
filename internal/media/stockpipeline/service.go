@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))

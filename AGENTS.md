@@ -200,12 +200,12 @@ the CI guard with the migration target printed inline.
 
 | Legacy directory | Migration target | Owner |
 |---|---|---|
-| `internal/core/`                  | `internal/domain/asset/` (contracts) or `internal/infrastructure/<X>/` (concrete) | TBD |
+| `internal/core/`                  | `internal/domain/asset/` (contracts) or `internal/infrastructure/<X>/` (concrete) | PR4 ✅ |
 | `internal/media/<feature>/`       | `internal/domain/asset/<feature>/` (model) or `internal/application/<feature>/` (use case) | TBD |
-| `internal/assets/`                | `internal/domain/asset/`                                       | TBD |
+| `internal/assets/`                | `internal/domain/asset/` (directory already eliminated; content absorbed) | Pre-wave-7 ✅ |
 | `internal/artifacts/`             | `internal/application/assets/artifacts/` (lift-and-shift completato) | Wave 7 ✅ |
 | `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/`        | TBD |
-| `internal/upload/drive/`          | `internal/infrastructure/drive/`                               | TBD |
+| `internal/upload/drive/`          | `internal/infrastructure/drive/` (lift-and-shift completato) | Wave 8 ✅ |
 | `internal/application/scriptflow/` | `internal/application/scripts/` (flat-merge completato; directory eliminata) | Wave 6 ✅ |
 | `internal/domain/media/`          | `internal/domain/asset/` (tipi duplicati — directory eliminata June 2026) | Wave 4C ✅ |
 | `internal/domain/worker/`         | `internal/domain/job/`                                         | TBD |

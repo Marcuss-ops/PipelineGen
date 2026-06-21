@@ -48,8 +48,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"

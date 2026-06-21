@@ -39,7 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/mediaasset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
