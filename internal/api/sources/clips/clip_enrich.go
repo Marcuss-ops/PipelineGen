@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -87,7 +87,7 @@ func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, sou
 		}
 	} else if h.vectorStore != nil && clip.SearchText != "" {
 		// Step 3: Direct vector store upsert (fallback if clipIndexer not available)
-		asset := vectorstore.VectorAsset{
+		asset := qdrant.VectorAsset{
 			AssetID:    clip.ID,
 			Source:     source,
 			Name:       clip.Name,
@@ -251,7 +251,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 
 	// Fallback: direct vector store upsert if we have search_text
 	if h.vectorStore != nil && clip.SearchText != "" {
-		asset := vectorstore.VectorAsset{
+		asset := qdrant.VectorAsset{
 			AssetID:    clip.ID,
 			Source:     string(clip.Source),
 			Name:       clip.Name,

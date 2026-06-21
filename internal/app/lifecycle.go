@@ -33,7 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/monitor"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -389,7 +389,7 @@ func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 	}
 }
 
-func startQdrantHealthMonitor(ctx context.Context, vectorSvc *vectorstore.Service, log *zap.Logger) {
+func startQdrantHealthMonitor(ctx context.Context, vectorSvc *qdrant.Service, log *zap.Logger) {
 	const (
 		initialDelay = 15 * time.Second
 		interval     = 60 * time.Second
@@ -521,7 +521,7 @@ func runDedupSweep(ctx context.Context, clipsRepo *assets.ClipsRepository, log *
 	return swept, nil
 }
 
-func startQdrantCleaner(ctx context.Context, vectorSvc *vectorstore.Service, driveUploader *drive.Uploader, log *zap.Logger) {
+func startQdrantCleaner(ctx context.Context, vectorSvc *qdrant.Service, driveUploader *drive.Uploader, log *zap.Logger) {
 	const (
 		initialDelay = 5 * time.Minute
 		interval     = 12 * time.Hour
@@ -652,7 +652,7 @@ type ghostSweepable interface {
 	DeletePoints(ctx context.Context, assetIDs []string) error
 }
 
-func startQdrantGhostSweeper(ctx context.Context, vectorSvc *vectorstore.Service, db *sql.DB, log *zap.Logger) {
+func startQdrantGhostSweeper(ctx context.Context, vectorSvc *qdrant.Service, db *sql.DB, log *zap.Logger) {
 	const (
 		initialDelay    = 10 * time.Minute
 		interval        = 24 * time.Hour

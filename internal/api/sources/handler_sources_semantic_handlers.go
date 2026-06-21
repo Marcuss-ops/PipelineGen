@@ -10,7 +10,7 @@ import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // SemanticSearchRequest represents a semantic vector search request
@@ -94,7 +94,7 @@ func (h *Handler) SemanticSearch(c *gin.Context) {
 		zap.Float64("min_score", minScore),
 	)
 
-	var results []vectorstore.SearchResult
+	var results []qdrant.SearchResult
 	var err error
 
 	switch mode {
@@ -108,7 +108,7 @@ func (h *Handler) SemanticSearch(c *gin.Context) {
 			return
 		}
 
-		results, err = h.realtimeSvc.VectorStore().HybridSearch(ctx, vectorstore.HybridSearchRequest{
+		results, err = h.realtimeSvc.VectorStore().HybridSearch(ctx, qdrant.HybridSearchRequest{
 			QueryText:        req.Q,
 			DenseVector:      queryVector,
 			DenseVectorName:  qdrantVectorName,
@@ -129,7 +129,7 @@ func (h *Handler) SemanticSearch(c *gin.Context) {
 			return
 		}
 
-		results, err = h.realtimeSvc.VectorStore().Search(ctx, vectorstore.SearchRequest{
+		results, err = h.realtimeSvc.VectorStore().Search(ctx, qdrant.SearchRequest{
 			QueryVector: queryVector,
 			VectorName:  qdrantVectorName,
 			Limit:       req.Limit,
@@ -161,7 +161,7 @@ func (h *Handler) SemanticSearch(c *gin.Context) {
 }
 
 // buildSearchReason generates a human-readable reason for why a result matches the query.
-func buildSearchReason(r vectorstore.SearchResult, query string) string {
+func buildSearchReason(r qdrant.SearchResult, query string) string {
 	parts := []string{}
 
 	// Score-based assessment

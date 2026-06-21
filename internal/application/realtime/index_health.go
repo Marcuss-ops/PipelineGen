@@ -7,7 +7,7 @@
 //   - sqlite_assets = total media_assets rows (excluding soft-deleted) via clips.CountAll
 //   - sqlite_indexed = media_assets rows with a populated embedding_json via clips.CountIndexed
 //   - qdrant_points = point count of the ALIAS-SERVED collection via
-//     vectorstore.OperationCollectionInfo (NOT the physical versioned
+//     qdrant.OperationCollectionInfo (NOT the physical versioned
 //     collection — drift between the alias and SQLite is what users see)
 //   - missing_in_qdrant = ids in the SQLite indexed sample that are absent from
 //     the Qdrant sample (UNDER-count if samples saturated the cap)
@@ -47,7 +47,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // IndexHealthSampleCap bounds the cross-check sample size.
@@ -87,7 +87,7 @@ type IndexHealthOutbox interface {
 // A nil dep falls back to zero fields + a logged warning rather than
 // failing the call — the HTTP handler decides whether to surface the
 // gap as degraded.
-func (s *Service) IndexHealth(ctx context.Context) (*vectorstore.IndexHealthReport, error) {
+func (s *Service) IndexHealth(ctx context.Context) (*qdrant.IndexHealthReport, error) {
 	if s == nil {
 		return nil, errors.New("realtime.Service is nil")
 	}
@@ -100,7 +100,7 @@ func (s *Service) IndexHealth(ctx context.Context) (*vectorstore.IndexHealthRepo
 	ctx, cancel := context.WithTimeout(ctx, IndexHealthTimeout)
 	defer cancel()
 
-	report := &vectorstore.IndexHealthReport{
+	report := &qdrant.IndexHealthReport{
 		SampleLimit: IndexHealthSampleCap,
 	}
 
@@ -163,7 +163,7 @@ func (s *Service) IndexHealth(ctx context.Context) (*vectorstore.IndexHealthRepo
 }
 
 // probeQdrantHealth issues the /readyz probe and updates report.QdrantHealthy.
-func (s *Service) probeQdrantHealth(ctx context.Context, report *vectorstore.IndexHealthReport) bool {
+func (s *Service) probeQdrantHealth(ctx context.Context, report *qdrant.IndexHealthReport) bool {
 	if err := s.vectorSvc.Health(ctx); err != nil {
 		report.QdrantHealthy = false
 		if s.log != nil {
@@ -203,7 +203,7 @@ func (s *Service) probeQdrantHealth(ctx context.Context, report *vectorstore.Ind
 //
 //	qdrant_info so this operator-readable invariant holds: a single
 //	failure scenario never produces both names simultaneously.
-func (s *Service) fetchQdrantScene(ctx context.Context, report *vectorstore.IndexHealthReport) (qdrantOK bool, sqliteListOK bool) {
+func (s *Service) fetchQdrantScene(ctx context.Context, report *qdrant.IndexHealthReport) (qdrantOK bool, sqliteListOK bool) {
 	qdrantOK = false
 	sqliteListOK = true // vacuously OK when s.clips is nil OR when the qdrant leg fails first
 
@@ -282,7 +282,7 @@ func (s *Service) fetchQdrantScene(ctx context.Context, report *vectorstore.Inde
 
 // fetchSQLiteCounts reads CountAll + CountIndexed. nil-clips is treated as
 // vacuously OK (wiring gap logged at startup by NewService).
-func (s *Service) fetchSQLiteCounts(ctx context.Context, report *vectorstore.IndexHealthReport) bool {
+func (s *Service) fetchSQLiteCounts(ctx context.Context, report *qdrant.IndexHealthReport) bool {
 	if s.clips == nil {
 		return true
 	}
@@ -312,7 +312,7 @@ func (s *Service) fetchSQLiteCounts(ctx context.Context, report *vectorstore.Ind
 }
 
 // fetchOutboxCounts reads pending + dead_letter. nil-outbox is vacuously OK.
-func (s *Service) fetchOutboxCounts(ctx context.Context, report *vectorstore.IndexHealthReport) bool {
+func (s *Service) fetchOutboxCounts(ctx context.Context, report *qdrant.IndexHealthReport) bool {
 	if s.outbox == nil {
 		return true
 	}

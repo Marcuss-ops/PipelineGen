@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 type EmbeddingClient interface {
@@ -24,7 +24,7 @@ type JobService interface {
 }
 
 type Service struct {
-	vectorSvc *vectorstore.Service
+	vectorSvc *qdrant.Service
 	embedder  EmbeddingClient
 	jobSvc    JobService
 	reranker  *reranker.Client
@@ -57,7 +57,7 @@ type Service struct {
 // parameter list keeps the existing 7-arg callers compiling; new callers
 // (composeRealtimeService) thread them explicitly.
 func NewService(
-	vectorSvc *vectorstore.Service,
+	vectorSvc *qdrant.Service,
 	embedder EmbeddingClient,
 	jobSvc JobService,
 	rerankerClient *reranker.Client,
@@ -147,6 +147,6 @@ func (s *Service) EmbedTextForVector(ctx context.Context, text string, mode stri
 	return s.getEmbeddingForVector(ctx, text, mode)
 }
 
-func (s *Service) VectorStore() *vectorstore.Service {
+func (s *Service) VectorStore() *qdrant.Service {
 	return s.vectorSvc
 }

@@ -19,7 +19,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
 	// drive alias matches internal/application/scripts/clip_source_test.go
 	// which uses `drive.CanonicalMediaAssetsSchema`. The package's actual
@@ -28,12 +28,12 @@ import (
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
-// indexHealthStore is a minimal fake of vectorstore.Store that lets the
+// indexHealthStore is a minimal fake of qdrant.Store that lets the
 // tests steer Health / OperationCollectionInfo / ListPointIDs return values
 // without dragging in a real Qdrant. Every other Store method is a no-op.
 type indexHealthStore struct {
 	healthErr atomic.Value // error
-	info      vectorstore.CollectionInfo
+	info      qdrant.CollectionInfo
 	infoErr   error
 	ids       []string
 	idsErr    error
@@ -42,13 +42,13 @@ type indexHealthStore struct {
 func (s *indexHealthStore) setHealthErr(err error) { s.healthErr.Store(err) }
 
 func (s *indexHealthStore) EnsureCollection(context.Context) error { return nil }
-func (s *indexHealthStore) UpsertAsset(context.Context, vectorstore.VectorAsset) error {
+func (s *indexHealthStore) UpsertAsset(context.Context, qdrant.VectorAsset) error {
 	return nil
 }
-func (s *indexHealthStore) UpsertAssets(context.Context, []vectorstore.VectorAsset) error {
+func (s *indexHealthStore) UpsertAssets(context.Context, []qdrant.VectorAsset) error {
 	return nil
 }
-func (s *indexHealthStore) Search(context.Context, vectorstore.SearchRequest) ([]vectorstore.SearchResult, error) {
+func (s *indexHealthStore) Search(context.Context, qdrant.SearchRequest) ([]qdrant.SearchResult, error) {
 	return nil, nil
 }
 func (s *indexHealthStore) DeleteAsset(context.Context, string) error { return nil }
@@ -60,20 +60,20 @@ func (s *indexHealthStore) Health(ctx context.Context) error {
 	}
 	return nil
 }
-func (s *indexHealthStore) CollectionInfo(context.Context) (*vectorstore.CollectionInfo, error) {
+func (s *indexHealthStore) CollectionInfo(context.Context) (*qdrant.CollectionInfo, error) {
 	return &s.info, s.infoErr
 }
-func (s *indexHealthStore) OperationCollectionInfo(context.Context) (*vectorstore.CollectionInfo, error) {
+func (s *indexHealthStore) OperationCollectionInfo(context.Context) (*qdrant.CollectionInfo, error) {
 	return &s.info, s.infoErr
 }
-func (s *indexHealthStore) PhysicalCollectionInfo(context.Context) (*vectorstore.CollectionInfo, error) {
+func (s *indexHealthStore) PhysicalCollectionInfo(context.Context) (*qdrant.CollectionInfo, error) {
 	return &s.info, s.infoErr
 }
 func (s *indexHealthStore) Close() error { return nil }
-func (s *indexHealthStore) HybridSearch(context.Context, vectorstore.HybridSearchRequest) ([]vectorstore.SearchResult, error) {
+func (s *indexHealthStore) HybridSearch(context.Context, qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error) {
 	return nil, nil
 }
-func (s *indexHealthStore) IndexHealth(context.Context) (*vectorstore.IndexHealthReport, error) {
+func (s *indexHealthStore) IndexHealth(context.Context) (*qdrant.IndexHealthReport, error) {
 	return nil, nil
 }
 func (s *indexHealthStore) ListPointIDs(ctx context.Context, limit int) ([]string, error) {
@@ -94,14 +94,14 @@ func (s *indexHealthStore) CleanupStalePoints(context.Context, func(string, stri
 }
 
 // newIndexHealthServiceWithStore returns a Service wired with the fake
-// store wrapped in vectorstore.NewService (production wiring is
-// *vectorstore.Service, not the Store interface directly).
+// store wrapped in qdrant.NewService (production wiring is
+// *qdrant.Service, not the Store interface directly).
 // clips and outbox are nil — when nil, IndexHealth treats the dependent
 // fields as zero (no drift, no pending/dead-letter) and the per-source
 // success flags track the qdrant leg only.
-func newIndexHealthServiceWithStore(vs vectorstore.Store) *Service {
+func newIndexHealthServiceWithStore(vs qdrant.Store) *Service {
 	log := zap.NewNop()
-	vectorSvc := vectorstore.NewService(vs, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(vs, qdrant.Config{}, log)
 	return &Service{
 		vectorSvc: vectorSvc,
 		log:       log,
@@ -114,7 +114,7 @@ func newIndexHealthServiceWithStore(vs vectorstore.Store) *Service {
 // fallback, which never read report.QdrantHealthy).
 func TestIndexHealth_ReportsQdrantHealthyFromProbe(t *testing.T) {
 	store := &indexHealthStore{}
-	store.info = vectorstore.CollectionInfo{PointsCount: 0}
+	store.info = qdrant.CollectionInfo{PointsCount: 0}
 	svc := newIndexHealthServiceWithStore(store)
 
 	report, err := svc.IndexHealth(context.Background())
@@ -141,7 +141,7 @@ func TestIndexHealth_ReportsQdrantHealthyFromProbe(t *testing.T) {
 func TestIndexHealth_OfflineQdrantProducesDegraded(t *testing.T) {
 	store := &indexHealthStore{}
 	store.setHealthErr(errors.New("qdrant offline"))
-	store.info = vectorstore.CollectionInfo{PointsCount: 0}
+	store.info = qdrant.CollectionInfo{PointsCount: 0}
 	svc := newIndexHealthServiceWithStore(store)
 
 	report, err := svc.IndexHealth(context.Background())
@@ -173,7 +173,7 @@ func TestIndexHealth_SampleSaturatedWhenIdsCapReached(t *testing.T) {
 		ids = append(ids, "id_"+strconv.Itoa(i))
 	}
 	store.ids = ids
-	store.info = vectorstore.CollectionInfo{PointsCount: int64(IndexHealthSampleCap + 50)}
+	store.info = qdrant.CollectionInfo{PointsCount: int64(IndexHealthSampleCap + 50)}
 	svc := newIndexHealthServiceWithStore(store)
 
 	report, err := svc.IndexHealth(context.Background())
@@ -295,10 +295,10 @@ CREATE TABLE outbox_events (
 
 	// qdrant sample is empty — so asset_a is missing-in-qdrant.
 	store := &indexHealthStore{
-		info: vectorstore.CollectionInfo{PointsCount: 0},
+		info: qdrant.CollectionInfo{PointsCount: 0},
 		ids:  []string{},
 	}
-	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
 	svc := &Service{
 		vectorSvc: vectorSvc,
 		clips:     clipsRepo,
@@ -381,10 +381,10 @@ func (f *fakeIndexHealthOutbox) CountByStatus(ctx context.Context, status string
 // failing leg is injected without touching the real *assets.ClipsRepository.
 func TestIndexHealth_ClipsListingFailureAttribution(t *testing.T) {
 	store := &indexHealthStore{}
-	store.info = vectorstore.CollectionInfo{PointsCount: 7}
+	store.info = qdrant.CollectionInfo{PointsCount: 7}
 	store.ids = []string{"q_a", "q_b", "q_c", "q_d", "q_e", "q_f", "q_g"}
 	log := zap.NewNop()
-	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
 
 	clipsFake := &fakeIndexHealthClips{
 		countAllFn:     func(_ context.Context) (int64, error) { return 10, nil },
@@ -462,10 +462,10 @@ func TestIndexHealth_ClipsListingFailureAttribution(t *testing.T) {
 // failing leg's test.
 func TestIndexHealth_ClipsCountsFailureAttribution(t *testing.T) {
 	store := &indexHealthStore{}
-	store.info = vectorstore.CollectionInfo{PointsCount: 4}
+	store.info = qdrant.CollectionInfo{PointsCount: 4}
 	store.ids = []string{"q_a", "q_b", "q_c", "q_d"}
 	log := zap.NewNop()
-	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
 
 	clipsFake := &fakeIndexHealthClips{
 		countAllFn:     func(_ context.Context) (int64, error) { return 0, errors.New("simulated CountAll failure") },
@@ -530,10 +530,10 @@ func TestIndexHealth_ClipsCountsFailureAttribution(t *testing.T) {
 // be unprobed — fetchQdrantScene short-circuits).
 func TestIndexHealth_DegradedSourcesAppendOrderScenarioClipsDegraded(t *testing.T) {
 	store := &indexHealthStore{}
-	store.info = vectorstore.CollectionInfo{PointsCount: 4}
+	store.info = qdrant.CollectionInfo{PointsCount: 4}
 	store.ids = []string{"q_a", "q_b", "q_c", "q_d"}
 	log := zap.NewNop()
-	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
 
 	clipsFake := &fakeIndexHealthClips{
 		countAllFn:       func(_ context.Context) (int64, error) { return 0, errors.New("counts down") },
@@ -580,7 +580,7 @@ func TestIndexHealth_DegradedSourcesAppendOrderScenarioQdrantInfoFailed(t *testi
 	store.setHealthErr(errors.New("qdrant probe down"))
 	store.infoErr = errors.New("qdrant info down")
 	log := zap.NewNop()
-	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
 
 	clipsFake := &fakeIndexHealthClips{
 		countAllFn:     func(_ context.Context) (int64, error) { return 0, errors.New("counts down") },
