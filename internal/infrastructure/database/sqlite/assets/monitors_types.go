@@ -117,9 +117,12 @@ func FromMonitoredSourceDomainList(src []*asset.MonitoredSource) []*MonitoredSou
 	return out
 }
 
-// ToDomainList maps a slice of rows to a slice of domains. Used by the
-// repository's ListDue so the conversion stays in infra-land.
-func (rows []MonitoredSourceRow) ToDomainList() []*asset.MonitoredSource {
+// ToMonitoredSourceDomainList maps a slice of infra rows to a slice of
+// domain projections. Implemented as a free function (not a method on
+// `[]MonitoredSourceRow`) because Go does not allow methods to be
+// defined on anonymous slice types. Used by the repository's ListDue so
+// the SQL→domain conversion stays in infra-land.
+func ToMonitoredSourceDomainList(rows []MonitoredSourceRow) []*asset.MonitoredSource {
 	if len(rows) == 0 {
 		return nil
 	}
