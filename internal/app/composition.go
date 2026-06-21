@@ -136,6 +136,13 @@ type ProcessBundle struct {
 // StyleRegistry now lives on DriveBundle (loaded at top of BuildDriveBundle)
 // so ensureStyleDriveFolders can call it before AI is constructed. AIBundle
 // keeps its own light reference (set after BuildAIBundle returns).
+//
+// PR4-H followup (June 2026): BatchService + CurationService fields were
+// removed — they were dead code. The canonical batchSvc/curationSvc
+// instances are constructed locally inside registry.go::WireRegistry
+// (with the real voiceoverSvc from DomainBundle + root.Jobs.Service) and
+// passed via ctor to the local ScriptFlowHandler there. No consumer
+// outside registry.go reads AIBundle.BatchService/CurationService.
 type AIBundle struct {
 	OllamaClient      *client.Client
 	ScriptGen         *ollama.Generator
@@ -143,8 +150,6 @@ type AIBundle struct {
 	MemoryService     *gemmamemory.Service
 	ScriptEngine      *scriptcore.Engine
 	ScriptFlowHandler *scriptpkg.ScriptFlowHandler
-	BatchService      *scripts.BatchService
-	CurationService   *scripts.CurationService
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.
@@ -490,9 +495,13 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(repos.ScriptsRepo)
 	engine := scriptcore.NewEngine(scriptGen, memorySvc, scriptsRepoAdapter, log)
 
-	batchSvc := scripts.NewBatchService(cfg, log, scriptGen, engine, drive.DocClient,
-		nil /* voiceoverSvc */, scriptsRepoAdapter)
-	curationSvc := scripts.NewCurationService(nil, nil, log)
+	// PR4-H followup (June 2026): AIBundle no longer carries BatchService or
+	// CurationService fields. The canonical instances are constructed locally
+	// inside registry.go::WireRegistry (with the real voiceoverSvc +
+	// Jobs.Service deps) and passed via ctor to the local ScriptFlowHandler
+	// there. This BuildAIBundle creates the field-orphaned scriptFlowHandler
+	// with nil batchSvc/curationSvc; consumers go through registry.go's
+	// fully-wired handler instead.
 	scriptFlowHandler := scriptpkg.NewScriptFlowHandler(
 		scriptGen, engine,
 		nil /* imageSvc */, nil /* realtime */, nil /* assoc */,
@@ -500,7 +509,8 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		drive.DocClient, drive.DriveUploader,
 		nil /* jobFacade */, scriptsRepoAdapter, memorySvc,
 		cfg.Drive.ScriptsGenFolder(), cfg, log,
-		batchSvc, curationSvc,
+		nil /* batchSvc: deferred to registry.go local handler */,
+		nil /* curationSvc: deferred to registry.go local handler */,
 	)
 
 	return &AIBundle{
@@ -510,8 +520,6 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		MemoryService:     memorySvc,
 		ScriptEngine:      engine,
 		ScriptFlowHandler: scriptFlowHandler,
-		BatchService:      batchSvc,
-		CurationService:   curationSvc,
 	}, nil
 }
 
