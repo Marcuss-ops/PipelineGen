@@ -1,3 +1,22 @@
+// Package youtube holds the application-layer orchestrator for the YouTube
+// clip-extraction pipeline. Persistence, IO, and external-process execution
+// are delegated to ports declared in this same package (ports.go) and
+// implemented under internal/infrastructure/youtube.
+//
+// Per PR1.7 (June 2026):
+//   - The setter cascade has been collapsed into a single
+//     NewService(ServiceDeps) constructor. Callers wire every port exactly
+//     once at composition time; missing deps are surfaced via nil guard
+//     errors at first use.
+//   - Persistence has exactly ONE canonical writer: `AssetRepository` on
+//     ServiceDeps. The previous triple fallback has been removed in PR1.6.
+//   - Drive operations go exclusively through DriveFolderManagerPort.
+//   - Concrete imports of outbox / drive SDK / clipsRepo have been removed
+//     from this package; concrete wiring belongs to composition + infra.
+//   - Legacy fields `assetProcessing` + `assetVersions` (and the matching
+//     SetAssetRepos setter) have been removed — they were orphaned by the
+//     canonical writer migration and only consumed by the composition
+//     helper now deleted.
 package youtube
 
 import (
@@ -8,8 +27,8 @@ import (
 	"go.uber.org/zap"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
@@ -32,7 +51,6 @@ type VideoCutRequest struct {
 
 // VideoCutResult wraps the output of a video cut operation with the local file path
 // and the full video metadata captured from yt-dlp.
-// Application-layer DTO that replaces videomuscles.YouTubeCutResult.
 type VideoCutResult struct {
 	LocalPath string
 	Metadata  *YouTubeMetadataPort
@@ -43,6 +61,44 @@ type VideoPipeline interface {
 	DownloadAndCutYouTubeVideo(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error)
 }
 
+// ServiceDeps is the FULL set of dependencies the YouTube orchestrator
+// requires. Wiring happens exactly once via NewService(ServiceDeps);
+// setters are intentionally absent.
+type ServiceDeps struct {
+	// Core collaborators (always required).
+	Cfg               *config.Config
+	Log               *zap.Logger
+	MediaProcessor    asset.Processor
+	VideoPipeline     VideoPipeline
+	LifecycleService  *lifecycle.Service
+	AssetDestResolver asset.Resolver
+
+	// PR1.6 — canonical persistence writer (asset.Repository).
+	// Required: dispatchOrIndex refuses to persist without it.
+	AssetRepo asset.Repository
+
+	// Port dependencies.
+	SearchRunner    SearchRunnerPort
+	SubtitleFetcher SubtitleFetcherPort
+	Whisper         WhisperTranscriberPort
+	ClipFiles       ClipFilesPort
+	MetaFetcher     VideoMetadataFetcherPort
+	DriveFolderMgr  DriveFolderManagerPort
+	HashSvc         HashServicePort
+	TempFiles       TempFileManagerPort
+
+	// PR1.5 — port-backed store/cache/index collaborators.
+	Clips        ClipStorePort
+	Monitors     MonitorsStorePort
+	CacheStore   YouTubeCacheStorePort
+	Indexer      ClipIndexerPort
+	FolderMemory FolderMemoryPort
+	Ollama       OllamaClientPort
+}
+
+// Service is the YouTube orchestrator. Construct it once via NewService
+// (no setters). Methods received on nil-receiver port fields surface an
+// explicit error rather than silently no-op'ing.
 type Service struct {
 	cfg               *config.Config
 	log               *zap.Logger
@@ -50,13 +106,9 @@ type Service struct {
 	videoPipeline     VideoPipeline
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
-	searchL1          sync.Map
-	metadataL1        sync.Map
 	assetRepo         asset.Repository
-	assetProcessing   asset.ProcessingRepository
-	assetVersions     asset.VersionRepository
 
-	// PR1 port-based dependencies — injected via setters from composition root.
+	// Port-backed dependencies (no setters).
 	searchRunner    SearchRunnerPort
 	subtitleFetcher SubtitleFetcherPort
 	whisper         WhisperTranscriberPort
@@ -66,82 +118,70 @@ type Service struct {
 	hashSvc         HashServicePort
 	tempFiles       TempFileManagerPort
 
-	// PR1.5 port-based dependencies — replace concrete infrastructure imports.
-	clips        ClipStorePort
-	monitors     MonitorsStorePort
-	cacheStore   YouTubeCacheStorePort
-	indexer      ClipIndexerPort
+	clips       ClipStorePort
+	monitors    MonitorsStorePort
+	cacheStore  YouTubeCacheStorePort
+	indexer     ClipIndexerPort
 	folderMemory FolderMemoryPort
-	ollamaClient OllamaClientPort
-	disp         DispatcherPort
-	driveClient  DriveClientPort
-	classifier   CategoryClassifierPort
+	ollama      OllamaClientPort
+
+	searchL1 sync.Map
+	metadataL1 sync.Map
 }
 
-// NewService constructs a youtube.Service. The asset lifecycle repositories
-// (assetProcessing, assetVersions) are wired via constructor injection;
-// the post-construction SetAssetRepos setter has been removed in PR4-H
-// Commit 2.
-func NewService(
-	cfg *config.Config,
-	log *zap.Logger,
-	mediaProcessor asset.Processor,
-	videoPipeline VideoPipeline,
-	lifecycleService *lifecycle.Service,
-	assetDestResolver asset.Resolver,
-	assetProcessing asset.ProcessingRepository,
-	assetVersions asset.VersionRepository,
-) *Service {
+// NewService is the sole canonical constructor. Pass every dependency a
+// component of the YouTube pipeline touches; missing nothing means no
+// surrogate setters are needed. Composition root (internal/app/composition.go)
+// is the only intended caller.
+func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		cfg:               cfg,
-		log:               log,
-		mediaProcessor:    mediaProcessor,
-		videoPipeline:     videoPipeline,
-		lifecycleService:  lifecycleService,
-		assetDestResolver: assetDestResolver,
-		assetProcessing:   assetProcessing,
-		assetVersions:     assetVersions,
+		cfg:               deps.Cfg,
+		log:               deps.Log,
+		mediaProcessor:    deps.MediaProcessor,
+		videoPipeline:     deps.VideoPipeline,
+		lifecycleService:  deps.LifecycleService,
+		assetDestResolver: deps.AssetDestResolver,
+		assetRepo:         deps.AssetRepo,
+
+		searchRunner:    deps.SearchRunner,
+		subtitleFetcher: deps.SubtitleFetcher,
+		whisper:         deps.Whisper,
+		clipFiles:       deps.ClipFiles,
+		metaFetcher:     deps.MetaFetcher,
+		driveFolderMgr:  deps.DriveFolderMgr,
+		hashSvc:         deps.HashSvc,
+		tempFiles:       deps.TempFiles,
+
+		clips:       deps.Clips,
+		monitors:    deps.Monitors,
+		cacheStore:  deps.CacheStore,
+		indexer:     deps.Indexer,
+		folderMemory: deps.FolderMemory,
+		ollama:      deps.Ollama,
 	}
 }
 
-// ── Port setters (composition root calls after construction) ───────────
+// ── Persistence — single canonical writer (PR1.6) ──────────────────────
 
-func (s *Service) SetSearchRunner(r SearchRunnerPort)           { s.searchRunner = r }
-func (s *Service) SetSubtitleFetcher(f SubtitleFetcherPort)     { s.subtitleFetcher = f }
-func (s *Service) SetWhisper(w WhisperTranscriberPort)          { s.whisper = w }
-func (s *Service) SetClipFiles(f ClipFilesPort)                 { s.clipFiles = f }
-func (s *Service) SetMetadataFetcher(f VideoMetadataFetcherPort) { s.metaFetcher = f }
-func (s *Service) SetDriveFolderMgr(m DriveFolderManagerPort)   { s.driveFolderMgr = m }
-func (s *Service) SetHashSvc(h HashServicePort)                 { s.hashSvc = h }
-func (s *Service) SetTempFiles(t TempFileManagerPort)           { s.tempFiles = t }
-func (s *Service) SetClipStore(c ClipStorePort)                 { s.clips = c }
-func (s *Service) SetMonitorsStore(m MonitorsStorePort)         { s.monitors = m }
-func (s *Service) SetCacheStore(c YouTubeCacheStorePort)        { s.cacheStore = c }
-func (s *Service) SetIndexer(i ClipIndexerPort)                 { s.indexer = i }
-func (s *Service) SetFolderMemory(f FolderMemoryPort)           { s.folderMemory = f }
-func (s *Service) SetOllamaClient(o OllamaClientPort)           { s.ollamaClient = o }
-func (s *Service) SetDispatcher(d DispatcherPort)               { s.disp = d }
-func (s *Service) SetDriveClient(d DriveClientPort)             { s.driveClient = d }
-func (s *Service) SetClassifier(c CategoryClassifierPort)       { s.classifier = c }
-
-func (s *Service) SetAssetRepo(r asset.Repository) {
-	s.assetRepo = r
+// dispatchOrIndex writes a freshly-cut clip to the canonical asset store.
+//
+// The previous triple fallback (assetRepo → disp.EnqueueAndIndex →
+// clipsRepo.Upsert) has been removed in PR1.6. AssetRepo is the SOLE
+// writer and emits the asset.upserted outbox event atomically (PR12b
+// semantics). If AssetRepo is not wired the call returns an explicit
+// error so callers see the missing dependency rather than experiencing
+// a silent no-op.
+func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.Asset, _ string) error {
+	if clip == nil {
+		return fmt.Errorf("youtube.dispatchOrIndex: nil clip")
+	}
+	if s.assetRepo == nil {
+		return fmt.Errorf("youtube: canonical assetRepo not wired — composition root must include AssetRepo in ServiceDeps")
+	}
+	return s.assetRepo.Upsert(ctx, clip)
 }
 
-// ── Legacy compatibility — kept during incremental migration ──────────
-
-func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.Asset, hash string) error {
-	if s.assetRepo != nil {
-		return s.assetRepo.Upsert(ctx, clip)
-	}
-	if s.disp != nil {
-		return s.disp.EnqueueAndIndex(ctx, clip, hash)
-	}
-	if s.clips == nil {
-		return nil
-	}
-	return s.clips.Upsert(ctx, clip)
-}
+// ── Job wiring (composition root calls this once) ─────────────────────
 
 func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 	if jobsSvc != nil {
@@ -153,32 +193,28 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 	}
 }
 
+// ── Public helpers ─────────────────────────────────────────────────────
+
+// GetOrCreateChannelFolder resolves the Drive folder for a channel via the
+// DriveFolderManagerPort. The previous dummy GetOrCreateChannelFolder
+// fallback to a raw driveclient (concrete Drive SDK) has been removed.
 func (s *Service) GetOrCreateChannelFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
-	if s.driveFolderMgr != nil {
-		folderID, err := s.driveFolderMgr.GetOrCreateFolder(ctx, channelName, parentFolderID)
-		if err != nil {
-			return parentFolderID, fmt.Errorf("failed to get/create channel folder %q: %w", channelName, err)
-		}
-		s.log.Info("channel folder resolved",
-			zap.String("channel", channelName),
-			zap.String("folder_id", folderID),
-			zap.String("parent", parentFolderID))
-		return folderID, nil
+	if s.driveFolderMgr == nil {
+		return parentFolderID, fmt.Errorf("youtube: drive folder manager not wired — composition root must include DriveFolderMgr in ServiceDeps")
 	}
-	if s.driveClient != nil {
-		folderID, err := s.driveClient.GetOrCreateChannelFolder(ctx, channelName, parentFolderID)
-		if err != nil {
-			return parentFolderID, fmt.Errorf("failed to get/create channel folder %q: %w", channelName, err)
-		}
-		s.log.Info("channel folder resolved",
-			zap.String("channel", channelName),
-			zap.String("folder_id", folderID),
-			zap.String("parent", parentFolderID))
-		return folderID, nil
+	folderID, err := s.driveFolderMgr.GetOrCreateFolder(ctx, channelName, parentFolderID)
+	if err != nil {
+		return parentFolderID, fmt.Errorf("failed to get/create channel folder %q: %w", channelName, err)
 	}
-	return parentFolderID, nil
+	s.log.Info("channel folder resolved",
+		zap.String("channel", channelName),
+		zap.String("folder_id", folderID),
+		zap.String("parent", parentFolderID))
+	return folderID, nil
 }
 
+// DownloadAndCut delegates to the VideoPipeline port (no longer calls
+// concrete videomuscles.Pipeline from application via this method).
 func (s *Service) DownloadAndCut(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error) {
 	if s.videoPipeline == nil {
 		return nil, fmt.Errorf("youtube: video pipeline not wired")
@@ -186,12 +222,13 @@ func (s *Service) DownloadAndCut(ctx context.Context, req VideoCutRequest) (*Vid
 	return s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, req)
 }
 
+// Config returns the resolved runtime configuration (for callers that need
+// to read it without taking a direct dependency on the config loader).
 func (s *Service) Config() *config.Config {
 	return s.cfg
 }
 
-// md5String computes an MD5 hex string using the hashSvc port when wired,
-// falling back to a simple local implementation for backward compatibility.
+// md5String returns the MD5 hex digest of s via the HashServicePort.
 func (s *Service) md5String(data string) string {
 	if s.hashSvc != nil {
 		return s.hashSvc.MD5String(data)
@@ -199,11 +236,11 @@ func (s *Service) md5String(data string) string {
 	return fallbackMD5String(data)
 }
 
-// md5File computes an MD5 hex string of a file's contents.
+// md5File returns the MD5 hex digest of the file at path via the
+// HashServicePort. Best-effort: errors are swallowed.
 func (s *Service) md5File(path string) string {
 	if s.hashSvc != nil {
-		h, err := s.hashSvc.MD5File(path)
-		if err == nil {
+		if h, err := s.hashSvc.MD5File(path); err == nil {
 			return h
 		}
 	}
