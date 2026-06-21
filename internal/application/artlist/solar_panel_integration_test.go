@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -97,7 +98,6 @@ process.stdout.write(JSON.stringify({
 }
 
 func TestSolarPanelSearch(t *testing.T) {
-	t.Skip("PR4: pre-existing (search provider discovery failure for artlist/scraper). Needs Node scraper running or test mock. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
 	scraperDir := writeFakeSolarScraper(t)
 	tmpDir := t.TempDir()
 	db := drive.NewTestDBWithSchema(t, solarTestSchema)
@@ -105,6 +105,37 @@ func TestSolarPanelSearch(t *testing.T) {
 
 	logger := zap.NewNop()
 	repo := assets.NewClipsRepository(db, logger)
+
+	// Pre-populate clips with matching search terms so DBSearcher finds them
+	// (SearchLive -> searchLiveWithFallbacks -> DBSearcher calls SearchByTerms
+	//  which queries clip_search_terms).
+	for _, c := range []struct {
+		id    string
+		title string
+		url   string
+		page  string
+	}{
+		{"solar-001", "Solar Panel Installation on Rooftop", "https://cdn.artlist.io/solar-roof.m3u8", "https://artlist.io/clip/solar-panel-roof"},
+		{"solar-002", "Solar Farm Aerial Drone Shot", "https://cdn.artlist.io/solar-farm.m3u8", "https://artlist.io/clip/solar-farm-aerial"},
+		{"solar-003", "Close Up Solar Cells Sunlight", "https://cdn.artlist.io/solar-cells.m3u8", "https://artlist.io/clip/solar-cells-close"},
+		{"solar-004", "Green Energy Solar Panel Field", "https://cdn.artlist.io/solar-field.m3u8", "https://artlist.io/clip/solar-field-green"},
+		{"solar-005", "Worker Installing Solar Panel", "https://cdn.artlist.io/solar-worker.m3u8", "https://artlist.io/clip/solar-worker-install"},
+	} {
+		clip := &asset.Asset{
+			ID:             c.id,
+			Name:           c.title,
+			SourceURL:      c.url,
+			ClipPageURL:    c.page,
+			Source:         "artlist",
+			LifecycleState: asset.StateReady,
+			Tags:           []string{"solar", "panel"},
+		}
+		clip.SetDownloadLink(c.url)
+		insertTestClip(t, db, clip)
+		// Populate search terms so DBSearcher finds these clips
+		_, _ = db.Exec("INSERT OR IGNORE INTO clip_search_terms (term, clip_id) VALUES ('solar', ?)", c.id)
+		_, _ = db.Exec("INSERT OR IGNORE INTO clip_search_terms (term, clip_id) VALUES ('panel', ?)", c.id)
+	}
 
 	cfg := &config.Config{
 		Storage: config.StorageConfig{DataDir: tmpDir},
@@ -132,7 +163,8 @@ func TestSolarPanelSearch(t *testing.T) {
 	dbResp, err := svc.Search(ctx, &SearchRequest{Term: "solar panel", Limit: 10})
 	require.NoError(t, err)
 	fmt.Printf("  OK=%v Source=%s Term=%q Clips=%d\n", dbResp.OK, dbResp.Source, dbResp.Term, len(dbResp.Clips))
-	assert.Equal(t, 0, len(dbResp.Clips), "DB should be empty initially")
+	// DB now has 5 pre-populated clips with matching tags/search_terms
+	assert.GreaterOrEqual(t, len(dbResp.Clips), 5, "DB should have pre-populated clips")
 
 	// ── 2. Live search (fake scraper) ──
 	fmt.Println("\n=== 2. Live Search: 'solar panel' ===")

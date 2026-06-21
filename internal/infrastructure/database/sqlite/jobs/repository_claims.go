@@ -28,7 +28,7 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 	// Find the best candidate (queued only — ClaimNext in the domain interface
 	// is the atomic claim + start, so we select from queued).
 	query := `SELECT ` + jobColumns + ` FROM jobs
-		WHERE status = 'queued' ORDER BY priority DESC, created_at ASC LIMIT 1`
+		WHERE status = 'QUEUED' ORDER BY priority DESC, created_at ASC LIMIT 1`
 	var args []any
 	if len(types) > 0 {
 		placeholders := make([]string, len(types))
@@ -37,7 +37,7 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 			args = append(args, t)
 		}
 		query = `SELECT ` + jobColumns + ` FROM jobs
-			WHERE status = 'queued' AND type IN (` + strings.Join(placeholders, ",") + `)
+			WHERE status = 'QUEUED' AND type IN (` + strings.Join(placeholders, ",") + `)
 			ORDER BY priority DESC, created_at ASC LIMIT 1`
 	}
 	row := r.db.QueryRowContext(ctx, query, args...)
@@ -74,10 +74,10 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 	now := time.Now().UTC()
 	leaseExpiry := now.Add(cmd.LeaseTTL)
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE jobs SET status = 'running', started_at = ?,
+		`UPDATE jobs SET status = 'RUNNING', started_at = ?,
 		 lease_expiry = ?, lease_id = ?, worker_id = ?,
 		 revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status IN ('queued', 'leased')
+		 WHERE id = ? AND status IN ('QUEUED', 'LEASED')
 		 AND revision = ?`,
 		timeutil.FormatRFC3339(now), timeutil.FormatRFC3339(leaseExpiry),
 		cmd.LeaseID, cmd.WorkerID,
@@ -107,7 +107,7 @@ func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string
 	newExpiry := time.Now().Add(leaseTTL)
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE jobs SET lease_expiry = ?, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status = 'running'
+		 WHERE id = ? AND status = 'RUNNING'
 		 AND worker_id = ?`,
 		timeutil.FormatRFC3339(newExpiry), timeutil.FormatRFC3339(time.Now()),
 		id, workerID,
@@ -129,7 +129,7 @@ func (r *SQLiteStore) RequeueExpiredLeases(ctx context.Context, now time.Time, l
 	nowStr := timeutil.FormatRFC3339(now)
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, retry_count, max_retries, revision
-		 FROM jobs WHERE status IN ('leased', 'running') AND lease_expiry < ?
+		 FROM jobs WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < ?
 		 ORDER BY lease_expiry LIMIT ?`, nowStr, limit,
 	)
 	if err != nil {
@@ -190,7 +190,7 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 	}
 	// Exhausted → failed
 	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = 'failed', completed_at = ?, error = ?,
+		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
 		 worker_id = '', lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status = ? AND lease_expiry < ? AND revision = ?`,
 		nowStr, "max retries exhausted (reaper)", nowStr, jobID, currentStatus, nowStr, revision)
