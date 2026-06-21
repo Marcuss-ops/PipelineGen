@@ -84,7 +84,7 @@ external services, configuration, day-1 commands), see **`ARCHITECTURE.md`** at
 the project root. This file is the canonical architecture doc.
 
 Key contract files:
-- `internal/domain/asset/` — canonical asset types + contracts (migrating from `internal/core/`)
+- `internal/domain/asset/` — canonical asset types + contracts
 - `internal/domain/job/` — canonical job types + Store interface
 - `internal/app/registry.go::WireRegistry` — module wiring single source of truth
 - `ARCHITECTURE.md` — system diagram, data flows, 9-module registry, persistence
@@ -171,53 +171,7 @@ If Google Drive authentication fails:
 python3 scripts/generate_drive_token.py
 ```
 
----
-
-## Legacy Directories Policy
-
-These directories are **migration‑only**: they should disappear from the
-codebase once their consumers have been moved. Each new PR that touches
-one of them must be a *migration* (moving symbols outward) or a
-*removal* — never an addition.
-
-**Rule of thumb**: a directory on this list **cannot receive**:
-
-- new files,
-- new exported types,
-- new repositories,
-- new handlers,
-- new business logic of any kind.
-
-It **may receive**:
-
-- edits to existing files that migrate a symbol outward,
-- deletions (this is the desired direction),
-- tests that cover the migration surface.
-
-The deny‑list is enforced by `scripts/ci-architectural-checks.sh` Check 13.
-A PR that tries to add a new `.go` file in any of these directories will fail
-the CI guard with the migration target printed inline.
-
-| Legacy directory | Migration target | Owner |
-|---|---|---|
-| `internal/core/`                  | `internal/domain/asset/` (contracts) or `internal/infrastructure/<X>/` (concrete) | PR4 ✅ |
-| `internal/media/monitor/`         | `internal/application/monitor/` (lift-and-shift completato) | Wave 10 ✅ |
-| `internal/media/ingest/`          | `internal/application/ingest/` (lift-and-shift completato) | Wave 11 ✅ |
-| `internal/media/mediaasset/`      | `internal/infrastructure/media/processor/` (migrated + renamed to 'processor') | Wave 12 ✅ |
-| `internal/assets/`                | `internal/domain/asset/` (directory already eliminated; content absorbed) | Pre-wave-7 ✅ |
-| `internal/artifacts/`             | `internal/application/assets/artifacts/` (lift-and-shift completato) | Wave 7 ✅ |
-| `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/` (migration completata; directory eliminata) | Pre-wave-9 ✅ |
-| `internal/upload/drive/`          | `internal/infrastructure/drive/` (lift-and-shift completato) | Wave 8 ✅ |
-| `internal/application/scriptflow/` | `internal/application/scripts/` (flat-merge completato; directory eliminata) | Wave 6 ✅ |
-| `internal/domain/media/`          | `internal/domain/asset/` (tipi duplicati — directory eliminata June 2026) | Wave 4C ✅ |
-| `internal/domain/worker/`         | `internal/domain/job/` (directory already eliminated) | Pre-wave-7 ✅ |
-| `internal/domain/outbox/`         | `internal/domain/lifecycle/` (directory already eliminated) | Pre-wave-7 ✅ |
-
-Per‑directory migration manifests live in `docs/migration-maps/<dir>.md`.
-
-
-
-## Rebase-Conflict Lesson (June 2026)
+---## Rebase-Conflict Lesson (June 2026)
 
 When `git pull --rebase` hits a conflict on a **test file** (or any
 file where both local and remote added independent hunks), prefer
@@ -442,14 +396,10 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 ## Core Contracts
 
 All modules must use canonical contracts:
-- `internal/domain/asset/` — Asset, MediaType, Repository, Processor, Destination (migrating from `internal/core/`)
+- `internal/domain/asset/` — Asset, MediaType, Repository, Processor, Destination
 - `internal/domain/job/` — Job, Store, WorkerSession
 - `internal/domain/script/` — Script, Plan, GenerationSpec
 - All long-running operations must use `internal/application/jobs/` service
-
-**Note**: `internal/core/` still exists as a legacy package. New code should prefer
-`internal/domain/` contracts and `internal/application/` use cases. See
-`architecture/migration.yaml` Wave 4C for the migration plan.
 
 ---
 
@@ -496,8 +446,8 @@ Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni util
 | Real-time clip search (post-Qdrant) | `realtime.Service` | `internal/media/realtime/` |
 | Topic-by-DB routing (folder risoluzione) | `voiceover.GroupsResolver` | `internal/media/voiceover/` |
 | Salva con idempotency / outbox | `outbox.Dispatcher` | `Removed: outbox/` |
-| Google Drive upload / Doc creation | `drive.Uploader`, `drive.DocClient` | `internal/upload/drive/` |
-| Channel monitor background | `monitor.ChannelMonitor` | `internal/media/monitor/` |
+| Google Drive upload / Doc creation | `drive.Uploader`, `drive.DocClient` | `internal/infrastructure/drive/` |
+| Channel monitor background | `monitor.ChannelMonitor` | `internal/application/monitor/` |
 
 > **Regola**: se l'utility corretta non è in questa tabella ma `grep` mostra un duplicato (la stessa funzione implementata in >1 posto), PRIMA estrarla in `pkg/<x>/` poi consumarla. Esempio realistico visto nel codice: 4+ implementazioni di "retry con backoff" sono state collassate in `pkg/retry` — stessa opportunità per qualsiasi altra duplicazione che trovi.
 
@@ -573,7 +523,7 @@ Vecchia regola (deprecata — portava al mega-package):
 
 > ~~Quando un file supera ~300-400 righe o ha >2-3 responsabilità distinte, crea un file per concetto nello stesso package.~~
 
-Esempi già fatti (stato a Giugno 2026 — numeri verificati via `ls`): channel_monitor (11 file in `internal/media/monitor/`), extractor_process (10), handler_batch_phases (13), clipindexer (6), voiceover (11). **← valori snapshot**: se il numero è cambiato, rifai `ls <dir> | wc -l` per verificarlo; aggiorna qui quando splitti un nuovo file.
+Esempi già fatti (stato a Giugno 2026): channel_monitor (11 file in `internal/application/monitor/`), extractor_process (10), handler_batch_phases (13), clipindexer (6), voiceover (11). **← valori snapshot**: se il numero è cambiato, rifai `ls <dir> | wc -l` per verificarlo; aggiorna qui quando splitti un nuovo file.
 
 ### Pattern 6 — Modificare una request o payload struct
 
@@ -639,7 +589,7 @@ Se l'utility che cerchi **non è nella sezione 🧰 Utilities**: probabilmente d
 - `os/exec`
 
 Queste dipendenze devono passare attraverso use case o interfacce definite in
-`internal/core/` o `internal/application/`.
+`internal/domain/` o `internal/application/`.
 
 **Shape canonica di un handler HTTP:**
 
@@ -675,7 +625,6 @@ the target API structure. Quick reference:
 ├── cmd/worker/main.go        # Standalone worker
 ├── cmd/admin/main.go         # One-shot admin CLI
 ├── internal/
-│   ├── core/                 # Legacy — canonical contracts (migrating to domain/asset/)
 │   ├── api/                  # HTTP transport (thin — no business logic)
 │   │   ├── server.go
 │   │   ├── routes.go
@@ -686,11 +635,13 @@ the target API structure. Quick reference:
 │   │   ├── content/          # Merged from books + lessons
 │   │   └── <feature>/        # One dir per feature (max 30 files)
 │   ├── app/                  # Composition root, wiring, migrations
-│   ├── application/          # Use-case orchestration (new, growing)
+│   ├── application/          # Use-case orchestration
 │   │   ├── scripts/          # Script generation (batch, curation, scenes, documents)
-│   │   ├── assets/           # Asset providers, registry
+│   │   ├── assets/           # Asset providers, registry, artifacts, lifecycle
 │   │   ├── jobs/             # Job broker, worker, outbox
 │   │   ├── images/           # Image generation
+│   │   ├── ingest/           # Media ingest orchestrator
+│   │   ├── monitor/          # Channel monitor background service
 │   │   ├── content/          # Books + lessons
 │   │   ├── voiceover/        # Voiceover service
 │   │   ├── association/      # Script→asset semantic matching
@@ -702,14 +653,10 @@ the target API structure. Quick reference:
 │   ├── infrastructure/       # Adapters to external systems
 │   │   ├── database/sqlite/  # SQLite repositories + migrations
 │   │   ├── drive/            # Google Drive uploader
-│   │   ├── media/ffmpeg/     # FFmpeg wrappers
+│   │   ├── media/            # FFmpeg, processor, downloader
 │   │   ├── ai/               # Ollama, reranker, VLM
 │   │   └── process/          # External command execution
-│   ├── media/                # Media pipelines (legacy — migrating to application/ + infrastructure/)
-│   ├── sources/              # Artlist + YouTube providers (legacy — migrating to providers/)
-│   ├── upload/               # Drive upload (legacy — migrating to infrastructure/drive/)
-│   ├── assets/               # Legacy asset package (migrating to domain/asset/)
-│   └── artifacts/          # Legacy artifact package → migrated to application/assets/artifacts/
+│   └── media/                # Media pipelines (vectorstore, stockpipeline, books, etc.)
 ├── pkg/                      # Leaf utilities only
 ├── config/                   # YAML configuration
 ├── migrations/               # SQL migrations

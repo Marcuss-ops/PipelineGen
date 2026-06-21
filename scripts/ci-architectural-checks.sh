@@ -282,17 +282,10 @@ echo "Check 13: no new production code in legacy directories"
 # the migration surface).
 #
 # See AGENTS.md §Legacy Directories Policy for the canonical mapping.
+# Legacy directories policy was retired June 2026 — all directories migrated.
+# The array is kept empty so Check 13 remains a no-op guard rail.
+# See AGENTS.md Migration Status section for the completed wave history.
 LEGACY_DIRS=(
-  "internal/core"
-  "internal/media"
-  "internal/assets"
-  "internal/artifacts"
-  "internal/sources"
-  "internal/upload"
-  "internal/application/scriptflow"
-  "internal/domain/media"
-  "internal/domain/worker"
-  "internal/domain/outbox"
 )
 # Compute the change set with status (A / R / M / D / C). --
 # name-status with find-renames lets git pair renames internally, so the
