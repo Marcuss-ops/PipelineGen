@@ -76,8 +76,14 @@ defect, not an implicit justification.
 
 - A `--update` of `scripts/archcheck/baseline.json` is run.
 - A new capability package is migrated (PR1, PR2, PR3, PR4).
-- An import alias in `internal/infrastructure/youtube/{metadata.go,
-  subtitles.go, ytdlp.go}` is changed or removed.
+- An import alias in any `metadata.go`/`subtitles.go`/`ytdlp.go`
+  across `internal/infrastructure/youtube/` or
+  `internal/application/youtube/` is changed or removed (note:
+  `metadata.go` and `subtitles.go` moved to `internal/application/youtube/`
+  between commit `4ca6b816` (last PR0 baseline audit) and the
+  `--update` cycle that captured post-`9eb11bbe` state — so
+  `ytdlp.go` is the only file remaining in
+  `internal/infrastructure/youtube/` of these three).
 
 ## Verification of the 4 line numbers above
 
@@ -166,3 +172,130 @@ This section is added to make the decision explicit and recoverable
 across sessions; the next operator sees the rationale next to the
 table above and need not re-do the analysis. The four `baseline.json`
 entries remain unchanged.
+
+#### Post-Audit Update (2026-06-21)
+
+A subsequent `go run ./scripts/archcheck --update` revealed the
+4 entries this section refers to no longer exist in `baseline.json`.
+They were naturally dropped because the underlying source files
+were relocated:
+
+- `internal/infrastructure/youtube/metadata.go` -> split into
+  `internal/application/youtube/metadata_enrich.go` and
+  `metadata_persist.go`.
+- `internal/infrastructure/youtube/subtitles.go` -> moved to
+  `internal/application/youtube/subtitles.go`.
+
+The **Decision (KEEP)** documented above was the correct call at
+the time it was made (commit `9eb11bbe`). The files then moved
+(organic trigger condition met), and `--update` correctly dropped
+the now-stale aliases. **No manual removal was needed** — the
+ratchet self-corrected.
+
+The "stable while package persists" status in the table above
+remains accurate at the moment of capture, but readers of this
+section later (after PR1.5 stash pop or PR4 consolidation) should
+re-walk the actual file system to confirm whether the package
+still contains those imports.
+
+See `## PR2 artlist infrastructure extraction` below for the
+post-PR2 view.
+
+## PR2 artlist infrastructure extraction (2026-06-21, post-`--update` audit)
+
+**Audit findings**: Following the basher run that surfaced
+pre-existing ratchet failures, `go run ./scripts/archcheck --update`
+regenerated `scripts/archcheck/baseline.json` and captured the
+following delta (pre-update SHA captured at
+`/tmp/archcheck-audit/pr2-audit/baseline-before.json`):
+
+- **5 NEW aliases** introduced by PR2 artlist infrastructure
+  commits (`7a35dae2`, `433fe23a`, `00f1c6cc`, `4c6f3215`,
+  `05db88b0`):
+
+  | File | Alias | Target |
+  |---|---|---|
+  | `internal/infrastructure/artlist/downloader/downloader.go` | `artapp` | `internal/application/artlist` |
+  | `internal/infrastructure/artlist/downloader/downloader.go` | `core_dl` | `internal/infrastructure/downloader` |
+  | `internal/infrastructure/artlist/fallback/pexels.go` | `artapp` | `internal/application/artlist` |
+  | `internal/infrastructure/artlist/fallback/pixabay.go` | `artapp` | `internal/application/artlist` |
+  | `internal/infrastructure/artlist/scraper/scraper.go` | `artapp` | `internal/application/artlist` |
+
+  All 5 are HexArch adapter-pattern aliases: infrastructure
+  adapters importing application-layer port/domain types to
+  implement interfaces.
+
+- **2 NEW wrappers** in `internal/infrastructure/artlist/cache/cache.go`:
+  `wrapInvalid` (line 329) and `wrapUnavailable` (line 330), both
+  wrapping `errors.Join`. Standard cache-error short-circuit pattern;
+  not a defect. Verified:
+  `grep -nE '^func wrapInvalid|^func wrapUnavailable' internal/infrastructure/artlist/cache/cache.go`.
+
+- **5 aliases REMOVED**: 1 was line-number drift on
+  `scraper.go: artapp` (raw form replaced by stable form per
+  `scripts/archcheck/main.go:71-77`), 4 were the pre-existing
+  youtube entries (see "Re-evaluation for PR1.5" section above).
+
+- **1 directory REMOVED**: `internal/upload` was already moved
+  to `internal/infrastructure/drive/` per Wave 8 commit
+  `09bcfdec` (currently in the rebased history); `--update`
+  correctly dropped the stale directory entry.
+
+**Decision**: All 5 NEW entries are accepted into the baseline.
+Reasons:
+
+1. **HexArch adapter pattern is canonical.** Infrastructure
+   adapters must import application-layer port/domain types to
+   implement them; this is the canonical HexArch direction and
+   is not a layering violation. Per AGENTS.md `## Modular edit
+   patterns` and `Pattern 8 — API package: thin transport only`
+   inversion, infrastructure concrete deps are explicitly expected.
+2. **`artapp` is a collision alias, fully audited.** Where
+   application and infrastructure both need to be referenced from
+   one file, `artapp` distinguishes the application-layer
+   entrypoint. This is a **Weak claim** per the file's existing
+   taxonomy — kept visible at per-entry audit level (not just
+   the blanket `pkg/*` claim).
+3. **`core_dl` reuses the canonical downloader.**
+   `internal/infrastructure/downloader` is a leaf-only infra
+   package; the alias is a stable composition rather than
+   transient coupling.
+4. **Wrappers are part of the cache contract.** Cache errors
+   need distinct categorical markers (`wrapInvalid` vs
+   `wrapUnavailable`); the wrapper audit is by-design nominal.
+
+**Trigger conditions for actual relocation** (analogous to
+PR1.5 above):
+
+- Future consolidation of `internal/infrastructure/artlist/*`
+  into a unified `internal/infrastructure/media/` or similar
+  package.
+- Direct rename of `artapp` to remove the application-vs-infra
+  name collision (HexArch could go further with stricter naming).
+- Removal of `core_dl` if the downloader itself is consolidated.
+
+### Verification
+
+The capture-time SHA of `scripts/archcheck/baseline.json`
+post-update is `5d90d21d59061af7...` (durable in git history).
+The pre-update snapshot was saved at
+`/tmp/archcheck-audit/pr2-audit/baseline-before.json` for the
+duration of this audit only — that path does NOT survive reboot
+(per session contract). The audit facts worth preserving long-term:
+
+- **5 aliases added** (PR2 artlist — admitted to baseline).
+- **5 aliases removed** (1 line-number drift on
+  `internal/infrastructure/artlist/scraper/scraper.go: artapp`
+  replaced by stable form; 4 pre-existing youtube entries from
+  PR0 audit cycle naturally dropped because their source files
+  moved from `internal/infrastructure/youtube/` to
+  `internal/application/youtube/`).
+- **2 wrappers added** (`internal/infrastructure/artlist/cache/cache.go`
+  lines 329, 330).
+- **1 directory removed** (`internal/upload` — actually moved
+  by Wave 8 commit `09bcfdec`, see also `architecture/migration.yaml`
+  Wave 8 entry).
+
+JSON validation: parses clean. Archcheck exits 0 (verified
+post-update). `stash@{0}` (`WIP-PR1.5-bystander-2026-06-21-pre-rebase`)
+NOT touched — pop deferred to dedicated PR1.5 follow-up session.
