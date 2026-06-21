@@ -88,7 +88,35 @@ type DiagnosticsReport struct {
 	WikidataWorks    bool     `json:"wikidata_works"`
 }
 
-func NewService(cfg *config.Config, repo *assets.ImagesRepository, stockRepo *assets.ClipsRepository, driveSvc *driveapi.Service, styleRegistry *generation.StyleRegistry, log *zap.Logger) *Service {
+// NewService constructs an images.Service with all optional dependencies
+// wired at construction time. The 8 post-construction setters
+// (SetNvidiaConfig, SetRemoteImageEndpointURL, SetVeloxBaseURL,
+// SetGoogleAccountingConfig, SetMediaStore, SetLLMGenerator,
+// SetVectorStore, SetMetadataWriter) have been removed in PR4-H Commit 3 —
+// their fields are initialised directly in this ctor.
+//
+// SetIngestService is retained (called from registry.go's WireRegistry after
+// MediaIngest has been constructed — composition root has documented this as
+// a late-binding window for module cross-wiring; see Document late-bindings).
+func NewService(
+	cfg *config.Config,
+	repo *assets.ImagesRepository,
+	stockRepo *assets.ClipsRepository,
+	driveSvc *driveapi.Service,
+	styleRegistry *generation.StyleRegistry,
+	nvidiaAPIKey string,
+	nvidiaModel string,
+	remoteImageEndpointURL string,
+	veloxBaseURL string,
+	gaServerURL string,
+	gaDownloadDir string,
+	vidsProjectID string,
+	mediaStore *drive.Store,
+	llmGen *ollama.Generator,
+	vectorSvc *vectorstore.Service,
+	metaWriter *semantic.MetadataWriter,
+	log *zap.Logger,
+) *Service {
 	s := &Service{
 		cfg:           cfg,
 		repo:          repo,
@@ -102,29 +130,24 @@ func NewService(cfg *config.Config, repo *assets.ImagesRepository, stockRepo *as
 			Timeout: 10 * time.Minute, // AI generation and browser automation can be slow
 		},
 
-		scriptsDir:        cfg.Paths.PythonScriptsDir,
-		nvidiaModel:       cfg.External.NvidiaModel,
-		nvidiaLocalNIMURL: cfg.External.NvidiaLocalNIMURL,
-		animationsDir:     cfg.Storage.AnimationsPath(),
-		styleRegistry:     styleRegistry,
+		scriptsDir:             cfg.Paths.PythonScriptsDir,
+		nvidiaAPIKey:           nvidiaAPIKey,
+		nvidiaModel:            nvidiaModel,
+		nvidiaLocalNIMURL:      cfg.External.NvidiaLocalNIMURL,
+		remoteImageEndpointURL: remoteImageEndpointURL,
+		veloxBaseURL:           veloxBaseURL,
+		gaServerURL:            gaServerURL,
+		gaDownloadDir:          gaDownloadDir,
+		vidsProjectID:          vidsProjectID,
+		animationsDir:          cfg.Storage.AnimationsPath(),
+		styleRegistry:          styleRegistry,
+		mediaStore:             mediaStore,
+		llmGen:                 llmGen,
+		vectorSvc:              vectorSvc,
+		metaWriter:             metaWriter,
 	}
 
 	return s
-}
-
-func (s *Service) SetNvidiaConfig(apiKey, model string) {
-	s.nvidiaAPIKey = apiKey
-	s.nvidiaModel = model
-}
-
-// SetRemoteImageEndpointURL sets the remote image generation endpoint URL.
-func (s *Service) SetRemoteImageEndpointURL(url string) {
-	s.remoteImageEndpointURL = url
-}
-
-// SetVeloxBaseURL sets the base URL of this server, used to construct webhook_url for remote image generation.
-func (s *Service) SetVeloxBaseURL(url string) {
-	s.veloxBaseURL = url
 }
 
 func (s *Service) Diagnostics() DiagnosticsReport {
@@ -142,49 +165,9 @@ func (s *Service) SetIngestService(svc *ingest.Service) {
 	s.ingestSvc = svc
 }
 
-// SetMediaStore sets the unified media store for Drive operations.
-func (s *Service) SetMediaStore(store *drive.Store) {
-	s.mediaStore = store
-}
-
-// SetMetadataWriter sets the unified metadata writer for ALL media types.
-// Handles semantic tagging + fallback + metadata.json creation.
-func (s *Service) SetMetadataWriter(w *semantic.MetadataWriter) {
-	s.metaWriter = w
-}
-
-// SetLLMGenerator sets the Ollama generator for rich descriptions.
-func (s *Service) SetLLMGenerator(gen *ollama.Generator) {
-	s.llmGen = gen
-}
-
-// SetVectorStore sets the vector store service for indexing.
-func (s *Service) SetVectorStore(svc *vectorstore.Service) {
-	s.vectorSvc = svc
-}
-
 // Log restituisce il logger interno per logging da altre componenti.
 func (s *Service) Log() *zap.Logger {
 	return s.log
-}
-
-// SetGoogleAccountingConfig sets the configuration for Google Vids image generation via sidecar.
-func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectID string) {
-	s.gaServerURL = serverURL
-	s.gaDownloadDir = downloadDir
-	s.vidsProjectID = vidsProjectID
-
-	// Usa downloadDir come base per risolvere path relativi restituiti dal server Python.
-	// downloadDir è relativo al project root (es. "./data/google_vids"), non a imagesDir.
-	absDir := downloadDir
-	if absDir != "" && !filepath.IsAbs(absDir) {
-		// Assolutizza usando il working directory (coincide col project root)
-		if wd, err := os.Getwd(); err == nil {
-			absDir = filepath.Join(wd, absDir)
-		}
-	}
-	// Resolve eventuali elementi ".." o "." nel path
-	absDir = filepath.Clean(absDir)
 }
 
 // Repo returns the underlying images repository.

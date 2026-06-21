@@ -580,14 +580,16 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	)
 
 	booksSvc := initBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
-	if voiceoverSvc != nil {
-		booksSvc.SetVoiceoverService(voiceoverSvc)
-	}
 
+	// PR4-H Commit 3: voMetaWriter is the canonical shared *semantic.MetadataWriter
+	// (built once in BuildDomainBundle, fed to voiceover.NewService and image
+	// service). The previous dual-instance (one local for voiceover, one internal
+	// to initImageService) is collapsed onto this single reference.
 	imageSvc, metaWriter := initImageService(ctx, cfg, log,
 		drive.DriveClient, repos.ClipsRepo, repos.ClipsRepo,
 		ai.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, process.VectorSvc, repos.ImageRepo,
+		voMetaWriter,
 	)
 
 	var realtimeSvc *realtime.Service
