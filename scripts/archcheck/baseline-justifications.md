@@ -95,3 +95,74 @@ ytcfg`, `subtitles.go:14 textutil`. These line numbers are informational only
 (archcheck's `stableAliases` strips them from the ratchet key per
 `scripts/archcheck/main.go:71-77`), so a future drift does not break the
 build — but the sidecar reflects them as cosmetic accuracy.
+
+## Re-evaluation for PR1.5 (2026-06-21, post-baseline-audit)
+
+**Decision: keep all 4 entries in `baseline.json`.** The audit cycle
+during the PR0 baseline audit (commits `000c40c4` + `97eab0bc`) closed
+the original `FAIL: New alias detected` outputs. The four entries remain:
+
+| File | Alias | Target | Ratchet status |
+|---|---|---|---|
+| `internal/infrastructure/youtube/metadata.go` | `ytcfg` | `internal/infrastructure/config` | stable while package persists |
+| `internal/infrastructure/youtube/metadata.go` | `urlutil` | `pkg/urlutil` | permanent (leaf-only) |
+| `internal/infrastructure/youtube/subtitles.go` | `ytcfg` | `internal/infrastructure/config` | stable while package persists |
+| `internal/infrastructure/youtube/subtitles.go` | `textutil` | `pkg/textutil` | permanent (leaf-only) |
+
+### Why NOT move to "pre-rename audit" status now
+
+The user's earlier followup asked whether to relocate these entries
+to this sidecar as 'pre-rename audit' before PR1.5 begins. Decision
+is no-move, with the following rationale:
+
+1. **PR1 scope is internal, not rename-driving.**
+   `docs/roadmap/PR1_YOUTUBE_INFRASTRUCTURE.md` enumerates substeps
+   PR1.1..PR1.9. PR1.5 ("Ridurre `application/youtube.Service`") is
+   a thin-Service refactor; it replaces concrete deps with port
+   interfaces in `internal/application/youtube/ports.go`. No substep
+   renames `internal/infrastructure/youtube/`.
+
+2. **Wave 15 PR4d-final has already established the package name.**
+   The directory was first added in `faaf9226` on 2026-06-21 10:19:33.
+   Wave 15 did not rename it during the migration; many code paths
+   import it (e.g. `internal/app/composition.go`,
+   `internal/app/module_youtube.go`, `internal/app/module_stock.go`).
+   A rename now would create churn proportional to those references.
+
+3. **The ratchet justification is structural, not transient.**
+   `pkg/urlutil` and `pkg/textutil` are AGENTS.md leaf-only utilities
+   and cannot be eliminated by any consolidation wave. The
+   `internal/infrastructure/config` aliasing is also stable (all
+   packages consume config by the same import path).
+
+4. **Removing entries from `baseline.json` would re-FAIL archcheck.**
+   Until `internal/infrastructure/youtube/{metadata.go, subtitles.go}`
+   is renamed or eliminated, removing the ratchet allowances re-emits
+   `FAIL: New alias detected` on every run. Trading green-ratchet for
+   cosmetic-documentation is a loss.
+
+### Trigger conditions for actual relocation
+
+Move the 4 entries OUT of `baseline.json` AND append a new section
+here titled "Removed aliases (post-PR{n} audit)" ONLY when one of the
+following is true:
+
+- A future consolidation wave (PR4 — composition root cleanup, or a
+  later application/infrastructure merge) executes a real rename or
+  elimination of `internal/infrastructure/youtube/{metadata.go,
+  subtitles.go}`. In that case:
+  1. Run `go run ./scripts/archcheck --update` to regenerate the
+     baseline. Entries drop off naturally if the underlying imports
+     disappear.   2. If `--update` did not drop them (partial rename only), remove
+     the entries from `baseline.json` manually via `str_replace`.
+     Match the JSON-escaped arrow (`\u003e`) exactly as written —
+     plain `>` will silently corrupt the file. If unsure, prefer
+     `go run ./scripts/archcheck --update` which handles encoding.
+  3. Append the new remove-section here with date + PR reference.
+
+### Cosmetic re-affirmation (this commit)
+
+This section is added to make the decision explicit and recoverable
+across sessions; the next operator sees the rationale next to the
+table above and need not re-do the analysis. The four `baseline.json`
+entries remain unchanged.
