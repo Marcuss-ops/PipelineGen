@@ -116,10 +116,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		wiring.ArtlistSvc = aw
 	}
 
-	// ScriptFlow — sources from root.<bundle>.<field>. The 5 nil placeholders
-	// that NewScriptFlowHandler accepts are passed during AIBundle construction
-	// and filled in here via setter calls. PR4d-final (June 2026): wireScriptFlowExtras
-	// now uses root.AI.ScriptGen + root.Process.VectorSvc + root.Repos.ClipsRepo.
+	// ScriptFlow — sources from root.<bundle>.<field>. The previously nullable
+	// deps that NewScriptFlowHandler used to accept via post-construction
+	// setters (clipSourceBuilder, mediaCurator, harvestSvc) are now constructed
+	// inline here and passed by value to the ctor. PR4.E (June 2026) absorbed
+	// the 6 setters removed in this wave (clipSourceBuilder, mediaCurator,
+	// harvestService, curationClipSourceBuilder, curationJobService,
+	// catalogJobService).
 	if root.AI != nil && root.AI.ScriptGen != nil && root.Domains.ImageService != nil {
 		memoryRepo := gemmamemory.NewRepository(root.DB.DB)
 		memorySvc := gemmamemory.NewService(memoryRepo, log)
@@ -127,16 +130,54 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		engine := scriptcore.NewEngine(root.AI.ScriptGen, memorySvc, scriptsRepoAdapter, log)
 		batchSvc := scripts.NewBatchService(cfg, log, root.AI.ScriptGen, engine, root.Drive.DocClient, root.Domains.VoiceoverService, scriptsRepoAdapter)
 		curationSvc := scripts.NewCurationService(nil, root.Jobs.Service, log)
-		handler := scriptapi.NewScriptFlowHandler(root.AI.ScriptGen, engine, root.Domains.ImageService, root.Domains.RealtimeService, root.Domains.AssocService, root.Domains.VoiceoverService, root.Search.AssetTreeService, root.Drive.DocClient, root.Drive.DriveUploader, root.Jobs.Facade, scriptsRepoAdapter, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log, batchSvc, curationSvc)
-		wireScriptFlowExtras(handler, root.AI.ScriptGen.GetClient(), root.Process.VectorSvc, root.Repos.ClipsRepo, engine, cfg, log)
-		// PR4d-chunk2: construct harvest service locally (mail-box elimination):
+
+		// PR4.E: build clipSourceBuilder inline (was in wireScriptFlowExtras + setter).
+		var clipSourceBuilder *scripts.ClipSourceBuilder
+		if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+			clipSourceBuilder = scriptcore.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
+			if root.Process.VectorSvc != nil && cfg.Features.CatalogScriptVectorSearch {
+				clipSourceBuilder.SetVectorStore(root.Process.VectorSvc)
+			}
+			if cfg.Reranker.Enabled {
+				clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
+					Enabled:   cfg.Reranker.Enabled,
+					URL:       cfg.Reranker.URL,
+					Model:     cfg.Reranker.Model,
+					TopK:      cfg.Reranker.TopK,
+					TimeoutMs: cfg.Reranker.TimeoutMs,
+				}))
+			}
+		}
+
+		// PR4.E: build mediaCurator inline (was in wireScriptFlowExtras + setter).
+		var mediaCurator *scripts.MediaCurator
+		if (root.Process.VectorSvc != nil || root.Repos.ClipsRepo != nil) && engine != nil {
+			mediaCurator = scripts.NewMediaCurator(root.Process.VectorSvc, cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
+		}
+
+		// PR4.E: build harvestSvc inline (was conditional setter call).
 		// clipresolver.Service doesn't implement script.AutoHarvestService, so we
 		// reuse the JobHarvestService path that was already in use pre-PR4d.
+		var harvestSvc scriptapi.AutoHarvestService
 		if root.Jobs.Service != nil {
 			presetsConfig, _ := artlistpkg.LoadPresets("config/presets.yaml")
-			harvestSvc := clipresolver.NewJobHarvestService(root.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
-			handler.SetHarvestService(harvestSvc)
+			harvestSvc = clipresolver.NewJobHarvestService(root.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
 		}
+
+		// curationJobService + catalogJobService not wired today; passed nil.
+		// RegisterJobHandlers already nil-guards them, so the fields stay nil
+		// without losing behaviour. A future caller can inject them via ctor.
+		handler := scriptapi.NewScriptFlowHandler(
+			root.AI.ScriptGen, engine,
+			root.Domains.ImageService, root.Domains.RealtimeService, root.Domains.AssocService,
+			root.Domains.VoiceoverService, root.Search.AssetTreeService,
+			root.Drive.DocClient, root.Drive.DriveUploader, root.Jobs.Facade, scriptsRepoAdapter, memorySvc,
+			cfg.Drive.ScriptsGenFolder(), cfg, log,
+			batchSvc, curationSvc,
+			clipSourceBuilder, mediaCurator, harvestSvc,
+			nil, nil,
+		)
+
 		genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
 		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler, genSvc))
 		registerModule(registry, log, mod)
@@ -352,25 +393,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	return wiring, nil
-}
-
-func wireScriptFlowExtras(handler *scriptapi.ScriptFlowHandler, ollamaClient *client.Client, vectorStore *vectorstore.Service, clipsOnlyRepo *assets.ClipsRepository, engine *scriptcore.Engine, cfg *config.Config, log *zap.Logger) {
-	if ollamaClient == nil {
-		return
-	}
-	clipSourceBuilder := scriptcore.NewClipSourceBuilder(clipsOnlyRepo, ollamaClient, log)
-	if vectorStore != nil && cfg.Features.CatalogScriptVectorSearch {
-		clipSourceBuilder.SetVectorStore(vectorStore)
-	}
-	if cfg.Reranker.Enabled {
-		rerankerCli := reranker.NewClient(reranker.Config{Enabled: cfg.Reranker.Enabled, URL: cfg.Reranker.URL, Model: cfg.Reranker.Model, TopK: cfg.Reranker.TopK, TimeoutMs: cfg.Reranker.TimeoutMs})
-		clipSourceBuilder.SetReranker(rerankerCli)
-	}
-	handler.SetClipSourceBuilder(clipSourceBuilder)
-	handler.SetCurationClipSourceBuilder(clipSourceBuilder)
-	if (vectorStore != nil || clipsOnlyRepo != nil) && engine != nil {
-		handler.SetMediaCurator(scripts.NewMediaCurator(vectorStore, cfg.ClipIndexer.ServerURL, clipsOnlyRepo, clipSourceBuilder, engine, log))
-	}
 }
 
 func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {

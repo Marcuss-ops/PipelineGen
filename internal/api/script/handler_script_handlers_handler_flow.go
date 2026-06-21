@@ -59,10 +59,21 @@ type AutoHarvestService interface {
 
 // NewScriptFlowHandler constructs the canonical script-flow handler.
 //
-// PR4-H (June 2026): the SetBatchService + SetCurationService
-// post-construction setters have been removed in Commit 5 — batch +
-// curation services are now constructor-injected. The ctor grows from 15
-// to 17 args to accommodate them.
+// PR4-H (June 2026) absorbed the SetBatchService + SetCurationService
+// post-construction setters in Commit 5 — batch + curation services are now
+// constructor-injected.
+//
+// PR4.E (June 2026) absorbs the 4 remaining post-construction setters into
+// the ctor as well: clipSourceBuilder, mediaCurator, harvestSvc, and the
+// nil-safe curationJobService + catalogJobService. The ctor grows from 17
+// to 22 args. Side effects that SetCurationClipSourceBuilder used to perform
+// (forwarding the builder to the curation service) now happen inside the
+// ctor body. All 6 post-construction setters are removed.
+//
+// curationJobService + catalogJobService remain part of the ctor signature
+// even though no caller wires them today — RegisterJobHandlers reads them
+// with explicit nil-guards, so passing nil is safe and preserves the option
+// for future modules to inject them without re-introducing a setter.
 func NewScriptFlowHandler(
 	gen *ollama.Generator,
 	engine *scripts.Engine,
@@ -81,6 +92,11 @@ func NewScriptFlowHandler(
 	log *zap.Logger,
 	batchSvc *scripts.BatchService,
 	curationSvc *scripts.CurationService,
+	clipSourceBuilder *scripts.ClipSourceBuilder,
+	mediaCurator *scripts.MediaCurator,
+	harvestSvc AutoHarvestService,
+	curationJobService CurationJobService,
+	catalogJobService CatalogJobService,
 ) *ScriptFlowHandler {
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
@@ -92,7 +108,9 @@ func NewScriptFlowHandler(
 		artlistFolder = cfg.Drive.ArtlistFolder()
 	}
 
-	// Build the ClipServices bundle from handler dependencies
+	// Build the ClipServices bundle from handler dependencies.
+	// PR4.E: harvestSvc is set directly in the literal here (replaces
+	// SetHarvestService's side effect on h.clipServices.HarvestSvc).
 	clipSvc := ClipServices{
 		Logger:        log,
 		RealtimeSvc:   realtimeSvc,
@@ -104,6 +122,7 @@ func NewScriptFlowHandler(
 		VoSvc:         voSvc,
 		ArtlistFolder: artlistFolder,
 		MetadataModel: metaModel,
+		HarvestSvc:    harvestSvc,
 	}
 
 	maxEntities := 12
@@ -127,31 +146,42 @@ func NewScriptFlowHandler(
 	}
 
 	h := &ScriptFlowHandler{
-		generator:       gen,
-		engine:          engine,
-		batchService:    batchSvc,
-		curationService: curationSvc,
-		imgService:      imgSvc,
-		realtimeSvc:     realtimeSvc,
-		associationSvc:  assocSvc,
-		voService:       voSvc,
-		assetTreeSvc:    assetTreeSvc,
-		groupsResolver:  groupsResolver,
-		docClient:       docClient,
-		driveUploader:   driveUploader,
-		jobsSvc:         jobsSvc,
-		scriptsRepo:     scriptsRepo,
-		memorySvc:       memorySvc,
-		driveFolderID:   driveFolderID,
-		cfg:             cfg,
-		log:             log,
-		metadataModel:   metaModel,
-		clipServices:    clipSvc,
+		generator:          gen,
+		engine:             engine,
+		batchService:       batchSvc,
+		curationService:    curationSvc,
+		curationJobService: curationJobService,
+		catalogJobService:  catalogJobService,
+		imgService:         imgSvc,
+		realtimeSvc:        realtimeSvc,
+		associationSvc:     assocSvc,
+		voService:          voSvc,
+		assetTreeSvc:       assetTreeSvc,
+		groupsResolver:     groupsResolver,
+		clipSourceBuilder:  clipSourceBuilder,
+		mediaCurator:       mediaCurator,
+		docClient:          docClient,
+		driveUploader:      driveUploader,
+		jobsSvc:            jobsSvc,
+		scriptsRepo:        scriptsRepo,
+		memorySvc:          memorySvc,
+		harvestSvc:         harvestSvc,
+		driveFolderID:      driveFolderID,
+		cfg:                cfg,
+		log:                log,
+		metadataModel:      metaModel,
+		clipServices:       clipSvc,
 		insightBuilder: &ScriptInsightBuilder{
 			Logger:      log,
 			MaxEntities: maxEntities,
 			Services:    clipSvc,
 		},
+	}
+	// PR4.E: absorb the side-effect of the removed SetCurationClipSourceBuilder.
+	// The ctor is the only point where this forward happens; downstream code
+	// reads it from curationService.ClipSourceBuilder indirectly via calls.
+	if curationSvc != nil && clipSourceBuilder != nil {
+		curationSvc.SetClipSourceBuilder(clipSourceBuilder)
 	}
 	if gen != nil && gen.GetClient() != nil {
 		ws := gen.GetClient().WebSearcher()
@@ -179,43 +209,10 @@ func (h *ScriptFlowHandler) SetAssetTreeSvc(svc *assettree.Service) {
 	}
 }
 
-// SetClipSourceBuilder sets the ClipSourceBuilder for Clip→Script generation.
-func (h *ScriptFlowHandler) SetClipSourceBuilder(b *scripts.ClipSourceBuilder) {
-	h.clipSourceBuilder = b
-}
-
-// SetMediaCurator sets the MediaCurator for query-based compilation generation.
-func (h *ScriptFlowHandler) SetMediaCurator(m *scripts.MediaCurator) {
-	h.mediaCurator = m
-}
-
 func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scripts.SourceTextResolver {
 	return func(ctx context.Context, raw string) (string, string, error) {
 		return scripts.ResolveBatchSourceText(ctx, h.cfg, raw)
 	}
-}
-
-// SetHarvestService sets the auto-harvest service for clip collection.
-func (h *ScriptFlowHandler) SetHarvestService(svc AutoHarvestService) {
-	h.harvestSvc = svc
-	h.clipServices.HarvestSvc = svc
-}
-
-// SetCurationClipSourceBuilder wires the ClipSourceBuilder into the curation service.
-func (h *ScriptFlowHandler) SetCurationClipSourceBuilder(b *scripts.ClipSourceBuilder) {
-	if h.curationService != nil {
-		h.curationService.SetClipSourceBuilder(b)
-	}
-}
-
-// SetCurationJobService wires the curation job service for background script.curate jobs.
-func (h *ScriptFlowHandler) SetCurationJobService(svc CurationJobService) {
-	h.curationJobService = svc
-}
-
-// SetCatalogJobService wires the catalog job service for background catalog jobs.
-func (h *ScriptFlowHandler) SetCatalogJobService(svc CatalogJobService) {
-	h.catalogJobService = svc
 }
 
 // RegisterRoutes mounts ALL script generation endpoints (full-fat registration).
