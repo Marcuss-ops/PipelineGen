@@ -12,7 +12,7 @@ import (
 )
 
 func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *asset.ClipFolder, item *asset.ClipManifestItem) {
-	if s == nil || s.clipsRepo == nil || clipFolder == nil || item == nil || item.ID == "" {
+	if s == nil || s.clips == nil || clipFolder == nil || item == nil || item.ID == "" {
 		return
 	}
 
@@ -44,7 +44,7 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 		}
 	}
 
-	clip, err := s.clipsRepo.Get(ctx, item.ID)
+	clip, err := s.clips.Get(ctx, item.ID)
 	if err != nil || clip == nil {
 		return
 	}
@@ -80,12 +80,12 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 	clip.Metadata["topic_cluster_size"] = item.TopicClusterSize
 	clip.Metadata["topic_cluster_rank"] = item.TopicClusterRank
 
-	if err := s.clipsRepo.Upsert(ctx, clip); err != nil {
+	if err := s.clips.Upsert(ctx, clip); err != nil {
 		s.log.Debug("failed to persist clip intelligence", zap.String("clip_id", item.ID), zap.Error(err))
 		return
 	}
 
-	if err := s.clipsRepo.UpdateSearchTerms(ctx, clip.ID, string(clip.Source), chooseSearchTitle(item), clip.Tags, clip.SearchText); err != nil {
+	if err := s.clips.UpdateSearchTerms(ctx, clip.ID, string(clip.Source), chooseSearchTitle(item), clip.Tags, clip.SearchText); err != nil {
 		s.log.Debug("failed to update search terms", zap.String("clip_id", item.ID), zap.Error(err))
 	}
 }

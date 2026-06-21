@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
 	"go.uber.org/zap"
@@ -71,12 +70,12 @@ func (s *Service) resolveDriveDestination(ctx context.Context, req *ExtractReque
 // loadClipFolder loads an existing clip folder from DB or creates a new one.
 func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFolderID, resolvedPath string,
 	resp *ExtractResponse, req *ExtractRequest) *asset.ClipFolder {
-	if s.clipsRepo == nil {
+	if s.clips == nil {
 		return nil
 	}
 
 	folderID := fmt.Sprintf("clipfolder_youtube_%s", videoID)
-	existingFolder, err := s.clipsRepo.GetFolder(ctx, folderID)
+	existingFolder, err := s.clips.GetFolder(ctx, folderID)
 	if err == nil && existingFolder != nil {
 		s.log.Info("loaded existing clip folder", zap.String("folder_id", folderID))
 
@@ -199,21 +198,16 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 		}
 	}
 
-	uploader := &drive.Uploader{
-		Service: s.driveClient,
-		Log:     s.log,
-	}
-
 	targetFolderID := clipFolder.FolderID
 
 	// If no explicit folder ID, resolve category folder same way as writeClipMetadataFile
-	if targetFolderID == "" && s.driveClient != nil {
+	if targetFolderID == "" && s.driveFolderMgr != nil {
 		clipsRoot := s.cfg.Drive.ClipsFolder()
 		if clipsRoot != "" && clipFolder.LocalFolderPath != "" {
 			categoryDir := filepath.Base(filepath.Dir(clipFolder.LocalFolderPath))
 			clipsRootRel := filepath.Base(filepath.Dir(filepath.Dir(clipFolder.LocalFolderPath)))
 			if clipsRootRel == "clips" && categoryDir != "" && categoryDir != "." && categoryDir != "clips" {
-				if catID, err := uploader.GetOrCreateFolder(ctx, categoryDir, clipsRoot); err == nil {
+				if catID, err := s.driveFolderMgr.GetOrCreateFolder(ctx, categoryDir, clipsRoot); err == nil {
 					targetFolderID = catID
 				}
 			}
@@ -300,8 +294,8 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 				s.log.Info("metadata_unified.json updated locally", zap.String("path", unifiedMetaPath))
 
 				// Upload metadata_unified.json to Drive
-				if s.driveClient != nil && targetFolderID != "" {
-					if result, skipped, err := uploader.UploadFileIfChanged(ctx, unifiedMetaPath, targetFolderID, "metadata_unified.json"); err != nil {
+				if s.driveFolderMgr != nil && targetFolderID != "" {
+					if result, skipped, err := s.driveFolderMgr.UploadFileIfChanged(ctx, unifiedMetaPath, targetFolderID, "metadata_unified.json"); err != nil {
 						s.log.Warn("failed to upload metadata_unified.json to Drive", zap.Error(err))
 					} else if skipped {
 						s.log.Info("metadata_unified.json unchanged on Drive, skipped re-upload")
@@ -314,8 +308,8 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 	}
 
 	// ── Upload manifest to Drive as single combined metadata file (backward compatibility) ────────
-	if s.driveClient != nil && clipFolder.ManifestJSONPath != "" && targetFolderID != "" {
-		result, skipped, err := uploader.UploadFileIfChanged(ctx, clipFolder.ManifestJSONPath, targetFolderID, "metadata.json")
+	if s.driveFolderMgr != nil && clipFolder.ManifestJSONPath != "" && targetFolderID != "" {
+		result, skipped, err := s.driveFolderMgr.UploadFileIfChanged(ctx, clipFolder.ManifestJSONPath, targetFolderID, "metadata.json")
 		if err != nil {
 			s.log.Warn("failed to upload manifest as metadata.json to Drive",
 				zap.String("folder_id", targetFolderID),
@@ -350,7 +344,7 @@ func defaultConcurrency(reqConcurrency int) int {
 
 // updateMonitoredSourceStatus sets the final status on the monitored source record.
 func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *asset.MonitoredSource, resp *ExtractResponse) {
-	if s.monitoredRepo == nil {
+	if s.monitors == nil {
 		return
 	}
 
@@ -360,11 +354,11 @@ func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *asset.Mon
 		ms.Status = "processed"
 	}
 
-	if err := s.monitoredRepo.UpsertSource(ctx, ms); err != nil {
+	if err := s.monitors.UpsertSource(ctx, ms); err != nil {
 		s.log.Error("Failed to update monitored source status", zap.Error(err))
 	}
 	if resp.Stats.Failed != resp.Stats.Requested {
-		if err := s.monitoredRepo.IncrementProcessed(ctx, ms.ID); err != nil {
+		if err := s.monitors.IncrementProcessed(ctx, ms.ID); err != nil {
 			s.log.Error("Failed to increment processed count", zap.Error(err))
 		}
 	}

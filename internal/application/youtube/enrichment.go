@@ -8,9 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-
 	"go.uber.org/zap"
 )
 
@@ -29,13 +26,13 @@ import (
 // or the clip was from a file cache hit), this function will fall back to fetching
 // YouTube metadata directly from the video URL. This ensures clips always get enriched
 // even when yt-dlp is temporarily unavailable during the download phase.
-func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID string, meta *videomuscles.YouTubeCutResult, force bool) {
-	if s.clipsRepo == nil {
+func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID string, meta *VideoCutResult, force bool) {
+	if s.clips == nil {
 		return
 	}
 
 	// Get the existing clip from DB first
-	existing, err := s.clipsRepo.GetClip(ctx, clipID)
+	existing, err := s.clips.GetClip(ctx, clipID)
 	if err != nil || existing == nil {
 		s.log.Warn("cannot enrich YouTube clip: not found in DB", zap.String("clip_id", clipID))
 		return
@@ -52,7 +49,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 		return
 	}
 
-	var ym *downloader.YouTubeMetadata
+	var ym *YouTubeMetadataPort
 
 	// Try to get metadata from the provided result first (fast path)
 	if meta != nil && meta.Metadata != nil {
@@ -72,17 +69,18 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 			s.log.Info("fetching YouTube metadata directly for enrichment",
 				zap.String("clip_id", clipID),
 				zap.String("url", videoURL))
-			ytDlp := downloader.NewYTDLP(s.cfg)
-			fetchedMeta, err := ytDlp.GetVideoMetadata(ctx, videoURL)
-			if err == nil && fetchedMeta != nil {
-				ym = fetchedMeta
-				s.log.Debug("fetched YouTube metadata for enrichment",
-					zap.String("clip_id", clipID),
-					zap.String("title", ym.Title))
-			} else {
-				s.log.Warn("failed to fetch YouTube metadata for enrichment",
-					zap.String("clip_id", clipID),
-					zap.Error(err))
+			if s.metaFetcher != nil {
+				fetchedMeta, err := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
+				if err == nil && fetchedMeta != nil {
+					ym = fetchedMeta
+					s.log.Debug("fetched YouTube metadata for enrichment",
+						zap.String("clip_id", clipID),
+						zap.String("title", ym.Title))
+				} else {
+					s.log.Warn("failed to fetch YouTube metadata for enrichment",
+						zap.String("clip_id", clipID),
+						zap.Error(err))
+				}
 			}
 		}
 	}

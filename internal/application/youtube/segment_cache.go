@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
-
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // checkExistingClip implements the cache strategy policy for segment
@@ -16,11 +14,11 @@ import (
 // Returns false when the strategy is "replace" or when the existing
 // record is stale (file missing or path mismatch).
 func (s *Service) checkExistingClip(ctx context.Context, req *ExtractRequest, clipID string, item *ExtractItem, outDir string) bool {
-	if req.Strategy == "replace" || s.clipsRepo == nil {
+	if req.Strategy == "replace" || s.clips == nil {
 		return false
 	}
 
-	existingClip, err := s.clipsRepo.GetClip(ctx, clipID)
+	existingClip, err := s.clips.GetClip(ctx, clipID)
 	if err != nil || existingClip == nil {
 		return false
 	}
@@ -44,13 +42,15 @@ func (s *Service) checkExistingClip(ctx context.Context, req *ExtractRequest, cl
 	}
 
 	// Default strategy: verify file exists
-	if ok, clipErr := fileutil.UsableCachedClip(existingClip.LocalPath()); clipErr == nil && ok {
-		item.LocalPath = existingClip.LocalPath()
-		item.DriveLink = existingClip.DriveLink()
-		item.DriveFileID = existingClip.DriveFileID()
-		item.DownloadLink = existingClip.DownloadLink()
-		item.Status = "skipped"
-		return true
+	if s.clipFiles != nil {
+		if ok, clipErr := s.clipFiles.UsableCachedClip(existingClip.LocalPath()); clipErr == nil && ok {
+			item.LocalPath = existingClip.LocalPath()
+			item.DriveLink = existingClip.DriveLink()
+			item.DriveFileID = existingClip.DriveFileID()
+			item.DownloadLink = existingClip.DownloadLink()
+			item.Status = "skipped"
+			return true
+		}
 	}
 
 	// Stale record — clean up before reprocessing
@@ -60,6 +60,6 @@ func (s *Service) checkExistingClip(ctx context.Context, req *ExtractRequest, cl
 	if existingClip.LocalPath() != "" {
 		_ = os.Remove(existingClip.LocalPath())
 	}
-	_ = s.clipsRepo.DeleteClip(ctx, clipID)
+	_ = s.clips.DeleteClip(ctx, clipID)
 	return false
 }
