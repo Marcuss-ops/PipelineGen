@@ -27,13 +27,13 @@ func runBackfillMissing(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.InitCore(cfg, log)
+	root, _, coreCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
 	defer coreCleanup()
 
-	if deps.ClipIndexerService == nil {
+	if root.Process.ClipIndexerService == nil {
 		return fmt.Errorf("clip indexer service is not initialized or configured")
 	}
 
@@ -69,7 +69,7 @@ func runBackfillMissing(args []string) error {
 		queryArgs = append(queryArgs, *limit)
 	}
 
-	rows, err := deps.DB.DB.QueryContext(ctx, query, queryArgs...)
+	rows, err := root.DB.DB.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to query missing embeddings: %w", err)
 	}
@@ -123,7 +123,7 @@ func runBackfillMissing(args []string) error {
 		// Run IndexClip. This computes the text embedding (sentence transformer)
 		// and pushes the point to Qdrant.
 		start := time.Now()
-		err := deps.ClipIndexerService.IndexClip(ctx, item.ID)
+		err := root.Process.ClipIndexerService.IndexClip(ctx, item.ID)
 		if err != nil {
 			failedCount++
 			log.Warn("Failed to index asset", zap.String("id", item.ID), zap.Error(err))
