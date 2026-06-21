@@ -33,16 +33,16 @@ func runResetStockSubfolders(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.InitCore(cfg, log)
+	root, _, coreCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
 	defer coreCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
-	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
+	driveUploader := &drive.Uploader{Service: root.Drive.DriveClient, Log: log}
 
 	ctx := context.Background()
 
@@ -69,7 +69,7 @@ func runResetStockSubfolders(args []string) error {
 
 	// 2. Clean database records for these specific folders
 	fmt.Println("\n=== Cleaning database records ===")
-	mediaDB := deps.DB.DB
+	mediaDB := root.DB.DB
 	if mediaDB != nil {
 		for name := range foldersToReset {
 			res, err := mediaDB.ExecContext(ctx,

@@ -35,23 +35,23 @@ func runResetStockDrive(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.InitCore(cfg, log)
+	root, _, coreCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
 	defer coreCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
-	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
+	driveUploader := &drive.Uploader{Service: root.Drive.DriveClient, Log: log}
 
 	ctx := context.Background()
 
 	// 1. List all children of stock root folder
 	fmt.Printf("=== Scanning root folder %s ===\n", *folder)
 	query := fmt.Sprintf("'%s' in parents and trashed = false", *folder)
-	list, err := deps.DriveClient.Files.List().Q(query).
+	list, err := root.Drive.DriveClient.Files.List().Q(query).
 		Fields("files(id, name, mimeType)").
 		PageSize(1000).
 		Context(ctx).Do()
@@ -87,8 +87,8 @@ func runResetStockDrive(args []string) error {
 
 	// 3. Clean up database records
 	fmt.Println("\n=== Cleaning up database records ===")
-	mediaDB := deps.DB.DB
-	veloxDB := deps.DB.DB
+	mediaDB := root.DB.DB
+	veloxDB := root.DB.DB
 
 	if mediaDB != nil {
 		for _, table := range []string{"media_assets", "clip_folders"} {

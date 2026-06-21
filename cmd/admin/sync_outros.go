@@ -34,13 +34,13 @@ func runSyncOutros(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.InitCore(cfg, log)
+	root, _, coreCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
 	defer coreCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
 
@@ -60,7 +60,7 @@ func runSyncOutros(args []string) error {
 
 	// Step 1: List subfolders of the Outro root folder
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", outroRootID)
-	list, err := deps.DriveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	list, err := root.Drive.DriveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("failed to list outro folders: %w", err)
 	}
@@ -72,7 +72,7 @@ func runSyncOutros(args []string) error {
 
 		// Sync this base folder to clip_folders
 		if *apply {
-			err := upsertFolderToDB(ctx, deps.DB.DB, folder.Id, folder.Name, "outro", "outro", "")
+			err := upsertFolderToDB(ctx, root.DB.DB, folder.Id, folder.Name, "outro", "outro", "")
 			if err != nil {
 				log.Error("failed to upsert base folder to DB", zap.String("folder", folder.Name), zap.Error(err))
 			} else {
@@ -82,7 +82,7 @@ func runSyncOutros(args []string) error {
 
 		// List current children of this folder
 		childQuery := fmt.Sprintf("'%s' in parents and trashed = false", folder.Id)
-		childList, err := deps.DriveClient.Files.List().Q(childQuery).Fields("files(id, name, mimeType, webViewLink, webContentLink)").Context(ctx).Do()
+		childList, err := root.Drive.DriveClient.Files.List().Q(childQuery).Fields("files(id, name, mimeType, webViewLink, webContentLink)").Context(ctx).Do()
 		if err != nil {
 			log.Error("failed to list children", zap.String("folder", folder.Name), zap.Error(err))
 			continue
@@ -109,7 +109,7 @@ func runSyncOutros(args []string) error {
 						MimeType: "application/vnd.google-apps.folder",
 						Parents:  []string{folder.Id},
 					}
-					created, err := deps.DriveClient.Files.Create(newFolder).Fields("id").Context(ctx).Do()
+					created, err := root.Drive.DriveClient.Files.Create(newFolder).Fields("id").Context(ctx).Do()
 					if err != nil {
 						log.Error("failed to create language folder on Drive", zap.String("lang", lang), zap.Error(err))
 						continue
@@ -125,7 +125,7 @@ func runSyncOutros(args []string) error {
 
 			// Sync language folder to DB
 			if *apply && langFolderID != "" {
-				err := upsertFolderToDB(ctx, deps.DB.DB, langFolderID, folder.Name+"_"+lang, "outro", folder.Name, lang)
+				err := upsertFolderToDB(ctx, root.DB.DB, langFolderID, folder.Name+"_"+lang, "outro", folder.Name, lang)
 				if err != nil {
 					log.Error("failed to upsert language folder to DB", zap.String("lang", lang), zap.Error(err))
 				} else {
@@ -134,10 +134,10 @@ func runSyncOutros(args []string) error {
 
 				// Scan files inside this language folder and add them to media_assets
 				fileQuery := fmt.Sprintf("'%s' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false", langFolderID)
-				fileList, err := deps.DriveClient.Files.List().Q(fileQuery).Fields("files(id, name, webViewLink, webContentLink)").Context(ctx).Do()
+				fileList, err := root.Drive.DriveClient.Files.List().Q(fileQuery).Fields("files(id, name, webViewLink, webContentLink)").Context(ctx).Do()
 				if err == nil {
 					for _, file := range fileList.Files {
-						err := upsertFileToDB(ctx, deps.DB.DB, file.Id, file.Name, folder.Name, lang, file.WebViewLink, file.WebContentLink)
+						err := upsertFileToDB(ctx, root.DB.DB, file.Id, file.Name, folder.Name, lang, file.WebViewLink, file.WebContentLink)
 						if err != nil {
 							log.Error("failed to upsert file to DB", zap.String("file", file.Name), zap.Error(err))
 						} else {
@@ -149,7 +149,7 @@ func runSyncOutros(args []string) error {
 				// Dry run: list existing files inside the existing language folder if it exists
 				if langFolderID != "" {
 					fileQuery := fmt.Sprintf("'%s' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false", langFolderID)
-					fileList, err := deps.DriveClient.Files.List().Q(fileQuery).Fields("files(name)").Context(ctx).Do()
+					fileList, err := root.Drive.DriveClient.Files.List().Q(fileQuery).Fields("files(name)").Context(ctx).Do()
 					if err == nil && len(fileList.Files) > 0 {
 						for _, file := range fileList.Files {
 							fmt.Printf("      [DRY RUN] Would sync file: %s\n", file.Name)
