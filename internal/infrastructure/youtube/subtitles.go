@@ -166,7 +166,7 @@ func loadCues(vttPath string, startSec, endSec float64) ([]vttCue, error) {
 		if strings.TrimSpace(t) == "" {
 			if len(cur) > 0 {
 				blocks = append(blocks, cur)
-				cur = cur[:0]
+				cur = nil // force new backing array on next append (avoid shared-memory overwrite)
 			}
 			continue
 		}
