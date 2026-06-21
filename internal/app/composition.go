@@ -98,7 +98,11 @@ type DriveBundle struct {
 	StyleRegistry *generation.StyleRegistry
 }
 
-// RepoBundle owns all SQLite-backed repositories.
+// RepoBundle owns all SQLite-backed repositories that are NOT specific to a
+// capability bundle. PR4.A (June 2026) relocated MemoryRepo to AIBundle
+// since it's only consumed by the AI/memory pipeline (BuildAIBundle +
+// startGemmaMemorySweeper); the move eliminates the redundant RepoBundle
+// entry and keeps the ownership aligned with its single consumer.
 type RepoBundle struct {
 	ScriptsRepo   *sqlitescripts.ScriptRepository
 	ImageRepo     *assets.ImagesRepository
@@ -107,7 +111,6 @@ type RepoBundle struct {
 	MonitorsRepo  *assets.MonitorsRepository
 	VoiceoverRepo *assets.VoiceoversRepository
 	CatalogRepo   *catalog.Repository
-	MemoryRepo    *gemmamemory.Repository
 	SQRepo        *assets.SearchQueriesRepository
 }
 
@@ -137,6 +140,10 @@ type ProcessBundle struct {
 //     Domain code that needs StyleRegistry reads it via root.Drive.StyleRegistry.
 //     PR4.A (June 2026) dropped the AI-side mirror; consumers now reference
 //     drive.StyleRegistry directly.
+//   - MemoryRepo is constructed inside BuildAIBundle (dbs.main.DB) and exposed
+//     on this bundle so the single consumer (startGemmaMemorySweeper in
+//     lifecycle.go) reads root.AI.MemoryRepo directly without going through
+//     RepoBundle. PR4.A (June 2026) relocated it from RepoBundle.
 //   - ScriptFlowHandler is NOT carried here — it is constructed inside
 //     registry.go::WireRegistry with the canonical batchSvc/curationSvc
 //     deps (real voiceoverSvc from DomainBundle + root.Jobs.Service).
@@ -145,6 +152,7 @@ type ProcessBundle struct {
 type AIBundle struct {
 	OllamaClient  *client.Client
 	ScriptGen     *ollama.Generator
+	MemoryRepo    *gemmamemory.Repository
 	MemoryService *gemmamemory.Service
 	ScriptEngine  *scriptcore.Engine
 }
@@ -327,7 +335,6 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	monitorsRepo := assets.NewMonitorsRepository(dbs.main.DB)
 	clipsRepo := assets.NewClipsRepositoryCanonical(dbs.main.DB, log, assetsSvc.Repository())
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
-	memoryRepo := gemmamemory.NewRepository(dbs.main.DB)
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.main.DB)
 	sqRepo := assets.NewSearchQueriesRepository(dbs.main.DB)
 
@@ -339,7 +346,6 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 		MonitorsRepo:  monitorsRepo,
 		VoiceoverRepo: voiceoverRepo,
 		CatalogRepo:   catalogRepo,
-		MemoryRepo:    memoryRepo,
 		SQRepo:        sqRepo,
 	}, nil
 }
@@ -465,10 +471,13 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 }
 
 // BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
-// and Drive.DriveUploader (which were constructed earlier). StyleRegistry is
-// mirrored from DriveBundle.
+// and Drive.DriveUploader (which were constructed earlier).
+// PR4.A (June 2026): MemoryRepo is created here (dbs.main.DB), not in BuildRepoBundle,
+// so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
+// without going through RepoBundle.
 func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, drive *DriveBundle) (*AIBundle, error) {
 	_ = ctx
+	_ = drive
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
 	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
 
@@ -486,7 +495,11 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
-	memorySvc := gemmamemory.NewService(repos.MemoryRepo, log)
+	// PR4.A: MemoryRepo construction moved from BuildRepoBundle to here so
+	// AIBundle owns it. Single canonical instance consumed by memorySvc +
+	// startGemmaMemorySweeper; exposed as root.AI.MemoryRepo.
+	memoryRepo := gemmamemory.NewRepository(dbs.main.DB)
+	memorySvc := gemmamemory.NewService(memoryRepo, log)
 	log.Info("Gemma Memory Gate service initialized")
 
 	scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(repos.ScriptsRepo)
@@ -495,13 +508,14 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// PR4-H followup-3 (June 2026): ScriptFlowHandler is no longer constructed
 	// inside BuildAIBundle. The canonical ScriptFlowHandler (with batchSvc+
 	// curationSvc deps) lives entirely inside registry.go::WireRegistry.
-	// AIBundle exposes only the LLM-side pieces other modules need: OllamaClient,
-	// ScriptGen (for embedder/seed in registry.go), MemoryService, ScriptEngine.
-	// PR4.A (June 2026) removed the StyleRegistry mirror (read drive.StyleRegistry
-	// directly instead).
+	// AIBundle exposes only the AI-side pieces other modules need: OllamaClient,
+	// ScriptGen (for embedder/seed in registry.go), MemoryRepo (for the
+	// gemma-memory-sweeper), MemoryService (for engine + scriptgen),
+	// ScriptEngine.
 	return &AIBundle{
 		OllamaClient:  ollamaClient,
 		ScriptGen:     scriptGen,
+		MemoryRepo:    memoryRepo,
 		MemoryService: memorySvc,
 		ScriptEngine:  engine,
 	}, nil

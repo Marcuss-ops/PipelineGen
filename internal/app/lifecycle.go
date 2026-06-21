@@ -297,9 +297,12 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			})
 		}
 
-		if root.Repos.MemoryRepo != nil {
+		// PR4.A (June 2026): MemoryRepo relocated RepoBundle → AIBundle.
+		// The single consumer (startGemmaMemorySweeper) reads root.AI.MemoryRepo
+		// instead of root.Repos.MemoryRepo, reflecting the new ownership.
+		if root.AI != nil && root.AI.MemoryRepo != nil {
 			concurrent.SafeGo("gemma-memory-sweeper", func() {
-				startGemmaMemorySweeper(ctx, root.Repos.MemoryRepo, log)
+				startGemmaMemorySweeper(ctx, root.AI.MemoryRepo, log)
 			})
 		}
 
