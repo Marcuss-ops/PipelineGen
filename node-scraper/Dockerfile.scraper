@@ -30,13 +30,19 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# Prevent puppeteer from downloading Chromium — the runtime uses
+# an external browser via BROWSER_WS or CHROME_EXECUTABLE.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+# Install npm dependencies first to leverage Docker layer caching.
+# package.json and package-lock.json are copied before the full source
+# so that npm ci is only re-run when dependencies change.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
 # Copy the Node.js sources. node-scraper/ is the canonical home; the
 # Go binary references these via cfg.External.NodeScraperDir.
 COPY . /app/
-
-# Install npm dependencies (package.json is the contract with the Go
-# binary's `node artlist_search.js` call).
-RUN npm install --omit=dev
 
 # Canonical scraper port per config.example.yaml's
 # `artlist_scraper_server_url` comment ("http://localhost:9123 when
