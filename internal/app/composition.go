@@ -161,10 +161,6 @@ type DomainBundle struct {
 	AssocService       *associationpkg.Service
 }
 
-// JobsWireBundle is an alias of the canonical JobsBundle type owned by
-// module_jobs.go.
-type JobsWireBundle = JobsBundle
-
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and
 // the outbox_events.Pool.
 type OutboxBundle struct {
@@ -211,7 +207,7 @@ type ComposeRoot struct {
 
 	AI      *AIBundle
 	Domains *DomainBundle
-	Jobs    *JobsWireBundle
+	Jobs    *JobsBundle
 	Outbox  *OutboxBundle
 	Sync    *SyncBundle
 	Maint   *MaintBundle
@@ -648,7 +644,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 }
 
 // BuildOutboxBundle constructs the canonical ingestion outbox + outbox_events.Pool.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, process *ProcessBundle, jobs *JobsWireBundle) (*OutboxBundle, error) {
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, process *ProcessBundle, jobs *JobsBundle) (*OutboxBundle, error) {
 	outboxEventsRepo := outboxevents.NewRepository(dbs.main.DB)
 
 	multiClipsUp := outbox.NewMultiClipsUpserter(
@@ -744,7 +740,7 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 }
 
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
-func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsWireBundle) (*MaintBundle, error) {
+func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle) (*MaintBundle, error) {
 	_ = ctx
 	deletionSvc := media.NewDeletionService(
 		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo,
