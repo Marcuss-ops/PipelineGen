@@ -13,10 +13,12 @@
 //   - Drive operations go exclusively through DriveFolderManagerPort.
 //   - Concrete imports of outbox / drive SDK / clipsRepo have been removed
 //     from this package; concrete wiring belongs to composition + infra.
-//   - Legacy fields `assetProcessing` + `assetVersions` (and the matching
-//     SetAssetRepos setter) have been removed — they were orphaned by the
-//     canonical writer migration and only consumed by the composition
-//     helper now deleted.
+//   - PR2 cascade followup: legacy optional fields `assetProcessing` +
+//     `assetVersions` were re-added on ServiceDeps + Service (NOT removed)
+//     because the application still calls them as nil-safe parallel
+//     writers during segment cutting (assetProcessing for cron-status
+//     trails + assetVersions for content-hash version writes). Composition
+//     may pass nil for either; callers nil-check each before use.
 package youtube
 
 import (
@@ -53,7 +55,7 @@ type VideoCutRequest struct {
 // and the full video metadata captured from yt-dlp.
 type VideoCutResult struct {
 	LocalPath string
-	Metadata  *YouTubeMetadataPort
+	Metadata  *DownloaderMetadata
 }
 
 // VideoPipeline is the port for downloading + cutting YouTube video segments.
@@ -76,6 +78,14 @@ type ServiceDeps struct {
 	// PR1.6 — canonical persistence writer (asset.Repository).
 	// Required: dispatchOrIndex refuses to persist without it.
 	AssetRepo asset.Repository
+
+	// PR2 cascade followup: re-added legacy optional repositories that
+	// `segment.go::135-191` still references for upsert + version-write
+	// operations on freshly-cut clips. Composition passes nil for both
+	// when the canonical `AssetRepo` (PR1.6) is the only writer in scope;
+	// `segment.go` callers nil-check each before use.
+	AssetProcessing asset.ProcessingRepository
+	AssetVersions   asset.VersionRepository
 
 	// Port dependencies.
 	SearchRunner    SearchRunnerPort
@@ -107,6 +117,12 @@ type Service struct {
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
 	assetRepo         asset.Repository
+
+	// PR2 cascade followup — optional repositories still referenced from
+	// processSegment for upsert + version-write on freshly-cut clips.
+	// Composition may pass nil for both; callers nil-check each before use.
+	assetProcessing asset.ProcessingRepository
+	assetVersions   asset.VersionRepository
 
 	// Port-backed dependencies (no setters).
 	searchRunner    SearchRunnerPort
@@ -142,6 +158,8 @@ func NewService(deps ServiceDeps) *Service {
 		lifecycleService:  deps.LifecycleService,
 		assetDestResolver: deps.AssetDestResolver,
 		assetRepo:         deps.AssetRepo,
+		assetProcessing:  deps.AssetProcessing,
+		assetVersions:    deps.AssetVersions,
 
 		searchRunner:    deps.SearchRunner,
 		subtitleFetcher: deps.SubtitleFetcher,
@@ -237,11 +255,17 @@ func (s *Service) md5String(data string) string {
 }
 
 // md5File returns the MD5 hex digest of the file at path via the
-// HashServicePort. Best-effort: errors are swallowed.
+// HashServicePort. Best-effort: a port error falls back to the local
+// helper with a debug log so operators can see when the configured port
+// silently misbehaves (e.g., misconfigured remote hash service).
 func (s *Service) md5File(path string) string {
 	if s.hashSvc != nil {
 		if h, err := s.hashSvc.MD5File(path); err == nil {
 			return h
+		} else {
+			s.log.Debug("hashSvc.MD5File failed, falling back to local helper",
+				zap.String("path", path),
+				zap.Error(err))
 		}
 	}
 	return fallbackMD5File(path)

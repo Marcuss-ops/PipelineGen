@@ -2,19 +2,18 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/classifier"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ── ClipStoreAdapter wraps *assets.ClipsRepository to satisfy youtube.ClipStorePort ──
@@ -30,81 +29,24 @@ func newClipStoreAdapter(r *assets.ClipsRepository) youtube.ClipStorePort {
 	return &clipStoreAdapter{inner: r}
 }
 
+func (a *clipStoreAdapter) DB() *sql.DB                 { return a.inner.DB() }
 func (a *clipStoreAdapter) Get(ctx context.Context, id string) (*asset.Asset, error) {
 	return a.inner.Get(ctx, id)
 }
-
 func (a *clipStoreAdapter) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
 	return a.inner.GetClip(ctx, id)
 }
-
 func (a *clipStoreAdapter) Upsert(ctx context.Context, clip *asset.Asset) error {
 	return a.inner.Upsert(ctx, clip)
 }
-
+func (a *clipStoreAdapter) UpsertFolder(ctx context.Context, f *asset.ClipFolder) error {
+	return a.inner.UpsertFolder(ctx, f)
+}
 func (a *clipStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 	return a.inner.DeleteClip(ctx, id)
 }
-
-func (a *clipStoreAdapter) UpdateSearchTerms(ctx context.Context, id, source, title string, tags []string, searchText string) error {
-	return a.inner.UpdateSearchTerms(ctx, id, source, title, tags, searchText)
-}
-
 func (a *clipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
 	return a.inner.GetFolder(ctx, folderID)
-}
-
-func (a *clipStoreAdapter) ListYouTubeClipIDs(ctx context.Context, limit, offset int) ([]string, error) {
-	db := a.inner.DB()
-	rows, err := db.QueryContext(ctx,
-		`SELECT id FROM media_assets WHERE source = 'youtube' ORDER BY id LIMIT ? OFFSET ?`,
-		limit, offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	return ids, nil
-}
-
-func (a *clipStoreAdapter) ListEnrichedYouTubeClipIDs(ctx context.Context, limit, offset int) ([]string, error) {
-	db := a.inner.DB()
-	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
-	if limit > 0 {
-		query += " LIMIT ?"
-	}
-	if offset > 0 {
-		query += " OFFSET ?"
-	}
-	var args []any
-	if limit > 0 {
-		args = append(args, limit)
-	}
-	if offset > 0 {
-		args = append(args, offset)
-	}
-	rows, err := db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	return ids, nil
 }
 
 // ── MonitorsStoreAdapter wraps *assets.MonitorsRepository to satisfy youtube.MonitorsStorePort ──
@@ -123,7 +65,6 @@ func newMonitorsStoreAdapter(r *assets.MonitorsRepository) youtube.MonitorsStore
 func (a *monitorsStoreAdapter) UpsertSource(ctx context.Context, ms *asset.MonitoredSource) error {
 	return a.inner.UpsertSource(ctx, ms)
 }
-
 func (a *monitorsStoreAdapter) IncrementProcessed(ctx context.Context, id string) error {
 	return a.inner.IncrementProcessed(ctx, id)
 }
@@ -279,18 +220,24 @@ func (a *cacheStoreAdapter) UpsertCategoryCache(ctx context.Context, videoTitle 
 }
 
 // ── ClipIndexerAdapter wraps *clipindexer.Service to satisfy youtube.ClipIndexerPort ──
+//
+// youtube.ClipIndexerPort is an empty-marker port — the struct conformance to
+// the interface is at the *clipIndexerAdapter assignment site in
+// composition.go. Methods below are present because the application code
+// may call .IsEnabled() / .IndexClip() on the port.
 
 type clipIndexerAdapter struct {
 	inner *clipindexer.Service
 }
 
 func (a *clipIndexerAdapter) IsEnabled() bool { return a.inner.IsEnabled() }
-
 func (a *clipIndexerAdapter) IndexClip(ctx context.Context, id string) error {
 	return a.inner.IndexClip(ctx, id)
 }
 
-// ── OllamaClientAdapter wraps *client.Client to satisfy youtube.OllamaClientPort ──
+// ── OllamaClientAdapter wraps *client.Client (composition injects the real
+//    *client.Client directly; this adapter is reserved for tests/mocks that
+//    predate the structural port semantics). ──
 
 type ollamaClientAdapter struct {
 	inner interface {
@@ -302,85 +249,110 @@ func (a *ollamaClientAdapter) SimpleGenerate(ctx context.Context, model, prompt 
 	return a.inner.SimpleGenerate(ctx, model, prompt, timeout, opts)
 }
 
-// ── DriveClientAdapter wraps *driveapi.Service to satisfy youtube.DriveClientPort ──
+// ── DriveFolderMgrAdapter wraps *drive.Uploader to satisfy youtube.DriveFolderManagerPort ──
+//
+// Per PR2 followup (June 2026): the port mandates a *UploadResultDTO return
+// type (defined in ports.go) so the application layer never imports
+// internal/infrastructure/drive. This adapter converts infra UploadResult →
+// DTO at the seam.
 
-type driveClientAdapter struct {
+type driveFolderMgrAdapter struct {
 	uploader *drive.Uploader
+	log      *zap.Logger
 }
 
-func newDriveClientAdapter(svc *driveapi.Service, log *zap.Logger) youtube.DriveClientPort {
-	if svc == nil {
+func newDriveFolderMgrAdapter(uploader *drive.Uploader, log *zap.Logger) youtube.DriveFolderManagerPort {
+	if uploader == nil {
 		return nil
 	}
-	return &driveClientAdapter{uploader: &drive.Uploader{Service: svc, Log: log}}
+	return &driveFolderMgrAdapter{uploader: uploader, log: log}
 }
 
-func (a *driveClientAdapter) GetOrCreateChannelFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
+func (a *driveFolderMgrAdapter) GetOrCreateFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
+	if a.uploader == nil {
+		return parentFolderID, fmt.Errorf("driveFolderMgr: uploader not wired")
+	}
 	return a.uploader.GetOrCreateFolder(ctx, channelName, parentFolderID)
 }
 
-// ── ClassifierAdapter wraps classifier.CachedClassify to satisfy youtube.CategoryClassifierPort ──
-
-type classifierAdapter struct {
-	cfg      *config.Config
-	log      *zap.Logger
-	clip     *assets.ClipsRepository
-	ollama   youtube.OllamaClientPort
+func (a *driveFolderMgrAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtube.UploadResultDTO, bool, error) {
+	if a.uploader == nil {
+		return nil, false, fmt.Errorf("driveFolderMgr: uploader not wired")
+	}
+	res, skipped, err := a.uploader.UploadFileIfChanged(ctx, localPath, folderID, filename)
+	if err != nil {
+		return nil, skipped, err
+	}
+	if res == nil {
+		return nil, skipped, nil
+	}
+	return &youtube.UploadResultDTO{FileID: res.FileID, WebViewLink: res.WebViewLink}, skipped, nil
 }
 
-func newClassifierAdapter(cfg *config.Config, log *zap.Logger, clips *assets.ClipsRepository, ollama youtube.OllamaClientPort) youtube.CategoryClassifierPort {
-	if clips == nil || ollama == nil {
+// ── FolderMemoryAdapter wraps *foldermemory.Service to satisfy youtube.FolderMemoryPort ──
+//
+// *foldermemory.Service satisfies the port structurally (LoadManifest,
+// SaveManifest, UpdateManifestTXT, ComputeManifestStats). This adapter is
+// retained as a stable composition seam so future cache logic can layer
+// without changing the port signature.
+
+type folderMemoryAdapter struct {
+	inner *foldermemory.Service
+}
+
+func newFolderMemoryAdapter(svc *foldermemory.Service) youtube.FolderMemoryPort {
+	if svc == nil {
 		return nil
 	}
-	return &classifierAdapter{cfg: cfg, log: log, clip: clips, ollama: ollama}
+	return &folderMemoryAdapter{inner: svc}
 }
 
-func (a *classifierAdapter) Classify(ctx context.Context, title string) string {
-	cache := &classifierCacheAdapter{clips: a.clip}
-	llm := &classifierLLMAdapter{inner: a.ollama}
-	return classifier.CachedClassify(ctx, a.log, llm, title, classifier.Options{
-		DataDir:          a.cfg.Storage.DataDir,
-		Model:            a.cfg.External.OllamaModel,
-		FallbackCategory: "general",
-		ExcludeCategories: []string{
-			"interviews", "general", "other", "clips", "youtube", "videos",
-		},
-		EnsureCategories:  []string{"rap", "music"},
-		DefaultCategories: []string{"boxe", "crime", "discovery", "rap", "music"},
-		Cache:             cache,
-	})
+func (a *folderMemoryAdapter) LoadManifest(manifestPath string) (*asset.ClipManifest, error) {
+	return a.inner.LoadManifest(manifestPath)
 }
 
-// classifierLLMAdapter wraps OllamaClientPort for classifier.LLMClient interface.
-type classifierLLMAdapter struct {
-	inner youtube.OllamaClientPort
+func (a *folderMemoryAdapter) SaveManifest(manifestPath string, manifest *asset.ClipManifest) error {
+	return a.inner.SaveManifest(manifestPath, manifest)
 }
 
-func (a *classifierLLMAdapter) SimpleGenerate(ctx context.Context, model, prompt string, timeout time.Duration, opts map[string]any) (string, error) {
-	return a.inner.SimpleGenerate(ctx, model, prompt, timeout, opts)
+func (a *folderMemoryAdapter) UpdateManifestTXT(folder *asset.ClipFolder, manifest *asset.ClipManifest) error {
+	return a.inner.UpdateManifestTXT(folder, manifest)
 }
 
-// classifierCacheAdapter wraps ClipsRepository DB for classifier.CategoryCache interface.
-type classifierCacheAdapter struct {
-	clips *assets.ClipsRepository
+func (a *folderMemoryAdapter) ComputeManifestStats(manifest *asset.ClipManifest) asset.ClipFolderStats {
+	return a.inner.ComputeManifestStats(manifest)
 }
 
-func (c *classifierCacheAdapter) Get(ctx context.Context, title string) (string, bool) {
-	if c.clips == nil || c.clips.DB() == nil {
-		return "", false
+// ── SearchRunnerStub satisfies youtube.SearchRunnerPort for the structural
+//    port seam. PR2 cascade (June 2026) made the port structural because
+//    searcher.go + searcher_metadata.go call SearchLive + GetVideoInfo through
+//    it; the previous empty-marker port panicked at runtime. Real yt-dlp
+//    subprocess implementation lands in a follow-up PR — for now this stub
+//    returns an empty result set so callers compile + run without panic, with
+//    a warn-log so the gap is loud in operator dashboards.
+// ──
+
+type searchRunnerStub struct {
+	log *zap.Logger
+}
+
+func newSearchRunnerStub(log *zap.Logger) youtube.SearchRunnerPort {
+	if log == nil {
+		return nil
 	}
-	var category string
-	err := c.clips.DB().QueryRowContext(ctx, "SELECT category FROM youtube_category_cache WHERE video_title = ?", title).Scan(&category)
-	if err == nil {
-		return category, true
-	}
-	return "", false
+	return &searchRunnerStub{log: log}
 }
 
-func (c *classifierCacheAdapter) Set(ctx context.Context, title, category string) error {
-	if c.clips == nil || c.clips.DB() == nil {
-		return fmt.Errorf("clips repo not available")
-	}
-	_, err := c.clips.DB().ExecContext(ctx, "INSERT OR REPLACE INTO youtube_category_cache (video_title, category, cached_at) VALUES (?, ?, datetime('now'))", title, category)
-	return err
+func (s *searchRunnerStub) SearchLive(ctx context.Context, query string, limit int, sort string) ([]youtube.SearchLiveResult, error) {
+	s.log.Warn("SearchRunner.SearchLive invoked but search runner is stubbed in this PR (June 2026 cascade); returning empty result set",
+		zap.String("query", query),
+		zap.Int("limit", limit),
+		zap.String("sort", sort))
+	return []youtube.SearchLiveResult{}, nil
+}
+
+func (s *searchRunnerStub) GetVideoInfo(ctx context.Context, videoURL string) (*youtube.DownloaderMetadata, error) {
+	s.log.Warn("SearchRunner.GetVideoInfo invoked but search runner is stubbed in this PR (June 2026 cascade); returning empty DTO",
+		zap.String("url", videoURL))
+	return &youtube.DownloaderMetadata{}, nil
 }

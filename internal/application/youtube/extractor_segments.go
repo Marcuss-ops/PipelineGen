@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -386,8 +385,13 @@ func (s *Service) findInterestingSegments(ctx context.Context, videoURL string) 
 		zap.String("url", videoURL))
 
 	// ── Priority 2: YouTube Chapters ─────────────────────────────────────
-	ytDlp := downloader.NewYTDLP(s.cfg)
-	meta, metaErr := ytDlp.GetVideoMetadata(ctx, videoURL)
+	// Per PR2 cascade (June 2026): metadata fetches go through the
+	// metaFetcher port (VideoMetadataFetcherPort) instead of the
+	// deprecated downloader.NewYTDLP concrete call.
+	if s.metaFetcher == nil {
+		return nil, nil
+	}
+	meta, metaErr := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
 	if metaErr == nil && meta != nil && len(meta.Chapters) > 0 {
 		s.log.Info("found YouTube chapters, using them as segments",
 			zap.String("url", videoURL),

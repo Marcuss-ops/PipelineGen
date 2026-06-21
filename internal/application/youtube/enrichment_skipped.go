@@ -24,11 +24,11 @@ func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, video
 		zap.String("clip_id", clipID),
 		zap.String("video_id", videoID))
 
-	// Fetch YouTube metadata directly
+	// Fetch YouTube metadata directly via the metaFetcher port
 	if s.metaFetcher == nil {
 		return
 	}
-	meta, err := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
+	ym, err := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
 	if err != nil {
 		s.log.Warn("failed to fetch YouTube metadata for skipped clip",
 			zap.String("clip_id", clipID),
@@ -36,9 +36,9 @@ func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, video
 		return
 	}
 
-	// Build result with just metadata (no local path needed for enrichment)
+	// Wrap metadata in a VideoCutResult so the unified enrich flow sees it.
 	result := &VideoCutResult{
-		Metadata: meta,
+		Metadata: ym,
 	}
 
 	s.enrichYouTubeClipWithMetadata(ctx, clipID, result, false)

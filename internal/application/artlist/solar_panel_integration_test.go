@@ -118,10 +118,8 @@ func TestSolarPanelSearch(t *testing.T) {
 	// consolidation). ServiceDeps embeds ServicePorts + ServiceDependencies
 	// so flat construction via field promotion works for terse test fixtures.
 	svc, err := NewService(ServiceDeps{
-		Cfg:        cfg,
-		MainDB:     db,
-		Log:        logger,
-		AssetStore: repo,
+		ServicePorts:        ServicePorts{AssetStore: repo},
+		ServiceDependencies: ServiceDependencies{Cfg: cfg, MainDB: db, Log: logger},
 	})
 	require.NoError(t, err)
 	defer svc.Close()
@@ -141,7 +139,7 @@ func TestSolarPanelSearch(t *testing.T) {
 	require.NoError(t, err)
 	fmt.Printf("  Clips returned: %d\n", len(liveResp))
 	for i, c := range liveResp {
-		fmt.Printf("    [%d] ID=%s Title=%q URL=%q\n", i, c.ClipID, c.Title, c.PrimaryURL)
+		fmt.Printf("    [%d] ID=%s Title=%q URL=%q\n", i, c.ID, c.Title, c.SourceRef)
 	}
 	assert.GreaterOrEqual(t, len(liveResp), 1, "live search should return at least 1 clip")
 
