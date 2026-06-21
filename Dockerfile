@@ -1,43 +1,19 @@
 # syntax=docker/dockerfile:1.7
 #
-# PipelineGen production image.
+# PipelineGen multi-target Dockerfile.
 #
-# Multi-stage build:
-#   1) builder  — golang:1.25-bookworm with CGO enabled (required because
-#      mattn/go-sqlite3 needs a C toolchain). Compiles the three canonical
-#      binaries: cmd/server, cmd/worker, cmd/admin. Embeds go build flags
-#      so the resulting binaries carry build-version + commit hash.
+# Multi-stage build with three runtime targets:
+#   1) builder         — shared Go compiler (golang:1.25-bookworm, CGO enabled).
+#   2) server-runtime  — HTTP server only (ca-certificates + curl).
+#   3) worker-runtime  — background job executor (ffmpeg + yt-dlp + python3).
+#   4) admin-runtime   — one-shot admin CLI (sqlite3 + jq + python3).
 #
-#   2) runtime  — debian:bookworm-slim with the runtime dependencies the
-#      binary needs:
-#        - ffmpeg          : stock pipeline + video composition
-#        - sqlite3         : CLI for manual DB inspection (the binary uses
-#                            the mattn/go-sqlite3 CGO engine directly
-#                            and does NOT depend on the CLI, but it's
-#                            useful in operator shells).
-#        - yt-dlp          : YouTube downloads via the in-process
-#                            downlooper; pinned to the official release.
-#        - curl, ca-certificates : outbound HTTPS (delivery.requested +
-#                            Ollama + Drive + node-sidecar scraping).
-#        - python3 + pip  : speech/transcription sidecars (book_processor,
-#                            tts, semantic_tagger). Kept minimal — explicit
-#                            Python deps layered in deployment.
+# Compatibility alias — `runtime` points to `server-runtime` so existing
+# deployment scripts that reference `--target runtime` continue to work.
 #
-# The image expects a /data volume mounted (or a bind mount) for the SQLite
-# database, asset downloads, and asset_metadata sidecars.
-#
-# Default CMD runs the HTTP server with --mode all (HTTP + worker +
-# scheduler + maintenance sweepers co-located). Operators that prefer the
-# split deployment override the command:
-#   docker run ... pipelinegen --mode server   # HTTP only
-#   docker run ... pipelinegen-admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md
-#
-# Health: the binary exposes /health (no auth) and /api/health/deep
-# (auth). container HEALTHCHECK hits /health on a 10 s interval.
-#
-# Compatibility: the official image is intended for x86_64. Cross-arch is
-# supported by the FROM lines but the --ldflags line embeds host-arch
-# defaults. Override TARGETOS/TARGETARCH at build time.
+# Each target copies only its own binary. No target contains the other
+# binaries, and the server target does not carry media tools it will
+# never use.
 
 # ─── builder ─────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
@@ -46,7 +22,7 @@ ARG TARGETPLATFORM
 ARG VERSION=dev
 ARG COMMIT=unknown
 
-# CGO is required (mattn/go-sqlite3). Build tools: gcc, libc-dev.
+# CGO is required (mattn/go-sqlite3).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential \
@@ -56,14 +32,13 @@ RUN apt-get update \
 WORKDIR /src
 
 # Layer-cache friendly: copy go.mod/go.sum first, download deps, then copy
-# the rest of the source. Avoids re-downloading on every source change.
+# the rest of the source.
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-# Compile the three canonical binaries. CGO_ENABLED=1 is required for
-# sqlite3. Output paths are /out/<binary>.
+# Compile the three canonical binaries.
 ENV CGO_ENABLED=1
 RUN mkdir -p /out \
  && go build -trimpath \
@@ -76,53 +51,86 @@ RUN mkdir -p /out \
       -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.commitHash=${COMMIT}" \
       -o /out/admin ./cmd/admin
 
-# ─── runtime ─────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS runtime
+# ─── server-runtime ───────────────────────────────────────────────
+FROM debian:bookworm-slim AS server-runtime
 
-# Runtime-only packages. Note: no Go toolchain / no gcc — the final
-# image does not need to compile anything.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /out/pipelinegen /usr/local/bin/pipelinegen
+
+RUN mkdir -p /data /etc/pipelinegen \
+ && chown -R root:root /data /etc/pipelinegen
+VOLUME ["/data"]
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/pipelinegen"]
+CMD ["--mode", "server", "--config", "/etc/pipelinegen/config.yaml"]
+
+# ─── worker-runtime ───────────────────────────────────────────────
+FROM debian:bookworm-slim AS worker-runtime
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
       ffmpeg \
-      jq \
-      sqlite3 \
       python3 \
  && rm -rf /var/lib/apt/lists/*
 
-# yt-dlp pinned to a recent release. Updated by ops in their own cadence.
+# yt-dlp pinned to a recent release.
 ARG YTDLP_VERSION=2024.08.06
 RUN curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" \
       -o /usr/local/bin/yt-dlp \
  && chmod a+rx /usr/local/bin/yt-dlp
 
-# Copy the three built binaries from the builder stage. /usr/local/bin
-# places them on the standard PATH so CMD can call them by name.
-COPY --from=builder /out/pipelinegen /usr/local/bin/pipelinegen
-COPY --from=builder /out/worker      /usr/local/bin/pipelinegen-worker
-COPY --from=builder /out/admin       /usr/local/bin/pipelinegen-admin
+COPY --from=builder /out/worker /usr/local/bin/pipelinegen-worker
 
-# /data is the operator-mounted volume. SQLite DB + asset directories
-# live there. Create with root ownership so the runtime user can write
-# through the bind mount on first boot.
+# Copy Python scripts and config needed by the worker at runtime.
+COPY scripts/ /app/scripts/
+COPY config/ /app/config/
+
 RUN mkdir -p /data /etc/pipelinegen \
  && chown -R root:root /data /etc/pipelinegen
 VOLUME ["/data"]
 
-# Standard server port. Override via `docker run -p 8080:8080`. The
-# container listens on 8080 by default per internal/infrastructure/
-# config/types.go (`Server.Port` default).
-EXPOSE 8080
+WORKDIR /app
 
-# Health: hit /health every 10 s. /health is unauth per internal/api/
-# routes.go so the probe does not need a token in the env file.
-HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
-  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
+ENTRYPOINT ["/usr/local/bin/pipelinegen-worker"]
+CMD ["--config", "/app/config/config.yaml"]
 
-# Default command: full pipeline (HTTP + background jobs + maintenance).
-# Override in deployment for split modes:
-#   docker run ... pipelinegen-worker --mode worker
-#   docker run ... pipelinegen-admin gen-api-docs ...
-ENTRYPOINT ["/usr/local/bin/pipelinegen"]
-CMD ["--mode", "all"]
+# ─── admin-runtime ────────────────────────────────────────────────
+FROM debian:bookworm-slim AS admin-runtime
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      jq \
+      python3 \
+      sqlite3 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /out/admin /usr/local/bin/pipelinegen-admin
+
+# Copy Python scripts and config used by admin commands (summarize-book,
+# ai-generate, backfill-missing, etc.).
+COPY scripts/ /app/scripts/
+COPY config/ /app/config/
+
+RUN mkdir -p /data /etc/pipelinegen \
+ && chown -R root:root /data /etc/pipelinegen
+VOLUME ["/data"]
+
+WORKDIR /app
+
+ENTRYPOINT ["/usr/local/bin/pipelinegen-admin"]
+
+# ─── runtime (compatibility alias) ────────────────────────────────
+FROM server-runtime AS runtime
