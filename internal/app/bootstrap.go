@@ -44,7 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
