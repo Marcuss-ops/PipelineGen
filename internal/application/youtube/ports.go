@@ -108,15 +108,6 @@ type SearchLiveResult struct {
 	Thumbnail string  `json:"thumbnail"`
 }
 
-// YouTubeCacheEntry is the row shape returned by YouTubeCacheStorePort
-// adapters when listing hot metadata cache entries (per the composition
-// adapters in internal/app/youtube_adapters.go). Defining it here keeps
-// the adapter from declaring half-DTO structs in the composition layer.
-type YouTubeCacheEntry struct {
-	VideoID      string `json:"video_id"`
-	MetadataJSON string `json:"metadata_json"`
-}
-
 // VideoMetadata is an alias preserved for callers that historically
 // referenced a YouTubeMetadataPort-shaped value.
 type VideoMetadata = DownloaderMetadata

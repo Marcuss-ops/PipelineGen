@@ -128,7 +128,7 @@ func (a *cacheStoreAdapter) IncrementMetadataHits(ctx context.Context, videoID s
 	return err
 }
 
-func (a *cacheStoreAdapter) ListHotMetadata(ctx context.Context, limit int) ([]youtube.YouTubeCacheEntry, error) {
+func (a *cacheStoreAdapter) ListHotMetadata(ctx context.Context, limit int) ([]assets.YouTubeCacheEntry, error) {
 	rows, err := a.db().DB().QueryContext(ctx,
 		`SELECT video_id, metadata_json FROM youtube_video_metadata_cache ORDER BY hit_count DESC LIMIT ?`,
 		limit,
@@ -137,9 +137,9 @@ func (a *cacheStoreAdapter) ListHotMetadata(ctx context.Context, limit int) ([]y
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []youtube.YouTubeCacheEntry
+	var entries []assets.YouTubeCacheEntry
 	for rows.Next() {
-		var e youtube.YouTubeCacheEntry
+		var e assets.YouTubeCacheEntry
 		if err := rows.Scan(&e.VideoID, &e.MetadataJSON); err != nil {
 			continue
 		}
