@@ -21,8 +21,6 @@ UPDATE jobs SET status = 'CANCELLED' WHERE status = 'cancelled';
 --    Since this is a development database with manageable row counts,
 --    the CREATE TABLE … AS SELECT pattern is safe inside a transaction.
 
-BEGIN IMMEDIATE;
-
 CREATE TABLE jobs_new (
     id              TEXT    NOT NULL PRIMARY KEY,
     type            TEXT    NOT NULL,
@@ -83,8 +81,6 @@ FROM jobs;
 
 DROP TABLE jobs;
 ALTER TABLE jobs_new RENAME TO jobs;
-
-COMMIT;
 
 -- 4. Index for ClaimNext: orders by priority DESC, created_at ASC
 CREATE INDEX IF NOT EXISTS idx_jobs_claim
