@@ -24,7 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 )
@@ -43,7 +43,7 @@ import (
 //	}
 type dispatchBridge struct {
 	dispatcher  *outbox.Dispatcher
-	clipsRepo   *sqlite.ClipsRepository
+	clipsRepo   *assets.ClipsRepository
 	clipIndexer *clipindexer.Service
 	log         *zap.Logger
 }

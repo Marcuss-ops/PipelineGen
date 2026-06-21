@@ -9,19 +9,19 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
 
 type registryAdapter struct {
-	repo      *sqlite.ImagesRepository
+	repo      *assets.ImagesRepository
 	imagesDir string
 	log       *zap.Logger
 }
 
-func NewRegistryAdapter(repo *sqlite.ImagesRepository, imagesDir string, log *zap.Logger) artifacts.Registry {
+func NewRegistryAdapter(repo *assets.ImagesRepository, imagesDir string, log *zap.Logger) artifacts.Registry {
 	return &registryAdapter{repo: repo, imagesDir: imagesDir, log: log}
 }
 

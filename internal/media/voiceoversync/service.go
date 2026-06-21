@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -20,12 +20,12 @@ const folderMimeType = "application/vnd.google-apps.folder"
 type Service struct {
 	uploader     *driveup.Uploader
 	log          *zap.Logger
-	repo         *sqlite.VoiceoversRepository
+	repo         *assets.VoiceoversRepository
 	assetTreeSvc *assettree.Service
 	rootFolderID string
 }
 
-func NewService(uploader *driveup.Uploader, repo *sqlite.VoiceoversRepository, assetTreeSvc *assettree.Service, rootFolderID string, log *zap.Logger) *Service {
+func NewService(uploader *driveup.Uploader, repo *assets.VoiceoversRepository, assetTreeSvc *assettree.Service, rootFolderID string, log *zap.Logger) *Service {
 	return &Service{
 		uploader:     uploader,
 		log:          log,
@@ -173,7 +173,7 @@ func (s *Service) syncFile(ctx context.Context, file driveup.DriveFileInfo, file
 	}
 
 	now := time.Now().UTC()
-	rec := &sqlite.Record{
+	rec := &assets.Record{
 		ID:           id,
 		RequestID:    "sync_" + time.Now().Format("20060102"),
 		TextHash:     file.ID, // Use drive file ID as hash for synced files

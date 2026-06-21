@@ -3,7 +3,7 @@ package channels
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
 )
@@ -11,7 +11,7 @@ import (
 // NewModule creates the Channels module for the API registry.
 func NewModule(
 	log *zap.Logger,
-	repo *sqlite.ChannelsRepository,
+	repo *assets.ChannelsRepository,
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"channels",

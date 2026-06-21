@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
@@ -26,8 +26,8 @@ const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 type Service struct {
 	cfg        *config.Config
-	repo       *sqlite.ImagesRepository
-	stockRepo  *sqlite.ClipsRepository
+	repo       *assets.ImagesRepository
+	stockRepo  *assets.ClipsRepository
 	driveSvc   *driveapi.Service
 	log        *zap.Logger
 	tempDir    string
@@ -88,7 +88,7 @@ type DiagnosticsReport struct {
 	WikidataWorks    bool     `json:"wikidata_works"`
 }
 
-func NewService(cfg *config.Config, repo *sqlite.ImagesRepository, stockRepo *sqlite.ClipsRepository, driveSvc *driveapi.Service, styleRegistry *generation.StyleRegistry, log *zap.Logger) *Service {
+func NewService(cfg *config.Config, repo *assets.ImagesRepository, stockRepo *assets.ClipsRepository, driveSvc *driveapi.Service, styleRegistry *generation.StyleRegistry, log *zap.Logger) *Service {
 	s := &Service{
 		cfg:           cfg,
 		repo:          repo,
@@ -188,7 +188,7 @@ func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectI
 }
 
 // Repo returns the underlying images repository.
-func (s *Service) Repo() *sqlite.ImagesRepository {
+func (s *Service) Repo() *assets.ImagesRepository {
 	return s.repo
 }
 

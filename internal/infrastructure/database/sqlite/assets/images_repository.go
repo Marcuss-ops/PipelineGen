@@ -1,5 +1,5 @@
 // package sqlite provides the ImagesRepository for image assets.
-package sqlite
+package assets
 
 import (
 	"context"

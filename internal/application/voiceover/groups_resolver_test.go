@@ -10,7 +10,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 )
 
@@ -107,7 +107,7 @@ func newTestResolver(t *testing.T) (*GroupsResolver, *sql.DB) {
 	t.Helper()
 	db := setupTestDB(t)
 
-	repo, err := sqlite.NewAssetTreeRepository(db, zap.NewNop())
+	repo, err := assets.NewAssetTreeRepository(db, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewRepository: %v", err)
 	}

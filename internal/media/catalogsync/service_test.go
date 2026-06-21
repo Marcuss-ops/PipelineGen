@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 const catalogSyncTestSchema = `
@@ -55,7 +55,7 @@ func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 	db := drive.NewTestDBWithSchema(t, catalogSyncTestSchema)
 	defer db.Close()
 
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 	now := time.Now().UTC()
 	for _, folder := range []*media.ClipFolder{
 		{

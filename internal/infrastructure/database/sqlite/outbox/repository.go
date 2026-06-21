@@ -25,9 +25,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 )
 
-// ClipsUpserter is the *sqlite.ClipsRepository method surface the Dispatcher needs.
+// ClipsUpserter is the *assets.ClipsRepository method surface the Dispatcher needs.
 // Defined as an interface so unit tests can substitute a fake without
-// pulling the full sqlite.ClipsRepository dependency.
+// pulling the full assets.ClipsRepository dependency.
 type ClipsUpserter interface {
 	UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error
 }
@@ -55,7 +55,7 @@ type Dispatcher struct {
 }
 
 // NewDispatcher wires a Dispatcher against the canonical dependencies.
-// clips is typically *sqlite.ClipsRepository (which implements ClipsUpserter).
+// clips is typically *assets.ClipsRepository (which implements ClipsUpserter).
 // outboxEventsRepo is the canonical outbox_events repository for
 // asset.index.requested event enqueue.
 func NewDispatcher(clips ClipsUpserter, outboxEventsRepo *outboxevents.Repository, txmgr TxManager, log *zap.Logger) *Dispatcher {
@@ -204,7 +204,7 @@ func shortHashPrefix(s string) string {
 
 // MultiClipsUpserter routes UpsertClipTx calls to one of several underlying
 // repositories based on `clip.Source`. Useful when a single outbox.Dispatcher
-// must ingest across many per-source sqlite.ClipsRepository instances (e.g.
+// must ingest across many per-source assets.ClipsRepository instances (e.g.
 // catalogsync drives youtube, stock, and artlist sources through one
 // canonical dispatcher).
 //

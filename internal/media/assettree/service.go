@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	repo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	repo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"go.uber.org/zap"
 )

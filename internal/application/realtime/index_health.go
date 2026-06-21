@@ -58,11 +58,11 @@ const IndexHealthSampleCap = 5000
 const IndexHealthTimeout = 60 * time.Second
 
 // IndexHealthClips narrows the canonical clips repo surface to only the
-// methods IndexHealth needs. Real *sqlite.ClipsRepository satisfies this
+// methods IndexHealth needs. Real *assets.ClipsRepository satisfies this
 // interface structurally; test fakes inject failing clones without
 // touching the concrete repository.
 //
-// Moved from the concrete *sqlite.ClipsRepository field on Service (Task 7) so
+// Moved from the concrete *assets.ClipsRepository field on Service (Task 7) so
 // attribution tests can swap in a fake whose ListIndexedIDs returns an
 // error without requiring a misconfigured DB to drive that path.
 type IndexHealthClips interface {

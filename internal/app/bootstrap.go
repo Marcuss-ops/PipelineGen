@@ -28,7 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 
@@ -112,12 +112,12 @@ type CoreDeps struct {
 	Utility            *common.UtilityHandler
 	DB                 *storage.SQLiteDB // Unified database (scripts, jobs, asset index, media assets)
 	ScriptsRepo        *sqlitescripts.ScriptRepository
-	ImageRepo          *sqlite.ImagesRepository
+	ImageRepo          *assets.ImagesRepository
 	ImageService       *imgservice.Service
-	ClipsRepo          *sqlite.ClipsRepository // canonical unified clips repository
+	ClipsRepo          *assets.ClipsRepository // canonical unified clips repository
 	Assets             *asset.Service         // unified assets service authority (PR2)
-	MonitorsRepo       *sqlite.MonitorsRepository
-	VoiceoverRepo      *sqlite.VoiceoversRepository
+	MonitorsRepo       *assets.MonitorsRepository
+	VoiceoverRepo      *assets.VoiceoversRepository
 	VoiceoverService   *voiceover.Service
 	VoiceoverSync      *voiceoversync.Service
 	ClipIndexerService *clipindexer.Service
@@ -210,7 +210,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log, mode)
 
 	// 6. Create VoiceoverRepo
-	voRepo := sqlite.NewVoiceoversRepository(dbs.main.DB)
+	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
 
 	// 7. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)

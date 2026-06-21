@@ -1,7 +1,7 @@
 package storage
 
 // CanonicalMediaAssetsSchema is the single source of truth for the
-// in-memory CREATE TABLE block required by sqlite.ClipsRepository.UpsertClipTx
+// in-memory CREATE TABLE block required by assets.ClipsRepository.UpsertClipTx
 // (37 INSERT columns) and scanMediaAsset (39-column SELECT projection).
 //
 // The 39 columns resolve in three layers, oldest at the top of the

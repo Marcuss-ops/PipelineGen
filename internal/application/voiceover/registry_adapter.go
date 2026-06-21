@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 type voiceoverRegistryAdapter struct {
-	repo *sqlite.VoiceoversRepository
+	repo *assets.VoiceoversRepository
 }
 
-func NewVoiceoverRegistryAdapter(repo *sqlite.VoiceoversRepository) artifacts.Registry {
+func NewVoiceoverRegistryAdapter(repo *assets.VoiceoversRepository) artifacts.Registry {
 	return &voiceoverRegistryAdapter{repo: repo}
 }
 
@@ -56,7 +56,7 @@ func (a *voiceoverRegistryAdapter) FindByPHash(ctx context.Context, phash string
 	return "", nil
 }
 
-func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *sqlite.Record {
+func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *assets.Record {
 	var meta struct {
 		TextHash    string `json:"text_hash"`
 		TextPreview string `json:"text_preview"`
@@ -70,7 +70,7 @@ func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *sqlite.Record {
 	}
 	_ = json.Unmarshal([]byte(mediaRec.Metadata), &meta)
 
-	rec := &sqlite.Record{
+	rec := &assets.Record{
 		ID:           mediaRec.ID,
 		RequestID:    meta.RequestID,
 		TextHash:     meta.TextHash,
@@ -102,7 +102,7 @@ func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *sqlite.Record {
 	return rec
 }
 
-func voiceoverToMediaRecord(rec *sqlite.Record) *artifacts.MediaRecord {
+func voiceoverToMediaRecord(rec *assets.Record) *artifacts.MediaRecord {
 	meta := map[string]any{
 		"text_hash":    rec.TextHash,
 		"text_preview": rec.TextPreview,

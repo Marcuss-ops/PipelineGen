@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
@@ -57,7 +57,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
 
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	// Direct single-repo dispatcher for the test — production wiring uses
@@ -110,7 +110,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
 
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	dispatcher := outbox.NewDispatcher(repo, outboxEventsRepo, txmgr, zap.NewNop())
@@ -153,7 +153,7 @@ func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
 
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	svc := &Service{log: zap.NewNop()}
 	// Note: SetDispatcher NOT called.

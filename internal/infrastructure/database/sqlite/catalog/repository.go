@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 type Repository struct {
-	clipsRepo   *sqlite.ClipsRepository
-	stockRepo   *sqlite.ClipsRepository
-	artlistRepo *sqlite.ClipsRepository
+	clipsRepo   *assets.ClipsRepository
+	stockRepo   *assets.ClipsRepository
+	artlistRepo *assets.ClipsRepository
 }
 
-func NewRepository(clipsRepo *sqlite.ClipsRepository, stockRepo *sqlite.ClipsRepository, artlistRepo *sqlite.ClipsRepository) *Repository {
+func NewRepository(clipsRepo *assets.ClipsRepository, stockRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository) *Repository {
 	return &Repository{
 		clipsRepo:   clipsRepo,
 		stockRepo:   stockRepo,

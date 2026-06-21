@@ -10,17 +10,17 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ChannelsHandler handles CRUD operations for category_channels (channel subscriptions per Drive folder).
 type ChannelsHandler struct {
-	repo *sqlite.ChannelsRepository
+	repo *assets.ChannelsRepository
 	log  *zap.Logger
 }
 
 // NewHandler creates a new channels API handler.
-func NewChannelsHandler(repo *sqlite.ChannelsRepository, log *zap.Logger) *ChannelsHandler {
+func NewChannelsHandler(repo *assets.ChannelsRepository, log *zap.Logger) *ChannelsHandler {
 	return &ChannelsHandler{repo: repo, log: log}
 }
 

@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ─── PR-A Phase 4 BULK moved methods ───────────────────────────────────────
@@ -215,7 +215,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 // imageAssetToClip / voiceoverRecordToClip private methods were dropped
 // in favor of the canonical artifacts.* converters.
 
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *sqlite.ClipsRepository, clip *asset.Asset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *assets.ClipsRepository, clip *asset.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

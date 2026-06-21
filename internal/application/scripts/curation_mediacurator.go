@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
@@ -151,7 +151,7 @@ func (r *CurateRequest) defaults() {
 type MediaCurator struct {
 	vectorSvc   *vectorstore.Service
 	embedder    realtime.EmbeddingClient
-	clipsRepo   *sqlite.ClipsRepository
+	clipsRepo   *assets.ClipsRepository
 	clipBuilder *ClipSourceBuilder
 	engine      *Engine
 	log         *zap.Logger
@@ -162,7 +162,7 @@ type MediaCurator struct {
 func NewMediaCurator(
 	vectorSvc *vectorstore.Service,
 	embedderURL string,
-	clipsRepo *sqlite.ClipsRepository,
+	clipsRepo *assets.ClipsRepository,
 	clipBuilder *ClipSourceBuilder,
 	engine *Engine,
 	log *zap.Logger,

@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -19,7 +19,7 @@ type Target struct {
 	RootFolderID string
 	Source       string
 	MediaType    string
-	Repo         *sqlite.ClipsRepository
+	Repo         *assets.ClipsRepository
 }
 
 type RootSummary struct {

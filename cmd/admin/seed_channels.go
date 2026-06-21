@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	"go.uber.org/zap"
@@ -75,7 +75,7 @@ func runSeedChannels(args []string) error {
 		return fmt.Errorf("parse config file: %w", err)
 	}
 
-	repo := sqlite.NewChannelsRepository(sqliteDB.DB)
+	repo := assets.NewChannelsRepository(sqliteDB.DB)
 
 	imported := 0
 	skipped := 0

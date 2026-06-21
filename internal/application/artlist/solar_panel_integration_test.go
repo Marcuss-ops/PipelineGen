@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // solarTestSchema composes the canonical media_assets CREATE TABLE
@@ -103,7 +103,7 @@ func TestSolarPanelSearch(t *testing.T) {
 	defer db.Close()
 
 	logger := zap.NewNop()
-	repo := sqlite.NewClipsRepository(db, logger)
+	repo := assets.NewClipsRepository(db, logger)
 
 	cfg := &config.Config{
 		Storage: config.StorageConfig{DataDir: tmpDir},

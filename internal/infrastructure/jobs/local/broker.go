@@ -8,15 +8,15 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 type Broker struct {
 	jobs    domainjob.Store
-	workers *sqlite.WorkerNodesRepository
+	workers *assets.WorkerNodesRepository
 }
 
-func New(jobs domainjob.Store, workers *sqlite.WorkerNodesRepository) *Broker {
+func New(jobs domainjob.Store, workers *assets.WorkerNodesRepository) *Broker {
 	return &Broker{jobs: jobs, workers: workers}
 }
 

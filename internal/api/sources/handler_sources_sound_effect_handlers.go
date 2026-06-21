@@ -15,14 +15,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type SoundEffectHandler struct {
-	clipsRepo              *sqlite.ClipsRepository
+	clipsRepo              *assets.ClipsRepository
 	driveUploader          *drive.Uploader
 	metaWriter             *semantic.MetadataWriter
 	resolver               *drive.Resolver
@@ -31,7 +31,7 @@ type SoundEffectHandler struct {
 }
 
 func NewSoundEffectHandler(
-	clipsRepo *sqlite.ClipsRepository,
+	clipsRepo *assets.ClipsRepository,
 	driveUploader *drive.Uploader,
 	metaWriter *semantic.MetadataWriter,
 	soundEffectsRootFolder string,

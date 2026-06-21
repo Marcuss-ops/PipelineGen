@@ -1,11 +1,11 @@
 // PR12b integration test: verifies that youtube.Service.dispatchOrIndex,
 // when wired with an asset.Repository via SetAssetRepo, routes through
-// the canonical writer AND legacy readers (sqlite.ClipsRepository) observe the
+// the canonical writer AND legacy readers (assets.ClipsRepository) observe the
 // same row data.
 //
 // Schema matches the production `media_assets` columns written by
 // `internal/infrastructure/database/sqlite/asset.Upsert` (40 columns)
-// PLUS the legacy columns that `internal/infrastructure/database/sqlite.ClipsRepository.UpsertClip`
+// PLUS the legacy columns that `internal/infrastructure/database/assets.ClipsRepository.UpsertClip`
 // reads and writes (`tags_norm`, `embedding_json`, `visual_embedding`,
 // `transcript_embedding`, `relative_path`, `drive_folder_id`, `width`,
 // `height`) plus `outbox_events` so the canonical upsert's outbox emit
@@ -22,7 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // pr12bYoutubeSchema mirrors the full production table definitions for testing.
@@ -118,12 +118,12 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown.
-func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsRepository, assetRepo asset.Repository) {
+func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewTestDBWithSchema(t, pr12bYoutubeSchema)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
-	clipsRepo = sqlite.NewClipsRepository(db, log)
+	clipsRepo = assets.NewClipsRepository(db, log)
 	assetStore := asset.NewAssetStoreSQLite(db, log)
 	assetRepo = assetStore.AssetRepository()
 	return

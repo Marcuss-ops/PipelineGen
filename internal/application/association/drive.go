@@ -5,18 +5,18 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // DriveStockAssociation cerca cartelle nel catalogo locale dello stock.
 type DriveStockAssociation struct {
-	stockRepo   *sqlite.ClipsRepository
-	artlistRepo *sqlite.ClipsRepository
+	stockRepo   *assets.ClipsRepository
+	artlistRepo *assets.ClipsRepository
 }
 
-func NewDriveStockAssociation(stockRepo, artlistRepo *sqlite.ClipsRepository) *DriveStockAssociation {
+func NewDriveStockAssociation(stockRepo, artlistRepo *assets.ClipsRepository) *DriveStockAssociation {
 	return &DriveStockAssociation{
 		stockRepo:   stockRepo,
 		artlistRepo: artlistRepo,

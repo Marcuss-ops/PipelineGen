@@ -14,7 +14,7 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
@@ -72,12 +72,12 @@ type services struct {
 	driveClient        *gdrive.Service
 	utility            *common.UtilityHandler
 	scriptsRepo        *sqlitescripts.ScriptRepository
-	imageRepo          *sqlite.ImagesRepository
+	imageRepo          *assets.ImagesRepository
 	imageService       *imgservice.Service
-	clipsRepo          *sqlite.ClipsRepository // unified (replaces stockDriveRepo, artlistRepo, clipsOnlyRepo)
+	clipsRepo          *assets.ClipsRepository // unified (replaces stockDriveRepo, artlistRepo, clipsOnlyRepo)
 	assetRepo          asset.Repository
 	driveDests         *DriveDestinations // resolved Drive folder IDs (immutable Config)
-	monitorsRepo       *sqlite.MonitorsRepository
+	monitorsRepo       *assets.MonitorsRepository
 	voiceoverService   *voiceover.Service
 	voiceoverSync      *voiceoversync.Service
 	clipIndexerService *clipindexer.Service
@@ -163,10 +163,10 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 func initVoiceoverService(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger,
 	driveClient *gdrive.Service, driveUploader *drive.Uploader,
 	assetIndexService *assetindex.Service, clipIndexerService *clipindexer.Service,
-	destResolver destination.Resolver) (*voiceover.Service, *sqlite.VoiceoversRepository) {
+	destResolver destination.Resolver) (*voiceover.Service, *assets.VoiceoversRepository) {
 
 	voDir := cfg.Storage.VoiceoversPath()
-	voRepo := sqlite.NewVoiceoversRepository(dbs.main.DB)
+	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
 
 	// Create voiceover registry adapter
 	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
@@ -210,10 +210,10 @@ func initBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, drive
 
 // initImageService creates the image generation service and metadata writer.
 func initImageService(ctx context.Context, cfg *config.Config, log *zap.Logger,
-	driveClient *gdrive.Service, clipsRepo *sqlite.ClipsRepository, artlistRepo *sqlite.ClipsRepository,
+	driveClient *gdrive.Service, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository,
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
 	mediaStore *drive.Store, vectorSvc *vectorstore.Service,
-	imageRepo *sqlite.ImagesRepository) (*imgservice.Service, *semantic.MetadataWriter) {
+	imageRepo *assets.ImagesRepository) (*imgservice.Service, *semantic.MetadataWriter) {
 
 	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, styleRegistry, log)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
@@ -264,7 +264,7 @@ type CoreInfra struct {
 	StyleRegistry *generation.StyleRegistry
 	DriveDests    *DriveDestinations // resolved Drive folder IDs (immutable Config)
 
-	ClipsOnlyRepo       *sqlite.ClipsRepository
+	ClipsOnlyRepo       *assets.ClipsRepository
 	AssetRepo           asset.Repository
 	AssetLocationRepo   asset.LocationRepository
 	AssetProcessingRepo asset.ProcessingRepository
@@ -377,7 +377,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	assetsSvc := asset.NewService(assetsStore, log)
 
 	assetRepo := assetsSvc.Repository()
-	clipsOnlyRepo := sqlite.NewClipsRepositoryCanonical(dbs.main.DB, log, assetRepo)
+	clipsOnlyRepo := assets.NewClipsRepositoryCanonical(dbs.main.DB, log, assetRepo)
 	assetLocRepo := assetsSvc.LocationRepository()
 	assetProcRepo := assetsSvc.ProcessingRepository()
 	mediaProcessor := initMediaProcessor(cfg, dbs.main.DB, assetRepo, assetsSvc, assetLocRepo, assetProcRepo, log, driveUploader)
@@ -514,7 +514,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 // realtime.IndexHealth can run the canonical sqlite<->qdrant cross-check.
 // Both are optional — the service logs a WARN at startup if missing and the
 // cross-check falls back to zeros — but production wiring MUST pass non-nil.
-func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *sqlite.ClipsRepository, outboxEventsRepo *outboxevents.Repository, jobsService *job.Service) *realtime.Service {
+func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *assets.ClipsRepository, outboxEventsRepo *outboxevents.Repository, jobsService *job.Service) *realtime.Service {
 	embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
 	jobAdapter := realtime.NewJobServiceAdapter(jobsService, log)
 	rerankerClient := reranker.NewClient(reranker.Config{
@@ -540,14 +540,14 @@ func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Lo
 type MediaDomain struct {
 	YoutubeClipService *youtube.Service
 	VoiceoverService   *voiceover.Service
-	VoiceoverRepo      *sqlite.VoiceoversRepository
+	VoiceoverRepo      *assets.VoiceoversRepository
 	BooksService       *books.Service
-	ClipsRepo          *sqlite.ClipsRepository // single shared repository (replaces ClipsRepo + ArtlistRepo)
+	ClipsRepo          *assets.ClipsRepository // single shared repository (replaces ClipsRepo + ArtlistRepo)
 	ScriptsRepo        *sqlitescripts.ScriptRepository
-	ImageRepo          *sqlite.ImagesRepository
+	ImageRepo          *assets.ImagesRepository
 	ImageService       *imgservice.Service
 	MetaWriter         *semantic.MetadataWriter
-	MonitorsRepo       *sqlite.MonitorsRepository
+	MonitorsRepo       *assets.MonitorsRepository
 }
 
 // composeMediaDomain initializes all media domain services.
@@ -558,7 +558,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 	// on the same DB; PR 7 unified them into one shared pointer.
 	clipsRepo := core.ClipsOnlyRepo
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.main.DB)
-	imageRepo := sqlite.NewImagesRepository(dbs.main.DB)
+	imageRepo := assets.NewImagesRepository(dbs.main.DB)
 
 	// YouTube Lifecycle & Video Pipeline
 	clipsRegistry := artifacts.NewClipsRegistry(
@@ -578,7 +578,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 
 	// YouTube Clip Service
-	monitorsRepo := sqlite.NewMonitorsRepository(dbs.main.DB)
+	monitorsRepo := assets.NewMonitorsRepository(dbs.main.DB)
 	youtubeClipService := youtube.NewService(
 		cfg, log,
 		core.ClipsOnlyRepo, monitorsRepo,
@@ -661,7 +661,7 @@ func composeIntegration(
 	registryWiring *RegistryWiring,
 ) (*services, error) {
 	// ── Asset Resolver, Association, Catalog Sync ──────────────────────
-	clipsRepos := map[string]*sqlite.ClipsRepository{
+	clipsRepos := map[string]*assets.ClipsRepository{
 		"youtube": core.ClipsOnlyRepo,
 		"stock":   core.ClipsOnlyRepo,
 		"artlist": core.ClipsOnlyRepo,
