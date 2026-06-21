@@ -183,8 +183,9 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			search_text, lifecycle_state, deleted_at, metadata_json,
 			created_at, updated_at, folder_id, parent_folder_id, folder_path,
 			scene_type, phash, last_used_at, quality_score, reuse_count,
-			embedding_json, visual_embedding, transcript_embedding
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			embedding_json, visual_embedding, transcript_embedding,
+			drive_link, download_link, local_path, drive_file_id, file_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -213,7 +214,12 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			reuse_count = excluded.reuse_count,
 			embedding_json = excluded.embedding_json,
 			visual_embedding = excluded.visual_embedding,
-			transcript_embedding = excluded.transcript_embedding
+			transcript_embedding = excluded.transcript_embedding,
+			drive_link = excluded.drive_link,
+			download_link = excluded.download_link,
+			local_path = excluded.local_path,
+			drive_file_id = excluded.drive_file_id,
+			file_hash = excluded.file_hash
 	`,
 		clip.ID, string(clip.Source), clip.Name, clip.Filename, string(clip.MediaType), clip.Category, clip.Group,
 		clip.SourceURL, clip.ClipPageURL, clip.ThumbnailURL, clip.Duration.Milliseconds(), string(tagsJSON), string(searchTermsJSON),
@@ -221,6 +227,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 		timeutil.FormatRFC3339(clip.CreatedAt), nowStr, clip.FolderID(), clip.ParentFolderID(), clip.FolderPath(),
 		clip.SceneType(), clip.PHash(), clip.LastUsedAt(), clip.QualityScore(), clip.ReuseCount(),
 		clip.EmbeddingJSON(), clip.VisualEmbedding(), clip.TranscriptEmbedding(),
+		clip.DriveLink(), clip.DownloadLink(), clip.LocalPath(), clip.DriveFileID(), clip.FileHash(),
 	)
 	return err
 }

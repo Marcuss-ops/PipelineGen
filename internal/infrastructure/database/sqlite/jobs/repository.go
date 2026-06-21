@@ -38,6 +38,9 @@ func NewSQLiteStore(db *sql.DB, log *zap.Logger) *SQLiteStore {
 	return &SQLiteStore{db: db, log: log}
 }
 
+// DB returns the underlying *sql.DB for direct query access in tests + migrations.
+func (r *SQLiteStore) DB() *sql.DB { return r.db }
+
 // Compile-time check: Repository implements Repository.
 var _ Store = (*SQLiteStore)(nil)
 
@@ -239,7 +242,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 
 	// 3. Overall average duration for completed jobs
 	var overallAvg sql.NullFloat64
-	if err := r.db.QueryRowContext(ctx, `SELECT AVG((julianday(COALESCE(completed_at, updated_at)) - julianday(started_at)) * 86400.0) FROM jobs WHERE status = 'completed' AND started_at IS NOT NULL`).Scan(&overallAvg); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT AVG((julianday(COALESCE(completed_at, updated_at)) - julianday(started_at)) * 86400.0) FROM jobs WHERE status = 'SUCCEEDED' AND started_at IS NOT NULL`).Scan(&overallAvg); err != nil {
 		r.log.Warn("getStats: avg-duration query failed", zap.Error(err))
 	} else if overallAvg.Valid {
 		stats.DurationMs.Overall = overallAvg.Float64
@@ -251,9 +254,9 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 			COUNT(*) as cnt,
 			AVG((julianday(COALESCE(completed_at, updated_at)) - julianday(started_at)) * 86400.0) as avg_ms,
 			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0) as imgs_gen,
-			SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as errs
+			SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as errs
 		FROM jobs
-		WHERE status IN ('completed', 'failed')
+		WHERE status IN ('SUCCEEDED', 'FAILED')
 		GROUP BY type
 		ORDER BY cnt DESC
 	`)
@@ -286,7 +289,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 
 	// 5. Stale/zombie active jobs (status=leased or running but lease_expiry in past)
 	var staleCount sql.NullInt64
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('leased', 'running') AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
 		r.log.Warn("getStats: stale-running query failed", zap.Error(err))
 	} else if staleCount.Valid {
 		stats.StaleRunning = int(staleCount.Int64)
@@ -295,8 +298,8 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 	// 6. Recent 24h stats
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT
-			COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0)
 		FROM jobs
 		WHERE created_at > datetime('now', '-1 day')
@@ -308,7 +311,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 }
 
 func (r *SQLiteStore) FindActiveByKey(ctx context.Context, activeKey string) (*job.Job, error) {
-	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('queued', 'leased', 'running') ORDER BY started_at DESC LIMIT 1`
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('QUEUED', 'LEASED', 'RUNNING') ORDER BY started_at DESC LIMIT 1`
 	j := &job.Job{}
 	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, activeKey), j); err != nil {
 		if err == sql.ErrNoRows {
@@ -396,7 +399,7 @@ func (r *SQLiteStore) RefreshMetrics(ctx context.Context) error {
 	// Oldest queued/retrying job per type (seconds since its created_at, or 0).
 	oldest, err := r.db.QueryContext(ctx, `
 		SELECT type, COALESCE(MAX((julianday('now') - julianday(created_at)) * 86400.0), 0)
-		FROM jobs WHERE status = 'queued' GROUP BY type`)
+		FROM jobs WHERE status = 'QUEUED' GROUP BY type`)
 	if err != nil {
 		return fmt.Errorf("oldest pending query: %w", err)
 	}
