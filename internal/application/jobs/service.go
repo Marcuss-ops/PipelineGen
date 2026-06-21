@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -20,7 +21,7 @@ const MaxPayloadSize = 1 << 20 // 1 MB
 
 // Service manages job life cycle: enqueue, query, cancel.
 type Service struct {
-	repo       *SQLiteStore
+	repo       *sqljobs.SQLiteStore
 	dispatcher *Dispatcher
 	log        *zap.Logger
 
@@ -30,7 +31,7 @@ type Service struct {
 	enqueueMu sync.Mutex
 }
 
-func NewService(repo *SQLiteStore, dispatcher *Dispatcher, log *zap.Logger) *Service {
+func NewService(repo *sqljobs.SQLiteStore, dispatcher *Dispatcher, log *zap.Logger) *Service {
 	return &Service{
 		repo:       repo,
 		dispatcher: dispatcher,
@@ -205,7 +206,7 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) error {
 }
 
 // GetStats returns aggregated job statistics.
-func (s *Service) GetStats(ctx context.Context) (*JobStats, error) {
+func (s *Service) GetStats(ctx context.Context) (*sqljobs.JobStats, error) {
 	return s.repo.GetStats(ctx)
 }
 
