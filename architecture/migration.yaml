@@ -654,3 +654,41 @@
   structural_diff: []  # referenced files removed; see cleanup-wave-05-pr1-land followup dangle-ref cleanup
   blocked_by: ["16"]
   tag: architecture-clean-v1
+
+# ── Operational Roadmap PR0–PR4 (PR #26, commit fd8e3a43) ────────────────────
+# Source of truth for the next consolidation cycle:
+#   docs/roadmap/README.md
+#   docs/roadmap/PR0_REPOSITORY_TRUTH.md
+#   docs/roadmap/PR1_YOUTUBE_INFRASTRUCTURE.md
+#   docs/roadmap/PR2_ARTLIST_INFRASTRUCTURE.md
+#   docs/roadmap/PR3_API_COMPACTION.md
+#   docs/roadmap/PR4_COMPOSITION_ROOT.md
+#
+# Cross-link matrix (legacy Wave → operational PR):
+#   PR0  — repo docs/baseline alignment only (no code changes).
+#   PR1  — extends Wave 12 (provider extract for YouTube) +
+#          creates internal/infrastructure/youtube/ (new package).
+#   PR2  — extends Wave 12 (provider/surface-vs-scraper split for Artlist) +
+#          creates internal/infrastructure/artlist/ (new package with
+#          scraper/ subdir [client, process, parser] and downloader/ subdir
+#          [download.go, hls.go]); also extracts HLS streaming,
+#          FFmpeg integration, and owns the Artlist `database/sql` adapter
+#          (these last 3 are NOT covered by Wave 12).
+#   PR3  — finishes Wave 14 (api/{drive,realtime,searchqueries,sources,
+#          fullimages,workers,script} → api/{assets,images,jobs,scripts}).
+#   PR4  — finishes Wave 15 residual items (services struct + CoreDeps
+#          already removed by Wave 15 PR4d-final).
+#
+# Synchronisation rules (do not regress):
+#   * Wave 14 stays `in_progress` until PR3 closes all 7 api/ directories.
+#   * Wave 15 stays `in_progress` until the three shared helpers
+#     (`initVoiceoverService`, `initBooksService`, `initImageService`)
+#     currently in `internal/app/dependencies.go` migrate to per-capability
+#     modules — `modules/voiceover.go` (PR4.4), `modules/content.go`
+#     (PR4.3), `modules/images.go` (PR4.4) — and the `*backgroundJobs`
+#     closure in `lifecycle.go` splits into a typed lifecycle (PR4.8).
+#   * Wave 16 closes only when archcheck --strict flag exists (currently
+#     missing; SKIPPED in wave15_exit_gate.sh PASS-WITH-DEFERRED verdict).
+#   * Wave 17 is the final verification gate; tag architecture-clean-v1
+#     remains the canonical success marker.
+# -----------------------------------------------------------------------------
