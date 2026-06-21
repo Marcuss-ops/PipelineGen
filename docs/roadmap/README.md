@@ -1,79 +1,63 @@
-# PipelineGen — Roadmap operativa PR0–PR4
+# PipelineGen — Roadmap operativa residua PR0–PR5
 
-Questa directory è la fonte operativa per il prossimo ciclo di consolidamento di PipelineGen.
+Questa directory contiene **solo il lavoro ancora aperto**. Le attività già completate sono registrate in `architecture/migration.yaml` e nella cronologia Git e non vengono ripetute nelle checklist.
 
-La roadmap descrive azioni verificabili, file reali, test ed exit gate. Non contiene istruzioni di branch, comandi di push o procedure Git: ogni documento definisce soltanto il lavoro tecnico da eseguire.
+## Stato attuale
 
-## Obiettivo del ciclo
-
-Portare il repository dallo stato attuale, già privo dei principali namespace legacy, a una struttura coerente e scalabile:
-
-- documentazione e tracker coerenti con il codice reale;
-- separazione netta tra use case e adapter concreti per YouTube e Artlist;
-- API organizzata per capability;
-- composition root modulare senza service locator globale;
-- nessuna nuova feature finché PR0–PR4 non sono concluse.
-
-## Ordine obbligatorio
-
-| Documento | Obiettivo | Stato iniziale | Bloccato da |
+| Documento | Stato reale | Obiettivo residuo | Bloccato da |
 |---|---|---|---|
-| [PR0 — Repository truth](PR0_REPOSITORY_TRUTH.md) | Allineare roadmap, baseline e documentazione al codice reale | Da fare | — |
-| [PR1 — YouTube infrastructure](PR1_YOUTUBE_INFRASTRUCTURE.md) | Estrarre download, FFmpeg, filesystem e metadata da `application/youtube` | Da fare | PR0 |
-| [PR2 — Artlist infrastructure](PR2_ARTLIST_INFRASTRUCTURE.md) | Estrarre scraper, processi, download e filesystem da `application/artlist` | Da fare | PR0 |
-| [PR3 — API compaction](PR3_API_COMPACTION.md) | Consolidare i package API per capability senza cambiare le route | Da fare | PR1, PR2 |
-| [PR4 — Composition root](PR4_COMPOSITION_ROOT.md) | Eliminare `services`/`CoreDeps` globali e costruire moduli capability-owned | Da fare | PR3 |
+| [PR0 — Repository truth](PR0_REPOSITORY_TRUTH.md) | Parziale | Rendere documentazione, baseline e tracker coerenti con il codice corrente | — |
+| [PR1 — YouTube infrastructure](PR1_YOUTUBE_INFRASTRUCTURE.md) | Parziale | Completare il cutover verso porte consumer-side e rimuovere adapter/fallback concreti dall'application | PR0 |
+| [PR2 — Artlist infrastructure](PR2_ARTLIST_INFRASTRUCTURE.md) | Parziale | Creare gli adapter concreti Artlist in infrastructure e alleggerire il service applicativo | PR0 |
+| [PR3 — API compaction](PR3_API_COMPACTION.md) | Aperta | Eliminare i sette package API legacy mantenendo invariato il contratto HTTP | PR1, PR2 |
+| [PR4 — Composition root](PR4_COMPOSITION_ROOT.md) | Avanzata | Eliminare alias, helper condivisi, late binding e lifecycle non tipizzato rimasti | PR3 per la chiusura finale |
+| [Single source of truth](SINGLE_SOURCE_OF_TRUTH_GUARDRAILS.md) | Aperta | Portare a zero duplicazioni, alias permanenti, import fuori layer e owner multipli | PR1–PR4 |
+| [PR5 — Full Working E2E](PR5_FULL_WORKING_E2E.md) | Non iniziata | Certificare workflow reali, recovery, backup, carico e deployment | PR0–PR4 + SOT strict |
 
-PR1 e PR2 possono essere sviluppate in parallelo soltanto se non modificano gli stessi file di wiring. PR3 inizia dopo la chiusura di entrambe. PR4 è l'ultimo blocco perché dipende dai package definitivi prodotti dalle PR precedenti.
+## Ordine operativo
+
+1. Chiudere PR0 e rendere affidabile la fotografia del repository.
+2. Completare PR1 e PR2 senza aggiungere nuovi wrapper o percorsi paralleli.
+3. Eseguire PR3 mantenendo route e payload invariati.
+4. Chiudere i residui PR4 e il debito `internal/media` coinvolto dalle capability migrate.
+5. Implementare i guardrail single-source-of-truth in modalità strict.
+6. Eseguire PR5 e dichiarare operative soltanto le capability realmente certificate.
+
+PR1 e PR2 possono procedere in parallelo solo se non modificano gli stessi file di wiring. PR5 non deve essere usata per completare refactor rimasti aperti.
 
 ## Regole non negoziabili
 
-1. Un solo proprietario per modello, use case, adapter e route.
-2. Nessun nuovo alias di compatibilità, wrapper pass-through o fallback legacy.
-3. Nessun nuovo file sotto namespace destinati alla rimozione.
-4. Nessun semplice spostamento di directory dichiarato come “layering completato” se il package continua a importare SQL, SDK, filesystem o processi dal livello sbagliato.
-5. Le route HTTP e i payload pubblici restano invariati salvo modifica esplicitamente documentata e testata.
-6. Ogni sotto-attività numerata deve chiudersi con test mirati e un criterio di accettazione verificabile.
-7. Non combinare refactor architetturale, feature e cleanup estraneo nella stessa unità operativa.
-8. Prima si rende verde il blocco corrente, poi si passa al successivo.
+1. Un concetto ha un solo owner, un solo import path canonico e un solo punto di registrazione.
+2. Le interfacce sono piccole e definite dal consumer.
+3. `domain` non contiene SQL, SDK, filesystem o processi concreti.
+4. `application` non importa Gin, SQLite concreto, Google Drive SDK, FFmpeg o `os/exec`.
+5. `api` contiene solo trasporto e non costruisce service o repository.
+6. Gli adapter concreti vengono costruiti soltanto in `internal/app`.
+7. Nessun alias permanente, wrapper pass-through, fallback legacy o setter di wiring evitabile.
+8. Nessuna goroutine viene avviata in un costruttore.
+9. Ogni nuovo provider o strategia entra nel registry, resolver o sampler canonico.
+10. Le route HTTP e i payload restano invariati salvo modifica esplicita con contract test.
+11. Ogni task termina con test mirati e un exit gate verificabile.
+12. Non aggiungere nuove feature durante questo ciclo di consolidamento.
 
 ## Definizione comune di completamento
 
-Una PR è completata soltanto quando:
+Un blocco è completato soltanto quando:
 
-- tutte le checklist del relativo documento sono marcate `[x]`;
-- gli exit gate del documento restituiscono il risultato atteso;
-- `go test` dei package toccati è verde;
-- `go vet` dei package toccati è verde;
-- `go build ./...` è verde per cambiamenti strutturali;
+- tutte le checklist residue del documento sono chiuse;
+- i test mirati, `go vet` e la build sono verdi;
 - `go run ./scripts/archcheck` non introduce nuove violazioni;
-- la documentazione non dichiara completato lavoro ancora presente nel codice;
-- non rimangono TODO temporanei, test saltati o file di follow-up creati dalla stessa PR.
+- lo strict gate previsto dal documento SOT è verde quando applicabile;
+- non restano TODO temporanei, test saltati o fallback creati dalla stessa modifica;
+- la documentazione descrive il codice realmente presente;
+- il diff non combina refactor, feature e cleanup estranei.
 
-## Stato reale di partenza
+## Debito strutturale che resta fuori dai task già completati
 
-Già completato prima di questo ciclo:
-
-- `internal/assets` eliminato e modelli spostati in `internal/domain/asset`;
-- `internal/domain/media` eliminato;
-- repository asset SQLite spostati in `internal/infrastructure/database/sqlite/assets`;
-- `internal/core`, `internal/artifacts`, `internal/upload` e `internal/sources` eliminati o trasferiti;
-- test batch script ripristinati in `internal/application/scripts`;
-- `internal/application/scriptflow` eliminato;
-- provider registry tipizzato attivo;
-- `monitor`, `ingest` e `mediaasset` spostati fuori dalle vecchie directory;
-- API `books`/`lessons` consolidata in `api/content`;
-- API `scraper`/`mediaingest` consolidata in `api/assets`.
-
-Debito ancora attivo:
-
-- `architecture/migration.yaml` e `baseline.json` non rappresentano completamente lo stato reale;
-- `application/youtube` e `application/artlist` contengono ancora adapter concreti;
-- API ancora frammentata tra `drive`, `realtime`, `searchqueries`, `sources`, `fullimages`, `workers`, `script`;
-- `internal/app/dependencies.go` contiene ancora il contenitore globale `services`;
-- il job system conserva alias temporanei verso SQLite;
-- numerosi package sotto `internal/media` devono ancora essere assegnati al proprietario finale.
-
-## Aggiornamento della checklist
-
-Le checkbox devono essere aggiornate nella stessa modifica che completa il codice corrispondente. Non marcare un blocco come concluso basandosi soltanto su un commit message o su uno spostamento fisico: verificare sempre import, test ed exit gate.
+- adapter e dipendenze concrete ancora presenti in `application/youtube` e `application/artlist`;
+- sette package API legacy: `drive`, `realtime`, `searchqueries`, `sources`, `fullimages`, `workers`, `script`;
+- alias job e composition ancora attivi;
+- SQL ancora presente in `internal/domain/asset`;
+- package residui sotto `internal/media` da assegnare ai proprietari finali;
+- `archcheck` ancora in modalità ratchet, senza modalità strict;
+- assenza di suite E2E completa, backup/restore verificato e soak test.
