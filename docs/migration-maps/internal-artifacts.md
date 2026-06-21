@@ -1,10 +1,17 @@
-# `internal/artifacts/` — Pending Migration (eliminate, not move)
+# `internal/application/assets/artifacts/` — Wave 7 ✅ COMPLETED
 
 ## Status
 
-**pending** — wave-15. The plan is to **eliminate** this package entirely,
-not move it. `artifacts/` exists to wrap a couple of interfaces; the wrapper
-adds nothing once the dependencies are injected via DI.
+**completed** — wave-7. The package was lifted-and-shifted from `internal/artifacts/`
+to `internal/application/assets/artifacts/`. Package name preserved as `artifacts`.
+
+**Future work**: per the original plan below, the package should be eliminated by
+splitting its components across domain/application/infrastructure layers. This
+lift-and-shift is an intermediate step.
+
+---
+
+## Original plan (pre-wave-7)
 
 ## What exists
 
