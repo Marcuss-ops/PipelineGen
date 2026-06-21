@@ -198,8 +198,16 @@ section later (after PR1.5 stash pop or PR4 consolidation) should
 re-walk the actual file system to confirm whether the package
 still contains those imports.
 
-See `## PR2 artlist infrastructure extraction` below for the
-post-PR2 view.
+**Cycle closed — see PR1.5 Service Thinning below.** As of the
+PR1.5 atomic commit series on `pr/y-pr1.5-thinning-2026-06-21`,
+the files have been restored to `internal/infrastructure/youtube/`
+(their canonical home per `docs/roadmap/PR1_YOUTUBE_INFRASTRUCTURE.md`
+PR1.5 scope). The 4 entries this section refers to are valid again
+and properly re-captured by `--update` in the PR1.5 cycle (Commit 5
+of that series).
+
+See `## PR1.5 Service Thinning (atomic commit series)` below for
+the full audit timeline.
 
 ## PR2 artlist infrastructure extraction (2026-06-21, post-`--update` audit)
 
@@ -299,3 +307,77 @@ duration of this audit only — that path does NOT survive reboot
 JSON validation: parses clean. Archcheck exits 0 (verified
 post-update). `stash@{0}` (`WIP-PR1.5-bystander-2026-06-21-pre-rebase`)
 NOT touched — pop deferred to dedicated PR1.5 follow-up session.
+
+## PR1.5 Service Thinning (atomic commit series, 2026-06-21)
+
+**Audit timeline**: PR1.5 atomic commit series on branch
+`pr/y-pr1.5-thinning-2026-06-21` restored canonical separation
+between `internal/application/youtube/` (port consumers + DTOs)
+and `internal/infrastructure/youtube/` (concrete adapters). The
+PR1.5 stash (preserved since `commit 9eb11bbe`) was applied to a
+fresh branch; the 31 WIP files were partitioned into 5 atomic
+commits. End-to-end state was committed via `archcheck --update`
+(Commit 5 below).
+
+**Atomic commit chain** (full series on the branch):
+
+| Commit SHA | Subject | Files | Notes |
+|---|---|---|---|
+| `b22fb8b8` | feat(youtube): define application ports layer | 1 (ports.go) | 16+ interfaces + DTOs in `internal/application/youtube/ports.go` |
+| `1ac6616e` | feat(youtube): introduce infrastructure adapter layer | 5 | 4 new infra adapters + ytdlp.go tweaks |
+| `134c996b` | refactor(youtube): thin application Service to port interfaces | 25 | 23 application/youtube + composition.go + youtube_adapters.go |
+| (this commit 4) | chore(youtube): cascade asset provider + reduce infra ports to DTOs | 2 | adapter.go + ports.go (infra) |
+| (this commit 5) | chore(arch): refresh baseline.json + sidecar for PR1.5 cycle | 2 | baseline.json + sidecar |
+
+**Restored entries** (4) — these match the PR0 audit-cycle baseline
+entries verbatim because the imports `pkg/urlutil`, `pkg/textutil`,
+`internal/infrastructure/config` are still referenced by the
+re-restored files at their canonical path. The cycle is now
+externally idempotent (the natural drop-and-restore pattern is
+documented as an audit feature, not a defect):
+
+| File | Alias | Target | Provenance |
+|---|---|---|---|
+| `internal/infrastructure/youtube/metadata.go` | `ytcfg` | `internal/infrastructure/config` | d1a2d7fc (PR0 audit) -> dropped 97eab0bc (PR2 cycle) -> restored here |
+| `internal/infrastructure/youtube/metadata.go` | `urlutil` | `pkg/urlutil` | d1a2d7fc -> dropped 97eab0bc -> restored here |
+| `internal/infrastructure/youtube/subtitles.go` | `ytcfg` | `internal/infrastructure/config` | d1a2d7fc -> dropped 97eab0bc -> restored here |
+| `internal/infrastructure/youtube/subtitles.go` | `textutil` | `pkg/textutil` | d1a2d7fc -> dropped 97eab0bc -> restored here |
+
+**NEW entries** (5) — accepted under the HexArch adapter-pattern
+now formalized by the 5-commit series (commit 1 defines ports;
+commit 2 implements adapters; commits 3-4 wire them):
+
+| File | Alias | Target | Source commit | Pattern |
+|---|---|---|---|---|
+| `internal/infrastructure/youtube/metadata.go` | `youtubeapp` | `internal/application/youtube` | `1ac6616e` | HexArch adapter imports application ports |
+| `internal/infrastructure/youtube/videopipeline_adapter.go` | `youtubeapp` | `internal/application/youtube` | `1ac6616e` | HexArch adapter imports application ports |
+| `internal/app/composition.go` | `ytinfra` | `internal/infrastructure/youtube` | `134c996b` | Composition root wires concrete infra adapters |
+| `internal/app/youtube_adapters.go` | `clipindexer` | `internal/media/clipindexer` | `134c996b` | Adapter wiring helper (composition-side) |
+| `internal/app/youtube_adapters.go` | `driveapi` | Google Drive SDK | `134c996b` | Adapter wiring helper (composition-side) |
+
+**Architectural improvement** documented by Commit 4:
+`internal/infrastructure/youtube/ports.go` was reduced from a
+full set of port interfaces (a layering violation by AGENTS.md
+"Leaf-only" / canonical direction) to only DTO types
+(`TimedEntry`, `LiveSearchResult`). The full port contract lives
+in `internal/application/youtube/ports.go` (Commit 1), which is
+the canonical HexArch direction.
+
+**Verification**:
+- `go run ./scripts/archcheck --update` regenerated baseline.json
+  capturing Net delta: 649 aliases (delta -2 from 651; the 2
+  line-drift variants seen in PR2 cycle got consumed by stable-form
+  regeneration), 187 wrappers, 122 directories.
+- Archcheck exits 0 post-update.
+- `go vet ./internal/application/youtube/...` exits 0.
+- Asset provider cascade (`internal/application/assets/providers/youtube/adapter.go`)
+  modified to consume port interfaces introduced in Commit 1.
+
+**Trigger conditions for actual relocation** (analogous to PR1.5
++ PR2 sections above):
+- Future consolidation of `internal/infrastructure/youtube/*` (e.g.,
+  into a unified `internal/infrastructure/media/`).
+- Rename of `youtubeapp` alias to remove the infra-vs-app name
+  collision (HexArch could go further with stricter naming).
+- Restructure of `internal/app/youtube_adapters.go` (composition-
+  root wiring is application-internal concern).
