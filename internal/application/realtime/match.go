@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse, error) {
@@ -83,9 +83,9 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 	if topK <= 0 {
 		topK = 30
 	}
-	var searchResults []vectorstore.SearchResult
+	var searchResults []qdrant.SearchResult
 	if mode == "text" || mode == "" {
-		searchResults, err = s.vectorSvc.HybridSearch(ctx, vectorstore.HybridSearchRequest{
+		searchResults, err = s.vectorSvc.HybridSearch(ctx, qdrant.HybridSearchRequest{
 			QueryText:       normalizedQuery,
 			DenseVector:     queryVec,
 			DenseVectorName: vectorName,
@@ -96,7 +96,7 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 			MediaType:       req.MediaType,
 		})
 	} else {
-		searchResults, err = s.vectorSvc.Search(ctx, vectorstore.SearchRequest{
+		searchResults, err = s.vectorSvc.Search(ctx, qdrant.SearchRequest{
 			QueryVector: queryVec,
 			VectorName:  vectorName,
 			Limit:       topK,
@@ -144,7 +144,7 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 			}
 
 			type scored struct {
-				r     vectorstore.SearchResult
+				r     qdrant.SearchResult
 				score float64
 			}
 			sorted := make([]scored, 0, len(searchResults))
@@ -155,7 +155,7 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 				return cmp.Compare(b.score, a.score)
 			})
 
-			reordered := make([]vectorstore.SearchResult, len(sorted))
+			reordered := make([]qdrant.SearchResult, len(sorted))
 			for i, sc := range sorted {
 				reordered[i] = sc.r
 				reordered[i].Score = sc.score

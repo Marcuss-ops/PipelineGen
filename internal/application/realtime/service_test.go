@@ -14,34 +14,34 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // ── Mock dependencies ──
 
 type mockVectorStore struct {
-	vectorstore.Store
+	qdrant.Store
 	searched bool
-	results  []vectorstore.SearchResult
+	results  []qdrant.SearchResult
 	err      error
 }
 
-func (m *mockVectorStore) Search(ctx context.Context, req vectorstore.SearchRequest) ([]vectorstore.SearchResult, error) {
+func (m *mockVectorStore) Search(ctx context.Context, req qdrant.SearchRequest) ([]qdrant.SearchResult, error) {
 	m.searched = true
 	return m.results, m.err
 }
 
-func (m *mockVectorStore) UpsertAssets(ctx context.Context, assets []vectorstore.VectorAsset) error {
+func (m *mockVectorStore) UpsertAssets(ctx context.Context, assets []qdrant.VectorAsset) error {
 	return nil
 }
 
-func (m *mockVectorStore) HybridSearch(ctx context.Context, req vectorstore.HybridSearchRequest) ([]vectorstore.SearchResult, error) {
+func (m *mockVectorStore) HybridSearch(ctx context.Context, req qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error) {
 	m.searched = true
 	return m.results, m.err
 }
 
-func (m *mockVectorStore) CollectionInfo(ctx context.Context) (*vectorstore.CollectionInfo, error) {
-	return &vectorstore.CollectionInfo{}, nil
+func (m *mockVectorStore) CollectionInfo(ctx context.Context) (*qdrant.CollectionInfo, error) {
+	return &qdrant.CollectionInfo{}, nil
 }
 
 type mockEmbedder struct {
@@ -91,7 +91,7 @@ func newTestService(t *testing.T, store *mockVectorStore, embedder EmbeddingClie
 		MinInstantScore:    minScore,
 		AllowBackgroundGen: true,
 	}
-	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
 	return NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, nil, nil, log)
 }
 
@@ -115,7 +115,7 @@ func makeFloat32(dim int) []float32 {
 
 func TestMatch_InstantMatch_HighScore(t *testing.T) {
 	store := &mockVectorStore{
-		results: []vectorstore.SearchResult{
+		results: []qdrant.SearchResult{
 			{AssetID: "artlist_001", Score: 0.92, Source: "artlist", Name: "Space cat", LocalPath: "/data/cat.mp4"},
 		},
 	}
@@ -139,7 +139,7 @@ func TestMatch_InstantMatch_HighScore(t *testing.T) {
 
 func TestMatch_InstantMatch_VisualMode(t *testing.T) {
 	store := &mockVectorStore{
-		results: []vectorstore.SearchResult{
+		results: []qdrant.SearchResult{
 			{AssetID: "stock_001", Score: 0.88, Source: "stock", Name: "Night sky"},
 		},
 	}
@@ -159,7 +159,7 @@ func TestMatch_InstantMatch_VisualMode(t *testing.T) {
 
 func TestMatch_BelowThreshold_EnqueuesJob(t *testing.T) {
 	store := &mockVectorStore{
-		results: []vectorstore.SearchResult{
+		results: []qdrant.SearchResult{
 			{AssetID: "stock_002", Score: 0.62, Source: "stock", Name: "Blurry forest"},
 		},
 	}
@@ -194,7 +194,7 @@ func TestMatch_NoResults_FallbackWithoutGeneration(t *testing.T) {
 		MinInstantScore:    0.85,
 		AllowBackgroundGen: false, // disabled globally
 	}
-	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
+	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
 	svc := NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, nil, nil, log)
 
 	resp, err := svc.Match(context.Background(), &MatchRequest{
@@ -250,7 +250,7 @@ func TestMatch_EmptyQuery_ReturnsError(t *testing.T) {
 
 func TestMatch_DefaultValues(t *testing.T) {
 	store := &mockVectorStore{
-		results: []vectorstore.SearchResult{
+		results: []qdrant.SearchResult{
 			{AssetID: "artlist_003", Score: 0.91, Name: "Test"},
 		},
 	}
@@ -270,7 +270,7 @@ func TestMatch_DefaultValues(t *testing.T) {
 func TestMatch_CacheSpeedsUpRepeatedQuery(t *testing.T) {
 	embedder := &mockEmbedder{embedding: makeEmbedding(384)}
 	store := &mockVectorStore{
-		results: []vectorstore.SearchResult{
+		results: []qdrant.SearchResult{
 			{AssetID: "artlist_004", Score: 0.90, Name: "Cached"},
 		},
 	}
@@ -389,7 +389,7 @@ func (m *mockEmbedderWithNormalized) EmbedTextWithNormalized(ctx context.Context
 
 func TestHybridSearchUsesNormalizedQueryForBM25(t *testing.T) {
 	store := &mockVectorStore{
-		results: []vectorstore.SearchResult{
+		results: []qdrant.SearchResult{
 			{AssetID: "artlist_bm25", Score: 0.95, Name: "BM25 Match"},
 		},
 	}
@@ -415,7 +415,7 @@ func TestSearchFallsBackWhenEmbeddingServerUnavailable(t *testing.T) {
 	store := &mockVectorStore{}
 	jobSvc := &mockJobService{jobID: "job_fallback"}
 	svc := NewService(
-		vectorstore.NewService(store, vectorstore.Config{}, zap.NewNop()),
+		qdrant.NewService(store, qdrant.Config{}, zap.NewNop()),
 		adapter,
 		jobSvc,
 		nil,
@@ -434,7 +434,7 @@ func TestSearchFallsBackWhenEmbeddingServerUnavailable(t *testing.T) {
 
 func TestSearchReturnsRRFResultsWhenRerankerUnavailable(t *testing.T) {
 	store := &mockVectorStore{
-		results: []vectorstore.SearchResult{
+		results: []qdrant.SearchResult{
 			{AssetID: "artlist_rrf", Score: 0.88, Name: "RRF Result"},
 		},
 	}
@@ -449,7 +449,7 @@ func TestSearchReturnsRRFResultsWhenRerankerUnavailable(t *testing.T) {
 		URL:     "http://127.0.0.1:1/rerank",
 	})
 	svc := NewService(
-		vectorstore.NewService(store, vectorstore.Config{}, zap.NewNop()),
+		qdrant.NewService(store, qdrant.Config{}, zap.NewNop()),
 		embedder,
 		&mockJobService{},
 		client,
@@ -500,10 +500,10 @@ func TestSearchHandlesMultilingualQuery(t *testing.T) {
 	assert.Equal(t, "correre parco", norm)
 }
 
-func (m *mockVectorStore) OperationCollectionInfo(ctx context.Context) (*vectorstore.CollectionInfo, error) {
-	return &vectorstore.CollectionInfo{}, nil
+func (m *mockVectorStore) OperationCollectionInfo(ctx context.Context) (*qdrant.CollectionInfo, error) {
+	return &qdrant.CollectionInfo{}, nil
 }
 
-func (m *mockVectorStore) PhysicalCollectionInfo(ctx context.Context) (*vectorstore.CollectionInfo, error) {
-	return &vectorstore.CollectionInfo{}, nil
+func (m *mockVectorStore) PhysicalCollectionInfo(ctx context.Context) (*qdrant.CollectionInfo, error) {
+	return &qdrant.CollectionInfo{}, nil
 }

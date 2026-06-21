@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -60,7 +60,7 @@ type AssetsWiring struct {
 // (VectorStore, JobsBundle, voiceoverSvc, voiceoverSync, realtimeSvc,
 // catalogRepo, maintenanceSvc). ClipIndexer is in the bundle now.
 // 10 params total — matches the AGENTS.md / arch bundle cap.
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *vectorstore.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc *realtime.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc *realtime.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service) (*AssetsWiring, error) {
 	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {

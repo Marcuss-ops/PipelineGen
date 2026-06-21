@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -135,7 +135,7 @@ func (h *Handler) RecommendClips(c *gin.Context) {
 		// Build search request with optional filters
 		// Use HybridSearch to leverage BM25 + transcript + RRF fusion
 		// This is critical for YouTube clips where spoken content matters
-		searchReq := vectorstore.HybridSearchRequest{
+		searchReq := qdrant.HybridSearchRequest{
 			QueryText:            cleanQueryText(queryText),
 			DenseVector:          queryVector,
 			DenseVectorName:      h.cfg.VectorSearch.TextVectorName,
@@ -290,7 +290,7 @@ func cleanQueryText(text string) string {
 }
 
 // buildRecommendReason generates a human-readable reason for why a clip was recommended.
-func buildRecommendReason(result vectorstore.SearchResult, queryText string) string {
+func buildRecommendReason(result qdrant.SearchResult, queryText string) string {
 	parts := []string{}
 	if result.Score >= 0.8 {
 		parts = append(parts, "alta similarità semantica")
