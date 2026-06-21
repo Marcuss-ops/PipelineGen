@@ -13,16 +13,16 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 type Service struct {
 	log       *zap.Logger
-	clipsRepo *sqlite.ClipsRepository
+	clipsRepo *assets.ClipsRepository
 }
 
-func NewService(log *zap.Logger, repo *sqlite.ClipsRepository) *Service {
+func NewService(log *zap.Logger, repo *assets.ClipsRepository) *Service {
 	return &Service{
 		log:       log,
 		clipsRepo: repo,

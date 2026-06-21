@@ -4,11 +4,11 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // VoiceoverRecordToClip converts a voiceover.Record to asset.Asset.
-func VoiceoverRecordToClip(rec *sqlite.Record) *asset.Asset {
+func VoiceoverRecordToClip(rec *assets.Record) *asset.Asset {
 	if rec == nil {
 		return nil
 	}

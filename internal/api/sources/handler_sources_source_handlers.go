@@ -19,7 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
@@ -52,11 +52,11 @@ type SourcesHandler struct {
 	jobsSvc        *jobservice.Service
 	catalogRepo    *catalog.Repository
 	assetIndexSvc  *assetindex.Service
-	artlistRepo    *sqlite.ClipsRepository
-	clipsRepo      *sqlite.ClipsRepository
-	stockRepo      *sqlite.ClipsRepository
-	voiceoverRepo  *sqlite.VoiceoversRepository
-	imagesRepo     *sqlite.ImagesRepository
+	artlistRepo    *assets.ClipsRepository
+	clipsRepo      *assets.ClipsRepository
+	stockRepo      *assets.ClipsRepository
+	voiceoverRepo  *assets.VoiceoversRepository
+	imagesRepo     *assets.ImagesRepository
 	cleanupSvc     *drivecleanup.Service
 	folderMemSvc   *foldermemory.Service
 	assetTreeSvc   *assettree.Service
@@ -137,7 +137,7 @@ func (h *SourcesHandler) SetArtifactService(svc *artifacts.Service) {
 	}
 }
 
-// SetAssetRepo sets the canonical asset repository (replaces sqlite.ClipsRepository
+// SetAssetRepo sets the canonical asset repository (replaces assets.ClipsRepository
 // for handlers that have been migrated to use asset.Asset directly). The
 // assetRepo lives only on SourcesHandler because clips.Handler received it
 // at construction time via Deps — late rebinding here does NOT update
@@ -152,7 +152,7 @@ func (h *SourcesHandler) SetAssetRepo(repo asset.Repository) {
 // DownloadClip's voiceover-source branch sees the late-bound repo. Both
 // handlers hold the same reference; switching repos mid-process picks up
 // on the next handler invocation.
-func (h *SourcesHandler) SetVoiceoverRepo(repo *sqlite.VoiceoversRepository) {
+func (h *SourcesHandler) SetVoiceoverRepo(repo *assets.VoiceoversRepository) {
 	h.voiceoverRepo = repo
 	if h.clips != nil {
 		h.clips.SetVoiceoverRepo(repo)
@@ -163,7 +163,7 @@ func (h *SourcesHandler) SetVoiceoverRepo(repo *sqlite.VoiceoversRepository) {
 // ListClips for the "source=images" branch, so this setter forwards to
 // h.clips as well as Self.imagesRepo (legacy sources/ search_handlers.go,
 // semantic_handlers.go also use it directly).
-func (h *SourcesHandler) SetImagesRepo(repo *sqlite.ImagesRepository) {
+func (h *SourcesHandler) SetImagesRepo(repo *assets.ImagesRepository) {
 	h.imagesRepo = repo
 	if h.clips != nil {
 		h.clips.SetImagesRepo(repo)
@@ -213,7 +213,7 @@ func NewSourcesHandler(
 	jobsSvc *jobservice.Service,
 	catalogRepo *catalog.Repository,
 	assetIndexSvc *assetindex.Service,
-	artlistRepo, clipsRepo, stockRepo *sqlite.ClipsRepository,
+	artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository,
 	cleanupSvc *drivecleanup.Service,
 	folderMemSvc *foldermemory.Service,
 	assetTreeSvc *assettree.Service,

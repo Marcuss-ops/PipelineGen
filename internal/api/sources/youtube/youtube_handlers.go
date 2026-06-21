@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 )
@@ -33,7 +33,7 @@ type YouTubeClipHandler struct {
 	service        *youtube.Service
 	log            *zap.Logger
 	jobsSvc        *jobservice.Service
-	clipsRepo      *sqlite.ClipsRepository
+	clipsRepo      *assets.ClipsRepository
 	providerSearch providers.SearchProvider
 }
 
@@ -51,7 +51,7 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *j
 }
 
 // SetClipsRepo sets the clips repository for advanced search.
-func (h *YouTubeClipHandler) SetClipsRepo(repo *sqlite.ClipsRepository) {
+func (h *YouTubeClipHandler) SetClipsRepo(repo *assets.ClipsRepository) {
 	h.clipsRepo = repo
 }
 
@@ -349,7 +349,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 
 // SearchAdvanced performs advanced clip search with structured filters.
 func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
-	var req sqlite.AdvancedSearchRequest
+	var req assets.AdvancedSearchRequest
 
 	// Support both GET (query params) and POST (JSON body)
 	if c.Request.Method == "GET" {
@@ -437,8 +437,8 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 // getAllClipRepos returns all available clip repositories keyed by source.
 // Currently only YouTube has a registered clips repo; other sources can be
 // added here once their repo wiring is migrated.
-func (h *YouTubeClipHandler) getAllClipRepos() map[string]*sqlite.ClipsRepository {
-	repos := make(map[string]*sqlite.ClipsRepository)
+func (h *YouTubeClipHandler) getAllClipRepos() map[string]*assets.ClipsRepository {
+	repos := make(map[string]*assets.ClipsRepository)
 	if h.clipsRepo != nil {
 		repos["youtube"] = h.clipsRepo
 	}

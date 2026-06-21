@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 )
@@ -38,7 +38,7 @@ type Service struct {
 	diagnosticsService *DiagnosticsService
 
 	// Dipendenze condivise
-	artlistRepo       *sqlite.ClipsRepository
+	artlistRepo       *assets.ClipsRepository
 	mediaProcessor    processor.Processor
 	lifecycleService  *lifecycle.Service
 	assetDestResolver destination.Resolver
@@ -59,7 +59,7 @@ type Service struct {
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *sqlite.ClipsRepository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *assets.ClipsRepository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
 	assetProcRepo asset.ProcessingRepository,
 	assetVerRepo asset.VersionRepository,
 	assetLocRepo asset.LocationRepository,

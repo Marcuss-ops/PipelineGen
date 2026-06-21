@@ -5,7 +5,7 @@ package script
 // repository.go) doesn't expose GetResearchCache/SaveResearchCache/
 // TouchResearchCache — those live on the canonical
 // internal/domain/script.ScriptRepository and on the concrete
-// *sqlite.ScriptRepository. The previous test fixture depended on a
+// *assets.ScriptRepository. The previous test fixture depended on a
 // `setupResearchCacheDB` helper that built a stub repo via
 // scripts.NewScriptRepository (which didn't exist on the local
 // interface) and called methods that aren't part of this package's

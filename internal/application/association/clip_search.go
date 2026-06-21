@@ -6,17 +6,17 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
 )
 
 // ClipSearchAssociation searches individual Artlist clips from the artlist repository.
 type ClipSearchAssociation struct {
-	artlistRepo *sqlite.ClipsRepository
+	artlistRepo *assets.ClipsRepository
 }
 
-func NewClipSearchAssociation(artlistRepo *sqlite.ClipsRepository) *ClipSearchAssociation {
+func NewClipSearchAssociation(artlistRepo *assets.ClipsRepository) *ClipSearchAssociation {
 	return &ClipSearchAssociation{
 		artlistRepo: artlistRepo,
 	}
@@ -87,7 +87,7 @@ func (a *ClipSearchAssociation) buildSearchTerms(input SegmentInput) []string {
 	return terms
 }
 
-func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *sqlite.ClipsRepository, topic string, terms []string, source string) ([]ScoredMatch, error) {
+func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *assets.ClipsRepository, topic string, terms []string, source string) ([]ScoredMatch, error) {
 	// Use up to 10 search terms
 	limit := 15
 	clips, err := repo.SearchClipsByKeywords(ctx, "", terms, limit)

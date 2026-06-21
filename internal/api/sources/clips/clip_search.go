@@ -5,7 +5,7 @@ package clips
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -28,7 +28,7 @@ var AllSources = []string{"youtube", "artlist", "stock"}
 //	@Success		200  {object} object
 //	@Router			/api/media/search/advanced [post]
 func (h *Handler) AdvancedSearch(c *gin.Context) {
-	var req sqlite.AdvancedSearchRequest
+	var req assets.AdvancedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
@@ -38,7 +38,7 @@ func (h *Handler) AdvancedSearch(c *gin.Context) {
 	req.Q = strings.TrimSpace(req.Q)
 
 	// Build the per-source repo lookup. nil repos are skipped (no error).
-	repos := map[string]*sqlite.ClipsRepository{
+	repos := map[string]*assets.ClipsRepository{
 		"youtube": h.clipsRepo,
 		"artlist": h.artlistRepo,
 		"stock":   h.stockRepo,

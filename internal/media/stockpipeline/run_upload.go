@@ -177,7 +177,7 @@ func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *asset.Asset)
 	// Always update search terms FIRST against the canonical row so the
 	// tags_norm / search_text columns never lag the embeddable record.
 	// Skipped for folder rows because UpdateSearchTerms rejects them in
-	// sqlite.ClipsRepository.
+	// assets.ClipsRepository.
 	if clip.SearchText != "" && !clip.IsFolder() && s.clipsRepo != nil {
 		if err := s.clipsRepo.UpdateSearchTerms(ctx, clip.ID, string(clip.Source), clip.Name, clip.Tags, clip.SearchText); err != nil {
 			s.log.Warn("failed to update search terms for stock clip", zap.String("clip_id", clip.ID), zap.Error(err))

@@ -10,17 +10,17 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // SearchqueriesHandler handles CRUD operations for search_queries (scheduled YouTube topic searches).
 type SearchqueriesHandler struct {
-	repo *sqlite.SearchQueriesRepository
+	repo *assets.SearchQueriesRepository
 	log  *zap.Logger
 }
 
 // NewHandler creates a new search queries API handler.
-func NewSearchqueriesHandler(repo *sqlite.SearchQueriesRepository, log *zap.Logger) *SearchqueriesHandler {
+func NewSearchqueriesHandler(repo *assets.SearchQueriesRepository, log *zap.Logger) *SearchqueriesHandler {
 	return &SearchqueriesHandler{repo: repo, log: log}
 }
 

@@ -17,7 +17,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 
@@ -244,11 +244,11 @@ func TestIndexHealth_OKGateWithRealClipsAndOutbox(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = keeper.Close(); _ = db.Close() })
 
-	// Schema — sqlite.ClipsRepository and outbox.Repository read IndexHealth
+	// Schema — assets.ClipsRepository and outbox.Repository read IndexHealth
 	// (CountAll / CountIndexed / ListIndexedIDs / CountByStatus). The
 	// media_assets block is composed from
 	// internal/storage/canonical.go::CanonicalMediaAssetsSchema so the
-	// 39-column projection in sqlite.ClipsRepository.mediaAssetColumns matches
+	// 39-column projection in assets.ClipsRepository.mediaAssetColumns matches
 	// the schema verbatim. The outbox_events block stays inline because
 	// the realtime tests don't go through outbox.Repository.NewRepository.
 	schema := drive.CanonicalMediaAssetsSchema + "\n" + `
@@ -290,7 +290,7 @@ CREATE TABLE outbox_events (
 	}
 
 	log := zap.NewNop()
-	clipsRepo := sqlite.NewClipsRepository(db, log)
+	clipsRepo := assets.NewClipsRepository(db, log)
 	outboxRepo := outboxevents.NewRepository(db)
 
 	// qdrant sample is empty — so asset_a is missing-in-qdrant.
@@ -334,7 +334,7 @@ CREATE TABLE outbox_events (
 
 // fakeIndexHealthClips satisfies realtime.IndexHealthClips. Each method
 // returns caller-supplied seed values so tests can swap in a failing
-// leg without touching the concrete *sqlite.ClipsRepository.
+// leg without touching the concrete *assets.ClipsRepository.
 type fakeIndexHealthClips struct {
 	countAllFn       func(context.Context) (int64, error)
 	countIndexedFn   func(context.Context) (int64, error)
@@ -378,7 +378,7 @@ func (f *fakeIndexHealthOutbox) CountByStatus(ctx context.Context, status string
 // Guards against future refactors that collapse the (qdrantOK,
 // sqliteListOK) tuple back into a single bool or swap the early-return
 // guards. With the new IndexHealthClips interface seam (Task 7) the
-// failing leg is injected without touching the real *sqlite.ClipsRepository.
+// failing leg is injected without touching the real *assets.ClipsRepository.
 func TestIndexHealth_ClipsListingFailureAttribution(t *testing.T) {
 	store := &indexHealthStore{}
 	store.info = vectorstore.CollectionInfo{PointsCount: 7}

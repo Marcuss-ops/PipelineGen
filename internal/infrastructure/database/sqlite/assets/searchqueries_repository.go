@@ -1,5 +1,5 @@
 // package sqlite provides persistence for scheduled YouTube topic searches.
-package sqlite
+package assets
 
 import (
 	"context"

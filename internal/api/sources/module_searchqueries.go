@@ -4,7 +4,7 @@ import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	searchqueriesapi "github.com/Marcuss-ops/PipelineGen/internal/api/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
 )
@@ -13,7 +13,7 @@ import (
 // The handler lives in internal/api/searchqueries/; this factory wraps it as a RouteModule.
 func NewSearchQueriesModule(
 	log *zap.Logger,
-	repo *sqlite.SearchQueriesRepository,
+	repo *assets.SearchQueriesRepository,
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"search_queries",

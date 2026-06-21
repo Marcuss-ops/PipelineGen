@@ -1,6 +1,6 @@
 // PR12b integration test: verifies that artlist.SearchService.UpsertClip,
 // when wired with an asset.Repository via SetAssetRepo, routes through
-// the canonical writer AND legacy readers (sqlite.ClipsRepository) observe the
+// the canonical writer AND legacy readers (assets.ClipsRepository) observe the
 // same row data.
 package artlist
 
@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // pr12bArtlistSchema is the full `media_assets` schema the canonical
@@ -157,12 +157,12 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown. Returns the DB
 // handle so tests can also query outbox_events directly.
-func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsRepository, assetRepo asset.Repository) {
+func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewTestDBWithSchema(t, pr12bArtlistSchema)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
-	clipsRepo = sqlite.NewClipsRepository(db, log)
+	clipsRepo = assets.NewClipsRepository(db, log)
 	assetStore := asset.NewAssetStoreSQLite(db, log)
 	assetRepo = assetStore.AssetRepository()
 	return
@@ -242,7 +242,7 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 
 	// ── Assert 2: legacy reader sees the SAME row via models.MediaAsset ──
 	// This is the critical PR12b promise: the canonical writer must persist
-	// the legacy physical-location columns too so sqlite.ClipsRepository stays
+	// the legacy physical-location columns too so assets.ClipsRepository stays
 	// unchanged.
 	legacy, err := clipsRepo.GetClip(ctx, clip.ID)
 	if err != nil {

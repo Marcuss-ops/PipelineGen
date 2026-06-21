@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
@@ -31,7 +31,7 @@ var enrichMetaMu sync.Mutex
 // L'enrichment viene eseguito in background dopo il salvataggio iniziale del clip,
 // quindi non blocca mai la pipeline principale di download.
 type SemanticEnricher struct {
-	repo          *sqlite.ClipsRepository
+	repo          *assets.ClipsRepository
 	clipIndexer   *clipindexer.Service
 	metaWriter    *semantic.MetadataWriter
 	driveUploader *drive.Uploader
@@ -45,7 +45,7 @@ type SemanticEnricher struct {
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
 // Usa semantic.MetadataWriter (chiamato GeneratePayload) invece di chiamare Tagger() direttamente,
 // per garantire che tutto il metadata passi dal percorso centralizzato.
-func NewSemanticEnricher(repo *sqlite.ClipsRepository, clipIndexer *clipindexer.Service, metaWriter *semantic.MetadataWriter, driveUploader *drive.Uploader, log *zap.Logger) *SemanticEnricher {
+func NewSemanticEnricher(repo *assets.ClipsRepository, clipIndexer *clipindexer.Service, metaWriter *semantic.MetadataWriter, driveUploader *drive.Uploader, log *zap.Logger) *SemanticEnricher {
 	return &SemanticEnricher{
 		repo:          repo,
 		clipIndexer:   clipIndexer,

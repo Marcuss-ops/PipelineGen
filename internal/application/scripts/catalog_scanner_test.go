@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
@@ -73,7 +73,7 @@ func (m *mockQdrantStore) ScrollAssetIDsPage(ctx context.Context, batchSize int,
 // ── Test helpers ─────────────────────────────────────────────────────────
 
 // insertTestClipFrom is a helper to insert a test clip into the DB.
-func insertTestClipFrom(t *testing.T, repo *sqlite.ClipsRepository, clip *asset.Asset) {
+func insertTestClipFrom(t *testing.T, repo *assets.ClipsRepository, clip *asset.Asset) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -107,11 +107,11 @@ func makeClip(id, name, transcript, summary, topics string) *asset.Asset {
 
 // newCatalogTestBuilder creates a CatalogScanner test fixture with an in-memory DB.
 // Returns the builder, repository, and a cleanup function.
-func newCatalogTestBuilder(t *testing.T) (*ClipSourceBuilder, *sqlite.ClipsRepository) {
+func newCatalogTestBuilder(t *testing.T) (*ClipSourceBuilder, *assets.ClipsRepository) {
 	t.Helper()
 	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	return builder, repo
 }
@@ -157,7 +157,7 @@ func TestSelectClipsForTopic_QdrantOnly(t *testing.T) {
 	// Insert clips into DB (needed for searchViaQdrant's GetClip calls)
 	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// Insert a clip that Qdrant will return
 	insertTestClipFrom(t, repo, makeClip("qdrant-clip", "Hidden Gem",
@@ -203,7 +203,7 @@ func TestSelectClipsForTopic_MergeWithDedup(t *testing.T) {
 
 	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// Insert 3 clips — "Pompeii" and "Rome-arch" match LIKE for "Pompeii",
 	// while "third-clip" does not.
@@ -265,7 +265,7 @@ func TestSelectClipsForTopic_MergeQdrantAddsNewClips(t *testing.T) {
 
 	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// LIKE finds one clip
 	insertTestClipFrom(t, repo, makeClip("like-only", "Pompeii History",
@@ -315,7 +315,7 @@ func TestSelectClipsForTopic_LIKEFailsQdrantFallback(t *testing.T) {
 
 	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// Insert clip only found by Qdrant
 	insertTestClipFrom(t, repo, makeClip("q-clip", "Qdrant Result",
@@ -524,7 +524,7 @@ func TestSelectClipsForTopic_DedupWithQdrantAndLIKE(t *testing.T) {
 
 	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// LIKE finds 2 clips matching "Pompeii"
 	insertTestClipFrom(t, repo, makeClip("dup-1", "Pompeii Overview",
@@ -564,7 +564,7 @@ func TestSelectClipsForTopic_QdrantGetClipNotFound(t *testing.T) {
 
 	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// Insert one clip in DB
 	insertTestClipFrom(t, repo, makeClip("exists", "Existing Clip",

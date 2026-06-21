@@ -26,7 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
@@ -206,8 +206,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		registerModule(registry, log, contentapi.NewLessonsModule(cfg, log, contentapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobServiceFacade, log)))
 	}
 	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
-		registerModule(registry, log, channelsapi.NewModule(log, sqlite.NewChannelsRepository(coreDeps.DB.DB)))
-		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, sqlite.NewSearchQueriesRepository(coreDeps.DB.DB)))
+		registerModule(registry, log, channelsapi.NewModule(log, assets.NewChannelsRepository(coreDeps.DB.DB)))
+		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(coreDeps.DB.DB)))
 	}
 
 	// ── Post-wiring cross-injections ───────────────────────────────────
@@ -329,7 +329,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 }
 
 // wireScriptFlowExtras wires optional clip-source builder and media curator.
-func wireScriptFlowExtras(handler *scriptapi.ScriptFlowHandler, ollamaClient *client.Client, vectorStore *vectorstore.Service, clipsOnlyRepo *sqlite.ClipsRepository, engine *scriptcore.Engine, cfg *config.Config, log *zap.Logger) {
+func wireScriptFlowExtras(handler *scriptapi.ScriptFlowHandler, ollamaClient *client.Client, vectorStore *vectorstore.Service, clipsOnlyRepo *assets.ClipsRepository, engine *scriptcore.Engine, cfg *config.Config, log *zap.Logger) {
 	if ollamaClient == nil {
 		return
 	}
@@ -351,7 +351,7 @@ func wireScriptFlowExtras(handler *scriptapi.ScriptFlowHandler, ollamaClient *cl
 func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
 	assetIndexRepo := assetindex.NewRepository(dbs.main.DB)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
-	assetTreeRepo, err := sqlite.NewAssetTreeRepository(dbs.main.DB, log)
+	assetTreeRepo, err := assets.NewAssetTreeRepository(dbs.main.DB, log)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize asset tree repository: %w", err)
 	}
@@ -383,7 +383,7 @@ func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Reposit
 	return mediaasset.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, mediaasset.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
 }
 
-func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *sqlite.ClipsRepository, clipsRepo *sqlite.ClipsRepository, artlistRepo *sqlite.ClipsRepository) []catalogsync.Target {
+func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository) []catalogsync.Target {
 	targets := []catalogsync.Target{
 		{Name: "stock", RootFolderID: cfg.Drive.StockFolder(), Source: "stock", MediaType: "stock", Repo: clipsRepo},
 		{Name: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Source: "youtube", MediaType: "clip", Repo: clipsOnlyRepo},

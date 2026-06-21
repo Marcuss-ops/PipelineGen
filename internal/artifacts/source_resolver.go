@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // SourceDefinition defines a canonical source with its aliases and associated repository.
@@ -84,16 +84,16 @@ func IsClipsSource(source string) bool {
 	return canonical == "artlist" || canonical == "clips" || canonical == "stock" || canonical == "sound_effect"
 }
 
-// SourceResolver resolves source strings to their sqlite.ClipsRepository.
+// SourceResolver resolves source strings to their assets.ClipsRepository.
 // This replaces all hand-written resolveRepo switch statements.
 type SourceResolver struct {
-	artlistRepo *sqlite.ClipsRepository
-	clipsRepo   *sqlite.ClipsRepository
-	stockRepo   *sqlite.ClipsRepository
+	artlistRepo *assets.ClipsRepository
+	clipsRepo   *assets.ClipsRepository
+	stockRepo   *assets.ClipsRepository
 }
 
 // NewSourceResolver creates a resolver with the three standard clip repositories.
-func NewSourceResolver(artlistRepo, clipsRepo, stockRepo *sqlite.ClipsRepository) *SourceResolver {
+func NewSourceResolver(artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository) *SourceResolver {
 	return &SourceResolver{
 		artlistRepo: artlistRepo,
 		clipsRepo:   clipsRepo,
@@ -101,9 +101,9 @@ func NewSourceResolver(artlistRepo, clipsRepo, stockRepo *sqlite.ClipsRepository
 	}
 }
 
-// ResolveRepo returns the sqlite.ClipsRepository for the given source.
+// ResolveRepo returns the assets.ClipsRepository for the given source.
 // Returns nil for voiceover and images (they use different repository types).
-func (r *SourceResolver) ResolveRepo(source string) *sqlite.ClipsRepository {
+func (r *SourceResolver) ResolveRepo(source string) *assets.ClipsRepository {
 	canonical := CanonicalSource(source)
 	switch canonical {
 	case "artlist":

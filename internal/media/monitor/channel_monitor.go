@@ -6,7 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 
@@ -67,19 +67,19 @@ const DefaultMaxConcurrentChannels = 3
 // ChannelMonitor handles periodic YouTube channel monitoring
 type ChannelMonitor struct {
 	cfg               *config.Config
-	clipsRepo         *sqlite.ClipsRepository
+	clipsRepo         *assets.ClipsRepository
 	log               *zap.Logger
 	stopCh            chan struct{}
 	youtubeSvc        *youtube.Service
 	db                *sql.DB
-	searchQueriesRepo *sqlite.SearchQueriesRepository
+	searchQueriesRepo *assets.SearchQueriesRepository
 	ollamaClient      *client.Client
 	globalSem         chan struct{}
 	searchRateLimiter *tokenBucket
 }
 
 // NewChannelMonitor creates a new channel monitor.
-func NewChannelMonitor(cfg *config.Config, clipsRepo *sqlite.ClipsRepository, log *zap.Logger, youtubeSvc *youtube.Service, db *sql.DB, ollamaClient *client.Client) *ChannelMonitor {
+func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, log *zap.Logger, youtubeSvc *youtube.Service, db *sql.DB, ollamaClient *client.Client) *ChannelMonitor {
 	return &ChannelMonitor{
 		cfg:          cfg,
 		clipsRepo:    clipsRepo,
@@ -92,7 +92,7 @@ func NewChannelMonitor(cfg *config.Config, clipsRepo *sqlite.ClipsRepository, lo
 	}
 }
 
-func (m *ChannelMonitor) SetSearchQueriesRepo(repo *sqlite.SearchQueriesRepository) {
+func (m *ChannelMonitor) SetSearchQueriesRepo(repo *assets.SearchQueriesRepository) {
 	m.searchQueriesRepo = repo
 }
 

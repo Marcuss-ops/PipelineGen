@@ -10,17 +10,17 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // testSchema composes the canonical media_assets CREATE TABLE from
 // internal/storage/canonical.go::CanonicalMediaAssetsSchema. The canonical
-// block covers all 39 columns sqlite.ClipsRepository.mediaAssetColumns ships
+// block covers all 39 columns assets.ClipsRepository.mediaAssetColumns ships
 // today and any future canonical column without touching this file.
 const testSchema = drive.CanonicalMediaAssetsSchema
 
 // curationInsertTestClip is a helper to insert a test clip into the DB.
-func curationInsertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *asset.Asset) {
+func curationInsertTestClip(t *testing.T, repo *assets.ClipsRepository, clip *asset.Asset) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -31,12 +31,12 @@ func curationInsertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *as
 // newFallbackCurator creates a MediaCurator with embedder=nil and vectorSvc=nil,
 // forcing the LIKE fallback path in searchClips. It returns the service and the clips repo
 // so the test can insert test data.
-func newFallbackCurator(t *testing.T) (*MediaCurator, *sqlite.ClipsRepository) {
+func newFallbackCurator(t *testing.T) (*MediaCurator, *assets.ClipsRepository) {
 	t.Helper()
 	db := drive.NewTestDBWithSchema(t, testSchema)
 	t.Cleanup(func() { db.Close() })
 
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// Create service WITH clipsRepo but WITHOUT vectorSvc/embedder (simulating offline embedding server)
 	svc := NewMediaCurator(nil, "", repo, nil, nil, zap.NewNop())
@@ -295,7 +295,7 @@ func TestSearchClips_FallsBackToLikeWhenEmbedderNil(t *testing.T) {
 	db := drive.NewTestDBWithSchema(t, testSchema)
 	t.Cleanup(func() { db.Close() })
 
-	repo := sqlite.NewClipsRepository(db, zap.NewNop())
+	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	// Create a service WITH vectorSvc=nil, WITHOUT embedder
 	// Since vectorSvc is nil, searchClips goes directly to LIKE fallback
