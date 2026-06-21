@@ -108,14 +108,22 @@ func TestArtlistServiceCreation(t *testing.T) {
 	// PR2.5: NewService takes ServiceDeps (struct) instead of 14
 	// positional arguments. AssetStore (port) is wired via the same
 	// repo instance that satisfies it.
+	// PR2.6: ArtlistDB dropped — == MainDB post media.db.sqlite
+	// consolidation. ServiceDeps embeds ServicePorts + ServiceDependencies,
+	// so flat-construction literals were the documented idiom; however
+	// after PR2.7 the promotion became ambiguous in `go vet`'s eyes
+	// ("unknown field Cfg" — likely a transient platform detail), so we
+	// construct via explicit nested sub-structs. This is robust against
+	// any promotion-renaming churn in future PR2.x waves.
 	svc, err := NewService(ServiceDeps{
-		// PR2.6: ArtlistDB dropped — == MainDB post media.db.sqlite
-		// consolidation. Uses field promotion from ServicePorts +
-		// ServiceDependencies so flat construction still works.
-		Cfg:        cfg,
-		MainDB:     db,
-		Log:        logger,
-		AssetStore: artlistRepo,
+		ServicePorts: ServicePorts{
+			AssetStore: artlistRepo,
+		},
+		ServiceDependencies: ServiceDependencies{
+			Cfg:    cfg,
+			MainDB: db,
+			Log:    logger,
+		},
 	})
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
@@ -137,10 +145,14 @@ func TestArtlistSearchRequest(t *testing.T) {
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
 	svc, err := NewService(ServiceDeps{
-		Cfg:        cfg,
-		MainDB:     db,
-		Log:        logger,
-		AssetStore: artlistRepo,
+		ServicePorts: ServicePorts{
+			AssetStore: artlistRepo,
+		},
+		ServiceDependencies: ServiceDependencies{
+			Cfg:    cfg,
+			MainDB: db,
+			Log:    logger,
+		},
 	})
 
 	ctx := context.Background()
@@ -374,11 +386,15 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	}
 
 	svc, err := NewService(ServiceDeps{
-		Cfg:            cfg,
-		MainDB:         db,
-		Log:            logger,
-		AssetStore:     artlistRepo,
-		MediaProcessor: processor,
+		ServicePorts: ServicePorts{
+			AssetStore: artlistRepo,
+		},
+		ServiceDependencies: ServiceDependencies{
+			Cfg:            cfg,
+			MainDB:         db,
+			Log:            logger,
+			MediaProcessor: processor,
+		},
 	})
 	require.NoError(t, err)
 	defer svc.Close()
@@ -447,11 +463,15 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	processor := &fakeMediaProcessor{}
 
 	svc, err := NewService(ServiceDeps{
-		Cfg:            cfg,
-		MainDB:         db,
-		Log:            logger,
-		AssetStore:     artlistRepo,
-		MediaProcessor: processor,
+		ServicePorts: ServicePorts{
+			AssetStore: artlistRepo,
+		},
+		ServiceDependencies: ServiceDependencies{
+			Cfg:            cfg,
+			MainDB:         db,
+			Log:            logger,
+			MediaProcessor: processor,
+		},
 	})
 	require.NoError(t, err)
 	defer svc.Close()
@@ -526,11 +546,15 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	}
 
 	svc, err := NewService(ServiceDeps{
-		Cfg:            cfg,
-		MainDB:         db,
-		Log:            logger,
-		AssetStore:     artlistRepo,
-		MediaProcessor: processor,
+		ServicePorts: ServicePorts{
+			AssetStore: artlistRepo,
+		},
+		ServiceDependencies: ServiceDependencies{
+			Cfg:            cfg,
+			MainDB:         db,
+			Log:            logger,
+			MediaProcessor: processor,
+		},
 	})
 	require.NoError(t, err)
 	defer svc.Close()
