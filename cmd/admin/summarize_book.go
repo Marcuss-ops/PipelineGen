@@ -57,7 +57,7 @@ func runSummarizeBook(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.InitCore(cfg, log)
+	root, _, coreCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -76,14 +76,14 @@ func runSummarizeBook(args []string) error {
 	targetFilePath := *filePath
 
 	if isDriveFile {
-		if deps.DriveClient == nil {
+		if root.Drive.DriveClient == nil {
 			return fmt.Errorf("google drive client is not authenticated or configured. Please authenticate first")
 		}
 
 		fmt.Printf("Detecting Google Drive File ID: %s...\n", fileID)
 		
 		// Get metadata to resolve original filename
-		meta, err := deps.DriveClient.Files.Get(fileID).Fields("name, mimeType").Context(ctx).Do()
+		meta, err := root.Drive.DriveClient.Files.Get(fileID).Fields("name, mimeType").Context(ctx).Do()
 		if err != nil {
 			return fmt.Errorf("failed to retrieve Google Drive file metadata: %w", err)
 		}
@@ -100,7 +100,7 @@ func runSummarizeBook(args []string) error {
 		fmt.Printf("Downloading file to: %s...\n", targetFilePath)
 
 		// Perform Download
-		res, err := deps.DriveClient.Files.Get(fileID).Context(ctx).Download()
+		res, err := root.Drive.DriveClient.Files.Get(fileID).Context(ctx).Download()
 		if err != nil {
 			return fmt.Errorf("failed to initiate Google Drive download: %w", err)
 		}
@@ -169,7 +169,7 @@ func runSummarizeBook(args []string) error {
 	}
 
 	if *pushDocs {
-		if deps.DocClient == nil {
+		if root.Drive.DocClient == nil {
 			return fmt.Errorf("google docs client not initialized. check credentials")
 		}
 
@@ -181,7 +181,7 @@ func runSummarizeBook(args []string) error {
 
 		fmt.Printf("\nUploading summary to Google Docs...\n")
 		docTitle := fmt.Sprintf("Summary: %s", filepath.Base(absFilePath))
-		doc, err := deps.DocClient.CreateDoc(ctx, docTitle, string(content), *driveFolderID)
+		doc, err := root.Drive.DocClient.CreateDoc(ctx, docTitle, string(content), *driveFolderID)
 		if err != nil {
 			return fmt.Errorf("failed to create Google Doc: %w", err)
 		}
