@@ -58,13 +58,18 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 			jobs.driveSyncSchedule.Stop()
 		})
 	}
-	// PR4.E-followup: explicit Stop for the outbox-events pool started
+	// PR4.E-followup-2: explicit Stop for the outbox-events pool started
 	// in lifecycle.go. We do NOT rely on outboxevents.Pool's internal
 	// ctx.Done handling so in-flight work is drained gracefully even if
-	// the pool implementation loses that behaviour in the future. The
-	// 15 s budget mirrors what the original BuildOutboxBundle watcher used.
+	// the pool implementation loses that behaviour in the future.
+	//
+	// Timeout strategy: the outer wg.Wait has a 5 s budget. We pass a
+	// 4 s timeout to eventsPool.Stop so the inner drain can complete
+	// (with up to ~1 s margin to the outer cap) and we still benefit
+	// from an early return if the pool drains faster. Picking 15 s here
+	// would be unreachable — the outer cap would always fire first.
 	if root != nil && root.Outbox != nil && root.Outbox.EventsPool != nil {
-		const eventsPoolStopTimeout = 15 * time.Second
+		const eventsPoolStopTimeout = 4 * time.Second
 		wg.Add(1)
 		concurrent.SafeGo("cleanup-outbox-events-pool", func() {
 			defer wg.Done()
