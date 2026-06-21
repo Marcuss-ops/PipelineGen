@@ -2,32 +2,32 @@ package youtube
 
 import (
 	"context"
-	"fmt"
-	"os/exec"
-	"strings"
 
-	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
-// ProcessRunner executes external processes (yt-dlp, ffmpeg, python3, etc.)
-// using the canonical os/exec pattern. Returns stdout, stderr, and error.
-type ProcessRunner struct {
-	log *zap.Logger
+// ProcessRunnerAdapter is the canonical os/exec wrapper for the youtube
+// domain. It bridges the application-layer ProcessRunnerPort shape
+// (stdout, stderr, error) onto internal/infrastructure/process.Run.
+type ProcessRunnerAdapter struct{}
+
+// NewProcessRunnerAdapter returns an adapter with no per-call state.
+func NewProcessRunnerAdapter() *ProcessRunnerAdapter {
+	return &ProcessRunnerAdapter{}
 }
 
-// NewProcessRunner constructs the adapter.
-func NewProcessRunner(log *zap.Logger) *ProcessRunner {
-	return &ProcessRunner{log: log}
-}
-
-// Run executes the named command with args and returns stdout, stderr, err.
-func (r *ProcessRunner) Run(ctx context.Context, name string, args []string) (string, string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return stdout.String(), stderr.String(), fmt.Errorf("exec %s: %w", name, err)
+// Run executes a subprocess and returns its stdout/stderr verbatim.
+// CombinedOutput=FALSE is the canonical behaviour: yt-dlp prints JSON
+// to stdout and diagnostics to stderr and the two MUST NOT mix.
+func (a *ProcessRunnerAdapter) Run(ctx context.Context, name string, args []string) (string, string, error) {
+	opts := process.Options{
+		Timeout:        process.DefaultTimeout,
+		CombinedOutput: false,
+		MaxOutputBytes: 4 * 1024 * 1024, // 4MB cap to prevent OOM on runaway yt-dlp
 	}
-	return stdout.String(), stderr.String(), nil
+	res, err := process.Run(ctx, name, args, opts)
+	if res == nil {
+		return "", "", err
+	}
+	return res.Stdout, res.Stderr, err
 }

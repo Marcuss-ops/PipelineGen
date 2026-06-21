@@ -2,35 +2,26 @@ package artlist
 
 import "context"
 
-// SourceProvider defines the interface for Artlist search providers.
-// Implementations include DB search, live scraper, Pixabay, and Pexels.
-type SourceProvider interface {
-	// Search performs a search and returns candidate clips.
-	Search(ctx context.Context, term string, limit int) ([]ScraperClip, error)
-	// Name returns a human-readable provider name for logging/metrics.
-	Name() string
-}
-
-// FallbackChain chains multiple SourceProvider instances and tries them
+// SearcherFallbackChain chains multiple Searcher implementations and tries them
 // in order until one returns results. This makes the fallback strategy
 // configurable and testable.
-type FallbackChain struct {
-	providers []SourceProvider
+type SearcherFallbackChain struct {
+	searchers []Searcher
 }
 
-// NewFallbackChain creates a fallback chain from the given providers.
-func NewFallbackChain(providers ...SourceProvider) *FallbackChain {
-	return &FallbackChain{providers: providers}
+// NewSearcherFallbackChain creates a fallback chain from the given searchers.
+func NewSearcherFallbackChain(searchers ...Searcher) *SearcherFallbackChain {
+	return &SearcherFallbackChain{searchers: searchers}
 }
 
-// Search tries each provider in order. Returns the first non-empty result set.
-// If all providers fail, returns the last provider's error.
-func (fc *FallbackChain) Search(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
+// Search tries each searcher in order. Returns the first non-empty result set.
+// If all searchers fail, returns the last searcher's error.
+func (fc *SearcherFallbackChain) Search(ctx context.Context, req SearchRequest) ([]Candidate, error) {
 	var lastErr error
-	for _, p := range fc.providers {
-		clips, err := p.Search(ctx, term, limit)
-		if err == nil && len(clips) > 0 {
-			return clips, nil
+	for _, s := range fc.searchers {
+		candidates, err := s.Search(ctx, req)
+		if err == nil && len(candidates) > 0 {
+			return candidates, nil
 		}
 		if err != nil {
 			lastErr = err

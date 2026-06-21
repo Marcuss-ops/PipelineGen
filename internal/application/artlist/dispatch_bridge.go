@@ -29,7 +29,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
 // dispatchBridge consolidates the canonical-vs-legacy write/index
@@ -45,7 +44,7 @@ import (
 //	    clipIndexer.IndexClip(ctx, clip.ID)
 //	}
 type dispatchBridge struct {
-	dispatcher *outbox.Dispatcher
+	dispatcher Dispatcher
 	// assetStore is the canonical port (PR2.5). Replaces the
 	// concrete *assets.ClipsRepository — the port declares UpsertClip
 	// with the same signature so callers don't need to know whether

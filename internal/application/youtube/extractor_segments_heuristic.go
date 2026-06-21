@@ -15,7 +15,7 @@ import (
 // tryOllamaSegmentAnalysis sends the transcript to Ollama and returns segments.
 // Returns nil if Ollama is unavailable, times out, or returns invalid data.
 func (s *Service) tryOllamaSegmentAnalysis(ctx context.Context, timedEntries []timedEntry, videoURL, videoID string, maxSegments int) []Segment {
-	if s.ollamaClient == nil {
+	if s.ollama == nil {
 		return nil
 	}
 	// Build timestamped transcript for Ollama (limit to first 8000 chars to prevent overflow)
@@ -75,7 +75,7 @@ Format:
 		return nil
 	}
 
-	responseStr, err := s.ollamaClient.SimpleGenerate(ctx, model, prompt, 60*time.Second, map[string]any{"format": "json"})
+	responseStr, err := s.ollama.SimpleGenerate(ctx, model, prompt, 60*time.Second, map[string]any{"format": "json"})
 	if err != nil {
 		s.log.Warn("Ollama call failed for segment analysis", zap.Error(err))
 		return nil

@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
 )
@@ -14,45 +15,24 @@ import (
 type SearchService struct {
 	service *Service
 	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
-	// When nil, UpsertClip falls back to the legacy assets.ClipsRepository path so
-	// existing callers/tests continue to work. When wired, UpsertClip converts
-	// the legacy *models.MediaAsset to *asset.MediaAsset via toDomain, then
-	// routes through assetrepo.Upsert — which writes both the new canonical
-	// columns and the legacy columns in the same row so legacy readers
-	// (assets.ClipsRepository) continue to see the data unchanged.
 	assetRepo asset.Repository
+	// PR2: injected Searcher implementations from infrastructure.
+	// nil means that level is skipped in the fallback chain.
+	scraperSearcher Searcher
+	pixabaySearcher Searcher
+	pexelsSearcher  Searcher
+	cfg             *config.Config
+	log             *zap.Logger
 }
 
-// SetAssetRepo injects the canonical assetRepo. Mirrors the
-// SetDispatcher pattern already used in youtube.Service. Idempotent and
-// safe to call once during composition root wiring.
+// SetAssetRepo injects the canonical assetRepo.
 func (ss *SearchService) SetAssetRepo(r asset.Repository) {
 	ss.assetRepo = r
 }
 
-// NewSearchService crea una nuova istanza di SearchService.
+// NewSearchService creates a new SearchService wired to the Service.
 func NewSearchService(s *Service) *SearchService {
 	return &SearchService{service: s}
-}
-
-// ScraperClip represents a clip from the node scraper output
-type ScraperClip struct {
-	ClipID      string   `json:"clip_id"`
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Name        string   `json:"name"`
-	PrimaryURL  string   `json:"primary_url"`
-	StreamURLs  []string `json:"stream_urls"`
-	ClipPageURL string   `json:"clip_page_url"`
-}
-
-// ScraperResponse represents the full response from the node scraper
-type ScraperResponse struct {
-	Ok        bool          `json:"ok"`
-	Term      string        `json:"term"`
-	Clips     []ScraperClip `json:"clips"`
-	SearchURL string        `json:"search_url"`
-	Saved     int           `json:"saved"`
 }
 
 // Search esegue una ricerca di clip nel database Artlist.
@@ -91,54 +71,46 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 	return resp, nil
 }
 
-// SearchLive esegue una ricerca live tramite scraper Node.js.
-func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
+// SearchLive esegue una ricerca live tramite la Searcher fallback chain.
+func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int) ([]Candidate, error) {
 	return ss.searchLiveWithFallbacks(ctx, term, limit)
 }
 
 // SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.
-// originalTerm è la query piena dell'utente; viene usata per tag e search terms.
-// Il termine normalizzato (max 4 parole) viene usato per la ricerca scraper.
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm string, limit int) (*SearchResponse, error) {
 	s := ss.service
 	normalizedTerm := normalizeSearchTerm(originalTerm)
-	clips, err := ss.SearchLive(ctx, normalizedTerm, limit)
+	candidates, err := ss.SearchLive(ctx, normalizedTerm, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &SearchResponse{OK: true, Term: originalTerm, Source: "live", Clips: make([]asset.Asset, 0, len(clips))}
+	resp := &SearchResponse{OK: true, Term: originalTerm, Source: "live", Clips: make([]asset.Asset, 0, len(candidates))}
 
-	for _, c := range clips {
-		// Handle both clip_id (new format) and id (old format)
-		id := defaults.String(c.ClipID, c.ID)
-		if id == "" {
-			s.log.Warn("skipping clip with missing id", zap.String("clip_id", c.ClipID), zap.String("title", c.Title))
+	for _, c := range candidates {
+		if c.ID == "" {
+			s.log.Warn("skipping candidate with missing id", zap.String("title", c.Title))
 			continue
 		}
 
-		name := defaults.String(c.Title, c.Name)
+		name := c.Title
 		if name == "" {
-			name = id
+			name = c.ID
 		}
 
-		// Store the original full query in tags/search_terms so the user's
-		// intent is never lost.  The normalized (shorter) term is used only
-		// for the search/cache key, not for metadata.
 		clip := &asset.Asset{
-			ID:          id,
+			ID:          c.ID,
 			Name:        name,
 			Source:      asset.Source("artlist"),
-			MediaType:   asset.MediaType("video"), // Artlist content is always video
+			MediaType:   asset.MediaType("video"),
 			Tags:        []string{originalTerm},
 			SearchTerms: []string{originalTerm},
-			SourceURL:   c.PrimaryURL,
-			ClipPageURL: c.ClipPageURL,
+			SourceURL:   c.SourceRef,
+			ClipPageURL: c.PageURL,
 		}
-		clip.SetDownloadLink(c.PrimaryURL)
+		clip.SetDownloadLink(c.SourceRef)
 
 		if existing, err := s.assetStore.Get(ctx, clip.ID); err == nil && existing != nil {
-			// Preserve existing Drive metadata (upload results)
 			if existing.LocalPath() != "" {
 				clip.SetLocalPath(existing.LocalPath())
 			}
@@ -151,11 +123,6 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			if existing.DriveFileID() != "" {
 				clip.SetDriveFileID(existing.DriveFileID())
 			}
-			// Preserve DownloadLink only if it's an Artlist CDN URL (not a Google Drive link).
-			// When a clip is already uploaded to Drive, DownloadLink gets overwritten with
-			// the Drive download URL, which breaks the scraper's isArtlistURL() check and
-			// causes all pipeline items to fail. The fresh Artlist primary_url from the
-			// current search should always take precedence for the download step.
 			if existing.DownloadLink() != "" && !strings.Contains(existing.DownloadLink(), "drive.google.com") {
 				clip.SetDownloadLink(existing.DownloadLink())
 			}
@@ -169,20 +136,14 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 				resp.Clips = append(resp.Clips, *a)
 			}
 
-			// Update search terms index: use normalizedTerm for indexed search
-			// (faster AND matching) but also include originalTerm for broader LIKE hits.
 			searchText := clip.Name + " " + originalTerm
 			if updateErr := s.assetStore.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
 				s.log.Debug("failed to update search terms for clip", zap.String("clip_id", clip.ID), zap.Error(updateErr))
 			}
 
-			// Arricchimento semantico in background: popola search_text + embedding_json
-			// senza bloccare il flusso di risposta all'utente.
-			// Dopo l'enrichment, semantic_enricher.go chiama UpdateSearchTerms di nuovo
-			// con i termini ricchi del tagger.
-		if s.metadataWriter != nil {
-			s.metadataWriter.EnrichAsync(ctx, clip, normalizedTerm)
-		}
+			if s.metadataWriter != nil {
+				s.metadataWriter.EnrichAsync(ctx, clip, normalizedTerm)
+			}
 		}
 	}
 
@@ -210,7 +171,6 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 			return liveResp, nil, nil
 		}
 
-		// Synchronously resolve destination folder so we can return the link immediately
 		groupName := "Artlist"
 		if originalTerm != "" {
 			groupName = originalTerm
@@ -232,7 +192,6 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 			return liveResp, nil, nil
 		}
 
-		// Return job info with resolved folder details
 		runResp := JobToRunTagResponse(job)
 		if runResp != nil {
 			runResp.TagFolderID = resolvedFolderID
@@ -260,19 +219,6 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 }
 
 // UpsertClip inserts or updates a clip in the database.
-//
-// PR12b: when ss.assetRepo is wired (via SetAssetRepo), this method routes
-// through toDomain + assetrepo.Upsert instead of the legacy assets.ClipsRepository path.
-// assetrepo.Upsert writes both new canonical columns (lifecycle_state, category,
-// quality_score, scene_type, ...) and the legacy columns (drive_file_id,
-// drive_link, download_link, local_path, file_hash, ...) in the same row, so
-// legacy readers (assets.ClipsRepository.Get) still observe unchanged data. The
-// asset.upserted outbox event is emitted in the same transaction so downstream
-// consumers (semantic_enricher, dispatcher, search indexers) see the canonical
-// pointer.
-//
-// When ss.assetRepo is nil (default boot path), behavior is unchanged:
-// clip is written via assets.ClipsRepository.UpsertClip with no outbox event.
 func (ss *SearchService) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	if ss.assetRepo != nil {
 		return ss.assetRepo.Upsert(ctx, clip)

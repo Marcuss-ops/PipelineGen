@@ -34,7 +34,7 @@ type clipRichMetadata struct {
 // Returns clip_summary, topics, speakers, mentioned_people, source_tags,
 // clip_tags, search_keywords, hook, clean_title, short_title.
 func (s *Service) generateClipMetadata(ctx context.Context, title, transcript, description string) *clipRichMetadata {
-	if s.ollamaClient == nil {
+	if s.ollama == nil {
 		return nil
 	}
 	model := s.metadataMetadataModel()
@@ -86,7 +86,7 @@ Rules:
 		zap.String("model", model),
 		zap.Int("transcript_chars", len(transcript)))
 
-	response, err := s.ollamaClient.SimpleGenerate(ctx, model, prompt, 60*time.Second, nil)
+	response, err := s.ollama.SimpleGenerate(ctx, model, prompt, 60*time.Second, nil)
 	if err != nil {
 		s.log.Warn("Ollama call failed for clip metadata", zap.Error(err))
 		return nil
