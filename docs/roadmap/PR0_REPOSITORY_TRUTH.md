@@ -1,124 +1,60 @@
-# PR0 — Repository truth
+# PR0 — Repository truth residua
 
 ## Obiettivo
 
-Rendere coerenti codice, tracker architetturali, baseline e documentazione. Questa PR non modifica il comportamento runtime.
+Rendere coerenti codice, tracker architetturali, baseline e documentazione. Questo documento elenca soltanto il lavoro ancora aperto e non modifica il comportamento runtime.
 
-## Perimetro
+## Stato verificato
 
-File ammessi:
+La fotografia iniziale, il confronto directory/baseline e la classificazione dei namespace eliminati sono già stati eseguiti. Restano incoerenze tra documentazione, migration tracker e codice corrente.
 
-- `architecture/migration.yaml`
-- `architecture/ownership.yaml`
-- `scripts/archcheck/baseline.json`
-- `docs/migration-maps/*.md`
-- `docs/roadmap/*.md`
-- `README.md`
-- `AGENTS.md`
-- eventuali documenti follow-up già risolti
+## Checklist residua
 
-File esclusi:
+### PR0.0 — Correggere la documentazione canonica
 
-- codice Go di produzione;
-- migration SQL;
-- route HTTP;
-- configurazione runtime.
+- [ ] Riscrivere `ARCHITECTURE.md` sulla struttura reale attuale.
+- [ ] Rimuovere riferimenti attivi a `CoreDeps`, `services`, `internal/module`, `internal/service`, `internal/sources` e `internal/upload` quando non esistono più.
+- [ ] Distinguere chiaramente directory eliminate, spostamento fisico e layering ancora aperto.
+- [ ] Aggiornare il diagramma del composition root con `ComposeRoot`, bundle, registry e lifecycle reali.
+- [ ] Verificare che README, AGENTS e documenti architetturali non forniscano istruzioni contraddittorie.
 
-## Checklist operativa
+### PR0.1 — Allineare `architecture/migration.yaml`
 
-### PR0.0 — Fotografare lo stato reale
+- [ ] Correggere gli stati Wave 0, 2, 10, 11, 12, 13, 14, 15, 16 e 17 usando esclusivamente path e simboli realmente presenti.
+- [ ] Correggere il riferimento a `internal/sources`: il namespace fisico è eliminato, mentre il cutover YouTube/Artlist resta aperto nei package application/infrastructure.
+- [ ] Aggiornare i conteggi `active_files_remaining` e `sub_directories_remaining` di `internal/media` con un comando riproducibile.
+- [ ] Marcare Wave 15 coerentemente con la rimozione di `services` e `CoreDeps`, lasciando aperti solo alias, lifecycle e moduli capability-owned residui.
+- [ ] Aggiornare `blocked_by`, `completed`, `pending` ed `exit_gate` senza descrizioni storiche ormai superate.
+- [ ] Aggiungere collegamenti chiari tra Wave 12–17 e i documenti PR1–PR5/SOT.
 
-- [x] Eseguire `go list ./...` e salvare l'elenco temporaneamente fuori dal repository. *(Sostituito in PR #26+ da `find internal -type d` + `find internal -name '*.go'`; snapshot in `/tmp/pr0-snapshot/internal-dirs.txt` + `eliminated-refs.txt`. Vedi sezione Condotto.)*
-- [x] Eseguire `find internal -type d | sort` e confrontarlo con `scripts/archcheck/baseline.json`. *(119 sotto-dir in `internal/`; baseline.json hash `f4bba57f…` invariato dopo `--update` = già accurato.)*
-- [x] Cercare i namespace eliminati:
+### PR0.2 — Validare la baseline architetturale
 
-```bash
-rg 'internal/(core|assets|artifacts|sources|upload|domain/media|application/scriptflow)' --type go
-```
-
-- [x] Classificare ogni risultato come import reale, commento storico o documentazione. *(Vedi `/tmp/pr0-snapshot/eliminated-refs.txt`.)*
-- [x] Verificare quali sottodirectory di `internal/media` esistono ancora realmente. *(19 sotto-dir + `deletion.go` = 102 file `.go` attivi.)*
-- [x] Verificare quali directory API legacy esistono ancora realmente. *(16 sotto-dir in `internal/api/` — tutti e 7 i "legacy" PR3 ancora presenti: drive, realtime, searchqueries, sources, fullimages, workers, script.)*
-
-**Accettazione PR0.0**
-
-- esiste una lista verificata di directory presenti;
-- nessuno stato viene dedotto solo dai commit message;
-- ogni wave successiva usa questa fotografia come riferimento.
-
-### PR0.1 — Correggere `architecture/migration.yaml`
-
-- [x] *(Parziale)* Marcare Wave 4A/4C/6/7 già `done` — verificato che i path sono ancora rimossi. **Da fare in PR-round successivo**: aggiungere link Wave → PR per rendere la cross-link matrix navigabile.
-- [x] *(Parziale)* Wave 10/11/12/13 riflettono già i conteggi `active_files_remaining` aggiornati; nessuna rimozione file-level necessaria. **Da fare successivamente**: refresh dopo PR1+PR2.
-- [x] *(Parziale)* Wave 14 resta `in_progress` finché esistono i 7 path (verificato in PR0.0).
-- [x] Wave 15 resta `in_progress` (services struct già rimosso da PR4d-final — verificato).
-- [ ] Separare chiaramente “directory spostata” da “layering completato” per YouTube e Artlist.
-- [ ] Aggiornare Wave 10–13 sulla base delle sottodirectory `internal/media` ancora presenti.
-- [ ] Lasciare Wave 14 `in_progress` finché esistono `api/drive`, `api/realtime`, `api/searchqueries`, `api/sources`, `api/fullimages`, `api/workers` o `api/script`.
-- [ ] Lasciare Wave 15 `pending` finché esiste `type services struct`.
-- [ ] Aggiornare i campi `completed`, `pending`, `blocked_by` ed `exit_gate` con path reali.
-- [ ] Rimuovere note che citano file o package non più esistenti.
-
-**Accettazione PR0.1**
-
-```bash
-rg 'status: pending|status: in_progress' architecture/migration.yaml
-```
-
-Ogni stato restante deve corrispondere a codice realmente presente.
-
-### PR0.2 — Rigenerare la baseline architetturale
-
-- [x] Eseguire il comando canonico di aggiornamento (`go run ./scripts/archcheck --update`). *(Eseguito in PR #26+1: SHA-256 di `scripts/archcheck/baseline.json` invariato = baseline già accurata al commit corrente.)*
-
-```bash
-go run ./scripts/archcheck --update
-```
-
-- [ ] Verificare che la nuova baseline non contenga directory eliminate.
-- [ ] Verificare che la baseline contenga tutte le directory nuove realmente presenti.
-- [ ] Controllare il diff delle sezioni `directories`, `aliases`, `wrappers` e violazioni.
-- [ ] Non rimuovere violazioni dalla baseline se il codice che le genera esiste ancora.
+- [ ] Eseguire `go run ./scripts/archcheck --update` sulla revisione definitiva della PR.
+- [ ] Controllare il diff di `directories`, `aliases`, `wrappers` e `violations`.
+- [ ] Rimuovere dalla baseline soltanto violazioni che non esistono più nel codice.
+- [ ] Verificare che non compaiano directory eliminate e che tutte le directory reali siano presenti.
 - [ ] Eseguire nuovamente `go run ./scripts/archcheck` senza `--update`.
+- [ ] Documentare temporaneamente le eccezioni ancora attive con owner e blocco roadmap; nessuna eccezione anonima.
 
-**Accettazione PR0.2**
+### PR0.3 — Pulire migration map e follow-up
 
-- `archcheck` passa baseline-on-baseline;
-- nessun path inesistente rimane in `directories`;
-- nessuna violazione reale viene nascosta manualmente.
-
-### PR0.3 — Allineare le migration map
-
-- [x] *(Parziale)* Aggiunto disclaimer a `docs/migration-maps/README.md` che distingue trasferimento fisico da layering chiuso. **Da fare successivamente** (issue esplicita del code-reviewer PR #26+1): aggiungere footer disclaimer anche ai singoli file (`internal-media.md`, `internal-sources.md`, `internal-assets.md`, `internal-core.md`, `internal-artifacts.md`, `internal-upload.md`) i cui body contengono ancora "Status: pending" sotto un'intestazione `✅ COMPLETED`.
-  - directory eliminata;
-  - package fisicamente spostato;
-  - layering ancora da completare.
-- [ ] Correggere `internal-media.md`: non dichiarare eliminato l'intero namespace se restano sottopackage attivi.
-- [ ] Correggere `internal-sources.md`: indicare che `internal/sources` è eliminato, ma che YouTube/Artlist richiedono ancora estrazione degli adapter concreti.
-- [ ] Correggere `internal-assets.md`, `internal-core.md`, `internal-artifacts.md` e `internal-upload.md` con path finali reali.
-- [ ] Mantenere le sezioni storiche soltanto se etichettate chiaramente come archivio.
-
-**Accettazione PR0.3**
-
-Nessun documento usa “all complete” per indicare lavoro architetturale ancora aperto.
+- [ ] Rendere coerenti `docs/migration-maps/internal-media.md` e il conteggio reale dei package residui.
+- [ ] Rendere coerente `internal-sources.md`: namespace eliminato, separazione degli adapter ancora incompleta.
+- [ ] Verificare i path finali in `internal-assets.md`, `internal-core.md`, `internal-artifacts.md` e `internal-upload.md`.
+- [ ] Spostare le sezioni storiche in una parte esplicitamente marcata come archivio.
+- [ ] Classificare ogni file in `docs/followups/` come aperto, risolto o storico.
+- [ ] Eliminare follow-up risolti e aggiornare i link locali.
+- [ ] Conservare il problema della migration 053 soltanto se ancora riproducibile, con owner ed exit gate reali.
 
 ### PR0.4 — Pulire README e AGENTS
 
-- [ ] Verificare che il README punti a `ARCHITECTURE.md` nel path corretto.
-- [ ] Aggiungere il link a `docs/roadmap/README.md` nella sezione documentazione.
-- [ ] Verificare che la struttura del progetto nel README contenga solo directory reali.
-- [ ] Rimuovere da AGENTS regole riferite a namespace non più presenti.
-- [ ] Conservare le regole Git generali, ma non duplicarle nei documenti PR0–PR4.
-- [ ] Correggere separatori Markdown malformati e intestazioni concatenate.
+- [ ] Aggiornare il README a PR0–PR5 e collegare i guardrail single-source-of-truth.
+- [ ] Verificare che i comandi build/run usino gli entrypoint realmente presenti.
+- [ ] Verificare che la struttura del progetto contenga soltanto directory reali.
+- [ ] Eliminare da AGENTS regole riferite a namespace eliminati o sostituirle con gli owner correnti.
+- [ ] Assicurare che AGENTS non autorizzi alias, wrapper o fallback vietati dalla roadmap corrente.
 
-### PR0.5 — Eliminare follow-up risolti
-
-- [ ] Cercare `docs/followups/` e classificare ogni file come aperto o risolto.
-- [ ] Eliminare o archiviare solo i follow-up il cui exit gate è già verificato.
-- [ ] Non creare nuovi follow-up per problemi inclusi nelle checklist PR1–PR4.
-- [ ] Aggiornare eventuali link che puntano a file eliminati.
-
-### PR0.6 — Validazione finale
+### PR0.5 — Validazione finale
 
 - [ ] Eseguire:
 
@@ -129,15 +65,10 @@ go vet ./...
 go build ./...
 ```
 
-- [ ] Controllare link Markdown locali nei file modificati.
-- [ ] Verificare che il diff non contenga codice Go o SQL.
+- [ ] Controllare tutti i link Markdown locali modificati.
+- [ ] Verificare che il diff PR0 non contenga codice Go di produzione, SQL o cambiamenti runtime.
+- [ ] Verificare che ogni stato `pending` o `in_progress` del tracker corrisponda a codice realmente presente.
 
-## Exit gate finale
+## Exit gate
 
-PR0 è completata quando:
-
-- roadmap, migration map e baseline descrivono lo stesso albero;
-- nessun namespace eliminato appare come attivo;
-- nessun namespace attivo appare come eliminato;
-- README collega questa roadmap;
-- i controlli architetturali e la build sono verdi.
+PR0 è chiusa quando roadmap, migration tracker, baseline, README, AGENTS e `ARCHITECTURE.md` descrivono lo stesso repository e tutti i controlli documentali/architetturali sono verdi.
