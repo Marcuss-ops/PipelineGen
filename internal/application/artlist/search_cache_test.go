@@ -15,7 +15,7 @@ func newTestCache() *liveSearchCache {
 
 func TestCacheSetAndGet(t *testing.T) {
 	c := newTestCache()
-	clips := []ScraperClip{{ClipID: "1", Title: "Test Clip"}}
+	clips := []Candidate{{ID: "1", Title: "Test Clip"}}
 
 	c.set("test-term", clips)
 	got, ok := c.get("test-term")
@@ -25,8 +25,8 @@ func TestCacheSetAndGet(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 clip, got %d", len(got))
 	}
-	if got[0].ClipID != "1" {
-		t.Fatalf("expected clip ID '1', got %q", got[0].ClipID)
+	if got[0].ID != "1" {
+		t.Fatalf("expected clip ID '1', got %q", got[0].ID)
 	}
 }
 
@@ -40,7 +40,7 @@ func TestCacheGet_Miss(t *testing.T) {
 
 func TestCacheAge_Fresh(t *testing.T) {
 	c := newTestCache()
-	c.set("fresh-term", []ScraperClip{{ClipID: "2"}})
+	c.set("fresh-term", []Candidate{{ID: "2"}})
 
 	age := c.age("fresh-term")
 	if age < 0 {
@@ -58,7 +58,7 @@ func TestCacheAge_Miss(t *testing.T) {
 
 func TestCacheIsFresh_WithinTTL(t *testing.T) {
 	c := newTestCache()
-	c.set("term", []ScraperClip{{ClipID: "3"}})
+	c.set("term", []Candidate{{ID: "3"}})
 
 	if !c.isFresh("term", 1*time.Hour) {
 		t.Fatal("expected entry to be fresh within 1h TTL")
@@ -82,7 +82,7 @@ func TestCacheIsGettingStale_NearExpiry(t *testing.T) {
 	// Manually insert an old entry
 	c.mu.Lock()
 	c.items["old"] = liveSearchCacheEntry{
-		Clips:    []ScraperClip{{ClipID: "4"}},
+		Clips:    []Candidate{{ID: "4"}},
 		CachedAt: time.Now().Add(-50 * time.Minute), // 50 min old
 	}
 	c.mu.Unlock()
@@ -103,11 +103,11 @@ func TestCacheCleanup_RemovesExpired(t *testing.T) {
 
 	c.mu.Lock()
 	c.items["fresh"] = liveSearchCacheEntry{
-		Clips:    []ScraperClip{{ClipID: "fresh"}},
+		Clips:    []Candidate{{ID: "fresh"}},
 		CachedAt: time.Now(),
 	}
 	c.items["expired"] = liveSearchCacheEntry{
-		Clips:    []ScraperClip{{ClipID: "expired"}},
+		Clips:    []Candidate{{ID: "expired"}},
 		CachedAt: time.Now().Add(-48 * time.Hour), // 48h old
 	}
 	c.mu.Unlock()
@@ -136,7 +136,7 @@ func TestCacheConcurrentAccess(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			term := "term-" + string(rune('A'+n))
-			c.set(term, []ScraperClip{{ClipID: string(rune('0' + n))}})
+			c.set(term, []Candidate{{ID: string(rune('0' + n))}})
 		}(i)
 	}
 
@@ -170,24 +170,24 @@ func TestCacheConcurrentAccess(t *testing.T) {
 func TestCacheOverwrite(t *testing.T) {
 	c := newTestCache()
 
-	c.set("term", []ScraperClip{{ClipID: "v1"}})
-	c.set("term", []ScraperClip{{ClipID: "v2"}})
+	c.set("term", []Candidate{{ID: "v1"}})
+	c.set("term", []Candidate{{ID: "v2"}})
 
 	clips, ok := c.get("term")
 	if !ok {
 		t.Fatal("expected cache hit after overwrite")
 	}
-	if clips[0].ClipID != "v2" {
-		t.Fatalf("expected v2 after overwrite, got %q", clips[0].ClipID)
+	if clips[0].ID != "v2" {
+		t.Fatalf("expected v2 after overwrite, got %q", clips[0].ID)
 	}
 }
 
 func TestCacheAgeAfterOverwrite(t *testing.T) {
 	c := newTestCache()
 
-	c.set("term", []ScraperClip{{ClipID: "1"}})
+	c.set("term", []Candidate{{ID: "1"}})
 	time.Sleep(5 * time.Millisecond)
-	c.set("term", []ScraperClip{{ClipID: "2"}})
+	c.set("term", []Candidate{{ID: "2"}})
 
 	age := c.age("term")
 	if age < 0 {
@@ -201,7 +201,7 @@ func TestCacheAgeAfterOverwrite(t *testing.T) {
 
 func TestCacheCaseInsensitive(t *testing.T) {
 	c := newTestCache()
-	clips := []ScraperClip{{ClipID: "1", Title: "Test Clip"}}
+	clips := []Candidate{{ID: "1", Title: "Test Clip"}}
 
 	// Set with lowercase
 	c.set("mountain river", clips)
