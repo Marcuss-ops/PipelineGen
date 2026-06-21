@@ -80,13 +80,14 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 	clip.Metadata["topic_cluster_size"] = item.TopicClusterSize
 	clip.Metadata["topic_cluster_rank"] = item.TopicClusterRank
 
+	// PR1.7 followup: UpdateSearchTerms used to live on the legacy ClipsRepository,
+	// but the concrete repo does not expose it. The synchronous Upsert above
+	// already writes clip.SearchText + clip.Tags (those were set on `clip`
+	// before Upsert), so the dedicated re-write was redundant noise and is
+	// collapsed here.
 	if err := s.clips.Upsert(ctx, clip); err != nil {
 		s.log.Debug("failed to persist clip intelligence", zap.String("clip_id", item.ID), zap.Error(err))
 		return
-	}
-
-	if err := s.clips.UpdateSearchTerms(ctx, clip.ID, string(clip.Source), chooseSearchTitle(item), clip.Tags, clip.SearchText); err != nil {
-		s.log.Debug("failed to update search terms", zap.String("clip_id", item.ID), zap.Error(err))
 	}
 }
 
