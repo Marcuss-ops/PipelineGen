@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -15,7 +15,7 @@ import (
 
 // UploadToStyleDrive carica un'immagine su Drive in una subfolder per stile.
 // Crea la struttura: {driveRoot}/{style}/{subject}/
-func (s *Service) UploadToStyleDrive(ctx context.Context, asset *media.ImageAsset, style string) (string, string, error) {
+func (s *Service) UploadToStyleDrive(ctx context.Context, asset *asset.ImageAsset, style string) (string, string, error) {
 	if s.mediaStore == nil {
 		return "", "", fmt.Errorf("media store not configured")
 	}

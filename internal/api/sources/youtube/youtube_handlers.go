@@ -22,7 +22,7 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 )
 
 // YouTubeClipHandler owns the HTTP transport for YouTube clip operations:

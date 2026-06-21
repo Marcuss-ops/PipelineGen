@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
@@ -30,9 +30,9 @@ func NewService(log *zap.Logger, repo *sqlite.ClipsRepository) *Service {
 }
 
 // LoadManifest loads clip manifest from JSON file
-func (s *Service) LoadManifest(manifestPath string) (*media.ClipManifest, error) {
-	manifest := &media.ClipManifest{
-		Clips: []media.ClipManifestItem{},
+func (s *Service) LoadManifest(manifestPath string) (*asset.ClipManifest, error) {
+	manifest := &asset.ClipManifest{
+		Clips: []asset.ClipManifestItem{},
 	}
 	if manifestPath == "" {
 		return manifest, nil
@@ -49,13 +49,13 @@ func (s *Service) LoadManifest(manifestPath string) (*media.ClipManifest, error)
 }
 
 // SaveManifest saves clip manifest to JSON file
-func (s *Service) SaveManifest(manifestPath string, manifest *media.ClipManifest) error {
+func (s *Service) SaveManifest(manifestPath string, manifest *asset.ClipManifest) error {
 	manifest.UpdatedAt = time.Now().UTC()
 	return fileutil.WriteJSON(manifestPath, manifest, true)
 }
 
 // UpdateManifestTXT creates or updates the human-readable manifest TXT file
-func (s *Service) UpdateManifestTXT(folder *media.ClipFolder, manifest *media.ClipManifest) error {
+func (s *Service) UpdateManifestTXT(folder *asset.ClipFolder, manifest *asset.ClipManifest) error {
 	if folder == nil || folder.ManifestTXTPath == "" || manifest == nil {
 		return fmt.Errorf("folder, manifest or manifest path is nil")
 	}
@@ -100,8 +100,8 @@ func (s *Service) UpdateManifestTXT(folder *media.ClipFolder, manifest *media.Cl
 }
 
 // ComputeManifestStats calculates clip counts from manifest items
-func (s *Service) ComputeManifestStats(manifest *media.ClipManifest) media.ClipFolderStats {
-	stats := media.ClipFolderStats{}
+func (s *Service) ComputeManifestStats(manifest *asset.ClipManifest) asset.ClipFolderStats {
+	stats := asset.ClipFolderStats{}
 	if manifest == nil {
 		return stats
 	}
@@ -131,7 +131,7 @@ func (s *Service) ComputeManifestStats(manifest *media.ClipManifest) media.ClipF
 }
 
 // UpsertFolder creates or updates a clip folder in DB
-func (s *Service) UpsertFolder(ctx context.Context, folder *media.ClipFolder) error {
+func (s *Service) UpsertFolder(ctx context.Context, folder *asset.ClipFolder) error {
 	if s.clipsRepo == nil {
 		return fmt.Errorf("clips repository not available")
 	}
@@ -140,7 +140,7 @@ func (s *Service) UpsertFolder(ctx context.Context, folder *media.ClipFolder) er
 }
 
 // GetFolder retrieves a clip folder by ID
-func (s *Service) GetFolder(ctx context.Context, folderID string) (*media.ClipFolder, error) {
+func (s *Service) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
 	if s.clipsRepo == nil {
 		return nil, fmt.Errorf("clips repository not available")
 	}

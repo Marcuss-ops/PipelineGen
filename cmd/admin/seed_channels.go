@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
@@ -104,7 +104,7 @@ func runSeedChannels(args []string) error {
 			semanticKeywordsJSON = string(b)
 		}
 
-		channel := &media.CategoryChannel{
+		channel := &asset.CategoryChannel{
 			ID:               id,
 			Category:         ch.Category,
 			ChannelURL:       ch.URL,

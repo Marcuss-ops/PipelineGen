@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // updateManifest updates the clip manifest with the processed segment.
-func (s *Service) updateManifest(manifest *media.ClipManifest, seg Segment, clipID string, item ExtractItem,
+func (s *Service) updateManifest(manifest *asset.ClipManifest, seg Segment, clipID string, item ExtractItem,
 	startSec, endSec, duration int, localPath, fileHash string) {
 	if manifest == nil {
 		return
@@ -24,7 +24,7 @@ func (s *Service) updateManifest(manifest *media.ClipManifest, seg Segment, clip
 		filename = ""
 	}
 
-	newMItem := media.ClipManifestItem{
+	newMItem := asset.ClipManifestItem{
 		ID:              clipID,
 		Name:            item.Name,
 		Start:           item.Start,

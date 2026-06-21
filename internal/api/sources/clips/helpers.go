@@ -2,7 +2,6 @@ package clips
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
@@ -42,11 +41,11 @@ func ClipToAssetNode(clip *asset.Asset) *sqlite.AssetNode {
 
 // treeNodeToAssetNode converts a sqlite/assettree node to the older
 // media/models type used in some response shapes.
-func treeNodeToAssetNode(tn *sqlite.AssetNode) *media.AssetNode {
+func treeNodeToAssetNode(tn *sqlite.AssetNode) *asset.AssetNode {
 	if tn == nil {
 		return nil
 	}
-	return &media.AssetNode{
+	return &asset.AssetNode{
 		ID:          tn.ID,
 		Source:      tn.Source,
 		AssetID:     tn.AssetID,

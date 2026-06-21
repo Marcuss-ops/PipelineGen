@@ -5,7 +5,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	ytService "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"go.uber.org/zap"
 )
 

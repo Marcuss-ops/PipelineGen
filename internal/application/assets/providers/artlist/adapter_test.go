@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	artlistsrc "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	artlistsrc "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"

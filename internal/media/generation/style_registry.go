@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	domainmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	domainmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"gopkg.in/yaml.v3"
 )

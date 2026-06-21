@@ -26,42 +26,42 @@
 package drive
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // â”€â”€ Enum types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Re-exported as type aliases so `storage.SourceType` and
-// `storage.MediaType` literally are `media.SourceType` / `media.MediaType`;
+// `storage.MediaType` literally are `asset.SourceType` / `asset.MediaType`;
 // downstream code that switches on these (e.g. media/indexing, fullimages)
 // keeps working without import rewrites.
 type (
-	SourceType = media.SourceType
-	MediaType  = media.MediaType
+	SourceType = asset.SourceType
+	MediaType  = asset.MediaType
 )
 
 // â”€â”€ Source constants (re-exported from canonical models) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const (
-	SourceStock       = media.SourceStock
-	SourceArtlist     = media.SourceArtlist
-	SourceYoutubeClip = media.SourceYoutubeClip
-	SourceClipDrive   = media.SourceClipDrive
-	SourceImage       = media.SourceImage
-	SourceGenerated   = media.SourceGenerated
+	SourceStock       = asset.SourceStock
+	SourceArtlist     = asset.SourceArtlist
+	SourceYoutubeClip = asset.SourceYoutubeClip
+	SourceClipDrive   = asset.SourceClipDrive
+	SourceImage       = asset.SourceImage
+	SourceGenerated   = asset.SourceGenerated
 
 	// SourceSoundEffect lives here (NOT in models) because it is an
 	// audio-extraction artifact of the image/video pipeline rather than a
 	// real production source. Once it stabilises, promote it to
-	// media.SourceType.
+	// asset.SourceType.
 	SourceSoundEffect SourceType = "sound_effect"
 )
 
 // â”€â”€ MediaType constants (canonical re-exports + image-pipeline locals)
 const (
-	MediaTypeStock    = media.MediaTypeStock
-	MediaTypeClip     = media.MediaTypeClip
-	MediaTypeImage    = media.MediaTypeImage
-	MediaTypeAudio    = media.MediaTypeAudio
-	MediaTypeDocument = media.MediaTypeDocument
+	MediaTypeStock    = asset.MediaTypeStock
+	MediaTypeClip     = asset.MediaTypeClip
+	MediaTypeImage    = asset.MediaTypeImage
+	MediaTypeAudio    = asset.MediaTypeAudio
+	MediaTypeDocument = asset.MediaTypeDocument
 
 	// MediaTypeImageVideo is for image-pipeline-produced video files
 	// (FullImages Ken Burns, Google Vids generations, NVIDIA animate).

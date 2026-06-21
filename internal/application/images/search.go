@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
-func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*media.ImageAsset, error) {
+func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error) {
 	// Normalizziamo lo slug
 	slug := textutil.Slugify(subjectSlug)
 	if slug == "" {
@@ -51,7 +51,7 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 
 	// Se il soggetto non esiste, creiamolo
 	if subject == nil {
-		subject = &media.Subject{
+		subject = &asset.Subject{
 			Slug:        slug,
 			DisplayName: displayName,
 		}

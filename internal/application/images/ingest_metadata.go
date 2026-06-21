@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"go.uber.org/zap"
@@ -165,7 +165,7 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req drive.AssetDestin
 }
 
 // UploadBatchMetadata writes a single metadata.json for a group of assets.
-func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*media.ImageAsset) {
+func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*asset.ImageAsset) {
 	s.log.Info("UploadBatchMetadata: starting", zap.String("gen_id", genID), zap.Int("assets", len(assets)))
 	if s.metaWriter == nil {
 		s.log.Warn("UploadBatchMetadata: metadata writer not configured")

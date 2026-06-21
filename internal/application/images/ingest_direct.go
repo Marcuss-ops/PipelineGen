@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*media.ImageAsset, error) {
+func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*asset.ImageAsset, error) {
 	// Enrich tags and subject from prompt if needed
 	promptSubject, promptTags := extractSubjectAndTags(description)
 	if slug == "" || slug == "unknown" {
@@ -30,7 +30,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err != nil || subject == nil {
-		subject = &media.Subject{
+		subject = &asset.Subject{
 			Slug:        slug,
 			DisplayName: slug,
 		}
@@ -46,7 +46,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	}
 
 	// Create request for resolver
-	// Source is a typed string (drive.SourceType = media.SourceType);
+	// Source is a typed string (drive.SourceType = asset.SourceType);
 	// the caller-supplied `source` is a plain string (e.g. "google-flow"),
 	// so we explicitly cast to satisfy the literal.
 	req := drive.AssetDestinationRequest{
@@ -137,7 +137,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	}
 
 	// 8. Crea record DB con dimensioni reali
-	asset := &media.ImageAsset{
+	asset := &asset.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      relPath,

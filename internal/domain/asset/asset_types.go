@@ -8,8 +8,12 @@ import (
 // Source identifies where an asset originated.
 type Source string
 
-// MediaType classifies the content type of an asset.
-type MediaType string
+// MediaType classifies the content type of an asset. The canonical type
+// declaration and const set live in media_type.go; this comment block is
+// left here only as a forward pointer for readers scanning asset_types.go
+// for the Asset struct. See media_type.go for the full history and
+// rationale (Phase 1 local decl → Phase 3 alias of media.MediaType →
+// Wave-14 native decl after internal/domain/media is deleted).
 
 // Metadata is an open-ended key-value store for asset properties
 // that don't have dedicated columns.

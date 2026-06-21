@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -27,8 +27,8 @@ func (r *ImagesRepository) DB() *sql.DB {
 }
 
 // GetSubjectBySlugOrAlias recupera un soggetto tramite ID (slug)
-func (r *ImagesRepository) GetSubjectBySlugOrAlias(ctx context.Context, id string) (*media.Subject, error) {
-	var s media.Subject
+func (r *ImagesRepository) GetSubjectBySlugOrAlias(ctx context.Context, id string) (*asset.Subject, error) {
+	var s asset.Subject
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, name, COALESCE(description, ''), created_at, updated_at
 		FROM subjects WHERE id = ?
@@ -41,7 +41,7 @@ func (r *ImagesRepository) GetSubjectBySlugOrAlias(ctx context.Context, id strin
 }
 
 // CreateSubject crea un nuovo soggetto
-func (r *ImagesRepository) CreateSubject(ctx context.Context, s *media.Subject) (int64, error) {
+func (r *ImagesRepository) CreateSubject(ctx context.Context, s *asset.Subject) (int64, error) {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO subjects (id, name, description, metadata_json)
 		VALUES (?, ?, ?, ?)
@@ -50,7 +50,7 @@ func (r *ImagesRepository) CreateSubject(ctx context.Context, s *media.Subject) 
 }
 
 // AddImage aggiunge un record immagine nella tabella media_assets
-func (r *ImagesRepository) AddImage(ctx context.Context, img *media.ImageAsset) (int64, error) {
+func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) (int64, error) {
 	id := img.Hash
 	if id == "" {
 		id = fmt.Sprintf("img_%d", img.CreatedAt.UnixNano())
@@ -126,7 +126,7 @@ func normalizeTags(tags []string) string {
 }
 
 // GetImageByHash recupera un'immagine tramite il suo hash
-func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*media.ImageAsset, error) {
+func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
@@ -138,7 +138,7 @@ func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*me
 }
 
 // GetByID recupera un'immagine tramite il suo ID stringa
-func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*media.ImageAsset, error) {
+func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
@@ -158,7 +158,7 @@ func (r *ImagesRepository) Delete(ctx context.Context, id any) error {
 // GetByDriveFileID recupera un'immagine tramite Drive file ID. drive_file_id
 // Ã¨ una colonna canonica (migration 059): lettura diretta invece di
 // json_extract(metadata_json, '$.drive_file_id').
-func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*media.ImageAsset, error) {
+func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets
@@ -170,7 +170,7 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 }
 
 // ListImagesBySubject recupera tutte le immagini per un soggetto
-func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]media.ImageAsset, error) {
+func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
@@ -184,7 +184,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 	}
 	defer rows.Close()
 
-	var images []media.ImageAsset
+	var images []asset.ImageAsset
 	for rows.Next() {
 		img, err := scanImageAssetRows(rows)
 		if err != nil {
@@ -196,7 +196,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 }
 
 // ListAll lists all image assets
-func (r *ImagesRepository) ListAll(ctx context.Context) ([]*media.ImageAsset, error) {
+func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
@@ -209,7 +209,7 @@ func (r *ImagesRepository) ListAll(ctx context.Context) ([]*media.ImageAsset, er
 	}
 	defer rows.Close()
 
-	var images []*media.ImageAsset
+	var images []*asset.ImageAsset
 	for rows.Next() {
 		img, err := scanImageAssetRows(rows)
 		if err != nil {
@@ -222,8 +222,8 @@ func (r *ImagesRepository) ListAll(ctx context.Context) ([]*media.ImageAsset, er
 
 func scanImageAsset(row interface {
 	Scan(dest ...any) error
-}) (*media.ImageAsset, error) {
-	var img media.ImageAsset
+}) (*asset.ImageAsset, error) {
+	var img asset.ImageAsset
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
 	var name sql.NullString
 	var url sql.NullString
@@ -264,8 +264,8 @@ func scanImageAsset(row interface {
 	return &img, nil
 }
 
-func scanImageAssetRows(rows *sql.Rows) (*media.ImageAsset, error) {
-	var img media.ImageAsset
+func scanImageAssetRows(rows *sql.Rows) (*asset.ImageAsset, error) {
+	var img asset.ImageAsset
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
 	var name sql.NullString
 	var url sql.NullString
@@ -306,7 +306,7 @@ func scanImageAssetRows(rows *sql.Rows) (*media.ImageAsset, error) {
 	return &img, nil
 }
 
-func (r *ImagesRepository) UpdateSubject(ctx context.Context, s *media.Subject) error {
+func (r *ImagesRepository) UpdateSubject(ctx context.Context, s *asset.Subject) error {
 	_, err := r.db.ExecContext(ctx, "UPDATE subjects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", s.DisplayName, s.Slug)
 	return err
 }

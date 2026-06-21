@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 
 	"go.uber.org/zap"
 )
 
-func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *media.ClipFolder, item *media.ClipManifestItem) {
+func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *asset.ClipFolder, item *asset.ClipManifestItem) {
 	if s == nil || s.clipsRepo == nil || clipFolder == nil || item == nil || item.ID == "" {
 		return
 	}
@@ -90,7 +90,7 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 	}
 }
 
-func chooseSearchTitle(item *media.ClipManifestItem) string {
+func chooseSearchTitle(item *asset.ClipManifestItem) string {
 	if item == nil {
 		return ""
 	}

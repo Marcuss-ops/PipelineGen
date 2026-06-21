@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -30,7 +30,7 @@ func (a *registryAdapter) UpsertMedia(ctx context.Context, rec *artifacts.MediaR
 		return nil
 	}
 
-	asset := &media.ImageAsset{
+	asset := &asset.ImageAsset{
 		Hash:        imageRecordHash(rec.ID, rec.FileHash),
 		SubjectID:   textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 		SourceURL:   textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
@@ -96,7 +96,7 @@ func imageRecordHash(id, fallback string) string {
 	return id
 }
 
-func imageToMediaRecord(img *media.ImageAsset, imagesDir string) *artifacts.MediaRecord {
+func imageToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}

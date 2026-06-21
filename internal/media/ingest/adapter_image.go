@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -25,7 +25,7 @@ func NewImageStoreAdapter(repo *imagerepo.ImagesRepository, imagesDir string) li
 }
 
 func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
-	asset := &media.ImageAsset{
+	asset := &asset.ImageAsset{
 		Hash:         stripKindPrefix(rec.ID),
 		SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 		PathRel:      relImagePath(a.imagesDir, rec.LocalPath),
@@ -45,10 +45,12 @@ func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaReco
 }
 
 func (a *imageStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
-	img, err := a.repo.GetImageByHash(ctx, stripKindPrefix(id))
-	if err != nil || img == nil {
+	record, err := a.repo.GetImageByHash(ctx, stripKindPrefix(id))
+	if err != nil || record == nil {
 		return nil, err
 	}
+	// record is *asset.ImageAsset at this point; convert to MediaRecord
+	var img *asset.ImageAsset = record
 	return imageAssetToMediaRecord(img, a.imagesDir), nil
 }
 
@@ -92,7 +94,8 @@ func (a *imageStoreAdapter) ListWithDriveFileID(ctx context.Context, source stri
 		return nil, err
 	}
 	var out []*assetop.AssetRecord
-	for _, img := range imagesList {
+	for _, rec := range imagesList {
+		img := rec
 		if strings.TrimSpace(img.DriveFileID) == "" {
 			continue
 		}
@@ -120,11 +123,12 @@ func (a *imageStoreAdapter) DeleteAssetRecord(ctx context.Context, id string) er
 	return a.repo.Delete(ctx, stripKindPrefix(id))
 }
 
-func imageAssetToMediaRecord(img *media.ImageAsset, imagesDir string) *artifacts.MediaRecord {
+func imageAssetToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}
 
+	_ = img
 	return &artifacts.MediaRecord{
 		ID:          img.Hash,
 		Name:        img.Description,
