@@ -84,7 +84,8 @@ external services, configuration, day-1 commands), see **`ARCHITECTURE.md`** at
 the project root. This file is the canonical architecture doc.
 
 Key contract files:
-- `internal/core/` — canonical interfaces (destination.Resolver, processor.Processor, jobs)
+- `internal/domain/asset/` — canonical asset types + contracts (migrating from `internal/core/`)
+- `internal/domain/job/` — canonical job types + Store interface
 - `internal/app/registry.go::WireRegistry` — module wiring single source of truth
 - `ARCHITECTURE.md` — system diagram, data flows, 9-module registry, persistence
 
@@ -211,7 +212,7 @@ the CI guard with the migration target printed inline.
 | `internal/artifacts/`             | `internal/domain/job/` (artifacts is interface‑wrap; eliminate entirely) | TBD |
 | `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/`        | TBD |
 | `internal/upload/drive/`          | `internal/infrastructure/drive/`                               | TBD |
-| `internal/application/scriptflow/` | `internal/application/scripts/{batch,curation,generate,...}/` | TBD |
+| `internal/application/scriptflow/` | `internal/application/scripts/` (flat-merge completato; directory eliminata) | Wave 6 ✅ |
 | `internal/domain/media/`          | `internal/domain/asset/`                                       | TBD |
 | `internal/domain/worker/`         | `internal/domain/job/`                                         | TBD |
 | `internal/domain/outbox/`         | `internal/domain/lifecycle/`                                   | TBD |
@@ -434,6 +435,8 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 - ✅ **context.Background() audited and documented** (ARCHITECTURE.md §7)
 - ✅ **Duplicate architecture docs consolidated** (MODULE_MAP + OWNERSHIP deleted)
 - ✅ **.gitignore cleaned up** (root binaries, logs, cookies, .bak patterns added)
+- ✅ **Scriptflow eliminato** — `internal/application/scriptflow/` directory rimossa, codice assorbito in `internal/application/scripts/`
+- ✅ **Registry provider tipizzato** — `internal/application/assets/providers/` con adapter per Artlist e YouTube
 
 ### Still Pending
 - Remove any remaining duplicates in legacy doc folders
@@ -442,10 +445,15 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 
 ## Core Contracts
 
-All modules must use canonical contracts in `internal/core/`:
-- `core/destination.Resolver` — adapter in `service/assetdestination/adapter.go`
-- `core/processor.Processor` — adapter in `service/mediaasset/adapter.go`
-- All long-running operations must use `internal/service/jobs/` system
+All modules must use canonical contracts:
+- `internal/domain/asset/` — Asset, MediaType, Repository, Processor, Destination (migrating from `internal/core/`)
+- `internal/domain/job/` — Job, Store, WorkerSession
+- `internal/domain/script/` — Script, Plan, GenerationSpec
+- All long-running operations must use `internal/application/jobs/` service
+
+**Note**: `internal/core/` still exists as a legacy package. New code should prefer
+`internal/domain/` contracts and `internal/application/` use cases. See
+`architecture/migration.yaml` Wave 4C for the migration plan.
 
 ---
 
@@ -668,28 +676,48 @@ the target API structure. Quick reference:
 ```
 .
 ├── cmd/server/main.go        # HTTP server + workers
+├── cmd/worker/main.go        # Standalone worker
 ├── cmd/admin/main.go         # One-shot admin CLI
 ├── internal/
-│   ├── core/                 # Canonical contracts
+│   ├── core/                 # Legacy — canonical contracts (migrating to domain/asset/)
 │   ├── api/                  # HTTP transport (thin — no business logic)
 │   │   ├── server.go
 │   │   ├── routes.go
 │   │   ├── middleware/
-│   │   ├── script/           # Script endpoints (target: 5-8 files)
-│   │   ├── sources/          # Source endpoints (target: 5-8 files)
+│   │   ├── script/           # Script endpoints (32 files — target: 5-8)
+│   │   ├── sources/          # Source endpoints (26 files — target: 5-8)
+│   │   ├── assets/           # Merged from scraper + mediaingest
+│   │   ├── content/          # Merged from books + lessons
 │   │   └── <feature>/        # One dir per feature (max 30 files)
 │   ├── app/                  # Composition root, wiring, migrations
 │   ├── application/          # Use-case orchestration (new, growing)
-│   ├── media/                # Media pipelines (images, voiceover, monitor, ...)
-│   ├── sources/              # Artlist + YouTube providers
-│   ├── jobs/                 # Job queue + workers
-│   ├── repository/           # Data access layer (scripts, clips, jobs, ...)
-│   └── storage/              # DB connection config
+│   │   ├── scripts/          # Script generation (batch, curation, scenes, documents)
+│   │   ├── assets/           # Asset providers, registry
+│   │   ├── jobs/             # Job broker, worker, outbox
+│   │   ├── images/           # Image generation
+│   │   ├── content/          # Books + lessons
+│   │   ├── voiceover/        # Voiceover service
+│   │   ├── association/      # Script→asset semantic matching
+│   │   └── realtime/         # Real-time clip search
+│   ├── domain/               # Canonical domain types + contracts
+│   │   ├── asset/            # Asset, MediaType, Location, LifecycleState
+│   │   ├── job/              # Job, Store, WorkerSession
+│   │   └── script/           # Script, Plan, GenerationSpec
+│   ├── infrastructure/       # Adapters to external systems
+│   │   ├── database/sqlite/  # SQLite repositories + migrations
+│   │   ├── drive/            # Google Drive uploader
+│   │   ├── media/ffmpeg/     # FFmpeg wrappers
+│   │   ├── ai/               # Ollama, reranker, VLM
+│   │   └── process/          # External command execution
+│   ├── media/                # Media pipelines (legacy — migrating to application/ + infrastructure/)
+│   ├── sources/              # Artlist + YouTube providers (legacy — migrating to providers/)
+│   ├── upload/               # Drive upload (legacy — migrating to infrastructure/drive/)
+│   ├── assets/               # Legacy asset package (migrating to domain/asset/)
+│   └── artifacts/            # Legacy artifact package (migrating to domain/job/)
 ├── pkg/                      # Leaf utilities only
 ├── config/                   # YAML configuration
 ├── migrations/               # SQL migrations
 ├── scripts/                  # Python AI scripts
 ├── node-scraper/             # Persistent Chromium scraper
-├── google-accounting/        # FastAPI + Playwright sidecar
 └── docs/                     # Technical documentation
 ```

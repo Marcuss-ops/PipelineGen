@@ -2,8 +2,10 @@
 
 ## Status
 
-**in-progress** — deferred to Wave-15. Target: promoted into
-`internal/application/assets/providers/`.
+**in-progress** — Wave 12. La ricerca generale usa solo il registry
+tipizzato in `internal/application/assets/providers/`. YouTube FetchProvider
+è già disponibile. Restano caller diretti per extractor, monitor e wiring.
+Target: promoted into `internal/application/assets/providers/`.
 
 ## What exists
 
@@ -53,4 +55,16 @@ to that target; move the scraper binary + integration to
 
 ## Owner
 
-Wave-15. Estimated effort: 3–5 PRs.
+Wave 12. Progress (June 2026):
+- Registry tipizzato (`internal/application/assets/providers/provider.go`, `registry.go`)
+- Artlist SearchProvider (artlistadapter.NewAdapter)
+- YouTube SearchProvider + FetchProvider (youtubeadapter.NewAdapter)
+- Fallback generale rimosso
+- register-from-youtube migrato a FetchProvider
+
+Remaining:
+- Estrazione YouTube infrastructure (extractor → `internal/infrastructure/youtube/`)
+- Estrazione Artlist scraper (separare provider surface dal Node scraper)
+- Eliminazione `internal/sources/`
+
+Estimated remaining effort: 2–3 PRs.

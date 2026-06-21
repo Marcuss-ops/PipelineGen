@@ -110,7 +110,7 @@ application_scripts:
     - scripts/jobs
     - scripts/scenes
     - scripts/memory
-  current_drift: Code still split between internal/scripts/ and internal/application/scriptflow/.
+  current_drift: internal/application/scriptflow/ directory eliminated (flat-merged into internal/application/scripts/). internal/scripts/ still has 5 file-level comment references to old merge sources.
 
 application_assets:
   owner: internal/application/assets

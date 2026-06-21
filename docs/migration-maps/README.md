@@ -17,9 +17,9 @@ This directory contains the per-directory migration maps referenced from
 | `internal/media/`                | split across domain / application / infrastructure          | pending | Wave-14          | [internal-media.md](internal-media.md) |
 | `internal/assets/`               | `internal/domain/asset/`                                    | pending | Wave-14          | [internal-assets.md](internal-assets.md) |
 | `internal/artifacts/`            | `internal/domain/job/` (eliminate, interface-wrap)          | pending | Wave-15          | [internal-artifacts.md](internal-artifacts.md) |
-| `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<X>/`             | pending | Wave-15          | [internal-sources.md](internal-sources.md) |
+| `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<X>/`             | in-progress | Wave 12          | [internal-sources.md](internal-sources.md) |
 | `internal/upload/drive/`         | `internal/infrastructure/drive/`                            | pending | Wave-15          | [internal-upload.md](internal-upload.md) |
-| `internal/application/scriptflow/` | `internal/application/scripts/<X>/`                      | in-progress (this PR) | this PR | [internal-application-scriptflow.md](internal-application-scriptflow.md) |
+| `internal/application/scriptflow/` | `internal/application/scripts/<X>/`                      | **done** | Wave 6 | [internal-application-scriptflow.md](internal-application-scriptflow.md) |
 | `internal/domain/media/`         | `internal/domain/asset/`                                    | pending | Wave-14          | [internal-domain-media.md](internal-domain-media.md) |
 | `internal/domain/worker/`        | `internal/domain/job/` (DELETE — duplicates `domain/job`)   | **done** | this PR         | [internal-domain-worker.md](internal-domain-worker.md) |
 | `internal/domain/outbox/`        | `internal/domain/lifecycle/` (DELETE — duplicates `outboxevents`) | **done** | this PR         | [internal-domain-outbox.md](internal-domain-outbox.md) |
