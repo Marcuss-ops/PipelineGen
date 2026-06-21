@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -65,7 +66,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 func setupTestService(t *testing.T) (*Service, func()) {
 	t.Helper()
 	db := setupTestDB(t)
-	repo := NewSQLiteStore(db, zap.NewNop())
+	repo := sqljobs.NewSQLiteStore(db, zap.NewNop())
 	svc := NewService(repo, nil, zap.NewNop())
 
 	return svc, func() {}
@@ -446,8 +447,8 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 
 	// Two Service instances over the same *sql.DB deliberately share state
 	// but NOT the in-process enqueueMu.
-	repoA := NewSQLiteStore(db, zap.NewNop())
-	repoB := NewSQLiteStore(db, zap.NewNop())
+	repoA := sqljobs.NewSQLiteStore(db, zap.NewNop())
+	repoB := sqljobs.NewSQLiteStore(db, zap.NewNop())
 	svcA := NewService(repoA, nil, zap.NewNop())
 	svcB := NewService(repoB, nil, zap.NewNop())
 
