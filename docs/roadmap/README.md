@@ -13,7 +13,18 @@ Portare il repository dallo stato attuale, già privo dei principali namespace l
 - API organizzata per capability;
 - composition root modulare senza service locator globale;
 - certificazione reale di workflow, recovery, backup, carico e deployment;
+- single source of truth verificato per tipi, metodi, metadata, registry e import;
 - nessuna nuova feature finché PR0–PR5 non sono concluse.
+
+## Guardrail trasversale obbligatorio
+
+Il documento [Single Source of Truth Guardrails](SINGLE_SOURCE_OF_TRUTH_GUARDRAILS.md) è vincolante per **ogni** PR del ciclo.
+
+Regola centrale:
+
+> un concetto = un owner = un import path = una dichiarazione = un punto di registrazione
+
+PR0–PR5 non possono essere chiuse se introducono o mantengono duplicazioni evitabili di tipi, metadata, getter, mapper, serializer, default, provider switch, resolver, sampler, wrapper o alias permanenti.
 
 ## Ordine obbligatorio
 
@@ -40,6 +51,9 @@ PR1 e PR2 possono essere sviluppate in parallelo soltanto se non modificano gli 
 8. Prima si rende verde il blocco corrente, poi si passa al successivo.
 9. Una capability non eseguita end-to-end viene marcata `NOT CERTIFIED`, non `PASS`.
 10. Nessun test reale usa database, cartelle Drive o credenziali di produzione.
+11. Ogni nuovo provider o variante entra nel registry/resolver/sampler comune.
+12. `asset.Metadata` resta l'unico tipo canonico per i metadata asset; raw provider structs devono restare private agli adapter.
+13. Nessun nuovo costruttore, mapper, serializer, default o helper può duplicare un owner già esistente.
 
 ## Definizione comune di completamento
 
@@ -52,9 +66,10 @@ Una PR è completata soltanto quando:
 - `go build ./...` è verde per cambiamenti strutturali;
 - `go run ./scripts/archcheck` non introduce nuove violazioni;
 - la documentazione non dichiara completato lavoro ancora presente nel codice;
-- non rimangono TODO temporanei, test saltati o file di follow-up creati dalla stessa PR.
+- non rimangono TODO temporanei, test saltati o file di follow-up creati dalla stessa PR;
+- l'audit del documento `SINGLE_SOURCE_OF_TRUTH_GUARDRAILS.md` non rileva nuove duplicazioni.
 
-PR5 aggiunge una condizione ulteriore: ogni risultato deve avere evidenza riproducibile nel report E2E. Un endpoint che risponde `200` senza controllo su database, file, Drive e stato job non costituisce un test completo.
+PR5 aggiunge una condizione ulteriore: ogni risultato deve avere evidenza riproducibile nel report E2E. Un endpoint che risponde `200` senza controllo su database, file, Drive e stato job non costituisce un test completo. La certificazione finale deve includere anche l'audit SOT.8 su metadata, alias, wrapper, import graph e registry.
 
 ## Stato reale di partenza
 
@@ -79,10 +94,11 @@ Debito ancora attivo:
 - `internal/app/dependencies.go` contiene ancora il contenitore globale `services`;
 - il job system conserva alias temporanei verso SQLite;
 - numerosi package sotto `internal/media` devono ancora essere assegnati al proprietario finale;
-- non esiste ancora una certificazione automatizzata e ripetibile dei workflow reali completi.
+- non esiste ancora una certificazione automatizzata e ripetibile dei workflow reali completi;
+- non esiste ancora un guardrail strict automatico che impedisca nuove duplicazioni semantiche e import fuori layer.
 
 ## Aggiornamento della checklist
 
 Le checkbox devono essere aggiornate nella stessa modifica che completa il codice corrispondente. Non marcare un blocco come concluso basandosi soltanto su un commit message o su uno spostamento fisico: verificare sempre import, test ed exit gate.
 
-Per PR5, la checkbox può essere marcata soltanto dopo aver salvato nel report: commit SHA, ambiente, comando eseguito, risultato e percorso dell'evidenza.
+Per PR5, la checkbox può essere marcata soltanto dopo aver salvato nel report: commit SHA, ambiente, comando eseguito, risultato e percorso dell'evidenza. L'audit single source of truth deve produrre evidenza separata e risultare verde.
