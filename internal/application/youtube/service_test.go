@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -196,17 +195,10 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 	svc := NewService(
 		cfg,
 		log,
-		nil, // clips repo
-		nil, // monitors repo
-		nil, // drive client
-		nil, // processor (not used anymore)
+		nil, // processor
 		pipeline,
 		nil, // lifecycle
-		nil, // indexer
 		nil, // asset dest resolver
-		nil, // ollama client
-		nil, // assetProcessing
-		nil, // assetVersions
 	)
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{
@@ -252,17 +244,10 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 	svc := NewService(
 		cfg,
 		log,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, // processor
 		pipeline,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil, // assetProcessing
-		nil, // assetVersions
+		nil, // lifecycle
+		nil, // asset dest resolver
 	)
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{
@@ -353,7 +338,7 @@ type fakeVideoPipeline struct {
 	outputName string
 }
 
-func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req videomuscles.YouTubeCutRequest) (*videomuscles.YouTubeCutResult, error) {
+func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error) {
 	f.called = true
 	f.url = req.URL
 	f.start = req.Start
@@ -362,7 +347,7 @@ func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req 
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &videomuscles.YouTubeCutResult{
+	return &VideoCutResult{
 		LocalPath: f.outputPath,
 	}, nil
 }

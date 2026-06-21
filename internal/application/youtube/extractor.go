@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -50,7 +48,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 	videoID, err := urlutil.ExtractVideoID(req.URL)
 	if err != nil || videoID == "" {
-		videoID = hashutil.MD5String(req.URL)[:12]
+		videoID = s.md5String(req.URL)[:12]
 	}
 	if canonical := canonicalYouTubeURL(req.URL, videoID); canonical != "" {
 		req.URL = canonical
@@ -60,7 +58,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	if strings.TrimSpace(req.URL) == "" {
 		return &ExtractResponse{OK: false, Error: "url is required"}, fmt.Errorf("url is required")
 	}
-	if err := security.ValidateDownloadURL(strings.TrimSpace(req.URL)); err != nil {
+	if err := validateDownloadURL(strings.TrimSpace(req.URL)); err != nil {
 		return &ExtractResponse{OK: false, Error: err.Error()}, err
 	}
 
@@ -147,8 +145,8 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	if req.Destination != nil {
 		monitoredSource.GroupName = req.Destination.Group
 	}
-	if s.monitoredRepo != nil {
-		if err := s.monitoredRepo.UpsertSource(ctx, monitoredSource); err != nil {
+	if s.monitors != nil {
+		if err := s.monitors.UpsertSource(ctx, monitoredSource); err != nil {
 			s.log.Error("Failed to upsert monitored source", zap.Error(err))
 		}
 	}

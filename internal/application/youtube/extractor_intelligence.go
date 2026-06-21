@@ -61,7 +61,7 @@ func (u *unionFind) union(a, b int) {
 }
 
 func (s *Service) enrichManifestIntelligence(ctx context.Context, clipFolder *asset.ClipFolder, manifest *asset.ClipManifest) {
-	if s == nil || s.clipsRepo == nil || clipFolder == nil || manifest == nil || len(manifest.Clips) == 0 {
+	if s == nil || s.clips == nil || clipFolder == nil || manifest == nil || len(manifest.Clips) == 0 {
 		return
 	}
 

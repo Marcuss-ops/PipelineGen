@@ -6,181 +6,142 @@ import (
 	"sync"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
+// VideoCutRequest contains all parameters for downloading and cutting a video segment.
+// Application-layer DTO that replaces videomuscles.YouTubeCutRequest.
+type VideoCutRequest struct {
+	URL               string
+	VideoID           string
+	Start             float64
+	Duration          float64
+	OutputName        string
+	ForceKeyframes    bool
+	KeepAudio         bool
+	Normalize         bool
+	Strategy          string
+	OutputDir         string
+	PreDownloadedPath string
+}
+
+// VideoCutResult wraps the output of a video cut operation with the local file path
+// and the full video metadata captured from yt-dlp.
+// Application-layer DTO that replaces videomuscles.YouTubeCutResult.
+type VideoCutResult struct {
+	LocalPath string
+	Metadata  *YouTubeMetadataPort
+}
+
+// VideoPipeline is the port for downloading + cutting YouTube video segments.
 type VideoPipeline interface {
-	DownloadAndCutYouTubeVideo(ctx context.Context, req videomuscles.YouTubeCutRequest) (*videomuscles.YouTubeCutResult, error)
+	DownloadAndCutYouTubeVideo(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error)
 }
 
 type Service struct {
 	cfg               *config.Config
 	log               *zap.Logger
-	clipsRepo         *assets.ClipsRepository
-	monitoredRepo     *assets.MonitorsRepository
-	driveClient       *driveapi.Service
-	assetDestResolver asset.Resolver
 	mediaProcessor    asset.Processor
 	videoPipeline     VideoPipeline
-	folderMemory      *foldermemory.Service
 	lifecycleService  *lifecycle.Service
-	indexer           *clipindexer.Service
-	ollamaClient      *client.Client
+	assetDestResolver asset.Resolver
 	searchL1          sync.Map
 	metadataL1        sync.Map
-	// dispatcher routes UpsertClip + IndexClip atomically through the
-	// outbox_events. When set, enrichment/segment write the clip
-	// via dispatcher.EnqueueAndIndex and skip the standalone indexer
-	// call. Admin/reindex paths (indexing.go, rebuild_job.go) keep the
-	// direct indexer so operator overrides bypass the queue.
-	dispatcher *outbox.Dispatcher
-	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
-	// When wired, dispatchOrIndex prefers it over the dispatcher and the
-	// legacy clipsRepository path: it converts the legacy *models.MediaAsset
-	// to *asset.Asset via toAssetDomain and routes through
-	// assetrepo.Upsert — which writes both legacy and canonical columns in
-	// the same row and emits the asset.upserted outbox event in the same
-	// transaction.
-	assetRepo asset.Repository
-	// assetProcessing tracks clip processing state (download_and_cut step).
-	assetProcessing asset.ProcessingRepository
-	// assetVersions records file identity on successful processing.
-	assetVersions asset.VersionRepository
+	assetRepo         asset.Repository
+	assetProcessing   asset.ProcessingRepository
+	assetVersions     asset.VersionRepository
+
+	// PR1 port-based dependencies — injected via setters from composition root.
+	searchRunner    SearchRunnerPort
+	subtitleFetcher SubtitleFetcherPort
+	whisper         WhisperTranscriberPort
+	clipFiles       ClipFilesPort
+	metaFetcher     VideoMetadataFetcherPort
+	driveFolderMgr  DriveFolderManagerPort
+	hashSvc         HashServicePort
+	tempFiles       TempFileManagerPort
+
+	// PR1.5 port-based dependencies — replace concrete infrastructure imports.
+	clips        ClipStorePort
+	monitors     MonitorsStorePort
+	cacheStore   YouTubeCacheStorePort
+	indexer      ClipIndexerPort
+	folderMemory FolderMemoryPort
+	ollamaClient OllamaClientPort
+	disp         DispatcherPort
+	driveClient  DriveClientPort
+	classifier   CategoryClassifierPort
 }
 
 func NewService(
 	cfg *config.Config,
 	log *zap.Logger,
-	clipsRepo *assets.ClipsRepository,
-	monitoredRepo *assets.MonitorsRepository,
-	driveClient *driveapi.Service,
 	mediaProcessor asset.Processor,
 	videoPipeline VideoPipeline,
 	lifecycleService *lifecycle.Service,
-	indexer *clipindexer.Service,
 	assetDestResolver asset.Resolver,
-	ollamaClient *client.Client,
-	assetProcRepo asset.ProcessingRepository,
-	assetVerRepo asset.VersionRepository,
 ) *Service {
-	// Create folder memory service
-	folderMemory := foldermemory.NewService(log, clipsRepo)
-
 	return &Service{
 		cfg:               cfg,
 		log:               log,
-		clipsRepo:         clipsRepo,
-		monitoredRepo:     monitoredRepo,
-		driveClient:       driveClient,
-		assetDestResolver: assetDestResolver,
 		mediaProcessor:    mediaProcessor,
 		videoPipeline:     videoPipeline,
-		folderMemory:      folderMemory,
 		lifecycleService:  lifecycleService,
-		indexer:           indexer,
-		ollamaClient:      ollamaClient,
-		assetProcessing:   assetProcRepo,
-		assetVersions:     assetVerRepo,
+		assetDestResolver: assetDestResolver,
 	}
 }
 
-// SetAssetRepos injects the asset lifecycle repositories (late-binding).
-// Called from composeIntegration after the repos are constructed.
-// In tests, assetVer can be nil/mocked if version tracking is disabled.
+// ── Port setters (composition root calls after construction) ───────────
+
+func (s *Service) SetSearchRunner(r SearchRunnerPort)           { s.searchRunner = r }
+func (s *Service) SetSubtitleFetcher(f SubtitleFetcherPort)     { s.subtitleFetcher = f }
+func (s *Service) SetWhisper(w WhisperTranscriberPort)          { s.whisper = w }
+func (s *Service) SetClipFiles(f ClipFilesPort)                 { s.clipFiles = f }
+func (s *Service) SetMetadataFetcher(f VideoMetadataFetcherPort) { s.metaFetcher = f }
+func (s *Service) SetDriveFolderMgr(m DriveFolderManagerPort)   { s.driveFolderMgr = m }
+func (s *Service) SetHashSvc(h HashServicePort)                 { s.hashSvc = h }
+func (s *Service) SetTempFiles(t TempFileManagerPort)           { s.tempFiles = t }
+func (s *Service) SetClipStore(c ClipStorePort)                 { s.clips = c }
+func (s *Service) SetMonitorsStore(m MonitorsStorePort)         { s.monitors = m }
+func (s *Service) SetCacheStore(c YouTubeCacheStorePort)        { s.cacheStore = c }
+func (s *Service) SetIndexer(i ClipIndexerPort)                 { s.indexer = i }
+func (s *Service) SetFolderMemory(f FolderMemoryPort)           { s.folderMemory = f }
+func (s *Service) SetOllamaClient(o OllamaClientPort)           { s.ollamaClient = o }
+func (s *Service) SetDispatcher(d DispatcherPort)               { s.disp = d }
+func (s *Service) SetDriveClient(d DriveClientPort)             { s.driveClient = d }
+func (s *Service) SetClassifier(c CategoryClassifierPort)       { s.classifier = c }
+
 func (s *Service) SetAssetRepos(assetProc asset.ProcessingRepository, assetVer asset.VersionRepository) {
 	s.assetProcessing = assetProc
 	s.assetVersions = assetVer
 }
 
-// SetDispatcher injects the canonical outbox_events dispatcher.
-// Called once during composition root, before any HTTP handler is
-// registered. A nil dispatcher (legacy partial wiring) is tolerated at
-// runtime so enrichment/segment fall back to the legacy indexer path —
-// but production should always pass a non-nil dispatcher to keep the
-// ingestion crash-safe under crashes between clip write and Qdrant upsert.
-//
-// The setter is intentionally NOT safe for mid-flight replacement: the
-// invariant "the same dispatcher is used for the whole ingestion session"
-// is held by WireServices compositing both ends of the dependency.
-func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
-	s.dispatcher = d
-}
-
-// SetAssetRepo injects the canonical Repository. Mirrors
-// SetDispatcher semantics: late-bound once during composition root, idempotent,
-// nil-safe (legacy callers fall through to dispatcher / clipsRepo paths).
-// When wired, dispatchOrIndex prefers assetRepo over dispatcher so the
-// canonical SQL upsert writes both legacy + canonical columns + outbox row
-// in a single transaction.
 func (s *Service) SetAssetRepo(r asset.Repository) {
 	s.assetRepo = r
 }
 
-// dispatchOrIndex writes clip metadata via the canonical pipeline. The
-// preference order is fully explicit so callers reading the function can
-// reason about which path is active:
-//
-//  1. assetRepo wired (PR12b): convert via toAssetDomain and call
-//     assetrepo.Upsert. Writes legacy + canonical columns in one row, emits
-//     the asset.upserted outbox event in the same transaction, and DOES NOT
-//     touch the legacy indexer (the fresh-media Qdrant side-effect is now
-//     owned by outboxhandlers reading the event).
-//
-//  2. dispatcher wired (PR3-5b.4): EnqueueAndIndex does UpsertClip +
-//     IndexClip atomically through the outbox_events. The carry-over from
-//     before PR12b.
-//
-//  3. legacy fallback: clipsRepo.Upsert. No outbox, no Qdrant side-effect.
-//     Only reached when neither assetRepo nor dispatcher is wired (which is
-//     the case for tests that don't construct the full composition root).
-//
-// Used by enrichment.go + segment.go so both call sites share the same
-// crash-safety contract.
+// ── Legacy compatibility — kept during incremental migration ──────────
+
 func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.Asset, hash string) error {
 	if s.assetRepo != nil {
 		return s.assetRepo.Upsert(ctx, clip)
 	}
-	if s.dispatcher != nil {
-		return s.dispatcher.EnqueueAndIndex(ctx, clip, hash)
+	if s.disp != nil {
+		return s.disp.EnqueueAndIndex(ctx, clip, hash)
 	}
-	if s.clipsRepo == nil {
+	if s.clips == nil {
 		return nil
 	}
-	return s.clipsRepo.Upsert(ctx, clip)
+	return s.clips.Upsert(ctx, clip)
 }
 
-// RegisterHandler registers this service as a handler for youtube_clip.extract jobs
-// and youtube.rebuild_search_text jobs.
-// RegisterHandler registers this service as a handler for youtube_clip.extract jobs
-// and youtube.rebuild_search_text jobs.
-//
-// PR build-fix: `jobservice.Service` was a typo (opaque alias pointing at the
-// domain/job Job entity package). The Service struct lives in
-// internal/application/jobs (the canonical pattern replicated from
-// internal/infrastructure/jobs/local/broker.go), accessed via the `jobtools`
-// alias to keep the package internal to applications/jobs signal-bag (JobTools,
-// HandlerFunc, Service, Registry, ...). JobType constants stay under
-// `jobservice` since the canonical SSOT lives in internal/domain/job/job.go.
 func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 	if jobsSvc != nil {
-		// PR build-fix: domain/job declares the SSOT constants as
-		// Type* (TypeYouTubeClipExtract, TypeYouTubeRebuildST), not
-		// JobType*. The previous `jobservice.JobTypeYouTube*` was
-		// undefined and blocked the package build.
 		jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, s.HandleJob)
 		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobservice.TypeYouTubeClipExtract))
 
@@ -189,39 +150,59 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 	}
 }
 
-// GetOrCreateChannelFolder creates (or finds) a per-channel subfolder on Drive
-// inside the given parent folder. Used by the channel monitor to organize clips
-// into per-channel folders (e.g. "Comedy Root/ziwe/", "Comedy Root/TeamCoco/").
 func (s *Service) GetOrCreateChannelFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
-	if s.driveClient == nil {
-		return parentFolderID, nil // no Drive client, return parent
+	if s.driveFolderMgr != nil {
+		folderID, err := s.driveFolderMgr.GetOrCreateFolder(ctx, channelName, parentFolderID)
+		if err != nil {
+			return parentFolderID, fmt.Errorf("failed to get/create channel folder %q: %w", channelName, err)
+		}
+		s.log.Info("channel folder resolved",
+			zap.String("channel", channelName),
+			zap.String("folder_id", folderID),
+			zap.String("parent", parentFolderID))
+		return folderID, nil
 	}
-	uploader := &drive.Uploader{
-		Service: s.driveClient,
-		Log:     s.log,
+	if s.driveClient != nil {
+		folderID, err := s.driveClient.GetOrCreateChannelFolder(ctx, channelName, parentFolderID)
+		if err != nil {
+			return parentFolderID, fmt.Errorf("failed to get/create channel folder %q: %w", channelName, err)
+		}
+		s.log.Info("channel folder resolved",
+			zap.String("channel", channelName),
+			zap.String("folder_id", folderID),
+			zap.String("parent", parentFolderID))
+		return folderID, nil
 	}
-	folderID, err := uploader.GetOrCreateFolder(ctx, channelName, parentFolderID)
-	if err != nil {
-		return parentFolderID, fmt.Errorf("failed to get/create channel folder %q: %w", channelName, err)
-	}
-	s.log.Info("channel folder resolved",
-		zap.String("channel", channelName),
-		zap.String("folder_id", folderID),
-		zap.String("parent", parentFolderID))
-	return folderID, nil
+	return parentFolderID, nil
 }
 
-// DownloadAndCut delegates to the video pipeline for YouTube download +
-// segment extraction. Exposed so the providers/youtube adapter can route
-// Fetch calls through the canonical service instead of bypassing it.
-func (s *Service) DownloadAndCut(ctx context.Context, req videomuscles.YouTubeCutRequest) (*videomuscles.YouTubeCutResult, error) {
+func (s *Service) DownloadAndCut(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error) {
 	if s.videoPipeline == nil {
 		return nil, fmt.Errorf("youtube: video pipeline not wired")
 	}
 	return s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, req)
 }
 
-// Config returns the service configuration. Used by diagnostics endpoint.
 func (s *Service) Config() *config.Config {
 	return s.cfg
+}
+
+// md5String computes an MD5 hex string using the hashSvc port when wired,
+// falling back to a simple local implementation for backward compatibility.
+func (s *Service) md5String(data string) string {
+	if s.hashSvc != nil {
+		return s.hashSvc.MD5String(data)
+	}
+	return fallbackMD5String(data)
+}
+
+// md5File computes an MD5 hex string of a file's contents.
+func (s *Service) md5File(path string) string {
+	if s.hashSvc != nil {
+		h, err := s.hashSvc.MD5File(path)
+		if err == nil {
+			return h
+		}
+	}
+	return fallbackMD5File(path)
 }

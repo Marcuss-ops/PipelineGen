@@ -2,29 +2,23 @@ package youtube
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )
 
-// GetVideoInfo retrieves full metadata for a YouTube video without downloading it
+// GetVideoInfo retrieves full metadata for a YouTube video without downloading it.
+// Uses SearchRunnerPort when wired; falls back to legacy os/exec when not.
 func (s *Service) GetVideoInfo(ctx context.Context, videoURL string) (*VideoMetadata, error) {
 	if videoURL == "" {
 		return nil, fmt.Errorf("url is required")
 	}
 
-	if err := security.ValidateDownloadURL(videoURL); err != nil {
-		return nil, err
+	videoID := ""
+	if id, err := extractVideoIDFromURL(videoURL); err == nil {
+		videoID = id
 	}
-
-	videoID, _ := urlutil.ExtractVideoID(videoURL)
 
 	// 1. Check L1 Cache
 	if videoID != "" {
@@ -42,114 +36,85 @@ func (s *Service) GetVideoInfo(ctx context.Context, videoURL string) (*VideoMeta
 	if videoID != "" {
 		if cached, ok := s.getCachedVideoMetadata(ctx, videoID); ok {
 			s.log.Info("Serving YouTube video metadata from L2 SQLite cache", zap.String("videoID", videoID))
-			// Populate L1 cache
-			s.metadataL1.Store(videoID, metadataL1Entry{
-				Metadata: cached,
-				AddedAt:  time.Now(),
-			})
+			s.metadataL1.Store(videoID, metadataL1Entry{Metadata: cached, AddedAt: time.Now()})
 			return cached, nil
 		}
 	}
 
 	s.log.Info("Retrieving YouTube video info", zap.String("url", videoURL))
 
-	ytdlpPath := s.cfg.External.ResolvedYtdlpPath()
-
-	args := []string{
-		videoURL,
-		"--dump-json",
-		"--no-playlist",
-		"--no-warnings",
+	// Delegate to the port (infrastructure layer)
+	if s.searchRunner == nil {
+		return nil, fmt.Errorf("youtube: search runner not wired")
 	}
 
-	// JS runtime for signature solving (YouTube's n-challenge / SABR enforcement)
-	if s.cfg.External.YouTubeJSRuntimePath != "" {
-		args = append(args, "--js-runtime", s.cfg.External.YouTubeJSRuntimePath)
+	info, err := s.searchRunner.GetVideoInfo(ctx, videoURL)
+	if err != nil {
+		return nil, err
 	}
 
-	// Use android+web player clients for faster extraction.
-	// Do NOT pass cookies by default — they disable the android client,
-	// falling back to web-only extraction that may fail n-challenge solving.
-	args = append(args, "--extractor-args", "youtube:player_client=android,web")
-
-	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		s.log.Error("yt-dlp info failed", zap.Error(err), zap.String("stderr", stderr.String()))
-		return nil, fmt.Errorf("failed to get video info: %w", err)
-	}
-
-	var raw struct {
-		ID          string  `json:"id"`
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		Duration    float64 `json:"duration"`
-		Uploader    string  `json:"uploader"`
-		UploadDate  string  `json:"upload_date"`
-		ViewCount   int64   `json:"view_count"`
-		Thumbnails  []struct {
-			URL    string `json:"url"`
-			Width  int    `json:"width"`
-			Height int    `json:"height"`
-		} `json:"thumbnails"`
-		Chapters []struct {
-			Title     string  `json:"title"`
-			StartTime float64 `json:"start_time"`
-			EndTime   float64 `json:"end_time"`
-		} `json:"chapters"`
-		Categories []string `json:"categories"`
-		Tags       []string `json:"tags"`
-	}
-
-	if err := json.Unmarshal([]byte(stdout.String()), &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse video info: %w", err)
-	}
-
+	// Convert port DTO to application-layer type
 	metadata := &VideoMetadata{
-		ID:          raw.ID,
+		ID:          info.ID,
 		URL:         videoURL,
-		Title:       raw.Title,
-		Description: raw.Description,
-		Duration:    raw.Duration,
-		Uploader:    raw.Uploader,
-		UploadDate:  raw.UploadDate,
-		ViewCount:   raw.ViewCount,
-		Categories:  raw.Categories,
-		Tags:        raw.Tags,
+		Title:       info.Title,
+		Description: info.Description,
+		Duration:    info.Duration,
+		Uploader:    info.Uploader,
+		UploadDate:  info.UploadDate,
+		ViewCount:   info.ViewCount,
+		Categories:  info.Categories,
+		Tags:        info.Tags,
 	}
 
-	// Process thumbnails
-	if len(raw.Thumbnails) > 0 {
-		metadata.ThumbnailURL = raw.Thumbnails[len(raw.Thumbnails)-1].URL
-		for _, t := range raw.Thumbnails {
-			metadata.Thumbnails = append(metadata.Thumbnails, VideoThumbnail{
-				URL:    t.URL,
-				Width:  t.Width,
-				Height: t.Height,
-			})
-		}
+	for _, t := range info.Thumbnails {
+		metadata.Thumbnails = append(metadata.Thumbnails, VideoThumbnail{
+			URL: t.URL, Width: t.Width, Height: t.Height,
+		})
 	}
-
-	// Process chapters
-	for _, c := range raw.Chapters {
+	if len(info.Thumbnails) > 0 {
+		metadata.ThumbnailURL = info.Thumbnails[len(info.Thumbnails)-1].URL
+	}
+	for _, c := range info.Chapters {
 		metadata.Chapters = append(metadata.Chapters, VideoChapter{
-			Title:     c.Title,
-			StartTime: c.StartTime,
-			EndTime:   c.EndTime,
+			Title: c.Title, StartTime: c.StartTime, EndTime: c.EndTime,
 		})
 	}
 
-	// Cache the video metadata in L1 and L2
-	if raw.ID != "" {
-		s.setCachedVideoMetadata(ctx, raw.ID, metadata)
-		s.metadataL1.Store(raw.ID, metadataL1Entry{
-			Metadata: metadata,
-			AddedAt:  time.Now(),
-		})
+	// Cache the video metadata
+	if info.ID != "" {
+		s.setCachedVideoMetadata(ctx, info.ID, metadata)
+		s.metadataL1.Store(info.ID, metadataL1Entry{Metadata: metadata, AddedAt: time.Now()})
 	}
 
 	return metadata, nil
+}
+
+// extractVideoIDFromURL extracts the YouTube video ID from a URL.
+func extractVideoIDFromURL(url string) (string, error) {
+	if url == "" {
+		return "", fmt.Errorf("empty URL")
+	}
+	// Simple extraction for common formats
+	for _, prefix := range []string{"https://www.youtube.com/watch?v=", "http://www.youtube.com/watch?v=", "https://youtube.com/watch?v="} {
+		if len(url) > len(prefix) && url[:len(prefix)] == prefix {
+			id := url[len(prefix):]
+			if idx := indexOf(id, '&'); idx >= 0 {
+				id = id[:idx]
+			}
+			if id != "" {
+				return id, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("could not extract video ID from URL")
+}
+
+func indexOf(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }

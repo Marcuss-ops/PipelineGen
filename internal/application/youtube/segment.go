@@ -2,10 +2,8 @@ package youtube
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,9 +12,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -31,9 +26,6 @@ var _ = fileSizeFromPath
 // processSegment processes a single segment: validates timestamps, checks cache,
 // downloads via video pipeline (or cuts from pre-downloaded file), runs lifecycle,
 // and enriches with YouTube metadata.
-// preDownloadedPath is optional — when set, skips yt-dlp and cuts locally (instant).
-// Returns the processed item. Caller is responsible for updating resp.Items, resp.Stats,
-// and manifest.Clips based on the returned item.
 func (s *Service) processSegment(
 	ctx context.Context,
 	seg Segment,
@@ -46,7 +38,6 @@ func (s *Service) processSegment(
 	i int,
 	preDownloadedPath string,
 ) ExtractItem {
-	// Validate timestamps
 	item := ExtractItem{
 		Name:            cleanClipName(textutil.SafeName(seg.Name)),
 		Start:           strings.TrimSpace(seg.Start),
@@ -59,15 +50,13 @@ func (s *Service) processSegment(
 	if item.Name == "" {
 		item.Name = fmt.Sprintf("segment_%03d", i+1)
 	}
-	// Temporary placeholder — overwritten with unique name after timestamp parsing
 	item.Filename = item.Name + ".mp4"
 
-	if err := security.SanitizeTimestamp(item.Start); err != nil {
+	if err := sanitizeTimestamp(item.Start); err != nil {
 		item.Error = "invalid start timestamp: " + err.Error()
 		return item
 	}
-
-	if err := security.SanitizeTimestamp(item.End); err != nil {
+	if err := sanitizeTimestamp(item.End); err != nil {
 		item.Error = "invalid end timestamp: " + err.Error()
 		return item
 	}
@@ -96,9 +85,7 @@ func (s *Service) processSegment(
 		return item
 	}
 
-	// Build deterministic unique filename AFTER timestamps are parsed
 	item.Filename = buildClipFilename(videoID, startSec, endSec, item.Name)
-
 	item.Status = "running"
 	clipID := item.ID
 
@@ -115,32 +102,28 @@ func (s *Service) processSegment(
 	}
 	outDir := filepath.Join(s.cfg.Storage.DataDir, "media", "clips", group, folderSlug)
 
-	// Strategy-aware fast path: check cache for existing clips (skip/verify)
 	if s.checkExistingClip(ctx, req, clipID, &item, outDir) {
-		// Try to enrich skipped clips with YouTube metadata if missing
 		s.enrichSkippedClip(ctx, clipID, req.URL, videoID)
 		return item
 	}
 
-	// Download and cut using FFmpeg
 	s.log.Info("calling video pipeline for segment",
 		zap.String("clip_id", clipID),
 		zap.Int("start_sec", startSec),
 		zap.Int("duration_sec", duration))
 
 	shouldNormalize := req.Normalize == nil || *req.Normalize
-	// Default to keeping audio — ffmpeg strips it when KeepAudio=false
 	keepAudio := true
 	if req.KeepAudio {
 		keepAudio = true
 	}
 
-	cutReq := videomuscles.YouTubeCutRequest{
+	cutReq := VideoCutRequest{
 		URL:               resp.SourceURL,
 		VideoID:           videoID,
 		Start:             float64(startSec),
 		Duration:          float64(duration),
-		OutputName:        strings.TrimSuffix(item.Filename, ".mp4"), // strip .mp4 for output
+		OutputName:        strings.TrimSuffix(item.Filename, ".mp4"),
 		ForceKeyframes:    req.ForceKeyframes,
 		KeepAudio:         keepAudio,
 		Normalize:         shouldNormalize,
@@ -149,7 +132,6 @@ func (s *Service) processSegment(
 		PreDownloadedPath: preDownloadedPath,
 	}
 
-	// Track asset lifecycle: mark download_and_cut step as running.
 	if s.assetProcessing != nil {
 		if err := s.assetProcessing.Start(ctx, clipID, "download_and_cut"); err != nil {
 			s.log.Warn("asset_processing.Start failed",
@@ -158,9 +140,8 @@ func (s *Service) processSegment(
 		}
 	}
 
-	var result *videomuscles.YouTubeCutResult
+	var result *VideoCutResult
 	err = retry.Do(ctx, func() error {
-		// Clean partial files before retry
 		candidatePath := filepath.Join(outDir, item.Filename)
 		os.Remove(candidatePath)
 
@@ -172,7 +153,6 @@ func (s *Service) processSegment(
 		IsRetryable: isTransientDownloadError,
 	})
 	if err != nil {
-		// Track asset lifecycle: mark download_and_cut step as failed.
 		if s.assetProcessing != nil {
 			if fErr := s.assetProcessing.Fail(ctx, clipID, "download_and_cut", err.Error()); fErr != nil {
 				s.log.Warn("asset_processing.Fail failed",
@@ -188,7 +168,6 @@ func (s *Service) processSegment(
 		return item
 	}
 
-	// Track asset lifecycle: mark download_and_cut step as completed.
 	if s.assetProcessing != nil {
 		if err := s.assetProcessing.Complete(ctx, clipID, "download_and_cut"); err != nil {
 			s.log.Warn("asset_processing.Complete failed",
@@ -197,9 +176,9 @@ func (s *Service) processSegment(
 		}
 	}
 
-	// Track asset version: create version record for the processed file.
+	// Track asset version
 	if s.assetVersions != nil && result.LocalPath != "" {
-		versionHash, _ := hashutil.MD5File(result.LocalPath)
+		versionHash := s.md5File(result.LocalPath)
 		fileSize := fileSizeFromPath(result.LocalPath)
 		if versionHash != "" {
 			v := &asset.Version{
@@ -222,7 +201,7 @@ func (s *Service) processSegment(
 		zap.String("clip_id", clipID),
 		zap.String("local_path", localPath))
 
-	fileHash, _ := hashutil.MD5File(localPath)
+	fileHash := s.md5File(localPath)
 	item.FileHash = fileHash
 	item.LocalPath = localPath
 	if localPath != "" {
@@ -233,22 +212,19 @@ func (s *Service) processSegment(
 	if err := s.sliceSubtitles(ctx, videoID, startSec, endSec, localPath); err != nil {
 		s.log.Warn("Failed to slice official subtitles, falling back to Whisper", zap.String("clip_id", clipID), zap.Error(err))
 
-		// Whisper fallback
-		s.log.Info("Running Whisper transcription fallback", zap.String("clip_id", clipID))
-		scriptPath := "scripts/tools/transcribe_detect_lang.py"
-		cmd := exec.CommandContext(ctx, "python3", scriptPath, localPath, "--model", "base", "--transcribe", "--json-only")
-		out, err := cmd.Output()
-		if err == nil {
-			var whisperResult struct {
-				Transcript string `json:"transcript"`
-			}
-			if json.Unmarshal(out, &whisperResult) == nil && whisperResult.Transcript != "" {
+		// Whisper fallback — delegated to the port
+		if s.whisper != nil {
+			s.log.Info("Running Whisper transcription fallback", zap.String("clip_id", clipID))
+			transcript, wErr := s.whisper.TranscribeAudio(ctx, localPath)
+			if wErr == nil && transcript != "" {
 				txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
-				_ = os.WriteFile(txtPath, []byte(whisperResult.Transcript), 0644)
+				_ = os.WriteFile(txtPath, []byte(transcript), 0644)
 				s.log.Info("Successfully transcribed clip via Whisper fallback", zap.String("path", txtPath))
+			} else {
+				s.log.Warn("Whisper fallback transcription failed", zap.Error(wErr))
 			}
 		} else {
-			s.log.Warn("Whisper fallback transcription failed", zap.Error(err))
+			s.log.Warn("Whisper fallback not available (port not wired)")
 		}
 	}
 
@@ -257,7 +233,6 @@ func (s *Service) processSegment(
 		startSec, endSec, duration, folderSlug, shouldNormalize, req.KeepAudio,
 		driveFolderID, resolvedPath, fileHash, req.Destination, result.Metadata, &seg)
 
-	// Process via LifecycleService (dedupe + upload + persist) or fallback
 	s.log.Info("starting lifecycle processing for segment",
 		zap.String("clip_id", clipID),
 		zap.Bool("has_drive", driveFolderID != ""))
@@ -267,25 +242,13 @@ func (s *Service) processSegment(
 		zap.String("status", item.Status),
 		zap.String("drive_link", item.DriveLink))
 
-	// Enrich clip with YouTube metadata (title, description, tags, language) AFTER lifecycle
-	// so the clip is already in DB. This provides rich search_text for semantic search.
 	s.log.Info("starting metadata enrichment for segment",
 		zap.String("clip_id", clipID))
 	s.enrichYouTubeClipWithMetadata(ctx, clipID, result, false)
 	s.log.Info("segment metadata enrichment completed",
 		zap.String("clip_id", clipID))
 
-	// Generate embeddings (semantic + transcript) immediately after the clip is in DB.
-	// This ensures every new clip has dual vectors for hybrid search.
-	// The transcript .txt file (from VTT or Whisper fallback) must already exist on disk.
-	//
-	// On the dispatcher path, dispatchOrIndex (called by enrichment above)
-	// already wrote media_assets + outbox atomically — the worker will
-	// re-index asynchronously. The synchronous inline IndexClip here is
-	// only needed as a best-effort fallback for the legacy path (no
-	// dispatcher); it would otherwise re-index redundantly and slow the
-	// hot path.
-	if s.dispatcher == nil && s.indexer != nil {
+	if s.disp == nil && s.indexer != nil {
 		s.log.Info("starting embedding indexing for segment",
 			zap.String("clip_id", clipID))
 		indexCtx, indexCancel := context.WithTimeout(ctx, 30*time.Second)
@@ -306,11 +269,9 @@ func (s *Service) processSegment(
 		zap.Int("duration_sec", duration),
 		zap.String("filename", item.Filename))
 
-	// Note: manifest update is done by the caller (Extract) to handle parallel processing safely
 	return item
 }
 
-// processLifecycle handles the lifecycle processing (dedupe + upload + persist) or falls back.
 func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.FinalizeInput, localPath, fileHash string, item *ExtractItem) {
 	if s.lifecycleService == nil {
 		item.LocalPath = localPath
@@ -340,17 +301,33 @@ func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.Fina
 	item.Status = "processed"
 }
 
-// buildClipFilename creates a deterministic, unique filename for a YouTube clip.
-// Format: yt_{videoID}_{startSec}_{endSec}_{slug}.mp4
-// This ensures every clip has a unique file on Drive regardless of segment name collisions.
 func buildClipFilename(videoID string, startSec, endSec int, name string) string {
 	slug := textutil.SlugifyWithMax(name, 40)
 	if slug == "" {
 		slug = "clip"
 	}
-	// Ensure the slug doesn't start with a number (Drive naming convention)
 	if slug[0] >= '0' && slug[0] <= '9' {
 		slug = "c_" + slug
 	}
 	return fmt.Sprintf("yt_%s_%d_%d_%s.mp4", videoID, startSec, endSec, slug)
+}
+
+// sanitizeTimestamp validates a timestamp string format (SS, MM:SS, or HH:MM:SS).
+func sanitizeTimestamp(ts string) error {
+	ts = strings.TrimSpace(ts)
+	if ts == "" {
+		return fmt.Errorf("timestamp is required")
+	}
+	parts := strings.Split(ts, ":")
+	if len(parts) > 3 {
+		return fmt.Errorf("invalid timestamp format: %s", ts)
+	}
+	for _, p := range parts {
+		for _, c := range p {
+			if c < '0' || c > '9' {
+				return fmt.Errorf("invalid timestamp: %s", ts)
+			}
+		}
+	}
+	return nil
 }
