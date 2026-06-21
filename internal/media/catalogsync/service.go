@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 type Target struct {

@@ -13,8 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // DeletionService handles synchronized deletion between database and cloud drive.

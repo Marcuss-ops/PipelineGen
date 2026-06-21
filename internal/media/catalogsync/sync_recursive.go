@@ -10,8 +10,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"

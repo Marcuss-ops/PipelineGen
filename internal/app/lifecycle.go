@@ -24,7 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 

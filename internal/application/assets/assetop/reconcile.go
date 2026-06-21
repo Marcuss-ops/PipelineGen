@@ -3,8 +3,8 @@ package assetop
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveupload "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveupload "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveapi "google.golang.org/api/drive/v3"
 )
 

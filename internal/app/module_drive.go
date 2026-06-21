@@ -5,7 +5,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 )
 

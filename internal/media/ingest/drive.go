@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 func (s *Service) resolveDriveFolder(ctx context.Context, kind Kind, rootFolderID string, req *Request) (string, string, error) {
