@@ -321,9 +321,11 @@ var (
 //
 // Regex used: `(?m)^\s*go\s+(\w|func\()` matches both bare `go <ident>`
 // statements and `go func() { ... }()` literal expressions but does NOT
-// match `goto <label>` (no space after `go`).
-var goStmtRegex = regexp.MustCompile(`(?m)^\s*go\s+(?:\w|func\()`)
-
+// match `goto <label>` (no space after `go`). The regex is declared
+// alongside buildFuncRegex in the var (...) block above; the lone
+// `var goStmtRegex = ...` was the original declaration and was removed
+// when this section was restructured for cross-file enumeration.
+//
 // TestComposition_NoGoroutinesSpawned_FrozenSiteCount asserts the freeze
 // semantics described above by scanning ALL non-test .go files in
 // internal/app/ via buildFuncRegex. This way the test is robust to
@@ -459,6 +461,14 @@ func countGoroutineSpawns(name, text string) int {
 	goCount := len(goStmtRegex.FindAllString(body, -1))
 	safeGoCount := strings.Count(body, "concurrent.SafeGo(")
 	return goCount + safeGoCount
+}
+
+// readSourceSilent reads a file relative to the project root and
+// silently swallows errors — used in goroutine-counting tests that
+// surface a drift signal via the count itself rather than a panic.
+func readSourceSilent(relPath string) string {
+	b, _ := os.ReadFile(relPath)
+	return string(b)
 }
 
 // findNextTopLevelFuncEnd returns the byte index right after the
