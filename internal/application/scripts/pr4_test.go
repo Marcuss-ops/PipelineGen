@@ -94,15 +94,16 @@ func TestBuildSourceText_ContainsOutputContract(t *testing.T) {
 	src := b.BuildSourceText(pack, plan, opts)
 
 	// The OUTPUT CONTRACT section must be present, before the CLIP EVIDENCE.
-	if !strings.Contains(src, "=== OUTPUT CONTRACT ===") {
+	// The actual header includes "MANDATORY SCENE MARKERS" (PR5 tightened language).
+	if !strings.Contains(src, "=== OUTPUT CONTRACT") {
 		t.Errorf("prompt missing OUTPUT CONTRACT section")
 	}
-	if !strings.Contains(src, "[Clip: clip_id]") {
-		t.Errorf("OUTPUT CONTRACT missing the literal [Clip: clip_id] format example")
+	if !strings.Contains(src, "[Clip: <clip_id>]") {
+		t.Errorf("OUTPUT CONTRACT missing the literal [Clip: <clip_id>] format example")
 	}
 	// Order: STRUCTURAL STRATEGY → OUTPUT CONTRACT → NON-NEGOTIABLE RULES
 	idxStrategy := strings.Index(src, "=== STRUCTURAL STRATEGY ===")
-	idxContract := strings.Index(src, "=== OUTPUT CONTRACT ===")
+	idxContract := strings.Index(src, "=== OUTPUT CONTRACT")
 	idxRules := strings.Index(src, "=== NON-NEGOTIABLE RULES ===")
 	idxEvidence := strings.Index(src, "=== CLIP EVIDENCE ===")
 	if !(idxStrategy < idxContract && idxContract < idxRules && idxRules < idxEvidence) {
@@ -127,7 +128,9 @@ func TestBuildSourceText_OutputContractMentionsNarrationWhenAllowed(t *testing.T
 	}
 	b := &ClipSourceBuilder{}
 	src := b.BuildSourceText(pack, plan, opts)
-	if !strings.Contains(src, "[Narration: opening]") {
+	// The production code writes "[Narration: opening|closing|intro|outro|transition]"
+	// — the trailing ] is after the full list, so we check for the prefix only.
+	if !strings.Contains(src, "[Narration: opening") {
 		t.Errorf("story mode prompt should mention [Narration: opening] in OUTPUT CONTRACT")
 	}
 }

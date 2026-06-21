@@ -70,9 +70,7 @@ func (b *ClipSourceBuilder) buildEvidence(asset *asset.Asset, opts *ClipGenerati
 	}
 
 	// Quality score
-	if v := asset.GetMetadataString("quality_score"); v != "" {
-		fmt.Sscanf(v, "%f", &ev.QualityScore)
-	}
+	ev.QualityScore = asset.QualityScore()
 
 	// Transcript (for evidence chunks, we store a simple version)
 	transcript := asset.GetMetadataString("clean_transcript")

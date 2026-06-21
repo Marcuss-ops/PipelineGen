@@ -68,8 +68,22 @@ func BuildClipScenes(script string, pack *ClipSourcePack) []ClipScene {
 // This function is the post-process fallback promised by BuildSourceText's
 // OUTPUT CONTRACT for when small models don't reliably emit [Clip: ...] markers.
 func BuildScenesWithMarkers(script string, pack *ClipSourcePack) []ClipScene {
-	parsed := ParseScenes(script)
 	realClips := pack.Clips
+
+	// No real clips at all — every paragraph becomes a narration scene
+	// via the same heuristic used in BuildClipScenes.
+	if len(realClips) == 0 {
+		paragraphs := []string{}
+		for _, p := range strings.Split(strings.TrimSpace(script), "\n\n") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				paragraphs = append(paragraphs, p)
+			}
+		}
+		return buildScenesFromParagraphs(paragraphs, nil)
+	}
+
+	parsed := ParseScenes(script)
 
 	// Collect which clip IDs the LLM actually emitted (in order)
 	clipIDOrder := make([]string, 0, len(realClips))
@@ -118,9 +132,11 @@ func BuildScenesWithMarkers(script string, pack *ClipSourcePack) []ClipScene {
 				NarrationRole: p.NarrationRole,
 			})
 		case "preamble":
-			// Preamble (text before the first marker) becomes an intro narration
-			// scene so its content isn't lost.
-			if strings.TrimSpace(p.Text) != "" {
+			// Preamble (text before the first marker) is only promoted to a
+			// narration scene when there are no real clips to distribute it
+			// across. When clips exist, the preamble text will be round-robined
+			// into the orphan-clip distribution later.
+			if strings.TrimSpace(p.Text) != "" && len(realClips) == 0 {
 				precise = append(precise, ClipScene{
 					Text:          p.Text,
 					Kind:          "narration",
