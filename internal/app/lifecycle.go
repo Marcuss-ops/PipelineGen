@@ -22,7 +22,7 @@ import (
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
