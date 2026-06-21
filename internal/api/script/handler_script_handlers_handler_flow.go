@@ -57,7 +57,31 @@ type AutoHarvestService interface {
 	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
-func NewScriptFlowHandler(gen *ollama.Generator, engine *scripts.Engine, imgSvc *images.Service, realtimeSvc *realtime.Service, assocSvc *association.Service, voSvc *voiceover.Service, assetTreeSvc *assettree.Service, docClient drive.DocClient, driveUploader *drive.Uploader, jobsSvc *jobservice.Service, scriptsRepo scripts.ScriptRepository, memorySvc *gemmamemory.Service, driveFolderID string, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
+// NewScriptFlowHandler constructs the canonical script-flow handler.
+//
+// PR4-H (June 2026): the SetBatchService + SetCurationService
+// post-construction setters have been removed in Commit 5 — batch +
+// curation services are now constructor-injected. The ctor grows from 15
+// to 17 args to accommodate them.
+func NewScriptFlowHandler(
+	gen *ollama.Generator,
+	engine *scripts.Engine,
+	imgSvc *images.Service,
+	realtimeSvc *realtime.Service,
+	assocSvc *association.Service,
+	voSvc *voiceover.Service,
+	assetTreeSvc *assettree.Service,
+	docClient drive.DocClient,
+	driveUploader *drive.Uploader,
+	jobsSvc *jobservice.Service,
+	scriptsRepo scripts.ScriptRepository,
+	memorySvc *gemmamemory.Service,
+	driveFolderID string,
+	cfg *config.Config,
+	log *zap.Logger,
+	batchSvc *scripts.BatchService,
+	curationSvc *scripts.CurationService,
+) *ScriptFlowHandler {
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
 		metaModel = mm
@@ -103,24 +127,26 @@ func NewScriptFlowHandler(gen *ollama.Generator, engine *scripts.Engine, imgSvc 
 	}
 
 	h := &ScriptFlowHandler{
-		generator:      gen,
-		engine:         engine,
-		imgService:     imgSvc,
-		realtimeSvc:    realtimeSvc,
-		associationSvc: assocSvc,
-		voService:      voSvc,
-		assetTreeSvc:   assetTreeSvc,
-		groupsResolver: groupsResolver,
-		docClient:      docClient,
-		driveUploader:  driveUploader,
-		jobsSvc:        jobsSvc,
-		scriptsRepo:    scriptsRepo,
-		memorySvc:      memorySvc,
-		driveFolderID:  driveFolderID,
-		cfg:            cfg,
-		log:            log,
-		metadataModel:  metaModel,
-		clipServices:   clipSvc,
+		generator:       gen,
+		engine:          engine,
+		batchService:    batchSvc,
+		curationService: curationSvc,
+		imgService:      imgSvc,
+		realtimeSvc:     realtimeSvc,
+		associationSvc:  assocSvc,
+		voService:       voSvc,
+		assetTreeSvc:    assetTreeSvc,
+		groupsResolver:  groupsResolver,
+		docClient:       docClient,
+		driveUploader:   driveUploader,
+		jobsSvc:         jobsSvc,
+		scriptsRepo:     scriptsRepo,
+		memorySvc:       memorySvc,
+		driveFolderID:   driveFolderID,
+		cfg:             cfg,
+		log:             log,
+		metadataModel:   metaModel,
+		clipServices:    clipSvc,
 		insightBuilder: &ScriptInsightBuilder{
 			Logger:      log,
 			MaxEntities: maxEntities,
@@ -173,16 +199,6 @@ func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scripts.SourceTextResol
 func (h *ScriptFlowHandler) SetHarvestService(svc AutoHarvestService) {
 	h.harvestSvc = svc
 	h.clipServices.HarvestSvc = svc
-}
-
-// SetBatchService sets the batch generation service.
-func (h *ScriptFlowHandler) SetBatchService(svc *scripts.BatchService) {
-	h.batchService = svc
-}
-
-// SetCurationService sets the curation (catalog + curate) service.
-func (h *ScriptFlowHandler) SetCurationService(svc *scripts.CurationService) {
-	h.curationService = svc
 }
 
 // SetCurationClipSourceBuilder wires the ClipSourceBuilder into the curation service.

@@ -125,11 +125,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		memorySvc := gemmamemory.NewService(memoryRepo, log)
 		scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 		engine := scriptcore.NewEngine(root.AI.ScriptGen, memorySvc, scriptsRepoAdapter, log)
-		handler := scriptapi.NewScriptFlowHandler(root.AI.ScriptGen, engine, root.Domains.ImageService, root.Domains.RealtimeService, root.Domains.AssocService, root.Domains.VoiceoverService, root.Search.AssetTreeService, root.Drive.DocClient, root.Drive.DriveUploader, root.Jobs.Facade, scriptsRepoAdapter, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log)
 		batchSvc := scripts.NewBatchService(cfg, log, root.AI.ScriptGen, engine, root.Drive.DocClient, root.Domains.VoiceoverService, scriptsRepoAdapter)
-		handler.SetBatchService(batchSvc)
 		curationSvc := scripts.NewCurationService(nil, root.Jobs.Service, log)
-		handler.SetCurationService(curationSvc)
+		handler := scriptapi.NewScriptFlowHandler(root.AI.ScriptGen, engine, root.Domains.ImageService, root.Domains.RealtimeService, root.Domains.AssocService, root.Domains.VoiceoverService, root.Search.AssetTreeService, root.Drive.DocClient, root.Drive.DriveUploader, root.Jobs.Facade, scriptsRepoAdapter, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log, batchSvc, curationSvc)
 		wireScriptFlowExtras(handler, root.AI.ScriptGen.GetClient(), root.Process.VectorSvc, root.Repos.ClipsRepo, engine, cfg, log)
 		// PR4d-chunk2: construct harvest service locally (mail-box elimination):
 		// clipresolver.Service doesn't implement script.AutoHarvestService, so we
