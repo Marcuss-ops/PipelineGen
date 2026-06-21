@@ -555,6 +555,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		process.MediaProcessor,
 		videoPipelineAdapter, youtubeLifecycle,
 		drive.DestResolver,
+		repos.Assets.ProcessingRepository(),
+		repos.Assets.VersionRepository(),
 	)
 
 	// Wire PR1 port-based dependencies into the youtube service.
@@ -858,11 +860,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	}
 	if domains.LessonsService != nil && jobs.Service != nil {
 		domains.LessonsService.RegisterJobHandler(jobs.Service)
-	}
-
-	if domains.YoutubeClipService != nil {
-		domains.YoutubeClipService.SetAssetRepos(repos.Assets.ProcessingRepository(), repos.Assets.VersionRepository())
-		log.Debug("asset lifecycle repos wired into youtube service")
 	}
 
 	root := &ComposeRoot{
