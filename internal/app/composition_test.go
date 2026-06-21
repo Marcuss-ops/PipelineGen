@@ -33,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -279,7 +280,37 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 const (
 	frozenGoroutineInBuildDriveBundle  = 1 // `go ensureStyleDriveFolders(...)`
 	frozenGoroutineInBuildOutboxBundle = 2 // concurrent.SafeGo x2 (pool + shutdown)
-	frozenGoroutineInOthers            = 0 // every other Build*Bundle must be 0
+)
+
+// frozenZeroSpawnBuilders lists the Build*Bundle family members that
+// MUST have zero goroutine spawns in their bodies. The list is
+// explicitly enumerated (not derived) so adding a new builder without
+// declaring it is a test failure that forces the author to either
+// declare zero spawns or move the spawn to lifecycle.go.
+var frozenZeroSpawnBuilders = []string{
+	"BuildRepoBundle",
+	"BuildSearchBundle",
+	"BuildProcessBundle",
+	"BuildAIBundle",
+	"BuildDomainBundle",
+	"BuildJobsBundle",
+	"BuildSyncBundle",
+	"BuildMaintBundle",
+	"BuildUtilityBundle",
+}
+
+// Regex detectors used to enumerate and count goroutine-spawn sites
+// inside Build*Bundle bodies. Source-level (not runtime goroutine
+// count) so the test is deterministic across CI runners and refactors.
+//
+//   - goStmtRegex: matches both bare `go <ident>` statements and
+//     `go func() { ... }()` literal expressions but does NOT match
+//     `goto <label>` (no space after `go`).
+//   - buildFuncRegex: enumerates every `func Build*Bundle(<args>)`
+//     entry across all scanned source files.
+var (
+	goStmtRegex    = regexp.MustCompile(`(?m)^\s*go\s+(?:\w|func\()`)
+	buildFuncRegex = regexp.MustCompile(`(?m)^\s*func\s+(Build\w+Bundle)\(`)
 )
 
 // TestComposition_NoGoroutinesSpawned_FrozenSiteCount asserts that the
@@ -294,24 +325,76 @@ const (
 var goStmtRegex = regexp.MustCompile(`(?m)^\s*go\s+(?:\w|func\()`)
 
 // TestComposition_NoGoroutinesSpawned_FrozenSiteCount asserts the freeze
-// semantics described above.
+// semantics described above by scanning ALL non-test .go files in
+// internal/app/ via buildFuncRegex. This way the test is robust to
+// future file moves (e.g. BuildJobsBundle lives in module_jobs.go, not
+// composition.go) without re-listing source paths.
 func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 	chdirToProjectRoot(t)
 
-	source, err := os.ReadFile(compositionSourcePath)
-	require.NoError(t, err, "read composition.go")
-	text := string(source)
+	files := compositionBundleSourceFiles(t)
 
-	gotDrive := countGoroutineSpawns("BuildDriveBundle", text)
-	gotOutbox := countGoroutineSpawns("BuildOutboxBundle", text)
-	gotOthers := countGoroutineSpawnsInOthers(text)
+	// Per-builder spawn count summed across all source files. Since
+	// each builder is defined exactly once, the map has one entry per
+	// builder discovered.
+	counts := make(map[string]int)
+	for _, file := range files {
+		src := readSourceSilent(file)
+		for _, m := range buildFuncRegex.FindAllStringSubmatch(src, -1) {
+			counts[m[1]] += countGoroutineSpawns(m[1], src)
+		}
+	}
 
-	require.Equal(t, frozenGoroutineInBuildDriveBundle, gotDrive,
+	// Documented spawn sites: per-builder frozen expectations for the
+	// sites that currently exist (today: DriveBundle + OutboxBundle).
+	require.Equal(t, frozenGoroutineInBuildDriveBundle, counts["BuildDriveBundle"],
 		"BuildDriveBundle spawn count drifted. Migrating ensureStyleDriveFolders to lifecycle.go is a future PR4.E+ wave; update `frozenGoroutineInBuildDriveBundle` in lockstep.")
-	require.Equal(t, frozenGoroutineInBuildOutboxBundle, gotOutbox,
+	require.Equal(t, frozenGoroutineInBuildOutboxBundle, counts["BuildOutboxBundle"],
 		"BuildOutboxBundle spawn count drifted. Migrating outbox-pool SafeGo x2 to lifecycle.go is documented in lifecycle.go comment line ~294; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
-	require.Equal(t, frozenGoroutineInOthers, gotOthers,
-		"BuildRepoBundle/SearchBundle/ProcessBundle/AIBundle/DomainBundle/JobsBundle/SyncBundle/MaintBundle/UtilityBundle must have exactly zero goroutine spawns. Drift here means a new Build*Bundle was added or a missed builder joined the family.")
+
+	// The remaining family members MUST have zero spawns.
+	for _, name := range frozenZeroSpawnBuilders {
+		require.Equal(t, 0, counts[name],
+			"%s must have zero goroutine spawns in its body; recorded spawn count = %d",
+			name, counts[name])
+	}
+
+	// Every builder discovered in source must appear in the freeze
+	// table — either the documented-spawn list or the zero-spawn list.
+	// A new builder that is neither is an undocumented drift.
+	known := map[string]bool{
+		"BuildDriveBundle":  true,
+		"BuildOutboxBundle": true,
+	}
+	for _, name := range frozenZeroSpawnBuilders {
+		known[name] = true
+	}
+	for name := range counts {
+		require.True(t, known[name],
+			"uncovered Build*Bundle %q — add it to either frozenZeroSpawnBuilders (if 0 spawns) or to the documented-spawn block (if it currently spawns in body)",
+			name)
+	}
+}
+
+// compositionBundleSourceFiles returns the relative paths of every
+// non-test Go source file in internal/app/ that may host a Build*Bundle
+// definition. Test files (*_test.go) are excluded so fixtures do not
+// pollute spawn counts. The list is sorted for deterministic iteration.
+func compositionBundleSourceFiles(t *testing.T) []string {
+	t.Helper()
+	pattern := "internal/app/*.go"
+	files, err := filepath.Glob(pattern)
+	require.NoError(t, err, "glob composition sources")
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	require.NotEmpty(t, out, "no composition source files matched — chdir to project root failed?")
+	return out
 }
 
 // ── 3. freeze-ordering ───────────────────────────────────────────────────
@@ -376,28 +459,6 @@ func countGoroutineSpawns(name, text string) int {
 	goCount := len(goStmtRegex.FindAllString(body, -1))
 	safeGoCount := strings.Count(body, "concurrent.SafeGo(")
 	return goCount + safeGoCount
-}
-
-// countGoroutineSpawnsInOthers returns the sum across every Build*Bundle
-// family member except BuildDriveBundle + BuildOutboxBundle. The expected
-// value is 0 — these builders are pure constructors with no goroutines.
-func countGoroutineSpawnsInOthers(text string) int {
-	family := []string{
-		"BuildRepoBundle",
-		"BuildSearchBundle",
-		"BuildProcessBundle",
-		"BuildAIBundle",
-		"BuildDomainBundle",
-		"BuildJobsBundle",
-		"BuildSyncBundle",
-		"BuildMaintBundle",
-		"BuildUtilityBundle",
-	}
-	total := 0
-	for _, name := range family {
-		total += countGoroutineSpawns(name, text)
-	}
-	return total
 }
 
 // findNextTopLevelFuncEnd returns the byte index right after the
