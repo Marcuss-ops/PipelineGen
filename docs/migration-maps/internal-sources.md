@@ -1,4 +1,10 @@
-# `internal/sources/` — Pending Migration
+# `internal/sources/` — ✅ COMPLETED (Pre-wave-9)
+
+**Status**: Directory eliminated. YouTube and Artlist providers migrated to `internal/application/assets/providers/<provider>/`.
+
+---
+
+## Original plan
 
 ## Status
 

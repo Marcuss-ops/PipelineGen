@@ -1,4 +1,10 @@
-# `internal/application/scriptflow/` — Pending Migration
+# `internal/application/scriptflow/` — ✅ COMPLETED (Wave 6)
+
+**Status**: Directory eliminated June 2026. Content absorbed into `internal/application/scripts/`.
+
+---
+
+## Original plan (pre-wave-6)
 
 ## Status
 

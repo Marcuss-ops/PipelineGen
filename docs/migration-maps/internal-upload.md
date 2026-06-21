@@ -1,4 +1,10 @@
-# `internal/upload/drive/` — Pending Migration
+# `internal/upload/drive/` — ✅ COMPLETED (Wave 8)
+
+**Status**: Directory eliminated June 2026. All 14 files moved to `internal/infrastructure/drive/`.
+
+---
+
+## Original plan
 
 ## Status
 

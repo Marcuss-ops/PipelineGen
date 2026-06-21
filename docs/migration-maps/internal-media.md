@@ -1,4 +1,15 @@
-# `internal/media/` — Pending Migration
+# `internal/media/` — ✅ COMPLETED (Waves 10-12)
+
+**Status**: Legacy subdirectories migrated:
+- `monitor/` → `internal/application/monitor/` (Wave 10)
+- `ingest/` → `internal/application/ingest/` (Wave 11)
+- `mediaasset/` → `internal/infrastructure/media/processor/` (Wave 12)
+
+Non-legacy subdirectories (`stockpipeline/`, `vectorstore/`, etc.) remain active.
+
+---
+
+## Original plan
 
 ## Status
 
