@@ -131,11 +131,12 @@ type ProcessBundle struct {
 }
 
 // AIBundle owns script generation, engine, and the configuration pieces
-// other bundles need at composition time. Note:
-//   - StyleRegistry lives on DriveBundle (loaded at top of BuildDriveBundle)
-//     so ensureStyleDriveFolders can call it before AI is constructed.
-//     AIBundle keeps a light mirror reference (set after BuildAIBundle
-//     returns).
+// other bundles need at composition time. Notes:
+//   - StyleRegistry lives ONLY on DriveBundle (loaded at top of BuildDriveBundle
+//     so ensureStyleDriveFolders can call it before AI is constructed).
+//     Domain code that needs StyleRegistry reads it via root.Drive.StyleRegistry.
+//     PR4.A (June 2026) dropped the AI-side mirror; consumers now reference
+//     drive.StyleRegistry directly.
 //   - ScriptFlowHandler is NOT carried here — it is constructed inside
 //     registry.go::WireRegistry with the canonical batchSvc/curationSvc
 //     deps (real voiceoverSvc from DomainBundle + root.Jobs.Service).
@@ -144,7 +145,6 @@ type ProcessBundle struct {
 type AIBundle struct {
 	OllamaClient  *client.Client
 	ScriptGen     *ollama.Generator
-	StyleRegistry *generation.StyleRegistry // mirror of DriveBundle.StyleRegistry
 	MemoryService *gemmamemory.Service
 	ScriptEngine  *scriptcore.Engine
 }
@@ -496,12 +496,12 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// inside BuildAIBundle. The canonical ScriptFlowHandler (with batchSvc+
 	// curationSvc deps) lives entirely inside registry.go::WireRegistry.
 	// AIBundle exposes only the LLM-side pieces other modules need: OllamaClient,
-	// ScriptGen (for embedder/seed in registry.go), StyleRegistry (mirror of
-	// Drive's), MemoryService, ScriptEngine.
+	// ScriptGen (for embedder/seed in registry.go), MemoryService, ScriptEngine.
+	// PR4.A (June 2026) removed the StyleRegistry mirror (read drive.StyleRegistry
+	// directly instead).
 	return &AIBundle{
 		OllamaClient:  ollamaClient,
 		ScriptGen:     scriptGen,
-		StyleRegistry: drive.StyleRegistry,
 		MemoryService: memorySvc,
 		ScriptEngine:  engine,
 	}, nil
@@ -576,7 +576,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// to initImageService) is collapsed onto this single reference.
 	imageSvc, metaWriter := initImageService(ctx, cfg, log,
 		drive.DriveClient, repos.ClipsRepo, repos.ClipsRepo,
-		ai.StyleRegistry, ai.ScriptGen,
+		drive.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, process.VectorSvc, repos.ImageRepo,
 		voMetaWriter,
 	)
