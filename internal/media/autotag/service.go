@@ -23,17 +23,18 @@ type Service struct {
 	log         *zap.Logger
 }
 
-func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
+// NewService constructs an autotag.Service. Vector store is wired via
+// constructor injection (optional — pass nil when Qdrant indexing is
+// disabled). Post-construction SetVectorStore setter has been removed in
+// PR4-H Commit 4.
+func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, vectorStore clipindexer.VectorStoreIndexer, log *zap.Logger) *Service {
 	return &Service{
-		db:        db,
-		repo:      repo,
-		vlmClient: vlmClient,
-		log:       log,
+		db:          db,
+		repo:        repo,
+		vlmClient:   vlmClient,
+		vectorStore: vectorStore,
+		log:         log,
 	}
-}
-
-func (s *Service) SetVectorStore(vs clipindexer.VectorStoreIndexer) {
-	s.vectorStore = vs
 }
 
 // ProcessUntagged scans the database for assets without visual tags and processes them.
