@@ -1,161 +1,67 @@
-# PR1 — Separazione YouTube infrastructure
+# PR1 — YouTube infrastructure residua
 
 ## Obiettivo
 
-Lasciare in `internal/application/youtube` soltanto orchestrazione, use case e porte. Spostare download, `yt-dlp`, FFmpeg, filesystem, cookie retry, metadata native e segmentazione in `internal/infrastructure/youtube`.
+Completare il cutover YouTube lasciando in `internal/application/youtube` soltanto use case, policy e interfacce consumer-side. Download, `yt-dlp`, filesystem, segmentazione, metadata tecnici, Drive e persistenza concreta devono restare dietro adapter infrastructure.
 
-Questa PR non cambia le route HTTP e non aggiunge funzionalità YouTube.
+## Stato verificato
 
-## Stato iniziale verificato
+Esiste già `internal/infrastructure/youtube` con adapter `yt-dlp` e alcune interfacce. Il cutover non è completo: le porte principali sono dichiarate nel package infrastructure, diversi adapter non risultano collegati, e `application/youtube.Service` continua a conoscere SDK, repository concreti, setter e percorsi di fallback.
 
-`internal/application/youtube` contiene ancora dipendenze concrete verso:
+## Checklist residua
 
-- Google Drive SDK;
-- repository SQLite;
-- outbox SQLite;
-- filesystem;
-- processi esterni;
-- video pipeline e FFmpeg indiretti;
-- package ancora presenti sotto `internal/media`.
+### PR1.0 — Portare le interfacce nel consumer
 
-## Struttura target
+- [ ] Definire in `internal/application/youtube/ports.go` soltanto le interfacce realmente consumate.
+- [ ] Separare fetch/search, segment extraction, subtitle/transcription, file staging e asset persistence quando hanno consumer differenti.
+- [ ] Non esporre `exec.Cmd`, tipi FFmpeg, Google Drive SDK, repository SQLite o configurazioni infrastructure.
+- [ ] Mantenere private in infrastructure le strutture raw di `yt-dlp`.
+- [ ] Convertire i risultati tecnici una sola volta verso DTO applicativi o `asset.Metadata` canonico.
+- [ ] Eliminare interfacce dichiarate ma senza consumer reale.
 
-```text
-internal/application/youtube/
-  service.go
-  usecase_*.go
-  ports.go
-  requests.go
-  results.go
+### PR1.1 — Completare gli adapter concreti
 
-internal/infrastructure/youtube/
-  downloader.go
-  metadata.go
-  extractor.go
-  segment.go
-  cookies.go
-  process.go
-```
+- [ ] Consolidare `YTDLPAdapter` sul process runner canonico, senza mantenere plumbing `os/exec` parallelo.
+- [ ] Implementare e collegare le porte effettivamente necessarie per subtitle, Whisper fallback, file staging e segment extraction.
+- [ ] Riutilizzare `internal/infrastructure/media/ffmpeg` per probe, encode e segmentazione.
+- [ ] Centralizzare cookie, timeout, retry e cleanup temporanei nell'adapter proprietario.
+- [ ] Testare parser e command builder con fixture locali senza invocare rete o binari reali.
 
-I nomi definitivi possono seguire i file esistenti, ma la responsabilità deve rispettare questa separazione.
+### PR1.2 — Ridurre `application/youtube.Service`
 
-## Checklist operativa
+- [ ] Rimuovere import diretti di Google Drive SDK.
+- [ ] Rimuovere import diretti di repository SQLite e outbox SQLite.
+- [ ] Rimuovere dipendenze concrete da Ollama, clip indexer, folder memory e video pipeline quando esiste una porta più piccola.
+- [ ] Sostituire il costruttore esteso con gruppi coerenti o use case più piccoli, senza creare un generico mega `Dependencies`.
+- [ ] Eliminare `SetAssetRepos`, `SetDispatcher`, `SetAssetRepo` e gli altri setter di wiring evitabili.
+- [ ] Eliminare il percorso triplo `assetRepo → dispatcher → clipsRepo legacy`.
+- [ ] Mantenere un solo writer canonico per asset e un solo percorso di indicizzazione/outbox.
+- [ ] Eliminare `fallback_metadata.go` o ridurlo a una policy esplicita senza secondo owner dei metadata.
 
-### PR1.0 — Inventario delle responsabilità
+### PR1.3 — Aggiornare provider e composition root
 
-- [ ] Elencare tutti i file in `internal/application/youtube`.
-- [ ] Per ogni file, classificare la responsabilità:
-  - use case;
-  - dominio applicativo;
-  - porta;
-  - adapter esterno;
-  - processo/FFmpeg;
-  - filesystem;
-  - persistenza.
-- [ ] Cercare tutti gli import di:
+- [ ] Iniettare gli adapter concreti esclusivamente da `internal/app`.
+- [ ] Fare dipendere `internal/application/assets/providers/youtube` dalle porte applicative, non dal service concreto completo.
+- [ ] Conservare `SearchProvider` e `FetchProvider` come unici punti di accesso per il registry.
+- [ ] Eliminare switch e fallback YouTube fuori dal provider registry.
+- [ ] Verificare che il registry venga congelato dopo il wiring completo.
 
-```bash
-rg 'os/exec|yt-dlp|ffmpeg|database/sql|google.golang.org/api/drive|internal/infrastructure|internal/media' internal/application/youtube
-```
+### PR1.4 — Test applicativi
 
-- [ ] Identificare tutti i costruttori e setter usati dal composition root.
-- [ ] Identificare i test che istanziano direttamente implementazioni concrete.
+- [ ] Testare ricerca e fetch con fake consumer-side.
+- [ ] Testare full video, segment extraction e limiti temporali.
+- [ ] Testare metadata incompleti e conversione verso `asset.Metadata`.
+- [ ] Testare che errori di download, segmentazione, upload o persistenza non producano asset completati.
+- [ ] Testare idempotenza e assenza di doppia indicizzazione.
+- [ ] Verificare che nessun unit test application richieda `yt-dlp`, FFmpeg, Drive o SQLite reali.
 
-**Accettazione PR1.0**
-
-Ogni file ha un proprietario target esplicito. Nessun file viene spostato prima di questa classificazione.
-
-### PR1.1 — Definire porte applicative minime
-
-- [ ] Creare in `internal/application/youtube/ports.go` solo le interfacce realmente usate.
-- [ ] Definire una porta per il fetch/download video.
-- [ ] Definire una porta per metadata remoti se separata dal fetch.
-- [ ] Definire una porta per estrazione/taglio segmento.
-- [ ] Definire una porta per storage/Drive soltanto se il use case deve coordinare il salvataggio.
-- [ ] Usare DTO applicativi piccoli; non esporre tipi FFmpeg, `exec.Cmd`, SDK Drive o righe SQLite.
-- [ ] Non creare una singola interfaccia “YouTubeClient” con decine di metodi.
-
-Esempio di forma accettabile:
-
-```go
-type VideoFetcher interface {
-    Fetch(context.Context, FetchRequest) (FetchedVideo, error)
-}
-
-type SegmentExtractor interface {
-    Extract(context.Context, SegmentRequest) (SegmentResult, error)
-}
-```
-
-**Accettazione PR1.1**
-
-`internal/application/youtube` può essere testato con fake in memoria senza invocare rete, Drive, SQLite o processi esterni.
-
-### PR1.2 — Estrarre processi e download
-
-- [ ] Creare `internal/infrastructure/youtube`.
-- [ ] Spostare l'esecuzione di `yt-dlp` nel package infrastructure.
-- [ ] Spostare gestione cookie e retry legati a `yt-dlp` nel package infrastructure.
-- [ ] Spostare creazione e pulizia file temporanei nel package infrastructure.
-- [ ] Spostare parsing output di processi esterni nel package infrastructure.
-- [ ] Usare il runner di processo canonico già presente nel repository; non introdurre un secondo wrapper `os/exec`.
-- [ ] Restituire errori tipizzati o wrapping contestuale, senza stringhe interpretate dal use case.
-
-### PR1.3 — Estrarre segmentazione e FFmpeg
-
-- [ ] Spostare il taglio video e la costruzione degli argomenti FFmpeg in infrastructure.
-- [ ] Riutilizzare `internal/infrastructure/media/ffmpeg` o `pkg/platform` dove già canonico.
-- [ ] Non duplicare probe, encode o gestione timeout.
-- [ ] Tradurre i risultati concreti in DTO applicativi prima di restituirli.
-- [ ] Coprire i limiti di segmento: start negativo, end precedente allo start, durata zero, full-video sentinel.
-
-### PR1.4 — Estrarre metadata e filesystem
-
-- [ ] Spostare letture di metadata native e manifest concrete in infrastructure.
-- [ ] Spostare accesso diretto a path, file temporanei e directory di output in infrastructure.
-- [ ] Mantenere in application soltanto regole come “quale asset registrare” o “quale step eseguire dopo il fetch”.
-- [ ] Non mantenere campi path-specific nei DTO se non necessari al use case.
-
-### PR1.5 — Ridurre `application/youtube.Service`
-
-- [ ] Sostituire dipendenze concrete con le porte definite in PR1.1.
-- [ ] Rimuovere import diretti di Google Drive SDK dal service applicativo.
-- [ ] Rimuovere import diretti di repository SQLite dal service applicativo quando esiste già una porta di dominio.
-- [ ] Rimuovere accesso diretto a outbox SQLite; usare un contratto applicativo o di dominio esistente.
-- [ ] Rimuovere setter usati soltanto per late binding se la dipendenza può essere richiesta dal costruttore.
-- [ ] Conservare setter solo per lifecycle realmente ciclici e documentati.
-
-### PR1.6 — Aggiornare provider adapter e wiring
-
-- [ ] Aggiornare `internal/application/assets/providers/youtube` per dipendere dalle porte corrette.
-- [ ] Costruire gli adapter concreti esclusivamente in `internal/app`.
-- [ ] Iniettare l'implementazione `infrastructure/youtube` nel service/application adapter.
-- [ ] Verificare che `SearchProvider` e `FetchProvider` mantengano capability e payload esistenti.
-- [ ] Eliminare fallback verso vecchi service concreti.
-
-### PR1.7 — Test unitari
-
-- [ ] Testare use case YouTube con fake `VideoFetcher`.
-- [ ] Testare propagazione errori del fetcher.
-- [ ] Testare full video e segment extraction.
-- [ ] Testare metadata nil o incompleti.
-- [ ] Testare che un errore dopo il download non registri un asset completato.
-- [ ] Testare che nessun unit test application richieda `yt-dlp`, FFmpeg o Drive reali.
-
-### PR1.8 — Test infrastructure
-
-- [ ] Testare costruzione argomenti `yt-dlp` senza eseguire il binario.
-- [ ] Testare costruzione argomenti FFmpeg.
-- [ ] Testare parser metadata con fixture locale.
-- [ ] Testare cleanup dei file temporanei.
-- [ ] Aggiungere integration test opzionale, protetto da env flag, per binari esterni.
-
-### PR1.9 — Validazione architetturale
+### PR1.5 — Validazione finale
 
 - [ ] Eseguire:
 
 ```bash
 rg 'os/exec|database/sql|google.golang.org/api/drive|internal/infrastructure/database/sqlite' internal/application/youtube
+rg 'SetAssetRepos|SetDispatcher|SetAssetRepo|clipsRepo legacy' internal/application/youtube
 go test ./internal/application/youtube/... -count=1
 go test ./internal/infrastructure/youtube/... -count=1
 go test ./internal/application/assets/providers/youtube/... -count=1
@@ -165,12 +71,6 @@ go build ./...
 go run ./scripts/archcheck
 ```
 
-## Exit gate finale
+## Exit gate
 
-PR1 è completata quando:
-
-- `application/youtube` non esegue processi, non manipola file e non importa SDK concreti;
-- `infrastructure/youtube` possiede download, metadata, segmentazione e integrazione processi;
-- provider e route pubbliche mantengono comportamento compatibile;
-- i test applicativi usano fake e i test infrastructure coprono adapter concreti;
-- non esistono wrapper o fallback legacy introdotti per mantenere due percorsi.
+PR1 è chiusa quando `application/youtube` non esegue processi, non manipola file, non importa SDK o repository concreti, non contiene setter di wiring e usa un solo percorso canonico per asset, metadata e indicizzazione.
