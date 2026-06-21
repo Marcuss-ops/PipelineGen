@@ -89,8 +89,12 @@ Track job progress via the `/api/jobs` endpoints.
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md): Canonical system architecture, data flows,
   module registry, and day-1 commands.
-- [Operational roadmap PR0–PR4](./docs/roadmap/README.md): Concrete numbered TODOs,
-  validation commands, dependencies, and exit gates for the current consolidation cycle.
+- [Operational roadmap — remaining PR0–PR5 work](./docs/roadmap/README.md): Current
+  numbered TODOs, dependencies and exit gates after removing completed work.
+- [Single Source of Truth guardrails](./docs/roadmap/SINGLE_SOURCE_OF_TRUTH_GUARDRAILS.md):
+  Ownership, import, registry and strict architecture requirements.
+- [Full Working E2E certification](./docs/roadmap/PR5_FULL_WORKING_E2E.md): Required
+  production-readiness tests for workflows, recovery, backup, load and deployment.
 - [AGENTS.md](./AGENTS.md): Critical system rules and instructions for AI agents.
 - [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Italian language getting started guide.
 - [docs/SCRIPT_PIPELINE.md](./docs/SCRIPT_PIPELINE.md): Complete script pipeline
