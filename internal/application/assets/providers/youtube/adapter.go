@@ -28,7 +28,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -65,7 +64,7 @@ type searcher interface {
 // *youtubesrc.Service satisfies fetcher via its public
 // DownloadAndCut method (added Punto 6).
 type fetcher interface {
-	DownloadAndCut(ctx context.Context, req videomuscles.YouTubeCutRequest) (*videomuscles.YouTubeCutResult, error)
+	DownloadAndCut(ctx context.Context, req youtubesrc.VideoCutRequest) (*youtubesrc.VideoCutResult, error)
 }
 
 // Adapter wraps a searcher + fetcher (production: both are the same
@@ -222,7 +221,7 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 		safeName = fmt.Sprintf("yt_fetch_%d", time.Now().UnixNano())
 	}
 
-	cutReq := videomuscles.YouTubeCutRequest{
+	cutReq := youtubesrc.VideoCutRequest{
 		URL:        req.SourceRef,
 		VideoID:    req.AssetID,
 		Start:      startSec,
