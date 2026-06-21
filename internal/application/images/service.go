@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -58,6 +58,9 @@ type Service struct {
 	// Mutex per evitare download duplicati dello stesso soggetto
 	mu sync.Mutex
 
+	// Semaphore for concurrent NVIDIA image generation, configured via ConcurrencyConfig.
+	nvidiaSem chan struct{}
+
 	// Animations directory
 	animationsDir string
 
@@ -66,7 +69,7 @@ type Service struct {
 
 	// NEW: Intelligence & Search
 	llmGen    *ollama.Generator
-	vectorSvc *vectorstore.Service
+	vectorSvc *qdrant.Service
 
 	// Centralized style registry
 	styleRegistry *generation.StyleRegistry
@@ -112,10 +115,15 @@ func NewService(
 	gaCfg GoogleAccountingConfig,
 	mediaStore *drive.Store,
 	llmGen *ollama.Generator,
-	vectorSvc *vectorstore.Service,
+	vectorSvc *qdrant.Service,
 	metaWriter *semantic.MetadataWriter,
 	log *zap.Logger,
 ) *Service {
+	maxNvidia := cfg.Concurrency.MaxConcurrentNvidiaGenerations
+	if maxNvidia <= 0 {
+		maxNvidia = 1
+	}
+
 	s := &Service{
 		cfg:           cfg,
 		repo:          repo,
@@ -128,6 +136,7 @@ func NewService(
 		client: &http.Client{
 			Timeout: 10 * time.Minute, // AI generation and browser automation can be slow
 		},
+		nvidiaSem: make(chan struct{}, maxNvidia),
 
 		scriptsDir:             cfg.Paths.PythonScriptsDir,
 		nvidiaAPIKey:           nvidiaCfg.APIKey,

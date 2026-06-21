@@ -8,6 +8,9 @@ type ClipIndexerConfig struct {
 	ScriptPath            string `yaml:"script_path" default:"scripts/bridges/index_clips.py"`
 	PythonBin             string `yaml:"python_bin" default:"python3"`
 	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist" default:"true"`
+	// MaxConcurrentIndexing limits parallel Python subprocesses launched for clip indexing.
+	// Delegates to ConcurrencyConfig.MaxConcurrentClipIndexing at wiring time.
+	MaxConcurrentIndexing int `yaml:"max_concurrent_indexing" env:"VELOX_CONCURRENT_CLIP_INDEXING" default:"10"`
 }
 
 // VectorSearchConfig holds settings for the vector search (Qdrant) integration.

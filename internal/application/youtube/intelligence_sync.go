@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
 	"encoding/json"
 	"os"
@@ -17,7 +18,7 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 	}
 
 	if item.SearchVisibility == "" {
-		item.SearchVisibility = deriveSearchVisibility(item.QualityScore, nil, item.Tags)
+		item.SearchVisibility = tagutil.DeriveSearchVisibility(item.QualityScore)
 	}
 
 	if clipFolder.LocalFolderPath != "" {
@@ -53,7 +54,7 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 		clip.Metadata = make(map[string]any)
 	}
 	clip.SearchText = item.EmbeddingText
-	clip.Tags = mergeTagLists(item.Tags, item.SourceTags, item.ClipTags, item.Topics, item.Speakers, item.MentionedPeople, item.People)
+	clip.Tags = tagutil.MergeTagLists(item.Tags, item.SourceTags, item.ClipTags, item.Topics, item.Speakers, item.MentionedPeople, item.People)
 	clip.SetMetadataString("clean_title", item.CleanTitle)
 	clip.SetMetadataString("short_title", item.ShortTitle)
 	clip.SetMetadataString("clip_summary", item.ClipSummary)

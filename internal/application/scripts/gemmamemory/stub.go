@@ -7,7 +7,7 @@
 // The Onda 5 refactor moved internal/scripts/* → internal/application/scripts/*,
 // but the gemmamemory subpackage was not migrated alongside its consumers.
 // This file restores the type surface needed to make `go build` green again.
-// Service.CheckGate / SaveAfterGeneration / SweepAll / BuildFreshVariantPrompt
+// Service.CheckGate / SaveAfterGeneration / SweepAll
 // are no-op stubs that preserve API shape but DO NOT implement the cache
 // semantics. The follow-up Stage 7 of feature/onda-5-completion will
 // re-import the real implementation (or port it in-place if it was retired).
@@ -26,6 +26,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/memory"
 	"go.uber.org/zap"
 )
 
@@ -136,14 +137,19 @@ func (s *Service) SaveAfterGeneration(ctx context.Context, in SaveGenerationInpu
 	return 0, nil
 }
 
-// BuildFreshVariantPrompt returns the base prompt unchanged. The real
-// implementation injects an "avoid repeating the prior output" instruction
-// when a near-duplicate is detected.
-//
-// STUB: when CheckGate returns CacheHit=true, enrich the prompt here.
+// BuildFreshVariantPrompt builds a prompt that forces the LLM to produce a
+// genuinely different script when an exact cache hit is detected.
+// Delegates to the canonical implementation in the memory package.
 func BuildFreshVariantPrompt(basePrompt string, output *GenerationOutput) string {
-	_ = output
-	return basePrompt
+	if output == nil || output.OutputText == "" {
+		return basePrompt
+	}
+	// memory.GenerationOutput is an alias for scriptrepo.GenerationOutput
+	// (13 fields); we only populate OutputText because BuildFreshVariantPrompt
+	// only reads OutputText from the exact output.
+	return memory.BuildFreshVariantPrompt(basePrompt, &memory.GenerationOutput{
+		OutputText: output.OutputText,
+	})
 }
 
 // EvictExactOutputs removes cache entries whose titles match the given

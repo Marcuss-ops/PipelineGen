@@ -19,7 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -48,7 +48,7 @@ type ArtlistWiring struct {
 // the canonical UpsertClip + IndexClip path stays wired in production).
 // Returns ArtlistWiring with Resolver populated so caller can use the
 // clipresolver for ScriptFlow late-binding without round-tripping.
-func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, vectorStore *vectorstore.Service, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
+func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, vectorStore *qdrant.Service, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
 	artlistLifecycle := wireArtlistLifecycle(bundle, log)
 	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
 	assetDestResolver := wireAssetDestinationResolver(cfg, bundle, log)
@@ -128,7 +128,7 @@ func wireAssetDestinationResolver(cfg *config.Config, bundle *ArtlistBundle, log
 	return nil
 }
 
-func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, vectorStore *vectorstore.Service, log *zap.Logger) *clipresolver.Service {
+func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, vectorStore *qdrant.Service, log *zap.Logger) *clipresolver.Service {
 	if clipCatalogRepo == nil {
 		return nil
 	}
@@ -251,7 +251,7 @@ func wireArtlistCatalog(ctx context.Context, cfg *config.Config, bundle *Artlist
 		}
 	}
 	clipCatalogRepo := clipcatalog.NewRepository(bundle.DB.DB, log)
-	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{Enabled: cfg.ClipIndexer.Enabled, ServerURL: cfg.ClipIndexer.ServerURL, ScriptPath: cfg.ClipIndexer.ScriptPath, PythonBin: cfg.ClipIndexer.PythonBin, AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist, DBPath: bundle.DB.Path()}, bundle.DB.DB, bundle.DB.Path(), log)
+	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{Enabled: cfg.ClipIndexer.Enabled, ServerURL: cfg.ClipIndexer.ServerURL, ScriptPath: cfg.ClipIndexer.ScriptPath, PythonBin: cfg.ClipIndexer.PythonBin, AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist, MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing, DBPath: bundle.DB.Path()}, bundle.DB.DB, bundle.DB.Path(), log)
 	if err := clipIndexerSvc.StartServer(ctx); err != nil {
 		log.Warn("failed to start embedding server", zap.Error(err))
 	} else {

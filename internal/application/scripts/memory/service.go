@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 )
 
 // saveAfterGenerationTimeout caps how long the post-generation DB writes are allowed to run.
@@ -77,16 +78,8 @@ func (s *Service) SaveAfterGeneration(ctx context.Context, input SaveGenerationI
 	normalized := NormalizeInput(input.ChannelID, input.Title, input.Prompt)
 	inputHash := HashInput(input.ChannelID, input.Mode, normalized)
 
-	saveCtx, cancel := context.WithTimeout(context.Background(), saveAfterGenerationTimeout)
+	saveCtx, cancel := contextutil.PostWriteContext(ctx, s.log, "save memory generation", saveAfterGenerationTimeout)
 	defer cancel()
-	if ctx.Err() != nil {
-		s.log.Warn("memory gate: request context already cancelled, proceeding with independent save context",
-			zap.String("channel_id", input.ChannelID),
-			zap.String("title", input.Title),
-			zap.Duration("save_timeout", saveAfterGenerationTimeout),
-			zap.Error(ctx.Err()),
-		)
-	}
 
 	genID, err := s.repo.SaveGeneration(saveCtx, input, normalized, inputHash)
 	if err != nil {

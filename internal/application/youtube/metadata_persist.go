@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -14,11 +15,11 @@ import (
 // It intentionally strips sponsor/link boilerplate so Drive metadata stays clip-focused.
 func ymDescription(ym *DownloaderMetadata, clip *asset.Asset) string {
 	if ym != nil && ym.Description != "" {
-		return compactYouTubeDescription(ym.Description)
+		return tagutil.CompactYouTubeDescription(ym.Description)
 	}
 	desc := clip.GetMetadataString("youtube_description")
 	if desc != "" {
-		return compactYouTubeDescription(desc)
+		return tagutil.CompactYouTubeDescription(desc)
 	}
 	return ""
 }
@@ -26,18 +27,18 @@ func ymDescription(ym *DownloaderMetadata, clip *asset.Asset) string {
 // ymTags returns tags from ym or falls back to clip DB metadata.
 func ymTags(ym *DownloaderMetadata, clip *asset.Asset) []string {
 	if ym != nil && len(ym.Tags) > 0 {
-		return normalizeClipTagList(ym.Tags)
+		return tagutil.NormalizeClipTagList(ym.Tags)
 	}
 	tagsJSON := clip.GetMetadataString("youtube_tags")
 	if tagsJSON != "" && tagsJSON != "[]" {
 		var tags []string
 		if err := json.Unmarshal([]byte(tagsJSON), &tags); err == nil {
-			return normalizeClipTagList(tags)
+			return tagutil.NormalizeClipTagList(tags)
 		}
 	}
 	// Fallback to clip.Tags
 	if len(clip.Tags) > 0 {
-		return normalizeClipTagList(clip.Tags)
+		return tagutil.NormalizeClipTagList(clip.Tags)
 	}
 	return nil
 }
@@ -86,47 +87,7 @@ func ymThumbnailURL(ym *DownloaderMetadata, clip *asset.Asset) string {
 	return clip.GetMetadataString("youtube_thumbnail")
 }
 
-// compactYouTubeDescription keeps the first few non-sponsor, non-link lines
-// of a YouTube description up to a 500-character budget.
-func compactYouTubeDescription(desc string) string {
-	desc = cleanYouTubeDescription(desc)
-	if desc == "" {
-		return ""
-	}
-	parts := strings.Split(desc, "\n")
-	var kept []string
-	limitChars := 500
-	stopMarkers := []string{
-		"sponsored by", "tour dates", "new merch", "submit your", "hit the hotline",
-		"video hotline", "find theo", "producer:", "watch on spotify",
-	}
 
-	for _, part := range parts {
-		line := strings.TrimSpace(part)
-		if line == "" {
-			continue
-		}
-		lower := strings.ToLower(line)
-		stop := false
-		for _, marker := range stopMarkers {
-			if strings.Contains(lower, marker) {
-				stop = true
-				break
-			}
-		}
-		if stop {
-			break
-		}
-		if strings.Contains(line, "http://") || strings.Contains(line, "https://") || strings.Contains(line, "www.") {
-			continue
-		}
-		kept = append(kept, line)
-		if len(strings.Join(kept, " ")) >= limitChars || len(kept) >= 3 {
-			break
-		}
-	}
-	return strings.Join(kept, " ")
-}
 
 // metadataStringSlice extracts a []string from a metadata map, accepting
 // []string, []any, or JSON-encoded string values.
@@ -140,7 +101,7 @@ func metadataStringSlice(meta map[string]any, key string) []string {
 	}
 	switch v := raw.(type) {
 	case []string:
-		return normalizeClipTagList(v)
+		return tagutil.NormalizeClipTagList(v)
 	case []any:
 		out := make([]string, 0, len(v))
 		for _, item := range v {
@@ -148,14 +109,14 @@ func metadataStringSlice(meta map[string]any, key string) []string {
 				out = append(out, s)
 			}
 		}
-		return normalizeClipTagList(out)
+		return tagutil.NormalizeClipTagList(out)
 	case string:
 		if strings.TrimSpace(v) == "" {
 			return nil
 		}
 		var out []string
 		if err := json.Unmarshal([]byte(v), &out); err == nil {
-			return normalizeClipTagList(out)
+			return tagutil.NormalizeClipTagList(out)
 		}
 	}
 	return nil
@@ -242,22 +203,4 @@ func metadataInt(meta map[string]any, key string) int {
 	return 0
 }
 
-// mergeYouTubeClipTags combines existing tags, YouTube tags, and any rich
-// clip metadata fields into a single deduplicated tag list.
-func mergeYouTubeClipTags(existingTags, ytTags []string, clipMetadata *clipRichMetadata) []string {
-	combined := make([]string, 0, len(existingTags)+len(ytTags))
-	combined = append(combined, existingTags...)
-	combined = append(combined, ytTags...)
-	if clipMetadata != nil {
-		combined = append(combined, clipMetadata.SourceTags...)
-		combined = append(combined, clipMetadata.ClipTags...)
-		combined = append(combined, clipMetadata.SearchKeywords...)
-		combined = append(combined, clipMetadata.Topics...)
-		combined = append(combined, clipMetadata.Speakers...)
-		combined = append(combined, clipMetadata.MentionedPeople...)
-		if clipMetadata.CleanTitle != "" {
-			combined = append(combined, clipMetadata.CleanTitle)
-		}
-	}
-	return normalizeClipTagList(combined)
-}
+

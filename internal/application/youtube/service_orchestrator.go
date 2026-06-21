@@ -144,6 +144,10 @@ type Service struct {
 
 	searchL1 sync.Map
 	metadataL1 sync.Map
+
+	// Capacity-bound semaphores configured via ConcurrencyConfig.
+	videoExtractSem chan struct{}
+	ollamaSem       chan struct{}
 }
 
 // NewService is the sole canonical constructor. Pass every dependency a
@@ -151,6 +155,14 @@ type Service struct {
 // surrogate setters are needed. Composition root (internal/app/composition.go)
 // is the only intended caller.
 func NewService(deps ServiceDeps) *Service {
+	maxVideo := deps.Cfg.Concurrency.MaxConcurrentVideoExtracts
+	if maxVideo <= 0 {
+		maxVideo = 1 // disallow zero: at least 1
+	}
+	maxOllama := deps.Cfg.Concurrency.MaxConcurrentOllamaCalls
+	if maxOllama <= 0 {
+		maxOllama = 1
+	}
 	return &Service{
 		cfg:               deps.Cfg,
 		log:               deps.Log,
@@ -177,6 +189,9 @@ func NewService(deps ServiceDeps) *Service {
 		indexer:     deps.Indexer,
 		folderMemory: deps.FolderMemory,
 		ollama:      deps.Ollama,
+
+		videoExtractSem: make(chan struct{}, maxVideo),
+		ollamaSem:       make(chan struct{}, maxOllama),
 	}
 }
 

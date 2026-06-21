@@ -69,8 +69,8 @@ Format:
 		zap.Int("transcript_chars", len(transcript)))
 
 	select {
-	case ollamaSem <- struct{}{}:
-		defer func() { <-ollamaSem }()
+	case s.ollamaSem <- struct{}{}:
+		defer func() { <-s.ollamaSem }()
 	case <-ctx.Done():
 		return nil
 	}

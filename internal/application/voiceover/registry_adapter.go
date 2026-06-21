@@ -9,52 +9,38 @@ import (
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-type voiceoverRegistryAdapter struct {
-	repo *assets.VoiceoversRepository
-}
-
+// NewVoiceoverRegistryAdapter returns an artifacts.Registry backed by a
+// VoiceoversRepository. The returned *artifacts.SimpleRegistry delegates
+// every Registry method to a repo-specific callback.
 func NewVoiceoverRegistryAdapter(repo *assets.VoiceoversRepository) artifacts.Registry {
-	return &voiceoverRegistryAdapter{repo: repo}
-}
-
-func (a *voiceoverRegistryAdapter) UpsertMedia(ctx context.Context, rec *artifacts.MediaRecord) error {
-	vRec := mediaRecordToVoiceover(rec)
-	return a.repo.Upsert(ctx, vRec)
-}
-
-func (a *voiceoverRegistryAdapter) GetMedia(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
-	vRec, err := a.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
+	return &artifacts.SimpleRegistry{
+		UpsertFn: func(ctx context.Context, rec *artifacts.MediaRecord) error {
+			return repo.Upsert(ctx, mediaRecordToVoiceover(rec))
+		},
+		GetFn: func(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
+			vRec, err := repo.GetByID(ctx, id)
+			if err != nil || vRec == nil {
+				return nil, err
+			}
+			return voiceoverToMediaRecord(vRec), nil
+		},
+		DeleteFn: func(ctx context.Context, id string) error {
+			return repo.Delete(ctx, id)
+		},
+		ListFn: func(ctx context.Context) ([]*artifacts.MediaRecord, error) {
+			return artifacts.GetAllWithDriveFileID(ctx, repo.ListAll,
+				func(r *assets.Record) (*artifacts.MediaRecord, bool) {
+					if r.DriveFileID == "" {
+						return nil, false
+					}
+					return voiceoverToMediaRecord(r), true
+				})
+		},
+		PHashFn: artifacts.NoopFindByPHash,
 	}
-	if vRec == nil {
-		return nil, nil
-	}
-	return voiceoverToMediaRecord(vRec), nil
 }
 
-func (a *voiceoverRegistryAdapter) DeleteMedia(ctx context.Context, id string) error {
-	return a.repo.Delete(ctx, id)
-}
-
-func (a *voiceoverRegistryAdapter) GetAllWithDriveFileID(ctx context.Context) ([]*artifacts.MediaRecord, error) {
-	records, err := a.repo.ListAll(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var result []*artifacts.MediaRecord
-	for _, rec := range records {
-		if rec.DriveFileID != "" {
-			result = append(result, voiceoverToMediaRecord(rec))
-		}
-	}
-	return result, nil
-}
-
-func (a *voiceoverRegistryAdapter) FindByPHash(ctx context.Context, phash string) (string, error) {
-	// Voiceovers are audio â€” pHash is not applicable.
-	return "", nil
-}
+// ── Type conversions ───────────────────────────────────────────────────
 
 func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *assets.Record {
 	var meta struct {
@@ -91,14 +77,12 @@ func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *assets.Record {
 		Strategy:     meta.Strategy,
 		Metadata:     mediaRec.Metadata,
 	}
-
 	if meta.CreatedAt != "" {
 		rec.CreatedAt = timeutil.ParseRFC3339(meta.CreatedAt)
 	}
 	if meta.UpdatedAt != "" {
 		rec.UpdatedAt = timeutil.ParseRFC3339(meta.UpdatedAt)
 	}
-
 	return rec
 }
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // computeContentHash builds a deterministic SHA-256 hash from the clip's
@@ -39,7 +39,7 @@ func (s *Service) computeContentHash(ctx context.Context, clipID string) (hash s
 		"model:" + embeddingModel,
 		"model_ver:" + embeddingModelVersion,
 		"coll_ver:" + collectionVersion,
-		"bm25_ver:" + vectorstore.BM25SchemaVersion,
+		"bm25_ver:" + qdrant.BM25SchemaVersion,
 	}, "|")
 	contentParts := strings.SplitN(content, "|model:", 2)
 	if len(contentParts) == 2 && strings.TrimSpace(contentParts[0]) == "name:|search_text:|transcript:" {

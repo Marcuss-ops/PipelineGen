@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 )
 
 // DocClient mirrors the upload/drive.DocClient interface that the documents
@@ -207,7 +208,7 @@ func (s *DocumentsService) docsMaybeCreateGoogleDoc(ctx context.Context, title, 
 			zap.Int("content_chars", len(content)),
 		)
 	}
-	saveCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	saveCtx, cancel := contextutil.PostWriteContext(ctx, s.log, "create Google Doc", 30*time.Second)
 	defer cancel()
 	doc, docErr := s.docClient.CreateDoc(saveCtx, effectiveTitle, content, effectiveFolderID)
 	if docErr != nil {

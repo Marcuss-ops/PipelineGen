@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -119,7 +120,7 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 	if req.SaveTimeout > 0 {
 		saveTimeout = time.Duration(req.SaveTimeout) * time.Second
 	}
-	saveCtx, saveCancel := context.WithTimeout(context.Background(), saveTimeout)
+	saveCtx, saveCancel := contextutil.PostWriteContext(ctx, e.log, "write script", saveTimeout)
 	defer saveCancel()
 
 	version := 1

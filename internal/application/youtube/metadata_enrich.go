@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -55,7 +56,7 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *asset.Asset, 
 	// Gather metadata from the clip DB first. The DB already stores the enriched
 	// clip-specific tags after semantic processing; we keep the YouTube tags only
 	// as fallback.
-	tags := normalizeClipTagList(clip.Tags)
+	tags := tagutil.NormalizeClipTagList(clip.Tags)
 	if len(tags) == 0 {
 		tags = ymTags(ym, clip)
 	}
@@ -70,12 +71,12 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *asset.Asset, 
 	if transcriptBytes, err := os.ReadFile(transcriptPath); err == nil && len(transcriptBytes) > 0 {
 		transcript = strings.TrimSpace(string(transcriptBytes))
 	}
-	cleanTranscriptText := cleanClipTranscript(transcript)
+	cleanTranscriptText := tagutil.CleanClipTranscript(transcript)
 
 	// Description = compact YouTube description (general video info without
 	// sponsor/link boilerplate).
 	// Transcript = clip-specific spoken content (what's said in this clip window)
-	description := compactYouTubeDescription(ymDescription(ym, clip))
+	description := tagutil.CompactYouTubeDescription(ymDescription(ym, clip))
 	rawTitle := clip.Name
 	cleanTitle := clip.GetMetadataString("clean_title")
 	if cleanTitle == "" {
@@ -104,7 +105,7 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *asset.Asset, 
 	if videoTitle == "" && ym != nil && ym.Title != "" {
 		videoTitle = ym.Title
 	}
-	fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook := deriveFallbackSemanticFields(videoTitle, storedCleanTranscript, description, cleanTitle)
+	fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook := tagutil.DeriveFallbackSemanticFields(videoTitle, storedCleanTranscript, description, cleanTitle)
 	if len(topics) == 0 {
 		topics = fallbackTopics
 	}
@@ -114,7 +115,7 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *asset.Asset, 
 	if len(mentionedPeople) == 0 {
 		mentionedPeople = fallbackMentionedPeople
 	}
-	people = mergeTagLists(speakers, mentionedPeople, people)
+	people = tagutil.MergeTagLists(speakers, mentionedPeople, people)
 	if len(sourceTags) == 0 {
 		sourceTags = fallbackSourceTags
 	}
@@ -128,17 +129,17 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *asset.Asset, 
 		hook = fallbackHook
 	}
 	if embeddingText == "" {
-		embeddingText = buildEmbeddingText(cleanTitle, clipSummary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, storedCleanTranscript)
+		embeddingText = tagutil.BuildEmbeddingText(cleanTitle, clipSummary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, storedCleanTranscript)
 	}
 	qualityScore := metadataFloat64(clip.Metadata, "quality_score")
 	searchVisibility := clip.GetMetadataString("search_visibility")
 	if searchVisibility == "" {
-		searchVisibility = deriveSearchVisibility(qualityScore, nil, nil)
+		searchVisibility = tagutil.DeriveSearchVisibility(qualityScore)
 	}
 	if qualityScore >= 0.80 {
 		searchVisibility = "high"
 	} else if searchVisibility == "" {
-		searchVisibility = deriveSearchVisibility(qualityScore, nil, nil)
+		searchVisibility = tagutil.DeriveSearchVisibility(qualityScore)
 	}
 
 	meta := ClipMetadataFile{

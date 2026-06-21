@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,8 +12,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// clipRichMetadata is a zero-copy alias to types.ClipRichMetadata.
-// Canonical definition extracted to youtube/types/ per PR3 Phase 2 (June 2026).
+// clipRichMetadata is a zero-copy alias to the canonical type in youtube/types/.
+// Extracted during PR3 Phase 2 (June 2026) per AGENTS.md Pattern 5.
 type clipRichMetadata = types.ClipRichMetadata
 
 // generateClipMetadata generates rich metadata for a clip using Ollama.
@@ -98,10 +99,10 @@ Rules:
 	var result clipRichMetadata
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
 		s.log.Warn("failed to parse ollama JSON response for clip metadata", zap.Error(err))
-		return fallbackClipRichMetadata(title, transcript, description)
+		return tagutil.FallbackClipRichMetadata(title, transcript, description)
 	}
 
-	normalized := normalizeClipRichMetadata(&result, title, transcript, description)
+	normalized := tagutil.NormalizeClipRichMetadata(&result, title, transcript, description)
 	return normalized
 }
 

@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -144,8 +145,8 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 	hasUserSummary := existing.GetMetadataString("clip_summary") != ""
 	hasUserTopics := len(metadataStringSlice(existing.Metadata, "topics")) > 0
 
-	cleanedDescription := cleanYouTubeDescription(ym.Description)
-	cleanedTranscript := cleanClipTranscript(clipTranscript)
+	cleanedDescription := tagutil.CleanYouTubeDescription(ym.Description)
+	cleanedTranscript := tagutil.CleanClipTranscript(clipTranscript)
 
 	if hasUserSummary && hasUserTopics {
 		s.log.Info("using user-provided custom metadata, skipping Ollama enrichment", zap.String("clip_id", clipID))
@@ -169,7 +170,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 		clipMetadata = s.generateClipMetadata(ctx, ym.Title, cleanedTranscript, cleanedDescription)
 	}
 	if clipMetadata != nil {
-		fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook := deriveFallbackSemanticFields(ym.Title, cleanedTranscript, cleanedDescription, clipMetadata.CleanTitle)
+		fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook := tagutil.DeriveFallbackSemanticFields(ym.Title, cleanedTranscript, cleanedDescription, clipMetadata.CleanTitle)
 		if len(clipMetadata.Topics) == 0 {
 			clipMetadata.Topics = fallbackTopics
 		}
@@ -198,7 +199,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 			clipMetadata.CleanTranscript = cleanedTranscript
 		}
 		if clipMetadata.EmbeddingText == "" {
-			clipMetadata.EmbeddingText = buildEmbeddingText(
+			clipMetadata.EmbeddingText = tagutil.BuildEmbeddingText(
 				clipMetadata.CleanTitle,
 				clipMetadata.ClipSummary,
 				clipMetadata.Hook,
@@ -212,12 +213,12 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 			)
 		}
 	}
-	embeddingText := buildEmbeddingText(ym.Title, "", "", nil, nil, nil, nil, nil, nil, cleanedTranscript)
+	embeddingText := tagutil.BuildEmbeddingText(ym.Title, "", "", nil, nil, nil, nil, nil, nil, cleanedTranscript)
 	if clipMetadata != nil {
 		if clipMetadata.EmbeddingText != "" {
 			embeddingText = clipMetadata.EmbeddingText
 		} else {
-			embeddingText = buildEmbeddingText(
+			embeddingText = tagutil.BuildEmbeddingText(
 				clipMetadata.CleanTitle,
 				clipMetadata.ClipSummary,
 				clipMetadata.Hook,
@@ -249,7 +250,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 	// youtube_title is stored in metadata for full-text search context.
 
 	// Merge existing segment tags with clip-specific tags, then filter out generic boilerplate.
-	existing.Tags = mergeYouTubeClipTags(existing.Tags, ym.Tags, clipMetadata)
+	existing.Tags = tagutil.MergeYouTubeClipTags(existing.Tags, ym.Tags, clipMetadata)
 
 	// Store rich metadata in metadata_json
 	if clipMetadata != nil {
@@ -260,7 +261,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 		existing.Metadata["topics"] = clipMetadata.Topics
 		existing.Metadata["speakers"] = clipMetadata.Speakers
 		existing.Metadata["mentioned_people"] = clipMetadata.MentionedPeople
-		existing.Metadata["people"] = mergeTagLists(clipMetadata.Speakers, clipMetadata.MentionedPeople, clipMetadata.People)
+		existing.Metadata["people"] = tagutil.MergeTagLists(clipMetadata.Speakers, clipMetadata.MentionedPeople, clipMetadata.People)
 		existing.Metadata["source_tags"] = clipMetadata.SourceTags
 		existing.Metadata["clip_tags"] = clipMetadata.ClipTags
 		existing.Metadata["search_keywords"] = clipMetadata.SearchKeywords
@@ -332,7 +333,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 	}
 	existing.Metadata["quality_score"] = qualityScore
 	existing.Metadata["quality_tier"] = getQualityTier(qualityScore)
-	existing.Metadata["search_visibility"] = deriveSearchVisibility(qualityScore, existing.Metadata, existing.Tags)
+	existing.Metadata["search_visibility"] = tagutil.DeriveSearchVisibility(qualityScore)
 	s.log.Debug("calculated quality score for clip",
 		zap.String("clip_id", clipID),
 		zap.Float64("score", qualityScore))

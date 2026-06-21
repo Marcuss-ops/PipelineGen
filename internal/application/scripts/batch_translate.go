@@ -13,78 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// enMarkers are common English function words used for interference detection.
-var enMarkers = []string{" the ", " and ", " is ", " are ", " in ", " to ", " of "}
-
-// languageMarkers defines per-language high-frequency stopwords/constructs.
-var languageMarkers = map[string][]string{
-	"it": {" il ", " la ", " le ", " gli ", " che ", " è ", " sono ", " una ", " del ", " della ", " con ", " per ", " non ", " dei ", " delle ", " nel ", " sul "},
-	"es": {" el ", " la ", " los ", " las ", " que ", " es ", " son ", " una ", " del ", " por ", " para ", " con ", " su ", " como ", " más ", " entre "},
-	"fr": {" le ", " la ", " les ", " que ", " est ", " sont ", " une ", " du ", " de la ", " pour ", " dans ", " avec ", " sur ", " des ", " ce ", " cette "},
-	"de": {" der ", " die ", " das ", " ist ", " sind ", " ein ", " eine ", " des ", " dem ", " den ", " mit ", " auf ", " für ", " wird ", " werden ", " nicht "},
-	"pt": {" o ", " a ", " os ", " as ", " que ", " é ", " são ", " uma ", " do ", " da ", " para ", " com ", " como ", " mais ", " dos ", " das "},
-	"nl": {" de ", " het ", " een ", " is ", " zijn ", " met ", " voor ", " op ", " in ", " van ", " het ", " wordt ", " geen ", " ook "},
-	"pl": {" się ", " w ", " na ", " z ", " do ", " jest ", " to ", " nie ", " i ", " że ", " jako ", " przez "},
-	"ru": {" и ", " в ", " не ", " на ", " с ", " что ", " это ", " как ", " его ", " по ", " но ", " из ", " от "},
-	"ja": {" の ", " を ", " は ", " が ", " に ", " た ", " する ", " いる ", " ある ", " て "},
-	"zh": {" 的 ", " 是 ", " 在 ", " 了 ", " 不 ", " 和 ", " 有 ", " 就 ", " 人 ", " 都 ", " 一 "},
-	"ko": {" 이 ", " 가 ", " 을 ", " 를 ", " 는 ", " 은 ", " 에 ", " 의 ", " 로 ", " 하다 ", " 있다 "},
-	"ar": {" في ", " من ", " على ", " إلى ", " عن ", " كان ", " مع ", " هذا ", " لا ", " أن "},
-	"tr": {" bir ", " bu ", " ve ", " ile ", " için ", " ki ", " olan ", " daha ", " çok ", " gibi "},
-}
-
-// looksTranslated returns true if the translated text appears to actually be in the target language.
-func looksTranslated(text, targetLang, sourceLang string) bool {
-	sample := strings.ToLower(text)
-	if len(sample) < 20 {
-		return false
-	}
-	if len(sample) > 300 {
-		sample = sample[:300]
-	}
-
-	targetMarkers, targetOk := languageMarkers[targetLang]
-	if !targetOk {
-		return true
-	}
-
-	targetFound := 0
-	for _, m := range targetMarkers {
-		if strings.Contains(sample, m) {
-			targetFound++
-			if targetFound >= 4 {
-				return true
-			}
-		}
-	}
-
-	if targetFound >= 2 {
-		englishHits := 0
-		for _, m := range enMarkers {
-			if strings.Contains(sample, m) {
-				englishHits++
-			}
-		}
-
-		sourceHits := 0
-		if sourceLang != "" && sourceLang != targetLang {
-			if sourceMarkers, sourceOk := languageMarkers[sourceLang]; sourceOk {
-				for _, m := range sourceMarkers {
-					if strings.Contains(sample, m) {
-						sourceHits++
-					}
-				}
-			}
-		}
-
-		if englishHits >= targetFound || sourceHits > targetFound {
-			return false
-		}
-		return true
-	}
-
-	return false
-}
+// batch_translate.go — translation pipeline for multi-language script generation.
+//
+// Language detection markers and logic have been extracted to pkg/textutil/
+// (textutil.EnMarkers, textutil.LanguageMarkers, textutil.LooksTranslated).
 
 // ── Phase: Translation Pipeline ──────────────────────────────────────────────
 
@@ -181,14 +113,14 @@ func (s *BatchService) translateBatch(
 			}
 
 			sourceLang := req.Language
-			if err == nil && (strings.TrimSpace(translated) == "" || !looksTranslated(translated, lang, sourceLang)) {
-				s.log.Warn("batch generation: chapter translation appears untranslated, retrying with full language name",
-					zap.String("lang", lang), zap.String("topic", part.topic))
-				langName := textutil.LangFullName(lang)
-				retryCtx, retryCancel := context.WithTimeout(ctx, 10*time.Minute)
-				translated, err = s.generator.TranslateText(retryCtx, sourceText, langName)
-				retryCancel()
-				if err != nil || strings.TrimSpace(translated) == "" || !looksTranslated(translated, lang, sourceLang) {
+		if err == nil && (strings.TrimSpace(translated) == "" || !textutil.LooksTranslated(translated, lang, sourceLang)) {
+			s.log.Warn("batch generation: chapter translation appears untranslated, retrying with full language name",
+				zap.String("lang", lang), zap.String("topic", part.topic))
+			langName := textutil.LangFullName(lang)
+			retryCtx, retryCancel := context.WithTimeout(ctx, 10*time.Minute)
+			translated, err = s.generator.TranslateText(retryCtx, sourceText, langName)
+			retryCancel()
+			if err != nil || strings.TrimSpace(translated) == "" || !textutil.LooksTranslated(translated, lang, sourceLang) {
 					s.log.Warn("batch generation: chapter translation retry failed",
 						zap.String("lang", lang), zap.String("topic", part.topic), zap.Error(err))
 					translated = ""

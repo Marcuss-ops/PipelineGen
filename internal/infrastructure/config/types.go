@@ -5,6 +5,34 @@ import (
 	"path/filepath"
 )
 
+// ConcurrencyConfig holds system-wide concurrency limits for resource-bound
+// operations. Every limit was previously hardcoded as a package-level channel
+// capacity or a const (values 1–3). For a 100-worker deployment these defaults
+// have been raised to ≥10 so workers don't serialise behind a single bottleneck.
+// Each field accepts a zero value (0) to disable the limit entirely, though
+// disabling video extraction or script generation is rarely useful in practice.
+type ConcurrencyConfig struct {
+	// MaxConcurrentVideoExtracts limits parallel yt-dlp download + cut operations.
+	// Was hardcoded at 1 (SQLite lock serialisation); WAL mode now allows ≥10.
+	MaxConcurrentVideoExtracts int `yaml:"max_concurrent_video_extracts" env:"VELOX_CONCURRENT_VIDEO_EXTRACTS" default:"10"`
+
+	// MaxConcurrentScriptGenerations limits concurrent LLM script generation.
+	// Was hardcoded at 2; raised to 50 for 100-worker parallelism.
+	MaxConcurrentScriptGenerations int `yaml:"max_concurrent_script_generations" env:"VELOX_CONCURRENT_SCRIPT_GENERATIONS" default:"50"`
+
+	// MaxConcurrentNvidiaGenerations limits concurrent GPU image generation requests.
+	// Was hardcoded at 2; raised to 10 (VRAM-bound).
+	MaxConcurrentNvidiaGenerations int `yaml:"max_concurrent_nvidia_generations" env:"VELOX_CONCURRENT_NVIDIA_GENERATIONS" default:"10"`
+
+	// MaxConcurrentOllamaCalls limits concurrent Ollama model invocations.
+	// Was hardcoded at 2; raised to 50 (model server should handle this load).
+	MaxConcurrentOllamaCalls int `yaml:"max_concurrent_ollama_calls" env:"VELOX_CONCURRENT_OLLAMA_CALLS" default:"50"`
+
+	// MaxConcurrentChannelChecks limits concurrent YouTube channel monitor checks.
+	// Was hardcoded at 3; raised to 20.
+	MaxConcurrentChannelChecks int `yaml:"max_concurrent_channel_checks" env:"VELOX_CONCURRENT_CHANNEL_CHECKS" default:"20"`
+}
+
 // Config holds all configuration for the application.
 // All fields are public and read-only after bootstrap. The previous
 // sync.RWMutex was decorative (fields were mutated directly without locking)
@@ -17,6 +45,7 @@ type Config struct {
 	External         ExternalConfig         `yaml:"external"`
 	Paths            PathsConfig            `yaml:"paths"`
 	Drive            DriveConfig            `yaml:"drive"`
+	Concurrency      ConcurrencyConfig      `yaml:"concurrency"`
 	Jobs             JobsConfig             `yaml:"jobs"`
 	Workers          WorkersConfig          `yaml:"workers"`
 	Video            VideoConfig            `yaml:"video"`

@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -41,8 +42,8 @@ func buildManifestSemanticText(item asset.ClipManifestItem) string {
 
 func tokenSetForText(text string) map[string]struct{} {
 	text = strings.ToLower(text)
-	text = cleanYouTubeDescription(text)
-	text = cleanClipTranscript(text)
+	text = tagutil.CleanYouTubeDescription(text)
+	text = tagutil.CleanClipTranscript(text)
 	replacer := strings.NewReplacer(
 		",", " ", ".", " ", "!", " ", "?", " ", ";", " ", ":", " ",
 		"(", " ", ")", " ", "[", " ", "]", " ", "-", " ", "_", " ",

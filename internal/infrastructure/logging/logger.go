@@ -1,43 +1,40 @@
 // Package logger provides centralized logging for the PipelineGen system.
+//
+// Worker safety (June 2026): the singleton uses sync.Once for initialisation
+// and an atomic.Pointer for the instance so 100+ concurrent workers can call
+// Get(), Named(), With(), Debug(), Info(), etc. without any data race.
+// zap.Logger itself is already concurrency-safe.
 package logger
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"sync"
-	"syscall"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var (
-	instance *zap.Logger
-	once     sync.Once
-	mu       sync.RWMutex
+	instance atomic.Pointer[zap.Logger]
+	initOnce sync.Once
 )
 
 // Init initializes the logger singleton with the given configuration.
-// This should be called early in main() after config is loaded.
-// If Init is never called, Get() will create a default logger.
+// Safe to call from any goroutine; guaranteed to run at most once.
+// Subsequent calls are no-ops and return immediately.
+// zap.ReplaceGlobals is called so zap.L() returns the configured logger.
 func Init(level string, format string) {
-	InitWithForceSync(level, format, false)
-}
-
-// InitWithForceSync initializes the logger singleton, optionally forcing
-// synchronous writes after every log entry (useful for debugging).
-func InitWithForceSync(level, format string, forceSync bool) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	lvl := parseLevel(level)
-	instance = New(
-		WithLevel(lvl),
-		WithEncoding(format),
-		WithForceSync(forceSync),
-	)
-	zap.ReplaceGlobals(instance)
+	initOnce.Do(func() {
+		lvl := parseLevel(level)
+		inst := New(
+			WithLevel(lvl),
+			WithEncoding(format),
+		)
+		instance.Store(inst)
+		zap.ReplaceGlobals(inst)
+	})
 }
 
 // parseLevel converts a string log level to zapcore.Level
@@ -57,28 +54,27 @@ func parseLevel(level string) zapcore.Level {
 }
 
 // Get returns the singleton logger instance.
-// If Init() was not called, it creates a default info-level json logger.
+// If Init() was not called, it creates a default info-level JSON logger
+// via an atomic compare-and-swap so only one goroutine ever creates it.
 func Get() *zap.Logger {
-	once.Do(func() {
-		mu.RLock()
-		if instance != nil {
-			mu.RUnlock()
-			return
-		}
-		mu.RUnlock()
-		// Fallback: create a default logger if Init() was never called
-		instance = New(WithLevel(zapcore.InfoLevel), WithEncoding("json"))
-	})
-	return instance
+	if inst := instance.Load(); inst != nil {
+		return inst
+	}
+	// Lazy default: only one goroutine succeeds.
+	defaultLogger := New(WithLevel(zapcore.InfoLevel), WithEncoding("json"))
+	if instance.CompareAndSwap(nil, defaultLogger) {
+		return defaultLogger
+	}
+	// Another goroutine won the CAS; use its logger.
+	return instance.Load()
 }
 
 // New creates a new logger with custom options
 func New(opts ...Option) *zap.Logger {
 	cfg := &config{
-		level:     zapcore.InfoLevel,
-		encoding:  "json",
-		output:    os.Stdout,
-		forceSync: false,
+		level:    zapcore.InfoLevel,
+		encoding: "json",
+		output:   os.Stdout,
 	}
 
 	for _, opt := range opts {
@@ -110,9 +106,6 @@ func New(opts ...Option) *zap.Logger {
 	}
 
 	ws := zapcore.AddSync(cfg.output)
-	if cfg.forceSync {
-		ws = forceSyncWriteSyncer{WriteSyncer: ws}
-	}
 
 	core := zapcore.NewCore(
 		encoder,
@@ -125,10 +118,9 @@ func New(opts ...Option) *zap.Logger {
 }
 
 type config struct {
-	level     zapcore.Level
-	encoding  string
-	output    *os.File
-	forceSync bool
+	level    zapcore.Level
+	encoding string
+	output   *os.File
 }
 
 // Option is a functional option for logger configuration
@@ -155,71 +147,47 @@ func WithOutput(output *os.File) Option {
 	}
 }
 
-// WithForceSync makes the logger flush after every write when the sink supports it.
-func WithForceSync(force bool) Option {
-	return func(c *config) {
-		c.forceSync = force
-	}
-}
-
-// Sync flushes any buffered log entries
+// Sync flushes any buffered log entries from the singleton.
 func Sync() error {
-	if instance != nil {
-		return instance.Sync()
+	if inst := instance.Load(); inst != nil {
+		return inst.Sync()
 	}
 	return nil
 }
 
-type forceSyncWriteSyncer struct {
-	zapcore.WriteSyncer
-}
-
-func (s forceSyncWriteSyncer) Write(p []byte) (int, error) {
-	n, err := s.WriteSyncer.Write(p)
-	if err != nil {
-		return n, err
-	}
-	if syncErr := s.WriteSyncer.Sync(); syncErr != nil && !ignoreSyncError(syncErr) {
-		return n, syncErr
-	}
-	return n, nil
-}
-
-func ignoreSyncError(err error) bool {
-	return errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTTY)
-}
-
-// Named returns a named logger
+// Named returns a named logger from the singleton.
 func Named(name string) *zap.Logger {
 	return Get().Named(name)
 }
 
-// With creates a child logger with fields
+// With creates a child logger with fields from the singleton.
 func With(fields ...zap.Field) *zap.Logger {
 	return Get().With(fields...)
 }
 
-// Debug logs a debug message
+// Debug logs a debug message via the singleton.
 func Debug(msg string, fields ...zap.Field) {
 	Get().Debug(msg, fields...)
 }
 
-// Info logs an info message
+// Info logs an info message via the singleton.
 func Info(msg string, fields ...zap.Field) {
 	Get().Info(msg, fields...)
 }
 
-// Warn logs a warning message
+// Warn logs a warning message via the singleton.
 func Warn(msg string, fields ...zap.Field) {
 	Get().Warn(msg, fields...)
 }
 
-// Error logs an error message
+// Error logs an error message via the singleton.
 func Error(msg string, fields ...zap.Field) {
 	Get().Error(msg, fields...)
 }
 
-// Fatal logs a fatal message and exits
+// Fatal logs a fatal message and exits via the singleton.
 func Fatal(msg string, fields ...zap.Field) {
 	Get().Fatal(msg, fields...)
 }
+
+

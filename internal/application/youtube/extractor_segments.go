@@ -17,8 +17,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// Semaphore to limit concurrent Ollama model invocations (or scripts invoking it)
-var ollamaSem = make(chan struct{}, 2)
+// extractor_segments.go — subtitle download, parsing, and Ollama-based
+// segment analysis for YouTube video extraction.
+//
+// The per-worker ollamaSem lives on (*Service) and is configured via
+// ConcurrencyConfig.MaxConcurrentOllamaCalls.
 
 // MaxSegmentDuration is the maximum allowed duration for a single clip segment (60 seconds)
 const MaxSegmentDuration = 60

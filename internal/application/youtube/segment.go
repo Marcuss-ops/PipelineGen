@@ -1,6 +1,7 @@
 package youtube
 
 import (
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
 	"fmt"
 	"os"
@@ -39,7 +40,7 @@ func (s *Service) processSegment(
 	preDownloadedPath string,
 ) ExtractItem {
 	item := ExtractItem{
-		Name:            cleanClipName(textutil.SafeName(seg.Name)),
+		Name:            tagutil.CleanClipName(textutil.SafeName(seg.Name)),
 		Start:           strings.TrimSpace(seg.Start),
 		End:             strings.TrimSpace(seg.End),
 		DriveFolderID:   driveFolderID,

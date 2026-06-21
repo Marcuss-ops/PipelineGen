@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"regexp"
 	"strings"
 
 	"go.uber.org/zap"
@@ -429,8 +428,8 @@ func firstSentencePreview(text string, maxChars int) string {
 	if text == "" {
 		return ""
 	}
-	text = narrationMarkerRe.ReplaceAllString(text, "")
-	text = clipMarkerRe.ReplaceAllString(text, "")
+	text = textutil.StripNarrationMarkerRe.ReplaceAllString(text, "")
+	text = textutil.StripClipMarkerRe.ReplaceAllString(text, "")
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return ""
@@ -479,5 +478,4 @@ func isLikelyOutro(sc scripts.ClipScene, all []scripts.ClipScene) bool {
 	return narrationAfter == 0
 }
 
-var narrationMarkerRe = regexp.MustCompile(`(?m)^\s*\[Narration:\s*[a-z_]+\s*\]\s*`)
-var clipMarkerRe = regexp.MustCompile(`(?m)^\s*\[Clip:\s*[^\]]+\s*\]\s*`)
+

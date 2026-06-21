@@ -15,9 +15,6 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// globalNvidiaSem limits concurrent NVIDIA NIM/flux image generation requests system-wide to avoid overloading GPU/VRAM.
-var globalNvidiaSem = make(chan struct{}, 2)
-
 // GenerateAImage generates an AI image using NVIDIA NIM and stores it under a
 // prompt-derived slug. Equivalent to GenerateStyledImage(ctx, textutil.Slugify(prompt), ...).
 func (s *Service) GenerateAImage(ctx context.Context, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*asset.ImageAsset, error) {
@@ -37,8 +34,8 @@ func (s *Service) GenerateAImage(ctx context.Context, prompt, style, model strin
 func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*asset.ImageAsset, error) {
 	// Acquire semaphore slot to prevent GPU/CPU VRAM saturation from concurrent image generations
 	select {
-	case globalNvidiaSem <- struct{}{}:
-		defer func() { <-globalNvidiaSem }()
+	case s.nvidiaSem <- struct{}{}:
+		defer func() { <-s.nvidiaSem }()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

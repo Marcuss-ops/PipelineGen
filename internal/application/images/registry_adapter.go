@@ -15,75 +15,56 @@ import (
 	"go.uber.org/zap"
 )
 
-type registryAdapter struct {
-	repo      *assets.ImagesRepository
-	imagesDir string
-	log       *zap.Logger
-}
-
+// NewRegistryAdapter returns an artifacts.Registry backed by an
+// ImagesRepository. The returned *artifacts.SimpleRegistry delegates
+// every Registry method to a repo-specific callback.
 func NewRegistryAdapter(repo *assets.ImagesRepository, imagesDir string, log *zap.Logger) artifacts.Registry {
-	return &registryAdapter{repo: repo, imagesDir: imagesDir, log: log}
+	return &artifacts.SimpleRegistry{
+		UpsertFn: func(ctx context.Context, rec *artifacts.MediaRecord) error {
+			if rec == nil {
+				return nil
+			}
+			img := &asset.ImageAsset{
+				Hash:        imageRecordHash(rec.ID, rec.FileHash),
+				SubjectID:   textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
+				SourceURL:   textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
+				Description: rec.Name,
+				DriveFileID: rec.DriveFileID,
+				Status:      rec.Status,
+				MetadataJSON: mergeImageMetadata(rec.Metadata, rec, relativePath(imagesDir, rec.LocalPath)),
+				Tags:         append([]string(nil), rec.Tags...),
+				CreatedAt:    time.Now().UTC(),
+			}
+			if img.Description == "" {
+				img.Description = filepath.Base(rec.Filename)
+			}
+			_, err := repo.AddImage(ctx, img)
+			return err
+		},
+		GetFn: func(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
+			img, err := repo.GetImageByHash(ctx, imageRecordHash(id, ""))
+			if err != nil || img == nil {
+				return nil, err
+			}
+			return imageToMediaRecord(img, imagesDir), nil
+		},
+		DeleteFn: func(ctx context.Context, id string) error {
+			return repo.Delete(ctx, imageRecordHash(id, ""))
+		},
+		ListFn: func(ctx context.Context) ([]*artifacts.MediaRecord, error) {
+			return artifacts.GetAllWithDriveFileID(ctx, repo.ListAll,
+				func(img *asset.ImageAsset) (*artifacts.MediaRecord, bool) {
+					if strings.TrimSpace(img.DriveFileID) == "" {
+						return nil, false
+					}
+					return imageToMediaRecord(img, imagesDir), true
+				})
+		},
+		PHashFn: artifacts.NoopFindByPHash,
+	}
 }
 
-func (a *registryAdapter) UpsertMedia(ctx context.Context, rec *artifacts.MediaRecord) error {
-	if rec == nil {
-		return nil
-	}
-
-	asset := &asset.ImageAsset{
-		Hash:        imageRecordHash(rec.ID, rec.FileHash),
-		SubjectID:   textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
-		SourceURL:   textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
-		Description: rec.Name,
-		DriveFileID: rec.DriveFileID,
-		Status:      rec.Status,
-		MetadataJSON: mergeImageMetadata(
-			rec.Metadata,
-			rec,
-			a.relativePath(rec.LocalPath),
-		),
-		Tags:      append([]string(nil), rec.Tags...),
-		CreatedAt: time.Now().UTC(),
-	}
-
-	if asset.Description == "" {
-		asset.Description = filepath.Base(rec.Filename)
-	}
-
-	_, err := a.repo.AddImage(ctx, asset)
-	return err
-}
-
-func (a *registryAdapter) GetMedia(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
-	img, err := a.repo.GetImageByHash(ctx, imageRecordHash(id, ""))
-	if err != nil || img == nil {
-		return nil, err
-	}
-	return imageToMediaRecord(img, a.imagesDir), nil
-}
-
-func (a *registryAdapter) DeleteMedia(ctx context.Context, id string) error {
-	return a.repo.Delete(ctx, imageRecordHash(id, ""))
-}
-
-func (a *registryAdapter) GetAllWithDriveFileID(ctx context.Context) ([]*artifacts.MediaRecord, error) {
-	imagesList, err := a.repo.ListAll(ctx)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]*artifacts.MediaRecord, 0, len(imagesList))
-	for _, img := range imagesList {
-		if strings.TrimSpace(img.DriveFileID) == "" {
-			continue
-		}
-		records = append(records, imageToMediaRecord(img, a.imagesDir))
-	}
-	return records, nil
-}
-
-func (a *registryAdapter) FindByPHash(ctx context.Context, phash string) (string, error) {
-	return "", nil
-}
+// ── Image-specific helpers ─────────────────────────────────────────────
 
 func imageRecordHash(id, fallback string) string {
 	id = strings.TrimSpace(id)
@@ -100,8 +81,7 @@ func imageToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.Medi
 	if img == nil {
 		return nil
 	}
-
-	rec := &artifacts.MediaRecord{
+	return &artifacts.MediaRecord{
 		ID:          imageRecordHash(img.Hash, img.Hash),
 		Name:        img.Description,
 		Filename:    filepath.Base(img.PathRel),
@@ -118,8 +98,6 @@ func imageToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.Medi
 		Tags:        append([]string(nil), img.Tags...),
 		SourceID:    textutil.FirstNonEmpty(img.SourceURL, img.Hash),
 	}
-
-	return rec
 }
 
 func mergeImageMetadata(meta string, rec *artifacts.MediaRecord, relPath string) string {
@@ -163,16 +141,13 @@ func mergeImageMetadata(meta string, rec *artifacts.MediaRecord, relPath string)
 	return string(out)
 }
 
-func (a *registryAdapter) relativePath(fullPath string) string {
+func relativePath(imagesDir, fullPath string) string {
 	fullPath = strings.TrimSpace(fullPath)
-	if fullPath == "" || a.imagesDir == "" {
+	if fullPath == "" || imagesDir == "" {
 		return fullPath
 	}
-	rel, err := filepath.Rel(a.imagesDir, fullPath)
-	if err != nil {
-		return fullPath
-	}
-	if strings.HasPrefix(rel, "..") {
+	rel, err := filepath.Rel(imagesDir, fullPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
 		return fullPath
 	}
 	return rel

@@ -3,21 +3,24 @@ package types
 import (
 	"regexp"
 	"strings"
+	"sync/atomic"
 )
 
 // FilteringConfig allows external packages to override the default filtering
 // lists used by CleanScript. Set via SetFilteringConfig at init time.
+// Worker-safe: reads via atomic.Pointer — no data race with 100+ workers.
 type FilteringConfig struct {
 	StopPhrases      []string
 	SpeakerLabels    []string
 	MetaContentTypes []string
 }
 
-var filteringOverride *FilteringConfig
+var filteringOverride atomic.Pointer[FilteringConfig]
 
 // SetFilteringConfig overrides the default filtering lists used by CleanScript.
+// Safe to call once at init time; reads in CleanScript are lock-free.
 func SetFilteringConfig(cfg FilteringConfig) {
-	filteringOverride = &cfg
+	filteringOverride.Store(&cfg)
 }
 
 // sanitizeInput removes potential injection from prompt
@@ -41,15 +44,15 @@ func CleanScript(script string) string {
 	stopPhrases := StopPhrases
 	speakerLabels := SpeakerLabels
 	metaTypes := MetaContentTypes
-	if filteringOverride != nil {
-		if len(filteringOverride.StopPhrases) > 0 {
-			stopPhrases = filteringOverride.StopPhrases
+	if override := filteringOverride.Load(); override != nil {
+		if len(override.StopPhrases) > 0 {
+			stopPhrases = override.StopPhrases
 		}
-		if len(filteringOverride.SpeakerLabels) > 0 {
-			speakerLabels = filteringOverride.SpeakerLabels
+		if len(override.SpeakerLabels) > 0 {
+			speakerLabels = override.SpeakerLabels
 		}
-		if len(filteringOverride.MetaContentTypes) > 0 {
-			metaTypes = filteringOverride.MetaContentTypes
+		if len(override.MetaContentTypes) > 0 {
+			metaTypes = override.MetaContentTypes
 		}
 	}
 

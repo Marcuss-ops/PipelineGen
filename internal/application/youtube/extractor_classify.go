@@ -47,6 +47,6 @@ func (s *Service) classifyCategory(ctx context.Context, title string) string {
 		EnsureCategories:  []string{"rap", "music"},
 		DefaultCategories: []string{"boxe", "crime", "discovery", "rap", "music"},
 		Cache:             &youtubeCategoryCache{svc: s},
-		Semaphore:         ollamaSem,
+		Semaphore:         s.ollamaSem,
 	})
 }

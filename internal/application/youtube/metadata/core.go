@@ -1,4 +1,4 @@
-// Package youtube contains the YouTube clip extraction, enrichment, and
+// Package metadata provides YouTube clip metadata type aliases.
 // metadata pipeline. The metadata subsystem is split across three files for
 // clarity and bounded diff surface:
 //
@@ -6,7 +6,7 @@
 //                           extracted to youtube/types/ per PR3 Phase 2)
 //   - metadata_enrich.go  : orchestration (writeClipMetadataFile)
 //   - metadata_persist.go : field accessors and content helpers
-package youtube
+package metadata
 
 import "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 

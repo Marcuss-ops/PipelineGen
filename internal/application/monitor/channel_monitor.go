@@ -61,9 +61,6 @@ type MonitorConfig struct {
 	Channels        []ChannelConfig `json:"channels"`
 }
 
-// DefaultMaxConcurrentChannels is the default limit for concurrent channel checks.
-const DefaultMaxConcurrentChannels = 3
-
 // ChannelMonitor handles periodic YouTube channel monitoring
 type ChannelMonitor struct {
 	cfg               *config.Config
@@ -80,6 +77,10 @@ type ChannelMonitor struct {
 
 // NewChannelMonitor creates a new channel monitor.
 func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, log *zap.Logger, youtubeSvc *youtube.Service, db *sql.DB, ollamaClient *client.Client) *ChannelMonitor {
+	maxChannels := cfg.Concurrency.MaxConcurrentChannelChecks
+	if maxChannels <= 0 {
+		maxChannels = 1
+	}
 	return &ChannelMonitor{
 		cfg:          cfg,
 		clipsRepo:    clipsRepo,
@@ -88,7 +89,7 @@ func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, lo
 		youtubeSvc:   youtubeSvc,
 		db:           db,
 		ollamaClient: ollamaClient,
-		globalSem:    make(chan struct{}, DefaultMaxConcurrentChannels),
+		globalSem:    make(chan struct{}, maxChannels),
 	}
 }
 
