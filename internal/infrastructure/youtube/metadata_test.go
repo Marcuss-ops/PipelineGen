@@ -33,7 +33,7 @@ const realisticYDLPDumpJSON = `{
 }`
 
 func TestYouTubeMetadata_FullUnmarshallingPreservesAllFields(t *testing.T) {
-	var raw YouTubeMetadata
+	var raw ytDLPJSON
 	require.NoError(t, json.Unmarshal([]byte(realisticYDLPDumpJSON), &raw))
 
 	assert.Equal(t, "dQw4w9WgXcQ", raw.ID)
@@ -43,7 +43,7 @@ func TestYouTubeMetadata_FullUnmarshallingPreservesAllFields(t *testing.T) {
 	assert.Equal(t, int64(1_700_000_000), raw.ViewCount)
 	assert.Equal(t, 213.0, raw.Duration)
 	assert.Equal(t, "en", raw.Language)
-	assert.Equal(t, "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg", raw.ThumbnailURL)
+	assert.Equal(t, "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg", raw.Thumbnail)
 	require.Len(t, raw.Thumbnails, 3)
 	assert.Equal(t, "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg", raw.Thumbnails[2].URL)
 	assert.Equal(t, 1280, raw.Thumbnails[2].Width)
@@ -56,7 +56,7 @@ func TestYouTubeMetadata_FullUnmarshallingPreservesAllFields(t *testing.T) {
 
 func TestYouTubeMetadata_PartialFixtureStillUnmarshals(t *testing.T) {
 	const partial = `{"id":"abc","title":"minimal"}`
-	var raw YouTubeMetadata
+	var raw ytDLPJSON
 	require.NoError(t, json.Unmarshal([]byte(partial), &raw))
 	assert.Equal(t, "abc", raw.ID)
 	assert.Equal(t, "minimal", raw.Title)
@@ -69,7 +69,7 @@ func TestYouTubeMetadata_PartialFixtureStillUnmarshals(t *testing.T) {
 }
 
 func TestYouTubeMetadata_InvalidJSONFails(t *testing.T) {
-	var raw YouTubeMetadata
+	var raw ytDLPJSON
 	err := json.Unmarshal([]byte("{not valid json}"), &raw)
 	require.Error(t, err)
 }

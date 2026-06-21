@@ -248,7 +248,7 @@ func (s *Service) processSegment(
 	s.log.Info("segment metadata enrichment completed",
 		zap.String("clip_id", clipID))
 
-	if s.disp == nil && s.indexer != nil {
+	if s.indexer != nil {
 		s.log.Info("starting embedding indexing for segment",
 			zap.String("clip_id", clipID))
 		indexCtx, indexCancel := context.WithTimeout(ctx, 30*time.Second)

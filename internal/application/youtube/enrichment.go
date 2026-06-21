@@ -8,15 +8,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-
 	"go.uber.org/zap"
 )
 
 // enrichYouTubeClipWithMetadata updates a clip's metadata with YouTube video information
 // (title, description, tags, language, categories, chapters) to enable rich semantic
 // search across multiple languages and conceptual queries.
+//
+// Per PR2 followup (June 2026): `meta` is now `*VideoCutResult` (the app-layer
+// DTO that wraps `*DownloaderMetadata`); the call-site at the bottom is
+// `s.enrichYouTubeClipWithMetadata(ctx, clipID, nil /* or VideoCutResult */, force)`.
+// The legacy `*videomuscles.YouTubeCutResult` parameter was a leaked infra
+// type and is retired.
 //
 // The search_text field is built from structured semantic metadata only:
 // Title > Summary > Hook > Topics > Speakers > Tags > Keywords.
@@ -29,7 +32,7 @@ import (
 // or the clip was from a file cache hit), this function will fall back to fetching
 // YouTube metadata directly from the video URL. This ensures clips always get enriched
 // even when yt-dlp is temporarily unavailable during the download phase.
-func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID string, meta *videomuscles.YouTubeCutResult, force bool) {
+func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID string, meta *VideoCutResult, force bool) {
 	if s.clips == nil {
 		return
 	}
@@ -52,37 +55,41 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 		return
 	}
 
-	var ym *downloader.YouTubeMetadata
+	var ym *DownloaderMetadata
 
 	// Try to get metadata from the provided result first (fast path)
 	if meta != nil && meta.Metadata != nil {
 		ym = meta.Metadata
 		s.log.Debug("enriching with pre-fetched metadata", zap.String("clip_id", clipID))
 	} else {
-		// Fallback: fetch YouTube metadata directly via yt-dlp
+		// Fallback: fetch YouTube metadata directly via the metaFetcher port
 		// This handles the case where yt-dlp was rate-limited or failed during extraction
-		videoURL := existing.GetMetadataString("youtube_url")
-		if videoURL == "" {
-			videoID := extractYouTubeVideoID(clipID, existing)
-			if videoID != "" {
-				videoURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
+		if s.metaFetcher == nil {
+			s.log.Debug("no metaFetcher wired, skipping fallback fetch",
+				zap.String("clip_id", clipID))
+		} else {
+			videoURL := existing.GetMetadataString("youtube_url")
+			if videoURL == "" {
+				videoID := extractYouTubeVideoID(clipID, existing)
+				if videoID != "" {
+					videoURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
+				}
 			}
-		}
-		if videoURL != "" {
-			s.log.Info("fetching YouTube metadata directly for enrichment",
-				zap.String("clip_id", clipID),
-				zap.String("url", videoURL))
-			ytDlp := downloader.NewYTDLP(s.cfg)
-			fetchedMeta, err := ytDlp.GetVideoMetadata(ctx, videoURL)
-			if err == nil && fetchedMeta != nil {
-				ym = fetchedMeta
-				s.log.Debug("fetched YouTube metadata for enrichment",
+			if videoURL != "" {
+				s.log.Info("fetching YouTube metadata directly for enrichment",
 					zap.String("clip_id", clipID),
-					zap.String("title", ym.Title))
-			} else {
-				s.log.Warn("failed to fetch YouTube metadata for enrichment",
-					zap.String("clip_id", clipID),
-					zap.Error(err))
+					zap.String("url", videoURL))
+				fetchedMeta, err := s.metaFetcher.GetVideoMetadata(ctx, videoURL)
+				if err == nil && fetchedMeta != nil {
+					ym = fetchedMeta
+					s.log.Debug("fetched YouTube metadata for enrichment",
+						zap.String("clip_id", clipID),
+						zap.String("title", ym.Title))
+				} else {
+					s.log.Warn("failed to fetch YouTube metadata for enrichment",
+						zap.String("clip_id", clipID),
+						zap.Error(err))
+				}
 			}
 		}
 	}
