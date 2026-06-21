@@ -374,7 +374,6 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 - ✅ Migrated `workflowrunner.results` → job system
 - ✅ Migrated `assetdestination.Resolver` → `core/destination.Resolver`
 - ✅ Migrated `mediaasset.Processor` → `core/processor.Processor`
-- ✅ Consolidated `internal/core/media/` unified models
 - ✅ Centralized DB migrations + connection pooling (WAL/busy_timeout)
 - ✅ Migrated harvester/catalog/db backup → job system
 - ✅ CI checks integrated: `scripts/ci-architectural-checks.sh` in GitHub Actions
@@ -494,6 +493,24 @@ Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni util
 ## ✂️ Modular edit patterns
 
 Quando modifichi il codebase, **modularizza**: una decisione per sezione, una modifica per file, niente "monkey patch" nel posto sbagliato. Questi pattern sono osservati dalla codebase esistente e dai CHANGELOG.
+
+### Pattern 0 — Port abstraction layer (June 2026, PR1.7 followup)
+
+**Regola**: quando introduci una nuova dipendenza esternalizzabile (database, servizio AI, subprocess executor, client di terze parti), **non** chiamarla mai direttamente dal service. Dichiara invece un **port** (interfaccia strutturale) in `internal/application/<feature>/ports.go`, implementa l'adapter concreto in `internal/infrastructure/<feature>/`, e inietta il concrete in `NewService(ServiceDeps{...})` da `internal/app/composition.go::Build*Bundle()`.
+
+**Perché**:
+- *Compile-time assertions* — `var _ application.Port = (*Concrete)(nil)` cattura drift di signature al compile, non al primo panic runtime.
+- *Test injectability* — i test swappano il concrete via `ServiceDeps{...}` literal senza patchare lo state globale.
+- *Type aliases back-compat* — se la storia richiede un rename DTO, introduci `type OldName = NewName` invece di rompere il consumer.
+
+**Quando NON serve**:
+- Logica in-memory (parsing, math, cache in-memory).
+- Una sola implementazione concreta senza sostituti in alcun test.
+- Tipi steady che non subiscono rename per anni.
+
+**Code-verdetto PR1.7 (June 2026)**: 12 port strutturali in `internal/application/youtube/ports.go` con compile-time assertions. Back-compat aliases: `type VideoMetadata = DownloaderMetadata`, `type YouTubeMetadataPort = DownloaderMetadata`. Empty-marker pattern (`interface{}`) ancora ammesso SOLO per port la cui signature è opaca lato chiamante (cache store, temp-file manager dove solo l'infrastruttura consuma la firma concreta).
+
+Vedi `docs/migration-maps/internal-application-youtube.md` per la migration map completa + `docs/POST_CASCADE_OPERATIONAL_READINESS.md` per il checklist post-cascade.
 
 ### Pattern 1 — Aggiungere un HTTP handler
 
