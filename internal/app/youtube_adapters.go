@@ -344,6 +344,12 @@ func newSearchRunnerStub(log *zap.Logger) youtube.SearchRunnerPort {
 }
 
 func (s *searchRunnerStub) SearchLive(ctx context.Context, query string, limit int, sort string) ([]youtube.SearchLiveResult, error) {
+	if err := ctx.Err(); err != nil {
+		s.log.Warn("SearchRunner.SearchLive: context cancelled before execution",
+			zap.NamedError("ctx_err", err),
+			zap.String("query", query))
+		return nil, err
+	}
 	s.log.Warn("SearchRunner.SearchLive invoked but search runner is stubbed in this PR (June 2026 cascade); returning empty result set",
 		zap.String("query", query),
 		zap.Int("limit", limit),
@@ -352,6 +358,12 @@ func (s *searchRunnerStub) SearchLive(ctx context.Context, query string, limit i
 }
 
 func (s *searchRunnerStub) GetVideoInfo(ctx context.Context, videoURL string) (*youtube.DownloaderMetadata, error) {
+	if err := ctx.Err(); err != nil {
+		s.log.Warn("SearchRunner.GetVideoInfo: context cancelled before execution",
+			zap.NamedError("ctx_err", err),
+			zap.String("url", videoURL))
+		return nil, err
+	}
 	s.log.Warn("SearchRunner.GetVideoInfo invoked but search runner is stubbed in this PR (June 2026 cascade); returning empty DTO",
 		zap.String("url", videoURL))
 	return &youtube.DownloaderMetadata{}, nil
