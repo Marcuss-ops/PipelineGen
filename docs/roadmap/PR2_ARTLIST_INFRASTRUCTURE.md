@@ -1,168 +1,75 @@
-# PR2 — Separazione Artlist infrastructure
+# PR2 — Artlist infrastructure residua
 
 ## Obiettivo
 
-Lasciare in `internal/application/artlist` soltanto orchestrazione, policy e porte. Spostare scraper Node/Playwright, process management, download, filesystem, HLS/FFmpeg e persistenza tecnica in `internal/infrastructure/artlist`.
+Completare la separazione Artlist lasciando in `internal/application/artlist` soltanto orchestrazione, policy e porte consumer-side. Scraper Node/Playwright, process management, download HTTP/HLS, FFmpeg, filesystem, Drive SDK e persistenza concreta devono vivere in infrastructure.
 
-Questa PR non cambia le route Artlist, i payload pubblici o le strategie `verify`, `skip`, `replace`.
+## Stato verificato
 
-## Stato iniziale verificato
+Le porte consumer-side `Searcher`, `Downloader`, `AssetStore`, `Uploader`, `Indexer` e `MetadataWriter` esistono già. Sono stati rimossi alcuni setter, ma non esiste ancora un owner completo `internal/infrastructure/artlist`; il service applicativo conserva `database/sql`, Google Drive SDK, outbox SQLite e un dependency bundle sopra il budget.
 
-`internal/application/artlist` contiene ancora dipendenze concrete verso:
+## Checklist residua
 
-- `database/sql`;
-- Google Drive SDK;
-- repository SQLite;
-- outbox SQLite;
-- clip indexer concreto;
-- processi Node/Playwright;
-- downloader e filesystem.
+### PR2.0 — Creare gli adapter infrastructure reali
 
-## Struttura target
+- [ ] Creare `internal/infrastructure/artlist/scraper` come owner di avvio, health, shutdown, endpoint e parsing Node/Playwright.
+- [ ] Creare `internal/infrastructure/artlist/downloader` come owner di download HTTP/HLS, header, retry, timeout e cleanup.
+- [ ] Riutilizzare il process runner e FFmpeg canonici; nessun secondo wrapper shell o command builder.
+- [ ] Mantenere private le risposte raw dello scraper e convertirle una sola volta in `artlist.Candidate`.
+- [ ] Implementare error mapping coerente verso `ErrUnavailable`, `ErrTimeout`, `ErrInvalidResponse`, `ErrEmptyResult` ed eventuale fallback esplicito.
+- [ ] Spostare `provider_scraper.go`, process lifecycle e filesystem fuori dall'application.
 
-```text
-internal/application/artlist/
-  service.go
-  search_usecase.go
-  run_usecase.go
-  ports.go
-  requests.go
-  results.go
-  policies.go
+### PR2.1 — Ridurre le porte legacy
 
-internal/infrastructure/artlist/
-  scraper/
-    client.go
-    process.go
-    parser.go
-  downloader/
-    download.go
-    hls.go
-  storage.go
-  metadata.go
-```
+- [ ] Ridurre `AssetStore` ai metodi realmente consumati dai singoli use case.
+- [ ] Eliminare la duplicazione `Upsert`/`UpsertClip` scegliendo un unico write contract canonico.
+- [ ] Eliminare la duplicazione `SearchByTerms`/`SearchClips` quando la search unification è disponibile.
+- [ ] Spostare `JobStats`, dettagli SQL e timestamp tecnici nel layer proprietario.
+- [ ] Evitare che una porta applicativa replichi tutta la superficie di un repository concreto.
+- [ ] Conservare `asset.Metadata` come unico tipo metadata condiviso.
 
-## Checklist operativa
+### PR2.2 — Rimuovere concreti da `application/artlist`
 
-### PR2.0 — Inventario delle responsabilità
+- [ ] Rimuovere `database/sql` e il campo `MainDB` dal service applicativo.
+- [ ] Rimuovere Google Drive SDK e sostituirlo con porte piccole per folder e upload.
+- [ ] Rimuovere `*outbox.Dispatcher` concreto usando un contratto applicativo o dominio già esistente.
+- [ ] Rimuovere repository lifecycle concreti quando il consumer necessita di un solo metodo.
+- [ ] Portare `ServiceDependencies` entro il budget massimo di 8–10 dipendenze coerenti.
+- [ ] Non nascondere il superamento del budget tramite embedding di mega-struct.
 
-- [ ] Elencare tutti i file in `internal/application/artlist`.
-- [ ] Classificare ogni file come:
-  - use case;
-  - policy;
-  - porta;
-  - scraper/processo;
-  - downloader;
-  - persistenza;
-  - Drive/storage;
-  - mapping provider.
-- [ ] Cercare dipendenze concrete:
+### PR2.3 — Ridurre facade e pass-through
 
-```bash
-rg 'database/sql|os/exec|node|playwright|ffmpeg|google.golang.org/api/drive|internal/infrastructure/database/sqlite|internal/media' internal/application/artlist
-```
+- [ ] Verificare `SearchService`, `RunOrchestratorService`, `DestinationService`, `JobAdapter` e `DiagnosticsService`.
+- [ ] Eliminare componenti che ricevono l'intero `*Service` e fanno soltanto pass-through.
+- [ ] Iniettare in ogni componente soltanto le porte realmente usate.
+- [ ] Conservare `verify`, `skip` e `replace` in un solo owner applicativo.
+- [ ] Mantenere anti-zombie, lease e retry nel job system canonico.
+- [ ] Usare una sola cache live con owner, TTL e invalidazione espliciti.
 
-- [ ] Elencare tutti i consumer diretti dei service Artlist.
-- [ ] Identificare quali componenti sono già usati dal provider registry.
+### PR2.4 — Eliminare fallback e percorsi paralleli
 
-**Accettazione PR2.0**
-
-Ogni file ha un target esplicito e nessun componente viene duplicato durante lo spostamento.
-
-### PR2.1 — Definire porte applicative minime
-
-- [ ] Definire una porta `Searcher` per la ricerca live.
-- [ ] Definire una porta `Downloader` per il download del candidato selezionato.
-- [ ] Definire una porta `AssetStore` o riusare il contratto canonico già presente.
-- [ ] Definire una porta `Uploader` solo se il use case coordina Drive.
-- [ ] Definire una porta `Indexer` solo se l'indicizzazione è parte del workflow applicativo.
-- [ ] Non esporre `*sql.DB`, `drive.Service`, process handle o path interni nelle interfacce.
-- [ ] Non creare un mega `ArtlistInfrastructure` interface.
-
-Esempio:
-
-```go
-type Searcher interface {
-    Search(context.Context, SearchRequest) ([]Candidate, error)
-}
-
-type Downloader interface {
-    Download(context.Context, DownloadRequest) (DownloadedAsset, error)
-}
-```
-
-### PR2.2 — Estrarre scraper e process management
-
-- [ ] Creare `internal/infrastructure/artlist/scraper`.
-- [ ] Spostare avvio, health-check e shutdown del processo Node/Playwright.
-- [ ] Spostare gestione endpoint scraper e timeout.
-- [ ] Spostare parsing della risposta tecnica dello scraper.
-- [ ] Riutilizzare il process runner canonico; non aggiungere una seconda astrazione shell.
-- [ ] Restituire errori contestuali distinguendo unavailable, timeout, invalid response e empty result.
-- [ ] Evitare che application gestisca PID, porte, comandi o retry di processo.
-
-### PR2.3 — Estrarre downloader e HLS
-
-- [ ] Creare `internal/infrastructure/artlist/downloader`.
-- [ ] Spostare download HTTP/HLS e chiamate FFmpeg.
-- [ ] Spostare user-agent, header, retry e timeout di rete.
-- [ ] Spostare creazione path temporanei e cleanup.
-- [ ] Riutilizzare adapter media/process già presenti.
-- [ ] Mantenere in application soltanto la scelta del candidato e della strategia.
-
-### PR2.4 — Separare persistenza e Drive
-
-- [ ] Rimuovere `database/sql` dai use case Artlist.
-- [ ] Iniettare repository tramite contratto canonico.
-- [ ] Rimuovere Google Drive SDK dal package application.
-- [ ] Iniettare l'uploader tramite porta.
-- [ ] Usare l'outbox tramite contratto esistente, non tramite repository SQLite concreto.
-- [ ] Verificare che `drive_link`, `file_hash` e `local_path` siano aggiornati dallo stesso owner transazionale già definito.
-
-### PR2.5 — Ridurre `application/artlist.Service`
-
-- [ ] Rendere `Service` un orchestratore sottile o sostituirlo con use case specifici.
-- [ ] Rimuovere componenti delegati che fanno solo pass-through senza policy.
-- [ ] Eliminare setter usati soltanto per completare wiring tardivo.
-- [ ] Conservare le strategie `verify`, `skip`, `replace` in un solo punto.
-- [ ] Mantenere l'anti-zombie dei job nel job system, non dentro l'adapter scraper.
-- [ ] Evitare cache duplicate tra application e scraper infrastructure.
-
-### PR2.6 — Aggiornare provider registry
-
-- [ ] Aggiornare l'adapter Artlist in `internal/application/assets/providers/artlist`.
-- [ ] Iniettare la porta `Searcher`, non il service concreto completo.
-- [ ] Verificare `CapabilitySearch` e mapping `Candidate`.
+- [ ] Rimuovere il fallback `dispatcher nil → UpsertClip + IndexClip`.
+- [ ] Rendere outbox/indicizzazione un percorso canonico e deterministico.
 - [ ] Eliminare chiamate dirette allo scraper fuori dall'adapter infrastructure.
+- [ ] Fare dipendere il provider registry dalla porta `Searcher`, non dal service completo.
 - [ ] Eliminare switch provider fuori dal registry.
 
-### PR2.7 — Test unitari application
+### PR2.5 — Test application e infrastructure
 
-- [ ] Testare ricerca con fake `Searcher`.
-- [ ] Testare limite e query forwarding.
-- [ ] Testare strategia `verify` con asset già valido.
-- [ ] Testare strategia `skip`.
-- [ ] Testare strategia `replace`.
-- [ ] Testare errore downloader, uploader e repository.
-- [ ] Testare che un errore intermedio non produca stato `completed`.
-- [ ] Testare deduplicazione e active key senza scraper reale.
+- [ ] Testare ricerca, download, upload e persistenza con fake separati.
+- [ ] Testare `verify`, `skip` e `replace` senza scraper o Drive reali.
+- [ ] Testare deduplicazione, active key e stato terminale dopo errori intermedi.
+- [ ] Testare parser scraper con fixture e server HTTP locale.
+- [ ] Testare timeout, risposta non valida, HLS detection, comando FFmpeg e cleanup.
+- [ ] Proteggere gli E2E esterni con env flag esplicito.
 
-### PR2.8 — Test infrastructure
-
-- [ ] Testare parser risposta scraper con fixture.
-- [ ] Testare timeout e risposta non valida.
-- [ ] Testare costruzione comando Node/Playwright.
-- [ ] Testare HLS detection e comando FFmpeg.
-- [ ] Testare cleanup file temporanei.
-- [ ] Testare download HTTP con server locale.
-- [ ] Proteggere eventuale E2E reale con env flag esplicito.
-
-### PR2.9 — Validazione architetturale
+### PR2.6 — Validazione finale
 
 - [ ] Eseguire:
 
 ```bash
 rg 'database/sql|os/exec|google.golang.org/api/drive|internal/infrastructure/database/sqlite' internal/application/artlist
+rg 'UpsertClip|SearchByTerms|SearchClips|dispatch.*fallback' internal/application/artlist
 go test ./internal/application/artlist/... -count=1
 go test ./internal/infrastructure/artlist/... -count=1
 go test ./internal/application/assets/providers/artlist/... -count=1
@@ -172,12 +79,6 @@ go build ./...
 go run ./scripts/archcheck
 ```
 
-## Exit gate finale
+## Exit gate
 
-PR2 è completata quando:
-
-- `application/artlist` non gestisce SQL, processi, filesystem, HLS o SDK Drive;
-- `infrastructure/artlist` possiede scraper, downloader e integrazioni tecniche;
-- le strategie operative restano in un unico owner applicativo;
-- provider registry e route mantengono comportamento compatibile;
-- nessun percorso legacy o fallback diretto rimane attivo.
+PR2 è chiusa quando `application/artlist` non gestisce SQL, SDK Drive, processi, HLS o filesystem, `internal/infrastructure/artlist` possiede gli adapter tecnici e rimane un solo percorso per ricerca, persistenza, indicizzazione e metadata.
