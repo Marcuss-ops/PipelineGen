@@ -41,23 +41,38 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 		// 2. Give jobs a moment to stop
 		time.Sleep(100 * time.Millisecond)
 
-		// 3. Stop services in parallel
-		var wg sync.WaitGroup
+	// 3. Stop services in parallel
+	var wg sync.WaitGroup
 
-		if jobs != nil && jobs.channelMonitor != nil {
-			wg.Add(1)
-			concurrent.SafeGo("cleanup-channel-monitor", func() {
-				defer wg.Done()
-				jobs.channelMonitor.Stop()
-			})
-		}
-		if jobs != nil && jobs.driveSyncSchedule != nil {
-			wg.Add(1)
-			concurrent.SafeGo("cleanup-drive-sync", func() {
-				defer wg.Done()
-				jobs.driveSyncSchedule.Stop()
-			})
-		}
+	if jobs != nil && jobs.channelMonitor != nil {
+		wg.Add(1)
+		concurrent.SafeGo("cleanup-channel-monitor", func() {
+			defer wg.Done()
+			jobs.channelMonitor.Stop()
+		})
+	}
+	if jobs != nil && jobs.driveSyncSchedule != nil {
+		wg.Add(1)
+		concurrent.SafeGo("cleanup-drive-sync", func() {
+			defer wg.Done()
+			jobs.driveSyncSchedule.Stop()
+		})
+	}
+	// PR4.E-followup: explicit Stop for the outbox-events pool started
+	// in lifecycle.go. We do NOT rely on outboxevents.Pool's internal
+	// ctx.Done handling so in-flight work is drained gracefully even if
+	// the pool implementation loses that behaviour in the future. The
+	// 15 s budget mirrors what the original BuildOutboxBundle watcher used.
+	if root != nil && root.Outbox != nil && root.Outbox.EventsPool != nil {
+		const eventsPoolStopTimeout = 15 * time.Second
+		wg.Add(1)
+		concurrent.SafeGo("cleanup-outbox-events-pool", func() {
+			defer wg.Done()
+			if err := root.Outbox.EventsPool.Stop(eventsPoolStopTimeout); err != nil {
+				log.Warn("outbox events pool stop returned error", zap.Error(err))
+			}
+		})
+	}
 
 		// 4. Wait for all stop operations with timeout
 		done := make(chan struct{})
