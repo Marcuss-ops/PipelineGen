@@ -38,7 +38,6 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
@@ -131,24 +130,23 @@ type ProcessBundle struct {
 	VLMClient          *vlm.Client
 }
 
-// AIBundle owns script generation, engine, and flow handlers. Note:
-// StyleRegistry now lives on DriveBundle (loaded at top of BuildDriveBundle)
-// so ensureStyleDriveFolders can call it before AI is constructed. AIBundle
-// keeps its own light reference (set after BuildAIBundle returns).
-//
-// PR4-H followup (June 2026): BatchService + CurationService fields were
-// removed — they were dead code. The canonical batchSvc/curationSvc
-// instances are constructed locally inside registry.go::WireRegistry
-// (with the real voiceoverSvc from DomainBundle + root.Jobs.Service) and
-// passed via ctor to the local ScriptFlowHandler there. No consumer
-// outside registry.go reads AIBundle.BatchService/CurationService.
+// AIBundle owns script generation, engine, and the configuration pieces
+// other bundles need at composition time. Note:
+//   - StyleRegistry lives on DriveBundle (loaded at top of BuildDriveBundle)
+//     so ensureStyleDriveFolders can call it before AI is constructed.
+//     AIBundle keeps a light mirror reference (set after BuildAIBundle
+//     returns).
+//   - ScriptFlowHandler is NOT carried here — it is constructed inside
+//     registry.go::WireRegistry with the canonical batchSvc/curationSvc
+//     deps (real voiceoverSvc from DomainBundle + root.Jobs.Service).
+//     Root.AI.ScriptFlowHandler has zero external readers (verified via
+//     grep across internal/, cmd/, docs/ — PR4-H followup-3, June 2026).
 type AIBundle struct {
-	OllamaClient      *client.Client
-	ScriptGen         *ollama.Generator
-	StyleRegistry     *generation.StyleRegistry // mirror of DriveBundle.StyleRegistry
-	MemoryService     *gemmamemory.Service
-	ScriptEngine      *scriptcore.Engine
-	ScriptFlowHandler *scriptpkg.ScriptFlowHandler
+	OllamaClient  *client.Client
+	ScriptGen     *ollama.Generator
+	StyleRegistry *generation.StyleRegistry // mirror of DriveBundle.StyleRegistry
+	MemoryService *gemmamemory.Service
+	ScriptEngine  *scriptcore.Engine
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.
@@ -494,31 +492,18 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(repos.ScriptsRepo)
 	engine := scriptcore.NewEngine(scriptGen, memorySvc, scriptsRepoAdapter, log)
 
-	// PR4-H followup (June 2026): AIBundle no longer carries BatchService or
-	// CurationService fields. The canonical instances are constructed locally
-	// inside registry.go::WireRegistry (with the real voiceoverSvc +
-	// Jobs.Service deps) and passed via ctor to the local ScriptFlowHandler
-	// there. This BuildAIBundle creates the field-orphaned scriptFlowHandler
-	// with nil batchSvc/curationSvc; consumers go through registry.go's
-	// fully-wired handler instead.
-	scriptFlowHandler := scriptpkg.NewScriptFlowHandler(
-		scriptGen, engine,
-		nil /* imageSvc */, nil /* realtime */, nil /* assoc */,
-		nil /* voiceoverSvc */, nil /* assetTree */,
-		drive.DocClient, drive.DriveUploader,
-		nil /* jobFacade */, scriptsRepoAdapter, memorySvc,
-		cfg.Drive.ScriptsGenFolder(), cfg, log,
-		nil /* batchSvc: deferred to registry.go local handler */,
-		nil /* curationSvc: deferred to registry.go local handler */,
-	)
-
+	// PR4-H followup-3 (June 2026): ScriptFlowHandler is no longer constructed
+	// inside BuildAIBundle. The canonical ScriptFlowHandler (with batchSvc+
+	// curationSvc deps) lives entirely inside registry.go::WireRegistry.
+	// AIBundle exposes only the LLM-side pieces other modules need: OllamaClient,
+	// ScriptGen (for embedder/seed in registry.go), StyleRegistry (mirror of
+	// Drive's), MemoryService, ScriptEngine.
 	return &AIBundle{
-		OllamaClient:      ollamaClient,
-		ScriptGen:         scriptGen,
-		StyleRegistry:     drive.StyleRegistry,
-		MemoryService:     memorySvc,
-		ScriptEngine:      engine,
-		ScriptFlowHandler: scriptFlowHandler,
+		OllamaClient:  ollamaClient,
+		ScriptGen:     scriptGen,
+		StyleRegistry: drive.StyleRegistry,
+		MemoryService: memorySvc,
+		ScriptEngine:  engine,
 	}, nil
 }
 
