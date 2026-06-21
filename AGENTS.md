@@ -203,7 +203,7 @@ the CI guard with the migration target printed inline.
 | `internal/core/`                  | `internal/domain/asset/` (contracts) or `internal/infrastructure/<X>/` (concrete) | TBD |
 | `internal/media/<feature>/`       | `internal/domain/asset/<feature>/` (model) or `internal/application/<feature>/` (use case) | TBD |
 | `internal/assets/`                | `internal/domain/asset/`                                       | TBD |
-| `internal/artifacts/`             | `internal/domain/job/` (artifacts is interface‑wrap; eliminate entirely) | TBD |
+| `internal/artifacts/`             | `internal/application/assets/artifacts/` (lift-and-shift completato) | Wave 7 ✅ |
 | `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/`        | TBD |
 | `internal/upload/drive/`          | `internal/infrastructure/drive/`                               | TBD |
 | `internal/application/scriptflow/` | `internal/application/scripts/` (flat-merge completato; directory eliminata) | Wave 6 ✅ |
@@ -707,7 +707,7 @@ the target API structure. Quick reference:
 │   ├── sources/              # Artlist + YouTube providers (legacy — migrating to providers/)
 │   ├── upload/               # Drive upload (legacy — migrating to infrastructure/drive/)
 │   ├── assets/               # Legacy asset package (migrating to domain/asset/)
-│   └── artifacts/            # Legacy artifact package (migrating to domain/job/)
+│   └── artifacts/          # Legacy artifact package → migrated to application/assets/artifacts/
 ├── pkg/                      # Leaf utilities only
 ├── config/                   # YAML configuration
 ├── migrations/               # SQL migrations

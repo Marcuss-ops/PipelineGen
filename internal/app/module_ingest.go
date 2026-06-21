@@ -7,7 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 	"go.uber.org/zap"
