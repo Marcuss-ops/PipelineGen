@@ -104,11 +104,6 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 		UpdatedAt:      now,
 		DeletedAt:      &zeroTime, // non-nil pointer → non-NULL binding
 	}
-	// TODO: scanMediaAsset reads Group from metadata_json["group_name"], not
-	// from the group_name column. Save writes to the column but the scanner
-	// ignores it. When the scanner is aligned, this metadata workaround can
-	// be removed and the assert below will read from the column directly.
-	clip.SetMetadataString("group_name", "artlist-fixtures")
 	clip.SetDownloadLink("https://artlist.io/hls/pr12b-artlist-001.m3u8")
 	clip.SetLocalPath("data/artlist/pr12b-artlist-001.mp4")
 	clip.SetDriveLink("https://drive.google.com/file/d/pr12b-artlist-001")

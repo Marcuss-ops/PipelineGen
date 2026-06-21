@@ -93,11 +93,6 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 		UpdatedAt:      now,
 		DeletedAt:      &zeroTime,
 	}
-	// TODO: scanMediaAsset reads Group from metadata_json["group_name"], not
-	// from the group_name column. Save writes to the column but the scanner
-	// ignores it. When the scanner is aligned, this metadata workaround can
-	// be removed.
-	clip.SetMetadataString("group_name", "youtube-fixtures")
 	clip.SetDownloadLink("https://youtube.com/download/pr12b-youtube-001.mp4")
 	clip.SetLocalPath("data/youtube/pr12b-youtube-001.mp4")
 	clip.SetDriveLink("https://drive.google.com/file/d/pr12b-youtube-001")

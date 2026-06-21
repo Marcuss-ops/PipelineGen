@@ -37,7 +37,7 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 		widthNull, heightNull                                sql.NullInt64
 		lifecycle, deletedAtStr                              sql.NullString
 		folderIDNull, parentFolderIDNull, folderPathNull     sql.NullString
-		category, filename, errCol, thumbURL, phash          sql.NullString
+		category, groupNameNull, filename, errCol, thumbURL, phash sql.NullString
 		searchText, sceneType                                sql.NullString
 		qualityScore                                         sql.NullFloat64
 		reuseCount                                           sql.NullInt64
@@ -54,7 +54,7 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 		&createdAtStr, &updatedAtStr, &widthNull, &heightNull,
 		&lifecycle, &deletedAtStr,
 		&folderIDNull, &parentFolderIDNull, &folderPathNull,
-		&category, &filename, &errCol, &thumbURL, &phash,
+		&category, &groupNameNull, &filename, &errCol, &thumbURL, &phash,
 		&searchText, &sceneType, &qualityScore, &reuseCount,
 		&lastUsedAtNull,
 	)
@@ -141,10 +141,8 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 		_ = json.Unmarshal([]byte(tagsNull.String), &a.Tags)
 	}
 
-	// group_name from metadata_json or field.
-	if a.Group == "" {
-		a.Group = a.GetMetadataString("group_name")
-	}
+	// group_name read directly from the column (no metadata_json fallback).
+	a.Group = groupNameNull.String
 
 	return &a, nil
 }

@@ -32,6 +32,7 @@ const mediaAssetColumns = `
 	COALESCE(parent_folder_id, '') AS parent_folder_id,
 	COALESCE(folder_path, '') AS folder_path,
 	COALESCE(category, '') AS category,
+	COALESCE(group_name, '') AS group_name,
 	COALESCE(filename, '') AS filename,
 	COALESCE(error, '') AS error,
 	COALESCE(thumb_url, '') AS thumb_url,
