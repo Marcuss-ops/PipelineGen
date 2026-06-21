@@ -3,6 +3,16 @@
 Every legacy directory listed in the AGENTS.md Legacy Directories Policy has been
 eliminated or migrated. This directory is retained as a historical record.
 
+> **Status disclaimer (PR0, June 2026)** — Le intestazioni `✅ COMPLETED`
+> di ciascuna mappa si riferiscono al **trasferimento fisico completato**
+> (directory spostate). Il **layering finale** richiesto dal nuovo roadmap
+> operativo `docs/roadmap/PR{0..4}_*.md` resta aperto finché
+> `application/*` non è completamente separato dagli adapter infrastrutturali
+> (PR1, PR2), l'API non è consolidata per capability (PR3) e il
+> composition root non è modulare (PR4). Consultare
+> `architecture/migration.yaml` per lo stato Wave-per-Wave e
+> `docs/roadmap/` per la prossima ondata di lavoro.
+
 | Legacy directory | Target | Status |
 |---|---|---|
 | `internal/core/`                 | `internal/domain/asset/` or `internal/infrastructure/<X>/` | PR4 ✅ |

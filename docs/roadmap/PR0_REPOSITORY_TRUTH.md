@@ -28,17 +28,17 @@ File esclusi:
 
 ### PR0.0 — Fotografare lo stato reale
 
-- [ ] Eseguire `go list ./...` e salvare l'elenco temporaneamente fuori dal repository.
-- [ ] Eseguire `find internal -type d | sort` e confrontarlo con `scripts/archcheck/baseline.json`.
-- [ ] Cercare i namespace eliminati:
+- [x] Eseguire `go list ./...` e salvare l'elenco temporaneamente fuori dal repository. *(Sostituito in PR #26+ da `find internal -type d` + `find internal -name '*.go'`; snapshot in `/tmp/pr0-snapshot/internal-dirs.txt` + `eliminated-refs.txt`. Vedi sezione Condotto.)*
+- [x] Eseguire `find internal -type d | sort` e confrontarlo con `scripts/archcheck/baseline.json`. *(119 sotto-dir in `internal/`; baseline.json hash `f4bba57f…` invariato dopo `--update` = già accurato.)*
+- [x] Cercare i namespace eliminati:
 
 ```bash
 rg 'internal/(core|assets|artifacts|sources|upload|domain/media|application/scriptflow)' --type go
 ```
 
-- [ ] Classificare ogni risultato come import reale, commento storico o documentazione.
-- [ ] Verificare quali sottodirectory di `internal/media` esistono ancora realmente.
-- [ ] Verificare quali directory API legacy esistono ancora realmente.
+- [x] Classificare ogni risultato come import reale, commento storico o documentazione. *(Vedi `/tmp/pr0-snapshot/eliminated-refs.txt`.)*
+- [x] Verificare quali sottodirectory di `internal/media` esistono ancora realmente. *(19 sotto-dir + `deletion.go` = 102 file `.go` attivi.)*
+- [x] Verificare quali directory API legacy esistono ancora realmente. *(16 sotto-dir in `internal/api/` — tutti e 7 i "legacy" PR3 ancora presenti: drive, realtime, searchqueries, sources, fullimages, workers, script.)*
 
 **Accettazione PR0.0**
 
@@ -48,10 +48,10 @@ rg 'internal/(core|assets|artifacts|sources|upload|domain/media|application/scri
 
 ### PR0.1 — Correggere `architecture/migration.yaml`
 
-- [ ] Marcare Wave 4A completata se `internal/assets` non esiste e gli import sono zero.
-- [ ] Marcare Wave 4C completata se `internal/core` e `internal/domain/media` non esistono.
-- [ ] Marcare Wave 6 completata se `internal/application/scriptflow` e `internal/scripts` non hanno import reali.
-- [ ] Marcare Wave 7 completata se `internal/artifacts` e `internal/assets` non esistono.
+- [x] *(Parziale)* Marcare Wave 4A/4C/6/7 già `done` — verificato che i path sono ancora rimossi. **Da fare in PR-round successivo**: aggiungere link Wave → PR per rendere la cross-link matrix navigabile.
+- [x] *(Parziale)* Wave 10/11/12/13 riflettono già i conteggi `active_files_remaining` aggiornati; nessuna rimozione file-level necessaria. **Da fare successivamente**: refresh dopo PR1+PR2.
+- [x] *(Parziale)* Wave 14 resta `in_progress` finché esistono i 7 path (verificato in PR0.0).
+- [x] Wave 15 resta `in_progress` (services struct già rimosso da PR4d-final — verificato).
 - [ ] Separare chiaramente “directory spostata” da “layering completato” per YouTube e Artlist.
 - [ ] Aggiornare Wave 10–13 sulla base delle sottodirectory `internal/media` ancora presenti.
 - [ ] Lasciare Wave 14 `in_progress` finché esistono `api/drive`, `api/realtime`, `api/searchqueries`, `api/sources`, `api/fullimages`, `api/workers` o `api/script`.
@@ -69,7 +69,7 @@ Ogni stato restante deve corrispondere a codice realmente presente.
 
 ### PR0.2 — Rigenerare la baseline architetturale
 
-- [ ] Eseguire il comando canonico di aggiornamento:
+- [x] Eseguire il comando canonico di aggiornamento (`go run ./scripts/archcheck --update`). *(Eseguito in PR #26+1: SHA-256 di `scripts/archcheck/baseline.json` invariato = baseline già accurata al commit corrente.)*
 
 ```bash
 go run ./scripts/archcheck --update
@@ -89,7 +89,7 @@ go run ./scripts/archcheck --update
 
 ### PR0.3 — Allineare le migration map
 
-- [ ] Correggere `docs/migration-maps/README.md` per distinguere:
+- [x] *(Parziale)* Aggiunto disclaimer a `docs/migration-maps/README.md` che distingue trasferimento fisico da layering chiuso. **Da fare successivamente** (issue esplicita del code-reviewer PR #26+1): aggiungere footer disclaimer anche ai singoli file (`internal-media.md`, `internal-sources.md`, `internal-assets.md`, `internal-core.md`, `internal-artifacts.md`, `internal-upload.md`) i cui body contengono ancora "Status: pending" sotto un'intestazione `✅ COMPLETED`.
   - directory eliminata;
   - package fisicamente spostato;
   - layering ancora da completare.
