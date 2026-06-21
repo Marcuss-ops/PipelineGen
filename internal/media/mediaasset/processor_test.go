@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
@@ -92,7 +92,7 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 		nil,
 	)
 
-	result, err := p.Process(ctx, &processor.ProcessInput{
+	result, err := p.Process(ctx, &asset.ProcessInput{
 		ID:        "clip-1",
 		Name:      "test clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -125,7 +125,7 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 		nil,
 	)
 
-	result, err := p.Process(ctx, &processor.ProcessInput{
+	result, err := p.Process(ctx, &asset.ProcessInput{
 		ID:        "clip-1",
 		Name:      "test clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -164,7 +164,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 	)
 
 	// Case 1: StreamCopy is true and specs match -> Normalize should NOT be called.
-	result, err := p.Process(ctx, &processor.ProcessInput{
+	result, err := p.Process(ctx, &asset.ProcessInput{
 		ID:         "clip-1",
 		Name:       "test clip",
 		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -181,7 +181,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 	ff.normalizeCalled = false
 	p.videoCfg.FPS = 60
 
-	result, err = p.Process(ctx, &processor.ProcessInput{
+	result, err = p.Process(ctx, &asset.ProcessInput{
 		ID:         "clip-2",
 		Name:       "test clip 2",
 		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",

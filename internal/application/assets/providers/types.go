@@ -119,7 +119,7 @@ type Candidate struct {
 
 // FetchRequest drives the binary download for a known candidate.
 // The Provider MUST NOT decide the destination itself: the caller
-// resolves a destination via internal/core/destination.Resolver.
+// resolves a destination via internal/core/asset.Resolver.
 //
 // SegmentStart and SegmentEnd are optional bounds for partial
 // downloads (e.g. YouTube clip extraction). Both default to 0

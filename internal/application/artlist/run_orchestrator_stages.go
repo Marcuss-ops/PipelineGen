@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -20,7 +19,7 @@ import (
 // clipWork pairs a RunTagItem with its processor input.
 type clipWork struct {
 	item         RunTagItem
-	processInput *processor.ProcessInput
+	processInput *asset.ProcessInput
 }
 
 // pipelineState holds mutable state accumulated across RunTag stages.
@@ -93,7 +92,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 
 		rootFolderID := defaults.String(req.RootFolderID, o.svc.cfg.Drive.ArtlistFolder())
 
-		processInput := &processor.ProcessInput{
+		processInput := &asset.ProcessInput{
 			ID:          item.ClipID,
 			Name:        item.Name,
 			SourceURL:   sourceURL,

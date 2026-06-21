@@ -5,7 +5,7 @@ import (
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"

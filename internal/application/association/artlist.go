@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -61,7 +61,7 @@ func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string, t
 	var matches []ScoredMatch
 
 	for _, clip := range clipsList {
-		result := scoring.Calculate(scoring.Params{
+		result := asset.Calculate(asset.Params{
 			Query:       term,
 			QueryTokens: queryTokens,
 			Topic:       topic,

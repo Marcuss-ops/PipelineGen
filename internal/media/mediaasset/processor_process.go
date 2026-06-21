@@ -7,12 +7,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // processStep normalizes/processes the video if needed.
-func (p *Processor) processStep(ctx context.Context, input *processor.ProcessInput, rawPath, processedPath string) (string, error) {
+func (p *Processor) processStep(ctx context.Context, input *asset.ProcessInput, rawPath, processedPath string) (string, error) {
 	shouldNormalize := input.Normalize == nil || *input.Normalize
 
 	// If normalization is not requested, just move the file.

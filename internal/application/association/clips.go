@@ -3,7 +3,7 @@ package association
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -44,7 +44,7 @@ func (a *ClipDriveAssociation) Associate(ctx context.Context, input SegmentInput
 	var matches []ScoredMatch
 	for _, c := range clipsList {
 		targetTokens := textutil.Tokenize(c.Name)
-		score := scoring.TokenScore(queryTokens, targetTokens)
+		score := asset.TokenScore(queryTokens, targetTokens)
 
 		if score > 30 {
 			link := c.DriveLink()

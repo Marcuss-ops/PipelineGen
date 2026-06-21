@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
@@ -28,7 +27,7 @@ func (s *Service) resolveDriveDestination(ctx context.Context, req *ExtractReque
 		return "", ""
 	}
 
-	destReq := &destination.ResolveRequest{
+	destReq := &asset.ResolveRequest{
 		Source:          "youtube",
 		Group:           req.Destination.Group,
 		FolderID:        req.Destination.FolderID,

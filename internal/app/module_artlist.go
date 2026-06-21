@@ -8,8 +8,8 @@ import (
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -76,7 +76,7 @@ func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Servic
 	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, DriveClient: coreDeps.DriveClient, AssetIndex: coreDeps.AssetIndexService}, log)
 }
 
-func wireAssetDestinationResolver(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) destination.Resolver {
+func wireAssetDestinationResolver(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) asset.Resolver {
 	if coreDeps.DriveClient != nil {
 		storageResolver := drive.NewResolver(drive.MediaRoot(cfg.Storage.MediaPath()), drive.DriveRoot(cfg.Drive.RootFolder()))
 		mediaStore := drive.NewStore(storageResolver, &driveutil.Uploader{Service: coreDeps.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsFolder(), log)
@@ -137,7 +137,7 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	return clipresolver.NewService(repos, harvestSvc, embedProvider, ontologyScorer, matchingCfg, vectorStoreSearcher, llmDecision)
 }
 
-func wireArtlistService(cfg *config.Config, coreDeps *CoreDeps, artlistLifecycle *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexerSvc *clipindexer.Service, log *zap.Logger) (*artlistPkg.Service, error) {
+func wireArtlistService(cfg *config.Config, coreDeps *CoreDeps, artlistLifecycle *lifecycle.Service, assetDestResolver asset.Resolver, clipIndexerSvc *clipindexer.Service, log *zap.Logger) (*artlistPkg.Service, error) {
 	artlistSvc, err := artlistPkg.NewService(cfg, coreDeps.DB.DB, coreDeps.DB.DB, coreDeps.ClipsRepo, coreDeps.MediaProcessor, artlistLifecycle, assetDestResolver, clipIndexerSvc, coreDeps.JobServiceFacade, coreDeps.DriveClient, coreDeps.Assets.ProcessingRepository(), coreDeps.Assets.VersionRepository(), coreDeps.Assets.LocationRepository(), log)
 	if err != nil {
 		return nil, err

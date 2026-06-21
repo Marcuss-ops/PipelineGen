@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"time"
 
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // HTTPTextEmbedder calls a Python embedding sidecar server's /embed

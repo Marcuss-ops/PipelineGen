@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	process "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 

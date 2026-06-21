@@ -3,11 +3,11 @@ package drive
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // DestinationResolver is the thin wrapper that satisfies
-// `core/destination.Resolver` so that callers can use a Store as the
+// `core/asset.Resolver` so that callers can use a Store as the
 // destination-resolver dependency without reshaping the field. The
 // original (pre-Phase-7) implementation lived in
 // `destinations.ResolverAdapter`; this facade reproduces the signature
@@ -17,10 +17,10 @@ type DestinationResolver struct {
 	store *Store
 }
 
-// NewDestinationResolver returns a `destination.Resolver` built around
+// NewDestinationResolver returns a `asset.Resolver` built around
 // the supplied Store. The wrapping ensures calls match the canonical
 // Resolver interface in `internal/core/destination/types.go`.
-func NewDestinationResolver(s *Store) destination.Resolver {
+func NewDestinationResolver(s *Store) asset.Resolver {
 	return &destinationResolverAdapter{store: s}
 }
 
@@ -30,16 +30,16 @@ type destinationResolverAdapter struct {
 	store *Store
 }
 
-// Resolve maps a destination.ResolveRequest to a destination.ResolveResult.
+// Resolve maps a asset.ResolveRequest to a asset.ResolveResult.
 // The pre-Phase-7 contract returned a struct with FolderID + DriveLink
 // fully populated; this adapter mirrors that shape using the Store's
 // configured folders and Resolver for path-only destinations.
-func (d *destinationResolverAdapter) Resolve(_ context.Context, req *destination.ResolveRequest) (*destination.ResolveResult, error) {
+func (d *destinationResolverAdapter) Resolve(_ context.Context, req *asset.ResolveRequest) (*asset.ResolveResult, error) {
 	if d == nil || d.store == nil {
-		return &destination.ResolveResult{}, nil
+		return &asset.ResolveResult{}, nil
 	}
 	if req == nil {
-		return &destination.ResolveResult{
+		return &asset.ResolveResult{
 			LocationKind: "drive",
 			FolderID:     d.store.rootFolder,
 		}, nil
@@ -74,7 +74,7 @@ func (d *destinationResolverAdapter) Resolve(_ context.Context, req *destination
 	}
 	if d.store.resolver != nil {
 		if resolved, err := d.store.resolver.Resolve(assetReq); err == nil && resolved != nil {
-			return &destination.ResolveResult{
+			return &asset.ResolveResult{
 				LocationKind: "drive",
 				URI:          folderID,
 				FolderID:     folderID,
@@ -86,7 +86,7 @@ func (d *destinationResolverAdapter) Resolve(_ context.Context, req *destination
 		}
 	}
 
-	return &destination.ResolveResult{
+	return &asset.ResolveResult{
 		LocationKind: "drive",
 		URI:          folderID,
 		FolderID:     folderID,

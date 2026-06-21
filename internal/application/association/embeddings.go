@@ -15,7 +15,7 @@ import (
 // "bridges/generate_embedding.py", "--text", text)` directly inside
 // the application layer. That violated AGENTS.md's architectural split
 // (os/exec in application/). The Python invocation now lives behind
-// the canonical embedding.Embedder interface in
+// the canonical asset.Embedder interface in
 // internal/infrastructure/embeddings/python.go and is injected via
 // SetEmbedder from internal/app/ during composition root construction.
 //

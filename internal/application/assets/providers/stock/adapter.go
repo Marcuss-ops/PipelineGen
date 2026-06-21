@@ -145,7 +145,7 @@ func (a *Adapter) Capabilities() []providers.Capability {
 // What Fetch deliberately does NOT do:
 //
 //   - decide Drive destination (the caller resolves via
-//     core/destination.Resolver and passes req.DestinationID;
+//     core/asset.Resolver and passes req.DestinationID;
 //     adapters do not own destination policy);
 //   - emit Qdrant upserts or asset lifecycle transitions
 //     (Provider MUST NOT do these per provider.go preamble);

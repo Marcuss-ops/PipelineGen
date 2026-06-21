@@ -3,7 +3,7 @@ package association
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -25,7 +25,7 @@ func scoreFolderCandidates(database, source string, folders []FolderCandidate, t
 		}
 
 		candidateText := strings.ToLower(strings.Join([]string{name, path, link}, " "))
-		score := scoring.ScoreText(candidateText, terms)
+		score := asset.ScoreText(candidateText, terms)
 		if score == 0 {
 			continue
 		}

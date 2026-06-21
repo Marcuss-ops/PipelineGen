@@ -1,7 +1,7 @@
 // Package core provides canonical shared types for the PipelineGen system.
 // Analysis types moved here from internal/ml/ollama/types to prevent
 // cross-layer imports from handler packages into the ML layer.
-package core
+package asset
 
 // EntityExtractionRequest represents a request to extract entities from a segment.
 type EntityExtractionRequest struct {

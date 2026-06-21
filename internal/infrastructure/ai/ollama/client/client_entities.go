@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/prompts"
 )
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama.
-func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req core.EntityExtractionRequest) (*core.EntityExtractionResult, error) {
+func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req asset.EntityExtractionRequest) (*asset.EntityExtractionResult, error) {
 	return c.ExtractEntitiesFromSegmentWithModel(ctx, req, "")
 }
 
 // ExtractEntitiesFromSegmentWithModel extracts entities using the specified model.
-func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req core.EntityExtractionRequest, model string) (*core.EntityExtractionResult, error) {
+func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req asset.EntityExtractionRequest, model string) (*asset.EntityExtractionResult, error) {
 	entityCount := req.EntityCount
 	if entityCount <= 0 {
 		entityCount = 2
@@ -46,12 +46,12 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req co
 }
 
 // ExtractEntitiesFromScript extracts entities from all segments.
-func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []string, entityCount int) (*core.FullEntityAnalysis, error) {
+func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []string, entityCount int) (*asset.FullEntityAnalysis, error) {
 	return c.ExtractEntitiesFromScriptWithModel(ctx, segments, entityCount, "")
 }
 
 // ExtractEntitiesFromScriptWithModel extracts entities using the specified model.
-func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*core.FullEntityAnalysis, error) {
+func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, entityCount int, model string) (*asset.FullEntityAnalysis, error) {
 	if len(segments) == 0 {
 		return nil, fmt.Errorf("no segments provided")
 	}
@@ -59,14 +59,14 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 		entityCount = 2
 	}
 
-	analysis := &core.FullEntityAnalysis{
+	analysis := &asset.FullEntityAnalysis{
 		TotalSegments:         len(segments),
-		SegmentEntities:       make([]core.SegmentEntities, 0, len(segments)),
+		SegmentEntities:       make([]asset.SegmentEntities, 0, len(segments)),
 		EntityCountPerSegment: entityCount,
 	}
 
 	for i, segment := range segments {
-		req := core.EntityExtractionRequest{
+		req := asset.EntityExtractionRequest{
 			SegmentText:  segment,
 			SegmentIndex: i,
 			EntityCount:  entityCount,
@@ -83,7 +83,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 		}
 		result = capEntityExtractionResult(result, entityCount)
 
-		analysis.SegmentEntities = append(analysis.SegmentEntities, core.SegmentEntities{
+		analysis.SegmentEntities = append(analysis.SegmentEntities, asset.SegmentEntities{
 			SegmentIndex:     i,
 			SegmentText:      segment,
 			FrasiImportanti:  result.FrasiImportanti,
@@ -103,7 +103,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 	return analysis, nil
 }
 
-func parseEntityExtractionResult(response string, segmentIndex int) (*core.EntityExtractionResult, error) {
+func parseEntityExtractionResult(response string, segmentIndex int) (*asset.EntityExtractionResult, error) {
 	jsonStr := strings.TrimSpace(response)
 
 	if strings.HasPrefix(jsonStr, "```") {
@@ -168,7 +168,7 @@ func parseEntityExtractionResult(response string, segmentIndex int) (*core.Entit
 		}
 	}
 
-	return &core.EntityExtractionResult{
+	return &asset.EntityExtractionResult{
 		SegmentIndex:     segmentIndex,
 		FrasiImportanti:  raw.FrasiImportanti,
 		EntitaSenzaTesto: entityMap,
@@ -178,7 +178,7 @@ func parseEntityExtractionResult(response string, segmentIndex int) (*core.Entit
 	}, nil
 }
 
-func resultIsEmpty(result *core.EntityExtractionResult) bool {
+func resultIsEmpty(result *asset.EntityExtractionResult) bool {
 	if result == nil {
 		return true
 	}
@@ -189,7 +189,7 @@ func resultIsEmpty(result *core.EntityExtractionResult) bool {
 		len(result.ArtlistPhrases) == 0
 }
 
-func capEntityExtractionResult(result *core.EntityExtractionResult, limit int) *core.EntityExtractionResult {
+func capEntityExtractionResult(result *asset.EntityExtractionResult, limit int) *asset.EntityExtractionResult {
 	if result == nil {
 		return nil
 	}

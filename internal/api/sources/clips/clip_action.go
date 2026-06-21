@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -53,7 +52,7 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	// Build ProcessInput from clip data
-	processInput := &processor.ProcessInput{
+	processInput := &asset.ProcessInput{
 		ID:        clip.ID,
 		Name:      clip.Name,
 		SourceURL: clip.SourceURL,

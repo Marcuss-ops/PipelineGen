@@ -6,9 +6,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -41,14 +40,11 @@ type Service struct {
 	outputDir         string
 	log               *zap.Logger
 	driveUploader     *drive.Uploader
-	assetDestResolver destination.Resolver
-	// audioProcessor (PR-D.5.3): was concrete *audioasset.Processor from
-	// internal/media/audioasset/. The os/exec sidecar was extracted to
-	// internal/infrastructure/audio/ and the contract lives in
-	// internal/core/audio. Processor. We hold the interface so a future
-	// hosted-TTS adapter (cloud API, sidecar server) can be swapped in
-	// without touching voiceover.
-	audioProcessor   audio.Processor
+	assetDestResolver asset.Resolver
+	// audioProcessor holds the concrete TTS processor from
+	// internal/infrastructure/audio/. A future hosted-TTS adapter can be
+	// swapped in via the same constructor.
+	audioProcessor   *audioasset.Processor
 	lifecycleService *lifecycle.Service
 	semanticTagger   SemanticTaggerFunc
 	clipIndexer      ClipIndexFunc  // optional: triggers embedding + Qdrant upsert
@@ -66,7 +62,7 @@ func NewService(
 	log *zap.Logger,
 	driveUploader *drive.Uploader,
 	lifecycleService *lifecycle.Service,
-	assetDestResolver destination.Resolver,
+	assetDestResolver asset.Resolver,
 ) *Service {
 	// Create audio asset processor
 	audioProcessor := audioasset.NewProcessor(

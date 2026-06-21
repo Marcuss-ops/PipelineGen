@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -46,7 +46,7 @@ func (a *DriveStockAssociation) Associate(ctx context.Context, input SegmentInpu
 
 	for _, f := range folders {
 		targetTokens := textutil.Tokenize(f.TopicSlug)
-		score := scoring.TokenScore(queryTokens, targetTokens)
+		score := asset.TokenScore(queryTokens, targetTokens)
 
 		// Exact or strong match with segment subject
 		if strings.Contains(f.TopicSlug, slug) || strings.Contains(slug, f.TopicSlug) {

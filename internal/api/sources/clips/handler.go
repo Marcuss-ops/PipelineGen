@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -39,7 +38,7 @@ type Deps struct {
 	ArtlistRepo    *assets.ClipsRepository
 	DeletionSvc    *media.DeletionService
 	DriveUploader  *drive.Uploader
-	MediaProcessor processor.Processor
+	MediaProcessor asset.Processor
 	AssetTreeSvc   *assettree.Service
 	MetaWriter     *semantic.MetadataWriter
 	ClipIndexer    *clipindexer.Service
@@ -70,7 +69,7 @@ type Handler struct {
 	artlistRepo    *assets.ClipsRepository
 	deletionSvc    *media.DeletionService
 	driveUploader  *drive.Uploader
-	mediaProcessor processor.Processor
+	mediaProcessor asset.Processor
 	assetTreeSvc   *assettree.Service
 	metaWriter     *semantic.MetadataWriter
 	clipIndexer    *clipindexer.Service

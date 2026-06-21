@@ -14,8 +14,7 @@ import (
 
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
@@ -61,7 +60,7 @@ type SourcesHandler struct {
 	folderMemSvc   *foldermemory.Service
 	assetTreeSvc   *assettree.Service
 	driveUploader  *drive.Uploader
-	mediaProcessor processor.Processor
+	mediaProcessor asset.Processor
 	deletionSvc    *media.DeletionService
 	catalogSync    *catalogsync.Service
 	maintenanceSvc *maintenance.Service
@@ -218,7 +217,7 @@ func NewSourcesHandler(
 	folderMemSvc *foldermemory.Service,
 	assetTreeSvc *assettree.Service,
 	driveUploader *drive.Uploader,
-	mediaProcessor processor.Processor,
+	mediaProcessor asset.Processor,
 	deletionSvc *media.DeletionService,
 	catalogSync *catalogsync.Service,
 	maintenanceSvc *maintenance.Service,

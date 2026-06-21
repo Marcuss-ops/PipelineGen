@@ -10,9 +10,7 @@ import (
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -35,8 +33,8 @@ type Service struct {
 	clipsRepo         *assets.ClipsRepository
 	monitoredRepo     *assets.MonitorsRepository
 	driveClient       *driveapi.Service
-	assetDestResolver destination.Resolver
-	mediaProcessor    processor.Processor
+	assetDestResolver asset.Resolver
+	mediaProcessor    asset.Processor
 	videoPipeline     VideoPipeline
 	folderMemory      *foldermemory.Service
 	lifecycleService  *lifecycle.Service
@@ -70,11 +68,11 @@ func NewService(
 	clipsRepo *assets.ClipsRepository,
 	monitoredRepo *assets.MonitorsRepository,
 	driveClient *driveapi.Service,
-	mediaProcessor processor.Processor,
+	mediaProcessor asset.Processor,
 	videoPipeline VideoPipeline,
 	lifecycleService *lifecycle.Service,
 	indexer *clipindexer.Service,
-	assetDestResolver destination.Resolver,
+	assetDestResolver asset.Resolver,
 	ollamaClient *client.Client,
 	assetProcRepo asset.ProcessingRepository,
 	assetVerRepo asset.VersionRepository,

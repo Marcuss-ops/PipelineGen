@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
@@ -97,7 +97,7 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *assets.Cli
 
 	matches := make([]ScoredMatch, 0, len(clips))
 	for _, clip := range clips {
-		result := scoring.Calculate(scoring.Params{
+		result := asset.Calculate(asset.Params{
 			Query: strings.Join(terms, " "),
 			Topic: topic,
 			Name:  clip.Name,
