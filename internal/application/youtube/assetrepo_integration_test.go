@@ -45,9 +45,9 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	search_text TEXT NOT NULL DEFAULT '',
 	lifecycle_state TEXT NOT NULL DEFAULT 'ready',
 	deleted_at TEXT,
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL,
-	folder_id TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,    updated_at TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    folder_id TEXT NOT NULL DEFAULT '',
 	parent_folder_id TEXT NOT NULL DEFAULT '',
 	folder_path TEXT NOT NULL DEFAULT '',
 	depth INTEGER NOT NULL DEFAULT 0,
@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	tags_norm TEXT NOT NULL DEFAULT '',
 	drive_folder_id TEXT NOT NULL DEFAULT '',
 	thumb_url TEXT NOT NULL DEFAULT '',
+	width INTEGER NOT NULL DEFAULT 0,
+	height INTEGER NOT NULL DEFAULT 0,
+	status TEXT NOT NULL DEFAULT '',
 	error TEXT NOT NULL DEFAULT ''
 );
 
