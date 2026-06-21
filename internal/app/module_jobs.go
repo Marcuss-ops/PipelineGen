@@ -9,6 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"go.uber.org/zap"
 )
@@ -39,7 +40,7 @@ type JobsWiring struct {
 // Follow-up PRs will turn WireJobs itself into a bundle-only consumer and
 // drain CoreDeps.JobsService.
 type JobsBundle struct {
-	Repo       *appjobs.SQLiteStore
+	Repo       *sqljobs.SQLiteStore
 	Dispatcher *appjobs.Dispatcher
 	Service    *appjobs.Service
 	Facade     *job.Service // domain facade wrapping Service (delegate-fn pattern)
@@ -69,7 +70,7 @@ func BuildJobsBundle(db *sql.DB, log *zap.Logger) (*JobsBundle, error) {
 		return nil, fmt.Errorf("build jobs bundle: log is nil")
 	}
 
-	repo := appjobs.NewSQLiteStore(db, log)
+	repo := sqljobs.NewSQLiteStore(db, log)
 	dispatcher := appjobs.NewDispatcher()
 	svc := appjobs.NewService(repo, dispatcher, log)
 
