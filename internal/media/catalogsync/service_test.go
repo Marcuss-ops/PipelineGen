@@ -57,7 +57,7 @@ func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())
 	now := time.Now().UTC()
-	for _, folder := range []*media.ClipFolder{
+	for _, folder := range []*asset.ClipFolder{
 		{
 			ID:         "folder_row_keep",
 			Source:     "artlist",
