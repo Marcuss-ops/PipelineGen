@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+*.log
+*.sqlite
+*.sqlite-*
+*.db
+profiles
+sessions
+logs
+tmp
+coverage
+.git
