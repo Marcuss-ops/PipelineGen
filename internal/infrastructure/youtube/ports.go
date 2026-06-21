@@ -70,9 +70,12 @@ type SearchRunner interface {
 	GetVideoInfo(ctx context.Context, videoURL string) (VideoInfo, error)
 }
 
-// MetadataFetcherPort is the local interface for the metadata adapter.
-// Production wires MetadataFetcherAdapter (metadata.go); tests can swap
-// in a fake to avoid invoking yt-dlp.
-type MetadataFetcherPort interface {
-	GetVideoMetadata(ctx context.Context, videoURL string) (*YouTubeMetadata, error)
-}
+// NOTE (June 2026): the previously-local MetadataFetcherPort was deleted.
+// It was dead code — the production adapter `MetadataFetcherAdapter` already
+// satisfies `youtubedto.VideoMetadataFetcherPort` (the application-side port
+// declared in internal/application/youtube/ports.go), not this local
+// interface. Confirmed via repo-wide grep: zero external references.
+// Callers that need the metadata-fetch capability depend on the
+// application-side port, which has the canonical `*DownloaderMetadata` DTO.
+// The deletion eliminates a parallel abstraction that would otherwise
+// drift from the canonical shape.

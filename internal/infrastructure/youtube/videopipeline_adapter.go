@@ -1,3 +1,13 @@
+// Package youtube — infrastructure-level adapter that converts the concrete
+// `videomuscles.YouTubeCutRequest`/`videomuscles.YouTubeCutResult` (the only
+// pair the existing transcoder pipeline understands) into the canonical
+// app-layer `youtubeapp.VideoCutRequest`/`youtubeapp.VideoCutResult` DTOs.
+//
+// Per PR2 followup (June 2026): the metadata inside `VideoCutResult` is
+// the canonical `*youtubeapp.DownloaderMetadata` DTO, not the legacy
+// empty-marker `*YouTubeMetadataPort`. The infra `videomuscles.YouTubeMetadata`
+// struct is converted to `*youtubeapp.DownloaderMetadata` here at the seam
+// (no leakage to caller beyond the canonical DTO).
 package youtube
 
 import (
@@ -40,10 +50,10 @@ func (a *VideoPipelineAdapter) DownloadAndCutYouTubeVideo(ctx context.Context, r
 		return nil, err
 	}
 
-	var meta *youtubeapp.YouTubeMetadataPort
+	var meta *youtubeapp.DownloaderMetadata
 	if infraResult != nil && infraResult.Metadata != nil {
 		ym := infraResult.Metadata
-		meta = &youtubeapp.YouTubeMetadataPort{
+		meta = &youtubeapp.DownloaderMetadata{
 			ID:           ym.ID,
 			Title:        ym.Title,
 			Description:  ym.Description,
@@ -57,7 +67,7 @@ func (a *VideoPipelineAdapter) DownloadAndCutYouTubeVideo(ctx context.Context, r
 			Tags:         ym.Tags,
 		}
 		for _, ch := range ym.Chapters {
-			meta.Chapters = append(meta.Chapters, youtubeapp.VideoChapterPort{
+			meta.Chapters = append(meta.Chapters, youtubeapp.VideoChapter{
 				Title:     ch.Title,
 				StartTime: ch.StartTime,
 				EndTime:   ch.EndTime,

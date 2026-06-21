@@ -72,6 +72,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
@@ -553,27 +554,42 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
 
-	youtubeClipService := youtube.NewService(
-		cfg, log,
-		process.MediaProcessor,
-		videoPipelineAdapter, youtubeLifecycle,
-		drive.DestResolver,
-		repos.Assets.ProcessingRepository(),
-		repos.Assets.VersionRepository(),
-	)
+	// PR2 cascade (June 2026): youtube.NewService(ServiceDeps) is the canonical
+	// constructor. Composition wires every port here once — no setter cascade.
+	// Empty-marker ports (SearchRunner/SubtitleFetcher/Whisper/ClipFiles/
+	// HashSvc/TempFiles) are passed nil because they are opaque injection
+	// tokens and nil assignment is safe.
+	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
+	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
+	driveFolderMgr := newDriveFolderMgrAdapter(drive.DriveUploader, log)
 
-	// Wire PR1 port-based dependencies into the youtube service.
-	youtubeClipService.SetClipStore(newClipStoreAdapter(repos.ClipsRepo))
-	youtubeClipService.SetMonitorsStore(newMonitorsStoreAdapter(repos.MonitorsRepo))
-	youtubeClipService.SetCacheStore(newCacheStoreAdapter(repos.ClipsRepo))
+	var clipIndexerAdapterValue youtube.ClipIndexerPort
 	if process.ClipIndexerService != nil {
-		youtubeClipService.SetIndexer(&clipIndexerAdapter{inner: process.ClipIndexerService})
+		clipIndexerAdapterValue = &clipIndexerAdapter{inner: process.ClipIndexerService}
 	}
-	youtubeClipService.SetOllamaClient(ai.OllamaClient)
-	youtubeClipService.SetClassifier(newClassifierAdapter(cfg, log, repos.ClipsRepo, ai.OllamaClient))
-	if drive.DriveClient != nil {
-		youtubeClipService.SetDriveClient(newDriveClientAdapter(drive.DriveClient, log))
-	}
+
+	youtubeClipService := youtube.NewService(youtube.ServiceDeps{
+		Cfg:               cfg,
+		Log:               log,
+		MediaProcessor:    process.MediaProcessor,
+		VideoPipeline:     videoPipelineAdapter,
+		LifecycleService:  youtubeLifecycle,
+		AssetDestResolver: drive.DestResolver,
+		AssetRepo:         repos.Assets.Repository(),
+		Clips:             newClipStoreAdapter(repos.ClipsRepo),
+		Monitors:          newMonitorsStoreAdapter(repos.MonitorsRepo),
+		CacheStore:        newCacheStoreAdapter(repos.ClipsRepo),
+		Indexer:           clipIndexerAdapterValue,
+		Ollama:            ai.OllamaClient,
+		MetaFetcher:       metaFetcher,
+		DriveFolderMgr:    driveFolderMgr,
+		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
+		// PR2 cascade (June 2026): SearchRunnerPort was made structural to
+		// satisfy searcher.go's compiler requirements. Wire the stub adapter
+		// here so the build is green; the real yt-dlp subprocess impl lands
+		// in a follow-up PR (search runner + JSON parsing).
+		SearchRunner: newSearchRunnerStub(log),
+	})
 
 	voiceoverSvc, voiceoverRepo := initVoiceoverService(ctx, cfg, dbs, log,
 		drive.DriveClient, drive.DriveUploader,

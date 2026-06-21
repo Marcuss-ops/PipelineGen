@@ -3,7 +3,6 @@ package artlist
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.uber.org/zap"
 )

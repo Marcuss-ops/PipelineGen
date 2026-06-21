@@ -192,16 +192,16 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 		err: errors.New("yt-dlp failed"),
 	}
 
-	svc := NewService(
-		cfg,
-		log,
-		nil, // processor
-		pipeline,
-		nil, // lifecycle
-		nil, // asset dest resolver
-		nil, // assetProcessing (test)
-		nil, // assetVersions (test)
-	)
+	svc := NewService(ServiceDeps{
+		Cfg:               cfg,
+		Log:               log,
+		MediaProcessor:    nil, // processor
+		VideoPipeline:     pipeline,
+		LifecycleService:  nil, // lifecycle
+		AssetDestResolver: nil, // asset dest resolver
+		AssetProcessing:   nil, // assetProcessing (test)
+		AssetVersions:     nil, // assetVersions (test)
+	})
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -243,16 +243,16 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 		outputPath: dummyFilePath,
 	}
 
-	svc := NewService(
-		cfg,
-		log,
-		nil, // processor
-		pipeline,
-		nil, // lifecycle
-		nil, // asset dest resolver
-		nil, // assetProcessing (test)
-		nil, // assetVersions (test)
-	)
+	svc := NewService(ServiceDeps{
+		Cfg:               cfg,
+		Log:               log,
+		MediaProcessor:    nil, // processor
+		VideoPipeline:     pipeline,
+		LifecycleService:  nil, // lifecycle
+		AssetDestResolver: nil, // asset dest resolver
+		AssetProcessing:   nil, // assetProcessing (test)
+		AssetVersions:     nil, // assetVersions (test)
+	})
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",

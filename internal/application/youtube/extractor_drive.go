@@ -327,8 +327,9 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 		}
 	}
 
-	// Upsert clip folder to DB
-	if err := s.folderMemory.UpsertFolder(ctx, clipFolder); err != nil {
+	// Upsert clip folder to DB via the clip store port (FolderMemoryPort is
+	// manifest-only; folder table writes belong to ClipStorePort).
+	if err := s.clips.UpsertFolder(ctx, clipFolder); err != nil {
 		s.log.Warn("failed to upsert clip folder", zap.Error(err))
 	}
 }

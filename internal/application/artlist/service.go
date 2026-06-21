@@ -221,7 +221,7 @@ func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchRespon
 }
 
 // SearchLive esegue una ricerca live tramite scraper.
-func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
+func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]Candidate, error) {
 	return s.searchService.SearchLive(ctx, term, limit)
 }
 
