@@ -1,48 +1,41 @@
-# docker-compose.yml — PipelineGen production stack.
+# docker-compose.yml — PipelineGen production stack with separated runtime roles.
 #
-# Three services on the canonical operator stack:
+# Services:
 #
-#   - pipelinegen  : Rust? No — Go binary that runs cmd/server --mode all,
-#                    serving HTTP on port 8080 plus the in-process worker/
-#                    scheduler/maintenance sweepers.
+#   - pipelinegen-server : HTTP server on port 8080, mode=server (HTTP only,
+#                          no background jobs). Depends on qdrant and
+#                          artlist-scraper.
 #
-#   - qdrant       : vector store for the four semantic vectors (text 768,
-#                    transcript 768, visual 512, audio 512) over every media
-#                    asset. Port 6333 (REST) + 6334 (gRPC) — both exposed
-#                    so the Go binary can talk to Qdrant over REST inside
-#                    the compose network.
+#   - pipelinegen-worker : standalone background job executor that registers
+#                          against the server broker. Contains ffmpeg, yt-dlp,
+#                          and python3 for media processing jobs.
 #
-#   - artlist-scraper : persistent Node.js scraper (Level 3 caching) that
-#                    exposes its own JSON HTTP API to the Go binary over
-#                    ARTLIST_SCRAPER_SERVER_URL. Port 9123 is the
-#                    canonical scraper port per config.example.yaml
-#                    comments — keep aligned.
+#   - qdrant             : vector store for semantic search (ports 6333/6334).
+#
+#   - artlist-scraper    : persistent Node.js Artlist scraper (port 9123).
 #
 # Volumes:
-#   - pipelinegen-data  : SQLite DB + asset_metadata sidecars + Cache +
-#                         any asset_downloads. Mounted as /data.
-#   - qdrant-storage    : Qdrant persistence. Mounted at Qdrant's /qdrant/storage.
+#   - pipelinegen-data   : SQLite DB + asset_metadata + cache + downloads.
+#                          Shared by server and worker (SQLite WAL mode
+#                          supports concurrent readers + one writer).
+#   - qdrant-storage     : Qdrant persistence.
 #
 # Networking:
-#   - All services share the `backend` network so the Go binary can talk
-#     to Qdrant via http://qdrant:6333 and to the scraper via
-#     http://artlist-scraper:9123 without env overrides.
+#   - All services share the `backend` network.
 #
-# IMPORTANT: the env_file below MUST override the placeholder tokens in
-# config.example.yaml. The container refuses to start when
-# security.admin_token == "YOUR_SECURE_TOKEN_HERE" (see Validate() in
-# internal/infrastructure/config/config.go).
+# IMPORTANT: the env_file below MUST override placeholder tokens.
 
 services:
-  pipelinegen:
+  pipelinegen-server:
     build:
       context: .
       dockerfile: Dockerfile
+      target: server-runtime
       args:
         VERSION: dev
         COMMIT:  unknown
-    image: pipelinegen:latest
-    container_name: pipelinegen
+    image: pipelinegen-server:latest
+    container_name: pipelinegen-server
     restart: unless-stopped
     depends_on:
       - qdrant
@@ -52,10 +45,6 @@ services:
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro
-      # The env_file provides VELOX_ADMIN_TOKEN / VELOX_WORKER_TOKEN
-      # overrides. Place at ./secrets/pipelinegen.env (mode 0600) outside
-      # the source tree. The container refuses to start when these remain
-      # placeholders.
       - ./secrets/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
     environment:
       VELOX_HOST: "0.0.0.0"
@@ -64,7 +53,6 @@ services:
       VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
       VELOX_VECTOR_SEARCH_COLLECTION: "media_assets"
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
-      # See docker-compose.vector.yml for the canonical Qdrant sidecar.
     env_file:
       - ./secrets/pipelinegen.env
     healthcheck:
@@ -73,6 +61,36 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    networks:
+      - backend
+
+  pipelinegen-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker-runtime
+      args:
+        VERSION: dev
+        COMMIT:  unknown
+    image: pipelinegen-worker:latest
+    container_name: pipelinegen-worker
+    restart: unless-stopped
+    depends_on:
+      pipelinegen-server:
+        condition: service_healthy
+    volumes:
+      - pipelinegen-data:/data
+      - ./config.yaml:/etc/pipelinegen/config.yaml:ro
+      - ./secrets/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
+    environment:
+      VELOX_MASTER_URL: "http://pipelinegen-server:8080"
+      VELOX_WORKER_TOKEN: "${VELOX_WORKER_TOKEN:-}"
+      VELOX_LOG_LEVEL: "info"
+      VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
+      VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
+    env_file:
+      - ./secrets/pipelinegen.env
+    command: ["--config", "/etc/pipelinegen/config.yaml"]
     networks:
       - backend
 
@@ -91,7 +109,7 @@ services:
   artlist-scraper:
     build:
       context: ./node-scraper
-      dockerfile: Dockerfile.scraper   # NOTE: not yet shipped — Phase 5+
+      dockerfile: Dockerfile.scraper
     container_name: pipelinegen-artlist
     restart: unless-stopped
     ports:
