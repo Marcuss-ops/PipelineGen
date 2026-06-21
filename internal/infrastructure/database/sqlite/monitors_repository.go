@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -17,7 +17,7 @@ func NewMonitorsRepository(db *sql.DB) *MonitorsRepository {
 	return &MonitorsRepository{db: db}
 }
 
-func (r *MonitorsRepository) UpsertSource(ctx context.Context, source *media.MonitoredSource) error {
+func (r *MonitorsRepository) UpsertSource(ctx context.Context, source *asset.MonitoredSource) error {
 	now := timeutil.FormatRFC3339(time.Now())
 	if source.CreatedAt == "" {
 		source.CreatedAt = now
@@ -54,8 +54,8 @@ func (r *MonitorsRepository) UpsertSource(ctx context.Context, source *media.Mon
 	return err
 }
 
-func (r *MonitorsRepository) GetByExternalURL(ctx context.Context, sourceType, externalURL string) (*media.MonitoredSource, error) {
-	var s media.MonitoredSource
+func (r *MonitorsRepository) GetByExternalURL(ctx context.Context, sourceType, externalURL string) (*asset.MonitoredSource, error) {
+	var s asset.MonitoredSource
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, source, external_id, external_url, title, channel_id, channel_url,
 			keyword, group_name, category, status, last_seen_at, last_checked_at,
@@ -74,7 +74,7 @@ func (r *MonitorsRepository) GetByExternalURL(ctx context.Context, sourceType, e
 	return &s, err
 }
 
-func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, limit int) ([]*media.MonitoredSource, error) {
+func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, limit int) ([]*asset.MonitoredSource, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, source, external_id, external_url, title, channel_id, channel_url,
 			keyword, group_name, category, status, last_seen_at, last_checked_at,
@@ -89,9 +89,9 @@ func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, lim
 	}
 	defer rows.Close()
 
-	var sources []*media.MonitoredSource
+	var sources []*asset.MonitoredSource
 	for rows.Next() {
-		var s media.MonitoredSource
+		var s asset.MonitoredSource
 		err := rows.Scan(
 			&s.ID, &s.Source, &s.ExternalID, &s.ExternalURL, &s.Title,
 			&s.ChannelID, &s.ChannelURL, &s.Keyword, &s.GroupName, &s.Category,

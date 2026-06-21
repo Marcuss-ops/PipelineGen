@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
@@ -96,7 +96,7 @@ func (h *ChannelsHandler) Upsert(c *gin.Context) {
 		return
 	}
 
-	ch := &media.CategoryChannel{
+	ch := &asset.CategoryChannel{
 		ID:               req.ID,
 		Category:         req.Category,
 		ChannelURL:       req.ChannelURL,

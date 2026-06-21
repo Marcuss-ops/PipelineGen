@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -19,7 +19,7 @@ import (
 // SearchWebImage searches for a real image matching the prompt via DuckDuckGo,
 // downloads it, ingests it into the pipeline, and returns the asset.
 // This is the Google/DuckDuckGo path for high-resolution images.
-func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*media.ImageAsset, error) {
+func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {
 	if slug == "" {
 		slug = textutil.Slugify(prompt)
 	}

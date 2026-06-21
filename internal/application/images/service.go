@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
@@ -209,7 +209,7 @@ type SemanticMetadataPayload = semantic.Payload
 // fast with an explicit error so the operator can see the gap instead of
 // silently rendering an empty asset. The caller already wraps this error
 // with "%w" so the message remains visible in the script job log.
-func (s *Service) generateGoogleSlidesImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, width, height int, skipDrive bool) (*media.ImageAsset, error) {
+func (s *Service) generateGoogleSlidesImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, width, height int, skipDrive bool) (*asset.ImageAsset, error) {
 	if s == nil {
 		return nil, fmt.Errorf("generateGoogleSlidesImage: nil service")
 	}

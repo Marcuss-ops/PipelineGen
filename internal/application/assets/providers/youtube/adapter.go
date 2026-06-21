@@ -24,7 +24,7 @@ import (
 	"reflect"
 	"time"
 
-	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 
 	"go.uber.org/zap"
 )

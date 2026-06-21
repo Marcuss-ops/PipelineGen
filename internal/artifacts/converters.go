@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
@@ -41,8 +40,8 @@ func VoiceoverRecordToClip(rec *sqlite.Record) *asset.Asset {
 	return clip
 }
 
-// ImageAssetToClip converts an media.ImageAsset to asset.Asset.
-func ImageAssetToClip(assetItem *media.ImageAsset) *asset.Asset {
+// ImageAssetToClip converts an asset.ImageAsset to asset.Asset.
+func ImageAssetToClip(assetItem *asset.ImageAsset) *asset.Asset {
 	if assetItem == nil {
 		return nil
 	}

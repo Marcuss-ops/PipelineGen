@@ -12,7 +12,7 @@ import (
 	"time"
 
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -55,7 +55,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 		}
 
 		// Create metadata-only record
-		asset := &media.ImageAsset{
+		asset := &asset.ImageAsset{
 			SubjectID:    textutil.Slugify(file.Name),
 			Hash:         "drive_" + file.ID, // Placeholder hash
 			PathRel:      "",                 // No local path yet

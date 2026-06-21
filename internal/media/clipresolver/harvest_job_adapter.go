@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	domainartlist "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	domainartlist "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	"go.uber.org/zap"
 )
 

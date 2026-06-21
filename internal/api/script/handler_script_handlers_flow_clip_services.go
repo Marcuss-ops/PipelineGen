@@ -7,7 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
 
@@ -30,8 +30,8 @@ type DriveCheckService interface {
 
 // ImageSearchService searches for and generates images.
 type ImageSearchService interface {
-	SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*media.ImageAsset, error)
-	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*media.ImageAsset, error)
+	SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error)
+	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error)
 	TriggerPrewarm(ctx context.Context, jobID string, count int)
 }
 

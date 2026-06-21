@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -20,7 +20,7 @@ var globalNvidiaSem = make(chan struct{}, 2)
 
 // GenerateAImage generates an AI image using NVIDIA NIM and stores it under a
 // prompt-derived slug. Equivalent to GenerateStyledImage(ctx, textutil.Slugify(prompt), ...).
-func (s *Service) GenerateAImage(ctx context.Context, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*media.ImageAsset, error) {
+func (s *Service) GenerateAImage(ctx context.Context, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*asset.ImageAsset, error) {
 	slug := textutil.Slugify(prompt)
 	if len(slug) > 50 {
 		slug = slug[:50]
@@ -34,7 +34,7 @@ func (s *Service) GenerateAImage(ctx context.Context, prompt, style, model strin
 //
 // The slug is used as SubjectID in the DB and as the filesystem directory for the image.
 // All other parameters match GenerateAImage.
-func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*media.ImageAsset, error) {
+func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*asset.ImageAsset, error) {
 	// Acquire semaphore slot to prevent GPU/CPU VRAM saturation from concurrent image generations
 	select {
 	case globalNvidiaSem <- struct{}{}:

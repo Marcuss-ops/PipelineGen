@@ -10,7 +10,6 @@ import (
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -67,7 +66,7 @@ func voiceoverRecordToClip(rec *sqlite.Record) *asset.Asset {
 }
 
 // imageAssetToClip uses the canonical converter from artifacts.
-func imageAssetToClip(a *media.ImageAsset) *asset.Asset {
+func imageAssetToClip(a *asset.ImageAsset) *asset.Asset {
 	return artifacts.ImageAssetToClip(a)
 }
 

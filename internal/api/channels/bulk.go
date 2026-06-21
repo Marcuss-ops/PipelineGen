@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // BulkUpsertRequest is the JSON body for bulk creating/updating channels.
@@ -74,7 +74,7 @@ func (h *ChannelsHandler) BulkUpsert(c *gin.Context) {
 			ch.CheckInterval = "7d"
 		}
 
-		model := &media.CategoryChannel{
+		model := &asset.CategoryChannel{
 			ID:               ch.ID,
 			Category:         ch.Category,
 			ChannelURL:       ch.ChannelURL,

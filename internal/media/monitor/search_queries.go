@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"go.uber.org/zap"
@@ -162,7 +162,7 @@ func (m *ChannelMonitor) processSearchQueries(ctx context.Context) {
 			m.downloadClip(ctx, result.VideoID, result.Title, channel, monitorCfg)
 
 			// Record in search_query_results for dedup
-			res := &media.SearchQueryResult{
+			res := &asset.SearchQueryResult{
 				QueryID:     q.ID,
 				VideoID:     result.VideoID,
 				VideoTitle:  result.Title,

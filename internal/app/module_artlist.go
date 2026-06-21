@@ -18,7 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"go.uber.org/zap"

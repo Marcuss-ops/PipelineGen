@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
@@ -69,7 +69,7 @@ func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagReque
 	}
 
 	// Normalize strategy
-	req.Strategy = string(media.NormalizeStrategy(req.Strategy, false))
+	req.Strategy = string(asset.NormalizeStrategy(req.Strategy, false))
 
 	// Normalize concurrency
 	if req.Concurrency <= 0 {

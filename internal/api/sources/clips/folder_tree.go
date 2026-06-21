@@ -3,7 +3,7 @@ package clips
 import (
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -28,7 +28,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-	var children []*media.AssetNode
+	var children []*asset.AssetNode
 	var err error
 
 	if h.assetTreeSvc != nil {
@@ -41,7 +41,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 			err = treeErr
 		}
 	} else {
-		children = []*media.AssetNode{}
+		children = []*asset.AssetNode{}
 		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
 		if clipErr == nil {
 			for _, clip := range clipChildren {
@@ -86,7 +86,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 		return
 	}
 
-	var children []*media.AssetNode
+	var children []*asset.AssetNode
 	for _, tn := range treeNodes {
 		children = append(children, treeNodeToAssetNode(tn))
 	}

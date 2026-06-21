@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -164,7 +163,7 @@ func (r *ClipsRepository) GetByDriveFileID(ctx context.Context, fileID string) (
 	return r.GetClipByDriveFileID(ctx, fileID)
 }
 
-func (r *ClipsRepository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*media.ClipFolder, error) {
+func (r *ClipsRepository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*asset.ClipFolder, error) {
 	return r.GetFolderByVideoID(ctx, videoID)
 }
 
@@ -352,7 +351,7 @@ func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*ass
 	return out, nil
 }
 
-func (r *ClipsRepository) UpsertFolder(ctx context.Context, folder *media.ClipFolder) error {
+func (r *ClipsRepository) UpsertFolder(ctx context.Context, folder *asset.ClipFolder) error {
 	mBytes, err := json.Marshal(folder)
 	if err != nil {
 		return err
@@ -364,7 +363,7 @@ func (r *ClipsRepository) UpsertFolder(ctx context.Context, folder *media.ClipFo
 	return r.AssetStoreSQLite.UpsertFolder(ctx, &assetsFolder)
 }
 
-func (r *ClipsRepository) GetFolder(ctx context.Context, folderID string) (*media.ClipFolder, error) {
+func (r *ClipsRepository) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
 	folder, err := r.AssetStoreSQLite.GetFolder(ctx, folderID)
 	if err != nil {
 		return nil, err
@@ -373,12 +372,12 @@ func (r *ClipsRepository) GetFolder(ctx context.Context, folderID string) (*medi
 		return nil, nil
 	}
 	mBytes, _ := json.Marshal(folder)
-	var mFolder media.ClipFolder
+	var mFolder asset.ClipFolder
 	_ = json.Unmarshal(mBytes, &mFolder)
 	return &mFolder, nil
 }
 
-func (r *ClipsRepository) GetFolderByVideoID(ctx context.Context, videoID string) (*media.ClipFolder, error) {
+func (r *ClipsRepository) GetFolderByVideoID(ctx context.Context, videoID string) (*asset.ClipFolder, error) {
 	folder, err := r.AssetStoreSQLite.GetFolderByVideoID(ctx, videoID)
 	if err != nil {
 		return nil, err
@@ -387,15 +386,15 @@ func (r *ClipsRepository) GetFolderByVideoID(ctx context.Context, videoID string
 		return nil, nil
 	}
 	mBytes, _ := json.Marshal(folder)
-	var mFolder media.ClipFolder
+	var mFolder asset.ClipFolder
 	_ = json.Unmarshal(mBytes, &mFolder)
 	return &mFolder, nil
 }
 
-func (r *ClipsRepository) GetFolderByPath(ctx context.Context, folderPath string) (*media.ClipFolder, error) {
+func (r *ClipsRepository) GetFolderByPath(ctx context.Context, folderPath string) (*asset.ClipFolder, error) {
 	query := "SELECT id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at FROM clip_folders WHERE folder_path = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, folderPath)
-	var folder media.ClipFolder
+	var folder asset.ClipFolder
 	var createdAt, updatedAt string
 	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
 		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
@@ -412,15 +411,15 @@ func (r *ClipsRepository) GetFolderByPath(ctx context.Context, folderPath string
 	return &folder, nil
 }
 
-func (r *ClipsRepository) ListFolders(ctx context.Context, source string) ([]*media.ClipFolder, error) {
+func (r *ClipsRepository) ListFolders(ctx context.Context, source string) ([]*asset.ClipFolder, error) {
 	folders, err := r.AssetStoreSQLite.ListFolders(ctx, source)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*media.ClipFolder, len(folders))
+	out := make([]*asset.ClipFolder, len(folders))
 	for i, f := range folders {
 		mBytes, _ := json.Marshal(f)
-		var mFolder media.ClipFolder
+		var mFolder asset.ClipFolder
 		_ = json.Unmarshal(mBytes, &mFolder)
 		out[i] = &mFolder
 	}

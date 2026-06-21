@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -91,7 +91,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 	}
 
 	// Compute stats
-	stats := media.ClipFolderStats{}
+	stats := asset.ClipFolderStats{}
 	for _, clip := range clipList {
 		stats.ClipCount++
 		if clip.DriveLink() != "" || clip.DownloadLink() != "" {

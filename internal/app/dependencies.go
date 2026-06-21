@@ -42,7 +42,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
