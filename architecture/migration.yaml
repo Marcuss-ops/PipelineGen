@@ -751,6 +751,8 @@ post_cascade_followups:
     - id: CPR-CC-7
       title: Relocate YouTubeCacheEntry DTO
       severity: MEDIUM
+      status: done
+      merged_in_commit: pr/post-cascade-cleanup-2026-06-21
       from: internal/application/youtube/ports.go
       to: internal/infrastructure/database/sqlite/assets/youtube_cache.go
       reason: AGENTS.md Pattern 8 (application layer = thin transport only)
