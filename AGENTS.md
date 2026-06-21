@@ -578,7 +578,7 @@ Vecchia regola (deprecata — portava al mega-package):
 
 > ~~Quando un file supera ~300-400 righe o ha >2-3 responsabilità distinte, crea un file per concetto nello stesso package.~~
 
-Esempi già fatti (stato a Giugno 2026): channel_monitor (11 file in `internal/application/monitor/`), extractor_process (10), handler_batch_phases (13), clipindexer (6), voiceover (11). **← valori snapshot**: se il numero è cambiato, rifai `ls <dir> | wc -l` per verificarlo; aggiorna qui quando splitti un nuovo file.
+Esempi già fatti (stato a Giugno 2026): channel_monitor (11 file in `internal/application/monitor/`), extractor_process (10), handler_batch_phases (13), clipindexer (6), voiceover (11), **youtube/ports (PR3 June 2026 — ports extraction)**. **← valori snapshot**: se il numero è cambiato, rifai `ls <dir> | wc -l` per verificarlo; aggiorna qui quando splitti un nuovo file.
 
 ### Pattern 6 — Modificare una request o payload struct
 
