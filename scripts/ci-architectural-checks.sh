@@ -387,6 +387,37 @@ if [ -n "${VIOLATIONS}" ]; then
 fi
 echo "  OK: no new files in legacy directories"
 
+# ── Check 14: handler + worker binary link verification ──────────────
+echo ""
+echo "Check 14: handler + worker binary link verification"
+# PR1 (June 2026): the post-cascade verify-gate found that go vet on
+# internal/api/ and go build on cmd/worker were not enforced by the
+# local CI script. These commands are now mandatory so future refactors
+# are never scoped to fewer than the full transport + worker layer.
+#
+# The GitHub Actions workflow already runs go vet ./... (which covers
+# api/) and go build ./cmd/worker/ (in "Build all binaries"), so this
+# check mirrors the CI contract for local pre-push / pre-commit use.
+
+if ! go vet ./internal/api/... 2>&1 | tee /tmp/ci14_vet.out; then
+    echo "FAIL: go vet ./internal/api/... failed"
+    cat /tmp/ci14_vet.out
+    exit 1
+fi
+# Ignore empty output (vet is silent on success).
+if [ -s /tmp/ci14_vet.out ]; then
+    echo "FAIL: go vet ./internal/api/... produced output"
+    cat /tmp/ci14_vet.out
+    exit 1
+fi
+
+if ! go build ./cmd/worker/ 2>&1 | tee /tmp/ci14_build.out; then
+    echo "FAIL: go build ./cmd/worker/... failed"
+    cat /tmp/ci14_build.out
+    exit 1
+fi
+echo "  OK: internal/api/ vets clean and cmd/worker/ builds"
+
 # ── Run legacy asset guard if it exists ────────────────────────────
 echo ""
 if [[ -x "scripts/ci-legacy-asset-guard.sh" ]]; then
