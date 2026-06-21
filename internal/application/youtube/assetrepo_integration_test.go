@@ -1,15 +1,17 @@
-// PR12b integration test: verifies that youtube.Service.dispatchOrIndex,
-// when wired with an asset.Repository via SetAssetRepo, routes through
-// the canonical writer AND legacy readers (assets.ClipsRepository) observe the
-// same row data.
+// PR12b integration test: verifies that youtube.Service.dispatchOrIndex
+// routes through the canonical asset.Repository.Upsert writer and emits the
+// asset.upserted outbox event atomically.
+//
+// Per PR1.6 (June 2026) the triple persistence fallback
+// (assetRepo → disp.EnqueueAndIndex → clipsRepo.Upsert) has been removed:
+// AssetRepo.Upsert is the SOLE writer. The previous "fallback when nothing
+// is wired" test has been deleted because the new contract REFUSES to
+// persist (returns an explicit error) rather than silently degrading.
 //
 // Schema matches the production `media_assets` columns written by
 // `internal/infrastructure/database/sqlite/asset.Upsert` (40 columns)
-// PLUS the legacy columns that `internal/infrastructure/database/assets.ClipsRepository.UpsertClip`
-// reads and writes (`tags_norm`, `embedding_json`, `visual_embedding`,
-// `transcript_embedding`, `relative_path`, `drive_folder_id`, `width`,
-// `height`) plus `outbox_events` so the canonical upsert's outbox emit
-// succeeds inside the test transaction.
+// plus `outbox_events` so the canonical upsert's outbox emit succeeds
+// inside the test transaction.
 package youtube
 
 import (
@@ -24,36 +26,6 @@ import (
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
-
-// testClipStoreAdapter wraps *assets.ClipsRepository for tests.
-type testClipStoreAdapter struct {
-	inner *assets.ClipsRepository
-}
-
-func (a *testClipStoreAdapter) Get(ctx context.Context, id string) (*asset.Asset, error) {
-	return a.inner.Get(ctx, id)
-}
-func (a *testClipStoreAdapter) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
-	return a.inner.GetClip(ctx, id)
-}
-func (a *testClipStoreAdapter) Upsert(ctx context.Context, clip *asset.Asset) error {
-	return a.inner.Upsert(ctx, clip)
-}
-func (a *testClipStoreAdapter) DeleteClip(ctx context.Context, id string) error {
-	return a.inner.DeleteClip(ctx, id)
-}
-func (a *testClipStoreAdapter) UpdateSearchTerms(ctx context.Context, id, source, title string, tags []string, searchText string) error {
-	return a.inner.UpdateSearchTerms(ctx, id, source, title, tags, searchText)
-}
-func (a *testClipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
-	return a.inner.GetFolder(ctx, folderID)
-}
-func (a *testClipStoreAdapter) ListYouTubeClipIDs(ctx context.Context, limit, offset int) ([]string, error) {
-	return nil, nil
-}
-func (a *testClipStoreAdapter) ListEnrichedYouTubeClipIDs(ctx context.Context, limit, offset int) ([]string, error) {
-	return nil, nil
-}
 
 // pr12bYoutubeSchema mirrors the full production table definitions for testing.
 const pr12bYoutubeSchema = `
@@ -109,23 +81,6 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	error TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS asset_locations (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	asset_id TEXT NOT NULL,
-	location_kind TEXT NOT NULL,
-	uri TEXT NOT NULL,
-	external_id TEXT NOT NULL DEFAULT '',
-	web_view_link TEXT NOT NULL DEFAULT '',
-	download_url TEXT NOT NULL DEFAULT '',
-	mime_type TEXT NOT NULL DEFAULT '',
-	file_size_bytes INTEGER NOT NULL DEFAULT 0,
-	file_hash TEXT NOT NULL DEFAULT '',
-	is_primary INTEGER NOT NULL DEFAULT 0,
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL,
-	UNIQUE(asset_id, location_kind)
-);
-
 CREATE TABLE IF NOT EXISTS outbox_events (
 	id TEXT PRIMARY KEY,
 	aggregate_id TEXT NOT NULL DEFAULT '',
@@ -149,8 +104,9 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id);
 `
 
-// setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema,
-// wires clips + assetrepo repos, and registers teardown.
+// setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema
+// and registers teardown. Returns the canonical asset.Repository wrapper
+// (the SOLE writer in PR1.6).
 func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewTestDBWithSchema(t, pr12bYoutubeSchema)
@@ -163,8 +119,7 @@ func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsReposit
 }
 
 // zeroTime is the canonical zero-time used by DeletedAt fixtures so that
-// timeutil.FormatPtrRFC3339 binds a non-NULL string (which the test schema's
-// `deleted_at TEXT NOT NULL DEFAULT ”` accepts).
+// the test schema's `deleted_at TEXT` accepts a non-NULL string.
 var zeroTime = time.Time{}
 
 func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
@@ -194,11 +149,12 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 		DeletedAt: &zeroTime,
 	}
 
-	svc := &Service{
-		log: zap.NewNop(),
-	}
-	svc.SetClipStore(&testClipStoreAdapter{inner: clipsRepo})
-	svc.SetAssetRepo(assetRepo)
+	// PR1.7: AssetRepo is wired via ServiceDeps at construction time (no
+	// setter cascade). The SOLE writer remains AssetRepository.Upsert.
+	svc := NewService(ServiceDeps{
+		Log:       zap.NewNop(),
+		AssetRepo: assetRepo,
+	})
 
 	ctx := context.Background()
 
@@ -206,7 +162,7 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 		t.Fatalf("dispatchOrIndex via assetRepo failed: %v", err)
 	}
 
-	// ── Assert 1: canonical reader ──
+	// canonical reader sees the row.
 	canonical, err := assetRepo.Get(ctx, clip.ID)
 	if err != nil {
 		t.Fatalf("assetRepo.Get(%q) failed: %v", clip.ID, err)
@@ -214,23 +170,12 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	if canonical == nil {
 		t.Fatalf("assetRepo.Get(%q) returned nil; row missing", clip.ID)
 	}
-	if canonical.ID != clip.ID {
-		t.Errorf("canonical ID mismatch: want %q, got %q", clip.ID, canonical.ID)
-	}
-	if canonical.Source != clip.Source {
-		t.Errorf("canonical Source mismatch: want %q, got %q", clip.Source, canonical.Source)
-	}
-	if canonical.Group != clip.Group {
-		t.Errorf("canonical Group mismatch: want %q, got %q", clip.Group, canonical.Group)
-	}
-	if canonical.MediaType != clip.MediaType {
-		t.Errorf("canonical MediaType mismatch: want %q, got %q", clip.MediaType, canonical.MediaType)
-	}
-	if canonical.Duration != clip.Duration {
-		t.Errorf("canonical Duration mismatch: want %v, got %v", clip.Duration, canonical.Duration)
+	if canonical.ID != clip.ID || canonical.Source != clip.Source ||
+		canonical.Group != clip.Group || canonical.MediaType != clip.MediaType {
+		t.Errorf("canonical row mismatch:\nwant %+v\n got %+v", clip, canonical)
 	}
 
-	// ── Assert 2: legacy reader sees the SAME row ──
+	// legacy reader (clipsRepo) sees the SAME row written by AssetRepo.
 	legacy, err := clipsRepo.GetClip(ctx, clip.ID)
 	if err != nil {
 		t.Fatalf("clipsRepo.GetClip(%q) failed: %v", clip.ID, err)
@@ -238,23 +183,8 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	if legacy == nil {
 		t.Fatalf("clipsRepo.GetClip(%q) returned nil; row missing after canonical write", clip.ID)
 	}
-	if legacy.ID != clip.ID {
-		t.Errorf("legacy ID mismatch: want %q, got %q", clip.ID, legacy.ID)
-	}
-	if legacy.Name != clip.Name {
-		t.Errorf("legacy Name mismatch: want %q, got %q", clip.Name, legacy.Name)
-	}
-	if legacy.DriveLink() != clip.DriveLink() {
-		t.Errorf("legacy DriveLink mismatch: want %q, got %q", clip.DriveLink(), legacy.DriveLink())
-	}
-	if legacy.LocalPath() != clip.LocalPath() {
-		t.Errorf("legacy LocalPath mismatch: want %q, got %q", clip.LocalPath(), legacy.LocalPath())
-	}
-	if legacy.DownloadLink() != clip.DownloadLink() {
-		t.Errorf("legacy DownloadLink mismatch: want %q, got %q", clip.DownloadLink(), legacy.DownloadLink())
-	}
 
-	// ── Assert 3: outbox row was emitted ──
+	// outbox event emitted atomically.
 	var outboxCount int
 	if err := db.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = 'asset.upserted'",
@@ -267,37 +197,26 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	}
 }
 
-func TestYoutubePR12b_DispatchOrIndexWithoutAssetRepoFallsBack(t *testing.T) {
-	// When neither SetAssetRepo nor SetDispatcher is called, the legacy
-	// clipsRepo.UpsertClip path must continue to work unchanged.
-	_, clipsRepo, _ := setupYoutubePR12b(t)
-
-	svc := &Service{
-		log: zap.NewNop(),
-	}
-	svc.SetClipStore(&testClipStoreAdapter{inner: clipsRepo})
-	// (No SetAssetRepo, no SetDispatcher calls)
+func TestYoutubePR12b_DispatchOrIndexRefusesWhenAssetRepoNotWired(t *testing.T) {
+	// PR1.6: missing AssetRepo is now an explicit error rather than a silent
+	// fall-through to the legacy outbox/clipsRepo paths. Operators see the
+	// missing dependency in logs immediately, instead of losing data.
+	// PR1.7: builds via NewService(ServiceDeps{...}) with no AssetRepo set.
+	svc := NewService(ServiceDeps{Log: zap.NewNop()})
 
 	clip := &asset.Asset{
-		ID:             "pr12b-youtube-fallback-001",
-		Name:           "Fallback Test",
+		ID:             "pr12b-youtube-no-canonical",
+		Name:           "No Canonical Writer Test",
 		Source:         "youtube",
-		SourceURL:      "https://youtube.com/watch?v=fallback",
 		LifecycleState: asset.StateReady,
-		Metadata: asset.Metadata{
-			"download_link": "https://youtube.com/fallback",
-		},
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-		DeletedAt: &zeroTime,
+		Metadata:       asset.Metadata{},
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+		DeletedAt:      &zeroTime,
 	}
 
-	ctx := context.Background()
-	if err := svc.dispatchOrIndex(ctx, clip, ""); err != nil {
-		t.Fatalf("legacy dispatchOrIndex fallback failed: %v", err)
-	}
-
-	if _, err := clipsRepo.GetClip(ctx, clip.ID); err != nil {
-		t.Fatalf("legacy GetClip after fallback dispatch failed: %v", err)
+	err := svc.dispatchOrIndex(context.Background(), clip, "")
+	if err == nil {
+		t.Fatalf("dispatchOrIndex without AssetRepo wired must return an error; got nil")
 	}
 }
