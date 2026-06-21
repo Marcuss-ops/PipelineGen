@@ -204,12 +204,12 @@ the CI guard with the migration target printed inline.
 | `internal/media/<feature>/`       | `internal/domain/asset/<feature>/` (model) or `internal/application/<feature>/` (use case) | TBD |
 | `internal/assets/`                | `internal/domain/asset/` (directory already eliminated; content absorbed) | Pre-wave-7 ✅ |
 | `internal/artifacts/`             | `internal/application/assets/artifacts/` (lift-and-shift completato) | Wave 7 ✅ |
-| `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/`        | TBD |
+| `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/` (migration completata; directory eliminata) | Pre-wave-9 ✅ |
 | `internal/upload/drive/`          | `internal/infrastructure/drive/` (lift-and-shift completato) | Wave 8 ✅ |
 | `internal/application/scriptflow/` | `internal/application/scripts/` (flat-merge completato; directory eliminata) | Wave 6 ✅ |
 | `internal/domain/media/`          | `internal/domain/asset/` (tipi duplicati — directory eliminata June 2026) | Wave 4C ✅ |
-| `internal/domain/worker/`         | `internal/domain/job/`                                         | TBD |
-| `internal/domain/outbox/`         | `internal/domain/lifecycle/`                                   | TBD |
+| `internal/domain/worker/`         | `internal/domain/job/` (directory already eliminated) | Pre-wave-7 ✅ |
+| `internal/domain/outbox/`         | `internal/domain/lifecycle/` (directory already eliminated) | Pre-wave-7 ✅ |
 
 Per‑directory migration manifests live in `docs/migration-maps/<dir>.md`.
 
