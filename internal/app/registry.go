@@ -32,7 +32,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -47,7 +46,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
