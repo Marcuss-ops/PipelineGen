@@ -114,10 +114,12 @@ func TestSolarPanelSearch(t *testing.T) {
 
 	// PR2.5: NewService takes ServiceDeps struct instead of 14
 	// positional args. AssetStore (port) is satisfied by *assets.ClipsRepository.
+	// PR2.6: ArtlistDB dropped (== MainDB post media.db.sqlite
+	// consolidation). ServiceDeps embeds ServicePorts + ServiceDependencies
+	// so flat construction via field promotion works for terse test fixtures.
 	svc, err := NewService(ServiceDeps{
 		Cfg:        cfg,
 		MainDB:     db,
-		ArtlistDB:  db,
 		Log:        logger,
 		AssetStore: repo,
 	})

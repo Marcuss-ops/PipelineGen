@@ -109,11 +109,13 @@ func TestArtlistServiceCreation(t *testing.T) {
 	// positional arguments. AssetStore (port) is wired via the same
 	// repo instance that satisfies it.
 	svc, err := NewService(ServiceDeps{
-		Cfg:         cfg,
-		MainDB:      db,
-		ArtlistDB:   db,
-		Log:         logger,
-		AssetStore:  artlistRepo,
+		// PR2.6: ArtlistDB dropped — == MainDB post media.db.sqlite
+		// consolidation. Uses field promotion from ServicePorts +
+		// ServiceDependencies so flat construction still works.
+		Cfg:        cfg,
+		MainDB:     db,
+		Log:        logger,
+		AssetStore: artlistRepo,
 	})
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
@@ -137,14 +139,9 @@ func TestArtlistSearchRequest(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		Cfg:        cfg,
 		MainDB:     db,
-		ArtlistDB:  db,
 		Log:        logger,
 		AssetStore: artlistRepo,
 	})
-	if err != nil {
-		t.Fatalf("failed to create service: %v", err)
-	}
-	defer svc.Close()
 
 	ctx := context.Background()
 
@@ -379,7 +376,6 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		Cfg:            cfg,
 		MainDB:         db,
-		ArtlistDB:      db,
 		Log:            logger,
 		AssetStore:     artlistRepo,
 		MediaProcessor: processor,
@@ -453,7 +449,6 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		Cfg:            cfg,
 		MainDB:         db,
-		ArtlistDB:      db,
 		Log:            logger,
 		AssetStore:     artlistRepo,
 		MediaProcessor: processor,
@@ -533,7 +528,6 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	svc, err := NewService(ServiceDeps{
 		Cfg:            cfg,
 		MainDB:         db,
-		ArtlistDB:      db,
 		Log:            logger,
 		AssetStore:     artlistRepo,
 		MediaProcessor: processor,

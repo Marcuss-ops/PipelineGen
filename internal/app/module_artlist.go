@@ -181,23 +181,31 @@ func wireArtlistService(
 	dispatcher *outbox.Dispatcher,
 	log *zap.Logger,
 ) (*artlistPkg.Service, error) {
+	// PR2.6: wireArtlistService uses the named-sub-structs shape for
+	// ServiceDeps (ServicePorts + ServiceDependencies). Production
+	// wiring receives root.Outbox.Dispatcher which feeds both Service
+	// (via ServiceDependencies.Dispatcher) and the SemanticEnricher
+	// (via the upstream NewSemanticEnricher(... dispatcher ...)).
 	artlistSvc, err := artlistPkg.NewService(artlistPkg.ServiceDeps{
-		Cfg:              cfg,
-		MainDB:           bundle.DB.DB,
-		ArtlistDB:        bundle.DB.DB,
-		Log:              log,
-		AssetStore:       bundle.ClipsRepo, // *assets.ClipsRepository implements AssetStore
-		Indexer:          clipIndexerSvc,   // *clipindexer.Service implements Indexer
-		MetadataWriter:   enricher,
-		Dispatcher:       dispatcher,
-		DriveClient:      bundle.DriveClient,
-		MediaProcessor:   bundle.MediaProcessor,
-		LifecycleService: artlistLifecycle,
-		AssetDestResolver: assetDestResolver,
-		JobsSvc:          bundle.Jobs.Facade,
-		AssetProcRepo:    bundle.Assets.ProcessingRepository(),
-		AssetVerRepo:     bundle.Assets.VersionRepository(),
-		AssetLocRepo:     bundle.Assets.LocationRepository(),
+		ServicePorts: artlistPkg.ServicePorts{
+			AssetStore:     bundle.ClipsRepo, // *assets.ClipsRepository implements AssetStore
+			Indexer:        clipIndexerSvc,   // *clipindexer.Service implements Indexer
+			MetadataWriter: enricher,
+		},
+		ServiceDependencies: artlistPkg.ServiceDependencies{
+			Cfg:               cfg,
+			MainDB:            bundle.DB.DB, // ArtlistDB removed PR2.6: == MainDB post-consolidation
+			Log:               log,
+			Dispatcher:        dispatcher,
+			DriveClient:       bundle.DriveClient,
+			MediaProcessor:    bundle.MediaProcessor,
+			LifecycleService:  artlistLifecycle,
+			AssetDestResolver: assetDestResolver,
+			JobsSvc:           bundle.Jobs.Facade,
+			AssetProcRepo:     bundle.Assets.ProcessingRepository(),
+			AssetVerRepo:      bundle.Assets.VersionRepository(),
+			AssetLocRepo:      bundle.Assets.LocationRepository(),
+		},
 	})
 	if err != nil {
 		return nil, err

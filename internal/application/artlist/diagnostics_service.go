@@ -38,7 +38,11 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 		DriveFolderID:  ResolveRootFolderID(d.svc.cfg),
 		NodeScraperDir: "node-scraper",
 		HasDriveClient: d.svc.assetDestResolver != nil,
-		HasArtlistDB:   d.svc.artlistDB != nil,
+		// PR2.6: ArtlistDB unified into MainDB after media.db.sqlite
+		// consolidation. HasArtlistDB still reports the main DB ready
+		// state (the field name is part of the public Diagnostics
+		// response shape and stays for backwards compatibility).
+		HasArtlistDB: d.svc.mainDB != nil,
 		MainDBReady:    d.svc.mainDB != nil,
 	}
 

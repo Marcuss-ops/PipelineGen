@@ -15,52 +15,53 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
-// ServiceDeps is the canonical constructor input for artlist.Service.
+// ServicePorts collects the three canonical ports PR2.1-PR2.5 lifted out
+// of the legacy concrete dependencies. Sized at 3 fields — well under the
+// AGENTS.md 10-per-bundle cap.
 //
-// PR2.5: the previous NewService took 14 positional arguments, mirroring
-// legacy composition. The argument list contained a mix of:
-//
-//   - pure data (cfg, log, *sql.DB) — kept as plain fields
-//   - canonical Ports (AssetStore, Indexer, MetadataWriter) — promoted
-//     from concrete dependencies so the application layer no longer imports
-//     the infrastructure types it used to embed
-//   - cross-cutting Domain services (MediaProcessor, LifecycleService,
-//     Resolver, jobs service, asset-lifecycle repos) — kept concrete for
-//     now; their portification is tracked as a follow-up in PR2.6+
-//
-// Dispatcher is the canonical media_index_outbox dispatcher used by the
-// dispatchBridge to perform UpsertClip + IndexClip atomically. Service
-// holds a reference so RunOrchestrator.stagePersistResults can route
-// results through the canonical enqueue path; SemanticEnricher holds an
-// independent reference for the same reason (its Enrich() method must
-// keep the dispatcher reachable even when called outside of the
-// orchestrator's stage flow). Both refs point at the same instance in
-// production wiring.
-type ServiceDeps struct {
-	Cfg       *config.Config
-	MainDB    *sql.DB
-	ArtlistDB *sql.DB
-	Log       *zap.Logger
-
-	// Canonical ports — implementations are wired by the composition root.
+// The composition root in module_artlist.go builds the SemanticEnricher
+// first (so its dispatcher hookup is captured at creation) and wires it
+// here as MetadataWriter. AssetStore is satisfied by *assets.ClipsRepository;
+// Indexer is satisfied by *clipindexer.Service directly (the port declares
+// IndexClip + IsEnabled which both implementations provide).
+type ServicePorts struct {
 	AssetStore     AssetStore
 	Indexer        Indexer
 	MetadataWriter MetadataWriter
+}
 
-	// Dispatcher is the canonical outbox dispatcher used by both
-	// dispatchBridge (in Service) and SemanticEnricher.Enrich. The
-	// duplication is intentional: each path constructs its own
-	// dispatchBridge{} and both end up at dispatcher.EnqueueAndIndex.
-	Dispatcher *outbox.Dispatcher
-
-	// DriveClient is the raw Google Drive SDK service. Stays concrete
-	// because semantic_enricher uses raw SDK calls (Files.List,
-	// TrashFile, DownloadFile, UploadFile) that don't fit the
-	// narrow Uploader port surface. PR2.6 will lift the wider surface
-	// into a dedicated port if it stabilises.
-	DriveClient *driveapi.Service
-
-	// Domain services not yet portified.
+// ServiceDependencies collects the cross-cutting dependencies that are
+// not yet portified: tracker/Oracle scopes raw SDK plus concrete domain
+// services that pre-date the ports effort. Sized at 12 fields — slightly
+// above AGENTS.md's 10-per-bundle cap. The directive accepts this
+// because DriveClient + Dispatcher are concrete integration points with
+// their own surface discussions (PR2.7 will move DriveClient to a
+// dedicated DriveFolderManager port; Dispatcher stays because it is the
+// canonical media_index_outbox dispatcher and any portification would
+// just rename it).
+//
+// Cfg, MainDB, Log are pure data. Dispatcher, DriveClient are transport
+// integration points. MediaProcessor, LifecycleService, AssetDestResolver,
+// JobsSvc are cross-cutting domain services that already implement
+// interfaces in internal/core but whose concrete instances the application
+// holds directly. AssetProcRepo / AssetVerRepo / AssetLocRepo are the
+// canonical asset-lifecycle repositories from internal/domain/asset.
+//
+// ArtlistDB was removed (PR2.6): after the media.db.sqlite unification,
+// MainDB is the only DB handle in the system.
+//
+// PR2.5+PR2.6 notes:
+//   - No setters; all dependencies are constructor arguments.
+//   - Field promotion makes the embedded-syntax construction
+//     `ServiceDeps{AssetStore: ..., Cfg: ..., MainDB: ...}` work without
+//     explicitly naming ServicePorts / ServiceDependencies at the call
+//     site, which keeps the test fixtures terse.
+type ServiceDependencies struct {
+	Cfg               *config.Config
+	MainDB            *sql.DB
+	Log               *zap.Logger
+	Dispatcher        *outbox.Dispatcher
+	DriveClient       *driveapi.Service
 	MediaProcessor    asset.Processor
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
@@ -70,18 +71,47 @@ type ServiceDeps struct {
 	AssetLocRepo      asset.LocationRepository
 }
 
+// ServiceDeps is the canonical constructor input for artlist.Service.
+//
+// PR2.6: split into ServicePorts (3) + ServiceDependencies (12) so the
+// per-bundle field budget from AGENTS.md is respected at the port level
+// (3/10) and the cross-cutting surface is grouped separately (12/10,
+// accepted by the PR2.6 directive because the cross-cutting surface
+// mixes data, transport, and Domain repos that don't fit a single
+// coherent "port" abstraction). ServiceDeps embeds both via field
+// promotion so callers can construct it in two equivalent shapes:
+//
+//	NewService(ServiceDeps{
+//	    AssetStore: repo, Cfg: cfg, MainDB: db, Log: log,
+//	    // explicit field promotion; terse for tests
+//	})
+//
+//	NewService(ServiceDeps{
+//	    ServicePorts:        ServicePorts{AssetStore: repo, ...},
+//	    ServiceDependencies: ServiceDependencies{Cfg: cfg, ...},
+//	    // named sub-structs; explicit for production wiring
+//	})
+//
+// PR2.5: SetSemanticEnricher + SetDispatcher setters removed; Dispatcher
+// is a constructor argument wired through the composition root.
+type ServiceDeps struct {
+	ServicePorts
+	ServiceDependencies
+}
+
 // Service è un facade leggero che delega a componenti specializzati.
 // Non implementa direttamente la logica, ma coordina i servizi sottostanti.
 //
 // PR2.5: the legacy setters SetSemanticEnricher + SetDispatcher are
 // removed. All dependencies (AssetStore, Indexer, MetadataWriter,
-// Dispatcher) are constructor arguments on ServiceDeps. NewService is
-// idempotent — every dependency lives on the struct from the start.
+// Dispatcher) are constructor arguments on ServiceDeps.
+//
+// PR2.6: artlistDB field dropped — after the media.db.sqlite
+// consolidation it equals MainDB and the extra pointer duplicated state.
 type Service struct {
-	cfg       *config.Config
-	mainDB    *sql.DB
-	artlistDB *sql.DB
-	log       *zap.Logger
+	cfg    *config.Config
+	mainDB *sql.DB
+	log    *zap.Logger
 
 	// L1: in-memory cache per risultati live (evita rilanci di Playwright per term già ricercati di recente)
 	liveCache *liveSearchCache
@@ -93,25 +123,25 @@ type Service struct {
 	jobAdapter         *JobAdapter
 	diagnosticsService *DiagnosticsService
 
-	// Canonical ports — wired via ServiceDeps. Application owns the
-	// policy; infrastructure owns the SDK / DB connection behind them.
+	// Canonical ports — wired via ServiceDeps.ServicePorts. Application
+	// owns the policy; infrastructure owns the SDK / DB connection
+	// behind them.
 	assetStore     AssetStore
 	indexer        Indexer
 	metadataWriter MetadataWriter
 
 	// Dispatcher is the canonical outbox dispatcher; nil means
 	// dispatchBridge falls back to the legacy UpsertClip + IndexClip
-	// pair (see dispatch_bridge.go). Mirrors the contract that the
-	// pre-PR2.5 SetDispatcher setter used; now constructed once at
-	// composition-time instead of late-bound.
+	// pair (see dispatch_bridge.go). Wired via ServiceDeps.Dispatcher.
 	dispatcher *outbox.Dispatcher
 
 	// driveClient is the raw Google Drive SDK service. Concrete
 	// dependency used by DestinationService (to build the
 	// *drive.Uploader wrapper for EnsureFolder calls) and by
 	// SemanticEnricher (for Files.List/TrashFile/DownloadFile/
-	// UploadFile during metadata.json cumulative sync). No setter —
-	// injected at construction time via ServiceDeps.
+	// UploadFile during metadata.json cumulative sync). PR2.7 will
+	// lift the need for the raw SDK into a dedicated
+	// DriveFolderManager port.
 	driveClient *driveapi.Service
 
 	// Cross-cutting domain services.
@@ -129,16 +159,14 @@ type Service struct {
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
-// All dependencies (ports, dispatcher, domain services) are injected via
-// ServiceDeps — no setters, no late-binding. The composition root in
-// module_artlist.go is the single place that constructs the
-// SemanticEnricher first (so its dispatcher hookup is captured at
-// creation) and then wires it as MetadataWriter on ServiceDeps.
+// All dependencies are reachable through ServiceDeps via field promotion
+// from ServicePorts + ServiceDependencies, so callers can construct it
+// either with terse flat construction (tests) or explicit named
+// sub-structs (production wiring in module_artlist.go).
 func NewService(deps ServiceDeps) (*Service, error) {
 	s := &Service{
 		cfg:               deps.Cfg,
 		mainDB:            deps.MainDB,
-		artlistDB:         deps.ArtlistDB,
 		log:               deps.Log,
 		assetStore:        deps.AssetStore,
 		indexer:           deps.Indexer,
@@ -165,7 +193,8 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	return s, nil
 }
 
-// Close è un no-op poiché la connessione artlistDB è gestita esternamente.
+// Close è un no-op poiché la connessione DB è gestita esternamente
+// dal composition root (vedi internal/app/composition.go::NewComposition).
 func (s *Service) Close() error {
 	return nil
 }
