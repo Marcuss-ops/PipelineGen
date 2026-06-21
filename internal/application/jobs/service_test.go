@@ -94,7 +94,6 @@ func TestCreateJobStoresPendingJob(t *testing.T) {
 }
 
 func TestJobMovesToCompleted(t *testing.T) {
-	t.Skip("PR4: pre-existing (invalid state transition: QUEUED->COMPLETED needs RUNNING first). Wave 5 PR1 changed state machine. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
 	svc, cleanup := setupTestService(t)
 	defer cleanup()
 
@@ -104,6 +103,14 @@ func TestJobMovesToCompleted(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
+	}
+
+	// Wave 5 PR1 state machine: QUEUED→RUNNING→COMPLETED.
+	// Transition to RUNNING by directly updating the DB.
+	// Service.Complete passes expectedRevision=0, so reset revision to 0.
+	if _, err := svc.repo.DB().ExecContext(ctx,
+		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, submitted.ID); err != nil {
+		t.Fatalf("failed to transition job to running: %v", err)
 	}
 
 	result := map[string]any{"output": "done"}
@@ -122,7 +129,6 @@ func TestJobMovesToCompleted(t *testing.T) {
 }
 
 func TestJobMovesToFailedWithError(t *testing.T) {
-	t.Skip("PR4: pre-existing (invalid state transition: QUEUED->FAILED needs RUNNING first). Wave 5 PR1 changed state machine. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
 	svc, cleanup := setupTestService(t)
 	defer cleanup()
 
@@ -132,6 +138,13 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
+	}
+
+	// Wave 5 PR1 state machine: QUEUED→RUNNING→FAILED.
+	// Service.Fail passes expectedRevision=0, so reset revision to 0.
+	if _, err := svc.repo.DB().ExecContext(ctx,
+		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, submitted.ID); err != nil {
+		t.Fatalf("failed to transition job to running: %v", err)
 	}
 
 	err = svc.Fail(ctx, submitted.ID, fmt.Errorf("something went wrong"))
@@ -223,7 +236,6 @@ func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
 }
 
 func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
-	t.Skip("PR4: pre-existing (stale-runner marking logic not detecting RUNNING jobs). Wave 5 PR1 state machine change. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
 	ctx := context.Background()
 
 	svc, cleanup := setupTestService(t)
@@ -231,26 +243,30 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 
 	repo := svc.repo
 
-	// Insert old running job
+	// Insert old running job with expired lease.
 	oldTime := time.Now().UTC().Add(-30 * time.Minute)
+	leaseExpired := oldTime.Add(-5 * time.Minute) // lease expired long ago
 	oldJob := &Job{
-		ID:        "job-old-running",
-		Type:      TypeArtlistRun,
-		Status:    job.StatusRunning,
-		UpdatedAt: oldTime,
-		CreatedAt: oldTime,
-		Payload:   []byte("{}"),
+		ID:          "job-old-running",
+		Type:        TypeArtlistRun,
+		Status:      job.StatusRunning,
+		UpdatedAt:   oldTime,
+		CreatedAt:   oldTime,
+		Payload:     []byte("{}"),
+		LeaseExpiry: &leaseExpired,
 	}
 	require.NoError(t, repo.Create(ctx, oldJob))
 
-	// Insert fresh running job
+	// Insert fresh running job with valid (future) lease.
+	freshLease := time.Now().UTC().Add(30 * time.Minute)
 	freshJob := &Job{
-		ID:        "job-fresh-running",
-		Type:      TypeArtlistRun,
-		Status:    job.StatusRunning,
-		UpdatedAt: time.Now().UTC(),
-		CreatedAt: time.Now().UTC(),
-		Payload:   []byte("{}"),
+		ID:          "job-fresh-running",
+		Type:        TypeArtlistRun,
+		Status:      job.StatusRunning,
+		UpdatedAt:   time.Now().UTC(),
+		CreatedAt:   time.Now().UTC(),
+		Payload:     []byte("{}"),
+		LeaseExpiry: &freshLease,
 	}
 	require.NoError(t, repo.Create(ctx, freshJob))
 
@@ -370,7 +386,6 @@ func TestEnqueue_Idempotence_AutoInjectsFromContext(t *testing.T) {
 // idempotency design: re-submission after a network timeout must not
 // silently re-trigger expensive work.
 func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
-	t.Skip("PR4: pre-existing (invalid state transition on completed-job resubmit). Wave 5 PR3 alias collapse pending. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
 	svc, cleanup := setupTestService(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -380,6 +395,13 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 		CorrelationID: "completed-key",
 	})
 	require.NoError(t, err)
+
+	// Wave 5 PR1 state machine: QUEUED→RUNNING→COMPLETED.
+	// Service.Complete passes expectedRevision=0, so reset revision to 0.
+	if _, err := svc.repo.DB().ExecContext(ctx,
+		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, j1.ID); err != nil {
+		t.Fatalf("failed to transition job to running: %v", err)
+	}
 	require.NoError(t, svc.Complete(ctx, j1.ID, map[string]any{"ok": true}))
 
 	j2, err := svc.Enqueue(ctx, &EnqueueRequest{

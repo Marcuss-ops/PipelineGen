@@ -45,7 +45,9 @@ func TestParseVTTFile_AllCues_WhenWindowIsZero(t *testing.T) {
 }
 
 func TestParseVTTFile_WindowFilter(t *testing.T) {
-	t.Skip("PR4: pre-existing (expected error message not returned by VTT parser). Needs subtitle infrastructure update. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
+	t.Skip("pre-existing: loadCues window filter [5.5, 9.0] on rolling fixture returns empty cues. " +
+		"The 4→6s cue (end=6 not <= 5.5) and 6→8.5s cue (start=6 not >= 9.0) should pass but " +
+		"parseVTTFile returns empty string. Parser investigation needed. See docs/followups.")
 	p := writeVTTFixture(t, "rolling.vtt", rollingVTTFixture)
 	got, err := parseVTTFile(p, 5.5, 9.0)
 	require.NoError(t, err)

@@ -196,7 +196,8 @@ func TestDuplicateVersionsRejected(t *testing.T) {
 // TestGapDetectionNoError verifies gaps are logged as warnings,
 // not errors. The runner proceeds normally.
 func TestGapDetectionNoError(t *testing.T) {
-	t.Skip("PR4: pre-existing (migration gap detection assertion mismatch). Needs migration directory audit. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
+	// Use file-based DB (not InMemory) to avoid cache=shared cross-test
+	// contamination from TestRunMigrationsOnEmptyDB which seeds schema_migrations.
 	tmpDir, err := os.MkdirTemp("", "migration-gap-test-*")
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
@@ -212,7 +213,8 @@ func TestGapDetectionNoError(t *testing.T) {
 		0644,
 	))
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	// Gaps are warnings, not errors — RunMigrations should succeed
@@ -222,7 +224,8 @@ func TestGapDetectionNoError(t *testing.T) {
 
 // TestGapDetectionContiguous verifies contiguous versions 001→002 pass.
 func TestGapDetectionContiguous(t *testing.T) {
-	t.Skip("PR4: pre-existing (migration gap detection assertion mismatch). Needs migration directory audit. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
+	// Use file-based DB (not InMemory) to avoid cache=shared cross-test
+	// contamination from TestRunMigrationsOnEmptyDB which seeds schema_migrations.
 	tmpDir, err := os.MkdirTemp("", "migration-contig-test-*")
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
@@ -238,7 +241,8 @@ func TestGapDetectionContiguous(t *testing.T) {
 		0644,
 	))
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	// Should succeed without gap error
@@ -248,7 +252,6 @@ func TestGapDetectionContiguous(t *testing.T) {
 
 // TestGetMigrationStatus validates the status report generation.
 func TestGetMigrationStatus(t *testing.T) {
-	t.Skip("PR4: pre-existing (migration status count assertion inverted). Needs migration table schema audit. See docs/POST_CASCADE_OPERATIONAL_READINESS.md §3.")
 	tmpDir, err := os.MkdirTemp("", "migration-status-test-*")
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
@@ -264,7 +267,10 @@ func TestGetMigrationStatus(t *testing.T) {
 		0644,
 	))
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	// Use file-based DB (not InMemory) to avoid cache=shared cross-test
+	// contamination with other tests in this package that seed schema_migrations.
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	// Before any migrations: all pending
