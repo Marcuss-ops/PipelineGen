@@ -490,6 +490,9 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(repos.ScriptsRepo)
 	engine := scriptcore.NewEngine(scriptGen, memorySvc, scriptsRepoAdapter, log)
 
+	batchSvc := scripts.NewBatchService(cfg, log, scriptGen, engine, drive.DocClient,
+		nil /* voiceoverSvc */, scriptsRepoAdapter)
+	curationSvc := scripts.NewCurationService(nil, nil, log)
 	scriptFlowHandler := scriptpkg.NewScriptFlowHandler(
 		scriptGen, engine,
 		nil /* imageSvc */, nil /* realtime */, nil /* assoc */,
@@ -497,14 +500,8 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		drive.DocClient, drive.DriveUploader,
 		nil /* jobFacade */, scriptsRepoAdapter, memorySvc,
 		cfg.Drive.ScriptsGenFolder(), cfg, log,
+		batchSvc, curationSvc,
 	)
-
-	batchSvc := scripts.NewBatchService(cfg, log, scriptGen, engine, drive.DocClient,
-		nil /* voiceoverSvc */, scriptsRepoAdapter)
-	scriptFlowHandler.SetBatchService(batchSvc)
-
-	curationSvc := scripts.NewCurationService(nil, nil, log)
-	scriptFlowHandler.SetCurationService(curationSvc)
 
 	return &AIBundle{
 		OllamaClient:      ollamaClient,
