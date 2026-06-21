@@ -141,64 +141,71 @@ func initVoiceoverService(
 }
 
 // initBooksService creates the books processing service.
+//
+// PR4-H (June 2026): the SetDriveUploader setter was removed; driveUploader
+// is now wired via the books.NewService constructor.
 func initBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driveUploader *drive.Uploader, voiceoverSvc *voiceover.Service) *books.Service {
-	booksSvc := books.NewService(&books.Config{
-		Enabled:       cfg.Books.Enabled,
-		ScriptPath:    cfg.Books.ScriptPath,
-		PythonBin:     cfg.Books.PythonBin,
-		DriveFolderID: cfg.Drive.BooksFolder(),
-	}, dbs.main.DB, cfg.Drive.BooksFolder(), log, voiceoverSvc)
-	if driveUploader != nil {
-		booksSvc.SetDriveUploader(driveUploader)
-	}
+	booksSvc := books.NewService(
+		&books.Config{
+			Enabled:       cfg.Books.Enabled,
+			ScriptPath:    cfg.Books.ScriptPath,
+			PythonBin:     cfg.Books.PythonBin,
+			DriveFolderID: cfg.Drive.BooksFolder(),
+		},
+		dbs.main.DB, cfg.Drive.BooksFolder(), log,
+		voiceoverSvc, driveUploader,
+	)
 	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
 	return booksSvc
 }
 
-// initImageService creates the image generation service and metadata writer.
-// Signature is the stable contract between this file and composition.go:
-// BuildDomainBundle calls with `(drive.DriveClient, repos.ClipsRepo,
-// repos.ClipsRepo, ai.StyleRegistry, ai.ScriptGen, drive.MediaStore,
-// process.VectorSvc, repos.ImageRepo)`.
-func initImageService(ctx context.Context, cfg *config.Config, log *zap.Logger,
+// initImageService creates the image generation service.
+//
+// PR4-H (June 2026): the 8 post-construction setters (SetNvidiaConfig,
+// SetRemoteImageEndpointURL, SetVeloxBaseURL, SetGoogleAccountingConfig,
+// SetMediaStore, SetLLMGenerator, SetVectorStore, SetMetadataWriter) were
+// removed in Commit 3; their values are now passed as constructor args.
+// The MetadataWriter is borrowed from BuildDomainBundle (voMetaWriter) to
+// keep a single canonical instance shared with the voiceover service —
+// Commit 1 introduced the dual-instance temporary state, Commit 3 collapses
+// it via this single shared local in composition.go::BuildDomainBundle.
+//
+// Note: SetIngestService is NOT removed — it is the documented exception
+// (called from registry.go::WireRegistry after MediaIngest is constructed).
+func initImageService(
+	ctx context.Context, cfg *config.Config, log *zap.Logger,
 	driveClient *gdrive.Service, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository,
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
-	mediaStore *drive.Store, vectorSvc *vectorstore.Service,
-	imageRepo *assets.ImagesRepository) (*imgservice.Service, *semantic.MetadataWriter) {
+	mediaStore *drive.Store, vectorSvc *vectorstore.Service, imageRepo *assets.ImagesRepository,
+	voMetaWriter *semantic.MetadataWriter,
+) (*imgservice.Service, *semantic.MetadataWriter) {
 
-	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, styleRegistry, log)
-	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
-	imageService.SetGoogleAccountingConfig(
-		cfg.GoogleAccounting.ServerURL,
-		cfg.GoogleAccounting.DownloadDir,
-		cfg.GoogleAccounting.VidsProjectID,
+	imageService := imgservice.NewService(
+		cfg,
+		imageRepo, clipsRepo,
+		driveClient,
+		styleRegistry,
+		cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel,
+		cfg.External.RemoteImageEndpointURL, cfg.External.VeloxBaseURL,
+		cfg.GoogleAccounting.ServerURL, cfg.GoogleAccounting.DownloadDir, cfg.GoogleAccounting.VidsProjectID,
+		mediaStore,
+		scriptGen,
+		vectorSvc,
+		voMetaWriter,
+		log,
 	)
 
 	if cfg.External.RemoteImageEndpointURL != "" {
-		imageService.SetRemoteImageEndpointURL(cfg.External.RemoteImageEndpointURL)
 		log.Info("Remote image endpoint configured", zap.String("url", cfg.External.RemoteImageEndpointURL))
 	}
 	if cfg.External.VeloxBaseURL != "" {
-		imageService.SetVeloxBaseURL(cfg.External.VeloxBaseURL)
 		log.Info("Velox base URL for webhook push configured", zap.String("url", cfg.External.VeloxBaseURL))
 	}
 
-	imageService.SetMediaStore(mediaStore)
-	imageService.SetLLMGenerator(scriptGen)
-	if vectorSvc != nil {
-		imageService.SetVectorStore(vectorSvc)
-	}
-
-	metaWriter := semantic.NewMetadataWriter(
-		cfg.Paths.PythonScriptsDir,
-		cfg.Storage.TempPath(),
-		cfg.External.OllamaURL,
-		cfg.External.OllamaModel,
-		log,
-	)
-	imageService.SetMetadataWriter(metaWriter)
-
 	_ = ctx // reserved for future customizer context flag
 
-	return imageService, metaWriter
+	// voMetaWriter is the canonical *semantic.MetadataWriter (single instance
+	// shared with the voiceover service); returned here for continuity with
+	// DomainBundle.MetaWriter.
+	return imageService, voMetaWriter
 }

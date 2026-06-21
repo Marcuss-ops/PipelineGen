@@ -47,7 +47,10 @@ type Service struct {
 	voiceoverSvc *voiceover.Service
 }
 
-func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc *voiceover.Service) *Service {
+// NewService constructs a books.Service. Drive uploader is wired via
+// constructor injection; the post-construction SetDriveUploader setter was
+// removed in PR4-H Commit 3.
+func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc *voiceover.Service, driveUploader *drive.Uploader) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
@@ -61,12 +64,13 @@ func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, vo
 	}
 
 	return &Service{
-		db:           db,
-		cfg:          cfg,
-		log:          log,
-		scriptPath:   scriptPath,
-		driveFolder:  driveFolder,
-		voiceoverSvc: voiceoverSvc,
+		db:            db,
+		cfg:           cfg,
+		log:           log,
+		scriptPath:    scriptPath,
+		driveFolder:   driveFolder,
+		voiceoverSvc:  voiceoverSvc,
+		driveUpload:   driveUploader,
 	}
 }
 
@@ -357,10 +361,6 @@ func (s *Service) ProcessBookAsync(ctx context.Context, req *ProcessRequest) (st
 		return "", errors.New(result.Error)
 	}
 	return fmt.Sprintf("book_sync_%d", time.Now().UnixNano()), nil
-}
-
-func (s *Service) SetDriveUploader(u *drive.Uploader) {
-	s.driveUpload = u
 }
 
 func (s *Service) SetVoiceoverService(v *voiceover.Service) {
