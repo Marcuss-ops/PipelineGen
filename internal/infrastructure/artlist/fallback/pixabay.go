@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 )
 
 // Pixabay is an HTTP-clamped implementation of artlist.Searcher
@@ -82,14 +82,14 @@ func NewPixabay(cfg Config) *Pixabay {
 }
 
 // Compile-time port assertion.
-var _ artapp.Searcher = (*Pixabay)(nil)
+var _ artlist.Searcher = (*Pixabay)(nil)
 
 // Search queries the Pixabay API. Per PR2.1 contract: returns only
 // the centralised sentinels on transport failures; HTTP shape is
 // never leaked to the caller.
-func (p *Pixabay) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp.Candidate, error) {
+func (p *Pixabay) Search(ctx context.Context, req artlist.SearchRequest) ([]artlist.Candidate, error) {
 	if strings.TrimSpace(p.cfg.APIKey) == "" {
-		return nil, fmt.Errorf("%w: pixabay api key not configured", artapp.ErrUnavailable)
+		return nil, fmt.Errorf("%w: pixabay api key not configured", artlist.ErrUnavailable)
 	}
 	// The application chain (search_fallback.go) normalises before
 	// calling the chain; we just trim again as defence-in-depth. We
@@ -98,7 +98,7 @@ func (p *Pixabay) Search(ctx context.Context, req artapp.SearchRequest) ([]artap
 	// not depend on application internals.
 	term := strings.TrimSpace(req.Term)
 	if term == "" {
-		return nil, fmt.Errorf("%w: term required", artapp.ErrEmpty)
+		return nil, fmt.Errorf("%w: term required", artlist.ErrEmpty)
 	}
 	limit := req.Limit
 	if limit <= 0 {
@@ -111,7 +111,7 @@ func (p *Pixabay) Search(ctx context.Context, req artapp.SearchRequest) ([]artap
 	endpoint := p.cfg.BaseURL + "/videos/"
 	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid pixabay base url: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: invalid pixabay base url: %v", artlist.ErrInvalidResponse, err)
 	}
 	q := u.Query()
 	q.Set("key", p.cfg.APIKey)
@@ -122,7 +122,7 @@ func (p *Pixabay) Search(ctx context.Context, req artapp.SearchRequest) ([]artap
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: build request: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: build request: %v", artlist.ErrInvalidResponse, err)
 	}
 
 	resp, err := p.client.Do(httpReq)
@@ -133,7 +133,7 @@ func (p *Pixabay) Search(ctx context.Context, req artapp.SearchRequest) ([]artap
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", artapp.ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %v", artlist.ErrUnavailable, err)
 	}
 
 	if resp.StatusCode == http.StatusOK {
@@ -142,7 +142,7 @@ func (p *Pixabay) Search(ctx context.Context, req artapp.SearchRequest) ([]artap
 	return nil, mapStatusErr(resp.StatusCode, body)
 }
 
-func (p *Pixabay) decode(body []byte, term string, limit int) ([]artapp.Candidate, error) {
+func (p *Pixabay) decode(body []byte, term string, limit int) ([]artlist.Candidate, error) {
 	var payload struct {
 		Hits []struct {
 			ID      int    `json:"id"`
@@ -163,10 +163,10 @@ func (p *Pixabay) decode(body []byte, term string, limit int) ([]artapp.Candidat
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("%w: decode pixabay: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: decode pixabay: %v", artlist.ErrInvalidResponse, err)
 	}
 
-	out := make([]artapp.Candidate, 0, len(payload.Hits))
+	out := make([]artlist.Candidate, 0, len(payload.Hits))
 	for _, hit := range payload.Hits {
 		videoURL := firstNonEmpty(hit.Videos.Medium.URL, hit.Videos.Large.URL, hit.Videos.Small.URL)
 		if videoURL == "" {
@@ -176,7 +176,7 @@ func (p *Pixabay) decode(body []byte, term string, limit int) ([]artapp.Candidat
 		if title == "" {
 			title = term
 		}
-		out = append(out, artapp.Candidate{
+		out = append(out, artlist.Candidate{
 			ID:         fmt.Sprintf("pixabay-%d", hit.ID),
 			Title:      fmt.Sprintf("Pixabay: %s", title),
 			SourceRef:  videoURL,
@@ -185,7 +185,7 @@ func (p *Pixabay) decode(body []byte, term string, limit int) ([]artapp.Candidat
 		})
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("%w: no usable videos", artapp.ErrEmptyResult)
+		return nil, fmt.Errorf("%w: no usable videos", artlist.ErrEmptyResult)
 	}
 	if len(out) > limit {
 		out = out[:limit]
@@ -204,13 +204,13 @@ func mapStatusErr(status int, body []byte) error {
 	}
 	switch {
 	case status == http.StatusNotFound:
-		return fmt.Errorf("%w: pixabay status=%d body=%q", artapp.ErrNotFound, status, snippet)
+		return fmt.Errorf("%w: pixabay status=%d body=%q", artlist.ErrNotFound, status, snippet)
 	case status >= 400 && status < 500:
-		return fmt.Errorf("%w: pixabay status=%d body=%q", artapp.ErrInvalidResponse, status, snippet)
+		return fmt.Errorf("%w: pixabay status=%d body=%q", artlist.ErrInvalidResponse, status, snippet)
 	default:
 		// 5xx (or unusual codes) - surface as transport fallback so
 		// the chain tries the next source.
-		return fmt.Errorf("%w: pixabay status=%d body=%q", artapp.ErrTransportFallback, status, snippet)
+		return fmt.Errorf("%w: pixabay status=%d body=%q", artlist.ErrTransportFallback, status, snippet)
 	}
 }
 
@@ -223,9 +223,9 @@ func mapTransportErr(err error) error {
 	}
 	if strings.Contains(err.Error(), "context deadline exceeded") ||
 		strings.Contains(err.Error(), "Client.Timeout") {
-		return fmt.Errorf("%w: %v", artapp.ErrTimeout, err)
+		return fmt.Errorf("%w: %v", artlist.ErrTimeout, err)
 	}
-	return fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
+	return fmt.Errorf("%w: %v", artlist.ErrTransportFallback, err)
 }
 
 func firstNonEmpty(vals ...string) string {

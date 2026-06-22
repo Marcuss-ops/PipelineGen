@@ -3,7 +3,7 @@ package drive_test
 import (
 	"testing"
 
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
@@ -21,7 +21,7 @@ import (
 // time through the alias — folder_manager.go never imports artlist
 // (the previous cycle aggregator). Production graph remains acyclic.
 // Test files can import both freely under `_test.go` separation rules.
-var _ artlistpkg.DriveFolderManager = (*drivepkg.DriveFolderManagerAdapter)(nil)
+var _ artlist.DriveFolderManager = (*drivepkg.DriveFolderManagerAdapter)(nil)
 
 // TestDriveFolderManagerAdapterImplementsArtlistPort makes the
 // compile-time assertion visible as a `go test` pass line, which is
@@ -30,5 +30,5 @@ var _ artlistpkg.DriveFolderManager = (*drivepkg.DriveFolderManagerAdapter)(nil)
 // time if the contract is broken, so this test body is intentionally
 // trivial.
 func TestDriveFolderManagerAdapterImplementsArtlistPort(t *testing.T) {
-	var _ artlistpkg.DriveFolderManager = (*drivepkg.DriveFolderManagerAdapter)(nil)
+	var _ artlist.DriveFolderManager = (*drivepkg.DriveFolderManagerAdapter)(nil)
 }

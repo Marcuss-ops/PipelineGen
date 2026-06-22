@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	artlistsrc "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
-
+	
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -16,18 +15,18 @@ import (
 // ── Test double ─────────────────────────────────────────────────────
 
 // fakeSearcher implements the private searcher interface so adapter
-// tests can run without a full *artlistsrc.Service (heavy scraper +
+// tests can run without a full *Service (heavy scraper +
 // repository + config chain).
 type fakeSearcher struct {
 	lastCall struct {
 		Term  string
 		Limit int
 	}
-	resp *artlistsrc.SearchResponse
+	resp *SearchResponse
 	err  error
 }
 
-func (f *fakeSearcher) Search(_ context.Context, req *artlistsrc.SearchRequest) (*artlistsrc.SearchResponse, error) {
+func (f *fakeSearcher) Search(_ context.Context, req *SearchRequest) (*SearchResponse, error) {
 	f.lastCall.Term = req.Term
 	f.lastCall.Limit = req.Limit
 	return f.resp, f.err
@@ -99,7 +98,7 @@ func TestNewAdapter_NilService_SearchReturnsErrSourceNotWired(t *testing.T) {
 func TestSearch_EmptyQuery_ForwardedAsIs(t *testing.T) {
 	// Artlist does not enforce non-empty query at the adapter boundary;
 	// the underlying service owns validation.
-	stub := &fakeSearcher{resp: &artlistsrc.SearchResponse{}}
+	stub := &fakeSearcher{resp: &SearchResponse{}}
 	a := newAdapterWith(stub)
 	res, err := a.Search(context.Background(), providers.SearchRequest{Query: ""})
 	if err != nil {
@@ -125,7 +124,7 @@ func TestSearch_LimitForwardedCorrectly(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			stub := &fakeSearcher{resp: &artlistsrc.SearchResponse{}}
+			stub := &fakeSearcher{resp: &SearchResponse{}}
 			a := newAdapterWith(stub)
 			_, err := a.Search(context.Background(), providers.SearchRequest{
 				Query: "test",
@@ -143,7 +142,7 @@ func TestSearch_LimitForwardedCorrectly(t *testing.T) {
 
 func TestSearch_CandidateTranslation_RoundTrip(t *testing.T) {
 	stub := &fakeSearcher{
-		resp: &artlistsrc.SearchResponse{
+		resp: &SearchResponse{
 			Clips: []asset.Asset{
 				{
 					ID:           "artlist_abc123",

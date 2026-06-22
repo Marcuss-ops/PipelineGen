@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"go.uber.org/zap"
 )
@@ -84,7 +84,7 @@ func New(cfg Config, log *zap.Logger) *Provider {
 
 // Compile-time interface assertion so the scraper is forced to satisfy
 // the application port.
-var _ artapp.Searcher = (*Provider)(nil)
+var _ artlist.Searcher = (*Provider)(nil)
 
 // Search tries the configured server first, falls back to exec if the
 // server returns a transport-level failure. Empty results from the server
@@ -97,10 +97,10 @@ var _ artapp.Searcher = (*Provider)(nil)
 //
 // Trim only — the 4-word cap is the application's policy
 // (run_helpers.go::normalizeSearchTerm).
-func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp.Candidate, error) {
+func (p *Provider) Search(ctx context.Context, req artlist.SearchRequest) ([]artlist.Candidate, error) {
 	term := strings.TrimSpace(req.Term)
 	if term == "" {
-		return nil, artapp.ErrEmpty
+		return nil, artlist.ErrEmpty
 	}
 	if req.Limit <= 0 {
 		req.Limit = 8
@@ -112,7 +112,7 @@ func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]arta
 	if p.cfg.ServerURL != "" {
 		resp, err := p.searchViaServer(ctx, term, req.Limit)
 		if err != nil {
-			if errors.Is(err, artapp.ErrTransportFallback) {
+			if errors.Is(err, artlist.ErrTransportFallback) {
 				if p.log != nil {
 					p.log.Warn("artlist scraper server unreachable, falling back to exec",
 						zap.String("url", p.cfg.ServerURL), zap.Error(err))
@@ -122,7 +122,7 @@ func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]arta
 			return nil, err
 		}
 		if resp == nil || len(resp.Clips) == 0 {
-			return nil, artapp.ErrEmptyResult
+			return nil, artlist.ErrEmptyResult
 		}
 		return toCandidates(resp.Clips), nil
 	}
@@ -150,20 +150,20 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) 
 	client := &http.Client{Timeout: p.cfg.HTTPTimeout}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
+		return nil, fmt.Errorf("%w: %v", artlist.ErrTransportFallback, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 500 {
-		return nil, fmt.Errorf("%w: status %d", artapp.ErrTransportFallback, resp.StatusCode)
+		return nil, fmt.Errorf("%w: status %d", artlist.ErrTransportFallback, resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %d", artapp.ErrInvalidResponse, resp.StatusCode)
+		return nil, fmt.Errorf("%w: status %d", artlist.ErrInvalidResponse, resp.StatusCode)
 	}
 
 	var response Response
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("%w: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: %v", artlist.ErrInvalidResponse, err)
 	}
 	if !response.OK {
 		// The server reports ok=false with no error string → empty result.
@@ -172,7 +172,7 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) 
 	return &response, nil
 }
 
-func (p *Provider) searchViaExec(ctx context.Context, term string, limit int) ([]artapp.Candidate, error) {
+func (p *Provider) searchViaExec(ctx context.Context, term string, limit int) ([]artlist.Candidate, error) {
 	scraperDir := p.cfg.ScraperDir
 	if abs, err := filepath.Abs(scraperDir); err == nil {
 		scraperDir = abs
@@ -180,7 +180,7 @@ func (p *Provider) searchViaExec(ctx context.Context, term string, limit int) ([
 	scriptPath := filepath.Join(scraperDir, p.cfg.ScriptName)
 
 	if !process.CommandExists("node") {
-		return nil, fmt.Errorf("%w: node not found in PATH", artapp.ErrUnavailable)
+		return nil, fmt.Errorf("%w: node not found in PATH", artlist.ErrUnavailable)
 	}
 
 	args := []string{scriptPath, "--term", term, "--limit", strconv.Itoa(limit)}
@@ -194,29 +194,29 @@ func (p *Provider) searchViaExec(ctx context.Context, term string, limit int) ([
 		CombinedOutput: true,
 	})
 	if err != nil {
-		mapped := artapp.ErrUnavailable
+		mapped := artlist.ErrUnavailable
 		if result != nil && result.TimedOut {
-			mapped = artapp.ErrTimeout
+			mapped = artlist.ErrTimeout
 		}
 		return nil, fmt.Errorf("%w: scraper failed: %v", mapped, err)
 	}
 
 	var response Response
 	if err := json.Unmarshal([]byte(result.Output), &response); err != nil {
-		return nil, fmt.Errorf("%w: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: %v", artlist.ErrInvalidResponse, err)
 	}
 	if len(response.Clips) == 0 {
-		return nil, artapp.ErrEmptyResult
+		return nil, artlist.ErrEmptyResult
 	}
 	return toCandidates(response.Clips), nil
 }
 
-func toCandidates(clips []Clip) []artapp.Candidate {
-	out := make([]artapp.Candidate, 0, len(clips))
+func toCandidates(clips []Clip) []artlist.Candidate {
+	out := make([]artlist.Candidate, 0, len(clips))
 	for _, c := range clips {
 		id := firstNonEmpty(c.ClipID, c.ID)
 		title := firstNonEmpty(c.Title, c.Name, id)
-		out = append(out, artapp.Candidate{
+		out = append(out, artlist.Candidate{
 			ID:         id,
 			Title:      title,
 			SourceRef:  c.PrimaryURL,

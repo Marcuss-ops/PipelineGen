@@ -9,7 +9,7 @@
 //	artlist (folder_manager.go) ← artlist port for DriveFileRef
 //	    ↑                                                   │
 //	    │                                                   ▼
-//	verifier.go (legacy APIDriveVerifier) → drive.Uploader → driveapi.Service
+//	verifier.go (legacy APIDriveVerifier) → drive.Uploader → assetsapi.Service
 //
 // The flow used to be:
 //
@@ -26,9 +26,9 @@
 package drive
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 
-	driveapi "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 )
@@ -45,7 +45,7 @@ type DriveVerifierAdapter struct {
 // wires this where the legacy `artifacts.NewAPIDriveVerifier` was
 // called (the surface swap is mechanical — same input, same port
 // interface, just labelled an "adapter" instead of a "verifier").
-func NewDriveVerifierAdapter(driveSvc *driveapi.Service) *DriveVerifierAdapter {
+func NewDriveVerifierAdapter(driveSvc *assetsapi.Service) *DriveVerifierAdapter {
 	var uploader *Uploader
 	if driveSvc != nil {
 		uploader = &Uploader{Service: driveSvc}

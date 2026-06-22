@@ -1,6 +1,7 @@
 package images
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"fmt"
 	"net/http"
@@ -12,12 +13,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -26,7 +26,7 @@ type Service struct {
 	cfg        *config.Config
 	repo       *assets.ImagesRepository
 	stockRepo  *assets.ClipsRepository
-	driveSvc   *driveapi.Service
+	driveSvc   *assetsapi.Service
 	log        *zap.Logger
 	tempDir    string
 	scriptsDir string
@@ -107,7 +107,7 @@ func NewService(
 	cfg *config.Config,
 	repo *assets.ImagesRepository,
 	stockRepo *assets.ClipsRepository,
-	driveSvc *driveapi.Service,
+	driveSvc *assetsapi.Service,
 	styleRegistry *generation.StyleRegistry,
 	nvidiaCfg NvidiaConfig,
 	remoteImageEndpointURL string,

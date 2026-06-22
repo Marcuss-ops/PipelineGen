@@ -1,6 +1,7 @@
 package main
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 )
@@ -104,7 +104,7 @@ func runSyncOutros(args []string) error {
 			if !exists {
 				if *apply {
 					// Create folder on Drive
-					newFolder := &driveapi.File{
+					newFolder := &assetsapi.File{
 						Name:     lang,
 						MimeType: "application/vnd.google-apps.folder",
 						Parents:  []string{folder.Id},

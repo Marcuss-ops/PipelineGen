@@ -1,6 +1,7 @@
 package drive
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"fmt"
 	"os"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -16,7 +16,7 @@ import (
 
 // Uploader handles Google Drive file operations.
 type Uploader struct {
-	Service *driveapi.Service
+	Service *assetsapi.Service
 	Log     *zap.Logger
 }
 
@@ -90,7 +90,7 @@ func (u *Uploader) doUploadFile(ctx context.Context, localPath, folderID, filena
 		u.Log.Warn("failed to check for existing file on Drive", zap.String("name", filename), zap.Error(err))
 	}
 
-	var created *driveapi.File
+	var created *assetsapi.File
 	start := time.Now()
 
 	if existing != nil && existing.FileID != "" {
@@ -99,7 +99,7 @@ func (u *Uploader) doUploadFile(ctx context.Context, localPath, folderID, filena
 			zap.String("file_id", existing.FileID),
 			zap.String("filename", filename),
 		)
-		updateFile := &driveapi.File{}
+		updateFile := &assetsapi.File{}
 		if description != "" {
 			updateFile.Description = description
 		}
@@ -109,7 +109,7 @@ func (u *Uploader) doUploadFile(ctx context.Context, localPath, folderID, filena
 			Context(ctx).
 			Do()
 	} else {
-		file := &driveapi.File{
+		file := &assetsapi.File{
 			Name: filename,
 		}
 		if description != "" {

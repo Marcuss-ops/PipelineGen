@@ -1,13 +1,13 @@
 package drive
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"fmt"
 	"io"
 	"strings"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
@@ -50,7 +50,7 @@ func (u *Uploader) GetOrCreateFolder(ctx context.Context, name, parentID string)
 	}
 
 	// Create new folder
-	folder := &driveapi.File{
+	folder := &assetsapi.File{
 		Name:     name,
 		MimeType: "application/vnd.google-apps.folder",
 	}
@@ -100,7 +100,7 @@ func (u *Uploader) TrashFile(ctx context.Context, fileID string) error {
 		return fmt.Errorf("file id is required")
 	}
 
-	_, err := u.Service.Files.Update(fileID, &driveapi.File{
+	_, err := u.Service.Files.Update(fileID, &assetsapi.File{
 		Trashed: true,
 	}).Fields("id", "trashed").Context(ctx).Do()
 	if err != nil {
@@ -144,7 +144,7 @@ func (u *Uploader) RenameFile(ctx context.Context, fileID, newName string) error
 		return fmt.Errorf("new name is required")
 	}
 
-	_, err := u.Service.Files.Update(fileID, &driveapi.File{
+	_, err := u.Service.Files.Update(fileID, &assetsapi.File{
 		Name: newName,
 	}).Fields("id", "name").Context(ctx).Do()
 	if err != nil {
@@ -166,7 +166,7 @@ func (u *Uploader) TrashFolder(ctx context.Context, folderID string) error {
 		return fmt.Errorf("folder id is required")
 	}
 
-	_, err := u.Service.Files.Update(folderID, &driveapi.File{
+	_, err := u.Service.Files.Update(folderID, &assetsapi.File{
 		Trashed: true,
 	}).Fields("id", "trashed").Context(ctx).Do()
 	if err != nil {
@@ -305,7 +305,7 @@ func (u *Uploader) MoveFile(ctx context.Context, fileID, fromFolderID, toFolderI
 	if len(f.Parents) > 0 {
 		currentParents = f.Parents[0]
 	}
-	_, err = u.Service.Files.Update(fileID, &driveapi.File{}).
+	_, err = u.Service.Files.Update(fileID, &assetsapi.File{}).
 		Fields("id,parents").
 		AddParents(toFolderID).
 		RemoveParents(currentParents).

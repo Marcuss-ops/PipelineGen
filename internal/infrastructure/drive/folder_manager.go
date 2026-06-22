@@ -1,6 +1,6 @@
 // Package drive — folder_manager.go (PR2.7)
 //
-// DriveFolderManagerAdapter wraps the concrete *driveapi.Service to
+// DriveFolderManagerAdapter wraps the concrete *assetsapi.Service to
 // satisfy the artlist.DriveFolderManager port declared at
 // internal/application/artlist/ports.go. The adapter owns the raw SDK;
 // the port hides it from callers. PR2.7 introduced this adapter so the
@@ -21,6 +21,7 @@
 package drive
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"fmt"
 	"io"
@@ -29,12 +30,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
-// DriveFolderManagerAdapter wraps *driveapi.Service to satisfy the
+// DriveFolderManagerAdapter wraps *assetsapi.Service to satisfy the
 // artlist.DriveFolderManager port. It is the only point in the system
 // that calls Files.List / Files.Trash / Files.Get.Download /
 // Files.Create.Media for artlist purposes; all other code paths use
@@ -45,7 +45,7 @@ import (
 // retire the raw SDK reach-through previously done in
 // semantic_enricher.go::updateCumulativeMetadataJSON.
 type DriveFolderManagerAdapter struct {
-	svc *driveapi.Service
+	svc *assetsapi.Service
 	log *zap.Logger
 }
 
@@ -54,7 +54,7 @@ type DriveFolderManagerAdapter struct {
 // builds the SDK once and reuses it across multiple consumers (this
 // adapter + the existing Uploader), so Drive credentials are loaded
 // exactly once at composition time.
-func NewDriveFolderManagerAdapter(svc *driveapi.Service, log *zap.Logger) *DriveFolderManagerAdapter {
+func NewDriveFolderManagerAdapter(svc *assetsapi.Service, log *zap.Logger) *DriveFolderManagerAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -123,7 +123,7 @@ func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, pare
 		return list.Files[0].Id, nil
 	}
 
-	folder := &driveapi.File{
+	folder := &assetsapi.File{
 		Name:     name,
 		MimeType: "application/vnd.google-apps.folder",
 	}
@@ -141,7 +141,7 @@ func (a *DriveFolderManagerAdapter) findOrCreateFolder(ctx context.Context, pare
 // DriveFileRef entries. Trashed-entry filtering is the caller's
 // responsibility (caller MUST include "and trashed = false" in the
 // query when needed). Domain shape (DriveFileRef) keeps
-// *driveapi.File out of the application layer.
+// *assetsapi.File out of the application layer.
 func (a *DriveFolderManagerAdapter) ListByQuery(ctx context.Context, query string) ([]DriveFileRef, error) {
 	if a.svc == nil {
 		return nil, fmt.Errorf("drive service not configured")
@@ -171,7 +171,7 @@ func (a *DriveFolderManagerAdapter) Trash(ctx context.Context, fileID string) er
 	if strings.TrimSpace(fileID) == "" {
 		return fmt.Errorf("trash: file id is required")
 	}
-	_, err := a.svc.Files.Update(fileID, &driveapi.File{Trashed: true}).
+	_, err := a.svc.Files.Update(fileID, &assetsapi.File{Trashed: true}).
 		Fields("id", "trashed").Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("drive trash: %w", err)
@@ -249,11 +249,11 @@ func (a *DriveFolderManagerAdapter) Upload(ctx context.Context, localPath, folde
 			a.log.Warn("failed to check for existing file", zap.String("name", filename), zap.Error(err))
 		}
 
-		file := &driveapi.File{Name: filename}
+		file := &assetsapi.File{Name: filename}
 		if folderID != "" {
 			file.Parents = []string{folderID}
 		}
-		var created *driveapi.File
+		var created *assetsapi.File
 		if existing != "" {
 			created, err = a.svc.Files.Update(existing, file).
 				Fields("id,webViewLink").

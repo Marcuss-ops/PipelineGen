@@ -389,6 +389,48 @@ echo "  OK: no new files in legacy directories"
 
 # ── Check 14: handler + worker binary link verification ──────────────
 echo ""
+# ── Check 15: strict-gate perimeter (July 2026, codex/dir-strict-gates) ────────────
+# These rg checks mirror the 4 forbidden patterns enforced under
+# `go run ./scripts/archcheck --strict`. They are recorded inline so
+# CI builds can cite them directly without depending on the Go
+# runtime (mirrors the “Bash is the worst-case fallback” posture).
+echo ""
+echo "Check 15: strict-gate perimeter"
+STRICT_GATE_FAIL=0
+# 15a: internal/media and internal/sources (legacy namespaces)
+if rg -n 'internal/(media|sources)\b' --type go . 2>/dev/null \
+  | grep -vE ':[0-9]+:\s*//'; then
+    echo "FAIL: forbidden import of internal/media or internal/sources (legacy namespaces)."
+    echo "  Migrate to internal/application/{assets,content,images,voiceover}/ or"
+    echo "  internal/infrastructure/<sub>/. See codex/dir-strict-gates MR."
+    STRICT_GATE_FAIL=1
+fi
+# 15b: internal/application/(association|realtime|ingest|monitor|artlist)
+if rg -n 'internal/application/(association|realtime|ingest|monitor|artlist)\b' --type go . 2>/dev/null \
+  | grep -vE ':[0-9]+:\s*//'; then
+    echo "FAIL: forbidden import of legacy application namespace."
+    echo "  internal/application/{association,realtime,ingest,monitor,artlist} are obsolete;"
+    echo "  use internal/application/assets/{association,realtime,ingest,monitor,providers/artlist}."
+    STRICT_GATE_FAIL=1
+fi
+# 15c: database/sql in internal/api|internal/application|internal/domain
+if rg -n 'database/sql' --type go internal/api internal/application internal/domain 2>/dev/null; then
+    echo "FAIL: database/sql imported outside internal/infrastructure/database/."
+    echo "  Port-lift the SQL surface to a port interface in internal/domain/asset/<feature>"
+    echo "  and implement it in internal/infrastructure/database/sqlite/."
+    STRICT_GATE_FAIL=1
+fi
+# 15d: sql.Open( anywhere in internal/
+if rg -n 'sql\.Open\(' --type go internal 2>/dev/null; then
+    echo "FAIL: sql.Open( called outside internal/infrastructure/database/."
+    echo "  Use internal/infrastructure/database/sqlite.Open (or pkg layer) and inject the DB handle."
+    STRICT_GATE_FAIL=1
+fi
+if [ "${STRICT_GATE_FAIL:-0}" -eq 1 ]; then
+    exit 1
+fi
+echo "  OK: strict-gate perimeter clean"
+
 echo "Check 14: handler + worker binary link verification"
 # PR1 (June 2026): the post-cascade verify-gate found that go vet on
 # internal/api/ and go build on cmd/worker were not enforced by the

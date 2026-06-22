@@ -8,50 +8,41 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1/benchmark"
+	// TODO(dir1.6-followup): benchmark package was retired from internal/application.
+	// Body still references symbols (LoadQueries/Run/PrintSummary/SaveReport/SearchFunc).
+	// Re-wire with internal/application/assets/maintenance importer after benchmark helpers
+	// are reintroduced in a follow-up PR.
 )
 
+// TODO(dir1-followup): the benchmark package was retired during DIR-1
+// (its host package internal/application/assets/benchmark no longer exists).
+// Reintroduce benchmark.LoadQueries / Run / PrintSummary / SaveReport /
+// SearchFunc under e.g. internal/application/assets/maintenance or
+// internal/cli/benchmark once DIR-2 lands. In the meantime the body
+// here is stubbed with explicit "return fmt.Errorf(...)" sentinels so
+// the cmd/admin binary still compiles, but `pipelinegen benchmark`
+// always exits with a non-zero status.
 func runBenchmark(args []string) error {
 	fs := flag.NewFlagSet("benchmark", flag.ExitOnError)
-	serverURL := fs.String("server", "http://localhost:8080", "PipelineGen server base URL")
-	queriesPath := fs.String("queries", "config/benchmark_queries.json", "Path to labeled queries JSON")
-	outputPath := fs.String("output", "/tmp/benchmark_report.json", "Path for JSON report output")
-	searchLimit := fs.Int("limit", 20, "Max results per query")
-	timeoutSec := fs.Int("timeout", 30, "HTTP request timeout in seconds")
-	authToken := fs.String("token", "", "Admin auth token (or set VELOX_ADMIN_TOKEN env var)")
+	_ = fs.String("server", "http://localhost:8080", "PipelineGen server base URL (DISABLED)")
+	_ = fs.String("queries", "config/benchmark_queries.json", "Path to labeled queries JSON (DISABLED)")
+	_ = fs.String("output", "/tmp/benchmark_report.json", "Path for JSON report output (DISABLED)")
+	_ = fs.Int("limit", 20, "Max results per query (DISABLED)")
+	_ = fs.Int("timeout", 30, "HTTP request timeout in seconds (DISABLED)")
+	_ = fs.String("token", "", "Admin auth token (DISABLED)")
 	fs.Parse(args)
-
-	token := *authToken
-	if token == "" {
-		token = os.Getenv("VELOX_ADMIN_TOKEN")
-	}
-
-	qf, err := benchmark.LoadQueries(*queriesPath)
-	if err != nil {
-		return fmt.Errorf("load queries: %w", err)
-	}
-
-	searchFn := httpSearchFunc(*serverURL, *searchLimit, time.Duration(*timeoutSec)*time.Second, token)
-
-	ctx := context.Background()
-	report := benchmark.Run(ctx, qf.Queries, searchFn, *searchLimit)
-	report.Description = qf.Description
-	report.Version = qf.Version
-
-	fmt.Println(benchmark.PrintSummary(report))
-
-	if err := benchmark.SaveReport(report, *outputPath); err != nil {
-		return fmt.Errorf("save report: %w", err)
-	}
-	fmt.Printf("\nReport saved to %s\n", *outputPath)
-	return nil
+	return fmt.Errorf("benchmark subcommand disabled: package internal/application/assets/maintenance benchmark helpers pending DIR-2 (see TODO at top of cmd/admin/benchmark.go)")
 }
 
-func httpSearchFunc(serverURL string, defaultLimit int, timeout time.Duration, authToken string) benchmark.SearchFunc {
+// httpSearchFunc body kept to preserve the helpers it provided to the
+// retired benchmark runner (LoadQueries/Run/etc). Body now unreachable
+// because runBenchmark returns early, so the SearchFunc type is no
+// longer constructed. The function signature is preserved as a stub
+// to minimise churn once the benchmark helper package is reintroduced.
+func httpSearchFunc(serverURL string, defaultLimit int, timeout time.Duration, authToken string) func(ctx context.Context, query string, limit int) ([]string, []float64, error) {
 	baseURL := strings.TrimRight(serverURL, "/")
 	client := &http.Client{Timeout: timeout}
 

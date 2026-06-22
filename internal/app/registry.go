@@ -12,6 +12,7 @@
 package app
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"database/sql"
 	"fmt"
@@ -21,9 +22,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
-	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
@@ -46,7 +45,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -158,7 +157,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// reuse the JobHarvestService path that was already in use pre-PR4d.
 		var harvestSvc scriptapi.AutoHarvestService
 		if root.Jobs.Service != nil {
-			presetsConfig, _ := artlistpkg.LoadPresets("config/presets.yaml")
+			presetsConfig, _ := artlist.LoadPresets("config/presets.yaml")
 			harvestSvc = clipresolver.NewJobHarvestService(root.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
 		}
 
@@ -284,7 +283,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	if root.Domains != nil && root.Domains.RealtimeService != nil {
-		registerModule(registry, log, sourcesapi.NewRealtimeModule(cfg, log, realtimeapi.NewMatchHandler(root.Domains.RealtimeService, log)))
+		registerModule(registry, log, assetsapi.NewRealtimeModule(cfg, log, assetsapi.NewMatchHandler(root.Domains.RealtimeService, log)))
 	}
 	if root.Domains != nil && root.Domains.BooksService != nil {
 		registerModule(registry, log, contentapi.NewBooksModule(cfg, log, contentapi.NewBooksHandler(root.Domains.BooksService, root.Jobs.Facade, log)))
@@ -294,7 +293,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 	if root.DB != nil && root.DB.DB != nil {
 		registerModule(registry, log, channelsapi.NewModule(log, assets.NewChannelsRepository(root.DB.DB)))
-		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(root.DB.DB)))
+		registerModule(registry, log, assetsapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(root.DB.DB)))
 	}
 
 	if wiring.Images != nil && wiring.MediaIngest != nil {

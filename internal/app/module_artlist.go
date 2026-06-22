@@ -1,12 +1,13 @@
 package app
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
-	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/artlist"
+	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
@@ -20,7 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
@@ -60,7 +61,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	// PR2.7: build the DriveFolderManager adapter BEFORE the
 	// SemanticEnricher so the enricher can receive the canonical
 	// port instead of the legacy *drive.Uploader concrete. The
-	// adapter wraps *bundle.DriveClient (the raw *driveapi.Service)
+	// adapter wraps *bundle.DriveClient (the raw *assetsapi.Service)
 	// so callers (semantic_enricher as well as anyone reading
 	// Service.driveFolderManager) never see SDK types. When
 	// bundle.DriveClient is nil (e.g. test fixtures), the adapter
@@ -101,7 +102,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
 	var mod module.Module
 	if artlistSvc != nil && handler != nil {
-		mod = sourcesapi.NewArtlistModule(cfg, log, artlistSvc, handler)
+		mod = assetsapi.NewArtlistModule(cfg, log, artlistSvc, handler)
 		log.Info("created Artlist module")
 	}
 	return &ArtlistWiring{Handler: handler, Module: mod, Service: artlistSvc}, nil

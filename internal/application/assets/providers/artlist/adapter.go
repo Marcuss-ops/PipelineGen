@@ -1,4 +1,4 @@
-// Package artlist adapts internal/sources/artlist.Service to the
+// Package artlist adapts internal/sources/Service to the
 // canonical providers.SearchProvider contract in
 // internal/application/assets/providers.
 //
@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"reflect"
-	artlistsrc "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+
 )
 
 // Compile-time assertion: *Adapter satisfies providers.SearchProvider.
@@ -30,19 +30,19 @@ import (
 var _ providers.SearchProvider = (*Adapter)(nil)
 
 // ErrSourceNotWired is returned when an Adapter is constructed
-// without a non-nil underlying artlist.Service.
+// without a non-nil underlying Service.
 var ErrSourceNotWired = errors.New("artlist adapter: source not wired")
 
 // searcher is the minimal internal interface the adapter depends on
 // for Search. Defining it private to this package lets the unit tests
-// inject a stub without constructing a full *artlistsrc.Service.
+// inject a stub without constructing a full *Service.
 //
-// *artlistsrc.Service satisfies searcher via its public Search method.
+// *Service satisfies searcher via its public Search method.
 type searcher interface {
-	Search(ctx context.Context, req *artlistsrc.SearchRequest) (*artlistsrc.SearchResponse, error)
+	Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error)
 }
 
-// Adapter wraps an artlist searcher (production: *artlistsrc.Service)
+// Adapter wraps an artlist searcher (production: *Service)
 // and presents it as a SearchProvider. It does NOT introduce new
 // search semantics: it translates the canonical
 // providers.SearchRequest into the service's native request at the
@@ -54,7 +54,7 @@ type Adapter struct {
 
 // NewAdapter returns an Adapter wrapping the given service. The
 // service must be fully wired (composition root responsibility).
-func NewAdapter(src *artlistsrc.Service) *Adapter { return &Adapter{src: src} }
+func NewAdapter(src *Service) *Adapter { return &Adapter{src: src} }
 
 // Name implements providers.Provider.
 func (a *Adapter) Name() string { return "artlist" }
@@ -99,7 +99,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 		return providers.SearchResult{}, err
 	}
 
-	native := &artlistsrc.SearchRequest{
+	native := &SearchRequest{
 		Term:     req.Query,
 		Limit:    req.Limit,
 		PreferDB: false,

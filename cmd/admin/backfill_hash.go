@@ -1,6 +1,7 @@
 package main
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"crypto/md5"
 	"flag"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"strings"
 
 	"golang.org/x/oauth2/google"
-	driveapi "google.golang.org/api/drive/v3"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
@@ -103,12 +103,12 @@ func runBackfillHashV2(args []string) error {
 	db := sqliteDB.DB
 
 	ctx := cmdContext()
-	client, err := google.DefaultClient(ctx, driveapi.DriveScope)
+	client, err := google.DefaultClient(ctx, assetsapi.DriveScope)
 	if err != nil {
 		return fmt.Errorf("failed to create drive client: %w", err)
 	}
 
-	driveService, err := driveapi.New(client)
+	driveService, err := assetsapi.New(client)
 	if err != nil {
 		return fmt.Errorf("failed to create drive service: %w", err)
 	}

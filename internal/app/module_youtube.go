@@ -2,8 +2,8 @@ package app
 
 import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
-	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
