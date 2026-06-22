@@ -31,18 +31,18 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/workers"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
+	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 )
 
 // internalV1Prefix is the URL prefix the production server mounts
 // the worker broker handler under (see internal/api/routes.go::Setup,
 // `engine.Group("/internal/v1")`).
 //
-// Hardcoded here — NOT imported from `internal/infrastructure/remote/shared` —
-// because on the codex/w3-e2e-worker branch (PR-A only — PR-B NOT applied)
-// that shared package does not yet exist. After PR-B merges, replace
-// this constant with `remoteshared.InternalPathPrefix` to keep the
-// test in lockstep with production.
-const internalV1Prefix = "/internal/v1"
+// Sourced from `remoteshared.InternalPathPrefix` so a future rename
+// of the path (or a mis-sync between server and client) surfaces as
+// a single compile/build break instead of a runtime 404 with no
+// breadcrumb back to the constant.
+const internalV1Prefix = remoteshared.InternalPathPrefix
 
 // TestE2E_WorkerClaimsViaHTTPBroker_Alignment is the PR-D smoke test.
 //
