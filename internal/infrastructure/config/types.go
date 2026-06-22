@@ -114,8 +114,47 @@ type ServerConfig struct {
 // DataDir is the root for all data. MediaDir (relative to DataDir) is the
 // single root for ALL media files on disk. Per-service subdirectories
 // (voiceovers, images, youtube, etc.) are computed under MediaDir.
+//
+// The 6 explicit DB/dir fields below drive the canonical
+// `internal/infrastructure/database.DatabaseSet` opened at boot
+// (`codex/db-set-and-paths`). Defaults preserve the legacy single-file
+// path PrimaryDBPath = <DataDir>/media/media.db.sqlite so existing
+// deployments keep working without a migration. The path migration
+// tool (`cmd/admin/path_migrate.go`, future PR) performs backup +
+// SHA256 checksum + PRAGMA integrity_check + rollback when operators
+// opt in.
 type StorageConfig struct {
-	DataDir  string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	// DataDir is the root for ALL persisted data (DBs + blobs).
+	DataDir string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	// PrimaryDBPath is the file path for the unified media DB
+	// (jobs, assets, scripts, search_queries, worker_nodes, media_assets,
+	//  clip_folders, voiceovers, etc.). Defaults preserve legacy
+	// `<DataDir>/media/media.db.sqlite`.
+	PrimaryDBPath string `yaml:"primary_db_path" env:"VELOX_PRIMARY_DB_PATH" default:""`
+	// ObservabilityDBPath is the file path for the API request log DB
+	// (`api_requests` table + indexes). Distinct from PrimaryDBPath so
+	// log retention doesn't churn the schema-versioned primary DB.
+	// Default: `<DataDir>/observability/api_requests.db.sqlite`.
+	ObservabilityDBPath string `yaml:"observability_db_path" env:"VELOX_OBSERVABILITY_DB_PATH" default:""`
+	// WorkspaceDir is for transient job scratch space.
+	WorkspaceDir string `yaml:"workspace_dir" env:"VELOX_WORKSPACE_DIR" default:""`
+	// CacheDir is for derived artifacts (re-rendered thumbnails, etc.).
+	CacheDir string `yaml:"cache_dir" env:"VELOX_CACHE_DIR" default:""`
+	// ExportDir is for one-off exports (download bundles, audit dumps).
+	ExportDir string `yaml:"export_dir" env:"VELOX_EXPORT_DIR" default:""`
+	// ObservabilityMaxAgeDays is the retention cutoff for the
+	// observability DB (`admin db rotate`). Rows with ts older than
+	// this are offloaded to <DataDir>/backups/observability-<DATE>.db.sqlite
+	// then DELETEd from the live DB. 0 disables rotation. See
+	// ARCHITECTURE.md §12 (observability retention policy).
+	ObservabilityMaxAgeDays int `yaml:"observability_max_age_days" env:"VELOX_OBSERVABILITY_MAX_AGE_DAYS" default:"7"`
+	// ObservabilityMaxSizeMB is the soft cap on the observability DB
+	// size. After each rotation, `admin db status` reports the WAL
+	// + main file size; if it exceeds this, an operator should run
+	// `admin db rotate` with a smaller -max-age-days.
+	ObservabilityMaxSizeMB int `yaml:"observability_max_size_mb" env:"VELOX_OBSERVABILITY_MAX_SIZE_MB" default:"1024"`
+	// MediaDir / TempDir are kept for backward-compat with the legacy
+	// on-disk filesystem layout (voiceovers, images, youtube, etc.).
 	MediaDir string `yaml:"media_dir" env:"PIPELINEGEN_MEDIA_DIR" default:"media"`
 	TempDir  string `yaml:"temp_dir" env:"VELOX_TEMP_DIR" default:"tmp"`
 }
@@ -331,3 +370,65 @@ type FeaturesConfig struct {
 	StockPipelineEnabled      bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"false"`
 	CatalogScriptVectorSearch bool `yaml:"catalog_script_vector_search" env:"VELOX_FEATURE_CATALOG_SCRIPT_VECTOR_SEARCH" default:"false"`
 }
+
+// ToDatabaseStorageConfig projects this StorageConfig into the
+// storage.StorageConfig consumed by `internal/infrastructure/database.OpenSet`.
+// The two are deliberately separate types so `database` does not import
+// `config` (avoids a cycle: config <-> database).
+func (s StorageConfig) ToDatabaseStorageConfig() interface {
+	DataDir() string
+	PrimaryDBPath() string
+	ObservabilityDBPath() string
+	WorkspaceDir() string
+	CacheDir() string
+	ExportDir() string
+} {
+	return storageSetAdapter{s: s}
+}
+
+// Path resolution helpers — used by internal/app/bootstrap.go and any
+// subsystem that needs the canonical disk layout under DataDir.
+func (s StorageConfig) PrimaryDBFullPath() string {
+	if s.PrimaryDBPath != "" {
+		return s.PrimaryDBPath
+	}
+	return s.FullPath(filepath.Join(s.MediaDir, "media.db.sqlite"))
+}
+func (s StorageConfig) ObservabilityDBFullPath() string {
+	if s.ObservabilityDBPath != "" {
+		return s.ObservabilityDBPath
+	}
+	return s.FullPath("observability/api_requests.db.sqlite")
+}
+func (s StorageConfig) WorkspaceFullPath() string {
+	if s.WorkspaceDir != "" {
+		return s.WorkspaceDir
+	}
+	return s.FullPath("workspace")
+}
+func (s StorageConfig) CacheFullPath() string {
+	if s.CacheDir != "" {
+		return s.CacheDir
+	}
+	return s.FullPath("cache")
+}
+func (s StorageConfig) ExportFullPath() string {
+	if s.ExportDir != "" {
+		return s.ExportDir
+	}
+	return s.FullPath("export")
+}
+
+type storageSetAdapter struct {
+	s StorageConfig
+}
+
+func (a storageSetAdapter) DataDir() string {
+	if a.s.DataDir == "" { return "data" }
+	return a.s.DataDir
+}
+func (a storageSetAdapter) PrimaryDBPath() string { return a.s.PrimaryDBFullPath() }
+func (a storageSetAdapter) ObservabilityDBPath() string { return a.s.ObservabilityDBFullPath() }
+func (a storageSetAdapter) WorkspaceDir() string { return a.s.WorkspaceFullPath() }
+func (a storageSetAdapter) CacheDir() string { return a.s.CacheFullPath() }
+func (a storageSetAdapter) ExportDir() string { return a.s.ExportFullPath() }

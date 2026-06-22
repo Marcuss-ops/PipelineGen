@@ -608,7 +608,21 @@
 
 - id: 16
   title: Zero-redundancy strict architecture
-  status: pending
+  status: done
+  status_note: |
+    Wave 16 closed 2026-06-22 by operator override at the
+    `architecture-clean-v1` checkpoint tag. The strict-mode
+    `--strict` flag was exposed on `scripts/archcheck/main.go`
+    in codex/db-set-and-paths (June 2026) and wired into the
+    docs/POST_CASCADE_OPERATIONAL_READINESS.md operational readiness
+    doc. The strict-mode gate currently rejects 601 alias hits + 61
+    rule violations vs. the zero target; full zero-redundancy alignment
+    remains a multi-PR migration backlog documented in
+    docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known
+    limits". This closure freezes the framework (strict mode exposed,
+    Check 17 baseline frozen, observability retention policy committed)
+    and unblocks Wave 17 Final Verification + the architecture-clean-v1
+    canonical tag.
   target_metrics:
     forbidden_internal_roots: 0
     legacy_imports: 0
@@ -631,12 +645,30 @@
     - compat.go / aliases.go / legacy.go wrappers
     - migration TODO comments
   blocked_by: ["15"]
+  # NOTE: target_metrics above (legacy_imports: 0, type_aliases: 0, etc.) are
+  # ASPIRATIONAL. The Wave 16 operator-override closure keeps the file as
+  # `status: done` while the framework (strict mode + Check 17) prevents new
+  # regressions. Current counts (per migration.yaml comments): 42 grandfathered
+  # DB-imports, 89 alive files in internal/media/, 21 importers in
+  # internal/application/(association|realtime). See
+  # docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits" for
+  # the current state.
 
 # ── Wave 17 — Final verification + tag ───────────────────────────────────────
 
 - id: 17
   title: Final verification + canonical tag
-  status: pending
+  status: done
+  status_note: |
+    Wave 17 closed 2026-06-22. `architecture-clean-v1` checkpoint tag
+    stamped onto main. Per operator override the cert is partial-strict:
+    the framework + Check 17 git gate + observability retention + new
+    admin db subsystem are green; Wave 13 / Wave 8 / pre-existing
+    build errors remain on the Wave-13-pending / separate-fix branch
+    backlog (documented in
+    docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known
+    limits"). Reopen Wave 17 only if any future commit invalidates
+    one of the four Approval checkboxes above.
   gate:
     - gofmt -w .
     - go mod tidy

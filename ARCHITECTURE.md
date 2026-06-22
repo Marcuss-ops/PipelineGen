@@ -184,13 +184,41 @@ Ticker (cfg.Jobs.CatalogSyncInterval, default 6h)
 
 ## 6. Persistence
 
+**Pattern (codex/db-set-and-paths, June 2026)**: every sqlite database is
+opened through `internal/infrastructure/database.DatabaseSet` (`OpenSet`,
+`Migrate`, `Health`, `Close`). `internal/app/composition.go` calls
+`OpenSet(...)` exactly once at boot. No `sql.Open` lives outside
+`internal/infrastructure/database/**`.
+
 | Database | Path | Holds | Migrations |
 |----------|------|-------|------------|
-| `media.db.sqlite` | `data/media/` | **Unico database** — everything: scripts, jobs, media_assets, clip_folders, voiceovers, youtube_cache, gemma_memory, search_queries, sketchfab, pipeline_runs, etc. | `migrations/sqlite/` |
+| **Primary** | `<DataDir>/media/media.db.sqlite` (compat default) | **Unico database** — scripts, jobs, media_assets, clip_folders, voiceovers, youtube_cache, gemma_memory, search_queries, sketchfab, pipeline_runs, worker_nodes, etc. | `migrations/sqlite/*.sql` |
+| **Observability** | `<DataDir>/observability/api_requests.db.sqlite` | API request log table + indexes (single purpose: HTTP traffic telemetry). Distinct from Primary so log retention doesn't churn the schema-versioned Primary DB. | `migrations/sqlite/*.sql` |
 
-Both: WAL, `busy_timeout=5000`, `synchronous=NORMAL`, 5-10 open / 2-5 idle per
-pool. Migrations run centrally at boot (`internal/app/migrations.go::runAllMigrations`);
-no per-DB ad-hoc migration; see AGENTS.md "schema boundaries".
+**Configurable via `cfg.Storage`** (defaults preserve legacy single-file layout):
+
+| Field | YAML | Env | Default |
+|-------|------|-----|---------|
+| `data_dir` | `storage.data_dir` | `VELOX_DATA_DIR` | `./data` |
+| `primary_db_path` | `storage.primary_db_path` | `VELOX_PRIMARY_DB_PATH` | `<DataDir>/media/media.db.sqlite` |
+| `observability_db_path` | `storage.observability_db_path` | `VELOX_OBSERVABILITY_DB_PATH` | `<DataDir>/observability/api_requests.db.sqlite` |
+| `workspace_dir` | `storage.workspace_dir` | `VELOX_WORKSPACE_DIR` | `<DataDir>/workspace` |
+| `cache_dir` | `storage.cache_dir` | `VELOX_CACHE_DIR` | `<DataDir>/cache` |
+| `export_dir` | `storage.export_dir` | `VELOX_EXPORT_DIR` | `<DataDir>/export` |
+
+Pragmas: WAL, `busy_timeout=5000`, `synchronous=NORMAL`, 5-10 open / 2-5
+idle per pool. `DatabaseSet.Migrate(log)` runs the canonical migration
+ledger against BOTH Primary + Observability (errors on either roll
+forward as-is — no distributed transaction across DBs).
+
+**Path migration**: the path-migration tool (`cmd/admin/path_migrate.go`,
+future PR) performs backup + SHA256 checksum + PRAGMA integrity_check +
+rollback when operators opt in to relocate the Primary DB from the
+legacy `<DataDir>/media.db.sqlite` path to the canonical
+`<DataDir>/media/media.db.sqlite`. Until that runs, the PrimaryDBPath
+default matches today's on-disk file so existing deployments keep
+working without a migration. Default resolution in
+`internal/infrastructure/database/storage.ResolveStorageConfig`.
 
 **On disk**: `cfg.Storage.DataDir` (default `./data`); subdirs `voiceovers/`,
 `images/`, `youtube/`, `artlist/`, `assets/`, `downloads/`, `animations/`,
@@ -244,6 +272,13 @@ production token MUST NOT be checked in.
 
 ## 10. Day-1 commands
 
+The runtime opens the `DatabaseSet` once via `storage.OpenSet(cfg.Storage, log)`
+in `internal/app/bootstrap.go::initDatabases`; no `sql.Open` lives outside
+`internal/infrastructure/database/**`. Override the canonical DB paths via
+the `storage.primary_db_path` and `storage.observability_db_path` config
+fields (defaults preserve legacy single-file layout; see §6).
+
+
 ```bash
 # Build
 go build -o pipelinegen ./cmd/server/
@@ -257,9 +292,10 @@ go build -o admin ./cmd/admin/
 
 # Admin CLI
 ./admin seed-channels
-./admin migrate-status
+./admin db migrations  # codex/db-doctor-restore (W2, June 2026) — was ./admin migrate-status
 ./admin benchmark
 ./admin gen-api-docs
+./admin path-migrate   # codex/db-path-migration-tool (followup)
 
 # Tests
 go test ./...                                    # full suite
@@ -303,6 +339,56 @@ and follow the OAuth flow. CI: `.github/workflows/`.
 | `docs/youtube_clip_service.md` | YouTube extraction + intelligence |
 | `docs/CHANGELOG_2026-06-03.md` | Most recent architectural changes |
 | `docs/ops-audit.md` | Operational concerns (systemd, log rotation, GPU) |
+
+
+## 12b. Observability DB retention policy (June 2026)
+
+Wahl: **disposable + cron retention** (chosen over inclusion-in-backup for
+this codebase; rationale below). The observability DB
+(`data/observability/api_requests.db.sqlite`) holds only one purpose:
+HTTP request telemetry replayability for post-incident forensics.
+
+**Policy:**
+- The observability DB is NOT included in the canonical primary backup
+  manifest (`admin db backup` covers the primary file only). Including
+  it would bloat RPO snapshots with telemetry that has no domain value
+  beyond ~7 days of history.
+- Retention is driven by `admin db rotate` (cron-friendly):
+  - Cuts off rows with `ts < now - cfg.Storage.ObservabilityMaxAgeDays`
+    (default 7 days).
+  - Offloads the cutoff rows to a self-contained SQLite archive at
+    `<DataDir>/backups/observability-YYYYMMDD.db.sqlite` via ATTACH +
+    `INSERT INTO offload.api_requests SELECT * FROM main.api_requests`.
+  - Purges the offloaded rows from the live DB.
+  - Runs `VACUUM main.api_requests` to reclaim page slots.
+  - Emits a JSON line with `cutoff / offloaded_to / offloaded_rows /
+    purged_rows / bytes_reclaimed / duration_ms`.
+- Operators schedule `admin db rotate` on a daily cron at 02:00 server
+  time. Suggested crontab:
+  ```
+  0 2 * * * cd /opt/pipelinegen && go run ./cmd/admin db rotate
+  ```
+- `admin db status` reports `observability` size + the most recent
+  backup timestamp so operators can spot drift.
+
+**Why not include-in-backup (the other option)?**
+- Backup manifest becomes large (week-old telemetry adds ~200 MB for
+  typical weeks; rotation keeps it bounded).
+- Restores would rehydrate rows that get immediately purged, wasting
+  disk + bandwidth.
+- The forensics need is bounded by incident review windows (~7 days);
+  older rows are not actionable.
+- Disposable + cron also keeps the `data/observability/...` directory
+  out of the registered list (Check 16 still passes: only
+  `data/media/media.db.sqlite` is the registered primary).
+
+**Implementation pointers:**
+- `internal/infrastructure/database/rotation.go::RotateObservability` —
+  the ATTACH + INSERT + DELETE + VACUUM sequence.
+- `cmd/admin/db_rotate.go` — the admin CLI subcommand.
+- `internal/infrastructure/config/types.go::StorageConfig` —
+  ObservabilityMaxAgeDays (default 7), ObservabilityMaxSizeMB
+  (default 1024).
 
 ## 13. Conventions and out-of-scope
 

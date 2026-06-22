@@ -13,7 +13,7 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: admin <command> [args]")
-		fmt.Println("Commands: seed-channels, stock-reset, stock-subfolders-reset, summarize-book, sync-outros, unify-catalogs, ai-generate, backfill-missing, migrate-status, benchmark, gen-api-docs")
+		fmt.Println("Commands: seed-channels, stock-reset, stock-subfolders-reset, summarize-book, sync-outros, unify-catalogs, ai-generate, backfill-missing, db, benchmark, gen-api-docs")
 		os.Exit(1)
 	}
 
@@ -42,8 +42,8 @@ func main() {
 		err = runGenerateAIVideo(args)
 	case "backfill-missing":
 		err = runBackfillMissing(args)
-	case "migrate-status":
-		err = runMigrateStatus(args)
+	case "db":
+		err = runDB(args)
 	case "benchmark":
 		err = runBenchmark(args)
 	case "gen-api-docs":

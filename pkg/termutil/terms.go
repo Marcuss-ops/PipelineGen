@@ -11,7 +11,7 @@
 // orphan alias `termutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"`
 // would still resolve. Blocco A.3 finally completes the migration: the
 // functions live here, the sentinel is gone, and the lone external consumer
-// (internal/application/association/service.go) imports this package directly.
+// (internal/application/assets/association/service.go) imports this package directly.
 package termutil
 
 import (

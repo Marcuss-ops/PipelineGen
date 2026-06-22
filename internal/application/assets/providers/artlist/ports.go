@@ -17,6 +17,7 @@
 package artlist
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"errors"
 	"io"
@@ -204,7 +205,7 @@ type DriveFolderManager interface {
 	// name = 'metadata.json'"). Server-side filtering of trashed
 	// entries is the caller's responsibility (include
 	// "and trashed = false" in the query). The domain result shape
-	// avoids leaking *driveapi.File into business logic.
+	// avoids leaking *assetsapi.File into business logic.
 	ListByQuery(ctx context.Context, query string) ([]DriveFileRef, error)
 
 	// Trash moves a file to Drive's trash. Safer than permanent

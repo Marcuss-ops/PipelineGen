@@ -1,0 +1,234 @@
+PLACEHOLDER HITS TOTAL: 19
+
+=== GROUPED BY FILE (path | count | first alias) ===
+  ./cmd/admin/benchmark.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/assets/handler_mediaingest.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/images/impl.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/realtime/impl.go  (1 hit(s); first alias: mediarealtime)
+  ./internal/api/realtime/impl_test.go  (1 hit(s); first alias: mediarealtime)
+  ./internal/api/script/handler_script_handlers_flow_clip_services.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/script/handler_script_handlers_flow_clips_search.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/script/handler_script_handlers_flow_clips_test.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/script/handler_script_handlers_flow_insights_standalone_test.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/script/handler_script_handlers_handler_flow.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/api/sources/handler_sources_source_handlers.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/app/composition.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/app/lifecycle.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/app/media_ingest_test.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/app/module_assets.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/app/module_ingest.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/application/images/ingest_semantic.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/application/images/service.go  (1 hit(s); first alias: UNALIASED)
+  ./internal/application/scripts/curation_mediacurator.go  (1 hit(s); first alias: UNALIASED)
+
+=== FILES WITH 6-LINE IMPORT BLOCK CONTEXT AROUND EACH HIT ===
+
+############ ./cmd/admin/benchmark.go ############
+     L9: 	"net/http"
+     L10: 	"net/url"
+     L11: 	"os"
+     L12: 	"strings"
+     L13: 	"time"
+     L14: 
+ >>> L15: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1/benchmark"
+     L16: )
+
+############ ./internal/api/assets/handler_mediaingest.go ############
+     L3: import (
+     L4: 	"strings"
+     L5: 
+     L6: 	"github.com/gin-gonic/gin"
+     L7: 
+     L8: 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
+ >>> L9: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L10: 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+
+############ ./internal/api/images/impl.go ############
+     L10: 	"strings"
+     L11: 	"time"
+     L12: 
+     L13: 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+     L14: 
+     L15: 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+ >>> L16: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L17: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+
+############ ./internal/api/realtime/impl.go ############
+     L4: 	"context"
+     L5: 	"net/http"
+     L6: 
+     L7: 	"github.com/gin-gonic/gin"
+     L8: 	"go.uber.org/zap"
+     L9: 
+ >>> L10: 	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L11: )
+
+############ ./internal/api/realtime/impl_test.go ############
+     L10: 
+     L11: 	"github.com/gin-gonic/gin"
+     L12: 	"github.com/stretchr/testify/assert"
+     L13: 	"github.com/stretchr/testify/require"
+     L14: 	"go.uber.org/zap"
+     L15: 
+ >>> L16: 	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L17: )
+
+############ ./internal/api/script/handler_script_handlers_flow_clip_services.go ############
+     L1: package script
+     L2: 
+     L3: import (
+     L4: 	"context"
+     L5: 
+     L6: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
+ >>> L7: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L8: 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+
+############ ./internal/api/script/handler_script_handlers_flow_clips_search.go ############
+     L1: package script
+     L2: 
+     L3: import (
+     L4: 	"context"
+     L5: 	"strings"
+     L6: 
+ >>> L7: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L8: 	"go.uber.org/zap"
+
+############ ./internal/api/script/handler_script_handlers_flow_clips_test.go ############
+     L2: 
+     L3: import (
+     L4: 	"context"
+     L5: 	"database/sql"
+     L6: 	"testing"
+     L7: 
+ >>> L8: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L9: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+
+############ ./internal/api/script/handler_script_handlers_flow_insights_standalone_test.go ############
+     L5: 	"encoding/json"
+     L6: 	"errors"
+     L7: 	"strings"
+     L8: 	"testing"
+     L9: 
+     L10: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
+ >>> L11: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L12: 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+
+############ ./internal/api/script/handler_script_handlers_handler_flow.go ############
+     L8: 
+     L9: 	"github.com/gin-gonic/gin"
+     L10: 	"go.uber.org/zap"
+     L11: 
+     L12: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
+     L13: 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
+ >>> L14: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L15: 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+
+############ ./internal/api/sources/handler_sources_source_handlers.go ############
+     L19: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+     L20: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
+     L21: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+     L22: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+     L23: 
+     L24: 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+ >>> L25: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L26: 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+
+############ ./internal/app/composition.go ############
+     L39: 
+     L40: 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+     L41: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+     L42: 	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
+     L43: 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+     L44: 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+ >>> L45: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L46: 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+
+############ ./internal/app/lifecycle.go ############
+     L29: 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+     L30: 	_ "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+     L31: 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+     L32: 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+     L33: 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+     L34: 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
+ >>> L35: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L36: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+
+############ ./internal/app/media_ingest_test.go ############
+     L1: package app
+     L2: 
+     L3: import (
+     L4: 	"testing"
+     L5: 
+ >>> L6: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L7: )
+
+############ ./internal/app/module_assets.go ############
+     L1: package app
+     L2: 
+     L3: import (
+     L4: 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+     L5: 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+     L6: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+ >>> L7: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L8: 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+
+############ ./internal/app/module_ingest.go ############
+     L10: 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+     L11: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+     L12: 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+     L13: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+     L14: 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+     L15: 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+ >>> L16: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L17: 	gdrive "google.golang.org/api/drive/v3"
+
+############ ./internal/application/images/ingest_semantic.go ############
+     L2: 
+     L3: import (
+     L4: 	"context"
+     L5: 	"encoding/json"
+     L6: 	"time"
+     L7: 
+ >>> L8: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L9: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+
+############ ./internal/application/images/service.go ############
+     L9: 
+     L10: 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+     L11: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+     L12: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+     L13: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+     L14: 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
+ >>> L15: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L16: 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+
+############ ./internal/application/scripts/curation_mediacurator.go ############
+     L13: 	"os"
+     L14: 	"strings"
+     L15: 
+     L16: 	"go.uber.org/zap"
+     L17: 	"gopkg.in/yaml.v3"
+     L18: 
+ >>> L19: 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+     L20: 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+
+=== RAW LINE LIST (file:line | content) ===
+./cmd/admin/benchmark.go:15  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1/benchmark"
+./internal/api/assets/handler_mediaingest.go:9  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/images/impl.go:16  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/realtime/impl.go:10  | 	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/realtime/impl_test.go:16  | 	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/script/handler_script_handlers_flow_clip_services.go:7  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/script/handler_script_handlers_flow_clips_search.go:7  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/script/handler_script_handlers_flow_clips_test.go:8  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/script/handler_script_handlers_flow_insights_standalone_test.go:11  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/script/handler_script_handlers_handler_flow.go:14  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/api/sources/handler_sources_source_handlers.go:25  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/app/composition.go:45  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/app/lifecycle.go:35  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/app/media_ingest_test.go:6  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/app/module_assets.go:7  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/app/module_ingest.go:16  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/application/images/ingest_semantic.go:8  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/application/images/service.go:15  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+./internal/application/scripts/curation_mediacurator.go:19  | 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"

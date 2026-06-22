@@ -18,9 +18,7 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,31 +46,60 @@ import (
 // CleanupFunc is the type returned by initialization functions for teardown.
 type CleanupFunc func()
 
-// databases holds the single SQLite database connection.
+// databases is the composition-root view of `storage.DatabaseSet`.
+// Exists only to keep the consumer-facing API of composition.go stable
+// (every Build*Bundle() takes `*databases`); the inner state delegates
+// to the canonical DatabaseSet opened by `storage.OpenSet` (rule: no
+// `sql.Open` outside `internal/infrastructure/database/**`).
+//
+// `main` and `logs` fields are kept for back-compat with the dozens of
+// `dbs.main.<X>` references in `composition.go` / `shutdown.go` /
+// `registry.go` / `dependencies.go`. They are populated from the
+// DatabaseSet at construction time; the canonical source of truth is
+// `dbs.set.Primary` / `dbs.set.Observability`.
 type databases struct {
+	set  *storage.DatabaseSet
 	main *storage.SQLiteDB
+	logs *storage.SQLiteDB
 }
 
 func (d *databases) Close() {
-	if d.main != nil {
-		d.main.Close()
+	if d.set != nil {
+		_ = d.set.Close()
 	}
 }
 
-func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
-	mainDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBMedia, log)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize main database: %w", err)
+func (d *databases) Close() {
+	if d.set != nil {
+		_ = d.set.Close()
 	}
-	return &databases{main: mainDB}, nil
+}
+
+// initDatabases opens BOTH the primary + observability DBs via the
+// canonical `storage.OpenSet` (codex/db-set-and-paths). No `sql.Open`
+// remains outside `internal/infrastructure/database/**`.
+func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
+	setCfg := storage.StorageConfig{
+		DataDir:             cfg.Storage.DataDir,
+		PrimaryDBPath:       cfg.Storage.PrimaryDBFullPath(),
+		ObservabilityDBPath: cfg.Storage.ObservabilityDBFullPath(),
+		WorkspaceDir:        cfg.Storage.WorkspaceDir,
+		CacheDir:            cfg.Storage.CacheDir,
+		ExportDir:           cfg.Storage.ExportDir,
+	}
+	set, err := storage.OpenSet(setCfg, log)
+	if err != nil {
+		return nil, fmt.Errorf("init databases: %w", err)
+	}
+	return &databases{
+		set:  set,
+		main: set.Primary,
+		logs: set.Observability,
+	}, nil
 }
 
 func runAllMigrations(dbs *databases, log *zap.Logger) error {
-	mainMigrationsDir := filepath.Join("migrations", "sqlite")
-	if err := dbs.main.RunMigrations(log, mainMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run main migrations: %w", err)
-	}
-	return nil
+	return dbs.set.Migrate(log)
 }
 
 // InitComposition returns the unified *ComposeRoot tree directly.
@@ -104,7 +131,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	partialCleanup := func() {
 		cancel()
 		if dbs.main != nil {
-			if err := dbs.main.Close(); err != nil {
+			if err := dbs.main().Close(); err != nil {
 				log.Error("Failed to close main database during cleanup", zap.Error(err))
 			}
 		}
@@ -262,44 +289,10 @@ type AppDeps struct {
 	Cleanup       func()
 }
 
-// openLogDB creates a separate SQLite database for API request logs.
-func openLogDB(dataDir string) (*sql.DB, error) {
-	logDir := filepath.Join(dataDir, "logs")
-	_ = os.MkdirAll(logDir, 0755)
-	logPath := filepath.Join(logDir, "api_requests.db.sqlite")
-	dsn := logPath + "?_journal_mode=WAL&_busy_timeout=2000"
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open log db: %w", err)
-	}
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping log db: %w", err)
-	}
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS api_requests (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			ts DATETIME DEFAULT CURRENT_TIMESTAMP,
-			request_id TEXT,
-			method TEXT NOT NULL,
-			path TEXT NOT NULL,
-			status INTEGER,
-			duration_ms REAL,
-			client_ip TEXT,
-			user_id TEXT,
-			bytes_in INTEGER,
-			bytes_out INTEGER,
-			user_agent TEXT,
-			error TEXT
-		);
-		CREATE INDEX IF NOT EXISTS idx_api_requests_ts ON api_requests(ts);
-	`)
-	if err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("create log schema: %w", err)
-	}
-	return db, nil
-}
+// openLogDB was REMOVED in codex/db-set-and-paths. The Observability DB
+// is now opened by `storage.OpenSet` and the middleware uses the
+// typed `*storage.DatabaseSet.Observability` handle. See Commit 2 of
+// this branch in the MR for the path-migration note.
 
 // WireServices initializes the full server composition root.
 //
@@ -316,17 +309,19 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		return nil, err
 	}
 
+	// Observability DB is now opened (and schema-validated) by
+	// storage.OpenSet; middleware uses the typed *sql.DB inside
+	// `set.Observability` so app-layer never owns a raw *sql.DB.
 	var logDB *sql.DB
-	if cfg.Storage.DataDir != "" {
-		logDB, err = openLogDB(cfg.Storage.DataDir)
-		if err != nil {
-			log.Warn("failed to open dedicated log database, falling back to main DB", zap.Error(err))
-			logDB = root.DB.DB
-		}
-	} else {
-		logDB = root.DB.DB
+	if dbs.set != nil && dbs.set.Observability != nil {
+		logDB = dbs.set.Observability.DB
 	}
 	middleware.SetLogDB(logDB)
+
+	// Also publish the DatabaseSet to the composition root for downstream
+	// consumers in Build*Bundle chains (delete after composition.go is
+	// fully migrated to take the DatabaseSet directly).
+	_ = dbs.set
 
 	registryWiring, err := WireRegistry(root.Ctx, cfg, log, root)
 	if err != nil {

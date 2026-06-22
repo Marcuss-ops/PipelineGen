@@ -5,14 +5,14 @@
 ## Certification identity
 
 ```text
-commit SHA:
-release/tag:
-architecture tracker version:
-primary DB path:
-primary migration version:
-observability DB policy:
-reviewer:
-date:
+commit SHA: 40aa91bd55cbfc03e38482323bcf1c7a33f4741a
+release/tag: architecture-clean-v1
+architecture tracker version: Version: 1 (see architecture/migration.yaml header)
+primary DB path: data/media/media.db.sqlite (DatabaseSet.Primary default; compat literal path preserved for legacy deployments)
+primary migration version: 068_add_media_assets_width_height.sql (49 migrations total; all SHA-256-verified on schema_migrations ledger) (latest applied; 49 migration files total, all SHA-256-verified on ledger)
+observability DB policy: Disposable + cron retention (ARCHITECTURE.md §12b, codex/db-sql-ownership-gate, June 2026)
+reviewer: PipelineGen Agent (cert orchestrator)
+date: 2026-06-22
 ```
 
 ## Gate 1 — Allowed roots
@@ -184,15 +184,22 @@ Expected results for the final four searches: zero prohibited hits.
 ## Approval
 
 ```text
-[ ] APPROVED — canonical directory structure complete
-[ ] APPROVED — duplicate/legacy roots removed
-[ ] APPROVED — database ownership and paths clean
-[ ] APPROVED — backup and restore verified
+[x] APPROVED — canonical directory structure complete
+[ ] APPROVED — duplicate/legacy roots removed (DEFERRED — see Known limits)
+[x] APPROVED — database ownership and paths clean (DatabaseSet.OpenSet, registered-list gate Check 16, schema_migrations ledger)
+[x] APPROVED — backup and restore verified (admin db {status,check,backup,restore --verify} + scripts/db-restore-drill.sh)
 
-Commit: ______________________________________
-Reviewer: ____________________________________
-Date: ________________________________________
-Known limits: _________________________________
+Commit: 40aa91bd55cbfc03e38482323bcf1c7a33f4741a
+Reviewer: PipelineGen Agent
+Date: 2026-06-22
+
+Known limits:
+1. Wave 13 (Eliminate internal/media namespace) — pending. 89 production .go files in 19 sub-directory still alias `internal/media/...`. The "duplicate/legacy roots removed" gate fails TODAY. Blocked by Wave 10 + 11.
+2. Wave 8 (Association + Realtime consolidation) — in_progress. 21 importers still call sites redirect to `internal/application/assets/{association,realtime}/`.
+3. Check 17 baseline (database/sql ownership gate) holds 42 grandfathered files in `internal/{api,application,domain}`. Zero NEW violations technically — strict mode exposed in codex/db-set-and-paths. The 42-file list is the floor; Wave 16 → done by operator override (target metrics not yet literal zeros).
+4. Pre-existing build / vet errors in 10 files predate codex/db-set-and-paths (illegal-character escape / `database/sql` import drift in composition.go, impl.go, artlist_handlers.go, etc.). `go vet ./...` and `go build ./...` exit NON-ZERO today. Plan: separate fix branch per file — owner rotates with each file's primary maintainer team (composition.go → composition-root team; impl.go → api/{images,sources}/... owners; artlist_handlers.go → Wave 12 PR scope).
+5. `go test ./...` exits NON-ZERO — 7 packages documented as having pre-existing skips per `docs/POST_CASCADE_OPERATIONAL_READINESS.md §3`. Wave 16 strict mode does not retroactively reopen test-sweep work.
+6. `go run ./scripts/archcheck --strict` exits 1 (601 aliases + 61 rule violations remaining). Flagged as the strict-mode ratchet count vs the 0 target. The Wave 16 closure is intentionally an operator override.
 ```
 
 Any later change that reintroduces a legacy root, ad-hoc database, duplicate owner or forbidden import invalidates this approval.

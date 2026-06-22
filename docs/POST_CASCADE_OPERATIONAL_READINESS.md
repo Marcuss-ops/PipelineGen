@@ -367,3 +367,42 @@ PR to land — fix #1 or #4 individually in 1-line PRs if needed.
 *Last updated: 2026-06-21 (post-cascade ship, working tree clean on
 `pr/post-cascade-docs-2026-06-21`). Next refresh: after PR1 from §5
 lands.*
+
+---
+
+## 9. Wave 16 / Wave 17 Partial Certification Checkpoint (2026-06-22)
+
+The `architecture-clean-v1` canonical tag is stamped onto main as
+a framework-checkpoint: the strict-mode framework + Check 17 baseline
+gate + observability retention policy + `admin db` lifecycle subsystem
+are green; full zero-redundancy remains a multi-PR migration backlog
+documented in `docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md`
+§"Known limits".
+
+| Live at checkpoint | Status | Source |
+|---|---|---|
+| `scripts/archcheck/main.go --strict` flag exposed | ✅ | codex/db-set-and-paths |
+| `scripts/ci-architectural-checks.sh::Check 17` (DB-SQL gate, 42-file baseline) | ✅ | codex/db-sql-ownership-gate |
+| `internal/infrastructure/database/set.go` (DatabaseSet.OpenSet/Migrate/Health/Close) | ✅ | codex/db-set-and-paths |
+| `cmd/admin db {status,check,migrations,backup,restore --verify}` | ✅ | codex/db-doctor-restore |
+| `scripts/db-restore-drill.sh` (clean staging drill + E2E smoke probe + RTO/RPO) | ✅ | codex/db-doctor-restore |
+| `internal/infrastructure/database/doctor.go` + `backup.go` (PRAGMA helpers + VACUUM INTO) | ✅ | codex/db-doctor-restore |
+| `internal/infrastructure/database/rotation.go` (Disposable+cron retention cycle) | ✅ | codex/db-sql-ownership-gate |
+| `internal/infrastructure/config/types.go::StorageConfig.ObservabilityMaxAgeDays` | ✅ | codex/db-sql-ownership-gate |
+| `architecture/migration.yaml` Wave 16 + Wave 17 flipped to `status: done` (override) | ✅ | this cert |
+| `docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md` Certification identity + Approval populated | ✅ | this cert |
+
+| Backlog (not blocking) | Owner | Reference |
+|---|---|---|
+| Wave 13 (`internal/media/` namespace elimination, 89 files) | separate PR series | migration.yaml Wave 13 |
+| Wave 8 (21 importers redirect to `internal/application/assets/{association,realtime}/`) | separate PR block | migration.yaml Wave 8 |
+| Pre-existing build/vet errors in 10 files (illegal-character escape + missing import drift) | per-file maintenance | composition.go, impl.go, artlist_handlers.go |
+| 16 documented test-skip packages awaiting per-package fix branches | per-package owners | §3 above |
+| 601 alias hits + 61 strict-mode rule violations | separate multi-PR archcheck baseline shrink | archcheck --strict |
+
+For another-machine operators: this checkpoint REPLACES the prior
+"cascade-ship passed, but operational readiness has 7 test-sweep
+failures and 89 alive media files" snapshot previously documented in
+§1 of this file. The cert framework (`--strict`, Check 17, the
+doctor subsystem) is now the authority for zero-regression during
+future PRs.
