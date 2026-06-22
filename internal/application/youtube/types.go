@@ -1,5 +1,7 @@
 package youtube
 
+import types "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+
 type ExtractRequest struct {
 	URL            string              `json:"url"`
 	Segments       []Segment           `json:"segments"`
@@ -27,19 +29,10 @@ type DestinationRequest struct {
 	CreateSubfolder bool   `json:"create_subfolder,omitempty"`
 }
 
-type Segment struct {
-	Start            string   `json:"start"`
-	End              string   `json:"end"`
-	Name             string   `json:"name"`
-	Tags             []string `json:"tags,omitempty"`
-	Summary          string   `json:"summary,omitempty"`
-	Topics           []string `json:"topics,omitempty"`
-	Speakers         []string `json:"speakers,omitempty"`
-	MentionedPeople  []string `json:"mentioned_people,omitempty"`
-	Hook             string   `json:"hook,omitempty"`
-	QualityScore     float64  `json:"quality_score,omitempty"`
-	SearchVisibility string   `json:"search_visibility,omitempty"`
-}
+// Segment is a zero-copy alias for types.Segment, moved to types/ during
+// the YouTube package split (June 2026) to allow sub-packages like
+// segments/ to import it without circular dependency.
+type Segment = types.Segment
 
 type ExtractResponse struct {
 	OK              bool          `json:"ok"`
