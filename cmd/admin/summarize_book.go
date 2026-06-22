@@ -81,7 +81,7 @@ func runSummarizeBook(args []string) error {
 		}
 
 		fmt.Printf("Detecting Google Drive File ID: %s...\n", fileID)
-		
+
 		// Get metadata to resolve original filename
 		meta, err := root.Drive.DriveClient.Files.Get(fileID).Fields("name, mimeType").Context(ctx).Do()
 		if err != nil {
@@ -110,7 +110,7 @@ func runSummarizeBook(args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create local file: %w", err)
 		}
-		
+
 		_, err = io.Copy(out, res.Body)
 		out.Close() // Close before using
 		if err != nil {
@@ -163,7 +163,7 @@ func runSummarizeBook(args []string) error {
 	cmd.Dir = filepath.Dir(absScriptPath)
 
 	log.Info("executing book summarizer python script", zap.String("file", absFilePath), zap.String("model", *model))
-	
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to run book summarizer script: %w", err)
 	}

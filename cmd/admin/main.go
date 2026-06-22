@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-
 )
 
 func main() {
@@ -58,8 +56,6 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-
 
 func cmdContext() context.Context {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

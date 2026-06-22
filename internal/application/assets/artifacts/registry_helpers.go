@@ -44,11 +44,11 @@ func GetAllWithDriveFileID[T any](
 // with its 5 dependency fields, raw SQL, and multi-table writes), implement
 // Registry directly instead of using SimpleRegistry.
 type SimpleRegistry struct {
-	UpsertFn  func(context.Context, *MediaRecord) error
-	GetFn     func(context.Context, string) (*MediaRecord, error)
-	DeleteFn  func(context.Context, string) error
-	ListFn    func(context.Context) ([]*MediaRecord, error)
-	PHashFn   func(context.Context, string) (string, error)
+	UpsertFn func(context.Context, *MediaRecord) error
+	GetFn    func(context.Context, string) (*MediaRecord, error)
+	DeleteFn func(context.Context, string) error
+	ListFn   func(context.Context) ([]*MediaRecord, error)
+	PHashFn  func(context.Context, string) (string, error)
 }
 
 func (r *SimpleRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {

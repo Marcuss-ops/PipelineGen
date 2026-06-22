@@ -37,17 +37,17 @@ import (
 
 func main() {
 	var (
-		baseURL    = flag.String("url", envDefault("PIPELINEGEN_URL", envDefault("VELOX_MASTER_URL", "http://127.0.0.1:8000")), "pipelinegen base URL (or env PIPELINEGEN_URL / VELOX_MASTER_URL)")
-		token      = flag.String("token", os.Getenv("VELOX_WORKER_TOKEN"), "bearer token (or env VELOX_WORKER_TOKEN)")
-		topic      = flag.String("topic", "the great barrier reef", "script topic")
-		videoName  = flag.String("video-name", "reef-documentary", "video name used to namespace the script")
-		language   = flag.String("language", "en", "script output language")
-		sentences  = flag.Int("sentences-per-image", 8, "sentences per scene image (default 8 matches /api/script/generate-with-images)")
-		endpoint   = flag.String("endpoint", "/api/script/generate-with-images", "pipelinegen endpoint path")
-		pollEvery  = flag.Duration("poll-every", 5*time.Second, "status poll interval")
-		maxWait    = flag.Duration("max-wait", 30*time.Minute, "max wall-time before giving up on the job")
-		dryRun     = flag.Bool("dry-run", false, "print the payload + reqID without calling the server")
-		verbose    = flag.Bool("verbose", false, "print every poll result (default: only on status changes)")
+		baseURL   = flag.String("url", envDefault("PIPELINEGEN_URL", envDefault("VELOX_MASTER_URL", "http://127.0.0.1:8000")), "pipelinegen base URL (or env PIPELINEGEN_URL / VELOX_MASTER_URL)")
+		token     = flag.String("token", os.Getenv("VELOX_WORKER_TOKEN"), "bearer token (or env VELOX_WORKER_TOKEN)")
+		topic     = flag.String("topic", "the great barrier reef", "script topic")
+		videoName = flag.String("video-name", "reef-documentary", "video name used to namespace the script")
+		language  = flag.String("language", "en", "script output language")
+		sentences = flag.Int("sentences-per-image", 8, "sentences per scene image (default 8 matches /api/script/generate-with-images)")
+		endpoint  = flag.String("endpoint", "/api/script/generate-with-images", "pipelinegen endpoint path")
+		pollEvery = flag.Duration("poll-every", 5*time.Second, "status poll interval")
+		maxWait   = flag.Duration("max-wait", 30*time.Minute, "max wall-time before giving up on the job")
+		dryRun    = flag.Bool("dry-run", false, "print the payload + reqID without calling the server")
+		verbose   = flag.Bool("verbose", false, "print every poll result (default: only on status changes)")
 	)
 	flag.Parse()
 
@@ -83,7 +83,7 @@ func main() {
 
 	if *dryRun {
 		out := map[string]any{
-			"url":         strings.TrimRight(*baseURL, "/") + "/" + strings.TrimLeft(*endpoint, "/"),
+			"url":          strings.TrimRight(*baseURL, "/") + "/" + strings.TrimLeft(*endpoint, "/"),
 			"x_request_id": reqID,
 			"payload":      payload,
 		}

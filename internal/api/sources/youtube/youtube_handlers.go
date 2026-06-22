@@ -18,11 +18,11 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 )
 
 // YouTubeClipHandler owns the HTTP transport for YouTube clip operations:
@@ -138,8 +138,8 @@ func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 // shape so the API contract is preserved for both code paths.
 func (h *YouTubeClipHandler) searchTopicsViaProvider(c *gin.Context, req *youtube.TopicSearchRequest) {
 	searchReq := providers.SearchRequest{
-		Query: req.Q,
-		Limit: req.Limit,
+		Query:     req.Q,
+		Limit:     req.Limit,
 		TopicOnly: true, // YouTube adapter prefers SearchByTopicWithFilter
 	}
 	if req.Sort != "" {

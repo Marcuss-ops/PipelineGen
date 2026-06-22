@@ -5,10 +5,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"go.uber.org/zap"
 )
 

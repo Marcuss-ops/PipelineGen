@@ -40,11 +40,11 @@ type RegisterFromYouTubeRequest struct {
 // Punto 9 migration: the yt-dlp download + segment extraction flow has
 // been migrated to the YouTube FetchProvider (registered via
 // providerRegistry.ByCapability(CapabilityFetch)). The handler now:
-//   1. Extracts the video ID from the URL
-//   2. Runs dedup + basic validation
-//   3. Fetches the video via FetchProvider (download + metadata)
-//   4. Fills name/description/duration from the fetched metadata
-//   5. Continues with Drive upload, DB save, indexing (unchanged).
+//  1. Extracts the video ID from the URL
+//  2. Runs dedup + basic validation
+//  3. Fetches the video via FetchProvider (download + metadata)
+//  4. Fills name/description/duration from the fetched metadata
+//  5. Continues with Drive upload, DB save, indexing (unchanged).
 //
 // If providerRegistry is unwired or no YouTube FetchProvider is
 // registered, the handler returns an error.

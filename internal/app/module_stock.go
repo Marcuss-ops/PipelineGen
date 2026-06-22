@@ -3,17 +3,17 @@ package app
 import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
-	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	gdrive "google.golang.org/api/drive/v3"
 	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 )
 
 // StockBundle is the capability bundle for the stock-pipeline module.

@@ -17,6 +17,7 @@ import (
 //   - same import path: internal/media/generation
 //   - same YAML file:   config/generation_styles.yaml
 //   - same error semantics: file missing / parse error
+//
 // Once app.LoadAdminCore exists, this site should re-link rather than
 // duplicate the parse (PR-administrative dedup chore).
 func runListStyles(args []string) error {
