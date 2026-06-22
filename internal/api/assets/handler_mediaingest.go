@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
