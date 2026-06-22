@@ -35,6 +35,13 @@ func (r *Registry) Register(jobType string, h Handler) error {
 	return nil
 }
 
+// Len returns the number of registered handlers.
+func (r *Registry) Len() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.handlers)
+}
+
 func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error) {
 	r.mu.RLock()
 	h, ok := r.handlers[j.Type]

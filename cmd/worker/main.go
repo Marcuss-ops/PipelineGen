@@ -41,6 +41,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -102,6 +103,28 @@ func main() {
 	}
 	log.Info("master /health pre-flight passed", zap.String("master_url", masterURL))
 
+	// Build the local service graph so the worker can execute handlers.
+	// The remote worker shares the same DB (via shared volume) and the
+	// same service code; it only differs in how it claims jobs (HTTP
+	// broker instead of in-process repo polling).
+	root, cleanup, err := app.InitWorkerComposition(cfg, log)
+	if err != nil {
+		log.Fatal("failed to build worker composition", zap.Error(err))
+	}
+	defer cleanup()
+
+	registry, caps, err := app.BuildWorkerRegistry(root)
+	if err != nil {
+		log.Fatal("failed to build worker registry", zap.Error(err))
+	}
+	if registry.Len() == 0 {
+		log.Fatal("worker has no registered handlers — aborting startup")
+	}
+	log.Info("worker registry built",
+		zap.Int("handlers", registry.Len()),
+		zap.Strings("capabilities", caps),
+	)
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -112,7 +135,13 @@ func main() {
 	workerID := envOr("VELOX_WORKER_ID", hostnameFallback())
 	workerName := envOr("VELOX_WORKER_NAME", workerID)
 	version := envOr("VELOX_WORKER_VERSION", "dev")
-	caps := parseCaps(os.Getenv("VELOX_WORKER_CAPABILITIES"))
+
+	// Allow an explicit env-var override, but default to the capability
+	// slice derived from the registry so the two never drift.
+	workerCaps := parseCaps(os.Getenv("VELOX_WORKER_CAPABILITIES"))
+	if len(workerCaps.JobTypes) == 0 {
+		workerCaps.JobTypes = caps
+	}
 
 	workspaceRoot := filepath.Join(os.TempDir(), "pipelinegen", "jobs")
 	_ = os.MkdirAll(workspaceRoot, 0o755)
@@ -127,7 +156,7 @@ func main() {
 		Name:         workerName,
 		Version:      version,
 		Hostname:     hostnameFallback(),
-		Capabilities: caps,
+		Capabilities: workerCaps,
 		SessionTTL:   90 * time.Second,
 	})
 	if err != nil {
@@ -138,12 +167,11 @@ func main() {
 		zap.String("session_id", session.SessionID),
 	)
 
-	registry := worker.NewRegistry()
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go heartbeatLoop(runCtx, broker, workerID, session.SessionID, log)
 
-	runner := worker.NewRunner(broker, registry, ws, assetClient, log, workerID, session.SessionID, caps.JobTypes)
+	runner := worker.NewRunner(broker, registry, ws, assetClient, log, workerID, session.SessionID, workerCaps.JobTypes)
 	if err := runner.Run(runCtx); err != nil && runCtx.Err() == nil {
 		log.Fatal("worker runner failed", zap.Error(err))
 	}

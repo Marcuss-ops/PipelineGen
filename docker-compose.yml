@@ -77,7 +77,8 @@ services:
     container_name: pipelinegen-worker
     # Worker now registers against the server via /internal/v1/workers/register
     # (wired in the composition root via bootstrap.go::WireServices).
-    restart: unless-stopped
+    # TEMPORARILY disabled until end-to-end worker registry tests pass.
+    restart: "no"
     depends_on:
       pipelinegen-server:
         condition: service_healthy
