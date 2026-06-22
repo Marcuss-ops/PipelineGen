@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	core_dl "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -90,7 +90,7 @@ func New(cfg *config.Config, downloadCfg Config) *Provider {
 
 // Compile-time interface assertion: this package is forced to satisfy
 // the application port.
-var _ artapp.Downloader = (*Provider)(nil)
+var _ artlist.Downloader = (*Provider)(nil)
 
 // Download is the artlist.Downloader port entry point.
 //
@@ -101,32 +101,32 @@ var _ artapp.Downloader = (*Provider)(nil)
 // DestinationID is treated as the directory under which Filename is
 // staged (filepath.Join). MkdirAll is called so the caller can pass
 // a path it has not pre-created.
-func (p *Provider) Download(ctx context.Context, req artapp.DownloadRequest) (*artapp.DownloadResult, error) {
+func (p *Provider) Download(ctx context.Context, req artlist.DownloadRequest) (*artlist.DownloadResult, error) {
 	if strings.TrimSpace(req.SourceRef) == "" {
-		return nil, fmt.Errorf("%w: source ref required", artapp.ErrEmpty)
+		return nil, fmt.Errorf("%w: source ref required", artlist.ErrEmpty)
 	}
 	if strings.TrimSpace(req.Filename) == "" {
-		return nil, fmt.Errorf("%w: filename required", artapp.ErrEmpty)
+		return nil, fmt.Errorf("%w: filename required", artlist.ErrEmpty)
 	}
 	// Filename must be a plain relative path under DestinationID.
 	// Reject absolute paths and any input that would clean to a
 	// different string (catches "../x", "a/../b" without rejecting
 	// legitimate dot-containing names like "foo..bar").
 	if filepath.IsAbs(req.Filename) {
-		return nil, fmt.Errorf("%w: filename must not be absolute", artapp.ErrInvalidResponse)
+		return nil, fmt.Errorf("%w: filename must not be absolute", artlist.ErrInvalidResponse)
 	}
 	// Reject "." too: filepath.Clean(".") == "." and HasPrefix(".", "../") is
 	// false, so it would otherwise slip through and collide with DestinationID.
 	if cleaned := filepath.Clean(req.Filename); cleaned != req.Filename || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return nil, fmt.Errorf("%w: filename must not escape destination", artapp.ErrInvalidResponse)
+		return nil, fmt.Errorf("%w: filename must not escape destination", artlist.ErrInvalidResponse)
 	}
 	if strings.TrimSpace(req.DestinationID) == "" {
-		return nil, fmt.Errorf("%w: destination id required", artapp.ErrEmpty)
+		return nil, fmt.Errorf("%w: destination id required", artlist.ErrEmpty)
 	}
 
 	outPath := filepath.Join(req.DestinationID, req.Filename)
 	if mkErr := os.MkdirAll(req.DestinationID, 0o755); mkErr != nil {
-		return nil, fmt.Errorf("%w: mkdir destination: %v", artapp.ErrUnavailable, mkErr)
+		return nil, fmt.Errorf("%w: mkdir destination: %v", artlist.ErrUnavailable, mkErr)
 	}
 
 	isHLS := strings.Contains(req.SourceRef, ".m3u8")
@@ -164,9 +164,9 @@ func (p *Provider) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 
 	info, statErr := os.Stat(outPath)
 	if statErr != nil {
-		return nil, fmt.Errorf("%w: stat result: %v", artapp.ErrEmptyResult, statErr)
+		return nil, fmt.Errorf("%w: stat result: %v", artlist.ErrEmptyResult, statErr)
 	}
-	return &artapp.DownloadResult{
+	return &artlist.DownloadResult{
 		LocalPath: outPath,
 		Bytes:     info.Size(),
 	}, nil
@@ -209,27 +209,27 @@ func mapError(err error, isHLS bool) error {
 	msg := err.Error()
 	switch {
 	case errors.Is(err, context.DeadlineExceeded), strings.Contains(msg, "timeout"):
-		return fmt.Errorf("%w: %v", artapp.ErrTimeout, err)
+		return fmt.Errorf("%w: %v", artlist.ErrTimeout, err)
 	case strings.Contains(msg, "bad status: 429"):
 		// Rate limit: back off + retry, or surface to orchestrator so
 		// it can try the next source.
-		return fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
+		return fmt.Errorf("%w: %v", artlist.ErrTransportFallback, err)
 	case strings.Contains(msg, "bad status: 404"), strings.Contains(msg, "no playable video"):
-		return fmt.Errorf("%w: %v", artapp.ErrNotFound, err)
+		return fmt.Errorf("%w: %v", artlist.ErrNotFound, err)
 	case strings.Contains(msg, "bad status: 4"):
-		return fmt.Errorf("%w: %v", artapp.ErrInvalidResponse, err)
+		return fmt.Errorf("%w: %v", artlist.ErrInvalidResponse, err)
 	case strings.Contains(msg, "bad status: 5"):
 		// 5xx usually signals the source is broken. Surface as transport
 		// fallback so the orchestrator above this port can try the next
 		// Downloader in the chain.
-		return fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
+		return fmt.Errorf("%w: %v", artlist.ErrTransportFallback, err)
 	}
 	// Network errors, yt-dlp crashes, unknown → unavailable / transport
 	// fallback. For HLS hangs we lean ErrTransportFallback because
 	// yt-dlp's exit code is the more useful "try another downloader"
 	// signal than "the source is malformed".
 	if isHLS {
-		return fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
+		return fmt.Errorf("%w: %v", artlist.ErrTransportFallback, err)
 	}
-	return fmt.Errorf("%w: %v", artapp.ErrUnavailable, err)
+	return fmt.Errorf("%w: %v", artlist.ErrUnavailable, err)
 }

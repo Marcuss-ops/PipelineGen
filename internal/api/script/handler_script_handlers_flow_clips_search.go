@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"go.uber.org/zap"
 )
 

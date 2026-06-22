@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 )
 
 // pexelsVideoFile mirrors the inline JSON shape used both for
@@ -56,18 +56,18 @@ func NewPexels(cfg Config) *Pexels {
 }
 
 // Compile-time port assertion.
-var _ artapp.Searcher = (*Pexels)(nil)
+var _ artlist.Searcher = (*Pexels)(nil)
 
 // Search queries the Pexels API. Per PR2.1 contract: returns only
 // the centralised sentinels on transport failures; HTTP shape is
 // never leaked to the caller.
-func (p *Pexels) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp.Candidate, error) {
+func (p *Pexels) Search(ctx context.Context, req artlist.SearchRequest) ([]artlist.Candidate, error) {
 	if strings.TrimSpace(p.cfg.APIKey) == "" {
-		return nil, fmt.Errorf("%w: pexels api key not configured", artapp.ErrUnavailable)
+		return nil, fmt.Errorf("%w: pexels api key not configured", artlist.ErrUnavailable)
 	}
 	term := strings.TrimSpace(req.Term)
 	if term == "" {
-		return nil, fmt.Errorf("%w: term required", artapp.ErrEmpty)
+		return nil, fmt.Errorf("%w: term required", artlist.ErrEmpty)
 	}
 	limit := req.Limit
 	if limit <= 0 {
@@ -80,7 +80,7 @@ func (p *Pexels) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp
 	endpoint := p.cfg.BaseURL + "/videos/search"
 	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid pexels base url: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: invalid pexels base url: %v", artlist.ErrInvalidResponse, err)
 	}
 	q := u.Query()
 	q.Set("query", term)
@@ -89,7 +89,7 @@ func (p *Pexels) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: build request: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: build request: %v", artlist.ErrInvalidResponse, err)
 	}
 	httpReq.Header.Set("Authorization", p.cfg.APIKey)
 	httpReq.Header.Set("Accept", "application/json")
@@ -102,7 +102,7 @@ func (p *Pexels) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", artapp.ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %v", artlist.ErrUnavailable, err)
 	}
 
 	if resp.StatusCode == http.StatusOK {
@@ -111,7 +111,7 @@ func (p *Pexels) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp
 	return nil, mapStatusErr(resp.StatusCode, body)
 }
 
-func (p *Pexels) decode(body []byte, term string, limit int) ([]artapp.Candidate, error) {
+func (p *Pexels) decode(body []byte, term string, limit int) ([]artlist.Candidate, error) {
 	var payload struct {
 		Videos []struct {
 			ID         int              `json:"id"`
@@ -127,10 +127,10 @@ func (p *Pexels) decode(body []byte, term string, limit int) ([]artapp.Candidate
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("%w: decode pexels: %v", artapp.ErrInvalidResponse, err)
+		return nil, fmt.Errorf("%w: decode pexels: %v", artlist.ErrInvalidResponse, err)
 	}
 
-	out := make([]artapp.Candidate, 0, len(payload.Videos))
+	out := make([]artlist.Candidate, 0, len(payload.Videos))
 	for _, video := range payload.Videos {
 		videoURL := bestPexelsVideoURL(video.VideoFiles)
 		if videoURL == "" {
@@ -147,7 +147,7 @@ func (p *Pexels) decode(body []byte, term string, limit int) ([]artapp.Candidate
 			title = fmt.Sprintf("%s by %s", term, video.User.Name)
 		}
 
-		out = append(out, artapp.Candidate{
+		out = append(out, artlist.Candidate{
 			ID:         fmt.Sprintf("pexels-%d", video.ID),
 			Title:      fmt.Sprintf("Pexels: %s", title),
 			SourceRef:  videoURL,
@@ -156,7 +156,7 @@ func (p *Pexels) decode(body []byte, term string, limit int) ([]artapp.Candidate
 		})
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("%w: no usable videos", artapp.ErrEmptyResult)
+		return nil, fmt.Errorf("%w: no usable videos", artlist.ErrEmptyResult)
 	}
 	if len(out) > limit {
 		out = out[:limit]

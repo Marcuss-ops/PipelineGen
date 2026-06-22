@@ -1,10 +1,10 @@
 package app
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
@@ -49,7 +49,7 @@ type AssetsBundle struct {
 
 // AssetsWiring holds the Assets module wiring.
 type AssetsWiring struct {
-	Handler     *sourcesapi.SourcesHandler
+	Handler     *assetsapi.SourcesHandler
 	Module      module.Module
 	DeletionSvc *media.DeletionService
 }
@@ -71,7 +71,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 		driveCleanupSvc = drivecleanup.NewService()
 	}
 	deletionSvc := media.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, voiceoverSvc, voiceoverSync, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, driveCleanupSvc, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, log)
+	handler := assetsapi.NewSourcesHandler(cfg, voiceoverSvc, voiceoverSync, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, driveCleanupSvc, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, log)
 	if bundle.VoiceoverRepo != nil {
 		handler.SetVoiceoverRepo(bundle.VoiceoverRepo)
 	}
@@ -92,7 +92,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	if bundle.Assets != nil {
 		handler.SetAssetRepo(bundle.Assets.Repository())
 	}
-	mod := sourcesapi.NewSourcesModule(cfg, log, handler)
+	mod := assetsapi.NewSourcesModule(cfg, log, handler)
 	log.Info("created unified Assets module")
 	return &AssetsWiring{Handler: handler, Module: mod, DeletionSvc: deletionSvc}, nil
 }

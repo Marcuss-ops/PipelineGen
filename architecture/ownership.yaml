@@ -209,3 +209,7 @@ pkg:
     - pkg/timeutil
     - pkg/urlutil
     - pkg/veloxclient
+  # DIR-1 step 5/5: artlist migrated to canonical provider-home.
+  - path: internal/application/assets/providers/artlist
+    team: media-orchestration
+    description: 'Artlist provider policy + service facade + ports (Searcher, Downloader) + DTOs (SearchRequest/Response, Candidate, DownloadRequest/Result). 4-way split into this dir + internal/infrastructure/artlist + internal/api/assets + internal/infrastructure/database/sqlite/assets.'

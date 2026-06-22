@@ -2,7 +2,7 @@ package app
 
 import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"

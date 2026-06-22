@@ -163,6 +163,14 @@ the Python ReAct agent in the loop and can tolerate the 15-min sync timeout.
 6. ~~**Duplicate architecture docs**~~ ✅ **CONSOLIDATED** — MODULE_MAP.md and MODULE_OWNERSHIP.md deleted. ARCHITECTURE.md is canonical. AGENTS.md now points to it.
 7. ~~**.gitignore leaks**~~ ✅ **FIXED** — Added patterns for root binaries, logs, caches, cookies, `.bak` files.
 8. **Heavy AI-generated codebase**: ~80% of commits from AI agents. Bug diagnosis requires human oversight. Keep test coverage high.
+11. **Strict-gate enforcement** (July 2026, codex/dir-strict-gates):
+`go run ./scripts/archcheck --strict` is the canonical gatekeeper.
+No future merge to main until --strict is verde (zero), mechanically enforced by `scripts/ci-strict-gate-block.sh`. The 4 rg checks
+in `scripts/ci-architectural-checks.sh` (Check 15) enforce the same
+forbidden patterns via Bash. The strict-gate replacement of the
+ratchet baseline.json removes the “absorption” excuse — historical
+violations are no longer masked; they must be migrated by named PRs.
+
 9. **Batch script tests restored** (June 2026): coverage moved from handler layer to `internal/application/scripts/batch_persistence_test.go` + `doc_creation_test.go` at the BatchService unit level.
 
 ### Drive Token Regeneration
@@ -420,8 +428,11 @@ sezione corrispondente di migration.yaml per audit di avanzamento.
 1. `architecture/migration.yaml` — stato canonico per wave + exit-gate.
 2. `architecture/ownership.yaml` — chi possiede ogni package canonico.
 3. `docs/migration-maps/*.md` — manifest storici delle migrazioni passate.
-4. `scripts/archcheck/baseline.json` — snapshot ratchet (directory,
-   alias, wrapper) rigenerabile con `go run ./scripts/archcheck -update`.
+4. `scripts/archcheck/` enforcement (June 2026, codex/dir-strict-gates) —
+   `go run ./scripts/archcheck --strict` exits 1 on ANY alias, wrapper, or
+   legacy-path. Baseline snapshot is preserved at
+   `scripts/archcheck/baseline.json` for diagnostic comparison only; under
+   `--strict` it is READ-ONLY (no absorption of violations).
 
 Se i tre layer sopra raccontano versioni diverse della stessa realtà,
 vince (1) ma è necessario aprire una PR di sincronizzazione come

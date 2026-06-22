@@ -192,3 +192,4 @@ archcheck
 
 # Docker secrets (never commit tokens)
 secrets/
+scripts/notes/
