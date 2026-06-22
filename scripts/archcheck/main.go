@@ -19,6 +19,7 @@ type Baseline struct {
 
 func main() {
 	updateFlag := flag.Bool("update", false, "Update baseline file with current status")
+	strictFlag := flag.Bool("strict", false, "Strict mode: fail if ANY violations exist (not just new ones)")
 	flag.Parse()
 
 	// Locate root path (which should be current working directory or parent of scripts)
@@ -208,7 +209,15 @@ func main() {
 	// Check 5: Ratchet violation counts (violations can only decrease or stay same)
 	for rule, count := range violationCounts {
 		baseCount := baseline.Violations[rule]
-		if count > baseCount {
+		if *strictFlag && count > 0 {
+			fmt.Printf("FAIL (strict): Violations for rule '%s' must be zero but found %d\n", rule, count)
+			for _, v := range violations {
+				if v.Rule == rule {
+					fmt.Printf("  - %s:%d: %s\n", v.File, v.Line, v.Message)
+				}
+			}
+			failed = true
+		} else if count > baseCount {
 			fmt.Printf("FAIL: Violations for rule '%s' increased from %d to %d\n", rule, baseCount, count)
 			// Print out the specific new violations for debugging
 			for _, v := range violations {
@@ -219,6 +228,33 @@ func main() {
 			failed = true
 		} else if count < baseCount {
 			fmt.Printf("INFO: Violations for rule '%s' decreased from %d to %d (Ratchet updated!)\n", rule, baseCount, count)
+		}
+	}
+
+	// Strict mode: also check baseline itself is clean (zero legacy).
+	// Runs BEFORE the exit gate so alias/wrapper/baseline checks
+	// accumulate into the same `failed` flag and all strict-mode
+	// failures are reported in a single run.
+	if *strictFlag {
+		if len(baseline.Aliases) > 0 {
+			fmt.Printf("FAIL (strict): %d aliases still present in baseline (must be zero)\n", len(baseline.Aliases))
+			for _, a := range baseline.Aliases {
+				fmt.Printf("  - %s\n", a)
+			}
+			failed = true
+		}
+		if len(baseline.Wrappers) > 0 {
+			fmt.Printf("FAIL (strict): %d wrappers still present in baseline (must be zero)\n", len(baseline.Wrappers))
+			for _, w := range baseline.Wrappers {
+				fmt.Printf("  - %s\n", w)
+			}
+			failed = true
+		}
+		for rule, baseCount := range baseline.Violations {
+			if baseCount > 0 {
+				fmt.Printf("FAIL (strict): Violations for rule '%s' are %d in baseline (must be zero)\n", rule, baseCount)
+				failed = true
+			}
 		}
 	}
 

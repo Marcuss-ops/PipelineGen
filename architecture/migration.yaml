@@ -320,17 +320,15 @@
 
 - id: 10
   title: Media storage, Drive, Qdrant adapter consolidation
-  status: in_progress
+  status: done
   description: |
-    Wave 10 parzialmente completata:
-      • internal/media/mediaasset/ → internal/infrastructure/media/processor/ (Wave 12 commit a55e38f1).
-      • internal/upload/drive/ → internal/infrastructure/drive/ (Wave 8 commit completata).
-    Da completare:
-      • internal/media/vectorstore/ → internal/infrastructure/qdrant/.
-      • internal/media/storage/ → internal/infrastructure/files/storage/.
-      • internal/upload/ (root vuoto) → rimozione effettiva dopo commit land.
-    33 file in 8 sub-package referenziano ancora i path originali; tutti
-    sono import attivi (non commenti).
+    Wave 10 completata (June 2026):
+      • internal/media/mediaasset/ → internal/infrastructure/media/processor/ ✅
+      • internal/upload/drive/ → internal/infrastructure/drive/ ✅
+      • internal/media/vectorstore/ → internal/infrastructure/qdrant/ ✅
+      • internal/media/storage/ → internal/infrastructure/files/storage/ ✅
+      • internal/upload/ (root vuoto) → rimosso ✅
+    Zero riferimenti residui ai path originali verificato con rg.
   from:
     - internal/media/mediaasset
     - internal/media/vectorstore
@@ -341,8 +339,8 @@
     - internal/infrastructure/qdrant
     - internal/infrastructure/drive
     - internal/infrastructure/files/storage
-  active_files_remaining: 33
-  exit_gate: "rg 'internal/(media/(mediaasset|vectorstore|storage)|upload)' --type go returns zero."
+  active_files_remaining: 0
+  exit_gate: "rg 'internal/(media/(mediaasset|vectorstore|storage)|upload)' --type go returns zero (verified June 2026)."
 
 # ── Wave 11 — Catalog + Intelligence ─────────────────────────────────────────
 
@@ -353,17 +351,14 @@
     Sub-directory migrate finora (verificato su git log):
       • internal/media/ingest/  → internal/application/ingest/  (Wave 11)
       • internal/media/monitor/ → internal/application/monitor/ (Wave 10)
-    Restano 44 file attivi da spostare in: assetindex, assettree,
-    catalogsync, clipcatalog, clipindexer, clipresolver, foldermemory,
-    autotag, classifier, ontology, semantic, books, fullimages,
-    generation, lessons, ontology, stockpipeline, vectorstore,
-    videomuscles, voiceoversync. Wave 11 copre le capability catalog +
-    intelligence; vectorstore + storage + drive restano in Wave 10.
-    `internal/media/mediaasset/` → `internal/infrastructure/media/processor/`
-    è già landed (commit a55e38f1) ed è documentato sotto Wave 10, non
-    qui. internal/media/deletion.go (root file) è ancora attivo: lo
-    stato `pending` di migrazione è registrato qui ma la sua esecuzione
-    appartiene a una sub-onda dedicata che non è ancora stata aperta.
+    Restano da spostare: assetindex(4), assettree(1), autotag(1),
+    books(3), catalogsync(6), classifier(1), clipcatalog(3),
+    clipindexer(10), clipresolver(13), foldermemory(1), fullimages(2),
+    generation(1), lessons(8), ontology(3), semantic(4),
+    stockpipeline(9), videomuscles(1), voiceoversync(1).
+    Totale: 41 file in 18 sub-directory.
+    Root file internal/media/deletion.go (1 file) — ancora attivo,
+    migrazione a sub-onda dedicata.
   from:
     - internal/media/assetindex
     - internal/media/assettree
@@ -379,7 +374,7 @@
     - internal/application/assets/{classification,enrichment,ontology,tags,sync,monitor}
     - internal/infrastructure/database/sqlite/assets
     - internal/infrastructure/ai/{semantic,classification}
-  active_files_remaining: 44
+  active_files_remaining: 41
   sub_migrations_completed:
     - internal/media/ingest → internal/application/ingest
     - internal/media/monitor → internal/application/monitor
@@ -453,8 +448,9 @@
     L'ordine operativo (vedi sezione "Nuovo ordine operativo corretto"
     del log di audit) prevede che Wave 8/10/11 finiscano prima di Wave 13.
   from: internal/media
-  active_files_remaining: 89
+  active_files_remaining: 73
   sub_directories_remaining: 18
+  root_files: [deletion.go]
   classification:
     - types → internal/domain/{asset,job,script}
     - use_cases → internal/application/{assets,images,content,voiceover}

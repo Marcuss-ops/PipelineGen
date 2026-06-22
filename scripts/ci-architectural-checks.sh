@@ -281,11 +281,11 @@ echo "Check 13: no new production code in legacy directories"
 # or modified in-place during their migration. Tests are allowed (they cover
 # the migration surface).
 #
-# See AGENTS.md §Legacy Directories Policy for the canonical mapping.
-# Legacy directories policy was retired June 2026 — all directories migrated.
-# The array is kept empty so Check 13 remains a no-op guard rail.
 # See AGENTS.md Migration Status section for the completed wave history.
+# internal/media is the last legacy namespace (73 files in 18 subdirs,
+# tracked by Waves 9-11-13). No new production code may be added here.
 LEGACY_DIRS=(
+    internal/media
 )
 # Compute the change set with status (A / R / M / D / C). --
 # name-status with find-renames lets git pair renames internally, so the
