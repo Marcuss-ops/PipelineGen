@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,6 +56,15 @@ func (r *Runner) Run(ctx context.Context) error {
 			WaitSeconds:     20,
 		})
 		if err != nil {
+			// W1 Phase 5: ErrNoWorkerCapabilities is a STARTUP misconfiguration,
+			// not a transient broker failure. Retrying in a 2s loop would spam
+			// logs forever; instead surface a single loud error and exit so the
+			// process supervisor restarts with fresh registered caps.
+			if errors.Is(err, appjobs.ErrNoWorkerCapabilities) {
+				r.log.Error("worker has no advertised capabilities — refusing to retry",
+					zap.String("reason", "registered types did not survive parse+dedup; check VELOX_WORKER_CAPABILITIES and cmd/worker startup"))
+				return err
+			}
 			r.log.Warn("claim failed", zap.Error(err))
 			time.Sleep(2 * time.Second)
 			continue
