@@ -138,7 +138,7 @@ func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 			"If the error string contains 'HTTP 401 (or 500 from WorkerAuth misconfig)':\n"+
 			"  PR-B (WorkerAuth + docker topology) addresses this.\n\n"+
 			"Either way: this test passing IS the W2 acceptance gate.",
-			ts.URL, internalV1Prefix, ts.URL)
+			err, ts.URL, internalV1Prefix, ts.URL)
 	}
 	require.NotNil(t, session,
 		"expected non-nil session; the broker returned nil which means the worker handler exists but returned an empty session — WireServices misconfigured")
