@@ -6,8 +6,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	gdrive "google.golang.org/api/drive/v3"
 	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 )
 
 // DriveWiring holds the Drive module wiring.

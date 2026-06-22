@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
 )
@@ -117,7 +117,6 @@ func runSeedChannels(args []string) error {
 			MinSemanticScore: ch.MinSemanticScore,
 			PlaylistEnd:      ch.PlaylistEnd,
 		}
-
 
 		// Action
 		if dryRun {

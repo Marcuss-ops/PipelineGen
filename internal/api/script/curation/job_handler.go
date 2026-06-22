@@ -477,5 +477,3 @@ func isLikelyOutro(sc scripts.ClipScene, all []scripts.ClipScene) bool {
 	}
 	return narrationAfter == 0
 }
-
-

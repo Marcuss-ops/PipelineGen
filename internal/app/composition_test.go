@@ -7,24 +7,24 @@
 //   - module_jobs_test.go: focused BuildJobsBundle field + nil-input checks.
 //
 // What this file adds:
-//   1. TestComposition_NilObligatory_NewComposition — every bundle in the
-//      assembled ComposeRoot is non-nil; canary fields in each bundle are
-//      populated under a minimal config (no Drive/Artlist/Youtube features).
-//   2. TestComposition_NilObligatory_Build*Bundle — per-builder nil-field
-//      invariants for the leaf builders that can be exercised without
-//      external services (RepoBundle, SearchBundle, JobsBundle).
-//   3. TestComposition_NoGoroutinesSpawned_FrozenSiteCount — source-level
-//      assertion that the goroutine-spawn sites inside Build*Bundle bodies
-//      match the frozen count. Today: 1 site inside BuildDriveBundle +
-//      2 sites inside BuildOutboxBundle = 3 total; zero in every other
-//      builder. Migrating these to lifecycle.go (the proper home for
-//      goroutines that need ctx-bound lifecycle) is a future PR4.E+ wave;
-//      updating the frozen constants in this file is the documented signal.
-//   4. TestComposition_FreezeOrdering_BuildSequence — source-level
-//      assertion that NewComposition's Build*Bundle call order matches the
-//      frozen sequence (Repo → Search → Drive → Process → Jobs → AI →
-//      Domain → Outbox → Sync → Maint → Utility). The order encodes the
-//      dependency graph; any change is a refactor signal.
+//  1. TestComposition_NilObligatory_NewComposition — every bundle in the
+//     assembled ComposeRoot is non-nil; canary fields in each bundle are
+//     populated under a minimal config (no Drive/Artlist/Youtube features).
+//  2. TestComposition_NilObligatory_Build*Bundle — per-builder nil-field
+//     invariants for the leaf builders that can be exercised without
+//     external services (RepoBundle, SearchBundle, JobsBundle).
+//  3. TestComposition_NoGoroutinesSpawned_FrozenSiteCount — source-level
+//     assertion that the goroutine-spawn sites inside Build*Bundle bodies
+//     match the frozen count. Today: 1 site inside BuildDriveBundle +
+//     2 sites inside BuildOutboxBundle = 3 total; zero in every other
+//     builder. Migrating these to lifecycle.go (the proper home for
+//     goroutines that need ctx-bound lifecycle) is a future PR4.E+ wave;
+//     updating the frozen constants in this file is the documented signal.
+//  4. TestComposition_FreezeOrdering_BuildSequence — source-level
+//     assertion that NewComposition's Build*Bundle call order matches the
+//     frozen sequence (Repo → Search → Drive → Process → Jobs → AI →
+//     Domain → Outbox → Sync → Maint → Utility). The order encodes the
+//     dependency graph; any change is a refactor signal.
 package app
 
 import (

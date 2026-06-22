@@ -84,9 +84,9 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 
 	if allReady {
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "ready",
-			"ok":      true,
-			"checks":  checks,
+			"status": "ready",
+			"ok":     true,
+			"checks": checks,
 		})
 	} else {
 		c.JSON(http.StatusServiceUnavailable, gin.H{

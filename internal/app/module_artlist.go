@@ -7,22 +7,22 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/artlist"
+	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 )
 
@@ -217,10 +217,10 @@ func wireArtlistService(
 			DriveFolderManager: driveManager, // *drive.DriveFolderManagerAdapter wraps bundle.DriveClient
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
-			Cfg:               cfg,
-			MainDB:            bundle.DB.DB, // ArtlistDB removed PR2.6: == MainDB post-consolidation
-			Log:               log,
-			Dispatcher:        dispatcher,
+			Cfg:        cfg,
+			MainDB:     bundle.DB.DB, // ArtlistDB removed PR2.6: == MainDB post-consolidation
+			Log:        log,
+			Dispatcher: dispatcher,
 			// DriveClient removed PR2.7: replaced by DriveFolderManager port in ServicePorts
 			MediaProcessor:    bundle.MediaProcessor,
 			LifecycleService:  artlistLifecycle,

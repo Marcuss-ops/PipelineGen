@@ -6,8 +6,9 @@
 // retention policy rationale (disposable + cron rotation).
 //
 // Default knobs:
-//   -max-age-days  7   (cfg.Storage.ObservabilityMaxAgeDays)
-//   -backup-dir    <DataDir>/backups
+//
+//	-max-age-days  7   (cfg.Storage.ObservabilityMaxAgeDays)
+//	-backup-dir    <DataDir>/backups
 //
 // Output is a JSON line with cutoff / offloaded_to / offloaded_rows
 // / purged_rows / bytes_reclaimed / duration_ms.
