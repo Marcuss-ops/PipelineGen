@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
@@ -13,10 +15,10 @@ func shouldClusterByTopic(a, b *clipIntelligenceRecord) bool {
 	if a == nil || b == nil || a.item == nil || b.item == nil || a.item.ID == b.item.ID {
 		return false
 	}
-	topicScore := sliceJaccardScore(a.item.Topics, b.item.Topics)
-	speakerScore := sliceJaccardScore(a.item.Speakers, b.item.Speakers)
-	peopleScore := sliceJaccardScore(mergeStringSlices(a.item.MentionedPeople, a.item.People), mergeStringSlices(b.item.MentionedPeople, b.item.People))
-	semanticScore := textJaccardScore(a.semanticText, b.semanticText)
+	topicScore := tagutil.SliceJaccardScore(a.item.Topics, b.item.Topics)
+	speakerScore := tagutil.SliceJaccardScore(a.item.Speakers, b.item.Speakers)
+	peopleScore := tagutil.SliceJaccardScore(tagutil.MergeStringSlices(a.item.MentionedPeople, a.item.People), tagutil.MergeStringSlices(b.item.MentionedPeople, b.item.People))
+	semanticScore := tagutil.TextJaccardScore(a.semanticText, b.semanticText)
 	if topicScore >= 0.35 {
 		return true
 	}
@@ -33,7 +35,7 @@ func buildTopicClusterLabel(records []*clipIntelligenceRecord, members []int) st
 	freq := make(map[string]int)
 	for _, idx := range members {
 		for _, topic := range records[idx].item.Topics {
-			norm := normalizeSemanticText(topic)
+			norm := tagutil.NormalizeSemanticText(topic)
 			if norm == "" {
 				continue
 			}

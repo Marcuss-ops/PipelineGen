@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	similarity "github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
@@ -786,3 +787,163 @@ func FallbackMD5File(path string) string {
 	h := md5.Sum(data)
 	return fmt.Sprintf("%x", h)
 }
+
+// ── Semantic text normalization ───────────────────────────────────────
+
+// NormalizeSemanticText lowercases, strips punctuation/HTML, filters short
+// words and generic tokens, and returns a cleaned token string.
+func NormalizeSemanticText(text string) string {
+	text = strings.ToLower(strings.TrimSpace(text))
+	text = strings.NewReplacer(
+		"&gt;", " ", "&nbsp;", " ", "https://", " ", "http://", " ",
+		",", " ", ".", " ", "!", " ", "?", " ", ";", " ", ":", " ",
+		"(", " ", ")", " ", "[", " ", "]", " ", "-", " ", "_", " ",
+		"\"", " ", "'", " ", "/", " ", "\\", " ", "|", " ", "#", " ",
+	).Replace(text)
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return ""
+	}
+	filtered := make([]string, 0, len(words))
+	for _, w := range words {
+		if len(w) < 3 || IsGenericToken(w) {
+			continue
+		}
+		filtered = append(filtered, w)
+	}
+	return strings.Join(filtered, " ")
+}
+
+// IsGenericToken returns true for common English stopwords, filler words,
+// and YouTube boilerplate tokens that should be excluded from semantic analysis.
+func IsGenericToken(token string) bool {
+	switch token {
+	case "the", "and", "for", "with", "that", "this", "from", "you", "your", "are", "was", "were", "has", "have", "had",
+		"his", "her", "him", "she", "they", "them", "their", "there", "here", "what", "when", "where", "why", "how",
+		"who", "into", "onto", "like", "just", "really", "very", "could", "would", "should", "about", "after",
+		"before", "because", "then", "than", "also", "been", "being", "our", "out", "over", "under", "some", "more",
+		"most", "much", "many", "way", "one", "two", "three", "all", "not", "can", "will", "able", "if", "or", "so",
+		"um", "uh", "https", "http", "www", "com", "nbsp", "code", "watch", "listen", "subscribe", "channel", "official",
+		"new", "tour", "dates", "go", "check", "find", "submit", "merch", "music", "producer", "facebook", "instagram",
+		"twitter", "spotify", "live", "video", "videos", "clip", "clips":
+		return true
+	}
+	return false
+}
+
+// ── Transient download error detection ──────────────────────────────
+
+// IsTransientDownloadError returns true if the error is likely transient
+// and worth retrying (e.g. timeout, connection reset, HTTP 429/5xx).
+// Permanent errors (video unavailable, private, invalid URL, etc.) return false.
+func IsTransientDownloadError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(err.Error())
+
+	permanentPatterns := []string{
+		"video unavailable", "private video", "sign in to confirm",
+		"confirm your age", "requested format is not available",
+		"invalid url", "unable to extract", "no video formats", "video is live",
+	}
+	for _, p := range permanentPatterns {
+		if strings.Contains(errStr, p) {
+			return false
+		}
+	}
+
+	transientPatterns := []string{
+		"timeout", "connection reset", "connection refused",
+		"temporary failure", "fragment download failed",
+		"no route to host", "network is unreachable",
+		"i/o timeout", "broken pipe",
+	}
+	for _, p := range transientPatterns {
+		if strings.Contains(errStr, p) {
+			return true
+		}
+	}
+
+	if strings.Contains(errStr, "http 429") || strings.Contains(errStr, "http 5") {
+		return true
+	}
+
+	return false
+}
+
+// ── Token-set / Jaccard helpers ───────────────────────────────────────
+
+// TokenSetForText builds a token set from raw text by lowercasing, cleaning,
+// splitting, and filtering short/generic tokens.
+func TokenSetForText(text string) map[string]struct{} {
+	text = strings.ToLower(text)
+	text = CleanYouTubeDescription(text)
+	text = CleanClipTranscript(text)
+	replacer := strings.NewReplacer(
+		",", " ", ".", " ", "!", " ", "?", " ", ";", " ", ":", " ",
+		"(", " ", ")", " ", "[", " ", "]", " ", "-", " ", "_", " ",
+		"\"", " ", "'", " ", "/", " ", "\\", " ",
+		"&", " ", "|", " ", "#", " ",
+	)
+	text = replacer.Replace(text)
+	set := make(map[string]struct{})
+	for _, word := range strings.Fields(text) {
+		word = strings.TrimSpace(word)
+		if len(word) < 3 {
+			continue
+		}
+		if IsGenericToken(word) {
+			continue
+		}
+		set[word] = struct{}{}
+	}
+	return set
+}
+
+// TokenSetFromStrings aggregates token sets from multiple string slices.
+func TokenSetFromStrings(values ...[]string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, list := range values {
+		for _, item := range list {
+			for tok := range TokenSetForText(item) {
+				set[tok] = struct{}{}
+			}
+		}
+	}
+	return set
+}
+
+// TextJaccardScore returns the Jaccard similarity of two texts after tokenization.
+func TextJaccardScore(a, b string) float64 {
+	return similarity.Jaccard(TokenSetForText(a), TokenSetForText(b))
+}
+
+// SliceJaccardScore returns the Jaccard similarity of two string slices
+// after tokenization.
+func SliceJaccardScore(a, b []string) float64 {
+	return similarity.Jaccard(TokenSetFromStrings(a), TokenSetFromStrings(b))
+}
+
+// MergeStringSlices merges multiple string slices, normalizing each item
+// via NormalizeSemanticText and deduplicating.
+func MergeStringSlices(values ...[]string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, list := range values {
+		for _, item := range list {
+			norm := NormalizeSemanticText(item)
+			if norm == "" {
+				continue
+			}
+			if _, ok := seen[norm]; ok {
+				continue
+			}
+			seen[norm] = struct{}{}
+			out = append(out, norm)
+		}
+	}
+	return out
+}
+

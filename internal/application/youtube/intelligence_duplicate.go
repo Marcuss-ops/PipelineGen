@@ -38,45 +38,6 @@ func buildManifestSemanticText(item asset.ClipManifestItem) string {
 	return out.String()
 }
 
-// ── Token set operations ───────────────────────────────────────────────
-
-func tokenSetForText(text string) map[string]struct{} {
-	text = strings.ToLower(text)
-	text = tagutil.CleanYouTubeDescription(text)
-	text = tagutil.CleanClipTranscript(text)
-	replacer := strings.NewReplacer(
-		",", " ", ".", " ", "!", " ", "?", " ", ";", " ", ":", " ",
-		"(", " ", ")", " ", "[", " ", "]", " ", "-", " ", "_", " ",
-		"\"", " ", "'", " ", "/", " ", "\\", " ",
-		"&", " ", "|", " ", "#", " ",
-	)
-	text = replacer.Replace(text)
-	set := make(map[string]struct{})
-	for _, word := range strings.Fields(text) {
-		word = strings.TrimSpace(word)
-		if len(word) < 3 {
-			continue
-		}
-		if isGenericToken(word) {
-			continue
-		}
-		set[word] = struct{}{}
-	}
-	return set
-}
-
-func tokenSetFromStrings(values ...[]string) map[string]struct{} {
-	set := make(map[string]struct{})
-	for _, list := range values {
-		for _, item := range list {
-			for tok := range tokenSetForText(item) {
-				set[tok] = struct{}{}
-			}
-		}
-	}
-	return set
-}
-
 // ── Duplicate detection ────────────────────────────────────────────────
 
 func shouldMarkDuplicate(a, b *asset.ClipManifestItem, ra, rb *clipIntelligenceRecord) bool {
@@ -110,15 +71,15 @@ func duplicateSimilarityScore(a, b *asset.ClipManifestItem) float64 {
 	}
 	semanticA := buildManifestSemanticText(*a)
 	semanticB := buildManifestSemanticText(*b)
-	tokenScore := textJaccardScore(semanticA, semanticB)
-	topicScore := sliceJaccardScore(a.Topics, b.Topics)
-	speakerScore := sliceJaccardScore(a.Speakers, b.Speakers)
-	peopleScore := sliceJaccardScore(mergeStringSlices(a.MentionedPeople, a.People), mergeStringSlices(b.MentionedPeople, b.People))
+	tokenScore := tagutil.TextJaccardScore(semanticA, semanticB)
+	topicScore := tagutil.SliceJaccardScore(a.Topics, b.Topics)
+	speakerScore := tagutil.SliceJaccardScore(a.Speakers, b.Speakers)
+	peopleScore := tagutil.SliceJaccardScore(tagutil.MergeStringSlices(a.MentionedPeople, a.People), tagutil.MergeStringSlices(b.MentionedPeople, b.People))
 	score := tokenScore*0.55 + topicScore*0.25 + speakerScore*0.1 + peopleScore*0.1
-	if a.CleanTitle != "" && normalizeSemanticText(a.CleanTitle) == normalizeSemanticText(b.CleanTitle) {
+	if a.CleanTitle != "" && tagutil.NormalizeSemanticText(a.CleanTitle) == tagutil.NormalizeSemanticText(b.CleanTitle) {
 		score += 0.08
 	}
-	if a.ClipSummary != "" && b.ClipSummary != "" && normalizeSemanticText(a.ClipSummary) == normalizeSemanticText(b.ClipSummary) {
+	if a.ClipSummary != "" && b.ClipSummary != "" && tagutil.NormalizeSemanticText(a.ClipSummary) == tagutil.NormalizeSemanticText(b.ClipSummary) {
 		score += 0.08
 	}
 	if score > 1 {

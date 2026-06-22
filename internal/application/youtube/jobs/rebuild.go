@@ -1,7 +1,9 @@
-package youtube
+// Package jobs provides YouTube job handler implementations.
+package jobs
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -13,10 +15,24 @@ import (
 	"go.uber.org/zap"
 )
 
-// {"concurrency": 1}    – parallel workers (default 1, safe for yt-dlp rate limits)
-func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, tools *jobtools.JobTools) (map[string]any, error) {
-	if s.clips == nil {
-		return nil, fmt.Errorf("clips repository not available")
+// RebuildDeps holds the dependencies for HandleRebuildSearchTextJob.
+type RebuildDeps struct {
+	DB       *sql.DB
+	Log      *zap.Logger
+	Indexer  ClipIndexer
+	Enricher func(ctx context.Context, clipID string, meta any, force bool)
+}
+
+// ClipIndexer abstracts the clip embedding/indexing service.
+type ClipIndexer interface {
+	IsEnabled() bool
+	IndexClip(ctx context.Context, clipID string) error
+}
+
+// HandleRebuildSearchTextJob rebuilds search_text for YouTube clips.
+func HandleRebuildSearchTextJob(deps RebuildDeps, ctx context.Context, j *job.Job, tools *jobtools.JobTools) (map[string]any, error) {
+	if deps.DB == nil {
+		return nil, fmt.Errorf("database not available")
 	}
 
 	type payload struct {
@@ -26,23 +42,20 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 		Concurrency int  `json:"concurrency"`
 	}
 	var p payload
-	if len(job.Payload) > 0 {
-		if err := json.Unmarshal(job.Payload, &p); err != nil {
+	if len(j.Payload) > 0 {
+		if err := json.Unmarshal(j.Payload, &p); err != nil {
 			return nil, fmt.Errorf("invalid payload: %w", err)
 		}
 	}
 
 	if p.Concurrency <= 0 {
-		p.Concurrency = 1 // Default: sequential to avoid hammering yt-dlp
+		p.Concurrency = 1
 	}
 
 	if tools.Progress != nil {
 		tools.Progress(0, "Querying YouTube clips for search_text rebuild")
 	}
 
-	// Query all YouTube clips that have been enriched (have youtube_title).
-	// We only target clips with youtube_title because enrichYouTubeClipWithMetadata
-	// needs either pre-fetched metadata or a YouTube URL to fetch from.
 	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
 	if p.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", p.Limit)
@@ -51,7 +64,7 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 		query += fmt.Sprintf(" OFFSET %d", p.Offset)
 	}
 
-	rows, err := s.clips.DB().QueryContext(ctx, query)
+	rows, err := deps.DB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query youtube clips: %w", err)
 	}
@@ -67,7 +80,7 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 	}
 
 	if len(clipIDs) == 0 {
-		s.log.Info("no YouTube clips found for search_text rebuild")
+		deps.Log.Info("no YouTube clips found for search_text rebuild")
 		if tools.Progress != nil {
 			tools.Progress(100, "No YouTube clips found")
 		}
@@ -75,14 +88,12 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 	}
 
 	n := len(clipIDs)
-	s.log.Info("starting search_text rebuild for YouTube clips", zap.Int("count", n))
+	deps.Log.Info("starting search_text rebuild for YouTube clips", zap.Int("count", n))
 
 	if tools.Progress != nil {
 		tools.Progress(5, fmt.Sprintf("Rebuilding search_text for %d YouTube clips", n))
 	}
 
-	// Process sequentially with progress reporting (concurrency=1 by default,
-	// because yt-dlp metadata fetches are rate-limited).
 	sem := make(chan struct{}, p.Concurrency)
 	var (
 		mu        sync.Mutex
@@ -102,7 +113,7 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 		go func(id string) {
 			defer func() {
 				if r := recover(); r != nil {
-					s.log.Error("panic in rebuild worker goroutine", zap.String("clip_id", id), zap.Any("recover", r))
+					deps.Log.Error("panic in rebuild worker goroutine", zap.String("clip_id", id), zap.Any("recover", r))
 				}
 			}()
 			defer wg.Done()
@@ -111,18 +122,15 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 			clipCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancel()
 
-			// Re-enrich with force=true — bypasses the "already enriched" skip.
-			// Uses the new field order: Transcript before Description.
-			s.enrichYouTubeClipWithMetadata(clipCtx, id, nil, true)
+			deps.Enricher(clipCtx, id, nil, true)
 
 			mu.Lock()
 			rebuilt++
 			mu.Unlock()
 
-			// Optionally re-index embeddings and upsert to Qdrant
-			if p.ReIndex && s.indexer != nil && s.indexer.IsEnabled() {
-				if err := s.indexer.IndexClip(clipCtx, id); err != nil {
-					s.log.Warn("re-index failed for clip",
+			if p.ReIndex && deps.Indexer != nil && deps.Indexer.IsEnabled() {
+				if err := deps.Indexer.IndexClip(clipCtx, id); err != nil {
+					deps.Log.Warn("re-index failed for clip",
 						zap.String("clip_id", id),
 						zap.Error(err))
 				} else {
@@ -132,7 +140,6 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 				}
 			}
 
-			// Report progress
 			mu.Lock()
 			done := rebuilt + failed
 			pct := (done * 90 / n) + 5
@@ -165,7 +172,7 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 		tools.Progress(100, fmt.Sprintf("Rebuilt search_text for %d/%d clips (%d reindexed)", rebuilt, n, reindexed))
 	}
 
-	s.log.Info("search_text rebuild complete",
+	deps.Log.Info("search_text rebuild complete",
 		zap.Int("total", n),
 		zap.Int("rebuilt", rebuilt),
 		zap.Int("failed", failed),

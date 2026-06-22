@@ -11,18 +11,16 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	segments "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/segments"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// Compile-time check: checkExistingClip and buildClipMetadata moved to
-// segment_cache.go and segment_lifecycle.go respectively. Keep the
-// package boundary minimal.
+// Compile-time check: keep the package boundary minimal.
 var _ = (&Service{}).checkExistingClip
 var _ = buildClipMetadata
-var _ = fileSizeFromPath
 
 // processSegment processes a single segment: validates timestamps, checks cache,
 // downloads via video pipeline (or cuts from pre-downloaded file), runs lifecycle,
@@ -53,11 +51,11 @@ func (s *Service) processSegment(
 	}
 	item.Filename = item.Name + ".mp4"
 
-	if err := sanitizeTimestamp(item.Start); err != nil {
+	if err := segments.SanitizeTimestamp(item.Start); err != nil {
 		item.Error = "invalid start timestamp: " + err.Error()
 		return item
 	}
-	if err := sanitizeTimestamp(item.End); err != nil {
+	if err := segments.SanitizeTimestamp(item.End); err != nil {
 		item.Error = "invalid end timestamp: " + err.Error()
 		return item
 	}
@@ -86,7 +84,7 @@ func (s *Service) processSegment(
 		return item
 	}
 
-	item.Filename = buildClipFilename(videoID, startSec, endSec, item.Name)
+	item.Filename = segments.BuildClipFilename(videoID, startSec, endSec, item.Name)
 	item.Status = "running"
 	clipID := item.ID
 
@@ -151,7 +149,7 @@ func (s *Service) processSegment(
 		return dlErr
 	}, retry.RetryOptions{
 		MaxAttempts: 3,
-		IsRetryable: isTransientDownloadError,
+		IsRetryable: tagutil.IsTransientDownloadError,
 	})
 	if err != nil {
 		if s.assetProcessing != nil {
@@ -180,7 +178,7 @@ func (s *Service) processSegment(
 	// Track asset version
 	if s.assetVersions != nil && result.LocalPath != "" {
 		versionHash := s.md5File(result.LocalPath)
-		fileSize := fileSizeFromPath(result.LocalPath)
+		fileSize := segments.FileSizeFromPath(result.LocalPath)
 		if versionHash != "" {
 			v := &asset.Version{
 				AssetID:       clipID,
@@ -302,33 +300,3 @@ func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.Fina
 	item.Status = "processed"
 }
 
-func buildClipFilename(videoID string, startSec, endSec int, name string) string {
-	slug := textutil.SlugifyWithMax(name, 40)
-	if slug == "" {
-		slug = "clip"
-	}
-	if slug[0] >= '0' && slug[0] <= '9' {
-		slug = "c_" + slug
-	}
-	return fmt.Sprintf("yt_%s_%d_%d_%s.mp4", videoID, startSec, endSec, slug)
-}
-
-// sanitizeTimestamp validates a timestamp string format (SS, MM:SS, or HH:MM:SS).
-func sanitizeTimestamp(ts string) error {
-	ts = strings.TrimSpace(ts)
-	if ts == "" {
-		return fmt.Errorf("timestamp is required")
-	}
-	parts := strings.Split(ts, ":")
-	if len(parts) > 3 {
-		return fmt.Errorf("invalid timestamp format: %s", ts)
-	}
-	for _, p := range parts {
-		for _, c := range p {
-			if c < '0' || c > '9' {
-				return fmt.Errorf("invalid timestamp: %s", ts)
-			}
-		}
-	}
-	return nil
-}

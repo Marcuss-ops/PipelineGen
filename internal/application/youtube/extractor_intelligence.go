@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -71,11 +73,11 @@ func (s *Service) enrichManifestIntelligence(ctx context.Context, clipFolder *as
 		records = append(records, &clipIntelligenceRecord{
 			item:         item,
 			semanticText: buildManifestSemanticText(*item),
-			tokenSet:     tokenSetForText(buildManifestSemanticText(*item)),
-			topicSet:     tokenSetFromStrings(item.Topics, item.ClipTags, item.SearchKeywords),
-			speakersSet:  tokenSetFromStrings(item.Speakers),
-			mentionedSet: tokenSetFromStrings(item.MentionedPeople, item.People),
-			searchKeySet: tokenSetFromStrings(item.SearchKeywords, item.ClipTags, item.SourceTags),
+			tokenSet:     tagutil.TokenSetForText(buildManifestSemanticText(*item)),
+			topicSet:     tagutil.TokenSetFromStrings(item.Topics, item.ClipTags, item.SearchKeywords),
+			speakersSet:  tagutil.TokenSetFromStrings(item.Speakers),
+			mentionedSet: tagutil.TokenSetFromStrings(item.MentionedPeople, item.People),
+			searchKeySet: tagutil.TokenSetFromStrings(item.SearchKeywords, item.ClipTags, item.SourceTags),
 		})
 	}
 

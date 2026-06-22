@@ -122,7 +122,7 @@ func TestCleanClipName_UnicodeTruncation(t *testing.T) {
 	}
 }
 
-// ===== isTransientDownloadError tests =====
+// ===== tagutil.IsTransientDownloadError tests =====
 
 func TestIsTransientDownloadError(t *testing.T) {
 	transient := []string{
@@ -141,7 +141,7 @@ func TestIsTransientDownloadError(t *testing.T) {
 	}
 	for _, msg := range transient {
 		t.Run("transient: "+msg, func(t *testing.T) {
-			if !isTransientDownloadError(errors.New(msg)) {
+			if !tagutil.IsTransientDownloadError(errors.New(msg)) {
 				t.Errorf("expected transient for %q", msg)
 			}
 		})
@@ -160,7 +160,7 @@ func TestIsTransientDownloadError(t *testing.T) {
 	}
 	for _, msg := range permanent {
 		t.Run("permanent: "+msg, func(t *testing.T) {
-			if isTransientDownloadError(errors.New(msg)) {
+			if tagutil.IsTransientDownloadError(errors.New(msg)) {
 				t.Errorf("expected permanent for %q", msg)
 			}
 		})
@@ -168,14 +168,14 @@ func TestIsTransientDownloadError(t *testing.T) {
 
 	// Unknown errors should NOT be transient
 	t.Run("unknown error", func(t *testing.T) {
-		if isTransientDownloadError(errors.New("something weird happened")) {
+		if tagutil.IsTransientDownloadError(errors.New("something weird happened")) {
 			t.Error("unknown errors should not be transient")
 		}
 	})
 
 	// nil error
 	t.Run("nil error", func(t *testing.T) {
-		if isTransientDownloadError(nil) {
+		if tagutil.IsTransientDownloadError(nil) {
 			t.Error("nil error should not be transient")
 		}
 	})
@@ -219,7 +219,7 @@ func TestRetry_PermanentErrorFailsImmediately(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("Video unavailable")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -233,7 +233,7 @@ func TestRetry_ExhaustsRetries(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("connection reset")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -251,7 +251,7 @@ func TestRetry_ContextCanceled(t *testing.T) {
 			cancel() // cancel after first attempt
 		}
 		return errors.New("timeout")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -443,7 +443,7 @@ func TestRetry_BackoffTiming(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("timeout")
-	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: tagutil.IsTransientDownloadError})
 	elapsed := time.Since(start)
 
 	if err == nil {
