@@ -351,12 +351,12 @@
     Sub-directory migrate finora (verificato su git log):
       • internal/media/ingest/  → internal/application/ingest/  (Wave 11)
       • internal/media/monitor/ → internal/application/monitor/ (Wave 10)
-    Restano da spostare: assetindex(4), assettree(1), autotag(1),
-    books(3), catalogsync(6), classifier(1), clipcatalog(3),
-    clipindexer(10), clipresolver(13), foldermemory(1), fullimages(2),
-    generation(1), lessons(8), ontology(3), semantic(4),
-    stockpipeline(9), videomuscles(1), voiceoversync(1).
-    Totale: 72 file in 18 sub-directory (ricontati June 2026).
+    Restano da spostare (DIR-0 ricontato June 2026): assetindex(5), assettree(1), autotag(1),
+    books(3), catalogsync(8), classifier(1), clipcatalog(3),
+    clipindexer(11), clipresolver(13), foldermemory(1), fullimages(4),
+    generation(1), lessons(8), ontology(4), semantic(6),
+    stockpipeline(11), videomuscles(2), voiceoversync(1).
+    Totale: 85 file in 18 sub-directory (Wave 13 = whole tree, +1 root deletion.go). Wave 11-scope = 54 (catalog+intelligence). Wave 12-scope = 13 (stock|videomuscles). DIR-2/DIR-9-scope = 17 (content+images+voiceover). (DIR-0 ricontato June 2026)
     Root file internal/media/deletion.go (1 file) — ancora attivo,
     migrazione a sub-onda dedicata.
   from:
@@ -374,7 +374,7 @@
     - internal/application/assets/{classification,enrichment,ontology,tags,sync,monitor}
     - internal/infrastructure/database/sqlite/assets
     - internal/infrastructure/ai/{semantic,classification}
-  active_files_remaining: 72
+  active_files_remaining: 54  # DIR-0 ricontato: catalog+intelligence-scope (11 subdirs of internal/media)
   sub_migrations_completed:
     - internal/media/ingest → internal/application/ingest
     - internal/media/monitor → internal/application/monitor
@@ -448,7 +448,7 @@
     L'ordine operativo (vedi sezione "Nuovo ordine operativo corretto"
     del log di audit) prevede che Wave 8/10/11 finiscano prima di Wave 13.
   from: internal/media
-  active_files_remaining: 73
+  active_files_remaining: 85  # DIR-0 ricontato: whole internal/media tree (18 subdirs + 1 root deletion.go)
   sub_directories_remaining: 18
   root_files: [deletion.go]
   classification:
