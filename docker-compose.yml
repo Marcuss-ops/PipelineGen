@@ -7,8 +7,8 @@
 #                          artlist-scraper.
 #
 #   - pipelinegen-worker : standalone background job executor that registers
-#                          against the server broker. Contains ffmpeg, yt-dlp,
-#                          and python3 for media processing jobs.
+#                          against the server broker via /internal/v1/*. Contains
+#                          ffmpeg, yt-dlp, and python3 for media processing jobs.
 #
 #   - qdrant             : vector store for semantic search (ports 6333/6334).
 #
@@ -23,7 +23,11 @@
 # Networking:
 #   - All services share the `backend` network.
 #
-# IMPORTANT: the env_file below MUST override placeholder tokens.
+# Security contract (PR-B):
+#   VELOX_WORKER_TOKEN MUST be set in `secrets/pipelinegen.env` and reach
+#   BOTH containers via the `env_file:` block. Server reads it for
+#   WorkerAuth verification on /internal/v1/*. Worker sends it as
+#   `Authorization: Bearer $VELOX_WORKER_TOKEN` via jobbrokerclient.
 
 services:
   pipelinegen-server:
@@ -55,7 +59,7 @@ services:
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
     env_file:
       - ./secrets/pipelinegen.env
-    command: ["--mode", "all", "--config", "/etc/pipelinegen/config.yaml"]
+    command: ["--mode", "server", "--config", "/etc/pipelinegen/config.yaml"]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
       interval: 15s
@@ -77,8 +81,10 @@ services:
     container_name: pipelinegen-worker
     # Worker now registers against the server via /internal/v1/workers/register
     # (wired in the composition root via bootstrap.go::WireServices).
-    # TEMPORARILY disabled until end-to-end worker registry tests pass.
-    restart: "no"
+    # PR-B (June 2026): full topology split — server --mode server, worker
+    # standalone. WorkerAuth on /internal/v1 enforces worker-token-only
+    # access (admin token is rejected).
+    restart: unless-stopped
     depends_on:
       pipelinegen-server:
         condition: service_healthy

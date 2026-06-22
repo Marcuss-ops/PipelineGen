@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+
+	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 )
 
 // Client is an HTTP implementation of worker.AssetClient for remote workers.
@@ -30,9 +33,24 @@ func New(baseURL, token string) *Client {
 	}
 }
 
+// ----- Path constants (single source of truth in shared package) -----------
+//
+// All paths derive from `remoteshared.InternalPathPrefix` so the
+// client and the server's `/internal/v1` router group cannot drift.
+// Updating the prefix in one place but not the other surfaces as 404s
+// with no breadcrumb — keep them synchronized.
+
+const (
+	pathDownloadFmt      = remoteshared.InternalPathPrefix + "/worker-assets/%s/download"
+	pathUploadInitiate   = remoteshared.InternalPathPrefix + "/worker-assets/uploads/initiate"
+	pathUploadContentFmt = remoteshared.InternalPathPrefix + "/worker-assets/uploads/%s/content"
+	pathUploadFinalize   = remoteshared.InternalPathPrefix + "/worker-assets/uploads/finalize"
+)
+
 // Download fetches an asset from the server and returns a reader, filename, and error.
 func (c *Client) Download(ctx context.Context, assetID string) (io.ReadCloser, string, error) {
-	url := fmt.Sprintf("%s/api/worker-assets/%s/download", c.baseURL, assetID)
+	path := fmt.Sprintf(pathDownloadFmt, assetID)
+	url := c.baseURL + path
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("create download request: %w", err)
@@ -55,10 +73,19 @@ func (c *Client) Download(ctx context.Context, assetID string) (io.ReadCloser, s
 }
 
 // UploadFile uploads a local file to the server as an asset.
+//
+// Three-step handshake: initiate → upload content → finalize. The
+// upload-content step passes the filename as BOTH a query parameter
+// (?filename=…) AND an X-Filename header so the server can recover
+// the original name from either source. The query parameter is
+// percent-escaped via url.QueryEscape to survive filenames with
+// spaces, ampersands, hashes, and non-ASCII characters (clip names
+// routinely contain " - " or "café"). Without escaping, such
+// filenames would 400 the request silently break the upload pipeline.
 func (c *Client) UploadFile(ctx context.Context, assetID, filePath string) error {
 	// Step 1: Initiate upload
 	initBody := fmt.Sprintf(`{"asset_id":"%s"}`, assetID)
-	if _, err := c.doPost(ctx, "/api/worker-assets/uploads/initiate", strings.NewReader(initBody)); err != nil {
+	if _, err := c.doPost(ctx, pathUploadInitiate, strings.NewReader(initBody)); err != nil {
 		return fmt.Errorf("initiate upload: %w", err)
 	}
 
@@ -70,8 +97,18 @@ func (c *Client) UploadFile(ctx context.Context, assetID, filePath string) error
 	defer f.Close()
 
 	filename := filepath.Base(filePath)
-	url := fmt.Sprintf("%s/api/worker-assets/uploads/%s/content?filename=%s", c.baseURL, assetID, filename)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, f)
+	// SECURITY: filename is interpolated into the URL query string.
+	// Without url.QueryEscape, a filename like "café voiceover.mp3"
+	// produces a malformed URL (raw UTF-8 bytes), a filename like
+	// "a&b.mp3" introduces a fake second query parameter, and a
+	// filename like "a#b.mp3" would be truncated to "a" by fragment
+	// parsing. All three are silent upload failures. Encoded form
+	// is canonical; the server already accepts percent-encoded names.
+	safeFilename := url.QueryEscape(filename)
+	contentPath := fmt.Sprintf(pathUploadContentFmt, assetID) + "?filename=" + safeFilename
+	contentURL := c.baseURL + contentPath
+
+	req, err := http.NewRequestWithContext(ctx, "POST", contentURL, f)
 	if err != nil {
 		return fmt.Errorf("create upload request: %w", err)
 	}
@@ -89,7 +126,7 @@ func (c *Client) UploadFile(ctx context.Context, assetID, filePath string) error
 
 	// Step 3: Finalize upload
 	finalizeBody := fmt.Sprintf(`{"asset_id":"%s"}`, assetID)
-	if _, err := c.doPost(ctx, "/api/worker-assets/uploads/finalize", strings.NewReader(finalizeBody)); err != nil {
+	if _, err := c.doPost(ctx, pathUploadFinalize, strings.NewReader(finalizeBody)); err != nil {
 		return fmt.Errorf("finalize upload: %w", err)
 	}
 
