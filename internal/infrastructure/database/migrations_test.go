@@ -14,7 +14,8 @@ import (
 // TestSchemaMigrationsTableCreation ensures the ledger table can be created
 // and that RunMigrations on an empty DB creates the table.
 func TestSchemaMigrationsTableCreation(t *testing.T) {
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	_, err := sdb.Exec(schemaMigrationsTable)
@@ -59,7 +60,8 @@ func TestRunMigrationsOnEmptyDB(t *testing.T) {
 	tmpDir := setupTestMigrationDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	err := sdb.RunMigrations(zap.NewNop(), tmpDir)
@@ -93,7 +95,8 @@ func TestRunMigrationsChecksumMismatch(t *testing.T) {
 	tmpDir := setupTestMigrationDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	// First run — succeeds
@@ -118,7 +121,8 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	tmpDir := setupTestMigrationDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	require.NoError(t, sdb.RunMigrations(zap.NewNop(), tmpDir))
@@ -139,7 +143,8 @@ func TestRunMigrationsWithPreExistingSchemaMigrations(t *testing.T) {
 	tmpDir := setupTestMigrationDir(t)
 	defer os.RemoveAll(tmpDir)
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 
 	// Pre-create schema_migrations with an unrelated version
 	_, err := db.Exec(schemaMigrationsTable)
@@ -159,7 +164,8 @@ func TestRunMigrationsWithPreExistingSchemaMigrations(t *testing.T) {
 
 // TestRunMigrationsNoDir verifies missing directory returns a clean error.
 func TestRunMigrationsNoDir(t *testing.T) {
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	err := sdb.RunMigrations(zap.NewNop(), "/nonexistent/path/xyz")
@@ -185,7 +191,8 @@ func TestDuplicateVersionsRejected(t *testing.T) {
 		0644,
 	))
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
 
 	err = sdb.RunMigrations(zap.NewNop(), tmpDir)
@@ -437,7 +444,8 @@ func TestRunMigration059CanonicalMediaColumns(t *testing.T) {
 		0644,
 	))
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 
 	// Lay down the pre-059 schema manually and seed legacy data BEFORE
 	// invoking RunMigrations. RunMigrations then picks up 059 from the
@@ -746,7 +754,8 @@ func TestRunMigration068MediaAssetsDimensions(t *testing.T) {
 		migration068, 0644,
 	))
 
-	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+	db := NewTestDB(t, nil)
+	defer db.Close()
 
 	// Case B: Apply pre-068 schema, seed rows, then apply 068.
 	_, err = db.Exec(pre068Schema)
