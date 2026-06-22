@@ -40,17 +40,18 @@ func (b *Broker) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.
 	if err := b.ensureSession(ctx, cmd.WorkerID, cmd.WorkerSessionID); err != nil {
 		return nil, err
 	}
+	// Remote workers with empty capabilities must not claim any jobs.
+	// This prevents an unconfigured worker from stealing work it cannot execute.
+	if len(cmd.Capabilities) == 0 {
+		return nil, nil
+	}
 	wait := time.Duration(cmd.WaitSeconds) * time.Second
 	if wait <= 0 {
 		wait = 20 * time.Second
 	}
 	deadline := time.Now().UTC().Add(wait)
 	for {
-		types := cmd.Capabilities
-		if len(types) == 0 {
-			types = nil
-		}
-		claimed, err := b.jobs.ClaimNext(ctx, cmd.WorkerID, wait, types)
+		claimed, err := b.jobs.ClaimNext(ctx, cmd.WorkerID, wait, cmd.Capabilities)
 		if err != nil {
 			return nil, err
 		}

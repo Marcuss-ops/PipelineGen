@@ -83,6 +83,18 @@ func (d *Dispatcher) Freeze() {
 	d.frozen = true
 }
 
+// AllHandlers returns a shallow copy of all registered handlers.
+// Safe for read-only iteration; used by the remote worker builder.
+func (d *Dispatcher) AllHandlers() map[string]HandlerFunc {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	out := make(map[string]HandlerFunc, len(d.handlers))
+	for k, v := range d.handlers {
+		out[k] = v
+	}
+	return out
+}
+
 func (d *Dispatcher) Dispatch(ctx context.Context, j *job.Job, tools *JobTools) (result map[string]any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
