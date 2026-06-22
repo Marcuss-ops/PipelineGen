@@ -69,6 +69,18 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
+	job := lease.Job
+
+	// Defensive: the claim filter should prevent this, but verify the
+	// claimed job type is actually supported before doing any work.
+	if !r.registry.Has(job.Type) {
+		r.log.Error("claimed unsupported job type — releasing",
+			zap.String("job_type", job.Type),
+			zap.String("job_id", job.ID),
+		)
+		return r.fail(parent, lease, fmt.Errorf("%w: %s", ErrHandlerNotRegistered, job.Type))
+	}
+
 	jobCtx, cancel := context.WithCancel(parent)
 	defer cancel()
 

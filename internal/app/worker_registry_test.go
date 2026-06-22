@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -15,15 +16,9 @@ func TestBuildWorkerRegistry_EmptyDispatcher(t *testing.T) {
 			Dispatcher: appjobs.NewDispatcher(),
 		},
 	}
-	reg, caps, err := BuildWorkerRegistry(root)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if reg.Len() != 0 {
-		t.Fatalf("expected empty registry, got %d handlers", reg.Len())
-	}
-	if len(caps) != 0 {
-		t.Fatalf("expected empty caps, got %v", caps)
+	_, _, err := BuildWorkerRegistry(root)
+	if !errors.Is(err, worker.ErrNoHandlers) {
+		t.Fatalf("expected ErrNoHandlers, got %v", err)
 	}
 }
 
@@ -64,15 +59,29 @@ func TestBuildWorkerRegistry_NilJobs(t *testing.T) {
 	}
 }
 
-func TestWorkerRegistryLen(t *testing.T) {
-	reg := worker.NewRegistry()
-	if reg.Len() != 0 {
-		t.Fatalf("expected 0, got %d", reg.Len())
+func TestBuildWorkerRegistry_DerivedCapsSorted(t *testing.T) {
+	dispatcher := appjobs.NewDispatcher()
+	for _, jt := range []string{"z.job", "a.job", "m.job"} {
+		jt := jt
+		_ = dispatcher.Register(jt, func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
+			return nil, nil
+		})
 	}
-	_ = reg.Register("x", func(_ context.Context, _ *job.Job, _ *worker.Tools) (map[string]any, error) {
-		return nil, nil
-	})
-	if reg.Len() != 1 {
-		t.Fatalf("expected 1, got %d", reg.Len())
+	root := &ComposeRoot{
+		Jobs: &JobsBundle{
+			Dispatcher: dispatcher,
+		},
+	}
+	_, caps, err := BuildWorkerRegistry(root)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(caps) != 3 {
+		t.Fatalf("expected 3 caps, got %d", len(caps))
+	}
+	for i := 1; i < len(caps); i++ {
+		if caps[i-1] > caps[i] {
+			t.Fatalf("caps not sorted: %v", caps)
+		}
 	}
 }

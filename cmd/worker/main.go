@@ -136,12 +136,15 @@ func main() {
 	workerName := envOr("VELOX_WORKER_NAME", workerID)
 	version := envOr("VELOX_WORKER_VERSION", "dev")
 
-	// Allow an explicit env-var override, but default to the capability
-	// slice derived from the registry so the two never drift.
-	workerCaps := parseCaps(os.Getenv("VELOX_WORKER_CAPABILITIES"))
-	if len(workerCaps.JobTypes) == 0 {
-		workerCaps.JobTypes = caps
+	// Validate configured capabilities against registered types.
+	// Empty env → use all registered types. Malformed/unknown → exit non-zero.
+	workerCaps, err := parseAndValidateCaps(os.Getenv("VELOX_WORKER_CAPABILITIES"), caps)
+	if err != nil {
+		log.Fatal("invalid worker capabilities", zap.Error(err))
 	}
+	// Freeze the registry after capabilities are resolved — no more
+	// registrations are possible from this point.
+	registry.Freeze()
 
 	workspaceRoot := filepath.Join(os.TempDir(), "pipelinegen", "jobs")
 	_ = os.MkdirAll(workspaceRoot, 0o755)
@@ -277,15 +280,48 @@ func hostnameFallback() string {
 	return host
 }
 
-func parseCaps(raw string) appjobs.WorkerCapabilities {
+// parseAndValidateCaps parses the VELOX_WORKER_CAPABILITIES env var and
+// validates that every configured job type exists in the registered set.
+// Returns an error (non-nil) for: malformed JSON, empty array, unknown type.
+// If raw is empty, returns the full registered set (no narrowing).
+func parseAndValidateCaps(raw string, registeredTypes []string) (appjobs.WorkerCapabilities, error) {
 	if strings.TrimSpace(raw) == "" {
-		return appjobs.WorkerCapabilities{}
+		return appjobs.WorkerCapabilities{JobTypes: registeredTypes}, nil
 	}
 	var caps appjobs.WorkerCapabilities
 	if err := json.Unmarshal([]byte(raw), &caps); err != nil {
-		return appjobs.WorkerCapabilities{}
+		return appjobs.WorkerCapabilities{}, fmt.Errorf("malformed VELOX_WORKER_CAPABILITIES JSON: %w", err)
 	}
-	return caps
+	if len(caps.JobTypes) == 0 {
+		return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES has empty job_types array")
+	}
+	// Build lookup for registered types.
+	registered := make(map[string]struct{}, len(registeredTypes))
+	for _, t := range registeredTypes {
+		registered[t] = struct{}{}
+	}
+	// Deduplicate and validate.
+	seen := make(map[string]struct{}, len(caps.JobTypes))
+	var validated []string
+	for _, jt := range caps.JobTypes {
+		jt = strings.TrimSpace(jt)
+		if jt == "" {
+			continue
+		}
+		if _, ok := seen[jt]; ok {
+			continue
+		}
+		seen[jt] = struct{}{}
+		if _, ok := registered[jt]; !ok {
+			return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES contains unknown job type: %s", jt)
+		}
+		validated = append(validated, jt)
+	}
+	if len(validated) == 0 {
+		return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES resolved to empty set")
+	}
+	caps.JobTypes = validated
+	return caps, nil
 }
 
 func heartbeatLoop(ctx context.Context, broker appjobs.Broker, workerID, sessionID string, log *zap.Logger) {
