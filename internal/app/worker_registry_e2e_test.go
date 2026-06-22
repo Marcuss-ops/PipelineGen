@@ -184,12 +184,18 @@ func (m *mockBroker) RegisterWorker(_ context.Context, cmd appjobs.RegisterWorke
 	m.registerCalled = true
 	observedRegisterPath = "/workers/register" // server-side path; client builds the full URL from this + baseURL
 	m.mu.Unlock()
+	// Mirror the canonical WorkerSession struct from
+	// internal/domain/job/worker.go. Field names are exact-match on the
+	// JSON tags so the production broker.Register deserialisation
+	// would round-trip cleanly if the test ever swapped the mock for
+	// the real repos.WorkerNodesRepository.
 	return &appjobs.WorkerSession{
-		WorkerID:     cmd.WorkerID,
-		Name:         cmd.Name,
-		SessionID:    fmt.Sprintf("sess-%d", time.Now().UnixNano()),
-		Capabilities: cmd.Capabilities,
-		ExpiresAt:    time.Now().Add(30 * time.Second),
+		WorkerID:         cmd.WorkerID,
+		SessionID:        fmt.Sprintf("sess-%d", time.Now().UnixNano()),
+		SessionExpiresAt: time.Now().Add(30 * time.Second),
+		Capabilities:     cmd.Capabilities,
+		Version:          cmd.Version,
+		Hostname:         cmd.Hostname,
 	}, nil
 }
 
