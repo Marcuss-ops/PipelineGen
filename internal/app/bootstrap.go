@@ -27,12 +27,17 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	workersapi "github.com/Marcuss-ops/PipelineGen/internal/api/workers"
 
+	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
+	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -252,8 +257,9 @@ func migrateLegacyScriptDocs(ctx context.Context, driveClient *gdrive.Service, c
 
 // AppDeps holds the minimal initialized dependencies for the server.
 type AppDeps struct {
-	Registry *module.Registry
-	Cleanup  func()
+	Registry      *module.Registry
+	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	Cleanup       func()
 }
 
 // openLogDB creates a separate SQLite database for API request logs.
@@ -353,6 +359,20 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	})
 	cleanupStack = append(cleanupStack, middleware.StopLogger)
 
+	// Wire the internal worker handler so external workers (including
+	// the Docker worker container) can register via /internal/v1/workers/register.
+	workerNodesRepo := workerassets.NewWorkerNodesRepository(root.DB.DB)
+	broker := localbroker.New(root.Jobs.Repo, workerNodesRepo)
+	assetSvc := assetsjobs.NewService(
+		root.Search.AssetIndexService,
+		root.Repos.Assets,
+		root.Repos.ImageRepo,
+		root.Repos.VoiceoverRepo,
+		log,
+	)
+	workerHandler := workersapi.NewInternalworkerHandler(broker, assetSvc, log)
+	log.Info("wired internal worker handler (broker + asset transfer)")
+
 	cleanup := func() {
 		for i := len(cleanupStack) - 1; i >= 0; i-- {
 			cleanupStack[i]()
@@ -360,8 +380,9 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 
 	return &AppDeps{
-		Registry: registryWiring.Registry,
-		Cleanup:  cleanup,
+		Registry:      registryWiring.Registry,
+		WorkerHandler: workerHandler,
+		Cleanup:       cleanup,
 	}, nil
 }
 

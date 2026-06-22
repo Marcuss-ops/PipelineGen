@@ -26,12 +26,18 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server with module registry support.
+// workerHandler (optional) is wired into /internal/v1 routes and must be
+// set *before* Setup() runs so the gin engine registers the routes.
 func NewServer(
 	cfg *config.Config,
 	registry *Registry,
+	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
 ) *Server {
 	router := NewRouter(cfg)
 	router.SetRegistry(registry)
+	if workerHandler != nil {
+		router.SetWorkerHandler(workerHandler)
+	}
 	r := router.Setup()
 
 	return &Server{
@@ -127,6 +133,12 @@ func (s *Server) Start() error {
 
 	logger.Info("Server exited gracefully")
 	return nil
+}
+
+// SetWorkerHandler wires internal worker routes into the server's router.
+// Delegates to Router.SetWorkerHandler.
+func (s *Server) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
+	s.appRouter.SetWorkerHandler(h)
 }
 
 // GetRouter returns the gin router (for testing)

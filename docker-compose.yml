@@ -75,10 +75,9 @@ services:
         COMMIT:  unknown
     image: pipelinegen-worker:latest
     container_name: pipelinegen-worker
-    # restart: unless-stopped disabled — worker registration endpoint
-    # (/api/workers/register) is not yet wired in the composition root.
-    # The server (--mode all) handles all jobs directly.
-    restart: "no"
+    # Worker now registers against the server via /internal/v1/workers/register
+    # (wired in the composition root via bootstrap.go::WireServices).
+    restart: unless-stopped
     depends_on:
       pipelinegen-server:
         condition: service_healthy
