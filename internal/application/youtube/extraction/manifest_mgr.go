@@ -1,4 +1,4 @@
-package youtube
+package extraction
 
 import (
 	"context"
@@ -10,18 +10,16 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
 	"go.uber.org/zap"
 )
 
+// ── Drive destination ───────────────────────────────────────────────────
+
 // resolveDriveDestination resolves the Google Drive folder for the extraction output.
-//
-// The FolderID provided by the caller is used as-is — the caller (monitor or
-// API handler) is responsible for pre-resolving the per-channel subfolder if
-// needed. This function only creates a video-level subfolder inside the
-// resolved FolderID (e.g. Root/<channel>/video-title/).
-func (s *Service) resolveDriveDestination(ctx context.Context, req *ExtractRequest, videoID string) (string, string) {
+func (s *Service) resolveDriveDestination(ctx context.Context, req *youtubetypes.ExtractRequest, videoID string) (string, string) {
 	if s.assetDestResolver == nil || req.Destination == nil {
 		return "", ""
 	}
@@ -35,13 +33,6 @@ func (s *Service) resolveDriveDestination(ctx context.Context, req *ExtractReque
 		CreateSubfolder: req.Destination.CreateSubfolder,
 	}
 
-	// Auto-assign a video subfolder inside the resolved parent.
-	// When FolderID is NOT set: the resolver creates a category folder under clips root,
-	// then a subfolder for this video inside it (e.g. clips/rap/50-cent).
-	//
-	// When FolderID IS set (now the channel subfolder, pre-resolved by caller):
-	// the video subfolder is created INSIDE the channel folder (e.g. AmeliaDimoldenberg/paul-mccartney-chicken-shop-date).
-	// This keeps clips organized by video inside the correct channel folder.
 	if destReq.FolderID == "" || destReq.Group != "" {
 		if destReq.SubfolderName == "" {
 			destReq.SubfolderName = strings.TrimPrefix(videoID, "yt_")
@@ -53,7 +44,6 @@ func (s *Service) resolveDriveDestination(ctx context.Context, req *ExtractReque
 			s.log.Info("using user-specified video subfolder", zap.String("subfolder", destReq.SubfolderName))
 		}
 	} else if destReq.SubfolderName != "" {
-		// FolderID provided without Group — user wants a subfolder inside it
 		destReq.SubfolderName = strings.TrimPrefix(destReq.SubfolderName, "yt_")
 		destReq.CreateSubfolder = true
 		s.log.Info("creating subfolder inside explicit Drive folder", zap.String("folder_id", destReq.FolderID), zap.String("subfolder", destReq.SubfolderName))
@@ -67,9 +57,11 @@ func (s *Service) resolveDriveDestination(ctx context.Context, req *ExtractReque
 	return resolved.FolderID, resolved.FolderPath
 }
 
+// ── Clip folder ──────────────────────────────────────────────────────────
+
 // loadClipFolder loads an existing clip folder from DB or creates a new one.
 func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFolderID, resolvedPath string,
-	resp *ExtractResponse, req *ExtractRequest) *asset.ClipFolder {
+	resp *youtubetypes.ExtractResponse, req *youtubetypes.ExtractRequest) *asset.ClipFolder {
 	if s.clips == nil {
 		return nil
 	}
@@ -79,12 +71,10 @@ func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFold
 	if err == nil && existingFolder != nil {
 		s.log.Info("loaded existing clip folder", zap.String("folder_id", folderID))
 
-		// Always update FolderID from the resolved destination — previous runs may
-		// have stored the parent folder ID instead of the correct subfolder ID.
 		if driveFolderID != "" {
 			existingFolder.FolderID = driveFolderID
 			existingFolder.FolderPath = resolvedPath
-			existingFolder.Group = getGroupFromDestination(req.Destination)
+			existingFolder.Group = getGroupFromDest(req.Destination)
 		}
 		if existingFolder.LocalFolderPath != outDir {
 			existingFolder.LocalFolderPath = outDir
@@ -98,11 +88,11 @@ func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFold
 		ID:               folderID,
 		Source:           "youtube",
 		SourceURL:        resp.SourceURL,
-		VideoID:          resp.VideoID, // real YouTube video ID, not folderSlug
+		VideoID:          resp.VideoID,
 		FolderID:         driveFolderID,
 		FolderPath:       resolvedPath,
 		LocalFolderPath:  outDir,
-		Group:            getGroupFromDestination(req.Destination),
+		Group:            getGroupFromDest(req.Destination),
 		ManifestTXTPath:  filepath.Join(outDir, "clip_manifest.txt"),
 		ManifestJSONPath: filepath.Join(outDir, "clip_manifest.json"),
 		CreatedAt:        time.Now().UTC(),
@@ -111,6 +101,8 @@ func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFold
 	s.log.Info("created new clip folder", zap.String("folder_id", folderID))
 	return clipFolder
 }
+
+// ── Manifest ─────────────────────────────────────────────────────────────
 
 // loadManifest loads an existing clip manifest from disk or creates a new one.
 func (s *Service) loadManifest(clipFolder *asset.ClipFolder, folderSlug, outDir, driveFolderID, resolvedPath, sourceURL, youtubeVideoID string, mergeExisting bool) *asset.ClipManifest {
@@ -160,10 +152,118 @@ func (s *Service) loadManifest(clipFolder *asset.ClipFolder, folderSlug, outDir,
 	return loadedManifest
 }
 
-// saveManifest writes the manifest JSON and TXT files, uploads the manifest
-// to Drive as a single combined metadata file, and updates the clip folder in DB.
+// updateManifest updates the clip manifest with the processed segment.
+func (s *Service) updateManifest(manifest *asset.ClipManifest, seg youtubetypes.Segment, clipID string, item youtubetypes.ExtractItem,
+	startSec, endSec, duration int, localPath, fileHash string) {
+	if manifest == nil {
+		return
+	}
+
+	filename := item.Filename
+	if filename == "" && localPath != "" {
+		filename = filepath.Base(localPath)
+	}
+	if filename == "." {
+		filename = ""
+	}
+
+	newMItem := asset.ClipManifestItem{
+		ID:              clipID,
+		Name:            item.Name,
+		Start:           item.Start,
+		End:             item.End,
+		StartSeconds:    startSec,
+		EndSeconds:      endSec,
+		DurationSeconds: duration,
+		Filename:        filename,
+		LocalPath:       item.LocalPath,
+		DriveLink:       item.DriveLink,
+		FileHash:        fileHash,
+		Status:          item.Status,
+		Tags:            append([]string(nil), seg.Tags...),
+	}
+
+	// Read per-clip metadata file to enrich the combined manifest
+	perClipMetaPath := filepath.Join(filepath.Dir(localPath), "metadata_"+clipID+".json")
+	if metaBytes, err := os.ReadFile(perClipMetaPath); err == nil {
+		var clipMeta youtubetypes.ClipMetadataFile
+		if err := json.Unmarshal(metaBytes, &clipMeta); err == nil {
+			newMItem.RawName = clipMeta.RawTitle
+			newMItem.CleanTitle = clipMeta.CleanTitle
+			newMItem.ShortTitle = clipMeta.ShortTitle
+			newMItem.EmbeddingText = clipMeta.EmbeddingText
+			newMItem.VideoTitle = clipMeta.VideoTitle
+			newMItem.Channel = clipMeta.Channel
+			newMItem.Description = clipMeta.Description
+			newMItem.RawTranscript = clipMeta.RawTranscript
+			newMItem.Transcript = clipMeta.Transcript
+			newMItem.CleanTranscript = clipMeta.CleanTranscript
+			newMItem.ClipSummary = clipMeta.ClipSummary
+			newMItem.Hook = clipMeta.Hook
+			newMItem.Topics = append([]string(nil), clipMeta.Topics...)
+			newMItem.Speakers = append([]string(nil), clipMeta.Speakers...)
+			newMItem.People = append([]string(nil), clipMeta.People...)
+			newMItem.MentionedPeople = append([]string(nil), clipMeta.MentionedPeople...)
+			newMItem.SourceTags = append([]string(nil), clipMeta.SourceTags...)
+			newMItem.ClipTags = append([]string(nil), clipMeta.ClipTags...)
+			newMItem.SearchKeywords = append([]string(nil), clipMeta.SearchKeywords...)
+			newMItem.QualityScore = clipMeta.QualityScore
+			newMItem.SearchVisibility = clipMeta.SearchVisibility
+			newMItem.DuplicateGroupID = clipMeta.DuplicateGroupID
+			newMItem.DuplicateOf = clipMeta.DuplicateOf
+			newMItem.IsDuplicate = clipMeta.IsDuplicate
+			newMItem.IsBestVersion = clipMeta.IsBestVersion
+			newMItem.DuplicateReason = clipMeta.DuplicateReason
+			newMItem.DuplicateScore = clipMeta.DuplicateScore
+			newMItem.TopicClusterID = clipMeta.TopicClusterID
+			newMItem.TopicClusterLabel = clipMeta.TopicClusterLabel
+			newMItem.TopicClusterSize = clipMeta.TopicClusterSize
+			newMItem.TopicClusterRank = clipMeta.TopicClusterRank
+			newMItem.YouTubeURL = clipMeta.YouTubeURL
+			if len(clipMeta.Tags) > 0 {
+				tagSet := make(map[string]struct{}, len(newMItem.Tags)+len(clipMeta.Tags))
+				merged := make([]string, 0, len(newMItem.Tags)+len(clipMeta.Tags))
+				for _, tag := range newMItem.Tags {
+					normalized := strings.ToLower(strings.TrimSpace(tag))
+					if normalized == "" {
+						continue
+					}
+					if _, ok := tagSet[normalized]; ok {
+						continue
+					}
+					tagSet[normalized] = struct{}{}
+					merged = append(merged, tag)
+				}
+				for _, tag := range clipMeta.Tags {
+					normalized := strings.ToLower(strings.TrimSpace(tag))
+					if normalized == "" {
+						continue
+					}
+					if _, ok := tagSet[normalized]; ok {
+						continue
+					}
+					tagSet[normalized] = struct{}{}
+					merged = append(merged, tag)
+				}
+				newMItem.Tags = merged
+			}
+		}
+	}
+
+	// Replace existing or append new
+	for j, mItem := range manifest.Clips {
+		if mItem.ID == clipID {
+			manifest.Clips[j] = newMItem
+			return
+		}
+	}
+	manifest.Clips = append(manifest.Clips, newMItem)
+}
+
+// saveManifest writes the manifest JSON and TXT files, uploads to Drive,
+// and updates the clip folder in DB.
 func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder, manifest *asset.ClipManifest,
-	req *ExtractRequest, outDir string) {
+	req *youtubetypes.ExtractRequest, outDir string) {
 	if clipFolder == nil {
 		return
 	}
@@ -179,7 +279,6 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 	clipFolder.SkippedCount = stats.SkippedCount
 	clipFolder.UpdatedAt = time.Now().UTC()
 
-	// Save manifest JSON locally
 	if manifest != nil {
 		if err := s.folderMemory.SaveManifest(clipFolder.ManifestJSONPath, manifest); err != nil {
 			s.log.Warn("failed to write manifest JSON", zap.Error(err))
@@ -188,7 +287,6 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 		}
 	}
 
-	// Save manifest TXT (respect WriteSummary flag)
 	writeSummary := ptrutil.BoolDefault(req.WriteSummary, true)
 	if writeSummary && clipFolder.ManifestTXTPath != "" {
 		if err := s.folderMemory.UpdateManifestTXT(clipFolder, manifest); err != nil {
@@ -200,14 +298,14 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 
 	targetFolderID := clipFolder.FolderID
 
-	// If no explicit folder ID, resolve category folder same way as writeClipMetadataFile
-	if targetFolderID == "" && s.driveFolderMgr != nil {
+	// If no explicit folder ID, resolve category folder
+	if targetFolderID == "" {
 		clipsRoot := s.cfg.Drive.ClipsFolder()
 		if clipsRoot != "" && clipFolder.LocalFolderPath != "" {
 			categoryDir := filepath.Base(filepath.Dir(clipFolder.LocalFolderPath))
 			clipsRootRel := filepath.Base(filepath.Dir(filepath.Dir(clipFolder.LocalFolderPath)))
 			if clipsRootRel == "clips" && categoryDir != "" && categoryDir != "." && categoryDir != "clips" {
-				if catID, err := s.driveFolderMgr.GetOrCreateFolder(ctx, categoryDir, clipsRoot); err == nil {
+				if catID, err := s.callbacks.DriveGetOrCreateFolder(ctx, categoryDir, clipsRoot); err == nil {
 					targetFolderID = catID
 				}
 			}
@@ -253,7 +351,6 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 			Clips:     []UnifiedClip{},
 		}
 
-		// Try to find video title from first clip or search
 		for _, c := range manifest.Clips {
 			if c.VideoTitle != "" {
 				unified.VideoTitle = c.VideoTitle
@@ -293,23 +390,22 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 			} else {
 				s.log.Info("metadata_unified.json updated locally", zap.String("path", unifiedMetaPath))
 
-				// Upload metadata_unified.json to Drive
-				if s.driveFolderMgr != nil && targetFolderID != "" {
-					if result, skipped, err := s.driveFolderMgr.UploadFileIfChanged(ctx, unifiedMetaPath, targetFolderID, "metadata_unified.json"); err != nil {
+				if targetFolderID != "" {
+					if _, skipped, err := s.callbacks.DriveUploadFileIfChanged(ctx, unifiedMetaPath, targetFolderID, "metadata_unified.json"); err != nil {
 						s.log.Warn("failed to upload metadata_unified.json to Drive", zap.Error(err))
 					} else if skipped {
 						s.log.Info("metadata_unified.json unchanged on Drive, skipped re-upload")
 					} else {
-						s.log.Info("metadata_unified.json uploaded to Drive successfully", zap.String("drive_file_id", result.FileID))
+						s.log.Info("metadata_unified.json uploaded to Drive successfully")
 					}
 				}
 			}
 		}
 	}
 
-	// ── Upload manifest to Drive as single combined metadata file (backward compatibility) ────────
-	if s.driveFolderMgr != nil && clipFolder.ManifestJSONPath != "" && targetFolderID != "" {
-		result, skipped, err := s.driveFolderMgr.UploadFileIfChanged(ctx, clipFolder.ManifestJSONPath, targetFolderID, "metadata.json")
+	// ── Upload manifest to Drive as metadata.json (backward compat) ──
+	if clipFolder.ManifestJSONPath != "" && targetFolderID != "" {
+		result, skipped, err := s.callbacks.DriveUploadFileIfChanged(ctx, clipFolder.ManifestJSONPath, targetFolderID, "metadata.json")
 		if err != nil {
 			s.log.Warn("failed to upload manifest as metadata.json to Drive",
 				zap.String("folder_id", targetFolderID),
@@ -327,24 +423,14 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 		}
 	}
 
-	// Upsert clip folder to DB via the clip store port (FolderMemoryPort is
-	// manifest-only; folder table writes belong to ClipStorePort).
 	if err := s.clips.UpsertFolder(ctx, clipFolder); err != nil {
 		s.log.Warn("failed to upsert clip folder", zap.Error(err))
 	}
 }
 
-// defaultConcurrency returns the number of parallel workers for segment processing.
-// If reqConcurrency <= 0, uses default of 3 (safe for most connections).
-func defaultConcurrency(reqConcurrency int) int {
-	if reqConcurrency > 0 {
-		return reqConcurrency
-	}
-	return 3
-}
+// ── Monitored source ─────────────────────────────────────────────────────
 
-// updateMonitoredSourceStatus sets the final status on the monitored source record.
-func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *asset.MonitoredSource, resp *ExtractResponse) {
+func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *asset.MonitoredSource, resp *youtubetypes.ExtractResponse) {
 	if s.monitors == nil {
 		return
 	}
@@ -363,4 +449,20 @@ func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *asset.Mon
 			s.log.Error("Failed to increment processed count", zap.Error(err))
 		}
 	}
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+func defaultConcurrency(reqConcurrency int) int {
+	if reqConcurrency > 0 {
+		return reqConcurrency
+	}
+	return 3
+}
+
+func getGroupFromDest(dest *youtubetypes.DestinationRequest) string {
+	if dest == nil {
+		return ""
+	}
+	return dest.Group
 }

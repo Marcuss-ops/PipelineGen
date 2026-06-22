@@ -62,9 +62,14 @@ RUN apt-get update \
 
 COPY --from=builder /out/pipelinegen /usr/local/bin/pipelinegen
 
+# Copy migrations and config so the server can run DB migrations at startup.
+COPY migrations/ /app/migrations/
+
 RUN mkdir -p /data /etc/pipelinegen \
  && chown -R root:root /data /etc/pipelinegen
 VOLUME ["/data"]
+
+WORKDIR /app
 
 EXPOSE 8080
 

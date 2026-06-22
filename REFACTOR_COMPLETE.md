@@ -1,3 +1,6 @@
+# STATUS: HISTORICAL — Piano operativo PR1–PR4 completato (giugno 2026)
+# Source of truth corrente: docs/roadmap/README.md | architecture/migration.yaml
+#
 # Refactor Complete — Piano operativo in quattro PR
 
 > Documento operativo per alleggerire PipelineGen senza rimuovere funzionalità, senza introdurre nuovi layer duplicati e senza trasformare il refactor in una modifica monolitica.
