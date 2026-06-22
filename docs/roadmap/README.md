@@ -11,26 +11,41 @@
 | Blocco | Stato | Azione residua |
 |---|---:|---|
 | Node scraper leggero | completato | mantenere `puppeteer-core` come unica dipendenza browser |
-| Runtime Docker separati | completato | certificare con smoke test server/worker/admin |
+| Runtime Docker separati | parziale | completare registry remoto e cutover server/worker |
 | Qdrant e storage fuori da `internal/media` | completato | riallineare tracker e baseline |
 | Test precedentemente saltati | completato | impedire nuovi `t.Skip` non classificati |
 | YouTube capability split | parziale | chiudere facade, dipendenze piatte e alias |
 | Repository truth | parziale | riallineare migration map, baseline e guardrail |
-| Strict architecture mode | mancante | implementare `archcheck --strict` |
-| Production certification | mancante | CI verde, E2E, backup/restore, security gate |
+| Strict architecture mode | parziale | portare `archcheck --strict` a zero e renderlo required |
+| Production certification | parziale | CI verde, E2E, backup/restore, security gate |
 | Scale validation | mancante | multi-worker, failure injection, load test, SLO |
 
 ## Ordine obbligatorio
 
 | Documento | Risultato |
 |---|---|
+| [Worker Execution Plan](../../WORKER_EXECUTION.md) | Registry remoto sicuro, capability derivate, cutover runtime ed E2E worker |
 | [PR5 — YouTube capability split finale](PR5_YOUTUBE_CAPABILITY_SPLIT.md) | Root YouTube piccolo, capability autonome, massimo 8–10 dipendenze per builder |
 | [PR6 — Repository truth e strict mode](PR6_ARCHITECTURE_TRUTH_STRICT_MODE.md) | Tracker coerenti, guardrail reali, zero compatibilità non autorizzata |
 | [PR7 — Certificazione production](PR7_PRODUCTION_CERTIFICATION.md) | Un commit e una release dimostrati funzionanti end-to-end |
 | [PR8 — Validazione della scalabilità](PR8_SCALE_VALIDATION.md) | Capacità, concorrenza, recovery e limiti misurati |
 | [Definition of Done 100%](DEFINITION_OF_DONE_100_PERCENT.md) | Checklist finale per dichiarare PipelineGen operativo e pronto a scalare |
 
+Il Worker Execution Plan è il blocco immediato perché il worker remoto deve essere sicuro prima della certificazione PR7 e dei test multi-worker PR8.
+
 PR5 e PR6 sono architetturali. PR7 certifica il sistema reale. PR8 certifica la crescita. Nessuna dichiarazione “100% operativo” è valida prima della chiusura della Definition of Done.
+
+## Pacchetto operativo worker
+
+Il worker o l'agente incaricato deve iniziare da [`WORKER_EXECUTION.md`](../../WORKER_EXECUTION.md) e seguire l'ordine:
+
+1. [`W1_REMOTE_WORKER_REGISTRY.md`](../worker/W1_REMOTE_WORKER_REGISTRY.md);
+2. [`W2_SERVER_WORKER_CUTOVER.md`](../worker/W2_SERVER_WORKER_CUTOVER.md);
+3. [`W3_REMOTE_WORKER_E2E.md`](../worker/W3_REMOTE_WORKER_E2E.md);
+4. [`W4_MIGRATION_068_VERIFICATION.md`](../worker/W4_MIGRATION_068_VERIFICATION.md);
+5. [`WORKER_DEFINITION_OF_DONE.md`](../worker/WORKER_DEFINITION_OF_DONE.md).
+
+Fino alla verifica di W1, il worker Docker esterno non deve condividere una coda production con il server in `--mode all`.
 
 ## Regole non negoziabili
 
@@ -127,4 +142,4 @@ Questi file non devono più essere usati come unica fonte per il lavoro futuro:
 - `docs/POST_CASCADE_OPERATIONAL_READINESS.md` — audit post-cascade;
 - `docs/roadmap/PR0_REPOSITORY_TRUTH.md` fino a `PR4_COMPOSITION_ROOT.md` — ciclo precedente.
 
-Quando una loro informazione resta valida, deve essere trasferita nei documenti PR5–PR8 invece di aggiungere nuovi follow-up sparsi.
+Quando una loro informazione resta valida, deve essere trasferita nei documenti attivi invece di aggiungere nuovi follow-up sparsi.
