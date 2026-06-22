@@ -3,7 +3,6 @@ package youtube
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
@@ -107,16 +106,4 @@ func buildClipMetadata(clipID, name, localPath, videoID, start, end string,
 		RequireDrive: driveFolderID != "",
 		VerifyDB:     true,
 	}
-}
-
-// fileSizeFromPath returns the file size in bytes, or 0 if the file cannot be stat'd.
-func fileSizeFromPath(path string) int64 {
-	if path == "" {
-		return 0
-	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		return 0
-	}
-	return fi.Size()
 }

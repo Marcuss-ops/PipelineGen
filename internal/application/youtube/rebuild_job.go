@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -175,55 +174,3 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 	return result, nil
 }
 
-// isTransientDownloadError returns true if the error is likely transient and worth retrying.
-// Used with retry.Do's IsRetryable predicate for yt-dlp download operations.
-func isTransientDownloadError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errStr := strings.ToLower(err.Error())
-
-	// Never retry these permanent errors
-	permanentPatterns := []string{
-		"video unavailable",
-		"private video",
-		"sign in to confirm",
-		"confirm your age",
-		"requested format is not available",
-		"invalid url",
-		"unable to extract",
-		"no video formats",
-		"video is live",
-	}
-	for _, p := range permanentPatterns {
-		if strings.Contains(errStr, p) {
-			return false
-		}
-	}
-
-	// Retry these transient errors
-	transientPatterns := []string{
-		"timeout",
-		"connection reset",
-		"connection refused",
-		"temporary failure",
-		"fragment download failed",
-		"no route to host",
-		"network is unreachable",
-		"i/o timeout",
-		"broken pipe",
-	}
-	for _, p := range transientPatterns {
-		if strings.Contains(errStr, p) {
-			return true
-		}
-	}
-
-	// HTTP 429 (rate limit) and 5xx (server errors) are transient
-	if strings.Contains(errStr, "http 429") || strings.Contains(errStr, "http 5") {
-		return true
-	}
-
-	return false
-}

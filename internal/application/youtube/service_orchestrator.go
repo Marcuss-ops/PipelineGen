@@ -155,13 +155,15 @@ type Service struct {
 // surrogate setters are needed. Composition root (internal/app/composition.go)
 // is the only intended caller.
 func NewService(deps ServiceDeps) *Service {
-	maxVideo := deps.Cfg.Concurrency.MaxConcurrentVideoExtracts
-	if maxVideo <= 0 {
-		maxVideo = 1 // disallow zero: at least 1
-	}
-	maxOllama := deps.Cfg.Concurrency.MaxConcurrentOllamaCalls
-	if maxOllama <= 0 {
-		maxOllama = 1
+	maxVideo := 1
+	maxOllama := 1
+	if deps.Cfg != nil {
+		if v := deps.Cfg.Concurrency.MaxConcurrentVideoExtracts; v > 0 {
+			maxVideo = v
+		}
+		if v := deps.Cfg.Concurrency.MaxConcurrentOllamaCalls; v > 0 {
+			maxOllama = v
+		}
 	}
 	return &Service{
 		cfg:               deps.Cfg,
