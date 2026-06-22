@@ -16,6 +16,7 @@ import (
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 	"go.uber.org/zap"
 )
 
@@ -153,8 +154,8 @@ func (r *Router) Setup() *gin.Engine {
 		}
 	}
 
-	internalGroup := engine.Group("/internal/v1")
-	internalGroup.Use(middleware.Auth(r.cfg))
+	internalGroup := engine.Group(remoteshared.InternalPathPrefix)
+	internalGroup.Use(middleware.WorkerAuth(r.cfg))
 	{
 		if r.workerHandler != nil {
 			r.workerHandler.RegisterRoutes(internalGroup)

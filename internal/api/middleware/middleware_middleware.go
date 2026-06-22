@@ -116,6 +116,67 @@ func compareTokens(provided, expected string) bool {
 	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
+// WorkerAuth returns a gin middleware that accepts ONLY worker tokens.
+//
+// Distinct from Auth() which accepts both admin and worker tokens —
+// /internal/v1/* routes serve the remote worker broker (claim,
+// heartbeat, asset transfer), and a leaked admin token MUST NOT grant
+// those rights. Defense-in-depth: even if an operator ships an
+// environment where the worker token and admin token are accidentally
+// interchangeable, WorkerAuth refuses anything that is not byte-exactly
+// the configured worker token.
+//
+// No EnableAuth short-circuit on purpose: /internal/v1 must always be
+// authenticated (no auth-less scrimmage path). Operators that want to
+// disable worker auth entirely should set WorkerToken to a known
+// literal and accept the obvious risk — there is no silent bypass.
+func WorkerAuth(cfg *config.Config) gin.HandlerFunc {
+	expected := strings.TrimSpace(cfg.Security.WorkerToken)
+	if expected == "" {
+		// Refuse to start serving unauthenticated worker routes. A
+		// blank WorkerToken in production would make every
+		// /internal/v1/* endpoint an open door; fail loud at first
+		// request instead of leaking the misconfig.
+		return func(c *gin.Context) {
+			logger.Error("WorkerAuth mounted with empty WorkerToken — refusing request",
+				zap.String("path", c.Request.URL.Path),
+				zap.String("client_ip", c.ClientIP()))
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"ok":    false,
+				"error": "WorkerAuth misconfigured (VELOX_WORKER_TOKEN is empty)",
+			})
+			c.Abort()
+		}
+	}
+
+	return func(c *gin.Context) {
+		token := extractAuthToken(c)
+		// SECURITY: never log token value (same invariant as Auth() —
+		// see that function's comment for the reasoning).
+		logger.Info("WorkerAuth check",
+			zap.String("path", c.Request.URL.Path),
+			zap.Bool("has_credential", token != ""))
+
+		// Constant-time compare to resist byte-by-byte network-level
+		// timing attacks against the worker secret.
+		if compareTokens(token, expected) {
+			c.Set("is_worker", true)
+			c.Next()
+			return
+		}
+
+		logger.Warn("WorkerAuth rejected request (admin token or wrong secret)",
+			zap.String("path", c.Request.URL.Path),
+			zap.Bool("has_credential", token != ""),
+			zap.String("client_ip", c.ClientIP()))
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"ok":    false,
+			"error": "Unauthorized: worker token required",
+		})
+		c.Abort()
+	}
+}
+
 // Recovery returns a gin middleware for recovering from panics
 func Recovery() gin.HandlerFunc {
 	return gin.CustomRecovery(func(c *gin.Context, err any) {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 )
 
 // Client is an HTTP implementation of appjobs.Broker for remote workers.
@@ -33,21 +34,39 @@ func New(baseURL, token string) *Client {
 	}
 }
 
+// ----- Path constants (single source of truth in shared package) -----------
+//
+// All paths derive from `remoteshared.InternalPathPrefix` so the
+// client and the server's `/internal/v1` router group cannot drift.
+// Updating the prefix in one place but not the other surfaces as 404s
+// with no breadcrumb — keep them synchronized.
+
+const (
+	pathRegisterWorker      = remoteshared.InternalPathPrefix + "/workers/register"
+	pathHeartbeat           = remoteshared.InternalPathPrefix + "/workers/heartbeat"
+	pathClaim               = remoteshared.InternalPathPrefix + "/jobs/claim"
+	pathRenewFmt            = remoteshared.InternalPathPrefix + "/jobs/%s/renew"
+	pathProgressFmt         = remoteshared.InternalPathPrefix + "/jobs/%s/progress"
+	pathCompleteFmt         = remoteshared.InternalPathPrefix + "/jobs/%s/complete"
+	pathFailFmt             = remoteshared.InternalPathPrefix + "/jobs/%s/fail"
+	pathIsCancelledFmt      = remoteshared.InternalPathPrefix + "/jobs/%s/cancelled"
+)
+
 func (c *Client) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
 	var session appjobs.WorkerSession
-	if err := c.post(ctx, "/api/workers/register", cmd, &session); err != nil {
+	if err := c.post(ctx, pathRegisterWorker, cmd, &session); err != nil {
 		return nil, err
 	}
 	return &session, nil
 }
 
 func (c *Client) Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error {
-	return c.post(ctx, "/api/workers/heartbeat", cmd, nil)
+	return c.post(ctx, pathHeartbeat, cmd, nil)
 }
 
 func (c *Client) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.Lease, error) {
 	var lease appjobs.Lease
-	if err := c.post(ctx, "/api/jobs/claim", cmd, &lease); err != nil {
+	if err := c.post(ctx, pathClaim, cmd, &lease); err != nil {
 		return nil, err
 	}
 	return &lease, nil
@@ -55,26 +74,26 @@ func (c *Client) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.
 
 func (c *Client) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error) {
 	var lease appjobs.Lease
-	if err := c.post(ctx, fmt.Sprintf("/api/jobs/%s/renew", cmd.JobID), cmd, &lease); err != nil {
+	if err := c.post(ctx, fmt.Sprintf(pathRenewFmt, cmd.JobID), cmd, &lease); err != nil {
 		return nil, err
 	}
 	return &lease, nil
 }
 
 func (c *Client) Progress(ctx context.Context, cmd appjobs.ProgressCommand) error {
-	return c.post(ctx, fmt.Sprintf("/api/jobs/%s/progress", cmd.JobID), cmd, nil)
+	return c.post(ctx, fmt.Sprintf(pathProgressFmt, cmd.JobID), cmd, nil)
 }
 
 func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) error {
-	return c.post(ctx, fmt.Sprintf("/api/jobs/%s/complete", cmd.JobID), cmd, nil)
+	return c.post(ctx, fmt.Sprintf(pathCompleteFmt, cmd.JobID), cmd, nil)
 }
 
 func (c *Client) Fail(ctx context.Context, cmd appjobs.FailCommand) error {
-	return c.post(ctx, fmt.Sprintf("/api/jobs/%s/fail", cmd.JobID), cmd, nil)
+	return c.post(ctx, fmt.Sprintf(pathFailFmt, cmd.JobID), cmd, nil)
 }
 
 func (c *Client) IsCancelled(ctx context.Context, jobID, leaseID string) (bool, error) {
-	url := fmt.Sprintf("%s/api/jobs/%s/cancelled?lease_id=%s", c.baseURL, jobID, leaseID)
+	url := fmt.Sprintf("%s%s?lease_id=%s", c.baseURL, fmt.Sprintf(pathIsCancelledFmt, jobID), leaseID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return false, err
