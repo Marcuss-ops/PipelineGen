@@ -20,7 +20,6 @@ import (
 
 // Compile-time check: keep the package boundary minimal.
 var _ = (&Service{}).checkExistingClip
-var _ = buildClipMetadata
 
 // processSegment processes a single segment: validates timestamps, checks cache,
 // downloads via video pipeline (or cuts from pre-downloaded file), runs lifecycle,
@@ -228,9 +227,13 @@ func (s *Service) processSegment(
 	}
 
 	// Build lifecycle metadata (now enriched with YouTube video info if available)
-	metadata := buildClipMetadata(clipID, item.Name, localPath, videoID, item.Start, item.End,
+	folderPath := resolvedPath
+	if folderPath == "" && req.Destination != nil {
+		folderPath = req.Destination.FolderPath
+	}
+	metadata := segments.BuildClipMetadata(clipID, item.Name, localPath, videoID, item.Start, item.End,
 		startSec, endSec, duration, folderSlug, shouldNormalize, req.KeepAudio,
-		driveFolderID, resolvedPath, fileHash, req.Destination, result.Metadata, &seg)
+		driveFolderID, folderPath, fileHash, group, result.Metadata, &seg)
 
 	s.log.Info("starting lifecycle processing for segment",
 		zap.String("clip_id", clipID),

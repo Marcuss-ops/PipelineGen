@@ -1,4 +1,4 @@
-package youtube
+package segments
 
 import (
 	"encoding/json"
@@ -6,19 +6,20 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	types "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 )
 
-// buildClipMetadata creates the lifecycle.FinalizeInput for a processed clip.
+// BuildClipMetadata creates the lifecycle.FinalizeInput for a processed clip.
 // If youtubeMeta is provided, includes YouTube video metadata (title,
 // description, tags, language). Returns a pointer to the finalized metadata
 // structure; nil fields are encoded as empty strings/maps in the lifecycle.
-func buildClipMetadata(clipID, name, localPath, videoID, start, end string,
+func BuildClipMetadata(clipID, name, localPath, videoID, start, end string,
 	startSec, endSec, duration int, folderSlug string,
 	shouldNormalize, keepAudio bool,
-	driveFolderID, resolvedPath, fileHash string,
-	dest *DestinationRequest,
-	youtubeMeta *YouTubeMetadataPort,
-	seg *Segment) *lifecycle.FinalizeInput {
+	driveFolderID, folderPath, fileHash, group string,
+	youtubeMeta *ports.YouTubeMetadataPort,
+	seg *types.Segment) *lifecycle.FinalizeInput {
 
 	metadataMap := map[string]any{
 		"video_id":         videoID,
@@ -80,18 +81,13 @@ func buildClipMetadata(clipID, name, localPath, videoID, start, end string,
 	}
 	metadataBytes, _ := json.Marshal(metadataMap)
 
-	folderPath := resolvedPath
-	if folderPath == "" && dest != nil {
-		folderPath = dest.FolderPath
-	}
-
 	return &lifecycle.FinalizeInput{
 		ID:           clipID,
 		Name:         name,
 		Filename:     filepath.Base(localPath),
 		Kind:         lifecycle.AssetKindVideo,
 		Source:       "youtube",
-		Group:        getGroupFromDestination(dest),
+		Group:        group,
 		Subfolder:    "",
 		LocalPath:    localPath,
 		FolderID:     driveFolderID,

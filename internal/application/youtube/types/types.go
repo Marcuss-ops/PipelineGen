@@ -61,6 +61,22 @@ type ClipMetadataFile struct {
 	LastEnriched      string   `json:"last_enriched"`
 }
 
+// Segment represents a time-bounded clip segment with metadata
+// extracted from the segment analysis pipeline.
+type Segment struct {
+	Start            string   `json:"start"`
+	End              string   `json:"end"`
+	Name             string   `json:"name"`
+	Tags             []string `json:"tags,omitempty"`
+	Summary          string   `json:"summary,omitempty"`
+	Topics           []string `json:"topics,omitempty"`
+	Speakers         []string `json:"speakers,omitempty"`
+	MentionedPeople  []string `json:"mentioned_people,omitempty"`
+	Hook             string   `json:"hook,omitempty"`
+	QualityScore     float64  `json:"quality_score,omitempty"`
+	SearchVisibility string   `json:"search_visibility,omitempty"`
+}
+
 // ClipRichMetadata is the structured result from Ollama metadata generation.
 // Used by generateClipMetadata (ollama_calls.go), enrichment.go,
 // tag_utils.go, and extractor_clean.go for quality scoring.
