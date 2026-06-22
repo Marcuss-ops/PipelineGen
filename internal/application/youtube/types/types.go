@@ -9,6 +9,11 @@
 // The parent package re-exports these via zero-copy type aliases
 // (type ClipMetadataFile = types.ClipMetadataFile) so existing callers
 // compile without rename churn.
+//
+// PR5 Phase 3 (June 2026): extraction DTOs (ExtractRequest, ExtractResponse,
+// ExtractItem, FolderInfo, ExtractStats, DestinationRequest) moved here so
+// the new youtube/extraction/ capability service can import them without
+// creating an import cycle with the parent youtube package.
 package types
 
 // ClipMetadataFile is the human-readable metadata saved alongside each clip.
@@ -97,4 +102,81 @@ type ClipRichMetadata struct {
 	Tags             []string `json:"tags"`
 	QualityScore     float64  `json:"quality_score"`
 	SearchVisibility string   `json:"search_visibility"`
+}
+
+// ── PR5 Phase 3: Extraction DTOs moved from parent package ──────────────
+
+// ExtractRequest is the payload for a YouTube clip extraction request.
+type ExtractRequest struct {
+	URL            string              `json:"url"`
+	Segments       []Segment           `json:"segments"`
+	ForceKeyframes bool                `json:"force_keyframes"`
+	Normalize      *bool               `json:"normalize,omitempty"`
+	KeepAudio      bool                `json:"keep_audio"`
+	WriteSummary   *bool               `json:"write_summary,omitempty"`
+	Strategy       string              `json:"strategy,omitempty"`
+	Concurrency    int                 `json:"concurrency,omitempty"`
+	Destination    *DestinationRequest `json:"destination,omitempty"`
+	Shuffle        bool                `json:"shuffle,omitempty"`
+}
+
+// DestinationRequest specifies the target folder for extraction output.
+type DestinationRequest struct {
+	Group           string `json:"group,omitempty"`
+	FolderID        string `json:"folder_id,omitempty"`
+	FolderPath      string `json:"folder_path,omitempty"`
+	SubfolderName   string `json:"subfolder_name,omitempty"`
+	CreateSubfolder bool   `json:"create_subfolder,omitempty"`
+}
+
+// ExtractResponse is the result of a clip extraction operation.
+type ExtractResponse struct {
+	OK              bool          `json:"ok"`
+	SourceURL       string        `json:"source_url"`
+	VideoID         string        `json:"video_id,omitempty"`
+	Folder          *FolderInfo   `json:"folder,omitempty"`
+	Stats           *ExtractStats `json:"stats,omitempty"`
+	Items           []ExtractItem `json:"items"`
+	Error           string        `json:"error,omitempty"`
+	DriveFolderID   string        `json:"drive_folder_id,omitempty"`
+	DriveFolderPath string        `json:"drive_folder_path,omitempty"`
+}
+
+// FolderInfo holds resolved folder metadata for an extraction run.
+type FolderInfo struct {
+	ID               string `json:"id"`
+	LocalFolderPath  string `json:"local_folder_path"`
+	DriveFolderID    string `json:"drive_folder_id,omitempty"`
+	DriveFolderPath  string `json:"drive_folder_path,omitempty"`
+	ManifestTXTPath  string `json:"manifest_txt_path,omitempty"`
+	ManifestJSONPath string `json:"manifest_json_path,omitempty"`
+}
+
+// ExtractStats tracks the outcome counts for an extraction run.
+type ExtractStats struct {
+	Requested int `json:"requested"`
+	Processed int `json:"processed"`
+	Skipped   int `json:"skipped"`
+	Failed    int `json:"failed"`
+}
+
+// ExtractItem represents a single processed clip from an extraction run.
+type ExtractItem struct {
+	ID              string `json:"id,omitempty"`
+	Name            string `json:"name"`
+	Start           string `json:"start"`
+	End             string `json:"end"`
+	StartSeconds    int    `json:"start_seconds,omitempty"`
+	EndSeconds      int    `json:"end_seconds,omitempty"`
+	Duration        int    `json:"duration_seconds,omitempty"`
+	Filename        string `json:"filename,omitempty"`
+	FileHash        string `json:"file_hash,omitempty"`
+	LocalPath       string `json:"local_path,omitempty"`
+	DriveLink       string `json:"drive_link,omitempty"`
+	DriveFileID     string `json:"drive_file_id,omitempty"`
+	DownloadLink    string `json:"download_link,omitempty"`
+	Status          string `json:"status"`
+	Error           string `json:"error,omitempty"`
+	DriveFolderID   string `json:"drive_folder_id,omitempty"`
+	DriveFolderPath string `json:"drive_folder_path,omitempty"`
 }

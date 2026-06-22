@@ -12,14 +12,14 @@ import (
 	"time"
 
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )
 
-func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL string, cfg *MonitorConfig, maxSegments int, segmentPrompt string) []youtube.Segment {
+func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL string, cfg *MonitorConfig, maxSegments int, segmentPrompt string) []youtubetypes.Segment {
 	if maxSegments <= 0 {
 		maxSegments = 3 // default
 	}
@@ -261,7 +261,7 @@ Format:
 	// brief to be useful (3s clips don't convey enough context for comedy).
 	const minSegmentDuration = 10
 
-	var result []youtube.Segment
+	var result []youtubetypes.Segment
 	for _, s := range ollamaSegments {
 		// Validate timestamps
 		startSec, err1 := textutil.ParseTimestamp(s.Start)
@@ -289,7 +289,7 @@ Format:
 		if isLowValueMonitorSegmentName(s.Name) {
 			continue
 		}
-		resultSeg := youtube.Segment{
+		resultSeg := youtubetypes.Segment{
 			Name:  s.Name,
 			Start: fmt.Sprintf("%d", startSec),
 			End:   fmt.Sprintf("%d", endSec),
@@ -319,7 +319,7 @@ Format:
 //  3. Returns nil (no segments — caller should skip this video)
 //
 // maxSegments and segmentPrompt come from the channel config for per-channel customization.
-func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL string, cfg *MonitorConfig, maxSegments int, segmentPrompt string) []youtube.Segment {
+func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL string, cfg *MonitorConfig, maxSegments int, segmentPrompt string) []youtubetypes.Segment {
 	// ── Priority 1: Subtitles + Gemma analysis ───────────────────────────
 	// The actual transcript content tells us what's really interesting,
 	// unlike chapter titles which can be wrong/misleading.
@@ -337,7 +337,7 @@ func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL s
 		m.log.Info("found YouTube chapters, using them as segments",
 			zap.String("url", videoURL),
 			zap.Int("chapters", len(meta.Chapters)))
-		var segments []youtube.Segment
+		var segments []youtubetypes.Segment
 		for _, ch := range meta.Chapters {
 			chapterDur := int(ch.EndTime - ch.StartTime)
 			if chapterDur < 15 {
@@ -355,7 +355,7 @@ func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL s
 					segEnd = ch.EndTime
 				}
 			}
-			segments = append(segments, youtube.Segment{
+			segments = append(segments, youtubetypes.Segment{
 				Name:  ch.Title,
 				Start: fmt.Sprintf("%d", int(segStart)),
 				End:   fmt.Sprintf("%d", int(segEnd)),
@@ -365,7 +365,7 @@ func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL s
 			}
 		}
 		if len(segments) > 0 {
-			filtered := make([]youtube.Segment, 0, len(segments))
+			filtered := make([]youtubetypes.Segment, 0, len(segments))
 			for _, seg := range segments {
 				if isLowValueMonitorSegmentName(seg.Name) {
 					continue

@@ -64,6 +64,36 @@ type UploadResultDTO struct {
 	WebViewLink string `json:"web_view_link,omitempty"`
 }
 
+// VideoCutRequest contains all parameters for downloading and cutting a video segment.
+// PR5 Phase 3 (June 2026): moved from root youtube package to ports/ so both the
+// extraction capability service and the root orchestrator share the same type.
+type VideoCutRequest struct {
+	URL               string
+	VideoID           string
+	Start             float64
+	Duration          float64
+	OutputName        string
+	ForceKeyframes    bool
+	KeepAudio         bool
+	Normalize         bool
+	Strategy          string
+	OutputDir         string
+	PreDownloadedPath string
+}
+
+// VideoCutResult wraps the output of a video cut operation with the local file path
+// and the full video metadata captured from yt-dlp.
+type VideoCutResult struct {
+	LocalPath string
+	Metadata  *DownloaderMetadata
+}
+
+// VideoPipelinePort is the port for downloading + cutting YouTube video segments.
+// PR5 Phase 3 (June 2026): canonically defined in ports/.
+type VideoPipelinePort interface {
+	DownloadAndCutYouTubeVideo(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error)
+}
+
 // SearchLiveResult is the per-video result row returned by YouTube search.
 type SearchLiveResult struct {
 	ID        string  `json:"id"`

@@ -1,24 +1,24 @@
-package youtube
+package extraction
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 
 	"go.uber.org/zap"
 )
 
 // tryOllamaSegmentAnalysis sends the transcript to Ollama and returns segments.
-// Returns nil if Ollama is unavailable, times out, or returns invalid data.
-func (s *Service) tryOllamaSegmentAnalysis(ctx context.Context, timedEntries []timedEntry, videoURL, videoID string, maxSegments int) []Segment {
-	if s.ollama == nil {
+func (s *Service) tryOllamaSegmentAnalysis(ctx context.Context, timedEntries []timedEntry, videoURL, videoID string, maxSegments int) []youtubetypes.Segment {
+	if s.callbacks == nil {
 		return nil
 	}
-	// Build timestamped transcript for Ollama (limit to first 8000 chars to prevent overflow)
+
+	// Build timestamped transcript
 	var transcriptParts []string
 	totalChars := 0
 	for _, e := range timedEntries {
@@ -68,14 +68,13 @@ Format:
 		zap.String("model", model),
 		zap.Int("transcript_chars", len(transcript)))
 
-	select {
-	case s.ollamaSem <- struct{}{}:
-		defer func() { <-s.ollamaSem }()
-	case <-ctx.Done():
+	release := s.callbacks.AcquireOllamaSem(ctx)
+	if release == nil {
 		return nil
 	}
+	defer release()
 
-	responseStr, err := s.ollama.SimpleGenerate(ctx, model, prompt, 60*time.Second, map[string]any{"format": "json"})
+	responseStr, err := s.callbacks.OllamaSimpleGenerate(ctx, model, prompt, 60, map[string]any{"format": "json"})
 	if err != nil {
 		s.log.Warn("Ollama call failed for segment analysis", zap.Error(err))
 		return nil
@@ -112,11 +111,9 @@ Format:
 		zap.String("url", videoURL),
 		zap.Int("segments", len(ollamaSegments)))
 
-	// Minimum segment duration: 10 seconds — clips shorter than this are too
-	// brief to be useful (3s clips don't convey enough context).
-	const minSegmentDuration = 10
+	const minOllamaSegmentDuration = 10
 
-	var result []Segment
+	var result []youtubetypes.Segment
 	for _, seg := range ollamaSegments {
 		startSec, err1 := textutil.ParseTimestamp(seg.Start)
 		endSec, err2 := textutil.ParseTimestamp(seg.End)
@@ -128,12 +125,11 @@ Format:
 			continue
 		}
 		duration := endSec - startSec
-		// Enforce minimum duration — skip very short clips
-		if duration < minSegmentDuration {
+		if duration < minOllamaSegmentDuration {
 			s.log.Debug("skipping segment shorter than minimum duration",
 				zap.String("name", seg.Name),
 				zap.Int("duration_sec", duration),
-				zap.Int("min_required", minSegmentDuration))
+				zap.Int("min_required", minOllamaSegmentDuration))
 			continue
 		}
 		if duration > 60 {
@@ -142,7 +138,7 @@ Format:
 		if isLowValueSegmentName(seg.Name) {
 			continue
 		}
-		result = append(result, Segment{
+		result = append(result, youtubetypes.Segment{
 			Name:  seg.Name,
 			Start: fmt.Sprintf("%d", startSec),
 			End:   fmt.Sprintf("%d", endSec),
@@ -158,9 +154,8 @@ Format:
 	return result
 }
 
-// splitTimedEntriesByTime splits timedEntries into numSections time-based groups.
-// Each section contains entries whose time range falls within that section's bounds.
-// Used for videos longer than 30 min so each third is analyzed independently.
+// ── Heuristic fallback ───────────────────────────────────────────────────
+
 func splitTimedEntriesByTime(entries []timedEntry, numSections int) [][]timedEntry {
 	if len(entries) == 0 || numSections <= 1 {
 		return [][]timedEntry{entries}
@@ -175,7 +170,6 @@ func splitTimedEntriesByTime(entries []timedEntry, numSections int) [][]timedEnt
 	}
 
 	for _, entry := range entries {
-		// Determine which section this entry belongs to based on its start time
 		sectionIdx := int(entry.start / sectionDuration)
 		if sectionIdx >= numSections {
 			sectionIdx = numSections - 1
@@ -189,10 +183,7 @@ func splitTimedEntriesByTime(entries []timedEntry, numSections int) [][]timedEnt
 	return sections
 }
 
-// generateHeuristicSegments creates evenly-spaced segments from subtitle timing
-// when Ollama-based analysis is unavailable. Used as fallback so videos with
-// subtitles always get segments even when Ollama is overloaded or times out.
-func generateHeuristicSegments(timedEntries []timedEntry, maxCount int) []Segment {
+func generateHeuristicSegments(timedEntries []timedEntry, maxCount int) []youtubetypes.Segment {
 	if len(timedEntries) < 5 || maxCount <= 0 {
 		return nil
 	}
@@ -203,8 +194,7 @@ func generateHeuristicSegments(timedEntries []timedEntry, maxCount int) []Segmen
 	}
 
 	if totalDuration < 30 {
-		// Too short for multiple segments, return a single segment
-		return []Segment{{
+		return []youtubetypes.Segment{{
 			Name:  timedEntries[0].text,
 			Start: "0",
 			End:   fmt.Sprintf("%d", int(totalDuration)),
@@ -220,17 +210,15 @@ func generateHeuristicSegments(timedEntries []timedEntry, maxCount int) []Segmen
 		}
 	}
 
-	var result []Segment
+	var result []youtubetypes.Segment
 	for i := 0; i < maxCount; i++ {
 		start := float64(i) * segmentDuration
 		end := start + segmentDuration
 
-		// Last segment goes to the actual end
 		if i == maxCount-1 {
 			end = totalDuration
 		}
 
-		// Ensure segment is 20-60 seconds
 		segLen := end - start
 		if segLen < 20 {
 			end = start + 20
@@ -255,7 +243,6 @@ func generateHeuristicSegments(timedEntries []timedEntry, maxCount int) []Segmen
 			}
 		}
 
-		// Find a descriptive name from nearby subtitle text
 		name := fmt.Sprintf("Part %d", i+1)
 		for _, e := range timedEntries {
 			if e.start >= start && e.text != "" {
@@ -272,7 +259,7 @@ func generateHeuristicSegments(timedEntries []timedEntry, maxCount int) []Segmen
 			}
 		}
 
-		result = append(result, Segment{
+		result = append(result, youtubetypes.Segment{
 			Name:  name,
 			Start: fmt.Sprintf("%d", int(start)),
 			End:   fmt.Sprintf("%d", int(end)),
@@ -282,11 +269,13 @@ func generateHeuristicSegments(timedEntries []timedEntry, maxCount int) []Segmen
 	return result
 }
 
-func filterLowValueSegments(segments []Segment) []Segment {
+// ── Low-value filter ─────────────────────────────────────────────────────
+
+func filterLowValueSegments(segments []youtubetypes.Segment) []youtubetypes.Segment {
 	if len(segments) == 0 {
 		return segments
 	}
-	out := make([]Segment, 0, len(segments))
+	out := make([]youtubetypes.Segment, 0, len(segments))
 	for _, seg := range segments {
 		if isLowValueSegmentName(seg.Name) {
 			continue
@@ -309,7 +298,6 @@ func isLowValueSegmentName(name string) bool {
 		"trailer", "preview", "preview of", "teaser",
 	}
 
-	// Allow segments prefixed with "INTRO:" (deliberate short punchy clips)
 	if strings.HasPrefix(sample, "intro:") {
 		return false
 	}

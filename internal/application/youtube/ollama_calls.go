@@ -1,122 +1,24 @@
 package youtube
 
 import (
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
-	"encoding/json"
-	"fmt"
-	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
-	"go.uber.org/zap"
 )
 
-// clipRichMetadata is a zero-copy alias to the canonical type in youtube/types/.
-// Extracted during PR3 Phase 2 (June 2026) per AGENTS.md Pattern 5.
-type clipRichMetadata = types.ClipRichMetadata
-
 // generateClipMetadata generates rich metadata for a clip using Ollama.
-// Returns clip_summary, topics, speakers, mentioned_people, source_tags,
-// clip_tags, search_keywords, hook, clean_title, short_title.
-func (s *Service) generateClipMetadata(ctx context.Context, title, transcript, description string) *clipRichMetadata {
-	if s.ollama == nil {
+// Delegates to the metadata capability service (PR5 Phase 1).
+func (s *Service) generateClipMetadata(ctx context.Context, title, transcript, description string) *types.ClipRichMetadata {
+	if s.metadata == nil {
 		return nil
 	}
-	model := s.metadataMetadataModel()
-
-	// Truncate inputs for the prompt
-	if len(transcript) > 3000 {
-		transcript = transcript[:3000]
-	}
-
-	prompt := fmt.Sprintf(`You are an assistant that generates rich metadata for a YouTube clip.
-Analyze only the clip transcript below. Do not invent events from the description.
-Use the title only as lightweight context for names/entities.
-
-Title: %s
-Transcript: %s
-
-Return only JSON with these fields:
-{
-  "clip_summary": "2-3 sentence summary of the actual clip",
-  "topics": ["concept 1", "concept 2"],
-  "speakers": ["primary speaker", "host"],
-  "mentioned_people": ["person mentioned", "another person"],
-  "source_tags": ["show/channel tags tied to source"],
-  "clip_tags": ["clip-specific concepts"],
-  "search_keywords": ["short keyword phrases from the clip"],
-  "hook": "the strongest spoken line from the clip",
-  "clean_title": "specific clip title, not the whole video",
-  "short_title": "short searchable title",
-  "quality_score": 0.0
+	return s.metadata.GenerateClipMetadata(ctx, title, transcript, description)
 }
 
-Rules:
-- clip_summary must be faithful to the transcript only
-- topics must be concepts or themes, not filler words
-- speakers are the people actually speaking in the clip when inferable; clearly distinguish the main host/presenter from any guests or interviewees
-- mentioned_people are people named in the clip, distinct from speakers
-- source_tags should describe the show/channel/source, not the clip moment
-- clip_tags should describe the specific moment or topic of the clip
-- search_keywords should be short phrases actually useful for search
-- hook should be the strongest line actually spoken in the clip
-- clean_title should describe the clip-specific moment, not the whole video
-- short_title should be concise and searchable
-- quality_score must reflect narrative value, clarity, hook strength, completeness, and usefulness for search
-- use a score from 0.0 to 1.0; strong clips should be 0.7+ and weak or incomplete clips should be below 0.5
-- if the clip is short, incomplete, or low-signal, reduce specificity and quality
-- Return ONLY the JSON object, no explanation`, title, transcript)
-
-	s.log.Info("calling Ollama for clip metadata generation",
-		zap.String("model", model),
-		zap.Int("transcript_chars", len(transcript)))
-
-	response, err := s.ollama.SimpleGenerate(ctx, model, prompt, 60*time.Second, nil)
-	if err != nil {
-		s.log.Warn("Ollama call failed for clip metadata", zap.Error(err))
-		return nil
-	}
-
-	s.log.Info("Ollama returned metadata response",
-		zap.Int("response_chars", len(response)))
-
-	// Parse JSON response
-	response = strings.TrimSpace(response)
-	if response == "" {
-		return nil
-	}
-
-	// Try to extract JSON from response (might be wrapped in markdown)
-	start := strings.Index(response, "{")
-	end := strings.LastIndex(response, "}")
-	if start == -1 || end == -1 || end <= start {
-		s.log.Warn("invalid JSON in ollama response for clip metadata")
-		return nil
-	}
-	jsonStr := response[start : end+1]
-
-	var result clipRichMetadata
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		s.log.Warn("failed to parse ollama JSON response for clip metadata", zap.Error(err))
-		return tagutil.FallbackClipRichMetadata(title, transcript, description)
-	}
-
-	normalized := tagutil.NormalizeClipRichMetadata(&result, title, transcript, description)
-	return normalized
-}
-
-// metadataMetadataModel returns the model to use for metadata generation (tags, clip metadata).
+// metadataMetadataModel returns the model to use for metadata generation.
 func (s *Service) metadataMetadataModel() string {
 	if s == nil || s.cfg == nil {
 		return "gemma4:e2b"
 	}
-	model := strings.TrimSpace(s.cfg.External.OllamaMetadataModel)
-	if model == "" {
-		model = strings.TrimSpace(s.cfg.External.OllamaModel)
-	}
-	if model == "" {
-		model = "gemma4:e2b"
-	}
-	return model
+	return s.cfg.External.OllamaMetadataModel
 }

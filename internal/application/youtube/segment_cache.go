@@ -8,11 +8,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// checkExistingClip implements the cache strategy policy for segment
-// extraction. Returns true when the existing DB record (and on-disk file)
-// matches expectations and the caller should skip the cut/download steps.
-// Returns false when the strategy is "replace" or when the existing
-// record is stale (file missing or path mismatch).
+// checkExistingClip implements the cache strategy policy for segment extraction.
+// Returns true when the existing DB record (and on-disk file) matches and the
+// caller should skip the cut/download steps.
 func (s *Service) checkExistingClip(ctx context.Context, req *ExtractRequest, clipID string, item *ExtractItem, outDir string) bool {
 	if req.Strategy == "replace" || s.clips == nil {
 		return false

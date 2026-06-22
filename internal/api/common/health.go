@@ -25,6 +25,78 @@ func NewHealthHandler(cfg *config.Config) *HealthHandler {
 	return &HealthHandler{cfg: cfg}
 }
 
+// Ready godoc
+// @Summary Readiness check
+// @Description Verifies critical dependencies: database accessibility, migrations applied, config validity.
+// @Tags health
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]any
+// @Failure 503 {object} map[string]any
+// @Router /ready [get]
+func (h *HealthHandler) Ready(c *gin.Context) {
+	if h.cfg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not ready",
+			"ok":     false,
+			"reason": "configuration not initialized",
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	checks := gin.H{}
+	allReady := true
+
+	// 1. Database accessibility
+	dbPath := filepath.Join(h.cfg.Storage.DataDir, "media/media.db.sqlite")
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=2000"
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		checks["database"] = gin.H{"ready": false, "error": "cannot open database"}
+		allReady = false
+	} else {
+		defer db.Close()
+		if err := db.PingContext(ctx); err != nil {
+			checks["database"] = gin.H{"ready": false, "error": "database unreachable"}
+			allReady = false
+		} else {
+			// Verify migrations table exists
+			var count int
+			if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='media_assets'").Scan(&count); err != nil || count == 0 {
+				checks["database"] = gin.H{"ready": false, "error": "migrations may not be applied"}
+				allReady = false
+			} else {
+				checks["database"] = gin.H{"ready": true}
+			}
+		}
+	}
+
+	// 2. Config validity (basic)
+	if h.cfg.Storage.DataDir == "" {
+		checks["config"] = gin.H{"ready": false, "error": "data directory not configured"}
+		allReady = false
+	} else {
+		checks["config"] = gin.H{"ready": true}
+	}
+
+	if allReady {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ready",
+			"ok":      true,
+			"checks":  checks,
+		})
+	} else {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not ready",
+			"ok":     false,
+			"checks": checks,
+		})
+	}
+}
+
 // Health godoc
 // @Summary Health check
 // @Description Check if the server is healthy (fast lightweight check)
