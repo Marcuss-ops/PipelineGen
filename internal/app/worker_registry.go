@@ -14,18 +14,24 @@ import (
 // adapted so that worker.Tools is translated into appjobs.JobTools.
 // The returned capability slice is derived from the registry itself — it is
 // the single source of truth for what this worker can execute.
+//
+// Returns worker.ErrNoHandlers if the Dispatcher has zero registered
+// handlers, preventing the remote worker from starting with an empty
+// registry that would silently claim every job.
 func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) {
 	if root == nil || root.Jobs == nil || root.Jobs.Dispatcher == nil {
 		return nil, nil, fmt.Errorf("compose root or jobs dispatcher is nil")
 	}
 	reg := worker.NewRegistry()
-	var caps []string
 	for jobType, h := range root.Jobs.Dispatcher.AllHandlers() {
 		if err := reg.Register(jobType, adaptHandler(h)); err != nil {
 			return nil, nil, fmt.Errorf("register handler for %s: %w", jobType, err)
 		}
-		caps = append(caps, jobType)
 	}
+	if reg.Len() == 0 {
+		return nil, nil, worker.ErrNoHandlers
+	}
+	caps := reg.JobTypes()
 	return reg, caps, nil
 }
 

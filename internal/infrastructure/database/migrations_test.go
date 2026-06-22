@@ -689,3 +689,135 @@ CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(type);
 
 	return tmpDir
 }
+
+func TestRunMigration068MediaAssetsDimensions(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "migration-068-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Pre-068 schema: media_assets without width, height, group_name.
+	const pre068Schema = `
+		CREATE TABLE IF NOT EXISTS media_assets (
+		    id TEXT PRIMARY KEY,
+		    source TEXT NOT NULL DEFAULT '',
+		    name TEXT NOT NULL DEFAULT '',
+		    tags TEXT NOT NULL DEFAULT '[]',
+		    tags_norm TEXT NOT NULL DEFAULT '',
+		    embedding_json TEXT NOT NULL DEFAULT '[]',
+		    duration_ms INTEGER NOT NULL DEFAULT 0,
+		    url TEXT NOT NULL DEFAULT '',
+		    created_at TEXT,
+		    metadata_json TEXT NOT NULL DEFAULT '{}',
+		    drive_folder_id TEXT,
+		    media_type TEXT,
+		    status TEXT,
+		    local_path TEXT,
+		    relative_path TEXT,
+		    drive_file_id TEXT,
+		    drive_link TEXT,
+		    download_link TEXT,
+		    file_hash TEXT,
+		    visual_embedding TEXT,
+		    transcript_embedding TEXT,
+		    updated_at TEXT,
+		    lifecycle_state TEXT NOT NULL DEFAULT 'ready',
+		    deleted_at TEXT NOT NULL DEFAULT '',
+		    folder_id TEXT NOT NULL DEFAULT '',
+		    parent_folder_id TEXT NOT NULL DEFAULT '',
+		    folder_path TEXT NOT NULL DEFAULT '',
+		    category TEXT NOT NULL DEFAULT '',
+		    filename TEXT NOT NULL DEFAULT '',
+		    error TEXT NOT NULL DEFAULT '',
+		    thumb_url TEXT NOT NULL DEFAULT '',
+		    phash TEXT NOT NULL DEFAULT '',
+		    search_text TEXT NOT NULL DEFAULT '',
+		    scene_type TEXT NOT NULL DEFAULT '',
+		    quality_score REAL NOT NULL DEFAULT 0.0,
+		    reuse_count INTEGER NOT NULL DEFAULT 0,
+		    last_used_at TEXT NOT NULL DEFAULT ''
+		);
+	`
+
+	migration068, err := os.ReadFile("../../../migrations/sqlite/068_add_media_assets_width_height.sql")
+	require.NoError(t, err, "migration 068 file must exist")
+
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tmpDir, "068_add_media_assets_width_height.sql"),
+		migration068, 0644,
+	))
+
+	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+
+	// Case B: Apply pre-068 schema, seed rows, then apply 068.
+	_, err = db.Exec(pre068Schema)
+	require.NoError(t, err)
+
+	// Seed a legacy row (no width/height/group_name).
+	_, err = db.Exec(`
+		INSERT INTO media_assets (id, source, name)
+		VALUES ('legacy_001', 'youtube', 'Legacy Clip')
+	`)
+	require.NoError(t, err)
+
+	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
+	require.NoError(t, sdb.RunMigrations(zap.NewNop(), tmpDir),
+		"RunMigrations should apply 068 over the pre-seeded schema")
+
+	// Verify: all three columns exist.
+	for _, col := range []string{"width", "height", "group_name"} {
+		var cnt int
+		require.NoError(t, db.QueryRow(
+			"SELECT COUNT(*) FROM pragma_table_info('media_assets') WHERE name = ?", col,
+		).Scan(&cnt), "pragma_table_info for %s", col)
+		assert.Equal(t, 1, cnt, "column %q must exist after migration 068", col)
+	}
+
+	// Verify: defaults on existing row.
+	var width, height int
+	var groupName string
+	require.NoError(t, db.QueryRow(
+		"SELECT width, height, group_name FROM media_assets WHERE id = 'legacy_001'",
+	).Scan(&width, &height, &groupName))
+	assert.Equal(t, 0, width, "width default must be 0")
+	assert.Equal(t, 0, height, "height default must be 0")
+	assert.Equal(t, "", groupName, "group_name default must be empty")
+
+	// Verify: new insert succeeds without specifying dimensions.
+	_, err = db.Exec(`
+		INSERT INTO media_assets (id, source, name) VALUES ('new_001', 'artlist', 'New Clip')
+	`)
+	require.NoError(t, err, "insert after 068 must succeed without width/height/group_name")
+
+	// Verify: insert with explicit dimensions succeeds.
+	_, err = db.Exec(`
+		INSERT INTO media_assets (id, source, name, width, height, group_name)
+		VALUES ('explicit_001', 'artlist', 'Explicit Clip', 1920, 1080, 'summer')
+	`)
+	require.NoError(t, err)
+
+	// Verify: PRAGMA integrity_check.
+	var integrity string
+	require.NoError(t, db.QueryRow("PRAGMA integrity_check").Scan(&integrity))
+	assert.Equal(t, "ok", integrity)
+
+	// Case C: Re-run migrations — should be idempotent.
+	require.NoError(t, sdb.RunMigrations(zap.NewNop(), tmpDir),
+		"RunMigrations must be idempotent after 068")
+
+	// Verify: row counts unchanged.
+	var count int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM media_assets").Scan(&count))
+	assert.Equal(t, 3, count, "row count must not change on re-run")
+
+	// Case E: Unicode group_name survives migration.
+	_, err = db.Exec(`
+		INSERT INTO media_assets (id, source, name, group_name)
+		VALUES ('unicode_001', 'artlist', 'Unicode Clip', 'estate italiano 🇮🇹')
+	`)
+	require.NoError(t, err)
+	var fetchedGroup string
+	require.NoError(t, db.QueryRow(
+		"SELECT group_name FROM media_assets WHERE id = 'unicode_001'",
+	).Scan(&fetchedGroup))
+	assert.Equal(t, "estate italiano 🇮🇹", fetchedGroup)
+}
