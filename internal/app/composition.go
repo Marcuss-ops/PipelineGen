@@ -39,7 +39,7 @@ import (
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"

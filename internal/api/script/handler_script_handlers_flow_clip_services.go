@@ -3,7 +3,7 @@ package script
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"

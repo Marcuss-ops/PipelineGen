@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"go.uber.org/zap"
