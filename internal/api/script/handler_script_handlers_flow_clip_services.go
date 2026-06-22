@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"

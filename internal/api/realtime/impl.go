@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
+	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
 )
 
 // RealtimeMatcher is the interface for real-time asset matching.
