@@ -41,7 +41,7 @@ services:
       - qdrant
       - artlist-scraper
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro
@@ -55,6 +55,7 @@ services:
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
     env_file:
       - ./secrets/pipelinegen.env
+    command: ["--mode", "all", "--config", "/etc/pipelinegen/config.yaml"]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
       interval: 15s
@@ -74,7 +75,10 @@ services:
         COMMIT:  unknown
     image: pipelinegen-worker:latest
     container_name: pipelinegen-worker
-    restart: unless-stopped
+    # restart: unless-stopped disabled — worker registration endpoint
+    # (/api/workers/register) is not yet wired in the composition root.
+    # The server (--mode all) handles all jobs directly.
+    restart: "no"
     depends_on:
       pipelinegen-server:
         condition: service_healthy
@@ -84,7 +88,6 @@ services:
       - ./secrets/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
     environment:
       VELOX_MASTER_URL: "http://pipelinegen-server:8080"
-      VELOX_WORKER_TOKEN: "${VELOX_WORKER_TOKEN:-}"
       VELOX_LOG_LEVEL: "info"
       VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"

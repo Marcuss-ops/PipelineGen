@@ -79,18 +79,9 @@ domain_asset:
     - internal/core/processor
     - internal/core/scoring
 
-# Canonical contract ports — these are MANDATORY per AGENTS.md, used by adapters
-# in internal/infrastructure/* and consumed by internal/application/*. Live at
-# internal/core today; will land in internal/domain/asset during Wave 4C.
-domain_core_ports:
-  owner: internal/core/{destination,processor,embedding,audio}
-  rationale: "AGENTS.md mandates all modules use the canonical contracts via adapters: core/destination.Resolver, core/processor.Processor, core/embedding.EmbeddingPort, core/audio.AudioPort."
-  port_files:
-    - internal/core/destination
-    - internal/core/processor
-    - internal/core/embedding
-    - internal/core/audio
-  migration_target: "internal/domain/asset (Wave 4C) — these ports become embedded fields of the asset domain"
+# STATUS: HISTORICAL — Wave 4C completed (June 2026). Core ports now live in
+# internal/domain/asset/. This section kept for audit trail only.
+# domain_core_ports (REMOVED — internal/core/ no longer exists)
 
 # ── Application (use cases) ──────────────────────────────────────────────────application_jobs:
   owner: internal/application/jobs

@@ -180,3 +180,9 @@ local.env
 
 # Gemini CLI workspace metadata (local-only)
 .zai/
+
+# Archcheck binary (built locally by scripts/archcheck/)
+archcheck
+
+# Docker secrets (never commit tokens)
+secrets/

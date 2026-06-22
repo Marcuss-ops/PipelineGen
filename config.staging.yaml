@@ -1,0 +1,154 @@
+server:
+  host: "127.0.0.1"
+  # Port is configurable via VELOX_PORT env var at runtime; the yaml
+  # default stays 8080 to match Client defaults in pkg/veloxclient,
+  # scripts/velox_client.py and Makefile `doctor`/`artlist` targets.
+  port: 8080
+  gin_mode: "release"
+
+logging:
+  level: "info"
+  format: "json"
+
+storage:
+  data_dir: "./data"
+  temp_dir: "tmp"
+
+security:
+  # CRITICAL (Operational Readiness PR, June 2026):
+  # PipelineGen refuses to start when admin_token or worker_token equal
+  # the literals below. Set via env vars (VELOX_ADMIN_TOKEN /
+  # VELOX_WORKER_TOKEN) or edit this file before booting. See
+  # internal/infrastructure/config/config.go::Config.Validate() for
+  # the exact check.
+  enable_auth: true
+  admin_token: "YOUR_SECURE_TOKEN_HERE"  # REPLACE before boot or set VELOX_ADMIN_TOKEN env var
+  worker_token: "YOUR_WORKER_TOKEN_HERE"  # REPLACE before boot or set VELOX_WORKER_TOKEN env var
+  # CORS origins - leave empty to block all cross-origin requests
+  cors_origins: []
+  rate_limit_enabled: true
+  rate_limit_requests: 100
+  # Download host whitelist - REQUIRED for security
+  # Only hosts in this list can be used for downloads
+  allowed_download_hosts:
+    - "youtube.com"
+    - "www.youtube.com"
+    - "youtu.be"
+    - "artlist.com"
+    - "www.artlist.com"
+    - "artlist.io"
+    - "cdn.artlist.io"
+
+external:
+  ollama_url: "http://localhost:11434"
+  ollama_model: "gemma4:e4b"
+  ollama_timeout_seconds: 120
+  ytdlp_path: "yt-dlp"
+  ffmpeg_path: "ffmpeg"
+  nvidia_api_key: ""
+  nvidia_model: "stabilityai/sdxl-turbo"
+  nvidia_local_nim_url: "http://localhost:8000/v1/infer"
+  pixabay_api_key: ""
+  pixabay_base_url: "https://pixabay.com/api"
+  pexels_api_key: ""
+  pexels_base_url: "https://api.pexels.com/v1"
+  # Artlist scraper optimizations
+  artlist_live_search_cache_ttl_hours: 24    # Level 1: in-memory cache TTL (0=disabled)
+  artlist_scraper_server_url: ""             # Level 3: set to "http://localhost:9123" when server is running
+
+paths:
+  python_scripts_dir: "scripts"
+  credentials_file: "credentials.json"
+  token_file: "token.json"
+
+drive:
+  stock_root_folder: ""
+  clips_root_folder: ""
+  voiceover_root_folder: ""
+  artlist_root_folder: ""
+  images_root_folder: ""
+  books_root_folder: ""
+  scripts_root_folder: ""
+  video_ai_root_folder: ""
+  copertine_root_folder: ""
+  sound_effects_root_folder: ""
+  outro_root_folder: "1MB9pTRjvHUdMXUtGOMBcvgRc-MZG2rA4"
+
+video:
+  width: 1280
+  height: 720
+  fps: 24
+  codec: "libx264"
+  preset: "veryfast"
+  crf: 26
+  duration: 7
+  keyframe_interval: 60
+  audio_codec: "aac"
+  audio_bitrate: "128k"
+  clip_duration: 5
+  chunk_duration: 25
+  max_clips_per_source: 30
+  search_count: 25
+  overlay_opacity: 0.25
+  effect_interval: 4
+  transition_presets:
+    - "fade"
+    - "fadeblack"
+    - "fadewhite"
+    - "slideleft"
+    - "slideright"
+    - "slideup"
+    - "slidedown"
+    - "circleclose"
+    - "circleopen"
+    - "horzclose"
+    - "horzopen"
+    - "vertclose"
+    - "vertopen"
+    - "dissolve"
+    - "pixelize"
+    - "wipeleft"
+    - "wiperight"
+    - "wipeup"
+    - "wipedown"
+    - "smoothleft"
+    - "smoothright"
+    - "smoothup"
+    - "smoothdown"
+    - "radial"
+    - "hblur"
+    - "fadegrays"
+    - "squeezeh"
+    - "squeezev"
+
+jobs:
+  catalog_sync_interval: "6h"
+  maintenance_interval: "24h"
+  backup_interval: "6h"
+  indexing_interval: "15m"
+
+scripts:
+  # Concurrency caps for /api/script/generate-batch phases
+  batch_web_search_concurrency: 4     # Parallel SearXNG searches (1-16)
+  batch_chapter_concurrency: 3        # Parallel Ollama chapter generations (1-10)
+
+features:
+  # Stable modules - enable as needed
+  artlist_enabled: false
+  youtube_enabled: false
+  drive_enabled: false
+  # Experimental modules - default to false
+  script_docs_enabled: false
+  script_clips_enabled: false
+  stock_pipeline_enabled: false
+  google_accounting_enabled: false
+  images_enabled: false
+  workflow_enabled: false
+
+google_accounting:
+  enabled: false
+  server_url: "http://localhost:8000"
+  download_dir: "./data/google_vids"
+  sessions_path: "./google-accounting/sessions"
+  schedule_cron: "0 2 * * *"
+delivery_hmac_secret: "staging-hmac-secret-at-least-32-bytes-long!!"

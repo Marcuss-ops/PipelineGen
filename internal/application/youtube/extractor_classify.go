@@ -2,34 +2,31 @@ package youtube
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/classifier"
 )
 
-// youtubeCategoryCache implements classifier.CategoryCache backed by SQLite.
+// youtubeCategoryCache implements classifier.CategoryCache backed by the cache service.
 type youtubeCategoryCache struct {
 	svc *Service
 }
 
 func (c *youtubeCategoryCache) Get(ctx context.Context, title string) (string, bool) {
-	if c.svc.clips == nil || c.svc.clips.DB() == nil {
+	if c.svc.cache == nil {
 		return "", false
 	}
-	var category string
-	err := c.svc.clips.DB().QueryRowContext(ctx, "SELECT category FROM youtube_category_cache WHERE video_title = ?", title).Scan(&category)
-	if err == nil {
-		return category, true
-	}
-	return "", false
+	return c.svc.cache.GetCategory(ctx, title)
 }
 
 func (c *youtubeCategoryCache) Set(ctx context.Context, title, category string) error {
-	if c.svc.clips == nil || c.svc.clips.DB() == nil {
-		return fmt.Errorf("clipsRepo not initialized")
+	// Best-effort: category cache is a performance optimization, not a correctness
+	// requirement. Nil cache service means the classification won't be persisted,
+	// but the caller still receives the category result for immediate use.
+	if c.svc.cache == nil {
+		return nil
 	}
-	_, err := c.svc.clips.DB().ExecContext(ctx, "INSERT OR REPLACE INTO youtube_category_cache (video_title, category, cached_at) VALUES (?, ?, datetime('now'))", title, category)
-	return err
+	c.svc.cache.SetCategory(ctx, title, category)
+	return nil
 }
 
 // classifyCategory classifies the video title using the shared classifier with SQLite cache.

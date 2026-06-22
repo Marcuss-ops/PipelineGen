@@ -1,42 +1,42 @@
-package youtube
+package extraction
 
 import (
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	segments "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/segments"
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// Compile-time check: keep the package boundary minimal.
-var _ = (&Service{}).checkExistingClip
+// MaxSegmentDuration is the maximum allowed duration for a single clip segment (60 seconds)
+const MaxSegmentDuration = 60
 
 // processSegment processes a single segment: validates timestamps, checks cache,
-// downloads via video pipeline (or cuts from pre-downloaded file), runs lifecycle,
-// and enriches with YouTube metadata.
+// downloads via video pipeline, runs lifecycle, and enriches with YouTube metadata.
 func (s *Service) processSegment(
 	ctx context.Context,
-	seg Segment,
-	req *ExtractRequest,
-	resp *ExtractResponse,
+	seg youtubetypes.Segment,
+	req *youtubetypes.ExtractRequest,
+	resp *youtubetypes.ExtractResponse,
 	videoID string,
 	driveFolderID string,
 	resolvedPath string,
 	folderSlug string,
 	i int,
 	preDownloadedPath string,
-) ExtractItem {
-	item := ExtractItem{
+) youtubetypes.ExtractItem {
+	item := youtubetypes.ExtractItem{
 		Name:            tagutil.CleanClipName(textutil.SafeName(seg.Name)),
 		Start:           strings.TrimSpace(seg.Start),
 		End:             strings.TrimSpace(seg.End),
@@ -50,11 +50,11 @@ func (s *Service) processSegment(
 	}
 	item.Filename = item.Name + ".mp4"
 
-	if err := segments.SanitizeTimestamp(item.Start); err != nil {
+	if err := s.segmentsSvc.SanitizeTimestamp(item.Start); err != nil {
 		item.Error = "invalid start timestamp: " + err.Error()
 		return item
 	}
-	if err := segments.SanitizeTimestamp(item.End); err != nil {
+	if err := s.segmentsSvc.SanitizeTimestamp(item.End); err != nil {
 		item.Error = "invalid end timestamp: " + err.Error()
 		return item
 	}
@@ -83,7 +83,7 @@ func (s *Service) processSegment(
 		return item
 	}
 
-	item.Filename = segments.BuildClipFilename(videoID, startSec, endSec, item.Name)
+	item.Filename = s.segmentsSvc.BuildClipFilename(videoID, startSec, endSec, item.Name)
 	item.Status = "running"
 	clipID := item.ID
 
@@ -100,8 +100,8 @@ func (s *Service) processSegment(
 	}
 	outDir := filepath.Join(s.cfg.Storage.DataDir, "media", "clips", group, folderSlug)
 
-	if s.checkExistingClip(ctx, req, clipID, &item, outDir) {
-		s.enrichSkippedClip(ctx, clipID, req.URL, videoID)
+	if s.callbacks.CheckExistingClip(ctx, req, clipID, &item, outDir) {
+		s.callbacks.EnrichSkippedClip(ctx, clipID, req.URL, videoID)
 		return item
 	}
 
@@ -111,12 +111,9 @@ func (s *Service) processSegment(
 		zap.Int("duration_sec", duration))
 
 	shouldNormalize := req.Normalize == nil || *req.Normalize
-	keepAudio := true
-	if req.KeepAudio {
-		keepAudio = true
-	}
+	keepAudio := req.KeepAudio
 
-	cutReq := VideoCutRequest{
+	cutReq := youtubeports.VideoCutRequest{
 		URL:               resp.SourceURL,
 		VideoID:           videoID,
 		Start:             float64(startSec),
@@ -130,15 +127,9 @@ func (s *Service) processSegment(
 		PreDownloadedPath: preDownloadedPath,
 	}
 
-	if s.assetProcessing != nil {
-		if err := s.assetProcessing.Start(ctx, clipID, "download_and_cut"); err != nil {
-			s.log.Warn("asset_processing.Start failed",
-				zap.String("clip_id", clipID),
-				zap.Error(err))
-		}
-	}
+	_ = s.callbacks.AssetProcessingStart(ctx, clipID, "download_and_cut")
 
-	var result *VideoCutResult
+	var result *youtubeports.VideoCutResult
 	err = retry.Do(ctx, func() error {
 		candidatePath := filepath.Join(outDir, item.Filename)
 		os.Remove(candidatePath)
@@ -151,13 +142,7 @@ func (s *Service) processSegment(
 		IsRetryable: tagutil.IsTransientDownloadError,
 	})
 	if err != nil {
-		if s.assetProcessing != nil {
-			if fErr := s.assetProcessing.Fail(ctx, clipID, "download_and_cut", err.Error()); fErr != nil {
-				s.log.Warn("asset_processing.Fail failed",
-					zap.String("clip_id", clipID),
-					zap.Error(fErr))
-			}
-		}
+		_ = s.callbacks.AssetProcessingFail(ctx, clipID, "download_and_cut", err.Error())
 		s.log.Warn("segment video pipeline failed after retries",
 			zap.String("clip_id", clipID),
 			zap.Error(err))
@@ -166,18 +151,12 @@ func (s *Service) processSegment(
 		return item
 	}
 
-	if s.assetProcessing != nil {
-		if err := s.assetProcessing.Complete(ctx, clipID, "download_and_cut"); err != nil {
-			s.log.Warn("asset_processing.Complete failed",
-				zap.String("clip_id", clipID),
-				zap.Error(err))
-		}
-	}
+	_ = s.callbacks.AssetProcessingComplete(ctx, clipID, "download_and_cut")
 
 	// Track asset version
-	if s.assetVersions != nil && result.LocalPath != "" {
-		versionHash := s.md5File(result.LocalPath)
-		fileSize := segments.FileSizeFromPath(result.LocalPath)
+	if result.LocalPath != "" {
+		versionHash := s.callbacks.MD5File(result.LocalPath)
+		fileSize := s.segmentsSvc.FileSizeFromPath(result.LocalPath)
 		if versionHash != "" {
 			v := &asset.Version{
 				AssetID:       clipID,
@@ -186,11 +165,7 @@ func (s *Service) processSegment(
 				MimeType:      "video/mp4",
 				MetadataJSON:  `{"pipeline":"youtube","source":"download_and_cut","createdBy":"youtube-pipeline"}`,
 			}
-			if verErr := s.assetVersions.Append(ctx, v); verErr != nil {
-				s.log.Warn("asset_versions.Append failed",
-					zap.String("clip_id", clipID),
-					zap.Error(verErr))
-			}
+			_ = s.callbacks.AssetVersionsAppend(ctx, v)
 		}
 	}
 
@@ -199,46 +174,48 @@ func (s *Service) processSegment(
 		zap.String("clip_id", clipID),
 		zap.String("local_path", localPath))
 
-	fileHash := s.md5File(localPath)
+	fileHash := s.callbacks.MD5File(localPath)
 	item.FileHash = fileHash
 	item.LocalPath = localPath
 	if localPath != "" {
 		item.Filename = filepath.Base(localPath)
 	}
 
-	// Try to slice official VTT subtitles first (absolute precision)
-	if err := s.sliceSubtitles(ctx, videoID, startSec, endSec, localPath); err != nil {
+	// Try to slice official VTT subtitles first
+	if err := s.callbacks.SliceSubtitles(ctx, videoID, startSec, endSec, localPath); err != nil {
 		s.log.Warn("Failed to slice official subtitles, falling back to Whisper", zap.String("clip_id", clipID), zap.Error(err))
 
-		// Whisper fallback — delegated to the port
-		if s.whisper != nil {
-			s.log.Info("Running Whisper transcription fallback", zap.String("clip_id", clipID))
-			transcript, wErr := s.whisper.TranscribeAudio(ctx, localPath)
-			if wErr == nil && transcript != "" {
-				txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
-				_ = os.WriteFile(txtPath, []byte(transcript), 0644)
-				s.log.Info("Successfully transcribed clip via Whisper fallback", zap.String("path", txtPath))
-			} else {
-				s.log.Warn("Whisper fallback transcription failed", zap.Error(wErr))
-			}
+		// Whisper fallback
+		transcript, wErr := s.callbacks.TranscribeAudio(ctx, localPath)
+		if wErr == nil && transcript != "" {
+			txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
+			_ = os.WriteFile(txtPath, []byte(transcript), 0644)
+			s.log.Info("Successfully transcribed clip via Whisper fallback", zap.String("path", txtPath))
 		} else {
-			s.log.Warn("Whisper fallback not available (port not wired)")
+			s.log.Warn("Whisper fallback transcription failed", zap.Error(wErr))
 		}
 	}
 
-	// Build lifecycle metadata (now enriched with YouTube video info if available)
+	// Build lifecycle metadata
 	folderPath := resolvedPath
 	if folderPath == "" && req.Destination != nil {
 		folderPath = req.Destination.FolderPath
 	}
-	metadata := segments.BuildClipMetadata(clipID, item.Name, localPath, videoID, item.Start, item.End,
-		startSec, endSec, duration, folderSlug, shouldNormalize, req.KeepAudio,
-		driveFolderID, folderPath, fileHash, group, result.Metadata, &seg)
+	metadata := s.segmentsSvc.BuildClipMetadata(segments.BuildClipMetadataInput{
+		ClipID: clipID, Name: item.Name, LocalPath: localPath, VideoID: videoID,
+		Start: item.Start, End: item.End,
+		StartSec: startSec, EndSec: endSec, Duration: duration,
+		FolderSlug: folderSlug,
+		ShouldNormalize: shouldNormalize, KeepAudio: req.KeepAudio,
+		DriveFolderID: driveFolderID, FolderPath: folderPath,
+		FileHash: fileHash, Group: group,
+		YouTubeMeta: result.Metadata, Segment: &seg,
+	})
 
 	s.log.Info("starting lifecycle processing for segment",
 		zap.String("clip_id", clipID),
 		zap.Bool("has_drive", driveFolderID != ""))
-	s.processLifecycle(ctx, metadata, localPath, fileHash, &item)
+	s.callbacks.ProcessLifecycle(ctx, metadata, localPath, fileHash, &item)
 	s.log.Info("segment lifecycle completed",
 		zap.String("clip_id", clipID),
 		zap.String("status", item.Status),
@@ -246,23 +223,17 @@ func (s *Service) processSegment(
 
 	s.log.Info("starting metadata enrichment for segment",
 		zap.String("clip_id", clipID))
-	s.enrichYouTubeClipWithMetadata(ctx, clipID, result, false)
+	s.callbacks.EnrichClip(ctx, clipID, result.Metadata, false)
 	s.log.Info("segment metadata enrichment completed",
 		zap.String("clip_id", clipID))
 
-	if s.indexer != nil {
-		s.log.Info("starting embedding indexing for segment",
+	if err := s.callbacks.IndexClip(ctx, clipID); err != nil {
+		s.log.Warn("failed to auto-index clip embeddings (non-fatal)",
+			zap.String("clip_id", clipID),
+			zap.Error(err))
+	} else {
+		s.log.Info("auto-indexed clip embeddings (semantic + transcript)",
 			zap.String("clip_id", clipID))
-		indexCtx, indexCancel := context.WithTimeout(ctx, 30*time.Second)
-		defer indexCancel()
-		if err := s.indexer.IndexClip(indexCtx, clipID); err != nil {
-			s.log.Warn("failed to auto-index clip embeddings (non-fatal)",
-				zap.String("clip_id", clipID),
-				zap.Error(err))
-		} else {
-			s.log.Info("auto-indexed clip embeddings (semantic + transcript)",
-				zap.String("clip_id", clipID))
-		}
 	}
 
 	s.log.Info("segment processing complete",
@@ -274,8 +245,10 @@ func (s *Service) processSegment(
 	return item
 }
 
-func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.FinalizeInput, localPath, fileHash string, item *ExtractItem) {
-	if s.lifecycleService == nil {
+// ProcessLifecycle runs the asset lifecycle on a processed clip.
+// Exported for use by the root service's callback implementation.
+func ProcessLifecycle(ctx context.Context, lifecycleSvc *lifecycle.Service, localPath, fileHash string, item *youtubetypes.ExtractItem, metadata *lifecycle.FinalizeInput) {
+	if lifecycleSvc == nil {
 		item.LocalPath = localPath
 		item.DriveLink = ""
 		item.DriveFileID = ""
@@ -284,7 +257,7 @@ func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.Fina
 		return
 	}
 
-	lifecycleResult, err := s.lifecycleService.ProcessAsset(ctx, metadata, fileHash)
+	lifecycleResult, err := lifecycleSvc.ProcessAsset(ctx, metadata, fileHash)
 	if err != nil {
 		item.Status = "failed"
 		item.Error = fmt.Sprintf("lifecycle failed: %v", err)
@@ -302,4 +275,3 @@ func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.Fina
 	item.DownloadLink = lifecycleResult.DownloadLink
 	item.Status = "processed"
 }
-
