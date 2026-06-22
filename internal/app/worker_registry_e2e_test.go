@@ -93,6 +93,17 @@ func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 	// (PR-B) which is stricter; this test focuses on path alignment
 	// so any non-empty Bearer is accepted.
 	engine := gin.New()
+	// Capture the actual URL the client hits. This middleware runs before
+	// the worker handler so observedRegisterPath reflects what gin's
+	// router saw, not a hardcoded constant. The previous implementation
+	// set observedRegisterPath = "/workers/register" inside the mock,
+	// which is the server-relative path GIN uses AFTER it strips the
+	// /internal/v1 prefix; that made the drift check tautologically
+	// fail on every successful round-trip.
+	engine.Use(func(c *gin.Context) {
+		observedRegisterPath = c.Request.URL.Path
+		c.Next()
+	})
 	internalGroup := engine.Group(internalV1Prefix)
 	internalGroup.Use(func(c *gin.Context) {
 		if c.GetHeader("Authorization") == "" {
@@ -182,7 +193,10 @@ func newMockBroker(t *testing.T) *mockBroker { return &mockBroker{t: t} }
 func (m *mockBroker) RegisterWorker(_ context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
 	m.mu.Lock()
 	m.registerCalled = true
-	observedRegisterPath = "/workers/register" // server-side path; client builds the full URL from this + baseURL
+	// observedRegisterPath is now set by the gin middleware in the
+	// test setup so it reflects the actual URL the client hit
+	// (e.g. "/internal/v1/workers/register"), not a server-side
+	// post-prefix path.
 	m.mu.Unlock()
 	// Mirror the canonical WorkerSession struct from
 	// internal/domain/job/worker.go. Field names are exact-match on the
