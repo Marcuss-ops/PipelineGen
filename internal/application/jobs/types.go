@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -24,6 +25,13 @@ import (
 // PR4.A2 (June 2026): removed the SQLiteStore/JobStats/ErrLeaseLost type
 // aliases (formerly this package's store.go). Callers now import
 // internal/infrastructure/database/sqlite/jobs directly as `sqljobs`.
+
+// Sentinel errors raised by Broker implementations and the in-process runner.
+// Workers use ErrNoWorkerCapabilities to fail closed when their advertised
+// job type list is empty — the W1 spec requires empty ≠ "all".
+var (
+	ErrNoWorkerCapabilities = errors.New("worker has no advertised capabilities")
+)
 
 // ── HTTP-layer DTOs ─────────────────────────────────────────────────────
 
