@@ -32,10 +32,16 @@ config.yaml
 # ============================================
 # Binaries
 # ============================================
+# These patterns are anchored to the repo root with a leading '/'.
+# Without the anchor, gitignore treats `worker` / `server` / `pipelinegen`
+# as matching any PATH COMPONENT named that way — which would recursively
+# exclude `cmd/worker/`, `cmd/server/`, etc., and all source files under
+# them, including new *_test.go (the W1 batch surfaced this regression).
+# Anchor it so only the root-level build artifact is ignored.
 pipelinegen
-server
+/server
 /admin
-worker
+/worker
 *.exe
 *.dll
 *.so
