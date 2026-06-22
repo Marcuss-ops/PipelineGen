@@ -22,6 +22,13 @@ func New(jobs domainjob.Store, workers *assets.WorkerNodesRepository) *Broker {
 }
 
 func (b *Broker) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
+	// W1 Phase 5: defense-in-depth on the registration side. Claim rejects
+	// empty caps (see below) but a worker with empty caps that registers
+	// successfully would still hold an active session and loop through
+	// Claim returning ErrNoWorkerCapabilities forever. Refuse at the gate.
+	if len(cmd.Capabilities.JobTypes) == 0 {
+		return nil, appjobs.ErrNoWorkerCapabilities
+	}
 	if b.workers == nil {
 		return nil, fmt.Errorf("worker repository not configured")
 	}
@@ -41,9 +48,13 @@ func (b *Broker) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.
 		return nil, err
 	}
 	// Remote workers with empty capabilities must not claim any jobs.
-	// This prevents an unconfigured worker from stealing work it cannot execute.
+	// The W1 spec (Phase 5) requires an explicit fail-closed: empty
+	// capabilities means "false", not "all". Returning ErrNoWorkerCapabilities
+	// makes the rejection loud at the broker layer; BuildWorkerRegistry +
+	// parseAndValidateCaps already prevent this state from being entered in
+	// the first place, but the broker defends in depth.
 	if len(cmd.Capabilities) == 0 {
-		return nil, nil
+		return nil, appjobs.ErrNoWorkerCapabilities
 	}
 	wait := time.Duration(cmd.WaitSeconds) * time.Second
 	if wait <= 0 {

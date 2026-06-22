@@ -35,6 +35,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -321,6 +322,12 @@ func parseAndValidateCaps(raw string, registeredTypes []string) (appjobs.WorkerC
 		return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES resolved to empty set")
 	}
 	caps.JobTypes = validated
+	// W1 spec: "final set sorted and non-empty". Without this sort the
+	// resulting slice would mirror input order, which would mask
+	// regression in logging/agent-config tooling that assumes deterministic
+	// order. Pin it here so a test that hands in ["c","a","b"] snaps to
+	// the canonical ascending order.
+	sort.Strings(caps.JobTypes)
 	return caps, nil
 }
 
