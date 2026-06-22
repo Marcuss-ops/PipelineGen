@@ -1,79 +1,130 @@
-# PipelineGen — Roadmap operativa PR0–PR4
+# PipelineGen — Roadmap operativa verso il 100% dell'operatività
 
-Questa directory è la fonte operativa per il prossimo ciclo di consolidamento di PipelineGen.
+> Fonte operativa per il ciclo successivo al refactor PR1–PR4.
+>
+> Stato di riferimento: `main` dopo i merge di alleggerimento Node scraper, split Docker e migrazione Qdrant/storage.
+>
+> Questo documento sostituisce come guida futura le roadmap PR0–PR4 e `REFACTOR_COMPLETE.md`, che restano utili come storico del ciclo precedente.
 
-La roadmap descrive azioni verificabili, file reali, test ed exit gate. Non contiene istruzioni di branch, comandi di push o procedure Git: ogni documento definisce soltanto il lavoro tecnico da eseguire.
+## Stato sintetico
 
-## Obiettivo del ciclo
-
-Portare il repository dallo stato attuale, già privo dei principali namespace legacy, a una struttura coerente e scalabile:
-
-- documentazione e tracker coerenti con il codice reale;
-- separazione netta tra use case e adapter concreti per YouTube e Artlist;
-- API organizzata per capability;
-- composition root modulare senza service locator globale;
-- nessuna nuova feature finché PR0–PR4 non sono concluse.
+| Blocco | Stato | Azione residua |
+|---|---:|---|
+| Node scraper leggero | completato | mantenere `puppeteer-core` come unica dipendenza browser |
+| Runtime Docker separati | completato | certificare con smoke test server/worker/admin |
+| Qdrant e storage fuori da `internal/media` | completato | riallineare tracker e baseline |
+| Test precedentemente saltati | completato | impedire nuovi `t.Skip` non classificati |
+| YouTube capability split | parziale | chiudere facade, dipendenze piatte e alias |
+| Repository truth | parziale | riallineare migration map, baseline e guardrail |
+| Strict architecture mode | mancante | implementare `archcheck --strict` |
+| Production certification | mancante | CI verde, E2E, backup/restore, security gate |
+| Scale validation | mancante | multi-worker, failure injection, load test, SLO |
 
 ## Ordine obbligatorio
 
-| Documento | Obiettivo | Stato iniziale | Bloccato da |
-|---|---|---|---|
-| [PR0 — Repository truth](PR0_REPOSITORY_TRUTH.md) | Allineare roadmap, baseline e documentazione al codice reale | Da fare | — |
-| [PR1 — YouTube infrastructure](PR1_YOUTUBE_INFRASTRUCTURE.md) | Estrarre download, FFmpeg, filesystem e metadata da `application/youtube` | Da fare | PR0 |
-| [PR2 — Artlist infrastructure](PR2_ARTLIST_INFRASTRUCTURE.md) | Estrarre scraper, processi, download e filesystem da `application/artlist` | Da fare | PR0 |
-| [PR3 — API compaction](PR3_API_COMPACTION.md) | Consolidare i package API per capability senza cambiare le route | Da fare | PR1, PR2 |
-| [PR4 — Composition root](PR4_COMPOSITION_ROOT.md) | Eliminare `services`/`CoreDeps` globali e costruire moduli capability-owned | Da fare | PR3 |
+| Documento | Risultato |
+|---|---|
+| [PR5 — YouTube capability split finale](PR5_YOUTUBE_CAPABILITY_SPLIT.md) | Root YouTube piccolo, capability autonome, massimo 8–10 dipendenze per builder |
+| [PR6 — Repository truth e strict mode](PR6_ARCHITECTURE_TRUTH_STRICT_MODE.md) | Tracker coerenti, guardrail reali, zero compatibilità non autorizzata |
+| [PR7 — Certificazione production](PR7_PRODUCTION_CERTIFICATION.md) | Un commit e una release dimostrati funzionanti end-to-end |
+| [PR8 — Validazione della scalabilità](PR8_SCALE_VALIDATION.md) | Capacità, concorrenza, recovery e limiti misurati |
+| [Definition of Done 100%](DEFINITION_OF_DONE_100_PERCENT.md) | Checklist finale per dichiarare PipelineGen operativo e pronto a scalare |
 
-PR1 e PR2 possono essere sviluppate in parallelo soltanto se non modificano gli stessi file di wiring. PR3 inizia dopo la chiusura di entrambe. PR4 è l'ultimo blocco perché dipende dai package definitivi prodotti dalle PR precedenti.
+PR5 e PR6 sono architetturali. PR7 certifica il sistema reale. PR8 certifica la crescita. Nessuna dichiarazione “100% operativo” è valida prima della chiusura della Definition of Done.
 
 ## Regole non negoziabili
 
-1. Un solo proprietario per modello, use case, adapter e route.
-2. Nessun nuovo alias di compatibilità, wrapper pass-through o fallback legacy.
-3. Nessun nuovo file sotto namespace destinati alla rimozione.
-4. Nessun semplice spostamento di directory dichiarato come “layering completato” se il package continua a importare SQL, SDK, filesystem o processi dal livello sbagliato.
-5. Le route HTTP e i payload pubblici restano invariati salvo modifica esplicitamente documentata e testata.
-6. Ogni sotto-attività numerata deve chiudersi con test mirati e un criterio di accettazione verificabile.
-7. Non combinare refactor architetturale, feature e cleanup estraneo nella stessa unità operativa.
-8. Prima si rende verde il blocco corrente, poi si passa al successivo.
+1. Partire sempre da `origin/main` aggiornato.
+2. Una PR risolve un solo problema e modifica soltanto i file dichiarati nello scope.
+3. Cercare il codice esistente prima di creare nuovi package, registry, resolver o adapter.
+4. Ogni nuova feature entra nel registry, resolver o sampler comune appropriato.
+5. Nessun nuovo alias, wrapper pass-through, fallback legacy o service locator.
+6. Nessun aggiornamento della baseline per nascondere una regressione.
+7. Nessun test saltato senza build tag, issue e motivazione verificabile.
+8. Nessun merge con CI assente, rossa o non osservabile.
+9. Ogni percorso operativo deve avere timeout, cancellazione, retry limitato e idempotenza.
+10. Backup non verificato con restore equivale a backup inesistente.
+11. Scalabilità dichiarata soltanto dopo misure riproducibili.
+12. Dopo ogni push controllare `git log -n 5 --oneline` e il diff remoto.
 
-## Definizione comune di completamento
+## Workflow Git per ogni blocco
 
-Una PR è completata soltanto quando:
+```bash
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+git checkout -b codex/<nome-blocco>
+```
 
-- tutte le checklist del relativo documento sono marcate `[x]`;
-- gli exit gate del documento restituiscono il risultato atteso;
-- `go test` dei package toccati è verde;
-- `go vet` dei package toccati è verde;
-- `go build ./...` è verde per cambiamenti strutturali;
-- `go run ./scripts/archcheck` non introduce nuove violazioni;
-- la documentazione non dichiara completato lavoro ancora presente nel codice;
-- non rimangono TODO temporanei, test saltati o file di follow-up creati dalla stessa PR.
+Durante il lavoro:
 
-## Stato reale di partenza
+```bash
+git status -sb
+git diff
+git fetch origin
+git rebase origin/main
+```
 
-Già completato prima di questo ciclo:
+Prima della PR:
 
-- `internal/assets` eliminato e modelli spostati in `internal/domain/asset`;
-- `internal/domain/media` eliminato;
-- repository asset SQLite spostati in `internal/infrastructure/database/sqlite/assets`;
-- `internal/core`, `internal/artifacts`, `internal/upload` e `internal/sources` eliminati o trasferiti;
-- test batch script ripristinati in `internal/application/scripts`;
-- `internal/application/scriptflow` eliminato;
-- provider registry tipizzato attivo;
-- `monitor`, `ingest` e `mediaasset` spostati fuori dalle vecchie directory;
-- API `books`/`lessons` consolidata in `api/content`;
-- API `scraper`/`mediaingest` consolidata in `api/assets`.
+```bash
+gofmt -w <file-go-toccati>
+go test <package-toccati>
+go vet <package-toccati>
+git status -sb
+git diff origin/main...HEAD
+git log -n 5 --oneline
+```
 
-Debito ancora attivo:
+## Politica degli stati
 
-- `architecture/migration.yaml` e `baseline.json` non rappresentano completamente lo stato reale;
-- `application/youtube` e `application/artlist` contengono ancora adapter concreti;
-- API ancora frammentata tra `drive`, `realtime`, `searchqueries`, `sources`, `fullimages`, `workers`, `script`;
-- `internal/app/dependencies.go` contiene ancora il contenitore globale `services`;
-- il job system conserva alias temporanei verso SQLite;
-- numerosi package sotto `internal/media` devono ancora essere assegnati al proprietario finale.
+Usare soltanto:
 
-## Aggiornamento della checklist
+- `pending`: lavoro non iniziato;
+- `in_progress`: branch attivo con task incompleti;
+- `blocked`: impossibile procedere per una dipendenza nominata;
+- `done`: exit gate eseguito e prova salvata;
+- `verified`: exit gate rieseguito su `main` dopo il merge.
 
-Le checkbox devono essere aggiornate nella stessa modifica che completa il codice corrispondente. Non marcare un blocco come concluso basandosi soltanto su un commit message o su uno spostamento fisico: verificare sempre import, test ed exit gate.
+Una checkbox non va marcata sulla base del commit message. Devono essere controllati codice, import, test, CI e artefatti.
+
+## Evidenze obbligatorie
+
+Ogni PR deve riportare nel corpo:
+
+- commit base di `main`;
+- file modificati;
+- comandi eseguiti;
+- risultato dei test;
+- output sintetico degli exit gate;
+- rischi residui;
+- procedura di rollback;
+- link alla CI;
+- aggiornamento della checklist nella stessa PR.
+
+## Cosa significa “100% operativo”
+
+PipelineGen è operativo al 100% soltanto quando:
+
+- il codice compila, passa vet, lint, test e race test;
+- l'architettura passa in modalità strict senza baseline di tolleranza;
+- server, worker, admin e scraper costruiscono e si avviano;
+- un flusso reale passa da input a output senza intervento manuale;
+- restart, retry e duplicati non perdono o moltiplicano il lavoro;
+- backup e restore sono stati provati;
+- metriche, alert e runbook sono attivi;
+- sicurezza e segreti sono verificati;
+- il carico atteso e un margine di almeno 2× sono stati misurati;
+- esiste una release versionata, riproducibile e rollbackabile.
+
+La checklist completa è in [DEFINITION_OF_DONE_100_PERCENT.md](DEFINITION_OF_DONE_100_PERCENT.md).
+
+## Documenti storici
+
+Questi file non devono più essere usati come unica fonte per il lavoro futuro:
+
+- `REFACTOR_COMPLETE.md` — piano storico PR1–PR4;
+- `docs/POST_CASCADE_OPERATIONAL_READINESS.md` — audit post-cascade;
+- `docs/roadmap/PR0_REPOSITORY_TRUTH.md` fino a `PR4_COMPOSITION_ROOT.md` — ciclo precedente.
+
+Quando una loro informazione resta valida, deve essere trasferita nei documenti PR5–PR8 invece di aggiungere nuovi follow-up sparsi.
