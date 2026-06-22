@@ -2,17 +2,11 @@
 // including the PR-D smoke test that proves the remote worker HTTP
 // broker path is aligned with the server's WorkerHandler mount.
 //
-// This file is INTENTIONALLY written against the PR-A-only branch
-// (codex/w3-e2e-worker off origin/codex/iac-fix-cmd-server). It is
-// expected to FAIL on that branch because jobbrokerclient/client.go
-// hardcodes `/api/...` paths while the server mounts the worker
-// handler at `/internal/v1/...`. The failure is the diagnostic —
-// once PR-B lands (URL alignment + WorkerAuth), the test passes.
-//
-// After PR-B merges, the `internalV1Prefix` constant below should be
-// replaced with `remoteshared.InternalPathPrefix` from
-// `internal/infrastructure/remote/shared` so the test stops drifting
-// from the production constant.
+// The file was originally written against a PR-A-only branch
+// where jobbrokerclient hardcoded `/api/...` paths and the server
+// mounted the worker handler at `/internal/v1/...`. Post-PR-B those
+// two surfaces both derive from `remoteshared.InternalPathPrefix`
+// and the smoke now passes; it remains the W2 acceptance gate.
 package app_test
 
 import (
@@ -21,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -100,8 +95,15 @@ func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 	// which is the server-relative path GIN uses AFTER it strips the
 	// /internal/v1 prefix; that made the drift check tautologically
 	// fail on every successful round-trip.
+	//
+	// Write goes through `atomic.Value.Store` so the server
+	// goroutine's write has a defined happens-before relationship with
+	// the test goroutine's `Load()` (round-5 explicit follow-up to the
+	// reviewer's theoretical race concern; `-race` did not surface it
+	// empirically earlier but the formal Go memory model had no
+	// happens-before from raw string writes across goroutines).
 	engine.Use(func(c *gin.Context) {
-		observedRegisterPath = c.Request.URL.Path
+		observedRegisterPath.Store(c.Request.URL.Path)
 		c.Next()
 	})
 	internalGroup := engine.Group(internalV1Prefix)
@@ -163,20 +165,41 @@ func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 	// Bonus sanity: verify the path-constant alignment without running
 	// another HTTP round-trip. If the client is wired to a wrong path
 	// string, we want a focused failure, not just a generic 404.
-	if !containsPath(observedRegisterPath, internalV1Prefix) && mock.registerCalled {
+	if observed := observedURL(); !containsPath(observed, internalV1Prefix) && mock.registerCalled {
 		t.Errorf("URL drift: client hit %q but server mount was %q.\n"+
 			"This should be impossible since the test passed the round-trip; if you\n"+
 			"see this, the path constant in the test and in the client package are\n"+
 			"out of sync.",
-			observedRegisterPath, internalV1Prefix)
+			observed, internalV1Prefix)
 	}
 }
 
-// observedRegisterPath is recorded by the mock so a future reviewer
-// who runs the test can read the actual URL the client hit. Set by
-// the mock at the time of invocation; if the test errors out before
-// the call it remains "".
-var observedRegisterPath string
+// observedRegisterPath is written by the engine-level gin middleware
+// (which runs in a goroutine spawned by `httptest.NewServer`) and
+// read by the test goroutine once the synchronous client round-trip
+// returns. Wrapping in `sync/atomic.Value` gives the two access sides
+// a defined happens-before relationship; without it, the write+read
+// pair is strictly racy even though TCP-level network reads
+// empirically synchronize with the response writer's Close.
+//
+// `atomic.Value.Store` may be called with any value but the type is
+// fixed on the first Store; we always Store `string` here so the
+// value's type is canonical.
+var observedRegisterPath atomic.Value
+
+// observedURL reads observedRegisterPath with a nil-safe fallback for
+// the case where the round-trip didn't reach the middleware (e.g.
+// gin rejected the URL before any middleware ran). The empty-string
+// default keeps `containsPath`'s contract intact: containsPath("",
+// anything-non-empty) = false, so a missing middleware-run surfaces
+// as a real drift failure rather than a silent pass.
+func observedURL() string {
+	v := observedRegisterPath.Load()
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
 
 // mockBroker implements the workers.Broker interface so the real
 // WorkerHandler on the gin router can be exercised. Only
