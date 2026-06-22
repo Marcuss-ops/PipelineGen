@@ -7,39 +7,115 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
+// ExpectedRevision returns the worker's current view of the canonical
+// job revision. It tracks the lease revision as observed at Claim and
+// monotonically advanced by Renew. Use this — not the snapshot in
+// appjobs.Lease.Job — when constructing subsequent Complete/Fail/
+// Progress/Renew commands after a renewal.
+//
+// Why: SQLiteStore.RenewLease advances revision on every successful
+// renewal (see internal/infrastructure/database/sqlite/jobs/repository_claims.go::RenewLease).
+// Phase 7 introduced a renewing runLease loop, so a snapshot revision
+// captured at Claim is stale after the first renewal. Using it would
+// cause broker.Complete to return ErrLeaseLost (revision mismatch)
+// and silently downgrade a successful job to Failed. Hard-won lesson
+// from Phase 6→7: never let Tools expose a stale revision to the
+// runner by accident.
+//
+// Concurrency: t.revision is an atomic.Int64 (NOT a plain int). It's
+// written by Tools.Renew inside the renewLoop goroutine and read by
+// Tools.Complete / Fail / Progress in the main runLease goroutine.
+// Under -race this is mandatory; a plain int triggers TEST
+// FAILURE. Use int(t.revision.Load()) to read; use
+// t.revision.Store(int64(j.Revision)) to write.
+func (t *Tools) ExpectedRevision() int {
+	return int(t.revision.Load())
+}
+
+// Complete forwards a successful job outcome to the broker using
+// the worker's current ExpectedRevision (post-renewal). Mirrors the
+// existing Progress/IsCancelled/Renew convention of Tools bridging
+// between the runner and the broker.
+func (t *Tools) Complete(ctx context.Context, result json.RawMessage) error {
+	return t.broker.Complete(ctx, appjobs.CompleteCommand{
+		WorkerID:         t.workerID,
+		WorkerSessionID:  t.sessionID,
+		JobID:            t.jobID,
+		LeaseID:          t.leaseID,
+		ExpectedRevision: int(t.revision.Load()),
+		Result:           result,
+	})
+}
+
+// Fail forwards a terminal job outcome (with a stringified error)
+// to the broker using the worker's current ExpectedRevision
+// (post-renewal). Used by the runner when the handler returned an
+// err, by Assets tools when download fails, and by the renewal loop
+// when Renew returned ErrLeaseLost mid-execution.
+func (t *Tools) Fail(ctx context.Context, errStr string) error {
+	return t.broker.Fail(ctx, appjobs.FailCommand{
+		WorkerID:         t.workerID,
+		WorkerSessionID:  t.sessionID,
+		JobID:            t.jobID,
+		LeaseID:          t.leaseID,
+		ExpectedRevision: int(t.revision.Load()),
+		Error:            errStr,
+	})
+}
+
 type AssetClient interface {
 	Download(ctx context.Context, assetID string) (io.ReadCloser, string, error)
 	UploadFile(ctx context.Context, assetID, filePath string) error
 }
 
+// Tools is the broker-facing facade for a single in-flight job.
+// All fields beyond broker/workspace/assets are immutable post-
+// construction except revision, which is atomically advanced by
+// Renew and atomically observed by every subsequent broker call.
+//
+// Field write/read rules:
+//   - broker, workerID, sessionID, jobID, leaseID, workspace,
+//     assetClient: written ONCE in NewTools, never mutated, so
+//     concurrent reads are safe without sync.
+//   - revision: written by Renew (renewLoop goroutine) and read
+//     by Complete/Fail/Progress/ExpectedRevision (runLease main
+//     goroutine and external callers). atomic.Int64 is REQUIRED
+//     here. -race tests will fail loudly if regressed to plain int.
 type Tools struct {
 	broker      appjobs.Broker
 	workerID    string
 	sessionID   string
 	jobID       string
 	leaseID     string
-	revision    int
+	revision    atomic.Int64
 	workspace   string
 	assetClient AssetClient
 }
 
+// NewTools constructs a Tools. Note: revision is initialised AFTER
+// the literal because atomic.Int64 has no constructor pattern
+// compatible with struct literals in Go pre-1.19; the Load/Store
+// pattern is preferred. The single Store here is the only publish
+// of the initial revision; subsequent Stores come from Renew.
 func NewTools(broker appjobs.Broker, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
-	return &Tools{
+	t := &Tools{
 		broker:      broker,
 		workerID:    workerID,
 		sessionID:   sessionID,
 		jobID:       j.ID,
 		leaseID:     j.LeaseID,
-		revision:    j.Revision,
 		workspace:   workspace,
 		assetClient: assetClient,
 	}
+	t.revision.Store(int64(j.Revision))
+	return t
 }
 
 func (t *Tools) Progress(ctx context.Context, progress int, message string) error {
@@ -48,7 +124,7 @@ func (t *Tools) Progress(ctx context.Context, progress int, message string) erro
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
 		LeaseID:          t.leaseID,
-		ExpectedRevision: t.revision,
+		ExpectedRevision: int(t.revision.Load()),
 		Progress:         progress,
 		Message:          message,
 	})
@@ -64,14 +140,14 @@ func (t *Tools) Renew(ctx context.Context, leaseTTL time.Duration) error {
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
 		LeaseID:          t.leaseID,
-		ExpectedRevision: t.revision,
+		ExpectedRevision: int(t.revision.Load()),
 		LeaseTTL:         leaseTTL,
 	})
 	if err != nil {
 		return err
 	}
 	if lease != nil && lease.Job != nil {
-		t.revision = lease.Job.Revision
+		t.revision.Store(int64(lease.Job.Revision))
 	}
 	return nil
 }
