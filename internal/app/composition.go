@@ -42,7 +42,7 @@ import (
 	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
