@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 
 	"go.uber.org/zap"
 )

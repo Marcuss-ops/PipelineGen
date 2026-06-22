@@ -1,0 +1,50 @@
+// cmd/admin/db_migrations.go (June 2026 codex/db-doctor-restore):
+//
+// `admin db migrations` prints the canonical migration ledger status
+// (applied + pending + total + per-row checksums). Replaces the
+// older `admin migrate-status` (deleted in this PR) and routes the
+// DB handle through DatabaseSet.OpenSet rather than a raw sql.Open,
+// so the Check 17 baseline can shrink over time as direct
+// `database/sql` calls in cmd/admin/ get migrated.
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"go.uber.org/zap"
+)
+
+func runDBMigrations(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("db migrations", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "./data", "root data directory")
+	fs.Parse(args)
+
+	cfg := config.StorageConfig{DataDir: *dataDir}
+	resolved := cfg.ToDatabaseStorageConfig()
+	log, _ := zap.NewProduction()
+	defer log.Sync()
+
+	ds, err := database.OpenSet(database.StorageConfig{
+		DataDir:             resolved.DataDir(),
+		PrimaryDBPath:       resolved.PrimaryDBPath(),
+		ObservabilityDBPath: resolved.ObservabilityDBPath(),
+	}, log)
+	if err != nil {
+		return fmt.Errorf("open set: %w", err)
+	}
+	defer ds.Close()
+
+	report, err := database.GetMigrationStatus(ds.Primary.DB, "migrations/sqlite")
+	if err != nil {
+		return fmt.Errorf("migration status: %w", err)
+	}
+	fmt.Print(database.FormatMigrateStatus(report))
+	if report.PendingN > 0 {
+		return fmt.Errorf("%d pending migrations", report.PendingN)
+	}
+	return nil
+}

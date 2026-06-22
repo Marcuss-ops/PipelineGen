@@ -4,7 +4,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"

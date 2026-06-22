@@ -389,6 +389,126 @@ echo "  OK: no new files in legacy directories"
 
 # ── Check 14: handler + worker binary link verification ──────────────
 echo ""
+
+# ── Check 17: database/sql import gate (June 2026 codex/db-sql-ownership-gate) ───
+# Enforces zero NEW violations of the canonical ownership rule:
+# ONLY `internal/infrastructure/database/` may import `database/sql`.
+# The hand-curated baseline below lists every file in
+# internal/{api,application,domain} that grandfathered in a database/sql
+# import BEFORE this gate was wired. Regressions above the baseline
+# (i.e. any NEW file added to the import list) fail CI with exit 1;
+# removals below the baseline are encouraged and the baseline can be
+# shrunk by followup migration PRs that port a file off database/sql.
+#
+# IMPORTANT: per the user's mandate (June 2026), this gate replaces
+# the historical `scripts/archcheck/baseline.json` (deleted in
+# codex/dir-strict-gates as a "ratchet excuse"). The baseline now
+# lives inside this script so it is revision-controlled and visible
+# inline — no JSON sidecar.
+echo ""
+echo "Check 17: database/sql import in api/app/domain (zero NEW violations)"
+LEGACY_DB_SQL_FILES=$(
+echo "    internal/api/common/health.go
+    internal/api/middleware/middleware_auth_test.go
+    internal/api/middleware/middleware_logger.go
+    internal/api/script/handler_script_handlers_flow_clips_test.go
+    internal/application/assets/artifacts/clips_adapter.go
+    internal/application/assets/artifacts/finalizer_test.go
+    internal/application/assets/artifacts/repository.go
+    internal/application/assets/artifacts/resolvers/resolvers.go
+    internal/application/assets/ingest/adapter_clip.go
+    internal/application/assets/maintenance/deep_cleanup.go
+    internal/application/assets/maintenance/run_cleanup.go
+    internal/application/assets/maintenance/service.go
+    internal/application/assets/monitor/channel_monitor.go
+    internal/application/assets/providers/artlist/assetrepo_integration_test.go
+    internal/application/assets/providers/artlist/search_cache.go
+    internal/application/assets/providers/artlist/service.go
+    internal/application/assets/providers/artlist/service_test.go
+    internal/application/assets/realtime/index_health_test.go
+    internal/application/images/google_generate.go
+    internal/application/jobs/outbox/delivery.go
+    internal/application/jobs/outbox/metadata_export.go
+    internal/application/jobs/outbox/registry.go
+    internal/application/jobs/service_test.go
+    internal/application/scripts/batch_persistence_test.go
+    internal/application/scripts/gemmamemory/stub.go
+    internal/application/scripts/gemmamemory/stub_test.go
+    internal/application/voiceover/groups_resolver_test.go
+    internal/application/voiceover/service.go
+    internal/application/youtube/assetrepo_integration_test.go
+    internal/application/youtube/cache/service.go
+    internal/application/youtube/jobs/rebuild.go
+    internal/application/youtube/ports/ports.go
+    internal/domain/asset/assets.go
+    internal/domain/asset/dedup.go
+    internal/domain/asset/list_clips.go
+    internal/domain/asset/locations.go
+    internal/domain/asset/processing.go
+    internal/domain/asset/scan.go
+    internal/domain/asset/store_core.go
+    internal/domain/asset/tags.go
+    internal/domain/asset/utility.go
+    internal/domain/asset/versions.go"
+)
+LEGACY_COUNT=$(echo "$LEGACY_DB_SQL_FILES" | grep -c '^' || true)
+if [ "$LEGACY_COUNT" -ne "42" ]; then
+    echo "FAIL: Check 17 baseline drift."
+    echo "  The in-script baseline lists $LEGACY_COUNT files but the"
+    echo "  expected count is 42. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
+    echo "  and update this list. If the count legitimately changed, also update"
+    echo "  the \`expected_count\` match above."
+    exit 1
+fi
+ACTUAL_DB_SQL=$(rg -ln '"database/sql"' internal/api/ internal/application/ internal/domain/ --type go 2>/dev/null | sort)
+ADDED=$(comm -13 <(printf '%s\n' "$LEGACY_DB_SQL_FILES") <(echo "$ACTUAL_DB_SQL") || true)
+if [ -n "$ADDED" ]; then
+    echo "FAIL: NEW database/sql imports in api/app/domain (regression above Check 17 baseline):"
+    echo "$ADDED" | sed 's/^/  /'
+    echo ""
+    echo "These files were added to the forbidden-import set since the"
+    echo "Check 17 baseline was last refreshed. Either:"
+    echo "  - port the file off database/sql (preferred — shrinks the baseline)"
+    echo "  - if the import is genuinely necessary, add it to LEGACY_DB_SQL_FILES"
+    echo "    AFTER team review (gate stays tight)."
+    exit 1
+fi
+REMOVED=$(comm -23 <(printf '%s\n' "$LEGACY_DB_SQL_FILES") <(echo "$ACTUAL_DB_SQL") || true)
+if [ -n "$REMOVED" ]; then
+    REM_COUNT=$(echo "$REMOVED" | grep -c '^' || true)
+    echo "  reminder: $LEGACY_COUNT legacy files in baseline, $REM_COUNT candidate-removal(s) detected below baseline:"
+    echo "$REMOVED" | sed 's/^/    - /'
+    echo "  Consider scrubbing them from LEGACY_DB_SQL_FILES in a followup PR."
+fi
+echo "  OK: Check 17 baseline ($LEGACY_COUNT files) holds — no regressions"
+
+# ── Check 16: registered-list enforcement for data/*.db*.sqlite (codex/db-set-and-paths, June 2026) ───
+echo ""
+echo "Check 16: data/ contains only the registered DB files"
+# The DatabaseSet contract guarantees exactly 2 production DBs at runtime:
+#   * data/media/media.db.sqlite           — primary
+#   * data/observability/api_requests.db.sqlite — observability
+# Any other *.db or *.sqlite file in data/ is an unregistered spurious file
+# (a leftover from a prior schema, a half-rolled-out migration, a runaway
+# test fixture, etc.). Catch it before it silently becomes the runtime
+# source of truth.
+REGISTERED_DB_FILES=(
+    "data/media/media.db.sqlite"
+    "data/observability/api_requests.db.sqlite"
+)
+ACTUAL=$(find data -type f \( -name '*.db' -o -name '*.sqlite' \) 2>/dev/null | sort)
+EXPECTED=$(printf "%s\n" "${REGISTERED_DB_FILES[@]}" | sort)
+DIFF_OUT=$(diff <(echo "$ACTUAL") <(echo "$EXPECTED") 2>/dev/null || true)
+if [ -n "${DIFF_OUT}" ]; then
+    echo "FAIL: data/ deviated from registered list:"
+    echo "${DIFF_OUT}" | sed 's/^/  /'
+    echo "  If you added a new DB, register it in REGISTERED_DB_FILES above and"
+    echo "  document the new owner in architecture/ownership.yaml + the path"
+    echo "  bootstrap defaults in internal/infrastructure/database/set.go."
+    exit 1
+fi
+echo "  OK: data/ matches registered list (${#REGISTERED_DB_FILES[@]} db files)"
+
 echo "Check 14: handler + worker binary link verification"
 # PR1 (June 2026): the post-cascade verify-gate found that go vet on
 # internal/api/ and go build on cmd/worker were not enforced by the

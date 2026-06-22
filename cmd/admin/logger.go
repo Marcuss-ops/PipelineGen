@@ -1,5 +1,5 @@
 // Package main — admin CLI for one-shot operator tasks
-// (seed-channels, stock-reset, summarize-book, migrate-status, ...).
+// (seed-channels, stock-reset, summarize-book, db, ...).
 // logger.go centralises the (cfg, log, cleanup) tuple that every
 // command needs up front.
 package main

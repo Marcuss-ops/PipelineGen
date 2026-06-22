@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 

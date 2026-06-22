@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"database/sql"
 
@@ -23,13 +24,13 @@ import (
 // Indexer is satisfied by *clipindexer.Service directly (the port declares
 // IndexClip + IsEnabled which both implementations provide);
 // DriveFolderManager (PR2.7) is satisfied by *drive.DriveFolderManagerAdapter
-// which wraps *driveapi.Service so callers never see SDK types.
+// which wraps *assetsapi.Service so callers never see SDK types.
 type ServicePorts struct {
 	AssetStore     AssetStore
 	Indexer        Indexer
 	MetadataWriter MetadataWriter
 	// DriveFolderManager is the wide Drive port (PR2.7). Replaces
-	// the raw *driveapi.Service concrete that previously lived in
+	// the raw *assetsapi.Service concrete that previously lived in
 	// ServiceDependencies as "DriveClient". Hides the SDK from
 	// callers (semantic_enricher, destination_service) so the
 	// application layer no longer reaches through a concrete to
@@ -147,7 +148,7 @@ type Service struct {
 	dispatcher Dispatcher
 
 	// driveFolderManager is the canonical DriveFolderManager port
-	// (PR2.7). Replaces the raw *driveapi.Service concrete that
+	// (PR2.7). Replaces the raw *assetsapi.Service concrete that
 	// lived here pre-PR2.7. The adapter
 	// (DriveFolderManagerAdapter in internal/infrastructure/drive)
 	// wraps the SDK so callers (semantic_enricher,
