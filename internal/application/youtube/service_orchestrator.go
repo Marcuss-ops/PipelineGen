@@ -24,45 +24,30 @@ package youtube
 import (
 	"context"
 	"fmt"
-	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	ytcache "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/cache"
+	ytextraction "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/extraction"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	ytsearch "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/search"
+	ytsegments "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/segments"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
-// VideoCutRequest contains all parameters for downloading and cutting a video segment.
-// Application-layer DTO that replaces videomuscles.YouTubeCutRequest.
-type VideoCutRequest struct {
-	URL               string
-	VideoID           string
-	Start             float64
-	Duration          float64
-	OutputName        string
-	ForceKeyframes    bool
-	KeepAudio         bool
-	Normalize         bool
-	Strategy          string
-	OutputDir         string
-	PreDownloadedPath string
-}
-
-// VideoCutResult wraps the output of a video cut operation with the local file path
-// and the full video metadata captured from yt-dlp.
-type VideoCutResult struct {
-	LocalPath string
-	Metadata  *DownloaderMetadata
-}
-
-// VideoPipeline is the port for downloading + cutting YouTube video segments.
-type VideoPipeline interface {
-	DownloadAndCutYouTubeVideo(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error)
-}
+// PR5 Phase 3 (June 2026): VideoCutRequest, VideoCutResult, and VideoPipeline
+// moved to youtube/ports/ so the extraction capability service can import
+// them without an import cycle. These aliases preserve backward compatibility.
+type VideoCutRequest = youtubeports.VideoCutRequest
+type VideoCutResult = youtubeports.VideoCutResult
+type VideoPipeline = youtubeports.VideoPipelinePort
 
 // ServiceDeps is the FULL set of dependencies the YouTube orchestrator
 // requires. Wiring happens exactly once via NewService(ServiceDeps);
@@ -125,6 +110,13 @@ type Service struct {
 	assetProcessing asset.ProcessingRepository
 	assetVersions   asset.VersionRepository
 
+	// Capability services (PR5 — June 2026).
+	cache      *ytcache.Service
+	search     *ytsearch.Service
+	metadata   *ytmetadata.Service
+	segSvc     *ytsegments.Service
+	extraction *ytextraction.Service
+
 	// Port-backed dependencies (no setters).
 	searchRunner    SearchRunnerPort
 	subtitleFetcher SubtitleFetcherPort
@@ -142,9 +134,6 @@ type Service struct {
 	folderMemory FolderMemoryPort
 	ollama      OllamaClientPort
 
-	searchL1 sync.Map
-	metadataL1 sync.Map
-
 	// Capacity-bound semaphores configured via ConcurrencyConfig.
 	videoExtractSem chan struct{}
 	ollamaSem       chan struct{}
@@ -154,6 +143,9 @@ type Service struct {
 // component of the YouTube pipeline touches; missing nothing means no
 // surrogate setters are needed. Composition root (internal/app/composition.go)
 // is the only intended caller.
+//
+// PR5 (June 2026): the L2 cache is extracted to youtube/cache/. If deps.Clips
+// provides a *sql.DB, NewService wires the cache service automatically.
 func NewService(deps ServiceDeps) *Service {
 	maxVideo := 1
 	maxOllama := 1
@@ -165,7 +157,7 @@ func NewService(deps ServiceDeps) *Service {
 			maxOllama = v
 		}
 	}
-	return &Service{
+	svc := &Service{
 		cfg:               deps.Cfg,
 		log:               deps.Log,
 		mediaProcessor:    deps.MediaProcessor,
@@ -173,8 +165,8 @@ func NewService(deps ServiceDeps) *Service {
 		lifecycleService:  deps.LifecycleService,
 		assetDestResolver: deps.AssetDestResolver,
 		assetRepo:         deps.AssetRepo,
-		assetProcessing:  deps.AssetProcessing,
-		assetVersions:    deps.AssetVersions,
+		assetProcessing:   deps.AssetProcessing,
+		assetVersions:     deps.AssetVersions,
 
 		searchRunner:    deps.SearchRunner,
 		subtitleFetcher: deps.SubtitleFetcher,
@@ -185,16 +177,63 @@ func NewService(deps ServiceDeps) *Service {
 		hashSvc:         deps.HashSvc,
 		tempFiles:       deps.TempFiles,
 
-		clips:       deps.Clips,
-		monitors:    deps.Monitors,
-		cacheStore:  deps.CacheStore,
-		indexer:     deps.Indexer,
+		clips:        deps.Clips,
+		monitors:     deps.Monitors,
+		cacheStore:   deps.CacheStore,
+		indexer:      deps.Indexer,
 		folderMemory: deps.FolderMemory,
-		ollama:      deps.Ollama,
+		ollama:       deps.Ollama,
 
 		videoExtractSem: make(chan struct{}, maxVideo),
 		ollamaSem:       make(chan struct{}, maxOllama),
 	}
+
+	// Wire L2 cache service when Clips provides a *sql.DB (PR5 Phase 1).
+	if clipsPort := deps.Clips; clipsPort != nil {
+		if db := clipsPort.DB(); db != nil {
+			svc.cache = ytcache.NewService(ytcache.Deps{DB: db, Log: deps.Log})
+		}
+	}
+
+	// Wire search service (PR5 Phase 2).
+	if deps.SearchRunner != nil && deps.Log != nil {
+		svc.search = ytsearch.NewService(ytsearch.SearchDeps{
+			SearchRunner: deps.SearchRunner,
+			Cache:        svc.cache,
+			Log:          deps.Log,
+		})
+	}
+
+	// Wire metadata service (PR5 Phase 1).
+	if deps.Clips != nil && deps.Log != nil {
+		svc.metadata = ytmetadata.NewService(ytmetadata.MetadataDeps{
+			Clips:       deps.Clips,
+			MetaFetcher: deps.MetaFetcher,
+			Ollama:      deps.Ollama,
+			AssetRepo:   deps.AssetRepo,
+			Cfg:         deps.Cfg,
+			Log:         deps.Log,
+		})
+	}
+
+	// Wire segments service (PR5 Phase 4 — zero-dependency).
+	svc.segSvc = ytsegments.NewService()
+
+	// Wire extraction service (PR5 Phase 3 — thin wrapper pattern).
+	// The root Service implements ExtractionCallbacks so callbacks are
+	// simply method calls on the same Service instance.
+	svc.extraction = ytextraction.NewService(ytextraction.ExtractionDeps{
+		Cfg:               deps.Cfg,
+		Log:               deps.Log,
+		VideoPipeline:     deps.VideoPipeline,
+		Clips:             deps.Clips,
+		Monitors:          deps.Monitors,
+		AssetDestResolver: deps.AssetDestResolver,
+		FolderMemory:      deps.FolderMemory,
+		SegmentsSvc:       svc.segSvc,
+	}, svc)
+
+	return svc
 }
 
 // ── Persistence — single canonical writer (PR1.6) ──────────────────────
@@ -267,19 +306,13 @@ func (s *Service) Config() *config.Config {
 	return s.cfg
 }
 
-// md5String returns the MD5 hex digest of s via the HashServicePort.
-func (s *Service) md5String(data string) string {
-	if s.hashSvc != nil {
-		return s.hashSvc.MD5String(data)
-	}
-	return fallbackMD5String(data)
-}
-
 // md5File returns the MD5 hex digest of the file at path via the
 // HashServicePort. Best-effort: a port error falls back to the local
 // helper with a debug log so operators can see when the configured port
 // silently misbehaves (e.g., misconfigured remote hash service).
-func (s *Service) md5File(path string) string {
+//
+// PR5 Phase 3: exported for ExtractionCallbacks compatibility.
+func (s *Service) MD5File(path string) string {
 	if s.hashSvc != nil {
 		if h, err := s.hashSvc.MD5File(path); err == nil {
 			return h
@@ -290,4 +323,137 @@ func (s *Service) md5File(path string) string {
 		}
 	}
 	return fallbackMD5File(path)
+}
+
+// md5File is the legacy private name kept for internal callers.
+func (s *Service) md5File(path string) string { return s.MD5File(path) }
+
+// MD5String returns the MD5 hex digest of s via the HashServicePort.
+// PR5 Phase 3: exported for ExtractionCallbacks compatibility.
+func (s *Service) MD5String(data string) string {
+	if s.hashSvc != nil {
+		return s.hashSvc.MD5String(data)
+	}
+	return fallbackMD5String(data)
+}
+
+// md5String is the legacy private name kept for internal callers.
+func (s *Service) md5String(data string) string { return s.MD5String(data) }
+
+// ── PR5 Phase 3: ExtractionCallbacks implementation ─────────────────────
+// These methods satisfy the extraction.ExtractionCallbacks interface so
+// the extraction capability service can delegate external operations back
+// to the root orchestrator. Each method delegates to the appropriate
+// capability service or port.
+
+func (s *Service) EnrichClip(ctx context.Context, clipID string, ym *youtubeports.DownloaderMetadata, force bool) {
+	if s.metadata == nil {
+		return
+	}
+	s.metadata.EnrichClip(ctx, clipID, ym, force)
+}
+
+func (s *Service) ClassifyCategory(ctx context.Context, title string) string {
+	return s.classifyCategory(ctx, title)
+}
+
+func (s *Service) CheckExistingClip(ctx context.Context, req *ExtractRequest, clipID string, item *ExtractItem, outDir string) bool {
+	return s.checkExistingClip(ctx, req, clipID, item, outDir)
+}
+
+func (s *Service) ProcessLifecycle(ctx context.Context, metadata *lifecycle.FinalizeInput, localPath, fileHash string, item *ExtractItem) {
+	ytextraction.ProcessLifecycle(ctx, s.lifecycleService, localPath, fileHash, item, metadata)
+}
+
+func (s *Service) TriggerAutoIndexing(ctx context.Context, clipID string) {
+	s.triggerAutoIndexing(ctx, clipID)
+}
+
+func (s *Service) IndexClip(ctx context.Context, clipID string) error {
+	if s.indexer == nil {
+		return nil
+	}
+	return s.indexer.IndexClip(ctx, clipID)
+}
+
+func (s *Service) EnrichSkippedClip(ctx context.Context, clipID, videoURL, videoID string) {
+	s.enrichSkippedClip(ctx, clipID, videoURL, videoID)
+}
+
+func (s *Service) SliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error {
+	return s.sliceSubtitles(ctx, videoID, startSec, endSec, outputPath)
+}
+
+func (s *Service) TranscribeAudio(ctx context.Context, localPath string) (string, error) {
+	if s.whisper == nil {
+		return "", nil
+	}
+	return s.whisper.TranscribeAudio(ctx, localPath)
+}
+
+func (s *Service) AssetProcessingStart(ctx context.Context, clipID, stage string) error {
+	if s.assetProcessing == nil {
+		return nil
+	}
+	return s.assetProcessing.Start(ctx, clipID, stage)
+}
+
+func (s *Service) AssetProcessingComplete(ctx context.Context, clipID, stage string) error {
+	if s.assetProcessing == nil {
+		return nil
+	}
+	return s.assetProcessing.Complete(ctx, clipID, stage)
+}
+
+func (s *Service) AssetProcessingFail(ctx context.Context, clipID, stage, errorMsg string) error {
+	if s.assetProcessing == nil {
+		return nil
+	}
+	return s.assetProcessing.Fail(ctx, clipID, stage, errorMsg)
+}
+
+func (s *Service) AssetVersionsAppend(ctx context.Context, v *asset.Version) error {
+	if s.assetVersions == nil {
+		return nil
+	}
+	return s.assetVersions.Append(ctx, v)
+}
+
+func (s *Service) DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error) {
+	if s.driveFolderMgr == nil {
+		return &youtubeports.UploadResultDTO{}, false, fmt.Errorf("youtube: drive folder manager not wired")
+	}
+	return s.driveFolderMgr.UploadFileIfChanged(ctx, localPath, folderID, filename)
+}
+
+func (s *Service) DriveGetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
+	if s.driveFolderMgr == nil {
+		return "", fmt.Errorf("youtube: drive folder manager not wired")
+	}
+	return s.driveFolderMgr.GetOrCreateFolder(ctx, name, parentID)
+}
+
+func (s *Service) OllamaSimpleGenerate(ctx context.Context, model, prompt string, timeoutSec int, opts map[string]any) (string, error) {
+	if s.ollama == nil {
+		return "", fmt.Errorf("youtube: ollama port not wired")
+	}
+	return s.ollama.SimpleGenerate(ctx, model, prompt, time.Duration(timeoutSec)*time.Second, opts)
+}
+
+func (s *Service) AcquireVideoExtractSem(ctx context.Context) (release func()) {
+	select {
+	case s.videoExtractSem <- struct{}{}:
+		return func() { <-s.videoExtractSem }
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
+	select {
+	case s.ollamaSem <- struct{}{}:
+		return func() { <-s.ollamaSem }
+	case <-ctx.Done():
+		return nil
+	}
 }

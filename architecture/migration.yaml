@@ -356,7 +356,7 @@
     clipindexer(10), clipresolver(13), foldermemory(1), fullimages(2),
     generation(1), lessons(8), ontology(3), semantic(4),
     stockpipeline(9), videomuscles(1), voiceoversync(1).
-    Totale: 41 file in 18 sub-directory.
+    Totale: 72 file in 18 sub-directory (ricontati June 2026).
     Root file internal/media/deletion.go (1 file) — ancora attivo,
     migrazione a sub-onda dedicata.
   from:
@@ -374,7 +374,7 @@
     - internal/application/assets/{classification,enrichment,ontology,tags,sync,monitor}
     - internal/infrastructure/database/sqlite/assets
     - internal/infrastructure/ai/{semantic,classification}
-  active_files_remaining: 41
+  active_files_remaining: 72
   sub_migrations_completed:
     - internal/media/ingest → internal/application/ingest
     - internal/media/monitor → internal/application/monitor
@@ -595,7 +595,7 @@
       go_test_internal_app: exit 0 (PR4d-final round)
       dupl_t_100: exit 0, 0 cluster groups >= 100 tokens (dupl-cluster-count awk bug FIXED in this round)
       archcheck_default: exit 0 (baseline.json was refreshed via auto-recover; git diff audit exposed)
-      archcheck_strict: SKIPPED — -strict flag NOT exposed by archcheck -h; Wave 16 future work
+      archcheck_strict: IMPLEMENTED — -strict flag exists (June 2026); exits 1 due to 701 pre-existing aliases + 61 rule violations; Wave 16 target
       ast_residual_check: zero hits for all 8 PR4d-final-deleted symbols (go/parser-based scan)
     methodology:
       residual_scanner: scripts/cmd/residual_ast_scan/main.go (Go AST via go/parser + ast.Inspect)
