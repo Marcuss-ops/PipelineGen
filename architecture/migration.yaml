@@ -809,4 +809,61 @@ post_cascade_followups:
     - ARCHITECTURE.md §14  (post-cascade section)
     - scripts/archcheck/baseline-justifications.md §"PR1.7 youtube port cascade ship (2026-06-21)"
       (ratchet accounting doc)
+
+# ── Legacy Fallback Cleanup (June 2026) ──────────────────────────────────────
+# Removes all remaining legacy/canonical dual-path fallback mechanisms that
+# allowed the old code paths to reappear. After this cleanup, every service
+# uses the canonical outbox dispatcher exclusively.
+
+legacy_fallback_cleanup:
+  date: 2026-06-23
+  description: |
+    Eliminates all remaining legacy fallback patterns that maintained
+    dual code paths (canonical + legacy). After this cleanup:
+    - Every service requires the outbox dispatcher (no nil tolerance)
+    - Legacy UpsertClip + SafeGoFunc(IndexClip) paths are removed
+    - SetDispatcher methods removed from stockpipeline and catalogsync
+    - dispatch_bridge.go EnqueueOrFallback replaced with Dispatch (error-returning)
+    - realtime.NewService panics if clips or outbox are nil
+    - assets module Dependencies no longer aggregates legacy handlers
+  changes:
+    - id: LFC-1
+      title: stockpipeline dispatcher wired + legacy fallback removed
+      files:
+        - internal/app/module_stock.go (Dispatcher added to StockBundle, wired in WireStockPipeline)
+        - internal/app/registry.go (root.Outbox.Dispatcher passed to StockBundle)
+        - internal/application/assets/providers/stock/stockpipeline/service.go (SetDispatcher removed, dispatcher required)
+        - internal/application/assets/providers/stock/stockpipeline/run_upload.go (legacy UpsertClip + SafeGoFunc path removed)
+    - id: LFC-2
+      title: artlist dispatch_bridge legacy fallback removed
+      files:
+        - internal/application/assets/providers/artlist/dispatch_bridge.go (EnqueueOrFallback → Dispatch, dispatcher required)
+        - internal/application/assets/providers/artlist/semantic_enricher.go (updated to use Dispatch)
+        - internal/application/assets/providers/artlist/run_orchestrator_stages.go (stageIndexAsync no-op, stagePersistResults uses Dispatch)
+    - id: LFC-3
+      title: realtime clips/outbox required
+      files:
+        - internal/application/assets/realtime/service.go (NewService panics if nil)
+        - internal/application/assets/realtime/index_health.go (nil-safe fallbacks removed)
+    - id: LFC-4
+      title: youtube legacy fallback comment removed
+      files:
+        - internal/application/youtube/searcher_metadata.go (legacy os/exec comment removed)
+    - id: LFC-5
+      title: catalogsync dispatcher wired + legacy fallback removed
+      files:
+        - internal/app/composition.go (BuildSyncBundle takes OutboxBundle, wires dispatcher)
+        - internal/application/assets/catalogsync/service.go (dispatcher comment updated)
+        - internal/application/assets/catalogsync/sync_persist.go (legacy UpsertClip + SafeGoFunc path removed)
+        - internal/application/assets/catalogsync/dispatcher_test.go (nil dispatcher test now expects error)
+    - id: LFC-6
+      title: assets module legacy handlers removed
+      files:
+        - internal/api/assets/module.go (MediaIngest/Scraper fields removed from Dependencies)
+  exit_gate: |
+    rg 'dispatcher != nil' internal/application/assets/providers/stock/ returns zero.
+    rg 'EnqueueOrFallback' internal/application/assets/providers/artlist/ returns zero.
+    rg 'legacy fallback' internal/application/assets/ returns zero (comments only).
+    rg 'SetDispatcher' internal/application/assets/providers/stock/ returns zero.
+    rg 'MediaIngest.*Handler|Scraper.*Handler' internal/api/assets/module.go returns zero.
 # -----------------------------------------------------------------------------

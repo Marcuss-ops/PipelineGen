@@ -106,14 +106,21 @@ func (e *SemanticEnricher) EnrichAsync(parentCtx context.Context, clip *asset.As
 }
 
 // dispatchOrIndexAndUpsert performs UpsertClip + IndexClip atomically via
-// the canonical media_index_outbox dispatcher when wired, otherwise falls
-// back to the legacy (UpsertClip + indexer.IndexClip) pair.
+// the canonical media_index_outbox dispatcher.
 //
 // The decision logic lives in dispatchBridge (dispatch_bridge.go) so this
 // method is a thin alias and can be removed in a follow-up once all
 // callers route directly through the bridge.
 func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *asset.Asset, hash string) {
-	e.newDispatchBridge().EnqueueOrFallback(ctx, clip, hash)
+	bridge, err := e.newDispatchBridge()
+	if err != nil {
+		e.log.Warn("dispatchOrIndexAndUpsert: dispatcher not wired", zap.Error(err))
+		return
+	}
+	if err := bridge.Dispatch(ctx, clip, hash); err != nil {
+		e.log.Warn("dispatchOrIndexAndUpsert: dispatch failed",
+			zap.String("clip_id", clip.ID), zap.Error(err))
+	}
 }
 
 // newDispatchBridge is the enricher-local mirror of Service.newDispatchBridge.
@@ -125,13 +132,16 @@ func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *a
 // PR2.5: clipsRepo → repo (AssetStore port), clipIndexer → indexer
 // (Indexer port), both swapped cleanly because both ports declare the
 // methods this bridge uses (UpsertClip / IndexClip + IsEnabled).
-func (e *SemanticEnricher) newDispatchBridge() *dispatchBridge {
+func (e *SemanticEnricher) newDispatchBridge() (*dispatchBridge, error) {
+	if e.dispatcher == nil {
+		return nil, fmt.Errorf("artlist: dispatcher is required")
+	}
 	return &dispatchBridge{
 		dispatcher: e.dispatcher,
 		assetStore: e.repo,
 		indexer:    e.indexer,
 		log:        e.log,
-	}
+	}, nil
 }
 
 // Enrich esegue il tagger e aggiorna il DB con i metadati semantici.

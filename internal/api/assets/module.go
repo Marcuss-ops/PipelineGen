@@ -1,7 +1,7 @@
 // Package assets provides the unified Assets HTTP module that aggregates
 // all asset-related sub-handlers: storage, diagnostics, search, voiceover,
-// soundeffect, register, media-ingest, and scraper. A single module
-// registers all routes under the /api/media prefix.
+// soundeffect, and register. A single module registers all routes under
+// the /api/media prefix.
 package assets
 
 import (
@@ -29,10 +29,6 @@ type Dependencies struct {
 	Voiceover   *voiceover.Handler
 	SoundEffect *soundeffect.Handler
 	Register    *register.Handler
-
-	// Legacy handlers from the flat api/assets package:
-	MediaIngest *MediaingestHandler
-	Scraper     *ScraperHandler
 }
 
 // Module is the unified Assets HTTP module.
@@ -85,15 +81,5 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 	// YouTube registration (register-from-youtube, register-batch)
 	if m.deps.Register != nil {
 		m.deps.Register.RegisterRoutes(r)
-	}
-
-	// Legacy media-ingest routes
-	if m.deps.MediaIngest != nil {
-		m.deps.MediaIngest.RegisterRoutes(r)
-	}
-
-	// Legacy scraper routes
-	if m.deps.Scraper != nil {
-		m.deps.Scraper.RegisterRoutes(r)
 	}
 }

@@ -96,16 +96,34 @@ func (s *indexHealthStore) CleanupStalePoints(context.Context, func(string, stri
 // newIndexHealthServiceWithStore returns a Service wired with the fake
 // store wrapped in qdrant.NewService (production wiring is
 // *qdrant.Service, not the Store interface directly).
-// clips and outbox are nil — when nil, IndexHealth treats the dependent
-// fields as zero (no drift, no pending/dead-letter) and the per-source
+// clips and outbox are no-op implementations — IndexHealth treats them
+// as zero (no drift, no pending/dead-letter) and the per-source
 // success flags track the qdrant leg only.
 func newIndexHealthServiceWithStore(vs qdrant.Store) *Service {
 	log := zap.NewNop()
 	vectorSvc := qdrant.NewService(vs, qdrant.Config{}, log)
 	return &Service{
 		vectorSvc: vectorSvc,
+		clips:     &noopIndexHealthClips{},
+		outbox:    &noopIndexHealthOutbox{},
 		log:       log,
 	}
+}
+
+// noopIndexHealthClips is a no-op implementation for tests.
+type noopIndexHealthClips struct{}
+
+func (c *noopIndexHealthClips) CountAll(context.Context) (int64, error)  { return 0, nil }
+func (c *noopIndexHealthClips) CountIndexed(context.Context) (int64, error) { return 0, nil }
+func (c *noopIndexHealthClips) ListIndexedIDs(context.Context, int) ([]string, error) {
+	return nil, nil
+}
+
+// noopIndexHealthOutbox is a no-op implementation for tests.
+type noopIndexHealthOutbox struct{}
+
+func (o *noopIndexHealthOutbox) CountByStatus(context.Context, string) (int64, error) {
+	return 0, nil
 }
 
 // TestIndexHealth_ReportsQdrantHealthyFromProbe pins that Health() success

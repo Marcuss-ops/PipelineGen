@@ -84,9 +84,7 @@ type IndexHealthOutbox interface {
 // side (OperationCollectionInfo/ListPointIDs) are attributed to
 // distinct DegradedSources entries — operators see WHICH leg broke
 // rather than a coarse "qdrant_info" badge that hides SQLite failures.
-// A nil dep falls back to zero fields + a logged warning rather than
-// failing the call — the HTTP handler decides whether to surface the
-// gap as degraded.
+// Both clips and outbox deps are required — construction panics if nil.
 func (s *Service) IndexHealth(ctx context.Context) (*qdrant.IndexHealthReport, error) {
 	if s == nil {
 		return nil, errors.New("realtime.Service is nil")
@@ -113,8 +111,7 @@ func (s *Service) IndexHealth(ctx context.Context) (*qdrant.IndexHealthReport, e
 
 	report.ChecksComplete = qdrantHealthOK && qdrantOK && sqliteListOK && sqliteOK && outboxOK
 
-	// Granular per-leg failure breakdown. nil deps never contribute (the
-	// leg is vacuously OK, see fetchSQLiteCounts / fetchOutboxCounts).
+	// Granular per-leg failure breakdown.
 	// Append order matches the package-doc enumeration
 	// (clips_listing, qdrant_info, qdrant, sqlite, outbox) so operators
 	// grepping the report see the failure legs in the same order they
@@ -246,30 +243,26 @@ func (s *Service) fetchQdrantScene(ctx context.Context, report *qdrant.IndexHeal
 	// SQLite diff — only the ID list lives here; bulk counts are owned
 	// by fetchSQLiteCounts so each per-source success flag tracks
 	// exactly one set of reads. clips_listing attribution kicks in
-	// here when ListIndexedIDs errors. `sqliteListOK` is already true
-	// from the function-entry default when s.clips is nil, so no
-	// explicit branch is needed for the nil-dep case.
-	if s.clips != nil {
-		idsSQLite, err := s.clips.ListIndexedIDs(ctx, IndexHealthSampleCap)
-		if err != nil {
-			if s.log != nil {
-				s.log.Warn("IndexHealth: clips.ListIndexedIDs failed", zap.Error(err))
-			}
-			sqliteListOK = false
-			// qdrantOK stays true — the qdrant leg succeeded; the
-			// diff side failed because clips is in trouble. Surface
-			// only "clips_listing" in DegradedSources (not "qdrant_info").
-		} else {
-			sqliteSample := make(map[string]struct{}, len(idsSQLite))
-			for _, id := range idsSQLite {
-				if id == "" {
-					continue
-				}
-				sqliteSample[id] = struct{}{}
-			}
-			report.MissingInQdrant, report.MissingInQdrantIDs = diffIDs(sqliteSample, qdrantSample, IndexHealthSampleCap)
-			report.OrphanInQdrant, report.OrphanInQdrantIDs = diffIDs(qdrantSample, sqliteSample, IndexHealthSampleCap)
+	// here when ListIndexedIDs errors.
+	idsSQLite, err := s.clips.ListIndexedIDs(ctx, IndexHealthSampleCap)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("IndexHealth: clips.ListIndexedIDs failed", zap.Error(err))
 		}
+		sqliteListOK = false
+		// qdrantOK stays true — the qdrant leg succeeded; the
+		// diff side failed because clips is in trouble. Surface
+		// only "clips_listing" in DegradedSources (not "qdrant_info").
+	} else {
+		sqliteSample := make(map[string]struct{}, len(idsSQLite))
+		for _, id := range idsSQLite {
+			if id == "" {
+				continue
+			}
+			sqliteSample[id] = struct{}{}
+		}
+		report.MissingInQdrant, report.MissingInQdrantIDs = diffIDs(sqliteSample, qdrantSample, IndexHealthSampleCap)
+		report.OrphanInQdrant, report.OrphanInQdrantIDs = diffIDs(qdrantSample, sqliteSample, IndexHealthSampleCap)
 	}
 
 	// Sample-saturation flag — apply BEFORE returning so the JSON
@@ -280,12 +273,8 @@ func (s *Service) fetchQdrantScene(ctx context.Context, report *qdrant.IndexHeal
 	return qdrantOK, sqliteListOK
 }
 
-// fetchSQLiteCounts reads CountAll + CountIndexed. nil-clips is treated as
-// vacuously OK (wiring gap logged at startup by NewService).
+// fetchSQLiteCounts reads CountAll + CountIndexed.
 func (s *Service) fetchSQLiteCounts(ctx context.Context, report *qdrant.IndexHealthReport) bool {
-	if s.clips == nil {
-		return true
-	}
 	allOK := true
 	if n, err := s.clips.CountAll(ctx); err != nil {
 		if s.log != nil {
@@ -311,11 +300,8 @@ func (s *Service) fetchSQLiteCounts(ctx context.Context, report *qdrant.IndexHea
 	return allOK
 }
 
-// fetchOutboxCounts reads pending + dead_letter. nil-outbox is vacuously OK.
+// fetchOutboxCounts reads pending + dead_letter.
 func (s *Service) fetchOutboxCounts(ctx context.Context, report *qdrant.IndexHealthReport) bool {
-	if s.outbox == nil {
-		return true
-	}
 	allOK := true
 	if n, err := s.outbox.CountByStatus(ctx, "pending"); err != nil {
 		if s.log != nil {

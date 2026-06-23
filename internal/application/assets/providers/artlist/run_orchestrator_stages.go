@@ -260,7 +260,11 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		existingClip.LifecycleState = asset.StateReady
 		existingClip.Source = "artlist"
 		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
-		bridge := o.svc.newDispatchBridge()
+		bridge, err := o.svc.newDispatchBridge()
+		if err != nil {
+			o.svc.log.Warn("stagePersistResults: dispatcher not wired", zap.Error(err))
+			continue
+		}
 		if err := bridge.Dispatch(ctx, existingClip, existingClip.FileHash()); err != nil {
 			o.svc.log.Warn("stagePersistResults: dispatch failed",
 				zap.String("clip_id", existingClip.ID), zap.Error(err))

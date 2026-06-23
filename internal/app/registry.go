@@ -175,12 +175,17 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			scriptsRepoAdapter, root.AI.ScriptGen,
 			root.Drive.DocClient, cfg, log,
 		)
+		generateBatchUC := scriptcore.NewGenerateBatchUseCase(
+			cfg, log, root.Jobs.Facade, batchSvc,
+			cfg.Drive.ScriptsGenFolder(),
+		)
 		handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 			Generator:             root.AI.ScriptGen,
 			Engine:                engine,
 			Batch:                 batchSvc,
 			Curation:              curationSvc,
 			Section:               sectionRegen,
+			GenerateBatch:         generateBatchUC,
 			Image:                 root.Domains.ImageService,
 			Realtime:              root.Domains.RealtimeService,
 			Association:           root.Domains.AssocService,
