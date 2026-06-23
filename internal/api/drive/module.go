@@ -15,7 +15,7 @@ func NewModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"drive",
-		func(cfg *config.Config) bool { return cfg.Features.DriveEnabled },
+		func() bool { return cfg.Features.DriveEnabled },
 		"/drive",
 		handler,
 		log,

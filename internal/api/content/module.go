@@ -18,7 +18,7 @@ func NewBooksModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"books",
-		func(cfg *config.Config) bool { return cfg.Books.Enabled },
+		func() bool { return cfg.Books.Enabled },
 		"/books",
 		handler,
 		log,
@@ -34,7 +34,7 @@ func NewLessonsModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"lessons",
-		func(cfg *config.Config) bool { return cfg.Lessons.Enabled },
+		func() bool { return cfg.Lessons.Enabled },
 		"/lessons",
 		handler,
 		log,

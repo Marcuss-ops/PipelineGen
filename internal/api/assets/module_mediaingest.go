@@ -17,7 +17,7 @@ func NewMediaIngestModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"media-ingest",
-		func(cfg *config.Config) bool { return handler != nil },
+		func() bool { return handler != nil },
 		"/media",
 		handler,
 		log,

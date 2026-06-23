@@ -1,24 +1,14 @@
 package api
 
 import (
-	"context"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	cfg := &config.Config{
-		Features: config.FeaturesConfig{
-			ArtlistEnabled: true,
-			YouTubeEnabled: true,
-		},
-	}
 
 	registry := NewRegistry()
 
@@ -39,7 +29,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	protected := apiGroup.Group("")
 
 	// This is what RegisterAllRoutes does - calls RegisterRoutes on each module
-	registry.RegisterAllRoutes(cfg, protected)
+	registry.RegisterAllRoutes(protected)
 
 	routes := engine.Routes()
 
@@ -88,7 +78,7 @@ func (m *mockModuleWithGroup) Name() string {
 	return m.name
 }
 
-func (m *mockModuleWithGroup) Enabled(cfg *config.Config) bool {
+func (m *mockModuleWithGroup) Enabled() bool {
 	return m.enabled
 }
 
@@ -116,10 +106,4 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 }
 
-func (m *mockModuleWithGroup) Start(ctx context.Context) error {
-	return nil
-}
 
-func (m *mockModuleWithGroup) Stop(ctx context.Context) error {
-	return nil
-}

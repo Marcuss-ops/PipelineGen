@@ -2,7 +2,6 @@ package channels
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
@@ -15,7 +14,7 @@ func NewModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"channels",
-		func(cfg *config.Config) bool { return repo != nil },
+		func() bool { return repo != nil },
 		"/channels",
 		NewChannelsHandler(repo, log),
 		log,

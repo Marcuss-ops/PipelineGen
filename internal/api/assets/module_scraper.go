@@ -11,7 +11,7 @@ import (
 func NewScraperModule(log *zap.Logger, handler *ScraperHandler) *api.RouteModule {
 	return api.NewRouteModule(
 		"scraper",
-		nil,
+		func() bool { return handler != nil },
 		"/scraper",
 		handler,
 		log,

@@ -1,12 +1,9 @@
 package sources
 
 import (
-	"context"
-
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/artlist"
-	artlistService "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 
 	"go.uber.org/zap"
@@ -15,29 +12,20 @@ import (
 // NewArtlistModule creates a new Artlist module using RouteModule.
 // The ArtlistHandler now lives in the artlist subpackage (PR-A Phase 3)
 // so this module factory takes the new subpackage type.
+//
+// Lifecycle: the module itself is route-only. The service's Close() is
+// now managed by the composition root (internal/app).
 func NewArtlistModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	service *artlistService.Service,
 	handler *artsources.ArtlistHandler,
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"artlist",
-		func(cfg *config.Config) bool { return cfg.Features.ArtlistEnabled },
+		func() bool { return cfg.Features.ArtlistEnabled },
 		"/artlist",
 		handler,
 		log,
-		api.WithStart(func(ctx context.Context) error {
-			log.Info("starting artlist module")
-			return nil
-		}),
-		api.WithStop(func(ctx context.Context) error {
-			log.Info("stopping artlist module")
-			if service != nil {
-				return service.Close()
-			}
-			return nil
-		}),
 		api.WithMiddleware(middleware.ArtlistEnabled(cfg)),
 	)
 }

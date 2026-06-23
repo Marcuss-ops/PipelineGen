@@ -1,8 +1,6 @@
 package script
 
 import (
-	"context"
-
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 
@@ -37,8 +35,8 @@ func (m *ScriptHistoryModule) Name() string {
 }
 
 // Enabled checks if this module is enabled
-func (m *ScriptHistoryModule) Enabled(cfg *config.Config) bool {
-	return cfg.Features.ScriptClipsEnabled
+func (m *ScriptHistoryModule) Enabled() bool {
+	return m.cfg.Features.ScriptClipsEnabled
 }
 
 // RegisterRoutes registers the module's routes
@@ -51,16 +49,4 @@ func (m *ScriptHistoryModule) RegisterRoutes(rg *gin.RouterGroup) {
 	group := rg.Group("/scripts")
 	group.Use(middleware.ScriptClipsEnabled(m.cfg))
 	m.handler.RegisterRoutes(group)
-}
-
-// Start performs startup tasks
-func (m *ScriptHistoryModule) Start(ctx context.Context) error {
-	m.log.Info("starting script history module")
-	return nil
-}
-
-// Stop performs graceful shutdown
-func (m *ScriptHistoryModule) Stop(ctx context.Context) error {
-	m.log.Info("stopping script history module")
-	return nil
 }

@@ -15,7 +15,7 @@ func NewModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"images",
-		func(cfg *config.Config) bool { return cfg.Features.ImagesEnabled },
+		func() bool { return cfg.Features.ImagesEnabled },
 		"/images",
 		handler,
 		log,

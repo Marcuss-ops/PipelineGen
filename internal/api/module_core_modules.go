@@ -1,8 +1,6 @@
 package api
 
 import (
-	"context"
-
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/gin-gonic/gin"
@@ -35,7 +33,7 @@ func NewUtilityModule(
 func (m *UtilityModule) Name() string { return m.name }
 
 // Enabled checks if this module is enabled.
-func (m *UtilityModule) Enabled(*config.Config) bool { return m.handler != nil }
+func (m *UtilityModule) Enabled() bool { return m.handler != nil }
 
 // RegisterRoutes registers the module's routes.
 func (m *UtilityModule) RegisterRoutes(rg *gin.RouterGroup) {
@@ -47,9 +45,3 @@ func (m *UtilityModule) RegisterRoutes(rg *gin.RouterGroup) {
 	group := rg.Group("/internal")
 	group.GET("/slug", m.handler.Slugify)
 }
-
-// Start performs startup tasks.
-func (m *UtilityModule) Start(context.Context) error { return nil }
-
-// Stop performs shutdown tasks.
-func (m *UtilityModule) Stop(context.Context) error { return nil }

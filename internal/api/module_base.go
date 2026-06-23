@@ -1,37 +1,31 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // Module is the common interface that all feature modules must implement.
-// This allows for clean registration and lifecycle management.
+// It is route-only: lifecycle (Start/Stop) is managed separately by the
+// composition root (internal/app/lifecycle.go).
+//
+// Enabled() bakes the config check into the module at construction time so
+// the API layer never imports config.Config.
 type Module interface {
 	// Name returns the unique name of the module (e.g., "artlist", "clips")
 	Name() string
 
-	// Enabled checks if this module should be enabled based on config
-	Enabled(cfg *config.Config) bool
+	// Enabled returns true when the module should have its routes registered.
+	// The check is baked in at construction time (closure over config).
+	Enabled() bool
 
 	// RegisterRoutes registers the module's routes to the provided router group
 	RegisterRoutes(rg *gin.RouterGroup)
-
-	// Start performs any async startup tasks (goroutines, watchers, etc.)
-	// Called after all routes are registered and server is about to start.
-	Start(ctx context.Context) error
-
-	// Stop performs graceful shutdown for the module
-	Stop(ctx context.Context) error
 }
 
-// Registry holds all registered modules and manages their lifecycle.
+// Registry holds all registered modules and manages route registration.
 type Registry struct {
 	mu      sync.Mutex
 	modules []Module
@@ -70,13 +64,13 @@ func (r *Registry) Freeze() {
 	r.frozen = true
 }
 
-// GetEnabled returns all modules that are enabled in the current config.
-func (r *Registry) GetEnabled(cfg *config.Config) []Module {
+// GetEnabled returns all modules whose Enabled() closure returns true.
+func (r *Registry) GetEnabled() []Module {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	enabled := make([]Module, 0)
 	for _, m := range r.modules {
-		if m.Enabled(cfg) {
+		if m.Enabled() {
 			enabled = append(enabled, m)
 		}
 	}
@@ -84,53 +78,8 @@ func (r *Registry) GetEnabled(cfg *config.Config) []Module {
 }
 
 // RegisterAllRoutes registers routes for all enabled modules.
-func (r *Registry) RegisterAllRoutes(cfg *config.Config, apiGroup *gin.RouterGroup) {
-	for _, m := range r.GetEnabled(cfg) {
+func (r *Registry) RegisterAllRoutes(apiGroup *gin.RouterGroup) {
+	for _, m := range r.GetEnabled() {
 		m.RegisterRoutes(apiGroup)
 	}
-}
-
-// StartAll starts all enabled modules transactionally: if any module fails to
-// start, all previously-started modules are stopped in reverse order and the
-// aggregated error is returned.
-func (r *Registry) StartAll(ctx context.Context, cfg *config.Config) error {
-	var started []Module
-	for _, m := range r.GetEnabled(cfg) {
-		if err := m.Start(ctx); err != nil {
-			// Rollback: stop already-started modules in reverse order.
-			// Use a fresh background context with a 5-second timeout so that
-			// Stop() can run even if the parent ctx has already been cancelled.
-			var rollbackErrs []error
-			for i := len(started) - 1; i >= 0; i-- {
-				stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				if stopErr := started[i].Stop(stopCtx); stopErr != nil {
-					rollbackErrs = append(rollbackErrs, fmt.Errorf("module %q rollback stop: %w", started[i].Name(), stopErr))
-				}
-				cancel()
-			}
-			if len(rollbackErrs) > 0 {
-				return fmt.Errorf("module %q start failed: %w (rollback errors: %v)", m.Name(), err, rollbackErrs)
-			}
-			return fmt.Errorf("module %q start failed: %w", m.Name(), err)
-		}
-		started = append(started, m)
-	}
-	return nil
-}
-
-// StopAll stops all enabled modules in reverse order (last started, first
-// stopped). Errors are aggregated with errors.Join so every module gets a
-// chance to shut down gracefully.
-func (r *Registry) StopAll(ctx context.Context, cfg *config.Config) error {
-	modules := r.GetEnabled(cfg)
-	var errs []error
-	for i := len(modules) - 1; i >= 0; i-- {
-		if err := modules[i].Stop(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("module %q stop: %w", modules[i].Name(), err))
-		}
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("module shutdown errors: %v", errs)
-	}
-	return nil
 }

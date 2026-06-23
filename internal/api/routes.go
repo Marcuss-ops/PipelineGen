@@ -147,7 +147,7 @@ func (r *Router) Setup() *gin.Engine {
 			// Use module registry for route registration
 			if r.registry != nil {
 				log.Info("using module registry for route registration")
-				r.registry.RegisterAllRoutes(r.cfg, protected)
+				r.registry.RegisterAllRoutes(protected)
 			} else {
 				log.Warn("no module registry available, no routes registered")
 			}

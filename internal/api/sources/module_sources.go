@@ -1,8 +1,6 @@
 package sources
 
 import (
-	"context"
-
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 
@@ -18,13 +16,9 @@ func NewSourcesModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"assets",
-		func(cfg *config.Config) bool { return handler != nil },
+		func() bool { return handler != nil },
 		"/media",
 		handler,
 		log,
-		api.WithStart(func(ctx context.Context) error {
-			log.Info("starting assets module")
-			return nil
-		}),
 	)
 }
