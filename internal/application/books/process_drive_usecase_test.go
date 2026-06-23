@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
-
 )
 
 // ────────────────────────────────────────────────────────────────────
@@ -27,14 +26,14 @@ import (
 // FakeDriveBookProcessor is the consumer-side fake for the
 // driveBookProcessor interface. Zero value returns nil + no error.
 type FakeDriveBookProcessor struct {
-	Result *booksService.ProcessFromDriveResult
+	Result *ProcessFromDriveResult
 	Err    error
 
-	LastRequest *booksService.ProcessFromDriveRequest
+	LastRequest *ProcessFromDriveRequest
 }
 
 // ProcessBookFromDrive implements driveBookProcessor.
-func (f *FakeDriveBookProcessor) ProcessBookFromDrive(_ context.Context, req *booksService.ProcessFromDriveRequest) (*booksService.ProcessFromDriveResult, error) {
+func (f *FakeDriveBookProcessor) ProcessBookFromDrive(_ context.Context, req *ProcessFromDriveRequest) (*ProcessFromDriveResult, error) {
 	f.LastRequest = req
 	if f.Err != nil {
 		return nil, f.Err
@@ -88,7 +87,7 @@ func TestProcessBookFromDriveRequest_Validate(t *testing.T) {
 // VoiceoverPath (with VoiceoverError empty).
 func TestProcessBookFromDriveUseCase_HandleSyncOK(t *testing.T) {
 	fakeSvc := &FakeDriveBookProcessor{
-		Result: &booksService.ProcessFromDriveResult{
+		Result: &ProcessFromDriveResult{
 			Success: true,
 			BookResult: &ProcessResult{
 				Success:         true,

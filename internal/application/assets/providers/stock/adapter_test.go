@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
+	stock "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 )
 
 // Compile-time interface guard: catches interface drift at build time.
@@ -17,7 +17,7 @@ import (
 // is fetch-only by design (see adapter.go package doc).
 var _ providers.FetchProvider = (*stock.Adapter)(nil)
 
-// fakeRunner is a minimal stub of stock.stockRunner. It captures the
+// fakeRunner is a minimal stub of stockpipeline.stockRunner. It captures the
 // most-recent RunInput and returns canned outputs so unit tests can
 // verify dispatch + happy-path mapping without standing up a real
 // *stockpipeline.Service (which carries a heavy Drive+Jobs+AssetIndex

@@ -45,18 +45,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipresolver"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -376,10 +376,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if aw, err := WireAssets(cfg, log, assetsBundle, root.Process.VectorSvc, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeService, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
-		if aw.NewAssetsModule != nil {
-			registerModule(registry, log, aw.NewAssetsModule)
-			log.Info("registered new thin-transport Assets module alongside legacy SourcesModule")
-		}
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
 			maintenanceSvc.SetDeletionService(aw.DeletionSvc)
 			log.Info("injected DeletionService into MaintenanceService")
@@ -423,8 +419,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		log.Info("providers.Registry frozen at end of WireRegistry",
 			zap.Int("providers", len(pr.All())))
 
-		if wiring.Assets != nil && wiring.Assets.Handler != nil {
-			log.Info("providers.Registry wired into SourcesHandler via constructor (no late-binding needed)")
+		if wiring.Assets != nil && wiring.Assets.Module != nil {
+			log.Info("providers.Registry wired into Assets module via constructor")
 		}
 		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
 			log.Info("providers.Registry wired into YouTubeClipHandler via constructor (no late-binding needed)")

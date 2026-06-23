@@ -2,16 +2,16 @@ package app
 
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/stock"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -31,7 +31,7 @@ type StockBundle struct {
 
 // StockPipelineWiring holds the StockPipeline module wiring.
 type StockPipelineWiring struct {
-	Handler *sources.StockHandler
+	Handler *stock.Handler
 	Module  api.Module
 	Service *stockpipeline.Service
 }
@@ -65,7 +65,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	)
 	svc.SetMetadataWriter(metaWriter)
 	log.Info("metadata writer wired into stock pipeline")
-	handler := sources.NewStockHandler(svc, bundle.JobFacade, log)
+	handler := stock.NewHandler(svc, bundle.JobFacade, log)
 	stockEnabled := cfg != nil && cfg.Features.StockPipelineEnabled
 	mod := api.NewRouteModule(
 		"stock-pipeline",
