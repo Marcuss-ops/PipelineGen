@@ -217,15 +217,16 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		}},
 		{"MediaIngest", func() (module.Module, error) {
 			// PR4d-chunk2: WireMediaIngest takes *MediaIngestBundle.
-			ingestBundle := &MediaIngestBundle{
-				DB:                root.DB.DB,
-				Assets:            root.Repos.Assets,
-				DriveClient:       root.Drive.DriveClient,
-				ImageRepo:         root.Repos.ImageRepo,
-				VoiceoverRepo:     root.Repos.VoiceoverRepo,
-				ClipsRepo:         root.Repos.ClipsRepo,
-				AssetIndexService: root.Search.AssetIndexService,
-			}
+		ingestBundle := &MediaIngestBundle{
+			DB:                root.DB.DB,
+			Assets:            root.Repos.Assets,
+			DriveClient:       root.Drive.DriveClient,
+			ImageRepo:         root.Repos.ImageRepo,
+			VoiceoverRepo:     root.Repos.VoiceoverRepo,
+			ClipsRepo:         root.Repos.ClipsRepo,
+			AssetIndexService: root.Search.AssetIndexService,
+			PrebuiltService:   root.Domains.IngestService,
+		}
 			w, e := WireMediaIngest(cfg, log, ingestBundle)
 			wiring.MediaIngest = w
 			if w != nil {
@@ -300,11 +301,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(root.DB.DB)))
 	}
 
-	if imagesHandler != nil && wiring.MediaIngest != nil {
-		if root.Domains != nil && root.Domains.ImageService != nil {
-			root.Domains.ImageService.SetIngestService(wiring.MediaIngest.Service)
-		}
-		log.Info("injected MediaIngest service into ImagesService")
+	if wiring.MediaIngest != nil {
+		log.Info("MediaIngest module wired (service pre-built via BuildDomainBundle, no late-binding needed)")
 	}
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
 		registerModule(registry, log, scriptapi.NewScriptHistoryModule(cfg, log, scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log)))

@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -178,6 +179,7 @@ func initImageService(
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
 	mediaStore *drive.Store, vectorSvc *qdrant.Service, imageRepo *assets.ImagesRepository,
 	voMetaWriter *semantic.MetadataWriter,
+	ingestSvc *ingest.Service,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
 
 	imageService := imgservice.NewService(
@@ -197,6 +199,7 @@ func initImageService(
 		scriptGen,
 		vectorSvc,
 		voMetaWriter,
+		ingestSvc,
 		log,
 	)
 

@@ -100,9 +100,9 @@ type DiagnosticsReport struct {
 // GoogleAccountingConfig) so the ctor signature stays readable as
 // integrations grow.
 //
-// SetIngestService is retained (called from registry.go's WireRegistry after
-// MediaIngest has been constructed — composition root has documented this as
-// a late-binding window for module cross-wiring; see Document late-bindings).
+// PR3 (June 2026): ingestSvc is now wired via constructor injection.
+// The SetIngestService setter has been removed — ingestService is built
+// during BuildDomainBundle and passed directly to NewService.
 func NewService(
 	cfg *config.Config,
 	repo *assets.ImagesRepository,
@@ -117,6 +117,7 @@ func NewService(
 	llmGen *ollama.Generator,
 	vectorSvc *qdrant.Service,
 	metaWriter *semantic.MetadataWriter,
+	ingestSvc *ingest.Service,
 	log *zap.Logger,
 ) *Service {
 	maxNvidia := cfg.Concurrency.MaxConcurrentNvidiaGenerations
@@ -153,6 +154,7 @@ func NewService(
 		llmGen:                 llmGen,
 		vectorSvc:              vectorSvc,
 		metaWriter:             metaWriter,
+		ingestSvc:              ingestSvc,
 	}
 
 	return s
@@ -167,10 +169,6 @@ func (s *Service) Diagnostics() DiagnosticsReport {
 		NvidiaConfigured: s.nvidiaAPIKey != "" && s.nvidiaAPIKey != "PASTE_YOUR_NVIDIA_API_KEY_HERE",
 		IngestConfigured: s.ingestSvc != nil,
 	}
-}
-
-func (s *Service) SetIngestService(svc *ingest.Service) {
-	s.ingestSvc = svc
 }
 
 // Log restituisce il logger interno per logging da altre componenti.
