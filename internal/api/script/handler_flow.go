@@ -94,6 +94,16 @@ type ScriptFlowHandler struct {
 
 	// Semaphore for concurrent script generation, configured via ConcurrencyConfig.
 	scriptGenSem chan struct{}
+
+	// Wave 14 problem #4 (June 2026): five run-time use cases consumed
+	// by HandleClipScriptGenerateJob. All five are first-class ctor
+	// deps; the handler itself no longer orchestrates the underlying
+	// pipeline — it routes the call to PipelineUseCase.
+	pipelineUC  *scripts.PipelineUseCase
+	scenesUC    *scripts.SceneBuilderUseCase
+	docsUC      *scripts.DocumentsUseCase
+	semUC       *scripts.SemaphoreUseCase
+	prewarmUC   *scripts.PrewarmUseCase
 }
 
 // AutoHarvestService abstracts the clip harvest functionality.
@@ -131,6 +141,17 @@ type ScriptFlowDeps struct {
 	Section       *scripts.SectionRegenerator
 	GenerateBatch *scripts.GenerateBatchUseCase
 	CacheEviction *scripts.CacheEvictionUseCase
+
+	// Wave 14 problem #4 (June 2026): the unified clip-source
+	// orchestration is split into five use cases. All five are required
+	// by the new NewScriptFlowHandler signature. Composition provides
+	// nil-safe defaults (SemaphoreUseCase with capacity from cfg, etc.)
+	// so a missing wire surfaces a typed error rather than a panic.
+	PipelineUseCase   *scripts.PipelineUseCase
+	SceneBuilderUC    *scripts.SceneBuilderUseCase
+	DocumentsUC       *scripts.DocumentsUseCase
+	SemaphoreUC       *scripts.SemaphoreUseCase
+	PrewarmUC         *scripts.PrewarmUseCase
 
 	// Asset-side composability: these come from the SearchBundle /
 	// AssetsBundle and feed the InsightBuilder + ClipServices bundle.
@@ -257,6 +278,15 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		clipServices:       clipSvc,
 		scriptGenSem:       make(chan struct{}, maxScriptGen),
 		insightBuilder: NewScriptInsightBuilder(log, maxEntities, clipSvc),
+
+		// Wave 14 problem #4 (June 2026): five use cases supplied via
+		// deps. Their absence (nil) surfaces a typed error in the slim
+		// handler_jobs.go — never a nil panic.
+		pipelineUC: deps.PipelineUseCase,
+		scenesUC:   deps.SceneBuilderUC,
+		docsUC:     deps.DocumentsUC,
+		semUC:      deps.SemaphoreUC,
+		prewarmUC:  deps.PrewarmUC,
 	}
 
 	// Constructor side-effects that previously lived in
