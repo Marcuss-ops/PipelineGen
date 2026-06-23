@@ -11,15 +11,24 @@ import (
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 )
 
-// QdrantChecker verifies the Qdrant vector store.
+// QdrantChecker verifies the Qdrant vector store is ready AND the
+// required collection is present.
+//
+// fix(health) close-out (June 2026, problem #2 final cleanup): the
+// previous implementation probed /readyz + best-effort /collections/<n>
+// (nested `if err == nil` chains silently degraded a missing-collection
+// signal into nil points_count). Qdrant reports /readyz=OK on a
+// broker that has no collections, so /readyz alone is insufficient —
+// the collection presence probe is now HARD-required: a non-200 from
+// /collections/<c> flips ok=false with the diagnostic message
+// pinned for ops triage.
 type QdrantChecker struct {
-	url         string
-	collection  string
-	enabled     bool
-	client      *http.Client
+	url        string
+	collection string
+	enabled    bool
+	client     *http.Client
 }
 
-// NewQdrantChecker creates a Qdrant-health checker.
 func NewQdrantChecker(url, collection string, enabled bool) *QdrantChecker {
 	if url == "" {
 		url = "http://127.0.0.1:6333"
@@ -32,12 +41,6 @@ func NewQdrantChecker(url, collection string, enabled bool) *QdrantChecker {
 	}
 }
 
-// CheckQdrant verifies the vector store is reachable.
-//
-// fix/health-capabilities-optional Commit 2: when vector search is
-// disabled, return {ok: true, applicable: false} (unified with the
-// Drive checker's behaviour). A collection-count probe is skipped so
-// the response is symmetric across all opt-out checkers.
 func (c *QdrantChecker) CheckQdrant(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
 
@@ -57,7 +60,6 @@ func (c *QdrantChecker) CheckQdrant(ctx context.Context) healthport.CheckResult 
 			"error": "failed to create request",
 		}
 	}
-
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return healthport.CheckResult{
@@ -66,44 +68,65 @@ func (c *QdrantChecker) CheckQdrant(ctx context.Context) healthport.CheckResult 
 		}
 	}
 	resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		return healthport.CheckResult{
 			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
-			"error": fmt.Sprintf("Qdrant returned HTTP %d", resp.StatusCode),
+			"error": fmt.Sprintf("Qdrant /readyz returned HTTP %d", resp.StatusCode),
 		}
 	}
 
-	// Get collection points count.
-	var pointsCount int64 = -1
 	collURL := fmt.Sprintf("%s/collections/%s", c.url, c.collection)
 	req2, err := http.NewRequestWithContext(ctx, "GET", collURL, nil)
-	if err == nil {
-		resp2, err := c.client.Do(req2)
-		if err == nil {
-			defer resp2.Body.Close()
-			if resp2.StatusCode == http.StatusOK {
-				var collResp struct {
-					Result struct {
-						PointsCount int64 `json:"points_count"`
-					} `json:"result"`
-				}
-				if json.NewDecoder(resp2.Body).Decode(&collResp) == nil {
-					pointsCount = collResp.Result.PointsCount
-				}
-			}
+	if err != nil {
+		return healthport.CheckResult{
+			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
+			"error": "failed to create collection request",
+		}
+	}
+	resp2, err := c.client.Do(req2)
+	if err != nil {
+		return healthport.CheckResult{
+			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
+			"error": fmt.Sprintf("Qdrant collection %q unreachable", c.collection),
+		}
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode == http.StatusNotFound {
+		return healthport.CheckResult{
+			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
+			"error": fmt.Sprintf("Qdrant collection %q missing (404)", c.collection),
+		}
+	}
+	if resp2.StatusCode != http.StatusOK {
+		return healthport.CheckResult{
+			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
+			"error": fmt.Sprintf("Qdrant collection %q returned HTTP %d", c.collection, resp2.StatusCode),
+		}
+	}
+
+	var collResp struct {
+		Result struct {
+			Status      string `json:"status"`
+			PointsCount int64  `json:"points_count"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&collResp); err != nil {
+		return healthport.CheckResult{
+			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
+			"error": fmt.Sprintf("Qdrant collection %q response malformed: %v", c.collection, err),
 		}
 	}
 
 	result := healthport.CheckResult{
-		"ok":          true,
-		"enabled":     true,
-		"collection":  c.collection,
-		"duration_ms": time.Since(start).Milliseconds(),
+		"ok":           true,
+		"enabled":      true,
+		"collection":   c.collection,
+		"duration_ms":  time.Since(start).Milliseconds(),
+		"points_count": collResp.Result.PointsCount,
 	}
-	if pointsCount >= 0 {
-		result["points_count"] = pointsCount
+	if collResp.Result.Status != "" {
+		result["collection_status"] = collResp.Result.Status
 	}
-
 	return result
 }

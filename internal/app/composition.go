@@ -233,6 +233,7 @@ type MaintBundle struct {
 type UtilityBundle struct {
 	Utility       *common.UtilityHandler
 	HealthService *systemhealth.Service
+	ReadyChecker  *systemhealth.ReadyChecker // fix(health) close-out: peer of HealthService; applied readiness policy.
 }
 
 // ComposeRoot is the assembled root tree. NewComposition returns this.
@@ -884,9 +885,11 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 //
 // commit ci/composition-split wave-4: extracted to build_utility_bundle.go.
 func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB) *UtilityBundle {
+	svc := buildHealthService(cfg, db)
 	return &UtilityBundle{
 		Utility:       common.NewUtilityHandler(),
-		HealthService: buildHealthService(cfg, db),
+		HealthService: svc,
+		ReadyChecker:  systemhealth.NewReadyChecker(svc), // fix(health) close-out: readiness policy moved out of the http handler.
 	}
 }
 

@@ -3,40 +3,39 @@ package health
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // DriveChecker verifies Google Drive connectivity.
+//
+// fix(health) close-out (June 2026, problem #2 final cleanup): the
+// inline JSON token parse was extracted to drive.ParseTokenFile
+// (internal/infrastructure/drive/tokensource.go) so the parsing logic
+// has its own testable surface independent of the HTTP request path.
 type DriveChecker struct {
 	credsPath string
 	tokenPath string
+	aboutURL  string // overridable for tests via direct struct literal (httptest.Server URL)
 	client    *http.Client
 }
 
-// NewDriveChecker creates a Drive-health checker.
+// defaultDriveAboutURL is the canonical Google Drive "about" probe.
+const defaultDriveAboutURL = "https://www.googleapis.com/drive/v3/about?fields=user"
+
 func NewDriveChecker(credsPath, tokenPath string) *DriveChecker {
 	return &DriveChecker{
 		credsPath: credsPath,
 		tokenPath: tokenPath,
+		aboutURL:  defaultDriveAboutURL,
 		client:    &http.Client{Timeout: 3 * time.Second},
 	}
 }
 
-// CheckDrive verifies the Drive token and API are reachable.
-//
-// fix/health-capabilities-optional Commit 2: when Drive credentials are
-// not configured, return {ok: true, applicable: false} instead of
-// {ok: false}. Deployments without Drive integration (e.g. unit tests,
-// batch CI runners) should not have the health endpoint return HTTP
-// 503 solely because the Drive capability is opted out. A check that
-// is not applicable contributes ok=true and is excluded from the
-// fail-closed aggregation in service.go::Check.
 func (c *DriveChecker) CheckDrive(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
 
@@ -48,47 +47,41 @@ func (c *DriveChecker) CheckDrive(ctx context.Context) healthport.CheckResult {
 		}
 	}
 
-	tokenBytes, err := os.ReadFile(c.tokenPath)
+	accessToken, err := drive.ParseTokenFile(c.tokenPath)
 	if err != nil {
 		return healthport.CheckResult{
-			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
-			"error": "token file not readable",
-		}
-	}
-
-	var tokenData struct {
-		AccessToken string `json:"access_token"`
-	}
-	if json.Unmarshal(tokenBytes, &tokenData) != nil || tokenData.AccessToken == "" {
-		return healthport.CheckResult{
-			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
-			"error": "token file invalid or missing access_token",
+			"ok":          false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       fmt.Sprintf("token unavailable: %v", err),
 		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET",
-		"https://www.googleapis.com/drive/v3/about?fields=user", nil)
+		c.aboutURL, nil)
 	if err != nil {
 		return healthport.CheckResult{
-			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
-			"error": "failed to create Drive request",
+			"ok":          false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       "failed to create Drive request",
 		}
 	}
-	req.Header.Set("Authorization", "Bearer "+tokenData.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return healthport.CheckResult{
-			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
-			"error": "Drive API unreachable",
+			"ok":          false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       "Drive API unreachable",
 		}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return healthport.CheckResult{
-			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
-			"error": fmt.Sprintf("Drive API returned HTTP %d", resp.StatusCode),
+			"ok":          false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       fmt.Sprintf("Drive API returned HTTP %d", resp.StatusCode),
 		}
 	}
 

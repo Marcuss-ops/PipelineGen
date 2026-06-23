@@ -123,12 +123,12 @@ func (r *Router) Setup() *gin.Engine {
 	var healthHandler *common.HealthHandler
 	if r.healthSvc != nil {
 		if svc, ok := r.healthSvc.(*systemhealth.Service); ok {
-			healthHandler = common.NewHealthHandler(svc)
+			healthHandler = common.NewHealthHandler(svc,  nil /* ReadyChecker wired via composition */)
 		}
 	}
 	if healthHandler == nil {
 		log.Warn("health service not wired, health endpoints will return 503")
-		healthHandler = common.NewHealthHandler(nil)
+		healthHandler = common.NewHealthHandler(nil, nil /* nil-by-design; integration stub only */)
 	}
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)

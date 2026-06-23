@@ -1,6 +1,10 @@
 package health
 
 import (
+	"net"
+	"strings"
+	"time"
+	"github.com/stretchr/testify/require"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -95,4 +99,78 @@ func TestQdrantChecker_Enabled_Readyz403(t *testing.T) {
 	if _, has := res["error"]; !has {
 		t.Fatalf("expected 'error' key when probe fails, got %v", res)
 	}
+}
+
+
+// fix(health) close-out: collection MUST present + readable; missing = ok=false.
+
+func TestQdrantChecker_CollectionMissing(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/collections/") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"status":"not_found","error":"collection missing"}`))
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(ts.Close)
+	c := NewQdrantChecker(ts.URL, "missing_collection", true)
+	c.client = ts.Client()
+	res := c.CheckQdrant(context.Background())
+	require.False(t, res["ok"].(bool), "missing collection must be ok=false, got %v", res)
+	require.Contains(t, res["error"].(string), "missing (404)")
+}
+
+func TestQdrantChecker_MalformedResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/collections/") {
+			_, _ = w.Write([]byte(`{ malformed body without closing brace`))
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(ts.Close)
+	c := NewQdrantChecker(ts.URL, "bad_response", true)
+	c.client = ts.Client()
+	res := c.CheckQdrant(context.Background())
+	require.False(t, res["ok"].(bool), "malformed response must be ok=false, got %v", res)
+	require.Contains(t, res["error"].(string), "malformed")
+}
+
+func TestQdrantChecker_NetworkError(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+	c := NewQdrantChecker("http://"+addr, "any", true)
+	res := c.CheckQdrant(context.Background())
+	require.False(t, res["ok"].(bool), "unreachable Qdrant must be ok=false, got %v", res)
+	require.Contains(t, res["error"].(string), "connect", "error pin")
+}
+
+func TestQdrantChecker_ContextCancellation(t *testing.T) {
+	gate := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-gate:
+		}
+	}))
+	t.Cleanup(func() { ts.Close(); close(gate) })
+	c := NewQdrantChecker(ts.URL, "any_col", true)
+	c.client = ts.Client()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	res := c.CheckQdrant(ctx)
+	require.False(t, res["ok"].(bool), "ctx-cancelled must be ok=false, got %v", res)
 }
