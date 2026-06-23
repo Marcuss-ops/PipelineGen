@@ -24,6 +24,8 @@ The latest cleanup round made meaningful progress:
 - lifecycle startup order is now Drive → Qdrant → Outbox → job runner;
 - transition/effect zero semantics were corrected and transition registry tests
   were added;
+- `config.example.yaml` now documents `transition_interval` and the zero-value
+  disable behavior;
 - architecture and generated API documentation received a first truth refresh.
 
 The cleanup is **not complete**. Script job execution is still owned by the API
@@ -55,7 +57,8 @@ internal/app/             construction, dependency injection, startup, shutdown
 
 3. [`COMPOSITION_DOCS_AND_CONFIG_CLEANUP.md`](./COMPOSITION_DOCS_AND_CONFIG_CLEANUP.md)
    - Tracks the still-open physical composition split, migration truth,
-     generated-doc verification and configuration example cleanup.
+     generated-doc verification, startup failure propagation and interval-default
+     consistency.
 
 ## Updated priorities
 
@@ -66,7 +69,7 @@ internal/app/             construction, dependency injection, startup, shutdown
 | Medium | Health hardening | Boundary is correct, but checkers reopen SQLite, parse token files, create duplicate HTTP clients and jobs health only checks a table. | Medium |
 | Medium | Composition physical split | `composition.go` remains a mega-file and `wireScriptFlow` remains in `registry.go`. | Medium |
 | Medium | API import hard gate | Check 19 is still soft-log and does not cover every infrastructure import, including `internal/infrastructure/files`. | Small/Medium |
-| Small | Video config example | `transition_interval` exists in code but is still absent from `config.example.yaml`. | Small |
+| Small | Interval default consistency | Config uses effect fallback `4`, while the renderer’s negative fallback is `3`. | Small |
 
 ## Completed work packages
 
@@ -82,14 +85,19 @@ Remaining lifecycle enhancement: startup functions still return no error and
 Qdrant preparation is explicitly best-effort, so required dependency failures
 cannot currently stop startup.
 
-### Transition behavior
+### Transition behavior and example configuration
 
 Verified complete:
 
 - `0` disables effects/transitions;
 - negative values select defaults;
 - modulo-by-zero guards are present;
-- the 15-entry transition catalog has concrete infrastructure tests.
+- the 15-entry transition catalog has concrete infrastructure tests;
+- `config.example.yaml` contains `transition_interval` and documents zero-value
+  behavior.
+
+Remaining small follow-up: make the effect interval fallback identical in
+configuration and renderer code.
 
 ### Health transport boundary
 
@@ -111,8 +119,8 @@ hardening document.
 4. Promote API forbidden-import checks to hard fail after remaining imports are
    removed.
 5. Split composition and script wiring into focused same-package files.
-6. Add the missing configuration example field and complete documentation
-   consistency checks.
+6. Propagate required startup failures and align effect interval defaults.
+7. Complete architecture, migration and generated-document consistency checks.
 
 ## Cross-cutting invariants
 
@@ -183,6 +191,6 @@ Cleanup is complete only when:
 - `composition.go` and `registry.go` are split into focused same-package files;
 - required startup failures are observable instead of silently best-effort;
 - Wave 14 status and exit gate match the actual transport boundary;
-- `config.example.yaml` documents `transition_interval`;
+- effect interval defaults are consistent between config and renderer;
 - architecture, migration and generated API documentation match current code;
 - focused tests, full build, vet and architecture gates pass.
