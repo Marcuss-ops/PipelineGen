@@ -32,7 +32,7 @@ import (
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 

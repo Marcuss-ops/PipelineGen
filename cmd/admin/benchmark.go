@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/\1/benchmark"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime/benchmark"
 )
 
 func runBenchmark(args []string) error {
