@@ -82,6 +82,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -559,17 +560,13 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// PR2 cascade (June 2026): youtube.NewService(ServiceDeps) is the canonical
 	// constructor. Composition wires every port here once — no setter cascade.
 	//
-	// typed-nil guard audit (June 2026): all adapter constructors below
-	// (newClipStoreAdapter, newMonitorsStoreAdapter, newCacheStoreAdapter,
-	// newDriveFolderMgrAdapter, newFolderMemoryAdapter, newSearchRunnerStub)
-	// return bare nil when their inner value is nil, so typed-nil cannot leak
-	// into ServiceDeps. clipIndexerAdapterValue is declared as the interface
-	// type directly (var clipIndexerAdapterValue youtube.ClipIndexerPort),
-	// which produces bare nil when uninitialized. metaFetcher always returns
-	// a non-nil *MetadataFetcherAdapter. ai.OllamaClient always returns
-	// a non-nil *client.Client. Result: zero typed-nil surfaces in this
-	// wiring block. Future port additions can use pkg/portutil.IsNilPort
-	// as a defensive typed-nil guard at construction time.
+	// PR2 fail-closed (June 2026): searchRunnerPanic policy. ytinfra.NewSearchRunnerAdapter
+	// returns nil when cfg or log is nil. When the SearchRunner adapter
+	// resolves to nil OR a typed-nil is detected via portutil.IsNilPort, this
+	// composition site MUST fail-closed rather than continue — the previous
+	// searchRunnerStub masked misconfig by returning empty result sets, which
+	// was indistinguishable from "search succeeded with zero hits". BuildDomainBundle
+	// returns an explicit error here so the operator sees a clear boot failure.
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
 	driveFolderMgr := newDriveFolderMgrAdapter(drive.DriveUploader, log)
@@ -577,6 +574,20 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	var clipIndexerAdapterValue youtube.ClipIndexerPort
 	if process.ClipIndexerService != nil {
 		clipIndexerAdapterValue = &clipIndexerAdapter{inner: process.ClipIndexerService}
+	}
+
+	// PR2 fail-closed (June 2026): build the SearchRunner adapter and verify
+	// it is wired before passing to youtube.NewService. A nil result here
+	// would propagate silent-empty behaviour into the orchestrator. We
+	// surface the missing dependency as an explicit BuildDomainBundle error.
+	searchRunnerAdapter := ytinfra.NewSearchRunnerAdapter(cfg, log)
+	if searchRunnerAdapter == nil {
+		return nil, fmt.Errorf("compose domains: youtube SearchRunnerPort nil (cfg or log missing — fail-closed per PR2)")
+	}
+	// Defense-in-depth: typed-nil guard via pkg/portutil (in case the adapter
+	// constructor ever returns a typed-nil pointer in a future refactor).
+	if portutil.IsNilPort(searchRunnerAdapter) {
+		return nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
 	youtubeClipService := youtube.NewService(youtube.ServiceDeps{
@@ -595,11 +606,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		MetaFetcher:       metaFetcher,
 		DriveFolderMgr:    driveFolderMgr,
 		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
-		// PR2 cascade (June 2026): SearchRunnerPort was made structural to
-		// satisfy searcher.go's compiler requirements. Wire the stub adapter
-		// here so the build is green; the real yt-dlp subprocess impl lands
-		// in a follow-up PR (search runner + JSON parsing).
-		SearchRunner: newSearchRunnerStub(log),
+		// PR2 fail-closed (June 2026): wire the real SearchRunnerAdapter (real
+		// yt-dlp subprocess bridge that returns errors via
+		// ports.ErrSearchRunnerUnavailable instead of silent-empty). Performs
+		// CPR-LR-1 inside GetVideoInfo (forwards Thumbnails array correctly).
+		SearchRunner: searchRunnerAdapter,
 	})
 
 	voiceoverSvc, voiceoverRepo := initVoiceoverService(ctx, cfg, dbs, log,

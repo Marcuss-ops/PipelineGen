@@ -196,7 +196,15 @@ func NewService(deps ServiceDeps) *Service {
 	}
 
 	// Wire search service (PR5 Phase 2).
-	if deps.SearchRunner != nil && deps.Log != nil {
+	//
+	// PR2 fail-closed (June 2026): typed-nil defense-in-depth. The composition
+	// root wires a non-nil `*SearchRunnerAdapter` (checked in
+	// composition.go::BuildDomainBundle) but a future refactor could
+	// accidentally pass a typed-nil concrete pointer through an interface
+	// field of ServiceDeps. The portutil.IsNilPort guard catches that case
+	// and refuses to wire the search service, producing an explicit
+	// failure at first use instead of a silent panic.
+	if deps.SearchRunner != nil && !portutil.IsNilPort(deps.SearchRunner) && deps.Log != nil {
 		svc.search = ytsearch.NewService(ytsearch.SearchDeps{
 			SearchRunner: deps.SearchRunner,
 			Cache:        svc.cache,
