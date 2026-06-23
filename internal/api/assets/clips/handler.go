@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -58,6 +59,8 @@ type Deps struct {
 	ArtifactSvc *artifacts.Service
 	// FolderMemSvc supports manifest regeneration heuristics.
 	FolderMemSvc *foldermemory.Service
+	// SearchSvc owns advanced multi-source clip search.
+	SearchSvc *appclipssearch.Service
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -85,6 +88,8 @@ type Handler struct {
 	// artifactSvc mirrors Deps.ArtifactSvc. Same late-binding semantics.
 	artifactSvc  *artifacts.Service
 	folderMemSvc *foldermemory.Service
+	// searchSvc mirrors Deps.SearchSvc.
+	searchSvc *appclipssearch.Service
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -111,6 +116,7 @@ func NewHandler(d Deps) *Handler {
 		imagesRepo:     d.ImagesRepo,
 		artifactSvc:    d.ArtifactSvc,
 		folderMemSvc:   d.FolderMemSvc,
+		searchSvc:      d.SearchSvc,
 	}
 }
 
