@@ -260,18 +260,11 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		})
 	}
 
-	// PR4.E — outbox events pool lifecycle. Construction is pure
-	// (composition.go::BuildOutboxBundle no longer starts goroutines);
-	// Start() is invoked here. Stop() is invoked explicitly from
-	// shutdown.go::buildCleanup so graceful teardown does NOT rely on
-	// outboxevents.Pool's internal ctx.Done handling (which may not
-	// gracefully drain in-flight work). Note the nil guard: EventsPool
-	// is nil if BuildOutboxBundle failed mid-fashion or was skipped.
-	if root.Outbox != nil && root.Outbox.EventsPool != nil {
-		evPool := root.Outbox.EventsPool
-		concurrent.SafeGo("outbox-events-pool", func() { evPool.Start(ctx, 1) })
-		log.Info("outbox events pool started by lifecycle (per PR4 no-goroutine-in-constructor)")
-	}
+	// PR9-B (June 2026): outbox events pool lifecycle is now managed by
+	// the startOutboxEventsPool closure extracted from BuildOutboxBundle.
+	// It is invoked via serverLifecycle.Start() after WireRegistry — the
+	// duplicate concurrent.SafeGo("outbox-events-pool", ...) previously
+	// present here has been removed.
 
 	if runMaintenance {
 		if root.Repos.ScriptsRepo != nil {

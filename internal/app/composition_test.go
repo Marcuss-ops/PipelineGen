@@ -143,6 +143,8 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.Ctx, "root.Ctx")
 	// PR9-A (June 2026): DriveStart closure is always non-nil when Drive bundle is built.
 	require.NotNil(t, root.DriveStart, "root.DriveStart (PR9-A deferred side-effect closure)")
+	// PR9-B (June 2026): OutboxStart closure is always non-nil when Outbox bundle is built.
+	require.NotNil(t, root.OutboxStart, "root.OutboxStart (PR9-B deferred side-effect closure)")
 
 	// RepoBundle canaries (8 fields).
 	require.NotNil(t, root.Repos.ScriptsRepo, "root.Repos.ScriptsRepo")
@@ -284,7 +286,10 @@ const (
 	// BuildDriveBundle body into the returned startDriveBackgroundFolders
 	// closure. The builder body is now side-effect-free.
 	frozenGoroutineInBuildDriveBundle  = 0
-	frozenGoroutineInBuildOutboxBundle = 2 // concurrent.SafeGo x2 (pool + shutdown)
+	// PR9-B (June 2026): concurrent.SafeGo x2 (pool start + shutdown)
+	// moved from BuildOutboxBundle body into the standalone
+	// startOutboxEventsPool function.
+	frozenGoroutineInBuildOutboxBundle = 0
 )
 
 // frozenZeroSpawnBuilders lists the Build*Bundle family members that
