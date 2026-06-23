@@ -25,7 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 )
 
 // Deps is the constructor bag for Handler. Keeping deps in a struct

@@ -22,7 +22,7 @@ import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"go.uber.org/zap"
 )
 
