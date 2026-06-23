@@ -29,13 +29,22 @@ func NewDriveChecker(credsPath, tokenPath string) *DriveChecker {
 }
 
 // CheckDrive verifies the Drive token and API are reachable.
+//
+// fix/health-capabilities-optional Commit 2: when Drive credentials are
+// not configured, return {ok: true, applicable: false} instead of
+// {ok: false}. Deployments without Drive integration (e.g. unit tests,
+// batch CI runners) should not have the health endpoint return HTTP
+// 503 solely because the Drive capability is opted out. A check that
+// is not applicable contributes ok=true and is excluded from the
+// fail-closed aggregation in service.go::Check.
 func (c *DriveChecker) CheckDrive(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
 
 	if c.credsPath == "" || c.tokenPath == "" {
 		return healthport.CheckResult{
-			"ok": false, "duration_ms": time.Since(start).Milliseconds(),
-			"error": "Drive credentials not configured",
+			"ok": true, "applicable": false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"note":        "Drive credentials not configured",
 		}
 	}
 

@@ -33,13 +33,19 @@ func NewQdrantChecker(url, collection string, enabled bool) *QdrantChecker {
 }
 
 // CheckQdrant verifies the vector store is reachable.
+//
+// fix/health-capabilities-optional Commit 2: when vector search is
+// disabled, return {ok: true, applicable: false} (unified with the
+// Drive checker's behaviour). A collection-count probe is skipped so
+// the response is symmetric across all opt-out checkers.
 func (c *QdrantChecker) CheckQdrant(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
 
 	if !c.enabled {
 		return healthport.CheckResult{
-			"ok": true, "duration_ms": time.Since(start).Milliseconds(),
-			"enabled": false, "note": "vector search disabled",
+			"ok": true, "applicable": false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"note":        "vector search disabled",
 		}
 	}
 
