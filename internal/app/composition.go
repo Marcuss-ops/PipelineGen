@@ -240,6 +240,13 @@ type ComposeRoot struct {
 	// Invoked by the lifecycle AFTER WireRegistry alongside DriveStart.
 	OutboxStart IOpaqueStartFunc
 
+	// ProcessStart is the deferred side-effect closure extracted from
+	// BuildProcessBundle (PR9-C, June 2026). It ensures the Qdrant
+	// vector collection exists (idempotent, best-effort).
+	// Invoked by the lifecycle AFTER WireRegistry alongside other
+	// deferred-start closures.
+	ProcessStart IOpaqueStartFunc
+
 	Ctx context.Context
 }
 
@@ -452,7 +459,12 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 // BuildProcessBundle builds media-processing adapters. VectorSvc nil when
 // VectorSearch is disabled. driveUploader passed in directly.
-func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader) (*ProcessBundle, error) {
+//
+// PR9-C (June 2026): BuildProcessBundle now returns an IOpaqueStartFunc
+// closure that defers the Qdrant EnsureCollection call to the lifecycle.
+// The bundle itself is fully populated on return (VectorSvc and
+// ClipIndexerService are complete).
+func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader) (*ProcessBundle, IOpaqueStartFunc, error) {
 	mediaProcessor := initMediaProcessor(cfg, dbs.main.DB, repos.Assets.Repository(), repos.Assets,
 		repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), log, driveUploader)
 
@@ -517,9 +529,8 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 			zap.Int("initial_wait_ms", cfg.VectorSearch.RetryInitialWaitMs),
 			zap.Int("max_wait_ms", cfg.VectorSearch.RetryMaxWaitMs),
 		)
-		if err := vectorSvc.EnsureCollection(ctx); err != nil {
-			log.Warn("vector store collection setup failed (will retry on upsert)", zap.Error(err))
-		}
+		// PR9-C (June 2026): EnsureCollection is deferred to the closure.
+		// clipIndexerAdapter wiring stays here (pure construction).
 		clipIndexerAdapter := qdrant.NewClipIndexerAdapter(dbs.main.DB, vectorSvc, qdrantCfg, log)
 		if clipIndexerAdapter != nil {
 			clipIndexerService.SetVectorStore(clipIndexerAdapter)
@@ -527,12 +538,41 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		}
 	}
 
+	// PR9-C (June 2026): side-effecting Qdrant collection setup is deferred
+	// to startQdrantCollection (defined below).
+	startClosure := func() {
+		startQdrantCollection(ctx, vectorSvc, log)
+	}
+
 	return &ProcessBundle{
 		MediaProcessor:     mediaProcessor,
 		ClipIndexerService: clipIndexerService,
 		VectorSvc:          vectorSvc,
 		VLMClient:          vlmClient,
-	}, nil
+	}, startClosure, nil
+}
+
+// startQdrantCollection performs the side-effecting Qdrant collection
+// setup that was previously inlined in BuildProcessBundle (PR9-C, June 2026).
+// It calls EnsureCollection which is idempotent — if the collection already
+// exists the call is a fast no-op.
+//
+// Invoked by the lifecycle after WireRegistry completes, before the HTTP
+// server begins accepting requests.
+//
+// This is a package-level function so that BuildProcessBundle's body
+// contains only pure construction.
+func startQdrantCollection(
+	ctx context.Context,
+	vectorSvc *qdrant.Service,
+	log *zap.Logger,
+) {
+	if vectorSvc == nil {
+		return
+	}
+	if err := vectorSvc.EnsureCollection(ctx); err != nil {
+		log.Warn("vector store collection setup failed (will retry on upsert)", zap.Error(err))
+	}
 }
 
 // BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
@@ -977,7 +1017,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose drive: %w", err)
 	}
 
-	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.DriveUploader)
+	process, processStart, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.DriveUploader)
 	if err != nil {
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
@@ -1050,9 +1090,10 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Maint:   maint,
 		Utility: utility,
 
-		DriveStart:  driveStart,
-		OutboxStart: outboxStart,
-		Ctx:         ctx,
+		DriveStart:   driveStart,
+		OutboxStart:  outboxStart,
+		ProcessStart: processStart,
+		Ctx:          ctx,
 	}
 
 	// NOTE: ProviderRegistry (on SearchBundle) is intentionally UNFROZEN here.

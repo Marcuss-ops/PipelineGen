@@ -145,6 +145,8 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.DriveStart, "root.DriveStart (PR9-A deferred side-effect closure)")
 	// PR9-B (June 2026): OutboxStart closure is always non-nil when Outbox bundle is built.
 	require.NotNil(t, root.OutboxStart, "root.OutboxStart (PR9-B deferred side-effect closure)")
+	// PR9-C (June 2026): ProcessStart closure is always non-nil when Process bundle is built.
+	require.NotNil(t, root.ProcessStart, "root.ProcessStart (PR9-C deferred side-effect closure)")
 
 	// RepoBundle canaries (8 fields).
 	require.NotNil(t, root.Repos.ScriptsRepo, "root.Repos.ScriptsRepo")
