@@ -58,10 +58,10 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine) {
 
 	// Build the health Service with infra checkers pointing at the temp DB.
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:    infrahealth.NewSQLiteChecker(dir),
+		DB:    infrahealth.NewSQLiteChecker(db),
 		Drive: infrahealth.NewDriveChecker("", ""),  // no Drive creds → configured=false
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false), // disabled
-		Jobs:  infrahealth.NewJobsChecker(dir),
+		Jobs:  infrahealth.NewJobsChecker(db),
 	})
 
 	gin.SetMode(gin.TestMode)
