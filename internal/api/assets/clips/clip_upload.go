@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	process "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
@@ -243,7 +243,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 9. Probe video duration from local file
 	if localPath != "" {
-		probeDuration(ctx, localPath, clip, log)
+		probeDuration(ctx, localPath, clip, log, h.processRunner)
 	}
 
 	// 10. Save to database via canonical asset.Repository
@@ -265,7 +265,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	}
 
 	// 12. Trigger async enrichment + Qdrant indexing (reuses the existing pipeline)
-	hasIndexer := h.clipIndexer != nil || h.vectorStore != nil || h.metaWriter != nil
+	hasIndexer := h.clipIndexer != nil || h.enrichUC != nil || h.metaWriter != nil
 	if hasIndexer {
 		temp := *clip // dereference for goroutine-safe struct copy
 		concurrent.SafeGo("upload-video-enrich", func() {
@@ -303,20 +303,20 @@ type DriveUploadResult struct {
 
 // probeDuration probes the video file for duration using ffprobe.
 // Falls back to 0 if unavailable.
-func probeDuration(ctx context.Context, localPath string, clip *asset.Asset, log *zap.Logger) {
+func probeDuration(ctx context.Context, localPath string, clip *asset.Asset, log *zap.Logger, runner appassets.ProcessRunner) {
 	if clip == nil {
 		return
 	}
 
 	// Try ffprobe
-	probe := probeFFprobe(ctx, localPath)
+	probe := probeFFprobe(ctx, localPath, runner)
 	if probe != nil && probe.Duration > 0 {
 		clip.Duration = time.Duration(probe.Duration * float64(time.Second))
 		return
 	}
 
 	// Fallback: try mediainfo if available
-	dur := probeMediaInfo(ctx, localPath)
+	dur := probeMediaInfo(ctx, localPath, runner)
 	if dur > 0 {
 		clip.Duration = time.Duration(dur) * time.Second
 		return
@@ -327,7 +327,7 @@ func probeDuration(ctx context.Context, localPath string, clip *asset.Asset, log
 }
 
 // probeFFprobe runs ffprobe on the file and returns duration.
-func probeFFprobe(ctx context.Context, localPath string) *ffprobeResult {
+func probeFFprobe(ctx context.Context, localPath string, runner appassets.ProcessRunner) *ffprobeResult {
 	ffprobePath := "ffprobe"
 	args := []string{
 		"-v", "error",
@@ -336,7 +336,7 @@ func probeFFprobe(ctx context.Context, localPath string) *ffprobeResult {
 		localPath,
 	}
 
-	result, err := execCmd(ctx, ffprobePath, args)
+	result, err := execCmd(ctx, ffprobePath, args, runner)
 	if err != nil {
 		return nil
 	}
@@ -359,11 +359,11 @@ type ffprobeResult struct {
 }
 
 // probeMediaInfo runs mediainfo as a fallback probe.
-func probeMediaInfo(ctx context.Context, localPath string) int {
+func probeMediaInfo(ctx context.Context, localPath string, runner appassets.ProcessRunner) int {
 	result, err := execCmd(ctx, "mediainfo", []string{
 		"--Inform=General;%Duration%",
 		localPath,
-	})
+	}, runner)
 	if err != nil {
 		return 0
 	}
@@ -382,8 +382,11 @@ func probeMediaInfo(ctx context.Context, localPath string) int {
 }
 
 // execCmd runs a command and returns stdout as a string.
-func execCmd(ctx context.Context, name string, args []string) (string, error) {
-	result, err := process.RunSimple(ctx, name, args...)
+func execCmd(ctx context.Context, name string, args []string, runner appassets.ProcessRunner) (string, error) {
+	if runner == nil {
+		return "", fmt.Errorf("process runner not configured")
+	}
+	result, err := runner.RunSimple(ctx, name, args...)
 	if err != nil {
 		return "", err
 	}

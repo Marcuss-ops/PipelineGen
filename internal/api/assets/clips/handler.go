@@ -21,13 +21,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // Deps is the constructor bag for Handler. Keeping deps in a struct
@@ -45,7 +45,7 @@ type Deps struct {
 	AssetTreeSvc   *assettree.Service
 	MetaWriter     *semantic.MetadataWriter
 	ClipIndexer    *clipindexer.Service
-	VectorStore    *qdrant.Service
+	VectorStore    appclips.VectorStorePort
 	JobsSvc        *jobservice.Service
 	Cfg            *config.Config
 	Log            *zap.Logger
@@ -62,6 +62,8 @@ type Deps struct {
 	FolderMemSvc *foldermemory.Service
 	// SearchSvc owns advanced multi-source clip search.
 	SearchSvc *appclipssearch.Service
+	// ProcessRunner executes external subprocesses (ffprobe, mediainfo, etc.).
+	ProcessRunner appassets.ProcessRunner
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -78,7 +80,6 @@ type Handler struct {
 	assetTreeSvc   *assettree.Service
 	metaWriter     *semantic.MetadataWriter
 	clipIndexer    *clipindexer.Service
-	vectorStore    *qdrant.Service
 	jobsSvc        *jobservice.Service
 	cfg            *config.Config
 	log            *zap.Logger
@@ -91,6 +92,8 @@ type Handler struct {
 	folderMemSvc *foldermemory.Service
 	// searchSvc mirrors Deps.SearchSvc.
 	searchSvc *appclipssearch.Service
+	// processRunner mirrors Deps.ProcessRunner.
+	processRunner appassets.ProcessRunner
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -115,7 +118,6 @@ func NewHandler(d Deps) *Handler {
 		assetTreeSvc:   d.AssetTreeSvc,
 		metaWriter:     d.MetaWriter,
 		clipIndexer:    d.ClipIndexer,
-		vectorStore:    d.VectorStore,
 		jobsSvc:        d.JobsSvc,
 		cfg:            d.Cfg,
 		log:            d.Log,
@@ -124,6 +126,7 @@ func NewHandler(d Deps) *Handler {
 		artifactSvc:    d.ArtifactSvc,
 		folderMemSvc:   d.FolderMemSvc,
 		searchSvc:      d.SearchSvc,
+		processRunner:  d.ProcessRunner,
 
 		// Initialize use cases
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),

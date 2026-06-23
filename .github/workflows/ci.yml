@@ -80,8 +80,15 @@ jobs:
       # The echo string contains `Run: go run ...` — a colon + space
       # inside a flow scalar confuses YAML into parsing it as a
       # nested mapping key. Block scalars handle this case correctly.
+      #
+      # git status --porcelain catches modified, staged, AND untracked
+      # files — git diff --exit-code alone misses new untracked docs.
       run: |
-        git diff --exit-code docs/api/ACTIVE_API_GENERATED.md || { echo "❌ Generated API docs are out of date. Run: go run ./cmd/admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md"; exit 1; }
+        if [ -n "$(git status --porcelain docs/api/ACTIVE_API_GENERATED.md 2>/dev/null)" ]; then
+          echo "❌ Generated API docs are out of date."
+          echo "Run: go run ./cmd/admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md"
+          exit 1
+        fi
 
     - name: Run Unit Tests (with race detector)
       run: go test -race -v ./internal/... ./pkg/...

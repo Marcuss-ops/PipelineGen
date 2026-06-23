@@ -94,7 +94,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	wiring := &RegistryWiring{Registry: registry}
 
 	// System module — no deps (PR2: inlined from WireSystem).
-	registerModule(registry, log, systemapi.NewModule(cfg, log))
+	registerModule(registry, log, systemapi.NewModule(cfg, log, toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter))
 
 	// Artlist (PR4d-chunk2): takes *ArtlistBundle + vectorStore.
 	artlistBundle := &ArtlistBundle{
@@ -227,7 +227,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// the handler's constructor resolves providers lazily so it's fine
 	// to pass the empty registry here; it will be populated by the time
 	// HTTP requests arrive.
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry); err != nil {
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry, toolCheckerAdapter); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		registerModule(registry, log, yw.Module)
@@ -288,7 +288,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			return mod, nil
 		}},
 		{"Scraper", func() (module.Module, error) {
-			handler := assetsapi.NewScraperHandler(cfg.External.NodeScraperDir)
+			handler := assetsapi.NewScraperHandler(cfg.External.NodeScraperDir, processRunnerAdapter)
 			mod := module.NewRouteModule("scraper", func() bool { return handler != nil }, "/scraper", handler, log)
 			log.Info("created Scraper module")
 			return mod, nil

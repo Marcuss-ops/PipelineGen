@@ -82,6 +82,59 @@ func (m *mockModuleWithGroup) Enabled() bool {
 	return m.enabled
 }
 
+// TestRouteCollisionDetection verifies that no two modules register the same
+// method + path. Gin itself panics when a duplicate route is registered, so
+// this test verifies that distinct prefixes do NOT panic (correct behavior)
+// and that colliding prefixes DO panic (gin guards against silent overwrites).
+func TestRouteCollisionDetection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("colliding prefix panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic on duplicate route registration, but none occurred")
+			} else {
+				t.Logf("gin correctly panicked on duplicate route: %v", r)
+			}
+		}()
+
+		engine := gin.New()
+		apiGroup := engine.Group("/api")
+
+		collidingModuleA := &mockModuleWithGroup{name: "clips", prefix: "/items", enabled: true}
+		collidingModuleB := &mockModuleWithGroup{name: "clips", prefix: "/items", enabled: true}
+
+		collidingModuleA.RegisterRoutes(apiGroup)
+		collidingModuleB.RegisterRoutes(apiGroup)
+	})
+
+	t.Run("distinct prefixes do not panic", func(t *testing.T) {
+		engine := gin.New()
+		api := engine.Group("/api")
+
+		distinctA := &mockModuleWithGroup{name: "clips", prefix: "/clips", enabled: true}
+		distinctB := &mockModuleWithGroup{name: "artlist", prefix: "/artlist", enabled: true}
+
+		// Neither registration should panic
+		distinctA.RegisterRoutes(api)
+		distinctB.RegisterRoutes(api)
+
+		routes := engine.Routes()
+		seen := make(map[string]int)
+		for _, route := range routes {
+			key := route.Method + " " + route.Path
+			seen[key]++
+		}
+		for key, count := range seen {
+			if count > 1 {
+				t.Errorf("unexpected collision with distinct prefixes: %s (count=%d)", key, count)
+			}
+		}
+
+		t.Logf("registered %d routes with zero collisions", len(routes))
+	})
+}
+
 func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 	// This is the key fix: create a sub-group with the module's prefix
 	group := rg.Group(m.prefix)
