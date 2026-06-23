@@ -15,7 +15,7 @@ func NewStockPipelineModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"stock-pipeline",
-		func(cfg *config.Config) bool { return cfg.Features.StockPipelineEnabled },
+		func() bool { return cfg.Features.StockPipelineEnabled },
 		"/stock-pipeline",
 		handler,
 		log,

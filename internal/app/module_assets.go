@@ -1,11 +1,18 @@
 package app
 
 import (
+	"context"
+
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
+	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
+	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
@@ -53,6 +60,13 @@ type AssetsWiring struct {
 	Handler     *sourcesapi.SourcesHandler
 	Module      module.Module
 	DeletionSvc *media.DeletionService
+
+	// NewAssetsModule is the unified thin-transport assets module (PR 3).
+	// Contains storage, diagnostics, and search handlers. Coexists with
+	// SourcesModule during the migration; SourcesModule still owns
+	// voiceover, soundeffect, register-from-youtube, sync-drive-folder,
+	// and local-to-drive routes.
+	NewAssetsModule module.Module
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -94,7 +108,79 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	if bundle.Assets != nil {
 		handler.SetAssetRepo(bundle.Assets.Repository())
 	}
-	mod := sourcesapi.NewSourcesModule(cfg, log, handler)
-	log.Info("created unified Assets module")
-	return &AssetsWiring{Handler: handler, Module: mod, DeletionSvc: deletionSvc}, nil
+	sourcesMod := sourcesapi.NewSourcesModule(cfg, log, handler)
+
+	// ── PR 3 (June 2026): build the new thin-transport handlers ─────
+	// Storage: adapt drive.Uploader → storage.DrivePort
+	var drivePort appstorage.DrivePort
+	if driveUploader != nil {
+		drivePort = &storageDriveAdapter{up: driveUploader}
+	}
+	storageSvc := appstorage.NewService(drivePort, &zapLogAdapter{log})
+	storageHandler := assetstorage.NewHandler(storageSvc, log)
+
+	// Diagnostics and Search: deferred until port adapters are created.
+	// TODO(PR3): wire diagnostics.Service and search.Service with proper
+	// adapters (IndexHealthPort, AssetStatsPort, SearchProviderRegistry, etc.)
+	diagHandler := assetsdiag.NewHandler(nil, log)
+	searchHandler := assetsearch.NewHandler(nil, log)
+	log.Warn("diagnostics and search services NOT wired — returning 503 until port adapters are implemented")
+
+	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
+		Storage:     storageHandler,
+		Diagnostics: diagHandler,
+		Search:      searchHandler,
+	}, log)
+	assetsRouteMod := module.NewRouteModule(
+		"assets-v2",
+		func() bool { return true },
+		"/media",
+		assetsMod,
+		log,
+	)
+	log.Info("created unified Assets module (v2 thin transport)")
+
+	return &AssetsWiring{
+		Handler:         handler,
+		Module:          sourcesMod,
+		DeletionSvc:     deletionSvc,
+		NewAssetsModule: assetsRouteMod,
+	}, nil
 }
+
+// storageDriveAdapter adapts drive.Uploader to storage.DrivePort.
+type storageDriveAdapter struct {
+	up *driveutil.Uploader
+}
+
+func (a *storageDriveAdapter) ListFiles(ctx context.Context, folderID string) ([]appstorage.DriveFile, error) {
+	files, err := a.up.ListFiles(ctx, folderID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]appstorage.DriveFile, len(files))
+	for i, f := range files {
+		out[i] = appstorage.DriveFile{ID: f.ID, Name: f.Name, MimeType: f.MimeType}
+	}
+	return out, nil
+}
+
+func (a *storageDriveAdapter) MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error {
+	return a.up.MoveFile(ctx, fileID, fromFolderID, toFolderID)
+}
+
+func (a *storageDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
+	return a.up.GetOrCreateFolder(ctx, name, parentID)
+}
+
+func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName string) error {
+	return a.up.RenameFile(ctx, fileID, newName)
+}
+
+// zapLogAdapter adapts *zap.Logger to storage.Logger.
+type zapLogAdapter struct{ log *zap.Logger }
+
+func (a *zapLogAdapter) Info(msg string, keysAndValues ...any)  { a.log.Sugar().Infow(msg, keysAndValues...) }
+func (a *zapLogAdapter) Warn(msg string, keysAndValues ...any)  { a.log.Sugar().Warnw(msg, keysAndValues...) }
+func (a *zapLogAdapter) Error(msg string, keysAndValues ...any) { a.log.Sugar().Errorw(msg, keysAndValues...) }
+func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) { a.log.Sugar().Debugw(msg, keysAndValues...) }

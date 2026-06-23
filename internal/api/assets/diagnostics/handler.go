@@ -35,6 +35,10 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 // ── Diagnostics (GET /diagnostics) ─────────────────────────────────
 
 func (h *Handler) Diagnostics(c *gin.Context) {
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "diagnostics service not wired")
+		return
+	}
 	result, err := h.svc.Check(c.Request.Context(), appdiag.HealthCommand{})
 	if err != nil {
 		h.log.Error("diagnostics check failed", zap.Error(err))
@@ -51,6 +55,10 @@ func (h *Handler) Diagnostics(c *gin.Context) {
 // ── IndexHealth (GET /index-health) ───────────────────────────────
 
 func (h *Handler) IndexHealth(c *gin.Context) {
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "diagnostics service not wired")
+		return
+	}
 	result, err := h.svc.Check(c.Request.Context(), appdiag.HealthCommand{})
 	if err != nil {
 		apiutil.InternalError(c, err)
@@ -70,6 +78,10 @@ func (h *Handler) IndexHealth(c *gin.Context) {
 // ── QdrantHealth (GET /qdrant/health) ─────────────────────────────
 
 func (h *Handler) QdrantHealth(c *gin.Context) {
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "diagnostics service not wired")
+		return
+	}
 	result, err := h.svc.Check(c.Request.Context(), appdiag.HealthCommand{})
 	if err != nil {
 		apiutil.InternalError(c, err)

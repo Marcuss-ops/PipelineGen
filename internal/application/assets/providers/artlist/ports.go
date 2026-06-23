@@ -17,7 +17,6 @@
 package artlist
 
 import (
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"context"
 	"errors"
 	"io"

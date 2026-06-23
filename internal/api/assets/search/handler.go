@@ -43,6 +43,10 @@ type searchRequest struct {
 }
 
 func (h *Handler) Search(c *gin.Context) {
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "search service not wired")
+		return
+	}
 	var req searchRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		apiutil.BadRequest(c, "invalid query: "+err.Error())
@@ -81,6 +85,10 @@ type semanticSearchRequest struct {
 }
 
 func (h *Handler) SemanticSearch(c *gin.Context) {
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "search service not wired")
+		return
+	}
 	var req semanticSearchRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		apiutil.BadRequest(c, "invalid query: "+err.Error())
@@ -128,6 +136,10 @@ type recommendRequest struct {
 }
 
 func (h *Handler) Recommend(c *gin.Context) {
+	if h.svc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "search service not wired")
+		return
+	}
 	req, ok := apiutil.BindJSON[recommendRequest](c)
 	if !ok {
 		return

@@ -335,6 +335,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if aw, err := WireAssets(cfg, log, assetsBundle, root.Process.VectorSvc, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeService, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
+		if aw.NewAssetsModule != nil {
+			registerModule(registry, log, aw.NewAssetsModule)
+			log.Info("registered new thin-transport Assets module alongside legacy SourcesModule")
+		}
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
 			maintenanceSvc.SetDeletionService(aw.DeletionSvc)
 			log.Info("injected DeletionService into MaintenanceService")
