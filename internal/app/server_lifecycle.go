@@ -30,25 +30,31 @@ type serverLifecycle struct {
 	cleanup        func()
 }
 
-// Start triggers the deferred job runner start, Drive background
-// initialisation, outbox events pool start, and Qdrant collection setup.
+// Start triggers the deferred initialisation closures in dependency order:
+// Drive + Qdrant must be ready BEFORE the outbox pool and job runner can
+// safely claim and process jobs that depend on them.
+//
 // Background goroutines (channel monitor, sweepers, etc.) are already
 // running from startBackgroundJobs inside initCompositionMinimal; this is
 // only the final piece that must happen after WireRegistry has registered
 // all handlers and frozen the dispatcher.
+//
+// PR7 fix (June 2026): reordered to start Drive+Qdrant first, then outbox,
+// then job runner last. Previously the job runner started before Qdrant
+// EnsureCollection, risking jobs that depend on vector search.
 func (l *serverLifecycle) Start(ctx context.Context) error {
 	_ = ctx
-	if l.startJobRunner != nil {
-		l.startJobRunner()
-	}
 	if l.driveStart != nil {
 		l.driveStart()
+	}
+	if l.processStart != nil {
+		l.processStart() // best-effort: Qdrant EnsureCollection may fail silently
 	}
 	if l.outboxStart != nil {
 		l.outboxStart()
 	}
-	if l.processStart != nil {
-		l.processStart()
+	if l.startJobRunner != nil {
+		l.startJobRunner()
 	}
 	return nil
 }

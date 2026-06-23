@@ -69,15 +69,15 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	if v.SearchCount <= 0 {
 		v.SearchCount = 25
 	}
-	// Note: OverlayOpacity == 0 is valid (no overlay), so we only check < 0
+	// Note: OverlayOpacity == 0 means fully transparent (no overlay); < 0 means use default.
 	if v.OverlayOpacity < 0 {
 		v.OverlayOpacity = 0.25
 	}
-	// Note: EffectInterval == 0 is valid (no effects), so we only check < 0
+	// Note: EffectInterval == 0 means no effects; < 0 means use default.
 	if v.EffectInterval < 0 {
 		v.EffectInterval = 4
 	}
-	// Note: TransitionInterval == 0 is valid (no transitions), so we only check < 0
+	// Note: TransitionInterval == 0 means no transitions; < 0 means use default.
 	if v.TransitionInterval < 0 {
 		v.TransitionInterval = 4
 	}
