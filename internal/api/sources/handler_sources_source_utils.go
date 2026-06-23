@@ -112,7 +112,7 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *assets.Cl
 
 		// Extract file ID and verify with Drive API
 		fileID = driveutil.FileIDFromLink(driveLink)
-		if fileID != "" && h.cleanupSvc != nil {
+		if fileID != "" {
 			result["drive_file_id"] = fileID
 		} else if fileID == "" {
 			result["drive_link_valid"] = false
