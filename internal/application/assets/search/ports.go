@@ -2,11 +2,7 @@
 // cross-provider search, semantic (Qdrant) search, and scene-based clip recommendation.
 package search
 
-import (
-	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-)
+import "context"
 
 // ── Provider search ports ─────────────────────────────────────────────
 
@@ -61,12 +57,12 @@ type SemanticSearchRequest struct {
 
 // SemanticSearchResult is the output of a vector search.
 type SemanticSearchResult struct {
-	Query     string
-	Vector    string
-	Mode      string
-	MinScore  float64
-	Count     int
-	Results   []qdrant.SearchResult
+	Query    string              `json:"query"`
+	Vector   string              `json:"vector"`
+	Mode     string              `json:"mode"`
+	MinScore float64             `json:"min_score"`
+	Count    int                 `json:"count"`
+	Results  []VectorSearchResult `json:"results"`
 }
 
 // VectorSearchPort embeds text and performs ANN/hybrid search.
@@ -77,8 +73,8 @@ type VectorSearchPort interface {
 
 // VectorStorePort is a narrow Qdrant port for search operations.
 type VectorStorePort interface {
-	Search(ctx context.Context, req qdrant.SearchRequest) ([]qdrant.SearchResult, error)
-	HybridSearch(ctx context.Context, req qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error)
+	Search(ctx context.Context, req VectorSearchRequest) ([]VectorSearchResult, error)
+	HybridSearch(ctx context.Context, req HybridSearchRequest) ([]VectorSearchResult, error)
 }
 
 // ── Recommendation ports ──────────────────────────────────────────────
@@ -170,4 +166,59 @@ type Logger interface {
 	Warn(msg string, keysAndValues ...any)
 	Error(msg string, keysAndValues ...any)
 	Debug(msg string, keysAndValues ...any)
+}
+
+// ── Vector search domain types (application-level, no infrastructure deps) ──
+
+// VectorSearchRequest is the input for an ANN vector search.
+// Mirrors qdrant.SearchRequest without the infrastructure import.
+type VectorSearchRequest struct {
+	QueryVector []float32
+	VectorName  string
+	Limit       int
+	MinScore    float64
+	Source      string
+	Category    string
+	MediaType   string
+	Language    string
+}
+
+// VectorSearchResult is a single match from a vector search.
+// Mirrors qdrant.SearchResult without the infrastructure import.
+type VectorSearchResult struct {
+	AssetID        string   `json:"asset_id"`
+	QdrantPointID  string   `json:"qdrant_point_id,omitempty"`
+	Score          float64  `json:"score"`
+	Reason         string   `json:"reason,omitempty"`
+	Source         string   `json:"source"`
+	Name           string   `json:"name"`
+	LocalPath      string   `json:"local_path,omitempty"`
+	DriveLink      string   `json:"drive_link,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	MediaType      string   `json:"media_type,omitempty"`
+	Style          string   `json:"style,omitempty"`
+	Language       string   `json:"language,omitempty"`
+	YouTubeVideoID string   `json:"youtube_video_id,omitempty"`
+	YouTubeURL     string   `json:"youtube_url,omitempty"`
+	StartTime      string   `json:"start_time,omitempty"`
+	EndTime        string   `json:"end_time,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	SearchText     string   `json:"search_text,omitempty"`
+}
+
+// HybridSearchRequest combines dense and sparse vectors for hybrid search.
+// Mirrors qdrant.HybridSearchRequest without the infrastructure import.
+type HybridSearchRequest struct {
+	QueryText            string
+	DenseVector          []float32
+	DenseVectorName      string
+	TranscriptVector     []float32
+	TranscriptVectorName string
+	SparseVectorName     string
+	Limit                int
+	MinScore             float64
+	Source               string
+	Category             string
+	MediaType            string
+	Language             string
 }
