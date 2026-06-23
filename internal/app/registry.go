@@ -35,6 +35,7 @@ import (
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -275,11 +276,16 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		))
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
 		// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
+		//
+		// Wave 14 problem #3 close-out (June 2026): the handler no longer
+		// owns the *assets.SearchQueriesRepository. Composition builds
+		// the *searchqueriesuc.UseCase from the concrete repo and injects
+		// it into the handler — keeping handler = thin transport.
 		registerModule(registry, log, module.NewRouteModule(
 			"search_queries",
 			func() bool { return true },
 			"/search-queries",
-			assetsapi.NewSearchQueriesHandler(assets.NewSearchQueriesRepository(root.DB.DB), log),
+			assetsapi.NewSearchQueriesHandler(searchqueriesuc.NewUseCase(assets.NewSearchQueriesRepository(root.DB.DB)), log),
 			log,
 		))
 	}

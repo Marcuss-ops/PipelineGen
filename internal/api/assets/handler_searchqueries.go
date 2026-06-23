@@ -3,6 +3,12 @@
 // searches. Wave 14 close (June 2026): this receiver was absorbed
 // from the standalone internal/api/searchqueries/ package.
 //
+// Wave 14 problem #3 close-out (June 2026): all orchestration moved
+// into internal/application/assets/searchqueries/usecase.go. This
+// handler is now thin transport (Pattern 8 from AGENTS.md): bind
+// → delegate → render. Earlier Wave-4 versions embedded the
+// *assets.SearchQueriesRepository directly; that coupling is gone.
+//
 // Routes mounted on the `/search-queries` prefix module →
 // /api/search-queries/{, /active, /:id, /:id/results}.
 package assets
@@ -14,21 +20,24 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // SearchQueriesHandler handles CRUD operations for search_queries
-// (scheduled YouTube topic searches). Owner of the SQL repo for
-// `search_queries` table; previously lived in api/searchqueries.
+// (scheduled YouTube topic searches). Pure transport; all
+// orchestration lives in *searchqueries.UseCase.
 type SearchQueriesHandler struct {
-	repo *assets.SearchQueriesRepository
-	log  *zap.Logger
+	useCase *searchqueries.UseCase
+	log     *zap.Logger
 }
 
 // NewSearchQueriesHandler creates a new search queries API handler.
-func NewSearchQueriesHandler(repo *assets.SearchQueriesRepository, log *zap.Logger) *SearchQueriesHandler {
-	return &SearchQueriesHandler{repo: repo, log: log}
+// Repository wiring happens at the composition root (registry.go),
+// which builds the *searchqueries.UseCase from the concrete
+// *assets.SearchQueriesRepository and injects it here.
+func NewSearchQueriesHandler(useCase *searchqueries.UseCase, log *zap.Logger) *SearchQueriesHandler {
+	return &SearchQueriesHandler{useCase: useCase, log: log}
 }
 
 // RegisterRoutes registers the search queries CRUD routes under the
@@ -45,7 +54,7 @@ func (h *SearchQueriesHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // ListAll returns all search queries, active first.
 func (h *SearchQueriesHandler) ListAll(c *gin.Context) {
-	queries, err := h.repo.ListAll(c.Request.Context())
+	queries, err := h.useCase.ListAll(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list search queries", zap.Error(err))
 		api.InternalError(c, err)
@@ -56,7 +65,7 @@ func (h *SearchQueriesHandler) ListAll(c *gin.Context) {
 
 // ListActive returns all active search queries.
 func (h *SearchQueriesHandler) ListActive(c *gin.Context) {
-	queries, err := h.repo.ListActive(c.Request.Context())
+	queries, err := h.useCase.ListActive(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list active search queries", zap.Error(err))
 		api.InternalError(c, err)
@@ -73,7 +82,7 @@ func (h *SearchQueriesHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	q, err := h.repo.GetByID(c.Request.Context(), id)
+	q, err := h.useCase.GetByID(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get search query", zap.String("id", id), zap.Error(err))
 		api.NotFound(c, "search query not found")
@@ -117,7 +126,7 @@ func (h *SearchQueriesHandler) Upsert(c *gin.Context) {
 		IsActive:             req.IsActive,
 	}
 
-	if err := h.repo.Upsert(c.Request.Context(), q); err != nil {
+	if err := h.useCase.Upsert(c.Request.Context(), q); err != nil {
 		h.log.Error("failed to upsert search query", zap.Error(err))
 		api.InternalError(c, err)
 		return
@@ -137,7 +146,7 @@ func (h *SearchQueriesHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
+	if err := h.useCase.Delete(c.Request.Context(), id); err != nil {
 		h.log.Error("failed to delete search query", zap.String("id", id), zap.Error(err))
 		api.InternalError(c, err)
 		return
@@ -154,7 +163,7 @@ func (h *SearchQueriesHandler) ListResults(c *gin.Context) {
 		return
 	}
 
-	results, err := h.repo.ListResultsByQuery(c.Request.Context(), id)
+	results, err := h.useCase.ListResults(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to list search query results", zap.String("id", id), zap.Error(err))
 		api.InternalError(c, err)
