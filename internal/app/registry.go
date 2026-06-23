@@ -19,11 +19,16 @@ import (
 	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
+	driveapi "github.com/Marcuss-ops/PipelineGen/internal/api/drive"
+	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
+	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -34,6 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
@@ -54,18 +60,13 @@ import (
 )
 
 // RegistryWiring holds the registry and all wired modules.
-// Field names match the legacy bootstrap.go callers (ArtlistSvc, StockPipeline, MediaIngest)
-// so the transitional CoreDeps projection works unchanged.
+// PR2 (June 2026): removed System, Jobs, Images, Drive, Scraper — those were
+// thin Wire wrappers inlined directly in WireRegistry below.
 type RegistryWiring struct {
 	Registry      *module.Registry
-	System        *SystemWiring
 	ArtlistSvc    *ArtlistWiring
 	YouTubeClip   *YouTubeClipWiring
-	Jobs          *JobsWiring
-	Images        *ImagesWiring
 	MediaIngest   *MediaIngestWiring
-	Drive         *DriveWiring
-	Scraper       *ScraperWiring
 	Assets        *AssetsWiring
 	FullImages    *FullImagesWiring
 	StockPipeline *StockPipelineWiring
@@ -89,10 +90,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	registry := module.NewRegistry()
 	wiring := &RegistryWiring{Registry: registry}
 
-	// System — no deps
-	sw := WireSystem(cfg, log)
-	registerModule(registry, log, sw.Module)
-	wiring.System = sw
+	// System module — no deps (PR2: inlined from WireSystem).
+	registerModule(registry, log, systemapi.NewModule(cfg, log))
 
 	// Artlist (PR4d-chunk2): takes *ArtlistBundle + vectorStore.
 	artlistBundle := &ArtlistBundle{
@@ -190,27 +189,23 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	// Jobs, Images, MediaIngest, Drive, Scraper, FullImages, StockPipeline
+	// PR2 (June 2026): thin Wire wrappers (Jobs, Images, Drive, Scraper) inlined.
+	var imagesHandler *imagesapi.ImagesHandler
 	for _, m := range []struct {
 		name string
 		fn   func() (module.Module, error)
 	}{
 		{"Jobs", func() (module.Module, error) {
-			// PR4b: WireJobs takes *JobsBundle directly, no *CoreDeps.
-			w, e := WireJobs(cfg, log, root.Jobs)
-			wiring.Jobs = w
-			if w != nil {
-				return w.Module, e
-			}
-			return nil, e
+			handler := jobsapi.NewJobsHandler(root.Jobs.Service, log)
+			mod := jobsapi.NewModule(cfg, log, handler)
+			log.Info("created Jobs module")
+			return mod, nil
 		}},
 		{"Images", func() (module.Module, error) {
-			// PR4d-chunk1: WireImages takes ImageService directly.
-			w, e := WireImages(cfg, log, root.Domains.ImageService)
-			wiring.Images = w
-			if w != nil {
-				return w.Module, e
-			}
-			return nil, e
+			imagesHandler = imagesapi.NewImagesHandler(root.Domains.ImageService)
+			mod := imagesapi.NewModule(cfg, log, imagesHandler)
+			log.Info("created Images module")
+			return mod, nil
 		}},
 		{"MediaIngest", func() (module.Module, error) {
 			// PR4d-chunk2: WireMediaIngest takes *MediaIngestBundle.
@@ -231,21 +226,21 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			return nil, e
 		}},
 		{"Drive", func() (module.Module, error) {
-			// PR4d-chunk1: WireDrive takes DriveClient directly.
-			w, e := WireDrive(cfg, log, root.Drive.DriveClient)
-			wiring.Drive = w
-			if w != nil {
-				return w.Module, e
+			var driveUploader *driveup.Uploader
+			if root.Drive.DriveClient != nil {
+				driveUploader = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
 			}
-			return nil, e
+			reconcileSvc := drivecleanup.NewService()
+			handler := driveapi.NewDriveHandler(reconcileSvc, driveUploader)
+			mod := driveapi.NewModule(cfg, log, handler)
+			log.Info("created Drive module")
+			return mod, nil
 		}},
 		{"Scraper", func() (module.Module, error) {
-			w, e := WireScraper(cfg, log)
-			wiring.Scraper = w
-			if w != nil {
-				return w.Module, e
-			}
-			return nil, e
+			handler := assetsapi.NewScraperHandler(cfg.External.NodeScraperDir)
+			mod := assetsapi.NewScraperModule(log, handler)
+			log.Info("created Scraper module")
+			return mod, nil
 		}},
 		{"FullImages", func() (module.Module, error) {
 			// PR4d-chunk1: WireFullImages takes ImageService + MediaStore directly.
@@ -297,10 +292,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(root.DB.DB)))
 	}
 
-	if wiring.Images != nil && wiring.MediaIngest != nil {
-		if wiring.Images.Handler != nil {
-			wiring.Images.Handler.SetIngestService(wiring.MediaIngest.Service)
-		}
+	if imagesHandler != nil && wiring.MediaIngest != nil {
+		imagesHandler.SetIngestService(wiring.MediaIngest.Service)
 		if root.Domains != nil && root.Domains.ImageService != nil {
 			root.Domains.ImageService.SetIngestService(wiring.MediaIngest.Service)
 		}
