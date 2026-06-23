@@ -180,20 +180,10 @@ func (h *SourcesHandler) Clips() *clipsources.Handler {
 func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering common media routes")
 
-	// Clip routes — single delegation to the unified clips.Handler.
-	if h.clips != nil {
-		h.clips.RegisterRoutes(r)
-	}
-
 	// ── PR 3: search, recommend routes migrated to api/assets/search/ ──
 	// ── PR 3: diagnostics, qdrant routes migrated to api/assets/diagnostics/ ──
 	// ── PR 3: drive ops routes migrated to api/assets/storage/ ──
 	// ── PR 4: voiceover, soundeffect, register-from-youtube migrated to api/assets/ ──
-
-	// Bulk upload local .mp4 folders to Drive (async job).
-	if h.clips != nil {
-		r.POST("/bulk-upload-youtube-clips", h.clips.BulkUploadYouTubeClips)
-	}
 
 	// Sync any Drive folder recursively into DB + asset tree + Qdrant.
 	r.POST("/sync-drive-folder", h.SyncDriveFolder)
