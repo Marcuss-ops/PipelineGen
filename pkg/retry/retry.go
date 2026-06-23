@@ -46,7 +46,6 @@ type Options struct {
 // RetryOptions is an alias for Options, kept for backward compatibility.
 type RetryOptions = Options
 
-
 // DefaultOptions returns a reasonable starting point for most use-cases.
 func DefaultOptions() Options {
 	return Options{

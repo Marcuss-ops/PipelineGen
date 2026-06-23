@@ -14,19 +14,19 @@ import (
 
 // Service orchestrates media sourcing operations through narrow ports.
 type Service struct {
-	fetcher      FetchProviderPort
-	drive        DrivePort
-	clips        ClipStorePort
-	jobs         JobsPort
-	scanner      FileScannerPort
-	hasher       HashPort
-	transcriber  TranscriptionPort
-	assetTree    AssetTreePort
-	search       SearchProviderPort
-	config       ConfigPort
-	enrichment   EnrichmentPort
-	metadataUp   MetadataUploadPort
-	log          Logger
+	fetcher     FetchProviderPort
+	drive       DrivePort
+	clips       ClipStorePort
+	jobs        JobsPort
+	scanner     FileScannerPort
+	hasher      HashPort
+	transcriber TranscriptionPort
+	assetTree   AssetTreePort
+	search      SearchProviderPort
+	config      ConfigPort
+	enrichment  EnrichmentPort
+	metadataUp  MetadataUploadPort
+	log         Logger
 }
 
 // NewService creates a SourcingService. Nil ports cause the corresponding
@@ -47,19 +47,19 @@ func NewService(
 	log Logger,
 ) *Service {
 	return &Service{
-		fetcher:      fetcher,
-		drive:        drive,
-		clips:        clips,
-		jobs:         jobs,
-		scanner:      scanner,
-		hasher:       hasher,
-		transcriber:  transcriber,
-		assetTree:    assetTree,
-		search:       search,
-		config:       config,
-		enrichment:   enrichment,
-		metadataUp:   metadataUp,
-		log:          log,
+		fetcher:     fetcher,
+		drive:       drive,
+		clips:       clips,
+		jobs:        jobs,
+		scanner:     scanner,
+		hasher:      hasher,
+		transcriber: transcriber,
+		assetTree:   assetTree,
+		search:      search,
+		config:      config,
+		enrichment:  enrichment,
+		metadataUp:  metadataUp,
+		log:         log,
 	}
 }
 
@@ -149,12 +149,12 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 					OK: true, Duplicate: true, ClipID: existingClip.ID, VideoID: videoID,
 					Name: existingClip.Name, Filename: existingClip.Filename,
 					DurationSec: int(existingClip.Duration.Seconds()),
-					DriveLink: existingClip.DriveLink, DriveFileID: existingClip.DriveFileID,
+					DriveLink:   existingClip.DriveLink, DriveFileID: existingClip.DriveFileID,
 					FileHash: existingClip.FileHash, Source: existingClip.Source,
 					Category: existingClip.Category, Tags: existingClip.Tags,
 					LocalPath: existingClip.LocalPath, Indexed: indexed,
 					IndexingStatus: indexStatus(indexed),
-					Message: "clip already registered for this YouTube video",
+					Message:        "clip already registered for this YouTube video",
 				}, nil
 			}
 		}

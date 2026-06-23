@@ -22,26 +22,26 @@ type mediaAssetScanner interface {
 func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 	var a Asset
 	var (
-		idNull, sourceNull, nameNull, tagsNull, tagsNormNull sql.NullString
-		embeddingJSON                                        sql.NullString
-		duration                                             sql.NullInt64
-		urlNull                                              sql.NullString
-		mediaTypeNull, statusNull, localPathNull             sql.NullString
-		relativePathNull, driveFileIDNull                    sql.NullString
-		driveFolderID                                        sql.NullString
-		driveLinkNull, downloadLinkNull                      sql.NullString
-		fileHashNull                                         sql.NullString
-		metadataStr                                          sql.NullString
-		visualEmb, transcriptEmb                             sql.NullString
-		createdAtStr, updatedAtStr                           sql.NullString
-		widthNull, heightNull                                sql.NullInt64
-		lifecycle, deletedAtStr                              sql.NullString
-		folderIDNull, parentFolderIDNull, folderPathNull     sql.NullString
+		idNull, sourceNull, nameNull, tagsNull, tagsNormNull       sql.NullString
+		embeddingJSON                                              sql.NullString
+		duration                                                   sql.NullInt64
+		urlNull                                                    sql.NullString
+		mediaTypeNull, statusNull, localPathNull                   sql.NullString
+		relativePathNull, driveFileIDNull                          sql.NullString
+		driveFolderID                                              sql.NullString
+		driveLinkNull, downloadLinkNull                            sql.NullString
+		fileHashNull                                               sql.NullString
+		metadataStr                                                sql.NullString
+		visualEmb, transcriptEmb                                   sql.NullString
+		createdAtStr, updatedAtStr                                 sql.NullString
+		widthNull, heightNull                                      sql.NullInt64
+		lifecycle, deletedAtStr                                    sql.NullString
+		folderIDNull, parentFolderIDNull, folderPathNull           sql.NullString
 		category, groupNameNull, filename, errCol, thumbURL, phash sql.NullString
-		searchText, sceneType                                sql.NullString
-		qualityScore                                         sql.NullFloat64
-		reuseCount                                           sql.NullInt64
-		lastUsedAtNull                                       sql.NullString
+		searchText, sceneType                                      sql.NullString
+		qualityScore                                               sql.NullFloat64
+		reuseCount                                                 sql.NullInt64
+		lastUsedAtNull                                             sql.NullString
 	)
 
 	// Scan target order MUST match mediaAssetColumns in repository.go.

@@ -23,10 +23,10 @@ import (
 
 // Client is an HTTP client for the PipelineGen server.
 type Client struct {
-	baseURL    string
-	token      string
-	httpClient *http.Client
-	retryOpts  retry.Options
+	baseURL     string
+	token       string
+	httpClient  *http.Client
+	retryOpts   retry.Options
 	insecureTLS bool
 }
 

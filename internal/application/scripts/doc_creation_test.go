@@ -27,7 +27,9 @@ func (m *mockDocClient) ShareDoc(ctx context.Context, docID, email, role string)
 func (m *mockDocClient) ListRecentDocs(ctx context.Context, folderID string, limit int) ([]drive.Doc, error) {
 	return nil, nil
 }
-func (m *mockDocClient) UpdateDoc(ctx context.Context, docID, title, content string) error { return nil }
+func (m *mockDocClient) UpdateDoc(ctx context.Context, docID, title, content string) error {
+	return nil
+}
 
 // ── Document Creation Tests ────────────────────────────────────────────────
 

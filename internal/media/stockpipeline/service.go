@@ -11,16 +11,16 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))

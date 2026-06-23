@@ -3,7 +3,7 @@ package youtube
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/classifier"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier"
 )
 
 // youtubeCategoryCache implements classifier.CategoryCache backed by the cache service.

@@ -68,10 +68,10 @@ func (h *Handler) IndexHealth(c *gin.Context) {
 	indexHealth, _ := result.Checks["index_health"]
 	assetStats, _ := result.Checks["asset_stats"]
 	c.JSON(http.StatusOK, gin.H{
-		"ok":            result.OK,
-		"degraded":      result.Degraded,
-		"index_health":  indexHealth,
-		"asset_stats":   assetStats,
+		"ok":           result.OK,
+		"degraded":     result.Degraded,
+		"index_health": indexHealth,
+		"asset_stats":  assetStats,
 	})
 }
 

@@ -113,14 +113,14 @@ func (s *BatchService) translateBatch(
 			}
 
 			sourceLang := req.Language
-		if err == nil && (strings.TrimSpace(translated) == "" || !textutil.LooksTranslated(translated, lang, sourceLang)) {
-			s.log.Warn("batch generation: chapter translation appears untranslated, retrying with full language name",
-				zap.String("lang", lang), zap.String("topic", part.topic))
-			langName := textutil.LangFullName(lang)
-			retryCtx, retryCancel := context.WithTimeout(ctx, 10*time.Minute)
-			translated, err = s.generator.TranslateText(retryCtx, sourceText, langName)
-			retryCancel()
-			if err != nil || strings.TrimSpace(translated) == "" || !textutil.LooksTranslated(translated, lang, sourceLang) {
+			if err == nil && (strings.TrimSpace(translated) == "" || !textutil.LooksTranslated(translated, lang, sourceLang)) {
+				s.log.Warn("batch generation: chapter translation appears untranslated, retrying with full language name",
+					zap.String("lang", lang), zap.String("topic", part.topic))
+				langName := textutil.LangFullName(lang)
+				retryCtx, retryCancel := context.WithTimeout(ctx, 10*time.Minute)
+				translated, err = s.generator.TranslateText(retryCtx, sourceText, langName)
+				retryCancel()
+				if err != nil || strings.TrimSpace(translated) == "" || !textutil.LooksTranslated(translated, lang, sourceLang) {
 					s.log.Warn("batch generation: chapter translation retry failed",
 						zap.String("lang", lang), zap.String("topic", part.topic), zap.Error(err))
 					translated = ""

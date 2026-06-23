@@ -3,7 +3,7 @@ package monitor
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/classifier"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/classifier"
 )
 
 func (m *ChannelMonitor) classifyCategory(ctx context.Context, title string, fallbackCategory string, cfg *MonitorConfig) string {

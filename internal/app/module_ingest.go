@@ -6,16 +6,16 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	gdrive "google.golang.org/api/drive/v3"
 	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 )
 
 // MediaIngestBundle is the capability bundle for the media-ingest module.
@@ -72,7 +72,13 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		})
 	}
 	handler := assets.NewMediaingestHandler(svc)
-	mod := assets.NewMediaIngestModule(cfg, log, handler)
+	mod := module.NewRouteModule(
+		"media-ingest",
+		func() bool { return handler != nil },
+		"/media",
+		handler,
+		log,
+	)
 	return &MediaIngestWiring{Handler: handler, Module: mod, Service: svc}, nil
 }
 

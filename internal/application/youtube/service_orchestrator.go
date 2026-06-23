@@ -28,8 +28,8 @@ import (
 
 	"go.uber.org/zap"
 
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/cache"
 	ytextraction "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/extraction"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
@@ -127,12 +127,12 @@ type Service struct {
 	hashSvc         HashServicePort
 	tempFiles       TempFileManagerPort
 
-	clips       ClipStorePort
-	monitors    MonitorsStorePort
-	cacheStore  YouTubeCacheStorePort
-	indexer     ClipIndexerPort
+	clips        ClipStorePort
+	monitors     MonitorsStorePort
+	cacheStore   YouTubeCacheStorePort
+	indexer      ClipIndexerPort
 	folderMemory FolderMemoryPort
-	ollama      OllamaClientPort
+	ollama       OllamaClientPort
 
 	// Capacity-bound semaphores configured via ConcurrencyConfig.
 	videoExtractSem chan struct{}

@@ -16,10 +16,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	similarity "github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 )
 
 // ── Tag normalization ──────────────────────────────────────────────────────
@@ -946,4 +946,3 @@ func MergeStringSlices(values ...[]string) []string {
 	}
 	return out
 }
-

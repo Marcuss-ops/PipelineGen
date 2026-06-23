@@ -10,20 +10,20 @@ type IndexHealthReport struct {
 	Degraded bool
 
 	// PR3-5b fields
-	SQLiteAssets     int
-	SQLiteIndexed    int
-	QdrantPoints     int64
-	MissingInQdrant  int
-	OrphanInQdrant   int
-	PendingOutbox    int
-	DeadLetter       int
-	DegradedSources  []string
+	SQLiteAssets    int
+	SQLiteIndexed   int
+	QdrantPoints    int64
+	MissingInQdrant int
+	OrphanInQdrant  int
+	PendingOutbox   int
+	DeadLetter      int
+	DegradedSources []string
 
 	// Legacy fields
-	DBTotal          int
-	WithEmbedding    int
-	DBToQdrantDelta  int
-	StaleQdrantIDs   []string
+	DBTotal         int
+	WithEmbedding   int
+	DBToQdrantDelta int
+	StaleQdrantIDs  []string
 }
 
 // IndexHealthPort is the narrow interface for the realtime index-health check.

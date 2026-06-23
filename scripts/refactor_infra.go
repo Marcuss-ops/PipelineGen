@@ -95,12 +95,12 @@ func main() {
 			// Let's add the imports to the import block and rewrite the calls.
 			// Instead of a generic parser, we can do text replacements:
 			content = strings.ReplaceAll(content, `pf "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"`, "")
-			
+
 			// Replace calls
 			content = strings.ReplaceAll(content, "pf.SafeGo", "concurrent.SafeGo")
 			content = strings.ReplaceAll(content, "pf.FileIDFromDriveLink", "urlutil.FileIDFromDriveLink")
 			content = strings.ReplaceAll(content, "pf.FormatRFC3339", "timeutil.FormatRFC3339")
-			
+
 			// Inject imports (simple approach: insert into import block)
 			importBlockEnd := strings.Index(content, ")")
 			if importBlockEnd != -1 {

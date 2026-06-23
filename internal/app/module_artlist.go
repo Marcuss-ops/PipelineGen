@@ -4,12 +4,10 @@ import (
 	"context"
 	"time"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/artlist"
-	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -21,6 +19,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"go.uber.org/zap"
@@ -36,7 +36,7 @@ import (
 // needs to expose it.
 type ArtlistWiring struct {
 	Handler *artsources.ArtlistHandler
-	Module  module.Module
+	Module  api.Module
 	Service *artlistPkg.Service
 }
 
@@ -99,9 +99,16 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	}
 	clipResolver := wireClipResolver(cfg, bundle, clipCatalogRepo, presetsConfig, vectorStore, log)
 	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
-	var mod module.Module
+	var mod api.Module
 	if artlistSvc != nil && handler != nil {
-		mod = sourcesapi.NewArtlistModule(cfg, log, handler)
+		mod = api.NewRouteModule(
+			"artlist",
+			func() bool { return cfg.Features.ArtlistEnabled },
+			"/artlist",
+			handler,
+			log,
+			api.WithMiddleware(middleware.ArtlistEnabled(cfg)),
+		)
 		log.Info("created Artlist module")
 	}
 	return &ArtlistWiring{Handler: handler, Module: mod, Service: artlistSvc}, nil

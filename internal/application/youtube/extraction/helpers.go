@@ -3,8 +3,8 @@ package extraction
 import (
 	"regexp"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"strings"
 )
 

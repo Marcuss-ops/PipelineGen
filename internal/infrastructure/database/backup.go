@@ -30,11 +30,11 @@ import (
 
 // BackupResult is the structured outcome of a Backup operation.
 type BackupResult struct {
-	Path        string        // absolute path to the backup file
-	SizeBytes   int64         // bytes on disk
-	SHA256      string        // hex-encoded SHA256 of the file
-	DurationMs  int64         // wall-clock duration
-	CompletedAt time.Time     // UTC
+	Path        string    // absolute path to the backup file
+	SizeBytes   int64     // bytes on disk
+	SHA256      string    // hex-encoded SHA256 of the file
+	DurationMs  int64     // wall-clock duration
+	CompletedAt time.Time // UTC
 }
 
 // Backup copies the database at srcPath to outPath using SQLite's
@@ -96,18 +96,18 @@ func Backup(srcPath, outPath string) (*BackupResult, error) {
 
 // RestoreResult is the structured outcome of Restore + Verify + Smoke.
 type RestoreResult struct {
-	SourcePath       string
-	DestPath         string
-	SizeBytes        int64
-	SHA256           string   // of the restored file
-	IntegrityOK      bool
-	FKViolations     []string // empty list on success
-	SmokeInsertOK    bool     // E2E probe row insertion succeeded
-	SmokeRowsRead    int      // rows the probe SELECT saw (>=1 expected)
-	DurationMs       int64    // wall-clock
-	BackupMtime      time.Time
-	RTOSeconds       float64  // time from restore start to verify done
-	RPOHours         float64  // age of the source backup (hours)
+	SourcePath    string
+	DestPath      string
+	SizeBytes     int64
+	SHA256        string // of the restored file
+	IntegrityOK   bool
+	FKViolations  []string // empty list on success
+	SmokeInsertOK bool     // E2E probe row insertion succeeded
+	SmokeRowsRead int      // rows the probe SELECT saw (>=1 expected)
+	DurationMs    int64    // wall-clock
+	BackupMtime   time.Time
+	RTOSeconds    float64 // time from restore start to verify done
+	RPOHours      float64 // age of the source backup (hours)
 }
 
 // Restore copies the database at srcPath to dstPath via `VACUUM INTO`,
@@ -149,8 +149,8 @@ func Restore(ctx context.Context, srcPath, dstPath string) (*RestoreResult, erro
 	}
 
 	r := &RestoreResult{
-		SourcePath: srcPath,
-		DestPath:   dstPath,
+		SourcePath:  srcPath,
+		DestPath:    dstPath,
 		BackupMtime: srcInfo.ModTime().UTC(),
 	}
 

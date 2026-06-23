@@ -10,10 +10,10 @@ import (
 )
 
 type FileViolation struct {
-	File      string
-	Line      int
-	Rule      string
-	Message   string
+	File    string
+	Line    int
+	Rule    string
+	Message string
 }
 
 func AnalyzeImports(root string) ([]FileViolation, error) {

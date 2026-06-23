@@ -1,11 +1,10 @@
 package app
 
 import (
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -16,7 +15,7 @@ import (
 // YouTubeClipWiring holds the YouTube Clip module wiring.
 type YouTubeClipWiring struct {
 	Handler *ytsources.YouTubeClipHandler
-	Module  module.Module
+	Module  api.Module
 	Service *ytService.Service
 }
 
@@ -28,9 +27,15 @@ type YouTubeClipWiring struct {
 // (replaces post-construction SetProviderRegistry).
 func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade *jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, providerRegistry *providers.Registry) (*YouTubeClipWiring, error) {
 	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry)
-	var mod module.Module
+	var mod api.Module
 	if ytSvc != nil {
-		mod = sources.NewClipsModule(cfg, log, ytSvc, handler, jobFacade)
+		mod = api.NewRouteModule(
+			"clips",
+			func() bool { return cfg.Features.YouTubeEnabled },
+			"/clips",
+			handler,
+			log,
+		)
 		log.Info("created Clips module")
 		ytSvc.RegisterHandler(jobs)
 	}

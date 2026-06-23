@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
@@ -181,22 +181,22 @@ type Service struct {
 // sub-structs (production wiring in module_artlist.go).
 func NewService(deps ServiceDeps) (*Service, error) {
 	s := &Service{
-		cfg:               deps.Cfg,
-		mainDB:            deps.MainDB,
-		log:               deps.Log,
-		assetStore:        deps.AssetStore,
-		indexer:           deps.Indexer,
-		metadataWriter:    deps.MetadataWriter,
-		dispatcher:        deps.Dispatcher,
+		cfg:                deps.Cfg,
+		mainDB:             deps.MainDB,
+		log:                deps.Log,
+		assetStore:         deps.AssetStore,
+		indexer:            deps.Indexer,
+		metadataWriter:     deps.MetadataWriter,
+		dispatcher:         deps.Dispatcher,
 		driveFolderManager: deps.DriveFolderManager,
-		mediaProcessor:    deps.MediaProcessor,
-		lifecycleService:  deps.LifecycleService,
-		assetDestResolver: deps.AssetDestResolver,
-		jobsSvc:           deps.JobsSvc,
-		liveCache:         newPersistentLiveSearchCache(deps.MainDB, deps.Log),
-		assetProcessing:   deps.AssetProcRepo,
-		assetVersions:     deps.AssetVerRepo,
-		assetLocRepo:      deps.AssetLocRepo,
+		mediaProcessor:     deps.MediaProcessor,
+		lifecycleService:   deps.LifecycleService,
+		assetDestResolver:  deps.AssetDestResolver,
+		jobsSvc:            deps.JobsSvc,
+		liveCache:          newPersistentLiveSearchCache(deps.MainDB, deps.Log),
+		assetProcessing:    deps.AssetProcRepo,
+		assetVersions:      deps.AssetVerRepo,
+		assetLocRepo:       deps.AssetLocRepo,
 	}
 
 	// Inizializza i componenti delegati

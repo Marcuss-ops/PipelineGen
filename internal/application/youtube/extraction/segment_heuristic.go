@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

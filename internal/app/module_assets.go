@@ -16,11 +16,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
+	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -28,12 +31,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	gdrive "google.golang.org/api/drive/v3"
 	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 )
 
 // AssetsBundle is the capability bundle for the unified Assets module.
@@ -111,7 +111,13 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	if bundle.Assets != nil {
 		handler.SetAssetRepo(bundle.Assets.Repository())
 	}
-	sourcesMod := sourcesapi.NewSourcesModule(cfg, log, handler)
+	sourcesMod := module.NewRouteModule(
+		"assets",
+		func() bool { return handler != nil },
+		"/media",
+		handler,
+		log,
+	)
 
 	// ── PR 3 (June 2026): storage thin-transport handler ─────
 	var drivePort appstorage.DrivePort
@@ -208,7 +214,15 @@ func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName st
 // zapLogAdapter adapts *zap.Logger to storage.Logger.
 type zapLogAdapter struct{ log *zap.Logger }
 
-func (a *zapLogAdapter) Info(msg string, keysAndValues ...any)  { a.log.Sugar().Infow(msg, keysAndValues...) }
-func (a *zapLogAdapter) Warn(msg string, keysAndValues ...any)  { a.log.Sugar().Warnw(msg, keysAndValues...) }
-func (a *zapLogAdapter) Error(msg string, keysAndValues ...any) { a.log.Sugar().Errorw(msg, keysAndValues...) }
-func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) { a.log.Sugar().Debugw(msg, keysAndValues...) }
+func (a *zapLogAdapter) Info(msg string, keysAndValues ...any) {
+	a.log.Sugar().Infow(msg, keysAndValues...)
+}
+func (a *zapLogAdapter) Warn(msg string, keysAndValues ...any) {
+	a.log.Sugar().Warnw(msg, keysAndValues...)
+}
+func (a *zapLogAdapter) Error(msg string, keysAndValues ...any) {
+	a.log.Sugar().Errorw(msg, keysAndValues...)
+}
+func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) {
+	a.log.Sugar().Debugw(msg, keysAndValues...)
+}

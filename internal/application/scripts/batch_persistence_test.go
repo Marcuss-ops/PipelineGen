@@ -125,11 +125,11 @@ func TestSaveBatchScript_SaveToDB_SavesAllTables(t *testing.T) {
 	}
 
 	req := &GenerateBatchRequest{
-		DocTitle:  "Test Book",
-		Language:  "en",
-		Tone:      "professional",
-		Duration:  600,
-		SaveToDB:  true,
+		DocTitle:   "Test Book",
+		Language:   "en",
+		Tone:       "professional",
+		Duration:   600,
+		SaveToDB:   true,
 		NoChapters: false,
 	}
 
@@ -350,4 +350,3 @@ func TestSaveBatchScript_SavesResearchSources(t *testing.T) {
 	assert.Equal(t, "test query", query)
 	assert.Equal(t, "https://example.com", url)
 }
-

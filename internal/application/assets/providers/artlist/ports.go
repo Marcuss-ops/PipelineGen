@@ -34,16 +34,14 @@ import (
 // the transport replied with a semantically-broken payload and the
 // orchestrator should NOT silently switch sources.
 var (
-	ErrEmpty            = errors.New("artlist: empty input")
-	ErrUnavailable      = errors.New("artlist: source unavailable")
-	ErrTimeout          = errors.New("artlist: source timeout")
-	ErrInvalidResponse  = errors.New("artlist: invalid response")
-	ErrEmptyResult      = errors.New("artlist: empty result")
-	ErrNotFound         = errors.New("artlist: not found")
+	ErrEmpty             = errors.New("artlist: empty input")
+	ErrUnavailable       = errors.New("artlist: source unavailable")
+	ErrTimeout           = errors.New("artlist: source timeout")
+	ErrInvalidResponse   = errors.New("artlist: invalid response")
+	ErrEmptyResult       = errors.New("artlist: empty result")
+	ErrNotFound          = errors.New("artlist: not found")
 	ErrTransportFallback = errors.New("artlist: transport failure, fall back to next searcher")
 )
-
-
 
 // Candidate is the application-level representation of a search hit.
 // It is intentionally narrower than providers.Candidate so ports stay
@@ -53,13 +51,12 @@ var (
 // dto_search.go and normalizeSearchTerm lives in run_helpers.go —
 // pre-existing call sites already reference them and the ports reuse
 // the same types so HTTP transport stays compatible.
-//
 type Candidate struct {
-	ID          string
-	Title       string
-	SourceRef   string // primary URL (HLS/m3u8 or progressive)
-	PageURL     string // human-friendly page link
-	SourceName  string
+	ID         string
+	Title      string
+	SourceRef  string // primary URL (HLS/m3u8 or progressive)
+	PageURL    string // human-friendly page link
+	SourceName string
 }
 
 // Searcher performs a live search. Implementations include Node/Playwright
@@ -254,4 +251,3 @@ type MetadataWriter interface {
 type Dispatcher interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, hash string) error
 }
-

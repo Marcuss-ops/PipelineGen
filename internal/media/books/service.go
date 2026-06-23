@@ -64,13 +64,13 @@ func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, vo
 	}
 
 	return &Service{
-		db:            db,
-		cfg:           cfg,
-		log:           log,
-		scriptPath:    scriptPath,
-		driveFolder:   driveFolder,
-		voiceoverSvc:  voiceoverSvc,
-		driveUpload:   driveUploader,
+		db:           db,
+		cfg:          cfg,
+		log:          log,
+		scriptPath:   scriptPath,
+		driveFolder:  driveFolder,
+		voiceoverSvc: voiceoverSvc,
+		driveUpload:  driveUploader,
 	}
 }
 

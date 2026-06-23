@@ -3,16 +3,16 @@
 // This file replaces the previous `type services struct` (in dependencies.go)
 // and `CoreDeps` (in bootstrap.go) with a layered set of focused bundles:
 //
-//   ┌─────────────────────────────────────────────────────────────┐
-//   │                      ComposeRoot                              │
-//   │   DB · child bundles                                         │
-//   └──────┬──────────────────────────────────────────────────────┘
-//          │
-//   ┌──────┴──────────────────────────────────────────────────────┐
-//   │  DriveBundle │ RepoBundle │ SearchBundle │ ProcessBundle     │
-//   │  AIBundle    │ DomainBundle│ JobsBundle  │ OutboxBundle     │
-//   │  SyncBundle  │ MaintBundle │ UtilityBundle                  │
-//   └─────────────────────────────────────────────────────────────┘
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                      ComposeRoot                              │
+//	│   DB · child bundles                                         │
+//	└──────┬──────────────────────────────────────────────────────┘
+//	       │
+//	┌──────┴──────────────────────────────────────────────────────┐
+//	│  DriveBundle │ RepoBundle │ SearchBundle │ ProcessBundle     │
+//	│  AIBundle    │ DomainBundle│ JobsBundle  │ OutboxBundle     │
+//	│  SyncBundle  │ MaintBundle │ UtilityBundle                  │
+//	└─────────────────────────────────────────────────────────────┘
 //
 // Each Wire*Module() takes a NARROW subset (≤10 deps) by constructor injection,
 // not the whole root.
@@ -40,14 +40,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -59,12 +59,14 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -76,10 +78,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )

@@ -1,8 +1,8 @@
 package youtube
 
 import (
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"encoding/json"
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"strconv"
 	"strings"
 
@@ -86,8 +86,6 @@ func ymThumbnailURL(ym *DownloaderMetadata, clip *asset.Asset) string {
 	}
 	return clip.GetMetadataString("youtube_thumbnail")
 }
-
-
 
 // metadataStringSlice extracts a []string from a metadata map, accepting
 // []string, []any, or JSON-encoded string values.
@@ -202,5 +200,3 @@ func metadataInt(meta map[string]any, key string) int {
 	}
 	return 0
 }
-
-

@@ -213,9 +213,9 @@ func TestDriveConfigConvenienceMethods(t *testing.T) {
 func TestConfigValidateAcceptsValidConfig(t *testing.T) {
 	cfg := &Config{
 		Security: SecurityConfig{
-			EnableAuth:          true,
-			AdminToken:          "valid-token",
-			DeliveryHMACSecret:  "0123456789abcdef0123456789abcdef",
+			EnableAuth:         true,
+			AdminToken:         "valid-token",
+			DeliveryHMACSecret: "0123456789abcdef0123456789abcdef",
 		},
 		Server: ServerConfig{
 			Port:         8080,

@@ -30,11 +30,11 @@ import (
 // artlist_server.js. The application never sees this raw shape; the
 // port adapter translates it into Candidate.
 type Response struct {
-	OK        bool     `json:"ok"`
-	Term      string   `json:"term"`
-	Clips     []Clip   `json:"clips"`
-	SearchURL string   `json:"search_url"`
-	Saved     int      `json:"saved"`
+	OK        bool   `json:"ok"`
+	Term      string `json:"term"`
+	Clips     []Clip `json:"clips"`
+	SearchURL string `json:"search_url"`
+	Saved     int    `json:"saved"`
 }
 
 // Clip is the JSON shape returned by the Node scraper.
@@ -50,11 +50,11 @@ type Clip struct {
 
 // Config carries the wiring values the application owns.
 type Config struct {
-	ServerURL    string // empty → use exec fallback
-	ScraperDir   string // directory containing artlist_search.js
-	ScriptName   string // defaults to "artlist_search.js"
-	ExecTimeout  time.Duration
-	HTTPTimeout  time.Duration
+	ServerURL   string // empty → use exec fallback
+	ScraperDir  string // directory containing artlist_search.js
+	ScriptName  string // defaults to "artlist_search.js"
+	ExecTimeout time.Duration
+	HTTPTimeout time.Duration
 }
 
 // Provider implements artlist.Searcher using the persistent Node server
@@ -129,8 +129,6 @@ func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]arta
 	return p.searchViaExec(ctx, term, req.Limit)
 }
 
-
-
 func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) (*Response, error) {
 	type searchReq struct {
 		Term  string `json:"term"`
@@ -189,8 +187,8 @@ func (p *Provider) searchViaExec(ctx context.Context, term string, limit int) ([
 	}
 
 	result, err := process.Run(ctx, "node", args, process.Options{
-		WorkDir:       scraperDir,
-		Timeout:       p.cfg.ExecTimeout,
+		WorkDir:        scraperDir,
+		Timeout:        p.cfg.ExecTimeout,
 		CombinedOutput: true,
 	})
 	if err != nil {

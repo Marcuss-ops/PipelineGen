@@ -11,12 +11,12 @@ import (
 
 // FetchedAsset is the result of fetching a video from a provider.
 type FetchedAsset struct {
-	LocalPath    string
-	AssetID      string
-	Name         string
-	Duration     time.Duration
-	Bytes        int64
-	Metadata     map[string]string
+	LocalPath string
+	AssetID   string
+	Name      string
+	Duration  time.Duration
+	Bytes     int64
+	Metadata  map[string]string
 }
 
 // FetchRequest describes a video to fetch.
@@ -52,17 +52,17 @@ type DrivePort interface {
 
 // ExistingClip is the minimal info for dedup checks and result building.
 type ExistingClip struct {
-	ID           string
-	Name         string
-	Filename     string
-	Duration     time.Duration
-	Source       string
-	Category     string
-	Tags         []string
-	LocalPath    string
-	DriveLink    string
-	DriveFileID  string
-	FileHash     string
+	ID          string
+	Name        string
+	Filename    string
+	Duration    time.Duration
+	Source      string
+	Category    string
+	Tags        []string
+	LocalPath   string
+	DriveLink   string
+	DriveFileID string
+	FileHash    string
 }
 
 // ClipStorePort persists and queries clip metadata.
@@ -163,7 +163,7 @@ type SearchProviderPort interface {
 // ConfigPort provides drive folder defaults.
 type ConfigPort interface {
 	ClipsFolder() string
-	RootFolder()  string
+	RootFolder() string
 }
 
 // ── Enrichment ports ──────────────────────────────────────────────────

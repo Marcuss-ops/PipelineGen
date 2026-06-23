@@ -150,10 +150,10 @@ func TestGenerateLessonUseCase_HandleAsyncOK(t *testing.T) {
 	uc := NewGenerateLessonUseCase(&FakeLessonProcessor{}, fakeJobs, zap.NewNop())
 
 	resp, err := uc.Handle(context.Background(), GenerateLessonRequest{
-		SourceText: "Kubernetes networking covers pod-to-pod, pod-to-service...",
-		Title:      "kubernetes networking",
+		SourceText:  "Kubernetes networking covers pod-to-pod, pod-to-service...",
+		Title:       "kubernetes networking",
 		MaxChapters: 5,
-		Async:      true,
+		Async:       true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
