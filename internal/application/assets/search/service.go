@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // Service orchestrates search operations through narrow ports.
@@ -151,10 +149,10 @@ func (s *Service) SemanticSearch(ctx context.Context, req SemanticSearchRequest)
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
 
-	var results []qdrant.SearchResult
+	var results []VectorSearchResult
 	if mode == "hybrid" {
 		vc := s.cfg.VectorConfig()
-		results, err = s.vector.VectorStore().HybridSearch(ctx, qdrant.HybridSearchRequest{
+		results, err = s.vector.VectorStore().HybridSearch(ctx, HybridSearchRequest{
 			QueryText:        req.Query,
 			DenseVector:      queryVector,
 			DenseVectorName:  vectorName,
@@ -165,7 +163,7 @@ func (s *Service) SemanticSearch(ctx context.Context, req SemanticSearchRequest)
 			MediaType:        req.MediaType,
 		})
 	} else {
-		results, err = s.vector.VectorStore().Search(ctx, qdrant.SearchRequest{
+		results, err = s.vector.VectorStore().Search(ctx, VectorSearchRequest{
 			QueryVector: queryVector,
 			VectorName:  vectorName,
 			Limit:       req.Limit,
@@ -246,7 +244,7 @@ func (s *Service) Recommend(ctx context.Context, req RecommendRequest) (*Recomme
 			continue
 		}
 
-		results, err := s.vector.VectorStore().HybridSearch(ctx, qdrant.HybridSearchRequest{
+		results, err := s.vector.VectorStore().HybridSearch(ctx, HybridSearchRequest{
 			QueryText:         cleanQueryText(queryText),
 			DenseVector:       queryVector,
 			DenseVectorName:   vc.TextVectorName,
@@ -396,7 +394,7 @@ func cleanQueryText(text string) string {
 	return strings.TrimSpace(text)
 }
 
-func buildSearchReason(r qdrant.SearchResult, query string) string {
+func buildSearchReason(r VectorSearchResult, query string) string {
 	parts := []string{}
 	if r.Score >= 0.85 {
 		parts = append(parts, "very high semantic similarity")

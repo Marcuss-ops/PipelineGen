@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // mockSearchService wraps appsearch.Service-like behavior for handler tests.
@@ -66,14 +65,14 @@ func (m *mockVectorSearch) VectorStore() appsearch.VectorStorePort {
 }
 
 type mockVectorStore struct {
-	searchFn       func(ctx context.Context, req qdrant.SearchRequest) ([]qdrant.SearchResult, error)
-	hybridSearchFn func(ctx context.Context, req qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error)
+	searchFn       func(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error)
+	hybridSearchFn func(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error)
 }
 
-func (m *mockVectorStore) Search(ctx context.Context, req qdrant.SearchRequest) ([]qdrant.SearchResult, error) {
+func (m *mockVectorStore) Search(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
 	return m.searchFn(ctx, req)
 }
-func (m *mockVectorStore) HybridSearch(ctx context.Context, req qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error) {
+func (m *mockVectorStore) HybridSearch(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
 	return m.hybridSearchFn(ctx, req)
 }
 
@@ -203,8 +202,8 @@ func TestSearch_ServiceError(t *testing.T) {
 
 func TestSemanticSearch_HappyPath(t *testing.T) {
 	vs := &mockVectorStore{
-		searchFn: func(ctx context.Context, req qdrant.SearchRequest) ([]qdrant.SearchResult, error) {
-			return []qdrant.SearchResult{
+		searchFn: func(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
+			return []appsearch.VectorSearchResult{
 				{AssetID: "clip1", Name: "Space clip", Score: 0.88},
 			}, nil
 		},
@@ -263,8 +262,8 @@ func TestSemanticSearch_NilService(t *testing.T) {
 
 func TestRecommend_HappyPath(t *testing.T) {
 	vs := &mockVectorStore{
-		hybridSearchFn: func(ctx context.Context, req qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error) {
-			return []qdrant.SearchResult{
+		hybridSearchFn: func(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
+			return []appsearch.VectorSearchResult{
 				{AssetID: "clip_x", Name: "action shot", Score: 0.92, Source: "stock", MediaType: "video"},
 			}, nil
 		},
