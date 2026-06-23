@@ -167,16 +167,39 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// curationJobService + catalogJobService not wired today; passed nil.
 		// RegisterJobHandlers already nil-guards them, so the fields stay nil
 		// without losing behaviour. A future caller can inject them via ctor.
-		handler := scriptapi.NewScriptFlowHandler(
-			root.AI.ScriptGen, engine,
-			root.Domains.ImageService, root.Domains.RealtimeService, root.Domains.AssocService,
-			root.Domains.VoiceoverService, root.Search.AssetTreeService,
-			root.Drive.DocClient, root.Drive.DriveUploader, root.Jobs.Facade, scriptsRepoAdapter, memorySvc,
-			cfg.Drive.ScriptsGenFolder(), cfg, log,
-			batchSvc, curationSvc,
-			clipSourceBuilder, mediaCurator, harvestSvc,
-			nil, nil,
+		//
+		// PR4.F (June 2026): the 22-positional ctor is replaced by a single
+		// ScriptFlowDeps bundle literal. Adding a dependency (e.g. a new use
+		// case) is now a struct field, not a positional-slot reshuffle.
+		sectionRegen := scriptcore.NewSectionRegenerator(
+			scriptsRepoAdapter, root.AI.ScriptGen,
+			root.Drive.DocClient, cfg, log,
 		)
+		handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
+			Generator:             root.AI.ScriptGen,
+			Engine:                engine,
+			Batch:                 batchSvc,
+			Curation:              curationSvc,
+			Section:               sectionRegen,
+			Image:                 root.Domains.ImageService,
+			Realtime:              root.Domains.RealtimeService,
+			Association:           root.Domains.AssocService,
+			Voiceover:             root.Domains.VoiceoverService,
+			AssetTree:             root.Search.AssetTreeService,
+			ClipSourceBuilder:     clipSourceBuilder,
+			MediaCurator:          mediaCurator,
+			Harvest:               harvestSvc,
+			CurationJobService:    nil,
+			CatalogJobService:     nil,
+			ScriptsRepo:           scriptsRepoAdapter,
+			Memory:                memorySvc,
+			Jobs:                  root.Jobs.Facade,
+			DocClient:             root.Drive.DocClient,
+			DriveUploader:         root.Drive.DriveUploader,
+			DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
+			Cfg:                   cfg,
+			Log:                   log,
+		})
 
 		genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
 		mod := module.NewRouteModule(
@@ -280,6 +303,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				ClipsRepo:          root.Repos.ClipsRepo,
 				YoutubeClipService: root.Domains.YoutubeClipService,
 				ClipIndexerService: root.Process.ClipIndexerService,
+				Dispatcher:         root.Outbox.Dispatcher,
 			}
 			w, e := WireStockPipeline(cfg, log, stockBundle)
 			wiring.StockPipeline = w

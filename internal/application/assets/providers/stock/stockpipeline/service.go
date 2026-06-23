@@ -12,15 +12,15 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -60,10 +60,9 @@ type Service struct {
 	clipIndexer *clipindexer.Service
 	metaWriter  *semantic.MetadataWriter
 	clipsRepo   *assets.ClipsRepository
-	// dispatcher is set after construction via SetDispatcher so the
-	// atomic upsert+outbox-enqueue path is used for stock uploads. nil is
-	// tolerated for back-compat (tests, partial wiring); Upload falls
-	// back to direct repo.UpsertClip + SafeGoFunc(IndexClip) when nil.
+	// dispatcher is the canonical media_index_outbox dispatcher, injected
+	// at composition time via WireStockPipeline. Required for production
+	// — upsertChunkAndDispatch returns an error when nil.
 	dispatcher *outbox.Dispatcher
 }
 
@@ -112,11 +111,7 @@ func (s *Service) SetClipIndexer(indexer *clipindexer.Service) {
 	s.clipIndexer = indexer
 }
 
-// SetDispatcher injects the canonical media_index_outbox dispatcher so
-// run_upload writes the per-chunk media_assets row together with the
-// Qdrant upsert as a single atomic tx (crash-safe between write and
-// index). Production wiring sets this once at composition time; a nil
-// dispatcher falls back to the legacy async clipIndexer.IndexClip.
+// SetDispatcher injects the canonical media_index_outbox dispatcher.
 func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
 	s.dispatcher = d
 }

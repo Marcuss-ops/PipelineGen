@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -27,6 +28,7 @@ type StockBundle struct {
 	ClipsRepo          *assets.ClipsRepository
 	YoutubeClipService *ytService.Service
 	ClipIndexerService *clipindexer.Service
+	Dispatcher         *outbox.Dispatcher
 }
 
 // StockPipelineWiring holds the StockPipeline module wiring.
@@ -55,6 +57,9 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	}
 	if bundle.ClipIndexerService != nil {
 		svc.SetClipIndexer(bundle.ClipIndexerService)
+	}
+	if bundle.Dispatcher != nil {
+		svc.SetDispatcher(bundle.Dispatcher)
 	}
 	metaWriter := semantic.NewMetadataWriter(
 		cfg.Paths.PythonScriptsDir,

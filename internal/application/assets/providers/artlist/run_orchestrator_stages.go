@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -261,7 +260,11 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		existingClip.LifecycleState = asset.StateReady
 		existingClip.Source = "artlist"
 		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
-		o.svc.newDispatchBridge().EnqueueOrFallback(ctx, existingClip, existingClip.FileHash())
+		bridge := o.svc.newDispatchBridge()
+		if err := bridge.Dispatch(ctx, existingClip, existingClip.FileHash()); err != nil {
+			o.svc.log.Warn("stagePersistResults: dispatch failed",
+				zap.String("clip_id", existingClip.ID), zap.Error(err))
+		}
 	}
 }
 
@@ -293,52 +296,11 @@ func (o *RunOrchestratorService) stageEnrichAsync(ctx context.Context, resp *Run
 	}
 }
 
-// stageIndexAsync launches clip indexing in the background for processed clips.
-// When the dispatcher is wired, the atomic UpsertClip + IndexClip is already
-// done by stagePersistResults (via dispatchBridge.EnqueueOrFallback); this
-// stage is skipped to avoid double-indexing. On the legacy path
-// (dispatcher nil), this is the async SafeGoFunc(Indexer.IndexClip)
-// that callers used to rely on.
-//
-// PR2.5: clipIndexer → indexer (Indexer port). Same IsEnabled + IndexClip
-// surface, no behavior change.
-func (o *RunOrchestratorService) stageIndexAsync(ctx context.Context, resp *RunTagResponse) {
-	b := o.svc.newDispatchBridge()
-	if b.IsCanonical() {
-		// stagePersistResults already handled the atomic write+index via
-		// the canonical dispatcher through EnqueueOrFallback.
-		return
-	}
-	if b.indexer == nil || !b.indexer.IsEnabled() {
-		return
-	}
-	indexer := b.indexer
-	log := b.log
-	for _, item := range resp.Items {
-		if item.Status == "media_process_failed" || item.Status == "dry_run" {
-			continue
-		}
-		clipID := item.ClipID
-		concurrent.SafeGoFunc("artlist-clip-indexer", struct {
-			ID  string
-			Ctx context.Context
-		}{ID: clipID, Ctx: ctx}, func(idxArg struct {
-			ID  string
-			Ctx context.Context
-		}) {
-			idxCtx, cancel := context.WithTimeout(context.WithoutCancel(idxArg.Ctx), 30*time.Second)
-			defer cancel()
-			if err := indexer.IndexClip(idxCtx, idxArg.ID); err != nil {
-				log.Warn("clipindexer failed after pipeline",
-					zap.String("clip_id", idxArg.ID),
-					zap.Duration("timeout", 30*time.Second),
-					zap.Error(err))
-			} else {
-				log.Info("clip indexed for vector search",
-					zap.String("clip_id", idxArg.ID))
-			}
-		})
-	}
+// stageIndexAsync is a no-op. The canonical dispatcher (required) handles
+// indexing atomically in stagePersistResults via Dispatch. This stage
+// exists only as a documented no-op for callers that used to rely on the
+// legacy SafeGoFunc(Indexer.IndexClip) path.
+func (o *RunOrchestratorService) stageIndexAsync(_ context.Context, _ *RunTagResponse) {
 }
 
 // concurrencyFromRequest determines the concurrency level: default 3, max 10.

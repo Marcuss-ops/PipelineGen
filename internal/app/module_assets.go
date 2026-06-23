@@ -167,8 +167,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	// SoundEffect: wired with real repos + uploader + metaWriter
 	sfxHandler := assetsfx.NewHandler(bundle.ClipsRepo, driveUploader, metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
 
-	// Register: YouTube registration handler with full deps
-	registerHandler := assetregister.NewHandler(cfg, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, bundle.ClipIndexerService, vectorStore, metaWriter, clipsHandler, log)
+	// Register: the HTTP layer now depends on a single sourcing use case.
+	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler)
+	registerHandler := assetregister.NewHandler(registerSvc, log)
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
 		Storage:     storageHandler,

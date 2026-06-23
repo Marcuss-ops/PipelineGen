@@ -14,14 +14,12 @@ import (
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // uploadAndIndexChunk uploads a rendered chunk to Drive, saves metadata to
 // asset_index and media_assets, and triggers vector indexing via the
-// canonical outbox dispatcher when wired (atomic upsert + outbox enqueue)
-// or the legacy async clipIndexer.IndexClip path as a back-compat fallback.
+// canonical outbox dispatcher (atomic upsert + outbox enqueue).
 func (s *Service) uploadAndIndexChunk(ctx context.Context, chunkIdx int, chunkPath, chunkTitle, folderID string, chunkRes *ChunkResult, input *RunInput, videoCfg *config.VideoConfig) {
 	s.log.Info("uploading chunk to drive",
 		zap.Int("chunk", chunkIdx),
@@ -159,20 +157,12 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 	}
 }
 
-// upsertChunkAndDispatch writes the chunk to media_assets and either routes
-// it through the canonical outbox dispatcher (atomic upsert + outbox
-// enqueue, picked up by outbox.Worker for Qdrant indexing) when wired, or
-// falls back to the legacy direct-repo.UpsertClip + concurrent.SafeGoFunc(
-// IndexClip) path when the dispatcher is nil (tests, partial wiring,
-// older deploys). UpdateSearchTerms runs BEFORE the upsert+dispatch so a
+// upsertChunkAndDispatch writes the chunk to media_assets and routes it
+// through the canonical outbox dispatcher (atomic upsert + outbox
+// enqueue, picked up by outbox.Worker for Qdrant indexing).
+// UpdateSearchTerms runs BEFORE the upsert+dispatch so a
 // failure aborts the dispatch rather than leaving a stale-tags row that
 // only the worker would ever repair (the worker doesn't backfill tags).
-//
-// Lifecycle: there is a small window between svc.RegisterHandler and
-// compose_integration's late-bind SetDispatcher during which a stock
-// job would hit the legacy branch. Both branches produce equivalent
-// visible state (the only difference is Qdrant indexing fire-right vs.
-// worker-pulled), so this is benign — the system is never crash-unsafe.
 func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *asset.Asset) error {
 	// Always update search terms FIRST against the canonical row so the
 	// tags_norm / search_text columns never lag the embeddable record.
@@ -184,39 +174,19 @@ func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *asset.Asset)
 		}
 	}
 
-	if s.dispatcher != nil {
-		// Canonical PR3-5b path: atomic upsert + outbox enqueue + idempotent
-		// worker re-index. The outbox row drives the same IndexClip worker
-		// as the legacy SafeGoFunc but in a crash-safe tx. Folder rows are
-		// excluded the same way the legacy branch does — folders are
-		// containers, not embeddable assets, and the worker would otherwise
-		// have to detect-and-skip them.
-		if !clip.IsFolder() {
-			if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
-				return fmt.Errorf("dispatcher.EnqueueAndIndex: %w", err)
-			}
-		}
-		return nil
+	if s.dispatcher == nil {
+		return fmt.Errorf("upsertChunkAndDispatch: dispatcher is nil — production wiring required")
 	}
 
-	// Legacy fallback — back-compat with tests + partial-wiring deploys.
-	if s.clipsRepo == nil {
-		return fmt.Errorf("upsertChunkAndDispatch: clipsRepo is nil and dispatcher is nil")
-	}
-	if err := s.clipsRepo.Upsert(ctx, clip); err != nil {
-		return fmt.Errorf("clipsRepo.Upsert: %w", err)
-	}
-	// Legacy async IndexClip — preserved when no dispatcher is wired. The
-	// !clip.IsFolder gate keeps folder metadata rows out of Qdrant.
-	if s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder() {
-		concurrent.SafeGoFunc("stock-vector-indexing", clip.ID, func(id string) {
-			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-			defer cancel()
-			s.log.Info("triggering automatic vector indexing for stock chunk", zap.String("id", id))
-			if err := s.clipIndexer.IndexClip(indexCtx, id); err != nil {
-				s.log.Error("failed to automatically index stock chunk", zap.String("id", id), zap.Error(err))
-			}
-		})
+	// Canonical PR3-5b path: atomic upsert + outbox enqueue + idempotent
+	// worker re-index. The outbox row drives the same IndexClip worker
+	// as the legacy SafeGoFunc but in a crash-safe tx. Folder rows are
+	// excluded — folders are containers, not embeddable assets, and the
+	// worker would otherwise have to detect-and-skip them.
+	if !clip.IsFolder() {
+		if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+			return fmt.Errorf("dispatcher.EnqueueAndIndex: %w", err)
+		}
 	}
 	return nil
 }
