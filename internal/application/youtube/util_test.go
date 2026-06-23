@@ -3,6 +3,8 @@ package youtube
 import (
 	"testing"
 
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -17,14 +19,14 @@ func TestGetGroupFromDestination_Nil(t *testing.T) {
 }
 
 func TestGetGroupFromDestination_WithGroup(t *testing.T) {
-	d := &DestinationRequest{Group: "Discovery"}
+	d := &youtubetypes.DestinationRequest{Group: "Discovery"}
 	if got := getGroupFromDestination(d); got != "Discovery" {
 		t.Fatalf("expected 'Discovery', got %q", got)
 	}
 }
 
 func TestGetGroupFromDestination_EmptyGroup(t *testing.T) {
-	d := &DestinationRequest{}
+	d := &youtubetypes.DestinationRequest{}
 	if got := getGroupFromDestination(d); got != "" {
 		t.Fatalf("expected empty, got %q", got)
 	}

@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -211,7 +212,7 @@ func directYouTubeLink(clip asset.Asset) string {
 	return "https://www.youtube.com/watch?v=" + id
 }
 
-func scoreTopicSimilarity(query string, metadata *VideoMetadata) int {
+func scoreTopicSimilarity(query string, metadata *youtubeports.DownloaderMetadata) int {
 	queryTokens := meaningfulTokens(query)
 	if len(queryTokens) == 0 || metadata == nil {
 		return 0
@@ -243,7 +244,7 @@ func scoreTopicSimilarity(query string, metadata *VideoMetadata) int {
 	return score
 }
 
-func scoreFormatMatch(query string, metadata *VideoMetadata) int {
+func scoreFormatMatch(query string, metadata *youtubeports.DownloaderMetadata) int {
 	if metadata == nil {
 		return 0
 	}

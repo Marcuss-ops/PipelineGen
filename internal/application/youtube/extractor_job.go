@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
@@ -26,7 +27,7 @@ func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *job
 		zap.String("job_id", job.ID),
 	)
 
-	var req ExtractRequest
+	var req youtubetypes.ExtractRequest
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &req); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)

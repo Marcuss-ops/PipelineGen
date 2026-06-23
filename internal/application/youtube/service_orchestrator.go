@@ -34,6 +34,7 @@ import (
 	ytextraction "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/extraction"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	ytsearch "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/search"
 	ytsegments "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/segments"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -74,22 +75,22 @@ type ServiceDeps struct {
 	AssetVersions   asset.VersionRepository
 
 	// Port dependencies.
-	SearchRunner    SearchRunnerPort
-	SubtitleFetcher SubtitleFetcherPort
-	Whisper         WhisperTranscriberPort
-	ClipFiles       ClipFilesPort
-	MetaFetcher     VideoMetadataFetcherPort
-	DriveFolderMgr  DriveFolderManagerPort
-	HashSvc         HashServicePort
-	TempFiles       TempFileManagerPort
+	SearchRunner    youtubeports.SearchRunnerPort
+	SubtitleFetcher youtubeports.SubtitleFetcherPort
+	Whisper         youtubeports.WhisperTranscriberPort
+	ClipFiles       youtubeports.ClipFilesPort
+	MetaFetcher     youtubeports.VideoMetadataFetcherPort
+	DriveFolderMgr  youtubeports.DriveFolderManagerPort
+	HashSvc         youtubeports.HashServicePort
+	TempFiles       youtubeports.TempFileManagerPort
 
 	// PR1.5 — port-backed store/cache/index collaborators.
-	Clips        ClipStorePort
-	Monitors     MonitorsStorePort
-	CacheStore   YouTubeCacheStorePort
-	Indexer      ClipIndexerPort
-	FolderMemory FolderMemoryPort
-	Ollama       OllamaClientPort
+	Clips        youtubeports.ClipStorePort
+	Monitors     youtubeports.MonitorsStorePort
+	CacheStore   youtubeports.YouTubeCacheStorePort
+	Indexer      youtubeports.ClipIndexerPort
+	FolderMemory youtubeports.FolderMemoryPort
+	Ollama       youtubeports.OllamaClientPort
 }
 
 // Service is the YouTube orchestrator. Construct it once via NewService
@@ -118,21 +119,21 @@ type Service struct {
 	extraction *ytextraction.Service
 
 	// Port-backed dependencies (no setters).
-	searchRunner    SearchRunnerPort
-	subtitleFetcher SubtitleFetcherPort
-	whisper         WhisperTranscriberPort
-	clipFiles       ClipFilesPort
-	metaFetcher     VideoMetadataFetcherPort
-	driveFolderMgr  DriveFolderManagerPort
-	hashSvc         HashServicePort
-	tempFiles       TempFileManagerPort
+	searchRunner    youtubeports.SearchRunnerPort
+	subtitleFetcher youtubeports.SubtitleFetcherPort
+	whisper         youtubeports.WhisperTranscriberPort
+	clipFiles       youtubeports.ClipFilesPort
+	metaFetcher     youtubeports.VideoMetadataFetcherPort
+	driveFolderMgr  youtubeports.DriveFolderManagerPort
+	hashSvc         youtubeports.HashServicePort
+	tempFiles       youtubeports.TempFileManagerPort
 
-	clips        ClipStorePort
-	monitors     MonitorsStorePort
-	cacheStore   YouTubeCacheStorePort
-	indexer      ClipIndexerPort
-	folderMemory FolderMemoryPort
-	ollama       OllamaClientPort
+	clips        youtubeports.ClipStorePort
+	monitors     youtubeports.MonitorsStorePort
+	cacheStore   youtubeports.YouTubeCacheStorePort
+	indexer      youtubeports.ClipIndexerPort
+	folderMemory youtubeports.FolderMemoryPort
+	ollama       youtubeports.OllamaClientPort
 
 	// Capacity-bound semaphores configured via ConcurrencyConfig.
 	videoExtractSem chan struct{}
@@ -365,11 +366,11 @@ func (s *Service) ClassifyCategory(ctx context.Context, title string) string {
 	return s.classifyCategory(ctx, title)
 }
 
-func (s *Service) CheckExistingClip(ctx context.Context, req *ExtractRequest, clipID string, item *ExtractItem, outDir string) bool {
+func (s *Service) CheckExistingClip(ctx context.Context, req *youtubetypes.ExtractRequest, clipID string, item *youtubetypes.ExtractItem, outDir string) bool {
 	return s.checkExistingClip(ctx, req, clipID, item, outDir)
 }
 
-func (s *Service) ProcessLifecycle(ctx context.Context, metadata *lifecycle.FinalizeInput, localPath, fileHash string, item *ExtractItem) {
+func (s *Service) ProcessLifecycle(ctx context.Context, metadata *lifecycle.FinalizeInput, localPath, fileHash string, item *youtubetypes.ExtractItem) {
 	ytextraction.ProcessLifecycle(ctx, s.lifecycleService, localPath, fileHash, item, metadata)
 }
 

@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
@@ -21,9 +23,9 @@ import (
 
 func TestYouTubeClipRequestValidation(t *testing.T) {
 	// Test empty URL
-	req := &ExtractRequest{
+	req := &youtubetypes.ExtractRequest{
 		URL:      "",
-		Segments: []Segment{{Start: "0:10", End: "0:20"}},
+		Segments: []youtubetypes.Segment{{Start: "0:10", End: "0:20"}},
 	}
 
 	if req.URL == "" {
@@ -49,9 +51,9 @@ func TestYouTubeClipRejectsInvalidURL(t *testing.T) {
 	}
 
 	for _, url := range invalidURLs {
-		req := &ExtractRequest{
+		req := &youtubetypes.ExtractRequest{
 			URL:      url,
-			Segments: []Segment{{Start: "0:10", End: "0:20"}},
+			Segments: []youtubetypes.Segment{{Start: "0:10", End: "0:20"}},
 		}
 
 		// In a real test, we would call Extract and check for error
@@ -82,9 +84,9 @@ func TestYouTubeClipRejectsInvalidTimeRange(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := &ExtractRequest{
+			req := &youtubetypes.ExtractRequest{
 				URL:      "https://www.youtube.com/watch?v=test",
-				Segments: []Segment{{Start: tc.start, End: tc.end}},
+				Segments: []youtubetypes.Segment{{Start: tc.start, End: tc.end}},
 			}
 
 			// Validate segment
@@ -203,9 +205,9 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 		AssetVersions:     nil, // assetVersions (test)
 	})
 
-	resp, err := svc.Extract(ctx, &ExtractRequest{
+	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-		Segments: []Segment{
+		Segments: []youtubetypes.Segment{
 			{
 				Name:  "intro",
 				Start: "0",
@@ -254,9 +256,9 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 		AssetVersions:     nil, // assetVersions (test)
 	})
 
-	resp, err := svc.Extract(ctx, &ExtractRequest{
+	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-		Segments: []Segment{
+		Segments: []youtubetypes.Segment{
 			{Name: "clip one", Start: "10", End: "20"},
 		},
 	})
@@ -274,7 +276,7 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 
 func TestYouTubeClipValidSegmentCount(t *testing.T) {
 	// Test that segment count is validated
-	req := &ExtractRequest{
+	req := &youtubetypes.ExtractRequest{
 		URL: "https://www.youtube.com/watch?v=test",
 	}
 
@@ -285,7 +287,7 @@ func TestYouTubeClipValidSegmentCount(t *testing.T) {
 
 	// Test max segments limit
 	for i := 0; i < 25; i++ {
-		req.Segments = append(req.Segments, Segment{Start: "0:10", End: "0:20"})
+		req.Segments = append(req.Segments, youtubetypes.Segment{Start: "0:10", End: "0:20"})
 	}
 
 	if len(req.Segments) > 20 {
@@ -342,7 +344,7 @@ type fakeVideoPipeline struct {
 	outputName string
 }
 
-func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error) {
+func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req youtubeports.VideoCutRequest) (*youtubeports.VideoCutResult, error) {
 	f.called = true
 	f.url = req.URL
 	f.start = req.Start
@@ -351,7 +353,7 @@ func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req 
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &VideoCutResult{
+	return &youtubeports.VideoCutResult{
 		LocalPath: f.outputPath,
 	}, nil
 }

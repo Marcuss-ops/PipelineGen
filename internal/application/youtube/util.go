@@ -2,10 +2,11 @@ package youtube
 
 import (
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 )
 
 // getGroupFromDestination extracts group name from destination request.
-func getGroupFromDestination(dest *DestinationRequest) string {
+func getGroupFromDestination(dest *youtubetypes.DestinationRequest) string {
 	if dest == nil {
 		return ""
 	}

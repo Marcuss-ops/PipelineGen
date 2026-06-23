@@ -144,7 +144,6 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 
 	// ── Port delegation ──────────────────────────────────────────────
 	if s.cutter == nil {
-		_ = os.Remove(actualPath)
 		return nil, nil, nil, fmt.Errorf("processSingleVideo: VideoCutter port is nil — was composition root build correct?")
 	}
 
@@ -175,7 +174,6 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		)
 	}
 
-	_ = os.Remove(actualPath)
 	s.log.Info("video processing finished",
 		zap.Int("video_index", idx),
 		zap.Int("clips_created", len(res.ProducedPaths)),

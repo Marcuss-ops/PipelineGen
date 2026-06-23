@@ -6,10 +6,13 @@
 //
 //	(1) Port contract: the no-op compile-time anchors (noOpRenderer /
 //	    noOpCutter) make the contract explicit and unmissable.
-//	(2) Catalog contract: DefaultTransitionRegistry returns the canonical
-//	    14-entry catalog with stable Names + Render closures.
-//	(3) Mockable: the ports are interface-typed, so tests can swap in
+//	(2) Mockable: the ports are interface-typed, so tests can swap in
 //	    fakes without touching infrastructure bindings.
+//
+// PR6 completion (June 2026): DefaultTransitionRegistry and the concrete
+// catalog moved to internal/infrastructure/media/render/transitions.go.
+// The Transition port interface + Transition DTO remain here; catalog
+// contract tests live alongside the concrete implementation.
 package stockpipeline
 
 import (
@@ -135,73 +138,70 @@ func TestMockCutterPartialError(t *testing.T) {
 	}
 }
 
-// ── Catalog contract ───────────────────────────────────────────────────
+// ── Boundary invariants ─────────────────────────────────────────────────
 
-// TestDefaultTransitionRegistryStable asserts the catalog returns the
-// canonical 15-entry collection, with stable Names and asymmetrically-
-// populated RenderEnd / RenderStart closures.
-func TestDefaultTransitionRegistryStable(t *testing.T) {
-	reg := DefaultTransitionRegistry()
-	if reg.Len() != 15 {
-		t.Fatalf("expected 15 canonical transitions, got %d", reg.Len())
-	}
-	all := reg.All()
-	if len(all) != 15 {
-		t.Fatalf("All returned %d entries, expected 15", len(all))
-	}
-	// stable name contract
-	seen := map[string]bool{}
-	canonicalNames := []string{
-		"fadeblack", "fadewhite", "flash", "blur", "gray",
-		"colorred", "colorblue", "colorgreen", "coloryellow",
-		"colorpurple", "colororange", "colorpink",
-		"negate", "vignette", "fastblur",
-	}
-	for _, n := range canonicalNames {
-		if _, ok := reg.Get(n); !ok {
-			t.Fatalf("missing canonical transition: %q", n)
-		}
-		seen[n] = true
-	}
-	for _, tr := range all {
-		if !seen[tr.Name] {
-			t.Fatalf("non-canonical transition in catalog: %q", tr.Name)
-		}
-		if tr.RenderEnd == nil || tr.RenderStart == nil {
-			t.Fatalf("transition %q missing RenderEnd/RenderStart closure", tr.Name)
-		}
-		// Render closures must produce non-empty strings; clipDur=4
-		// is a representative test value (catalog math depends on it
-		// for fadeStart positioning).
-		if tr.RenderEnd(4) == "" {
-			t.Fatalf("RenderEnd returned empty for %q", tr.Name)
-		}
-		if tr.RenderStart(4) == "" {
-			t.Fatalf("RenderStart returned empty for %q", tr.Name)
-		}
-	}
-}
-
-// TestTransitionRegistryOverride confirms Register-allows-extension path
-// (preparing for future custom transitions).
-func TestTransitionRegistryOverride(t *testing.T) {
-	reg := DefaultTransitionRegistry().(*inMemoryTransitionRegistry)
-	reg.Register(Transition{
-		Name: "custom-xfade",
+// TestTransitionPortShape confirms the Transition struct and TransitionRegistry
+// interface are usable without importing infrastructure (ports-only integration).
+func TestTransitionPortShape(t *testing.T) {
+	// Transition struct is constructable and its fields are accessible.
+	tr := Transition{
+		Name:        "test",
+		Description: "a test transition",
 		RenderEnd: func(d int) string {
-			return "xfade=transition=fadeblack:duration=0.5:offset=0"
+			return "xfade=out"
 		},
 		RenderStart: func(d int) string {
-			return "xfade=transition=fadeblack:duration=0.5:offset=0"
+			return "xfade=in"
 		},
-	})
-	if _, ok := reg.Get("custom-xfade"); !ok {
-		t.Fatalf("custom transition not registered")
 	}
-	if reg.Len() != 16 {
-		t.Fatalf("expected 16 after register (15 default + 1 custom), got %d", reg.Len())
+	if tr.Name != "test" {
+		t.Fatalf("Name not set")
+	}
+	if tr.RenderEnd(0) != "xfade=out" || tr.RenderStart(0) != "xfade=in" {
+		t.Fatalf("Render closures not callable")
+	}
+
+	// TransitionRegistry interface can be mocked without the concrete impl.
+	mock := &mockTransitionRegistry{
+		transitions: []Transition{tr},
+	}
+	if mock.Len() != 1 {
+		t.Fatalf("mock registry Len() unexpected: %d", mock.Len())
+	}
+	if got, ok := mock.Get("test"); !ok || got.Name != "test" {
+		t.Fatalf("mock registry Get() failed: %+v", got)
+	}
+	if len(mock.All()) != 1 {
+		t.Fatalf("mock registry All() unexpected")
 	}
 }
+
+// mockTransitionRegistry is a minimal in-process mock for the
+// TransitionRegistry port — used only in tests that need a registry
+// without importing the concrete infrastructure implementation.
+type mockTransitionRegistry struct {
+	transitions []Transition
+	byName      map[string]Transition
+}
+
+func (m *mockTransitionRegistry) All() []Transition {
+	out := make([]Transition, len(m.transitions))
+	copy(out, m.transitions)
+	return out
+}
+func (m *mockTransitionRegistry) Get(name string) (Transition, bool) {
+	if m.byName == nil {
+		m.byName = make(map[string]Transition, len(m.transitions))
+		for _, t := range m.transitions {
+			m.byName[t.Name] = t
+		}
+	}
+	t, ok := m.byName[name]
+	return t, ok
+}
+func (m *mockTransitionRegistry) Len() int { return len(m.transitions) }
+
+var _ TransitionRegistry = (*mockTransitionRegistry)(nil)
 
 // ── Boundary invariants ─────────────────────────────────────────────────
 

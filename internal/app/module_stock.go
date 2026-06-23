@@ -73,7 +73,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"
 	}
-	transitionRegistry := stockpipeline.DefaultTransitionRegistry()
+	transitionRegistry := render.DefaultTransitionRegistry()
 	renderer := render.NewFFmpegRenderer(ffmpegPath, transitionRegistry, log)
 	cutter := render.NewFFmpegCutter(ffmpegPath, log)
 	svc.SetRenderer(renderer)

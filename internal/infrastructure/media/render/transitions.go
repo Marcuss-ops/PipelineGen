@@ -1,28 +1,33 @@
-// Package stock — canonical TransitionRegistry implementation (PR6, June 2026).
+// Package render — canonical TransitionRegistry concrete implementation (PR6, June 2026).
 //
-// The transition catalogue replaces the two large near-symmetric switch
-// statements in render.go's pre-PR6 implementation. Each Transition entry
-// carries its own RenderEnd / RenderStart closures so the asymmetry in
-// FFmpeg filter syntax (e.g. fade=t=out vs boxblur=enable) is encapsulated
-// at the ENTRY and never duplicated.
+// This file OWNS the concrete transition catalog and FFmpeg filter fragments
+// that were previously in the application layer (stockpipeline/transitions.go).
+// The TransitionRegistry port interface and Transition DTO remain in the
+// application package (stockpipeline/ports.go); this infrastructure adapter
+// satisfies the port and injects into the composition root.
 //
-// Import-boundary invariant: this file imports only the standard library
-// + zap + the ports file in the same package. No FFmpeg / process imports.
-package stockpipeline
+// Import-boundary invariant (AGENTS.md Pattern 0):
+//
+//	This package MAY import internal/application/assets/providers/stock/stockpipeline
+//	for port types (Transition, TransitionRegistry, TransitionRenderer).
+//	The application layer MUST NOT import this package.
+package render
 
 import (
 	"fmt"
-	"sort"
 	"sync"
+
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 )
 
 // ── Canonical catalog ────────────────────────────────────────────────
 //
 // The 14 transitions preserved verbatim from the pre-PR6 implementation:
-//   fadeblack, fadewhite, flash, blur, gray,
-//   colorred, colorblue, colorgreen, coloryellow,
-//   colorpurple, colororange, colorpink,
-//   negate, vignette, fastblur
+//
+//	fadeblack, fadewhite, flash, blur, gray,
+//	colorred, colorblue, colorgreen, coloryellow,
+//	colorpurple, colororange, colorpink,
+//	negate, vignette, fastblur
 //
 // Mirror semantics are preserved:
 //   - RenderEnd applies to the END of a clip (e.g. fade t=out, boxblur enable)
@@ -34,9 +39,9 @@ import (
 // defaultCatalog holds the insertion-ordered list of canonical transitions.
 // Modifying the order shifts the rotation; the existing PR6-aware tests
 // reference Names so explicit testing is robust to ordering changes.
-var defaultCatalog = []Transition{
+var defaultCatalog = []stockpipeline.Transition{
 	{
-		Name: "fadeblack",
+		Name:        "fadeblack",
 		Description: "Fade out to black at clip end, fade in from black at next clip start.",
 		RenderEnd: func(d int) string {
 			dur := 0.5
@@ -49,7 +54,7 @@ var defaultCatalog = []Transition{
 		},
 	},
 	{
-		Name: "fadewhite",
+		Name:        "fadewhite",
 		Description: "Fade to/from white instead of black.",
 		RenderEnd: func(d int) string {
 			dur := 0.5
@@ -99,38 +104,38 @@ var defaultCatalog = []Transition{
 		},
 	},
 	{
-		Name: "colorred",
-		RenderEnd: fadeEndWithColor("red"),
+		Name:       "colorred",
+		RenderEnd:  fadeEndWithColor("red"),
 		RenderStart: fadeStartWithColor("red"),
 	},
 	{
-		Name: "colorblue",
-		RenderEnd: fadeEndWithColor("blue"),
+		Name:       "colorblue",
+		RenderEnd:  fadeEndWithColor("blue"),
 		RenderStart: fadeStartWithColor("blue"),
 	},
 	{
-		Name: "colorgreen",
-		RenderEnd: fadeEndWithColor("green"),
+		Name:       "colorgreen",
+		RenderEnd:  fadeEndWithColor("green"),
 		RenderStart: fadeStartWithColor("green"),
 	},
 	{
-		Name: "coloryellow",
-		RenderEnd: fadeEndWithColor("yellow"),
+		Name:       "coloryellow",
+		RenderEnd:  fadeEndWithColor("yellow"),
 		RenderStart: fadeStartWithColor("yellow"),
 	},
 	{
-		Name: "colorpurple",
-		RenderEnd: fadeEndWithColor("purple"),
+		Name:       "colorpurple",
+		RenderEnd:  fadeEndWithColor("purple"),
 		RenderStart: fadeStartWithColor("purple"),
 	},
 	{
-		Name: "colororange",
-		RenderEnd: fadeEndWithColor("orange"),
+		Name:       "colororange",
+		RenderEnd:  fadeEndWithColor("orange"),
 		RenderStart: fadeStartWithColor("orange"),
 	},
 	{
-		Name: "colorpink",
-		RenderEnd: fadeEndWithColor("pink"),
+		Name:       "colorpink",
+		RenderEnd:  fadeEndWithColor("pink"),
 		RenderStart: fadeStartWithColor("pink"),
 	},
 	{
@@ -172,14 +177,14 @@ var defaultCatalog = []Transition{
 // the fade-to-named-color pair. They keep the catalog compact while
 // preserving distinct Transition entries (each has its own Name + slot
 // in the rotation).
-func fadeEndWithColor(color string) TransitionRenderer {
+func fadeEndWithColor(color string) stockpipeline.TransitionRenderer {
 	return func(d int) string {
 		dur := 0.5
 		st := float64(d) - dur
 		return fmt.Sprintf("fade=t=out:st=%f:d=%f:color=%s", st, dur, color)
 	}
 }
-func fadeStartWithColor(color string) TransitionRenderer {
+func fadeStartWithColor(color string) stockpipeline.TransitionRenderer {
 	return func(d int) string {
 		dur := 0.5
 		return fmt.Sprintf("fade=t=in:st=0:d=%f:color=%s", dur, color)
@@ -189,11 +194,14 @@ func fadeStartWithColor(color string) TransitionRenderer {
 // ── Registry implementation ────────────────────────────────────────
 
 // DefaultTransitionRegistry returns a fresh registry preloaded with the
-// canonical 14-entry catalog. Callers can add custom transitions via
+// canonical 15-entry catalog. Callers can add custom transitions via
 // Register() before passing the registry to the FFmpeg renderer.
-func DefaultTransitionRegistry() TransitionRegistry {
+//
+// PR6 completion (June 2026): moved from application layer to infrastructure.
+// The composition root constructs this and injects it into the renderer.
+func DefaultTransitionRegistry() stockpipeline.TransitionRegistry {
 	r := &inMemoryTransitionRegistry{
-		byName: make(map[string]Transition, len(defaultCatalog)),
+		byName: make(map[string]stockpipeline.Transition, len(defaultCatalog)),
 	}
 	for _, t := range defaultCatalog {
 		r.entries = append(r.entries, t)
@@ -207,14 +215,14 @@ func DefaultTransitionRegistry() TransitionRegistry {
 // under a mutex; All/Get/Len read a snapshot).
 type inMemoryTransitionRegistry struct {
 	mu      sync.RWMutex
-	entries []Transition            // insertion-ordered
-	byName  map[string]Transition
+	entries []stockpipeline.Transition // insertion-ordered
+	byName  map[string]stockpipeline.Transition
 }
 
 // Register adds (or replaces) a transition entry. Safe under concurrent
 // calls during bootstrap. Not safe to call during Render (would race with
 // callers reading entries); production code should call this BEFORE wire.
-func (r *inMemoryTransitionRegistry) Register(t Transition) {
+func (r *inMemoryTransitionRegistry) Register(t stockpipeline.Transition) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.byName[t.Name]; !exists {
@@ -223,22 +231,24 @@ func (r *inMemoryTransitionRegistry) Register(t Transition) {
 	r.byName[t.Name] = t
 }
 
-// All returns a stable, sorted-by-name snapshot of the registered transitions.
-// The infra renderer uses this snapshot to ROTATE through transitions
-// deterministically per chunk index. Sorting by name keeps the rotation
-// reproducible across program restarts (the pre-PR6 implementation used
-// insertion order, which is equivalent for DefaultTransitionRegistry).
-func (r *inMemoryTransitionRegistry) All() []Transition {
+// All returns a stable, insertion-ordered snapshot of the registered
+// transitions. The infra renderer uses this snapshot to ROTATE through
+// transitions deterministically per chunk index.
+//
+// PR6 fix (June 2026): removed the alphabetical sort — the port contract
+// (stockpipeline.TransitionRegistry.All) specifies insertion order.
+// Alphabetical sort was a post-PR6 regression that silently changed the
+// historical rotation order.
+func (r *inMemoryTransitionRegistry) All() []stockpipeline.Transition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]Transition, len(r.entries))
+	out := make([]stockpipeline.Transition, len(r.entries))
 	copy(out, r.entries)
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
 // Get returns the transition registered under the given name.
-func (r *inMemoryTransitionRegistry) Get(name string) (Transition, bool) {
+func (r *inMemoryTransitionRegistry) Get(name string) (stockpipeline.Transition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	t, ok := r.byName[name]
@@ -253,4 +263,4 @@ func (r *inMemoryTransitionRegistry) Len() int {
 }
 
 // Compile-time guarantee that the registry implements the port interface.
-var _ TransitionRegistry = (*inMemoryTransitionRegistry)(nil)
+var _ stockpipeline.TransitionRegistry = (*inMemoryTransitionRegistry)(nil)
