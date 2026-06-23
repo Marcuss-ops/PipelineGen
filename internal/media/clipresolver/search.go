@@ -1,7 +1,7 @@
 package clipresolver
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/clipcatalog"
 )
 
 // qdrantResultToCandidate converts a vector store SearchResult to ClipCandidate.

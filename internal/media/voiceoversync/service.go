@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"
