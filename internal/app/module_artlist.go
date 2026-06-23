@@ -21,7 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"go.uber.org/zap"
 )
