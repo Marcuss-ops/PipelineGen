@@ -29,7 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/workers"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -127,7 +127,18 @@ func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 		c.Set("is_worker", true)
 		c.Next()
 	})
-	workerHandler := workers.NewInternalworkerHandler(mock, nil, zap.NewNop())
+	// Wave 14 close (June 2026): the worker-broker HTTP handler was
+	// absorbed from the standalone internal/api/workers/ package into
+	// internal/api/jobs/handler_workers.go (jobs.WorkersBrokerHandler)
+	// alongside the public-facing jobs.JobsHandler. The Broker +
+	// AssetTransferService interfaces are the same shape as the old
+	// workers.* ports; the local mockBroker in this file satisfies
+	// jobs.Broker by virtue of the same 8 method set with matching
+	// parameter types. Asset transfer is passed as nil: every handler
+	// method that touches h.assets has an explicit nil-check and
+	// returns 501 Not Implemented, so this test exercises only the
+	// RegisterWorker / path-alignment surface unaffected by the move.
+	workerHandler := jobs.NewWorkersBrokerHandler(mock, nil, zap.NewNop())
 	workerHandler.RegisterRoutes(internalGroup)
 
 	ts := httptest.NewServer(engine)
