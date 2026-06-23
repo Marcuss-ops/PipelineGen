@@ -12,8 +12,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"
@@ -25,12 +25,8 @@ type ImagesHandler struct {
 	ingestSvc *ingest.Service
 }
 
-func NewImagesHandler(service *imgservice.Service) *ImagesHandler {
-	return &ImagesHandler{service: service}
-}
-
-func (h *ImagesHandler) SetIngestService(svc *ingest.Service) {
-	h.ingestSvc = svc
+func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service) *ImagesHandler {
+	return &ImagesHandler{service: service, ingestSvc: ingestSvc}
 }
 
 func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {

@@ -5,6 +5,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -23,8 +24,10 @@ type YouTubeClipWiring struct {
 //
 // PR4d-chunk2 (June 2026): takes 4 direct narrow args (no bundle —
 // only 4 cross-bundle reads, no coherence warrant for a bundle).
-func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade *jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade)
+// PR3 (June 2026): providerRegistry added for constructor injection
+// (replaces post-construction SetProviderRegistry).
+func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade *jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, providerRegistry *providers.Registry) (*YouTubeClipWiring, error) {
+	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry)
 	var mod module.Module
 	if ytSvc != nil {
 		mod = sources.NewClipsModule(cfg, log, ytSvc, handler, jobFacade)

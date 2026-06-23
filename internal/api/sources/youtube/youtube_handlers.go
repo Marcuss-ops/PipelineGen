@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -30,50 +31,54 @@ import (
 // mirrors the legacy api/sources package, but lives here (in package
 // youtube) so sub-handlers can be tested in isolation.
 type YouTubeClipHandler struct {
-	service        *youtube.Service
-	log            *zap.Logger
-	jobsSvc        *jobservice.Service
-	clipsRepo      *assets.ClipsRepository
-	providerSearch providers.SearchProvider
+	service         *youtube.Service
+	log             *zap.Logger
+	jobsSvc         *jobservice.Service
+	clipsRepo       *assets.ClipsRepository
+	providerSearch  providers.SearchProvider
+	providerReg     *providers.Registry
+	providerResolve sync.Once
 }
 
 // NewYouTubeClipHandler builds the YouTubeClipHandler.
 //
-//	service - YouTube service used by this handler.
-//	log     - zap logger for diagnostics.
-//	jobsSvc - job system used by the async extract endpoint.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service) *YouTubeClipHandler {
+//	service          - YouTube service used by this handler.
+//	log              - zap logger for diagnostics.
+//	jobsSvc          - job system used by the async extract endpoint.
+//	providerRegistry - providers.Registry for search dispatch (nil = legacy path).
+//	                    Resolved lazily on first SearchTopics call so providers
+//	                    registered after construction are still discovered.
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service, providerRegistry *providers.Registry) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
-		service: service,
-		log:     log,
-		jobsSvc: jobsSvc,
+		service:     service,
+		log:         log,
+		jobsSvc:     jobsSvc,
+		providerReg: providerRegistry,
 	}
+}
+
+// resolveProvider lazily resolves the YouTube SearchProvider from the
+// registry on first call. Thread-safe via sync.Once so concurrent
+// SearchTopics invocations see a consistent result. No-op when the
+// handler was constructed without a registry (legacy direct path).
+func (h *YouTubeClipHandler) resolveProvider() {
+	if h.providerReg == nil {
+		return
+	}
+	h.providerResolve.Do(func() {
+		p, ok := h.providerReg.Get("youtube")
+		if !ok || p == nil {
+			return
+		}
+		if sp, ok := p.(providers.SearchProvider); ok {
+			h.providerSearch = sp
+		}
+	})
 }
 
 // SetClipsRepo sets the clips repository for advanced search.
 func (h *YouTubeClipHandler) SetClipsRepo(repo *assets.ClipsRepository) {
 	h.clipsRepo = repo
-}
-
-// SetProviderRegistry resolves the canonical YouTube provider from the
-// frozen providers.Registry and stashes its SearchProvider handle on
-// the handler. Once set, SearchTopics routes through the registry's
-// adapter rather than calling *youtube.Service directly — this advances
-// the cut-over recipe step 1 in docs/migration-maps/internal-sources.md
-// ("finish provider-registry migration"). Nil or registry-without-youtube
-// leaves the handler on the legacy direct path so existing tests keep
-// working unchanged.
-func (h *YouTubeClipHandler) SetProviderRegistry(reg *providers.Registry) {
-	if reg == nil {
-		return
-	}
-	p, ok := reg.Get("youtube")
-	if !ok || p == nil {
-		return
-	}
-	if sp, ok := p.(providers.SearchProvider); ok {
-		h.providerSearch = sp
-	}
 }
 
 // RegisterRoutes wires the YouTube clip endpoints onto the supplied
@@ -91,7 +96,7 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 // (deprecated in favor of YouTubeClipHandler.SearchAdvanced).
 //
 // Cut-over recipe step 1 (docs/migration-maps/internal-sources.md):
-// when SetProviderRegistry has bound a SearchProvider handle on the
+// when resolveProvider() has bound a SearchProvider handle on the
 // handler (the production wiring path through providers.Registry), this
 // route dispatches via the adapter so the response shape originates
 // from the canonical providers package. When no provider is bound
@@ -115,6 +120,9 @@ func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 	if req.Limit > 50 {
 		req.Limit = 50
 	}
+
+	// Lazy resolve: providers may be registered after construction.
+	h.resolveProvider()
 
 	if h.providerSearch != nil {
 		h.searchTopicsViaProvider(c, &req)
