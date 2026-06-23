@@ -43,13 +43,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
-// PR5 Phase 3 (June 2026): VideoCutRequest, VideoCutResult, and VideoPipeline
-// moved to youtube/ports/ so the extraction capability service can import
-// them without an import cycle. These aliases preserve backward compatibility.
-type VideoCutRequest = youtubeports.VideoCutRequest
-type VideoCutResult = youtubeports.VideoCutResult
-type VideoPipeline = youtubeports.VideoPipelinePort
-
 // ServiceDeps is the FULL set of dependencies the YouTube orchestrator
 // requires. Wiring happens exactly once via NewService(ServiceDeps);
 // setters are intentionally absent.
@@ -58,7 +51,7 @@ type ServiceDeps struct {
 	Cfg               *config.Config
 	Log               *zap.Logger
 	MediaProcessor    asset.Processor
-	VideoPipeline     VideoPipeline
+	VideoPipeline     youtubeports.VideoPipelinePort
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
 
@@ -100,7 +93,7 @@ type Service struct {
 	cfg               *config.Config
 	log               *zap.Logger
 	mediaProcessor    asset.Processor
-	videoPipeline     VideoPipeline
+	videoPipeline     youtubeports.VideoPipelinePort
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
 	assetRepo         asset.Repository
@@ -302,7 +295,7 @@ func (s *Service) GetOrCreateChannelFolder(ctx context.Context, channelName, par
 
 // DownloadAndCut delegates to the VideoPipeline port (no longer calls
 // concrete videomuscles.Pipeline from application via this method).
-func (s *Service) DownloadAndCut(ctx context.Context, req VideoCutRequest) (*VideoCutResult, error) {
+func (s *Service) DownloadAndCut(ctx context.Context, req youtubeports.VideoCutRequest) (*youtubeports.VideoCutResult, error) {
 	if s.videoPipeline == nil {
 		return nil, fmt.Errorf("youtube: video pipeline not wired")
 	}
