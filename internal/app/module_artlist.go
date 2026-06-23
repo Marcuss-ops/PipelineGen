@@ -7,7 +7,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/artlist"
-	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"

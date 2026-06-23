@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 )
 
 // pexelsVideoFile mirrors the inline JSON shape used both for

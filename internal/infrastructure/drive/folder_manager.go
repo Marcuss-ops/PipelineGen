@@ -2,7 +2,7 @@
 //
 // DriveFolderManagerAdapter wraps the concrete *driveapi.Service to
 // satisfy the artlist.DriveFolderManager port declared at
-// internal/application/artlist/ports.go. The adapter owns the raw SDK;
+// internal/application/assets/providers/artlist/ports.go. The adapter owns the raw SDK;
 // the port hides it from callers. PR2.7 introduced this adapter so the
 // application layer no longer reaches through a concrete dependency
 // (*drive.Uploader.Service.Files.List...) to call raw Google Drive SDK
@@ -11,7 +11,7 @@
 // The adapter lives in internal/infrastructure because Drive IS a
 // transport/storage mechanism, not part of the artlist "chain" pipeline
 // (scraper → downloader → indexer → searcher) that the chain policy
-// keeps in internal/application/artlist/. Chain policy therefore does
+// keeps in internal/application/assets/providers/artlist/. Chain policy therefore does
 // NOT apply here.
 //
 // Retry policy mirrors the existing drive.Uploader behaviour: 3

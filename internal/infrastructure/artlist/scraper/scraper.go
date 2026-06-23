@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"go.uber.org/zap"
 )
