@@ -393,7 +393,45 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		}
 	}
 
-	lifecycle := NewServerLifecycle(deferredStartJobRunner, driveStart, outboxStart, processStart, cleanup)
+	// commit fix/lifecycle-readiness — wire readiness-barrier probes so
+	// serverLifecycle.Start actually USES ctx and fail-closes if any
+	// dependency is unreachable. Probes are nil when the corresponding
+	// capability is opted out at composition time (no DB / no Drive /
+	// no VectorSearch); the Group skips nil probes automatically.
+	var dbProbe func(ctx context.Context) error
+	if root.DB != nil && root.DB.DB != nil {
+		conn := root.DB.DB
+		dbProbe = func(ctx context.Context) error { return conn.PingContext(ctx) }
+	}
+	var vectorProbe func(ctx context.Context) error
+	if root.Process.VectorSvc != nil {
+		vs := root.Process.VectorSvc
+		vectorProbe = func(ctx context.Context) error { return vs.Health(ctx) }
+	}
+	var driveProbe func(ctx context.Context) error
+	if root.Drive != nil && root.Drive.DriveClient != nil {
+		dc := root.Drive.DriveClient
+		// Drive probe uses About.Get (canonical Drive liveness endpoint).
+		// Files.Get("root") is NOT a valid Drive API alias — it does not
+		// resolve to the user's root folder — so using it as a probe
+		// would make the readiness barrier fail on every healthy Drive.
+		// About.Get is what production token validation does in
+		// internal/infrastructure/drive/uploader.go (canonical contract).
+		//
+		// Note: the parent ctx already carries the per-probe timeout
+		// (serverLifecycle.Start wraps each probe in a 5s context.WithTimeout
+		// before invoking the barrier), so this fn does not need to derive
+		// its own. The barrier's first-error-wins semantics propagate
+		// ctx.DeadlineExceeded back to the caller as a clean error.
+		driveProbe = func(ctx context.Context) error {
+			_, err := dc.About.Get().Fields("user").Context(ctx).Do()
+			return err
+		}
+	}
+	lifecycle := NewServerLifecycleWithProbes(
+		deferredStartJobRunner, driveStart, outboxStart, processStart, cleanup,
+		dbProbe, vectorProbe, driveProbe,
+	)
 
 	var healthSvc interface{}
 	if root != nil && root.Utility != nil {
