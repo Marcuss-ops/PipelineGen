@@ -237,8 +237,8 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, j *
 		tools.Progress(100, "Generation completed")
 	}
 
-	var scriptInsights ScriptInsights
-	if ins, ok := pipelineResult.Insights.(ScriptInsights); ok {
+	var scriptInsights scripts.ScriptInsights
+	if ins, ok := pipelineResult.Insights.(scripts.ScriptInsights); ok {
 		scriptInsights = ins
 	}
 	scriptMeta := make([]VideoMetadata, len(pipelineResult.VideoMetadata))
@@ -475,19 +475,19 @@ func (h *ScriptFlowHandler) handlePostGeneration(
 	ctx context.Context,
 	payload *scriptpkg.GenerationSpec,
 	pathResult *scripts.ClipSourcePathResult,
-) (entitiesJSON string, insights ScriptInsights, videoMetadata []VideoMetadata) {
+) (entitiesJSON string, insights scripts.ScriptInsights, videoMetadata []VideoMetadata) {
 	if !payload.ExtractEntities && !payload.GenerateMetadata {
-		return "", ScriptInsights{}, nil
+		return "", scripts.ScriptInsights{}, nil
 	}
 	if pathResult == nil || pathResult.WriteResult == nil {
-		return "", ScriptInsights{}, nil
+		return "", scripts.ScriptInsights{}, nil
 	}
 
 	group, groupCtx := concurrent.WithContext(ctx)
 
 	if payload.ExtractEntities {
 		group.Go("entities-and-insights", func() error {
-			var client EntityScriptExtractor
+			var client scripts.EntityScriptExtractor
 			if h.generator != nil {
 				client = h.generator.GetClient()
 			}
@@ -524,11 +524,11 @@ func (h *ScriptFlowHandler) buildFinalResult(
 	payload *scriptpkg.GenerationSpec,
 	pathResult *scripts.ClipSourcePathResult,
 	entitiesJSON string,
-	insights ScriptInsights,
+	insights scripts.ScriptInsights,
 	videoMetadata []VideoMetadata,
 	docLink, docID string,
-	scenes []ScriptSceneImage,
-	voiceovers []SceneVoiceover,
+	scenes []scripts.SceneImage,
+	voiceovers []scripts.SceneVoiceover,
 	totalDurMs int64,
 ) map[string]any {
 	if pathResult == nil || pathResult.WriteResult == nil {

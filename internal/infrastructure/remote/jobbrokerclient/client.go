@@ -14,6 +14,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Client is an HTTP implementation of appjobs.Broker for remote workers.
@@ -52,7 +53,7 @@ const (
 	pathIsCancelledFmt = remoteshared.InternalPathPrefix + "/jobs/%s/cancelled"
 )
 
-func (c *Client) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
+func (c *Client) RegisterWorker(ctx context.Context, cmd job.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
 	var session appjobs.WorkerSession
 	if err := c.post(ctx, pathRegisterWorker, cmd, &session); err != nil {
 		return nil, err
@@ -60,11 +61,11 @@ func (c *Client) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerC
 	return &session, nil
 }
 
-func (c *Client) Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error {
+func (c *Client) Heartbeat(ctx context.Context, cmd job.HeartbeatCommand) error {
 	return c.post(ctx, pathHeartbeat, cmd, nil)
 }
 
-func (c *Client) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.Lease, error) {
+func (c *Client) Claim(ctx context.Context, cmd job.ClaimCommand) (*appjobs.Lease, error) {
 	var lease appjobs.Lease
 	if err := c.post(ctx, pathClaim, cmd, &lease); err != nil {
 		return nil, err
@@ -72,7 +73,7 @@ func (c *Client) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.
 	return &lease, nil
 }
 
-func (c *Client) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error) {
+func (c *Client) Renew(ctx context.Context, cmd job.RenewCommand) (*appjobs.Lease, error) {
 	var lease appjobs.Lease
 	if err := c.post(ctx, fmt.Sprintf(pathRenewFmt, cmd.JobID), cmd, &lease); err != nil {
 		return nil, err
@@ -80,15 +81,15 @@ func (c *Client) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.
 	return &lease, nil
 }
 
-func (c *Client) Progress(ctx context.Context, cmd appjobs.ProgressCommand) error {
+func (c *Client) Progress(ctx context.Context, cmd job.ProgressCommand) error {
 	return c.post(ctx, fmt.Sprintf(pathProgressFmt, cmd.JobID), cmd, nil)
 }
 
-func (c *Client) Complete(ctx context.Context, cmd appjobs.CompleteCommand) error {
+func (c *Client) Complete(ctx context.Context, cmd job.CompleteCommand) error {
 	return c.post(ctx, fmt.Sprintf(pathCompleteFmt, cmd.JobID), cmd, nil)
 }
 
-func (c *Client) Fail(ctx context.Context, cmd appjobs.FailCommand) error {
+func (c *Client) Fail(ctx context.Context, cmd job.FailCommand) error {
 	return c.post(ctx, fmt.Sprintf(pathFailFmt, cmd.JobID), cmd, nil)
 }
 

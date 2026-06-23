@@ -49,6 +49,7 @@ import (
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	assettransferclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // pre-flight constants. 30s is long enough for a healthy master to
@@ -155,7 +156,7 @@ func main() {
 		log.Fatal("workspace init failed", zap.Error(err))
 	}
 
-	session, err := broker.RegisterWorker(ctx, appjobs.RegisterWorkerCommand{
+	session, err := broker.RegisterWorker(ctx, job.RegisterWorkerCommand{
 		WorkerID:     workerID,
 		Name:         workerName,
 		Version:      version,
@@ -285,16 +286,16 @@ func hostnameFallback() string {
 // validates that every configured job type exists in the registered set.
 // Returns an error (non-nil) for: malformed JSON, empty array, unknown type.
 // If raw is empty, returns the full registered set (no narrowing).
-func parseAndValidateCaps(raw string, registeredTypes []string) (appjobs.WorkerCapabilities, error) {
+func parseAndValidateCaps(raw string, registeredTypes []string) (job.WorkerCapabilities, error) {
 	if strings.TrimSpace(raw) == "" {
-		return appjobs.WorkerCapabilities{JobTypes: registeredTypes}, nil
+		return job.WorkerCapabilities{JobTypes: registeredTypes}, nil
 	}
-	var caps appjobs.WorkerCapabilities
+	var caps job.WorkerCapabilities
 	if err := json.Unmarshal([]byte(raw), &caps); err != nil {
-		return appjobs.WorkerCapabilities{}, fmt.Errorf("malformed VELOX_WORKER_CAPABILITIES JSON: %w", err)
+		return job.WorkerCapabilities{}, fmt.Errorf("malformed VELOX_WORKER_CAPABILITIES JSON: %w", err)
 	}
 	if len(caps.JobTypes) == 0 {
-		return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES has empty job_types array")
+		return job.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES has empty job_types array")
 	}
 	// Build lookup for registered types.
 	registered := make(map[string]struct{}, len(registeredTypes))
@@ -314,12 +315,12 @@ func parseAndValidateCaps(raw string, registeredTypes []string) (appjobs.WorkerC
 		}
 		seen[jt] = struct{}{}
 		if _, ok := registered[jt]; !ok {
-			return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES contains unknown job type: %s", jt)
+			return job.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES contains unknown job type: %s", jt)
 		}
 		validated = append(validated, jt)
 	}
 	if len(validated) == 0 {
-		return appjobs.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES resolved to empty set")
+		return job.WorkerCapabilities{}, fmt.Errorf("VELOX_WORKER_CAPABILITIES resolved to empty set")
 	}
 	caps.JobTypes = validated
 	// W1 spec: "final set sorted and non-empty". Without this sort the
@@ -339,7 +340,7 @@ func heartbeatLoop(ctx context.Context, broker appjobs.Broker, workerID, session
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := broker.Heartbeat(ctx, appjobs.HeartbeatCommand{
+			if err := broker.Heartbeat(ctx, job.HeartbeatCommand{
 				WorkerID:        workerID,
 				WorkerSessionID: sessionID,
 				SessionTTL:      90 * time.Second,

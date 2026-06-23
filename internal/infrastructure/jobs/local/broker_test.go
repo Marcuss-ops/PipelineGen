@@ -19,13 +19,14 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 func TestBroker_RegisterWorker_RejectsEmptyCapabilities(t *testing.T) {
 	b := &Broker{} // nil workers, nil jobs — guards fire before deps are touched
-	_, err := b.RegisterWorker(context.Background(), appjobs.RegisterWorkerCommand{
+	_, err := b.RegisterWorker(context.Background(), job.RegisterWorkerCommand{
 		WorkerID:     "w-test-empty",
-		Capabilities: appjobs.WorkerCapabilities{JobTypes: nil},
+		Capabilities: job.WorkerCapabilities{JobTypes: nil},
 	})
 	if err == nil {
 		t.Fatal("expected error for empty advertised capabilities at registration")
@@ -37,9 +38,9 @@ func TestBroker_RegisterWorker_RejectsEmptyCapabilities(t *testing.T) {
 
 func TestBroker_RegisterWorker_RejectsEmptyCapabilitiesArray(t *testing.T) {
 	b := &Broker{}
-	_, err := b.RegisterWorker(context.Background(), appjobs.RegisterWorkerCommand{
+	_, err := b.RegisterWorker(context.Background(), job.RegisterWorkerCommand{
 		WorkerID:     "w-test-empty-arr",
-		Capabilities: appjobs.WorkerCapabilities{JobTypes: []string{}},
+		Capabilities: job.WorkerCapabilities{JobTypes: []string{}},
 	})
 	if !errors.Is(err, appjobs.ErrNoWorkerCapabilities) {
 		t.Fatalf("expected ErrNoWorkerCapabilities for explicit empty array, got %v", err)
@@ -48,7 +49,7 @@ func TestBroker_RegisterWorker_RejectsEmptyCapabilitiesArray(t *testing.T) {
 
 func TestBroker_Claim_RejectsEmptyCapabilities(t *testing.T) {
 	b := &Broker{}
-	_, err := b.Claim(context.Background(), appjobs.ClaimCommand{
+	_, err := b.Claim(context.Background(), job.ClaimCommand{
 		WorkerID:        "w-test-empty",
 		WorkerSessionID: "sess-x",
 		Capabilities:    nil,
