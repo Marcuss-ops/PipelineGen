@@ -33,6 +33,9 @@ pkg/                    leaf utilities
 3. `architecture/migration.yaml` — tracker ratchet delle wave di
    consolidamento (status monotone-decreasing, exit gate per wave).
 4. `AGENTS.md` — regole critiche del sistema + pattern canonici + Git Lessons.
+5. `docs/cleanup/README.md` — roadmap operativa delle attività ancora aperte,
+   con piani dettagliati per Health boundary, Script orchestration,
+   composition, documentazione e configurazione.
 
 ## Execution order
 
@@ -44,6 +47,8 @@ pkg/                    leaf utilities
 6. Compact API packages.
 7. Centralize database ownership and data paths.
 8. Remove empty legacy roots and enable strict gates.
+9. Execute the remaining boundary plans under `docs/cleanup/` and promote
+   architecture checks from tracked exceptions to hard gates.
 
 ## Rules
 
@@ -94,4 +99,6 @@ Stop and open a focused issue when:
 - a migration is inconsistent across real databases;
 - a move changes public routes, job types or payloads.
 
-Cleanup is complete only when `docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md` passes on `main`.
+Cleanup is complete only when the completion definition in
+`docs/cleanup/README.md` passes on `main` and the architecture trackers match
+the verified code state.
