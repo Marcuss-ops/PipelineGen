@@ -5,22 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"go.uber.org/zap"
 )
-
-// JobsWiring holds the Jobs HTTP wiring (handler + module registration).
-// Source of truth: api/jobs. This struct is returned by WireJobs and is the
-// only thing registry.go stores on the wiring panel.
-type JobsWiring struct {
-	Handler *jobs.JobsHandler
-	Module  module.Module
-}
 
 // JobsBundle is the Job module's *owned* runtime surface.
 //
@@ -34,11 +23,7 @@ type JobsWiring struct {
 //     (CatalogSync.RegisterHandler, YouTubeClip/Voiceover/Books/Lessons
 //     RegisterHandler, Realtime adapter, ...)
 //
-//   - the surrounding HTTP wiring (WireJobs, via CoreDeps.JobsService)
-//
 // Each module MUST consume only the values it needs; never bundle-as-API.
-// Follow-up PRs will turn WireJobs itself into a bundle-only consumer and
-// drain CoreDeps.JobsService.
 type JobsBundle struct {
 	Repo       *sqljobs.SQLiteStore
 	Dispatcher *appjobs.Dispatcher
@@ -119,18 +104,4 @@ func BuildJobsBundle(db *sql.DB, log *zap.Logger) (*JobsBundle, error) {
 		Service:    svc,
 		Facade:     facade,
 	}, nil
-}
-
-// WireJobs creates the Jobs HTTP handler and registers the module.
-//
-// PR4b (June 2026): migrated to a bundle-only consumer. Reads exclusively
-// from the *JobsBundle it receives; no *CoreDeps dependency. WireRegistry
-// now passes `root.Jobs` directly. This is the smallest, cleanest module
-// signature in the app package and is the template the wider PR4b migration
-// of the other 6 Wire<Module>() functions will follow.
-func WireJobs(cfg *config.Config, log *zap.Logger, jobsBundle *JobsBundle) (*JobsWiring, error) {
-	handler := jobs.NewJobsHandler(jobsBundle.Service, log)
-	mod := jobs.NewModule(cfg, log, handler)
-	log.Info("created Jobs module using api/jobs")
-	return &JobsWiring{Handler: handler, Module: mod}, nil
 }
