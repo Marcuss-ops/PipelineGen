@@ -55,7 +55,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
