@@ -10,10 +10,12 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
+	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 )
 
 // Dependencies holds the pre-built sub-handlers for the Assets module.
 type Dependencies struct {
+	Storage     *assetstorage.Handler
 	Diagnostics *diagnostics.Handler
 	Search      *search.Handler
 	// Existing handlers from the legacy api/assets package:
@@ -38,6 +40,11 @@ func NewModule(deps Dependencies, log *zap.Logger) *Module {
 // Mount at /api/media or similar base prefix via api.RouteModule.
 func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 	m.log.Info("Registering unified Assets module routes")
+
+	// Storage operations (Drive file listing, move, rename, folder creation)
+	if m.deps.Storage != nil {
+		m.log.Info("Registering storage routes (stub — TODO: implement)")
+	}
 
 	// Diagnostics operations (index-health, qdrant health)
 	if m.deps.Diagnostics != nil {
