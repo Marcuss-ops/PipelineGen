@@ -17,10 +17,9 @@
 // Each Wire*Module() takes a NARROW subset (≤10 deps) by constructor injection,
 // not the whole root.
 //
-// Construction is pure — NO cross-injections, NO setters. After NewComposition
-// returns, WireRegistry may mutate bundle fields (e.g. SetIngestService on
-// ImageService, ProviderRegistry.Freeze, SourcesHandler.SetProviderRegistry)
-// but the bundle boundaries are stable.
+// Construction is pure — NO cross-injections, NO setters. All dependencies
+// are wired via constructor injection. ProviderRegistry.Freeze happens in
+// WireRegistry after adapter registrations; bundle boundaries are stable.
 //
 // Lifecycle (lifecycle.go) and Shutdown (shutdown.go) operate on the
 // assembled ComposeRoot.
@@ -40,11 +39,13 @@ import (
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
@@ -164,6 +165,7 @@ type DomainBundle struct {
 	VoiceoverService   *voiceover.Service
 	VoiceoverSync      *voiceoversync.Service
 	ImageService       *imgservice.Service
+	IngestService      *ingest.Service
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
 	MetaWriter         *semantic.MetadataWriter
@@ -610,6 +612,10 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	booksSvc := initBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
 
+	// Build ingest service BEFORE ImageService so ImageService receives
+	// it via constructor injection (PR3: removes SetIngestService).
+	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveClient, repos, search)
+
 	// PR4-H Commit 3: voMetaWriter is the canonical shared *semantic.MetadataWriter
 	// (built once in BuildDomainBundle, fed to voiceover.NewService and image
 	// service). The previous dual-instance (one local for voiceover, one internal
@@ -618,7 +624,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		drive.DriveClient, repos.ClipsRepo, repos.ClipsRepo,
 		drive.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, process.VectorSvc, repos.ImageRepo,
-		voMetaWriter,
+		voMetaWriter, ingestSvc,
 	)
 
 	var realtimeSvc *realtime.Service
@@ -683,6 +689,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		VoiceoverService:   voiceoverSvc,
 		VoiceoverSync:      vosyncSvc,
 		ImageService:       imageSvc,
+		IngestService:      ingestSvc,
 		BooksService:       booksSvc,
 		LessonsService:     lessonsS,
 		MetaWriter:         metaWriter,
@@ -808,6 +815,34 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		MaintenanceSvc: maintenanceSvc,
 		DeletionSvc:    deletionSvc,
 	}, nil
+}
+
+// buildIngestService constructs the ingest.Service from the same deps
+// that WireMediaIngest uses. Extracted so BuildDomainBundle can pass
+// ingestService to initImageService via constructor injection (PR3).
+// WireMediaIngest in registry.go reuses the pre-built service for the
+// HTTP handler+module wiring.
+func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveClient *gdrive.Service, repos *RepoBundle, search *SearchBundle) *ingest.Service {
+	if driveClient == nil {
+		return nil
+	}
+	if repos.ImageRepo == nil || repos.VoiceoverRepo == nil || repos.ClipsRepo == nil || search.AssetIndexService == nil {
+		return nil
+	}
+	imagesRegistry := imgservice.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
+	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
+	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
+	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
+	clipRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())
+	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())}, log)
+	stockRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())
+	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())}, log)
+	return ingest.NewService(cfg, log, driveClient, map[ingest.Kind]*ingest.Pipeline{
+		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
+		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
+		ingest.KindClip:      {Kind: ingest.KindClip, DefaultSource: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Lifecycle: clipLifecycle},
+		ingest.KindStock:     {Kind: ingest.KindStock, DefaultSource: "stock", RootFolderID: cfg.Drive.StockFolder(), Lifecycle: stockLifecycle},
+	})
 }
 
 // BuildUtilityBundle constructs the lightweight utility handlers.
