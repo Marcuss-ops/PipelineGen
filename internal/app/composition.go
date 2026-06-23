@@ -227,15 +227,34 @@ type ComposeRoot struct {
 	Maint   *MaintBundle
 	Utility *UtilityBundle
 
+	// DriveStart is the deferred side-effect closure extracted from
+	// BuildDriveBundle (PR9-A, June 2026). It ensures Drive folders,
+	// validates critical paths, and creates storage directories.
+	// Invoked by the lifecycle AFTER WireRegistry so all modules are
+	// wired before background Drive I/O begins.
+	DriveStart IOpaqueStartFunc
+
 	Ctx context.Context
 }
+
+// IOpaqueStartFunc is the opaque type for deferred initialisation closures
+// returned by Build*Bundle constructors (PR9 series, June 2026).
+// BuildDriveBundle is the first adopter; other bundles will follow in
+// PR9-B/C.
+type IOpaqueStartFunc func()
 
 // ── Bundle constructors (pure; no cross-injection) ───────────────────────
 
 // BuildDriveBundle constructs the Drive adapters + MediaStore + DestResolver.
-// Loads StyleRegistry at the top so ensureStyleDriveFolders (called inline
-// here) receives the non-nil pointer. Reviewer Q3 fix.
-func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, search *SearchBundle) (*DriveBundle, error) {
+// Loads StyleRegistry at the top so ensureStyleDriveFolders (called via the
+// returned startDriveBackgroundFolders closure) receives the non-nil pointer.
+//
+// PR9-A (June 2026): BuildDriveBundle now returns an IOpaqueStartFunc
+// closure that defers side-effecting initialisation (Drive folder validation,
+// style-folder pre-creation, storage directory creation) to the lifecycle.
+// The bundle itself is fully populated on return — downstream bundles
+// (Process, AI, Domains) receive non-nil fields.
+func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, search *SearchBundle) (*DriveBundle, IOpaqueStartFunc, error) {
 	// StyleRegistry loaded early — ensureStyleDriveFolders needs it.
 	styleRegistry, _ := generation.NewStyleRegistry("config/generation_styles.yaml")
 
@@ -254,44 +273,8 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	if driveClient != nil {
 		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
 		dests = resolveRuntimeDestinations(ctx, dbs.main.DB, driveClient, cfg, log)
-		if dests.VideoAIFolder() != "" && dests.VideoAIFolder() != dests.MediaRoot {
-			// Use captured styleRegistry — non-nil (Reviewer Q3 fix).
-			go ensureStyleDriveFolders(ctx, driveUploader, dests.VideoAIFolder(), styleRegistry, log)
-			log.Info("Style Drive folders using AI Images root", zap.String("folder_id", dests.VideoAIFolder()))
-		}
-		// Validate critical Drive folders (logs only)
-		for name, folderID := range map[string]string{
-			"images":   dests.ImagesFolder(),
-			"video_ai": dests.VideoAIFolder(),
-		} {
-			if folderID == "" {
-				continue
-			}
-			if _, err := driveClient.Files.Get(folderID).Fields("id, name").Context(ctx).Do(); err != nil {
-				log.Warn("Drive folder validation failed at startup",
-					zap.String("folder_name", name), zap.String("folder_id", folderID), zap.Error(err))
-			} else {
-				log.Info("Drive folder validated",
-					zap.String("folder_name", name), zap.String("folder_id", folderID))
-			}
-		}
 	} else {
 		dests = configOnlyDestinations(cfg)
-	}
-
-	// Ensure storage dirs (best-effort)
-	for _, dir := range []string{
-		cfg.Storage.DataDir, cfg.Storage.VoiceoversPath(), cfg.Storage.AssetsPath(),
-		cfg.Storage.DownloadsPath(), cfg.Storage.BackupsPath(), cfg.Storage.TempPath(),
-		cfg.Storage.AnimationsPath(), cfg.Storage.YoutubeClipsPath(),
-		cfg.Storage.ArtlistPath(), cfg.Storage.ImagesPath(),
-	} {
-		if dir == "" {
-			continue
-		}
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			log.Warn("Failed to create storage directory", zap.String("path", dir), zap.Error(err))
-		}
 	}
 
 	var mediaStore *drive.Store
@@ -317,6 +300,15 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		destResolver = drive.NewDestinationResolver(mediaStore)
 	}
 
+	// PR9-A (June 2026): side-effecting initialisation is delegated to
+	// startDriveBackgroundFolders (defined below). The closure returned
+	// here captures only the local variables needed; the body lives in
+	// a standalone function so the source-level goroutine-count test
+	// correctly reports zero spawns in BuildDriveBundle itself.
+	startClosure := func() {
+		startDriveBackgroundFolders(ctx, cfg, driveClient, driveUploader, dests, styleRegistry, log)
+	}
+
 	return &DriveBundle{
 		DriveClient:   driveClient,
 		DriveUploader: driveUploader,
@@ -325,7 +317,69 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		MediaStore:    mediaStore,
 		DestResolver:  destResolver,
 		StyleRegistry: styleRegistry,
-	}, nil
+	}, startClosure, nil
+}
+
+// startDriveBackgroundFolders performs the side-effecting Drive initialisation
+// that was previously inlined in BuildDriveBundle (PR9-A, June 2026).
+// It pre-creates style folders on Drive, validates critical Drive folder
+// paths, and ensures local storage directories exist.
+//
+// Invoked by the lifecycle after WireRegistry completes, before the HTTP
+// server begins accepting requests — so all modules are wired before any
+// Drive API calls or mutations occur.
+//
+// This is a package-level function (NOT inline in BuildDriveBundle) so that
+// the goroutine-count freeze test (composition_test.go::
+// TestComposition_NoGoroutinesSpawned_FrozenSiteCount) correctly reports
+// zero goroutine spawns in BuildDriveBundle's own body.
+func startDriveBackgroundFolders(
+	ctx context.Context,
+	cfg *config.Config,
+	driveClient *gdrive.Service,
+	driveUploader *drive.Uploader,
+	dests *DriveDestinations,
+	styleRegistry *generation.StyleRegistry,
+	log *zap.Logger,
+) {
+	if driveClient != nil && dests.VideoAIFolder() != "" && dests.VideoAIFolder() != dests.MediaRoot {
+		go ensureStyleDriveFolders(ctx, driveUploader, dests.VideoAIFolder(), styleRegistry, log)
+		log.Info("Style Drive folders using AI Images root", zap.String("folder_id", dests.VideoAIFolder()))
+	}
+
+	// Validate critical Drive folders (logs only)
+	if driveClient != nil {
+		for name, folderID := range map[string]string{
+			"images":   dests.ImagesFolder(),
+			"video_ai": dests.VideoAIFolder(),
+		} {
+			if folderID == "" {
+				continue
+			}
+			if _, err := driveClient.Files.Get(folderID).Fields("id, name").Context(ctx).Do(); err != nil {
+				log.Warn("Drive folder validation failed at startup",
+					zap.String("folder_name", name), zap.String("folder_id", folderID), zap.Error(err))
+			} else {
+				log.Info("Drive folder validated",
+					zap.String("folder_name", name), zap.String("folder_id", folderID))
+			}
+		}
+	}
+
+	// Ensure storage dirs (best-effort)
+	for _, dir := range []string{
+		cfg.Storage.DataDir, cfg.Storage.VoiceoversPath(), cfg.Storage.AssetsPath(),
+		cfg.Storage.DownloadsPath(), cfg.Storage.BackupsPath(), cfg.Storage.TempPath(),
+		cfg.Storage.AnimationsPath(), cfg.Storage.YoutubeClipsPath(),
+		cfg.Storage.ArtlistPath(), cfg.Storage.ImagesPath(),
+	} {
+		if dir == "" {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Warn("Failed to create storage directory", zap.String("path", dir), zap.Error(err))
+		}
+	}
 }
 
 // BuildRepoBundle constructs the canonical Repositories.
@@ -881,7 +935,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose search: %w", err)
 	}
 
-	driveBundle, err := BuildDriveBundle(ctx, cfg, dbs, log, search)
+	driveBundle, driveStart, err := BuildDriveBundle(ctx, cfg, dbs, log, search)
 	if err != nil {
 		return nil, fmt.Errorf("compose drive: %w", err)
 	}
@@ -959,7 +1013,8 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Maint:   maint,
 		Utility: utility,
 
-		Ctx: ctx,
+		DriveStart: driveStart,
+		Ctx:        ctx,
 	}
 
 	// NOTE: ProviderRegistry (on SearchBundle) is intentionally UNFROZEN here.
