@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 )
 
 // runListStyles enumerates the canonical generation_styles.yaml registry.
