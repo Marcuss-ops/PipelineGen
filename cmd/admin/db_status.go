@@ -94,20 +94,22 @@ func reportDB(label string, sdb *storage.SQLiteDB) {
 	if shm, err := storage.ShmSizeBytes(sdb.Path()); err == nil {
 		fmt.Printf("  shm_size     %s\n", fmtBytes(shm))
 	}
-	if mode, err := storage.JournalMode(ctxCompat(), sdb.DB); err == nil {
+	// PRAGMA probes get their own short-timeout context (2s) so a
+	// long dispatcher ctx is not replayed through sync-style probes.
+	// The cancel is deferred (matches runDBStatus's defer log.Sync +
+	// defer ds.Close pattern) so the timer goroutine is reaped even
+	// if JournalMode / BusyTimeoutMs panic.
+	jctx, jcancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer jcancel()
+	if mode, err := storage.JournalMode(jctx, sdb.DB); err == nil {
 		fmt.Printf("  journal_mode %s\n", mode)
 	}
-	if ms, err := storage.BusyTimeoutMs(ctxCompat(), sdb.DB); err == nil {
+
+	bctx, bcancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer bcancel()
+	if ms, err := storage.BusyTimeoutMs(bctx, sdb.DB); err == nil {
 		fmt.Printf("  busy_timeout %dms\n", ms)
 	}
-}
-
-// ctxCompat returns a short-timeout background context for
-// sync-style PRAGMA calls inside status reports (avoid replaying
-// the long ctx the dispatcher creates).
-func ctxCompat() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
-	return ctx
 }
 
 type backupInfo struct {
