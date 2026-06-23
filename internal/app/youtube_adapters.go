@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -16,13 +16,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 )
 
-// ── ClipStoreAdapter wraps *assets.ClipsRepository to satisfy youtube.ClipStorePort ──
+// ── ClipStoreAdapter wraps *assets.ClipsRepository to satisfy youtubeports.ClipStorePort ──
 
 type clipStoreAdapter struct {
 	inner *assets.ClipsRepository
 }
 
-func newClipStoreAdapter(r *assets.ClipsRepository) youtube.ClipStorePort {
+func newClipStoreAdapter(r *assets.ClipsRepository) youtubeports.ClipStorePort {
 	if r == nil {
 		return nil
 	}
@@ -49,13 +49,13 @@ func (a *clipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*ass
 	return a.inner.GetFolder(ctx, folderID)
 }
 
-// ── MonitorsStoreAdapter wraps *assets.MonitorsRepository to satisfy youtube.MonitorsStorePort ──
+// ── MonitorsStoreAdapter wraps *assets.MonitorsRepository to satisfy youtubeports.MonitorsStorePort ──
 
 type monitorsStoreAdapter struct {
 	inner *assets.MonitorsRepository
 }
 
-func newMonitorsStoreAdapter(r *assets.MonitorsRepository) youtube.MonitorsStorePort {
+func newMonitorsStoreAdapter(r *assets.MonitorsRepository) youtubeports.MonitorsStorePort {
 	if r == nil {
 		return nil
 	}
@@ -69,13 +69,13 @@ func (a *monitorsStoreAdapter) IncrementProcessed(ctx context.Context, id string
 	return a.inner.IncrementProcessed(ctx, id)
 }
 
-// ── CacheStoreAdapter wraps *assets.ClipsRepository.DB() to satisfy youtube.YouTubeCacheStorePort ──
+// ── CacheStoreAdapter wraps *assets.ClipsRepository.DB() to satisfy youtubeports.YouTubeCacheStorePort ──
 
 type cacheStoreAdapter struct {
 	clips *assets.ClipsRepository
 }
 
-func newCacheStoreAdapter(r *assets.ClipsRepository) youtube.YouTubeCacheStorePort {
+func newCacheStoreAdapter(r *assets.ClipsRepository) youtubeports.YouTubeCacheStorePort {
 	if r == nil {
 		return nil
 	}
@@ -219,9 +219,9 @@ func (a *cacheStoreAdapter) UpsertCategoryCache(ctx context.Context, videoTitle 
 	return err
 }
 
-// ── ClipIndexerAdapter wraps *clipindexer.Service to satisfy youtube.ClipIndexerPort ──
+// ── ClipIndexerAdapter wraps *clipindexer.Service to satisfy youtubeports.ClipIndexerPort ──
 //
-// youtube.ClipIndexerPort is an empty-marker port — the struct conformance to
+// youtubeports.ClipIndexerPort is an empty-marker port — the struct conformance to
 // the interface is at the *clipIndexerAdapter assignment site in
 // composition.go. Methods below are present because the application code
 // may call .IsEnabled() / .IndexClip() on the port.
@@ -249,7 +249,7 @@ func (a *ollamaClientAdapter) SimpleGenerate(ctx context.Context, model, prompt 
 	return a.inner.SimpleGenerate(ctx, model, prompt, timeout, opts)
 }
 
-// ── DriveFolderMgrAdapter wraps *drive.Uploader to satisfy youtube.DriveFolderManagerPort ──
+// ── DriveFolderMgrAdapter wraps *drive.Uploader to satisfy youtubeports.DriveFolderManagerPort ──
 //
 // Per PR2 followup (June 2026): the port mandates a *UploadResultDTO return
 // type (defined in ports.go) so the application layer never imports
@@ -261,7 +261,7 @@ type driveFolderMgrAdapter struct {
 	log      *zap.Logger
 }
 
-func newDriveFolderMgrAdapter(uploader *drive.Uploader, log *zap.Logger) youtube.DriveFolderManagerPort {
+func newDriveFolderMgrAdapter(uploader *drive.Uploader, log *zap.Logger) youtubeports.DriveFolderManagerPort {
 	if uploader == nil {
 		return nil
 	}
@@ -275,7 +275,7 @@ func (a *driveFolderMgrAdapter) GetOrCreateFolder(ctx context.Context, channelNa
 	return a.uploader.GetOrCreateFolder(ctx, channelName, parentFolderID)
 }
 
-func (a *driveFolderMgrAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtube.UploadResultDTO, bool, error) {
+func (a *driveFolderMgrAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error) {
 	if a.uploader == nil {
 		return nil, false, fmt.Errorf("driveFolderMgr: uploader not wired")
 	}
@@ -286,10 +286,10 @@ func (a *driveFolderMgrAdapter) UploadFileIfChanged(ctx context.Context, localPa
 	if res == nil {
 		return nil, skipped, nil
 	}
-	return &youtube.UploadResultDTO{FileID: res.FileID, WebViewLink: res.WebViewLink}, skipped, nil
+	return &youtubeports.UploadResultDTO{FileID: res.FileID, WebViewLink: res.WebViewLink}, skipped, nil
 }
 
-// ── FolderMemoryAdapter wraps *foldermemory.Service to satisfy youtube.FolderMemoryPort ──
+// ── FolderMemoryAdapter wraps *foldermemory.Service to satisfy youtubeports.FolderMemoryPort ──
 //
 // *foldermemory.Service satisfies the port structurally (LoadManifest,
 // SaveManifest, UpdateManifestTXT, ComputeManifestStats). This adapter is
@@ -300,7 +300,7 @@ type folderMemoryAdapter struct {
 	inner *foldermemory.Service
 }
 
-func newFolderMemoryAdapter(svc *foldermemory.Service) youtube.FolderMemoryPort {
+func newFolderMemoryAdapter(svc *foldermemory.Service) youtubeports.FolderMemoryPort {
 	if svc == nil {
 		return nil
 	}

@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"strings"
 
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 

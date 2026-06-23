@@ -160,6 +160,22 @@ type ExtractStats struct {
 	Failed    int `json:"failed"`
 }
 
+// ── PR4 Phase 1 (June 2026): TopicSearchRequest moved here from the
+//     alias file types.go so the external HTTP handlers can import the
+//     canonical struct via `yttypes.TopicSearchRequest` instead of
+//     `youtube.TopicSearchRequest` (which was an inline-defined struct
+//     in the now-deprecated shim file). After PR4-B finalisation
+//     (internal sweep + ports.go/types.go deletion), this is the canonical
+//     home and the alias file's struct definition is removed. ──
+
+// TopicSearchRequest is the payload for the YouTube topic-search endpoint
+// (POST /api/media/clips/search, GET .../search).
+type TopicSearchRequest struct {
+	Q     string `form:"q" json:"q" binding:"required"`
+	Limit int    `form:"limit" json:"limit"`
+	Sort  string `form:"sort" json:"sort"`
+}
+
 // ExtractItem represents a single processed clip from an extraction run.
 type ExtractItem struct {
 	ID              string `json:"id,omitempty"`

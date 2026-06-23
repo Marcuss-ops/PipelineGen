@@ -4,7 +4,7 @@
 //
 //   searcher.go + searcher_metadata.go call ytservice.ServiceDeps.SearchRunner
 //   (a `youtube.SearchRunnerPort` whose methods return application-layer DTOs:
-//   `[]youtubedto.SearchLiveResult` and `*youtubedto.DownloaderMetadata`).
+//   `[]youtubeports.SearchLiveResult` and `*youtubeports.DownloaderMetadata`).
 //
 //   The existing `YTDLPAdapter` (also in this package) wraps os/exec yt-dlp
 //   calls but returns **`infra`-layer types** (`[]LiveSearchResult`,
@@ -39,7 +39,6 @@ import (
 
 	"go.uber.org/zap"
 
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
@@ -50,7 +49,7 @@ import (
 // the canonical app-layer DTO before returning.
 //
 // Compilation guard: catch drift if the app-layer port signature changes.
-var _ youtubedto.SearchRunnerPort = (*SearchRunnerAdapter)(nil)
+var _ youtubeports.SearchRunnerPort = (*SearchRunnerAdapter)(nil)
 
 // SearchRunnerAdapter implements the application-layer SearchRunnerPort.
 // Internal: wraps a *YTDLPAdapter that owns the os/exec plumbing.
@@ -74,7 +73,7 @@ func NewSearchRunnerAdapter(cfg *ytcfg.Config, log *zap.Logger) *SearchRunnerAda
 }
 
 // SearchLive runs yt-dlp and converts the infra-layer []LiveSearchResult set
-// into the application-layer []youtubedto.SearchLiveResult. Fail-closed
+// into the application-layer []youtubeports.SearchLiveResult. Fail-closed
 // contract:
 //
 //   - ctx already Done → return unwrapped ctx.Err() (no double-wrap).
@@ -83,7 +82,7 @@ func NewSearchRunnerAdapter(cfg *ytcfg.Config, log *zap.Logger) *SearchRunnerAda
 //                                   via %w so callers can debug with
 //                                   errors.Unwrap).
 //   - subprocess returned 0 hits → return (empty slice, nil) (success).
-func (a *SearchRunnerAdapter) SearchLive(ctx context.Context, query string, limit int, sort string) ([]youtubedto.SearchLiveResult, error) {
+func (a *SearchRunnerAdapter) SearchLive(ctx context.Context, query string, limit int, sort string) ([]youtubeports.SearchLiveResult, error) {
 	if a == nil || a.inner == nil {
 		return nil, youtubeports.ErrSearchRunnerUnavailable
 	}
@@ -99,9 +98,9 @@ func (a *SearchRunnerAdapter) SearchLive(ctx context.Context, query string, limi
 			zap.String("query", query))
 		return nil, errors.Join(youtubeports.ErrSearchRunnerUnavailable, err)
 	}
-	out := make([]youtubedto.SearchLiveResult, 0, len(raw))
+	out := make([]youtubeports.SearchLiveResult, 0, len(raw))
 	for _, r := range raw {
-		out = append(out, youtubedto.SearchLiveResult{
+		out = append(out, youtubeports.SearchLiveResult{
 			ID:        r.ID,
 			Title:     r.Title,
 			URL:       r.URL,
@@ -115,12 +114,12 @@ func (a *SearchRunnerAdapter) SearchLive(ctx context.Context, query string, limi
 
 // GetVideoInfo runs yt-dlp --dump-json on a single URL and converts the
 // infra-layer VideoInfo struct into the canonical app-layer
-// *youtubedto.DownloaderMetadata DTO (incl. Thumbnails + Chapters).
+// *youtubeports.DownloaderMetadata DTO (incl. Thumbnails + Chapters).
 //
 // Fail-closed contract mirrors SearchLive: ctx.Err() and subprocess errors
 // are surfaced, never coerced to an empty DTO. The empty DTO returned by
 // the previous searchRunnerStub is the exact failure mode that PR2 fixes.
-func (a *SearchRunnerAdapter) GetVideoInfo(ctx context.Context, videoURL string) (*youtubedto.DownloaderMetadata, error) {
+func (a *SearchRunnerAdapter) GetVideoInfo(ctx context.Context, videoURL string) (*youtubeports.DownloaderMetadata, error) {
 	if a == nil || a.inner == nil {
 		return nil, youtubeports.ErrSearchRunnerVideoInfoUnavailable
 	}
@@ -134,7 +133,7 @@ func (a *SearchRunnerAdapter) GetVideoInfo(ctx context.Context, videoURL string)
 			zap.String("url", videoURL))
 		return nil, errors.Join(youtubeports.ErrSearchRunnerVideoInfoUnavailable, err)
 	}
-	dto := &youtubedto.DownloaderMetadata{
+	dto := &youtubeports.DownloaderMetadata{
 		ID:           raw.ID,
 		Title:        raw.Title,
 		URL:          raw.URL,
@@ -150,14 +149,14 @@ func (a *SearchRunnerAdapter) GetVideoInfo(ctx context.Context, videoURL string)
 	// Translate thumbnails — fixes CPR-LR-1 (the previous infra→app
 	// conversion path dropped raw.Thumbnails array on the floor).
 	for _, t := range raw.Thumbnails {
-		dto.Thumbnails = append(dto.Thumbnails, youtubedto.VideoThumbnail{
+		dto.Thumbnails = append(dto.Thumbnails, youtubeports.VideoThumbnail{
 			URL:    t.URL,
 			Width:  t.Width,
 			Height: t.Height,
 		})
 	}
 	for _, ch := range raw.Chapters {
-		dto.Chapters = append(dto.Chapters, youtubedto.VideoChapter{
+		dto.Chapters = append(dto.Chapters, youtubeports.VideoChapter{
 			Title:     ch.Title,
 			StartTime: ch.StartTime,
 			EndTime:   ch.EndTime,
