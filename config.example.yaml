@@ -90,7 +90,8 @@ video:
   max_clips_per_source: 30
   search_count: 25
   overlay_opacity: 0.25
-  effect_interval: 4
+  effect_interval: 4      # 0 disables effects; negative values use the configured default
+  transition_interval: 4  # 0 disables transitions; negative values use the configured default
   transition_presets:
     - "fade"
     - "fadeblack"
