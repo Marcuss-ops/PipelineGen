@@ -16,7 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -101,12 +101,12 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 	var req youtube.TopicSearchRequest
 	if err := c.ShouldBind(&req); err != nil {
-		internal.APIUtil.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
 	if req.Q == "" {
-		internal.APIUtil.BadRequest(c, "q parameter is required")
+		apiutil.BadRequest(c, "q parameter is required")
 		return
 	}
 	if req.Limit <= 0 {
@@ -125,11 +125,11 @@ func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 	// single canonical SearchByTopicWithFilter entry point.
 	resp, err := h.service.SearchByTopicWithFilter(c.Request.Context(), req.Q, req.Limit, req.Sort, "")
 	if err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	internal.APIUtil.OK(c, resp)
+	apiutil.OK(c, resp)
 }
 
 // searchTopicsViaProvider dispatches the topic search through the
@@ -148,11 +148,11 @@ func (h *YouTubeClipHandler) searchTopicsViaProvider(c *gin.Context, req *youtub
 
 	res, err := h.providerSearch.Search(c.Request.Context(), searchReq)
 	if err != nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("youtube provider search: %w", err))
+		apiutil.InternalError(c, fmt.Errorf("youtube provider search: %w", err))
 		return
 	}
 
-	internal.APIUtil.OK(c, &youtube.TopicSearchResponse{
+	apiutil.OK(c, &youtube.TopicSearchResponse{
 		OK:      true,
 		Query:   req.Q,
 		Limit:   req.Limit,
@@ -213,24 +213,24 @@ func providersToTopicResults(candidates []providers.Candidate) []youtube.TopicSe
 func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 	url := c.Query("url")
 	if url == "" {
-		internal.APIUtil.BadRequest(c, "url parameter is required")
+		apiutil.BadRequest(c, "url parameter is required")
 		return
 	}
 
 	metadata, err := h.service.GetVideoInfo(c.Request.Context(), url)
 	if err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	internal.APIUtil.OK(c, metadata)
+	apiutil.OK(c, metadata)
 }
 
 // Extract enqueues a YouTube clip extraction job. When Destination.Group
 // is set the caller's root folder is rewritten to a per-group channel
 // subfolder so clips land in Root/<Group>/video-title/.
 func (h *YouTubeClipHandler) Extract(c *gin.Context) {
-	req, ok := internal.BindJSON[youtube.ExtractRequest](c)
+	req, ok := apiutil.BindJSON[youtube.ExtractRequest](c)
 	if !ok {
 		return
 	}
@@ -255,12 +255,12 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 	if h.jobsSvc != nil {
 		payloadBytes, err := json.Marshal(req)
 		if err != nil {
-			internal.APIUtil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
+			apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
 			return
 		}
 		var payloadMap map[string]any
 		if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
-			internal.APIUtil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
+			apiutil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
 			return
 		}
 
@@ -269,11 +269,11 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 			Payload: payloadMap,
 		})
 		if err != nil {
-			internal.APIUtil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 			return
 		}
 
-		internal.APIUtil.OK(c, gin.H{
+		apiutil.OK(c, gin.H{
 			"job_id":     job.ID,
 			"message":    "YouTube clip extraction job enqueued",
 			"status_url": "/api/jobs/" + job.ID + "/full",
@@ -281,7 +281,7 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		return
 	}
 
-	internal.APIUtil.InternalError(c, fmt.Errorf("jobs service not available"))
+	apiutil.InternalError(c, fmt.Errorf("jobs service not available"))
 }
 
 // Diagnostics returns YouTube clip module health and dependency status.
@@ -341,7 +341,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 		}
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":     serviceAvailable && jobsAvailable,
 		"checks": checks,
 	})
@@ -368,7 +368,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		req.SortAsc = c.Query("sort_asc") == "true"
 	} else {
 		if err := c.ShouldBindJSON(&req); err != nil {
-			internal.APIUtil.BadRequest(c, err.Error())
+			apiutil.BadRequest(c, err.Error())
 			return
 		}
 	}
@@ -401,7 +401,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		allClips = allClips[:req.Limit]
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":    true,
 		"count": len(allClips),
 		"total": total,
@@ -427,7 +427,7 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 		totalClips += count
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":        true,
 		"total":     totalClips,
 		"by_source": stats,

@@ -1,0 +1,173 @@
+// Package search provides application-layer use cases for media asset search:
+// cross-provider search, semantic (Qdrant) search, and scene-based clip recommendation.
+package search
+
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+)
+
+// ── Provider search ports ─────────────────────────────────────────────
+
+// SearchRequest is the canonical search input.
+type SearchRequest struct {
+	Query     string
+	MediaType string // "", "video", "image", "audio", "all"
+	Limit     int
+	Sort      string
+}
+
+// SearchCandidate is a single search result from a provider.
+type SearchCandidate struct {
+	SourceRef    string
+	Title        string
+	ThumbnailURL string
+	PreviewURL   string
+	Duration     float64
+	Score        float64
+}
+
+// SearchResult is the output of a provider search.
+type SearchResult struct {
+	Candidates    []SearchCandidate
+	NextPageToken string
+}
+
+// SearchProviderPort searches media from a single source.
+type SearchProviderPort interface {
+	Name() string
+	Capabilities() []string
+	Search(ctx context.Context, req SearchRequest) (*SearchResult, error)
+}
+
+// SearchProviderRegistry fans out searches across registered providers.
+type SearchProviderRegistry interface {
+	SearchProviders() []SearchProviderPort
+}
+
+// ── Semantic search ports ─────────────────────────────────────────────
+
+// SemanticSearchRequest is the input for a vector search.
+type SemanticSearchRequest struct {
+	Query      string
+	VectorName string // "text", "visual", "audio"
+	Mode       string // "ann" or "hybrid"
+	Limit      int
+	MinScore   float64
+	Source     string
+	MediaType  string
+}
+
+// SemanticSearchResult is the output of a vector search.
+type SemanticSearchResult struct {
+	Query     string
+	Vector    string
+	Mode      string
+	MinScore  float64
+	Count     int
+	Results   []qdrant.SearchResult
+}
+
+// VectorSearchPort embeds text and performs ANN/hybrid search.
+type VectorSearchPort interface {
+	EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error)
+	VectorStore() VectorStorePort
+}
+
+// VectorStorePort is a narrow Qdrant port for search operations.
+type VectorStorePort interface {
+	Search(ctx context.Context, req qdrant.SearchRequest) ([]qdrant.SearchResult, error)
+	HybridSearch(ctx context.Context, req qdrant.HybridSearchRequest) ([]qdrant.SearchResult, error)
+}
+
+// ── Recommendation ports ──────────────────────────────────────────────
+
+// RecommendRequest is the input for scene-based clip recommendation.
+type RecommendRequest struct {
+	ScriptText string
+	Language   string
+	Source     string
+	MediaType  string
+	TopK       int
+	MinScore   float64
+}
+
+// RecommendClipItem is a single recommended clip.
+type RecommendClipItem struct {
+	AssetID   string
+	Title     string
+	Score     float64
+	Source    string
+	MediaType string
+	DriveLink string
+	Tags      []string
+	Reason    string
+}
+
+// RecommendSceneResult is the result for one scene.
+type RecommendSceneResult struct {
+	Scene           string
+	SceneIndex      int
+	Query           string
+	Recommendations []RecommendClipItem
+}
+
+// RecommendResult is the full recommendation output.
+type RecommendResult struct {
+	ScriptPreview string
+	SceneCount    int
+	Scenes        []RecommendSceneResult
+	TotalClips    int
+	Language      string
+}
+
+// ── Local search ports ────────────────────────────────────────────────
+
+// CatalogSearchResult is a single catalog hit.
+type CatalogSearchResult struct {
+	ID    string
+	Name  string
+	Type  string
+	Score float64
+}
+
+// LocalCatalogPort searches the internal catalog.
+type LocalCatalogPort interface {
+	SearchAll(ctx context.Context, query string) ([]CatalogSearchResult, error)
+}
+
+// LocalClipPort searches local clips.
+type LocalClipPort interface {
+	SearchClips(ctx context.Context, source, query string) ([]LocalClipResult, error)
+}
+
+// LocalClipResult is a single local clip match.
+type LocalClipResult struct {
+	ID   string
+	Name string
+}
+
+// ── Config port ───────────────────────────────────────────────────────
+
+// VectorConfig holds named vector dimensions for search.
+type VectorConfig struct {
+	TextVectorName       string
+	VisualVectorName     string
+	AudioVectorName      string
+	TranscriptVectorName string
+	MinInstantScore      float64
+}
+
+// ConfigPort provides vector search configuration.
+type ConfigPort interface {
+	VectorConfig() VectorConfig
+}
+
+// Logger is a narrow logging port.
+type Logger interface {
+	Info(msg string, keysAndValues ...any)
+	Warn(msg string, keysAndValues ...any)
+	Error(msg string, keysAndValues ...any)
+	Debug(msg string, keysAndValues ...any)
+}

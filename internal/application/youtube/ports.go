@@ -1,11 +1,13 @@
-// Package youtube holds the application-layer orchestrator for the YouTube
-// clip-extraction pipeline.
+// Deprecated: import youtube/ports/ directly instead.
+//
+// This file contains zero-copy type aliases that re-export the canonical
+// youtube/ports/ package. It exists ONLY for backward compatibility.
+// New code MUST import youtube/ports/ directly.
+// Existing importers should migrate module-by-module.
+// Once all importers are migrated, DELETE this file.
 //
 // Per PR3 (June 2026): the canonical port interfaces and DTOs have been
 // extracted to `internal/application/youtube/ports/` (dedicated ports package).
-// This file now contains thin type aliases that re-export the ports package
-// definitions so existing callers compile without rename churn. Future PRs
-// will migrate importers directly to youtube/ports and then delete this shim.
 //
 // Rule: no NEW type definitions or interfaces should be added here —
 // they belong in youtube/ports/ports.go.
