@@ -1,162 +1,75 @@
 # Composition, Documentation and Configuration Cleanup
 
-> Priority: MEDIUM, with one startup-order correctness item that should be
-> treated as HIGH.
+> Status: PARTIAL
+>
+> Verified against `main` at `401e3847` on 2026-06-23.
+>
+> Priority: MEDIUM. Tracker accuracy is HIGH because Wave 14 currently claims a completed boundary that the code does not yet satisfy.
 
-This plan covers the remaining non-blocker cleanup after the health and script
-boundaries are extracted. The work should be split into focused commits even
-when committed directly to `main`.
+## Verified progress
 
-## Scope
+The following items from the original audit are now complete:
 
-1. Physically split `internal/app/composition.go`.
-2. Move `wireScriptFlow` out of `registry.go`.
-3. Correct startup ordering for Drive, Qdrant, Outbox and workers.
-4. Repair `ARCHITECTURE.md` and `architecture/migration.yaml`.
-5. Regenerate API documentation from the real router.
-6. Add `transition_interval` to example configuration and lock its semantics.
+- lifecycle startup order is Drive, Qdrant, Outbox, then job runner;
+- transition and effect interval value `0` disables the behavior;
+- negative intervals select a default;
+- renderer guards prevent modulo-by-zero;
+- the concrete transition registry has focused tests;
+- `ARCHITECTURE.md` no longer presents CoreDeps, `internal/media` or `internal/sources` as active architecture;
+- the generated API document was refreshed from the router;
+- health implementation details moved out of the API package.
 
-## Non-goals
+## Remaining work
 
-- Do not introduce a new package for every file.
-- Do not move composition logic into application or API packages.
-- Do not change public routes or job payloads.
-- Do not rename all existing bundles during the physical split.
-- Do not redesign the full lifecycle system in the same change.
-- Do not manually edit generated API route tables.
+### 1. Split `internal/app/composition.go`
 
-# Part 1: Physical composition split
+The file still owns bundle declarations, `ComposeRoot`, adapter construction, every `Build*Bundle` function, deferred-start closures and root assembly. Split it physically while retaining `package app` and existing public behavior.
 
-## Current problem
-
-`internal/app/composition.go` still contains bundle types, root definitions,
-multiple `Build*Bundle` functions, startup closures and root assembly. Even if
-individual functions are reasonable, the file is difficult to navigate and
-creates merge conflicts between unrelated capabilities.
-
-`wireScriptFlow` has been extracted from the main `WireRegistry` body but still
-lives in `registry.go`, so script-specific wiring continues to expand the
-registry file.
-
-## Target file layout
-
-Keep all files in `package app`. This is a physical/cohesion split, not a public
-package redesign.
+Recommended layout:
 
 ```text
 internal/app/
-    composition_root.go       bundle types, ComposeRoot, shared start types
-    compose.go                NewComposition orchestration only
-    compose_drive.go          BuildDriveBundle + Drive startup helper
-    compose_repositories.go   BuildRepoBundle
-    compose_search.go         BuildSearchBundle
-    compose_process.go        BuildProcessBundle + Qdrant startup helper
-    compose_ai.go             BuildAIBundle
-    compose_domains.go        BuildDomainBundle
-    compose_jobs.go           BuildJobsBundle
-    compose_outbox.go         BuildOutboxBundle + pool startup helper
-    compose_sync.go           BuildSyncBundle
-    compose_maintenance.go    BuildMaintBundle
-    compose_utility.go        utility/system bundles
-
-    registry.go               registry assembly, freeze and shared registration
-    wire_script.go            script services, jobs and routes
-    wire_assets.go            existing asset module wiring if useful
-    wire_youtube.go           existing YouTube module wiring if useful
-    server_lifecycle.go       ordered startup and shutdown
+    composition_root.go
+    compose.go
+    compose_drive.go
+    compose_repositories.go
+    compose_search.go
+    compose_process.go
+    compose_ai.go
+    compose_domains.go
+    compose_jobs.go
+    compose_outbox.go
+    compose_sync.go
+    compose_maintenance.go
+    compose_utility.go
 ```
 
-Existing `module_*.go` files may remain. Do not duplicate their wiring merely to
-match the suggested names.
+Rules:
 
-## Split rules
+- relocate symbols before changing behavior;
+- keep one canonical definition of every bundle and builder;
+- do not leave forwarding functions in `composition.go`;
+- keep imports local to the capability file;
+- retain focused builder tests;
+- leave `NewComposition` as a readable dependency-order map.
 
-- Use pure file moves and symbol relocation first; preserve function signatures.
-- Keep one canonical definition of every bundle and builder.
-- Do not add forwarding functions in `composition.go` after moving code.
-- Delete `composition.go` when all symbols have canonical new files, or reduce it
-  to `NewComposition` only if that is the clearest final ownership.
-- Keep imports local to the file that uses them; the split should materially
-  reduce import surface per file.
-- Retain compile-time checks and focused tests next to the relevant builder.
+### 2. Move ScriptFlow wiring out of `registry.go`
 
-## Suggested move order
+`wireScriptFlow` still constructs repository adapters, batch and curation services, the clip source builder, Qdrant search adapter, reranker, harvest service, use cases and the API handler inside `registry.go`.
 
-1. Move bundle and root types to `composition_root.go`.
-2. Move leaf builders with few dependencies:
-   - utility;
-   - maintenance;
-   - sync;
-   - search.
-3. Move repositories and jobs.
-4. Move Drive, process and outbox with their deferred start helpers.
-5. Move AI and domain composition.
-6. Leave `NewComposition` in `compose.go` as the readable dependency-order map.
-7. Move `wireScriptFlow` to `wire_script.go`.
-8. Run formatting/tests after each group to avoid a giant debugging surface.
-
-## Desired `NewComposition` shape
-
-The final function should read like a dependency graph, not contain adapter
-construction details:
-
-```go
-func NewComposition(...) (*ComposeRoot, error) {
-    repos, err := BuildRepoBundle(...)
-    search, err := BuildSearchBundle(...)
-    drive, driveStart, err := BuildDriveBundle(...)
-    process, processStart, err := BuildProcessBundle(...)
-    ai, err := BuildAIBundle(...)
-    jobs, err := BuildJobsBundle(...)
-    domains, err := BuildDomainBundle(...)
-    outbox, outboxStart, err := BuildOutboxBundle(...)
-    syncBundle, err := BuildSyncBundle(...)
-    maint, err := BuildMaintBundle(...)
-    utility, err := BuildUtilityBundle(...)
-
-    return &ComposeRoot{...}, nil
-}
-```
-
-Error wrapping should identify the failed bundle.
-
-# Part 2: Startup ordering
-
-## Current risk
-
-The lifecycle currently starts the job runner before Drive initialization,
-Outbox startup and Qdrant collection setup. A worker can therefore consume a job
-before a required dependency has completed initialization.
-
-## Target order
-
-Separate required preparation from background worker start:
+Move the function to:
 
 ```text
-1. Validate/prepare critical local resources.
-2. Prepare enabled remote capabilities required by jobs.
-3. Start Outbox delivery pool.
-4. Start job runner and other consumers.
-5. Begin accepting traffic if server startup controls that boundary.
+internal/app/wire_script.go
 ```
 
-Recommended immediate ordering:
+This physical move should happen after, or separately from, the remaining ScriptFlow business extraction. Do not mix a pure file split with major workflow changes.
 
-```text
-Drive preparation
-Qdrant collection preparation
-Outbox pool start
-Job runner start
-```
+### 3. Propagate startup failures
 
-If Drive is optional for the deployment mode, its preparation may be
-best-effort. Qdrant must be required only when the enabled feature requires it.
-The lifecycle must make this policy explicit.
+Ordering is fixed, but startup functions are still `func()` values and `serverLifecycle.Start` ignores its context. Qdrant preparation is explicitly best-effort, so the job runner may start even when a required vector capability failed to initialize.
 
-## Improve start contracts
-
-`type IOpaqueStartFunc func()` cannot report failure. Replace or supplement it
-with a typed startup contract:
+Target contract:
 
 ```go
 type StartFunc func(context.Context) error
@@ -168,331 +81,135 @@ type StartupStep struct {
 }
 ```
 
-A small ordered startup registry is preferable to adding more positional
-parameters to `NewServerLifecycle`.
+Required behavior:
 
-```go
-type serverLifecycle struct {
-    prepare []StartupStep
-    start   []StartupStep
-    cleanup func()
-}
-```
+- required preparation failure prevents worker startup;
+- optional failure is logged and exposed through health;
+- cancellation stops remaining steps;
+- startup order remains deterministic;
+- cleanup remains idempotent.
 
-Rules:
+### 4. Correct Wave 14
 
-- Required preparation failure prevents readiness and server startup.
-- Optional preparation failure is logged and represented in health status.
-- Worker consumers start only after required preparation passes.
-- Startup respects context cancellation.
-- Shutdown remains idempotent and ordered.
-- Do not hide network calls inside constructors to avoid addressing startup
-  policy.
-
-## Lifecycle tests
-
-Add tests that record execution order:
-
-```text
-expected: drive -> qdrant -> outbox -> jobs
-```
-
-Cover:
-
-- required step failure stops later steps;
-- optional step failure allows startup but is observable;
-- cancellation stops startup;
-- cleanup runs exactly once;
-- no worker starts when required Qdrant preparation fails in a mode that needs
-  vector search.
-
-# Part 3: Architecture documentation repair
-
-## `ARCHITECTURE.md`
-
-Replace legacy references to:
-
-- `CoreDeps`;
-- removed `internal/module/*` files;
-- removed `internal/media` ownership;
-- removed `internal/sources` ownership;
-- old ScriptFlow handler/job filenames;
-- obsolete module counts and route ownership.
-
-The diagram should show:
-
-```text
-cmd/server
-  -> internal/api Router + Registry
-  -> internal/app ComposeRoot + capability bundles
-  -> internal/application capabilities
-  -> internal/domain contracts
-  -> internal/infrastructure adapters
-  -> SQLite / Drive / Qdrant / external services
-```
-
-The module table should be generated or manually verified from current
-`internal/app/registry.go`, `wire_*.go`, `module_*.go` and route registration.
-Do not document aspirational files as current files.
-
-Add a short section distinguishing:
-
-- composition-time construction;
-- lifecycle preparation/start;
-- HTTP route registration;
-- job handler registration.
-
-## `architecture/migration.yaml`
-
-Wave 14 must be made internally coherent.
-
-Required corrections:
-
-- Properly indent `verified_zero` within the Wave 14 mapping.
-- Do not use `status: done` while the API package still contains orchestration.
-- Recommended current status until script migration completes:
+Wave 14 currently declares:
 
 ```yaml
-- id: 14
-  title: API transport modules consolidation
-  status: in_progress
-  verified_zero: false
+status: done
+verified_zero: true
 ```
 
-- Remove completed items from `pending` or replace the field with an accurate
-  `remaining` list.
-- Use the real package name `internal/api/script` unless a rename is actually
-  completed.
-- Correct contradictory file counts.
-- Make the exit gate verify behavior/boundaries, not only file count.
+Its own rule says that the API contains transport only and no goroutine orchestration. Current `internal/api/script/handler_jobs.go` still contains semaphore admission, pipeline construction, prewarm goroutine, path dispatch and final result assembly. Therefore the wave is not verified-zero.
 
-Recommended Wave 14 exit gate:
+Until the ScriptFlow blocker is closed, use:
+
+```yaml
+status: in_progress
+verified_zero: false
+```
+
+Track these remaining items explicitly:
+
+- remove ScriptFlow job orchestration from `internal/api/script`;
+- remove forwarding aliases and wrappers from `flow.go`;
+- remove Drive and filesystem implementation access from the API package;
+- promote the API forbidden-import check to a hard zero gate.
+
+The Wave 14 exit gate must verify boundaries as well as file counts:
+
+- no production API import from `internal/infrastructure`;
+- no ScriptFlow job receiver methods in API;
+- no API semaphore, pipeline construction or raw goroutine orchestration;
+- strict architecture checks pass.
+
+### 5. Make migration YAML validation fail closed
+
+The current verification path may suppress a parser failure while querying the tracker. Add a separate YAML parse validation before checking wave fields. A malformed migration tracker must fail validation rather than appear clean.
+
+### 6. Promote the API import check
+
+The current forbidden-infrastructure check is informational. It also enumerates selected infrastructure packages and therefore misses imports such as `internal/infrastructure/files`.
+
+After ScriptFlow cleanup:
+
+- reject production imports from `internal/infrastructure/` anywhere under `internal/api/`;
+- retain only narrowly justified middleware or bootstrap exceptions;
+- make the gate fail instead of logging a backlog;
+- keep the target at zero.
+
+### 7. Clarify `ARCHITECTURE.md`
+
+The refreshed document accurately shows that `handler_jobs.go` currently executes ScriptFlow jobs, but this should be labeled as a temporary migration violation. After extraction, document the canonical journey as:
 
 ```text
-- API root and feature directories remain under agreed size limits.
-- No internal/api package imports forbidden infrastructure.
-- No script job handler or orchestration remains under internal/api/script.
-- Every feature exposes a focused route registration surface.
-- Full archcheck strict mode passes.
+HTTP handler -> application command or enqueue
+Job runner -> application script job handler -> orchestration service
 ```
 
-Add a YAML parse gate before querying fields:
+Do not document a target file as current until it exists.
 
-```bash
-yq eval '.' architecture/migration.yaml >/dev/null
-```
+### 8. Keep generated API documentation deterministic
 
-A parse failure must fail CI. Never hide it with `|| true`.
+The API snapshot was refreshed. Continue generating it from the same router configuration used by production and fail validation whenever regeneration changes the committed file.
 
-## README and cleanup entry point
+### 9. Complete video configuration documentation
 
-Ensure `REPOSITORY_CLEANUP.md` links to `docs/cleanup/README.md`. Remove references
-to missing cleanup documents or recreate only documents that are intentionally
-canonical.
-
-# Part 4: Generated API documentation
-
-## Rule
-
-`docs/api/ACTIVE_API_GENERATED.md` must be produced only by:
-
-```bash
-go run ./cmd/admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md
-```
-
-Do not manually remove stale routes from the generated file.
-
-## Generator fixes/checks
-
-- Ensure the output directory exists before `os.WriteFile`:
-
-```go
-if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
-    return fmt.Errorf("create output directory: %w", err)
-}
-```
-
-- Build the same router configuration used by production route registration.
-- Ensure feature flags used during generation are deterministic and documented.
-- Include `/health` and `/ready` only once at their real paths.
-- Remove obsolete route-description entries when routes no longer exist.
-
-## CI gate
-
-Run generation before architecture/doc drift checks, then fail on any dirty
-change:
-
-```bash
-go run ./cmd/admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md
-git diff --exit-code -- docs/api/ACTIVE_API_GENERATED.md
-test -z "$(git status --porcelain docs/api/ACTIVE_API_GENERATED.md)"
-```
-
-Because `git diff` alone misses untracked files, retain the status check.
-
-# Part 5: Video configuration semantics
-
-## Missing example field
-
-Add to `config.example.yaml` under `video`:
+`TransitionInterval` exists in `VideoConfig`, but `config.example.yaml` still lacks the corresponding setting. Add:
 
 ```yaml
 transition_interval: 4
 ```
 
-Add the same field to staging/deployment examples where they intentionally list
-all video settings.
+Document that zero disables transitions.
 
-## Resolve zero-value contradiction
+There is also a default mismatch to resolve: configuration uses `4` as the negative fallback for effects, while the renderer uses `3`. Select one canonical value and enforce it through tests. Prefer having configuration be the single source of defaults.
 
-Current comments indicate that zero disables effects/transitions, while the
-renderer treats non-positive values as defaults. Choose one canonical semantic.
+## Suggested work batches
 
-Recommended semantic:
+### Batch A — Repository truth
 
-```text
-0 = disabled
-positive integer = apply every N clips
-negative/omitted after parsing = default
-```
+Update:
 
-Go scalar config cannot distinguish omitted from explicit zero without pointer
-or custom unmarshalling. Therefore choose one implementation strategy:
+- `architecture/migration.yaml`;
+- architecture checks;
+- the temporary ScriptFlow note in `ARCHITECTURE.md`.
 
-### Strategy A: zero means default
+### Batch B — ScriptFlow extraction
 
-Simplest and compatible with standard zero values:
+Follow `SCRIPT_ORCHESTRATION_MIGRATION.md`. Keep this separate from pure composition file moves.
 
-- Update comments to say zero/default resolves to 4 or 3.
-- Use explicit booleans `NoTransitions` and `NoEffects` for disabling.
-- Document the behavior in examples.
+### Batch C — Physical composition split
 
-### Strategy B: zero means disabled
+Limit changes to `internal/app/` and preserve runtime behavior.
 
-Requires preserving omitted-vs-zero intent:
+### Batch D — Startup error contracts
 
-- use pointer fields in raw config DTOs; or
-- custom YAML unmarshalling with presence flags; or
-- introduce explicit `transitions_enabled` / `effects_enabled` booleans.
+Introduce context-aware startup steps and required versus optional failure policy.
 
-Recommended for the current codebase: **Strategy A**, because the render request
-already contains `NoTransitions` and `NoEffects`. Then:
+### Batch E — Configuration consistency
 
-- `TransitionInterval <= 0` resolves to 4;
-- `EffectInterval <= 0` resolves to 3 or the documented canonical default;
-- comments and example config state this clearly;
-- API/job payload flags remain the disable mechanism.
+Add the example field and align effect interval defaults between config and renderer.
 
-Also decide whether the default effect interval is 3 or 4. The infrastructure
-renderer currently falls back to 3 while `VideoConfig` defaults to 4. Use one
-value everywhere and lock it with tests.
+## Validation checklist
 
-## Transition tests
+- format changed Go files;
+- run focused application, API, app and render tests;
+- run repository-wide vet and build;
+- parse `architecture/migration.yaml` as valid YAML;
+- run architectural checks;
+- regenerate API documentation and verify no diff;
+- inspect working-tree status and recent commit history.
 
-Add `internal/infrastructure/media/render/transitions_test.go` covering:
+## Definition of done
 
-- exact catalog length;
-- exact insertion order;
-- unique names;
-- every entry has non-nil `RenderEnd` and `RenderStart`;
-- `Register` appends a new entry;
-- replacing an existing name does not change its position;
-- `All` returns a defensive copy;
-- render interval defaults match configuration defaults.
+This cleanup group is complete when:
 
-Fix documentation that says both 14 and 15 entries. The actual catalog and test
-must define the canonical count.
-
-# Suggested implementation batches
-
-## Batch A: lifecycle correctness
-
-Files:
-
-```text
-internal/app/server_lifecycle.go
-internal/app/bootstrap.go
-internal/app/composition_root.go or existing composition.go
-internal/app/*_test.go
-```
-
-Deliverable: deterministic startup order and typed startup failures.
-
-## Batch B: physical file split
-
-Files limited to `internal/app/`. No behavior changes.
-
-Deliverable: same package/API, smaller cohesive files, full tests unchanged.
-
-## Batch C: docs and migration truth
-
-Files:
-
-```text
-ARCHITECTURE.md
-architecture/migration.yaml
-REPOSITORY_CLEANUP.md
-scripts/ci-architectural-checks.sh
-```
-
-Deliverable: parseable tracker and documentation matching current code.
-
-## Batch D: generated API docs
-
-Files:
-
-```text
-cmd/admin/gen_api_docs.go
-docs/api/ACTIVE_API_GENERATED.md
-.github/workflows/ci.yml
-```
-
-Deliverable: deterministic regeneration and no stale routes.
-
-## Batch E: video configuration and tests
-
-Files:
-
-```text
-internal/infrastructure/config/video.go
-internal/infrastructure/media/render/ffmpeg.go
-internal/infrastructure/media/render/transitions.go
-internal/infrastructure/media/render/transitions_test.go
-config.example.yaml
-config.staging.yaml if applicable
-```
-
-Deliverable: one documented interval semantic and complete catalog tests.
-
-# Validation
-
-```bash
-gofmt -w internal/app internal/infrastructure/config internal/infrastructure/media/render cmd/admin
-go test ./internal/app/...
-go test ./internal/infrastructure/config/...
-go test ./internal/infrastructure/media/render/...
-go test ./cmd/admin/...
-go vet ./...
-go build ./...
-yq eval '.' architecture/migration.yaml >/dev/null
-bash scripts/ci-architectural-checks.sh
-go run ./cmd/admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md
-git diff --exit-code -- docs/api/ACTIVE_API_GENERATED.md
-git status -sb
-git log -n 5 --oneline
-```
-
-# Definition of done
-
-- Composition and wiring files are cohesive and navigable.
-- `wireScriptFlow` lives in `wire_script.go`.
-- Worker consumers start only after required infrastructure preparation.
-- Startup failures are observable and required failures stop readiness/startup.
-- `ARCHITECTURE.md` contains no active references to removed ownership paths.
-- Wave 14 is valid YAML and accurately reflects the code state.
-- Generated API docs match the current router.
-- `transition_interval` is present in example configuration.
-- Transition/effect interval semantics are consistent across config, renderer,
-  comments and tests.
-- Transition catalog behavior has concrete infrastructure tests.
-- Full build, vet, architecture checks and generated-doc gates pass.
+- composition and registry files are physically cohesive;
+- `wireScriptFlow` lives in `wire_script.go`;
+- ScriptFlow job orchestration no longer lives in API;
+- required startup failures are observable before workers start;
+- Wave 14 matches the actual code state and has a boundary-based exit gate;
+- API infrastructure-import enforcement is a hard zero gate;
+- architecture and generated API documentation match current code;
+- `config.example.yaml` contains `transition_interval`;
+- effect and transition defaults are consistent between configuration, renderer and tests;
+- focused tests, full build, vet and architecture validation pass.
