@@ -47,8 +47,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	scriptcore	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -123,111 +122,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		wiring.ArtlistSvc = aw
 	}
 
-	// ScriptFlow — sources from root.<bundle>.<field>. The previously nullable
-	// deps that NewScriptFlowHandler used to accept via post-construction
-	// setters (clipSourceBuilder, mediaCurator, harvestSvc) are now constructed
-	// inline here and passed by value to the ctor. PR4.E (June 2026) absorbed
-	// the 6 setters removed in this wave (clipSourceBuilder, mediaCurator,
-	// harvestService, curationClipSourceBuilder, curationJobService,
-	// catalogJobService).
-	if root.AI != nil && root.AI.ScriptGen != nil && root.Domains.ImageService != nil {
-		memoryRepo := gemmamemory.NewRepository(root.DB.DB)
-		memorySvc := gemmamemory.NewService(memoryRepo, log)
-		scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo)
-		engine := scriptcore.NewEngine(root.AI.ScriptGen, memorySvc, scriptsRepoAdapter, log)
-		batchSvc := scripts.NewBatchService(cfg, log, root.AI.ScriptGen, engine, root.Drive.DocClient, root.Domains.VoiceoverService, scriptsRepoAdapter)
-		curationSvc := scripts.NewCurationService(nil, root.Jobs.Service, log)
-
-		// PR4.E: build clipSourceBuilder inline (was in wireScriptFlowExtras + setter).
-		var clipSourceBuilder *scripts.ClipSourceBuilder
-		if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-			clipSourceBuilder = scriptcore.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
-			if root.Process.VectorSvc != nil && cfg.Features.CatalogScriptVectorSearch {
-				clipSourceBuilder.SetVectorStore(qdrant.NewSearchAdapter(root.Process.VectorSvc))
-			}
-			if cfg.Reranker.Enabled {
-				clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
-					Enabled:   cfg.Reranker.Enabled,
-					URL:       cfg.Reranker.URL,
-					Model:     cfg.Reranker.Model,
-					TopK:      cfg.Reranker.TopK,
-					TimeoutMs: cfg.Reranker.TimeoutMs,
-				}))
-			}
-		}
-
-		// PR4.E: build mediaCurator inline (was in wireScriptFlowExtras + setter).
-		var mediaCurator *scripts.MediaCurator
-		if (root.Process.VectorSvc != nil || root.Repos.ClipsRepo != nil) && engine != nil {
-			mediaCurator = scripts.NewMediaCurator(qdrant.NewSearchAdapter(root.Process.VectorSvc), cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
-		}
-
-		// PR4.E: build harvestSvc inline (was conditional setter call).
-		// clipresolver.Service doesn't implement script.AutoHarvestService, so we
-		// reuse the JobHarvestService path that was already in use pre-PR4d.
-		var harvestSvc scriptapi.AutoHarvestService
-		if root.Jobs.Service != nil {
-			presetsConfig, _ := artlistpkg.LoadPresets("config/presets.yaml")
-			harvestSvc = clipresolver.NewJobHarvestService(root.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
-		}
-
-		// curationJobService + catalogJobService not wired today; passed nil.
-		// RegisterJobHandlers already nil-guards them, so the fields stay nil
-		// without losing behaviour. A future caller can inject them via ctor.
-		//
-		// PR4.F (June 2026): the 22-positional ctor is replaced by a single
-		// ScriptFlowDeps bundle literal. Adding a dependency (e.g. a new use
-		// case) is now a struct field, not a positional-slot reshuffle.
-		sectionRegen := scriptcore.NewSectionRegenerator(
-			scriptsRepoAdapter, root.AI.ScriptGen,
-			root.Drive.DocClient, cfg, log,
-		)
-		generateBatchUC := scriptcore.NewGenerateBatchUseCase(
-			cfg, log, root.Jobs.Facade, batchSvc,
-			cfg.Drive.ScriptsGenFolder(),
-		)
-		cacheEvictionUC := scriptcore.NewCacheEvictionUseCase(
-			root.AI.ScriptGen, memorySvc, log,
-		)
-		handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
-			Generator:             root.AI.ScriptGen,
-			Engine:                engine,
-			Batch:                 batchSvc,
-			Curation:              curationSvc,
-			Section:               sectionRegen,
-			GenerateBatch:         generateBatchUC,
-			CacheEviction:         cacheEvictionUC,
-			Image:                 root.Domains.ImageService,
-			Realtime:              root.Domains.RealtimeService,
-			Association:           root.Domains.AssocService,
-			Voiceover:             root.Domains.VoiceoverService,
-			AssetTree:             root.Search.AssetTreeService,
-			ClipSourceBuilder:     clipSourceBuilder,
-			MediaCurator:          mediaCurator,
-			Harvest:               harvestSvc,
-			CurationJobService:    nil,
-			CatalogJobService:     nil,
-			ScriptsRepo:           scriptsRepoAdapter,
-			Memory:                memorySvc,
-			Jobs:                  root.Jobs.Facade,
-			DocClient:             root.Drive.DocClient,
-			DriveUploader:         root.Drive.DriveUploader,
-			DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
-			Cfg:                   cfg,
-			Log:                   log,
-		})
-
-		genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
-		mod := module.NewRouteModule(
-			"script-flow",
-			func() bool { return cfg.Features.ScriptDocsEnabled },
-			"/script",
-			scriptapi.NewHandler(handler, genSvc),
-			log,
-			module.WithMiddleware(middleware.ScriptDocsEnabled(cfg)),
-		)
-		registerModule(registry, log, mod)
-	}
+	// ScriptFlow — sources from root.<bundle>.<field>. Extracted into
+	// wireScriptFlow (PR7 cleanup, June 2026) to shrink WireRegistry and
+	// reuse the canonical engine + memorySvc from AIBundle.
+	wireScriptFlow(ctx, cfg, log, root, registry)
 
 	// YouTubeClip (PR4d-chunk2): 4 direct narrow args + ProviderRegistry.
 	// ProviderRegistry is not yet populated when WireYouTubeClip runs —
@@ -519,6 +417,115 @@ func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository,
 		targets = append(targets, catalogsync.Target{Name: "videoai", RootFolderID: videoAIRoot, Source: "videoai", MediaType: "image", Repo: artlistRepo})
 	}
 	return targets
+}
+
+// wireScriptFlow constructs and registers the ScriptFlow module.
+//
+// PR7 cleanup (June 2026): extracted from the inline block in WireRegistry.
+// Reuses the canonical ScriptEngine + MemoryService from AIBundle (no
+// duplicate construction). Lightweight adapters (ScriptsRepoAdapter) are
+// created inline since AIBundle doesn't expose them.
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) {
+	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil || root.Domains.ImageService == nil {
+		return
+	}
+
+	// Reuse canonical AIBundle services instead of constructing duplicates.
+	// PR7: previously this block built its own memoryRepo, memorySvc, and engine
+	// from scratch — identical to what BuildAIBundle already does.
+	memorySvc := root.AI.MemoryService
+	engine := root.AI.ScriptEngine
+
+	if memorySvc == nil || engine == nil {
+		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
+		return
+	}
+
+	scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo)
+	batchSvc := scripts.NewBatchService(cfg, log, root.AI.ScriptGen, engine, root.Drive.DocClient, root.Domains.VoiceoverService, scriptsRepoAdapter)
+	curationSvc := scripts.NewCurationService(nil, root.Jobs.Service, log)
+
+	// PR4.E: build clipSourceBuilder inline (was in wireScriptFlowExtras + setter).
+	var clipSourceBuilder *scripts.ClipSourceBuilder
+	if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+		clipSourceBuilder = scriptcore.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
+		if root.Process.VectorSvc != nil && cfg.Features.CatalogScriptVectorSearch {
+			clipSourceBuilder.SetVectorStore(qdrant.NewSearchAdapter(root.Process.VectorSvc))
+		}
+		if cfg.Reranker.Enabled {
+			clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
+				Enabled:   cfg.Reranker.Enabled,
+				URL:       cfg.Reranker.URL,
+				Model:     cfg.Reranker.Model,
+				TopK:      cfg.Reranker.TopK,
+				TimeoutMs: cfg.Reranker.TimeoutMs,
+			}))
+		}
+	}
+
+	// PR4.E: build mediaCurator inline.
+	var mediaCurator *scripts.MediaCurator
+	if (root.Process.VectorSvc != nil || root.Repos.ClipsRepo != nil) && engine != nil {
+		mediaCurator = scripts.NewMediaCurator(qdrant.NewSearchAdapter(root.Process.VectorSvc), cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
+	}
+
+	// PR4.E: build harvestSvc inline.
+	var harvestSvc scriptapi.AutoHarvestService
+	if root.Jobs.Service != nil {
+		presetsConfig, _ := artlistpkg.LoadPresets("config/presets.yaml")
+		harvestSvc = clipresolver.NewJobHarvestService(root.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
+	}
+
+	sectionRegen := scriptcore.NewSectionRegenerator(
+		scriptsRepoAdapter, root.AI.ScriptGen,
+		root.Drive.DocClient, cfg, log,
+	)
+	generateBatchUC := scriptcore.NewGenerateBatchUseCase(
+		cfg, log, root.Jobs.Facade, batchSvc,
+		cfg.Drive.ScriptsGenFolder(),
+	)
+	cacheEvictionUC := scriptcore.NewCacheEvictionUseCase(
+		root.AI.ScriptGen, memorySvc, log,
+	)
+
+	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
+		Generator:             root.AI.ScriptGen,
+		Engine:                engine,
+		Batch:                 batchSvc,
+		Curation:              curationSvc,
+		Section:               sectionRegen,
+		GenerateBatch:         generateBatchUC,
+		CacheEviction:         cacheEvictionUC,
+		Image:                 root.Domains.ImageService,
+		Realtime:              root.Domains.RealtimeService,
+		Association:           root.Domains.AssocService,
+		Voiceover:             root.Domains.VoiceoverService,
+		AssetTree:             root.Search.AssetTreeService,
+		ClipSourceBuilder:     clipSourceBuilder,
+		MediaCurator:          mediaCurator,
+		Harvest:               harvestSvc,
+		CurationJobService:    nil,
+		CatalogJobService:     nil,
+		ScriptsRepo:           scriptsRepoAdapter,
+		Memory:                memorySvc,
+		Jobs:                  root.Jobs.Facade,
+		DocClient:             root.Drive.DocClient,
+		DriveUploader:         root.Drive.DriveUploader,
+		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
+		Cfg:                   cfg,
+		Log:                   log,
+	})
+
+	genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
+	mod := module.NewRouteModule(
+		"script-flow",
+		func() bool { return cfg.Features.ScriptDocsEnabled },
+		"/script",
+		scriptapi.NewHandler(handler, genSvc),
+		log,
+		module.WithMiddleware(middleware.ScriptDocsEnabled(cfg)),
+	)
+	registerModule(registry, log, mod)
 }
 
 func ensureStyleDriveFolders(ctx context.Context, uploader *driveup.Uploader, rootID string, styleRegistry *generation.StyleRegistry, log *zap.Logger) {

@@ -1,9 +1,13 @@
 package youtube
 
-import "testing"
+import (
+	"testing"
+
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+)
 
 func TestScoreTopicSimilarityPrefersExactTopicMatch(t *testing.T) {
-	meta := &VideoMetadata{
+	meta := &youtubeports.DownloaderMetadata{
 		Title:      "Denzel Washington Interview with Graham Bensinger",
 		Uploader:   "Graham Bensinger",
 		Duration:   14.5,
@@ -20,7 +24,7 @@ func TestScoreTopicSimilarityPrefersExactTopicMatch(t *testing.T) {
 }
 
 func TestScoreTopicSimilarityRewardsPartialOverlap(t *testing.T) {
-	meta := &VideoMetadata{
+	meta := &youtubeports.DownloaderMetadata{
 		Title:    "Denzel Washington on Acting",
 		Uploader: "Movie Times",
 	}

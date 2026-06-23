@@ -24,7 +24,6 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"go.uber.org/zap"
 )
@@ -51,10 +50,6 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 
 	videoCfg := s.cfg.Video.WithDefaults()
 
-	// Clean up scratch files from previous runs.
-	_ = os.Remove(outputPath)
-	_ = os.Remove(outputPath + ".concat.mp4")
-
 	req := RenderRequest{
 		OutputPath:       outputPath,
 		InputPaths:       clips,
@@ -68,7 +63,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		KeepAudio:        !noAudio,
 
 		NoTransitions:    noTransitions,
-		TransitionEvery:  videoCfg.EffectInterval, // pre-PR6 used EffectInterval=4 for fades
+		TransitionEvery:  videoCfg.TransitionInterval,
 		ClipDurationSec:  videoCfg.ClipDuration,
 
 		NoEffects:       noEffects,

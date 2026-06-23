@@ -20,8 +20,9 @@ type VideoConfig struct {
 	MaxClipsPerSource int      `yaml:"max_clips_per_source" default:"30"`
 	SearchCount       int      `yaml:"search_count" default:"25"`
 	OverlayOpacity    float64  `yaml:"overlay_opacity" default:"0.25"`
-	EffectInterval    int      `yaml:"effect_interval" default:"4"`
-	TransitionPresets []string `yaml:"transition_presets"`
+	EffectInterval     int      `yaml:"effect_interval" default:"4"`
+	TransitionInterval int      `yaml:"transition_interval" default:"4"`
+	TransitionPresets  []string `yaml:"transition_presets"`
 }
 
 // WithDefaults returns a copy of VideoConfig with zero-values replaced by defaults.
@@ -75,6 +76,10 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	// Note: EffectInterval == 0 is valid (no effects), so we only check < 0
 	if v.EffectInterval < 0 {
 		v.EffectInterval = 4
+	}
+	// Note: TransitionInterval == 0 is valid (no transitions), so we only check < 0
+	if v.TransitionInterval < 0 {
+		v.TransitionInterval = 4
 	}
 	if len(v.TransitionPresets) == 0 {
 		v.TransitionPresets = []string{

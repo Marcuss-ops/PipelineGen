@@ -3,6 +3,8 @@ package youtube
 import (
 	"context"
 
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+
 	"go.uber.org/zap"
 )
 
@@ -37,7 +39,7 @@ func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, video
 	}
 
 	// Wrap metadata in a VideoCutResult so the unified enrich flow sees it.
-	result := &VideoCutResult{
+	result := &youtubeports.VideoCutResult{
 		Metadata: ym,
 	}
 

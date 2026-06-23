@@ -52,7 +52,7 @@ func NewFFmpegRenderer(ffmpegPath string, transitions stockpipeline.TransitionRe
 		ffmpegPath = "ffmpeg"
 	}
 	if transitions == nil {
-		transitions = stockpipeline.DefaultTransitionRegistry()
+		transitions = DefaultTransitionRegistry()
 	}
 	return &FFmpegRenderer{
 		ffmpegPath:  ffmpegPath,
