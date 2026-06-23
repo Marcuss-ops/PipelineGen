@@ -1,8 +1,6 @@
 package system
 
 import (
-	"context"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -31,7 +29,7 @@ func NewModule(cfg *config.Config, log *zap.Logger) *Module {
 func (m *Module) Name() string { return m.name }
 
 // Enabled always returns true for the system module.
-func (m *Module) Enabled(*config.Config) bool { return true }
+func (m *Module) Enabled() bool { return true }
 
 // RegisterRoutes registers system routes.
 func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
@@ -40,9 +38,3 @@ func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
 		systemGroup.GET("/doctor", m.handler.Doctor)
 	}
 }
-
-// Start performs startup tasks.
-func (m *Module) Start(context.Context) error { return nil }
-
-// Stop performs shutdown tasks.
-func (m *Module) Stop(context.Context) error { return nil }

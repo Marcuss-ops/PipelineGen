@@ -17,7 +17,7 @@ func NewModule(
 ) api.Module {
 	return api.NewRouteModule(
 		"script-flow",
-		func(cfg *config.Config) bool { return cfg.Features.ScriptDocsEnabled },
+		func() bool { return cfg.Features.ScriptDocsEnabled },
 		"/script",
 		handler,
 		log,

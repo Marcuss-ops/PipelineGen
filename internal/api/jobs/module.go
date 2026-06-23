@@ -15,7 +15,7 @@ func NewModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"jobs",
-		func(cfg *config.Config) bool { return true },
+		func() bool { return true },
 		"/jobs",
 		handler,
 		log,

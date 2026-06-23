@@ -101,7 +101,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
 	var mod module.Module
 	if artlistSvc != nil && handler != nil {
-		mod = sourcesapi.NewArtlistModule(cfg, log, artlistSvc, handler)
+		mod = sourcesapi.NewArtlistModule(cfg, log, handler)
 		log.Info("created Artlist module")
 	}
 	return &ArtlistWiring{Handler: handler, Module: mod, Service: artlistSvc}, nil

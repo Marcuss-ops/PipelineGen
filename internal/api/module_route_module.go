@@ -1,23 +1,19 @@
 package api
 
 import (
-	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
 // RouteModule is a generic module for simple route-only modules.
 // It eliminates boilerplate for modules that just register routes.
+// Lifecycle (Start/Stop) is managed by the composition root, not by the module.
 type RouteModule struct {
 	name       string
-	enabled    func(*config.Config) bool
+	enabled    func() bool
 	prefix     string
 	handler    interface{ RegisterRoutes(*gin.RouterGroup) }
 	log        *zap.Logger
-	startFn    func(context.Context) error
-	stopFn     func(context.Context) error
 	middleware []gin.HandlerFunc
 }
 
@@ -29,20 +25,11 @@ func WithMiddleware(mw ...gin.HandlerFunc) RouteModuleOption {
 	return func(m *RouteModule) { m.middleware = append(m.middleware, mw...) }
 }
 
-// WithStart sets an optional start function.
-func WithStart(fn func(context.Context) error) RouteModuleOption {
-	return func(m *RouteModule) { m.startFn = fn }
-}
-
-// WithStop sets an optional stop function.
-func WithStop(fn func(context.Context) error) RouteModuleOption {
-	return func(m *RouteModule) { m.stopFn = fn }
-}
-
 // NewRouteModule creates a new RouteModule.
+// enabled is a closure that bakes the config check at construction time.
 func NewRouteModule(
 	name string,
-	enabled func(*config.Config) bool,
+	enabled func() bool,
 	prefix string,
 	handler interface{ RegisterRoutes(*gin.RouterGroup) },
 	log *zap.Logger,
@@ -67,11 +54,11 @@ func (m *RouteModule) Name() string {
 }
 
 // Enabled checks if this module is enabled.
-func (m *RouteModule) Enabled(cfg *config.Config) bool {
+func (m *RouteModule) Enabled() bool {
 	if m.enabled == nil {
 		return m.handler != nil
 	}
-	return m.enabled(cfg)
+	return m.enabled()
 }
 
 // RegisterRoutes registers the module's routes.
@@ -85,22 +72,4 @@ func (m *RouteModule) RegisterRoutes(rg *gin.RouterGroup) {
 		group.Use(mw)
 	}
 	m.handler.RegisterRoutes(group)
-}
-
-// Start performs startup tasks.
-func (m *RouteModule) Start(ctx context.Context) error {
-	if m.startFn != nil {
-		return m.startFn(ctx)
-	}
-	m.log.Info("starting module", zap.String("module", m.name))
-	return nil
-}
-
-// Stop performs graceful shutdown.
-func (m *RouteModule) Stop(ctx context.Context) error {
-	if m.stopFn != nil {
-		return m.stopFn(ctx)
-	}
-	m.log.Info("stopping module", zap.String("module", m.name))
-	return nil
 }

@@ -15,23 +15,34 @@ import (
 	"go.uber.org/zap"
 )
 
+// LifecycleManager is the minimal lifecycle contract the server needs.
+// The composition root (internal/app) implements this to manage background
+// services (job runner, dispatchers, channel monitors, etc.).
+type LifecycleManager interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+}
+
 // Server represents the HTTP server.
 // Background services (maintenance, watchers, etc.) are managed externally
-// by the ServiceGroup — not by the Server.
+// by a LifecycleManager — not by the Server.
 type Server struct {
 	cfg        *config.Config
 	router     *gin.Engine
 	appRouter  *Router // reference to the Router for cleanup
 	httpServer *http.Server
+	lifecycle  LifecycleManager
 }
 
 // NewServer creates a new HTTP server with module registry support.
 // workerHandler (optional) is wired into /internal/v1 routes and must be
 // set *before* Setup() runs so the gin engine registers the routes.
+// lifecycle (optional) is used for Start/Stop of background services.
 func NewServer(
 	cfg *config.Config,
 	registry *Registry,
 	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
+	lifecycle LifecycleManager,
 ) *Server {
 	router := NewRouter(cfg)
 	router.SetRegistry(registry)
@@ -41,9 +52,10 @@ func NewServer(
 	r := router.Setup()
 
 	return &Server{
-		cfg:       cfg,
-		router:    r,
-		appRouter: router,
+		cfg:        cfg,
+		router:     r,
+		appRouter:  router,
+		lifecycle:  lifecycle,
 		httpServer: &http.Server{
 			Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 			Handler:           r,
@@ -55,27 +67,29 @@ func NewServer(
 	}
 }
 
+// SetLifecycle wires a LifecycleManager after construction (for callers
+// that don't pass it through NewServer).
+func (s *Server) SetLifecycle(lc LifecycleManager) {
+	s.lifecycle = lc
+}
+
 // Start starts the HTTP server. Background services are managed by the
-// ServiceGroup in main.go — this method only handles the HTTP lifecycle.
+// LifecycleManager — this method only handles the HTTP lifecycle.
 func (s *Server) Start() error {
 	logger.Info("Starting HTTP server",
 		zap.String("addr", s.httpServer.Addr),
 	)
 
 	// Single signal-derived parent context for the entire server lifecycle.
-	// Replaces three separate context.Background() calls (moduleCtx, shutdown
-	// ctx, stopCtx) that previously had no way to inherit cancellation.
 	rootCtx, rootCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer rootCancel()
 
-	// Module lifecycle context — derived from rootCtx so it cancels on signal.
-	moduleCtx, moduleCancel := context.WithCancel(rootCtx)
-	defer moduleCancel()
-
-	// Start all enabled modules (background processes, watchers, etc.)
-	if s.appRouter != nil && s.appRouter.registry != nil {
-		if err := s.appRouter.registry.StartAll(moduleCtx, s.cfg); err != nil {
-			return fmt.Errorf("module startup failed: %w", err)
+	// Start lifecycle-managed background services via the composition root.
+	lcCtx, lcCancel := context.WithCancel(rootCtx)
+	if s.lifecycle != nil {
+		if err := s.lifecycle.Start(lcCtx); err != nil {
+			lcCancel()
+			return fmt.Errorf("lifecycle startup failed: %w", err)
 		}
 	}
 
@@ -96,13 +110,14 @@ func (s *Server) Start() error {
 	select {
 	case err := <-srvErr:
 		// Server failed to start
+		lcCancel()
 		return fmt.Errorf("server listen error: %w", err)
 	case <-rootCtx.Done():
 		logger.Info("Shutting down server...")
 	}
 
-	// Cancel module context (signals watchdog goroutines to stop)
-	moduleCancel()
+	// Cancel lifecycle context (signals background goroutines to stop)
+	lcCancel()
 
 	// Stop rate limiter cleanup goroutine
 	if s.appRouter != nil {
@@ -121,13 +136,12 @@ func (s *Server) Start() error {
 		return fmt.Errorf("server shutdown error: %w", err)
 	}
 
-	// Stop all enabled modules — again from a fresh background context
-	// with a 10s deadline so modules get their full timeout.
-	if s.appRouter != nil && s.appRouter.registry != nil {
+	// Stop lifecycle-managed background services.
+	if s.lifecycle != nil {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stopCancel()
-		if err := s.appRouter.registry.StopAll(stopCtx, s.cfg); err != nil {
-			logger.Error("module shutdown error", zap.Error(err))
+		if err := s.lifecycle.Stop(stopCtx); err != nil {
+			logger.Error("lifecycle shutdown error", zap.Error(err))
 		}
 	}
 
