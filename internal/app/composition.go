@@ -1017,10 +1017,19 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB) *UtilityBundle
 // checkers. It lives in composition.go because it's the only place
 // that wires concrete adapters (PR1 Health boundary, June 2026).
 //
-// fix/health-capabilities-optional Commit 1: constructor injection of
-// *storage.SQLiteDB so SQLiteChecker + JobsChecker reuse the canonical
-// connection pool (WAL/busy_timeout/pool size) instead of sql.Open per
-// health probe (legacy FD leak on Windows, pool limits ignored).
+// fix/health-capabilities-optional
+//   - Commit 1: constructor injection of *storage.SQLiteDB so SQLiteChecker
+//     + JobsChecker reuse the canonical connection pool (WAL/busy_timeout/
+//     pool size) instead of sql.Open per health probe (legacy FD leak on
+//     Windows, pool limits ignored).
+//   - Commit 4: Drive and Qdrant are OPTIONAL capabilities and are only
+//     instantiated when their respective preconditions are met. Drive is
+//     instantiated when both creds and token paths are non-empty; Qdrant
+//     is instantiated only when VectorSearch.Enabled=true. When skipped,
+//     a nil checker is passed to ServiceDeps and the Service emits
+//     {ok: true, applicable: false} via Commit 3's skip-mode. This
+//     prevents /health from returning 503 in deployments that opt out
+//     of the Drive / vector-search capability at boot time.
 func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.Service {
 	if cfg == nil {
 		return nil
@@ -1029,15 +1038,28 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 	if db != nil {
 		sqlDB = db.DB
 	}
-	return systemhealth.NewService(systemhealth.ServiceDeps{
-		DB:    infrahealth.NewSQLiteChecker(sqlDB),
-		Drive: infrahealth.NewDriveChecker(cfg.GetCredentialsPath(), cfg.GetTokenPath()),
-		Qdrant: infrahealth.NewQdrantChecker(
+
+	var driveChecker systemhealth.DriveChecker
+	credsPath := cfg.GetCredentialsPath()
+	tokenPath := cfg.GetTokenPath()
+	if credsPath != "" && tokenPath != "" {
+		driveChecker = infrahealth.NewDriveChecker(credsPath, tokenPath)
+	}
+
+	var qdrantChecker systemhealth.QdrantChecker
+	if cfg.VectorSearch.Enabled {
+		qdrantChecker = infrahealth.NewQdrantChecker(
 			cfg.VectorSearch.URL,
 			cfg.VectorSearch.Collection,
 			cfg.VectorSearch.Enabled,
-		),
-		Jobs: infrahealth.NewJobsChecker(sqlDB),
+		)
+	}
+
+	return systemhealth.NewService(systemhealth.ServiceDeps{
+		DB:     infrahealth.NewSQLiteChecker(sqlDB),
+		Drive:  driveChecker,
+		Qdrant: qdrantChecker,
+		Jobs:   infrahealth.NewJobsChecker(sqlDB),
 	})
 }
 
