@@ -148,7 +148,7 @@ func (h *VoiceoverHandler) Batch(c *gin.Context) {
 		return
 	}
 
-	req, ok := bindJSON[voiceover.BatchRequest](c)
+	req, ok := apiutil.BindJSON[voiceover.BatchRequest](c)
 	if !ok {
 		return
 	}
