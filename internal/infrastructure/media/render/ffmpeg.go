@@ -207,12 +207,12 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 	var fc strings.Builder
 	inputCount := len(req.InputPaths)
 	transitionEvery := req.TransitionEvery
-	if transitionEvery <= 0 {
-		transitionEvery = 4 // safe default (matches pre-PR6 behaviour)
+	if transitionEvery < 0 {
+		transitionEvery = 4 // negative → use safe default
 	}
 	effectEvery := req.EffectEvery
-	if effectEvery <= 0 {
-		effectEvery = 3 // safe default
+	if effectEvery < 0 {
+		effectEvery = 3 // negative → use safe default
 	}
 	catalog := r.transitions.All()
 	appliedTransitions := appliedListPool.Get().(*[]string)
@@ -229,7 +229,8 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 		}
 
 		// Fade-out at the END of every Nth clip.
-		if !req.NoTransitions && (idx+1)%transitionEvery == 0 && len(catalog) > 0 {
+		// transitionEvery == 0 means "disabled" (every 0th clip = never).
+		if !req.NoTransitions && transitionEvery > 0 && (idx+1)%transitionEvery == 0 && len(catalog) > 0 {
 			tIdx := (idx + 1) / transitionEvery
 			t := catalog[tIdx%len(catalog)]
 			clipFilters = append(clipFilters, t.RenderEnd(req.ClipDurationSec))
@@ -242,14 +243,16 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 		}
 
 		// Fade-in at the START of every (Nth+1) clip after the first.
-		if !req.NoTransitions && idx > 0 && idx%transitionEvery == 0 && len(catalog) > 0 {
+		// transitionEvery == 0 means "disabled".
+		if !req.NoTransitions && transitionEvery > 0 && idx > 0 && idx%transitionEvery == 0 && len(catalog) > 0 {
 			tIdx := idx / transitionEvery
 			t := catalog[tIdx%len(catalog)]
 			clipFilters = append(clipFilters, t.RenderStart(req.ClipDurationSec))
 		}
 
 		// Overlay effects: every Nth clip gets the .mp4 overlay blended on top.
-		if !req.NoEffects && overlayIdx >= 0 && (idx+1)%effectEvery == 0 && len(effects) > 0 {
+		// effectEvery == 0 means "disabled".
+		if !req.NoEffects && effectEvery > 0 && overlayIdx >= 0 && (idx+1)%effectEvery == 0 && len(effects) > 0 {
 			r.log.Info("stock pipeline effect applied",
 				zap.Int("chunk_index", req.ChunkIndex),
 				zap.Int("clip_index", idx),
