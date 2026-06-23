@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
 )
 
 // ────────────────────────────────────────────────────────────────────
@@ -29,17 +28,17 @@ import (
 // interface. The zero value returns nil result + no error; tests that
 // want a successful sync branch set Result to a non-nil ProcessResult.
 type FakeBookProcessor struct {
-	Result *booksService.ProcessResult
+	Result *ProcessResult
 	Err    error
 
-	// LastRequest captures the most recent *booksService.ProcessRequest
+	// LastRequest captures the most recent *ProcessRequest
 	// the use case passed in; lets tests assert the request → payload
 	// mapping without a separate observer.
-	LastRequest *booksService.ProcessRequest
+	LastRequest *ProcessRequest
 }
 
 // ProcessBook implements bookProcessor.
-func (f *FakeBookProcessor) ProcessBook(_ context.Context, req *booksService.ProcessRequest) (*booksService.ProcessResult, error) {
+func (f *FakeBookProcessor) ProcessBook(_ context.Context, req *ProcessRequest) (*ProcessResult, error) {
 	f.LastRequest = req
 	if f.Err != nil {
 		return nil, f.Err
@@ -119,13 +118,13 @@ func TestProcessBookRequest_Validate(t *testing.T) {
 
 // TestProcessBookUseCase_HandleSyncOK — arm-2 (sync happy path).
 //
-// The use case's sync branch takes a *booksService.ProcessRequest,
+// The use case's sync branch takes a *ProcessRequest,
 // projects it onto ProcessResult fields, and returns a fully populated
 // ProcessBookResponse. Tests inject a FakeBookProcessor with a canned
 // success; the use case must surface every result field on the wire.
 func TestProcessBookUseCase_HandleSyncOK(t *testing.T) {
 	fakeSvc := &FakeBookProcessor{
-		Result: &booksService.ProcessResult{
+		Result: &ProcessResult{
 			Success:         true,
 			OutputPath:      "/tmp/out.md",
 			PDFPath:         "/tmp/out.pdf",

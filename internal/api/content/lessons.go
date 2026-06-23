@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	lessonsApp "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
+	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 )
 
 // LessonsHandler is a thin HTTP shim for lesson generation. JSON-body

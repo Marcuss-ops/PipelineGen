@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 )
 
 // ────────────────────────────────────────────────────────────────────
@@ -31,14 +30,14 @@ import (
 // FakeLessonProcessor is the consumer-side fake for the lessonProcessor
 // interface. Zero value returns nil + no error.
 type FakeLessonProcessor struct {
-	Result *lessonsService.LessonResult
+	Result *LessonResult
 	Err    error
 
-	LastRequest *lessonsService.LessonRequest
+	LastRequest *LessonRequest
 }
 
 // GenerateLesson implements lessonProcessor.
-func (f *FakeLessonProcessor) GenerateLesson(_ context.Context, req *lessonsService.LessonRequest) (*lessonsService.LessonResult, error) {
+func (f *FakeLessonProcessor) GenerateLesson(_ context.Context, req *LessonRequest) (*LessonResult, error) {
 	f.LastRequest = req
 	if f.Err != nil {
 		return nil, f.Err
@@ -105,7 +104,7 @@ func TestGenerateLessonRequest_Validate(t *testing.T) {
 // TestGenerateLessonUseCase_HandleSyncOK — arm-2 (sync happy path).
 func TestGenerateLessonUseCase_HandleSyncOK(t *testing.T) {
 	fakeSvc := &FakeLessonProcessor{
-		Result: &lessonsService.LessonResult{
+		Result: &LessonResult{
 			Success:      true,
 			Title:        "Recap: kubernetes networking",
 			Language:     "en",
