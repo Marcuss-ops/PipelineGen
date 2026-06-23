@@ -1,4 +1,4 @@
-// Package stock adapts internal/media/stockpipeline.Service to the
+// Package stock adapts the stock pipeline service to the
 // canonical providers.FetchProvider contract in
 // internal/application/assets/providers.
 //
@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 )
 
 // Compile-time assertion: *Adapter satisfies providers.FetchProvider.

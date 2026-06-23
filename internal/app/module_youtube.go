@@ -2,7 +2,7 @@ package app
 
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
+	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"

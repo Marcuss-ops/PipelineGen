@@ -5,13 +5,14 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
-	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
@@ -61,16 +62,8 @@ type AssetsBundle struct {
 
 // AssetsWiring holds the Assets module wiring.
 type AssetsWiring struct {
-	Handler     *sourcesapi.SourcesHandler
 	Module      module.Module
 	DeletionSvc *deletion.DeletionService
-
-	// NewAssetsModule is the unified thin-transport assets module (PR 3).
-	// Contains storage, diagnostics, and search handlers. Coexists with
-	// SourcesModule during the migration; SourcesModule still owns
-	// voiceover, soundeffect, register-from-youtube, sync-drive-folder,
-	// and local-to-drive routes.
-	NewAssetsModule module.Module
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -81,7 +74,6 @@ type AssetsWiring struct {
 // PR3 (June 2026): providerRegistry added for constructor injection
 // (replaces post-construction SetProviderRegistry).
 func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc *realtime.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry) (*AssetsWiring, error) {
-	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
 		driveUploader = &driveutil.Uploader{Service: bundle.DriveClient, Log: log}
@@ -90,16 +82,29 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	if bundle.Assets != nil {
 		assetRepo = bundle.Assets.Repository()
 	}
+	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, assetRepo, bundle.VoiceoverRepo, bundle.ImageRepo, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, realtimeSvc, bundle.ClipIndexerService, vectorStore, metaWriter, nil, log)
-	legacySourcesMod := module.NewRouteModule(
-		"sources",
-		func() bool { return handler != nil },
-		"/media",
-		handler,
-		log,
-	)
+	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
+		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
+		AssetRepo:      assetRepo,
+		ClipsRepo:      bundle.ClipsRepo,
+		StockRepo:      bundle.ClipsRepo,
+		ArtlistRepo:    bundle.ClipsRepo,
+		DeletionSvc:    deletionSvc,
+		DriveUploader:  driveUploader,
+		MediaProcessor: bundle.MediaProcessor,
+		AssetTreeSvc:   bundle.AssetTreeService,
+		MetaWriter:     metaWriter,
+		ClipIndexer:    bundle.ClipIndexerService,
+		VectorStore:    vectorStore,
+		JobsSvc:        jobs.Facade,
+		Cfg:            cfg,
+		Log:            log,
+		VoiceoverRepo:  bundle.VoiceoverRepo,
+		ImagesRepo:     bundle.ImageRepo,
+		FolderMemSvc:   folderMemSvc,
+	})
 
 	// ── PR 3 (June 2026): storage thin-transport handler ─────
 	var drivePort appstorage.DrivePort
@@ -107,7 +112,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 		drivePort = &storageDriveAdapter{up: driveUploader}
 	}
 	storageSvc := appstorage.NewService(drivePort, &zapLogAdapter{log})
-	storageHandler := assetstorage.NewHandler(storageSvc, log)
+	storageHandler := assetstorage.NewHandler(storageSvc, jobs.Facade, bundle.CatalogSyncService, log)
 
 	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
 	// Diagnostics: IndexHealth via realtime.Service + AssetStats via ClipsRepository.
@@ -143,8 +148,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	}
 
 	// ── PR 4 (June 2026): extract voiceover, soundeffect, register ─
-	// Voiceover: GroupsResolver already constructed in NewSourcesHandler below;
-	// we build it here too for the standalone handler.
+	// Voiceover: GroupsResolver is built here for the standalone handler.
 	var groupsResolver *voiceoverpkg.GroupsResolver
 	if bundle.AssetTreeService != nil {
 		gr, grErr := voiceoverpkg.NewGroupsResolver(bundle.AssetTreeService, log)
@@ -164,13 +168,13 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	sfxHandler := assetsfx.NewHandler(bundle.ClipsRepo, driveUploader, metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
 
 	// Register: YouTube registration handler with full deps
-	registerHandler := assetregister.NewHandler(cfg, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, bundle.ClipIndexerService, vectorStore, metaWriter, handler.Clips(), log)
+	registerHandler := assetregister.NewHandler(cfg, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, bundle.ClipIndexerService, vectorStore, metaWriter, clipsHandler, log)
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
 		Storage:     storageHandler,
 		Diagnostics: diagHandler,
 		Search:      searchHandler,
-		Clips:       handler.Clips(),
+		Clips:       clipsHandler,
 		Voiceover:   voiceoverHandler,
 		SoundEffect: sfxHandler,
 		Register:    registerHandler,
@@ -185,10 +189,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	log.Info("created unified Assets module (thin transport)")
 
 	return &AssetsWiring{
-		Handler:         handler,
-		Module:          legacySourcesMod,
-		DeletionSvc:     deletionSvc,
-		NewAssetsModule: assetsRouteMod,
+		Module:      assetsRouteMod,
+		DeletionSvc: deletionSvc,
 	}, nil
 }
 

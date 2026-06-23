@@ -25,8 +25,8 @@ type JobService interface {
 }
 
 type Service struct {
-	vectorSvc        *qdrant.Service            // full interface for index_health.go
-	vectorSearchPort appsearch.VectorStorePort   // narrow port for match.go / search_clips.go
+	vectorSvc        *qdrant.Service           // full interface for index_health.go
+	vectorSearchPort appsearch.VectorStorePort // narrow port for match.go / search_clips.go
 	embedder         EmbeddingClient
 	jobSvc           JobService
 	reranker         *reranker.Client

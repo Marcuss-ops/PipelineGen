@@ -1,4 +1,4 @@
-package sources
+package stock
 
 import (
 	"encoding/json"
@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -21,21 +21,21 @@ func stockPayloadToMap(p *stockpipeline.StockRunPayload) map[string]any {
 	return m
 }
 
-type StockHandler struct {
+type Handler struct {
 	service *stockpipeline.Service
 	jobsSvc *jobservice.Service
 	log     *zap.Logger
 }
 
-func NewStockHandler(service *stockpipeline.Service, jobsSvc *jobservice.Service, log *zap.Logger) *StockHandler {
-	return &StockHandler{
+func NewHandler(service *stockpipeline.Service, jobsSvc *jobservice.Service, log *zap.Logger) *Handler {
+	return &Handler{
 		service: service,
 		jobsSvc: jobsSvc,
 		log:     log,
 	}
 }
 
-func (h *StockHandler) RegisterRoutes(r *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering Stock Pipeline routes")
 
 	r.POST("/run", h.RunStockPipeline)
@@ -72,7 +72,7 @@ type StockPipelineResponse struct {
 	StatusURL   string                      `json:"status_url,omitempty"`
 }
 
-func (h *StockHandler) SearchAndRun(c *gin.Context) {
+func (h *Handler) SearchAndRun(c *gin.Context) {
 	var req StockSearchAndRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
@@ -197,7 +197,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	})
 }
 
-func (h *StockHandler) RunStockPipeline(c *gin.Context) {
+func (h *Handler) RunStockPipeline(c *gin.Context) {
 	var req stockpipeline.StockRunPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
