@@ -1,3 +1,8 @@
+// Deprecated: import youtube/types/ directly instead.
+//
+// This file contains zero-copy type aliases that re-export the canonical
+// youtube/types/ package. It exists ONLY for backward compatibility.
+// Once all importers are migrated, DELETE this file.
 package youtube
 
 import types "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
