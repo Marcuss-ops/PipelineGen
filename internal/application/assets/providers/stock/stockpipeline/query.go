@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
@@ -86,7 +86,7 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 }
 
 // getDirectVideoInfo fetches metadata for a direct YouTube URL.
-func (s *Service) getDirectVideoInfo(ctx context.Context, videoURL string) (*youtube.VideoMetadata, error) {
+func (s *Service) getDirectVideoInfo(ctx context.Context, videoURL string) (*youtubeports.VideoMetadata, error) {
 	if s.youtubeSvc == nil {
 		return nil, nil
 	}

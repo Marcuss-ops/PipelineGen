@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 
 	"go.uber.org/zap"
@@ -249,10 +249,10 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, title
 		}
 	}
 
-	req := &youtube.ExtractRequest{
+	req := &yttypes.ExtractRequest{
 		URL:      videoURL,
 		Segments: segments,
-		Destination: &youtube.DestinationRequest{
+		Destination: &yttypes.DestinationRequest{
 			Group:    category,
 			FolderID: driveFolderID,
 		},

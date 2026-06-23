@@ -18,6 +18,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -101,7 +102,7 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 // we fall back to the legacy *youtube.Service direct call — the JSON
 // shape is preserved in both paths.
 func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
-	var req youtube.TopicSearchRequest
+	var req yttypes.TopicSearchRequest
 	if err := c.ShouldBind(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -141,7 +142,7 @@ func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 // injected SearchProvider and translates the canonical
 // providers.SearchResult back into the legacy youtube.TopicSearchResponse
 // shape so the API contract is preserved for both code paths.
-func (h *YouTubeClipHandler) searchTopicsViaProvider(c *gin.Context, req *youtube.TopicSearchRequest) {
+func (h *YouTubeClipHandler) searchTopicsViaProvider(c *gin.Context, req *yttypes.TopicSearchRequest) {
 	searchReq := providers.SearchRequest{
 		Query:     req.Q,
 		Limit:     req.Limit,
@@ -235,7 +236,7 @@ func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 // is set the caller's root folder is rewritten to a per-group channel
 // subfolder so clips land in Root/<Group>/video-title/.
 func (h *YouTubeClipHandler) Extract(c *gin.Context) {
-	req, ok := apiutil.BindJSON[youtube.ExtractRequest](c)
+	req, ok := apiutil.BindJSON[yttypes.ExtractRequest](c)
 	if !ok {
 		return
 	}

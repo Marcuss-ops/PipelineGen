@@ -48,6 +48,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -571,7 +572,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
 	driveFolderMgr := newDriveFolderMgrAdapter(drive.DriveUploader, log)
 
-	var clipIndexerAdapterValue youtube.ClipIndexerPort
+	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
 	if process.ClipIndexerService != nil {
 		clipIndexerAdapterValue = &clipIndexerAdapter{inner: process.ClipIndexerService}
 	}
