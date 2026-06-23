@@ -20,7 +20,6 @@ import (
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -46,20 +45,34 @@ func DefaultPipelineConfig() PipelineConfig {
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
 // effect overlay, chunk rendering, and Drive upload. All video parameters are read
 // from config.Video to ensure consistency with other media pipelines.
+//
+// PR6 (June 2026) port injection: the Service no longer reaches into the
+// ffmpeg.Processor directly. Instead it depends on two canonical ports
+// declared in internal/application/assets/providers/stock:
+//
+//   - stock.VideoCutter  (extracted-clips from a single source video)
+//   - stock.StockRenderer (cross-clip concatenation + transition/overlay)
+//
+// These ports are wired at composition time by WireStockPipeline via
+// SetCutter / SetRenderer match the existing setter-per-dep convention.
 type Service struct {
 	cfg         *config.Config
 	log         *zap.Logger
 	driveSvc    *gdrive.Service
 	driveUp     *driveup.Uploader
 	ytdlp       *downloader.YTDLPDownloader
-	ffmpegProc  *ffmpeg.Processor
-	pcfg        PipelineConfig
-	jobsSvc     *appjobs.Service
-	assetIndex  *assetindex.Service
-	youtubeSvc  *youtube.Service
-	clipIndexer *clipindexer.Service
-	metaWriter  *semantic.MetadataWriter
-	clipsRepo   *assets.ClipsRepository
+	// cutter + renderer are the PR6 ports; nil-safe guarded at each
+	// call site so missing composition wiring surfaces a clean error
+	// rather than a nil-pointer panic.
+	cutter   VideoCutter
+	renderer StockRenderer
+	pcfg             PipelineConfig
+	jobsSvc          *appjobs.Service
+	assetIndex       *assetindex.Service
+	youtubeSvc       *youtube.Service
+	clipIndexer      *clipindexer.Service
+	metaWriter       *semantic.MetadataWriter
+	clipsRepo        *assets.ClipsRepository
 	// dispatcher is the canonical media_index_outbox dispatcher, injected
 	// at composition time via WireStockPipeline. Required for production
 	// — upsertChunkAndDispatch returns an error when nil.
@@ -68,15 +81,19 @@ type Service struct {
 
 // NewService creates a stock pipeline service using the provided config, logger,
 // and Google Drive service. Video processing defaults are loaded from cfg.Video.
+//
+// PR6: NewService no longer constructs the ffmpeg.Processor. The Cutter and
+// Renderer ports MUST be injected via SetCutter/SetRenderer before
+// processSingleVideo / renderChunk are called. Production wire-up lives in
+// WireStockPipeline (internal/app/module_stock.go).
 func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *Service {
 	v := cfg.Video.WithDefaults()
 	return &Service{
-		cfg:        cfg,
-		log:        log,
-		driveSvc:   driveSvc,
-		driveUp:    &driveup.Uploader{Service: driveSvc, Log: log},
-		ytdlp:      downloader.NewYTDLP(cfg),
-		ffmpegProc: ffmpeg.NewFromConfig(cfg),
+		cfg:      cfg,
+		log:      log,
+		driveSvc: driveSvc,
+		driveUp:  &driveup.Uploader{Service: driveSvc, Log: log},
+		ytdlp:    downloader.NewYTDLP(cfg),
 		pcfg: PipelineConfig{
 			ChunkDuration:  v.ChunkDuration,
 			MaxResults:     v.MaxClipsPerSource,
@@ -84,6 +101,16 @@ func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
 	}
+}
+
+// SetCutter injects the canonical VideoCutter port (PR6). Required.
+func (s *Service) SetCutter(c VideoCutter) {
+	s.cutter = c
+}
+
+// SetRenderer injects the canonical StockRenderer port (PR6). Required.
+func (s *Service) SetRenderer(r StockRenderer) {
+	s.renderer = r
 }
 
 // SetClipsRepo injects the clips repository dependency.
