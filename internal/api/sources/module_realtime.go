@@ -17,7 +17,7 @@ func NewRealtimeModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"realtime",
-		func(cfg *config.Config) bool {
+		func() bool {
 			return handler != nil && cfg.VectorSearch.RealtimeEnabled
 		},
 		"",

@@ -349,10 +349,7 @@ func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 		h.clips.RegisterRoutes(r)
 	}
 
-	// Source-level non-clip endpoints
-	r.GET("/search", h.Search)
-	r.GET("/semantic-search", h.SemanticSearch)
-	r.POST("/recommend", h.RecommendClips)
+	// ── PR 3 (June 2026): search + recommend routes migrated to api/assets/search/ ──
 
 	// Voiceover specific routes
 	voiceover := r.Group("/voiceover")
@@ -379,12 +376,7 @@ func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 		r.POST("/bulk-upload-youtube-clips", h.clips.BulkUploadYouTubeClips)
 	}
 
-	// System diagnostics
-	r.GET("/diagnostics", h.GetDiagnostics)
-	r.GET("/index-health", h.IndexHealth)
-
-	// Qdrant maintenance
-	r.POST("/qdrant/cleanup", h.QdrantCleanup)
+	// ── PR 3 (June 2026): diagnostics + qdrant routes migrated to api/assets/diagnostics/ ──
 
 	// Sync any Drive folder recursively into DB + asset tree + Qdrant.
 	// POST /api/media/sync-drive-folder
@@ -395,23 +387,5 @@ func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// POST /api/media/local-to-drive
 	r.POST("/local-to-drive", h.LocalToDrive)
 
-	// Rename a file or folder on Google Drive.
-	// POST /api/media/rename-drive-file
-	r.POST("/rename-drive-file", h.RenameDriveFile)
-
-	// Qdrant health probe — public, no auth.
-	// GET /api/media/qdrant/health → { ok, healthy, enabled, error? }
-	r.GET("/qdrant/health", h.QdrantHealth)
-
-	// Move files between Drive folders (skip duplicates by name).
-	// POST /api/media/drive/move-files
-	r.POST("/drive/move-files", h.MoveDriveFiles)
-
-	// Create multiple subfolders inside a parent Drive folder.
-	// POST /api/media/drive/create-folders
-	r.POST("/drive/create-folders", h.CreateDriveFolders)
-
-	// Sync video files into per-video subfolders (videoID-title-slug).
-	// POST /api/media/drive/sync-to-subfolders
-	r.POST("/drive/sync-to-subfolders", h.SyncToSubfolders)
+	// ── PR 3 (June 2026): Drive ops + qdrant routes migrated to api/assets/{storage,diagnostics}/ ──
 }

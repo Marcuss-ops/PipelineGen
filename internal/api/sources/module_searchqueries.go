@@ -3,7 +3,6 @@ package sources
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	searchqueriesapi "github.com/Marcuss-ops/PipelineGen/internal/api/searchqueries"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
@@ -17,7 +16,7 @@ func NewSearchQueriesModule(
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"search_queries",
-		func(cfg *config.Config) bool { return repo != nil },
+		func() bool { return repo != nil },
 		"/search-queries",
 		searchqueriesapi.NewSearchqueriesHandler(repo, log),
 		log,
