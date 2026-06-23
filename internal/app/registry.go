@@ -43,6 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
@@ -135,7 +136,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
 			clipSourceBuilder = scriptcore.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
 			if root.Process.VectorSvc != nil && cfg.Features.CatalogScriptVectorSearch {
-				clipSourceBuilder.SetVectorStore(root.Process.VectorSvc)
+				clipSourceBuilder.SetVectorStore(qdrant.NewSearchAdapter(root.Process.VectorSvc))
 			}
 			if cfg.Reranker.Enabled {
 				clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
@@ -151,7 +152,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// PR4.E: build mediaCurator inline (was in wireScriptFlowExtras + setter).
 		var mediaCurator *scripts.MediaCurator
 		if (root.Process.VectorSvc != nil || root.Repos.ClipsRepo != nil) && engine != nil {
-			mediaCurator = scripts.NewMediaCurator(root.Process.VectorSvc, cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
+			mediaCurator = scripts.NewMediaCurator(qdrant.NewSearchAdapter(root.Process.VectorSvc), cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
 		}
 
 		// PR4.E: build harvestSvc inline (was conditional setter call).

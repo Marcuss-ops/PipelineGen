@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 func (s *Service) SearchClips(ctx context.Context, query string, source string, mediaType string, limit int, minScore float64) ([]MatchAsset, error) {
@@ -20,7 +20,7 @@ func (s *Service) SearchClips(ctx context.Context, query string, source string, 
 	if s.embedder == nil {
 		return nil, fmt.Errorf("embedding client not configured")
 	}
-	if s.vectorSvc == nil {
+	if s.vectorSearchPort == nil {
 		return nil, fmt.Errorf("vector store not configured")
 	}
 	if limit <= 0 {
@@ -43,7 +43,7 @@ func (s *Service) SearchClips(ctx context.Context, query string, source string, 
 	if topK <= 0 {
 		topK = 30
 	}
-	searchResults, err := s.vectorSvc.HybridSearch(ctx, qdrant.HybridSearchRequest{
+	searchResults, err := s.vectorSearchPort.HybridSearch(ctx, appsearch.HybridSearchRequest{
 		QueryText:            normalizedQuery,
 		DenseVector:          queryVec,
 		DenseVectorName:      s.cfg.TextVectorName,
@@ -87,7 +87,7 @@ func (s *Service) SearchClips(ctx context.Context, query string, source string, 
 			}
 
 			type scored struct {
-				r     qdrant.SearchResult
+				r     appsearch.VectorSearchResult
 				score float64
 			}
 			sorted := make([]scored, 0, len(searchResults))
@@ -98,7 +98,7 @@ func (s *Service) SearchClips(ctx context.Context, query string, source string, 
 				return cmp.Compare(b.score, a.score)
 			})
 
-			reordered := make([]qdrant.SearchResult, 0, len(sorted))
+			reordered := make([]appsearch.VectorSearchResult, 0, len(sorted))
 			for _, sc := range sorted {
 				sc.r.Score = sc.score
 				reordered = append(reordered, sc.r)

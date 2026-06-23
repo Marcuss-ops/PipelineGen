@@ -6,11 +6,11 @@ import (
 	"sort"
 	"strings"
 
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/termutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -46,7 +46,7 @@ func NewService(
 	dataDir, nodeScraperDir, scriptsDir string,
 	stockRepo, artlistRepo, clipsRepo *assets.ClipsRepository,
 	catalogRepo *catalog.Repository,
-	vectorSvc *qdrant.Service,
+	vectorStorePort appsearch.VectorStorePort,
 	embedder asset.Embedder,
 ) *Service {
 	s := &Service{
@@ -71,8 +71,8 @@ func NewService(
 		s.clipSearch,
 	)
 	// Wire vector store (optional) for Qdrant hybrid search via the engine.
-	if vectorSvc != nil {
-		s.engine.SetVectorStore(vectorSvc)
+	if vectorStorePort != nil {
+		s.engine.SetVectorStore(vectorStorePort)
 	}
 
 	return s

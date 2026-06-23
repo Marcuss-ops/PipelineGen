@@ -180,7 +180,7 @@ func TestSelectClipsForTopic_QdrantOnly(t *testing.T) {
 	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
-	builder.SetVectorStore(svc)
+	builder.SetVectorStore(qdrant.NewSearchAdapter(svc))
 
 	clipIDs, report, err := builder.SelectClipsForTopic(ctx, "some obscure topic with no like match", 10)
 	if err != nil {
@@ -228,7 +228,7 @@ func TestSelectClipsForTopic_MergeWithDedup(t *testing.T) {
 	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
-	builder.SetVectorStore(svc)
+	builder.SetVectorStore(qdrant.NewSearchAdapter(svc))
 
 	clipIDs, report, err := builder.SelectClipsForTopic(ctx, "Pompeii", 10)
 	if err != nil {
@@ -286,7 +286,7 @@ func TestSelectClipsForTopic_MergeQdrantAddsNewClips(t *testing.T) {
 	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
-	builder.SetVectorStore(svc)
+	builder.SetVectorStore(qdrant.NewSearchAdapter(svc))
 
 	clipIDs, _, err := builder.SelectClipsForTopic(ctx, "Pompeii", 10)
 	if err != nil {
@@ -330,7 +330,7 @@ func TestSelectClipsForTopic_LIKEFailsQdrantFallback(t *testing.T) {
 	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
-	builder.SetVectorStore(svc)
+	builder.SetVectorStore(qdrant.NewSearchAdapter(svc))
 
 	// Search for something that won't match LIKE at all
 	clipIDs, report, err := builder.SelectClipsForTopic(ctx, "zzz_nonexistent_topic_zzz", 10)
@@ -364,7 +364,7 @@ func TestSelectClipsForTopic_QdrantFailsLIKEOnly(t *testing.T) {
 	}
 	vecCfg := qdrant.Config{URL: "http://mock:6333", Collection: "test", SparseVectorName: "bm25_text"}
 	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
-	builder.SetVectorStore(svc)
+	builder.SetVectorStore(qdrant.NewSearchAdapter(svc))
 
 	clipIDs, report, err := builder.SelectClipsForTopic(ctx, "Pompeii", 10)
 	if err != nil {
@@ -543,7 +543,7 @@ func TestSelectClipsForTopic_DedupWithQdrantAndLIKE(t *testing.T) {
 	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
-	builder.SetVectorStore(svc)
+	builder.SetVectorStore(qdrant.NewSearchAdapter(svc))
 
 	clipIDs, report, err := builder.SelectClipsForTopic(ctx, "Pompeii", 10)
 	if err != nil {
@@ -581,7 +581,7 @@ func TestSelectClipsForTopic_QdrantGetClipNotFound(t *testing.T) {
 	svc := qdrant.NewService(mock, vecCfg, zap.NewNop())
 
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
-	builder.SetVectorStore(svc)
+	builder.SetVectorStore(qdrant.NewSearchAdapter(svc))
 
 	clipIDs, _, err := builder.SelectClipsForTopic(ctx, "exists", 10)
 	if err != nil {
