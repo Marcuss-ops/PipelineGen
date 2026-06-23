@@ -656,7 +656,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	assocService := associationpkg.NewService(
 		cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir,
 		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.CatalogRepo,
-		process.VectorSvc, embedder,
+		qdrant.NewSearchAdapter(process.VectorSvc), embedder,
 	)
 	log.Info("embedding.Embedder injected into association service (infrastructure/embeddings/python)")
 	if process.VectorSvc != nil {

@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
@@ -24,13 +25,14 @@ type JobService interface {
 }
 
 type Service struct {
-	vectorSvc *qdrant.Service
-	embedder  EmbeddingClient
-	jobSvc    JobService
-	reranker  *reranker.Client
-	rerankCfg config.RerankerConfig
-	cfg       *config.VectorSearchConfig
-	log       *zap.Logger
+	vectorSvc        *qdrant.Service            // full interface for index_health.go
+	vectorSearchPort appsearch.VectorStorePort   // narrow port for match.go / search_clips.go
+	embedder         EmbeddingClient
+	jobSvc           JobService
+	reranker         *reranker.Client
+	rerankCfg        config.RerankerConfig
+	cfg              *config.VectorSearchConfig
+	log              *zap.Logger
 
 	// IndexHealth cross-check inputs — narrow interface seams defined in
 	// index_health.go (IndexHealthClips / IndexHealthOutbox). Concrete
@@ -74,16 +76,17 @@ func NewService(
 		log.Warn("realtime.NewService: outbox repository is nil — pending_outbox/dead_letter will be reported as 0")
 	}
 	return &Service{
-		vectorSvc:      vectorSvc,
-		embedder:       embedder,
-		jobSvc:         jobSvc,
-		reranker:       rerankerClient,
-		rerankCfg:      rerankCfg,
-		cfg:            cfg,
-		clips:          clips,
-		outbox:         outbox,
-		log:            log,
-		embeddingCache: make(map[string][]float32),
+		vectorSvc:        vectorSvc,
+		vectorSearchPort: qdrant.NewSearchAdapter(vectorSvc),
+		embedder:         embedder,
+		jobSvc:           jobSvc,
+		reranker:         rerankerClient,
+		rerankCfg:        rerankCfg,
+		cfg:              cfg,
+		clips:            clips,
+		outbox:           outbox,
+		log:              log,
+		embeddingCache:   make(map[string][]float32),
 	}
 }
 
@@ -147,6 +150,7 @@ func (s *Service) EmbedTextForVector(ctx context.Context, text string, mode stri
 	return s.getEmbeddingForVector(ctx, text, mode)
 }
 
-func (s *Service) VectorStore() *qdrant.Service {
-	return s.vectorSvc
+// VectorStore returns the narrow vector search port used by match.go and search_clips.go.
+func (s *Service) VectorStore() appsearch.VectorStorePort {
+	return s.vectorSearchPort
 }

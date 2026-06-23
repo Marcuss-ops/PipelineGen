@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -25,7 +25,7 @@ type Association interface {
 // Engine orchestrates multiple associations to find the best matches.
 type Engine struct {
 	sources     []Association
-	vectorStore *qdrant.Service
+	vectorStore appsearch.VectorStorePort
 }
 
 func NewEngine(sources ...Association) *Engine {
@@ -34,7 +34,7 @@ func NewEngine(sources ...Association) *Engine {
 
 // SetVectorStore injects the vector store for Qdrant hybrid search (dense + sparse BM25).
 // When set, ScoreMedia uses Qdrant RRF fusion instead of ad-hoc linear+semantic scoring.
-func (e *Engine) SetVectorStore(vs *qdrant.Service) {
+func (e *Engine) SetVectorStore(vs appsearch.VectorStorePort) {
 	e.vectorStore = vs
 }
 
@@ -80,7 +80,7 @@ func deduplicateMatches(matches []ScoredMatch) []ScoredMatch {
 func (e *Engine) ScoreMedia(ctx context.Context, query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
 	// Prefer Qdrant hybrid search if available
 	if e.vectorStore != nil && len(queryEmb) > 0 && query != "" {
-		results, err := e.vectorStore.HybridSearch(ctx, qdrant.HybridSearchRequest{
+		results, err := e.vectorStore.HybridSearch(ctx, appsearch.HybridSearchRequest{
 			QueryText:   query,
 			DenseVector: queryEmb,
 			Limit:       30,

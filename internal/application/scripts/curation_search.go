@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // ── Search (with multi-query expansion) ───────────────────────────────────
@@ -182,7 +182,7 @@ func (s *MediaCurator) hybridSearchQuery(ctx context.Context, query string, sour
 		queryVec[i] = float32(v)
 	}
 
-	results, err := s.vectorSvc.HybridSearch(ctx, qdrant.HybridSearchRequest{
+	results, err := s.vectorSvc.HybridSearch(ctx, appsearch.HybridSearchRequest{
 		QueryText:            normalizedQuery,
 		DenseVector:          queryVec,
 		DenseVectorName:      "text",
