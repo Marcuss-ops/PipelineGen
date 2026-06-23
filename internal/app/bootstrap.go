@@ -331,6 +331,13 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		deferredStartJobRunner = jobs.startJobRunner
 	}
 
+	// PR9-A (June 2026): capture the Drive background-initialisation
+	// closure extracted from BuildDriveBundle.
+	var driveStart func()
+	if root != nil {
+		driveStart = root.DriveStart
+	}
+
 	cleanupStack := make([]func(), 0, 8)
 	cleanupStack = append(cleanupStack, coreClean)
 	cleanupStack = append(cleanupStack, func() {
@@ -371,7 +378,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		}
 	}
 
-	lifecycle := NewServerLifecycle(deferredStartJobRunner, cleanup)
+	lifecycle := NewServerLifecycle(deferredStartJobRunner, driveStart, cleanup)
 
 	return &AppDeps{
 		Registry:      registryWiring.Registry,

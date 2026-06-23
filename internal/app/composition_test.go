@@ -141,6 +141,8 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.Maint, "root.Maint")
 	require.NotNil(t, root.Utility, "root.Utility")
 	require.NotNil(t, root.Ctx, "root.Ctx")
+	// PR9-A (June 2026): DriveStart closure is always non-nil when Drive bundle is built.
+	require.NotNil(t, root.DriveStart, "root.DriveStart (PR9-A deferred side-effect closure)")
 
 	// RepoBundle canaries (8 fields).
 	require.NotNil(t, root.Repos.ScriptsRepo, "root.Repos.ScriptsRepo")
@@ -278,7 +280,10 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 // someone added a new spawn to a Build*Bundle body — that is the bug
 // this test is here to catch.
 const (
-	frozenGoroutineInBuildDriveBundle  = 1 // `go ensureStyleDriveFolders(...)`
+	// PR9-A (June 2026): `go ensureStyleDriveFolders(...)` moved from
+	// BuildDriveBundle body into the returned startDriveBackgroundFolders
+	// closure. The builder body is now side-effect-free.
+	frozenGoroutineInBuildDriveBundle  = 0
 	frozenGoroutineInBuildOutboxBundle = 2 // concurrent.SafeGo x2 (pool + shutdown)
 )
 
@@ -350,7 +355,7 @@ func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 	// Documented spawn sites: per-builder frozen expectations for the
 	// sites that currently exist (today: DriveBundle + OutboxBundle).
 	require.Equal(t, frozenGoroutineInBuildDriveBundle, counts["BuildDriveBundle"],
-		"BuildDriveBundle spawn count drifted. Migrating ensureStyleDriveFolders to lifecycle.go is a future PR4.E+ wave; update `frozenGoroutineInBuildDriveBundle` in lockstep.")
+		"BuildDriveBundle spawn count drifted. ensureStyleDriveFolders goroutine was moved to the standalone startDriveBackgroundFolders function (PR9-A, June 2026); update `frozenGoroutineInBuildDriveBundle` in lockstep.")
 	require.Equal(t, frozenGoroutineInBuildOutboxBundle, counts["BuildOutboxBundle"],
 		"BuildOutboxBundle spawn count drifted. Migrating outbox-pool SafeGo x2 to lifecycle.go is documented in lifecycle.go comment line ~294; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
 
