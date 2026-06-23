@@ -1,31 +1,40 @@
-// Package searchqueries provides HTTP handlers for managing scheduled topic searches.
-package searchqueries
+// Package assets (api/assets) — handler_searchqueries.go holds the
+// SearchQueriesHandler CRUD transport for scheduled YouTube topic
+// searches. Wave 14 close (June 2026): this receiver was absorbed
+// from the standalone internal/api/searchqueries/ package.
+//
+// Routes mounted on the `/search-queries` prefix module →
+// /api/search-queries/{, /active, /:id, /:id/results}.
+package assets
 
 import (
 	"net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
-// SearchqueriesHandler handles CRUD operations for search_queries (scheduled YouTube topic searches).
-type SearchqueriesHandler struct {
+// SearchQueriesHandler handles CRUD operations for search_queries
+// (scheduled YouTube topic searches). Owner of the SQL repo for
+// `search_queries` table; previously lived in api/searchqueries.
+type SearchQueriesHandler struct {
 	repo *assets.SearchQueriesRepository
 	log  *zap.Logger
 }
 
-// NewHandler creates a new search queries API handler.
-func NewSearchqueriesHandler(repo *assets.SearchQueriesRepository, log *zap.Logger) *SearchqueriesHandler {
-	return &SearchqueriesHandler{repo: repo, log: log}
+// NewSearchQueriesHandler creates a new search queries API handler.
+func NewSearchQueriesHandler(repo *assets.SearchQueriesRepository, log *zap.Logger) *SearchQueriesHandler {
+	return &SearchQueriesHandler{repo: repo, log: log}
 }
 
-// RegisterRoutes registers the search queries CRUD routes under the given router group.
-func (h *SearchqueriesHandler) RegisterRoutes(r *gin.RouterGroup) {
+// RegisterRoutes registers the search queries CRUD routes under the
+// given router group. Callers must mount the module at `/search-queries`
+// so the resulting URLs are /api/search-queries/{,/active,/...
+func (h *SearchQueriesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("", h.ListAll)
 	r.GET("/active", h.ListActive)
 	r.GET("/:id", h.GetByID)
@@ -35,7 +44,7 @@ func (h *SearchqueriesHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 // ListAll returns all search queries, active first.
-func (h *SearchqueriesHandler) ListAll(c *gin.Context) {
+func (h *SearchQueriesHandler) ListAll(c *gin.Context) {
 	queries, err := h.repo.ListAll(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list search queries", zap.Error(err))
@@ -46,7 +55,7 @@ func (h *SearchqueriesHandler) ListAll(c *gin.Context) {
 }
 
 // ListActive returns all active search queries.
-func (h *SearchqueriesHandler) ListActive(c *gin.Context) {
+func (h *SearchQueriesHandler) ListActive(c *gin.Context) {
 	queries, err := h.repo.ListActive(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list active search queries", zap.Error(err))
@@ -57,7 +66,7 @@ func (h *SearchqueriesHandler) ListActive(c *gin.Context) {
 }
 
 // GetByID returns a single search query by ID.
-func (h *SearchqueriesHandler) GetByID(c *gin.Context) {
+func (h *SearchQueriesHandler) GetByID(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
 		api.BadRequest(c, "id parameter is required")
@@ -88,7 +97,7 @@ type SearchQueryUpsertRequest struct {
 }
 
 // Upsert creates or updates a search query.
-func (h *SearchqueriesHandler) Upsert(c *gin.Context) {
+func (h *SearchQueriesHandler) Upsert(c *gin.Context) {
 	var req SearchQueryUpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
@@ -121,7 +130,7 @@ func (h *SearchqueriesHandler) Upsert(c *gin.Context) {
 }
 
 // Delete removes a search query by ID.
-func (h *SearchqueriesHandler) Delete(c *gin.Context) {
+func (h *SearchQueriesHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
 		api.BadRequest(c, "id parameter is required")
@@ -134,11 +143,11 @@ func (h *SearchqueriesHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	api.OK(c, gin.H{"ok": true, "deleted_id": id})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "deleted_id": id})
 }
 
 // ListResults returns all processed results for a search query.
-func (h *SearchqueriesHandler) ListResults(c *gin.Context) {
+func (h *SearchQueriesHandler) ListResults(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
 		api.BadRequest(c, "id parameter is required")
@@ -151,5 +160,6 @@ func (h *SearchqueriesHandler) ListResults(c *gin.Context) {
 		api.InternalError(c, err)
 		return
 	}
+
 	api.OK(c, gin.H{"results": results})
 }

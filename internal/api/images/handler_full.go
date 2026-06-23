@@ -1,13 +1,28 @@
-package fullimages
+// Package images (api/images) — handler_full.go holds the FullImagesHandler.
+// Wave 14 close (June 2026): this receiver was absorbed from the standalone
+// internal/api/fullimages/ package.
+//
+// The full-images endpoint (/images/video/generate) lives alongside the
+// canonical image endpoints (search/diagnostics/upload/sync/generate/animate/
+// webhook/remote) inside the same package. Two siblings coexist:
+//   - ImagesHandler    (ImagesHandler.RegisterRoutes mounts /images/{*, /search/diagnostics/upload/sync/generate/animate/webhook/remote})
+//   - FullImagesHandler (FullImagesHandler.RegisterRoutes mounts /images/video/*)
+//
+// The router module (registry.go) registers both through the same /images
+// prefix module so the resulting public URLs are /api/images/...
+package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 )
 
 // FullImagesHandler exposes the FullImages endpoint under /images/video/generate.
+// Generates one image per section — no entity extraction, no asset
+// association. Pure image generation per section using Google/NVIDIA AI.
 type FullImagesHandler struct {
 	service *mediafullimages.Service
 }
@@ -18,6 +33,10 @@ func NewFullImagesHandler(svc *mediafullimages.Service) *FullImagesHandler {
 }
 
 // RegisterRoutes registers the route on the provided RouterGroup.
+// The System module mounts this handler on the same /images prefix
+// group as ImagesHandler (sibling routes). Sub-path /video/generate
+// is intentionally distinct from ImagesHandler's /generate so the two
+// coexist without collision in the gin router.
 func (h *FullImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/video/generate", h.GenerateFullImages)
 }
@@ -37,7 +56,7 @@ type GenerateFullImagesResponse struct {
 	Videos []mediafullimages.SectionVideo `json:"videos"`
 }
 
-// GenerateFullImages handles POST /images/generate/fullimages.
+// GenerateFullImages handles POST /images/video/generate.
 // It generates one image per section — no entity extraction, no asset
 // association. Pure image generation per section using Google/NVIDIA AI.
 func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {

@@ -1,4 +1,19 @@
-package workers
+// Package jobs (api/jobs) — handler_workers.go holds the
+// internal-worker-broker HTTP transport used by the remote cmd/worker
+// binary to claim and complete jobs. Wave 14 close (June 2026): this
+// receiver was absorbed from the standalone internal/api/workers/
+// package as a sibling to JobsHandler.
+//
+// Critical contract — MOUNTED ON A NON-API PREFIX:
+//   - JobsHandler          mounts on `/jobs` → /api/jobs/{, stats, :id ...}
+//   - WorkersBrokerHandler mounts on remoteshared.InternalPathPrefix
+//                            (typically /internal/v1/) → NOT under /api/.
+// See internal/api/server.go::Router.SetWorkerHandler and
+// remoteshared.InternalPathPrefix for the exact routing context.
+//
+// Two receivers coexist in the same package: the public-facing JobsHandler
+// (admin lifecycle) and the internal-workers broker (worker binary RPC).
+package jobs
 
 import (
 	"context"
@@ -7,14 +22,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 )
 
+// Broker is the narrow port for worker session RPC. Satisfied by
+// *appjobs.Service in production; tests can stub.
 type Broker interface {
 	RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error)
 	Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error
@@ -26,6 +42,8 @@ type Broker interface {
 	IsCancelled(ctx context.Context, jobID string, leaseID string) (bool, error)
 }
 
+// AssetTransferService is the narrow port for the worker binary's
+// asset push/pull. Satisfied by *jobs.assets.AssetTransferService.
 type AssetTransferService interface {
 	Download(ctx context.Context, assetID string) (io.ReadCloser, string, error)
 	InitiateUpload(ctx context.Context, assetID string) (*assets.UploadResponse, error)
@@ -33,17 +51,23 @@ type AssetTransferService interface {
 	FinalizeUpload(ctx context.Context, assetID string) error
 }
 
-type InternalworkerHandler struct {
+// WorkersBrokerHandler is the worker-binary RPC handler. Mounted on
+// remoteshared.InternalPathPrefix by the server, NOT on /api/.
+type WorkersBrokerHandler struct {
 	broker Broker
 	assets AssetTransferService
 	log    *zap.Logger
 }
 
-func NewInternalworkerHandler(broker Broker, assets AssetTransferService, log *zap.Logger) *InternalworkerHandler {
-	return &InternalworkerHandler{broker: broker, assets: assets, log: log}
+// NewWorkersBrokerHandler creates a new worker broker HTTP handler.
+func NewWorkersBrokerHandler(broker Broker, assets AssetTransferService, log *zap.Logger) *WorkersBrokerHandler {
+	return &WorkersBrokerHandler{broker: broker, assets: assets, log: log}
 }
 
-func (h *InternalworkerHandler) RegisterRoutes(r *gin.RouterGroup) {
+// RegisterRoutes registers the worker-broker routes on the supplied
+// RouterGroup. Caller is expected to mount this on the internal
+// prefix (NOT /api/).
+func (h *WorkersBrokerHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/workers/register", h.RegisterWorker)
 	r.POST("/workers/heartbeat", h.Heartbeat)
 	r.POST("/jobs/claim", h.Claim)
@@ -66,7 +90,7 @@ type registerWorkerRequest struct {
 	Capabilities appjobs.WorkerCapabilities `json:"capabilities"`
 }
 
-func (h *InternalworkerHandler) RegisterWorker(c *gin.Context) {
+func (h *WorkersBrokerHandler) RegisterWorker(c *gin.Context) {
 	var req registerWorkerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
@@ -87,7 +111,7 @@ func (h *InternalworkerHandler) RegisterWorker(c *gin.Context) {
 	api.OK(c, session)
 }
 
-func (h *InternalworkerHandler) Heartbeat(c *gin.Context) {
+func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
 	var req struct {
 		WorkerID        string `json:"worker_id"`
 		WorkerSessionID string `json:"worker_session_id"`
@@ -108,7 +132,7 @@ func (h *InternalworkerHandler) Heartbeat(c *gin.Context) {
 	api.OK(c, gin.H{"ok": true})
 }
 
-func (h *InternalworkerHandler) Claim(c *gin.Context) {
+func (h *WorkersBrokerHandler) Claim(c *gin.Context) {
 	var req appjobs.ClaimCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
@@ -122,7 +146,7 @@ func (h *InternalworkerHandler) Claim(c *gin.Context) {
 	api.OK(c, lease)
 }
 
-func (h *InternalworkerHandler) Renew(c *gin.Context) {
+func (h *WorkersBrokerHandler) Renew(c *gin.Context) {
 	var req appjobs.RenewCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
@@ -137,7 +161,7 @@ func (h *InternalworkerHandler) Renew(c *gin.Context) {
 	api.OK(c, lease)
 }
 
-func (h *InternalworkerHandler) Progress(c *gin.Context) {
+func (h *WorkersBrokerHandler) Progress(c *gin.Context) {
 	var req appjobs.ProgressCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
@@ -151,7 +175,7 @@ func (h *InternalworkerHandler) Progress(c *gin.Context) {
 	api.OK(c, gin.H{"ok": true})
 }
 
-func (h *InternalworkerHandler) Complete(c *gin.Context) {
+func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 	var req appjobs.CompleteCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
@@ -165,7 +189,7 @@ func (h *InternalworkerHandler) Complete(c *gin.Context) {
 	api.OK(c, gin.H{"ok": true})
 }
 
-func (h *InternalworkerHandler) Fail(c *gin.Context) {
+func (h *WorkersBrokerHandler) Fail(c *gin.Context) {
 	var req appjobs.FailCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
@@ -179,7 +203,7 @@ func (h *InternalworkerHandler) Fail(c *gin.Context) {
 	api.OK(c, gin.H{"ok": true})
 }
 
-func (h *InternalworkerHandler) IsCancelled(c *gin.Context) {
+func (h *WorkersBrokerHandler) IsCancelled(c *gin.Context) {
 	cancelled, err := h.broker.IsCancelled(c.Request.Context(), c.Param("id"), c.Query("lease_id"))
 	if err != nil {
 		api.InternalError(c, err)
@@ -188,7 +212,7 @@ func (h *InternalworkerHandler) IsCancelled(c *gin.Context) {
 	api.OK(c, gin.H{"cancelled": cancelled})
 }
 
-func (h *InternalworkerHandler) DownloadAsset(c *gin.Context) {
+func (h *WorkersBrokerHandler) DownloadAsset(c *gin.Context) {
 	if h.assets == nil {
 		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return
@@ -206,7 +230,7 @@ func (h *InternalworkerHandler) DownloadAsset(c *gin.Context) {
 	c.DataFromReader(http.StatusOK, -1, "application/octet-stream", rc, nil)
 }
 
-func (h *InternalworkerHandler) InitiateUpload(c *gin.Context) {
+func (h *WorkersBrokerHandler) InitiateUpload(c *gin.Context) {
 	if h.assets == nil {
 		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return
@@ -226,7 +250,7 @@ func (h *InternalworkerHandler) InitiateUpload(c *gin.Context) {
 	api.OK(c, out)
 }
 
-func (h *InternalworkerHandler) UploadAssetContent(c *gin.Context) {
+func (h *WorkersBrokerHandler) UploadAssetContent(c *gin.Context) {
 	if h.assets == nil {
 		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return
@@ -245,7 +269,7 @@ func (h *InternalworkerHandler) UploadAssetContent(c *gin.Context) {
 	api.OK(c, gin.H{"ok": true})
 }
 
-func (h *InternalworkerHandler) FinalizeUpload(c *gin.Context) {
+func (h *WorkersBrokerHandler) FinalizeUpload(c *gin.Context) {
 	if h.assets == nil {
 		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return

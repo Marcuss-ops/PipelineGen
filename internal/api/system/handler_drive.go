@@ -1,4 +1,15 @@
-package drive
+// Package system (api/system) — handler_drive.go holds the DriveHandler
+// (reconcile/cleanup/folders/move/resolve-by-id) as a second receiver in
+// the system package. Wave 14 close (June 2026): this file absorbed
+// the legacy internal/api/drive/handler.go when the standalone
+// internal/api/drive/ directory was eliminated.
+//
+// The route prefix `/drive` is mounted on the system Module's group
+// in module.go::Module.RegisterRoutes, sibling to /system/doctor.
+// All exports are reconciled with the canonical system handler:
+// package `system` now owns both SystemHandler (doctor) and
+// DriveHandler (admin/Drive ops).
+package system
 
 import (
 	"fmt"
@@ -14,17 +25,24 @@ import (
 	"go.uber.org/zap"
 )
 
+// DriveHandler handles Drive admin ops (reconcile, cleanup, folders,
+// move, resolve-by-id). It is constructed in app.WireRegistry and
+// mounted by system.Module on the /drive sub-group.
 type DriveHandler struct {
 	reconcileSvc  *drivecleanup.Service
 	driveUploader *drive.Uploader
 }
 
+// NewDriveHandler creates a new DriveHandler.
 func NewDriveHandler(reconcileSvc *drivecleanup.Service, driveUploader *drive.Uploader) *DriveHandler {
 	return &DriveHandler{reconcileSvc: reconcileSvc, driveUploader: driveUploader}
 }
 
+// RegisterRoutes registers the Drive routes on the supplied RouterGroup.
+// The system Module mounts this handler on a `/drive` sub-group so the
+// resulting URLs are /api/drive/...
 func (h *DriveHandler) RegisterRoutes(r *gin.RouterGroup) {
-	zap.L().Info("RegisterRoutes called", zap.String("handler_addr", fmt.Sprintf("%p", h)))
+	zap.L().Info("DriveHandler.RegisterRoutes called", zap.String("handler_addr", fmt.Sprintf("%p", h)))
 	r.POST("/reconcile", h.Reconcile)
 	r.POST("/cleanup", h.Cleanup)
 	r.POST("/folders", h.CreateFolders)
@@ -67,7 +85,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	created := make(map[string]string, len(req.Folders))
-	var errors []string
+	var errs []string
 
 	for _, folderName := range req.Folders {
 		if folderName == "" {
@@ -75,7 +93,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		}
 		folderID, err := h.driveUploader.GetOrCreateFolder(ctx, folderName, parentID)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("%s: %v", folderName, err))
+			errs = append(errs, fmt.Sprintf("%s: %v", folderName, err))
 			continue
 		}
 		created[folderName] = folderID
@@ -86,8 +104,8 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		"parent_id":     req.ParentID,
 		"created":       created,
 		"created_count": len(created),
-		"errors":        errors,
-		"error_count":   len(errors),
+		"errors":        errs,
+		"error_count":   len(errs),
 	})
 }
 
