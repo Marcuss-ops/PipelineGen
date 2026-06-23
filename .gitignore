@@ -187,8 +187,26 @@ local.env
 # Gemini CLI workspace metadata (local-only)
 .zai/
 
-# Archcheck binary (built locally by scripts/archcheck/)
-archcheck
+# Archcheck binary (built locally by scripts/archcheck/).
+# Anchored with leading '/' so the pattern matches only the root-level
+# build artifact. Without the anchor, gitignore treats `archcheck` as
+# matching any PATH COMPONENT named that way, which recursively excludes
+# the entire `scripts/archcheck/` tree (the W1 PR1 regression surfaced this).
+/archcheck
 
 # Docker secrets (never commit tokens)
 secrets/
+
+# PR1 (Repository truth, June 2026):
+#   * scripts/archcheck/current_report.json is a per-run diagnostic snapshot
+#     of the codebase scan; regenerated cheaply on every `go run ./scripts/archcheck`.
+#   * It is NEVER used as an allowlist (see scripts/archcheck/grandfathered_allowlist.json
+#     for the single source of truth on the ratchet).
+#   * Keeping it out-of-tree avoids polluting PR diffs with full-repo snapshots.
+scripts/archcheck/current_report.json
+# Validation transient logs (NOT shipped):
+ci_output.txt
+ci_full_output.txt
+/tmp/build.out
+/tmp/vet.out
+/tmp/test.out

@@ -22,12 +22,17 @@ pkg/                    leaf utilities
 
 ## Read in order
 
-1. `docs/architecture/DIRECTORY_REORGANIZATION.md`
-2. `docs/architecture/DATABASE_ORGANIZATION.md`
-3. `docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md`
-4. `architecture/ownership.yaml`
-5. `architecture/migration.yaml`
-6. `AGENTS.md`
+> **Nota (June 2026)**: i tre documenti storici sotto `docs/architecture/` sono
+> stati consolidati e rimossi. Il loro contenuto è ora distribuito tra i
+> file canonici qui sotto, che vanno letti nell'ordine indicato.
+
+1. `ARCHITECTURE.md` — sistema diagramma, data flow, ownership dei layer,
+   canonical structure definition of done (§1–§13).
+2. `architecture/ownership.yaml` — mappa canonica
+   "qual è il proprietario di X?" (single source of truth per capability).
+3. `architecture/migration.yaml` — tracker ratchet delle wave di
+   consolidamento (status monotone-decreasing, exit gate per wave).
+4. `AGENTS.md` — regole critiche del sistema + pattern canonici + Git Lessons.
 
 ## Execution order
 
