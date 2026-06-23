@@ -34,8 +34,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -129,6 +127,23 @@ func stageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 		}, extra...)
 		log.Info("pipeline_stage_completed", fields...)
 	}
+}
+
+// wrapPostGeneration is the 3-arg delegate that scripts.NewPipeline expects
+// for its post-generation hook position (5° positional arg). It builds a
+// canonical-script-only default pathResult and delegates to the full
+// wrapPostGenerationWithPath so the Pipeline type stays decoupled from
+// ScriptFlowHandler-only fields (ClipScenes / SearchResults / NarrativePlan
+// / CurateTimings). If Pipeline ever surfaces a real pathResult as
+// closure, swap this method's body — callers won't notice.
+func (h *ScriptFlowHandler) wrapPostGeneration(
+	ctx context.Context,
+	spec *script.GenerationSpec,
+	scriptBody string,
+) (entitiesJSON string, insights any, videoMetadata []scripts.VideoMetadata) {
+	return h.wrapPostGenerationWithPath(ctx, spec, scriptBody, &clipSourcePathResult{
+		WriteResult: &scripts.WriteScriptResult{Script: scriptBody},
+	})
 }
 
 // wrapPostGenerationWithPath is called by HandleClipScriptGenerateJob with the
@@ -1346,6 +1361,7 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, job *job.J
 	return response, nil
 }
 
-// (PR3 followup: removed var _ blank-assignments per code-reviewer F1+F2 —
-//  association/realtime imports are referenced legitimately elsewhere in
-//  this package, no need to suppress a no-warn compile-time signal.)
+// (PR3 fixup: dropped association / realtime imports — they were not used
+//  in this file, only the comment claimed so. Go imports are file-scoped;
+//  associate.realtime references live in flow.go (SearchScriptAssets,
+//  filterSearchAssets) and helpers.go.)

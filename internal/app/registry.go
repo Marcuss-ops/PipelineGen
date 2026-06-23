@@ -51,7 +51,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
@@ -290,7 +289,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				driveUploader = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
 			}
 			reconcileSvc := drivecleanup.NewService()
-			handler := driveapi.NewDriveHandler(reconcileSvc, driveUploader)
+			handler := systemapi.NewDriveHandler(reconcileSvc, driveUploader)
 			mod := module.NewRouteModule("drive", func() bool { return cfg.Features.DriveEnabled }, "/drive", handler, log)
 			log.Info("created Drive module")
 			return mod, nil

@@ -18,13 +18,11 @@ package script
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
@@ -900,5 +898,7 @@ func buildTextOnlyScriptPlan(
 	return plan
 }
 
-// (PR3 followup: dropped blank-assignments per code-reviewer F2 —
-//  errors and gin are referenced legitimately elsewhere in this package.)
+// (PR3 fixup: dropped errors and gin-gonic/gin imports — neither symbol
+//  was used in this file, only the comment claimed so. errors.Is lives in
+//  handler_jobs.go::buildVoiceoverDestination; gin types live in
+//  handler_flow.go.)
