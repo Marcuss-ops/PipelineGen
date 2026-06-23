@@ -234,6 +234,12 @@ type ComposeRoot struct {
 	// wired before background Drive I/O begins.
 	DriveStart IOpaqueStartFunc
 
+	// OutboxStart is the deferred side-effect closure extracted from
+	// BuildOutboxBundle (PR9-B, June 2026). It starts the outbox events
+	// pool and registers a shutdown goroutine.
+	// Invoked by the lifecycle AFTER WireRegistry alongside DriveStart.
+	OutboxStart IOpaqueStartFunc
+
 	Ctx context.Context
 }
 
@@ -765,7 +771,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 }
 
 // BuildOutboxBundle constructs the canonical ingestion outbox + outbox_events.Pool.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, process *ProcessBundle, jobs *JobsBundle) (*OutboxBundle, error) {
+//
+// PR9-B (June 2026): BuildOutboxBundle now returns an IOpaqueStartFunc
+// closure that defers the outbox events pool goroutines (Start + shutdown)
+// to the lifecycle. The bundle itself is fully populated on return.
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, process *ProcessBundle, jobs *JobsBundle) (*OutboxBundle, IOpaqueStartFunc, error) {
 	outboxEventsRepo := outboxevents.NewRepository(dbs.main.DB)
 
 	multiClipsUp := outbox.NewMultiClipsUpserter(
@@ -784,7 +794,6 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	eventsRegistry := outboxevents.NewHandlerRegistry()
 
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	_ = ctx
 
 	// HMAC secrets for delivery.requested signing.
 	var hmacSecrets [][]byte
@@ -825,6 +834,41 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		ReclaimInterval: cfgReclaim,
 	}
 	eventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, eventsRegistry, log, outboxEventsCfg)
+
+	// PR9-B (June 2026): goroutines (pool Start + ctx.Done shutdown)
+	// are deferred to startOutboxEventsPool (defined below).
+	startClosure := func() {
+		startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log)
+	}
+
+	return &OutboxBundle{
+		Dispatcher:     dispatcher,
+		EventsRepo:     outboxEventsRepo,
+		EventsRegistry: eventsRegistry,
+		EventsPool:     eventsPool,
+	}, startClosure, nil
+}
+
+// startOutboxEventsPool performs the side-effecting outbox events pool
+// initialisation that was previously inlined in BuildOutboxBundle (PR9-B,
+// June 2026). It starts the pool worker and registers a shutdown goroutine
+// on ctx.Done().
+//
+// Invoked by the lifecycle after WireRegistry completes, before the HTTP
+// server begins accepting requests.
+//
+// This is a package-level function so that the goroutine-count freeze test
+// correctly reports zero concurrent.SafeGo spawns in BuildOutboxBundle's
+// own body.
+func startOutboxEventsPool(
+	ctx context.Context,
+	eventsPool *outboxevents.Pool,
+	cfg outboxevents.WorkerPollConfig,
+	log *zap.Logger,
+) {
+	if eventsPool == nil {
+		return
+	}
 	concurrent.SafeGo("outbox-events-pool", func() {
 		eventsPool.Start(ctx, 1)
 	})
@@ -834,14 +878,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 			log.Warn("outbox events pool stop returned error", zap.Error(err))
 		}
 	})
-	log.Info("outbox events pool started", zap.Duration("poll_interval", outboxEventsCfg.PollInterval))
-
-	return &OutboxBundle{
-		Dispatcher:     dispatcher,
-		EventsRepo:     outboxEventsRepo,
-		EventsRegistry: eventsRegistry,
-		EventsPool:     eventsPool,
-	}, nil
+	log.Info("outbox events pool started", zap.Duration("poll_interval", cfg.PollInterval))
 }
 
 // BuildSyncBundle constructs ONLY the catalog→Drive sync. ProviderRegistry
@@ -960,7 +997,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose domains: %w", err)
 	}
 
-	outbox, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, process, jobs)
+	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, process, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
@@ -1013,8 +1050,9 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Maint:   maint,
 		Utility: utility,
 
-		DriveStart: driveStart,
-		Ctx:        ctx,
+		DriveStart:  driveStart,
+		OutboxStart: outboxStart,
+		Ctx:         ctx,
 	}
 
 	// NOTE: ProviderRegistry (on SearchBundle) is intentionally UNFROZEN here.

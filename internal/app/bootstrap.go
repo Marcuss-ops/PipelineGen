@@ -338,6 +338,13 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		driveStart = root.DriveStart
 	}
 
+	// PR9-B (June 2026): capture the outbox events pool start closure
+	// extracted from BuildOutboxBundle.
+	var outboxStart func()
+	if root != nil {
+		outboxStart = root.OutboxStart
+	}
+
 	cleanupStack := make([]func(), 0, 8)
 	cleanupStack = append(cleanupStack, coreClean)
 	cleanupStack = append(cleanupStack, func() {
@@ -378,7 +385,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		}
 	}
 
-	lifecycle := NewServerLifecycle(deferredStartJobRunner, driveStart, cleanup)
+	lifecycle := NewServerLifecycle(deferredStartJobRunner, driveStart, outboxStart, cleanup)
 
 	return &AppDeps{
 		Registry:      registryWiring.Registry,
