@@ -82,20 +82,20 @@ func main() {
 	)
 
 	// Build the full composition root, run wire-up, register all modules,
-	// and freeze the job dispatcher. Cleanup is wired by WireServices and
-	// runs in LIFO order on return (module stop → log DB close → logger
-	// flush). Caller MUST invoke deps.Cleanup() to avoid double-stop.
+	// and freeze the job dispatcher. Lifecycle wraps startBackgroundJobs
+	// (deferred job runner start) and buildCleanup (LIFO teardown).
+	// The server manages background services via the lifecycle — no
+	// separate defer.Cleanup() needed.
 	deps, err := app.WireServices(cfg, log, *mode)
 	if err != nil {
 		log.Fatal("failed to wire services", zap.Error(err))
 	}
-	defer deps.Cleanup()
 
-	// Build the HTTP server with the module registry (all known routes)
-	// and the internal worker handler (the /internal/v1/* endpoints used
-	// by the remote cmd/worker binary to claim jobs).
-	// Lifecycle is nil — background services are managed by deps.Cleanup().
-	server := api.NewServer(cfg, deps.Registry, deps.WorkerHandler, nil)
+	// Build the HTTP server with the module registry (all known routes),
+	// the internal worker handler (the /internal/v1/* endpoints used
+	// by the remote cmd/worker binary to claim jobs), and the lifecycle
+	// manager (background job runner + cleanup).
+	server := api.NewServer(cfg, deps.Registry, deps.WorkerHandler, deps.Lifecycle)
 	if err := server.Start(); err != nil {
 		log.Fatal("server failed", zap.Error(err))
 	}
