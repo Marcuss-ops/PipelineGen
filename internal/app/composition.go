@@ -27,6 +27,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -1001,29 +1002,42 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 // and the health-check Service (PR1 Health boundary, June 2026).
 // The healthService is built here so the router can wire it into
 // the thin-transport HealthHandler without importing infrastructure.
-func BuildUtilityBundle(cfg *config.Config) *UtilityBundle {
+//
+// Commits #1+#2 of fix/health-capabilities-optional: the *sql.DB is
+// passed in directly by the composition root so health checkers reuse
+// the canonical pool instead of opening a fresh sqlite handle per check.
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB) *UtilityBundle {
 	return &UtilityBundle{
 		Utility:       common.NewUtilityHandler(),
-		HealthService: buildHealthService(cfg),
+		HealthService: buildHealthService(cfg, db),
 	}
 }
 
 // buildHealthService constructs the health.Service from infrastructure
 // checkers. It lives in composition.go because it's the only place
 // that wires concrete adapters (PR1 Health boundary, June 2026).
-func buildHealthService(cfg *config.Config) *systemhealth.Service {
+//
+// fix/health-capabilities-optional Commit 1: constructor injection of
+// *storage.SQLiteDB so SQLiteChecker + JobsChecker reuse the canonical
+// connection pool (WAL/busy_timeout/pool size) instead of sql.Open per
+// health probe (legacy FD leak on Windows, pool limits ignored).
+func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.Service {
 	if cfg == nil {
 		return nil
 	}
+	var sqlDB *sql.DB
+	if db != nil {
+		sqlDB = db.DB
+	}
 	return systemhealth.NewService(systemhealth.ServiceDeps{
-		DB:    infrahealth.NewSQLiteChecker(cfg.Storage.DataDir),
+		DB:    infrahealth.NewSQLiteChecker(sqlDB),
 		Drive: infrahealth.NewDriveChecker(cfg.GetCredentialsPath(), cfg.GetTokenPath()),
 		Qdrant: infrahealth.NewQdrantChecker(
 			cfg.VectorSearch.URL,
 			cfg.VectorSearch.Collection,
 			cfg.VectorSearch.Enabled,
 		),
-		Jobs: infrahealth.NewJobsChecker(cfg.Storage.DataDir),
+		Jobs: infrahealth.NewJobsChecker(sqlDB),
 	})
 }
 
@@ -1082,7 +1096,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg)
+	utility := BuildUtilityBundle(cfg, dbs.main)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	if sync.CatalogSync != nil && jobs.Service != nil {
