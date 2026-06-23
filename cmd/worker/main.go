@@ -45,11 +45,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	assettransferclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // pre-flight constants. 30s is long enough for a healthy master to
