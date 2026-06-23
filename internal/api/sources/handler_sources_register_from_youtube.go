@@ -49,7 +49,7 @@ type RegisterFromYouTubeRequest struct {
 // If providerRegistry is unwired or no YouTube FetchProvider is
 // registered, the handler returns an error.
 func (h *Handler) RegisterFromYouTube(c *gin.Context) {
-	req, ok := bindJSON[RegisterFromYouTubeRequest](c)
+	req, ok := apiutil.BindJSON[RegisterFromYouTubeRequest](c)
 	if !ok {
 		return
 	}
