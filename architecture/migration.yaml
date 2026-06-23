@@ -457,8 +457,16 @@
 
 - id: 14
   title: API transport modules consolidation
-  status: done
-  verified_zero: true
+  # ci/archcheck-hard-fail (June 2026) PROMOTED Check 19 to hard-fail.
+  # Wave 14's rule forbids internal/infrastructure imports in internal/api/,
+  # but 28 real imports remain grandfathered in
+  # docs/migrations/api-infrastructure-imports-allowlist.txt while the
+  # API compaction migrates per docs/roadmap/PR3_API_COMPACTION.md.
+  # Per the user's literal instruction ("Cancella `status: done` sui
+  # wave che NON hanno passato il nuovo gate"), Wave 14 is honestly
+  # downgraded to in_progress until those 28 imports are extracted.
+  status: in_progress
+  verified_zero: false
   description: |
     Consolidamento dei moduli API completato (June 2026 snapshot):
     — api/books + api/lessons → api/content
@@ -511,6 +519,16 @@
     - {from: internal/api/script,       to: internal/api/script (compacted in-place)}
   rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
   exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files."
+  # ci/archcheck-hard-fail (June 2026) PROMOTED Check 19 (no
+  # internal/infrastructure imports in internal/api/) to hard-fail. Wave
+  # 14's rule above technically forbids such imports, but the in-flight
+  # consolidation has 28 grandfathered entries documented in
+  # docs/migrations/api-infrastructure-imports-allowlist.txt. These are
+  # tracked here so the gate's evidence requirement stays honest while
+  # the migration backlog is processed per docs/roadmap/PR3_API_COMPACTION.md.
+  grandfathered_imports_remaining: 28
+  grandfathered_imports_ref: docs/migrations/api-infrastructure-imports-allowlist.txt
+  grandfathered_imports_migration: docs/roadmap/PR3_API_COMPACTION.md (target PR3-PR2..PR5)
 
 # ── Wave 15 — Composition root alignment ─────────────────────────────────────
 
