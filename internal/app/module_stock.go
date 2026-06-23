@@ -1,7 +1,7 @@
 package app
 
 import (
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
@@ -32,7 +32,7 @@ type StockBundle struct {
 // StockPipelineWiring holds the StockPipeline module wiring.
 type StockPipelineWiring struct {
 	Handler *sources.StockHandler
-	Module  module.Module
+	Module  api.Module
 	Service *stockpipeline.Service
 }
 
@@ -66,7 +66,14 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	svc.SetMetadataWriter(metaWriter)
 	log.Info("metadata writer wired into stock pipeline")
 	handler := sources.NewStockHandler(svc, bundle.JobFacade, log)
-	mod := sources.NewStockPipelineModule(cfg, log, handler)
+	stockEnabled := cfg != nil && cfg.Features.StockPipelineEnabled
+	mod := api.NewRouteModule(
+		"stock-pipeline",
+		func() bool { return stockEnabled },
+		"/stock-pipeline",
+		handler,
+		log,
+	)
 	svc.RegisterHandler(bundle.Jobs)
 	return &StockPipelineWiring{Handler: handler, Module: mod, Service: svc}, nil
 }

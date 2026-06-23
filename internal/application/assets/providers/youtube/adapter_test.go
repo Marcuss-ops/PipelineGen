@@ -49,8 +49,8 @@ func newFetchAdapterWith(s searcher, f fetcher) *Adapter { return &Adapter{src: 
 
 type fakeFetcher struct {
 	lastReq youtubesrc.VideoCutRequest
-	result   *youtubesrc.VideoCutResult
-	err      error
+	result  *youtubesrc.VideoCutResult
+	err     error
 }
 
 func (f *fakeFetcher) DownloadAndCut(_ context.Context, req youtubesrc.VideoCutRequest) (*youtubesrc.VideoCutResult, error) {

@@ -105,5 +105,3 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 		group.GET("/search", func(c *gin.Context) {})
 	}
 }
-
-

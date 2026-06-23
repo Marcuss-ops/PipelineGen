@@ -225,4 +225,3 @@ func MergeNormalizedLists(lists [][]string, normalize NormalizeFunc, skip SkipFu
 func MergeNormalizedListsVariadic(normalize NormalizeFunc, skip SkipFunc, lists ...[]string) []string {
 	return MergeNormalizedLists(lists, normalize, skip)
 }
-

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"

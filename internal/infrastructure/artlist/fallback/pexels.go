@@ -114,10 +114,10 @@ func (p *Pexels) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp
 func (p *Pexels) decode(body []byte, term string, limit int) ([]artapp.Candidate, error) {
 	var payload struct {
 		Videos []struct {
-			ID         int              `json:"id"`
-			URL        string           `json:"url"`
-			Image      string           `json:"image"`
-			Duration   int              `json:"duration"`
+			ID         int               `json:"id"`
+			URL        string            `json:"url"`
+			Image      string            `json:"image"`
+			Duration   int               `json:"duration"`
 			VideoFiles []pexelsVideoFile `json:"video_files"`
 			User       struct {
 				Name string `json:"name"`

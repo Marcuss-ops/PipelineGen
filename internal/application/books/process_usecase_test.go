@@ -176,10 +176,10 @@ func TestProcessBookUseCase_HandleAsyncOK(t *testing.T) {
 	uc := NewProcessBookUseCase(&FakeBookProcessor{}, fakeJobs, zap.NewNop())
 
 	resp, err := uc.Handle(context.Background(), ProcessBookRequest{
-		FilePath:     "/tmp/in.pdf",
-		Async:        true,
-		Model:        "gpt-4",
-		GeneratePDF:  true,
+		FilePath:    "/tmp/in.pdf",
+		Async:       true,
+		Model:       "gpt-4",
+		GeneratePDF: true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -54,9 +54,9 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (map[string]any
 	if s.providers != nil {
 		for _, p := range s.providers.SearchProviders() {
 			if !typeAllowed(p.Capabilities(), req.MediaType) {
-			s.log.Debug("provider excluded by type filter",
-				"provider", p.Name(),
-				"requested_type", req.MediaType)
+				s.log.Debug("provider excluded by type filter",
+					"provider", p.Name(),
+					"requested_type", req.MediaType)
 				continue
 			}
 			out, err := p.Search(ctx, req)
@@ -245,16 +245,16 @@ func (s *Service) Recommend(ctx context.Context, req RecommendRequest) (*Recomme
 		}
 
 		results, err := s.vector.VectorStore().HybridSearch(ctx, HybridSearchRequest{
-			QueryText:         cleanQueryText(queryText),
-			DenseVector:       queryVector,
-			DenseVectorName:   vc.TextVectorName,
-			TranscriptVector:  queryVector,
+			QueryText:            cleanQueryText(queryText),
+			DenseVector:          queryVector,
+			DenseVectorName:      vc.TextVectorName,
+			TranscriptVector:     queryVector,
 			TranscriptVectorName: vc.TranscriptVectorName,
-			Limit:             req.TopK * 2,
-			MinScore:          minScore,
-			Source:            req.Source,
-			MediaType:         req.MediaType,
-			Language:          req.Language,
+			Limit:                req.TopK * 2,
+			MinScore:             minScore,
+			Source:               req.Source,
+			MediaType:            req.MediaType,
+			Language:             req.Language,
 		})
 		if err != nil {
 			s.log.Warn("recommend: search failed", "scene", i, "error", err)

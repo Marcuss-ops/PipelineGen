@@ -42,12 +42,12 @@ func (s *Service) Check(ctx context.Context, cmd HealthCommand) (*HealthResult, 
 		} else if report != nil {
 			result.Degraded = report.Degraded
 			result.Checks["index_health"] = map[string]any{
-				"ok":              report.OK,
-				"sqlite_assets":   report.SQLiteAssets,
-				"sqlite_indexed":  report.SQLiteIndexed,
-				"qdrant_points":   report.QdrantPoints,
-				"missing_qdrant":  report.MissingInQdrant,
-				"orphan_qdrant":   report.OrphanInQdrant,
+				"ok":               report.OK,
+				"sqlite_assets":    report.SQLiteAssets,
+				"sqlite_indexed":   report.SQLiteIndexed,
+				"qdrant_points":    report.QdrantPoints,
+				"missing_qdrant":   report.MissingInQdrant,
+				"orphan_qdrant":    report.OrphanInQdrant,
 				"degraded_sources": report.DegradedSources,
 			}
 		}

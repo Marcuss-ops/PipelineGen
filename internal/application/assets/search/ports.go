@@ -57,11 +57,11 @@ type SemanticSearchRequest struct {
 
 // SemanticSearchResult is the output of a vector search.
 type SemanticSearchResult struct {
-	Query    string              `json:"query"`
-	Vector   string              `json:"vector"`
-	Mode     string              `json:"mode"`
-	MinScore float64             `json:"min_score"`
-	Count    int                 `json:"count"`
+	Query    string               `json:"query"`
+	Vector   string               `json:"vector"`
+	Mode     string               `json:"mode"`
+	MinScore float64              `json:"min_score"`
+	Count    int                  `json:"count"`
 	Results  []VectorSearchResult `json:"results"`
 }
 

@@ -43,7 +43,7 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 		// state (the field name is part of the public Diagnostics
 		// response shape and stays for backwards compatibility).
 		HasArtlistDB: d.svc.mainDB != nil,
-		MainDBReady:    d.svc.mainDB != nil,
+		MainDBReady:  d.svc.mainDB != nil,
 	}
 
 	if d.svc.assetStore != nil {

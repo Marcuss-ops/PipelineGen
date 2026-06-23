@@ -344,10 +344,10 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 
 	scraperDir := writeFakeArtlistScraper(t, []Candidate{
 		{
-			ID:          "clip-1",
-			Title:       "City Night",
-			SourceRef:  "https://cdn.artlist.io/video.m3u8",
-			PageURL: "https://artlist.io/clip/city-night",
+			ID:        "clip-1",
+			Title:     "City Night",
+			SourceRef: "https://cdn.artlist.io/video.m3u8",
+			PageURL:   "https://artlist.io/clip/city-night",
 		},
 	})
 
@@ -429,10 +429,10 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 
 	scraperDir := writeFakeArtlistScraper(t, []Candidate{
 		{
-			ID:          "clip-1",
-			Title:       "City Night",
-			SourceRef:  "https://cdn.artlist.io/video.m3u8",
-			PageURL: "https://artlist.io/clip/city-night",
+			ID:        "clip-1",
+			Title:     "City Night",
+			SourceRef: "https://cdn.artlist.io/video.m3u8",
+			PageURL:   "https://artlist.io/clip/city-night",
 		},
 	})
 
@@ -514,10 +514,10 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 
 	scraperDir := writeFakeArtlistScraper(t, []Candidate{
 		{
-			ID:          "clip-1",
-			Title:       "City Night",
-			SourceRef:  "https://cdn.artlist.io/video.m3u8",
-			PageURL: "https://artlist.io/clip/city-night",
+			ID:        "clip-1",
+			Title:     "City Night",
+			SourceRef: "https://cdn.artlist.io/video.m3u8",
+			PageURL:   "https://artlist.io/clip/city-night",
 		},
 	})
 

@@ -31,4 +31,3 @@ func Str(v string) *string {
 func BoolDefault(v *bool, def bool) bool {
 	return DerefOr(v, def)
 }
-

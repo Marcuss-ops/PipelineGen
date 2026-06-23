@@ -83,7 +83,7 @@ func main() {
 		"pkg_to_internal":                        0,
 		"domain_to_application":                  0,
 		"domain_to_infrastructure":               0,
-		"application_to_api":                    0,
+		"application_to_api":                     0,
 		"application_to_database_sql":            0,
 		"gin_outside_api":                        0,
 		"os_exec_outside_infrastructure":         0,

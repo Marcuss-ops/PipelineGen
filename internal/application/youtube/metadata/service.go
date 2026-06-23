@@ -19,9 +19,9 @@ import (
 
 	"go.uber.org/zap"
 
+	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
-	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -30,33 +30,33 @@ import (
 // MetadataDeps holds dependencies for the metadata enrichment service (max 8 fields).
 // PR5 Phase 1 target: ≤8 fields — currently 6.
 type MetadataDeps struct {
-	Clips      ports.ClipStorePort
+	Clips       ports.ClipStorePort
 	MetaFetcher ports.VideoMetadataFetcherPort
-	Ollama     ports.OllamaClientPort
-	AssetRepo  asset.Repository
-	Cfg        *config.Config
-	Log        *zap.Logger
+	Ollama      ports.OllamaClientPort
+	AssetRepo   asset.Repository
+	Cfg         *config.Config
+	Log         *zap.Logger
 }
 
 // Service performs YouTube clip metadata enrichment.
 type Service struct {
-	clips      ports.ClipStorePort
+	clips       ports.ClipStorePort
 	metaFetcher ports.VideoMetadataFetcherPort
-	ollama     ports.OllamaClientPort
-	assetRepo  asset.Repository
-	cfg        *config.Config
-	log        *zap.Logger
+	ollama      ports.OllamaClientPort
+	assetRepo   asset.Repository
+	cfg         *config.Config
+	log         *zap.Logger
 }
 
 // NewService is the canonical constructor.
 func NewService(deps MetadataDeps) *Service {
 	return &Service{
-		clips:      deps.Clips,
+		clips:       deps.Clips,
 		metaFetcher: deps.MetaFetcher,
-		ollama:     deps.Ollama,
-		assetRepo:  deps.AssetRepo,
-		cfg:        deps.Cfg,
-		log:        deps.Log,
+		ollama:      deps.Ollama,
+		assetRepo:   deps.AssetRepo,
+		cfg:         deps.Cfg,
+		log:         deps.Log,
 	}
 }
 
@@ -141,16 +141,16 @@ func (s *Service) EnrichClip(ctx context.Context, clipID string, meta *ports.Dow
 	if hasUserSummary && hasUserTopics {
 		s.log.Info("using user-provided custom metadata, skipping Ollama enrichment", zap.String("clip_id", clipID))
 		clipMetadata = &types.ClipRichMetadata{
-			ClipSummary:     existing.GetMetadataString("clip_summary"),
-			Topics:          metadataStringSlice(existing.Metadata, "topics"),
-			Speakers:        metadataStringSlice(existing.Metadata, "speakers"),
-			MentionedPeople: metadataStringSlice(existing.Metadata, "mentioned_people"),
-			Hook:            existing.GetMetadataString("hook"),
-			QualityScore:    metadataFloat64(existing.Metadata, "quality_score"),
-			CleanTitle:      existing.GetMetadataString("clean_title"),
-			ShortTitle:      existing.GetMetadataString("short_title"),
+			ClipSummary:      existing.GetMetadataString("clip_summary"),
+			Topics:           metadataStringSlice(existing.Metadata, "topics"),
+			Speakers:         metadataStringSlice(existing.Metadata, "speakers"),
+			MentionedPeople:  metadataStringSlice(existing.Metadata, "mentioned_people"),
+			Hook:             existing.GetMetadataString("hook"),
+			QualityScore:     metadataFloat64(existing.Metadata, "quality_score"),
+			CleanTitle:       existing.GetMetadataString("clean_title"),
+			ShortTitle:       existing.GetMetadataString("short_title"),
 			SearchVisibility: existing.GetMetadataString("search_visibility"),
-			CleanTranscript: cleanedTranscript,
+			CleanTranscript:  cleanedTranscript,
 		}
 		if clipMetadata.CleanTitle == "" {
 			clipMetadata.CleanTitle = existing.Name

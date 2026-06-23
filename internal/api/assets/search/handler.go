@@ -101,13 +101,13 @@ func (h *Handler) SemanticSearch(c *gin.Context) {
 	}
 
 	result, err := h.svc.SemanticSearch(c.Request.Context(), appsearch.SemanticSearchRequest{
-		Query:     req.Q,
+		Query:      req.Q,
 		VectorName: defaults.String(req.Vector, "text"),
-		Mode:      strings.ToLower(req.Mode),
-		Limit:     defaults.Int(req.Limit, 10),
-		MinScore:  req.MinScore,
-		Source:    req.Source,
-		MediaType: req.MediaType,
+		Mode:       strings.ToLower(req.Mode),
+		Limit:      defaults.Int(req.Limit, 10),
+		MinScore:   req.MinScore,
+		Source:     req.Source,
+		MediaType:  req.MediaType,
 	})
 	if err != nil {
 		h.log.Error("semantic-search failed", zap.Error(err))
@@ -175,10 +175,10 @@ func (h *Handler) Recommend(c *gin.Context) {
 		Reason    string   `json:"reason,omitempty"`
 	}
 	type sceneItem struct {
-		Scene           string      `json:"scene"`
-		SceneIndex      int         `json:"scene_index"`
-		Query           string      `json:"query"`
-		Recommendations []clipItem  `json:"recommendations"`
+		Scene           string     `json:"scene"`
+		SceneIndex      int        `json:"scene_index"`
+		Query           string     `json:"query"`
+		Recommendations []clipItem `json:"recommendations"`
 	}
 	scenes := make([]sceneItem, len(result.Scenes))
 	for i, s := range result.Scenes {

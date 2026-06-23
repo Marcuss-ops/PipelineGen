@@ -52,10 +52,10 @@ func NewServer(
 	r := router.Setup()
 
 	return &Server{
-		cfg:        cfg,
-		router:     r,
-		appRouter:  router,
-		lifecycle:  lifecycle,
+		cfg:       cfg,
+		router:    r,
+		appRouter: router,
+		lifecycle: lifecycle,
 		httpServer: &http.Server{
 			Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 			Handler:           r,

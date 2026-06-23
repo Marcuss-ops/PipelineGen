@@ -13,8 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 

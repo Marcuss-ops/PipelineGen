@@ -5,7 +5,8 @@
 // workload; without retention it grows unbounded. The retention
 // strategy chosen for this codebase (see ARCHITECTURE.md §12) is:
 //
-//   Disposable + cron retention. Operators schedule
+//	Disposable + cron retention. Operators schedule
+//
 // `pipelinegen-admin db rotate` on a daily cron. The command copies
 // rows older than cfg.Storage.ObservabilityMaxAgeDays (default 7)
 // to a date-stamped backup file under <DataDir>/backups/, then
@@ -42,15 +43,15 @@ type RotateOptions struct {
 type RotateResult struct {
 	// BackupDir echoes the directory offload files were written to
 	// (mirrors RotateOptions.BackupDir for audit logs).
-	BackupDir       string
-	Cutoff          time.Time
-	OffloadedTo     string
-	OffloadedRows   int
-	PurgedRows      int
-	PreSizeBytes    int64
-	PostPurgeSize   int64
-	DurationMs      int64
-	BytesReclaimed  int64
+	BackupDir      string
+	Cutoff         time.Time
+	OffloadedTo    string
+	OffloadedRows  int
+	PurgedRows     int
+	PreSizeBytes   int64
+	PostPurgeSize  int64
+	DurationMs     int64
+	BytesReclaimed int64
 }
 
 // RotateObservability performs the full retention cycle:

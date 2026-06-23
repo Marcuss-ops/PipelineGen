@@ -205,7 +205,7 @@ func (s *Service) processSegment(
 		ClipID: clipID, Name: item.Name, LocalPath: localPath, VideoID: videoID,
 		Start: item.Start, End: item.End,
 		StartSec: startSec, EndSec: endSec, Duration: duration,
-		FolderSlug: folderSlug,
+		FolderSlug:      folderSlug,
 		ShouldNormalize: shouldNormalize, KeepAudio: req.KeepAudio,
 		DriveFolderID: driveFolderID, FolderPath: folderPath,
 		FileHash: fileHash, Group: group,

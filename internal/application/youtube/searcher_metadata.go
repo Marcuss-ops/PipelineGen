@@ -14,4 +14,3 @@ func (s *Service) GetVideoInfo(ctx context.Context, videoURL string) (*VideoMeta
 	}
 	return s.search.GetVideoInfo(ctx, videoURL)
 }
-

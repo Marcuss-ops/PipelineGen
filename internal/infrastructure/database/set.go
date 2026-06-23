@@ -11,12 +11,12 @@
 //
 // The set is split into two roles:
 //
-//  * Primary       — the unified media database (jobs, assets, scripts,
-//                    research_cache, media_assets, clip_folders,
-//                    search_queries, worker_nodes, voiceovers, etc.)
-//                    historically at `<DataDir>/media/media.db.sqlite`.
-//  * Observability — the API request log database at
-//                    `<DataDir>/observability/api_requests.db.sqlite`.
+//   - Primary       — the unified media database (jobs, assets, scripts,
+//     research_cache, media_assets, clip_folders,
+//     search_queries, worker_nodes, voiceovers, etc.)
+//     historically at `<DataDir>/media/media.db.sqlite`.
+//   - Observability — the API request log database at
+//     `<DataDir>/observability/api_requests.db.sqlite`.
 //
 // Defaults preserve the legacy single-file path
 // `<DataDir>/media.db.sqlite` as the Primary DB so existing deployments

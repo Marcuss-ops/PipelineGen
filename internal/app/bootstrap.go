@@ -1,15 +1,15 @@
 // Package app — bootstrap + composition root entry points (PR4d-final).
 //
 // PR4d-final entry points (the full PR4d transformation is now complete):
-//   1. NewComposition(ctx, cfg, dbs, log) → *ComposeRoot (12 bundles).
-//   2. startBackgroundJobs(ctx, cfg, dbs, root, log, mode) → *backgroundJobs.
-//      The returned handle exposes startJobRunner (a closure) for WireServices
-//      to invoke AFTER WireRegistry has registered all handlers.
-//   3. buildCleanup(dbs, root, jobs, cancel, log) → CleanupFunc (LIFO).
-//   4. WireRegistry(ctx, cfg, log, root) mounts all modules + freezes
-//      ProviderRegistry. Caller invokes jobs.startJobRunner() AFTER registry
-//      Freeze() so the JobRunner picks up jobs only when no further handlers
-//      can register.
+//  1. NewComposition(ctx, cfg, dbs, log) → *ComposeRoot (12 bundles).
+//  2. startBackgroundJobs(ctx, cfg, dbs, root, log, mode) → *backgroundJobs.
+//     The returned handle exposes startJobRunner (a closure) for WireServices
+//     to invoke AFTER WireRegistry has registered all handlers.
+//  3. buildCleanup(dbs, root, jobs, cancel, log) → CleanupFunc (LIFO).
+//  4. WireRegistry(ctx, cfg, log, root) mounts all modules + freezes
+//     ProviderRegistry. Caller invokes jobs.startJobRunner() AFTER registry
+//     Freeze() so the JobRunner picks up jobs only when no further handlers
+//     can register.
 //
 // The legacy *CoreDeps projection was removed in PR4d-final (June 2026).
 // `type services struct` (in dependencies.go) was removed in the same wave —
@@ -31,9 +31,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -281,7 +281,7 @@ type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 	Lifecycle     module.LifecycleManager // wraps startBackgroundJobs + buildCleanup
-	Cleanup       func()               // kept for backward compat (tests); delegates to Lifecycle.Stop
+	Cleanup       func()                  // kept for backward compat (tests); delegates to Lifecycle.Stop
 }
 
 // openLogDB was REMOVED in codex/db-set-and-paths. The Observability DB

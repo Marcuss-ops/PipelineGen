@@ -42,14 +42,14 @@ func New(baseURL, token string) *Client {
 // with no breadcrumb — keep them synchronized.
 
 const (
-	pathRegisterWorker      = remoteshared.InternalPathPrefix + "/workers/register"
-	pathHeartbeat           = remoteshared.InternalPathPrefix + "/workers/heartbeat"
-	pathClaim               = remoteshared.InternalPathPrefix + "/jobs/claim"
-	pathRenewFmt            = remoteshared.InternalPathPrefix + "/jobs/%s/renew"
-	pathProgressFmt         = remoteshared.InternalPathPrefix + "/jobs/%s/progress"
-	pathCompleteFmt         = remoteshared.InternalPathPrefix + "/jobs/%s/complete"
-	pathFailFmt             = remoteshared.InternalPathPrefix + "/jobs/%s/fail"
-	pathIsCancelledFmt      = remoteshared.InternalPathPrefix + "/jobs/%s/cancelled"
+	pathRegisterWorker = remoteshared.InternalPathPrefix + "/workers/register"
+	pathHeartbeat      = remoteshared.InternalPathPrefix + "/workers/heartbeat"
+	pathClaim          = remoteshared.InternalPathPrefix + "/jobs/claim"
+	pathRenewFmt       = remoteshared.InternalPathPrefix + "/jobs/%s/renew"
+	pathProgressFmt    = remoteshared.InternalPathPrefix + "/jobs/%s/progress"
+	pathCompleteFmt    = remoteshared.InternalPathPrefix + "/jobs/%s/complete"
+	pathFailFmt        = remoteshared.InternalPathPrefix + "/jobs/%s/fail"
+	pathIsCancelledFmt = remoteshared.InternalPathPrefix + "/jobs/%s/cancelled"
 )
 
 func (c *Client) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {

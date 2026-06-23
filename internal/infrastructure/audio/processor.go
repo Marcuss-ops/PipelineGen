@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 type Processor struct {

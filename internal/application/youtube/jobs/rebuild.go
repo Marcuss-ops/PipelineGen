@@ -180,4 +180,3 @@ func HandleRebuildSearchTextJob(deps RebuildDeps, ctx context.Context, j *job.Jo
 
 	return result, nil
 }
-

@@ -25,9 +25,10 @@ import (
 	driveapi "github.com/Marcuss-ops/PipelineGen/internal/api/drive"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	searchqueriesapi "github.com/Marcuss-ops/PipelineGen/internal/api/searchqueries"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -177,7 +178,14 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		)
 
 		genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
-		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler, genSvc))
+		mod := module.NewRouteModule(
+			"script-flow",
+			func() bool { return cfg.Features.ScriptDocsEnabled },
+			"/script",
+			scriptapi.NewHandler(handler, genSvc),
+			log,
+			module.WithMiddleware(middleware.ScriptDocsEnabled(cfg)),
+		)
 		registerModule(registry, log, mod)
 	}
 
@@ -202,7 +210,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}{
 		{"Jobs", func() (module.Module, error) {
 			handler := jobsapi.NewJobsHandler(root.Jobs.Service, log)
-			mod := jobsapi.NewModule(cfg, log, handler)
+			mod := module.NewRouteModule("jobs", func() bool { return true }, "/jobs", handler, log)
 			log.Info("created Jobs module")
 			return mod, nil
 		}},
@@ -212,22 +220,22 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				ingestSvc = wiring.MediaIngest.Service
 			}
 			imagesHandler = imagesapi.NewImagesHandler(root.Domains.ImageService, ingestSvc)
-			mod := imagesapi.NewModule(cfg, log, imagesHandler)
+			mod := module.NewRouteModule("images", func() bool { return cfg.Features.ImagesEnabled }, "/images", imagesHandler, log)
 			log.Info("created Images module")
 			return mod, nil
 		}},
 		{"MediaIngest", func() (module.Module, error) {
 			// PR4d-chunk2: WireMediaIngest takes *MediaIngestBundle.
-		ingestBundle := &MediaIngestBundle{
-			DB:                root.DB.DB,
-			Assets:            root.Repos.Assets,
-			DriveClient:       root.Drive.DriveClient,
-			ImageRepo:         root.Repos.ImageRepo,
-			VoiceoverRepo:     root.Repos.VoiceoverRepo,
-			ClipsRepo:         root.Repos.ClipsRepo,
-			AssetIndexService: root.Search.AssetIndexService,
-			PrebuiltService:   root.Domains.IngestService,
-		}
+			ingestBundle := &MediaIngestBundle{
+				DB:                root.DB.DB,
+				Assets:            root.Repos.Assets,
+				DriveClient:       root.Drive.DriveClient,
+				ImageRepo:         root.Repos.ImageRepo,
+				VoiceoverRepo:     root.Repos.VoiceoverRepo,
+				ClipsRepo:         root.Repos.ClipsRepo,
+				AssetIndexService: root.Search.AssetIndexService,
+				PrebuiltService:   root.Domains.IngestService,
+			}
 			w, e := WireMediaIngest(cfg, log, ingestBundle)
 			wiring.MediaIngest = w
 			if w != nil {
@@ -242,13 +250,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			}
 			reconcileSvc := drivecleanup.NewService()
 			handler := driveapi.NewDriveHandler(reconcileSvc, driveUploader)
-			mod := driveapi.NewModule(cfg, log, handler)
+			mod := module.NewRouteModule("drive", func() bool { return cfg.Features.DriveEnabled }, "/drive", handler, log)
 			log.Info("created Drive module")
 			return mod, nil
 		}},
 		{"Scraper", func() (module.Module, error) {
 			handler := assetsapi.NewScraperHandler(cfg.External.NodeScraperDir)
-			mod := assetsapi.NewScraperModule(log, handler)
+			mod := module.NewRouteModule("scraper", func() bool { return handler != nil }, "/scraper", handler, log)
 			log.Info("created Scraper module")
 			return mod, nil
 		}},
@@ -289,17 +297,48 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	if root.Domains != nil && root.Domains.RealtimeService != nil {
-		registerModule(registry, log, sourcesapi.NewRealtimeModule(cfg, log, realtimeapi.NewMatchHandler(root.Domains.RealtimeService, log)))
+		realtimeEnabled := cfg != nil && cfg.VectorSearch.RealtimeEnabled
+		registerModule(registry, log, module.NewRouteModule(
+			"realtime",
+			func() bool { return root.Domains.RealtimeService != nil && realtimeEnabled },
+			"",
+			realtimeapi.NewMatchHandler(root.Domains.RealtimeService, log),
+			log,
+		))
 	}
 	if root.Domains != nil && root.Domains.BooksService != nil {
-		registerModule(registry, log, contentapi.NewBooksModule(cfg, log, contentapi.NewBooksHandler(root.Domains.BooksService, root.Jobs.Facade, log)))
+		registerModule(registry, log, module.NewRouteModule(
+			"books",
+			func() bool { return cfg.Books.Enabled },
+			"/books",
+			contentapi.NewBooksHandler(root.Domains.BooksService, root.Jobs.Facade, log),
+			log,
+		))
 	}
 	if root.Domains != nil && root.Domains.LessonsService != nil {
-		registerModule(registry, log, contentapi.NewLessonsModule(cfg, log, contentapi.NewLessonsHandler(root.Domains.LessonsService, root.Jobs.Facade, log)))
+		registerModule(registry, log, module.NewRouteModule(
+			"lessons",
+			func() bool { return cfg.Lessons.Enabled },
+			"/lessons",
+			contentapi.NewLessonsHandler(root.Domains.LessonsService, root.Jobs.Facade, log),
+			log,
+		))
 	}
 	if root.DB != nil && root.DB.DB != nil {
-		registerModule(registry, log, channelsapi.NewModule(log, assets.NewChannelsRepository(root.DB.DB)))
-		registerModule(registry, log, sourcesapi.NewSearchQueriesModule(log, assets.NewSearchQueriesRepository(root.DB.DB)))
+		registerModule(registry, log, module.NewRouteModule(
+			"channels",
+			func() bool { return true },
+			"/channels",
+			channelsapi.NewChannelsHandler(assets.NewChannelsRepository(root.DB.DB), log),
+			log,
+		))
+		registerModule(registry, log, module.NewRouteModule(
+			"search_queries",
+			func() bool { return true },
+			"/search-queries",
+			searchqueriesapi.NewSearchqueriesHandler(assets.NewSearchQueriesRepository(root.DB.DB), log),
+			log,
+		))
 	}
 
 	if wiring.MediaIngest != nil {

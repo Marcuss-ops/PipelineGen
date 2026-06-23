@@ -424,11 +424,13 @@ type storageSetAdapter struct {
 }
 
 func (a storageSetAdapter) DataDir() string {
-	if a.s.DataDir == "" { return "data" }
+	if a.s.DataDir == "" {
+		return "data"
+	}
 	return a.s.DataDir
 }
-func (a storageSetAdapter) PrimaryDBPath() string { return a.s.PrimaryDBFullPath() }
+func (a storageSetAdapter) PrimaryDBPath() string       { return a.s.PrimaryDBFullPath() }
 func (a storageSetAdapter) ObservabilityDBPath() string { return a.s.ObservabilityDBFullPath() }
-func (a storageSetAdapter) WorkspaceDir() string { return a.s.WorkspaceFullPath() }
-func (a storageSetAdapter) CacheDir() string { return a.s.CacheFullPath() }
-func (a storageSetAdapter) ExportDir() string { return a.s.ExportFullPath() }
+func (a storageSetAdapter) WorkspaceDir() string        { return a.s.WorkspaceFullPath() }
+func (a storageSetAdapter) CacheDir() string            { return a.s.CacheFullPath() }
+func (a storageSetAdapter) ExportDir() string           { return a.s.ExportFullPath() }

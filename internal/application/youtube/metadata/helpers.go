@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ── YouTube metadata field accessors ──────────────────────────────────────

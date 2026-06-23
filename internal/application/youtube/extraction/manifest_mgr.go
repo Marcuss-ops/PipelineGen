@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
 	"go.uber.org/zap"

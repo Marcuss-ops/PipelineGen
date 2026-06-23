@@ -189,5 +189,3 @@ func Error(msg string, fields ...zap.Field) {
 func Fatal(msg string, fields ...zap.Field) {
 	Get().Fatal(msg, fields...)
 }
-
-

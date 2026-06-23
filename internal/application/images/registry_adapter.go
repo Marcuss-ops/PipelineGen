@@ -25,12 +25,12 @@ func NewRegistryAdapter(repo *assets.ImagesRepository, imagesDir string, log *za
 				return nil
 			}
 			img := &asset.ImageAsset{
-				Hash:        imageRecordHash(rec.ID, rec.FileHash),
-				SubjectID:   textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
-				SourceURL:   textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
-				Description: rec.Name,
-				DriveFileID: rec.DriveFileID,
-				Status:      rec.Status,
+				Hash:         imageRecordHash(rec.ID, rec.FileHash),
+				SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
+				SourceURL:    textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
+				Description:  rec.Name,
+				DriveFileID:  rec.DriveFileID,
+				Status:       rec.Status,
 				MetadataJSON: mergeImageMetadata(rec.Metadata, rec, relativePath(imagesDir, rec.LocalPath)),
 				Tags:         append([]string(nil), rec.Tags...),
 				CreatedAt:    time.Now().UTC(),

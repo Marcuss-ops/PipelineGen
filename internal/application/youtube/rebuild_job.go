@@ -173,4 +173,3 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 
 	return result, nil
 }
-

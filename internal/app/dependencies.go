@@ -15,10 +15,10 @@
 // These helpers are called from BuildDomainBundle (composition.go). They
 // remain in this file (not inlined into BuildDomainBundle) because:
 //
-//   1. BuildDomainBundle is already 5xx lines; keeping these helpers external
-//      keeps the orchestration story readable.
-//   2. The legacy `initServices` flow referenced the same three helpers, so
-//      keeping them here minimises the diff to composition.go.
+//  1. BuildDomainBundle is already 5xx lines; keeping these helpers external
+//     keeps the orchestration story readable.
+//  2. The legacy `initServices` flow referenced the same three helpers, so
+//     keeping them here minimises the diff to composition.go.
 //
 // Composition module imports the exact signatures in this file. Do not
 // rename parameters without updating BuildDomainBundle's call site.
@@ -29,18 +29,18 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 
@@ -191,8 +191,8 @@ func initImageService(
 		cfg.External.RemoteImageEndpointURL,
 		cfg.External.VeloxBaseURL,
 		imgservice.GoogleAccountingConfig{
-			ServerURL:    cfg.GoogleAccounting.ServerURL,
-			DownloadDir:  cfg.GoogleAccounting.DownloadDir,
+			ServerURL:     cfg.GoogleAccounting.ServerURL,
+			DownloadDir:   cfg.GoogleAccounting.DownloadDir,
 			VidsProjectID: cfg.GoogleAccounting.VidsProjectID,
 		},
 		mediaStore,

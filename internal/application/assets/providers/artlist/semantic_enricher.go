@@ -127,10 +127,10 @@ func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *a
 // methods this bridge uses (UpsertClip / IndexClip + IsEnabled).
 func (e *SemanticEnricher) newDispatchBridge() *dispatchBridge {
 	return &dispatchBridge{
-		dispatcher:  e.dispatcher,
-		assetStore:  e.repo,
-		indexer:     e.indexer,
-		log:         e.log,
+		dispatcher: e.dispatcher,
+		assetStore: e.repo,
+		indexer:    e.indexer,
+		log:        e.log,
 	}
 }
 
