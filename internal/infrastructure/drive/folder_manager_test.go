@@ -3,7 +3,7 @@ package drive_test
 import (
 	"testing"
 
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 

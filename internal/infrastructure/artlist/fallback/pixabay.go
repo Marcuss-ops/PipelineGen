@@ -8,7 +8,7 @@
 //   - pexels.go: Pexels /v1/videos/search endpoint.
 //
 // The application layer's fallback chain in
-// internal/application/artlist/search_fallback.go composes these
+// internal/application/assets/providers/artlist/search_fallback.go composes these
 // along with the DB + cached-scraper providers. As of PR2.4 these
 // are exposed as orphans (no direct consumer in this package); the
 // chain still uses the legacy SourceProvider shape, and the legacy
@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 )
 
 // Pixabay is an HTTP-clamped implementation of artlist.Searcher

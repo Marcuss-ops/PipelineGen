@@ -5,7 +5,7 @@
 //
 //   - L1: in-memory map (sync.RWMutex) - eliminates redundant reads
 //     within the same process. Used by the application wrapper in
-//     internal/application/artlist/search_cache.go.
+//     internal/application/assets/providers/artlist/search_cache.go.
 //
 //   - L2: SQLite-backed table `artlist_search_cache` (migration 012).
 //     Optional - the cache is functional without it. When nil, only

@@ -5,7 +5,7 @@
 // owns the user-agent contract, the retry policy, and the
 // FFmpeg-via-yt-dlp merge step.
 //
-// PR2.3: the application layer (internal/application/artlist) no
+// PR2.3: the application layer (internal/application/assets/providers/artlist) no
 // longer imports os/exec, builds yt-dlp arg lists, or chooses HTTP.
 // The orchestrator wires this package via the new artlist.Downloader
 // port and stays agnostic of the underlying transport.
@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/artlist"
+	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	core_dl "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
