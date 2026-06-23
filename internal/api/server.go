@@ -38,16 +38,33 @@ type Server struct {
 // workerHandler (optional) is wired into /internal/v1 routes and must be
 // set *before* Setup() runs so the gin engine registers the routes.
 // lifecycle (optional) is used for Start/Stop of background services.
+// healthSvc (optional) is the application-layer health.Service; when nil,
+// health endpoints return 503.
 func NewServer(
 	cfg *config.Config,
 	registry *Registry,
 	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
 	lifecycle LifecycleManager,
 ) *Server {
+	return NewServerWithHealth(cfg, registry, workerHandler, lifecycle, nil)
+}
+
+// NewServerWithHealth creates a new HTTP server with an optional
+// health-check service (PR1 Health boundary, June 2026).
+func NewServerWithHealth(
+	cfg *config.Config,
+	registry *Registry,
+	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
+	lifecycle LifecycleManager,
+	healthSvc interface{},
+) *Server {
 	router := NewRouter(cfg)
 	router.SetRegistry(registry)
 	if workerHandler != nil {
 		router.SetWorkerHandler(workerHandler)
+	}
+	if healthSvc != nil {
+		router.SetHealthService(healthSvc)
 	}
 	r := router.Setup()
 

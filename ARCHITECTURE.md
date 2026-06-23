@@ -29,28 +29,30 @@ unified job queue; HTTP traffic is served by Gin.
 │                        pipelinegen (Go, Gin)                          │
 │                                                                       │
 │  ┌────────────┐  ┌────────────────┐  ┌──────────────────────────┐    │
-│  │ cmd/server │─▶│ internal/api   │─▶│ internal/module          │    │
-│  │ main.go    │  │ server/routes  │  │ registry.RegisterAll...  │    │
+│  │ cmd/server │─▶│ internal/api   │─▶│ internal/app/registry.go │    │
+│  │ main.go    │  │ server/routes  │  │ WireRegistry(root)       │    │
 │  └────────────┘  └────────────────┘  └────────────┬─────────────┘    │
 │                                                   │                   │
 │                                                   ▼                   │
 │                   ┌─────────────────────────────────────────────┐    │
 │                   │  internal/app (composition)                  │    │
-│                   │  WireRegistry, WireServices                 │    │
-│                   │  builds CoreDeps once, hands to modules     │    │
+│                   │  NewComposition → ComposeRoot (12 bundles)  │    │
+│                   │  builds capability bundles, no CoreDeps     │    │
 │                   └─────────┬─────────────────────┬─────────────┘    │
 │                             │                     │                  │
 │                             ▼                     ▼                  │
 │       ┌───────────────────────────┐  ┌──────────────────────────┐    │
 │       │ internal/application/jobs │  │ internal/application/*    │    │
-│       │ lease, events, corr-id    │  │ assets, scripts, images,  │    │
-│       │ ActiveKey dedup           │  │ content, voiceover, jobs  │    │
-│       │ outbox dispatcher         │  │ (use-case orchestration)  │    │
+│       │ broker, runner, outbox    │  │ assets, scripts, images,  │    │
+│       │ ActiveKey dedup           │  │ content, voiceover        │    │
+│       │ events, delivery          │  │ (use-case orchestration)  │    │
 │       └──────────┬────────────────┘  └──────────┬───────────────┘    │
 │                  │                              │                    │
 │                  ▼                              ▼                    │
 │       ┌──────────────────────────────────────────────────────┐      │
-│       │ Removed: * (scripts, jobs, clips, ...)    │      │
+│       │ internal/infrastructure (adapters)                    │      │
+│       │ database/, drive/, media/processor/, ai/, qdrant/,   │      │
+│       │ health/, indexing/, files/, remote/, youtube/        │      │
 │       └──────────┬────────────────────────────┬──────────────┘      │
 │                  │                            │                      │
 │                  ▼                            ▼                      │
@@ -60,12 +62,10 @@ unified job queue; HTTP traffic is served by Gin.
 │         │ (Primary)             │   │ (Observability)                   │    │
 │         └───────────────────────┘   └───────────────────────────────────┘    │
 │                                                                       │
-│  ┌─ internal/media ─────────────────────────────────────────────┐    │
-│  │ monitor/ images/ voiceover/ stockpipeline/ semantic/         │    │
-│  │ association/ clipindexer/ catalogsync/ books/ lessons/ ...   │    │
-│  └───────────────────────────────────────────────────────────────┘    │
-│  ┌─ internal/sources ───────────────────────────────────────────┐    │
-│  │ artlist/  youtube/   (scraper client, search, extraction)   │    │
+│  ┌─ internal/application ────────────────────────────────────────┐    │
+│  │ assets/{providers,association,realtime,catalogsync,...}       │    │
+│  │ monitor/ images/ voiceover/ content/ ingest/ scripts/         │    │
+│  │ system/health/  (PR1 Health boundary, June 2026)              │    │
 │  └───────────────────────────────────────────────────────────────┘    │
 └───────────────────────────────────────────────────────────────────────┘
               │                  │                │
@@ -98,82 +98,74 @@ PR4d-final (June 2026) — bundles are the only valid wiring primitive.
 
 ## 4. Module ownership
 
-`internal/app/registry.go::WireRegistry` wires these **9 modules**. Each owns
-its routes, its background tasks, and the slice of `CoreDeps` it needs.
+`internal/app/registry.go::WireRegistry` wires capability modules. Each owns
+its routes, its background tasks, and the ComposeRoot bundle slice it needs.
 Reading from other modules' DB tables is OK; importing another module's
-`internal/api/handlers` package is forbidden — go through the service layer.
+`internal/api/` package is forbidden — go through the service layer.
 
-| Module | File | Mounts | Touches |
-|--------|------|--------|---------|
-| `ScriptFlow` | `internal/module/scriptflow.go` | `/api/script/*` | `scriptcore`, `gemmamemory`, `translations`, `clipindexer`, `images`, `voiceover` |
-| `Realtime` | `internal/module/realtime.go` | `/api/realtime/*` | `media/realtime` (vector + reranker) |
-| `Books` | `internal/module/books.go` | `/api/books/*` | `media/books`, Python `book_summarizer.py` |
-| `Lessons` | `internal/module/lessons.go` | `/api/lessons/*` | `media/lessons` |
-| `Comics` | `internal/module/comics.go` | `/api/comics/*` | `media/comics` |
-| `Channels` | `internal/module/channels.go` | `/api/channels/*` | `media/monitor`, `repository/channels` |
-| `SearchQueries` | `internal/module/search_queries.go` | `/api/search-queries/*` | `repository/searchqueries` |
-| `ScriptHistory` | `internal/module/scripthistory.go` | `/api/script-history/*` | `repository/scripts` |
-| `Utility` | `internal/module/core_modules.go` | health, jobs, system routes | `internal/jobs`, `logger` |
+| Module | Registry file | Mounts | Verdict |
+|--------|-------------|--------|---------|
+| `ScriptFlow` | `module_scripts.go` → `WireScriptFlow` | `/api/script/*` | active (post PR4d-final) |
+| `Assets` | `module_assets.go` → `WireAssets` | `/api/media/*`, `/api/assets/*` | active |
+| `Artlist` | `module_artlist.go` → `WireArtlist` | `/api/artlist/*` | active |
+| `Images` | `module_fullimages.go` → `WireImages` | `/api/images/*`, `/api/fullimages/*` | active |
+| `Jobs` | `module_jobs.go` → `WireJobs` | `/api/jobs/*`, `/api/internal/*` | active |
+| `YouTube` | `module_youtube.go` → `WireYouTubeClip` | `/api/clips/*` | active |
+| `Channels` | `module_ingest.go` | `/api/channels/*` | active |
+| `Stock` | `module_stock.go` → `WireStockPipeline` | stock pipeline routes | active |
+| `Content` | books + lessons merged → `internal/api/content/` | `/api/books/*`, `/api/lessons/*` | active |
 
-[^handler-only]: Handler folders not in the registry (routes wired manually or via the system module): `sources/{artlist,stock,local_to_drive}`, `assets/{storage,diagnostics,search,voiceover,soundeffect,register}`, `mediaingest`, `fullimages`, `scraper`, `google_accounting`. Promote into the registry if you add significant new behaviour.
+System routes (always present): `/health`, `/ready`, `/metrics`, `/assets/*`, `/media/google-accounting/*`.
 
-System routes (always present): `/health`, `/metrics`, `/assets/*`, `/media/google-accounting/*`.
+**PR1 Health boundary (June 2026)**: the health handler is thin transport only;
+infrastructure checks (DB, Drive, Qdrant, Jobs) live in
+`internal/infrastructure/health/` and are orchestrated by
+`internal/application/system/health/Service`. The handler delegates —
+zero `database/sql`, Google Drive SDK, or Qdrant HTTP in `internal/api/`.
 
 ## 5. Data flow — three canonical journeys
 
 ### 5a. Artlist search term → Drive asset
 ```
 HTTP POST /api/artlist/run {term}
-  └─▶ handler (registered by Router, not via module registry)
-        └─▶ internal/service/artlist.runOrchestrator
-              ├─▶ internal/sources/artlist.search
+  └─▶ handler (registered by WireArtlist module)
+        └─▶ internal/application/assets/providers/artlist.runOrchestrator
+              ├─▶ internal/application/assets/providers/artlist.search
               │     └─▶ Node scraper :9123 (L1 in-memory + L2 SQLite cache)
               └─▶ enqueue jobs.Service {type: media.artlist}
                     └─▶ workers.Worker → artlist.jobHandler
                           ├─▶ download via provider
-                          ├─▶ internal/media/clipindexer.IndexClip
+                          ├─▶ internal/infrastructure/indexing/clipindexer.IndexClip
                           │     └─▶ scripts/index_clips.py
-                          └─▶ internal/upload/drive.Uploader
+                          └─▶ internal/infrastructure/drive.Uploader
                                 └─▶ Google Drive (cfg.Drive.ArtlistFolder())
 ```
 
 ### 5b. Script generation (unified pipeline)
 
-> **Gennaio 2026**: il flow precedente `GenerateFromSource` (con 11 fasi
-> separate, agent Python in-loop, payload dedicato) è stato **rimosso**;
-> `/api/script/generate-from-clips` è ora il canonical async endpoint.
+> **Giugno 2026**: `/api/script/generate-from-clips` è il canonical async endpoint.
 > `/api/script/generate-with-images` rimane come endpoint **dedicato e
-> separato**, NON è un alias di `/generate-from-clips` — vedi la nota
-> immediatamente sopra al flow ASCII sotto per il confronto tra i due
-> preset di payload (la pipeline legacy è stata completamente rimossa).
+> separato**, NON è un alias di `/generate-from-clips`.
 
 ```
 HTTP POST /api/script/generate-from-clips   ─ canonical, preset dal body
-                                          (handler: GenerateFromClips in handler_clip_source.go)
-HTTP POST /api/script/generate-with-images  ─ preset forzato: scene images ON,
-                                          entities/metadata OFF
-                                          (handler: GenerateWithImages in handler_generate_with_images.go)
-                                          Differenza: solo preset del payload.
-                                          Entrambi → enqueue type="script.generate_from_clips".
-  └─▶ ScriptFlow handler.GenerateFromClips  (per /generate-from-clips;
-      oppure ScriptFlow handler.GenerateWithImages per /generate-with-images)
-        └─▶ enqueue jobs.Service {type: script.generate_from_clips}
-              └─▶ workers.Worker → HandleClipScriptGenerateJob (job_handler_clip_source.go)
-                    Paths (branch on payload):
-                      1. clip_ids present   → ClipSourceBuilder.BuildClipContext → engine.WriteScript
-                      2. num_clips > 0      → mediaCurator.Curate (auto-search) → engine.WriteScript
-                      3. otherwise          → text-only engine.WriteScript (con plan)
-                    Optional post-processing (parallel via concurrent.Group):
-                      4. entity extraction + insights    (if extract_entities)
-                      5. YouTube metadata per language  (if generate_metadata)
-                      6. Google Doc creation (always)
-                    Phases 6 use a save ctx independent of the request ctx — see §7.
+HTTP POST /api/script/generate-with-images  ─ preset forzato: scene images ON
+  └─▶ ScriptFlowHandler → enqueue type="script.generate_from_clips"
+        └─▶ HandleClipScriptGenerateJob (handler_jobs.go)
+              Paths (branch on payload):
+                1. clip_ids present   → ClipSourceBuilder.BuildClipContext → engine.WriteScript
+                2. num_clips > 0      → mediaCurator.Curate (auto-search) → engine.WriteScript
+                3. otherwise          → text-only engine.WriteScript
+              Optional post-processing (parallel via concurrent.Group):
+                4. entity extraction + insights    (if extract_entities)
+                5. YouTube metadata per language  (if generate_metadata)
+                6. Google Doc creation (always)
 ```
 
 ### 5c. Channel monitor (background)
 ```
 Ticker (cfg.Jobs.CatalogSyncInterval, default 6h)
-  └─▶ internal/media/monitor/channel_monitor.StartScheduled
+  └─▶ internal/application/monitor/channel_monitor.StartScheduled
         └─▶ per enabled channel:
               ├─▶ YouTube search (yt-dlp)
               ├─▶ transcript extract (VTT)
@@ -326,14 +318,14 @@ and follow the OAuth flow. CI: `.github/workflows/`.
 
 | You want to… | Go look in |
 |--------------|------------|
-| Add an HTTP endpoint | handler in `internal/api/handlers/<domain>/`, register in `routes.go` or via `internal/module/<domain>.go` |
-| Add a background job | `internal/jobs` (register handler) + `internal/api/handlers/<domain>/job_handler.go` (entry point) |
-| Add a DB table | `migrations/sqlite/0xx_*.sql` + `Removed: <domain>/` |
-| Add a CLI admin command | `cmd/admin/<command>.go` (shim) + `internal/admin/<subpkg>/` (body) |
-| Change a Drive folder | `internal/config/drive.go` (struct + resolver methods) |
-| Tune concurrency | `cfg.Scripts.*`, `cfg.Jobs.MaxParallelPerProject`, `cfg.Jobs.LeaseTTLSeconds` |
+| Add an HTTP endpoint | handler in `internal/api/<feature>/`, delegate to use case in `internal/application/<feature>/` |
+| Add a background job | `internal/application/jobs/` (register handler) + job handler in `internal/application/<feature>/` |
+| Add a DB table | `migrations/sqlite/0xx_*.sql` + repository in `internal/infrastructure/database/sqlite/` |
+| Add a CLI admin command | `cmd/admin/<command>.go` (shim) |
+| Change a Drive folder | `internal/infrastructure/config/drive.go` (struct + resolver methods) |
+| Tune concurrency | `cfg.Concurrency.*`, `cfg.Jobs.MaxParallelPerProject`, `cfg.Jobs.LeaseTTLSeconds` |
 | Debug a stuck job | `GET /api/jobs/:id` + `journalctl -u pipelinegen -f` |
-| Add a LLM prompt version | bump in `internal/ml/ollama/prompts/`, record in `cfg.Scripts.PromptVersion` |
+| Add a LLM prompt version | bump in `internal/infrastructure/ai/ollama/prompts/`, record in `cfg.Scripts.PromptVersion` |
 
 ## 12. Pointers to deeper docs
 

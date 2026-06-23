@@ -256,11 +256,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		metadataModel:      metaModel,
 		clipServices:       clipSvc,
 		scriptGenSem:       make(chan struct{}, maxScriptGen),
-		insightBuilder: &ScriptInsightBuilder{
-			Logger:      log,
-			MaxEntities: maxEntities,
-			Services:    clipSvc,
-		},
+		insightBuilder: NewScriptInsightBuilder(log, maxEntities, clipSvc),
 	}
 
 	// Constructor side-effects that previously lived in

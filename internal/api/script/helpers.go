@@ -25,11 +25,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job" // alias JobEnqueueService
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
@@ -320,81 +316,40 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 	})
 }
 
-// ── ClipServices bundle (cross-cutting narrow ports — PR3 absorption) ───────
+// ── ClipServices bundle (back-compat type aliases — PR2 extraction) ──────
 //
-// The ClipServices struct + the 7 narrow service interfaces were originally
-// declared in their own file (internal/api/script/flow_clip_services.go).
-// PR3 (June 2026) inlined them here in helpers.go because:
-//
-//   - the struct is cross-cutting (passed to ~10 functions across flow/,
-//     handler_jobs/, handler_flow_*.go);
-//   - the 7 interfaces are narrow ports — analogous to the
-//     CurationJobService / CatalogJobService ports already inlined here;
-//   - keeping the ≤8 api/script file-budget honest (this file absorbed
-//     5 prior files; flow_clip_services.go would have been the 9th).
-//
-// PR3 wave-14 close keeps ClipServices' canonical identity (same field
-// names, same interface signatures); only the declaration site moved.
+// PR2 (June 2026): ClipServices and its 7 narrow port interfaces have been
+// extracted to internal/application/scripts/clip_services.go. The API layer
+// re-exports them as type aliases for zero-churn back-compat. New code should
+// import from internal/application/scripts/ directly.
 
 // ClipSearchService narrows realtime.MatchAsset search.
-type ClipSearchService interface {
-	SearchClips(ctx context.Context, query, source, mediaType string, limit int, minScore float64) ([]realtime.MatchAsset, error)
-}
+type ClipSearchService = scripts.ClipSearchService
 
 // AssociationService narrows association.CandidatesRequest building.
-type AssociationService interface {
-	BuildCandidates(ctx context.Context, req association.CandidatesRequest) (*association.CandidatesResponse, error)
-}
+type AssociationService = scripts.AssociationService
 
 // DriveCheckService narrows drive.Uploader.FileIsNotTrashed.
-type DriveCheckService interface {
-	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
-}
+type DriveCheckService = scripts.DriveCheckService
 
 // ImageSearchService narrows images.Service ingest + generation.
-type ImageSearchService interface {
-	SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error)
-	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error)
-	TriggerPrewarm(ctx context.Context, jobID string, count int)
-}
+type ImageSearchService = scripts.ImageSearchService
 
 // TextTranslationService narrows ollama.Generator.TranslateTextWithModel.
-type TextTranslationService interface {
-	TranslateTextWithModel(ctx context.Context, text, targetLanguage, model string) (string, error)
-}
+type TextTranslationService = scripts.TextTranslationService
 
 // JobEnqueueService narrows job.Service.Enqueue.
-type JobEnqueueService interface {
-	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
-}
+type JobEnqueueService = scripts.JobEnqueueService
 
-// HarvestService narrows AutoHarvestService.EnqueueHarvest (the interface
-// already declared in handler_flow.go's ScriptFlowDep).
-type HarvestService interface {
-	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
-}
+// HarvestService narrows AutoHarvestService.EnqueueHarvest.
+type HarvestService = scripts.HarvestService
 
 // VoiceoverService narrows voiceover.Service.GenerateWithDestination.
-type VoiceoverService interface {
-	GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error)
-}
+type VoiceoverService = scripts.VoiceoverService
 
 // ClipServices bundles all service dependencies for standalone clip-related
-// functions in the script handlers package. Passed as a single struct to
-// functions like SearchScriptAssets, SearchArtlistClips, etc.
-type ClipServices struct {
-	Logger        *zap.Logger
-	RealtimeSvc   ClipSearchService
-	AssocSvc      AssociationService
-	DriveSvc      DriveCheckService
-	Translator    TextTranslationService
-	JobsSvc       JobEnqueueService
-	ImgSvc        ImageSearchService
-	VoSvc         VoiceoverService
-	HarvestSvc    HarvestService
-	ArtlistFolder string // root Drive folder ID for Artlist downloads
-	MetadataModel string // lightweight model for metadata/translation tasks
-}
+// functions. Back-compat alias for scripts.ClipServices.
+type ClipServices = scripts.ClipServices
 
 // ── Script-history module + handler ────────────────────────────────────────
 

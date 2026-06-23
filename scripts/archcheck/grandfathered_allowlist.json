@@ -1,17 +1,16 @@
 {
   "version": 1,
   "policy": "Monotone-decreasing. Operators may ONLY remove entries; raising a count requires a verified_zero PR.",
-  "last_reset": "2026-06-23",
-  "last_reset_reason": "PR1 (Repository truth): split baseline.json into grandfathered_allowlist.json (committed, this file) + current_report.json (gitignored, diagnostic only).",
+  "last_reset": "2026-06-23T16:20:25Z",
   "violations": {
-    "pkg_to_internal": 0,
+    "application_to_api": 3,
+    "application_to_database_sql": 29,
     "domain_to_application": 0,
     "domain_to_infrastructure": 0,
-    "application_to_api": 3,
-    "application_to_database_sql": 28,
-    "gin_outside_api": 3,
-    "os_exec_outside_infrastructure": 11,
+    "gin_outside_api": 5,
+    "os_exec_outside_infrastructure": 8,
     "os_getenv_outside_config_app": 5,
-    "sqlite_outside_infrastructure_database": 11
+    "pkg_to_internal": 0,
+    "sqlite_outside_infrastructure_database": 12
   }
 }

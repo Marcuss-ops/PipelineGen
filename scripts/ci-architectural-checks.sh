@@ -39,7 +39,6 @@ echo "Check 2: business logic in handlers"
 # Handlers must not do direct SQL queries for business data (os/exec for external tools is allowed)
 if rg -n 'sql\.Open|db\.QueryRow|db\.ExecContext|db\.QueryContext' internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v '_test.go' \
-  | grep -v 'health.go' \
   | grep -v 'index_health_handler.go'; then
     echo "FAIL: direct database operations found in handlers"
     echo "Handlers must delegate data access to internal/service/ or internal/infrastructure/database/sqlite/."
@@ -129,11 +128,12 @@ echo "  OK: all directories within size limits"
 # ── Check 6: database/sql import in API layer ────────────────────
 echo ""
 echo "Check 6: database/sql import in API layer"
-# Allowed: health.go (deep health probe), middleware_logger.go (logging pipeline),
-# _test.go files. Everything else must route through repository/services.
+# Allowed: middleware_logger.go (logging pipeline), _test.go files.
+# health.go was previously exempted; as of PR1 Health boundary (June 2026)
+# it is clean — the handler delegates to application/system/health/Service.
+echo "  Checking api/ for database/sql ..."
 if rg -n '"database/sql"' internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v '_test.go' \
-  | grep -v '/common/health\.go' \
   | grep -v '/middleware/middleware_logger\.go'; then
     echo "FAIL: database/sql imported in API layer"
     echo "Handlers must delegate DB access to internal/infrastructure/database/sqlite/ or internal/service/."
@@ -436,8 +436,7 @@ echo ""
 echo ""
 echo "Check 17: database/sql import in api/app/domain (zero NEW violations)"
 LEGACY_DB_SQL_FILES=$(
-echo "    internal/api/common/health.go
-    internal/api/middleware/middleware_auth_test.go
+echo "    internal/api/middleware/middleware_auth_test.go
     internal/api/middleware/middleware_logger.go
     internal/api/script/flow_clips_test.go
     internal/application/assets/artifacts/clips_adapter.go
@@ -481,10 +480,10 @@ echo "    internal/api/common/health.go
     internal/domain/asset/versions.go"
 )
 LEGACY_COUNT=$(echo "$LEGACY_DB_SQL_FILES" | grep -c '^' || true)
-if [ "$LEGACY_COUNT" -ne 43 ]; then
+if [ "$LEGACY_COUNT" -ne 42 ]; then
     echo "FAIL: Check 17 baseline drift."
     echo "  The in-script baseline lists $LEGACY_COUNT files but the"
-    echo "  expected count is 43. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
+    echo "  expected count is 42. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
     echo "  and update this list. If the count legitimately changed, also update"
     echo "  the \`expected_count\` match above."
     exit 1
@@ -652,15 +651,13 @@ echo "Check 19: forbidden infrastructure imports in API layer (tracked)"
 #     HARD-FAIL by replacing the `if [ -n "$API_VIOLATIONS" ]` block
 #     with `exit 1` and an explicit allowlist for the now-empty case.
 #
-# Week 1 target packages: handlers must delegate to application/domain
-# layers instead of importing these directly.
-# Allowed exceptions: middleware/ (infrastructure wiring), common/health.go,
-# _test.go files.
+# Allowed exceptions: middleware/ (infrastructure wiring), _test.go files.
+# health.go exemption REMOVED in PR1 Health boundary (June 2026) — the
+# handler now delegates to application/system/health/Service.
 FORBIDDEN_IMPORTS='"database/sql"|"os/exec"|"google.golang.org/api/drive/|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"'
 API_VIOLATIONS=$(rg -n "$FORBIDDEN_IMPORTS" internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v '_test.go' \
   | grep -v 'middleware/' \
-  | grep -v 'common/health\.go' \
   | grep -v 'module_base\.go' || true)
 API_VIOL_ALLOWED=0
 if [ -f scripts/archcheck/grandfathered_allowlist.json ]; then

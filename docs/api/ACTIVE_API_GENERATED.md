@@ -3,20 +3,18 @@
 **Status:** GENERATED - Auto-generated from live router.
 **Base URL:** `http://127.0.0.1:8080`
 
-## /api/health
+## /api/scripts
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | Health check (API prefix) |
-| GET | `/api/health/deep` | endpoint |
-| GET | `/api/health/ollama-timeout` | endpoint |
+| GET | `/api/scripts` | List scripts |
+| GET | `/api/scripts/:id` | Get script by ID |
 
-## /assets/*filepath
+## /api/system
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/assets/*filepath` | endpoint |
-| HEAD | `/assets/*filepath` | endpoint |
+| GET | `/api/system/doctor` | System diagnostics |
 
 ## /api/scraper
 
@@ -24,11 +22,15 @@
 |--------|------|-------------|
 | POST | `/api/scraper/search` | Search using scraper |
 
-## /api/fullimages
+## /api/drive
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/fullimages/video/generate` | endpoint |
+| POST | `/api/drive/reconcile` | endpoint |
+| POST | `/api/drive/resolve-by-id` | endpoint |
+| POST | `/api/drive/cleanup` | endpoint |
+| POST | `/api/drive/folders` | endpoint |
+| POST | `/api/drive/move` | endpoint |
 
 ## /
 
@@ -36,7 +38,7 @@
 |--------|------|-------------|
 | GET | `/` | endpoint |
 | GET | `/metrics` | endpoint |
-| GET | `/health` | Health check |
+| GET | `/health` | Unified health check (?deep=true for component checks) |
 | GET | `/ready` | endpoint |
 
 ## /api/jobs
@@ -52,12 +54,87 @@
 | POST | `/api/jobs/:id/cancel` | Cancel a job |
 | POST | `/api/jobs/:id/retry` | Retry a failed job |
 
+## /api/artlist
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/artlist/runs/:run_id` | endpoint |
+| GET | `/api/artlist/stats` | Get Artlist statistics |
+| GET | `/api/artlist/diagnostics` | endpoint |
+| POST | `/api/artlist/search` | Search Artlist catalog |
+| POST | `/api/artlist/search/live` | endpoint |
+| POST | `/api/artlist/sync-catalogs` | endpoint |
+| POST | `/api/artlist/run` | Start Artlist pipeline for a term |
+| POST | `/api/artlist/recommend` | endpoint |
+
+## /api/images
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/images/search` | Search images |
+| GET | `/api/images/diagnostics` | endpoint |
+| POST | `/api/images/upload` | endpoint |
+| POST | `/api/images/sync` | Sync images |
+| POST | `/api/images/generate` | endpoint |
+| POST | `/api/images/animate` | endpoint |
+| POST | `/api/images/webhook/remote` | endpoint |
+
+## /api/internal
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/internal/slug` | Generate URL slug from text |
+
 ## /media/google-accounting
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/media/google-accounting/*filepath` | endpoint |
 | HEAD | `/media/google-accounting/*filepath` | endpoint |
+
+## /api/script
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/script/jobs/:job_id` | endpoint |
+| GET | `/api/script/jobs/:job_id/full` | endpoint |
+| GET | `/api/script/generate-batch/progress` | endpoint |
+| POST | `/api/script/generate-from-clips` | endpoint |
+| POST | `/api/script/generate-from-catalog` | endpoint |
+| POST | `/api/script/generate-with-images` | endpoint |
+| POST | `/api/script/generate-batch` | endpoint |
+| POST | `/api/script/curate` | endpoint |
+| POST | `/api/script/cache/evict` | endpoint |
+| POST | `/api/script/:id/sections/:section_id/regenerate` | endpoint |
+
+## /api/search-queries
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/search-queries` | endpoint |
+| GET | `/api/search-queries/active` | endpoint |
+| GET | `/api/search-queries/:id` | endpoint |
+| GET | `/api/search-queries/:id/results` | endpoint |
+| POST | `/api/search-queries` | endpoint |
+| DELETE | `/api/search-queries/:id` | endpoint |
+
+## /api/channels
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/channels` | endpoint |
+| GET | `/api/channels/categories` | endpoint |
+| GET | `/api/channels/:id` | endpoint |
+| POST | `/api/channels` | endpoint |
+| POST | `/api/channels/bulk-upsert` | endpoint |
+| DELETE | `/api/channels/:id` | endpoint |
+
+## /assets/*filepath
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/assets/*filepath` | endpoint |
+| HEAD | `/assets/*filepath` | endpoint |
 
 ## /api/media
 
@@ -67,7 +144,6 @@
 | GET | `/api/media/semantic-search` | endpoint |
 | GET | `/api/media/diagnostics` | endpoint |
 | GET | `/api/media/index-health` | endpoint |
-| GET | `/api/media/qdrant/health` | endpoint |
 | GET | `/api/media/voiceover/groups` | endpoint |
 | GET | `/api/media/:source/folders` | List media folders |
 | GET | `/api/media/:source/folders/:id` | endpoint |
@@ -113,64 +189,6 @@
 | POST | `/api/media/:source/reconcile` | endpoint |
 | PATCH | `/api/media/:source/clips/:id` | endpoint |
 
-## /api/script
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/script/jobs/:job_id` | endpoint |
-| GET | `/api/script/jobs/:job_id/full` | endpoint |
-| GET | `/api/script/generate-batch/progress` | endpoint |
-| POST | `/api/script/generate-from-clips` | endpoint |
-| POST | `/api/script/generate-from-catalog` | endpoint |
-| POST | `/api/script/generate-with-images` | endpoint |
-| POST | `/api/script/generate-batch` | endpoint |
-| POST | `/api/script/curate` | endpoint |
-| POST | `/api/script/cache/evict` | endpoint |
-| POST | `/api/script/:id/sections/:section_id/regenerate` | endpoint |
-
-## /api/search-queries
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/search-queries` | endpoint |
-| GET | `/api/search-queries/active` | endpoint |
-| GET | `/api/search-queries/:id` | endpoint |
-| GET | `/api/search-queries/:id/results` | endpoint |
-| POST | `/api/search-queries` | endpoint |
-| DELETE | `/api/search-queries/:id` | endpoint |
-
-## /api/system
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/system/doctor` | System diagnostics |
-
-## /api/artlist
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/artlist/runs/:run_id` | endpoint |
-| GET | `/api/artlist/stats` | Get Artlist statistics |
-| GET | `/api/artlist/diagnostics` | endpoint |
-| POST | `/api/artlist/search` | Search Artlist catalog |
-| POST | `/api/artlist/search/live` | endpoint |
-| POST | `/api/artlist/sync-catalogs` | endpoint |
-| POST | `/api/artlist/run` | Start Artlist pipeline for a term |
-| POST | `/api/artlist/recommend` | endpoint |
-
-## /api/internal
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/internal/slug` | Generate URL slug from text |
-
-## /api/scripts
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/scripts` | List scripts |
-| GET | `/api/scripts/:id` | Get script by ID |
-
 ## /api/clips
 
 | Method | Path | Description |
@@ -182,26 +200,9 @@
 | POST | `/api/clips/process` | Download and process clips |
 | POST | `/api/clips/search` | Search and rank YouTube videos by topic |
 
-## /api/channels
+## /api/fullimages
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/channels` | endpoint |
-| GET | `/api/channels/categories` | endpoint |
-| GET | `/api/channels/:id` | endpoint |
-| POST | `/api/channels` | endpoint |
-| POST | `/api/channels/bulk-upsert` | endpoint |
-| DELETE | `/api/channels/:id` | endpoint |
-
-## /api/images
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/images/search` | Search images |
-| GET | `/api/images/diagnostics` | endpoint |
-| POST | `/api/images/upload` | endpoint |
-| POST | `/api/images/sync` | Sync images |
-| POST | `/api/images/generate` | endpoint |
-| POST | `/api/images/animate` | endpoint |
-| POST | `/api/images/webhook/remote` | endpoint |
+| POST | `/api/fullimages/video/generate` | endpoint |
 

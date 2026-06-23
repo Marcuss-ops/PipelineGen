@@ -59,11 +59,15 @@ voiceover synthesis, image generation, and Google Drive synchronization.
 
 ## 🔌 API Endpoints (Core)
 
-- **Search & Sources**: `GET /api/sources/search/live?query=...`
-- **Asset Management**: `GET /api/sources`
+- **Health**: `GET /health` (basic), `GET /health?deep=true` (component checks)
+- **Script Generation**: `POST /api/script/generate-from-clips`, `POST /api/script/generate-with-images`
 - **Job Status**: `GET /api/jobs/:id`
-- **Images**: `POST /api/images/generate/nvidia`
+- **Images**: `POST /api/images/generate`
 - **Artlist**: `POST /api/artlist/run`
+- **Clips**: `POST /api/clips/search`, `GET /api/clips/info`
+- **Media Assets**: `GET /api/media/search`, `GET /api/media/diagnostics`
+- **Voiceover**: `POST /api/media/voiceover/generate`
+- **System**: `GET /api/system/doctor`
 
 ## 🧠 Job System
 
