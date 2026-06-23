@@ -42,9 +42,10 @@ unified job queue; HTTP traffic is served by Gin.
 │                             │                     │                  │
 │                             ▼                     ▼                  │
 │       ┌───────────────────────────┐  ┌──────────────────────────┐    │
-│       │ internal/jobs (queue)     │  │ internal/service/*       │    │
-│       │ lease, events, corr-id    │  │ artlist, images, voice-  │    │
-│       │ ActiveKey dedup           │  │ over, scriptcore, ...    │    │
+│       │ internal/application/jobs │  │ internal/application/*    │    │
+│       │ lease, events, corr-id    │  │ assets, scripts, images,  │    │
+│       │ ActiveKey dedup           │  │ content, voiceover, jobs  │    │
+│       │ outbox dispatcher         │  │ (use-case orchestration)  │    │
 │       └──────────┬────────────────┘  └──────────┬───────────────┘    │
 │                  │                              │                    │
 │                  ▼                              ▼                    │
@@ -84,13 +85,16 @@ unified job queue; HTTP traffic is served by Gin.
 
 | Phase | Package | Job | DB | HTTP |
 |-------|---------|-----|----|----|
-| Composition | `internal/app` | Build `CoreDeps` once. Wire DB pools, run migrations, instantiate services. | owns pools + migrations at boot | no |
-| Delivery | `internal/module` | Register routes on the shared Gin engine, start/stop background tasks via `StartAll`/`StopAll`. | uses injected handles | yes |
+| Composition | `internal/app` | Build **Capability Bundles** once via `ComposeRoot` + `Build*Bundle()` (`Drive`, `Repo`, `Search`, `Process`, `AI`, `Domain`, `Jobs`, `Outbox`, `Sync`, `Maintenance`, `Utility`). Wire DB pools, run migrations, instantiate concrete adapters. | owns pools + migrations at boot | no |
+| Delivery | `internal/api/<feature>/` | Register routes on the shared Gin engine via thin-transport handlers that delegate to use cases in `internal/application/<feature>/`. Background tasks start via `lifecycle.go::startBackgroundJobs(ctx, cfg, root, log)`. | uses injected handles via use cases | yes |
 
-Handlers live in `internal/api/handlers/<domain>/`. Business logic lives in
-`internal/service` or `internal/media/<domain>`. A module is a thin adapter
-by default; a handful (`google_accounting`) own their sidecar lifecycle and
-run a watchdog goroutine.
+Handlers live in `internal/api/<feature>/<handler>.go` and **must not**
+contain business logic (Pattern 8 in AGENTS.md). Business logic lives
+in `internal/application/<feature>/` (use cases + orchestration) and
+`internal/infrastructure/<X>/` (concrete adapters: DB, Drive, exec).
+Each `internal/api/<feature>/` exposes at most 1 `Handler` + 1
+`RegisterRoutes`. The legacy `CoreDeps` mega-struct was removed in
+PR4d-final (June 2026) — bundles are the only valid wiring primitive.
 
 ## 4. Module ownership
 

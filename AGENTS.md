@@ -16,9 +16,23 @@ The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER
 ## Documentation Map
 
 - **This file (AGENTS.md)**: Critical rules and instructions for all agents
-- **README.md**: Project structure and architecture overview
-- **PROJECT_GUIDE.md**: Italian language getting started guide
-- **ARCHITECTURE.md**: Full system architecture, module ownership, data flow, and database schemas (the `docs/` folder has been completely removed)
+  (driver SQLite, ban FTS5, schema boundaries, AI generation policy,
+  admin token, agent instructions, Git Lessons).
+- **README.md**: Project structure and architecture overview (entry point).
+- **PROJECT_GUIDE.md**: Italian language getting started guide.
+- **ARCHITECTURE.md**: Full system architecture, module ownership,
+  data flow, database schemas, day-1 commands — **canonical** doc for
+  structure. It supersedes every older `docs/architecture/*.md` file
+  (the `docs/` folder has been completely removed in June 2026).
+- **architecture/migration.yaml**: ratchet tracker verificabile delle
+  wave di consolidamento (status monotone-decreasing, ogni wave ha
+  `exit_gate` zero-based). È il single source of truth per
+  "abbiamo finito la wave X?".
+- **architecture/ownership.yaml**: "qual è il canonical owner di X?"
+  per ogni capability (regole di layering + assorbimenti da wave).
+- **docs/api/ACTIVE_API_GENERATED.md**: auto-generato via
+  `./admin gen-api-docs`; CI-failed se non committato (vedi
+  `.github/workflows/ci.yml::Generate API docs`).
 
 ## Instructions
 

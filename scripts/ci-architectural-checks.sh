@@ -151,7 +151,7 @@ echo "Check 7: os.Getenv in API layer"
 # handler_script_handlers_flow_scene_images.go (VELOX_SCENE_PARALLELISM —
 #   tracked for Worker 2 migration to constructor-based injection),
 # _test.go files.
-KNOWN_API_GETENV="internal/api/routes.go|internal/api/server.go|internal/api/middleware/|internal/api/script/handler_script_handlers_flow_scene_images\\.go"
+KNOWN_API_GETENV="internal/api/routes.go|internal/api/server.go|internal/api/middleware/|internal/api/script/handler_script_handlers_flow_scene_images\.go"
 if rg -n 'os\.Getenv' internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v '_test.go' \
   | grep -vE "$KNOWN_API_GETENV"; then
@@ -208,7 +208,12 @@ MAP_COUNT=$(rg -c 'map\[string\]any' internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v 'internal/api/helpers\.go:' \
   | grep -v 'internal/api/job\.go:' \
   | awk -F: '{sum+=$2} END {print sum+0}' || true)
-echo "  map[string]any occurrences in API (tracked): ${MAP_COUNT:-0}"
+# Visual upgrade (PR1): print current vs allowed vs remaining when allowlist found.
+MAP_ALLOWED=0
+if [ -f scripts/archcheck/grandfathered_allowlist.json ]; then
+  MAP_ALLOWED=$(python3 -c 'import json; a=json.load(open("scripts/archcheck/grandfathered_allowlist.json")); print(a.get("map_string_any_in_api_legacy",0))' 2>/dev/null || echo 0)
+fi
+echo "  map[string]any occurrences in API (tracked): current=${MAP_COUNT:-0} allowed=${MAP_ALLOWED} remaining=$((MAP_ALLOWED - ${MAP_COUNT:-0}))"
 echo "  Migration target: 0 (Worker 2 — typed payloads)."
 
 # ── Check 11: new imports of internal/infrastructure root ─────────
@@ -223,7 +228,11 @@ ROOT_INFRA_IMPORT=$(rg -l '"github\.com/Marcuss-ops/PipelineGen/internal/infrast
   --glob '*.go' 2>/dev/null \
   | grep -v '_test.go' \
   | wc -l || true)
-echo "  Files importing internal/infrastructure root (tracked): ${ROOT_INFRA_IMPORT:-0}"
+ROOT_INFRA_ALLOWED=0
+if [ -f scripts/archcheck/grandfathered_allowlist.json ]; then
+  ROOT_INFRA_ALLOWED=$(python3 -c 'import json; a=json.load(open("scripts/archcheck/grandfathered_allowlist.json")); print(a.get("internal_infrastructure_root_imports_legacy",0))' 2>/dev/null || echo 0)
+fi
+echo "  Files importing internal/infrastructure root (tracked): current=${ROOT_INFRA_IMPORT:-0} allowed=${ROOT_INFRA_ALLOWED} remaining=$((ROOT_INFRA_ALLOWED - ${ROOT_INFRA_IMPORT:-0}))"
 echo "  Migration target: 0 (use pkg/ or internal/infrastructure/<sub>/)."
 
 # ── Check 13: transport-layer boundary (tracked) ─────────────────────
@@ -256,7 +265,11 @@ else
         $EXISTING --glob '*.go' 2>/dev/null \
         | grep -v '_test.go' \
         | awk -F: '{sum+=$2} END {print sum+0}' || true)
-    echo "  Import statements violating transport-layer boundary (tracked): ${VIOLATIONS:-0}"
+    TL_ALLOWED=0
+    if [ -f scripts/archcheck/grandfathered_allowlist.json ]; then
+      TL_ALLOWED=$(python3 -c 'import json; a=json.load(open("scripts/archcheck/grandfathered_allowlist.json")); print(a.get("transport_layer_boundary_legacy",0))' 2>/dev/null || echo 0)
+    fi
+    echo "  Import statements violating transport-layer boundary (tracked): current=${VIOLATIONS:-0} allowed=${TL_ALLOWED} remaining=$((TL_ALLOWED - ${VIOLATIONS:-0}))"
     echo "  Migration target: 0."
 fi
 
@@ -373,7 +386,7 @@ for legacy in "${LEGACY_DIRS[@]}"; do
   cross_renames=$(printf "%s\n" "${RENAME_PAIRS:-}" \
                   | awk -F'\t' -v leg="${legacy}" \
                       '$1 !~ "^" leg "/.*" && $2 ~ "^" leg "/.*\.go$" \
-                          && $2 !~ "_test\\.go$" {print $2 "  (renamed from " $1 ")"}' \
+                          && $2 !~ "_test\.go$" {print $2 "  (renamed from " $1 ")"}' \
                   || true)
   if [ -n "${cross_renames}" ]; then
     VIOLATIONS="${VIOLATIONS}${cross_renames}
@@ -382,23 +395,23 @@ for legacy in "${LEGACY_DIRS[@]}"; do
 done
 
 if [ -n "${VIOLATIONS}" ]; then
-  echo "FAIL: new production code in legacy (migration-only) directories:"
-  printf "%s" "${VIOLATIONS}" | sed 's/^/  /'
-  echo ""
-  echo "Legacy directories accept only removals or in-place migrations."
-  echo "Place new files in their migration target instead:"
-  echo "  internal/core/*                       -> internal/domain/asset/* or internal/infrastructure/<X>/"
-  echo "  internal/media/<feature>/*            -> internal/domain/asset/<feature>/  or  internal/application/<feature>/"
-  echo "  internal/assets/*                     -> internal/domain/asset/"
-  echo "  internal/artifacts/*                  -> internal/domain/job/ (artifacts is interface-wrap; eliminate)"
-  echo "  internal/sources/{youtube,artlist}/*  -> internal/application/assets/providers/<X>/"
-  echo "  internal/upload/drive/*               -> internal/infrastructure/drive/"
-  echo "  internal/application/scriptflow/*     -> internal/application/scripts/<X>/"
-  echo "  internal/domain/media/*               -> internal/domain/asset/"
-  echo "  internal/domain/worker/*              -> internal/domain/job/"
-  echo "  internal/domain/outbox/*              -> internal/domain/lifecycle/"
-  echo "See AGENTS.md §Legacy Directories Policy."
-  exit 1
+    echo "FAIL: new production code in legacy (migration-only) directories:"
+    printf "%s" "${VIOLATIONS}" | sed 's/^/  /'
+    echo ""
+    echo "Legacy directories accept only removals or in-place migrations."
+    echo "Place new files in their migration target instead:"
+    echo "  internal/core/*                       -> internal/domain/asset/* or internal/infrastructure/<X>/"
+    echo "  internal/media/<feature>/*            -> internal/domain/asset/<feature>/  or  internal/application/<feature>/"
+    echo "  internal/assets/*                     -> internal/domain/asset/"
+    echo "  internal/artifacts/*                  -> internal/domain/job/ (artifacts is interface-wrap; eliminate)"
+    echo "  internal/sources/{youtube,artlist}/*  -> internal/application/assets/providers/<X>/"
+    echo "  internal/upload/drive/*               -> internal/infrastructure/drive/"
+    echo "  internal/application/scriptflow/*     -> internal/application/scripts/<X>/"
+    echo "  internal/domain/media/*               -> internal/domain/asset/"
+    echo "  internal/domain/worker/*              -> internal/domain/job/"
+    echo "  internal/domain/outbox/*              -> internal/domain/lifecycle/"
+    echo "See AGENTS.md §Legacy Directories Policy."
+    exit 1
 fi
 echo "  OK: no new files in legacy directories"
 
@@ -468,7 +481,7 @@ echo "    internal/api/common/health.go
     internal/domain/asset/versions.go"
 )
 LEGACY_COUNT=$(echo "$LEGACY_DB_SQL_FILES" | grep -c '^' || true)
-if [ "$LEGACY_COUNT" -ne "43" ]; then
+if [ "$LEGACY_COUNT" -ne 43 ]; then
     echo "FAIL: Check 17 baseline drift."
     echo "  The in-script baseline lists $LEGACY_COUNT files but the"
     echo "  expected count is 43. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
@@ -565,7 +578,7 @@ if [[ -x "scripts/ci-legacy-asset-guard.sh" ]]; then
     scripts/ci-legacy-asset-guard.sh
 fi
 
-# ── Check 18: absolute directory existence gates ────────────────────
+# ── Check 18: absolute directory existence gates ───────────────────
 echo ""
 echo "Check 18: absolute directory existence gates"
 # These directories have been fully eliminated. If any of them reappear
@@ -649,13 +662,102 @@ API_VIOLATIONS=$(rg -n "$FORBIDDEN_IMPORTS" internal/api/ --glob '*.go' 2>/dev/n
   | grep -v 'middleware/' \
   | grep -v 'common/health\.go' \
   | grep -v 'module_base\.go' || true)
+API_VIOL_ALLOWED=0
+if [ -f scripts/archcheck/grandfathered_allowlist.json ]; then
+  API_VIOL_ALLOWED=$(python3 -c 'import json; a=json.load(open("scripts/archcheck/grandfathered_allowlist.json")); print(a.get("forbidden_infra_imports_in_api_legacy",0))' 2>/dev/null || echo 0)
+fi
 if [ -n "$API_VIOLATIONS" ]; then
     VIOL_COUNT=$(echo "$API_VIOLATIONS" | grep -c '^' || true)
-    echo "  Forbidden infrastructure imports in API (tracked): ${VIOL_COUNT}"
+    echo "  Forbidden infrastructure imports in API (tracked): current=${VIOL_COUNT} allowed=${API_VIOL_ALLOWED} remaining=$((API_VIOL_ALLOWED - VIOL_COUNT))"
     echo "$API_VIOLATIONS" | sed 's/^/    /'
     echo "  Migration target: 0 (handler extraction required)."
 else
     echo "  OK: no forbidden infrastructure imports in API handlers"
+fi
+
+# ── Check 20: docs/api/ACTIVE_API_GENERATED.md tracking (PR1) ──
+echo ""
+echo "Check 20: docs/api/ACTIVE_API_GENERATED.md tracking"
+# Per PR1 (Repository truth, June 2026): the canonical API doc is generated
+# via `go run ./cmd/admin gen-api-docs <path>` (.github/workflows/ci.yml
+# step "Generate API docs" — ordered BEFORE this bash check). The gate
+# for "is the file current?" lives in ci.yml's "Verify generated docs"
+# step which diffs the freshly-generated file against the committed one.
+#
+# This bash check performs a PARITY assertion for local CI / pre-commit
+# runs (mirrors what ci.yml does, but works without running the generator
+# in-process). It tolerates a missing file with a soft log so a checkout
+# that generated the doc in a separate pre-step still passes here.
+GEN_DOC="docs/api/ACTIVE_API_GENERATED.md"
+if [ ! -f "$GEN_DOC" ]; then
+    echo "  INFO: $GEN_DOC not present in working tree."
+    echo "        This script runs BEFORE the generator step in CI; the actual"
+    echo "        gate is .github/workflows/ci.yml::Verify generated docs."
+    echo "        Local: run \`go run ./cmd/admin gen-api-docs $GEN_DOC\`."
+else
+    # Is git tracking the file?
+    if ! git ls-files --error-unmatch "$GEN_DOC" >/dev/null 2>&1; then
+        echo "FAIL: $GEN_DOC exists in the working tree but is NOT git-tracked."
+        echo "  Add it to the index: git add $GEN_DOC && git commit"
+        exit 1
+    fi
+    # Has the working tree drift? (i.e., someone regenerated without committing)
+    if [ -n "$(git status --porcelain "$GEN_DOC" 2>/dev/null)" ]; then
+        echo "FAIL: $GEN_DOC working tree is dirty (regenerated without committing)."
+        echo "  Run: go run ./cmd/admin gen-api-docs $GEN_DOC && git add $GEN_DOC && git commit"
+        exit 1
+    fi
+    echo "  OK: $GEN_DOC present, git-tracked, and in sync"
+fi
+
+# ── Check 21: migration.yaml verified_zero policy (PR1) ─────────────────
+echo ""
+echo "Check 21: migration.yaml verified_zero policy"
+# Per PR1, a wave with `status: done` MUST have `verified_zero: true`.
+# Verified_zero requires `go run ./scripts/archcheck -strict` to exit 0.
+# A missing verified_zero field is interpreted as false (fail-closed default).
+MIG="architecture/migration.yaml"
+if [ ! -f "$MIG" ]; then
+    echo "WARN: $MIG missing — Check 21 cannot enforce policy."
+else
+    # Use yq (preferred) if available; fall back to a python3 awk-ish parser.
+    VIOLATING=""
+    if command -v yq >/dev/null 2>&1; then
+        VIOLATING=$(yq -r '.[] | select(.status == "done") | select(.verified_zero != true) | "- id=" + (.id|tostring) + " title=" + .title' "$MIG" 2>/dev/null || true)
+    else
+        VIOLATING=$(python3 - <<'PY'
+import re, sys
+text = open("architecture/migration.yaml", "r", encoding="utf-8").read()
+# Each wave is a top-level list item starting with "- id: ...".
+# Look for blocks with status: done AND no verified_zero: true in their slot.
+blocks = re.split(r"\n(?=- id:)", text)
+bad = []
+for b in blocks:
+    m_id = re.search(r"^\s*- id:\s*(\S+)", b, re.MULTILINE)
+    m_title = re.search(r"^\s*title:\s*(.+)$", b, re.MULTILINE)
+    m_status = re.search(r"^\s*status:\s*(done|in_progress|pending)\s*$", b, re.MULTILINE)
+    m_verified = re.search(r"^\s*verified_zero:\s*(true|false)\s*$", b, re.MULTILINE)
+    if m_id and m_status and m_status.group(1) == "done":
+        idv = m_id.group(1)
+        title = m_title.group(1).strip() if m_title else "?"
+        verified = m_verified.group(1) if m_verified else "missing"
+        if verified != "true":
+            bad.append(f"- id={idv} title={title} (verified_zero={verified})")
+sys.stdout.write("\n".join(bad))
+PY
+)
+    fi
+    if [ -n "$VIOLATING" ]; then
+        echo "FAIL: the following done waves lack verified_zero: true"
+        echo "$VIOLATING" | sed 's/^/  /'
+        echo ""
+        echo "Per the PR1 verified_zero policy: status: done is only valid when"
+        echo "verified_zero: true AND \`go run ./scripts/archcheck -strict\` exits 0."
+        echo "Either downgrade the wave to in_progress OR ship the migration that"
+        echo "brings its ratchet to zero and bump verified_zero: true."
+        exit 1
+    fi
+    echo "  OK: all done waves have verified_zero: true (or none are done)"
 fi
 
 echo ""

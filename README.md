@@ -87,15 +87,28 @@ Track job progress via the `/api/jobs` endpoints.
 
 ## 📝 Documentation
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md): Canonical system architecture, data flows,
-  module registry, and day-1 commands.
-- [Operational roadmap PR0–PR4](./docs/roadmap/README.md): Concrete numbered TODOs,
-  validation commands, dependencies, and exit gates for the current consolidation cycle.
-- [AGENTS.md](./AGENTS.md): Critical system rules and instructions for AI agents.
-- [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Italian language getting started guide.
-- [docs/SCRIPT_PIPELINE.md](./docs/SCRIPT_PIPELINE.md): Complete script pipeline
-  documentation.
-- [docs/](./docs/): Additional technical documentation.
+La documentazione canonica del progetto è concentrata in due soli file markdown
+alla radice del repository. Le directory `docs/` legacy sono state rimosse
+in June 2026 e consolidate in `ARCHITECTURE.md` (regole operative e tracker
+di migrazione) + `AGENTS.md` (regole per agenti AI e pattern canonici).
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md): **Canonical** — architettura di sistema,
+  data flow, registry dei moduli, comandi day-1, ownership dei layer
+  (`api → application → domain → infrastructure → pkg`). Include anche
+  il piano di migrazione attivo (`architecture/migration.yaml`) e la
+  mappa di ownership canonica (`architecture/ownership.yaml`).
+- [AGENTS.md](./AGENTS.md): **Canonical** — regole critiche del sistema
+  (driver SQLite, ban FTS5, schema boundaries, policy generazione AI,
+  admin token env-var, Istruzioni per agenti AI, Git Lessons).
+- [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Getting started in italiano.
+- [docs/api/ACTIVE_API_GENERATED.md](./docs/api/ACTIVE_API_GENERATED.md):
+  Snapshot auto-generato delle route HTTP attualmente registrate
+  (rigenerabile con `./admin gen-api-docs`).
+
+Per approfondimenti storici sulle migrazioni Wave X → Wave 17 (es.
+perché certe directory sono state rimosse, mapping prima→dopo)
+vedi `architecture/migration.yaml` (ratchet tracker verificabile
+via `bash scripts/ci-architectural-checks.sh`).
 
 ---
 

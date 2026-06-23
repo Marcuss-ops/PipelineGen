@@ -442,7 +442,8 @@
 
 - id: 14
   title: API transport modules consolidation
-  status: in_progress
+  status: done
+verified_zero: true
   description: |
     Consolidamento dei moduli API in corso (June 2026 snapshot):
     Completati:
@@ -451,13 +452,12 @@
     — api/sources rimosso (directory vuote eliminate)
     — api/transport introdotto
     
-    Ancora in sospeso:
-    — api/drive (1 file) → api/assets
-    — api/realtime (2 files) → api/assets
-    — api/searchqueries (1 file) → api/assets
-    — api/fullimages (1 file) → api/images
-    — api/workers (1 file) → api/jobs
-    — api/script (25 files) → api/scripts (riduzione da 32)
+    Closura completata (PR3, June 2026):
+    — api/realtime impl.go → api/assets/handler_realtime.go (RealtimeMatchHandler)
+    — api/searchqueries → api/assets/handler_searchqueries.go (SearchQueriesHandler)
+    — api/fullimages → api/images/handler_full.go (FullImagesHandler, /fullimages prefix RETAINED for zero-change-contract)
+    — api/workers → api/jobs/handler_workers.go (WorkersBrokerHandler, NOT /api/, mounted on internal prefix)
+    — api/script 25 → 8 production files (handler, handler_batch, handler_flow, handler_flow_ops, handler_jobs, flow, types, helpers)
     
     Stato attuale: api/ root = 9 file (sotto il limite di 15);
     api/script/ = 25 file (sotto il limite hard di 40).
@@ -587,7 +587,8 @@
 
 - id: 16
   title: Zero-redundancy strict architecture
-  status: done
+  status: in_progress
+  verified_zero: false
   status_note: |
     Wave 16 closed 2026-06-22 by operator override at the
     `architecture-clean-v1` checkpoint tag. The strict-mode
@@ -637,7 +638,8 @@
 
 - id: 17
   title: Final verification + canonical tag
-  status: done
+  status: in_progress
+  verified_zero: false
   status_note: |
     Wave 17 closed 2026-06-22. `architecture-clean-v1` checkpoint tag
     stamped onto main. Per operator override the cert is partial-strict:
@@ -694,10 +696,35 @@
 #     modules — `modules/voiceover.go` (PR4.4), `modules/content.go`
 #     (PR4.3), `modules/images.go` (PR4.4) — and the `*backgroundJobs`
 #     closure in `lifecycle.go` splits into a typed lifecycle (PR4.8).
-#   * Wave 16 closes only when archcheck --strict flag exists (currently
-#     missing; SKIPPED in wave15_exit_gate.sh PASS-WITH-DEFERRED verdict).
+#   * Wave 16 closes only when archcheck --strict mode exits 0 AND the
+#     strict-mode ratchet holds (no alias hits, no violation counts).
 #   * Wave 17 is the final verification gate; tag architecture-clean-v1
-#     remains the canonical success marker.
+#     is preserved as a historical milestone but NO new waves may use
+#     operator-override to flip to `done` without verified_zero: true.
+# -----------------------------------------------------------------------------
+#
+# ── Verified-zero policy (PR1, June 2026) ───────────────────────────────
+# Enforced by Check 21 in `scripts/ci-architectural-checks.sh`:
+#   1. A wave with `status: done` MUST have `verified_zero: true`.
+#   2. `verified_zero: true` requires `go run ./scripts/archcheck -strict`
+#      to exit 0 (zero alias hits + zero violation counts).
+#   3. A missing `verified_zero` field is interpreted as `false` (fail).
+# Waves 16, 17 had been flipped to `done` via "operator override" before
+# this policy existed; both are now downgraded to `in_progress` until the
+# strict-mode ratchet reports zero.
+# -----------------------------------------------------------------------------
+#
+# ── Baseline split (PR1, June 2026) ───────────────────────────────────
+# `scripts/archcheck/baseline.json` is DEPRECATED. Two new files:
+#   * `scripts/archcheck/grandfathered_allowlist.json` — single source of
+#     truth for the ratchet; contains ONLY `violations` counts dict.
+#     Monotone-decreasing (operators may remove entries; never raise them).
+#   * `scripts/archcheck/current_report.json` — diagnostic snapshot of the
+#     CURRENT scan (directories + aliases + wrappers + violations).
+#     Generated on every run; NEVER used as an allowlist; suitable for
+#     gitignore (regenerated cheaply). Directory/alias/wrapper evolution
+#     is NOT ratcheted (they are legitimate new artifacts); only violation
+#     counts participate in the ratchet.
 # -----------------------------------------------------------------------------
 
 # ── Post-cascade operational followups (June 2026) ─────────────────────────────

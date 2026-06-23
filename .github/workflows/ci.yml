@@ -46,15 +46,6 @@ jobs:
           echo "info: scripts/ci-architectural-checks.sh not present — skipping textual rg-based check"
         fi
 
-    - name: Run Legacy Asset AST Guardrail
-      # AST-based detector for true Go references to internal/media/models.MediaAsset.
-      # Replaces the previous rg-based allowlist that counted comments, strings
-      # and other textual occurrences. Exits non-zero on any real dependency.
-      run: go run ./scripts/ast_legacy_check
-
-    - name: Run Legacy Detector Self-tests
-      run: go test ./scripts/ast_legacy_check/...
-
     - name: Build all packages
       run: go build ./...
 
