@@ -1,3 +1,22 @@
+// Package stockpipeline — process.go refactored (PR6, June 2026).
+//
+// Pre-PR6: processSingleVideo reached directly into
+// `internal/infrastructure/media/ffmpeg::Processor`, constructed ffmpeg.CutJob
+// values, invoked CutReencodeBatch / CutReencode via `s.ffmpegProc.*`, and
+// verified outputs with `os.Stat`. All of this leaked FFmpeg knowledge into
+// the application layer (violates AGENTS.md Pattern 0 + 8).
+//
+// Post-PR6: this file is PURE ORCHESTRATION. It computes deterministic
+// non-overlapping clip window offsets, hands a neutral `stock.CutRequest` to
+// the canonical `stock.VideoCutter` port, and uses `CutResult.ProducedPaths`
+// directly — no ffmpeg / process / os import for verification.
+//
+// Import-boundary invariant:
+//
+//	go vet ./internal/application/assets/providers/stock/...
+//
+// must NOT import `internal/infrastructure/media/ffmpeg` OR
+// `internal/infrastructure/process`. This file respects the invariant.
 package stockpipeline
 
 import (
@@ -11,12 +30,13 @@ import (
 	"go.uber.org/zap"
 
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
-// processSingleVideo downloads a single video source, then extracts and normalizes
-// short clips using ffmpeg. Uses a single ffmpeg invocation (CutReencodeBatch) to
-// produce all clips from the source, reducing disk I/O and process spawn overhead.
+// processSingleVideo downloads a single video source, then extracts and
+// normalizes short clips via the canonical stock.VideoCutter port. The
+// port encapsulates the batch-then-fallback-to-individual FFmpeg logic
+// and disk verification — the application layer stays free of ffmpeg
+// knowledge.
 func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs VideoSource, idx int, secsPerVideo int, clipDurOverride int, noAudio bool) ([]string, []string, []string, error) {
 	select {
 	case <-ctx.Done():
@@ -92,7 +112,6 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.Int("planned_clips", numClips),
 	)
 
-	var processedClips []string
 	var clipTitles []string
 	usedOffsets := make(map[float64]bool)
 
@@ -101,15 +120,9 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		maxStart = 1
 	}
 
-	jobs := make([]ffmpeg.CutJob, 0, numClips)
+	// ── Build the deterministic non-overlapping cut plan ─────────────
+	jobs := make([]CutJob, 0, numClips)
 	for clipIdx := 0; clipIdx < numClips; clipIdx++ {
-		select {
-		case <-ctx.Done():
-			_ = os.Remove(actualPath)
-			return processedClips, clipTitles, uniqueRepeat(extractVideoID(vs.URL), len(processedClips)), ctx.Err()
-		default:
-		}
-
 		var offset float64
 		for attempt := 0; attempt < 20; attempt++ {
 			offset = rng.Float64() * maxStart
@@ -121,53 +134,52 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		}
 
 		outputPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
-		jobs = append(jobs, ffmpeg.CutJob{
-			StartSec: offset,
-			EndSec:   offset + float64(clipDur),
-			Output:   outputPath,
+		jobs = append(jobs, CutJob{
+			StartSec:   offset,
+			EndSec:     offset + float64(clipDur),
+			OutputPath: outputPath,
 		})
 		clipTitles = append(clipTitles, fmt.Sprintf("%s_%04d", vs.Title, clipIdx))
 	}
 
-	s.log.Info("single-pass batch cut starting",
-		zap.Int("video_index", idx),
-		zap.Int("clip_count", len(jobs)),
-		zap.Bool("no_audio", noAudio),
-		zap.String("codec", v.Codec),
-	)
-
-	batchErr := s.ffmpegProc.CutReencodeBatch(ctx, actualPath, jobs, noAudio, v.Codec, v.Preset, v.CRF)
-	if batchErr != nil {
-		s.log.Warn("batch cut failed, falling back to individual cuts", zap.Error(batchErr))
-		for i, j := range jobs {
-			cutErr := s.ffmpegProc.CutReencode(ctx, actualPath, j.Output,
-				ffmpeg.FormatSec(j.StartSec), ffmpeg.FormatSec(j.EndSec), noAudio, v.Codec, v.Preset, v.CRF)
-			if cutErr != nil {
-				s.log.Warn("fallback cut failed", zap.Int("clip", i), zap.Error(cutErr))
-				continue
-			}
-			processedClips = append(processedClips, j.Output)
-		}
+	// ── Port delegation ──────────────────────────────────────────────
+	if s.cutter == nil {
 		_ = os.Remove(actualPath)
-		s.log.Info("video processing finished (fallback)",
-			zap.Int("video_index", idx),
-			zap.Int("clips_created", len(processedClips)),
-		)
-		return processedClips, clipTitles, uniqueRepeat(extractVideoID(vs.URL), len(processedClips)), nil
+		return nil, nil, nil, fmt.Errorf("processSingleVideo: VideoCutter port is nil — was composition root build correct?")
 	}
 
-	for i, j := range jobs {
-		if _, err := os.Stat(j.Output); err == nil {
-			processedClips = append(processedClips, j.Output)
-			_ = i
-		}
+	s.log.Info("stock extractor: hand-off to VideoCutter port",
+		zap.Int("video_index", idx),
+		zap.Int("clip_count", len(jobs)),
+	)
+
+	res, cutErr := s.cutter.Cut(ctx, CutRequest{
+		SourcePath: actualPath,
+		Jobs:       jobs,
+		Codec:      v.Codec,
+		Preset:     v.Preset,
+		CRF:        v.CRF,
+		NoAudio:    noAudio,
+		Logger:     s.log,
+		SourceIdx:  idx,
+	})
+	if cutErr != nil {
+		// Partial success (some clips produced, some failed) is allowed
+		// by the port contract: a non-nil error here coexists with
+		// non-empty res.ProducedPaths. We continue with whatever was
+		// produced and surface only as a warning.
+		s.log.Warn("stock extractor: cutter reported partial / error",
+			zap.Int("video_index", idx),
+			zap.Int("clips_produced", len(res.ProducedPaths)),
+			zap.Error(cutErr),
+		)
 	}
 
 	_ = os.Remove(actualPath)
-	s.log.Info("video processing finished (single-pass)",
+	s.log.Info("video processing finished",
 		zap.Int("video_index", idx),
-		zap.Int("clips_created", len(processedClips)),
+		zap.Int("clips_created", len(res.ProducedPaths)),
 		zap.String("source_url", vs.URL),
 	)
-	return processedClips, clipTitles, uniqueRepeat(extractVideoID(vs.URL), len(processedClips)), nil
+	return res.ProducedPaths, clipTitles, uniqueRepeat(extractVideoID(vs.URL), len(res.ProducedPaths)), nil
 }

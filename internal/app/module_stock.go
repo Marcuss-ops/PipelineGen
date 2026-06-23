@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -41,6 +42,9 @@ type StockPipelineWiring struct {
 // WireStockPipeline creates the StockPipeline service, handler, and module.
 //
 // PR4d-chunk2 (June 2026): takes *StockBundle.
+// PR6 (June 2026): also constructs the canonical StockRenderer +
+// VideoCutter infra adapters and injects them via SetRenderer + SetCutter
+// so the application layer never reaches into ffmpeg/process directly.
 func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle) (*StockPipelineWiring, error) {
 	if bundle.DriveClient == nil {
 		log.Warn("stock pipeline not wired: missing drive client")
@@ -61,6 +65,22 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	if bundle.Dispatcher != nil {
 		svc.SetDispatcher(bundle.Dispatcher)
 	}
+
+	// PR6 port wiring: render adapter + cutter adapter. The application
+	// layer talks to the canonical stock ports; this composition root is
+	// the only place that knows the concrete adapters exist.
+	ffmpegPath := cfg.External.FfmpegPath
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	transitionRegistry := stockpipeline.DefaultTransitionRegistry()
+	renderer := render.NewFFmpegRenderer(ffmpegPath, transitionRegistry, log)
+	cutter := render.NewFFmpegCutter(ffmpegPath, log)
+	svc.SetRenderer(renderer)
+	svc.SetCutter(cutter)
+	log.Info("stock pipeline ports wired",
+		zap.Int("transition_catalog_size", transitionRegistry.Len()))
+
 	metaWriter := semantic.NewMetadataWriter(
 		cfg.Paths.PythonScriptsDir,
 		cfg.Storage.TempPath(),
