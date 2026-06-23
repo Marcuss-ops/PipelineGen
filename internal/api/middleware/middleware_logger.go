@@ -195,7 +195,7 @@ func Logger() gin.HandlerFunc {
 		c.Next()
 
 		// Skip health check logging to database if desired, but keep in journal
-		isHealth := c.FullPath() == "/health" || c.FullPath() == "/api/health"
+		isHealth := c.FullPath() == "/health"
 
 		duration := time.Since(start)
 		status := c.Writer.Status()

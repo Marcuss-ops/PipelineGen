@@ -1,3 +1,28 @@
+// Package common provides shared HTTP handlers. The HealthHandler is the
+// single consolidated health-check endpoint (PR7, June 2026): it aggregates
+// DB, Drive, Qdrant, and JobBroker checks behind GET /health.
+//
+// Query parameters:
+//
+//	?deep=true           run all component checks (default: fast ping only)
+//	?check=db,drive,...  run only the named checks (implies deep)
+//
+// Response shape:
+//
+//	{
+//	  "ok": true,
+//	  "status": "healthy",
+//	  "checks": {
+//	    "db":     {"ok": true, "duration_ms": 2},
+//	    "drive":  {"ok": true, "duration_ms": 145},
+//	    "qdrant": {"ok": true, "duration_ms": 12, "points_count": 1500},
+//	    "jobs":   {"ok": true, "duration_ms": 1}
+//	  }
+//	}
+//
+// When no deep parameter is supplied the response is the legacy short form:
+//
+//	{"ok": true, "status": "healthy"}
 package common
 
 import (
@@ -6,7 +31,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,7 +42,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
-// HealthHandler handles health check requests
+// HealthHandler handles health check requests.
 type HealthHandler struct {
 	cfg *config.Config
 }
@@ -51,27 +78,10 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	allReady := true
 
 	// 1. Database accessibility
-	dbPath := filepath.Join(h.cfg.Storage.DataDir, "media/media.db.sqlite")
-	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=2000"
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		checks["database"] = gin.H{"ready": false, "error": "cannot open database"}
+	dbCheck := h.checkDB(ctx)
+	checks["database"] = dbCheck
+	if ok, _ := dbCheck["ok"].(bool); !ok {
 		allReady = false
-	} else {
-		defer db.Close()
-		if err := db.PingContext(ctx); err != nil {
-			checks["database"] = gin.H{"ready": false, "error": "database unreachable"}
-			allReady = false
-		} else {
-			// Verify migrations table exists
-			var count int
-			if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='media_assets'").Scan(&count); err != nil || count == 0 {
-				checks["database"] = gin.H{"ready": false, "error": "migrations may not be applied"}
-				allReady = false
-			} else {
-				checks["database"] = gin.H{"ready": true}
-			}
-		}
 	}
 
 	// 2. Config validity (basic)
@@ -97,211 +107,210 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	}
 }
 
+// ── Health (GET /health) ──────────────────────────────────────────────
+
 // Health godoc
-// @Summary Health check
-// @Description Check if the server is healthy (fast lightweight check)
+// @Summary Unified health check
+// @Description Single modular health endpoint aggregating DB+Drive+Qdrant+JobBroker.
+// @Description Use ?deep=true for full component checks; ?check=db,drive,... for granular.
 // @Tags health
 // @Accept json
 // @Produce json
+// @Param deep query bool false "Run all component checks"
+// @Param check query string false "Comma-separated list: db,drive,qdrant,jobs"
 // @Success 200 {object} map[string]any
 // @Router /health [get]
 func (h *HealthHandler) Health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status": "healthy",
-		"ok":     true,
-	})
-}
-
-// Status godoc
-// @Summary Server status
-// @Description Get detailed server status
-// @Tags health
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]any
-// @Router /status [get]
-func (h *HealthHandler) Status(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"ok":     true,
-		"status": "running",
-		"mode":   "minimal",
-	})
-}
-
-// OllamaTimeout godoc
-// @Summary Ollama timeout configuration
-// @Description Returns the current Ollama timeout configuration for diagnostics. Protected by auth when enabled.
-// @Tags health
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]any
-// @Router /api/health/ollama-timeout [get]
-func (h *HealthHandler) OllamaTimeout(c *gin.Context) {
 	if h.cfg == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"ok":    true,
-			"error": "configuration not initialized",
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "unhealthy",
+			"ok":     false,
+			"reason": "configuration not initialized",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"ok": true,
-		"ollama": gin.H{
-			"timeout_seconds": h.cfg.External.OllamaTimeoutSeconds,
-			"model":           h.cfg.External.OllamaModel,
-		},
-		"server_time": time.Now().UTC(),
-	})
-}
+	// Determine check depth.
+	deep := c.Query("deep") == "true"
+	checkParam := strings.TrimSpace(c.Query("check"))
+	checksRequested := checkParam != ""
 
-// DeepHealth godoc
-// @Summary Deep health check
-// @Description Query external dependencies like SQLite and Ollama to verify deep integration status.
-// @Description This endpoint returns infrastructure details and is protected by a bearer token.
-// @Tags health
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]any
-// @Router /api/health/deep [get]
-func (h *HealthHandler) DeepHealth(c *gin.Context) {
-	if h.cfg == nil {
+	// Fast path: lightweight ping only.
+	if !deep && !checksRequested {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "warning",
+			"status": "healthy",
 			"ok":     true,
-			"error":  "configuration not initialized",
 		})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	// Build the allowlist of checks to run.
+	allow := map[string]bool{}
+	if checksRequested {
+		for _, name := range strings.Split(checkParam, ",") {
+			allow[strings.TrimSpace(name)] = true
+		}
+	} else {
+		// deep=true without check= → run all.
+		allow = map[string]bool{"db": true, "drive": true, "qdrant": true, "jobs": true}
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	// 1. Check SQLite Database — use generic status, never expose file path
-	dbStart := time.Now()
-	var dbStatus = "healthy"
-	var dbError string
+	checks := gin.H{}
+	allOK := true
 
-	dbPath := filepath.Join(h.cfg.Storage.DataDir, "media/media.db.sqlite")
-	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=2000"
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		dbStatus = "unhealthy"
-		dbError = "failed to open database"
-	} else {
-		defer db.Close()
-		if err := db.PingContext(ctx); err != nil {
-			dbStatus = "unhealthy"
-			dbError = "failed to ping database"
+	// ── 1. Database ─────────────────────────────────────────────────
+	if allow["db"] {
+		checks["db"] = h.checkDB(ctx)
+		if ok, _ := checks["db"].(gin.H)["ok"].(bool); !ok {
+			allOK = false
 		}
 	}
-	dbDuration := time.Since(dbStart).Milliseconds()
 
-	// 2. Check Ollama — redact URL in response
-	ollamaStart := time.Now()
-	var ollamaStatus = "healthy"
-	var ollamaError string
-
-	ollamaURL := h.cfg.External.OllamaURL
-	if ollamaURL == "" {
-		ollamaURL = "http://127.0.0.1:11434"
-	}
-	pingURL := fmt.Sprintf("%s/api/tags", ollamaURL)
-	req, err := http.NewRequestWithContext(ctx, "GET", pingURL, nil)
-	if err != nil {
-		ollamaStatus = "unhealthy"
-		ollamaError = "failed to create request"
-	} else {
-		client := &http.Client{Timeout: 3 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			ollamaStatus = "unhealthy"
-			ollamaError = "failed to connect to Ollama"
-		} else {
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				ollamaStatus = "unhealthy"
-				ollamaError = "Ollama returned non-200 status"
-			}
+	// ── 2. Google Drive ─────────────────────────────────────────────
+	if allow["drive"] {
+		checks["drive"] = h.checkDrive(ctx)
+		if ok, _ := checks["drive"].(gin.H)["ok"].(bool); !ok {
+			allOK = false
 		}
 	}
-	ollamaDuration := time.Since(ollamaStart).Milliseconds()
 
-	// 3. Check Qdrant — probe /readyz and collection info
-	var qdrantInfo gin.H
-	if h.cfg.VectorSearch.Enabled {
-		qdrantInfo = h.probeQdrant(ctx)
+	// ── 3. Qdrant ───────────────────────────────────────────────────
+	if allow["qdrant"] {
+		checks["qdrant"] = h.checkQdrant(ctx)
+		if ok, _ := checks["qdrant"].(gin.H)["ok"].(bool); !ok {
+			allOK = false
+		}
 	}
 
-	// Overall status
+	// ── 4. JobBroker ────────────────────────────────────────────────
+	if allow["jobs"] {
+		checks["jobs"] = h.checkJobBroker(ctx)
+		if ok, _ := checks["jobs"].(gin.H)["ok"].(bool); !ok {
+			allOK = false
+		}
+	}
+
 	status := "healthy"
-	if dbStatus == "unhealthy" || ollamaStatus == "unhealthy" {
+	if !allOK {
 		status = "unhealthy"
-	} else if dbStatus == "warning" || ollamaStatus == "warning" {
-		status = "warning"
-	}
-	if qdrantInfo != nil {
-		if qdrantHealthy, _ := qdrantInfo["healthy"].(bool); !qdrantHealthy {
-			status = "unhealthy"
-		}
 	}
 
-	resp := gin.H{
-		"ok":     status == "healthy",
+	c.JSON(http.StatusOK, gin.H{
+		"ok":     allOK,
 		"status": status,
-		"database": gin.H{
-			"status":      dbStatus,
-			"duration_ms": dbDuration,
-			"error":       dbError,
-		},
-		"ollama": gin.H{
-			"status":      ollamaStatus,
-			"duration_ms": ollamaDuration,
-			"error":       ollamaError,
-		},
-	}
-	if qdrantInfo != nil {
-		resp["qdrant"] = qdrantInfo
-	}
-
-	c.JSON(http.StatusOK, resp)
+		"checks": checks,
+	})
 }
 
-// probeQdrant checks Qdrant health and collection info via HTTP.
-func (h *HealthHandler) probeQdrant(ctx context.Context) gin.H {
+// ── Component checks (private) ──────────────────────────────────────
+
+func (h *HealthHandler) checkDB(ctx context.Context) gin.H {
 	start := time.Now()
+	dbPath := filepath.Join(h.cfg.Storage.DataDir, "media/media.db.sqlite")
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=2000"
+
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "cannot open database"}
+	}
+	defer db.Close()
+
+	if err := db.PingContext(ctx); err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "database unreachable"}
+	}
+
+	// Verify core table exists.
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='media_assets'").Scan(&count); err != nil || count == 0 {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "migrations may not be applied"}
+	}
+
+	return gin.H{"ok": true, "duration_ms": time.Since(start).Milliseconds()}
+}
+
+func (h *HealthHandler) checkDrive(ctx context.Context) gin.H {
+	start := time.Now()
+
+	credPath := h.cfg.GetCredentialsPath()
+	tokenPath := h.cfg.GetTokenPath()
+
+	if credPath == "" || tokenPath == "" {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "Drive credentials not configured"}
+	}
+
+	// Fast probe: Google Drive v3 about endpoint with a tight timeout.
+	// Returns basic user info; a 200 means the token is valid and the API is reachable.
+	client := &http.Client{Timeout: 3 * time.Second}
+
+	// Read token to attach as Bearer (simple file read; avoids importing the full
+	// OAuth stack into the health handler just for a ping).
+	tokenBytes, err := os.ReadFile(tokenPath)
+	if err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "token file not readable"}
+	}
+
+	var tokenData struct {
+		AccessToken string `json:"access_token"`
+	}
+	if json.Unmarshal(tokenBytes, &tokenData) != nil || tokenData.AccessToken == "" {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "token file invalid or missing access_token"}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://www.googleapis.com/drive/v3/about?fields=user", nil)
+	if err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "failed to create Drive request"}
+	}
+	req.Header.Set("Authorization", "Bearer "+tokenData.AccessToken)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "Drive API unreachable"}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": fmt.Sprintf("Drive API returned HTTP %d", resp.StatusCode)}
+	}
+
+	return gin.H{"ok": true, "duration_ms": time.Since(start).Milliseconds(), "configured": true}
+}
+
+func (h *HealthHandler) checkQdrant(ctx context.Context) gin.H {
+	start := time.Now()
+
 	qdrantURL := h.cfg.VectorSearch.URL
 	if qdrantURL == "" {
 		qdrantURL = "http://127.0.0.1:6333"
 	}
 	collection := h.cfg.VectorSearch.Collection
 
+	if !h.cfg.VectorSearch.Enabled {
+		return gin.H{"ok": true, "duration_ms": time.Since(start).Milliseconds(), "enabled": false, "note": "vector search disabled"}
+	}
+
 	client := &http.Client{Timeout: 3 * time.Second}
 
-	// Probe /readyz for liveness
-	healthy := true
-	var healthErr string
-
+	// Probe /readyz.
 	readyzURL := fmt.Sprintf("%s/readyz", qdrantURL)
 	req, err := http.NewRequestWithContext(ctx, "GET", readyzURL, nil)
 	if err != nil {
-		healthy = false
-		healthErr = "failed to create request"
-	} else {
-		resp, err := client.Do(req)
-		if err != nil {
-			healthy = false
-			healthErr = "failed to connect to Qdrant"
-		} else {
-			resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				healthy = false
-				healthErr = fmt.Sprintf("Qdrant returned HTTP %d", resp.StatusCode)
-			}
-		}
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "failed to create request"}
 	}
 
-	// Get collection info (points count)
+	resp, err := client.Do(req)
+	if err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "failed to connect to Qdrant"}
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": fmt.Sprintf("Qdrant returned HTTP %d", resp.StatusCode)}
+	}
+
+	// Get collection points count.
 	var pointsCount int64 = -1
 	collURL := fmt.Sprintf("%s/collections/%s", qdrantURL, collection)
 	req2, err := http.NewRequestWithContext(ctx, "GET", collURL, nil)
@@ -322,20 +331,43 @@ func (h *HealthHandler) probeQdrant(ctx context.Context) gin.H {
 		}
 	}
 
-	durationMs := time.Since(start).Milliseconds()
-
 	result := gin.H{
-		"healthy":     healthy,
-		"enabled":     h.cfg.VectorSearch.Enabled,
+		"ok":          true,
+		"enabled":     true,
 		"collection":  collection,
-		"duration_ms": durationMs,
-	}
-	if !healthy {
-		result["error"] = healthErr
+		"duration_ms": time.Since(start).Milliseconds(),
 	}
 	if pointsCount >= 0 {
 		result["points_count"] = pointsCount
 	}
 
 	return result
+}
+
+func (h *HealthHandler) checkJobBroker(ctx context.Context) gin.H {
+	start := time.Now()
+
+	// JobBroker health: verify the media DB is reachable and the jobs table
+	// exists. This is a lightweight proxy — the real broker liveness is
+	// reflected in whether jobs can be enqueued (checked via the DB path).
+	dbPath := filepath.Join(h.cfg.Storage.DataDir, "media/media.db.sqlite")
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=2000"
+
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "cannot open database"}
+	}
+	defer db.Close()
+
+	if err := db.PingContext(ctx); err != nil {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "database unreachable"}
+	}
+
+	// Verify jobs table exists.
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs'").Scan(&count); err != nil || count == 0 {
+		return gin.H{"ok": false, "duration_ms": time.Since(start).Milliseconds(), "error": "jobs table not found"}
+	}
+
+	return gin.H{"ok": true, "duration_ms": time.Since(start).Milliseconds()}
 }

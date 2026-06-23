@@ -25,10 +25,10 @@ func NewHandler(svc *appdiag.Service, log *zap.Logger) *Handler {
 }
 
 // RegisterRoutes registers diagnostics routes under the given group.
+// PR7 (June 2026): /qdrant/health removed — consolidated into GET /health?check=qdrant.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/diagnostics", h.Diagnostics)
 	r.GET("/index-health", h.IndexHealth)
-	r.GET("/qdrant/health", h.QdrantHealth)
 	r.POST("/qdrant/cleanup", h.QdrantCleanup)
 }
 
@@ -72,31 +72,6 @@ func (h *Handler) IndexHealth(c *gin.Context) {
 		"degraded":     result.Degraded,
 		"index_health": indexHealth,
 		"asset_stats":  assetStats,
-	})
-}
-
-// ── QdrantHealth (GET /qdrant/health) ─────────────────────────────
-
-func (h *Handler) QdrantHealth(c *gin.Context) {
-	if h.svc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "diagnostics service not wired")
-		return
-	}
-	result, err := h.svc.Check(c.Request.Context(), appdiag.HealthCommand{})
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-	ih, _ := result.Checks["index_health"].(map[string]any)
-	qdrantHealthy := false
-	if ih != nil {
-		qdrantHealthy, _ = ih["qdrant_healthy"].(bool)
-	}
-	enabled := ih != nil
-	apiutil.OK(c, gin.H{
-		"ok":      result.OK,
-		"healthy": qdrantHealthy,
-		"enabled": enabled,
 	})
 }
 

@@ -64,8 +64,7 @@ func runGenAPIDocs(args []string) error {
 }
 
 var routeDescriptions = map[string]string{
-	"/health":                       "Health check",
-	"/api/health":                   "Health check (API prefix)",
+	"/health":                       "Unified health check (?deep=true for component checks)",
 	"/api/internal/slug":            "Generate URL slug from text",
 	"/api/artlist/run":              "Start Artlist pipeline for a term",
 	"/api/artlist/run-smart":        "Start Artlist pipeline (smart mode)",
