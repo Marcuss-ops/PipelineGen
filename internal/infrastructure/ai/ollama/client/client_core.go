@@ -188,6 +188,16 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 		return result.Choices[0].Message.Content, nil
 	}
 
+	// Add keep_alive to model options to avoid reloading the model on every request.
+	// When set, Ollama keeps the model in GPU VRAM for the specified duration.
+	// Callers can override by passing options["keep_alive"].
+	if options == nil {
+		options = map[string]any{}
+	}
+	if _, hasKeepAlive := options["keep_alive"]; !hasKeepAlive {
+		options["keep_alive"] = "30m"
+	}
+
 	req := types.ChatRequest{
 		Model:    model,
 		Messages: messages,
