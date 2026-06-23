@@ -4,20 +4,18 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // upsertPreservingExisting upserts a MediaAsset while preserving fields that
 // the catalog sync should not overwrite (hash, local_path, metadata, tags).
-// Routes through the canonical outbox dispatcher when available, so the
-// media_assets UPDATE and the outbox_events INSERT commit atomically.
+// Routes through the canonical outbox dispatcher: the media_assets UPDATE
+// and the outbox_events INSERT commit atomically.
 func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.ClipsRepository, clip *asset.Asset) error {
 	if repo == nil || clip == nil {
 		return nil
@@ -39,59 +37,21 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.Cli
 		clip.Tags = mergeTags(clip.Tags, existing.Tags)
 	}
 
-	// PR1: when the canonical outbox dispatcher is wired, route the
-	// upsert + outbox enqueue through it. Atomicity is guaranteed by the
-	// dispatcher: either both the media_assets UPDATE and the
-	// outbox_events INSERT commit, or neither does. The previous
-	// pattern of `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)`
-	// violated atomicity — the goroutine could crash before IndexClip
-	// ran, or start before the upsert committed (half-state visible to
-	// readers). Folders still go through the dispatcher; Dispatcher handles
-	// IsFolder by skipping the outbox enqueue, so embedding is never
-	// requested for folder metadata rows.
-	//
-	// When s.dispatcher is nil (partial bring-up / tests) we fall back to
-	// the legacy SafeGoFunc path so existing code keeps working.
-	//
-	// Concurrency: we read s.dispatcher directly without re-acquiring s.mu.
-	// s.mu serialises the entry points (SyncAll, SyncSource, SyncFolderID)
-	// that call into upsertPreservingExisting, so the field is a stable
-	// snapshot for the duration of any sync. SetDispatcher is documented
-	// "production wiring calls once at startup" — so even outside the Lock
-	// window, the field has a happens-before relationship with any later
-	// service start (handler registration happens after WireServices).
-	dispatcher := s.dispatcher
-
-	var upsertErr error
-	if dispatcher != nil {
-		upsertErr = dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash())
-	} else {
-		upsertErr = repo.UpsertClip(ctx, clip)
+	if s.dispatcher == nil {
+		return fmt.Errorf("upsertPreservingExisting: dispatcher is nil — production wiring required")
 	}
-	if upsertErr != nil {
-		return fmt.Errorf("unsert %s: %w", clip.ID, upsertErr)
+
+	// Canonical PR1 path: atomic upsert + outbox enqueue via dispatcher.
+	// Atomicity is guaranteed by the dispatcher: either both the
+	// media_assets UPDATE and the outbox_events INSERT commit, or neither does.
+	// Folders go through the dispatcher; Dispatcher handles IsFolder by
+	// skipping the outbox enqueue, so embedding is never requested for
+	// folder metadata rows.
+	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+		return fmt.Errorf("dispatcher.EnqueueAndIndex %s: %w", clip.ID, err)
 	}
 
 	s.writeAssetIndex(ctx, clip)
-
-	// Indexing trigger — only on the legacy path. On the dispatcher path
-	// the outbox.Worker (configured in app/compose_integration.go) picks
-	// up the new outbox_events row and the outboxevents Pool runs IndexClip,
-	// preserving the same indexing behaviour, just delivered through the
-	// outbox queue instead of a fire-and-forget goroutine. This eliminates
-	// the race window where the goroutine could start before the upsert
-	// committed, AND the half-state window where process exit would leak
-	// a "metadata-written-but-no-embedding" row.
-	if dispatcher == nil && s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder() {
-		concurrent.SafeGoFunc("catalog-indexing", clip.ID, func(id string) {
-			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-			defer cancel()
-			s.log.Debug("triggering automatic vector indexing for synced catalog asset", zap.String("id", id))
-			if err := s.clipIndexer.IndexClip(indexCtx, id); err != nil {
-				s.log.Error("failed to automatically index catalog asset", zap.String("id", id), zap.Error(err))
-			}
-		})
-	}
 
 	return nil
 }

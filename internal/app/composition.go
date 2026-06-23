@@ -780,7 +780,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 // BuildSyncBundle constructs ONLY the catalog→Drive sync. ProviderRegistry
 // moved to BuildSearchBundle (PR4 review).
-func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle) (*SyncBundle, error) {
+func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle, outbox *OutboxBundle) (*SyncBundle, error) {
 	_ = ctx
 	_ = cfg
 	_ = dbs
@@ -788,6 +788,9 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	syncTargets := buildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
 	catalogSync := catalogsync.NewService(drive.DriveUploader, syncTargets,
 		search.AssetIndexService, search.AssetTreeService, process.ClipIndexerService, log)
+	if outbox != nil && outbox.Dispatcher != nil {
+		catalogSync.SetDispatcher(outbox.Dispatcher)
+	}
 
 	return &SyncBundle{
 		CatalogSync: catalogSync,
@@ -896,7 +899,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
 
-	sync, err := BuildSyncBundle(ctx, cfg, dbs, log, repos, search, process, driveBundle)
+	sync, err := BuildSyncBundle(ctx, cfg, dbs, log, repos, search, process, driveBundle, outbox)
 	if err != nil {
 		return nil, fmt.Errorf("compose sync: %w", err)
 	}

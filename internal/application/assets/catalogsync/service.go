@@ -50,14 +50,13 @@ type Service struct {
 	assetIndex  *assetindex.Service
 	assetTree   *assettree.Service
 	clipIndexer *clipindexer.Service
-	// dispatcher is the canonical ingestion entry point. When non-nil,
-	// upsertPreservingExisting routes media_assets upserts + outbox
-	// enqueues through Dispatcher.EnqueueAndIndex (atomic), replacing the
-	// legacy `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)` pattern.
+	// dispatcher is the canonical ingestion entry point. Routes media_assets
+	// upserts + outbox enqueues through Dispatcher.EnqueueAndIndex (atomic),
+	// replacing the legacy `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)`
+	// pattern. Required for production — upsertPreservingExisting returns an
+	// error when nil.
 	//
-	// Initial nil so existing tests (which construct `Service{}` directly
-	// or via NewService without an outbox) keep their legacy behaviour.
-	// Production wiring sets it via SetDispatcher after composeIntegration
+	// Wired via SetDispatcher at composition time after BuildOutboxBundle
 	// creates the Dispatcher. See internal/infrastructure/database/sqlite/outbox
 	// (package) for the contract.
 	dispatcher *outbox.Dispatcher
@@ -77,8 +76,7 @@ func NewService(uploader *uploaddrive.Uploader, targets []Target, assetIndex *as
 
 // SetDispatcher installs the canonical outbox dispatcher. After installation,
 // upsertPreservingExisting routes ingestion through Dispatcher.EnqueueAndIndex
-// — atomic upsert + outbox enqueue. The legacy SafeGoFunc(IndexClip) path is
-// only used when s.dispatcher is nil (partial bring-up / unit tests).
+// — atomic upsert + outbox enqueue.
 //
 // Concurrency: the s.dispatcher field is read directly inside
 // upsertPreservingExisting WITHOUT re-acquiring s.mu — doing so would deadlock

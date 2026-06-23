@@ -92,7 +92,7 @@ func newTestService(t *testing.T, store *mockVectorStore, embedder EmbeddingClie
 		AllowBackgroundGen: true,
 	}
 	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
-	return NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, nil, nil, log)
+	return NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, &noopIndexHealthClips{}, &noopIndexHealthOutbox{}, log)
 }
 
 func makeEmbedding(dim int) []float64 {
@@ -195,7 +195,7 @@ func TestMatch_NoResults_FallbackWithoutGeneration(t *testing.T) {
 		AllowBackgroundGen: false, // disabled globally
 	}
 	vectorSvc := qdrant.NewService(store, qdrant.Config{}, log)
-	svc := NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, nil, nil, log)
+	svc := NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, &noopIndexHealthClips{}, &noopIndexHealthOutbox{}, log)
 
 	resp, err := svc.Match(context.Background(), &MatchRequest{
 		Query: "unicorn ballet cinematic", MinScore: 0.85,
@@ -421,7 +421,7 @@ func TestSearchFallsBackWhenEmbeddingServerUnavailable(t *testing.T) {
 		nil,
 		config.RerankerConfig{},
 		&config.VectorSearchConfig{MinInstantScore: 0.85, AllowBackgroundGen: true},
-		nil, nil,
+		&noopIndexHealthClips{}, &noopIndexHealthOutbox{},
 		zap.NewNop(),
 	)
 
@@ -455,7 +455,7 @@ func TestSearchReturnsRRFResultsWhenRerankerUnavailable(t *testing.T) {
 		client,
 		rerankCfg,
 		&config.VectorSearchConfig{MinInstantScore: 0.85},
-		nil, nil,
+		&noopIndexHealthClips{}, &noopIndexHealthOutbox{},
 		zap.NewNop(),
 	)
 

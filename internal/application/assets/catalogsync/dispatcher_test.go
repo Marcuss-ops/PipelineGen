@@ -92,9 +92,8 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	assert.Equal(t, "abc123", stored.FileHash())
 	assert.Equal(t, "https://drive.google.com/file/d/abc", stored.DriveLink())
 
-	// outbox_events row must be present — this is what the legacy
-	// SafeGoFunc(IndexClip) pattern achieved via fire-and-forget goroutine.
-	// The dispatcher achieves it via atomic transaction + outboxevents Pool pickup.
+	// outbox_events row must be present — this is what the dispatcher
+	// achieves via atomic transaction + outboxevents Pool pickup.
 	var outboxCount int
 	require.NoError(t,
 		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = 'asset.index.requested'", "test_clip_001").Scan(&outboxCount),
@@ -144,11 +143,9 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	assert.Equal(t, 0, outboxCount, "folders must not produce an indexing event in the outbox")
 }
 
-// TestUpsertPreservingExisting_NilDispatcherLegacyPath verifies the
-// backwards-compatibility fallback: when SetDispatcher has not been
-// called (partial wiring / unit tests), the legacy repo.UpsertClip path
-// is taken.
-func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
+// TestUpsertPreservingExisting_NilDispatcherReturnsError verifies that
+// upsertPreservingExisting returns an error when the dispatcher is not wired.
+func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	ctx := context.Background()
 	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
@@ -156,7 +153,7 @@ func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	repo := assets.NewClipsRepository(db, zap.NewNop())
 
 	svc := &Service{log: zap.NewNop()}
-	// Note: SetDispatcher NOT called.
+	// Note: SetDispatcher NOT called — dispatcher is nil.
 
 	clip := &asset.Asset{
 		ID:             "legacy_clip_001",
@@ -168,18 +165,7 @@ func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	clip.SetIsFolder(false)
 	clip.SetFileHash("legacy_hash")
 
-	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, clip))
-
-	// media_assets row must be present (upsert).
-	stored, err := repo.GetClip(ctx, "legacy_clip_001")
-	require.NoError(t, err)
-	require.NotNil(t, stored)
-	assert.Equal(t, "legacy_hash", stored.FileHash())
-
-	// NO outbox_events row — legacy path doesn't use the outbox.
-	var outboxCount int
-	require.NoError(t,
-		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ?", "legacy_clip_001").Scan(&outboxCount),
-	)
-	assert.Equal(t, 0, outboxCount, "legacy path does NOT enqueue outbox events")
+	err := svc.upsertPreservingExisting(ctx, repo, clip)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dispatcher is nil")
 }

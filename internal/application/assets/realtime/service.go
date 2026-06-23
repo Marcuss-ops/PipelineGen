@@ -37,8 +37,8 @@ type Service struct {
 	// IndexHealth cross-check inputs — narrow interface seams defined in
 	// index_health.go (IndexHealthClips / IndexHealthOutbox). Concrete
 	// *assets.ClipsRepository / *outbox.Repository satisfy these structurally,
-	// so production callers compile unchanged. Both deps are nil-safe —
-	// a nil dep falls back to zeros in IndexHealth + a soft warning log.
+	// so production callers compile unchanged. Both deps are REQUIRED —
+	// construction panics if either is nil.
 	clips  IndexHealthClips
 	outbox IndexHealthOutbox
 
@@ -50,14 +50,10 @@ type Service struct {
 //
 // PR3-5b.4: the clips and outbox parameters are REQUIRED for the canonical
 // IndexHealth cross-check (sqlite_assets / sqlite_indexed / qdrant_points /
-// missing_in_qdrant / orphan_in_qdrant / pending_outbox / dead_letter). A
-// nil value is tolerated — the handler will fall back to the legacy raw-SQL
-// path AND log a WARN at startup so the wiring gap is visible — but the
-// canonical cross-check requires both.
+// missing_in_qdrant / orphan_in_qdrant / pending_outbox / dead_letter).
+// Construction panics if either is nil — production wiring must provide both.
 //
-// All production wiring must pass non-nil. The append at the end of the
-// parameter list keeps the existing 7-arg callers compiling; new callers
-// (composeRealtimeService) thread them explicitly.
+// All production wiring must pass non-nil.
 func NewService(
 	vectorSvc *qdrant.Service,
 	embedder EmbeddingClient,
@@ -69,11 +65,11 @@ func NewService(
 	outbox IndexHealthOutbox,
 	log *zap.Logger,
 ) *Service {
-	if clips == nil && log != nil {
-		log.Warn("realtime.NewService: clips repository is nil — IndexHealth will fall back to zeros")
+	if clips == nil {
+		panic("realtime.NewService: clips repository is required")
 	}
-	if outbox == nil && log != nil {
-		log.Warn("realtime.NewService: outbox repository is nil — pending_outbox/dead_letter will be reported as 0")
+	if outbox == nil {
+		panic("realtime.NewService: outbox repository is required")
 	}
 	return &Service{
 		vectorSvc:        vectorSvc,
