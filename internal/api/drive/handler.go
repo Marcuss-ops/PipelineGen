@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/clips"
+	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"

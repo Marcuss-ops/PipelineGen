@@ -17,14 +17,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // Deps is the constructor bag for Handler. Keeping deps in a struct
@@ -55,6 +56,8 @@ type Deps struct {
 	// ArtifactSvc streams uploaded files through content-addressed drive.
 	// Used by UploadVideoClip. Nil means POST /upload-video returns 500.
 	ArtifactSvc *artifacts.Service
+	// FolderMemSvc supports manifest regeneration heuristics.
+	FolderMemSvc *foldermemory.Service
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -76,14 +79,12 @@ type Handler struct {
 	cfg            *config.Config
 	log            *zap.Logger
 	// voiceoverRepo is mirrored from Deps.VoiceoverRepo via NewHandler
-	// or post-construction SetVoiceoverRepo. Both paths keep the same
-	// repo reference; switching mid-process picks up the new repo on the
-	// next handler invocation.
 	voiceoverRepo *assets.VoiceoversRepository
 	// imagesRepo mirrors Deps.ImagesRepo. Same late-binding semantics.
 	imagesRepo *assets.ImagesRepository
 	// artifactSvc mirrors Deps.ArtifactSvc. Same late-binding semantics.
-	artifactSvc *artifacts.Service
+	artifactSvc  *artifacts.Service
+	folderMemSvc *foldermemory.Service
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -109,6 +110,7 @@ func NewHandler(d Deps) *Handler {
 		voiceoverRepo:  d.VoiceoverRepo,
 		imagesRepo:     d.ImagesRepo,
 		artifactSvc:    d.ArtifactSvc,
+		folderMemSvc:   d.FolderMemSvc,
 	}
 }
 
@@ -119,6 +121,30 @@ func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 		return nil
 	}
 	return h.sourceResolver.ResolveRepo(source)
+}
+
+func (h *Handler) driveRootForSource(source string) (string, string) {
+	spec, ok := map[string]struct {
+		root   func(*config.Config) string
+		marker string
+	}{
+		"clips": {
+			root:   func(cfg *config.Config) string { return cfg.Drive.ClipsFolder() },
+			marker: "/clips/",
+		},
+		"artlist": {
+			root:   func(cfg *config.Config) string { return cfg.Drive.ArtlistFolder() },
+			marker: "/artlist/",
+		},
+		"stock": {
+			root:   func(cfg *config.Config) string { return cfg.Drive.StockFolder() },
+			marker: "/stock/",
+		},
+	}[artifacts.CanonicalSource(source)]
+	if !ok {
+		return "", ""
+	}
+	return spec.root(h.cfg), spec.marker
 }
 
 // RegisterJobHandlers wires up the bulk-upload worker. SourcesHandler's

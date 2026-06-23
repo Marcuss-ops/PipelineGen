@@ -7,7 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	fullimagessvc "github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
+	fullimagessvc "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 	"go.uber.org/zap"
 )
 

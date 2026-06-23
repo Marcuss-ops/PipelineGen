@@ -3,9 +3,8 @@
 // legacy flat internal/api/sources/ package as part of PR-A to keep the
 // YouTube transport isolated from the rest of the SourcesHandler.
 //
-// All handlers share the same SetClipsRepo(...) injection pattern as the
-// legacy file: the clip-repository is wired in from the registry after
-// the handler is constructed.
+// The clips repository is injected at construction time so the handler has
+// no late-binding setters.
 package youtube
 
 import (
@@ -48,11 +47,12 @@ type YouTubeClipHandler struct {
 //	providerRegistry - providers.Registry for search dispatch (nil = legacy path).
 //	                    Resolved lazily on first SearchTopics call so providers
 //	                    registered after construction are still discovered.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service, providerRegistry *providers.Registry) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service, providerRegistry *providers.Registry, clipsRepo *assets.ClipsRepository) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
 		service:     service,
 		log:         log,
 		jobsSvc:     jobsSvc,
+		clipsRepo:   clipsRepo,
 		providerReg: providerRegistry,
 	}
 }
@@ -74,11 +74,6 @@ func (h *YouTubeClipHandler) resolveProvider() {
 			h.providerSearch = sp
 		}
 	})
-}
-
-// SetClipsRepo sets the clips repository for advanced search.
-func (h *YouTubeClipHandler) SetClipsRepo(repo *assets.ClipsRepository) {
-	h.clipsRepo = repo
 }
 
 // RegisterRoutes wires the YouTube clip endpoints onto the supplied

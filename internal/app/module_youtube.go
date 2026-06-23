@@ -26,7 +26,7 @@ type YouTubeClipWiring struct {
 // PR3 (June 2026): providerRegistry added for constructor injection
 // (replaces post-construction SetProviderRegistry).
 func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade *jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, providerRegistry *providers.Registry) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry)
+	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry, clipsRepo)
 	var mod api.Module
 	if ytSvc != nil {
 		mod = api.NewRouteModule(
@@ -38,9 +38,6 @@ func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Servi
 		)
 		log.Info("created Clips module")
 		ytSvc.RegisterHandler(jobs)
-	}
-	if clipsRepo != nil {
-		handler.SetClipsRepo(clipsRepo)
 	}
 	return &YouTubeClipWiring{Handler: handler, Module: mod, Service: ytSvc}, nil
 }

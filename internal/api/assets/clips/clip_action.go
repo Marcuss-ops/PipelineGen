@@ -242,20 +242,8 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	// Determine folder ID
 	folderID := clip.FolderID()
 	if folderID == "" {
-		// Attempt to resolve folder ID dynamically based on source and local path
-		var rootID string
-		var pathMarker string
-		switch source {
-		case "youtube":
-			rootID = h.cfg.Drive.ClipsFolder()
-			pathMarker = "/clips/"
-		case "artlist":
-			rootID = h.cfg.Drive.ArtlistFolder()
-			pathMarker = "/artlist/"
-		case "stock":
-			rootID = h.cfg.Drive.StockFolder()
-			pathMarker = "/stock/"
-		}
+		// Attempt to resolve folder ID dynamically based on source and local path.
+		rootID, pathMarker := h.driveRootForSource(source)
 
 		if rootID != "" && pathMarker != "" && strings.Contains(clip.LocalPath(), pathMarker) {
 			idx := strings.Index(clip.LocalPath(), pathMarker)
