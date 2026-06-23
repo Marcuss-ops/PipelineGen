@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"go.uber.org/zap"
 )
 
@@ -49,7 +49,7 @@ func runDBRotate(ctx context.Context, args []string) error {
 	log, _ := zap.NewProduction()
 	defer log.Sync()
 
-	ds, err := database.OpenSet(database.StorageConfig{
+	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
 		PrimaryDBPath:       resolved.PrimaryDBPath(),
 		ObservabilityDBPath: resolved.ObservabilityDBPath(),
@@ -61,7 +61,7 @@ func runDBRotate(ctx context.Context, args []string) error {
 
 	// Use the canonical DatabaseSet.Observability handle. We need to
 	// close it manually here, OpenSet already keeps a reference.
-	r, err := database.RotateObservability(ctx, ds.Observability.DB, database.RotateOptions{
+	r, err := storage.RotateObservability(ctx, ds.Observability.DB, storage.RotateOptions{
 		MaxAgeDays: *maxAgeDays,
 		BackupDir:  bd,
 		Now:        nil, // wall clock

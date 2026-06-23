@@ -14,7 +14,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"go.uber.org/zap"
 )
 
@@ -28,7 +28,7 @@ func runDBMigrations(ctx context.Context, args []string) error {
 	log, _ := zap.NewProduction()
 	defer log.Sync()
 
-	ds, err := database.OpenSet(database.StorageConfig{
+	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
 		PrimaryDBPath:       resolved.PrimaryDBPath(),
 		ObservabilityDBPath: resolved.ObservabilityDBPath(),
@@ -38,11 +38,11 @@ func runDBMigrations(ctx context.Context, args []string) error {
 	}
 	defer ds.Close()
 
-	report, err := database.GetMigrationStatus(ds.Primary.DB, "migrations/sqlite")
+	report, err := storage.GetMigrationStatus(ds.Primary.DB, "migrations/sqlite")
 	if err != nil {
 		return fmt.Errorf("migration status: %w", err)
 	}
-	fmt.Print(database.FormatMigrateStatus(report))
+	fmt.Print(storage.FormatMigrateStatus(report))
 	if report.PendingN > 0 {
 		return fmt.Errorf("%d pending migrations", report.PendingN)
 	}

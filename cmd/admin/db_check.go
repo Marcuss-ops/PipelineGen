@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +39,7 @@ func runDBCheck(ctx context.Context, args []string) error {
 	log, _ := zap.NewProduction()
 	defer log.Sync()
 
-	ds, err := database.OpenSet(database.StorageConfig{
+	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
 		PrimaryDBPath:       resolved.PrimaryDBPath(),
 		ObservabilityDBPath: resolved.ObservabilityDBPath(),
@@ -84,15 +84,15 @@ func runDBCheck(ctx context.Context, args []string) error {
 	return nil
 }
 
-func checkOneDB(ctx context.Context, label string, sdb *database.SQLiteDB, topN int, failures *int) error {
+func checkOneDB(ctx context.Context, label string, sdb *storage.SQLiteDB, topN int, failures *int) error {
 	if sdb == nil {
 		return fmt.Errorf("not opened")
 	}
 
-	if err := database.IntegrityCheck(ctx, sdb.DB); err != nil {
+	if err := storage.IntegrityCheck(ctx, sdb.DB); err != nil {
 		return fmt.Errorf("integrity_check: %w", err)
 	}
-	if v, err := database.ForeignKeyCheck(ctx, sdb.DB); err != nil {
+	if v, err := storage.ForeignKeyCheck(ctx, sdb.DB); err != nil {
 		return fmt.Errorf("foreign_key_check: %w", err)
 	} else if len(v) > 0 {
 		for _, line := range v {
@@ -100,7 +100,7 @@ func checkOneDB(ctx context.Context, label string, sdb *database.SQLiteDB, topN 
 		}
 		return fmt.Errorf("%d FK violation(s)", len(v))
 	}
-	if mode, err := database.JournalMode(ctx, sdb.DB); err != nil {
+	if mode, err := storage.JournalMode(ctx, sdb.DB); err != nil {
 		return fmt.Errorf("journal_mode: %w", err)
 	} else {
 		fmt.Printf("  [%s] journal_mode=%s\n", label, mode)
@@ -108,22 +108,22 @@ func checkOneDB(ctx context.Context, label string, sdb *database.SQLiteDB, topN 
 			return fmt.Errorf("journal_mode is %q, expected wal", mode)
 		}
 	}
-	if ms, err := database.BusyTimeoutMs(ctx, sdb.DB); err != nil {
+	if ms, err := storage.BusyTimeoutMs(ctx, sdb.DB); err != nil {
 		return fmt.Errorf("busy_timeout: %w", err)
 	} else {
 		fmt.Printf("  [%s] busy_timeout=%dms\n", label, ms)
 	}
-	if wal, err := database.WalSizeBytes(sdb.Path()); err != nil {
+	if wal, err := storage.WalSizeBytes(sdb.Path()); err != nil {
 		return fmt.Errorf("wal size: %w", err)
 	} else {
 		fmt.Printf("  [%s] wal_size=%dB\n", label, wal)
 	}
 
-	tables, err := database.AllUserTables(ctx, sdb.DB)
+	tables, err := storage.AllUserTables(ctx, sdb.DB)
 	if err != nil {
 		return fmt.Errorf("list tables: %w", err)
 	}
-	counts, err := database.TableCounts(ctx, sdb.DB, tables)
+	counts, err := storage.TableCounts(ctx, sdb.DB, tables)
 	if err != nil {
 		return fmt.Errorf("table counts: %w", err)
 	}
@@ -155,8 +155,8 @@ func checkOneDB(ctx context.Context, label string, sdb *database.SQLiteDB, topN 
 		fmt.Printf("    %s = %d\n", pairs[i].t, pairs[i].n)
 	}
 
-	for _, col := range database.CriticalColumns {
-		ok, err := database.ColumnExists(ctx, sdb.DB, col.Table, col.Column)
+	for _, col := range storage.CriticalColumns {
+		ok, err := storage.ColumnExists(ctx, sdb.DB, col.Table, col.Column)
 		if err != nil {
 			return fmt.Errorf("column_exists(%s, %s): %w", col.Table, col.Column, err)
 		}
@@ -164,9 +164,9 @@ func checkOneDB(ctx context.Context, label string, sdb *database.SQLiteDB, topN 
 			return fmt.Errorf("critical column missing: %s.%s", col.Table, col.Column)
 		}
 	}
-	fmt.Printf("  [%s] critical_columns: %d/%d present\n", label, len(database.CriticalColumns), len(database.CriticalColumns))
+	fmt.Printf("  [%s] critical_columns: %d/%d present\n", label, len(storage.CriticalColumns), len(storage.CriticalColumns))
 
-	if n, err := database.IndexCount(ctx, sdb.DB); err != nil {
+	if n, err := storage.IndexCount(ctx, sdb.DB); err != nil {
 		return fmt.Errorf("index_count: %w", err)
 	} else {
 		fmt.Printf("  [%s] index_count=%d\n", label, n)

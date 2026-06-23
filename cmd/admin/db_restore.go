@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 func runDBRestore(ctx context.Context, args []string) error {
@@ -31,7 +31,7 @@ func runDBRestore(ctx context.Context, args []string) error {
 		return fmt.Errorf("--verify is required: blind restore is not supported in this version (pass --verify to confirm integrity + smoke)")
 	}
 
-	r, err := database.Restore(ctx, *src, *dst)
+	r, err := storage.Restore(ctx, *src, *dst)
 	if err != nil {
 		// Emit partial struct so operators can see what passed.
 		enc := json.NewEncoder(os.Stderr)

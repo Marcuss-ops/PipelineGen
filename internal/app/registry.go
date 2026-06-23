@@ -30,6 +30,7 @@ import (
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"

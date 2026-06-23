@@ -15,11 +15,10 @@ func NewRealtimeModule(
 	log *zap.Logger,
 	handler *realtimeapi.MatchHandler,
 ) *api.RouteModule {
+	realtimeEnabled := cfg != nil && cfg.VectorSearch.RealtimeEnabled
 	return api.NewRouteModule(
 		"realtime",
-		func() bool {
-			return handler != nil && cfg.VectorSearch.RealtimeEnabled
-		},
+		func() bool { return handler != nil && realtimeEnabled },
 		"",
 		handler,
 		log,
