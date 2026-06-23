@@ -31,6 +31,5 @@ Before starting, make sure you have installed:
 
 ## 📂 Database Structure
 
-PipelineGen uses centralized SQLite in WAL mode with two databases:
-- `data/media/media.db.sqlite`: Main database for Scripts, Jobs and Asset Index.
+PipelineGen uses centralized SQLite in WAL mode with a single database:
 - `data/media/media.db.sqlite`: **Unico database** — tutte le tabelle (scripts, jobs, media_assets, voiceovers, etc.) consolidate in un solo file.

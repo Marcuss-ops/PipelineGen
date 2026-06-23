@@ -1,15 +1,11 @@
 # PipelineGen — Architecture
 
 > **Status**: canonical; replaces the scattered map previously in
-> `AGENTS.md` (old sections), `docs/architecture/MODULE_MAP.md`,
-> `docs/architecture/MODULE_OWNERSHIP.md`, and the README.
+> `AGENTS.md` (old sections) and the README.
 >
 > **Authority carve-out**: this doc covers structure and data flow. For
 > **rules** (DB driver, FTS5 ban, schema boundaries, AI generation policy,
 > admin token, agent instructions) `AGENTS.md` wins. If they disagree, fix the code.
->
-> Both MODULE_MAP.md and MODULE_OWNERSHIP.md have been **deleted**.
-> All their content is now in §4 (Module ownership) or AGENTS.md.
 
 ## 1. What it is
 
@@ -144,9 +140,7 @@ HTTP POST /api/artlist/run {term}
 > `/api/script/generate-with-images` rimane come endpoint **dedicato e
 > separato**, NON è un alias di `/generate-from-clips` — vedi la nota
 > immediatamente sopra al flow ASCII sotto per il confronto tra i due
-> preset di payload (vedi `docs/CHANGELOG_2026-06-03.md` sezione 0 per la
-> nota BREAKING sulla rimozione del flow legacy). Per i pattern di
-> parallelismo della fase immagini vedi `docs/PARALLEL_IMAGE_GENERATION.md`.
+> preset di payload (la pipeline legacy è stata completamente rimossa).
 
 ```
 HTTP POST /api/script/generate-from-clips   ─ canonical, preset dal body
@@ -327,18 +321,10 @@ and follow the OAuth flow. CI: `.github/workflows/`.
 
 ## 12. Pointers to deeper docs
 
-| Doc | Covers |
-|-----|--------|
-| `AGENTS.md` | **Critical rules** (DB driver, FTS5 ban, schema boundaries, AI gen policy, agent instructions). Wins on rule conflicts. |
-| `docs/architecture/job_lifecycle.md` | Job states, lease, retry, dead-letter |
-| `docs/architecture/job_lifecycle.md` | Job states, lease, retry, dead-letter |
-| `docs/PARALLELIZATION.md` | Parallel execution tuning, warm pool |
-| `docs/INTELLIGENCE_ROADMAP.md` | Hybrid search, vector store, reranker roadmap |
-| `docs/AI_GENERATION.md` | NVIDIA + Flux, semantic tagger |
-| `docs/SCRIPT_PIPELINE.md` | Script generation phases (supplements §5b) |
-| `docs/youtube_clip_service.md` | YouTube extraction + intelligence |
-| `docs/CHANGELOG_2026-06-03.md` | Most recent architectural changes |
-| `docs/ops-audit.md` | Operational concerns (systemd, log rotation, GPU) |
+All detailed documentation previously under `docs/` has been consolidated and removed.
+For all critical rules and operational guidelines, please refer to:
+- `AGENTS.md`: Critical rules (DB driver, FTS5 ban, schema boundaries, AI gen policy, agent instructions).
+- `PROJECT_GUIDE.md`: Quick start guide.
 
 
 ## 12b. Observability DB retention policy (June 2026)
@@ -403,7 +389,7 @@ HTTP request telemetry replayability for post-incident forensics.
 - **Italian** in code comments is fine (the codebase uses it widely);
   commit messages and this doc stay in English.
 - **Out of scope**: Android/iOS clients, Artlist Chrome extension (separate
-  repos); operational details in `docs/ops-audit.md`.
+  repos); operational details are documented in `AGENTS.md`.
 
 ---
 
@@ -458,7 +444,7 @@ La precedente setter cascade (`Service.SetSearchRunner(...)`,
 `NewService(ServiceDeps{...})` con 21 campi (13 wired esplicitamente,
 8 nil-tolerant per port opzionali).
 
-### Stato post-cascade (June 2026 — vedi anche `docs/POST_CASCADE_OPERATIONAL_READINESS.md`)
+### Stato post-cascade (June 2026 — vedi anche `AGENTS.md`)
 
 - Settore verde sul cascade package scope (5 packages + cmd/server + cmd/worker).
 - `go test ./...` ha 7 packages falliti FUORI dal cascade scope — investigazione separata.
