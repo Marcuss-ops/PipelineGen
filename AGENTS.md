@@ -16,13 +16,9 @@ The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER
 ## Documentation Map
 
 - **This file (AGENTS.md)**: Critical rules and instructions for all agents
-- **docs/api-package-boundaries.md**: Target API structure, dependency rules, size limits, migration plan
-- **docs/images/GEMINI.md**: Image generation strategy and Go-Python integration
-- **google-accounting/GEMINI.md**: Python automation details and image capture logic
-- **docs/INTELLIGENCE_ROADMAP.md**: Roadmap for advanced AI features and Hybrid Search evolutions
-- **docs/archive/sqlite-databases.md**: Complete database schema, boundaries, and migration strategy
 - **README.md**: Project structure and architecture overview
 - **PROJECT_GUIDE.md**: Italian language getting started guide
+- **ARCHITECTURE.md**: Full system architecture, module ownership, data flow, and database schemas (the `docs/` folder has been completely removed)
 
 ## Instructions
 
@@ -115,16 +111,13 @@ builder, Python test scripts) has been **removed**. All async work goes
 through one unified pipeline; the Python agent is reachable only via
 the sync endpoint.
 
-**For the full table of endpoints, schema, modes, and migration notes,
-see `docs/CHANGELOG_2026-06-03.md` §0.** The detailed data flow and
-pipeline diagrams live in `ARCHITECTURE.md` §3 and
-`docs/SCRIPT_PIPELINE.md` §3. This file does not duplicate them.
+**For the full table of endpoints, schema, and modes, see ARCHITECTURE.md.** All legacy documentation files previously under `docs/` have been removed.
 
 **Rule of thumb for new integrations**: scegli l'endpoint in base al preset di flag desiderato.
 
 | Endpoint | Handler | Job type | Preset del payload |
 |----------|---------|----------|--------------------|
-| `POST /api/script/generate-from-clips` | `ScriptFlowHandler.GenerateFromClips` (`handler_clip_source.go`) | `script.generate_from_clips` | Rispettano i flag del body. `generate_metadata=true` implica `extract_entities=true`. Default `sentences_per_image=10`. |
+| `POST /api/script/generate-from-clips` | `ScriptFlowHandler.GenerateFromClips` (`handler_clip_source.go`) | `script.generate_from_clips` | Rispettano i flag del body. `generate_metadata=true` implies `extract_entities=true`. Default `sentences_per_image=10`. |
 | `POST /api/script/generate-with-images` | `ScriptFlowHandler.GenerateWithImages` (`handler_generate_with_images.go`) | `script.generate_from_clips` (stesso) | **Forza** `extract_entities=false`, `generate_scene_images=true`, `generate_metadata=false`. Default `sentences_per_image=8`. |
 
 I due endpoint **non sono alias**: hanno handler e request type distinti
@@ -388,7 +381,7 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 - ✅ **Registry provider tipizzato** — `internal/application/assets/providers/` con adapter per Artlist e YouTube
 
 ### Still Pending
-- Remove any remaining duplicates in legacy doc folders
+- None (all duplicates and legacy doc folders under `docs/` have been removed)
 
 ### Current wave status (June 2026 snapshot — source of truth: `architecture/migration.yaml`)
 
@@ -419,8 +412,7 @@ sezione corrispondente di migration.yaml per audit di avanzamento.
 **Truth sources** (in ordine di autorità):
 1. `architecture/migration.yaml` — stato canonico per wave + exit-gate.
 2. `architecture/ownership.yaml` — chi possiede ogni package canonico.
-3. `docs/migration-maps/*.md` — manifest storici delle migrazioni passate.
-4. `scripts/archcheck/baseline.json` — snapshot ratchet (directory,
+3. `scripts/archcheck/baseline.json` — snapshot ratchet (directory,
    alias, wrapper) rigenerabile con `go run ./scripts/archcheck -update`.
 
 Se i tre layer sopra raccontano versioni diverse della stessa realtà,
@@ -474,7 +466,7 @@ Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni util
 | Scenario | Servizio | Path |
 |---|---|---|
 | Enqueue/poll/cancel async | `jobs.Service` | `internal/jobs/` — sempre per ogni long-running (>5s) |
-| Vettori Qdrant (interfaccia canonica) | `vectorstore.Service` | `internal/media/vectorstore/` — mai HTTP diretto |
+| Vettori Qdrant (interfaccia canonica) | `vectorstore.Service` | `internal/media/vectorstore/` — mai HTTP directo |
 | Reranker CrossEncoder BGE-reranker-v2-m3 | `reranker.Client` | `internal/reranker/` |
 | Embeddings/chat LLM (con retry + fallback) | `ollama.client.Client` | `internal/ml/ollama/client/` |
 | Read media_assets | `clips.Repository` | `Removed: clips/` — GetClip, SearchByTags |
@@ -510,12 +502,9 @@ Quando modifichi il codebase, **modularizza**: una decisione per sezione, una mo
 
 **Code-verdetto PR1.7 (June 2026)**: 12 port strutturali in `internal/application/youtube/ports.go` con compile-time assertions. Back-compat aliases: `type VideoMetadata = DownloaderMetadata`, `type YouTubeMetadataPort = DownloaderMetadata`. Empty-marker pattern (`interface{}`) ancora ammesso SOLO per port la cui signature è opaca lato chiamante (cache store, temp-file manager dove solo l'infrastruttura consuma la firma concreta).
 
-Vedi `docs/migration-maps/internal-application-youtube.md` per la migration map completa + `docs/POST_CASCADE_OPERATIONAL_READINESS.md` per il checklist post-cascade.
-
 ### Pattern 1 — Aggiungere un HTTP handler
 
 1. Crea `internal/api/<feature>/<file>.go` (un handler per feature, 5-8 file max).
-   Per la struttura target vedi `docs/api-package-boundaries.md`.
 2. Definisci request/response types in `requests.go` / `responses.go` della feature.
 3. Registra via `RegisterRoutes(*gin.RouterGroup)` della feature, chiamato dal modulo in `internal/app/registry.go`.
 4. **VIETATO** aggiungere handler a file `god_object.go` esistenti. Se >30 file in una directory, splitta per capability (Pattern 5).
@@ -561,8 +550,7 @@ func (h *XHandler) NewAction(c *gin.Context) {
 
 ### Pattern 5 — Splittare un package (regola corretta — Giugno 2026 v2)
 
-**⚠️ Il flattening di Giugno 2026 ha risolto i file enormi ma ha creato un
-mega-package da 153 file in `internal/api/`. La regola corretta è:**
+**⚠️ Il flattening di Giugno 2026 ha risolto i file enormi ma ha creato un mega-package da 153 file in `internal/api/`. La regola corretta è:**
 
 1. **Prima dividi per capability stabile**, poi dividi i file all'interno.
 2. Un package API **non deve contenere business orchestration** — solo transport HTTP.
@@ -571,8 +559,6 @@ mega-package da 153 file in `internal/api/`. La regola corretta è:**
 5. Oltre **40 file produttivi** il CI deve fallire (salvo allowlist documentata).
 6. Ogni feature API espone al massimo **1 Handler** principale e **1 funzione** di registrazione route.
 7. Le feature API **non possono importarsi tra loro**.
-
-**Struttura target**: vedi `docs/api-package-boundaries.md`.
 
 Vecchia regola (deprecata — portava al mega-package):
 
@@ -590,8 +576,8 @@ Quando aggiungi un campo a una request API o a un job payload (caso reale: Bug A
    - Worker struct/logica che legge il campo e agisce
 2. Aggiungi sempre con `omitempty` o zero-value safe per retro-compatibilità (es. `MinQualityScore float64` con check `> 0`).
 3. Test round-trip: scrivi un test `json.Marshal → json.Unmarshal` che verifica che il campo sopravvive.
-4. **Mai** aggiungere un campo che il worker legge ma il handler non scrive — finisce come "perso silenziosamente" (questo è esattamente Bug A).
-5. Se il campo ha impatto reale, esegui un job reale per verificare end-to-end (usa `pkg/veloxclient` o `scripts/velox_client.py` — vedi `docs/integrations/cross-worker-jobs.md`).
+4. **Mai** aggiungere un campo che the worker legge ma il handler non scrive — finisce come "perso silenziosamente" (questo è esattamente Bug A).
+5. Se il campo ha impatto reale, esegui un job reale per verificare end-to-end (usa `pkg/veloxclient` o `scripts/velox_client.py`).
 
 ```go
 // Diff template:
@@ -620,7 +606,7 @@ Prima di scrivere logica nuova, chiediti: esiste già un servizio per X?
 
 **Cross-reference**: la **tabella completa** dei servizi è nella sezione 🧰 Utilities / Servizi interni riusabili sopra — qui sotto solo lo shortcut decisionale dei casi più comuni.
 
-| Tu vuai... | Usa questo (vedi sezione sopra per il path completo) |
+| Tu vuoi... | Usa questo (vedi sezione sopra per il path completo) |
 |---|---|
 | **Genera uno script end-to-end** | **`scriptcore.Engine.WriteScript`** *(questo è IL punto d'ingresso canonico)* |
 | Async work (>5s) | `jobs.Service.Enqueue` |
@@ -665,14 +651,11 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 }
 ```
 
-Documento completo: `docs/api-package-boundaries.md`.
-
 ---
 
 ## File Structure (quick reference)
 
-See `ARCHITECTURE.md` for the full diagram and `docs/api-package-boundaries.md` for
-the target API structure. Quick reference:
+See `ARCHITECTURE.md` for the full diagram. Quick reference:
 
 ```
 .
@@ -716,6 +699,5 @@ the target API structure. Quick reference:
 ├── config/                   # YAML configuration
 ├── migrations/               # SQL migrations
 ├── scripts/                  # Python AI scripts
-├── node-scraper/             # Persistent Chromium scraper
-└── docs/                     # Technical documentation
+└── node-scraper/             # Persistent Chromium scraper
 ```
