@@ -1,45 +1,265 @@
-# Health Boundary Migration
+# Health Boundary Migration and Hardening
 
-> Priority: BLOCKER
+> Status: BOUNDARY COMPLETE — HARDENING OPEN
 >
-> Current source: `internal/api/common/health.go`
+> Verified against `main` at `401e3847` on 2026-06-23.
 >
-> Target ownership:
->
-> - `internal/application/system/health/` owns health policy and aggregation.
-> - `internal/infrastructure/health/` owns SQL, Drive, Qdrant and job probes.
-> - `internal/api/system/` owns query parsing and HTTP status mapping only.
-> - `internal/app/` constructs and injects all concrete checkers.
+> Priority now: MEDIUM. The former API-layer blocker has been removed.
 
-## Problem statement
+## Verified result
 
-The current health handler is both HTTP transport and infrastructure probe. It
-opens SQLite, reads OAuth token files, constructs HTTP requests to Google Drive
-and Qdrant, and inspects the jobs table. This creates four problems:
-
-1. API code owns infrastructure behavior.
-2. The handler cannot be tested without filesystem/network/SQLite setup.
-3. Job and Drive liveness are inferred through implementation details rather
-   than capability contracts.
-4. Architectural checks must special-case the health file, allowing the
-   violation to survive indefinitely.
-
-The migration must preserve the public routes:
+The layer boundary is now correct:
 
 ```text
-GET /health
-GET /ready
+internal/api/common/health.go
+    -> internal/application/system/health/Service
+        -> internal/infrastructure/health/*Checker
 ```
 
-It may correct response status semantics, but response-body changes must be
-explicitly covered by compatibility tests.
+The HTTP handler no longer imports or performs:
 
-## Target package layout
+- `database/sql`;
+- SQLite driver registration;
+- OAuth token file reads;
+- Google Drive HTTP requests;
+- Qdrant HTTP requests;
+- jobs-table queries.
+
+Deep health now maps an unhealthy aggregate to HTTP 503, and the special
+`health.go` exclusion was removed from the API SQL/import check.
+
+## Implemented files
+
+```text
+internal/application/system/health/
+    ports.go
+    service.go
+
+internal/infrastructure/health/
+    sqlite_checker.go
+    drive_checker.go
+    qdrant_checker.go
+    jobs_checker.go
+
+internal/api/common/
+    health.go                 # thin transport, retained in common
+```
+
+The package location differs from the original target (`internal/api/system/`),
+but location alone is not a blocker because the current handler is transport
+only.
+
+## What is complete
+
+### API transport boundary
+
+`HealthHandler` now performs only:
+
+1. nil-service protection;
+2. query parsing;
+3. request timeout creation;
+4. service invocation;
+5. HTTP status/JSON mapping.
+
+### Application aggregation
+
+`internal/application/system/health/Service` owns:
+
+- the canonical check-name switch;
+- checker selection;
+- aggregate health status;
+- missing-checker behavior;
+- unknown-name unhealthy behavior.
+
+### Infrastructure ownership
+
+SQL, token-file access and remote HTTP probes are now located under
+`internal/infrastructure/health/`, where implementation-specific behavior
+belongs.
+
+### HTTP status correction
+
+- fast process health: HTTP 200;
+- healthy deep/selected checks: HTTP 200;
+- unhealthy deep/selected checks: HTTP 503;
+- readiness database failure: HTTP 503.
+
+## Remaining hardening
+
+The boundary move is complete, but the implementation still duplicates
+resources and lacks typed policy.
+
+### 1. Unknown checks return 503 instead of 400
+
+Current behavior:
+
+```text
+GET /health?check=unknown
+-> application result OK=false
+-> handler maps all unhealthy results to HTTP 503
+```
+
+Required behavior:
+
+```text
+unknown check name -> typed ErrUnknownCheck -> HTTP 400
+known unhealthy checker -> HTTP 503
+```
+
+Implement typed errors or a structured result classification rather than
+inferring error class from a generic map.
+
+### 2. Duplicate check names are not normalized
+
+The handler trims values but does not remove empty or duplicate entries. The
+application service overwrites duplicate keys after executing the checker more
+than once.
+
+Required:
+
+- reject or ignore empty entries;
+- de-duplicate while preserving deterministic order;
+- validate against a canonical registry before executing checks.
+
+### 3. Generic `map[string]any` result contract
+
+`CheckResult` currently requires conventions such as an `"ok"` key at runtime.
+This is fragile and makes malformed checker output possible.
+
+Recommended model:
+
+```go
+type CheckResult struct {
+    OK         bool
+    DurationMS int64
+    ErrorCode  string
+    Error      string
+    Details    map[string]any
+}
+```
+
+The JSON representation may remain compatible while the internal contract
+becomes typed.
+
+### 4. SQLite checker reopens the database
+
+`SQLiteChecker` derives a path from `Storage.DataDir`, registers the SQLite
+driver and opens a new handle on every probe.
+
+Required:
+
+- inject the canonical open DB or a narrow `PingContext` capability;
+- avoid a second connection pool;
+- move schema readiness to an existing database repository/migration service;
+- do not duplicate the canonical media DB path calculation.
+
+Suggested port:
+
+```go
+type DBProbe interface {
+    PingContext(context.Context) error
+    SchemaReady(context.Context) error
+}
+```
+
+### 5. Jobs checker is only a table-existence check
+
+The current jobs checker opens the same database again and verifies that a
+`jobs` table exists. This does not establish runner or broker health.
+
+Required details should distinguish:
+
+```json
+{
+  "store_reachable": true,
+  "schema_ready": true,
+  "runner_enabled": true,
+  "runner_started": true
+}
+```
+
+Inject a narrow capability from the canonical jobs bundle rather than deriving
+broker health from SQLite alone.
+
+### 6. Drive checker rereads and parses the token file
+
+The Drive checker currently:
+
+- stores credential/token paths;
+- reads `token.json` per request;
+- parses `access_token` manually;
+- creates a raw Drive REST request with its own HTTP client.
+
+Required:
+
+- reuse the already-created authenticated Drive client;
+- call a low-cost official client operation;
+- distinguish authentication, permission, timeout and network failures;
+- never duplicate OAuth parsing logic.
+
+Suggested adapter dependency:
+
+```go
+type DriveProbe interface {
+    Ping(context.Context) error
+}
+```
+
+### 7. Qdrant checker creates a second client
+
+The checker owns another `http.Client` and reconstructs `/readyz` and collection
+URLs instead of reusing the canonical Qdrant service.
+
+Required:
+
+- inject a probe exposed by the existing Qdrant adapter/service;
+- keep disabled-vector-search as healthy with `enabled=false`;
+- make collection-not-found unhealthy when the enabled deployment requires the
+  collection;
+- preserve request-scoped cancellation.
+
+### 8. Readiness policy is hard-coded in the handler
+
+`Ready` currently calls:
+
+```go
+svc.Check(ctx, []string{"db"})
+```
+
+The application service should own the required readiness set because it depends
+on deployment capabilities and feature flags.
+
+Target API:
+
+```go
+func (s *Service) Ready(ctx context.Context) (Result, error)
+func (s *Service) Check(ctx context.Context, req Request) (Result, error)
+```
+
+### 9. Checker tests are still required
+
+Add focused tests for:
+
+- DB success/failure and schema failure using a fake probe;
+- Drive auth/network/timeout mapping;
+- disabled and enabled Qdrant behavior;
+- missing collection behavior;
+- jobs store versus runner state;
+- unknown check HTTP 400;
+- duplicate/empty check normalization;
+- context cancellation;
+- aggregate partial failure;
+- readiness feature-policy selection.
+
+Do not require live Google Drive or Qdrant in unit tests.
+
+## Recommended target structure
 
 ```text
 internal/application/system/health/
     model.go
     errors.go
+    registry.go
     ports.go
     service.go
     service_test.go
@@ -51,398 +271,92 @@ internal/infrastructure/health/
     jobs_checker.go
     *_test.go
 
-internal/api/system/
-    health_handler.go
-    health_handler_test.go
-    handler.go or module.go
-
 internal/app/
     compose_health.go
-    wire_system.go
+
+internal/api/common/
+    health.go
+    health_integration_test.go
 ```
 
-Do not create a second generic `health` framework elsewhere. This package must
-be the single owner for system health aggregation.
+Moving the handler from `common` to `system` is optional unless `common` becomes
+a mixed-responsibility package. The critical requirement is transport purity,
+which is already satisfied.
 
-## Application model
+## Recommended checker registry
 
-Use application-owned neutral types. Do not expose Gin values or concrete SDK
-responses.
-
-Suggested shape:
+Replace the fixed four-field service with a canonical registry:
 
 ```go
-package health
-
 type CheckName string
 
-const (
-    CheckDatabase CheckName = "db"
-    CheckDrive    CheckName = "drive"
-    CheckQdrant  CheckName = "qdrant"
-    CheckJobs     CheckName = "jobs"
-)
-
-type CheckResult struct {
-    OK         bool
-    DurationMS int64
-    Details    map[string]any
-    ErrorCode  string
-    Error      string
-}
-
-type Request struct {
-    Deep   bool
-    Checks []CheckName
-}
-
-type Result struct {
-    OK     bool
-    Status string
-    Checks map[CheckName]CheckResult
-}
-```
-
-`Details` may contain stable diagnostics such as collection name, point count or
-`enabled=false`, but must never expose OAuth tokens, raw DSNs, filesystem paths,
-SQL text or internal error stacks.
-
-## Application ports
-
-The application service should depend on one small interface per capability or
-one uniform checker interface registered by name.
-
-Recommended uniform contract:
-
-```go
 type Checker interface {
     Name() CheckName
-    Check(ctx context.Context) CheckResult
+    Check(context.Context) CheckResult
 }
-```
 
-The service stores checkers in a map built at construction time:
-
-```go
 type Service struct {
     checkers map[CheckName]Checker
-}
-
-func NewService(checkers ...Checker) (*Service, error)
-func (s *Service) Run(ctx context.Context, req Request) (Result, error)
-func (s *Service) Ready(ctx context.Context) (Result, error)
-```
-
-Constructor rules:
-
-- Reject duplicate checker names.
-- Reject typed-nil checkers using the existing `pkg/portutil` convention.
-- Missing optional checkers may be omitted, but requested missing checks return
-  a typed `ErrCheckerUnavailable`.
-- The service owns the canonical allowlist. Unknown check names return
-  `ErrUnknownCheck`; they must never produce a false healthy response.
-
-Suggested typed errors:
-
-```go
-var (
-    ErrUnknownCheck       = errors.New("unknown health check")
-    ErrCheckerUnavailable = errors.New("health checker unavailable")
-)
-```
-
-## Request semantics
-
-### Fast health
-
-`GET /health` without `deep` or `check` performs no remote I/O. It confirms the
-process and router are alive:
-
-```json
-{"ok":true,"status":"healthy"}
-```
-
-### Deep health
-
-`GET /health?deep=true` runs every registered checker with a request-scoped
-timeout.
-
-- All checks healthy: HTTP 200.
-- One or more required checks unhealthy: HTTP 503.
-- Disabled optional capability: checker returns `OK=true` and
-  `details.enabled=false`.
-
-### Selected checks
-
-`GET /health?check=db,drive` runs only the requested checks.
-
-- Trim and de-duplicate names.
-- Empty entries are ignored.
-- Any unknown name returns HTTP 400 with a stable error code.
-- A known but unavailable checker returns HTTP 503.
-
-### Readiness
-
-`GET /ready` should run only startup-critical checks. Define the list in the
-application service, not the handler. Recommended critical checks:
-
-- database connection and schema availability;
-- job store/broker availability when workers are enabled;
-- required configuration validation.
-
-Drive and Qdrant readiness should be required only when the corresponding
-feature is enabled and necessary for the selected deployment mode.
-
-## Infrastructure adapters
-
-### SQLite checker
-
-File: `internal/infrastructure/health/sqlite_checker.go`
-
-Rules:
-
-- Inject the already-open canonical database handle or a narrow `PingContext`
-  interface. Do not reopen the database from `Storage.DataDir`.
-- Verify connection with `PingContext`.
-- If schema verification is required, query through the existing database
-  ownership package and check canonical tables/migration state.
-- Do not import Gin.
-
-Suggested dependency:
-
-```go
-type DBPinger interface {
-    PingContext(context.Context) error
+    ready    []CheckName
 }
 ```
 
-If table inspection is retained, define a dedicated repository method such as
-`SchemaReady(ctx) error` under infrastructure/database instead of embedding raw
-SQL in the checker.
+Constructor requirements:
 
-### Drive checker
+- reject duplicate names;
+- reject typed-nil checker values using `pkg/portutil` conventions;
+- store deterministic order separately from the lookup map;
+- validate readiness names at construction;
+- permit omitted optional capabilities without panics.
 
-File: `internal/infrastructure/health/drive_checker.go`
-
-Rules:
-
-- Inject the already-created Drive client or a narrow adapter.
-- Do not read `token.json` or `credentials.json` in the checker.
-- Do not parse OAuth token files manually.
-- Probe a low-cost endpoint through the official client.
-- Treat authentication errors differently from network timeouts in `ErrorCode`.
-
-Suggested narrow port implemented by an infrastructure adapter:
-
-```go
-type DriveProbe interface {
-    Ping(ctx context.Context) error
-}
-```
-
-The checker remains infrastructure because the implementation uses the Drive
-SDK; the application service sees only `Checker`.
-
-### Qdrant checker
-
-File: `internal/infrastructure/health/qdrant_checker.go`
-
-Rules:
-
-- Reuse the existing Qdrant service/client instead of constructing a second
-  raw `http.Client` in the API layer.
-- Return healthy-disabled when vector search is disabled.
-- Probe readiness and optionally collection statistics.
-- Use bounded context timeouts inherited from the application request.
-- Do not silently convert collection-not-found into healthy if the collection
-  is required by the enabled feature.
-
-### Jobs checker
-
-File: `internal/infrastructure/health/jobs_checker.go`
-
-Rules:
-
-- Do not infer broker liveness solely from the existence of a SQLite table.
-- Inject a narrow application/infrastructure capability that can verify the
-  canonical store or broker.
-- At minimum, ping the canonical job store and verify required schema through
-  its repository.
-- If the local runner exposes lifecycle state, include it as a separate detail
-  rather than conflating it with database readiness.
-
-Possible result details:
-
-```json
-{
-  "store_reachable": true,
-  "runner_enabled": true,
-  "runner_started": true
-}
-```
-
-## Composition wiring
-
-Create a focused same-package composition file:
-
-```text
-internal/app/compose_health.go
-```
-
-Recommended bundle:
-
-```go
-type HealthBundle struct {
-    Service *health.Service
-}
-```
-
-`BuildHealthBundle` constructs the concrete checkers from existing root
-capabilities:
-
-```go
-func BuildHealthBundle(
-    cfg *config.Config,
-    db *storage.SQLiteDB,
-    driveClient *drive.Service,
-    vectorSvc *qdrant.Service,
-    jobs *JobsBundle,
-    log *zap.Logger,
-) (*HealthBundle, error)
-```
-
-Keep the dependency count narrow. If the signature grows, pass small existing
-bundles rather than the whole `ComposeRoot`.
-
-Wire the resulting application service into `internal/api/system`:
-
-```go
-healthHandler := systemapi.NewHealthHandler(root.Health.Service, log)
-```
-
-The router must not call `common.NewHealthHandler(cfg)` after migration.
-
-## Thin HTTP handler
-
-The final API handler may do only the following:
-
-1. Parse `deep` and `check` query values.
-2. Convert check strings to application names.
-3. Call `health.Service.Run` or `Ready`.
-4. Map typed application errors to status codes.
-5. Serialize the application result.
-
-It must not:
-
-- open databases;
-- read files;
-- create network clients;
-- know token paths, collection URLs or database filenames;
-- query schema tables;
-- start goroutines.
-
-Recommended status mapping:
+## HTTP mapping
 
 | Condition | HTTP |
 |---|---:|
-| Fast health OK | 200 |
-| Deep/selected checks all OK | 200 |
-| Known check unhealthy/unavailable | 503 |
+| Fast process health | 200 |
+| Selected/deep checks healthy | 200 |
+| Known component unhealthy | 503 |
+| Known checker unavailable | 503 |
 | Unknown check name | 400 |
-| Invalid query format | 400 |
-| Request timeout/cancel | 503 or 499-equivalent logging; never report healthy |
-| Internal unexpected error | 500 |
+| Invalid query | 400 |
+| Unexpected internal error | 500 |
 
 ## Migration sequence
 
-### Phase 0: characterization tests
+1. Add typed model and typed errors without changing JSON output.
+2. Introduce checker registry and normalization tests.
+3. Replace path-based SQLite/jobs checkers with injected canonical capabilities.
+4. Replace Drive token parsing with the existing authenticated client.
+5. Replace raw Qdrant HTTP with a canonical Qdrant probe.
+6. Move readiness policy into the application service.
+7. Add adapter and handler tests.
+8. Keep API architectural checks hard for SQL/Drive SDK and expand Check 19 to
+   cover every infrastructure import.
 
-Before moving code, add handler tests covering current routes and desired fixed
-semantics:
-
-- fast `/health` returns 200 and short body;
-- deep healthy returns 200;
-- deep unhealthy returns 503;
-- selected known checks execute only those checks;
-- unknown check returns 400;
-- `/ready` returns 503 when a critical checker fails;
-- disabled Qdrant/Drive behavior follows feature flags.
-
-Use fake application checkers. No real network or SQLite is required for API
-tests.
-
-### Phase 1: application package
-
-Add models, errors, checker registry and aggregation service. Unit-test:
-
-- duplicate checker rejection;
-- stable execution order where deterministic output matters;
-- unknown names;
-- unavailable checkers;
-- timeout/cancellation propagation;
-- all-healthy and partially-unhealthy aggregation.
-
-### Phase 2: concrete adapters
-
-Implement SQLite, Drive, Qdrant and jobs checkers with focused tests. Prefer
-existing service fakes or `httptest.Server` for network clients. Do not use live
-Google/Qdrant dependencies in unit tests.
-
-### Phase 3: composition
-
-Build and inject `HealthBundle`. Verify typed-nil guards and optional-feature
-behavior.
-
-### Phase 4: transport replacement
-
-Move the route handler to `internal/api/system/health_handler.go`, switch router
-wiring, then delete `internal/api/common/health.go`.
-
-If `common` contains other utilities, leave those files; do not preserve a
-health forwarding wrapper.
-
-### Phase 5: architecture gate
-
-Remove the `common/health.go` exclusion from
-`scripts/ci-architectural-checks.sh`. Add a hard rule that fails on forbidden
-infrastructure imports anywhere under `internal/api/`, except explicitly
-justified middleware/config binding cases.
-
-## Tests and validation
-
-Focused commands:
+## Validation
 
 ```bash
 go test ./internal/application/system/health/...
 go test ./internal/infrastructure/health/...
-go test ./internal/api/system/...
+go test ./internal/api/common/...
 go test ./internal/app/...
-go vet ./internal/application/system/health/... ./internal/infrastructure/health/... ./internal/api/system/... ./internal/app/...
+go vet ./internal/application/system/health/... ./internal/infrastructure/health/... ./internal/api/common/... ./internal/app/...
 go build ./...
 bash scripts/ci-architectural-checks.sh
+
+! rg 'database/sql|go-sqlite3|googleapis.com/drive|qdrant|os\.ReadFile|sql\.Open' internal/api/common/health.go
 ```
 
-Static exit checks:
+## Hardening definition of done
 
-```bash
-! rg 'database/sql|go-sqlite3|googleapis.com/drive|qdrant|os\.ReadFile|sql\.Open' internal/api --type go
-! test -f internal/api/common/health.go
-rg 'NewHealthHandler' internal/app internal/api --type go
-```
+Health hardening is complete when:
 
-## Definition of done
-
-This migration is complete when:
-
-- health policy and aggregation live under
-  `internal/application/system/health/`;
-- SQL, Drive, Qdrant and jobs probes live under
-  `internal/infrastructure/health/`;
-- the API handler contains only parsing, service invocation and response
-  mapping;
 - unknown selected checks return HTTP 400;
-- unhealthy deep/readiness checks return HTTP 503;
-- existing Drive/Qdrant/database clients are reused rather than recreated;
-- the API architecture gate has no health-file exception;
-- generated API docs show only the real `/health` and `/ready` routes;
-- focused tests, full build, vet and architecture checks pass.
+- check results and expected errors are typed;
+- duplicate and empty check names are normalized;
+- readiness policy is owned by the application service;
+- SQLite and jobs probes reuse canonical DB/job capabilities;
+- Drive and Qdrant probes reuse existing authenticated clients/services;
+- job health distinguishes store/schema and runner lifecycle;
+- checker and transport tests cover failures without live external services;
+- no broad health-specific architecture exception exists.
