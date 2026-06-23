@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -104,6 +105,56 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*Job, error
 		return nil, fmt.Errorf("%w (type=%s)", ErrNotWired, req.Type)
 	}
 	return s.EnqueueFn(ctx, req)
+}
+
+// EnqueueTyped is a deterministic, type-safe alternative to Enqueue.
+//
+// Equivalent to calling svc.Enqueue with `req.Payload = json.Marshal(payload)`.
+// The single marshal pass produces stable key ordering (Go structs follow
+// declaration order; map iteration is randomized). This eliminates the
+// brittle `json.Marshal → json.Unmarshal-to-map` round-trip some callers
+// historically inserted to coerce a typed payload into the any-typed
+// Payload slot.
+//
+// Wire-format guarantee: the JSON content (parsed key/value pairs) written
+// to the `payload_json` column is identical to what Enqueue(req, Payload:
+// payloadStruct) would have stored. The byte-level key ordering is now
+// deterministic (struct field declaration order) instead of randomized
+// (the marshaled-map path). Content-hashed caches and snapshot tests that
+// previously broke under the map-as-payload path now produce stable bytes
+// across restarts.
+//
+// Behavior:
+//   - Returns ErrNotWired (wrapped) if svc is nil or its EnqueueFn is unset.
+//     Wrapping uses %w so errors.Is(err, ErrNotWired) propagates correctly.
+//   - Marshals payload exactly once; the wrapped EnqueueFn observes
+//     `json.RawMessage` (verbatim pass-through; zero allocation).
+//   - If req.Payload is non-nil on entry, the caller's value is
+//     OVERWRITTEN by the marshaled typed payload. Construct req with
+//     only metadata fields set and pass the typed payload separately.
+//   - Oversized payloads (>1 MiB) defer to the application-layer Enqueue's
+//     MaxPayloadSize check; no domain-layer pre-check is duplicated here
+//     to avoid the constant-drift footgun.
+//
+// Backwards-compatible: Service.Enqueue is unaffected. Existing callers that
+// build *EnqueueRequest with a Payload field continue to work.
+//
+// Note: implemented as a TOP-LEVEL generic function rather than a *Service
+// method because Go forbids type parameters on methods (only on functions
+// and types). The receiver (svc *Service) is the first explicit argument.
+func EnqueueTyped[T any](ctx context.Context, svc *Service, req *EnqueueRequest, payload T) (*Job, error) {
+	if svc == nil {
+		return nil, fmt.Errorf("%w (EnqueueTyped type=%s, payload=%T)", ErrNotWired, req.Type, payload)
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("job.EnqueueTyped (type=%s, payload=%T): marshal: %w", req.Type, payload, err)
+	}
+	// json.RawMessage is a Marshaler: the downstream application/jobs/Service.Enqueue
+	// sees a verbatim pass-through. The MaxPayloadSize limit is enforced there
+	// (single canonical constant).
+	req.Payload = json.RawMessage(raw)
+	return svc.Enqueue(ctx, req)
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*Job, error) {

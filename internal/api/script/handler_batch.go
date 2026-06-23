@@ -1,12 +1,33 @@
+// Package script (api/script) — handler_batch.go holds the
+// /api/script/generate-batch endpoint and the batch progress lookup.
+//
+// PR4.F2 (June 2026): GenerateBatch is now a thin transport that
+// delegates the entire orchestration to scripts.GenerateBatchUseCase
+// (default-coercion, validation, async/sync dispatch, response shaping).
+// The handler is responsible only for:
+//
+//   - nil-checking that the use case is wired
+//   - binding JSON from the request body
+//   - extracting the Idempotency-Key header
+//   - calling the use case
+//   - mapping domain errors to HTTP status codes
+//   - serialising the typed AsyncJobRef or BatchGenerateResponse to JSON
+//
+// Add business logic ONLY in scripts.GenerateBatchUseCase. Anything
+// added here is a code smell (the PR4.F reviewer flagged this layer as
+// a back-slide risk).
+//
+// GetBatchProgress stays as a thin handler-level adaptor because its
+// function is essentially "translate a job-event log stream into the
+// public progress schema". It does not need its own use case.
 package script
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
@@ -15,11 +36,14 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
-	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
+// GetBatchProgress handles GET /api/script/generate-batch/progress.
+//
+// Parses the job's recent events to surface a friendly per-language
+// translation map and a chapter-progress counter alongside the
+// canonical job fields. Caller polls until status is Succeeded or
+// Failed (or until terminal status arrives through the events stream).
 func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
 	if h.jobsSvc == nil {
 		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
@@ -112,148 +136,86 @@ func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
 	api.OK(c, resp)
 }
 
+// GenerateBatch handles POST /api/script/generate-batch.
+//
+// Thin transport that delegates to scripts.GenerateBatchUseCase.
+// Domain errors map to HTTP via mapGenerateBatchError below.
 func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
-	if h.generator == nil {
-		api.Error(c, http.StatusServiceUnavailable, "script generator not initialized")
+	if h.generateBatch == nil {
+		api.Error(c, http.StatusServiceUnavailable, "generate-batch use case not initialized")
 		return
-	}
-	if h.batchService == nil {
-		api.Error(c, http.StatusServiceUnavailable, "batch service not initialized")
-		return
-	}
-
-	scriptsCfg := config.ScriptsConfig{}
-	if h.cfg != nil {
-		scriptsCfg = h.cfg.Scripts.WithDefaults()
 	}
 
 	req, ok := api.BindJSON[scripts.GenerateBatchRequest](c)
 	if !ok {
 		return
 	}
-	if req.Language == "" {
-		req.Language = scriptsCfg.DefaultLanguage
-	}
-	if req.Tone == "" {
-		req.Tone = scriptsCfg.DefaultTone
-	}
-	if req.Duration <= 0 {
-		req.Duration = scriptsCfg.DefaultDurationSeconds
-	}
-	if req.Model == "" && h.cfg != nil {
-		req.Model = h.cfg.External.OllamaModel
-	}
-	req.PromptVersion = defaults.String(req.PromptVersion, scripts.DefaultBookPromptVersion)
-	req.EditorPromptVersion = defaults.String(req.EditorPromptVersion, scripts.DefaultBookEditorPromptVersion)
-	req.QAPromptVersion = defaults.String(req.QAPromptVersion, scripts.DefaultBookQAPromptVersion)
 
-	// ChannelID: optional in the request. Default to the batch channel from config
-	// (cfg.scripts.batch_channel_id, default "default-batch") so a simpler request
-	// body that omits channel_id still gets a valid memory-gate channel.
-	if strings.TrimSpace(req.ChannelID) == "" {
-		req.ChannelID = scriptsCfg.BatchChannelID
-	}
-
-	// items[].source_text: optional. Default to the topic so the LLM has source
-	// material to work from. If the topic is also empty, the existing topic
-	// validation in validateGenerateBatchRequest will surface a clear error.
-	for i := range req.Items {
-		if strings.TrimSpace(req.Items[i].SourceText) == "" {
-			req.Items[i].SourceText = strings.TrimSpace(req.Items[i].Topic)
-		}
-	}
-	for i := range req.BatchTopics {
-		if strings.TrimSpace(req.BatchTopics[i].SourceText) == "" {
-			req.BatchTopics[i].SourceText = strings.TrimSpace(req.BatchTopics[i].Topic)
-		}
-	}
-
-	docTitle := strings.TrimSpace(req.DocTitle)
-	if docTitle == "" {
-		docTitle = "Untitled Batch Script"
-	}
-
-	supportedLanguages := scripts.SupportedScriptLanguages(nil, "")
-	if h.cfg != nil {
-		supportedLanguages = scripts.SupportedScriptLanguages(h.cfg.Multilingual.TranslateLanguages, h.cfg.Multilingual.SourceLanguage)
-	}
-	effectiveFolderID := strings.TrimSpace(req.DriveFolderID)
-	if effectiveFolderID == "" {
-		if h.cfg != nil {
-			effectiveFolderID = strings.TrimSpace(h.cfg.Drive.BooksFolder())
-		}
-		if effectiveFolderID == "" {
-			effectiveFolderID = h.driveFolderID
-		}
-	}
-
-	if validationErrs := scripts.ValidateGenerateBatchRequest(&req, effectiveFolderID, supportedLanguages); len(validationErrs) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid_request", "details": validationErrs})
+	out, err := h.generateBatch.Run(c.Request.Context(), scripts.GenerateBatchInput{
+		Request:        &req,
+		IdempotencyKey: c.GetHeader("Idempotency-Key"),
+	})
+	if err != nil {
+		h.mapGenerateBatchError(c, &req, err)
 		return
 	}
 
-	if req.Async {
-		if h.jobsSvc == nil {
-			api.InternalError(c, fmt.Errorf("job system not available"))
-			return
-		}
-		h.log.Info("enqueuing async script generate batch job", zap.String("title", docTitle))
-
-		payloadBytes, err := json.Marshal(req)
-		if err != nil {
-			api.InternalError(c, fmt.Errorf("failed to marshal job payload: %w", err))
-			return
-		}
-		var payloadMap map[string]any
-		if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
-			api.InternalError(c, fmt.Errorf("failed to parse job payload map: %w", err))
-			return
-		}
-
-		activeKey := "script_generate_batch_" + docTitle
-		if idemKey := strings.TrimSpace(c.GetHeader("Idempotency-Key")); idemKey != "" {
-			activeKey = "idem:" + idemKey
-			h.log.Info("using Idempotency-Key for batch dedup",
-				zap.String("title", docTitle),
-				zap.String("idempotency_key", idemKey),
-			)
-		}
-
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:          "script.generate_batch",
-			Priority:      5,
-			ActiveKey:     activeKey,
-			Payload:       payloadMap,
-			CorrelationID: corid.FromContext(c.Request.Context()),
-		})
-		if err != nil {
-			h.log.Error("failed to enqueue batch script job", zap.Error(err))
-			api.InternalError(c, err)
-			return
-		}
-		api.OK(c, gin.H{
+	if out.Async != nil {
+		c.JSON(http.StatusOK, gin.H{
 			"ok":         true,
 			"async":      true,
-			"job_id":     job.ID,
-			"status":     string(job.Status),
-			"message":    "Batch script generation enqueued. Poll /api/jobs/" + job.ID + "/full for status.",
-			"status_url": "/api/jobs/" + job.ID + "/full",
+			"job_id":     out.Async.JobID,
+			"status":     out.Async.Status,
+			"message":    "Batch script generation enqueued. Poll /api/jobs/" + out.Async.JobID + "/full for status.",
+			"status_url": out.Async.StatusURL,
 		})
 		return
 	}
 
-	requestTimeout := time.Duration(scriptsCfg.BatchTimeoutSeconds) * time.Second
-	if req.RequestTimeout > 0 {
-		requestTimeout = time.Duration(req.RequestTimeout) * time.Second
-	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
-	defer cancel()
+	c.JSON(http.StatusOK, out.Response)
+}
 
-	result, err := h.batchService.Execute(ctx, &req, nil)
-	if err != nil {
-		api.InternalError(c, err)
+// mapGenerateBatchError translates a use-case error to an HTTP response.
+// Validation errors carry structured details via GenerateBatchValidationErrors;
+// the original handler exposed that slice verbatim, so we preserve the
+// shape {"error":"invalid_request", "details":[...]}.
+//
+//   - ErrGenerateBatchInvalid → 400
+//   - GenerateBatchValidationErrors → 400 with details (errors.As)
+//   - ErrGenerateBatchMissing → 503
+//   - ErrGenerateBatchAsyncFailed / SyncFailed → 500 with structured log
+//   - default → 500 with structured log
+func (h *ScriptFlowHandler) mapGenerateBatchError(c *gin.Context, req *scripts.GenerateBatchRequest, err error) {
+	var verr *scripts.GenerateBatchValidationErrors
+	if errors.As(err, &verr) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":      false,
+			"error":   "invalid_request",
+			"details": verr.Details,
+		})
 		return
 	}
-
-	c.JSON(http.StatusOK, result)
+	// Best-effort log title — empty if the request never reached the
+	// use case (e.g. JSON-binding failed before parsing).
+	var title string
+	if req != nil {
+		title = strings.TrimSpace(req.DocTitle)
+	}
+	switch {
+	case errors.Is(err, scripts.ErrGenerateBatchMissing):
+		api.Error(c, http.StatusServiceUnavailable, err.Error())
+	case errors.Is(err, scripts.ErrGenerateBatchInvalid):
+		api.Error(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, scripts.ErrGenerateBatchAsyncFailed),
+		errors.Is(err, scripts.ErrGenerateBatchSyncFailed):
+		h.log.Error("generate-batch dispatch failed",
+			zap.String("title", title),
+			zap.Bool("async", req != nil && req.Async),
+			zap.Error(err))
+		api.InternalError(c, err)
+	default:
+		h.log.Error("generate-batch use case failed",
+			zap.Error(err))
+		api.InternalError(c, err)
+	}
 }

@@ -1,20 +1,30 @@
+// Package script (api/script) — handler_flow_ops.go holds the small
+// "ops-style" HTTP endpoints that aren't tied to the generation pipeline:
+// section regeneration and LLM cache eviction.
+//
+// PR4.F (June 2026) collapses the previous 120-line RegenerateSection
+// into a thin transport. The prompt construction, Ollama invocation,
+// persistence update, and Drive doc re-upload now live in
+// application/scripts/section_regen.go::SectionRegenerator.
+//
+// PR4.F6 (June 2026) collapses the previous 60-line EvictCache into a
+// thin transport. The LLM breaker reset, memory-cache eviction, and
+// nil-memory fallback now live in
+// application/scripts/cache_eviction_usecase.go::CacheEvictionUseCase.
+// This file only parses path/body, calls the use cases, and maps
+// domain errors to HTTP status codes.
 package script
 
 import (
-	"encoding/json"
-	"fmt"
-	"html"
+	"errors"
 	"net/http"
 	"strconv"
-	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 type RegenerateSectionRequest struct {
@@ -22,6 +32,18 @@ type RegenerateSectionRequest struct {
 	Model       string `json:"model,omitempty"`
 }
 
+// RegenerateSection handles POST /api/script/:id/sections/:section_id/regenerate.
+//
+// PR4.F (June 2026): thin transport — all business logic now lives in
+// scripts.SectionRegenerator. This handler is responsible only for:
+//   - parsing path params + JSON body
+//   - binding the typed request through a validate-on-bind check
+//   - calling the use case
+//   - translating domain errors into HTTP status codes
+//   - serializing the typed result to JSON
+//
+// The handler is intentionally short. Adding logic here is a code smell —
+// extend scripts.SectionRegenerator instead.
 func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 	scriptIDStr := c.Param("id")
 	sectionIDStr := c.Param("section_id")
@@ -31,7 +53,6 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 		api.Error(c, http.StatusBadRequest, "invalid script ID")
 		return
 	}
-
 	sectionID, err := strconv.ParseInt(sectionIDStr, 10, 64)
 	if err != nil {
 		api.Error(c, http.StatusBadRequest, "invalid section ID")
@@ -44,241 +65,118 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 		return
 	}
 
-	if h.scriptsRepo == nil {
-		api.Error(c, http.StatusServiceUnavailable, "scripts repository not initialized")
+	if h.sectionRegen == nil {
+		api.Error(c, http.StatusServiceUnavailable, "section regenerator not initialized")
 		return
 	}
 
-	// Retrieve target section
-	section, err := h.scriptsRepo.GetSectionByID(c.Request.Context(), sectionID)
-	if err != nil {
-		h.log.Error("failed to get section from DB", zap.Int64("section_id", sectionID), zap.Error(err))
-		api.Error(c, http.StatusNotFound, "section not found")
-		return
-	}
-
-	if section.ScriptID != scriptID {
-		api.Error(c, http.StatusBadRequest, "section does not belong to the specified script")
-		return
-	}
-
-	// Retrieve script metadata to get the model or channel
-	script, allSections, _, err := h.scriptsRepo.GetScriptByID(scriptID)
-	if err != nil {
-		api.Error(c, http.StatusNotFound, "script not found")
-		return
-	}
-
-	// Get adjacent sections
-	prev, next, err := h.scriptsRepo.GetAdjacentSections(c.Request.Context(), scriptID, section.SortOrder)
-	if err != nil {
-		h.log.Warn("failed to get adjacent sections", zap.Error(err))
-	}
-
-	// Construct context prompt for Ollama
-	var promptBuilder strings.Builder
-	promptBuilder.WriteString(fmt.Sprintf("Devi rigenerare la sezione intitolata '%s' per il libro o script sul tema '%s'.\n", section.SectionTitle, script.Topic))
-	promptBuilder.WriteString("Il testo precedente e successivo sono forniti di seguito solo come contesto per garantire la fluidità del testo, evitare ripetizioni e garantire transizioni naturali.\n\n")
-
-	if prev != nil {
-		promptBuilder.WriteString(fmt.Sprintf("--- CONTESTO SEZIONE PRECEDENTE (%s) ---\n%s\n\n", prev.SectionTitle, prev.Content))
-	}
-	promptBuilder.WriteString(fmt.Sprintf("--- SEZIONE CORRENTE DA RIGENERARE (usa come base) ---\n%s\n\n", section.Content))
-	if next != nil {
-		promptBuilder.WriteString(fmt.Sprintf("--- CONTESTO SEZIONE SUCCESSIVA (%s) ---\n%s\n\n", next.SectionTitle, next.Content))
-	}
-
-	promptBuilder.WriteString(fmt.Sprintf("Istruzione specifica di rigenerazione:\n\"%s\"\n\n", req.Instruction))
-	promptBuilder.WriteString("Rispondi DIRETTAMENTE ed ESCLUSIVAMENTE con il nuovo testo per questa sezione. Non includere preamboli, note o etichette come 'Ecco il testo rigenerato:' o markdown di intestazione per il capitolo.")
-
-	model := req.Model
-	if model == "" {
-		model = script.ModelUsed
-	}
-	if model == "" && h.cfg != nil {
-		model = h.cfg.External.OllamaModel
-	}
-
-	h.log.Info("calling ollama to regenerate section", zap.Int64("section_id", sectionID), zap.String("model", model))
-	res, err := h.generator.GenerateScript(c.Request.Context(), ollamatypes.TextGenerationRequest{
-		Language: script.Language,
-		Duration: script.Duration / len(allSections), // approximate proportional duration
-		Tone:     script.Template,
-		Model:    model,
-		Prompt:   promptBuilder.String(),
+	result, err := h.sectionRegen.Regenerate(c.Request.Context(), scripts.SectionRegenRequest{
+		ScriptID:    scriptID,
+		SectionID:   sectionID,
+		Instruction: req.Instruction,
+		Model:       req.Model,
 	})
 	if err != nil {
-		h.log.Error("failed to generate script section update", zap.Error(err))
-		api.InternalError(c, err)
+		h.mapRegenError(c, scriptID, sectionID, err)
 		return
-	}
-
-	newContent := strings.TrimSpace(res.Script)
-	if newContent == "" {
-		api.Error(c, http.StatusInternalServerError, "received empty response from generator")
-		return
-	}
-
-	// Update database
-	err = h.scriptsRepo.UpdateSectionContent(c.Request.Context(), sectionID, newContent)
-	if err != nil {
-		h.log.Error("failed to update section content in database", zap.Error(err))
-		api.InternalError(c, err)
-		return
-	}
-
-	// Fetch updated sections to reconstruct full document and update Google Doc
-	_, updatedSections, _, err := h.scriptsRepo.GetScriptByID(scriptID)
-	if err == nil {
-		// Reconstruct Merged content HTML
-		// Parse metadata to extract google_doc_id
-		var meta map[string]any
-		if err := json.Unmarshal([]byte(script.MetadataJSON), &meta); err == nil {
-			docID, _ := meta["google_doc_id"].(string)
-			if docID != "" && h.docClient != nil {
-				h.log.Info("updating associated google doc", zap.String("doc_id", docID))
-				// Prepare generated parts to reconstruct HTML
-				titles := make([]string, len(updatedSections))
-				contents := make([]string, len(updatedSections))
-				for idx, s := range updatedSections {
-					titles[idx] = s.SectionTitle
-					contents[idx] = s.Content
-				}
-				noChapters, _ := meta["no_chapters"].(bool)
-				language := script.Language
-				if language == "" {
-					language = "en"
-				}
-				htmlMergedContent := buildSectionDocHTML(script.Topic, titles, contents, noChapters, language)
-				// Re-upload/update the document
-				docErr := h.docClient.UpdateDoc(c.Request.Context(), docID, script.Topic, htmlMergedContent)
-				if docErr != nil {
-					h.log.Error("failed to update google doc content", zap.String("doc_id", docID), zap.Error(docErr))
-				}
-			}
-		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"ok":         true,
-		"section_id": sectionID,
-		"title":      section.SectionTitle,
-		"content":    newContent,
+		"section_id": result.SectionID,
+		"title":      result.Title,
+		"content":    result.Content,
 	})
 }
 
+// mapRegenError translates a use-case error into an HTTP response.
+// Domain typed errors map to specific codes; everything else falls through
+// to a 500 Internal Server Error. The error log at handler level (not the
+// use case) carries the request_id so logs can be correlated with the
+// client request, while the use case logs the structural error chain.
+func (h *ScriptFlowHandler) mapRegenError(c *gin.Context, scriptID, sectionID int64, err error) {
+	switch {
+	case errors.Is(err, scripts.ErrSectionNotFound):
+		api.Error(c, http.StatusNotFound, "section not found")
+	case errors.Is(err, scripts.ErrScriptNotFound):
+		api.Error(c, http.StatusNotFound, "script not found")
+	case errors.Is(err, scripts.ErrSectionScriptMismatch):
+		api.Error(c, http.StatusBadRequest, "section does not belong to the specified script")
+	case errors.Is(err, scripts.ErrEmptyGeneratorOutput):
+		api.Error(c, http.StatusInternalServerError, "received empty response from generator")
+	default:
+		if h.log != nil {
+			h.log.Error("regenerate section failed",
+				zap.Int64("script_id", scriptID),
+				zap.Int64("section_id", sectionID),
+				zap.Error(err))
+		}
+		api.InternalError(c, err)
+	}
+}
+
+// EvictCacheRequest is the JSON body for POST /api/script/cache/evict.
 type EvictCacheRequest struct {
 	Titles []string `json:"titles,omitempty"`
 }
 
-// buildSectionDocHTML generates Google Doc HTML from section titles and contents.
-// Mirrors the logic in application/scriptflow/batch/doc.go but operates on
-// plain string slices instead of batch-internal types.
-func buildSectionDocHTML(title string, sectionTitles []string, sectionContents []string, noChapters bool, language string) string {
-	cl := "Chapter"
-	switch language {
-	case "it":
-		cl = "Capitolo"
-	case "fr":
-		cl = "Chapitre"
-	case "es":
-		cl = "Capítulo"
-	case "de":
-		cl = "Kapitel"
-	}
-
-	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
-	b.WriteString(fmt.Sprintf("<h1>%s</h1>", html.EscapeString(strings.TrimSpace(title))))
-
-	if !noChapters {
-		b.WriteString(fmt.Sprintf("<h2>%s</h2>", html.EscapeString("Table of Contents")))
-		b.WriteString("<ol>")
-		for idx := range sectionTitles {
-			b.WriteString(fmt.Sprintf("<li><a href=\"#ch-%d\">%s %d: %s</a></li>", idx+1, cl, idx+1, html.EscapeString(strings.TrimSpace(sectionTitles[idx]))))
-		}
-		b.WriteString("</ol>")
-		b.WriteString("<hr>")
-	}
-	for idx := range sectionTitles {
-		if !noChapters {
-			b.WriteString(fmt.Sprintf("<section id=\"ch-%d\">", idx+1))
-			b.WriteString(fmt.Sprintf("<h2>%s %d: %s</h2>", cl, idx+1, html.EscapeString(strings.TrimSpace(sectionTitles[idx]))))
-		}
-		for _, para := range strings.Split(sectionContents[idx], "\n\n") {
-			para = strings.TrimSpace(para)
-			if para == "" {
-				continue
-			}
-			para = textutil.CleanForVoiceover(para)
-			para = html.EscapeString(para)
-			para = strings.ReplaceAll(para, "\n", "<br>")
-			b.WriteString(fmt.Sprintf("<p>%s</p>", para))
-		}
-		if !noChapters {
-			b.WriteString("</section>")
-			if idx < len(sectionTitles)-1 {
-				b.WriteString("<hr>")
-			}
-		} else {
-			b.WriteString("<br>")
-		}
-	}
-	b.WriteString("</body></html>")
-	return b.String()
-}
-
+// EvictCache handles POST /api/script/cache/evict.
+//
+// PR4.F6 (June 2026): thin transport — all business logic now lives in
+// scripts.CacheEvictionUseCase. This handler is responsible only for:
+//   - parsing the JSON body (with the empty-body-EOF special case so
+//     callers can omit titles to mean "just reset breakers")
+//   - trimming + filtering empty titles before the use case
+//   - calling the use case
+//   - translating domain errors into HTTP status codes
+//   - serializing the typed result to JSON
+//
+// The handler is intentionally short. Adding logic here is a code smell —
+// extend scripts.CacheEvictionUseCase instead.
 func (h *ScriptFlowHandler) EvictCache(c *gin.Context) {
 	var req EvictCacheRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// Only EOF (empty body) is treated as "evict all".
-		// Malformed JSON still gets a 400 so callers can debug.
+		// Only EOF (empty body) is treated as "evict all". Malformed JSON
+		// still gets a 400 so callers can debug.
 		if err.Error() != "EOF" {
 			api.Error(c, http.StatusBadRequest, err.Error())
 			return
 		}
-		// Empty body — evict everything.
 		req.Titles = nil
 	}
 
-	// First, reset all circuit breakers by clearing the breaker map on
-	// the generator client. This is the most impactful operation:
-	// it unblocks requests that were rejected by an open breaker.
-	if h.generator != nil && h.generator.GetClient() != nil {
-		resetCount := h.generator.GetClient().ResetCircuitBreakers()
-		h.log.Info("circuit breakers reset on cache evict", zap.Int("models_reset", resetCount))
-	}
-
-	if h.memorySvc == nil {
-		if len(req.Titles) == 0 {
-			// No memory service and no titles means just the breaker reset
-			// above is enough — no-op is fine.
-			c.JSON(http.StatusOK, gin.H{
-				"ok":               true,
-				"deleted_count":    0,
-				"circuit_breakers": "reset",
-			})
-			return
-		}
-		api.Error(c, http.StatusServiceUnavailable, "memory service not initialized")
+	if h.cacheEviction == nil {
+		api.Error(c, http.StatusServiceUnavailable, "cache eviction use case not initialized")
 		return
 	}
 
-	var count int64
-	var evictErr error
-	if len(req.Titles) > 0 {
-		count, evictErr = h.memorySvc.EvictExactOutputs(c.Request.Context(), req.Titles)
-	}
-	if evictErr != nil {
-		h.log.Error("failed to evict cache", zap.Error(evictErr))
-		api.InternalError(c, evictErr)
+	result, err := h.cacheEviction.Run(c.Request.Context(), scripts.CacheEvictionInput{
+		Titles: scripts.TrimAndFilterTitles(req.Titles),
+	})
+	if err != nil {
+		h.mapCacheEvictionError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"ok":               true,
-		"deleted_count":    count,
-		"evicted_titles":   req.Titles,
+		"deleted_count":    result.DeletedCount,
+		"evicted_titles":   result.EvictedTitles,
 		"circuit_breakers": "reset",
+		"models_reset":     result.CircuitBreakersReset,
 	})
+}
+
+// mapCacheEvictionError translates a use-case error into an HTTP response.
+// Domain typed errors map to specific codes; everything else falls through
+// to a 500 Internal Server Error. The use case logs the structural error
+// chain; the handler does not add log noise — every status transition is
+// logged exactly once.
+func (h *ScriptFlowHandler) mapCacheEvictionError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, scripts.ErrCacheEvictionMissing):
+		api.Error(c, http.StatusServiceUnavailable, "memory service not initialized")
+	default:
+		api.InternalError(c, err)
+	}
 }

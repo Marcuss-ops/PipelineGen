@@ -1,3 +1,18 @@
+// Package script (api/script) — handler_job_status.go holds the
+// /api/script/jobs/:job_id and /api/script/jobs/:job_id/full handlers.
+//
+// PR4.F3 (June 2026): the in-handler auth check (h.requireJobAuth) is
+// removed. Authentication is now applied at the route layer via
+// middleware.RequireAdminToken (see internal/api/middleware/admin_token.go).
+// The handler is purely a transport-layer decoder for the typed job
+// state — no auth-state conditional inside the request handler.
+//
+// Why the move: the previous inline check was a god-object anti-pattern
+// (handler owned dereferencing of h.cfg AND security-decision logic),
+// and the exact same check is already mounted as middleware in three
+// other places (Auth() on the protected group, WorkerAuth() on the
+// internal group, isURL-bypass hooks). The handler should not carry
+// credential logic.
 package script
 
 import (
@@ -5,13 +20,19 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // GetJobFullStatus returns the full job state including events.
+//
+// Auth: middleware.RequireAdminToken (mounted at route registration
+// in handler_flow.go::RegisterRoutesRemaining). The handler itself
+// does NOT re-check the credential — if a request reaches this method
+// without a valid admin token, the middleware already wrote the 401
+// response and aborted the chain.
 func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
 		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
@@ -21,10 +42,6 @@ func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 	jobID := strings.TrimSpace(c.Param("job_id"))
 	if jobID == "" {
 		api.BadRequest(c, "job_id is required")
-		return
-	}
-
-	if !h.requireJobAuth(c) {
 		return
 	}
 
@@ -61,6 +78,8 @@ func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 }
 
 // GetJobStatus returns the lightweight job state (status/progress/error/result).
+//
+// Auth: see GetJobFullStatus's doc comment — applied at the route layer.
 func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
 		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
@@ -70,10 +89,6 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	jobID := strings.TrimSpace(c.Param("job_id"))
 	if jobID == "" {
 		api.BadRequest(c, "job_id is required")
-		return
-	}
-
-	if !h.requireJobAuth(c) {
 		return
 	}
 
@@ -91,32 +106,4 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 		"error":    job.Error,
 		"result":   job.Result,
 	})
-}
-
-// requireJobAuth enforces the X-Velox-Admin-Token check before returning
-// job state. Reads token from X-Velox-Admin-Token header or Authorization:
-// Bearer <token>. Returns true when auth is satisfied (or disabled).
-func (h *ScriptFlowHandler) requireJobAuth(c *gin.Context) bool {
-	if h.cfg == nil || !h.cfg.Security.EnableAuth {
-		return true
-	}
-	token := strings.TrimSpace(c.GetHeader("X-Velox-Admin-Token"))
-	if token == "" {
-		authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			token = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-		}
-	}
-	expected := strings.TrimSpace(h.cfg.Security.AdminToken)
-	if expected == "" || token != expected {
-		h.log.Warn("rejected job-status request without admin token",
-			zap.String("path", c.Request.URL.Path),
-			zap.String("client_ip", c.ClientIP()))
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"ok":    false,
-			"error": "admin token required to read job status",
-		})
-		return false
-	}
-	return true
 }

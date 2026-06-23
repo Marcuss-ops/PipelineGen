@@ -179,6 +179,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			cfg, log, root.Jobs.Facade, batchSvc,
 			cfg.Drive.ScriptsGenFolder(),
 		)
+		cacheEvictionUC := scriptcore.NewCacheEvictionUseCase(
+			root.AI.ScriptGen, memorySvc, log,
+		)
 		handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 			Generator:             root.AI.ScriptGen,
 			Engine:                engine,
@@ -186,6 +189,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			Curation:              curationSvc,
 			Section:               sectionRegen,
 			GenerateBatch:         generateBatchUC,
+			CacheEviction:         cacheEvictionUC,
 			Image:                 root.Domains.ImageService,
 			Realtime:              root.Domains.RealtimeService,
 			Association:           root.Domains.AssocService,
