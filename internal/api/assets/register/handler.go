@@ -2,7 +2,6 @@
 package register
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
@@ -34,25 +33,17 @@ type BatchRegisterRequest struct {
 	Clips    []RegisterFromYouTubeRequest `json:"clips" binding:"required"`
 }
 
-// BatchClipResult is the result for a single clip in a batch registration.
-type BatchClipResult struct {
-	ClipID    string `json:"clip_id,omitempty"`
-	Name      string `json:"name"`
-	OK        bool   `json:"ok"`
-	Error     string `json:"error,omitempty"`
-	Duplicate bool   `json:"duplicate,omitempty"`
-}
-
 // BatchRegisterResponse is the response for batch registration.
 type BatchRegisterResponse struct {
-	OK        bool              `json:"ok"`
-	Total     int               `json:"total"`
-	Succeeded int               `json:"succeeded"`
-	Failed    int               `json:"failed"`
-	Results   []BatchClipResult `json:"results"`
+	OK        bool                        `json:"ok"`
+	Total     int                         `json:"total"`
+	Succeeded int                         `json:"succeeded"`
+	Failed    int                         `json:"failed"`
+	Results   []sourcing.BatchClipResult  `json:"results"`
 }
 
-// Handler manages YouTube clip registration (download + metadata + Drive + Qdrant).
+// Handler manages YouTube clip registration. All business orchestration
+// lives in sourcing.Service — the handler is pure transport.
 type Handler struct {
 	svc *sourcing.Service
 	log *zap.Logger
@@ -118,7 +109,8 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	})
 }
 
-// BatchRegisterFromYouTube handles POST /api/media/register-batch
+// BatchRegisterFromYouTube handles POST /api/media/register-batch.
+// Thin transport: delegates all orchestration to sourcing.Service.BatchRegisterFromYouTube.
 func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	if h.svc == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "register service not wired")
@@ -135,73 +127,28 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 		return
 	}
 
+	// Backfill folder_id from the request-level default
 	for i := range req.Clips {
 		if req.Clips[i].FolderID == "" && req.FolderID != "" {
 			req.Clips[i].FolderID = req.FolderID
 		}
 	}
 
-	ctx := c.Request.Context()
-	log := h.log.With(zap.String("handler", "batch-register"), zap.Int("total", len(req.Clips)))
-
-	results := make([]BatchClipResult, len(req.Clips))
-	var succeeded, failed int
-
-	log.Info("starting batch registration", zap.Int("clips", len(req.Clips)))
+	// Build commands from request clips
+	commands := make([]sourcing.RegisterClipCommand, len(req.Clips))
 	for i, clipReq := range req.Clips {
-		result := h.processBatchClip(ctx, clipReq)
-		results[i] = result
-		if result.OK || result.Duplicate {
-			succeeded++
-		} else {
-			failed++
-		}
-		log.Info("batch clip processed",
-			zap.Int("index", i+1),
-			zap.Int("total", len(req.Clips)),
-			zap.String("name", clipReq.Name),
-			zap.Bool("ok", result.OK),
-			zap.Bool("duplicate", result.Duplicate),
-			zap.String("error", result.Error),
-		)
+		commands[i] = toRegisterClipCommand(clipReq)
 	}
 
-	log.Info("batch registration completed", zap.Int("succeeded", succeeded), zap.Int("failed", failed))
+	result := h.svc.BatchRegisterFromYouTube(c.Request.Context(), commands)
+
 	apiutil.OK(c, BatchRegisterResponse{
-		OK:        true,
-		Total:     len(req.Clips),
-		Succeeded: succeeded,
-		Failed:    failed,
-		Results:   results,
+		OK:        result.OK,
+		Total:     result.Total,
+		Succeeded: result.Succeeded,
+		Failed:    result.Failed,
+		Results:   result.Results,
 	})
-}
-
-func (h *Handler) processBatchClip(ctx context.Context, clipReq RegisterFromYouTubeRequest) BatchClipResult {
-	result := BatchClipResult{Name: clipReq.Name}
-	if h.svc == nil {
-		result.Error = "register service not wired"
-		return result
-	}
-
-	res, err := h.svc.RegisterFromYouTube(ctx, toRegisterClipCommand(clipReq))
-	if err != nil {
-		result.Error = err.Error()
-		return result
-	}
-	if res == nil {
-		result.Error = "empty registration result"
-		return result
-	}
-	result.OK = res.OK
-	result.ClipID = res.ClipID
-	result.Duplicate = res.Duplicate
-	if res.Duplicate {
-		result.OK = false
-	}
-	if !res.OK && res.Message != "" {
-		result.Error = res.Message
-	}
-	return result
 }
 
 func toRegisterClipCommand(req RegisterFromYouTubeRequest) sourcing.RegisterClipCommand {

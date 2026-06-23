@@ -21,7 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -37,6 +37,7 @@ type YouTubeClipHandler struct {
 	providerSearch  providers.SearchProvider
 	providerReg     *providers.Registry
 	providerResolve sync.Once
+	toolChecker     appassets.ToolChecker
 }
 
 // NewYouTubeClipHandler builds the YouTubeClipHandler.
@@ -47,13 +48,14 @@ type YouTubeClipHandler struct {
 //	providerRegistry - providers.Registry for search dispatch (nil = legacy path).
 //	                    Resolved lazily on first SearchTopics call so providers
 //	                    registered after construction are still discovered.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service, providerRegistry *providers.Registry, clipsRepo *assets.ClipsRepository) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service, providerRegistry *providers.Registry, clipsRepo *assets.ClipsRepository, toolChecker appassets.ToolChecker) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
 		service:     service,
 		log:         log,
 		jobsSvc:     jobsSvc,
 		clipsRepo:   clipsRepo,
 		providerReg: providerRegistry,
+		toolChecker: toolChecker,
 	}
 }
 
@@ -303,21 +305,21 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 			ytdlpPath := cfg.External.ResolvedYtdlpPath()
 
 			// Check yt-dlp
-			if _, err := executil.LookPath(ytdlpPath); err != nil {
+			if _, err := h.toolChecker.LookPath(ytdlpPath); err != nil {
 				checks["ytdlp"] = "not_found"
 			} else {
 				checks["ytdlp"] = "ok"
 			}
 
 			// Check ffmpeg
-			if _, err := executil.LookPath("ffmpeg"); err != nil {
+			if _, err := h.toolChecker.LookPath("ffmpeg"); err != nil {
 				checks["ffmpeg"] = "not_found"
 			} else {
 				checks["ffmpeg"] = "ok"
 			}
 
 			// Check Node.js (for YouTube signature solving)
-			if _, err := executil.LookPath("node"); err != nil {
+			if _, err := h.toolChecker.LookPath("node"); err != nil {
 				checks["node"] = "not_found"
 			} else {
 				checks["node"] = "ok"

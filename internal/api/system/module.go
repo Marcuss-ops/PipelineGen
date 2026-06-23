@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
@@ -16,12 +17,12 @@ type Module struct {
 }
 
 // NewModule creates a new system module.
-func NewModule(cfg *config.Config, log *zap.Logger) *Module {
+func NewModule(cfg *config.Config, log *zap.Logger, toolChecker appassets.ToolChecker, processRunner appassets.ProcessRunner, dbHealthChecker appassets.DBHealthChecker) *Module {
 	return &Module{
 		name:    "system",
 		cfg:     cfg,
 		log:     log,
-		handler: NewSystemHandler(cfg, log),
+		handler: NewSystemHandler(cfg, log, toolChecker, processRunner, dbHealthChecker),
 	}
 }
 

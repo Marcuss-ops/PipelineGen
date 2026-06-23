@@ -16,8 +16,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -28,6 +28,7 @@ type Handler struct {
 	metaWriter             *semantic.MetadataWriter
 	resolver               *drive.Resolver
 	soundEffectsRootFolder string
+	processRunner          appassets.ProcessRunner
 	log                    *zap.Logger
 }
 
@@ -37,6 +38,7 @@ func NewHandler(
 	driveUploader *drive.Uploader,
 	metaWriter *semantic.MetadataWriter,
 	soundEffectsRootFolder string,
+	processRunner appassets.ProcessRunner,
 	log *zap.Logger,
 ) *Handler {
 	r := drive.NewResolver("data", "")
@@ -46,6 +48,7 @@ func NewHandler(
 		metaWriter:             metaWriter,
 		resolver:               r,
 		soundEffectsRootFolder: soundEffectsRootFolder,
+		processRunner:          processRunner,
 		log:                    log,
 	}
 }
@@ -91,20 +94,20 @@ func (h *Handler) Generate(c *gin.Context) {
 	tempWav := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.wav", time.Now().UnixNano()))
 	tempFile := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.mp3", time.Now().UnixNano()))
 
-	result, err := executil.Run(ctx, "python3", []string{"scripts/synth_sfx.py",
+	result, err := h.processRunner.Run(ctx, "python3", []string{"scripts/synth_sfx.py",
 		"--name", name,
 		"--duration", fmt.Sprintf("%f", duration),
 		"--output", tempWav,
-	}, executil.DefaultOptions())
+	}, appassets.DefaultProcessOptions())
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("python synth failed: %w, output: %s", err, result.Output))
 		return
 	}
 	defer os.Remove(tempWav)
 
-	result, err = executil.Run(ctx, "ffmpeg", []string{"-y", "-i", tempWav,
+	result, err = h.processRunner.Run(ctx, "ffmpeg", []string{"-y", "-i", tempWav,
 		"-acodec", "libmp3lame", tempFile,
-	}, executil.DefaultOptions())
+	}, appassets.DefaultProcessOptions())
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("ffmpeg conversion failed: %w, output: %s", err, result.Output))
 		return

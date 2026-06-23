@@ -7,7 +7,6 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
@@ -134,19 +133,8 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 	}
 
 	// Fallback: direct vector store upsert if we have search_text
-	if h.vectorStore != nil && clip.SearchText != "" {
-		asset := qdrant.VectorAsset{
-			AssetID:    clip.ID,
-			Source:     string(clip.Source),
-			Name:       clip.Name,
-			LocalPath:  clip.LocalPath(),
-			DriveLink:  clip.DriveLink(),
-			Category:   clip.Category,
-			MediaType:  string(clip.MediaType),
-			SearchText: clip.SearchText,
-			Tags:       clip.Tags,
-		}
-		if err := h.vectorStore.UpsertAsset(ctx, asset); err != nil {
+	if h.enrichUC != nil && h.enrichUC.HasVectorStore() && clip.SearchText != "" {
+		if err := h.enrichUC.UpsertToVectorStore(ctx, clip, source); err != nil {
 			apiutil.InternalError(c, fmt.Errorf("vector upsert failed: %w", err))
 			return
 		}

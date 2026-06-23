@@ -13,11 +13,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// VectorStorePort is the port interface for vector store upserts.
+// The composition root injects *qdrant.Service which satisfies this.
+type VectorStorePort interface {
+	UpsertAsset(ctx context.Context, asset qdrant.VectorAsset) error
+}
+
 // EnrichUseCase handles semantic enrichment and vector store indexing for clips.
 type EnrichUseCase struct {
 	assetRepo    asset.Repository
 	clipIndexer  *clipindexer.Service
-	vectorStore  *qdrant.Service
+	vectorStore  VectorStorePort
 	metaWriter   *semantic.MetadataWriter
 	log          *zap.Logger
 }
@@ -26,7 +32,7 @@ type EnrichUseCase struct {
 func NewEnrichUseCase(
 	repo asset.Repository,
 	indexer *clipindexer.Service,
-	vs *qdrant.Service,
+	vs VectorStorePort,
 	mw *semantic.MetadataWriter,
 	log *zap.Logger,
 ) *EnrichUseCase {
@@ -125,6 +131,32 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 	}
 
 	uc.log.Info("enrichment complete for clip", zap.String("clip_id", clip.ID))
+}
+
+// UpsertToVectorStore constructs a VectorAsset from the clip fields and
+// upserts it to Qdrant. This centralises the VectorAsset mapping so
+// handlers never import infrastructure/qdrant directly.
+func (uc *EnrichUseCase) UpsertToVectorStore(ctx context.Context, clip *asset.Asset, source string) error {
+	if uc.vectorStore == nil {
+		return fmt.Errorf("vector store not configured")
+	}
+	va := qdrant.VectorAsset{
+		AssetID:    clip.ID,
+		Source:     source,
+		Name:       clip.Name,
+		LocalPath:  clip.LocalPath(),
+		DriveLink:  clip.DriveLink(),
+		Category:   clip.Category,
+		MediaType:  string(clip.MediaType),
+		SearchText: clip.SearchText,
+		Tags:       clip.Tags,
+	}
+	return uc.vectorStore.UpsertAsset(ctx, va)
+}
+
+// HasVectorStore reports whether the vector store backend is configured.
+func (uc *EnrichUseCase) HasVectorStore() bool {
+	return uc.vectorStore != nil
 }
 
 // EnrichMediaRequest contains the input for the EnrichMedia endpoint.

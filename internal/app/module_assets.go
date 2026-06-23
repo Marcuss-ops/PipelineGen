@@ -33,11 +33,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
+
+// processRunnerAdapter is a package-level adapter for the infrastructure ProcessRunner port.
+// Used by ScraperHandler and other handlers in registry.go that need subprocess execution.
+var processRunnerAdapter = infraassets.NewProcessRunnerAdapter()
+
+// toolCheckerAdapter is a package-level adapter for the infrastructure ToolChecker port.
+// Used by YouTubeClipHandler and system handler to check external tool availability.
+var toolCheckerAdapter = infraassets.NewToolCheckerAdapter()
+
+// dbHealthCheckerAdapter is a package-level adapter for the infrastructure DBHealthChecker port.
+// Used by system handler to check database health.
+var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
 
 // AssetsBundle is the capability bundle for the unified Assets module.
 //
@@ -110,6 +123,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 			"artlist": bundle.ClipsRepo,
 			"stock":   bundle.ClipsRepo,
 		}),
+		ProcessRunner: processRunnerAdapter,
 	})
 
 	// ── PR 3 (June 2026): storage thin-transport handler ─────
@@ -171,7 +185,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
 
 	// SoundEffect: wired with real repos + uploader + metaWriter
-	sfxHandler := assetsfx.NewHandler(bundle.ClipsRepo, driveUploader, metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
+	sfxHandler := assetsfx.NewHandler(bundle.ClipsRepo, driveUploader, metaWriter, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
 	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler)

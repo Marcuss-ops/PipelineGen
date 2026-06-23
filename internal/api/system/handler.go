@@ -13,22 +13,27 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // SystemHandler handles system diagnostic endpoints
 type SystemHandler struct {
-	cfg *config.Config
-	log *zap.Logger
+	cfg             *config.Config
+	log             *zap.Logger
+	toolChecker     appassets.ToolChecker
+	processRunner   appassets.ProcessRunner
+	dbHealthChecker appassets.DBHealthChecker
 }
 
 // NewHandler creates a new system handler
-func NewSystemHandler(cfg *config.Config, log *zap.Logger) *SystemHandler {
+func NewSystemHandler(cfg *config.Config, log *zap.Logger, toolChecker appassets.ToolChecker, processRunner appassets.ProcessRunner, dbHealthChecker appassets.DBHealthChecker) *SystemHandler {
 	return &SystemHandler{
-		cfg: cfg,
-		log: log,
+		cfg:             cfg,
+		log:             log,
+		toolChecker:     toolChecker,
+		processRunner:   processRunner,
+		dbHealthChecker: dbHealthChecker,
 	}
 }
 
@@ -139,28 +144,28 @@ func (h *SystemHandler) checkStorageDeep(ctx context.Context, resp *DoctorRespon
 
 func (h *SystemHandler) checkExternalTools(ctx context.Context, resp *DoctorResponse) {
 	// Ollama
-	if !executil.CommandExists("ollama") {
+	if !h.toolChecker.CommandExists("ollama") {
 		resp.Checks["ollama"] = "not_installed"
 	} else {
 		resp.Checks["ollama"] = "ok"
 	}
 
 	// yt-dlp
-	if !executil.CommandExists("yt-dlp") {
+	if !h.toolChecker.CommandExists("yt-dlp") {
 		resp.Checks["yt_dlp"] = "not_installed"
 	} else {
 		resp.Checks["yt_dlp"] = "ok"
 	}
 
 	// ffmpeg
-	if !executil.CommandExists("ffmpeg") {
+	if !h.toolChecker.CommandExists("ffmpeg") {
 		resp.Checks["ffmpeg"] = "not_installed"
 	} else {
 		resp.Checks["ffmpeg"] = "ok"
 	}
 
 	// python3
-	if !executil.CommandExists("python3") {
+	if !h.toolChecker.CommandExists("python3") {
 		resp.Checks["python3"] = "not_installed"
 	} else {
 		resp.Checks["python3"] = "ok"
@@ -182,10 +187,10 @@ func (h *SystemHandler) checkGoogleToken(ctx context.Context, resp *DoctorRespon
 }
 
 func (h *SystemHandler) checkDatabases(ctx context.Context, resp *DoctorResponse) {
-	dbs := storage.GetAllDBs()
+	dbs := h.dbHealthChecker.GetAllDBs()
 	for _, dbRelPath := range dbs {
 		name := strings.Split(dbRelPath, "/")[0]
-		path := storage.GetDBPath(h.cfg.Storage.DataDir, dbRelPath)
+		path := h.dbHealthChecker.GetDBPath(h.cfg.Storage.DataDir, dbRelPath)
 
 		key := fmt.Sprintf("db_%s", name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -194,19 +199,15 @@ func (h *SystemHandler) checkDatabases(ctx context.Context, resp *DoctorResponse
 		}
 
 		// Try to open and ping
-		db, err := storage.OpenSQLiteDB(path, h.log)
-		if err != nil {
+		result := h.dbHealthChecker.Ping(ctx, path)
+		if result.Error != "" {
 			resp.Checks[key] = "error"
 			resp.Fixes = append(resp.Fixes, fmt.Sprintf("Check database: %s", path))
-			continue
-		}
-
-		if err := db.DB.Ping(); err != nil {
+		} else if !result.OK {
 			resp.Checks[key] = "unreachable"
 		} else {
 			resp.Checks[key] = "ok"
 		}
-		db.Close()
 	}
 }
 
@@ -220,7 +221,7 @@ func (h *SystemHandler) checkVoiceover(ctx context.Context, resp *DoctorResponse
 	}
 
 	// Check edge-tts package
-	if _, err := executil.RunSimple(ctx, "python3", "-c", "import edge_tts"); err != nil {
+	if _, err := h.processRunner.RunSimple(ctx, "python3", "-c", "import edge_tts"); err != nil {
 		resp.Checks["voiceover_library"] = "missing_edge_tts"
 		resp.Fixes = append(resp.Fixes, "pip install edge-tts")
 	} else {

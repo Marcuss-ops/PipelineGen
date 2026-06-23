@@ -104,6 +104,24 @@ type RegisterClipResult struct {
 	Message        string
 }
 
+// BatchClipResult is the result for a single clip in a batch registration.
+type BatchClipResult struct {
+	ClipID    string
+	Name      string
+	OK        bool
+	Error     string
+	Duplicate bool
+}
+
+// BatchRegisterResult is the aggregated result of a batch registration.
+type BatchRegisterResult struct {
+	OK        bool
+	Total     int
+	Succeeded int
+	Failed    int
+	Results   []BatchClipResult
+}
+
 // RegisterFromYouTube downloads a YouTube clip, uploads to Drive, saves to DB,
 // and triggers enrichment/indexing. All sub-operations are best-effort.
 func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipCommand) (*RegisterClipResult, error) {
@@ -403,6 +421,82 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 		res.DriveFileID = uploadResult.FileID
 	}
 	return res, nil
+}
+
+// BatchRegisterFromYouTube processes a batch of clip registration commands
+// sequentially. For each clip it calls RegisterFromYouTube and aggregates
+// the results. This is the canonical service-level orchestrator — handlers
+// call this single method instead of looping over clips themselves.
+func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []RegisterClipCommand) *BatchRegisterResult {
+	if s == nil {
+		return &BatchRegisterResult{
+			OK:      false,
+			Total:   len(commands),
+			Failed:  len(commands),
+			Results: make([]BatchClipResult, len(commands)),
+		}
+	}
+
+	log := s.log
+	results := make([]BatchClipResult, len(commands))
+	var succeeded, failed int
+
+	log.Info("starting batch registration", "service", "sourcing", "clips", len(commands))
+	for i, cmd := range commands {
+		res, err := s.RegisterFromYouTube(ctx, cmd)
+		br := BatchClipResult{Name: cmd.Name}
+		if err != nil {
+			br.Error = err.Error()
+			results[i] = br
+			failed++
+			log.Info("batch clip processed",
+				"index", i+1,
+				"total", len(commands),
+				"name", cmd.Name,
+				"ok", false,
+				"error", err.Error(),
+			)
+			continue
+		}
+		if res == nil {
+			br.Error = "empty registration result"
+			results[i] = br
+			failed++
+			continue
+		}
+		br.OK = res.OK
+		br.ClipID = res.ClipID
+		br.Duplicate = res.Duplicate
+		if res.Duplicate {
+			br.OK = false
+		}
+		if !res.OK && res.Message != "" {
+			br.Error = res.Message
+		}
+		results[i] = br
+		if br.OK || br.Duplicate {
+			succeeded++
+		} else {
+			failed++
+		}
+		log.Info("batch clip processed",
+			"index", i+1,
+			"total", len(commands),
+			"name", cmd.Name,
+			"ok", br.OK,
+			"duplicate", br.Duplicate,
+			"error", br.Error,
+		)
+	}
+
+	log.Info("batch registration completed", "service", "sourcing", "succeeded", succeeded, "failed", failed)
+	return &BatchRegisterResult{
+		OK:        true,
+		Total:     len(commands),
+		Succeeded: succeeded,
+		Failed:    failed,
+		Results:   results,
+	}
 }
 
 // ── SyncDriveFolder ───────────────────────────────────────────────────

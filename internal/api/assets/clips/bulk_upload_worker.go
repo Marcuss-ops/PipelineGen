@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by
@@ -422,20 +421,9 @@ func (h *Handler) processOneClip(
 				indexed.Add(1)
 				pushed.Add(1) // IndexClip internally upserts to Qdrant via the fast path
 			}
-		} else if h.vectorStore != nil && clip.SearchText != "" && !payload.SkipQdrant {
+		} else if h.enrichUC != nil && h.enrichUC.HasVectorStore() && clip.SearchText != "" && !payload.SkipQdrant {
 			// Direct vector store upsert (fallback)
-			asset := qdrant.VectorAsset{
-				AssetID:    clip.ID,
-				Source:     string(clip.Source),
-				Name:       clip.Name,
-				LocalPath:  clip.LocalPath(),
-				DriveLink:  clip.DriveLink(),
-				Category:   clip.Category,
-				MediaType:  string(clip.MediaType),
-				SearchText: clip.SearchText,
-				Tags:       clip.Tags,
-			}
-			if err := h.vectorStore.UpsertAsset(ctx, asset); err != nil {
+			if err := h.enrichUC.UpsertToVectorStore(ctx, clip, string(clip.Source)); err != nil {
 				log.Warn("vector upsert failed (non-fatal)", zap.Error(err))
 			} else {
 				pushed.Add(1)

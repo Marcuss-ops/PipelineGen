@@ -67,7 +67,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 	// 3. Trigger async enrichment + indexing (non-blocking) with 3-minute timeout.
 	// context.WithoutCancel ensures the goroutine survives the HTTP handler's return.
 	// Stack-copy clip so the background goroutine owns its mutation independently.
-	if h.metaWriter != nil || h.clipIndexer != nil || h.vectorStore != nil {
+	if h.metaWriter != nil || h.clipIndexer != nil || h.enrichUC != nil {
 		clipCopy := clip
 		concurrent.SafeGo("clip-create-enrich", func() {
 			h.EnrichAndIndexClip(context.WithoutCancel(ctx), &clipCopy, source)
@@ -79,6 +79,6 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		"source":  source,
 		"clip_id": clip.ID,
 		"clip":    clip,
-		"indexed": h.clipIndexer != nil || h.vectorStore != nil,
+		"indexed": h.clipIndexer != nil || h.enrichUC != nil,
 	})
 }

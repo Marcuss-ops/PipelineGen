@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 )
 
 // ScraperHandler exposes the Node-based Artlist search endpoint.
@@ -21,11 +21,12 @@ import (
 // remain mounted under /api/scraper/* for backward compatibility.
 type ScraperHandler struct {
 	nodeScraperDir string
+	processRunner  appassets.ProcessRunner
 }
 
 // NewScraperHandler creates a new scraper handler.
-func NewScraperHandler(nodeScraperDir string) *ScraperHandler {
-	return &ScraperHandler{nodeScraperDir: nodeScraperDir}
+func NewScraperHandler(nodeScraperDir string, processRunner appassets.ProcessRunner) *ScraperHandler {
+	return &ScraperHandler{nodeScraperDir: nodeScraperDir, processRunner: processRunner}
 }
 
 // RegisterRoutes registers /api/scraper routes.
@@ -104,7 +105,7 @@ func (h *ScraperHandler) Search(c *gin.Context) {
 		"--limit", strconv.Itoa(limit),
 	}
 
-	result, err := executil.Run(ctx, "node", args, executil.Options{
+	result, err := h.processRunner.Run(ctx, "node", args, appassets.ProcessOptions{
 		WorkDir:        scraperDir,
 		CombinedOutput: false,
 	})
