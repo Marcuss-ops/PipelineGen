@@ -36,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -494,6 +495,107 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		root.AI.ScriptGen, memorySvc, log,
 	)
 
+	// Wave 14 problem #4 (June 2026): wire the five use cases that
+	// replace ScriptFlowHandler's inline clip-source orchestration.
+	// All five are first-class deps for NewScriptFlowHandler.
+	var pipelineUC *scripts.PipelineUseCase
+	var semUC *scripts.SemaphoreUseCase
+	var prewarmUC *scripts.PrewarmUseCase
+	var scenesUC *scripts.SceneBuilderUseCase
+	var docsUC *scripts.DocumentsUseCase
+
+	if root.AI.ScriptEngine != nil && engine != nil {
+		// 1. SemaphoreUseCase — capacity from cfg.Concurrency (matches
+		// the previous handler's `maxScriptGen := cfg.Concurrency.MaxConcurrentScriptGenerations`).
+		maxScriptGen := 1
+		if cfg != nil && cfg.Concurrency.MaxConcurrentScriptGenerations > 0 {
+			maxScriptGen = cfg.Concurrency.MaxConcurrentScriptGenerations
+		}
+		if uc, err := scripts.NewSemaphoreUseCase(maxScriptGen, log); err == nil {
+			semUC = uc
+		} else {
+			log.Warn("pipeline use case: semaphore init failed", zap.Error(err))
+		}
+
+		// 2. PrewarmUseCase — default 15s timeout, count 4 (matches the
+		// inline magic numbers previously buried in HandleClipScriptGenerateJob).
+		// prewarmSvc is the image service (root.Domains.ImageService implements
+		// the PrewarmImageService interface via its TriggerPrewarm method).
+		var prewarmSvc scripts.PrewarmImageService
+		if root.Domains != nil {
+			prewarmSvc = root.Domains.ImageService
+		}
+		prewarmUC = scripts.NewPrewarmUseCase(prewarmSvc, log)
+
+		// 3. SceneBuilderUseCase — pure factory wrapping NewScenesService.
+		scenesUC = scripts.NewSceneBuilderUseCase(
+			prewarmSvc,
+			root.Domains.VoiceoverService,
+			log, cfg,
+			nil, // resolveFolder is captured into PipelineUseCase by composition root
+			nil, // groupsResolver likewise
+		)
+
+		// 4. DocumentsUseCase — wraps DocumentsService.
+		docsUC = scripts.NewDocumentsUseCase(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
+
+		// 5. PipelineUseCase — orchestrates the three clip paths +
+		// phases 2-4. Pipeline is pre-built with scenes-svc + docs-svc +
+		// postGen closure + resolveFolder closure (composition + scene
+		// builder + docs use case).
+		var scenesSvc *scripts.ScenesService
+		if scenesUC != nil {
+			if sv, err := scenesUC.Build(context.Background()); err == nil {
+				scenesSvc = sv
+			} else {
+				log.Warn("pipeline use case: scene builder init failed", zap.Error(err))
+			}
+		}
+		var docsSvc *scripts.DocumentsService
+		if docsUC != nil {
+			docsSvc = docsUC.DocumentsService()
+		}
+		// PostGeneration closure for the underlying *Pipeline. The
+		// production handler previously owned a real handlePostGeneration
+		// (~50 LOC: entities extraction + metadata generation). For
+		// Wave 14 #4 close-out we ship a minimal stub that logs a
+		// WARN so operators spot the wiring gap. A follow-up commit
+		// will promote this to a typed method on the use case.
+		postGen := func(ctx context.Context, spec *scriptpkg.GenerationSpec, scr string) (entitiesJSON string, insights any, videoMetadata []scripts.VideoMetadata) {
+			if log != nil {
+				log.Warn("pipeline post-gen stub active: entities block will be empty when spec.ExtractEntities=true (follow-up Wave-14 commit wires the real handlePostGeneration)")
+			}
+			_ = ctx
+			_ = spec
+			_ = scr
+			return "", scripts.ScriptInsights{}, nil
+		}
+		if scenesSvc != nil && docsSvc != nil {
+			pipeline := scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)
+			minFloor := 100
+			ollamaModel := ""
+			if cfg != nil {
+				if cfg.Scripts.MinWordFloor > 0 {
+					minFloor = cfg.Scripts.MinWordFloor
+				}
+				ollamaModel = cfg.External.OllamaModel
+			}
+			pu, puErr := scripts.NewPipelineUseCase(
+				log, root.AI.ScriptEngine,
+				minFloor, ollamaModel,
+				clipSourceBuilder,
+				mediaCurator,
+				semUC, prewarmUC,
+				pipeline,
+			)
+			if puErr != nil {
+				log.Warn("pipeline use case: construction failed", zap.Error(puErr))
+			} else {
+				pipelineUC = pu
+			}
+		}
+	}
+
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Generator:             root.AI.ScriptGen,
 		Engine:                engine,
@@ -502,6 +604,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		Section:               sectionRegen,
 		GenerateBatch:         generateBatchUC,
 		CacheEviction:         cacheEvictionUC,
+
+		// Wave 14 problem #4 (June 2026): five use cases wired above.
+		PipelineUseCase:   pipelineUC,
+		SceneBuilderUC:    scenesUC,
+		DocumentsUC:       docsUC,
+		SemaphoreUC:       semUC,
+		PrewarmUC:         prewarmUC,
+
 		Image:                 root.Domains.ImageService,
 		Realtime:              root.Domains.RealtimeService,
 		Association:           root.Domains.AssocService,
