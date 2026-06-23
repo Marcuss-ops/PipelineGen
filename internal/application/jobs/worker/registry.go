@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Sentinel errors for registry operations.
@@ -22,7 +22,7 @@ var (
 	ErrUnsupportedJobType   = errors.New("unsupported job type")
 )
 
-type Handler func(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error)
+type Handler func(ctx context.Context, j *job.Job, tools *Tools) (map[string]any, error)
 
 // Registry maps job types to handler functions. Once frozen, no new
 // registrations are accepted — this prevents the claim loop from picking
@@ -99,7 +99,7 @@ func (r *Registry) JobTypes() []string {
 
 // Dispatch routes a job to its registered handler. Returns
 // ErrHandlerNotRegistered if no handler exists for the job type.
-func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error) {
+func (r *Registry) Dispatch(ctx context.Context, j *job.Job, tools *Tools) (map[string]any, error) {
 	r.mu.RLock()
 	h, ok := r.handlers[j.Type]
 	r.mu.RUnlock()

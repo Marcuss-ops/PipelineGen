@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
@@ -75,10 +75,10 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 	}
 
 	// Convert back to RunTagResponse
-	job := &domainjob.Job{
+	job := &job.Job{
 		ID:     "test-job",
 		Type:   "artlist.run",
-		Status: domainjob.StatusSucceeded,
+		Status: job.StatusSucceeded,
 	}
 	jsonPayload, _ := json.Marshal(codec.PayloadFromRequest(&RunTagRequest{Term: "city"}))
 	job.Payload = jsonPayload

@@ -12,11 +12,11 @@ import (
 	"sync"
 	"testing"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // stubHandler is a no-op handler used by every positive-path test.
-func stubHandler(_ context.Context, _ *domainjob.Job, _ *Tools) (map[string]any, error) {
+func stubHandler(_ context.Context, _ *job.Job, _ *Tools) (map[string]any, error) {
 	return map[string]any{"ok": true}, nil
 }
 
@@ -115,14 +115,14 @@ func TestRegistry_JobTypesReturnsDefensiveCopy(t *testing.T) {
 func TestRegistry_DispatchSupportedType(t *testing.T) {
 	r := NewRegistry()
 	called := false
-	h := func(_ context.Context, _ *domainjob.Job, _ *Tools) (map[string]any, error) {
+	h := func(_ context.Context, _ *job.Job, _ *Tools) (map[string]any, error) {
 		called = true
 		return map[string]any{"ran": true}, nil
 	}
 	if err := r.Register("test.job", h); err != nil {
 		t.Fatalf("Register returned %v", err)
 	}
-	res, err := r.Dispatch(context.Background(), &domainjob.Job{Type: "test.job"}, &Tools{})
+	res, err := r.Dispatch(context.Background(), &job.Job{Type: "test.job"}, &Tools{})
 	if err != nil {
 		t.Fatalf("Dispatch returned error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestRegistry_DispatchSupportedType(t *testing.T) {
 
 func TestRegistry_DispatchUnsupportedTypeReturnsSentinel(t *testing.T) {
 	r := NewRegistry()
-	_, err := r.Dispatch(context.Background(), &domainjob.Job{Type: "missing.type"}, &Tools{})
+	_, err := r.Dispatch(context.Background(), &job.Job{Type: "missing.type"}, &Tools{})
 	if err == nil {
 		t.Fatal("expected non-nil error")
 	}

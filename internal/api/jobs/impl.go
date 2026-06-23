@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // JobsHandler exposes HTTP endpoints for job lifecycle management.
@@ -72,10 +72,10 @@ func (h *JobsHandler) Get(c *gin.Context) {
 }
 
 func (h *JobsHandler) List(c *gin.Context) {
-	var filter domainjob.Filter
+	var filter job.Filter
 
 	if status := c.Query("status"); status != "" {
-		s := domainjob.Status(status)
+		s := job.Status(status)
 		filter.Status = &s
 	}
 	if jobType := c.Query("type"); jobType != "" {
@@ -166,7 +166,7 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	// On error, fall back to an empty slice so the response shape stays stable;
 	// clients polling /full already expect events to be an array (never null).
 	// The canonical Event type lives in domain/job.
-	events := []domainjob.Event{}
+	events := []job.Event{}
 	if eventsList, err := h.service.ListEvents(c.Request.Context(), id); err != nil {
 		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
 	} else {
