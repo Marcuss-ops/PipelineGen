@@ -1,15 +1,47 @@
+// Package script (api/script) — ScriptFlowHandler is the canonical entry
+// point for the script-flow HTTP surface. It owns the orchestration of
+// batch generation, clip-source generation, job deltas, and section
+// regeneration.
+//
+// PR4.F (June 2026) collapses the 22-positional-arg NewScriptFlowHandler
+// constructor into a single ScriptFlowDeps value. The constructor body
+// keeps the same side effects it always had:
+//
+//   - ClipServices bundle, InsightBuilder, semaphore, groups_resolver
+//     are constructed internally from the deps.
+//   - AssetTree is now first-class: no SetAssetTreeSvc late setter
+//     (the deprecated setter is gone from this receiver).
+//   - scripts.CurationService.SetClipSourceBuilder is still called
+//     from this ctor body — the method is unrelated to ScriptFlowHandler
+//     but is no longer reachable from outside the handler, so it is
+//     effectively constructor-only.
+//   - sourceResolver is built from the ollama client's WebSearcher.
+//   - Generator.SetMetadataModel is invoked with the resolved model.
+//
+// The handler itself stays a "god object" by area (it still owns ~280
+// lines of receiver methods covering generation, curation, jobs,
+// status, and admin endpoints) — but its constructor no longer is
+// one. New business logic should be added by spinning up a use case
+// (e.g. scripts.SectionRegenerator, scripts.GenerateBatchUseCase) and
+// wiring it through the deps struct, NOT by attaching setter methods
+// to this receiver.
+//
+// PR4.F2 (June 2026) extracts the GenerateBatch orchestration into
+// scripts.GenerateBatchUseCase. The handler method is now a thin
+// transport that delegates to the use case.
 package script
 
 import (
-	"fmt"
-
 	"context"
+	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
@@ -19,9 +51,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 )
 
+// ScriptFlowHandler is the canonical handler. Fields are unexported;
+// callers consume it via the script.Handler thin transport or the
+// helpers exposed below (GetVoiceoverService, GetGroupsResolver,
+// ResolveDriveFolderID, MaybeCreateGoogleDoc, ExecuteBatchGeneration,
+// RegisterJobHandlers).
 type ScriptFlowHandler struct {
 	generator          *ollama.Generator
 	engine             *scripts.Engine
@@ -37,6 +73,9 @@ type ScriptFlowHandler struct {
 	groupsResolver     *voiceover.GroupsResolver
 	clipSourceBuilder  *scripts.ClipSourceBuilder
 	mediaCurator       *scripts.MediaCurator
+	sectionRegen       *scripts.SectionRegenerator
+	generateBatch      *scripts.GenerateBatchUseCase
+	cacheEviction      *scripts.CacheEvictionUseCase
 	insightBuilder     *ScriptInsightBuilder
 	clipServices       ClipServices
 	docClient          drive.DocClient
@@ -60,47 +99,80 @@ type AutoHarvestService interface {
 	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
+// ScriptFlowDeps groups all constructor inputs for NewScriptFlowHandler.
+//
+// PR4.F (June 2026): replaces the 22 positional args. Callers build this
+// literal in app/registry.go, then call NewScriptFlowHandler(deps). The
+// caller reads like a wire-list — name and zero-value each dependency —
+// instead of guessing positional slot #17.
+//
+// Required: Generator, Engine, Cfg, Log.
+//
+// Optional (nil-safe): Batch, Curation, GenerateBatch, Section,
+// Image, Realtime, Association, Voiceover, AssetTree,
+// ClipSourceBuilder, MediaCurator, Harvest,
+// CurationJobService, CatalogJobService, ScriptsRepo, Memory, Jobs,
+// DocClient, DriveUploader, DriveScriptsGenFolder.
+//
+// If Section or GenerateBatch is nil, the corresponding endpoint returns
+// 503. All other endpoints fall back to their own nil guards.
+type ScriptFlowDeps struct {
+	// Generation engine + service-level orchestrators.
+	Generator *ollama.Generator
+	Engine    *scripts.Engine
+
+	// Use cases orchestrating the canonical sub-flows. Each is a
+	// first-class dep object instantiated by the registry and consumed
+	// by the handler via a single method (or small surface) per endpoint.
+	Batch         *scripts.BatchService
+	Curation      *scripts.CurationService
+	Section       *scripts.SectionRegenerator
+	GenerateBatch *scripts.GenerateBatchUseCase
+	CacheEviction *scripts.CacheEvictionUseCase
+
+	// Asset-side composability: these come from the SearchBundle /
+	// AssetsBundle and feed the InsightBuilder + ClipServices bundle.
+	Image       *images.Service
+	Realtime    *realtime.Service
+	Association *association.Service
+	Voiceover   *voiceover.Service
+	AssetTree   *assettree.Service
+
+	// Asset curation primitives (optional; rebuilt in the ctor with deps).
+	ClipSourceBuilder *scripts.ClipSourceBuilder
+	MediaCurator      *scripts.MediaCurator
+	Harvest           AutoHarvestService
+
+	// Async job services (nullable; not wired today — see PR4.E comment in
+	// registry.go). RegisterJobHandlers reads them with explicit nil-guards.
+	CurationJobService CurationJobService
+	CatalogJobService  CatalogJobService
+
+	// Persistence + jobs.
+	ScriptsRepo scripts.ScriptRepository
+	Memory      *gemmamemory.Service
+	Jobs        *jobservice.Service
+
+	// Drive.
+	DocClient             drive.DocClient
+	DriveUploader         *drive.Uploader
+	DriveScriptsGenFolder string
+
+	// Meta.
+	Cfg *config.Config
+	Log *zap.Logger
+}
+
 // NewScriptFlowHandler constructs the canonical script-flow handler.
 //
-// PR4-H (June 2026) absorbed the SetBatchService + SetCurationService
-// post-construction setters in Commit 5 — batch + curation services are now
-// constructor-injected.
-//
-// PR4.E (June 2026) absorbs the 4 remaining post-construction setters into
-// the ctor as well: clipSourceBuilder, mediaCurator, harvestSvc, and the
-// nil-safe curationJobService + catalogJobService. The ctor grows from 17
-// to 22 args. Side effects that SetCurationClipSourceBuilder used to perform
-// (forwarding the builder to the curation service) now happen inside the
-// ctor body. All 6 post-construction setters are removed.
-//
-// curationJobService + catalogJobService remain part of the ctor signature
-// even though no caller wires them today — RegisterJobHandlers reads them
-// with explicit nil-guards, so passing nil is safe and preserves the option
-// for future modules to inject them without re-introducing a setter.
-func NewScriptFlowHandler(
-	gen *ollama.Generator,
-	engine *scripts.Engine,
-	imgSvc *images.Service,
-	realtimeSvc *realtime.Service,
-	assocSvc *association.Service,
-	voSvc *voiceover.Service,
-	assetTreeSvc *assettree.Service,
-	docClient drive.DocClient,
-	driveUploader *drive.Uploader,
-	jobsSvc *jobservice.Service,
-	scriptsRepo scripts.ScriptRepository,
-	memorySvc *gemmamemory.Service,
-	driveFolderID string,
-	cfg *config.Config,
-	log *zap.Logger,
-	batchSvc *scripts.BatchService,
-	curationSvc *scripts.CurationService,
-	clipSourceBuilder *scripts.ClipSourceBuilder,
-	mediaCurator *scripts.MediaCurator,
-	harvestSvc AutoHarvestService,
-	curationJobService CurationJobService,
-	catalogJobService CatalogJobService,
-) *ScriptFlowHandler {
+// See PR4.F (June 2026) above.
+func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
+	cfg := deps.Cfg
+	log := deps.Log
+	gen := deps.Generator
+
+	// Resolve metadata model: cfg.External.OllamaMetadataModel (lighter
+	// post-gen model) wins over the general OllamaModel.
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
 		metaModel = mm
@@ -111,21 +183,20 @@ func NewScriptFlowHandler(
 		artlistFolder = cfg.Drive.ArtlistFolder()
 	}
 
-	// Build the ClipServices bundle from handler dependencies.
-	// PR4.E: harvestSvc is set directly in the literal here (replaces
-	// SetHarvestService's side effect on h.clipServices.HarvestSvc).
+	// ClipServices bundle: shared by standalone helper functions in
+	// flow_*.go (e.g. flow_clips_search.go) via the InsightBuilder.
 	clipSvc := ClipServices{
 		Logger:        log,
-		RealtimeSvc:   realtimeSvc,
-		AssocSvc:      assocSvc,
-		DriveSvc:      driveUploader,
+		RealtimeSvc:   deps.Realtime,
+		AssocSvc:      deps.Association,
+		DriveSvc:      deps.DriveUploader,
 		Translator:    gen,
-		JobsSvc:       jobsSvc,
-		ImgSvc:        imgSvc,
-		VoSvc:         voSvc,
+		JobsSvc:       deps.Jobs,
+		ImgSvc:        deps.Image,
+		VoSvc:         deps.Voiceover,
 		ArtlistFolder: artlistFolder,
 		MetadataModel: metaModel,
-		HarvestSvc:    harvestSvc,
+		HarvestSvc:    deps.Harvest,
 	}
 
 	maxEntities := 12
@@ -133,12 +204,12 @@ func NewScriptFlowHandler(
 		maxEntities = cfg.Scripts.MaxInsightEntities
 	}
 
-	// Build topic→folder resolver from asset_tree. Best-effort: nil
-	// resolver is acceptable; buildVoiceoverDestination handles nil
-	// gracefully (skips DB lookup, falls back to Drive deep-search).
+	// Topic → folder resolver from asset_tree. Nil-safe: a nil asset_tree
+	// is acceptable because buildVoiceoverDestination handles nil and falls
+	// back to Drive deep-search.
 	var groupsResolver *voiceover.GroupsResolver
-	if assetTreeSvc != nil {
-		if gr, err := voiceover.NewGroupsResolver(assetTreeSvc, log); err != nil {
+	if deps.AssetTree != nil {
+		if gr, err := voiceover.NewGroupsResolver(deps.AssetTree, log); err != nil {
 			log.Warn("ScriptFlowHandler groups_resolver not initialized (topic-by-DB routing disabled)",
 				zap.Error(err))
 		} else {
@@ -155,26 +226,29 @@ func NewScriptFlowHandler(
 
 	h := &ScriptFlowHandler{
 		generator:          gen,
-		engine:             engine,
-		batchService:       batchSvc,
-		curationService:    curationSvc,
-		curationJobService: curationJobService,
-		catalogJobService:  catalogJobService,
-		imgService:         imgSvc,
-		realtimeSvc:        realtimeSvc,
-		associationSvc:     assocSvc,
-		voService:          voSvc,
-		assetTreeSvc:       assetTreeSvc,
+		engine:             deps.Engine,
+		batchService:       deps.Batch,
+		curationService:    deps.Curation,
+		curationJobService: deps.CurationJobService,
+		catalogJobService:  deps.CatalogJobService,
+		imgService:         deps.Image,
+		realtimeSvc:        deps.Realtime,
+		associationSvc:     deps.Association,
+		voService:          deps.Voiceover,
+		assetTreeSvc:       deps.AssetTree,
 		groupsResolver:     groupsResolver,
-		clipSourceBuilder:  clipSourceBuilder,
-		mediaCurator:       mediaCurator,
-		docClient:          docClient,
-		driveUploader:      driveUploader,
-		jobsSvc:            jobsSvc,
-		scriptsRepo:        scriptsRepo,
-		memorySvc:          memorySvc,
-		harvestSvc:         harvestSvc,
-		driveFolderID:      driveFolderID,
+		clipSourceBuilder:  deps.ClipSourceBuilder,
+		mediaCurator:       deps.MediaCurator,
+		sectionRegen:       deps.Section,
+		generateBatch:      deps.GenerateBatch,
+		cacheEviction:      deps.CacheEviction,
+		docClient:          deps.DocClient,
+		driveUploader:      deps.DriveUploader,
+		jobsSvc:            deps.Jobs,
+		scriptsRepo:        deps.ScriptsRepo,
+		memorySvc:          deps.Memory,
+		harvestSvc:         deps.Harvest,
+		driveFolderID:      deps.DriveScriptsGenFolder,
 		cfg:                cfg,
 		log:                log,
 		metadataModel:      metaModel,
@@ -186,11 +260,13 @@ func NewScriptFlowHandler(
 			Services:    clipSvc,
 		},
 	}
-	// PR4.E: absorb the side-effect of the removed SetCurationClipSourceBuilder.
-	// The ctor is the only point where this forward happens; downstream code
-	// reads it from curationService.ClipSourceBuilder indirectly via calls.
-	if curationSvc != nil && clipSourceBuilder != nil {
-		curationSvc.SetClipSourceBuilder(clipSourceBuilder)
+
+	// Constructor side-effects that previously lived in
+	// SetCurationClipSourceBuilder (now removed) and SetMetadataModel
+	// setters: still happen here because no caller relies on these being
+	// deferred.
+	if deps.Curation != nil && deps.ClipSourceBuilder != nil {
+		deps.Curation.SetClipSourceBuilder(deps.ClipSourceBuilder)
 	}
 	if gen != nil && gen.GetClient() != nil {
 		ws := gen.GetClient().WebSearcher()
@@ -202,63 +278,63 @@ func NewScriptFlowHandler(
 	return h
 }
 
-// SetAssetTreeSvc sets the asset-tree service after construction. Used by
-// app wiring paths that build the ScriptFlowHandler before assetTreeSvc is
-// ready. Triggers a groups_resolver rebuild.
-func (h *ScriptFlowHandler) SetAssetTreeSvc(svc *assettree.Service) {
-	h.assetTreeSvc = svc
-	if svc == nil {
-		h.groupsResolver = nil
-		return
-	}
-	if gr, err := voiceover.NewGroupsResolver(svc, h.log); err == nil {
-		h.groupsResolver = gr
-	} else if h.log != nil {
-		h.log.Warn("rebuild groups_resolver failed", zap.Error(err))
-	}
-}
-
 func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scripts.SourceTextResolver {
 	return func(ctx context.Context, raw string) (string, string, error) {
 		return scripts.ResolveBatchSourceText(ctx, h.cfg, raw)
 	}
 }
 
-// RegisterRoutes mounts ALL script generation endpoints (full-fat registration).
+// registerJobRoutes mounts the admin-gated /jobs/:job_id and
+// /jobs/:job_id/full endpoints on the supplied router group.
 //
-// DEPRECATED: PR 2-3 moved generation routes to api/script/handler.go.
-// This method remains for backward compatibility with callers that register
-// ScriptFlowHandler directly (e.g., tests). Use RegisterRoutesRemaining for
-// the new split routing.
-func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/generate-batch", h.GenerateBatch)
-	r.GET("/generate-batch/progress", h.GetBatchProgress)
-	r.GET("/jobs/:job_id", h.GetJobStatus)
-	r.GET("/jobs/:job_id/full", h.GetJobFullStatus)
-	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
-	r.POST("/cache/evict", h.EvictCache)
+// Generated by GenerateBatchUseCase to keep its async-dispatch handle
+// addressable via the public JobStatus URLs.
+//
+// Kept private (lowercase r) because callers should compose handlers
+// via RegisterRoutesRemaining; only the god-object decompose path
+// invokes it internally. Once the god-object is fully split into
+// per-capability handler types, each new handler will mount its own
+// admin-gated sub-group inline, and `registerJobRoutes` will be deleted.
+func (h *ScriptFlowHandler) registerJobRoutes(r *gin.RouterGroup) {
+	jobs := r.Group("")
+	jobs.Use(middleware.RequireAdminToken(h.cfg))
+	jobs.GET("/jobs/:job_id", h.GetJobStatus)
+	jobs.GET("/jobs/:job_id/full", h.GetJobFullStatus)
 }
 
-// RegisterRoutesRemaining mounts the non-generation endpoints only.
+// RegisterRoutesRemaining mounts all non-generation script-flow endpoints.
+//
 // Generation routes (/generate-from-clips, /generate-with-images,
-// /generate-batch) are handled by the thin Handler in api/script/.
+// /generate-batch, /generate-batch/progress) are handled by the thin
+// Handler in api/script/handler.go (constructed from the same inner
+// ScriptFlowHandler).
+//
 // Curation routes (/generate-from-catalog, /curate) delegate to the
 // CurationService in application/scriptflow/curation/.
 //
 // Active endpoints:
 //   - POST /generate-from-catalog  — catalog query variant (→ curationService)
 //   - POST /curate                 — natural-language query → clip compilation (→ curationService)
-//   - GET  /jobs/:job_id           — job status lookup
-//   - GET  /jobs/:job_id/full      — full job status
+//   - GET  /jobs/:job_id           — job status lookup (admin-gated, via registerJobRoutes)
+//   - GET  /jobs/:job_id/full      — full job status (admin-gated, via registerJobRoutes)
 //   - POST /:id/sections/:section_id/regenerate — section regeneration
 //   - POST /cache/evict            — cache eviction
+//
+// PR4.F3 (June 2026): the job-status lookups are mounted on a sub-group
+// carrying middleware.RequireAdminToken. The handler itself no longer
+// owns any auth-state logic (the previous h.requireJobAuth method is
+// retired — see handler_job_status.go's doc for the rationale).
+//
+// PR4.F5 (June 2026): the deprecated RegisterRoutes "full-fat"
+// registration was deleted (zero callers in repo). The /jobs sub-group
+// moved into a private helper (registerJobRoutes) so future god-object
+// decomposition has a single import path.
 func (h *ScriptFlowHandler) RegisterRoutesRemaining(r *gin.RouterGroup) {
 	if h.curationService != nil {
 		r.POST("/generate-from-catalog", h.curationService.GenerateFromCatalog)
 		r.POST("/curate", h.curationService.Curate)
 	}
-	r.GET("/jobs/:job_id", h.GetJobStatus)
-	r.GET("/jobs/:job_id/full", h.GetJobFullStatus)
+	h.registerJobRoutes(r)
 	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
 	r.POST("/cache/evict", h.EvictCache)
 }

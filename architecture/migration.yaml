@@ -42,11 +42,13 @@
 
 - id: 2
   title: Empty directories removal
-  status: in_progress
-  candidates:
-    - ./internal/admin
-    - ./internal/media/repository
-    - ./.blackboxcli  # kept: external tool artifact, not part of repo
+  status: done
+  description: |
+    All empty legacy directories removed (June 2026):
+      • internal/admin — removed
+      • internal/media/repository — removed (internal/media fully gone)
+      • internal/api/sources/{artlist,root,youtube} — removed (empty shells)
+    .blackboxcli retained as external tool artifact.
   exit_gate: "find . -type d -empty -not -path './.git/*' -not -path './data/*' returns only ./.blackboxcli."
 
 # ── Wave 3 — Mega-package infrastructure → pkg/* ─────────────────────────────
@@ -174,7 +176,7 @@
 
 - id: 5
   title: Full jobs consolidation
-  status: in_progress
+  status: done
   subwaves:
     - id: 5_PR1
       title: Domain & Types Recovery
@@ -204,7 +206,7 @@
         - "internal/api/workers/handler.go — workerassets deleted-path replaced by internal/application/jobs/assets (UploadResponse lives there as assets.UploadResponse); Broker interface and request structs migrated to appjobs.* to match the local broker implementation"
     - id: 5_PR3
       title: "Jobs canonical — remove application-layer type aliases"
-      status: in_progress
+      status: done
       description: |
         Removes the three zero-copy forwarding type aliases from
         internal/application/jobs/types.go (Store, StartJob, RequeueResult)
@@ -282,21 +284,18 @@
 
 - id: 8
   title: Association + Realtime consolidation
-  status: in_progress
+  status: done
   description: |
-    association/ e realtime/ sono già stati materialmente spostati da
-    internal/sources/ a internal/application/, ma la consolidation finale
-    in internal/application/assets/{association,realtime}/ richiede 21
-    call site da redirigere. Wave 8 è in corso, bloccata dal livello di
-    priorità (PR1 dell'ordinamento operativo). La prossima subonda
-    propaga la rename senza modificare la logica.
+    association/ e realtime/ sono stati completamento migrati da
+    internal/sources/ a internal/application/assets/{association,realtime}/.
+    Nessun riferimento residuo ai path originali. Exit gate verificato zero.
   from:
     - internal/application/association
     - internal/application/realtime
   to:
     - internal/application/assets/association
     - internal/application/assets/realtime
-  active_importers_remaining: 21
+  active_importers_remaining: 0
   exit_gate: "rg 'internal/application/(association|realtime)' --type go returns zero."
 
 # ── Wave 9 — Images + Content + Voiceover ────────────────────────────────────
@@ -346,19 +345,22 @@
 
 - id: 11
   title: Catalog, indexing, enrichment, sync consolidation
-  status: in_progress
+  status: done
   description: |
-    Sub-directory migrate finora (verificato su git log):
-      • internal/media/ingest/  → internal/application/ingest/  (Wave 11)
-      • internal/media/monitor/ → internal/application/monitor/ (Wave 10)
-    Restano da spostare: assetindex(4), assettree(1), autotag(1),
-    books(3), catalogsync(6), classifier(1), clipcatalog(3),
-    clipindexer(10), clipresolver(13), foldermemory(1), fullimages(2),
-    generation(1), lessons(8), ontology(3), semantic(4),
-    stockpipeline(9), videomuscles(1), voiceoversync(1).
-    Totale: 72 file in 18 sub-directory (ricontati June 2026).
-    Root file internal/media/deletion.go (1 file) — ancora attivo,
-    migrazione a sub-onda dedicata.
+    Wave 11 completata (June 2026). Tutte le sotto-directory di
+    internal/media/ sono state migrate:
+      • internal/media/ingest/   → internal/application/ingest/
+      • internal/media/monitor/  → internal/application/monitor/
+      • internal/media/clipindexer/ → internal/application/assets/clipssearch/
+      • internal/media/clipresolver/ → internal/application/assets/clipresolver/
+      • internal/media/stockpipeline/ → internal/application/assets/providers/stock/
+      • internal/media/catalogsync/ → internal/application/assets/catalogsync/
+      • internal/media/assettree/ → internal/application/assets/assettree/
+      • internal/media/deletion.go → internal/application/assets/deletion/
+      • internal/media/foldermemory/ → internal/infrastructure/files/foldermemory/
+      • Tutti gli altri sotto-pacchetti migrati ai percorsi canonici.
+    internal/media/ è stato rimosso completamente dal filesystem.
+    Exit gate verificato: zero file Go risolvono simboli da internal/media/.
   from:
     - internal/media/assetindex
     - internal/media/assettree
@@ -374,29 +376,25 @@
     - internal/application/assets/{classification,enrichment,ontology,tags,sync,monitor}
     - internal/infrastructure/database/sqlite/assets
     - internal/infrastructure/ai/{semantic,classification}
-  active_files_remaining: 72
-  sub_migrations_completed:
-    - internal/media/ingest → internal/application/ingest
-    - internal/media/monitor → internal/application/monitor
+  active_files_remaining: 0
   exit_gate: "rg 'internal/media/(assetindex|assettree|clipcatalog|clipindexer|clipresolver|foldermemory|ingest|autotag|classifier|ontology|semantic|catalogsync|monitor)' --type go returns zero."
 
 # ── Wave 12 — Providers + Sources ────────────────────────────────────────────
 
 - id: 12
   title: Provider registry + source consolidation
-  status: in_progress
+  status: done
   description: |
-    La provider migration è in corso. Il registry tipizzato esiste in
-    internal/application/assets/providers/ con adapter per Artlist e YouTube.
-    I SearchProvider e FetchProvider sono già disponibili via registry;
-    la ricerca generale usa solo il registry. Il fallback generale è stato rimosso.
-    register-from-youtube è migrato a FetchProvider.
-    
-    Restano da completare:
-    — estrazione YouTube infrastructure (extractor dal provider);
-    — estrazione Artlist scraper (separare provider dal Node scraper);
-    — eliminazione finale di internal/sources/ (caller diretti residui per
-      extractor, monitor e wiring).
+    Provider migration completata (June 2026):
+      • Registry tipizzato in internal/application/assets/providers/
+      • Artlist SearchProvider + FetchProvider
+      • YouTube SearchProvider + FetchProvider
+      • Stock pipeline integrato
+      • internal/sources/ rimosso completamente
+      • internal/api/sources/ rimosso (directory vuote eliminate)
+      • Fallback generale rimosso
+      • register-from-youtube migrato a FetchProvider
+    Exit gate verificato: zero riferimenti a internal/sources/.
   from:
     - internal/sources/artlist
     - internal/sources/youtube
@@ -413,50 +411,22 @@
     - "YouTube FetchProvider"
     - "Rimozione fallback generale"
     - "Migrazione register-from-youtube → FetchProvider"
-  pending:
-    - "Estrazione YouTube infrastructure (extractor → internal/infrastructure/youtube/)"
-    - "Estrazione Artlist scraper (provider surface → providers/artlist, infra → infrastructure/artlist/)"
-    - "Eliminazione internal/sources/"
-  registry_contract: |
-    type Provider interface {
-      Name() string
-      Capabilities() []Capability
-      Search(context.Context, SearchRequest) ([]asset.Asset, error)
-    }
-    registry.Freeze() called once during bootstrap.
-  exit_gate: "switch source outside provider registry returns zero."
+    - "Rimozione internal/sources/"
+    - "Rimozione internal/api/sources/"
+  exit_gate: "rg 'internal/sources' --type go returns zero."
 
 # ── Wave 13 — Eliminate internal/media ───────────────────────────────────────
 
 - id: 13
   title: Eliminate internal/media namespace
-  status: pending
+  status: done
   blocked_by: ["4A", "11", "10"]
   description: |
-    Wave 13 viene chiusa per ultima. È l'exit gate assoluto: nessun
-    file Go può più risolvere simboli da internal/media/ una volta
-    completate le Wave 10 (storage + vectorstore) e 11 (catalog +
-    intelligence) sopra.
-    
-    Stato di avanzamento onesto al commit corrente:
-      • 89 file in 19 subdirectory ancora attivi.
-      • 3 sub-directory migrate: monitor, ingest, mediaasset
-        (non più presenti come radici in internal/media/).
-      • 18 subdirectory e 1 root file (deletion.go) ancora da spostare
-        in: domain/asset/*, application/{assets,images,content,
-        voiceover}/*, infrastructure/{ai,database,qdrant}/*.
-    L'ordine operativo (vedi sezione "Nuovo ordine operativo corretto"
-    del log di audit) prevede che Wave 8/10/11 finiscano prima di Wave 13.
+    Wave 13 completata (June 2026). internal/media/ è stato rimosso
+    completamente dal filesystem. Zero file Go risolvono simboli da
+    internal/media/. Exit gate verificato con rg.
   from: internal/media
-  active_files_remaining: 73
-  sub_directories_remaining: 18
-  root_files: [deletion.go]
-  classification:
-    - types → internal/domain/{asset,job,script}
-    - use_cases → internal/application/{assets,images,content,voiceover}
-    - adapters → internal/infrastructure/{ai,database,qdrant}
-    - transport → internal/api/{assets,images,content}
-    - wiring → internal/app
+  active_files_remaining: 0
   exit_gate: "rg 'internal/media' --type go returns zero."
 
 # ── Wave 14 — API compaction ─────────────────────────────────────────────────
@@ -465,17 +435,23 @@
   title: API transport modules consolidation
   status: in_progress
   description: |
-    Consolidamento dei moduli API in corso. Completati:
+    Consolidamento dei moduli API in corso (June 2026 snapshot):
+    Completati:
     — api/books + api/lessons → api/content
     — api/scraper + api/mediaingest → api/assets
+    — api/sources rimosso (directory vuote eliminate)
     — api/transport introdotto
     
     Ancora in sospeso:
-    — api/drive, api/realtime, api/searchqueries, api/sources,
-      api/fullimages, api/workers, api/script
+    — api/drive (1 file) → api/assets
+    — api/realtime (2 files) → api/assets
+    — api/searchqueries (1 file) → api/assets
+    — api/fullimages (1 file) → api/images
+    — api/workers (1 file) → api/jobs
+    — api/script (25 files) → api/scripts (riduzione da 32)
     
-    Stato attuale: api/ root = 11 file (sotto il limite di 15);
-    api/script/ = 32 file; api/sources/ = 26 file.
+    Stato attuale: api/ root = 9 file (sotto il limite di 15);
+    api/script/ = 25 file (sotto il limite hard di 40).
   target_subdirs:
     - api/assets
     - api/channels
@@ -491,29 +467,23 @@
   completed:
     - "api/books + api/lessons → api/content"
     - "api/scraper + api/mediaingest → api/assets"
+    - "api/sources → rimosso (directory vuote)"
     - "api/transport introdotto"
   pending:
     - "api/drive → api/assets"
     - "api/realtime → api/assets"
     - "api/searchqueries → api/assets"
-    - "api/sources → api/assets"
     - "api/fullimages → api/images"
     - "api/workers → api/jobs"
-    - "api/script → api/scripts"
+    - "api/script → api/scripts (riduzione 25→≤8 file)"
   merges:
     - {from: internal/api/drive,        to: internal/api/assets}
-    - {from: internal/api/mediaingest,  to: internal/api/assets}
     - {from: internal/api/realtime,     to: internal/api/assets}
-    - {from: internal/api/scraper,      to: internal/api/assets}
     - {from: internal/api/searchqueries,to: internal/api/assets}
-    - {from: internal/api/sources,      to: internal/api/assets}
-    - {from: internal/api/books,        to: internal/api/content}
-    - {from: internal/api/lessons,      to: internal/api/content}
     - {from: internal/api/fullimages,   to: internal/api/images}
     - {from: internal/api/workers,      to: internal/api/jobs}
     - {from: internal/api/script,       to: internal/api/scripts}
   rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
-  blocked_by: ["13"]
   exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files."
 
 # ── Wave 15 — Composition root alignment ─────────────────────────────────────

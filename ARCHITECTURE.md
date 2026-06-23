@@ -273,6 +273,17 @@ in `internal/app/bootstrap.go::initDatabases`; no `sql.Open` lives outside
 the `storage.primary_db_path` and `storage.observability_db_path` config
 fields (defaults preserve legacy single-file layout; see §6).
 
+**Script-flow use cases (June 2026)**: the three HTTP endpoints that used
+to embed orchestration in `ScriptFlowHandler` now delegate to typed use
+cases in `internal/application/scripts/`:
+- `scripts.GenerateBatchUseCase` — backs `POST /api/script/generate-batch`.
+- `scripts.SectionRegenerator` — backs `POST /api/script/:id/sections/:section_id/regenerate`.
+- `scripts.CacheEvictionUseCase` — backs `POST /api/script/cache/evict`
+  (LLM circuit-breaker reset + memory-cache eviction).
+
+The handler is a thin transport; the registry wires each use case via the
+`ScriptFlowDeps` literal in `internal/app/registry.go`.
+
 
 ```bash
 # Build
