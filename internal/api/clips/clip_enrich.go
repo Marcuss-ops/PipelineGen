@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -125,12 +125,12 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 		SkipEmbedGen bool   `json:"skip_embed_gen"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
 	if req.AssetID == "" {
-		internal.APIUtil.BadRequest(c, "asset_id is required")
+		apiutil.BadRequest(c, "asset_id is required")
 		return
 	}
 
@@ -156,7 +156,7 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 				concurrent.SafeGo("media-enrich", func() {
 					h.EnrichAndIndexClip(context.WithoutCancel(ctx), clip, req.Source)
 				})
-				internal.APIUtil.OK(c, gin.H{
+				apiutil.OK(c, gin.H{
 					"ok":       true,
 					"action":   "enqueued",
 					"asset_id": req.AssetID,
@@ -179,7 +179,7 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 					zap.String("asset_id", req.AssetID), zap.Error(err))
 			}
 		})
-		internal.APIUtil.OK(c, gin.H{
+		apiutil.OK(c, gin.H{
 			"ok":       true,
 			"action":   "enqueued",
 			"asset_id": req.AssetID,
@@ -189,7 +189,7 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 		return
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":       true,
 		"action":   "accepted",
 		"asset_id": req.AssetID,
@@ -206,7 +206,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -214,7 +214,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 
 	clip, err := repo.GetClip(ctx, clipID)
 	if err != nil {
-		internal.APIUtil.NotFound(c, "clip not found")
+		apiutil.NotFound(c, "clip not found")
 		return
 	}
 
@@ -224,7 +224,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 		concurrent.SafeGo("reindex-enrich", func() {
 			h.EnrichAndIndexClip(context.WithoutCancel(ctx), clip, source)
 		})
-		internal.APIUtil.OK(c, gin.H{
+		apiutil.OK(c, gin.H{
 			"ok":      true,
 			"action":  "enqueued",
 			"clip_id": clipID,
@@ -237,10 +237,10 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 	if h.clipIndexer != nil && h.clipIndexer.IsEnabled() {
 		// Full pipeline: indexer generates embedding + upserts to vector store
 		if err := h.clipIndexer.IndexClip(ctx, clipID); err != nil {
-			internal.APIUtil.InternalError(c, fmt.Errorf("index failed: %w", err))
+			apiutil.InternalError(c, fmt.Errorf("index failed: %w", err))
 			return
 		}
-		internal.APIUtil.OK(c, gin.H{
+		apiutil.OK(c, gin.H{
 			"ok":      true,
 			"action":  "reindexed",
 			"clip_id": clipID,
@@ -263,10 +263,10 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 			Tags:       clip.Tags,
 		}
 		if err := h.vectorStore.UpsertAsset(ctx, asset); err != nil {
-			internal.APIUtil.InternalError(c, fmt.Errorf("vector upsert failed: %w", err))
+			apiutil.InternalError(c, fmt.Errorf("vector upsert failed: %w", err))
 			return
 		}
-		internal.APIUtil.OK(c, gin.H{
+		apiutil.OK(c, gin.H{
 			"ok":      true,
 			"action":  "reindexed",
 			"clip_id": clipID,
@@ -275,7 +275,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 		return
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"action":  "skipped",
 		"clip_id": clipID,
@@ -295,12 +295,12 @@ func (h *Handler) BatchReindex(c *gin.Context) {
 		Limit     int    `json:"limit"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
 	if h.clipIndexer == nil || !h.clipIndexer.IsEnabled() {
-		internal.APIUtil.InternalError(c, fmt.Errorf("clip indexer not available"))
+		apiutil.InternalError(c, fmt.Errorf("clip indexer not available"))
 		return
 	}
 
@@ -316,10 +316,10 @@ func (h *Handler) BatchReindex(c *gin.Context) {
 			ActiveKey: fmt.Sprintf("batch_reindex_%s_%s", req.Source, req.MediaType),
 		})
 		if err != nil {
-			internal.APIUtil.InternalError(c, err)
+			apiutil.InternalError(c, err)
 			return
 		}
-		internal.APIUtil.OK(c, gin.H{
+		apiutil.OK(c, gin.H{
 			"ok":         true,
 			"action":     "batch_reindex_enqueued",
 			"job_id":     job.ID,
@@ -333,11 +333,11 @@ func (h *Handler) BatchReindex(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := h.clipIndexer.BatchReindex(ctx, req.Source, req.MediaType, req.Limit)
 	if err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"action":  "batch_reindex_started",
 		"total":   result.Total,

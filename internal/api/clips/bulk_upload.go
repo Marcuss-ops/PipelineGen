@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // BulkUploadYouTubeClipsRequest is the JSON body for POST /api/media/bulk-upload-youtube-clips.
@@ -58,7 +58,7 @@ type BulkUploadYouTubeClipsResponse struct {
 func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	var req BulkUploadYouTubeClipsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
@@ -86,25 +86,25 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 
 	// Validation
 	if strings.TrimSpace(req.LocalFolder) == "" {
-		internal.APIUtil.BadRequest(c, "local_folder is required")
+		apiutil.BadRequest(c, "local_folder is required")
 		return
 	}
 	abs, err := filepath.Abs(req.LocalFolder)
 	if err != nil {
-		internal.APIUtil.BadRequest(c, "invalid local_folder: "+err.Error())
+		apiutil.BadRequest(c, "invalid local_folder: "+err.Error())
 		return
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		internal.APIUtil.BadRequest(c, fmt.Sprintf("local_folder not accessible: %v", err))
+		apiutil.BadRequest(c, fmt.Sprintf("local_folder not accessible: %v", err))
 		return
 	}
 	if !info.IsDir() {
-		internal.APIUtil.BadRequest(c, "local_folder is not a directory")
+		apiutil.BadRequest(c, "local_folder is not a directory")
 		return
 	}
 	if req.DriveFolderID == "" && req.DriveFolderName == "" {
-		internal.APIUtil.BadRequest(c, "either drive_folder_id or drive_folder_name is required")
+		apiutil.BadRequest(c, "either drive_folder_id or drive_folder_name is required")
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	// Scan to count candidates (so the response includes a useful preview).
 	candidates, scanErr := scanLocalClips(abs, recursive, req.FilePatterns, req.SkipPatterns, req.Limit)
 	if scanErr != nil {
-		internal.APIUtil.BadRequest(c, "failed to scan local_folder: "+scanErr.Error())
+		apiutil.BadRequest(c, "failed to scan local_folder: "+scanErr.Error())
 		return
 	}
 	log.Info("scanned local folder",
@@ -127,7 +127,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 
 	// Dry-run: return preview without enqueueing
 	if req.DryRun {
-		internal.APIUtil.OK(c, BulkUploadYouTubeClipsResponse{
+		apiutil.OK(c, BulkUploadYouTubeClipsResponse{
 			OK:         true,
 			DryRun:     true,
 			LocalFound: len(candidates),
@@ -137,7 +137,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	}
 
 	if h.jobsSvc == nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("jobs service not available"))
+		apiutil.InternalError(c, fmt.Errorf("jobs service not available"))
 		return
 	}
 
@@ -145,11 +145,11 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	targetDriveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if targetDriveFolderID == "" {
 		if h.driveUploader == nil {
-			internal.APIUtil.InternalError(c, fmt.Errorf("drive uploader not configured; drive_folder_id is required"))
+			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured; drive_folder_id is required"))
 			return
 		}
 		if req.DriveFolderName == "" {
-			internal.APIUtil.BadRequest(c, "either drive_folder_id or drive_folder_name is required")
+			apiutil.BadRequest(c, "either drive_folder_id or drive_folder_name is required")
 			return
 		}
 		root := h.cfg.Drive.ClipsFolder()
@@ -157,12 +157,12 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 			root = h.cfg.Drive.RootFolder()
 		}
 		if root == "" {
-			internal.APIUtil.InternalError(c, fmt.Errorf("no Drive root folder configured (drive.clips_folder / drive.root_folder)"))
+			apiutil.InternalError(c, fmt.Errorf("no Drive root folder configured (drive.clips_folder / drive.root_folder)"))
 			return
 		}
 		dirID, err := h.driveUploader.GetOrCreateFolder(ctx, req.DriveFolderName, root)
 		if err != nil {
-			internal.APIUtil.InternalError(c, fmt.Errorf("failed to resolve drive_folder_name: %w", err))
+			apiutil.InternalError(c, fmt.Errorf("failed to resolve drive_folder_name: %w", err))
 			return
 		}
 		targetDriveFolderID = dirID
@@ -175,7 +175,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	// prevent the endpoint from being used to walk arbitrary directories
 	// (e.g. /etc) and upload their contents to Drive.
 	if !isLocalFolderAllowed(abs, h.cfg) {
-		internal.APIUtil.BadRequest(c, fmt.Sprintf(
+		apiutil.BadRequest(c, fmt.Sprintf(
 			"local_folder %q is not under any allowed base path (drive.media_dir, drive.temp_dir, drive.data_dir, or a path explicitly added via config)",
 			abs))
 		return
@@ -205,11 +205,11 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	})
 	if err != nil {
 		log.Error("failed to enqueue bulk upload job", zap.Error(err))
-		internal.APIUtil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+		apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 		return
 	}
 
-	internal.APIUtil.OK(c, BulkUploadYouTubeClipsResponse{
+	apiutil.OK(c, BulkUploadYouTubeClipsResponse{
 		OK:         true,
 		JobID:      job.ID,
 		StatusURL:  "/api/jobs/" + job.ID + "/full",

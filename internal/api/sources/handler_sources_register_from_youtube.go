@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
+	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/clips"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"

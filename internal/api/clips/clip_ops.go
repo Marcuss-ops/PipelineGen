@@ -11,11 +11,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ─── PR-A Phase 4 BULK moved methods ───────────────────────────────────────
@@ -33,13 +33,13 @@ func (h *Handler) Reconcile(c *gin.Context) {
 		Fix      bool   `json:"fix"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		internal.APIUtil.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *Handler) Reconcile(c *gin.Context) {
 	// dep). For Reconcile we fall back to a no-op success body when called
 	// without it — callers wanting the orchestration path should hit
 	// DriveHandler.Reconcile which has catalogSync wired.
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
 		"message": "reconciliation started (catalogSync is configured on SourcesHandler, not clips.Handler)",
@@ -83,10 +83,10 @@ func (h *Handler) Cleanup(c *gin.Context) {
 				ActiveKey: activeKey,
 			})
 			if err != nil {
-				internal.APIUtil.InternalError(c, err)
+				apiutil.InternalError(c, err)
 				return
 			}
-			internal.APIUtil.OK(c, gin.H{
+			apiutil.OK(c, gin.H{
 				"ok":      true,
 				"job_id":  job.ID,
 				"message": "system cleanup job enqueued",
@@ -98,10 +98,10 @@ func (h *Handler) Cleanup(c *gin.Context) {
 		if h.deletionSvc != nil && !req.DryRun {
 			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), h.cfg.Storage.AssetsPath(), false)
 			if err != nil {
-				internal.APIUtil.InternalError(c, err)
+				apiutil.InternalError(c, err)
 				return
 			}
-			internal.APIUtil.OK(c, gin.H{"ok": true, "deleted": deleted, "message": "deep cleanup completed synchronously"})
+			apiutil.OK(c, gin.H{"ok": true, "deleted": deleted, "message": "deep cleanup completed synchronously"})
 			return
 		}
 	}
@@ -109,7 +109,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	repo := h.resolveRepo(source)
 	sourceLower := strings.ToLower(source)
 	if repo == nil && sourceLower != "images" && sourceLower != "voiceover" {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -162,7 +162,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 		summary += fmt.Sprintf(", deleted %d", deletedCount)
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":          true,
 		"source":      source,
 		"dry_run":     req.DryRun,
@@ -183,7 +183,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 		rec, err := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
 		if err != nil {
-			internal.APIUtil.NotFound(c, "voiceover not found")
+			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
 		clip := artifacts.VoiceoverRecordToClip(rec)
@@ -194,13 +194,13 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
 	clip, err := repo.GetClip(c.Request.Context(), clipID)
 	if err != nil {
-		internal.APIUtil.NotFound(c, "clip not found")
+		apiutil.NotFound(c, "clip not found")
 		return
 	}
 

@@ -1,4 +1,0 @@
-# mediaasset-legacy-allowlist.txt — EMPTY
-# PR2: models.MediaAsset has been deleted. Zero legacy references required.
-# This file exists only to satisfy the CI guard expectation of a non-existent
-# allowlist; it will be deleted in PR6 alongside all other CI artifacts.
