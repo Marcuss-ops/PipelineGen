@@ -323,48 +323,25 @@ func (a *folderMemoryAdapter) ComputeManifestStats(manifest *asset.ClipManifest)
 	return a.inner.ComputeManifestStats(manifest)
 }
 
-// ── SearchRunnerStub satisfies youtube.SearchRunnerPort for the structural
-//    port seam. PR2 cascade (June 2026) made the port structural because
-//    searcher.go + searcher_metadata.go call SearchLive + GetVideoInfo through
-//    it; the previous empty-marker port panicked at runtime. Real yt-dlp
-//    subprocess implementation lands in a follow-up PR — for now this stub
-//    returns an empty result set so callers compile + run without panic, with
-//    a warn-log so the gap is loud in operator dashboards.
+// ── PR2 (June 2026): SearchRunnerStub removed.
+//
+// The previous `searchRunnerStub` was a silent-empty fallback that returned
+// `[]youtube.SearchLiveResult{}, nil` and `&youtube.DownloaderMetadata{}, nil`
+// when the underlying infrastructure was unavailable. That behaviour was
+// indistinguishable from a successful empty search and is the failure mode
+// explicitly killed by PR2.
+//
+// The production wiring is now `ytinfra.NewSearchRunnerAdapter(cfg, log)`
+// (see internal/infrastructure/youtube/search_runner_adapter.go), which:
+//
+//   - returns nil at construction time when cfg or log is nil (composition
+//     root detects this and returns an error from BuildDomainBundle);
+//   - wraps subprocess errors with `ports.ErrSearchRunnerUnavailable`
+//     (search) or `ports.ErrSearchRunnerVideoInfoUnavailable` (info) so
+//     callers can branch on the cause via `errors.Is`;
+//   - propagates ctx.Err() unwrapped so cancellation is detected faithfully.
+//
+// The previous `newSearchRunnerStub(log)` constructor and its type are
+// intentionally NOT retained here. The test file `youtube_adapters_test.go`
+// has been migrated to `internal/infrastructure/youtube/search_runner_adapter_test.go`.
 // ──
-
-type searchRunnerStub struct {
-	log *zap.Logger
-}
-
-func newSearchRunnerStub(log *zap.Logger) youtube.SearchRunnerPort {
-	if log == nil {
-		return nil
-	}
-	return &searchRunnerStub{log: log}
-}
-
-func (s *searchRunnerStub) SearchLive(ctx context.Context, query string, limit int, sort string) ([]youtube.SearchLiveResult, error) {
-	if err := ctx.Err(); err != nil {
-		s.log.Warn("SearchRunner.SearchLive: context cancelled before execution",
-			zap.NamedError("ctx_err", err),
-			zap.String("query", query))
-		return nil, err
-	}
-	s.log.Warn("SearchRunner.SearchLive invoked but search runner is stubbed in this PR (June 2026 cascade); returning empty result set",
-		zap.String("query", query),
-		zap.Int("limit", limit),
-		zap.String("sort", sort))
-	return []youtube.SearchLiveResult{}, nil
-}
-
-func (s *searchRunnerStub) GetVideoInfo(ctx context.Context, videoURL string) (*youtube.DownloaderMetadata, error) {
-	if err := ctx.Err(); err != nil {
-		s.log.Warn("SearchRunner.GetVideoInfo: context cancelled before execution",
-			zap.NamedError("ctx_err", err),
-			zap.String("url", videoURL))
-		return nil, err
-	}
-	s.log.Warn("SearchRunner.GetVideoInfo invoked but search runner is stubbed in this PR (June 2026 cascade); returning empty DTO",
-		zap.String("url", videoURL))
-	return &youtube.DownloaderMetadata{}, nil
-}
