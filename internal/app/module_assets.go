@@ -93,8 +93,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
 	handler := sourcesapi.NewSourcesHandler(cfg, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, assetRepo, bundle.VoiceoverRepo, bundle.ImageRepo, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, realtimeSvc, bundle.ClipIndexerService, vectorStore, metaWriter, nil, log)
-	sourcesMod := module.NewRouteModule(
-		"assets",
+	legacySourcesMod := module.NewRouteModule(
+		"sources",
 		func() bool { return handler != nil },
 		"/media",
 		handler,
@@ -170,22 +170,23 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 		Storage:     storageHandler,
 		Diagnostics: diagHandler,
 		Search:      searchHandler,
+		Clips:       handler.Clips(),
 		Voiceover:   voiceoverHandler,
 		SoundEffect: sfxHandler,
 		Register:    registerHandler,
 	}, log)
 	assetsRouteMod := module.NewRouteModule(
-		"assets-v2",
+		"assets",
 		func() bool { return true },
 		"/media",
 		assetsMod,
 		log,
 	)
-	log.Info("created unified Assets module (v2 thin transport)")
+	log.Info("created unified Assets module (thin transport)")
 
 	return &AssetsWiring{
 		Handler:         handler,
-		Module:          sourcesMod,
+		Module:          legacySourcesMod,
 		DeletionSvc:     deletionSvc,
 		NewAssetsModule: assetsRouteMod,
 	}, nil

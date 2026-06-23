@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
@@ -22,6 +23,7 @@ type Dependencies struct {
 	Storage     *storage.Handler
 	Diagnostics *diagnostics.Handler
 	Search      *search.Handler
+	Clips       *clips.Handler
 
 	// PR 4: extracted from SourcesHandler
 	Voiceover   *voiceover.Handler
@@ -61,6 +63,11 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 	// Search operations (cross-provider search, semantic-search, recommend)
 	if m.deps.Search != nil {
 		m.deps.Search.RegisterRoutes(r)
+	}
+
+	// Clip operations (/clips/*)
+	if m.deps.Clips != nil {
+		m.deps.Clips.RegisterRoutes(r)
 	}
 
 	// Voiceover operations (/voiceover/*)
