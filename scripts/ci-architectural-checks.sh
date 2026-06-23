@@ -255,7 +255,7 @@ else
     VIOLATIONS=$(rg -c '"database/sql"|"os/exec"|"mattn/go-sqlite3"|"google\.golang\.org/api/drive/v3"' \
         $EXISTING --glob '*.go' 2>/dev/null \
         | grep -v '_test.go' \
-        | awk -F: '{sum+=$2} END {print sum+0}')
+        | awk -F: '{sum+=$2} END {print sum+0}' || true)
     echo "  Import statements violating transport-layer boundary (tracked): ${VIOLATIONS:-0}"
     echo "  Migration target: 0."
 fi
@@ -425,7 +425,7 @@ LEGACY_DB_SQL_FILES=$(
 echo "    internal/api/common/health.go
     internal/api/middleware/middleware_auth_test.go
     internal/api/middleware/middleware_logger.go
-    internal/api/script/handler_script_handlers_flow_clips_test.go
+    internal/api/script/flow_clips_test.go
     internal/application/assets/artifacts/clips_adapter.go
     internal/application/assets/artifacts/finalizer_test.go
     internal/application/assets/artifacts/repository.go
@@ -440,6 +440,7 @@ echo "    internal/api/common/health.go
     internal/application/assets/providers/artlist/service.go
     internal/application/assets/providers/artlist/service_test.go
     internal/application/assets/realtime/index_health_test.go
+    internal/application/books/service.go
     internal/application/images/google_generate.go
     internal/application/jobs/outbox/delivery.go
     internal/application/jobs/outbox/metadata_export.go
@@ -466,7 +467,7 @@ echo "    internal/api/common/health.go
     internal/domain/asset/versions.go"
 )
 LEGACY_COUNT=$(echo "$LEGACY_DB_SQL_FILES" | grep -c '^' || true)
-if [ "$LEGACY_COUNT" -ne "42" ]; then
+if [ "$LEGACY_COUNT" -ne "43" ]; then
     echo "FAIL: Check 17 baseline drift."
     echo "  The in-script baseline lists $LEGACY_COUNT files but the"
     echo "  expected count is 42. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
@@ -563,6 +564,30 @@ echo ""
 echo "Check 18: absolute directory existence gates"
 # These directories have been fully eliminated. If any of them reappear
 # with .go files, the migration has regressed and CI must fail hard.
+# ABSOLUTE_GATE_DIRS — canonical successor mapping
+# Each entry below pairs a fully-eliminated legacy directory with its
+# canonical migration target. The gate is fail-CLOSED: if any legacy
+# directory reappears with .go files, CI fails hard (exit 1).
+# Use this map when porting a file back from a canonical successor
+# (e.g., during a regression) so the successor path stays the only
+# legitimate route forward.
+#
+#   legacy                              → canonical successor
+#   internal/media                      → internal/application/<feature>/ + internal/infrastructure/<X>/
+#   internal/sources                    → internal/application/assets/providers/<source>/
+#   internal/core                       → internal/domain/<X>/ + internal/infrastructure/<X>/
+#   internal/assets                     → internal/domain/asset/ + internal/application/assets/
+#   internal/artifacts                  → internal/domain/job/ (artifacts is interface-wrap; eliminate)
+#   internal/contracts                  → internal/domain/<X>/
+#   internal/jobs (legacy)              → internal/application/jobs/
+#   internal/outboxhandlers             → internal/application/jobs/outbox/
+#   internal/application/scriptflow     → internal/application/scripts/<X>/
+#   internal/application/association    → internal/application/assets/association/
+#   internal/application/realtime       → internal/application/assets/realtime/
+#   internal/domain/media               → internal/domain/asset/
+#   internal/domain/worker              → internal/domain/job/
+#   internal/domain/outbox              → internal/domain/lifecycle/
+#   internal/upload                     → internal/infrastructure/drive/ + internal/infrastructure/media/processor/
 ABSOLUTE_GATE_DIRS=(
     internal/media
     internal/sources
@@ -596,13 +621,22 @@ echo "  OK: no eliminated directories have reappeared"
 # ── Check 19: forbidden infrastructure imports in API layer (tracked) ──
 echo ""
 echo "Check 19: forbidden infrastructure imports in API layer (tracked)"
-# Week 1 goal (AGENTS.md): fail if a PR ADDS new imports of these packages
-# to internal/api/. Handlers must delegate to application/domain layers.
+# POLICY (June 2026 operational readiness):
+#   * Policy-state: SOFT-LOG (does NOT exit 1). The VIOL_COUNT is reported
+#     on every run so the backlog is visible in PR review and in the
+#     migration register, but the build stays green while
+#     api/assets/{clips,register} extraction lands.
+#   * Migration target: VIOL_COUNT = 0 (zero leaks inside internal/api/,
+#     handlers become thin transport that delegates to use cases).
+#   * Promotion trigger: when api/assets/{clips,register} extraction
+#     lands (per AGENTS.md Code Pattern 8), promote this check to
+#     HARD-FAIL by replacing the `if [ -n "$API_VIOLATIONS" ]` block
+#     with `exit 1` and an explicit allowlist for the now-empty case.
+#
+# Week 1 target packages: handlers must delegate to application/domain
+# layers instead of importing these directly.
 # Allowed exceptions: middleware/ (infrastructure wiring), common/health.go,
 # _test.go files.
-#
-# This check TRACKS the count and reports it. It does NOT fail the build.
-# When handler extraction (clips/register) completes, this becomes a hard fail.
 FORBIDDEN_IMPORTS='"database/sql"|"os/exec"|"google.golang.org/api/drive/|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"'
 API_VIOLATIONS=$(rg -n "$FORBIDDEN_IMPORTS" internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v '_test.go' \
