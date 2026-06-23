@@ -38,8 +38,6 @@ func (s *Service) LoadManifest(manifestPath string) (*asset.ClipManifest, error)
 		return manifest, nil
 	}
 	if err := fileutil.ReadJSON(manifestPath, manifest); err != nil {
-		// Return empty manifest if the file doesn't exist yet; any other
-		// error (parse failure, permission denied) bubbles up.
 		if errors.Is(err, fs.ErrNotExist) {
 			return manifest, nil
 		}

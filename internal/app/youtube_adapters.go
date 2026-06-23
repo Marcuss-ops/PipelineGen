@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 )
 
 // ── ClipStoreAdapter wraps *assets.ClipsRepository to satisfy youtube.ClipStorePort ──
