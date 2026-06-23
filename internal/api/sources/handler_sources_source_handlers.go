@@ -28,7 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 )
 
 // SourcesHandler handles non-clip media operations and routes the clip
@@ -50,7 +50,7 @@ type SourcesHandler struct {
 	assetTreeSvc   *assettree.Service
 	driveUploader  *drive.Uploader
 	mediaProcessor asset.Processor
-	deletionSvc    *media.DeletionService
+	deletionSvc    *deletion.DeletionService
 	catalogSync    *catalogsync.Service
 	maintenanceSvc *maintenance.Service
 	realtimeSvc    *realtime.Service
@@ -170,7 +170,7 @@ func NewSourcesHandler(
 	assetTreeSvc *assettree.Service,
 	driveUploader *drive.Uploader,
 	mediaProcessor asset.Processor,
-	deletionSvc *media.DeletionService,
+	deletionSvc *deletion.DeletionService,
 	catalogSync *catalogsync.Service,
 	maintenanceSvc *maintenance.Service,
 	providerRegistry *providers.Registry,

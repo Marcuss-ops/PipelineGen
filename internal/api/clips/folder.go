@@ -15,7 +15,7 @@ import (
 func (h *Handler) ListFolders(c *gin.Context) {
 	source := c.Param("source")
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
@@ -53,7 +53,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
@@ -113,7 +113,7 @@ func (h *Handler) RegenerateManifest(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
@@ -138,7 +138,7 @@ func (h *Handler) TrashFolder(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
@@ -206,7 +206,7 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return

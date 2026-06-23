@@ -7,7 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 
@@ -109,7 +109,7 @@ func TestMaintenancePruning(t *testing.T) {
 	idxSvc := assetindex.NewService(idxRepo)
 
 	// Set up deletion service
-	deletionSvc := media.NewDeletionService(
+	deletionSvc := deletion.NewDeletionService(
 		nil, nil, nil, nil, nil, nil,
 		treeSvc,
 		idxSvc,

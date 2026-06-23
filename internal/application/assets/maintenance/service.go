@@ -10,7 +10,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 )
@@ -36,7 +36,7 @@ type Service struct {
 	log            *zap.Logger
 	assetIndexSvc  *assetindex.Service
 	assetTreeSvc   *assettree.Service
-	deletionSvc    *media.DeletionService
+	deletionSvc    *deletion.DeletionService
 	jobsSvc        *appjobs.Service
 	driveFileCheck DriveFileChecker
 	dbs            []*sql.DB
@@ -51,7 +51,7 @@ func NewService(
 	log *zap.Logger,
 	assetIndexSvc *assetindex.Service,
 	assetTreeSvc *assettree.Service,
-	deletionSvc *media.DeletionService,
+	deletionSvc *deletion.DeletionService,
 	jobsSvc *appjobs.Service,
 	dbs ...*sql.DB,
 ) *Service {
@@ -67,7 +67,7 @@ func NewService(
 }
 
 // SetDeletionService updates the deletion service.
-func (s *Service) SetDeletionService(deletionSvc *media.DeletionService) {
+func (s *Service) SetDeletionService(deletionSvc *deletion.DeletionService) {
 	s.deletionSvc = deletionSvc
 }
 

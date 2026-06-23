@@ -154,7 +154,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			allClips = clips
 		} else {
 			// Text search — fall back to legacy clipsRepo (asset.Filter has no search yet).
-			repo := h.resolveRepo(source)
+			repo := h.repoForSource(source)
 			if repo == nil {
 				apiutil.BadRequest(c, "invalid source: "+source)
 				return
@@ -184,7 +184,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			allClips = allClips[offset:end]
 		}
 	} else {
-		repo := h.resolveRepo(source)
+		repo := h.repoForSource(source)
 		if repo != nil {
 			if q == "" {
 				n, err := h.assetRepo.Count(ctx, asset.Filter{Source: source})

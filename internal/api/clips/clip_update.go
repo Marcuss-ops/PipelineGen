@@ -11,7 +11,7 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return

@@ -24,7 +24,7 @@ func (h *Handler) BulkAddTags(c *gin.Context) {
 		return
 	}
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
@@ -71,7 +71,7 @@ func (h *Handler) BulkRemoveTags(c *gin.Context) {
 		return
 	}
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return

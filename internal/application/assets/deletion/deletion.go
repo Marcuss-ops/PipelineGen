@@ -1,4 +1,4 @@
-package media
+package deletion
 
 import (
 	"context"

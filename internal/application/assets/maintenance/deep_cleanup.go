@@ -108,7 +108,7 @@ func orphanSuppressed(alreadyStr, prev string, now time.Time) (bool, suppression
 // When dryRun is true the function only counts and logs. Otherwise it stamps
 // metadata_json with orphan_locale / orphan_drive so the indexer + dedup
 // sweepers can react without an immediate row delete. Hard deletion is
-// intentionally left to media.DeletionService.CleanupOrphanFiles.
+// intentionally left to deletion.DeletionService.CleanupOrphanFiles.
 func (s *Service) runDeepCleanup(ctx context.Context, dryRun bool) (map[string]any, error) {
 	c := &deepCleanupCounters{}
 	if len(s.dbs) == 0 {
