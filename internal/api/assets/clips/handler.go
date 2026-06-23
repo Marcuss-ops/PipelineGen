@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -90,6 +91,12 @@ type Handler struct {
 	folderMemSvc *foldermemory.Service
 	// searchSvc mirrors Deps.SearchSvc.
 	searchSvc *appclipssearch.Service
+
+	// Use cases — business logic extracted from handlers
+	reprocessUC *appclips.ReprocessUseCase
+	downloadUC  *appclips.DownloadUseCase
+	bulkTagsUC  *appclips.BulkTagsUseCase
+	enrichUC    *appclips.EnrichUseCase
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -117,6 +124,12 @@ func NewHandler(d Deps) *Handler {
 		artifactSvc:    d.ArtifactSvc,
 		folderMemSvc:   d.FolderMemSvc,
 		searchSvc:      d.SearchSvc,
+
+		// Initialize use cases
+		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
+		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
+		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
+		enrichUC:    appclips.NewEnrichUseCase(d.AssetRepo, d.ClipIndexer, d.VectorStore, d.MetaWriter, d.Log),
 	}
 }
 

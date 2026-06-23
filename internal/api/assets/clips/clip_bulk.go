@@ -1,8 +1,7 @@
 package clips
 
 import (
-	"fmt"
-
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -19,38 +18,21 @@ func (h *Handler) BulkAddTags(c *gin.Context) {
 		return
 	}
 
-	if len(req.IDs) == 0 || len(req.Tags) == 0 {
-		apiutil.OK(c, gin.H{"ok": true, "message": "no items or tags provided"})
-		return
-	}
-
-	repo := h.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	if err := repo.BulkAddTags(c.Request.Context(), req.IDs, req.Tags); err != nil {
+	result, err := h.bulkTagsUC.AddTags(c.Request.Context(), clips.BulkTagsRequest{
+		Source: source,
+		IDs:    req.IDs,
+		Tags:   req.Tags,
+	})
+	if err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	// Update Asset Tree if available
-	if h.assetTreeSvc != nil {
-		for _, id := range req.IDs {
-			clip, err := repo.GetClip(c.Request.Context(), id)
-			if err == nil {
-				node := ClipToAssetNode(clip)
-				h.assetTreeSvc.UpsertNode(c.Request.Context(), node)
-			}
-		}
-	}
-
 	apiutil.OK(c, gin.H{
 		"ok":      true,
-		"source":  source,
-		"count":   len(req.IDs),
-		"message": fmt.Sprintf("added tags to %d items", len(req.IDs)),
+		"source":  result.Source,
+		"count":   result.Count,
+		"message": result.Message,
 	})
 }
 
@@ -66,37 +48,20 @@ func (h *Handler) BulkRemoveTags(c *gin.Context) {
 		return
 	}
 
-	if len(req.IDs) == 0 || len(req.Tags) == 0 {
-		apiutil.OK(c, gin.H{"ok": true, "message": "no items or tags provided"})
-		return
-	}
-
-	repo := h.repoForSource(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	if err := repo.BulkRemoveTags(c.Request.Context(), req.IDs, req.Tags); err != nil {
+	result, err := h.bulkTagsUC.RemoveTags(c.Request.Context(), clips.BulkTagsRequest{
+		Source: source,
+		IDs:    req.IDs,
+		Tags:   req.Tags,
+	})
+	if err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	// Update Asset Tree if available
-	if h.assetTreeSvc != nil {
-		for _, id := range req.IDs {
-			clip, err := repo.GetClip(c.Request.Context(), id)
-			if err == nil {
-				node := ClipToAssetNode(clip)
-				h.assetTreeSvc.UpsertNode(c.Request.Context(), node)
-			}
-		}
-	}
-
 	apiutil.OK(c, gin.H{
 		"ok":      true,
-		"source":  source,
-		"count":   len(req.IDs),
-		"message": fmt.Sprintf("removed tags from %d items", len(req.IDs)),
+		"source":  result.Source,
+		"count":   result.Count,
+		"message": result.Message,
 	})
 }

@@ -8,12 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -23,27 +22,6 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	if h.assetRepo == nil {
-		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
-		return
-	}
-
-	ctx := c.Request.Context()
-	clip, err := h.assetRepo.Get(ctx, clipID)
-	if err != nil {
-		apiutil.NotFound(c, "clip not found")
-		return
-	}
-	if clip == nil {
-		apiutil.NotFound(c, "clip not found")
-		return
-	}
-
-	if h.mediaProcessor == nil {
-		apiutil.InternalError(c, fmt.Errorf("media processor not configured"))
-		return
-	}
-
 	var req struct {
 		Force       bool  `json:"force"`
 		UploadDrive bool  `json:"upload_drive"`
@@ -51,53 +29,32 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&req)
 
-	// Build ProcessInput from clip data
-	processInput := &asset.ProcessInput{
-		ID:        clip.ID,
-		Name:      clip.Name,
-		SourceURL: clip.SourceURL,
-		FolderID:  clip.FolderID(),
-		Duration:  int(clip.Duration.Milliseconds()),
-		Metadata: map[string]any{
-			"source": source,
-			"tags":   clip.Tags,
-		},
-	}
-
-	// Process the asset
-	result, err := h.mediaProcessor.Process(ctx, processInput)
+	result, err := h.reprocessUC.Execute(c.Request.Context(), appclips.ReprocessRequest{
+		ClipID:      clipID,
+		Source:      source,
+		Force:       req.Force,
+		UploadDrive: req.UploadDrive,
+		Normalize:   req.Normalize,
+	})
 	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("reprocess failed: %w", err))
-		return
-	}
-
-	// Update clip with result
-	clip.SetLocalPath(result.LocalPath)
-	clip.SetFileHash(result.FileHash)
-	if result.DriveLink != "" {
-		clip.SetDriveLink(result.DriveLink)
-	}
-	if result.DownloadLink != "" {
-		clip.SetDownloadLink(result.DownloadLink)
-	}
-	clip.UpdatedAt = time.Now()
-
-	// Save to DB
-	if err := h.assetRepo.Upsert(ctx, clip); err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
+		if strings.Contains(err.Error(), "not found") {
+			apiutil.NotFound(c, err.Error())
+		} else {
+			apiutil.InternalError(c, err)
+		}
 		return
 	}
 
 	apiutil.OK(c, gin.H{
 		"ok":            true,
-		"source":        source,
-		"clip_id":       clipID,
+		"source":        result.Source,
+		"clip_id":       result.ClipID,
 		"status":        result.Status,
 		"local_path":    result.LocalPath,
 		"file_hash":     result.FileHash,
 		"drive_link":    result.DriveLink,
 		"download_link": result.DownloadLink,
-		"processed_at":  timeutil.FormatRFC3339(time.Now()),
+		"processed_at":  result.ProcessedAt,
 	})
 }
 
@@ -106,66 +63,35 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	var clip *asset.Asset
-
-	// Handle Voiceover source — use canonical converter directly.
-	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
-		rec, getErr := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
-		if getErr != nil {
-			apiutil.NotFound(c, "voiceover not found: "+clipID)
-			return
+	result, err := h.downloadUC.Resolve(c.Request.Context(), source, clipID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			apiutil.NotFound(c, err.Error())
+		} else {
+			apiutil.InternalError(c, err)
 		}
-		clip = artifacts.VoiceoverRecordToClip(rec)
-	} else {
-		if h.assetRepo == nil {
-			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
-			return
-		}
-
-		var getErr error
-		clip, getErr = h.assetRepo.Get(c.Request.Context(), clipID)
-		if getErr != nil {
-			apiutil.NotFound(c, "clip not found: "+clipID)
-			return
-		}
-		if clip == nil {
-			apiutil.NotFound(c, "clip not found: "+clipID)
-			return
-		}
+		return
 	}
 
 	// 1. Try local file if it exists
-	if clip.LocalPath() != "" {
-		if info, err := os.Stat(clip.LocalPath()); err == nil && !info.IsDir() {
-			ext := strings.ToLower(filepath.Ext(clip.LocalPath()))
-			if ext == ".txt" || ext == ".json" || ext == ".md" {
-				apiutil.BadRequest(c, "file is not a video: "+ext)
-				return
-			}
-			c.File(clip.LocalPath())
+	if result.Source == appclips.DownloadSourceLocal {
+		if info, statErr := os.Stat(result.LocalPath); statErr == nil && !info.IsDir() {
+			c.File(result.LocalPath)
 			return
 		}
 	}
 
 	// 2. Try to proxy from Google Drive
-	driveID := clip.DriveFileID()
-	if driveID == "" {
-		driveID = driveutil.FileIDFromLink(clip.DriveLink())
-	}
-	if driveID == "" {
-		driveID = driveutil.FileIDFromLink(clip.DownloadLink())
-	}
-
-	if driveID != "" && h.driveUploader != nil {
+	if result.Source == appclips.DownloadSourceDrive && h.driveUploader != nil {
 		h.log.Info("local file missing, proxying from drive",
 			zap.String("clip_id", clipID),
-			zap.String("drive_id", driveID))
+			zap.String("drive_id", result.DriveID))
 
 		// Check mime type first
-		meta, err := h.driveUploader.GetFileMeta(c.Request.Context(), driveID)
-		if err != nil {
-			h.log.Error("failed to get drive file metadata", zap.Error(err), zap.String("id", driveID))
-			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", err))
+		meta, metaErr := h.driveUploader.GetFileMeta(c.Request.Context(), result.DriveID)
+		if metaErr != nil {
+			h.log.Error("failed to get drive file metadata", zap.Error(metaErr), zap.String("id", result.DriveID))
+			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", metaErr))
 			return
 		}
 
@@ -176,10 +102,10 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 			return
 		}
 
-		body, contentType, err := h.driveUploader.DownloadFile(c.Request.Context(), driveID)
-		if err != nil {
-			h.log.Error("failed to download from drive", zap.Error(err), zap.String("id", driveID))
-			apiutil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", err))
+		body, contentType, dlErr := h.driveUploader.DownloadFile(c.Request.Context(), result.DriveID)
+		if dlErr != nil {
+			h.log.Error("failed to download from drive", zap.Error(dlErr), zap.String("id", result.DriveID))
+			apiutil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", dlErr))
 			return
 		}
 		defer body.Close()
@@ -191,9 +117,9 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		c.Header("Content-Type", contentType)
 		c.Header("Cache-Control", "public, max-age=3600")
 
-		_, err = io.Copy(c.Writer, body)
-		if err != nil {
-			h.log.Debug("drive stream interrupted", zap.Error(err))
+		_, copyErr := io.Copy(c.Writer, body)
+		if copyErr != nil {
+			h.log.Debug("drive stream interrupted", zap.Error(copyErr))
 		}
 		return
 	}
