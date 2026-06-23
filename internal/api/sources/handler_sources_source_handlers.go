@@ -15,21 +15,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/media"
 )
 
 // SourcesHandler handles non-clip media operations and routes the clip
@@ -47,7 +46,6 @@ type SourcesHandler struct {
 	stockRepo      *assets.ClipsRepository
 	voiceoverRepo  *assets.VoiceoversRepository
 	imagesRepo     *assets.ImagesRepository
-	cleanupSvc     *drivecleanup.Service
 	folderMemSvc   *foldermemory.Service
 	assetTreeSvc   *assettree.Service
 	driveUploader  *drive.Uploader
@@ -168,7 +166,6 @@ func NewSourcesHandler(
 	catalogRepo *catalog.Repository,
 	assetIndexSvc *assetindex.Service,
 	artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository,
-	cleanupSvc *drivecleanup.Service,
 	folderMemSvc *foldermemory.Service,
 	assetTreeSvc *assettree.Service,
 	driveUploader *drive.Uploader,
@@ -180,20 +177,19 @@ func NewSourcesHandler(
 	log *zap.Logger,
 ) *SourcesHandler {
 	h := &SourcesHandler{
-		cfg:            cfg,
-		jobsSvc:        jobsSvc,
-		catalogRepo:    catalogRepo,
-		assetIndexSvc:  assetIndexSvc,
-		artlistRepo:    artlistRepo,
-		clipsRepo:      clipsRepo,
-		stockRepo:      stockRepo,
-		cleanupSvc:     cleanupSvc,
-		folderMemSvc:   folderMemSvc,
-		assetTreeSvc:   assetTreeSvc,
-		driveUploader:  driveUploader,
-		mediaProcessor: mediaProcessor,
-		deletionSvc:    deletionSvc,
-		catalogSync:    catalogSync,
+		cfg:              cfg,
+		jobsSvc:          jobsSvc,
+		catalogRepo:      catalogRepo,
+		assetIndexSvc:    assetIndexSvc,
+		artlistRepo:      artlistRepo,
+		clipsRepo:        clipsRepo,
+		stockRepo:        stockRepo,
+		folderMemSvc:     folderMemSvc,
+		assetTreeSvc:     assetTreeSvc,
+		driveUploader:    driveUploader,
+		mediaProcessor:   mediaProcessor,
+		deletionSvc:      deletionSvc,
+		catalogSync:      catalogSync,
 		maintenanceSvc:   maintenanceSvc,
 		providerRegistry: providerRegistry,
 		log:              log,

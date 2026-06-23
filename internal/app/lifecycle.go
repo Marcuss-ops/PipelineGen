@@ -21,7 +21,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 
@@ -29,12 +28,12 @@ import (
 	_ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	_ "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -50,11 +49,10 @@ import (
 // other subsystems can read it after bootstrap.go returns. The handle here
 // also powers shutdown.go's LIFO orchestration.
 type backgroundJobs struct {
-	channelMonitor    *monitor.ChannelMonitor
-	driveSyncSchedule *scheduler.DriveSyncScheduler
-	jobRunner         *appjobs.Runner
-	jobScanner        *sqlitejobs.Scanner
-	scriptsRepo       *sqlitescripts.ScriptRepository
+	channelMonitor *monitor.ChannelMonitor
+	jobRunner      *appjobs.Runner
+	jobScanner     *sqlitejobs.Scanner
+	scriptsRepo    *sqlitescripts.ScriptRepository
 	// startJobRunner is called by WireServices AFTER registry Freeze() so that
 	// the JobRunner.Start loop begins claiming jobs only when no further
 	// handlers can register. Captures ctx + root + log from
@@ -95,7 +93,6 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	var jobRunner *appjobs.Runner
 	var jobScanner *sqlitejobs.Scanner
 	var channelMon *monitor.ChannelMonitor
-	var driveSyncSched *scheduler.DriveSyncScheduler
 	var startJobRunner func()
 
 	if runWorker {
@@ -170,24 +167,10 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			log.Info("Channel monitor started")
 		}
 
-		// Periodic Drive sync scheduler — always enabled if sync services exist
-		if root.Sync.CatalogSync != nil || root.Domains.VoiceoverSync != nil || root.Domains.ImageService != nil {
-			syncInterval := 6 * time.Hour
-			if cfg.Jobs.CatalogSyncInterval != "" {
-				if parsed, err := time.ParseDuration(cfg.Jobs.CatalogSyncInterval); err == nil {
-					syncInterval = parsed
-				}
-			}
-			driveSyncSched = scheduler.NewDriveSyncScheduler(
-				root.Sync.CatalogSync,
-				root.Domains.VoiceoverSync,
-				root.Domains.ImageService,
-				log,
-				syncInterval,
-			)
-			concurrent.SafeGo("drive-sync-scheduler", func() { driveSyncSched.Start(ctx) })
-			log.Info("Drive sync scheduler started", zap.Duration("interval", syncInterval))
-		}
+		// Periodic Drive sync scheduler removed: the previous implementation
+		// was a compatibility shim that only blocked on ctx.Done().
+		// The actual catalog/voiceover/image sync paths remain wired through
+		// the existing jobs and maintenance services.
 	}
 
 	if runMaintenance {
@@ -343,12 +326,11 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	}
 
 	return &backgroundJobs{
-		channelMonitor:    channelMon,
-		driveSyncSchedule: driveSyncSched,
-		jobRunner:         jobRunner,
-		jobScanner:        jobScanner,
-		scriptsRepo:       root.Repos.ScriptsRepo,
-		startJobRunner:    startJobRunner,
+		channelMonitor: channelMon,
+		jobRunner:      jobRunner,
+		jobScanner:     jobScanner,
+		scriptsRepo:    root.Repos.ScriptsRepo,
+		startJobRunner: startJobRunner,
 	}
 }
 

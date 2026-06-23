@@ -27,7 +27,7 @@ import (
 // Orchestration order (LIFO):
 //  1. cancel() — signals all goroutines
 //  2. settle 100ms — give goroutines time to notice
-//  3. parallel Stop for: channelMonitor, driveSyncSchedule
+//  3. parallel Stop for: channelMonitor
 //  4. wait (5-second timeout)
 //  5. close main database
 func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) CleanupFunc {
@@ -49,13 +49,6 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 			concurrent.SafeGo("cleanup-channel-monitor", func() {
 				defer wg.Done()
 				jobs.channelMonitor.Stop()
-			})
-		}
-		if jobs != nil && jobs.driveSyncSchedule != nil {
-			wg.Add(1)
-			concurrent.SafeGo("cleanup-drive-sync", func() {
-				defer wg.Done()
-				jobs.driveSyncSchedule.Stop()
 			})
 		}
 		// PR4.E-followup-2: explicit Stop for the outbox-events pool started

@@ -8,10 +8,12 @@ import (
 	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
-	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
+	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
@@ -20,19 +22,16 @@ import (
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -87,12 +86,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	if bundle.DriveClient != nil {
 		driveUploader = &driveutil.Uploader{Service: bundle.DriveClient, Log: log}
 	}
-	var driveCleanupSvc *drivecleanup.Service
-	if driveUploader != nil {
-		driveCleanupSvc = drivecleanup.NewService()
-	}
 	deletionSvc := media.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, driveCleanupSvc, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, log)
+	handler := sourcesapi.NewSourcesHandler(cfg, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, log)
 	if bundle.VoiceoverRepo != nil {
 		handler.SetVoiceoverRepo(bundle.VoiceoverRepo)
 	}
