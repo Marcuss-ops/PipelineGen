@@ -7,7 +7,8 @@
 // Critical contract — MOUNTED ON A NON-API PREFIX:
 //   - JobsHandler          mounts on `/jobs` → /api/jobs/{, stats, :id ...}
 //   - WorkersBrokerHandler mounts on remoteshared.InternalPathPrefix
-//                            (typically /internal/v1/) → NOT under /api/.
+//     (typically /internal/v1/) → NOT under /api/.
+//
 // See internal/api/server.go::Router.SetWorkerHandler and
 // remoteshared.InternalPathPrefix for the exact routing context.
 //
@@ -84,10 +85,10 @@ func (h *WorkersBrokerHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 type registerWorkerRequest struct {
-	WorkerID     string                     `json:"worker_id"`
-	Name         string                     `json:"name,omitempty"`
-	Version      string                     `json:"version,omitempty"`
-	Hostname     string                     `json:"hostname,omitempty"`
+	WorkerID     string                 `json:"worker_id"`
+	Name         string                 `json:"name,omitempty"`
+	Version      string                 `json:"version,omitempty"`
+	Hostname     string                 `json:"hostname,omitempty"`
 	Capabilities job.WorkerCapabilities `json:"capabilities"`
 }
 
