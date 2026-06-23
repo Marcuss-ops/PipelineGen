@@ -345,6 +345,13 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		outboxStart = root.OutboxStart
 	}
 
+	// PR9-C (June 2026): capture the Qdrant collection setup closure
+	// extracted from BuildProcessBundle.
+	var processStart func()
+	if root != nil {
+		processStart = root.ProcessStart
+	}
+
 	cleanupStack := make([]func(), 0, 8)
 	cleanupStack = append(cleanupStack, coreClean)
 	cleanupStack = append(cleanupStack, func() {
@@ -385,7 +392,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		}
 	}
 
-	lifecycle := NewServerLifecycle(deferredStartJobRunner, driveStart, outboxStart, cleanup)
+	lifecycle := NewServerLifecycle(deferredStartJobRunner, driveStart, outboxStart, processStart, cleanup)
 
 	return &AppDeps{
 		Registry:      registryWiring.Registry,

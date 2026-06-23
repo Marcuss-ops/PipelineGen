@@ -18,23 +18,24 @@ import (
 var _ module.LifecycleManager = (*serverLifecycle)(nil)
 
 // serverLifecycle wraps the startJobRunner closure (deferred from WireServices
-// until after registry freeze), the driveStart + outboxStart closures
-// (extracted from BuildDriveBundle/BuildOutboxBundle per PR9-A/B), and the
-// cleanup function (LIFO teardown stack: coreClean → artlist Close → logDB
-// Close → middleware StopLogger).
+// until after registry freeze), the driveStart + outboxStart + processStart
+// closures (extracted from BuildDriveBundle/BuildOutboxBundle/BuildProcessBundle
+// per PR9-A/B/C), and the cleanup function (LIFO teardown stack: coreClean →
+// artlist Close → logDB Close → middleware StopLogger).
 type serverLifecycle struct {
 	startJobRunner func()
 	driveStart     func() // PR9-A: deferred Drive side-effect initialisation
 	outboxStart    func() // PR9-B: deferred outbox events pool initialisation
+	processStart   func() // PR9-C: deferred Qdrant collection setup
 	cleanup        func()
 }
 
 // Start triggers the deferred job runner start, Drive background
-// initialisation, and outbox events pool start. Background goroutines
-// (channel monitor, sweepers, etc.) are already running from
-// startBackgroundJobs inside initCompositionMinimal; this is only the
-// final piece that must happen after WireRegistry has registered all
-// handlers and frozen the dispatcher.
+// initialisation, outbox events pool start, and Qdrant collection setup.
+// Background goroutines (channel monitor, sweepers, etc.) are already
+// running from startBackgroundJobs inside initCompositionMinimal; this is
+// only the final piece that must happen after WireRegistry has registered
+// all handlers and frozen the dispatcher.
 func (l *serverLifecycle) Start(ctx context.Context) error {
 	_ = ctx
 	if l.startJobRunner != nil {
@@ -45,6 +46,9 @@ func (l *serverLifecycle) Start(ctx context.Context) error {
 	}
 	if l.outboxStart != nil {
 		l.outboxStart()
+	}
+	if l.processStart != nil {
+		l.processStart()
 	}
 	return nil
 }
@@ -61,17 +65,18 @@ func (l *serverLifecycle) Stop(ctx context.Context) error {
 }
 
 // NewServerLifecycle creates a LifecycleManager from the deferred job
-// runner start closure, the deferred drive-background + outbox start
-// closures (PR9-A/B), and the cleanup function. Any parameter may be nil
-// (e.g. test mode where no background jobs are started).
-func NewServerLifecycle(startJobRunner func(), driveStart func(), outboxStart func(), cleanup func()) module.LifecycleManager {
-	if startJobRunner == nil && driveStart == nil && outboxStart == nil && cleanup == nil {
+// runner start closure, the deferred drive/outbox/process start closures
+// (PR9-A/B/C), and the cleanup function. Any parameter may be nil (e.g.
+// test mode where no background jobs are started).
+func NewServerLifecycle(startJobRunner func(), driveStart func(), outboxStart func(), processStart func(), cleanup func()) module.LifecycleManager {
+	if startJobRunner == nil && driveStart == nil && outboxStart == nil && processStart == nil && cleanup == nil {
 		return nil
 	}
 	return &serverLifecycle{
 		startJobRunner: startJobRunner,
 		driveStart:     driveStart,
 		outboxStart:    outboxStart,
+		processStart:   processStart,
 		cleanup:        cleanup,
 	}
 }
