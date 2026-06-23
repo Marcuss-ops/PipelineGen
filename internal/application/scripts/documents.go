@@ -17,19 +17,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 )
 
-// DocClient mirrors the upload/drive.DocClient interface that the documents
-// package needs. This avoids importing the full drive package in callers.
-type DocClient = drive.DocClient
-
 // DocumentsService builds and creates Google Docs for generated scripts.
+// DocClient is resolved from internal/infrastructure/drive during
+// composition; the prior `scripts.DocClient = drive.DocClient` alias
+// was removed in W16-PR4 — callers now use drive.DocClient directly.
 type DocumentsService struct {
-	docClient     DocClient
+	docClient     drive.DocClient
 	log           *zap.Logger
 	driveFolderID string
 }
 
 // NewDocumentsService creates a new DocumentsService.
-func NewDocumentsService(docClient DocClient, log *zap.Logger, driveFolderID string) *DocumentsService {
+func NewDocumentsService(docClient drive.DocClient, log *zap.Logger, driveFolderID string) *DocumentsService {
 	return &DocumentsService{
 		docClient:     docClient,
 		log:           log,

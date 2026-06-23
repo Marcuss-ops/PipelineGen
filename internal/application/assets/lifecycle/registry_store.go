@@ -5,9 +5,14 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
 )
 
-// RegistryStoreAdapter adapts a artifacts.Registry to the AssetRecordStore interface.
+// RegistryStoreAdapter adapts a artifacts.Registry to the AssetRecordStore
+// interface. Method signatures use assetop.X directly since W16-PR4 removed
+// the re-export type aliases from this package (matches the pattern at
+// internal/application/assets/ingest/{adapter_voiceover,adapter_clip,
+// adapter_image}.go which were already on assetop.X before the PR).
 type RegistryStoreAdapter struct {
 	registry artifacts.Registry
 }
@@ -18,7 +23,7 @@ func NewRegistryStoreAdapter(registry artifacts.Registry) AssetRecordStore {
 }
 
 // FindExisting finds an existing asset record by query.
-func (a *RegistryStoreAdapter) FindExisting(ctx context.Context, query ExistingAssetQuery) (*AssetRecord, error) {
+func (a *RegistryStoreAdapter) FindExisting(ctx context.Context, query assetop.ExistingAssetQuery) (*assetop.AssetRecord, error) {
 	if query.ID != "" {
 		rec, err := a.registry.GetMedia(ctx, query.ID)
 		if err != nil {
@@ -45,13 +50,13 @@ func (a *RegistryStoreAdapter) FindExisting(ctx context.Context, query ExistingA
 }
 
 // ListWithDriveFileID lists all records that have a non-empty Drive file ID.
-func (a *RegistryStoreAdapter) ListWithDriveFileID(ctx context.Context, source string) ([]*AssetRecord, error) {
+func (a *RegistryStoreAdapter) ListWithDriveFileID(ctx context.Context, source string) ([]*assetop.AssetRecord, error) {
 	records, err := a.registry.GetAllWithDriveFileID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var result []*AssetRecord
+	var result []*assetop.AssetRecord
 	for _, rec := range records {
 		if source == "" || rec.Source == source {
 			result = append(result, mediaRecordToAssetRecord(rec))
@@ -90,11 +95,11 @@ func (a *RegistryStoreAdapter) Get(ctx context.Context, id string) (*artifacts.M
 }
 
 // mediaRecordToAssetRecord converts a artifacts.MediaRecord to an AssetRecord.
-func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *AssetRecord {
+func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *assetop.AssetRecord {
 	if rec == nil {
 		return nil
 	}
-	return &AssetRecord{
+	return &assetop.AssetRecord{
 		ID:           rec.ID,
 		Name:         rec.Name,
 		Filename:     rec.Filename,

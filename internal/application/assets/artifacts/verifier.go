@@ -15,7 +15,10 @@ package artifacts
 // The cycle that PR2.7 broke was:
 //   artlist → assets/artifacts/verifier.go → drive → artlist
 // triggered by folder_manager.go (in drive pkg) importing artlist for
-// the []artlist.DriveFileRef return type on ListByQuery. Moving
+// W16-PR4: ListByQuery returns []drivepkg.DriveFileRef. The application-
+// layer alias is gone, so verifier consumers reach the canonical struct
+// directly via the drivepkg import.
+
 // APIDriveVerifier to drive/ is a one-direction ⊆ (the new
 // verifier_adapter.go imports artifacts for the port interface, but
 // artifacts no longer imports drive) so Go's import checker accepts it.

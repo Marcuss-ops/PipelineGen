@@ -562,7 +562,7 @@
     - "After all 5 migrate, drop `cd.X` access from inside WireRegistry (the late-bindings on cd.ImageService, cd.MaintenanceService, cd.DeletionService, cd.VoiceoverService, cd.VoiceoverSync still go through CoreDeps — but those are in registry.go, not in Wire<Module>)."
     - "Once no Wire<Module> uses CoreDeps, the CoreDeps struct + projectRootToCoreDeps + the deps projection can be deleted."
     - "In the SAME final chunk, also delete `type services struct` from internal/app/dependencies.go (the legacy mega-struct that PR4 was supposed to retire). With that gone, the original PR4 directive 'elimina services struct + CoreDeps' finally holds."
-  exit_gate: "internal/app/modules has ≤ 10 files; per-module dependency count ≤ 10; `rg 'type services struct' internal/app/dependencies.go` returns zero; `CoreDeps` struct no longer exported; `rg 'coreDeps \*CoreDeps' internal/app/module_*.go` returns zero."
+  exit_gate: 'internal/app/modules has ≤10 files; per-module dependency count ≤10; `rg ''type services struct'' internal/app/dependencies.go` returns zero; `CoreDeps` struct no longer exported; `rg ''coreDeps \*CoreDeps'' internal/app/module_*.go` returns zero.'
   mail_box_to_resolve_in_PR4c_RESOLVED_in_PR4d_chunk2:
     - "clipResolver (post-projection write from WireArtlist at internal/app/module_artlist.go:56) and ArtifactService (post-projection read at internal/app/module_assets.go:58-59) — PR4c migrates wireClipResolver into BuildDomainBundle + artifacts.NewClipsRegistry into BuildProcessBundle so CoreDeps shrinks further to ~30 fields and the mail-box mutation in modules can be deleted."
   completed_in_PR4d_chunk2: "5 remaining Wire<Module>() MIGRATED to narrow bundle signatures (WireArtlist + ArtlistBundle 10 fields, WireAssets + AssetsBundle 10 fields, WireMediaIngest + MediaIngestBundle 7 fields, WireStockPipeline + StockBundle 7 fields, WireYouTubeClip 4 direct args). 4 NEW capability bundles created respecting the AGENTS.md ≤10 fields/bundle cap. maintenanceSvc/deletionSvc/clipResolver mail-box antipattern RESOLVED (constructed locally in registry.go with root.* fields, never written back to CoreDeps). MaintenanceService + DeletionService + ArtifactService fields DROPPED from CoreDeps struct; 3 now-unused imports (artifacts, maintenance, media) removed from bootstrap.go. Var _ maintenance.Service dead-code line at end of module_assets.go REMOVED. SetHarvestService keeps the JobHarvestService fallback path as the canonical late-binding (clipresolver.Service doesn't implement script.AutoHarvestService; Resolver field on ArtlistWiring was honestly dropped). go vet + go build + go test ./internal/app/... all GREEN. Reviewer verdict: SHIP."
@@ -620,6 +620,99 @@
     Check 17 baseline frozen, observability retention policy committed)
     and unblocks Wave 17 Final Verification + the architecture-clean-v1
     canonical tag.
+  subwaves:
+    - id: 16_PR4
+      title: Type-alias ratchet continuation — 10 application-layer aliases stripped
+      status: done
+      verified_zero: false
+      description: |
+        Continuazione del W16 ratchet (post W16-PR2+PR3). Rimosse 10
+        ulteriori type alias da 9 file + 1 fix in un consumer indiretto.
+        Tutte le alias rimosse sono intra-package o re-export verso il
+        canonical type dichiarato altrove — nessuna back-compat alias
+        lasciata dietro. Ordering scelto (per leaf-to-blast-radius): i
+        pacchetti con sole dipendenze locali sono stati migrati per
+        primi (tagutil.go, metadata/core.go, clips_repository.go,
+        documents.go, lifecycle/types.go), seguiti dai re-export
+        cross-package lifecycle/registry_store.go + images/service.go,
+        infine il porto artist/ports.go la cui modifica richiede
+        qualifier sulla firma dell'interfaccia DriveFolderManager.
+        5 stale doc-comment menzionanti il precedente alias
+        `artlist.DriveFileRef` sono stati ripuliti in 4 file
+        (drive/types.go, drive/folder_manager_test.go, drive/verifier_adapter.go,
+        assets/artifacts/verifier.go). Tutti i 4 consumer-side adaptations
+        delle firme d'interfaccia (lifecycle.AssetRecordStore +
+        artlist.DriveFolderManager.ListByQuery) sono stati verificati
+        per compilation. `goimports -w` su 4 file gofmt-import-recovered
+        (clip_repository.go, verifier_adapter.go, google_vids_assets.go,
+        youtube_handlers.go).
+      blast_radius_audit: |
+        - `internal/application/assets/lifecycle/registry_store.go`
+          (4a implementation di `AssetRecordStore`, **missed in initial
+          consumer audit** che elencava solo i 3 adapter ingest; surfaced
+          dal post-edit `go vet` su `internal/application/assets/lifecycle`).
+          Risolto con import `assetop` + 10 sostituzioni bare-to-qualified.
+          Lezione per Wave 16 PR successivi: quando una migration tocca la
+          signature di un'interfaccia, fare `grep -rn '<interface_name>'` su
+          `.` per enumerare TUTTE le implementazioni concrete, non solo i
+          call site del nome-tipo.
+        - `internal/api/assets/youtube/youtube_handlers.go:358`
+          (consumer-side reference implicita). `assets.AdvancedSearchRequest`
+          riferiva l'alias rimosso; corretto a `asset.AdvancedSearchRequest`
+          (canonical `internal/domain/asset`, già importato).
+      pre_existing_out_of_scope: |
+        `go vet ./...` fallisce per via di errori pre-esistenti in
+        `internal/infrastructure/youtube/` (videopipeline_adapter.go +
+        metadata.go) e `internal/application/assets/providers/youtube/`
+        (adapter.go). 16-PR4 NON tocca questi file; il backlog è
+        documentato sotto `post_cascade_followups` (CPR-LR-1/2/3) e
+        appartiene al forward PR `pr/post-cascade-latent-risks-2026-06-21`.
+        La validation di 16-PR4 copre esplicitamente il sottoinsieme
+        di 10 pacchetti toccati dalla PR.
+      deferred_to_future_wave: |
+        3 alias aggiuntive restano nel `archcheck --report` snapshot ma
+        NON sono state rimosse in 16-PR4 perchè vivono in file con
+        build-error pre-esistenti (la rimozione richiederebbe di
+        risolvere prima l'errore di compile, espandendo il PR surface
+        oltre il ratchet):
+        - `internal/application/youtube/ports/ports.go::VideoMetadata`
+        - `internal/application/youtube/ports/ports.go::YouTubeMetadataPort`
+        - `internal/application/jobs/worker.go::JobType`
+        Saranno landate come parte di 16-PR5 (next-cycle) o come
+        sotto-task del forward PR post-cascade-latent-risks.
+      exit_gate: |
+        `rg '^\\s*type\\s+(clipRichMetadata|ClipMetadataFile|DocClient|SemanticMetadataPayload|ExistingAssetQuery|AssetRecord|DriveFileRef|AdvancedSearchRequest|AdvancedSearchResult|SegmentEmbeddingRecord)\\s*=' --include='*.go' .` returns zero
+        AND `rg 'artlist\\.DriveFileRef' --include='*.go' .` returns zero
+        AND `go vet internal/application/{images,scripts,assets/lifecycle,assets/providers/artlist,assets/ingest,youtube/{tagutil,metadata}} internal/{infrastructure/{drive,database/sqlite/assets},api/assets/youtube}` exits 0.
+      fixed_files:
+        - internal/application/youtube/tagutil/tagutil.go
+        - internal/application/youtube/metadata/core.go
+        - internal/application/scripts/documents.go
+        - internal/application/images/service.go
+        - internal/application/images/google_vids_assets.go
+        - internal/application/assets/lifecycle/types.go
+        - internal/application/assets/lifecycle/registry_store.go
+        - internal/application/assets/providers/artlist/ports.go
+        - internal/infrastructure/database/sqlite/assets/clips_repository.go
+        - internal/infrastructure/drive/types.go
+        - internal/infrastructure/drive/folder_manager_test.go
+        - internal/infrastructure/drive/verifier_adapter.go
+        - internal/application/assets/artifacts/verifier.go
+        - internal/api/assets/youtube/youtube_handlers.go
+        - scripts/archcheck/grandfathered_allowlist.json
+        - scripts/archcheck/current_report.json
+      removed_aliases:
+        - {name: clipRichMetadata,                  definition_file: internal/application/youtube/tagutil/tagutil.go}
+        - {name: ClipMetadataFile,                 definition_file: internal/application/youtube/metadata/core.go}
+        - {name: DocClient,                          definition_file: internal/application/scripts/documents.go}
+        - {name: SemanticMetadataPayload,            definition_file: internal/application/images/service.go}
+        - {name: ExistingAssetQuery,                 definition_file: internal/application/assets/lifecycle/types.go}
+        - {name: AssetRecord,                        definition_file: internal/application/assets/lifecycle/types.go}
+        - {name: DriveFileRef,                       definition_file: internal/application/assets/providers/artlist/ports.go}
+        - {name: AdvancedSearchRequest,              definition_file: internal/infrastructure/database/sqlite/assets/clips_repository.go}
+        - {name: AdvancedSearchResult,               definition_file: internal/infrastructure/database/sqlite/assets/clips_repository.go}
+        - {name: SegmentEmbeddingRecord,             definition_file: internal/infrastructure/database/sqlite/assets/clips_repository.go}
+      alias_count_delta: 10
   target_metrics:
     forbidden_internal_roots: 0
     legacy_imports: 0

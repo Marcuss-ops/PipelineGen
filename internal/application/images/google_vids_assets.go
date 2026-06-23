@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -121,7 +121,15 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 
 // uploadVideoMetadata calls the unified semantic.MetadataWriter and uploads metadata.json to Drive.
 // Returns the payload for use in DB fields (search_text, tags, etc.).
-func (s *Service) uploadVideoMetadata(ctx context.Context, req drive.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath, folderID string) *SemanticMetadataPayload {
+//
+// W16-PR4: the prior return type `*SemanticMetadataPayload` was a Go type
+// alias to `*semantic.Payload` declared in the same package. Removing the
+// alias forced the unqualified return type to be qualified here so the
+// function still resolves against the canonical type. Callers in
+// RegisterVideoAsset (same file, line ~50) read the returned *semantic.Payload
+// via the `result.Payload.SearchText` pattern, so the call sites required
+// no other changes.
+func (s *Service) uploadVideoMetadata(ctx context.Context, req drive.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath, folderID string) *semantic.Payload {
 	if s.metaWriter == nil {
 		s.log.Warn("uploadVideoMetadata: metadata writer not configured")
 		return nil

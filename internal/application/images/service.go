@@ -7,15 +7,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 )
@@ -180,15 +180,6 @@ func (s *Service) Log() *zap.Logger {
 func (s *Service) Repo() *assets.ImagesRepository {
 	return s.repo
 }
-
-// SemanticMetadataPayload is the cross-package carrier returned by
-// uploadVideoMetadata. google_vids_assets.go mixes `semantic.Payload` and
-// the legacy `SemanticMetadataPayload` identifier at the same call site
-// (line 71 assigns, lines 159+167 return), so they MUST be the same
-// underlying type. We declare this as a Go type alias of semantic.Payload
-// rather than a parallel struct to avoid any field-drift footgun: if
-// semantic.Payload gains a new column tomorrow, both names pick it up.
-type SemanticMetadataPayload = semantic.Payload
 
 // generateGoogleSlidesImage is a temporary scaffold stub. The downstream
 // caller (google_generate.go::generateGoogleVidsImage) invokes this

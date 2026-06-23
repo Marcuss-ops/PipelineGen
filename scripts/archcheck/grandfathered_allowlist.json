@@ -1,7 +1,7 @@
 {
   "version": 1,
   "policy": "Monotone-decreasing. Operators may ONLY remove entries; raising a count requires a verified_zero PR.",
-  "last_reset": "2026-06-23T16:20:25Z",
+  "last_reset": "2026-06-23T17:37:34Z",
   "violations": {
     "application_to_api": 3,
     "application_to_database_sql": 29,
