@@ -13,9 +13,10 @@ func NewStockPipelineModule(
 	log *zap.Logger,
 	handler *StockHandler,
 ) *api.RouteModule {
+	stockEnabled := cfg != nil && cfg.Features.StockPipelineEnabled
 	return api.NewRouteModule(
 		"stock-pipeline",
-		func() bool { return cfg.Features.StockPipelineEnabled },
+		func() bool { return stockEnabled },
 		"/stock-pipeline",
 		handler,
 		log,

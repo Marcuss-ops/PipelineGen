@@ -18,8 +18,8 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -61,12 +61,6 @@ type databases struct {
 	set  *storage.DatabaseSet
 	main *storage.SQLiteDB
 	logs *storage.SQLiteDB
-}
-
-func (d *databases) Close() {
-	if d.set != nil {
-		_ = d.set.Close()
-	}
 }
 
 func (d *databases) Close() {
@@ -131,7 +125,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	partialCleanup := func() {
 		cancel()
 		if dbs.main != nil {
-			if err := dbs.main().Close(); err != nil {
+			if err := dbs.main.Close(); err != nil {
 				log.Error("Failed to close main database during cleanup", zap.Error(err))
 			}
 		}
@@ -314,15 +308,10 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// storage.OpenSet; middleware uses the typed *sql.DB inside
 	// `set.Observability` so app-layer never owns a raw *sql.DB.
 	var logDB *sql.DB
-	if dbs.set != nil && dbs.set.Observability != nil {
-		logDB = dbs.set.Observability.DB
+	if root.DB != nil && root.DB.DB != nil {
+		logDB = root.DB.DB
 	}
 	middleware.SetLogDB(logDB)
-
-	// Also publish the DatabaseSet to the composition root for downstream
-	// consumers in Build*Bundle chains (delete after composition.go is
-	// fully migrated to take the DatabaseSet directly).
-	_ = dbs.set
 
 	registryWiring, err := WireRegistry(root.Ctx, cfg, log, root)
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"go.uber.org/zap"
 )
 
@@ -34,7 +34,7 @@ func runDBStatus(ctx context.Context, args []string) error {
 	log, _ := zap.NewProduction()
 	defer log.Sync()
 
-	ds, err := database.OpenSet(database.StorageConfig{
+	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
 		PrimaryDBPath:       resolved.PrimaryDBPath(),
 		ObservabilityDBPath: resolved.ObservabilityDBPath(),
@@ -48,7 +48,7 @@ func runDBStatus(ctx context.Context, args []string) error {
 	fmt.Printf("primary       %s\n", ds.PrimaryPath())
 	fmt.Printf("observability %s\n", ds.ObservabilityPath())
 
-	for label, sdb := range map[string]*database.SQLiteDB{
+	for label, sdb := range map[string]*storage.SQLiteDB{
 		"primary":       ds.Primary,
 		"observability": ds.Observability,
 	} {
@@ -67,7 +67,7 @@ func runDBStatus(ctx context.Context, args []string) error {
 	}
 
 	// Migration status from primary (the canonical ledger).
-	if report, err := database.GetMigrationStatus(ds.Primary.DB, "migrations/sqlite"); err == nil {
+	if report, err := storage.GetMigrationStatus(ds.Primary.DB, "migrations/sqlite"); err == nil {
 		fmt.Printf("migrations    primary=%d/%d applied (%d pending)\n",
 			report.AppliedN, report.Total, report.PendingN)
 	} else {
@@ -77,7 +77,7 @@ func runDBStatus(ctx context.Context, args []string) error {
 	return nil
 }
 
-func reportDB(label string, sdb *database.SQLiteDB) {
+func reportDB(label string, sdb *storage.SQLiteDB) {
 	if sdb == nil {
 		fmt.Printf("[%s] (not opened)\n", label)
 		return
@@ -85,19 +85,19 @@ func reportDB(label string, sdb *database.SQLiteDB) {
 	fmt.Printf("--- %s ---\n", label)
 	fmt.Printf("  path         %s\n", sdb.Path())
 
-	if size, err := database.DBSizeBytes(sdb.Path()); err == nil {
+	if size, err := storage.DBSizeBytes(sdb.Path()); err == nil {
 		fmt.Printf("  size         %s\n", fmtBytes(size))
 	}
-	if wal, err := database.WalSizeBytes(sdb.Path()); err == nil {
+	if wal, err := storage.WalSizeBytes(sdb.Path()); err == nil {
 		fmt.Printf("  wal_size     %s\n", fmtBytes(wal))
 	}
-	if shm, err := database.ShmSizeBytes(sdb.Path()); err == nil {
+	if shm, err := storage.ShmSizeBytes(sdb.Path()); err == nil {
 		fmt.Printf("  shm_size     %s\n", fmtBytes(shm))
 	}
-	if mode, err := database.JournalMode(ctxCompat(), sdb.DB); err == nil {
+	if mode, err := storage.JournalMode(ctxCompat(), sdb.DB); err == nil {
 		fmt.Printf("  journal_mode %s\n", mode)
 	}
-	if ms, err := database.BusyTimeoutMs(ctxCompat(), sdb.DB); err == nil {
+	if ms, err := storage.BusyTimeoutMs(ctxCompat(), sdb.DB); err == nil {
 		fmt.Printf("  busy_timeout %dms\n", ms)
 	}
 }

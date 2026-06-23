@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +40,7 @@ func runDBBackup(ctx context.Context, args []string) error {
 	log, _ := zap.NewProduction()
 	defer log.Sync()
 
-	r, err := database.Backup(srcPath, *out)
+	r, err := storage.Backup(srcPath, *out)
 	if err != nil {
 		return err
 	}

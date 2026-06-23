@@ -37,7 +37,7 @@ func WireFullImages(cfg *config.Config, log *zap.Logger, imageSvc *imgservice.Se
 	handler := fullimageshandler.NewFullImagesHandler(svc)
 	mod := module.NewRouteModule(
 		"fullimages",
-		func(cfg *config.Config) bool { return cfg.Features.ImagesEnabled },
+		func() bool { return cfg.Features.ImagesEnabled },
 		"/fullimages",
 		handler,
 		log,
