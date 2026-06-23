@@ -152,26 +152,6 @@ type GenerateWithImagesRequest struct {
 	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
 }
 
-// ScriptSceneImage is an alias for scripts.SceneImage (canonical type in application layer).
-//
-// Kind + NarrationRole were added (June 2026, generate-from-clips
-// endpoint-compat request) so the user-facing `scenes[]` array always carries
-// machine-detectable intro/outro labels regardless of whether the writer LLM
-// emitted [Narration: ...] markers. The helper `scenes.markScenesIntroOutro`
-// (flow_scene_intro_outro.go) labels the first scene as intro and the last as
-// outro — see that file for the exact policy.
-//
-// Article targets in the JSON contract:
-//   - "kind"          : "narration" | "content"  (default omitted)
-//   - "narration_role": "intro" | "outro" | "transition" (only when kind=="narration")
-//
-// omitempty on both fields so existing clients reading `text/image/images`
-// without these new fields keep working unchanged.
-type ScriptSceneImage = scripts.SceneImage
-
-// SceneVoiceover is an alias for scripts.SceneVoiceover (canonical type in application layer).
-type SceneVoiceover = scripts.SceneVoiceover
-
 // ClipScriptJobResult is the result stored in the job system after completion.
 type ClipScriptJobResult struct {
 	OK                bool                    `json:"ok"`
@@ -189,18 +169,18 @@ type ClipScriptJobResult struct {
 	DocID             string                  `json:"doc_id,omitempty"`
 
 	// Entity/insight fields (populated when extract_entities is true)
-	EntitiesJSON           string                        `json:"entities_json,omitempty"`
-	ImportantWords         []string                      `json:"important_words,omitempty"`
-	ImportantPhrases       []string                      `json:"important_phrases,omitempty"`
-	SpecialNames           []string                      `json:"special_names,omitempty"`
-	ArtlistPhrases         []string                      `json:"artlist_phrases,omitempty"`
-	ArtlistClipSuggestions []ScriptArtlistClipSuggestion `json:"artlist_clip_suggestions,omitempty"`
-	RecommendedDriveFolder *ScriptDriveFolderSuggestion  `json:"recommended_drive_folder,omitempty"`
-	PhraseClipSuggestions  []ScriptPhraseClipSuggestion  `json:"phrase_clip_suggestions,omitempty"`
-	IntroClips             []ScriptAssetSuggestion       `json:"intro_clips,omitempty"`
-	EntityImages           []ScriptEntityImage           `json:"entity_images,omitempty"`
-	Scenes                 []ScriptSceneImage            `json:"scenes,omitempty"`
-	Voiceovers             []SceneVoiceover              `json:"voiceovers,omitempty"`
+	EntitiesJSON           string                         `json:"entities_json,omitempty"`
+	ImportantWords         []string                       `json:"important_words,omitempty"`
+	ImportantPhrases       []string                       `json:"important_phrases,omitempty"`
+	SpecialNames           []string                       `json:"special_names,omitempty"`
+	ArtlistPhrases         []string                       `json:"artlist_phrases,omitempty"`
+	ArtlistClipSuggestions []scripts.ScriptArtlistClipSuggestion `json:"artlist_clip_suggestions,omitempty"`
+	RecommendedDriveFolder *scripts.ScriptDriveFolderSuggestion  `json:"recommended_drive_folder,omitempty"`
+	PhraseClipSuggestions  []scripts.ScriptPhraseClipSuggestion `json:"phrase_clip_suggestions,omitempty"`
+	IntroClips             []scripts.ScriptAssetSuggestion      `json:"intro_clips,omitempty"`
+	EntityImages           []scripts.ScriptEntityImage          `json:"entity_images,omitempty"`
+	Scenes                 []scripts.SceneImage                 `json:"scenes,omitempty"`
+	Voiceovers             []scripts.SceneVoiceover             `json:"voiceovers,omitempty"`
 
 	// Metadata fields (populated when generate_metadata is true)
 	Metadata []VideoMetadata `json:"metadata,omitempty"`

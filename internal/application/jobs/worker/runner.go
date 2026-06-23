@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // DefaultLeaseTTL is the canonical lease TTL used by the runner's
@@ -107,7 +108,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		lease, err := r.broker.Claim(ctx, appjobs.ClaimCommand{
+		lease, err := r.broker.Claim(ctx, job.ClaimCommand{
 			WorkerID:        r.workerID,
 			WorkerSessionID: r.sessionID,
 			Capabilities:    r.caps,
@@ -299,7 +300,7 @@ func (r *Runner) renewLoop(ctx context.Context, tools *Tools, jobID string, errs
 // reach for r.fail from any other fail path; doing so silently
 // regresses the revision-drift fix.
 func (r *Runner) fail(ctx context.Context, lease *appjobs.Lease, err error) error {
-	return r.broker.Fail(ctx, appjobs.FailCommand{
+	return r.broker.Fail(ctx, job.FailCommand{
 		WorkerID:         r.workerID,
 		WorkerSessionID:  r.sessionID,
 		JobID:            lease.Job.ID,

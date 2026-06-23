@@ -11,7 +11,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ExpectedRevision returns the worker's current view of the canonical
@@ -44,7 +44,7 @@ func (t *Tools) ExpectedRevision() int {
 // existing Progress/IsCancelled/Renew convention of Tools bridging
 // between the runner and the broker.
 func (t *Tools) Complete(ctx context.Context, result json.RawMessage) error {
-	return t.broker.Complete(ctx, appjobs.CompleteCommand{
+	return t.broker.Complete(ctx, job.CompleteCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
@@ -60,7 +60,7 @@ func (t *Tools) Complete(ctx context.Context, result json.RawMessage) error {
 // err, by Assets tools when download fails, and by the renewal loop
 // when Renew returned ErrLeaseLost mid-execution.
 func (t *Tools) Fail(ctx context.Context, errStr string) error {
-	return t.broker.Fail(ctx, appjobs.FailCommand{
+	return t.broker.Fail(ctx, job.FailCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
@@ -104,7 +104,7 @@ type Tools struct {
 // compatible with struct literals in Go pre-1.19; the Load/Store
 // pattern is preferred. The single Store here is the only publish
 // of the initial revision; subsequent Stores come from Renew.
-func NewTools(broker appjobs.Broker, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
+func NewTools(broker appjobs.Broker, workerID, sessionID string, j *job.Job, workspace string, assetClient AssetClient) *Tools {
 	t := &Tools{
 		broker:      broker,
 		workerID:    workerID,
@@ -119,7 +119,7 @@ func NewTools(broker appjobs.Broker, workerID, sessionID string, j *domainjob.Jo
 }
 
 func (t *Tools) Progress(ctx context.Context, progress int, message string) error {
-	return t.broker.Progress(ctx, appjobs.ProgressCommand{
+	return t.broker.Progress(ctx, job.ProgressCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
@@ -135,7 +135,7 @@ func (t *Tools) IsCancelled(ctx context.Context) (bool, error) {
 }
 
 func (t *Tools) Renew(ctx context.Context, leaseTTL time.Duration) error {
-	lease, err := t.broker.Renew(ctx, appjobs.RenewCommand{
+	lease, err := t.broker.Renew(ctx, job.RenewCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,

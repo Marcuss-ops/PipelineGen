@@ -27,18 +27,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Broker is the narrow port for worker session RPC. Satisfied by
 // *appjobs.Service in production; tests can stub.
 type Broker interface {
-	RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error)
-	Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error
-	Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.Lease, error)
-	Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error)
-	Progress(ctx context.Context, cmd appjobs.ProgressCommand) error
-	Complete(ctx context.Context, cmd appjobs.CompleteCommand) error
-	Fail(ctx context.Context, cmd appjobs.FailCommand) error
+	RegisterWorker(ctx context.Context, cmd job.RegisterWorkerCommand) (*appjobs.WorkerSession, error)
+	Heartbeat(ctx context.Context, cmd job.HeartbeatCommand) error
+	Claim(ctx context.Context, cmd job.ClaimCommand) (*appjobs.Lease, error)
+	Renew(ctx context.Context, cmd job.RenewCommand) (*appjobs.Lease, error)
+	Progress(ctx context.Context, cmd job.ProgressCommand) error
+	Complete(ctx context.Context, cmd job.CompleteCommand) error
+	Fail(ctx context.Context, cmd job.FailCommand) error
 	IsCancelled(ctx context.Context, jobID string, leaseID string) (bool, error)
 }
 
@@ -87,7 +88,7 @@ type registerWorkerRequest struct {
 	Name         string                     `json:"name,omitempty"`
 	Version      string                     `json:"version,omitempty"`
 	Hostname     string                     `json:"hostname,omitempty"`
-	Capabilities appjobs.WorkerCapabilities `json:"capabilities"`
+	Capabilities job.WorkerCapabilities `json:"capabilities"`
 }
 
 func (h *WorkersBrokerHandler) RegisterWorker(c *gin.Context) {
@@ -96,7 +97,7 @@ func (h *WorkersBrokerHandler) RegisterWorker(c *gin.Context) {
 		api.BadRequest(c, err.Error())
 		return
 	}
-	session, err := h.broker.RegisterWorker(c.Request.Context(), appjobs.RegisterWorkerCommand{
+	session, err := h.broker.RegisterWorker(c.Request.Context(), job.RegisterWorkerCommand{
 		WorkerID:     req.WorkerID,
 		Name:         req.Name,
 		Version:      req.Version,
@@ -121,7 +122,7 @@ func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
 		api.BadRequest(c, err.Error())
 		return
 	}
-	if err := h.broker.Heartbeat(c.Request.Context(), appjobs.HeartbeatCommand{
+	if err := h.broker.Heartbeat(c.Request.Context(), job.HeartbeatCommand{
 		WorkerID:        req.WorkerID,
 		WorkerSessionID: req.WorkerSessionID,
 		SessionTTL:      time.Duration(req.SessionTTL) * time.Second,
@@ -133,7 +134,7 @@ func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Claim(c *gin.Context) {
-	var req appjobs.ClaimCommand
+	var req job.ClaimCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -147,7 +148,7 @@ func (h *WorkersBrokerHandler) Claim(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Renew(c *gin.Context) {
-	var req appjobs.RenewCommand
+	var req job.RenewCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -162,7 +163,7 @@ func (h *WorkersBrokerHandler) Renew(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Progress(c *gin.Context) {
-	var req appjobs.ProgressCommand
+	var req job.ProgressCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -176,7 +177,7 @@ func (h *WorkersBrokerHandler) Progress(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
-	var req appjobs.CompleteCommand
+	var req job.CompleteCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return
@@ -190,7 +191,7 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 }
 
 func (h *WorkersBrokerHandler) Fail(c *gin.Context) {
-	var req appjobs.FailCommand
+	var req job.FailCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
 		api.BadRequest(c, err.Error())
 		return

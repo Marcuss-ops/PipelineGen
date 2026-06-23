@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
@@ -152,10 +152,10 @@ func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	session, err := client.RegisterWorker(ctx, appjobs.RegisterWorkerCommand{
+	session, err := client.RegisterWorker(ctx, job.RegisterWorkerCommand{
 		WorkerID: "w-e2e-1",
 		Name:     "test-worker",
-		Capabilities: appjobs.WorkerCapabilities{
+		Capabilities: job.WorkerCapabilities{
 			JobTypes: []string{"test.dummy"},
 		},
 	})
@@ -238,7 +238,7 @@ type mockBroker struct {
 	// calls are loud instead of silently no-op'd.
 	lease       *appjobs.Lease
 	leaseServed bool
-	completed   []appjobs.CompleteCommand
+	completed   []job.CompleteCommand
 	// Phase 7 fields. renewCount is incremented by Mock.Renew on
 	// every invocation; renewSeen is closed once the count crosses
 	// 1, enabling the renewal-aware handler in
@@ -282,15 +282,15 @@ func (m *mockBroker) serveLease(l *appjobs.Lease) {
 // completedResults returns a defensive copy of every Complete command
 // the broker has received so far. Used by Phase 6 to assert the
 // worker reported a successful job outcome to the broker.
-func (m *mockBroker) completedResults() []appjobs.CompleteCommand {
+func (m *mockBroker) completedResults() []job.CompleteCommand {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]appjobs.CompleteCommand, len(m.completed))
+	out := make([]job.CompleteCommand, len(m.completed))
 	copy(out, m.completed)
 	return out
 }
 
-func (m *mockBroker) RegisterWorker(_ context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
+func (m *mockBroker) RegisterWorker(_ context.Context, cmd job.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
 	m.mu.Lock()
 	m.registerCalled = true
 	// observedRegisterPath is now set by the gin middleware in the
@@ -313,7 +313,7 @@ func (m *mockBroker) RegisterWorker(_ context.Context, cmd appjobs.RegisterWorke
 	}, nil
 }
 
-func (m *mockBroker) Heartbeat(_ context.Context, _ appjobs.HeartbeatCommand) error {
+func (m *mockBroker) Heartbeat(_ context.Context, _ job.HeartbeatCommand) error {
 	m.t.Logf("mock broker: Heartbeat called unexpectedly")
 	return nil
 }
@@ -325,7 +325,7 @@ func (m *mockBroker) Heartbeat(_ context.Context, _ appjobs.HeartbeatCommand) er
 // test) they surface as test errors so unexpected invocations are
 // loud instead of silently no-op'd.
 
-func (m *mockBroker) Claim(_ context.Context, _ appjobs.ClaimCommand) (*appjobs.Lease, error) {
+func (m *mockBroker) Claim(_ context.Context, _ job.ClaimCommand) (*appjobs.Lease, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.lease == nil {
@@ -339,7 +339,7 @@ func (m *mockBroker) Claim(_ context.Context, _ appjobs.ClaimCommand) (*appjobs.
 	return m.lease, nil
 }
 
-func (m *mockBroker) Renew(_ context.Context, _ appjobs.RenewCommand) (*appjobs.Lease, error) {
+func (m *mockBroker) Renew(_ context.Context, _ job.RenewCommand) (*appjobs.Lease, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.lease == nil {
@@ -365,7 +365,7 @@ func (m *mockBroker) Renew(_ context.Context, _ appjobs.RenewCommand) (*appjobs.
 	return m.lease, nil
 }
 
-func (m *mockBroker) Progress(_ context.Context, _ appjobs.ProgressCommand) error {
+func (m *mockBroker) Progress(_ context.Context, _ job.ProgressCommand) error {
 	// Progress is non-fatal even on the alignment-smoke path so the
 	// test never tilts-over; ZLogger the call exists but does not
 	// fail the test (the alignment-smoke path intentionally never
@@ -374,7 +374,7 @@ func (m *mockBroker) Progress(_ context.Context, _ appjobs.ProgressCommand) erro
 	return nil
 }
 
-func (m *mockBroker) Complete(_ context.Context, cmd appjobs.CompleteCommand) error {
+func (m *mockBroker) Complete(_ context.Context, cmd job.CompleteCommand) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.lease == nil {
@@ -385,14 +385,14 @@ func (m *mockBroker) Complete(_ context.Context, cmd appjobs.CompleteCommand) er
 	return nil
 }
 
-func (m *mockBroker) Fail(_ context.Context, _ appjobs.FailCommand) error {
+func (m *mockBroker) Fail(_ context.Context, _ job.FailCommand) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.lease == nil {
 		m.t.Errorf("mock broker: unexpected Fail (smoke test should only call RegisterWorker)")
 		return fmt.Errorf("not implemented in alignment-smoke mock")
 	}
-	m.completed = append(m.completed, appjobs.CompleteCommand{
+	m.completed = append(m.completed, job.CompleteCommand{
 		WorkerID: "fail-recorded",
 	})
 	return nil
@@ -514,7 +514,7 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	//    AllHandlers so the test exercises the same dispatch-look-up
 	//    loop the production worker uses.
 	adapt := func(handler appjobs.HandlerFunc) worker.Handler {
-		return func(ctx context.Context, j *domainjob.Job, tools *worker.Tools) (map[string]any, error) {
+		return func(ctx context.Context, j *job.Job, tools *worker.Tools) (map[string]any, error) {
 			jobTools := &appjobs.JobTools{
 				Progress: func(p int, msg string) { _ = tools.Progress(ctx, p, msg) },
 				Event:    func(_, _ string, _ map[string]any) {},
@@ -542,11 +542,11 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	mock := newMockBroker(t)
 	mock.serveLease(&appjobs.Lease{
 		LeaseID: "lease-test-1",
-		Job: &domainjob.Job{
+		Job: &job.Job{
 			ID:       "job-test-reindex-1",
 			Type:     appjobs.TypeMediaReindex,
 			Payload:  json.RawMessage(`{}`),
-			Status:   domainjob.StatusRunning,
+			Status:   job.StatusRunning,
 			Revision: 1,
 			LeaseID:  "lease-test-1",
 		},
@@ -661,7 +661,7 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	// assertion reads cleanly across both lifecycle paths. If we
 	// wanted strict equality, we'd use Equal(t, 0, ...) which
 	// requires `int(0)`; EqualValues is the safer cross-shape choice.
-	j2Result, err := j2.HandleJob(replayCtx, &domainjob.Job{
+	j2Result, err := j2.HandleJob(replayCtx, &job.Job{
 		ID:      "job-test-reindex-1-replay",
 		Type:    appjobs.TypeMediaReindex,
 		Payload: json.RawMessage(`{}`),
@@ -731,11 +731,11 @@ func TestE2E_RemoteWorkerRenewsLease(t *testing.T) {
 	mock := newMockBroker(t)
 	lease := &appjobs.Lease{
 		LeaseID: "lease-phase7-1",
-		Job: &domainjob.Job{
+		Job: &job.Job{
 			ID:       "job-phase7-renew-1",
 			Type:     "test.slow_phase7",
 			Payload:  json.RawMessage(`{}`),
-			Status:   domainjob.StatusRunning,
+			Status:   job.StatusRunning,
 			Revision: 1,
 			LeaseID:  "lease-phase7-1",
 		},
@@ -750,7 +750,7 @@ func TestE2E_RemoteWorkerRenewsLease(t *testing.T) {
 	//    block-until-signal pattern proves the RUNNER's renewal
 	//    loop fires while the handler is mid-execution, which is
 	//    the W1 Phase 7 contract.
-	handler := func(ctx context.Context, _ *domainjob.Job, _ *worker.Tools) (map[string]any, error) {
+	handler := func(ctx context.Context, _ *job.Job, _ *worker.Tools) (map[string]any, error) {
 		select {
 		case <-mock.renewSeen:
 			// broker mock observed ≥1 renew — unblock and
