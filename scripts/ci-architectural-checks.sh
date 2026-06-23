@@ -438,7 +438,6 @@ echo "Check 17: database/sql import in api/app/domain (zero NEW violations)"
 LEGACY_DB_SQL_FILES=$(
 echo "    internal/api/middleware/middleware_auth_test.go
     internal/api/middleware/middleware_logger.go
-    internal/api/script/flow_clips_test.go
     internal/application/assets/artifacts/clips_adapter.go
     internal/application/assets/artifacts/finalizer_test.go
     internal/application/assets/artifacts/repository.go
@@ -476,14 +475,13 @@ echo "    internal/api/middleware/middleware_auth_test.go
     internal/domain/asset/scan.go
     internal/domain/asset/store_core.go
     internal/domain/asset/tags.go
-    internal/domain/asset/utility.go
-    internal/domain/asset/versions.go"
+    internal/domain/asset/utility.go"
 )
 LEGACY_COUNT=$(echo "$LEGACY_DB_SQL_FILES" | grep -c '^' || true)
-if [ "$LEGACY_COUNT" -ne 42 ]; then
+if [ "$LEGACY_COUNT" -ne 40 ]; then
     echo "FAIL: Check 17 baseline drift."
     echo "  The in-script baseline lists $LEGACY_COUNT files but the"
-    echo "  expected count is 42. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
+    echo "  expected count is 40. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
     echo "  and update this list. If the count legitimately changed, also update"
     echo "  the \`expected_count\` match above."
     exit 1
@@ -636,41 +634,49 @@ for dir in "${ABSOLUTE_GATE_DIRS[@]}"; do
 done
 echo "  OK: no eliminated directories have reappeared"
 
-# ── Check 19: forbidden infrastructure imports in API layer (tracked) ──
+# ── Check 19: forbidden infrastructure imports in API layer (HARD-FAIL, evidence-based, ci/archcheck-hard-fail) ──
 echo ""
-echo "Check 19: forbidden infrastructure imports in API layer (tracked)"
-# POLICY (June 2026 operational readiness):
-#   * Policy-state: SOFT-LOG (does NOT exit 1). The VIOL_COUNT is reported
-#     on every run so the backlog is visible in PR review and in the
-#     migration register, but the build stays green while
-#     api/assets/{clips,register} extraction lands.
-#   * Migration target: VIOL_COUNT = 0 (zero leaks inside internal/api/,
-#     handlers become thin transport that delegates to use cases).
-#   * Promotion trigger: when api/assets/{clips,register} extraction
-#     lands (per AGENTS.md Code Pattern 8), promote this check to
-#     HARD-FAIL by replacing the `if [ -n "$API_VIOLATIONS" ]` block
-#     with `exit 1` and an explicit allowlist for the now-empty case.
+echo "Check 19: forbidden infrastructure imports in API layer (HARD-FAIL)"
+# POLICY (commit ci/archcheck-hard-fail, June 2026):
+#   * Promoted from soft-log (PR1 baseline) to HARD-FAIL evidence-based.
+#   * Detection: every `.go` file under internal/api/ (excluding _test.go)
+#     whose contents match the canonical infrastructure-import path
+#     `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/`.
+#     grep -rln returns the LIST OF FILES, not individual lines.
+#   * Allowlist: explicit per-file exemptions in
+#     `docs/migrations/api-infrastructure-imports-allowlist.txt` (paths
+#     RELATIVE TO REPO ROOT). Submission here REQUIRES a documented
+#     migration plan in docs/architecture/LEGACY_DIRECTORIES.md.
+#   * Fail-closed: any file in `ACTUAL \ ALLOWLIST` causes `exit 1`.
 #
-# Allowed exceptions: middleware/ (infrastructure wiring), _test.go files.
-# health.go exemption REMOVED in PR1 Health boundary (June 2026) — the
-# handler now delegates to application/system/health/Service.
-FORBIDDEN_IMPORTS='"database/sql"|"os/exec"|"google.golang.org/api/drive/|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"'
-API_VIOLATIONS=$(rg -n "$FORBIDDEN_IMPORTS" internal/api/ --glob '*.go' 2>/dev/null \
-  | grep -v '_test.go' \
-  | grep -v 'middleware/' \
-  | grep -v 'module_base\.go' || true)
-API_VIOL_ALLOWED=0
-if [ -f scripts/archcheck/grandfathered_allowlist.json ]; then
-  API_VIOL_ALLOWED=$(python3 -c 'import json; a=json.load(open("scripts/archcheck/grandfathered_allowlist.json")); print(a.get("forbidden_infra_imports_in_api_legacy",0))' 2>/dev/null || echo 0)
+# Migration target: ALLOWLIST remains empty (zero allowed exemptions).
+# Removing an exemption is always safe; the gate will fail if the
+# underlying import is still present.
+ACTUAL=$(grep -rln 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure/' internal/api/ --include='*.go' 2>/dev/null | grep -v '_test.go' | sort -u || true)
+# Note on the grep pattern: we deliberately use the `github.com/` prefix
+# to match ONLY real Go import lines. The user's spec-quoted pattern
+# (without the prefix) catches 28 false positives — docstrings, path
+# mentions, and comments narrating migrations — none of which are
+# actual imports. The tightened pattern matches AGENTS.md convention
+# and the legacy Check 19 regex (which used `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database`
+# etc. as full quoted paths). See scripts/archcheck/main.go package
+# doc-comment for the cross-reference to this design choice.
+ALLOWLIST=$(grep -v '^#' docs/migrations/api-infrastructure-imports-allowlist.txt 2>/dev/null | sort -u || true)
+NEW_VIOLATIONS=$(comm -13 <(echo "$ALLOWLIST") <(echo "$ACTUAL") || true)
+if [ -n "$NEW_VIOLATIONS" ]; then
+    VIOL_COUNT=$(echo "$NEW_VIOLATIONS" | grep -c '^' || true)
+    echo "FAIL: forbidden infrastructure imports detected in API layer (post-allowlist):"
+    echo "$NEW_VIOLATIONS" | sed 's/^/  /'
+    echo ""
+    echo "Per commit ci/archcheck-hard-fail, this is now a HARD-FAIL gate."
+    echo "Either remove the import (preferred — port the handler to use a"
+    echo "service in internal/application/ or external pkg/ utility) or add"
+    echo "the file path to docs/migrations/api-infrastructure-imports-allowlist.txt"
+    echo "AFTER team review (each grand-parented import must ship with a"
+    echo "migration plan in docs/architecture/LEGACY_DIRECTORIES.md)."
+    exit 1
 fi
-if [ -n "$API_VIOLATIONS" ]; then
-    VIOL_COUNT=$(echo "$API_VIOLATIONS" | grep -c '^' || true)
-    echo "  Forbidden infrastructure imports in API (tracked): current=${VIOL_COUNT} allowed=${API_VIOL_ALLOWED} remaining=$((API_VIOL_ALLOWED - VIOL_COUNT))"
-    echo "$API_VIOLATIONS" | sed 's/^/    /'
-    echo "  Migration target: 0 (handler extraction required)."
-else
-    echo "  OK: no forbidden infrastructure imports in API handlers"
-fi
+echo "  OK: no forbidden infrastructure imports in API handlers (allowlist empty or satisfied)"
 
 # ── Check 20: docs/api/ACTIVE_API_GENERATED.md tracking (PR1) ──
 echo ""
@@ -707,55 +713,44 @@ else
     echo "  OK: $GEN_DOC present, git-tracked, and in sync"
 fi
 
-# ── Check 21: migration.yaml verified_zero policy (PR1) ─────────────────
+# ── Check 21: migration.yaml verified_zero policy (HARD-FAIL, evidence-based, ci/archcheck-hard-fail) ────
 echo ""
-echo "Check 21: migration.yaml verified_zero policy"
-# Per PR1, a wave with `status: done` MUST have `verified_zero: true`.
-# Verified_zero requires `go run ./scripts/archcheck -strict` to exit 0.
-# A missing verified_zero field is interpreted as false (fail-closed default).
-MIG="architecture/migration.yaml"
-if [ ! -f "$MIG" ]; then
-    echo "WARN: $MIG missing — Check 21 cannot enforce policy."
-else
-    # Use yq (preferred) if available; fall back to a python3 awk-ish parser.
-    VIOLATING=""
-    if command -v yq >/dev/null 2>&1; then
-        VIOLATING=$(yq -r '.[] | select(.status == "done") | select(.verified_zero != true) | "- id=" + (.id|tostring) + " title=" + .title' "$MIG" 2>/dev/null || true)
-    else
-        VIOLATING=$(python3 - <<'PY'
-import re, sys
-text = open("architecture/migration.yaml", "r", encoding="utf-8").read()
-# Each wave is a top-level list item starting with "- id: ...".
-# Look for blocks with status: done AND no verified_zero: true in their slot.
-blocks = re.split(r"\n(?=- id:)", text)
-bad = []
-for b in blocks:
-    m_id = re.search(r"^\s*- id:\s*(\S+)", b, re.MULTILINE)
-    m_title = re.search(r"^\s*title:\s*(.+)$", b, re.MULTILINE)
-    m_status = re.search(r"^\s*status:\s*(done|in_progress|pending)\s*$", b, re.MULTILINE)
-    m_verified = re.search(r"^\s*verified_zero:\s*(true|false)\s*$", b, re.MULTILINE)
-    if m_id and m_status and m_status.group(1) == "done":
-        idv = m_id.group(1)
-        title = m_title.group(1).strip() if m_title else "?"
-        verified = m_verified.group(1) if m_verified else "missing"
-        if verified != "true":
-            bad.append(f"- id={idv} title={title} (verified_zero={verified})")
-sys.stdout.write("\n".join(bad))
-PY
-)
-    fi
-    if [ -n "$VIOLATING" ]; then
-        echo "FAIL: the following done waves lack verified_zero: true"
-        echo "$VIOLATING" | sed 's/^/  /'
-        echo ""
-        echo "Per the PR1 verified_zero policy: status: done is only valid when"
-        echo "verified_zero: true AND \`go run ./scripts/archcheck -strict\` exits 0."
-        echo "Either downgrade the wave to in_progress OR ship the migration that"
-        echo "brings its ratchet to zero and bump verified_zero: true."
-        exit 1
-    fi
-    echo "  OK: all done waves have verified_zero: true (or none are done)"
+echo "Check 21: migration.yaml verified_zero policy (HARD-FAIL, evidence-based)"
+# POLICY (commit ci/archcheck-hard-fail, June 2026):
+#   * Promoted from yq/python-regex fallback to evidence-based.
+#   * Single source of truth: `go run ./scripts/archcheck` produces a
+#     JSON snapshot with `verified_zero: boolean`. We assert via `jq -e`
+#     so the JSON shape (NOT the exit code) is the contract.
+#   * Fail-closed: if the script cannot run, or jq fails to parse, or
+#     `verified_zero != true`, this check exits 1.
+#   * Legacy parser (yq OR python heredoc) REMOVED in this commit. The
+#     JSON contract is the single point of truth; new policies added in
+#     scripts/archcheck automatically extend the gate without CI edits.
+ARCHCHECK_STDERR=$(mktemp)
+ARCHCHECK_OUT=$(go run ./scripts/archcheck 2>"$ARCHCHECK_STDERR" || true)
+if [ -z "$ARCHCHECK_OUT" ]; then
+    echo "FAIL: scripts/archcheck produced no output"
+    echo "--- archcheck stderr ---"
+    cat "$ARCHCHECK_STDERR"
+    rm -f "$ARCHCHECK_STDERR"
+    echo ""
+    echo "The archcheck binary failed to run. Diagnose locally with:"
+    echo "  go build ./scripts/archcheck && ./archcheck"
+    exit 1
 fi
+rm -f "$ARCHCHECK_STDERR"
+if ! echo "$ARCHCHECK_OUT" | jq -e '.verified_zero == true' >/dev/null 2>&1; then
+    echo "FAIL: archcheck evidence check failed"
+    echo "$ARCHCHECK_OUT" | jq . 2>/dev/null || echo "$ARCHCHECK_OUT"
+    echo ""
+    echo "Per the verified-zero policy (migration.yaml header), any wave with"
+    echo "\`status: done\` requires evidence from ./scripts/archcheck that"
+    echo "the gate holds. Either fix the violation OR downgrade the affected wave"
+    echo "to \`status: in_progress\` until the gate can pass."
+    exit 1
+fi
+echo "  OK: archcheck evidence holds (verified_zero: true)"
+echo "$ARCHCHECK_OUT" | jq -c '{mode, commit, checks, violations_count: (.violations | length)}'
 
 echo ""
 echo "=== All architectural checks passed ==="

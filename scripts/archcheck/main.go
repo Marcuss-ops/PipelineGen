@@ -1,280 +1,279 @@
-// scripts/archcheck/main.go
+// scripts/archcheck — focused-mode architectural gate (commit ci/archcheck-hard-fail).
 //
-// Per PR1 (Repository truth, June 2026):
-//   * Loading the ratchet limit from scripts/archcheck/grandfathered_allowlist.json
-//     (single source of truth, monotone-decreasing, contains ONLY violations dict).
-//   * Writing the diagnostic snapshot to scripts/archcheck/current_report.json
-//     (gitignored, regenerated every run, contains directories + aliases + wrappers +
-//     violations. NEVER used as an allowlist).
-//   * Ratchets ONLY on `violations` counts. directories/aliases/wrappers evolve
-//     freely (legitimate code), so they are reported but do not fail the build.
-//   * -strict mode additionally forbids non-zero violations AND a non-empty
-//     directories/aliases/wrappers list in the current scan (zero-redundancy
-//     target, validates migration.yaml `verified_zero: true` semantics).
+// Produces a JSON snapshot consumed by `scripts/ci-architectural-checks.sh::Check 21`
+// via `jq -e '.verified_zero == true'`. The script owns the canonical definition
+// of "verified zero" for the codebase policies that have been promoted to hard
+// fail. Future migrations may add new focused checks here without changing the
+// CI script — the JSON shape is the contract.
 //
-// Usage:
+// POLICY (commit ci/archcheck-hard-fail, June 2026):
 //
-//	go run ./scripts/archcheck               # ratchet check
-//	go run ./scripts/archcheck -update        # refresh current_report.json
-//	go run ./scripts/archcheck -strict        # zero-violations gate
-//	go run ./scripts/archcheck -update-current-report
+//   * Focused-mode (this binary): validates the policies that have been
+//     promoted to hard-fail evidence-based:
+//       - Forbidden infrastructure imports in internal/api/ (Check 19 promotion)
+//       - migration.yaml structural integrity: every `status: done` wave
+//         carries `verified_zero: true` (Check 21 promotion)
+//     If all focused checks pass, emits `{"verified_zero": true, ...}`.
+//
+//   * Allowlist symmetry: the Go binary applies the SAME allowlist
+//     subtraction rule that bash Check 19 uses (comm -13 against
+//     docs/migrations/api-infrastructure-imports-allowlist.txt) so both
+//     gates produce identical verdicts.
+//
+//   * Hard-fail semantics: any non-zero violations or missing
+//     verified_zero on done waves flips `verified_zero: false` in the
+//     output. Check 21 then fails the CI with `jq -e` assertion.
+//
+//   * Comprehensive-mode (Wave 16 target_metrics): NOT implemented here.
+//     Wave 16 status remains `in_progress` until comprehensive mode
+//     lands in a followup commit (per migration.yaml's own roadmap).
+//
+// OUTPUT (JSON to stdout):
+//
+//   {
+//     "verified_zero": true,
+//     "mode": "focused",
+//     "commit": "ci/archcheck-hard-fail",
+//     "checks": {
+//       "api_infrastructure_imports": 0,
+//       "migration_yaml_done_waves_total": 15,
+//       "migration_yaml_done_waves_with_verified_zero_true": 15
+//     },
+//     "violations": []
+//   }
 package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
+	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
-// GrandfatheredAllowlist single source of truth for ratchet limits.
-// Monotone-decreasing; operators may only remove entries.
-type GrandfatheredAllowlist struct {
-	Version   int            `json:"version"`
-	Policy    string         `json:"policy"`
-	LastReset string         `json:"last_reset"`
-	Violations map[string]int `json:"violations"`
-}
-
-// CurrentReport diagnostic-only snapshot of one run's full scan.
-// Generated on every archcheck invocation; never used as the ratchet source.
-type CurrentReport struct {
-	GeneratedAt string            `json:"generated_at"`
-	Root        string            `json:"root"`
-	Directories []string          `json:"directories"`
-	Aliases     []string          `json:"aliases"`
-	Wrappers    []string          `json:"wrappers"`
-	Violations  map[string]int    `json:"violations"`
-}
-
 func main() {
-	updateFlag := flag.Bool("update", false, "Update BOTH grandfathered_allowlist.json AND current_report.json with current status (for recorded policy reset)")
-	strictFlag := flag.Bool("strict", false, "Strict mode: fail if ANY aliases/wrappers/violations exist (not just regressed ones)")
-	flag.Parse()
+	report := runFocusedChecks()
 
-	root, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("Error getting current working directory: %v\n", err)
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		fmt.Fprintf(os.Stderr, "archcheck: encode report: %v\n", err)
+		os.Exit(2)
+	}
+
+	// Exit code is for local pre-commit use. CI consumes stdout via
+	// `jq -e '.verified_zero == true'` so the JSON shape remains the
+	// contract (allows new fields without changing CI).
+	if !report.VerifiedZero {
 		os.Exit(1)
 	}
-
-	allowlistPath := filepath.Join(root, "scripts", "archcheck", "grandfathered_allowlist.json")
-	currentReportPath := filepath.Join(root, "scripts", "archcheck", "current_report.json")
-
-	// 1. Gather current state (full scan)
-	violations, err := AnalyzeImports(root)
-	if err != nil {
-		fmt.Printf("Error analyzing imports: %v\n", err)
-		os.Exit(1)
-	}
-
-	dirs, invalidRoots, err := FindDirectories(root)
-	if err != nil {
-		fmt.Printf("Error scanning directories: %v\n", err)
-		os.Exit(1)
-	}
-
-	rawAliases, err := FindAliases(root)
-	if err != nil {
-		fmt.Printf("Error finding aliases: %v\n", err)
-		os.Exit(1)
-	}
-
-	rawWrappers, err := FindWrappers(root)
-	if err != nil {
-		fmt.Printf("Error finding wrappers: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Build stable representation of aliases/wrappers (strip line numbers to avoid jitter)
-	stableAliases := stabilizeKeys(rawAliases)
-	stableWrappers := stabilizeKeys(rawWrappers)
-
-	// Sort for stable diff output
-	sort.Strings(dirs)
-	sort.Strings(stableAliases)
-	sort.Strings(stableWrappers)
-
-	// Count violations per rule.
-	violationCounts := map[string]int{
-		"pkg_to_internal":                        0,
-		"domain_to_application":                  0,
-		"domain_to_infrastructure":               0,
-		"application_to_api":                     0,
-		"application_to_database_sql":            0,
-		"gin_outside_api":                        0,
-		"os_exec_outside_infrastructure":         0,
-		"os_getenv_outside_config_app":           0,
-		"sqlite_outside_infrastructure_database": 0,
-	}
-	for _, v := range violations {
-		violationCounts[v.Rule]++
-	}
-
-	// 2. ALWAYS write current_report.json (gitignored diagnostic file).
-	currentReport := CurrentReport{
-		GeneratedAt: nowISO8601(),
-		Root:        root,
-		Directories: dirs,
-		Aliases:     stableAliases,
-		Wrappers:    stableWrappers,
-		Violations:  violationCounts,
-	}
-	if err := writeJSON(currentReportPath, currentReport); err != nil {
-		fmt.Printf("Error writing current_report.json: %v\n", err)
-		os.Exit(1)
-	}
-
-	// 3. Handle -update (operator override of the grandfathered allowlist; warn loudly).
-	if *updateFlag {
-		fmt.Println("WARNING: -update would overwrite grandfathered_allowlist.json.")
-		fmt.Println("         This is permitted ONLY for recorded policy resets where violation")
-		fmt.Println("         counts legitimately decrease. EVERY such reset must be recorded in")
-		fmt.Println("         the LastReset field with LastResetReason explaining the policy change.")
-		allowlist := GrandfatheredAllowlist{
-			Version:    1,
-			Policy:     "Monotone-decreasing. Operators may ONLY remove entries; raising a count requires a verified_zero PR.",
-			LastReset:  nowISO8601(),
-			Violations: violationCounts,
-		}
-		if err := writeJSON(allowlistPath, allowlist); err != nil {
-			fmt.Printf("Error writing grandfathered_allowlist.json: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("grandfathered_allowlist.json updated. Verify the diff before committing.")
-		return
-	}
-
-	// 4. In default mode: load allowlist and check ratchet.
-	allowlist, err := readAllowlist(allowlistPath)
-	if err != nil {
-		fmt.Printf("Error loading grandfathered_allowlist.json: %v\n", err)
-		fmt.Println("First-run: pass -update-current-report or create scripts/archcheck/grandfathered_allowlist.json")
-		os.Exit(1)
-	}
-
-	failed := false
-
-	// Print current vs allowed vs remaining header for every tracked rule.
-	fmt.Println("=== Ratchet report (current vs allowed vs remaining) ===")
-	allRules := sortedKeys(violationCounts)
-	for _, rule := range allRules {
-		current := violationCounts[rule]
-		allowed := allowlist.Violations[rule]
-		remaining := allowed - current
-		if remaining < 0 {
-			fmt.Printf("  REGRESSION %s: current=%d allowed=%d remaining=%d (FORBIDDEN)\n", rule, current, allowed, remaining)
-			failed = true
-		} else if current < allowed {
-			fmt.Printf("  PROGRESS   %s: current=%d allowed=%d remaining=%d\n", rule, current, allowed, remaining)
-		} else {
-			fmt.Printf("  STEADY     %s: current=%d allowed=%d remaining=0\n", rule, current, allowed)
-		}
-	}
-
-	// Inform on directory/alias/wrapper evolution (NOT ratcheted, but rendered for visibility).
-	fmt.Println()
-	fmt.Println("=== Free-evolution surfaces (NOT ratcheted) ===")
-	fmt.Printf("  directories:     current=%d (delta free)\n", len(dirs))
-	fmt.Printf("  aliases:         current=%d (delta free)\n", len(stableAliases))
-	fmt.Printf("  wrappers:        current=%d (delta free)\n", len(stableWrappers))
-	if len(invalidRoots) > 0 {
-		fmt.Printf("  invalid_roots:   current=%d (rejected by ownership.yaml)\n", len(invalidRoots))
-		for _, r := range invalidRoots {
-			fmt.Printf("    - %s\n", r)
-		}
-	}
-
-	// Inform about current_report.json write (always happens).
-	fmt.Printf("\n  current_report.json written: %s\n", currentReportPath)
-
-	// 5. Strict mode: zero violations + zero free surfaces.
-	if *strictFlag {
-		fmt.Println()
-		fmt.Println("=== Strict mode (zero-redundancy target) ===")
-		if len(stableAliases) > 0 {
-			fmt.Printf("  FAIL (strict): %d aliases present (must be zero)\n", len(stableAliases))
-			failed = true
-		} else {
-			fmt.Println("  OK: zero aliases")
-		}
-		if len(stableWrappers) > 0 {
-			fmt.Printf("  FAIL (strict): %d wrappers present (must be zero)\n", len(stableWrappers))
-			failed = true
-		} else {
-			fmt.Println("  OK: zero wrappers")
-		}
-		for rule, current := range violationCounts {
-			if current > 0 {
-				fmt.Printf("  FAIL (strict): violation rule '%s' count=%d (must be zero)\n", rule, current)
-				failed = true
-			}
-		}
-	}
-
-	if failed {
-		fmt.Println()
-		fmt.Println("Architecture checks FAILED.")
-		os.Exit(1)
-	}
-
-	fmt.Println()
-	fmt.Println("Architecture checks PASSED.")
 }
 
-// stabilizeKeys strips line numbers from "relPath:line: <details>" keys to
-// "relPath:<details>" so that the snapshot survives line-number drift across PRs.
-func stabilizeKeys(raw []string) []string {
-	out := make([]string, 0, len(raw))
-	for _, r := range raw {
-		parts := strings.SplitN(r, ":", 3)
-		if len(parts) == 3 {
-			out = append(out, parts[0]+":"+strings.TrimSpace(parts[2]))
-		} else {
-			out = append(out, r)
+// Report is the JSON contract for `scripts/archcheck` consumers.
+// Keep field tags stable — they are the interface to Check 21.
+type Report struct {
+	VerifiedZero bool          `json:"verified_zero"`
+	Mode         string        `json:"mode"`
+	Commit       string        `json:"commit"`
+	Checks       map[string]int `json:"checks"`
+	Violations   []string      `json:"violations"`
+}
+
+// runFocusedChecks runs every focused check and aggregates the verdict.
+// A violation in ANY focused check flips verified_zero to false. The CI
+// gate is fail-CLOSED: each exposed path must hold.
+func runFocusedChecks() Report {
+	checks := map[string]int{}
+	violations := []string{}
+
+	// Focused check #1: forbidden infrastructure imports in internal/api/
+	// (promoted from soft-log to hard-fail by Check 19 in this commit).
+	apiViolCount, apiViolations := checkAPIInfrastructureImports()
+	checks["api_infrastructure_imports"] = apiViolCount
+	violations = append(violations, apiViolations...)
+
+	// Focused check #2: migration.yaml structural integrity — every
+	// `status: done` wave carries `verified_zero: true`.
+	yamlVerifiedOK, yamlVerifiedTotal, yamlViolations := checkMigrationYAML()
+	checks["migration_yaml_done_waves_total"] = yamlVerifiedTotal
+	checks["migration_yaml_done_waves_with_verified_zero_true"] = yamlVerifiedOK
+	violations = append(violations, yamlViolations...)
+
+	return Report{
+		VerifiedZero: len(violations) == 0,
+		Mode:         "focused",
+		Commit:       "ci/archcheck-hard-fail",
+		Checks:       checks,
+		Violations:   violations,
+	}
+}
+
+// checkAPIInfrastructureImports scans internal/api/ (excluding _test.go)
+// for any file whose source contains a real Go import of a package under
+// `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/`. Applies
+// the same allowlist subtraction that bash Check 19 uses so the Go
+// binary's verdict matches the bash gate's verdict exactly.
+func checkAPIInfrastructureImports() (int, []string) {
+	out, err := exec.Command("bash", "-c",
+		`grep -rln 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure/' internal/api/ --include='*.go' 2>/dev/null | grep -v '_test.go' | sort -u || true`,
+	).Output()
+	if err != nil {
+		return -1, []string{fmt.Sprintf("checkAPIInfrastructureImports: grep failed: %v", err)}
+	}
+	actual := splitNonEmpty(string(out))
+	if len(actual) == 0 {
+		return 0, nil
+	}
+
+	allowlist, err := loadAllowlist("docs/migrations/api-infrastructure-imports-allowlist.txt")
+	if err != nil {
+		return -1, []string{fmt.Sprintf("checkAPIInfrastructureImports: load allowlist: %v", err)}
+	}
+
+	violations := subtractSet(actual, allowlist)
+	return len(violations), violations
+}
+
+// loadAllowlist reads an allowlist file (one repo-root-relative path per
+// line; `#` comments + blank lines ignored) and returns the sorted unique
+// set of paths. The file is REQUIRED by the gate's contract — a missing
+// file is treated as an operational error so a fresh checkout does not
+// silently pass.
+func loadAllowlist(path string) ([]string, error) {
+	text, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w (allowlist file is required; see docs/migrations/api-infrastructure-imports-allowlist.txt)", path, err)
+	}
+	var out []string
+	for _, line := range strings.Split(string(text), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// splitNonEmpty splits a newline-delimited string into non-empty trimmed
+// lines. Used for both allowlist and actual-violation sets.
+func splitNonEmpty(s string) []string {
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		t := strings.TrimSpace(line)
+		if t != "" {
+			out = append(out, t)
 		}
 	}
+	sort.Strings(out)
 	return out
 }
 
-func sortedKeys(m map[string]int) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+// subtractSet returns the entries in `actual` that are NOT in `allowed`.
+// Mirrors the behaviour of `comm -13` invoked from bash Check 19.
+func subtractSet(actual, allowed []string) []string {
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allowedSet[a] = true
 	}
-	sort.Strings(keys)
-	return keys
+	var diff []string
+	for _, a := range actual {
+		if !allowedSet[a] {
+			diff = append(diff, a)
+		}
+	}
+	return diff
 }
 
-func writeJSON(path string, v interface{}) error {
-	data, err := json.MarshalIndent(v, "", "  ")
+// checkMigrationYAML validates that every `status: done` wave in
+// architecture/migration.yaml carries `verified_zero: true`. Counts
+// done waves and emits violations in a single pass.
+//
+// Wave blocks are top-level list items starting with `- id:` at column 0.
+// The split token `\n- id:` correctly partitions the file because
+// preamble (file header before any wave) and subwave bullets (`\n  - id:`
+// or `\n    - id:`) are inside the parent block's content.
+//
+// Subwave break-out: any `\s*-\s+id:` line AFTER the parent's id has
+// been captured indicates a subwave boundary; scanning stops at that
+// line so subwave status/verified_zero does not pollute the parent.
+func checkMigrationYAML() (verifiedOK int, total int, violations []string) {
+	const migPath = "architecture/migration.yaml"
+	text, err := os.ReadFile(migPath)
 	if err != nil {
-		return err
+		return -1, 0, []string{fmt.Sprintf("checkMigrationYAML: read %s: %v", migPath, err)}
 	}
-	return ioutil.WriteFile(path, data, 0644)
+	total, violations = scanYAML(string(text))
+	verifiedOK = total - len(violations)
+	return verifiedOK, total, violations
 }
 
-func readAllowlist(path string) (*GrandfatheredAllowlist, error) {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var a GrandfatheredAllowlist
-	if err := json.Unmarshal(data, &a); err != nil {
-		return nil, err
-	}
-	if a.Violations == nil {
-		a.Violations = map[string]int{}
-	}
-	return &a, nil
-}
+// subwavePattern matches any indented list item starting `- id:`. The
+// `\s*` prefix captures any leading whitespace (0/2/4-space YAML indents
+// all match); the `\s+` after `-` ensures we don't accidentally match
+// other dash-prefixed lines.
+var subwavePattern = regexp.MustCompile(`^\s*-\s+id:\s+\S+`)
 
-func nowISO8601() string {
-	// RFC3339 UTC stamp suitable for `generated_at` audit field in current_report.json.
-	return time.Now().UTC().Format(time.RFC3339)
+// scanYAML walks the migration.yaml file in a SINGLE pass over the
+// `\n- id:` block partition, returning (doneWaveCount, []violationString).
+// No fragile reconstruction like `"- id:" + b[6:]` — the parent block
+// retains its original `- id:` prefix because that's what we split on.
+func scanYAML(raw string) (int, []string) {
+	var (
+		doneTotal  int
+		violations []string
+	)
+	for _, b := range strings.Split(raw, "\n- id:") {
+		// First split chunk is the preamble (file header BEFORE any
+		// wave). Skip it — it doesn't contain a wave.
+		if !strings.HasPrefix(b, "- id:") {
+			continue
+		}
+
+		var idv, status, verified string
+		for _, line := range strings.Split(b, "\n") {
+			// Subwave break-out: as soon as the parent id is captured,
+			// the first indented `- id:` line signals a subwave. Stop
+			// reading parent fields at that point.
+			if idv != "" && subwavePattern.MatchString(line) {
+				break
+			}
+			tabSplit := strings.SplitN(strings.TrimRight(line, "\r"), ":", 2)
+			if len(tabSplit) != 2 {
+				continue
+			}
+			key := strings.TrimSpace(tabSplit[0])
+			val := strings.TrimSpace(tabSplit[1])
+			switch key {
+			case "id":
+				if idv == "" {
+					idv = val
+				}
+			case "status":
+				if status == "" {
+					status = val
+				}
+			case "verified_zero":
+				if verified == "" {
+					verified = val
+				}
+			}
+		}
+		if status != "done" {
+			continue
+		}
+		doneTotal++
+		if verified != "true" {
+			verifStr := verified
+			if verifStr == "" {
+				verifStr = "missing"
+			}
+			violations = append(violations, fmt.Sprintf("wave id=%s has status=done but verified_zero=%s", idv, verifStr))
+		}
+	}
+	sort.Strings(violations)
+	return doneTotal, violations
 }

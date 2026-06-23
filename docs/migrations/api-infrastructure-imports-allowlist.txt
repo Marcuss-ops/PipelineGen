@@ -1,0 +1,105 @@
+# docs/migrations/api-infrastructure-imports-allowlist.txt
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-file allowlist for Check 19 of `scripts/ci-architectural-checks.sh`,
+# promoted from soft-log to hard-fail evidence-based by commit
+# `ci/archcheck-hard-fail` (June 2026).
+#
+# HOW THIS FILE WORKS
+# ────────────────────
+# Check 19 scans `internal/api/` (excluding `_test.go`) for any file whose
+# source contains a real Go import of a package under
+# `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/`. The list of
+# files that match is subtracted (via `comm -13`) against the paths listed
+# below. Any leftover match fails the gate with `exit 1`.
+#
+# FORMAT
+# ──────
+# One repo-root-relative path per line. Comments start with `#` and are
+# ignored. Groups of entries MAY be preceded by a section header comment
+# (the header itself starts with `#` so the gate skips it).
+#
+# POLICY
+# ──────
+# * Each grand-parented import must ship with a migration plan tracked
+#   under the corresponding `architecture/migration.yaml` wave (or PR
+#   track for in-flight work).
+# * Adding a NEW entry REQUIRES team review (no solo adds).
+# * Removing an entry is always safe; the gate will fail if the underlying
+#   import is still present, surfacing the regression for action.
+#
+# CURRENT STATE — Wave 14 grandfathered imports
+# ──────────────────────────────────────────────
+# The 28 entries below are real Go imports of internal/infrastructure/*
+# (verified via `grep -rln 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure/'
+# internal/api/ --include='*.go' | grep -v '_test.go'`). They are grandfathered
+# because Wave 14 (API compaction, June 2026) is in flight: the
+# `internal/api/` subtree already dropped Drive, Realtime, SearchQueries,
+# FullImages, Workers, and Sources — but the in-flight asset handlers
+# (clips, artlist, youtube), the script orchestrator, and the channel/image
+# middleware still legitimately need access to internal/infrastructure
+# adapters for upload, Drive binding, and DB-backed policy checks.
+#
+# Migration plan (per PR3 docs/roadmap/PR3_API_COMPACTION.md):
+#   * Wave 14-PR2: extract bulk_upload + handler.go + workers out of
+#     api/assets/clips/* → internal/application/assets/clips/{service,worker}.
+#     This removes 8 of the 28 entries.
+#   * Wave 14-PR3: extract api/script/{flow,handler_flow,handler_jobs,helpers}
+#     → internal/application/scripts/{flow,service,worker} per docs/CHANGELOG_2026-06-03.md
+#     §"ScriptFlow helper extraction". Removes 4 of the 28.
+#   * Wave 14-PR4: api/system/{handler,handler_drive,module} →
+#     internal/application/system/* handlers (no infra reach-through).
+#     Removes 3 of the 28.
+#   * Wave 14-PR5: api/{image,middleware,server,routes,module_core_modules,soundeffect}
+#     thin-transport rewriting per docs/api-package-boundaries.md.
+#     Removes the remaining 13.
+#
+# Once the corresponding PR lands, the file path here MUST be REMOVED in
+# the same PR (or in a followup) so the gate starts enforcing zero leaks
+# for that file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Wave 14 grandfathered: api/assets/artlist handlers (PR2) ───────────────
+internal/api/assets/artlist/artlist_handlers.go
+
+# ── Wave 14 grandfathered: api/assets/clips handlers (PR2) ─────────────────
+internal/api/assets/clips/bulk_upload_helpers.go
+internal/api/assets/clips/bulk_upload_worker.go
+internal/api/assets/clips/clip_action.go
+internal/api/assets/clips/clip_ops.go
+internal/api/assets/clips/handler.go
+internal/api/assets/clips/helpers.go
+internal/api/assets/clips/upload_helpers.go
+
+# ── Wave 14 grandfathered: api/assets/searchqueries handler (PR2) ──────────
+internal/api/assets/handler_searchqueries.go
+
+# ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2) ──
+internal/api/assets/soundeffect/handler.go
+internal/api/assets/youtube/youtube_handlers.go
+
+# ── Wave 14 grandfathered: api/channels + api/images impl (PR5) ────────────
+internal/api/channels/impl.go
+internal/api/images/impl.go
+
+# ── Wave 14 grandfathered: api/middleware (PR5) ────────────────────────────
+internal/api/middleware/admin_token.go
+internal/api/middleware/middleware_feature_flags.go
+internal/api/middleware/middleware_logger.go
+internal/api/middleware/middleware_middleware.go
+internal/api/middleware/middleware_ratelimit.go
+
+# ── Wave 14 grandfathered: api root files (PR5) ─────────────────────────────
+internal/api/module_core_modules.go
+internal/api/routes.go
+internal/api/server.go
+
+# ── Wave 14 grandfathered: api/script orchestrator (PR3) ───────────────────
+internal/api/script/flow.go
+internal/api/script/handler_flow.go
+internal/api/script/handler_jobs.go
+internal/api/script/helpers.go
+
+# ── Wave 14 grandfathered: api/system handlers (PR4) ───────────────────────
+internal/api/system/handler.go
+internal/api/system/handler_drive.go
+internal/api/system/module.go
