@@ -219,7 +219,7 @@ echo "Check 11: internal/infrastructure root imports (tracked)"
 # This check tracks the count and reports it. It does NOT fail the build.
 # When migration completes, this becomes a hard fail with an allowlist.
 ROOT_INFRA_IMPORT=$(rg -l '"github\.com/Marcuss-ops/PipelineGen/internal/infrastructure"' \
-  internal/api/ internal/media/ internal/scripts/ \
+  internal/api/ internal/application/ \
   --glob '*.go' 2>/dev/null \
   | grep -v '_test.go' \
   | wc -l || true)
@@ -247,7 +247,7 @@ echo "Check 13: transport-layer boundary (tracked)"
 TARGET_DIRS="internal/api/assets internal/api/channels internal/api/content internal/api/images internal/api/jobs internal/api/scripts internal/api/system internal/api/transport"
 EXISTING=""
 for d in $TARGET_DIRS; do
-    [ -d "$d" ] && EXISTING="$EXISTING $d"
+    [ -d "$d" ] && EXISTING="$EXISTING $d" || true
 done
 if [ -z "$EXISTING" ]; then
     echo "  No consolidated modules yet — check is N/A (will activate after commit 2)."
@@ -282,10 +282,24 @@ echo "Check 13: no new production code in legacy directories"
 # the migration surface).
 #
 # See AGENTS.md Migration Status section for the completed wave history.
-# internal/media is the last legacy namespace (73 files in 18 subdirs,
-# tracked by Waves 9-11-13). No new production code may be added here.
+# These directories must NEVER reappear — CI fails hard if they exist with .go files.
 LEGACY_DIRS=(
     internal/media
+    internal/sources
+    internal/api/sources
+    internal/core
+    internal/assets
+    internal/artifacts
+    internal/contracts
+    internal/jobs
+    internal/outboxhandlers
+    internal/application/scriptflow
+    internal/application/association
+    internal/application/realtime
+    internal/domain/media
+    internal/domain/worker
+    internal/domain/outbox
+    internal/upload
 )
 # Compute the change set with status (A / R / M / D / C). --
 # name-status with find-renames lets git pair renames internally, so the
@@ -542,6 +556,66 @@ echo "  OK: internal/api/ vets clean and cmd/worker/ builds"
 echo ""
 if [[ -x "scripts/ci-legacy-asset-guard.sh" ]]; then
     scripts/ci-legacy-asset-guard.sh
+fi
+
+# ── Check 18: absolute directory existence gates ────────────────────
+echo ""
+echo "Check 18: absolute directory existence gates"
+# These directories have been fully eliminated. If any of them reappear
+# with .go files, the migration has regressed and CI must fail hard.
+ABSOLUTE_GATE_DIRS=(
+    internal/media
+    internal/sources
+    internal/core
+    internal/assets
+    internal/artifacts
+    internal/contracts
+    internal/jobs
+    internal/outboxhandlers
+    internal/application/scriptflow
+    internal/application/association
+    internal/application/realtime
+    internal/domain/media
+    internal/domain/worker
+    internal/domain/outbox
+    internal/upload
+)
+for dir in "${ABSOLUTE_GATE_DIRS[@]}"; do
+    if [ -d "$dir" ]; then
+        go_count=$(find "$dir" -name '*.go' 2>/dev/null | wc -l)
+        if [ "$go_count" -gt 0 ]; then
+            echo "FAIL: eliminated directory $dir has reappeared with $go_count .go files"
+            echo "This directory was fully removed during architecture cleanup."
+            echo "New code must go to the canonical migration target."
+            exit 1
+        fi
+    fi || true
+done
+echo "  OK: no eliminated directories have reappeared"
+
+# ── Check 19: forbidden infrastructure imports in API layer (tracked) ──
+echo ""
+echo "Check 19: forbidden infrastructure imports in API layer (tracked)"
+# Week 1 goal (AGENTS.md): fail if a PR ADDS new imports of these packages
+# to internal/api/. Handlers must delegate to application/domain layers.
+# Allowed exceptions: middleware/ (infrastructure wiring), common/health.go,
+# _test.go files.
+#
+# This check TRACKS the count and reports it. It does NOT fail the build.
+# When handler extraction (clips/register) completes, this becomes a hard fail.
+FORBIDDEN_IMPORTS='"database/sql"|"os/exec"|"google.golang.org/api/drive/|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"|"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"'
+API_VIOLATIONS=$(rg -n "$FORBIDDEN_IMPORTS" internal/api/ --glob '*.go' 2>/dev/null \
+  | grep -v '_test.go' \
+  | grep -v 'middleware/' \
+  | grep -v 'common/health\.go' \
+  | grep -v 'module_base\.go' || true)
+if [ -n "$API_VIOLATIONS" ]; then
+    VIOL_COUNT=$(echo "$API_VIOLATIONS" | grep -c '^' || true)
+    echo "  Forbidden infrastructure imports in API (tracked): ${VIOL_COUNT}"
+    echo "$API_VIOLATIONS" | sed 's/^/    /'
+    echo "  Migration target: 0 (handler extraction required)."
+else
+    echo "  OK: no forbidden infrastructure imports in API handlers"
 fi
 
 echo ""

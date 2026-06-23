@@ -302,7 +302,16 @@
 
 - id: 9
   title: Images, Books, Lessons, VoiceoverSync consolidation
-  status: pending
+  status: done
+  description: |
+    Wave 9 completata (June 2026). Tutte le sotto-directory target di
+    internal/media/ sono state migrate ai percorsi canonici:
+      • internal/media/fullimages → internal/application/images/fullimages/
+      • internal/media/generation → internal/application/images/
+      • internal/media/books → internal/application/content/ (assorbito)
+      • internal/media/lessons → internal/application/content/ (assorbito)
+      • internal/media/voiceoversync → internal/application/voiceover/
+    internal/media/ non esiste più. Exit gate verificato.
   from:
     - internal/media/fullimages
     - internal/media/generation
