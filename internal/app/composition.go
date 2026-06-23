@@ -37,6 +37,8 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -198,7 +200,8 @@ type MaintBundle struct {
 
 // UtilityBundle owns the lightweight non-domain HTTP utility handlers.
 type UtilityBundle struct {
-	Utility *common.UtilityHandler
+	Utility       *common.UtilityHandler
+	HealthService *systemhealth.Service
 }
 
 // ComposeRoot is the assembled root tree. NewComposition returns this.
@@ -211,6 +214,10 @@ type UtilityBundle struct {
 // the clipcatalog schema). PR4d-final (June 2026) replaces this field with
 // root.ExposedCtx(); keeping it on ComposeRoot keeps the API symmetric
 // between WireServices (caller) and Wire<Module>() (callees).
+//
+// Utility.HealthService is the per-request health Service consumed by the
+// router (thin-transport healthHandler). It is wired in BuildUtilityBundle
+// so the router can construct healthHandler from root.Utility.HealthService.
 type ComposeRoot struct {
 	DB *storage.SQLiteDB
 
@@ -990,11 +997,34 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 	})
 }
 
-// BuildUtilityBundle constructs the lightweight utility handlers.
-func BuildUtilityBundle() *UtilityBundle {
+// BuildUtilityBundle constructs the lightweight utility handlers
+// and the health-check Service (PR1 Health boundary, June 2026).
+// The healthService is built here so the router can wire it into
+// the thin-transport HealthHandler without importing infrastructure.
+func BuildUtilityBundle(cfg *config.Config) *UtilityBundle {
 	return &UtilityBundle{
-		Utility: common.NewUtilityHandler(),
+		Utility:       common.NewUtilityHandler(),
+		HealthService: buildHealthService(cfg),
 	}
+}
+
+// buildHealthService constructs the health.Service from infrastructure
+// checkers. It lives in composition.go because it's the only place
+// that wires concrete adapters (PR1 Health boundary, June 2026).
+func buildHealthService(cfg *config.Config) *systemhealth.Service {
+	if cfg == nil {
+		return nil
+	}
+	return systemhealth.NewService(systemhealth.ServiceDeps{
+		DB:    infrahealth.NewSQLiteChecker(cfg.Storage.DataDir),
+		Drive: infrahealth.NewDriveChecker(cfg.GetCredentialsPath(), cfg.GetTokenPath()),
+		Qdrant: infrahealth.NewQdrantChecker(
+			cfg.VectorSearch.URL,
+			cfg.VectorSearch.Collection,
+			cfg.VectorSearch.Enabled,
+		),
+		Jobs: infrahealth.NewJobsChecker(cfg.Storage.DataDir),
+	})
 }
 
 // ── Orchestrator: NewComposition ─────────────────────────────────────────
@@ -1052,7 +1082,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle()
+	utility := BuildUtilityBundle(cfg)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	if sync.CatalogSync != nil && jobs.Service != nil {

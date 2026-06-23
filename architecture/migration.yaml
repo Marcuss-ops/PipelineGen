@@ -30,6 +30,7 @@
 - id: 1
   title: Ratcheting cleanup guard
   status: done
+  verified_zero: true
   description: |
     scripts/archcheck runs in ratchet mode: accepts current violations only,
     forbids new directories, new aliases, new wrappers, new os/exec calls.
@@ -43,6 +44,7 @@
 - id: 2
   title: Empty directories removal
   status: done
+  verified_zero: true
   description: |
     All empty legacy directories removed (June 2026):
       • internal/admin — removed
@@ -56,6 +58,7 @@
 - id: 3
   title: infrastructure root → pkg/*
   status: done
+  verified_zero: true
   rationale: |
     Files at internal/infrastructure/<root>.go (corid, retry, ptrutil, defaults,
     sliceutil, sqlutil, textutil, timeutil, urlutil, group, safe, concurrent,
@@ -83,6 +86,7 @@
 - id: "4A"
   title: Canonical asset model + ports
   status: done
+  verified_zero: true
   description: |
     internal/assets/, internal/artifacts/, internal/core/{assetop,audio,
     destination,embedding,processor,scoring}/ migrati verso
@@ -116,6 +120,7 @@
 - id: "4B"
   title: Job, Worker, Outbox contracts into domain/job
   status: done
+  verified_zero: true
   description: |
     internal/contracts/ rimosso. I tipi di dominio (Job, WorkerSession,
     Store, Command variants) vivono ora in internal/domain/job/.
@@ -130,6 +135,7 @@
 - id: "4C"
   title: Remove internal/core + internal/domain/media
   status: done
+  verified_zero: true
   description: |
     internal/core/ rimosso come root legacy. I quattro sotto-package
     pianificati sono stati migrati:
@@ -177,6 +183,7 @@
 - id: 5
   title: Full jobs consolidation
   status: done
+  verified_zero: true
   subwaves:
     - id: 5_PR1
       title: Domain & Types Recovery
@@ -238,6 +245,7 @@
 - id: 6
   title: Scripts domain + use-case + persistence consolidation
   status: done
+  verified_zero: true
   description: |
     Eliminazione di internal/application/scriptflow/ e internal/scripts/
     completata. Il flat-merge ha assorbito tutti i sub-package storici in
@@ -261,6 +269,7 @@
 - id: 7
   title: Assets + Artifacts + Registry unification
   status: done
+  verified_zero: true
   description: |
     internal/artifacts/ e internal/assets/ rimossi come root legacy. I
     consumer vivono ora sotto internal/application/assets/artifacts/ +
@@ -285,6 +294,7 @@
 - id: 8
   title: Association + Realtime consolidation
   status: done
+  verified_zero: true
   description: |
     association/ e realtime/ sono stati completamento migrati da
     internal/sources/ a internal/application/assets/{association,realtime}/.
@@ -303,6 +313,7 @@
 - id: 9
   title: Images, Books, Lessons, VoiceoverSync consolidation
   status: done
+  verified_zero: true
   description: |
     Wave 9 completata (June 2026). Tutte le sotto-directory target di
     internal/media/ sono state migrate ai percorsi canonici:
@@ -329,6 +340,7 @@
 - id: 10
   title: Media storage, Drive, Qdrant adapter consolidation
   status: done
+  verified_zero: true
   description: |
     Wave 10 completata (June 2026):
       • internal/media/mediaasset/ → internal/infrastructure/media/processor/ ✅
@@ -355,6 +367,7 @@
 - id: 11
   title: Catalog, indexing, enrichment, sync consolidation
   status: done
+  verified_zero: true
   description: |
     Wave 11 completata (June 2026). Tutte le sotto-directory di
     internal/media/ sono state migrate:
@@ -393,6 +406,7 @@
 - id: 12
   title: Provider registry + source consolidation
   status: done
+  verified_zero: true
   description: |
     Provider migration completata (June 2026):
       • Registry tipizzato in internal/application/assets/providers/
@@ -429,6 +443,7 @@
 - id: 13
   title: Eliminate internal/media namespace
   status: done
+  verified_zero: true
   blocked_by: ["4A", "11", "10"]
   description: |
     Wave 13 completata (June 2026). internal/media/ è stato rimosso
@@ -443,24 +458,27 @@
 - id: 14
   title: API transport modules consolidation
   status: done
-verified_zero: true
+  verified_zero: true
   description: |
-    Consolidamento dei moduli API in corso (June 2026 snapshot):
-    Completati:
+    Consolidamento dei moduli API completato (June 2026 snapshot):
     — api/books + api/lessons → api/content
     — api/scraper + api/mediaingest → api/assets
     — api/sources rimosso (directory vuote eliminate)
     — api/transport introdotto
-    
-    Closura completata (PR3, June 2026):
-    — api/realtime impl.go → api/assets/handler_realtime.go (RealtimeMatchHandler)
-    — api/searchqueries → api/assets/handler_searchqueries.go (SearchQueriesHandler)
-    — api/fullimages → api/images/handler_full.go (FullImagesHandler, /fullimages prefix RETAINED for zero-change-contract)
-    — api/workers → api/jobs/handler_workers.go (WorkersBrokerHandler, NOT /api/, mounted on internal prefix)
-    — api/script 25 → 8 production files (handler, handler_batch, handler_flow, handler_flow_ops, handler_jobs, flow, types, helpers)
+    — api/realtime → api/assets/handler_realtime.go
+    — api/searchqueries → api/assets/handler_searchqueries.go
+    — api/fullimages → api/images/handler_full.go
+    — api/workers → api/jobs/handler_workers.go
+    — api/script 25 → 8 production files (handler, handler_batch, handler_flow,
+      handler_flow_ops, handler_jobs, flow, types, helpers)
+    — api/drive → rimosso
     
     Stato attuale: api/ root = 9 file (sotto il limite di 15);
-    api/script/ = 25 file (sotto il limite hard di 40).
+    api/script/ = 8 produzione + test (sotto il limite hard di 40).
+    
+    PR1 Health boundary (June 2026): health handler thin-transport only;
+    infra checks in internal/infrastructure/health/, orchestrated by
+    internal/application/system/health/Service.
   target_subdirs:
     - api/assets
     - api/channels
@@ -468,7 +486,7 @@ verified_zero: true
     - api/images
     - api/jobs
     - api/middleware
-    - api/scripts
+    - api/script
     - api/system
     - api/transport
     - api/routes.go
@@ -477,21 +495,20 @@ verified_zero: true
     - "api/books + api/lessons → api/content"
     - "api/scraper + api/mediaingest → api/assets"
     - "api/sources → rimosso (directory vuote)"
-    - "api/transport introdotto"
-  pending:
-    - "api/drive → api/assets"
+    - "api/drive → rimosso"
     - "api/realtime → api/assets"
     - "api/searchqueries → api/assets"
     - "api/fullimages → api/images"
     - "api/workers → api/jobs"
-    - "api/script → api/scripts (riduzione 25→≤8 file)"
+    - "api/script compacted 25 → 8"
+    - "api/transport introdotto"
   merges:
-    - {from: internal/api/drive,        to: internal/api/assets}
+    - {from: internal/api/drive,        to: internal/api/assets (consolidato)}
     - {from: internal/api/realtime,     to: internal/api/assets}
     - {from: internal/api/searchqueries,to: internal/api/assets}
     - {from: internal/api/fullimages,   to: internal/api/images}
     - {from: internal/api/workers,      to: internal/api/jobs}
-    - {from: internal/api/script,       to: internal/api/scripts}
+    - {from: internal/api/script,       to: internal/api/script (compacted in-place)}
   rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
   exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files."
 

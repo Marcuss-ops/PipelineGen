@@ -93,9 +93,10 @@ func main() {
 
 	// Build the HTTP server with the module registry (all known routes),
 	// the internal worker handler (the /internal/v1/* endpoints used
-	// by the remote cmd/worker binary to claim jobs), and the lifecycle
-	// manager (background job runner + cleanup).
-	server := api.NewServer(cfg, deps.Registry, deps.WorkerHandler, deps.Lifecycle)
+	// by the remote cmd/worker binary to claim jobs), the lifecycle
+	// manager (background job runner + cleanup), and the health-service
+	// (DB+Drive+Qdrant+Jobs checks wired from the composition root).
+	server := api.NewServerWithHealth(cfg, deps.Registry, deps.WorkerHandler, deps.Lifecycle, deps.HealthService)
 	if err := server.Start(); err != nil {
 		log.Fatal("server failed", zap.Error(err))
 	}

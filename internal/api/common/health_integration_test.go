@@ -16,12 +16,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	healthapp "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 )
 
-// newTestHealthHandler creates a HealthHandler wired to a real SQLite DB
-// in a temp directory. The DB is pre-populated with the core tables that
-// the health checks verify (media_assets, jobs).
+// newTestHealthHandler creates a HealthHandler wired to a health.Service
+// backed by real SQLite DB + real config checkers. The DB is pre-populated
+// with the core tables that the health checks verify (media_assets, jobs).
 func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine) {
 	t.Helper()
 
@@ -55,13 +56,17 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine) {
 	`)
 	require.NoError(t, err)
 
-	cfg := &config.Config{}
-	cfg.Storage.DataDir = dir
-	cfg.VectorSearch.Enabled = false
+	// Build the health Service with infra checkers pointing at the temp DB.
+	svc := healthapp.NewService(healthapp.ServiceDeps{
+		DB:    infrahealth.NewSQLiteChecker(dir),
+		Drive: infrahealth.NewDriveChecker("", ""),  // no Drive creds → configured=false
+		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false), // disabled
+		Jobs:  infrahealth.NewJobsChecker(dir),
+	})
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewHealthHandler(cfg)
+	handler := NewHealthHandler(svc)
 	router.GET("/health", handler.Health)
 	return handler, router
 }
@@ -163,9 +168,30 @@ func TestHealth_CheckMultiple(t *testing.T) {
 	assert.NotContains(t, checks, "jobs")
 }
 
-// ── Nil config ────────────────────────────────────────────────────────
+// ── Unknown check name ────────────────────────────────────────────────
 
-func TestHealth_NilConfig(t *testing.T) {
+func TestHealth_UnknownCheck(t *testing.T) {
+	_, router := newTestHealthHandler(t)
+
+	w := doHealthRequest(t, router, "check=nonesiste")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Unknown check names should report unhealthy, not silently pass.
+	assert.False(t, resp["ok"].(bool), "unknown check should report unhealthy")
+	assert.Equal(t, "unhealthy", resp["status"])
+
+	checks := resp["checks"].(map[string]any)
+	assert.Contains(t, checks, "nonesiste")
+	nonesiste := checks["nonesiste"].(map[string]any)
+	assert.False(t, nonesiste["ok"].(bool))
+}
+
+// ── Nil service ───────────────────────────────────────────────────────
+
+func TestHealth_NilService(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handler := NewHealthHandler(nil)

@@ -15,6 +15,7 @@ import (
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 	"go.uber.org/zap"
@@ -27,6 +28,7 @@ type Router struct {
 	registry            *Registry
 	workerHandler       interface{ RegisterRoutes(*gin.RouterGroup) }
 	ctx                 context.Context
+	healthSvc           interface{} // *systemhealth.Service; typed as interface{} to avoid import coupling
 }
 
 // NewRouter creates a new API router
@@ -49,6 +51,13 @@ func (r *Router) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 // SetContext sets the context for module lifecycle management
 func (r *Router) SetContext(ctx context.Context) {
 	r.ctx = ctx
+}
+
+// SetHealthService wires the application-layer health.Service into the router.
+// The concrete type is *systemhealth.Service but the field is interface{}
+// so this file stays free of infrastructure imports (PR1 Health boundary, June 2026).
+func (r *Router) SetHealthService(svc interface{}) {
+	r.healthSvc = svc
 }
 
 // buildCORSConfig builds a CORS configuration from the application security settings.
@@ -107,9 +116,20 @@ func (r *Router) Setup() *gin.Engine {
 		log.Info("CORS disabled - no origins configured")
 	}
 
-	// Unified health check (PR7, June 2026): single /health with ?deep=true
-	// for aggregated DB+Drive+Qdrant+JobBroker checks.
-	healthHandler := common.NewHealthHandler(r.cfg)
+	// Unified health check (PR1, June 2026): single /health with ?deep=true
+	// for aggregated DB+Drive+Qdrant+JobBroker checks. The health service
+	// lives in ComposeRoot.Utility.HealthService and is wired via
+	// SetHealthService before Setup() runs.
+	var healthHandler *common.HealthHandler
+	if r.healthSvc != nil {
+		if svc, ok := r.healthSvc.(*systemhealth.Service); ok {
+			healthHandler = common.NewHealthHandler(svc)
+		}
+	}
+	if healthHandler == nil {
+		log.Warn("health service not wired, health endpoints will return 503")
+		healthHandler = common.NewHealthHandler(nil)
+	}
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
 

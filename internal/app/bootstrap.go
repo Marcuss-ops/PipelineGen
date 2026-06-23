@@ -281,6 +281,7 @@ type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 	Lifecycle     module.LifecycleManager // wraps startBackgroundJobs + buildCleanup
+	HealthService interface{}             // *systemhealth.Service; consumed by api.NewServerWithHealth
 	Cleanup       func()                  // kept for backward compat (tests); delegates to Lifecycle.Stop
 }
 
@@ -394,10 +395,15 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	lifecycle := NewServerLifecycle(deferredStartJobRunner, driveStart, outboxStart, processStart, cleanup)
 
+	var healthSvc interface{}
+	if root != nil && root.Utility != nil {
+		healthSvc = root.Utility.HealthService
+	}
 	return &AppDeps{
 		Registry:      registryWiring.Registry,
 		WorkerHandler: workerHandler,
 		Lifecycle:     lifecycle,
+		HealthService: healthSvc,
 		Cleanup:       cleanup,
 	}, nil
 }
