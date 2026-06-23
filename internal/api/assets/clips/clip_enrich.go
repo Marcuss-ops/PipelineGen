@@ -3,14 +3,13 @@ package clips
 import (
 	"context"
 	"fmt"
-	"time"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -20,91 +19,7 @@ import (
 //  2. Clip indexer → embedding computation
 //  3. Vector store (Qdrant) upsert
 func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
-	// Apply a 3-minute timeout to prevent runaway goroutines
-	enrichCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
-	h.log.Info("starting enrichment for clip",
-		zap.String("clip_id", clip.ID),
-		zap.String("source", source))
-
-	// Step 1: Semantic enrichment via MetadataWriter (LLM-generated tags/description)
-	if h.metaWriter != nil && clip.Name != "" {
-		prompt := clip.Name
-		if clip.Category != "" {
-			prompt = clip.Category + ": " + prompt
-		}
-
-		payload, _, err := h.metaWriter.GeneratePayload(enrichCtx, semantic.WriteRequest{
-			AssetID:   clip.ID,
-			AssetType: "clip",
-			MediaType: string(clip.MediaType),
-			Source:    source,
-			Generator: "api_create",
-			Style:     clip.Category,
-			Prompt:    prompt,
-		})
-		if err != nil {
-			h.log.Warn("semantic enrichment failed for clip",
-				zap.String("clip_id", clip.ID), zap.Error(err))
-		} else if payload != nil {
-			// Update clip with enriched metadata
-			if payload.SearchText != "" {
-				clip.SearchText = payload.SearchText
-			}
-			if len(payload.Tags) > 0 {
-				clip.Tags = append(clip.Tags, payload.Tags...)
-			}
-			if payload.SemanticDescription != "" {
-				// Preserve existing metadata and add enriched fields
-				if clip.Metadata == nil {
-					clip.Metadata = make(map[string]any)
-				}
-				clip.Metadata["semantic_description"] = payload.SemanticDescription
-				if payload.RetrievalScore != nil {
-					clip.Metadata["confidence"] = *payload.RetrievalScore
-				} else {
-					clip.Metadata["confidence"] = 0.0
-				}
-				clip.Metadata["semantic_enriched"] = true
-			}
-
-			// Persist enriched metadata to DB (so clipIndexer can read it when computing embeddings)
-			if h.assetRepo != nil {
-				if err := h.assetRepo.Upsert(enrichCtx, clip); err != nil {
-					h.log.Warn("failed to persist enriched clip metadata",
-						zap.String("clip_id", clip.ID), zap.Error(err))
-				}
-			}
-		}
-	}
-
-	// Step 2: Clip indexer — generates search_text + embedding + auto-upserts to vector store
-	if h.clipIndexer != nil && h.clipIndexer.IsEnabled() {
-		if err := h.clipIndexer.IndexClip(enrichCtx, clip.ID); err != nil {
-			h.log.Warn("clip indexer failed for clip",
-				zap.String("clip_id", clip.ID), zap.Error(err))
-		}
-	} else if h.vectorStore != nil && clip.SearchText != "" {
-		// Step 3: Direct vector store upsert (fallback if clipIndexer not available)
-		asset := qdrant.VectorAsset{
-			AssetID:    clip.ID,
-			Source:     source,
-			Name:       clip.Name,
-			LocalPath:  clip.LocalPath(),
-			DriveLink:  clip.DriveLink(),
-			Category:   clip.Category,
-			MediaType:  string(clip.MediaType),
-			SearchText: clip.SearchText,
-			Tags:       clip.Tags,
-		}
-		if err := h.vectorStore.UpsertAsset(enrichCtx, asset); err != nil {
-			h.log.Warn("vector store upsert failed for clip",
-				zap.String("clip_id", clip.ID), zap.Error(err))
-		}
-	}
-
-	h.log.Info("enrichment complete for clip", zap.String("clip_id", clip.ID))
+	h.enrichUC.EnrichAndIndex(ctx, clip, source)
 }
 
 // EnrichMedia triggers semantic enrichment + embedding for any media asset.
@@ -129,72 +44,41 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 		return
 	}
 
-	if req.AssetID == "" {
-		apiutil.BadRequest(c, "asset_id is required")
-		return
-	}
-
 	// Fallback: use path param :source if body doesn't have source
 	if req.Source == "" {
 		req.Source = c.Param("source")
 	}
 
-	ctx := c.Request.Context()
 	h.log.Info("enriching media asset",
 		zap.String("asset_id", req.AssetID),
 		zap.String("source", req.Source),
 		zap.Bool("skip_qdrant", req.SkipQdrant),
 	)
 
-	// Try to find and enrich via clip indexer first (works for clips/stock/artlist/youtube)
-	if req.Source != "" && (h.clipIndexer != nil || h.vectorStore != nil) {
-		repo := h.repoForSource(req.Source)
-		if repo != nil {
-			clip, err := repo.GetClip(ctx, req.AssetID)
-			if err == nil && clip != nil {
-				// Clip found — use existing enrichment pipeline (async, survives handler return)
-				concurrent.SafeGo("media-enrich", func() {
-					h.EnrichAndIndexClip(context.WithoutCancel(ctx), clip, req.Source)
-				})
-				apiutil.OK(c, gin.H{
-					"ok":       true,
-					"action":   "enqueued",
-					"asset_id": req.AssetID,
-					"source":   req.Source,
-					"method":   "clip_enrichment_pipeline",
-					"message":  "enrichment started in background",
-				})
-				return
-			}
+	result, err := h.enrichUC.EnrichMedia(c.Request.Context(), appclips.EnrichMediaRequest{
+		AssetID:      req.AssetID,
+		Source:       req.Source,
+		SkipQdrant:   req.SkipQdrant,
+		SkipEmbedGen: req.SkipEmbedGen,
+	}, func(source string) appclips.ClipFinder {
+		repo := h.repoForSource(source)
+		if repo == nil {
+			return nil
 		}
-	}
-
-	// Fallback: try to index via clip indexer (generates embedding + upserts to Qdrant)
-	if h.clipIndexer != nil && h.clipIndexer.IsEnabled() && !req.SkipEmbedGen {
-		concurrent.SafeGo("clip-indexer-fallback", func() {
-			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-			defer cancel()
-			if err := h.clipIndexer.IndexClip(indexCtx, req.AssetID); err != nil {
-				h.log.Warn("clip indexer fallback failed",
-					zap.String("asset_id", req.AssetID), zap.Error(err))
-			}
-		})
-		apiutil.OK(c, gin.H{
-			"ok":       true,
-			"action":   "enqueued",
-			"asset_id": req.AssetID,
-			"method":   "clip_indexer_fallback",
-			"message":  "embedding generation + vector store upsert started in background",
-		})
+		return repo
+	})
+	if err != nil {
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
 	apiutil.OK(c, gin.H{
 		"ok":       true,
-		"action":   "accepted",
-		"asset_id": req.AssetID,
-		"message":  "enrichment pipeline not fully available — use the Python script for full processing",
-		"hint":     "POST /api/enrich with asset_id to trigger the Go enrichment pipeline",
+		"action":   result.Action,
+		"asset_id": result.AssetID,
+		"source":   result.Source,
+		"method":   result.Method,
+		"message":  result.Message,
 	})
 }
 
