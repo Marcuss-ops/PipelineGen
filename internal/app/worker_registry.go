@@ -6,7 +6,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // BuildWorkerRegistry creates a remote-worker Registry populated with the
@@ -40,7 +40,7 @@ func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) 
 // *worker.Tools). Progress, cancellation and events are forwarded via the
 // broker-backed Tools implementation.
 func adaptHandler(h appjobs.HandlerFunc) worker.Handler {
-	return func(ctx context.Context, j *domainjob.Job, tools *worker.Tools) (map[string]any, error) {
+	return func(ctx context.Context, j *job.Job, tools *worker.Tools) (map[string]any, error) {
 		jobTools := &appjobs.JobTools{
 			Progress: func(p int, msg string) {
 				_ = tools.Progress(ctx, p, msg)

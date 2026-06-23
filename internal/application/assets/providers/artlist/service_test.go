@@ -17,7 +17,7 @@ import (
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -575,10 +575,10 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 
 	// Create a job directly (simulate a job that would be processed by a worker)
 	payload := testutil.MustMarshalJSON(t, map[string]any{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"})
-	job := &domainjob.Job{
+	job := &job.Job{
 		ID:        "test-job-1",
 		Type:      "artlist.run",
-		Status:    domainjob.StatusRunning,
+		Status:    job.StatusRunning,
 		Payload:   payload,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
