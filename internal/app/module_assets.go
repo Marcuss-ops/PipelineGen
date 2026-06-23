@@ -13,8 +13,10 @@ import (
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
+	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -127,10 +129,38 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	storageSvc := appstorage.NewService(drivePort, &zapLogAdapter{log})
 	storageHandler := assetstorage.NewHandler(storageSvc, log)
 
-	// Diagnostics and Search: deferred (TODO: wire port adapters)
-	diagHandler := assetsdiag.NewHandler(nil, log)
-	searchHandler := assetsearch.NewHandler(nil, log)
-	log.Warn("diagnostics and search services NOT wired — returning 503 until port adapters are implemented")
+	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
+	// Diagnostics: IndexHealth via realtime.Service + AssetStats via ClipsRepository.
+	// When realtimeSvc is nil (vector search disabled), the handler falls back to 503.
+	var diagSvc *appdiag.Service
+	if realtimeSvc != nil {
+		diagSvc = appdiag.NewService(
+			&diagIndexHealthAdapter{realtime: realtimeSvc, vectorSvc: vectorStore},
+			&diagAssetStatsAdapter{clips: bundle.ClipsRepo},
+			&zapDiagLogAdapter{log: log},
+		)
+	}
+	diagHandler := assetsdiag.NewHandler(diagSvc, log)
+
+	// Search: providers registry + vector search + local catalog/clips.
+	// Only wired when both vectorStore and realtimeSvc are non-nil.
+	var searchSvc *appsearchsvc.Service
+	if vectorStore != nil && realtimeSvc != nil {
+		searchSvc = appsearchsvc.NewService(
+			&searchRegistryAdapter{registry: providerRegistry},
+			&searchVectorAdapter{embedder: qdrant.NewSearchAdapter(vectorStore), realtimeSvc: realtimeSvc},
+			&searchCatalogAdapter{catalog: catalogRepo},
+			&searchClipAdapter{catalog: catalogRepo},
+			&searchConfigAdapter{cfg: cfg},
+			&zapSearchLogAdapter{log: log},
+		)
+	}
+	searchHandler := assetsearch.NewHandler(searchSvc, log)
+	if diagSvc != nil && searchSvc != nil {
+		log.Info("diagnostics and search services wired with production ports")
+	} else {
+		log.Warn("diagnostics and/or search services NOT fully wired — some routes will return 503")
+	}
 
 	// ── PR 4 (June 2026): extract voiceover, soundeffect, register ─
 	// Voiceover: GroupsResolver already constructed in NewSourcesHandler below;
