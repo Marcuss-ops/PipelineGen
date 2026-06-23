@@ -34,7 +34,7 @@ import (
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"

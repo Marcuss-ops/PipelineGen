@@ -70,7 +70,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
