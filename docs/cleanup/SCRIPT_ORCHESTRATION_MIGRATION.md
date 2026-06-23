@@ -1,284 +1,173 @@
 # Script Orchestration Migration
 
-> Priority: BLOCKER
+> Status: PARTIAL — BLOCKER STILL OPEN
 >
-> Current problem files:
+> Verified against `main` at `401e3847` on 2026-06-23.
 >
-> - `internal/api/script/flow.go`
-> - `internal/api/script/handler_jobs.go`
->
-> Target owner: `internal/application/scripts/`
+> Target owner: `internal/application/scripts/`.
 
-## Problem statement
+## Audit verdict
 
-The script API package still owns application workflow. File compaction reduced
-file count, but it did not establish a transport boundary.
+The latest extraction moved a substantial amount of code into the application
+layer, but it did **not** complete the thin-transport migration.
 
-Current API-layer responsibilities include:
+Completed movement includes:
 
-- multi-provider asset search;
-- topic keyword extraction and relevance filtering;
-- result de-duplication and limiting;
-- automatic harvest enqueue decisions;
-- Artlist phrase translation and folder resolution;
-- entity/image and insight post-processing;
-- script job registration and execution;
-- concurrency semaphore ownership;
-- construction of scenes, documents and pipeline services;
-- path dispatch between explicit clips, auto-search and text-only generation;
-- raw goroutine prewarming.
+```text
+internal/application/scripts/
+    flow_helpers.go
+    flow_types.go
+    insight_builder.go
+    job_helpers.go
+    catalog_job.go
+    curation_job.go
+    clip_services.go
+```
 
-These responsibilities make HTTP transport difficult to test, encourage direct
-infrastructure imports, and let job execution depend on a handler object.
+This is useful progress. Search helpers, shared types, insight building and some
+job implementations now have an application owner.
+
+However, the two original API files remain production owners of orchestration:
+
+```text
+internal/api/script/flow.go
+internal/api/script/handler_jobs.go
+```
+
+Wave 14 therefore cannot truthfully claim that the API layer contains only
+transport.
+
+## Current violations verified in code
+
+### `internal/api/script/flow.go`
+
+The file is still approximately 200 lines and contains:
+
+- type aliases back into `internal/application/scripts`;
+- forwarding functions for search, Artlist, entities and insights;
+- a wrapper object around `scripts.ScriptInsightBuilder`;
+- direct import of `internal/infrastructure/files`;
+- Google Drive folder-name/path interpretation;
+- recursive Drive SDK traversal through `driveUploader.Service.Files.List()`;
+- folder creation decisions through `GetOrCreateFolder`.
+
+The file comment explicitly describes these as “back-compat” aliases/wrappers.
+That contradicts the cleanup rule forbidding re-export packages and forwarding
+wrappers after migration.
+
+### `internal/api/script/handler_jobs.go`
+
+The file remains a large application workflow host. It still owns:
+
+- job registration on `job.Service`;
+- batch-job payload decoding and execution;
+- script-generation semaphore admission and release;
+- generation payload decoding;
+- per-job construction of `ScenesService`;
+- per-job construction of `DocumentsService`;
+- per-job construction of `Pipeline`;
+- a raw goroutine for image-service prewarm;
+- explicit/auto-search/text-only path dispatch;
+- clip context and fingerprint generation;
+- engine calls;
+- progress staging and telemetry;
+- post-generation pipeline invocation;
+- final result conversion and assembly;
+- receiver methods for the three generation paths.
+
+This is business orchestration, not delivery transport.
+
+### Composition remains coupled to the API handler
+
+`internal/app/registry.go::wireScriptFlow` still constructs a
+`scriptapi.ScriptFlowHandler` with a large dependency bundle and relies on the
+handler to register/execute script jobs.
+
+The desired direction is:
+
+```text
+internal/app
+    constructs application script services + job handlers
+
+internal/application/scripts
+    owns job orchestration and generation workflow
+
+internal/api/script
+    owns HTTP binding + use-case invocation only
+```
 
 ## Compatibility constraints
 
 The migration must preserve:
 
-- route paths and methods under `/api/script/*`;
-- job type strings, including:
+- all routes under `/api/script/*`;
+- job type strings:
   - `script.generate_batch`;
   - `script.generate_from_clips`;
-  - `script.generate_from_catalog` where supported;
-  - `script.curate` where supported;
+  - `script.generate_from_catalog` where enabled;
+  - `script.curate` where enabled;
 - existing job payload JSON;
-- existing result JSON and Google Doc output behavior;
-- three generation paths:
-  - explicit `clip_ids`;
-  - auto-search using `num_clips`;
-  - text-only fallback;
-- progress reporting and cancellation propagation;
-- existing feature flags and deployment-mode behavior.
+- existing result JSON;
+- explicit clip, auto-search and text-only generation paths;
+- Google Doc, scene-image and voiceover behavior;
+- progress and cancellation behavior;
+- feature flags and deployment-mode behavior.
 
-Do not combine this migration with route renaming from `api/script` to
-`api/scripts`. First fix ownership. A path/package rename can be performed later
-as a separate cleanup after all behavior is characterized.
+Do not combine this work with a route rename from `api/script` to `api/scripts`.
+Ownership must be fixed first.
 
-## Target package layout
+## Target structure
 
-Recommended structure:
+Use existing `internal/application/scripts/` as the single application owner.
+Avoid creating another parallel script-flow package.
 
 ```text
 internal/application/scripts/
-    orchestration/
-        service.go
-        request.go
-        result.go
-        paths.go
-        post_generation.go
-        prewarm.go
-        service_test.go
-
-    assets/
-        service.go
-        ports.go
-        relevance.go
-        artlist.go
-        suggestions.go
-        service_test.go
-
-    jobs/
-        registrar.go
-        generate_batch.go
-        generate_from_clips.go
-        generate_catalog.go
-        curate.go
-        stage_logger.go
-        handlers_test.go
-
-    documents/              existing or canonical document service
-    scenes/                 existing or canonical scene service
-    gemmamemory/            existing package retained
+    orchestration_service.go
+    orchestration_paths.go
+    orchestration_post_generation.go
+    orchestration_result.go
+    job_handlers.go
+    job_registration.go
+    folder_resolver.go
+    prewarm.go
+    *_test.go
 
 internal/api/script/
     handler.go
-    routes.go
-    dto.go
-    handler_test.go
+    handler_batch.go
+    handler_flow.go
+    handler_flow_ops.go
+    types.go
+    helpers.go                 # transport-only helpers if genuinely needed
 
 internal/app/
     wire_script.go
 ```
 
-Exact subpackage names may be adjusted to existing package conventions, but
-responsibility boundaries must remain the same. Do not create duplicate script
-engines, memory services, scene services or document services.
-
-## Application ownership map
-
-### Asset discovery service
-
-Move from `flow.go`:
-
-```text
-SearchScriptAssets
-filterSearchAssets
-topicRelevant
-SearchArtlistClips
-artlistSearchPhrase
-resolveArtlistFolderForPhrase
-BuildPhraseClipSuggestions
-SearchIntroClips
-query-building helpers
-```
-
-Target: `internal/application/scripts/assets/`.
-
-The service should own search policy, not infrastructure access.
-
-Suggested API:
-
-```go
-type SearchRequest struct {
-    Queries []string
-    Targets []Target
-    Limit   int
-}
-
-type SearchResult struct {
-    Suggestions []Suggestion
-    Harvested   []string
-}
-
-type Service struct {
-    search     SearchPort
-    translator TranslatorPort
-    folders    FolderResolverPort
-    harvest    HarvestPort
-    log        *zap.Logger
-}
-
-func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResult, error)
-func (s *Service) SearchArtlist(ctx context.Context, req ArtlistRequest) ([]ArtlistSuggestion, error)
-```
-
-### Script orchestration service
-
-Move path selection and post-generation workflow from `handler_jobs.go` into
-`internal/application/scripts/orchestration/`.
-
-Suggested entry point:
-
-```go
-type GenerateCommand struct {
-    JobID    string
-    Payload  script.GeneratePayload
-    Progress ProgressSink
-}
-
-type GenerateResult struct {
-    Values map[string]any
-}
-
-func (s *Service) Generate(ctx context.Context, cmd GenerateCommand) (GenerateResult, error)
-```
-
-The service owns:
-
-- concurrency admission;
-- explicit/auto-search/text path selection;
-- pipeline construction or invocation;
-- post-generation fan-out;
-- scene and document coordination;
-- prewarm decisions;
-- stage logging;
-- final result assembly.
-
-The API handler must never choose a generation path or construct a pipeline.
-
-### Job handlers
-
-Job-system adapters belong under `internal/application/scripts/jobs/`, not the
-HTTP package. They translate a domain job into an application command.
-
-Suggested interfaces:
-
-```go
-type GenerateService interface {
-    Generate(context.Context, orchestration.GenerateCommand) (orchestration.GenerateResult, error)
-}
-
-type BatchService interface {
-    Execute(context.Context, *scripts.GenerateBatchRequest, func(int, string)) (*scripts.GenerateBatchResponse, error)
-}
-```
-
-Suggested handlers:
-
-```go
-func (h *Handler) HandleGenerateFromClips(
-    ctx context.Context,
-    j *job.Job,
-    tools *appjobs.JobTools,
-) (map[string]any, error)
-
-func (h *Handler) HandleGenerateBatch(
-    ctx context.Context,
-    j *job.Job,
-    tools *appjobs.JobTools,
-) (map[string]any, error)
-```
-
-The job handler may decode payloads, adapt progress and call the use case. It
-must not construct scenes/documents/pipelines on every invocation.
+Subpackages such as `scripts/orchestration` or `scripts/jobs` are acceptable if
+they improve cohesion, but do not duplicate existing engines, memory services,
+scene services, document services or DTOs.
 
 ## Required application ports
 
-No code under `internal/application/scripts/` may import concrete Drive,
-filesystem, Qdrant, HTTP or process packages.
-
-Define ports near their consumer.
-
-### Asset search
-
-```go
-type SearchPort interface {
-    SearchClips(
-        ctx context.Context,
-        query string,
-        source string,
-        mediaType string,
-        limit int,
-        threshold float64,
-    ) ([]Match, error)
-}
-```
-
-Use an application-neutral `Match`; do not leak Qdrant DTOs.
-
-### Translation
-
-```go
-type TranslatorPort interface {
-    Translate(ctx context.Context, text, language string) (string, error)
-}
-```
-
-Wrap the current generator/translation implementation in `internal/app` or an
-infrastructure adapter.
-
 ### Folder resolution
 
+Drive path interpretation and traversal must leave the API package.
+
 ```go
-type FolderResolverPort interface {
-    ResolveForPhrase(ctx context.Context, phrase string) (Folder, error)
-    ResolveRecommended(ctx context.Context, request FolderRequest) (Folder, error)
+type FolderResolver interface {
+    Resolve(ctx context.Context, input, defaultRootID string) (string, error)
 }
 ```
 
-The application package may use folder IDs and links as neutral values, but it
-must not import the Drive SDK or `internal/infrastructure/drive`.
+Implementation options:
 
-### Harvest
+- application policy + infrastructure Drive adapter; or
+- a narrow existing Drive resolver extended through its canonical registry.
 
-```go
-type HarvestPort interface {
-    EnqueueHarvest(ctx context.Context, query string, count int, preset string) error
-}
-```
-
-Do not silently discard errors. The service may treat harvest as best-effort,
-but it must log/return structured warnings in a defined way.
+The API handler must not inspect Drive IDs, clean folder names, traverse SDK
+results or create folders.
 
 ### Prewarm
 
@@ -288,8 +177,9 @@ type Prewarmer interface {
 }
 ```
 
-The application service decides whether prewarm is useful. The concrete
-sidecar/network implementation stays outside the application package.
+The orchestration service decides whether prewarm is needed. The concrete
+sidecar/image-service call remains an injected adapter. Use the repository’s
+canonical concurrency helper instead of a raw API-layer goroutine.
 
 ### Progress
 
@@ -299,246 +189,220 @@ type ProgressSink interface {
 }
 ```
 
-Provide a no-op implementation rather than repeated nil checks if that matches
-existing conventions.
+Adapt `appjobs.JobTools` in the job delivery adapter. Application orchestration
+should not depend directly on a transport/job-tools concrete type when a narrow
+port is sufficient.
 
-## Relevance and de-duplication policy
+### Generation capacity
 
-`topicRelevant` is business policy and should be independently testable.
-
-Move it to `assets/relevance.go` and define table-driven tests covering:
-
-- empty topic accepts results;
-- stop-word-only topic;
-- exact token matches;
-- prefix/stem behavior currently based on first three characters;
-- tokens shorter than four characters;
-- duplicate IDs;
-- source exceptions such as Artlist;
-- limit enforcement;
-- deterministic ordering.
-
-Do not silently replace the heuristic with embeddings during this migration.
-Preserve behavior first; improve the algorithm later through a separate change.
-
-## Auto-harvest policy
-
-Auto-harvest should become explicit policy rather than a hidden side effect of a
-search helper.
-
-Recommended rules:
-
-1. Search every normalized query/target pair.
-2. Apply relevance, de-duplication and limit policy.
-3. Only when the final result is empty, evaluate harvest eligibility.
-4. De-duplicate harvest queries.
-5. Enqueue through `HarvestPort`.
-6. Record what was enqueued in `SearchResult.Harvested`.
-7. Propagate context cancellation immediately.
-8. Decide and document whether individual enqueue failures fail the request or
-   return partial success with warnings.
-
-Recommended default: partial success with structured warnings, unless the
-caller explicitly requires harvest completion.
-
-## Concurrency ownership
-
-The script-generation semaphore currently lives on `ScriptFlowHandler`. Move it
-to the application orchestration service.
-
-Suggested construction:
+The semaphore belongs to a long-lived application service:
 
 ```go
-type Limits struct {
-    MaxConcurrentGenerations int
-}
-
-func NewService(deps Deps, limits Limits) (*Service, error)
-```
-
-The semaphore must:
-
-- be allocated once during composition;
-- use context-aware acquisition;
-- release through `defer` immediately after acquisition;
-- expose queue/acquire/release telemetry;
-- never be tied to an HTTP handler lifetime.
-
-## Pipeline construction
-
-The current job handler constructs `ScenesService`, `DocumentsService` and
-`Pipeline` for each job. Replace this with one of the following, preferring the
-first:
-
-### Preferred: prebuilt orchestration service
-
-Construct all stable collaborators once in `internal/app/wire_script.go` and
-inject them into `orchestration.Service`.
-
-```go
-type Deps struct {
-    Paths         PathExecutor
-    Scenes        SceneGenerator
-    Documents     DocumentWriter
-    PostProcessor PostProcessor
-    Prewarmer     Prewarmer
-    FolderResolver FolderResolverPort
-    Log           *zap.Logger
+type GenerationLimits struct {
+    MaxConcurrent int
 }
 ```
 
-### Acceptable: application factory
+Construct it once in `internal/app`, acquire with context, and release by defer.
+The capacity controller must not live on `ScriptFlowHandler`.
 
-If some collaborators genuinely depend on each job payload, inject a factory
-interface into the orchestration service. The factory implementation is built
-in `internal/app`; the API handler still does not construct services.
+## Target orchestration API
 
-Do not use the HTTP handler as a dependency container.
+```go
+type GenerateCommand struct {
+    JobID    string
+    Spec     script.GenerationSpec
+    Progress ProgressSink
+}
 
-## HTTP transport after migration
+type GenerateResult struct {
+    Values map[string]any
+}
 
-`internal/api/script/` should contain only:
+type OrchestrationService struct {
+    capacity       CapacityGate
+    paths          PathExecutor
+    scenes         SceneService
+    documents      DocumentService
+    postGeneration PostGenerationService
+    prewarmer      Prewarmer
+    folders        FolderResolver
+    log            *zap.Logger
+}
 
-- Gin binding and validation;
-- request/response DTO conversion;
-- calling application use cases;
-- mapping typed errors to HTTP responses;
-- route registration.
+func (s *OrchestrationService) Generate(
+    ctx context.Context,
+    cmd GenerateCommand,
+) (GenerateResult, error)
+```
 
-It must not contain:
+The application service owns:
 
-- job execution methods;
-- search heuristics;
-- provider loops;
-- translation;
-- Drive folder traversal;
-- scene/document service construction;
-- semaphores;
-- raw goroutines;
-- infrastructure imports.
+- admission control;
+- path selection;
+- prewarm policy;
+- pipeline execution;
+- stage telemetry;
+- post-generation sequencing;
+- result assembly.
 
-A useful static target:
+## Target job delivery adapter
+
+Application-owned job handlers may decode the job payload and adapt progress,
+but they must immediately call the use case:
+
+```go
+type JobHandler struct {
+    generate *OrchestrationService
+    batch    BatchExecutor
+}
+
+func (h *JobHandler) HandleGenerateFromClips(
+    ctx context.Context,
+    j *job.Job,
+    tools *appjobs.JobTools,
+) (map[string]any, error)
+```
+
+Job registration should happen from `internal/app/wire_script.go`, using these
+application handlers. HTTP handlers must not double as job workers.
+
+## Required migration sequence
+
+### Phase 1 — move Drive folder resolution
+
+Move `resolveDriveFolderID` and `findFolderByNameDeep` out of `flow.go`.
+
+Exit checks:
 
 ```bash
-! rg 'internal/infrastructure|database/sql|\bgo func\b|NewPipeline|NewScenesService|NewDocumentsService' internal/api/script --type go
+! rg 'internal/infrastructure/files|driveUploader\.Service\.Files|GetOrCreateFolder' internal/api/script --type go
 ```
 
-## Composition wiring
+### Phase 2 — remove aliases and forwarding functions
 
-Create:
+Update all internal callers to import canonical application types/functions
+directly. Then delete:
 
-```text
-internal/app/wire_script.go
-```
+- `assetSearchTarget` alias;
+- suggestion aliases;
+- `EntityScriptExtractor` alias;
+- `SearchScriptAssets` forwarding function;
+- `SearchArtlistClips` forwarding function;
+- phrase/intro forwarding functions;
+- entity/insight forwarding functions;
+- wrapper `ScriptInsightBuilder`.
 
-Move `wireScriptFlow` out of `registry.go` into this file while retaining the
-same `package app`.
+No forwarding wrapper should remain solely for “zero churn”. Migration churn is
+expected and should be completed in the same focused change.
 
-The wiring sequence should be:
+### Phase 3 — construct stable services once
 
-1. Reuse canonical `AIBundle.ScriptEngine` and `MemoryService`.
-2. Construct repository adapters once.
-3. Construct asset discovery service from ports/adapters.
-4. Construct scene/document/post-generation services once.
-5. Construct orchestration service with its semaphore/limits.
-6. Construct application job handlers.
-7. Register job handlers with the canonical jobs service.
-8. Construct thin HTTP handler/use cases.
-9. Register the route module.
+Move creation of:
 
-Avoid a dependency struct with 20+ unrelated fields. Use focused bundles:
+- `ScenesService`;
+- `DocumentsService`;
+- `Pipeline` or its replacement;
+- capacity semaphore;
+- prewarm adapter;
+- folder resolver
+
+into `internal/app/wire_script.go`.
+
+Do not construct stable services for every job invocation.
+
+### Phase 4 — extract generation orchestration
+
+Move from `handler_jobs.go`:
+
+- capacity acquire/release;
+- dispatch switch;
+- three path methods;
+- pipeline execution;
+- telemetry stages;
+- result assembly.
+
+Add application tests for all paths before deleting the API implementation.
+
+### Phase 5 — move job registration
+
+Replace:
 
 ```go
-type ScriptSearchDeps struct { ... }
-type ScriptGenerationDeps struct { ... }
-type ScriptDeliveryDeps struct { ... }
+ScriptFlowHandler.RegisterJobHandlers(...)
 ```
 
-Each bundle should remain cohesive and preferably contain no more than ten
-fields.
+with application job handler registration from composition.
 
-## Migration sequence
+The route handler and job handler may share use cases, but they must be separate
+delivery adapters.
 
-### Phase 0: behavior characterization
+### Phase 6 — delete migrated API files/shells
 
-Before moving code, add tests for:
+Target outcome:
 
-- explicit clip path;
-- auto-search path;
+```bash
+! test -f internal/api/script/flow.go
+! test -f internal/api/script/handler_jobs.go
+```
+
+If filenames remain for route organization, their contents must be strictly
+transport-only and the old aliases/receiver job methods must be gone.
+
+### Phase 7 — hard architecture gate
+
+Check 19 is currently soft-log and its forbidden-import expression does not
+cover every infrastructure package. Promote it to hard fail after cleanup and
+include generic application-specific infrastructure imports.
+
+At minimum, enforce:
+
+```bash
+! rg 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure/' internal/api --type go
+! rg 'scriptGenSem|NewScenesService|NewDocumentsService|NewPipeline|go func' internal/api/script --type go
+! rg 'func \(h \*ScriptFlowHandler\) Handle.*Job' internal/api/script --type go
+```
+
+Explicit middleware/bootstrap exceptions should be narrow and documented.
+
+## Characterization tests required
+
+Before deleting the current workflow, cover:
+
+- explicit `clip_ids` path;
+- auto-search `num_clips` path;
 - text-only path;
-- missing clip source builder returns explicit error;
-- context cancellation while waiting for the generation semaphore;
-- post-generation entity/image/voiceover/doc phases;
-- progress adaptation;
-- auto-harvest only when final search results are empty;
-- duplicate and relevance behavior;
-- Artlist translation fallback;
-- prewarm gating.
-
-These tests should target extracted application behavior. Where the current code
-is hard to instantiate, add narrow characterization tests around pure helpers
-first.
-
-### Phase 1: move pure models and heuristics
-
-Move suggestion DTOs, target values, relevance, de-duplication and query helpers
-into `internal/application/scripts/assets/`. Update imports and tests in the same
-change. Do not leave forwarding functions in the API package.
-
-### Phase 2: define ports and move search orchestration
-
-Introduce search/translation/folder/harvest ports and move
-`SearchScriptAssets`, Artlist search and related helpers. Build adapters in
-`internal/app` from existing services.
-
-### Phase 3: extract post-generation service
-
-Move entity extraction, insight building, metadata conversion, scene/voiceover
-coordination and document assembly into application services. Preserve current
-parallel/sequential dependency graph.
-
-### Phase 4: extract job orchestration
-
-Move semaphore, payload dispatch, pipeline invocation, stage logs and result
-assembly to `orchestration.Service` and `scripts/jobs` handlers.
-
-### Phase 5: update job registration
-
-Register the new application job handlers from `wire_script.go`. Remove
-`ScriptFlowHandler.RegisterJobHandlers` when no longer used.
-
-### Phase 6: shrink API package
-
-Delete `flow.go` and `handler_jobs.go` after all callers use application
-services. Keep only transport files. Do not leave deprecated aliases.
-
-### Phase 7: harden architecture gate
-
-Add or strengthen checks so `internal/api/script` cannot import infrastructure,
-construct application services or contain raw job handler methods.
+- missing clip source builder;
+- missing media curator;
+- context cancellation while waiting for capacity;
+- semaphore release on every failure;
+- prewarm gating and timeout;
+- scene/document/pipeline construction dependencies;
+- entity, metadata, scene, voiceover and document phases;
+- progress milestones;
+- final result fields and compatibility;
+- cache/fingerprint behavior;
+- Drive folder ID, name and nested-path resolution;
+- batch generation job behavior;
+- catalog/curation registration when enabled.
 
 ## Error policy
 
-Create typed application errors for expected conditions, for example:
+Introduce typed expected errors, for example:
 
 ```go
 var (
     ErrClipPipelineUnavailable = errors.New("clip pipeline unavailable")
-    ErrSearchUnavailable       = errors.New("script asset search unavailable")
-    ErrDocumentUnavailable     = errors.New("document writer unavailable")
-    ErrGenerationBusy          = errors.New("script generation capacity exhausted")
+    ErrAutoSearchUnavailable   = errors.New("auto-search pipeline unavailable")
+    ErrGenerationBusy          = errors.New("script generation capacity unavailable")
+    ErrFolderResolution        = errors.New("script folder resolution failed")
 )
 ```
 
-HTTP and job adapters translate these errors independently:
+Application code returns these errors. HTTP and job adapters map them
+independently.
 
-- API may return 400/409/503 as appropriate.
-- Job handler returns an error for retry/failure policy.
-- Application services never return Gin responses or job-specific JSON errors.
-
-## Tests and validation
-
-Focused commands:
+## Validation
 
 ```bash
 go test ./internal/application/scripts/...
@@ -547,32 +411,25 @@ go test ./internal/app/...
 go vet ./internal/application/scripts/... ./internal/api/script/... ./internal/app/...
 go build ./...
 bash scripts/ci-architectural-checks.sh
-```
 
-Static exit checks:
-
-```bash
-! test -f internal/api/script/flow.go
-! test -f internal/api/script/handler_jobs.go
-! rg 'internal/infrastructure|database/sql' internal/api/script --type go
+! rg 'internal/infrastructure' internal/api/script --type go
+! rg 'scriptGenSem|NewScenesService|NewDocumentsService|NewPipeline|go func' internal/api/script --type go
 ! rg 'func \(h \*ScriptFlowHandler\) Handle.*Job' internal/api/script --type go
-! rg 'NewScenesService|NewDocumentsService|NewPipeline|scriptGenSem' internal/api/script --type go
-rg 'script.generate_batch|script.generate_from_clips' internal/application/scripts internal/app --type go
+! rg '= scripts\.' internal/api/script/flow.go internal/api/script/handler_jobs.go 2>/dev/null
 ```
 
 ## Definition of done
 
-The migration is complete when:
+This blocker is closed only when:
 
-- asset search, relevance, de-duplication, translation and harvest policy live
-  under `internal/application/scripts/`;
-- generation path selection, concurrency control, post-generation processing
-  and job execution live under `internal/application/scripts/`;
-- `internal/api/script/` contains transport only;
-- API code has no infrastructure imports, semaphores, raw goroutines or service
-  construction;
-- application code depends only on application/domain contracts and ports;
-- concrete adapters are constructed in `internal/app/wire_script.go`;
-- all existing routes, job types, payloads and result shapes remain compatible;
-- no forwarding wrappers or duplicate implementations remain;
-- focused tests, vet, full build and architecture checks pass.
+- `internal/api/script/` contains HTTP binding, validation and DTO mapping only;
+- no API script file imports `internal/infrastructure/*`;
+- no API script file contains Drive traversal or folder creation policy;
+- script capacity, prewarm, path dispatch and pipeline execution are
+  application-owned;
+- stable services are built once in composition;
+- job handlers are application-owned delivery adapters;
+- HTTP handlers are not registered as background job workers;
+- forwarding aliases/wrappers are removed;
+- public routes, job types, payloads and result shapes remain compatible;
+- focused tests, full build, vet and hard architecture gates pass.
