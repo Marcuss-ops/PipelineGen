@@ -8,7 +8,6 @@ import (
 
 	"go.uber.org/zap"
 
-	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
 )
 
 // ────────────────────────────────────────────────────────────────────
@@ -91,7 +90,7 @@ func TestProcessBookFromDriveUseCase_HandleSyncOK(t *testing.T) {
 	fakeSvc := &FakeDriveBookProcessor{
 		Result: &booksService.ProcessFromDriveResult{
 			Success: true,
-			BookResult: &booksService.ProcessResult{
+			BookResult: &ProcessResult{
 				Success:         true,
 				OutputPath:      "/tmp/out.md",
 				PDFPath:         "/tmp/out.pdf",

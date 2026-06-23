@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	booksApp "github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
+	booksService "github.com/Marcuss-ops/PipelineGen/internal/application/books"
 )
 
 // BooksHandler is a thin HTTP shim for book generation. JSON-body

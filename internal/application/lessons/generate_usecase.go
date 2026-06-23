@@ -7,7 +7,7 @@
 // package mirrors it. Per the transport.JSON contract, asyncEnqueuer
 // and lessonProcessor are unexported interfaces declared in this
 // file so the production wiring in internal/app/ passes the concrete
-// pointers (*jobs.Service, *lessonsService.Service) without an
+// pointers (*jobs.Service, *Service) without an
 // adapter layer — they satisfy the interface automatically.
 package lessons
 
@@ -23,7 +23,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -63,9 +62,9 @@ type asyncEnqueuer interface {
 
 // lessonProcessor is the consumer-side abstraction for the
 // lessons-Service GenerateLesson call surface. Production wiring
-// passes the concrete *lessonsService.Service; tests inject a fake.
+// passes the concrete *Service; tests inject a fake.
 type lessonProcessor interface {
-	GenerateLesson(ctx context.Context, req *lessonsService.LessonRequest) (*lessonsService.LessonResult, error)
+	GenerateLesson(ctx context.Context, req *LessonRequest) (*LessonResult, error)
 }
 
 // GenerateLessonRequest is the JSON body for POST /api/lessons/generate.
@@ -207,7 +206,7 @@ func (uc *GenerateLessonUseCase) handleSync(ctx context.Context, req GenerateLes
 		zap.Bool("generate_images", req.GenerateImages),
 		zap.Bool("generate_pdf", req.GeneratePDF),
 	)
-	result, err := uc.svc.GenerateLesson(ctxC, &lessonsService.LessonRequest{
+	result, err := uc.svc.GenerateLesson(ctxC, &LessonRequest{
 		SourceText:     req.SourceText,
 		Title:          req.Title,
 		Language:       req.Language,

@@ -26,7 +26,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
 )
 
 // Package constants — single source of truth for the use-case timeouts
@@ -62,9 +61,9 @@ type asyncEnqueuer interface {
 
 // bookProcessor is the consumer-side abstraction for the books-Service
 // ProcessBook call surface. Same rule: production wiring passes the
-// concrete *booksService.Service, tests inject a fake.
+// concrete *Service, tests inject a fake.
 type bookProcessor interface {
-	ProcessBook(ctx context.Context, req *booksService.ProcessRequest) (*booksService.ProcessResult, error)
+	ProcessBook(ctx context.Context, req *ProcessRequest) (*ProcessResult, error)
 }
 
 // ProcessBookRequest is the JSON body for POST /api/books/process and
@@ -239,7 +238,7 @@ func (uc *ProcessBookUseCase) handleSync(ctx context.Context, req ProcessBookReq
 		zap.String("file", req.FilePath),
 		zap.String("google_doc_url", req.GoogleDocURL),
 	)
-	result, err := uc.svc.ProcessBook(ctxC, &booksService.ProcessRequest{
+	result, err := uc.svc.ProcessBook(ctxC, &ProcessRequest{
 		FilePath:      req.FilePath,
 		GoogleDocURL:  req.GoogleDocURL,
 		Instruction:   req.Instruction,

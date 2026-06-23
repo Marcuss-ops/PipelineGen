@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
 )
 
 // processBookFromDriveTimeout caps the synchronous
@@ -22,11 +21,11 @@ const processBookFromDriveTimeout = 60 * time.Minute
 
 // driveBookProcessor is the consumer-side abstraction for the
 // books-Service ProcessBookFromDrive call surface. Production wiring
-// passes the concrete *booksService.Service, which already has the
+// passes the concrete *Service, which already has the
 // matching method; tests inject a fake to assert the response shape
 // without touching the real Drive stack.
 type driveBookProcessor interface {
-	ProcessBookFromDrive(ctx context.Context, req *booksService.ProcessFromDriveRequest) (*booksService.ProcessFromDriveResult, error)
+	ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriveRequest) (*ProcessFromDriveResult, error)
 }
 
 // ProcessBookFromDriveRequest is the JSON body for POST /api/books/process-from-drive.
@@ -118,7 +117,7 @@ func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBo
 		zap.String("drive_file_url", req.DriveFileURL),
 		zap.Bool("generate_voiceover", req.GenerateVoiceover),
 	)
-	result, err := uc.svc.ProcessBookFromDrive(ctxC, &booksService.ProcessFromDriveRequest{
+	result, err := uc.svc.ProcessBookFromDrive(ctxC, &ProcessFromDriveRequest{
 		DriveFileURL:      req.DriveFileURL,
 		Instruction:       req.Instruction,
 		Model:             req.Model,
