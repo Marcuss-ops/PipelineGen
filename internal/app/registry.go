@@ -22,13 +22,10 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
-	driveapi "github.com/Marcuss-ops/PipelineGen/internal/api/drive"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	searchqueriesapi "github.com/Marcuss-ops/PipelineGen/internal/api/searchqueries"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -54,6 +51,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
@@ -94,7 +92,17 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	wiring := &RegistryWiring{Registry: registry}
 
 	// System module — no deps (PR2: inlined from WireSystem).
-	registerModule(registry, log, systemapi.NewModule(cfg, log, toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter))
+	// PR3 (June 2026): Wave 14 close — the system module absorbed the
+	// former `internal/api/drive/` directory as a second receiver
+	// (DriveHandler) sharing the same /drive sub-group. The ctor takes
+	// driveUploader + reconcileSvc so /drive routes can answer (when
+	// either is nil the corresponding handler returns 503).
+	var driveUploaderAdapter *driveup.Uploader
+	if root.Drive != nil && root.Drive.DriveClient != nil {
+		driveUploaderAdapter = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
+	}
+	reconcileSvcAdapter := drivecleanup.NewService()
+	registerModule(registry, log, systemapi.NewModule(cfg, log, toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter, driveUploaderAdapter, reconcileSvcAdapter))
 
 	// Artlist (PR4d-chunk2): takes *ArtlistBundle + vectorStore.
 	artlistBundle := &ArtlistBundle{
@@ -332,11 +340,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 
 	if root.Domains != nil && root.Domains.RealtimeService != nil {
 		realtimeEnabled := cfg != nil && cfg.VectorSearch.RealtimeEnabled
+		// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
+		// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
 		registerModule(registry, log, module.NewRouteModule(
 			"realtime",
 			func() bool { return root.Domains.RealtimeService != nil && realtimeEnabled },
 			"",
-			realtimeapi.NewMatchHandler(root.Domains.RealtimeService, log),
+			assetsapi.NewRealtimeMatchHandler(root.Domains.RealtimeService, log),
 			log,
 		))
 	}
@@ -366,11 +376,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			channelsapi.NewChannelsHandler(assets.NewChannelsRepository(root.DB.DB), log),
 			log,
 		))
+		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
+		// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
 		registerModule(registry, log, module.NewRouteModule(
 			"search_queries",
 			func() bool { return true },
 			"/search-queries",
-			searchqueriesapi.NewSearchqueriesHandler(assets.NewSearchQueriesRepository(root.DB.DB), log),
+			assetsapi.NewSearchQueriesHandler(assets.NewSearchQueriesRepository(root.DB.DB), log),
 			log,
 		))
 	}

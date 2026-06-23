@@ -24,8 +24,8 @@ import (
 	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	workersapi "github.com/Marcuss-ops/PipelineGen/internal/api/workers"
 
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -358,7 +358,11 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		root.Repos.VoiceoverRepo,
 		log,
 	)
-	workerHandler := workersapi.NewInternalworkerHandler(broker, assetSvc, log)
+	// PR3 (June 2026): Wave 14 close — internal/api/workers/ was eliminated
+	// and the handler moved to internal/api/jobs/ as a sibling receiver
+	// (WorkersBrokerHandler). The ctor signature is identical so existing
+	// logic is preserved without churn.
+	workerHandler := jobsapi.NewWorkersBrokerHandler(broker, assetSvc, log)
 	log.Info("wired internal worker handler (broker + asset transfer)")
 
 	cleanup := func() {
