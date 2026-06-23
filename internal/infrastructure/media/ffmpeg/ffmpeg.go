@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
@@ -41,79 +42,31 @@ func NewFromConfig(cfg *config.Config) *Processor {
 // Path returns the configured ffmpeg binary path.
 func (p *Processor) Path() string { return p.path }
 
-// ── Option types ────────────────────────────────────────────────────────
+// ── Type aliases — canonical definitions in ffmpeg/types (PR6-B, June 2026) ──
+//
+// Deprecated: import ".../internal/infrastructure/media/ffmpeg/types" and use
+// types.NormalizeOptions, types.CutJob, etc. directly. These aliases exist
+// for backward compatibility; they will be removed in a future wave.
 
-// NormalizeOptions configures video normalization.
-type NormalizeOptions struct {
-	Duration         int  // Max duration in seconds (0 = no limit)
-	DisableDuration  bool // If true, ignore Duration even if > 0
-	KeepAudio        bool // If true, do not strip audio
-	Width            int
-	Height           int
-	FPS              int
-	Codec            string
-	Preset           string
-	CRF              int
-	KeyframeInterval int // GOP size (keyframe interval, 0 = default)
-}
-
-// CutAndNormalizeOptions combines cut boundaries with normalization parameters.
-type CutAndNormalizeOptions struct {
-	Width   int
-	Height  int
-	FPS     int
-	Codec   string
-	Preset  string
-	CRF     int
-	NoAudio bool
-}
-
-// CutJob defines a single clip to extract from a source video.
-type CutJob struct {
-	StartSec float64
-	EndSec   float64
-	Output   string
-}
-
-// WatermarkOptions configures how a watermark overlay is applied to a video.
-type WatermarkOptions struct {
-	ImagePath             string
-	Opacity               float64
-	Position              string
-	ScalePercent          int
-	GreenScreenColor      string
-	GreenScreenSimilarity float64
-	GreenScreenBlend      float64
-}
-
-// ── Default helpers ─────────────────────────────────────────────────────
+type (
+	NormalizeOptions      = types.NormalizeOptions
+	CutAndNormalizeOptions = types.CutAndNormalizeOptions
+	CutJob                = types.CutJob
+	WatermarkOptions      = types.WatermarkOptions
+)
 
 // DefaultNormalizeOptions returns defaults from config.
+//
+// Deprecated: use types.DefaultNormalizeOptions directly.
 func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
-	v := cfg.Video.WithDefaults()
-	return NormalizeOptions{
-		Duration:         v.Duration,
-		Width:            v.Width,
-		Height:           v.Height,
-		FPS:              v.FPS,
-		Codec:            v.Codec,
-		Preset:           v.Preset,
-		CRF:              v.CRF,
-		KeyframeInterval: v.KeyframeInterval,
-	}
+	return types.DefaultNormalizeOptions(cfg)
 }
 
 // DefaultWatermarkOptions returns sensible defaults for watermark overlay.
+//
+// Deprecated: use types.DefaultWatermarkOptions directly.
 func DefaultWatermarkOptions(imagePath string) WatermarkOptions {
-	return WatermarkOptions{
-		ImagePath:             imagePath,
-		Opacity:               0.25,
-		Position:              "center",
-		ScalePercent:          20,
-		GreenScreenColor:      "0x00FF00",
-		GreenScreenSimilarity: 0.3,
-		GreenScreenBlend:      0.1,
-	}
+	return types.DefaultWatermarkOptions(imagePath)
 }
 
 // FormatSec formats a float64 seconds value as "SSS.mmm" for ffmpeg timestamps.

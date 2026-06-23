@@ -157,30 +157,6 @@ func TestIndexHealth_NilService(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-// ── QdrantHealth ──────────────────────────────────────────────────────
-
-func TestQdrantHealth_HappyPath(t *testing.T) {
-	ih := &mockIndexHealth{
-		checkFn: func(ctx context.Context) (*appdiag.IndexHealthReport, error) {
-			return &appdiag.IndexHealthReport{OK: true}, nil
-		},
-	}
-	svc := newTestDiagService(ih, nil)
-	handler := NewHandler(svc, zap.NewNop())
-	r := setupDiagRouter(handler)
-
-	w := doDiagJSON(t, r, "GET", "/media/qdrant/health", nil)
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestQdrantHealth_NilService(t *testing.T) {
-	handler := NewHandler(nil, zap.NewNop())
-	r := setupDiagRouter(handler)
-
-	w := doDiagJSON(t, r, "GET", "/media/qdrant/health", nil)
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-}
-
 // ── QdrantCleanup ─────────────────────────────────────────────────────
 
 func TestQdrantCleanup_AlwaysOK(t *testing.T) {

@@ -107,13 +107,11 @@ func (r *Router) Setup() *gin.Engine {
 		log.Info("CORS disabled - no origins configured")
 	}
 
-	// Health checks (public — no auth/rate limit)
+	// Unified health check (PR7, June 2026): single /health with ?deep=true
+	// for aggregated DB+Drive+Qdrant+JobBroker checks.
 	healthHandler := common.NewHealthHandler(r.cfg)
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
-	engine.GET("/api/health", healthHandler.Health)
-	engine.GET("/api/health/deep", middleware.Auth(r.cfg), healthHandler.DeepHealth)
-	engine.GET("/api/health/ollama-timeout", middleware.Auth(r.cfg), healthHandler.OllamaTimeout)
 
 	// Prometheus metrics endpoint — protected if METRICS_AUTH_TOKEN is set
 	metricsHandler := gin.WrapH(promhttp.Handler())
