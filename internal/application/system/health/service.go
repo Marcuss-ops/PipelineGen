@@ -1,9 +1,21 @@
 // Package health — Service orchestrates component health checks.
 package health
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
+)
 
 // ServiceDeps wires the four health checkers into the Service.
+//
+// Drive and Qdrant are OPTIONAL capabilities: passing a nil check
+// (or a typed-nil pointer wrapped in the interface — see
+// pkg/portutil.IsNilPort) makes the corresponding health check return
+// {ok: true, applicable: false} without contacting the dependency.
+// DB and Jobs are MANDATORY: a missing checker produces
+// {ok: false, error: "<name> checker not wired"} so misconfiguration
+// is surfaced loudly instead of silently passing.
 type ServiceDeps struct {
 	DB    DBChecker
 	Drive DriveChecker
@@ -39,6 +51,18 @@ type HealthResponse struct {
 // Check runs the requested component checks and returns a unified response.
 // All named checks are run even if one fails — the response aggregates
 // all results and sets OK=false when any check fails.
+//
+// fix/health-capabilities-optional Commit 3:
+//   - Drive and Qdrant are OPTIONAL capabilities. When their checker is
+//     nil (capability opted out at composition time) we return
+//     {ok: true, applicable: false} instead of ok=false. This prevents
+//     health endpoints in Drive-less / vector-search-less deployments
+//     from reporting 503 solely because the capability is missing.
+//   - Aggregation: a check whose result carries applicable=false is
+//     treated as opt-out and does not flip allOK. DB and Jobs remain
+//     mandatory (nil checker still produces ok=false with an error).
+//   - Unknown check names still report unhealthy (defensive: prevents
+//     callers from silently passing on a typo).
 func (s *Service) Check(ctx context.Context, names []string) HealthResponse {
 	if len(names) == 0 {
 		return HealthResponse{OK: true, Status: "healthy"}
@@ -51,25 +75,37 @@ func (s *Service) Check(ctx context.Context, names []string) HealthResponse {
 		var res CheckResult
 		switch name {
 		case "db":
-			if s.db != nil {
+			// DB is mandatory. Guard against both nil interface AND
+			// typed-nil pointer (defensive — composition.go never
+			// produces typed-nil today but a future caller might).
+			if s.db != nil && !portutil.IsNilPort(s.db) {
 				res = s.db.CheckDB(ctx)
 			} else {
 				res = CheckResult{"ok": false, "duration_ms": 0, "error": "db checker not wired"}
 			}
 		case "drive":
-			if s.drive != nil {
+			// Drive is optional: nil OR typed-nil checker = capability not wired.
+			if s.drive != nil && !portutil.IsNilPort(s.drive) {
 				res = s.drive.CheckDrive(ctx)
 			} else {
-				res = CheckResult{"ok": false, "duration_ms": 0, "error": "drive checker not wired"}
+				res = CheckResult{
+					"ok": true, "applicable": false, "duration_ms": 0,
+					"note": "drive checker not wired",
+				}
 			}
 		case "qdrant":
-			if s.qdrant != nil {
+			// Qdrant is optional: nil OR typed-nil checker = vector search disabled.
+			if s.qdrant != nil && !portutil.IsNilPort(s.qdrant) {
 				res = s.qdrant.CheckQdrant(ctx)
 			} else {
-				res = CheckResult{"ok": false, "duration_ms": 0, "error": "qdrant checker not wired"}
+				res = CheckResult{
+					"ok": true, "applicable": false, "duration_ms": 0,
+					"note": "qdrant checker not wired",
+				}
 			}
 		case "jobs":
-			if s.jobs != nil {
+			// Jobs is mandatory: nil OR typed-nil checker is a misconfiguration.
+			if s.jobs != nil && !portutil.IsNilPort(s.jobs) {
 				res = s.jobs.CheckJobs(ctx)
 			} else {
 				res = CheckResult{"ok": false, "duration_ms": 0, "error": "jobs checker not wired"}
@@ -85,7 +121,11 @@ func (s *Service) Check(ctx context.Context, names []string) HealthResponse {
 		}
 
 		checks[name] = res
-		if ok, _ := res["ok"].(bool); !ok {
+		// Aggregation rule: applicable=false → opted out, do not fail-closed.
+		// No "applicable" key (or applicable=true) + ok=false → fail-closed.
+		if applicable, hasApplicable := res["applicable"].(bool); hasApplicable && !applicable {
+			// opted out: skip
+		} else if ok, _ := res["ok"].(bool); !ok {
 			allOK = false
 		}
 	}
