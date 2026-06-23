@@ -4,6 +4,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -59,8 +60,9 @@ type AssetsWiring struct {
 // PR4d-chunk2 (June 2026): takes *AssetsBundle + 8 narrow direct args
 // (VectorStore, JobsBundle, voiceoverSvc, voiceoverSync, realtimeSvc,
 // catalogRepo, maintenanceSvc). ClipIndexer is in the bundle now.
-// 10 params total — matches the AGENTS.md / arch bundle cap.
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc *realtime.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service) (*AssetsWiring, error) {
+// PR3 (June 2026): providerRegistry added for constructor injection
+// (replaces post-construction SetProviderRegistry).
+func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc *realtime.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry) (*AssetsWiring, error) {
 	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
@@ -71,7 +73,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 		driveCleanupSvc = drivecleanup.NewService()
 	}
 	deletionSvc := media.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, voiceoverSvc, voiceoverSync, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, driveCleanupSvc, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, log)
+	handler := sourcesapi.NewSourcesHandler(cfg, voiceoverSvc, voiceoverSync, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, driveCleanupSvc, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, log)
 	if bundle.VoiceoverRepo != nil {
 		handler.SetVoiceoverRepo(bundle.VoiceoverRepo)
 	}

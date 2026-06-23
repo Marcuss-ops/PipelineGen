@@ -169,18 +169,6 @@ func (h *SourcesHandler) SetImagesRepo(repo *assets.ImagesRepository) {
 	}
 }
 
-// SetProviderRegistry wires the canonical providers.Registry after
-// composition. Search handlers (handler_sources_search_handlers.go)
-// use ByCapability(CapabilitySearch) dispatch when wired; when nil,
-// source-level search returns no results.
-// Late-binding matches the existing Set* setter pattern (see
-// SetRealtimeService, SetClipIndexer, etc. above); the registry is
-// constructed AFTER WireAssets in internal/app/registry.go so a
-// constructor parameter would not work without reordering wiring.
-func (h *SourcesHandler) SetProviderRegistry(reg *providers.Registry) {
-	h.providerRegistry = reg
-}
-
 // SetFolderMemSvc sets the folder memory service. clips.Handler reads it
 // in RegenerateManifest for the folder heuristic. sources/ search_handlers.go
 // also uses folderMemSvc directly for legacy path resolution.
@@ -195,8 +183,8 @@ func (h *SourcesHandler) SetFolderMemSvc(svc *foldermemory.Service) {
 // embedded in this SourcesHandler is wired from the same dep singletons
 // so it shares the repos/uploads/jobs as the legacy in-package methods.
 //
-// Source-level search dispatch uses the providers.Registry (wired later
-// via SetProviderRegistry). The youtube/artlist singletons are no longer
+// Source-level search dispatch uses the providers.Registry (wired via
+// constructor injection). The youtube/artlist singletons are no longer
 // stored directly — their adapters register in the registry instead.
 //
 // params:
@@ -204,7 +192,8 @@ func (h *SourcesHandler) SetFolderMemSvc(svc *foldermemory.Service) {
 //	cfg, voiceoverSvc, voiceoverSync, jobsSvc,
 //	catalogRepo, assetIndexSvc, artlistRepo, clipsRepo, stockRepo,
 //	cleanupSvc, folderMemSvc, assetTreeSvc, driveUploader,
-//	mediaProcessor, deletionSvc, catalogSync, maintenanceSvc, log
+//	mediaProcessor, deletionSvc, catalogSync, maintenanceSvc,
+//	providerRegistry, log
 func NewSourcesHandler(
 	cfg *config.Config,
 	voiceoverSvc *voiceover.Service,
@@ -221,6 +210,7 @@ func NewSourcesHandler(
 	deletionSvc *media.DeletionService,
 	catalogSync *catalogsync.Service,
 	maintenanceSvc *maintenance.Service,
+	providerRegistry *providers.Registry,
 	log *zap.Logger,
 ) *SourcesHandler {
 	h := &SourcesHandler{
@@ -239,8 +229,9 @@ func NewSourcesHandler(
 		mediaProcessor: mediaProcessor,
 		deletionSvc:    deletionSvc,
 		catalogSync:    catalogSync,
-		maintenanceSvc: maintenanceSvc,
-		log:            log,
+		maintenanceSvc:   maintenanceSvc,
+		providerRegistry: providerRegistry,
+		log:              log,
 	}
 
 	// Build the topic→folder resolver. Best-effort: nil-tolerated so a

@@ -180,8 +180,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		registerModule(registry, log, mod)
 	}
 
-	// YouTubeClip (PR4d-chunk2): 4 direct narrow args.
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo); err != nil {
+	// YouTubeClip (PR4d-chunk2): 4 direct narrow args + ProviderRegistry.
+	// ProviderRegistry is not yet populated when WireYouTubeClip runs —
+	// the handler's constructor resolves providers lazily so it's fine
+	// to pass the empty registry here; it will be populated by the time
+	// HTTP requests arrive.
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		registerModule(registry, log, yw.Module)
@@ -202,7 +206,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			return mod, nil
 		}},
 		{"Images", func() (module.Module, error) {
-			imagesHandler = imagesapi.NewImagesHandler(root.Domains.ImageService)
+			var ingestSvc *ingest.Service
+			if wiring.MediaIngest != nil {
+				ingestSvc = wiring.MediaIngest.Service
+			}
+			imagesHandler = imagesapi.NewImagesHandler(root.Domains.ImageService, ingestSvc)
 			mod := imagesapi.NewModule(cfg, log, imagesHandler)
 			log.Info("created Images module")
 			return mod, nil
@@ -293,11 +301,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	if imagesHandler != nil && wiring.MediaIngest != nil {
-		imagesHandler.SetIngestService(wiring.MediaIngest.Service)
 		if root.Domains != nil && root.Domains.ImageService != nil {
 			root.Domains.ImageService.SetIngestService(wiring.MediaIngest.Service)
 		}
-		log.Info("injected MediaIngest service into ImagesHandler and ImagesService")
+		log.Info("injected MediaIngest service into ImagesService")
 	}
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
 		registerModule(registry, log, scriptapi.NewScriptHistoryModule(cfg, log, scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log)))
@@ -327,7 +334,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		CatalogSyncService: root.Sync.CatalogSync,
 		ClipIndexerService: root.Process.ClipIndexerService,
 	}
-	if aw, err := WireAssets(cfg, log, assetsBundle, root.Process.VectorSvc, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeService, root.Repos.CatalogRepo, maintenanceSvc); err == nil && aw != nil {
+	if aw, err := WireAssets(cfg, log, assetsBundle, root.Process.VectorSvc, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeService, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
@@ -374,12 +381,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			zap.Int("providers", len(pr.All())))
 
 		if wiring.Assets != nil && wiring.Assets.Handler != nil {
-			wiring.Assets.Handler.SetProviderRegistry(pr)
-			log.Info("wired providers.Registry into SourcesHandler for Search dispatch")
+			log.Info("providers.Registry wired into SourcesHandler via constructor (no late-binding needed)")
 		}
 		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
-			wiring.YouTubeClip.Handler.SetProviderRegistry(pr)
-			log.Info("wired providers.Registry into YouTubeClipHandler for Search dispatch")
+			log.Info("providers.Registry wired into YouTubeClipHandler via constructor (no late-binding needed)")
 		}
 	}
 
