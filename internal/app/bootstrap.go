@@ -286,7 +286,8 @@ func migrateLegacyScriptDocs(ctx context.Context, driveClient *gdrive.Service, c
 type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	Cleanup       func()
+	Lifecycle     module.LifecycleManager // wraps startBackgroundJobs + buildCleanup
+	Cleanup       func()               // kept for backward compat (tests); delegates to Lifecycle.Stop
 }
 
 // openLogDB was REMOVED in codex/db-set-and-paths. The Observability DB
@@ -331,11 +332,14 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	registryWiring.Registry.Freeze()
 
-	// Trigger the JobRunner.Start loop. The closure is captured by
-	// lifecycle.go::startBackgroundJobs and freezes the Dispatcher so no
-	// further handlers can register once the runner claims jobs.
+	// Defer the JobRunner.Start loop to the lifecycle. The closure is
+	// captured by lifecycle.go::startBackgroundJobs and freezes the
+	// Dispatcher so no further handlers can register once the runner
+	// claims jobs. It is invoked by serverLifecycle.Start() which
+	// runs inside server.Start() after all wiring is complete.
+	var deferredStartJobRunner func()
 	if jobs != nil && jobs.startJobRunner != nil {
-		jobs.startJobRunner()
+		deferredStartJobRunner = jobs.startJobRunner
 	}
 
 	cleanupStack := make([]func(), 0, 8)
@@ -374,9 +378,12 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		}
 	}
 
+	lifecycle := NewServerLifecycle(deferredStartJobRunner, cleanup)
+
 	return &AppDeps{
 		Registry:      registryWiring.Registry,
 		WorkerHandler: workerHandler,
+		Lifecycle:     lifecycle,
 		Cleanup:       cleanup,
 	}, nil
 }
