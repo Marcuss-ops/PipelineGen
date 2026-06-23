@@ -379,9 +379,10 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 - ✅ **.gitignore cleaned up** (root binaries, logs, cookies, .bak patterns added)
 - ✅ **Scriptflow eliminato** — `internal/application/scriptflow/` directory rimossa, codice assorbito in `internal/application/scripts/`
 - ✅ **Registry provider tipizzato** — `internal/application/assets/providers/` con adapter per Artlist e YouTube
+- ✅ **Consolidation api/sources** — Migrati gli handler di voiceover, soundeffect e register (YouTube) da `internal/api/sources/` a sotto-pacchetti dedicati in `internal/api/assets/` (`voiceover/`, `soundeffect/`, `register/`)
 
 ### Still Pending
-- None (all duplicates and legacy doc folders under `docs/` have been removed)
+- Completion of the remaining `internal/api/sources/` consolidation to `internal/api/assets/` (e.g. artlist, stock, local-to-drive)
 
 ### Current wave status (June 2026 snapshot — source of truth: `architecture/migration.yaml`)
 
@@ -668,8 +669,8 @@ See `ARCHITECTURE.md` for the full diagram. Quick reference:
 │   │   ├── routes.go
 │   │   ├── middleware/
 │   │   ├── script/           # Script endpoints (32 files — target: 5-8)
-│   │   ├── sources/          # Source endpoints (26 files — target: 5-8)
-│   │   ├── assets/           # Merged from scraper + mediaingest
+│   │   ├── sources/          # Source endpoints (artlist, stock, etc. — being consolidated)
+│   │   ├── assets/           # Unified Assets module (storage, diagnostics, search, voiceover, soundeffect, register)
 │   │   ├── content/          # Merged from books + lessons
 │   │   └── <feature>/        # One dir per feature (max 30 files)
 │   ├── app/                  # Composition root, wiring, migrations

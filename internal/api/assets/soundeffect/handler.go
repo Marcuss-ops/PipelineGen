@@ -1,4 +1,5 @@
-package sources
+// Package soundeffect provides thin HTTP handlers for sound effect generation.
+package soundeffect
 
 import (
 	"crypto/md5"
@@ -10,8 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -19,9 +18,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-type SoundEffectHandler struct {
+// Handler manages sound effect generation via Python synth + ffmpeg.
+type Handler struct {
 	clipsRepo              *assets.ClipsRepository
 	driveUploader          *drive.Uploader
 	metaWriter             *semantic.MetadataWriter
@@ -30,15 +31,16 @@ type SoundEffectHandler struct {
 	log                    *zap.Logger
 }
 
-func NewSoundEffectHandler(
+// NewHandler creates a sound effect handler.
+func NewHandler(
 	clipsRepo *assets.ClipsRepository,
 	driveUploader *drive.Uploader,
 	metaWriter *semantic.MetadataWriter,
 	soundEffectsRootFolder string,
 	log *zap.Logger,
-) *SoundEffectHandler {
+) *Handler {
 	r := drive.NewResolver("data", "")
-	return &SoundEffectHandler{
+	return &Handler{
 		clipsRepo:              clipsRepo,
 		driveUploader:          driveUploader,
 		metaWriter:             metaWriter,
@@ -48,11 +50,18 @@ func NewSoundEffectHandler(
 	}
 }
 
-func (h *SoundEffectHandler) RegisterRoutes(r *gin.RouterGroup) {
+// SetMetaWriter updates the metadata writer (late-binding support).
+func (h *Handler) SetMetaWriter(mw *semantic.MetadataWriter) {
+	h.metaWriter = mw
+}
+
+// RegisterRoutes registers the sound_effect sub-routes.
+func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
 }
 
-func (h *SoundEffectHandler) Generate(c *gin.Context) {
+// Generate synthesizes a sound effect and uploads it to Drive.
+func (h *Handler) Generate(c *gin.Context) {
 	var req struct {
 		Name     string  `json:"name" binding:"required"`
 		Duration float64 `json:"duration"` // Default/max 3 seconds
@@ -70,7 +79,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 
 	duration := req.Duration
 	if duration <= 0 || duration > 3.0 {
-		duration = 3.0 // Cap at 3 seconds
+		duration = 3.0
 	}
 
 	ctx := c.Request.Context()
@@ -148,7 +157,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 		}
 	}
 
-	// 5. Generate and write semantic metadata.json locally and upload to Google Drive
+	// 5. Generate and write semantic metadata.json + upload to Drive
 	var driveFileID, driveLink, parentFolderID string
 	tags := []string{"sound_effect", name}
 	searchText := name + " sound effect sfx audio"
@@ -178,7 +187,6 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 			if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
 				parentFolderID, err = h.driveUploader.GetOrCreateFolder(ctx, name, h.soundEffectsRootFolder)
 				if err == nil {
-					// Upload the sound effect MP3 first
 					uploadRes, err := h.driveUploader.UploadFile(ctx, dest.LocalPath, parentFolderID, filepath.Base(dest.LocalPath))
 					if err == nil {
 						driveFileID = uploadRes.FileID
@@ -187,7 +195,6 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 						h.log.Error("failed to upload sound effect to Drive", zap.Error(err))
 					}
 
-					// Upload the metadata.json
 					localMetaPath := filepath.Join(filepath.Dir(dest.LocalPath), "metadata.json")
 					if _, err := os.Stat(localMetaPath); err == nil {
 						_, err = h.driveUploader.UploadFile(ctx, localMetaPath, parentFolderID, "metadata.json")
@@ -201,7 +208,6 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 			}
 		}
 	} else {
-		// Fallback: standard upload without metadata.json if metaWriter is not configured
 		if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
 			parentFolderID, err = h.driveUploader.GetOrCreateFolder(ctx, name, h.soundEffectsRootFolder)
 			if err == nil {
