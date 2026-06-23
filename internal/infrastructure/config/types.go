@@ -14,11 +14,13 @@ import (
 type ConcurrencyConfig struct {
 	// MaxConcurrentVideoExtracts limits parallel yt-dlp download + cut operations.
 	// Was hardcoded at 1 (SQLite lock serialisation); WAL mode now allows ≥10.
-	MaxConcurrentVideoExtracts int `yaml:"max_concurrent_video_extracts" env:"VELOX_CONCURRENT_VIDEO_EXTRACTS" default:"10"`
+	// June 2026 GPU tuning: lowered from 10 to 2 to avoid I/O oversubscription.
+	MaxConcurrentVideoExtracts int `yaml:"max_concurrent_video_extracts" env:"VELOX_CONCURRENT_VIDEO_EXTRACTS" default:"2"`
 
 	// MaxConcurrentScriptGenerations limits concurrent LLM script generation.
 	// Was hardcoded at 2; raised to 50 for 100-worker parallelism.
-	MaxConcurrentScriptGenerations int `yaml:"max_concurrent_script_generations" env:"VELOX_CONCURRENT_SCRIPT_GENERATIONS" default:"50"`
+	// June 2026 GPU tuning: lowered from 50 to 2 to avoid RAM saturation.
+	MaxConcurrentScriptGenerations int `yaml:"max_concurrent_script_generations" env:"VELOX_CONCURRENT_SCRIPT_GENERATIONS" default:"2"`
 
 	// MaxConcurrentNvidiaGenerations limits concurrent GPU image generation requests.
 	// Was hardcoded at 2; raised to 10 (VRAM-bound).
@@ -26,7 +28,8 @@ type ConcurrencyConfig struct {
 
 	// MaxConcurrentOllamaCalls limits concurrent Ollama model invocations.
 	// Was hardcoded at 2; raised to 50 (model server should handle this load).
-	MaxConcurrentOllamaCalls int `yaml:"max_concurrent_ollama_calls" env:"VELOX_CONCURRENT_OLLAMA_CALLS" default:"50"`
+	// June 2026 GPU tuning: lowered from 50 to 1 to avoid RAM saturation on single GPU.
+	MaxConcurrentOllamaCalls int `yaml:"max_concurrent_ollama_calls" env:"VELOX_CONCURRENT_OLLAMA_CALLS" default:"1"`
 
 	// MaxConcurrentChannelChecks limits concurrent YouTube channel monitor checks.
 	// Was hardcoded at 3; raised to 20.
