@@ -14,7 +14,7 @@ import (
 	"context"
 
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 )
 
 // VideoPipelineAdapter wraps videomuscles.Pipeline and converts between

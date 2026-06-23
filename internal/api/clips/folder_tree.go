@@ -18,7 +18,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 		folderID = ""
 	}
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
@@ -93,7 +93,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 
 	if len(children) == 0 {
 		// Fallback to clips repository if asset tree is empty
-		if repo := h.resolveRepo(source); repo != nil {
+		if repo := h.repoForSource(source); repo != nil {
 			clipChildren, clipErr := repo.GetFolderChildren(c.Request.Context(), parentID)
 			if clipErr == nil {
 				for _, clip := range clipChildren {

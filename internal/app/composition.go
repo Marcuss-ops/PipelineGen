@@ -67,7 +67,7 @@ import (
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
@@ -78,8 +78,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -191,7 +191,7 @@ type SyncBundle struct {
 // MaintBundle owns the periodic maintenance + deletion services.
 type MaintBundle struct {
 	MaintenanceSvc *maintenance.Service
-	DeletionSvc    *media.DeletionService
+	DeletionSvc    *deletion.DeletionService
 }
 
 // UtilityBundle owns the lightweight non-domain HTTP utility handlers.
@@ -797,7 +797,7 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
 func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle) (*MaintBundle, error) {
 	_ = ctx
-	deletionSvc := media.NewDeletionService(
+	deletionSvc := deletion.NewDeletionService(
 		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo,
 		repos.VoiceoverRepo, repos.ImageRepo,
 		drive.DriveUploader, search.AssetTreeService, search.AssetIndexService, log,

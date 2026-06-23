@@ -148,7 +148,7 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 
 	// Try to find and enrich via clip indexer first (works for clips/stock/artlist/youtube)
 	if req.Source != "" && (h.clipIndexer != nil || h.vectorStore != nil) {
-		repo := h.resolveRepo(req.Source)
+		repo := h.repoForSource(req.Source)
 		if repo != nil {
 			clip, err := repo.GetClip(ctx, req.AssetID)
 			if err == nil && clip != nil {
@@ -204,7 +204,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return

@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
+	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )

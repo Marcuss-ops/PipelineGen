@@ -21,10 +21,9 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 )
 
@@ -32,11 +31,12 @@ import (
 // rather than 14 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
 type Deps struct {
+	SourceResolver *artifacts.SourceResolver
 	AssetRepo      asset.Repository
 	ClipsRepo      *assets.ClipsRepository
 	StockRepo      *assets.ClipsRepository
 	ArtlistRepo    *assets.ClipsRepository
-	DeletionSvc    *media.DeletionService
+	DeletionSvc    *deletion.DeletionService
 	DriveUploader  *drive.Uploader
 	MediaProcessor asset.Processor
 	AssetTreeSvc   *assettree.Service
@@ -55,19 +55,17 @@ type Deps struct {
 	// ArtifactSvc streams uploaded files through content-addressed drive.
 	// Used by UploadVideoClip. Nil means POST /upload-video returns 500.
 	ArtifactSvc *artifacts.Service
-	// FolderMemSvc runs the legacy folder heuristic for manifest regen.
-	// Used by RegenerateManifest. Nil means POST /folders/:id/manifest returns 500.
-	FolderMemSvc *foldermemory.Service
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
 // no nested struct fan-out.
 type Handler struct {
+	sourceResolver *artifacts.SourceResolver
 	assetRepo      asset.Repository
 	clipsRepo      *assets.ClipsRepository
 	stockRepo      *assets.ClipsRepository
 	artlistRepo    *assets.ClipsRepository
-	deletionSvc    *media.DeletionService
+	deletionSvc    *deletion.DeletionService
 	driveUploader  *drive.Uploader
 	mediaProcessor asset.Processor
 	assetTreeSvc   *assettree.Service
@@ -86,8 +84,6 @@ type Handler struct {
 	imagesRepo *assets.ImagesRepository
 	// artifactSvc mirrors Deps.ArtifactSvc. Same late-binding semantics.
 	artifactSvc *artifacts.Service
-	// folderMemSvc mirrors Deps.FolderMemSvc. Same late-binding semantics.
-	folderMemSvc *foldermemory.Service
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -95,6 +91,7 @@ type Handler struct {
 // internal-error handle it (preserved legacy behavior).
 func NewHandler(d Deps) *Handler {
 	return &Handler{
+		sourceResolver: d.SourceResolver,
 		assetRepo:      d.AssetRepo,
 		clipsRepo:      d.ClipsRepo,
 		stockRepo:      d.StockRepo,
@@ -112,68 +109,16 @@ func NewHandler(d Deps) *Handler {
 		voiceoverRepo:  d.VoiceoverRepo,
 		imagesRepo:     d.ImagesRepo,
 		artifactSvc:    d.ArtifactSvc,
-		folderMemSvc:   d.FolderMemSvc,
 	}
 }
 
-// SetVoiceoverRepo is a post-construction setter for late-binding the
-// voiceover repository. SourcesHandler.SetVoiceoverRepo delegates here.
-func (h *Handler) SetVoiceoverRepo(repo *assets.VoiceoversRepository) {
-	h.voiceoverRepo = repo
-}
-
-// SetImagesRepo is a post-construction setter for the images repository.
-// Mirrors SourcesHandler.SetImagesRepo. clips.Handler reads it in
-// ListClips for the "source=images" branch.
-func (h *Handler) SetImagesRepo(repo *assets.ImagesRepository) {
-	h.imagesRepo = repo
-}
-
-// SetArtifactSvc is a post-construction setter for the artifact service.
-// Mirrors SourcesHandler.SetArtifactSvc. clips.Handler uses it in
-// UploadVideoClip for content-addressed blob drive.
-func (h *Handler) SetArtifactSvc(svc *artifacts.Service) {
-	h.artifactSvc = svc
-}
-
-// SetFolderMemSvc is a post-construction setter for the folder memory
-// service. Mirrors SourcesHandler.SetFolderMemSvc. clips.Handler uses it
-// in RegenerateManifest for the folder heuristic.
-func (h *Handler) SetFolderMemSvc(svc *foldermemory.Service) {
-	h.folderMemSvc = svc
-}
-
-// resolveRepo standardizes source-string → sqliteclips.Repository dispatch.
-// Returns nil for unknown sources (callers must validate before use).
-func (h *Handler) resolveRepo(source string) *assets.ClipsRepository {
-	switch source {
-	case "youtube":
-		return h.clipsRepo
-	case "artlist":
-		return h.artlistRepo
-	case "stock":
-		return h.stockRepo
-	default:
+// repoForSource resolves a clip source to its canonical repository.
+// Standard clip sources are resolved through the shared source resolver.
+func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
+	if h.sourceResolver == nil {
 		return nil
 	}
-}
-
-// SetClipIndexer is a post-construction setter for late-binding the
-// indexer service. SourcesHandler.SetClipIndexer delegates here.
-func (h *Handler) SetClipIndexer(ci *clipindexer.Service) {
-	h.clipIndexer = ci
-}
-
-// SetVectorStore is a post-construction setter for late-binding the vector
-// store service. SourcesHandler.SetVectorStore delegates here.
-func (h *Handler) SetVectorStore(vs *qdrant.Service) {
-	h.vectorStore = vs
-}
-
-// SetMetaWriter is a post-construction setter for late-binding the meta
-// writer. SourcesHandler.SetMetaWriter delegates here.
-func (h *Handler) SetMetaWriter(mw *semantic.MetadataWriter) {
-	h.metaWriter = mw
+	return h.sourceResolver.ResolveRepo(source)
 }
 
 // RegisterJobHandlers wires up the bulk-upload worker. SourcesHandler's

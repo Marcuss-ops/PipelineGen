@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )

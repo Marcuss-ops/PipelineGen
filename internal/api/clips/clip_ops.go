@@ -37,7 +37,7 @@ func (h *Handler) Reconcile(c *gin.Context) {
 		return
 	}
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
@@ -106,7 +106,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 		}
 	}
 
-	repo := h.resolveRepo(source)
+	repo := h.repoForSource(source)
 	sourceLower := strings.ToLower(source)
 	if repo == nil && sourceLower != "images" && sourceLower != "voiceover" {
 		apiutil.BadRequest(c, "invalid source: "+source)
@@ -192,7 +192,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 		return
 	}
 
-	repo := h.resolveRepo(source)
+		repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
