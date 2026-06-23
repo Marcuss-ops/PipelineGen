@@ -16,7 +16,10 @@ import (
 // The assertion uses the external test package pattern (`drive_test`)
 // so the test can import both `artlist` (for the port interface type)
 // and `drive` (for the adapter type). PR2.7 closed the cycle via Go
-// type alias: artlist.DriveFileRef is `type ... = drivepkg.DriveFileRef`,
+// W16-PR4: drivepkg.DriveFileRef is the canonical struct; the prior
+// `type artlist.DriveFileRef = drivepkg.DriveFileRef` alias was removed
+// (PR2.7 circular-dep workaround is no longer needed).
+
 // so the port interface returning []DriveFileRef resolves at compile
 // time through the alias — folder_manager.go never imports artlist
 // (the previous cycle aggregator). Production graph remains acyclic.

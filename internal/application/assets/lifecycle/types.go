@@ -55,16 +55,18 @@ type FinalizeResult struct {
 	Error        string
 }
 
-// Use assetop types for compatibility
-type ExistingAssetQuery = assetop.ExistingAssetQuery
-type AssetRecord = assetop.AssetRecord
-
-// AssetRecordStore defines the interface for asset record persistence
+// AssetRecordStore defines the interface for asset record persistence.
+// Method signatures use assetop.X types directly (no re-export aliases).
+// The three impact adapters in internal/application/assets/ingest/
+// (adapter_voiceover.go, adapter_clip.go, adapter_image.go) already
+// reference `assetop.ExistingAssetQuery` and `assetop.AssetRecord` so
+// dropping the prior `type ... = assetop.X` aliases from this file
+// required NO consumer-side changes. See W16-PR4 PR description.
 type AssetRecordStore interface {
 	Upsert(ctx context.Context, rec *artifacts.MediaRecord) error
 	Get(ctx context.Context, id string) (*artifacts.MediaRecord, error)
-	FindExisting(ctx context.Context, query ExistingAssetQuery) (*AssetRecord, error)
-	ListWithDriveFileID(ctx context.Context, source string) ([]*AssetRecord, error)
+	FindExisting(ctx context.Context, query assetop.ExistingAssetQuery) (*assetop.AssetRecord, error)
+	ListWithDriveFileID(ctx context.Context, source string) ([]*assetop.AssetRecord, error)
 	MarkDriveMissing(ctx context.Context, id string) error
 	DeleteAssetRecord(ctx context.Context, id string) error
 }

@@ -16,8 +16,10 @@
 //	artlist → assets/artifacts/verifier.go → drive → artlist
 //
 // which Go rejected as a cycle once folder_manager.go started importing
-// artlist for `[]artlist.DriveFileRef` (PR2.7's port return type).
-//
+// W16-PR4: port now returns `[]drivepkg.DriveFileRef` (the prior
+// application-layer alias was removed; the canonical name resolves
+// from internal/infrastructure/drive.DriveFileRef).
+
 // Fix: strip the concrete out of verifier.go (which now holds ONLY the
 // `DriveVerifier` interface + `HTTPDriveVerifier` HTTP-based fallback),
 // and place the SDK-wired concrete here in infrastructure where the SDK

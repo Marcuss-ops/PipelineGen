@@ -16,13 +16,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -355,7 +355,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 
 // SearchAdvanced performs advanced clip search with structured filters.
 func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
-	var req assets.AdvancedSearchRequest
+	var req asset.AdvancedSearchRequest
 
 	// Support both GET (query params) and POST (JSON body)
 	if c.Request.Method == "GET" {

@@ -616,17 +616,14 @@ func DeriveSearchVisibility(qualityScore float64) string {
 
 // ── Rich metadata normalization ────────────────────────────────────────────
 
-// clipRichMetadata is a zero-copy alias to types.ClipRichMetadata.
-type clipRichMetadata = types.ClipRichMetadata
-
 // FallbackClipRichMetadata builds a clipRichMetadata from text heuristics.
-func FallbackClipRichMetadata(title, transcript, description string) *clipRichMetadata {
+func FallbackClipRichMetadata(title, transcript, description string) *types.ClipRichMetadata {
 	summary := DeriveFallbackClipSummary(transcript, description)
 	cleanTitle := DeriveFallbackClipTitle(title, transcript, description)
 	shortTitle := DeriveFallbackShortTitle(cleanTitle)
 	topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, tags, hook := DeriveFallbackSemanticFields(title, transcript, description, cleanTitle)
 	embeddingText := BuildEmbeddingText(cleanTitle, summary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, transcript)
-	return &clipRichMetadata{
+	return &types.ClipRichMetadata{
 		ClipSummary:     summary,
 		Topics:          topics,
 		Speakers:        speakers,
@@ -644,7 +641,7 @@ func FallbackClipRichMetadata(title, transcript, description string) *clipRichMe
 }
 
 // NormalizeClipRichMetadata normalizes and fills gaps in a clipRichMetadata.
-func NormalizeClipRichMetadata(meta *clipRichMetadata, title, transcript, description string) *clipRichMetadata {
+func NormalizeClipRichMetadata(meta *types.ClipRichMetadata, title, transcript, description string) *types.ClipRichMetadata {
 	if meta == nil {
 		return FallbackClipRichMetadata(title, transcript, description)
 	}
@@ -711,7 +708,7 @@ func NormalizeClipRichMetadata(meta *clipRichMetadata, title, transcript, descri
 }
 
 // MergeYouTubeClipTags combines existing tags, YouTube tags, and clip metadata fields.
-func MergeYouTubeClipTags(existingTags, ytTags []string, clipMetadata *clipRichMetadata) []string {
+func MergeYouTubeClipTags(existingTags, ytTags []string, clipMetadata *types.ClipRichMetadata) []string {
 	combined := make([]string, 0, len(existingTags)+len(ytTags))
 	combined = append(combined, existingTags...)
 	combined = append(combined, ytTags...)

@@ -156,24 +156,6 @@ type Uploader interface {
 	Upload(ctx context.Context, localPath, folderID, filename string) (string, error)
 }
 
-// DriveFileRef is the application-level reference to a Drive file.
-// PR2.7 declares it as a Go type alias to the canonical struct in
-// infrastructure/drive (drivepkg.DriveFileRef) so the DriveFolderManager
-// port can return []DriveFileRef without the infrastructure adapter
-// importing the application package. Callers continue to write
-// artlist.DriveFileRef — the alias is transparent; method sets, struct
-// fields, and interface-style return values stay interchangeable.
-//
-// Why an alias and not a parallel struct: a parallel struct would either
-// (a) duplicate the field set and require conversion at every seam
-// (expensive to maintain, easy to drift) or (b) be imported into
-// ports.go anyway (no cycle benefit). The alias keeps a single source of
-// truth (drive.DriveFileRef) while preserving the developer-facing
-// name callers expect. The "Name" field is currently used only by
-// diagnostic logging; semantic_enricher reads .ID — kept broad enough
-// for future callers that need to identify siblings by filename.
-type DriveFileRef = drivepkg.DriveFileRef
-
 // DriveFolderManager is the wide port covering all Drive folder/file
 // operations the application needs. PR2.7 introduced this port to
 // replace (a) the raw *google.golang.org/api/drive/v3 Service previously
@@ -196,13 +178,21 @@ type DriveFolderManager interface {
 	// than creating a duplicate. Returns the resolved folder ID.
 	EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error)
 
-	// ListByQuery returns DriveFileRef entries matching the supplied
-	// raw query string (e.g. "'XYZ' in parents and trashed = false and
-	// name = 'metadata.json'"). Server-side filtering of trashed
-	// entries is the caller's responsibility (include
+	// ListByQuery returns drivepkg.DriveFileRef entries matching the
+	// supplied raw query string (e.g. "'XYZ' in parents and trashed =
+	// false and name = 'metadata.json'"). Server-side filtering of
+	// trashed entries is the caller's responsibility (include
 	// "and trashed = false" in the query). The domain result shape
 	// avoids leaking *assetsapi.File into business logic.
-	ListByQuery(ctx context.Context, query string) ([]DriveFileRef, error)
+	//
+	// W16-PR4: the prior `[]DriveFileRef = []drivepkg.DriveFileRef`
+	// alias was removed; callers reference drivepkg.DriveFileRef
+	// directly. The infrastructure-side implementation in
+	// internal/infrastructure/drive/folder_manager.go continues to
+	// return the canonical package-local DriveFileRef; both packages
+	// resolve to the same underlying type so the port signature
+	// remains type-compatible.
+	ListByQuery(ctx context.Context, query string) ([]drivepkg.DriveFileRef, error)
 
 	// Trash moves a file to Drive's trash. Safer than permanent
 	// deletion — the user can recover. Empty fileID is rejected.
