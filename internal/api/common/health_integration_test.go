@@ -66,7 +66,7 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewHealthHandler(svc)
+	handler := NewHealthHandler(svc,  nil /* ReadyChecker wired in real composition */)
 	router.GET("/health", handler.Health)
 	return handler, router
 }
@@ -194,7 +194,7 @@ func TestHealth_UnknownCheck(t *testing.T) {
 func TestHealth_NilService(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewHealthHandler(nil)
+	handler := NewHealthHandler(nil, nil /* dotest nil-by-design */)
 	router.GET("/health", handler.Health)
 
 	w := doHealthRequest(t, router, "deep=true")

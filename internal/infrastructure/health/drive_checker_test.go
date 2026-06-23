@@ -1,6 +1,11 @@
 package health
 
 import (
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"time"
+	"github.com/stretchr/testify/require"
 	"context"
 	"os"
 	"path/filepath"
@@ -123,4 +128,53 @@ func TestDriveChecker_HTTP403(t *testing.T) {
 	if _, has := res["error"]; !has {
 		t.Fatalf("expected 'error' key on Drive probe failure, got %v", res)
 	}
+}
+
+func TestDriveChecker_TokenMalformedJSON(t *testing.T) {
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{ not-json`), 0o600))
+	c := NewDriveChecker("/fake/creds.json", tok)
+	res := c.CheckDrive(context.Background())
+	require.False(t, res["ok"].(bool), "malformed token must yield ok=false, got %v", res)
+	require.Contains(t, res["error"].(string), "token unavailable")
+}
+
+func TestDriveChecker_TokenMissingAccessToken(t *testing.T) {
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{"refresh_token":"x"}`), 0o600))
+	c := NewDriveChecker("/fake/creds.json", tok)
+	res := c.CheckDrive(context.Background())
+	require.False(t, res["ok"].(bool))
+	require.Contains(t, res["error"].(string), "token unavailable")
+}
+
+func TestDriveChecker_NetworkError(t *testing.T) {
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{"access_token":"x"}`), 0o600))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+	c := &DriveChecker{credsPath:"/fake/creds.json", tokenPath:tok, client:&http.Client{Timeout:500*time.Millisecond}, aboutURL:"http://"+addr+"/drive/v3/about?fields=user"}
+	res := c.CheckDrive(context.Background())
+	require.False(t, res["ok"].(bool), "network error must yield ok=false, got %v", res)
+}
+
+func TestDriveChecker_ContextCancellation(t *testing.T) {
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{"access_token":"x"}`), 0o600))
+	gate := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select { case <-r.Context().Done(): case <-gate: }
+	}))
+	t.Cleanup(func() { ts.Close(); close(gate) })
+	c := &DriveChecker{credsPath:"/fake/creds.json", tokenPath:tok, client:&http.Client{Timeout: 5*time.Second}, aboutURL:ts.URL + "/drive/v3/about?fields=user"}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	res := c.CheckDrive(ctx)
+	require.False(t, res["ok"].(bool), "ctx-cancelled network must yield ok=false, got %v", res)
 }

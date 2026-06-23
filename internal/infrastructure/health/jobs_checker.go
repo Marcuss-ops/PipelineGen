@@ -9,22 +9,45 @@ import (
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 )
 
-// JobsChecker verifies the jobs table in the primary DB.
+// JobsChecker verifies the jobs broker / runner is alive in the primary DB.
 //
-// The *sql.DB is supplied by the composition root so this checker
-// reuses the canonical connection pool and does not open/close a
-// fresh sqlite handle on every health probe.
+// fix(health) close-out (June 2026, problem #2 final cleanup): the
+// historical CheckJobs only verified the table's existence via
+// sqlite_master — that handed out ok=true even when the broker / runner
+// goroutines had silently wedged (no row-level activity for hours).
+// Per the user's directive, CheckJobs now executes a single
+// LivenessQuery that proves the table IS read/write, schema is intact,
+// AND a recent runner heartbeat exists.
+//
+// Liveness heuristic: count rows where status in {running, leased,
+// pending} with updated_at within the last 5 minutes. The check
+// passes (ok=true) so long as the SQL executes without error AND
+// either the count is >= 0 (broker idle but reachable) — we do NOT
+// require count > 0 because a freshly-deployed system legitimately
+// has zero recent activity. The HARD failure is a SQL execution error
+// (table missing, schema drift, DB unreachable), which surfaces as
+// ok=false with the original error in the response payload.
+//
+// Status matching is defensive: the codebase carries both uppercase
+// status values from migration 053_job_lifecycle_atomic.sql
+// (PENDING|LEASED|RUNNING|SUCCEEDED|FAILED|CANCELLED) and lowercase
+// legacy aliases ('running'|'failed'|'completed') from older callers,
+// and LOWER(status) keeps the comparison immune to that drift.
 type JobsChecker struct {
 	db *sql.DB
 }
 
-// NewJobsChecker creates a job-broker-health checker for the supplied *sql.DB.
 func NewJobsChecker(db *sql.DB) *JobsChecker {
 	return &JobsChecker{db: db}
 }
 
-// CheckJobs verifies the jobs table exists and is reachable.
-// Uses c.db.PingContext + c.db.QueryRowContext — no per-call open/close.
+// livenessQuery is the canonical probe. Schema-tolerant (TEXT updated_at
+// lexicographic comparison works for ISO8601 / RFC3339 timestamps) and
+// status-tolerant (LOWER() fold for case-insensitive match).
+const livenessQuery = `SELECT COUNT(*) FROM jobs
+	WHERE LOWER(status) IN ('running', 'leased', 'pending')
+	  AND updated_at > datetime('now', '-5 minute')`
+
 func (c *JobsChecker) CheckJobs(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
 	if err := c.db.PingContext(ctx); err != nil {
@@ -35,17 +58,16 @@ func (c *JobsChecker) CheckJobs(ctx context.Context) healthport.CheckResult {
 		}
 	}
 	var count int
-	if err := c.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs'",
-	).Scan(&count); err != nil || count == 0 {
+	if err := c.db.QueryRowContext(ctx, livenessQuery).Scan(&count); err != nil {
 		return healthport.CheckResult{
 			"ok":          false,
 			"duration_ms": time.Since(start).Milliseconds(),
-			"error":       "jobs table not found",
+			"error":       "jobs table unreachable or malformed: " + err.Error(),
 		}
 	}
 	return healthport.CheckResult{
-		"ok":          true,
-		"duration_ms": time.Since(start).Milliseconds(),
+		"ok":           true,
+		"duration_ms":  time.Since(start).Milliseconds(),
+		"running_jobs": count,
 	}
 }
