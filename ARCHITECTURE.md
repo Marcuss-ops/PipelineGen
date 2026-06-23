@@ -53,10 +53,11 @@ unified job queue; HTTP traffic is served by Gin.
 │       └──────────┬────────────────────────────┬──────────────┘      │
 │                  │                            │                      │
 │                  ▼                            ▼                      │
-│         ┌────────────────┐          ┌──────────────────┐             │
-│         │ data/media.db.sqlite  │          │ data/media.db.sqlite    │             │
-│         │ WAL · 5-10     │          │ WAL · 5-10       │             │
-│         └────────────────┘          └──────────────────┘             │
+│         ┌───────────────────────┐   ┌───────────────────────────────────┐    │
+│         │ data/media/           │   │ data/observability/               │    │
+│         │ media.db.sqlite       │   │ api_requests.db.sqlite            │    │
+│         │ (Primary)             │   │ (Observability)                   │    │
+│         └───────────────────────┘   └───────────────────────────────────┘    │
 │                                                                       │
 │  ┌─ internal/media ─────────────────────────────────────────────┐    │
 │  │ monitor/ images/ voiceover/ stockpipeline/ semantic/         │    │
@@ -110,7 +111,7 @@ Reading from other modules' DB tables is OK; importing another module's
 | `ScriptHistory` | `internal/module/scripthistory.go` | `/api/script-history/*` | `repository/scripts` |
 | `Utility` | `internal/module/core_modules.go` | health, jobs, system routes | `internal/jobs`, `logger` |
 
-[^handler-only]: Handler folders not in the registry (routes wired manually or via the system module): `sources/{artlist,youtube,stock,voiceover,images,clip_crud,drive}`, `mediaingest`, `fullimages`, `scraper`, `google_accounting`. Promote into the registry if you add significant new behaviour.
+[^handler-only]: Handler folders not in the registry (routes wired manually or via the system module): `sources/{artlist,stock,local_to_drive}`, `assets/{storage,diagnostics,search,voiceover,soundeffect,register}`, `mediaingest`, `fullimages`, `scraper`, `google_accounting`. Promote into the registry if you add significant new behaviour.
 
 System routes (always present): `/health`, `/metrics`, `/assets/*`, `/media/google-accounting/*`.
 

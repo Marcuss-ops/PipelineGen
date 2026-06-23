@@ -1,7 +1,7 @@
 // Package assets provides the unified Assets HTTP module that aggregates
-// all asset-related sub-handlers: storage, diagnostics, search,
-// media-ingest, and scraper. A single module registers all routes under
-// the /api/media prefix.
+// all asset-related sub-handlers: storage, diagnostics, search, voiceover,
+// soundeffect, register, media-ingest, and scraper. A single module
+// registers all routes under the /api/media prefix.
 package assets
 
 import (
@@ -9,23 +9,31 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
-	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
 )
 
 // Dependencies holds the pre-built sub-handlers for the Assets module.
 type Dependencies struct {
-	Storage     *assetstorage.Handler
+	// PR 2: thin transport handlers
+	Storage     *storage.Handler
 	Diagnostics *diagnostics.Handler
 	Search      *search.Handler
-	// Existing handlers from the legacy api/assets package:
+
+	// PR 4: extracted from SourcesHandler
+	Voiceover   *voiceover.Handler
+	SoundEffect *soundeffect.Handler
+	Register    *register.Handler
+
+	// Legacy handlers from the flat api/assets package:
 	MediaIngest *MediaingestHandler
 	Scraper     *ScraperHandler
 }
 
-// Module is the unified Assets HTTP module. It does NOT implement
-// lifecycle (Start/Stop) — it only registers routes. Lifecycle is
-// managed by the composition root.
+// Module is the unified Assets HTTP module.
 type Module struct {
 	deps Dependencies
 	log  *zap.Logger
@@ -37,13 +45,12 @@ func NewModule(deps Dependencies, log *zap.Logger) *Module {
 }
 
 // RegisterRoutes registers all asset routes under the given parent group.
-// Mount at /api/media or similar base prefix via api.RouteModule.
 func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 	m.log.Info("Registering unified Assets module routes")
 
-	// Storage operations (Drive file listing, move, rename, folder creation)
+	// Storage operations (drive/move-files, create-folders, etc.)
 	if m.deps.Storage != nil {
-		m.log.Info("Registering storage routes (stub — TODO: implement)")
+		m.deps.Storage.RegisterRoutes(r)
 	}
 
 	// Diagnostics operations (index-health, qdrant health)
@@ -54,6 +61,23 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 	// Search operations (cross-provider search, semantic-search, recommend)
 	if m.deps.Search != nil {
 		m.deps.Search.RegisterRoutes(r)
+	}
+
+	// Voiceover operations (/voiceover/*)
+	if m.deps.Voiceover != nil {
+		voiceover := r.Group("/voiceover")
+		m.deps.Voiceover.RegisterRoutes(voiceover)
+	}
+
+	// SoundEffect operations (/sound_effect/*)
+	if m.deps.SoundEffect != nil {
+		sfx := r.Group("/sound_effect")
+		m.deps.SoundEffect.RegisterRoutes(sfx)
+	}
+
+	// YouTube registration (register-from-youtube, register-batch)
+	if m.deps.Register != nil {
+		m.deps.Register.RegisterRoutes(r)
 	}
 
 	// Legacy media-ingest routes

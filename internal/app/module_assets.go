@@ -6,8 +6,11 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
+	assetregister "github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
+	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
+	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
@@ -87,7 +90,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 		driveCleanupSvc = drivecleanup.NewService()
 	}
 	deletionSvc := media.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, voiceoverSvc, voiceoverSync, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, driveCleanupSvc, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, log)
+	handler := sourcesapi.NewSourcesHandler(cfg, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, driveCleanupSvc, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, log)
 	if bundle.VoiceoverRepo != nil {
 		handler.SetVoiceoverRepo(bundle.VoiceoverRepo)
 	}
@@ -110,8 +113,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	}
 	sourcesMod := sourcesapi.NewSourcesModule(cfg, log, handler)
 
-	// ── PR 3 (June 2026): build the new thin-transport handlers ─────
-	// Storage: adapt drive.Uploader → storage.DrivePort
+	// ── PR 3 (June 2026): storage thin-transport handler ─────
 	var drivePort appstorage.DrivePort
 	if driveUploader != nil {
 		drivePort = &storageDriveAdapter{up: driveUploader}
@@ -119,17 +121,43 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	storageSvc := appstorage.NewService(drivePort, &zapLogAdapter{log})
 	storageHandler := assetstorage.NewHandler(storageSvc, log)
 
-	// Diagnostics and Search: deferred until port adapters are created.
-	// TODO(PR3): wire diagnostics.Service and search.Service with proper
-	// adapters (IndexHealthPort, AssetStatsPort, SearchProviderRegistry, etc.)
+	// Diagnostics and Search: deferred (TODO: wire port adapters)
 	diagHandler := assetsdiag.NewHandler(nil, log)
 	searchHandler := assetsearch.NewHandler(nil, log)
 	log.Warn("diagnostics and search services NOT wired — returning 503 until port adapters are implemented")
+
+	// ── PR 4 (June 2026): extract voiceover, soundeffect, register ─
+	// Voiceover: GroupsResolver already constructed in NewSourcesHandler below;
+	// we build it here too for the standalone handler.
+	var groupsResolver *voiceoverpkg.GroupsResolver
+	if bundle.AssetTreeService != nil {
+		gr, grErr := voiceoverpkg.NewGroupsResolver(bundle.AssetTreeService, log)
+		if grErr != nil {
+			log.Warn("voiceover groups_resolver not initialized (PR4)", zap.Error(grErr))
+		} else {
+			groupsResolver = gr
+		}
+	}
+	defaultVoiceoverRoot := cfg.Drive.VoiceoverRootFolder
+	if defaultVoiceoverRoot != "" {
+		log.Info("voiceover groups_resolver enabled (PR4)", zap.String("root", defaultVoiceoverRoot))
+	}
+	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
+
+	// SoundEffect: wired with real repos + uploader + metaWriter
+	metaWriter = semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
+	sfxHandler := assetsfx.NewHandler(bundle.ClipsRepo, driveUploader, metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
+
+	// Register: YouTube registration handler with full deps
+	registerHandler := assetregister.NewHandler(cfg, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, bundle.ClipIndexerService, vectorStore, metaWriter, handler.Clips(), log)
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
 		Storage:     storageHandler,
 		Diagnostics: diagHandler,
 		Search:      searchHandler,
+		Voiceover:   voiceoverHandler,
+		SoundEffect: sfxHandler,
+		Register:    registerHandler,
 	}, log)
 	assetsRouteMod := module.NewRouteModule(
 		"assets-v2",

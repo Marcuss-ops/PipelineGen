@@ -1,8 +1,17 @@
-package sources
+// Package register provides thin HTTP handlers for YouTube clip registration.
+package register
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -13,8 +22,16 @@ import (
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/clips"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -35,19 +52,81 @@ type RegisterFromYouTubeRequest struct {
 	Force       bool     `json:"force"`
 }
 
+// BatchRegisterRequest is the JSON body for batch registering clips from YouTube.
+type BatchRegisterRequest struct {
+	FolderID string                       `json:"folder_id"`
+	Clips    []RegisterFromYouTubeRequest `json:"clips" binding:"required"`
+}
+
+// BatchClipResult is the result for a single clip in a batch registration.
+type BatchClipResult struct {
+	ClipID    string `json:"clip_id,omitempty"`
+	Name      string `json:"name"`
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	Duplicate bool   `json:"duplicate,omitempty"`
+}
+
+// BatchRegisterResponse is the response for batch registration.
+type BatchRegisterResponse struct {
+	OK        bool              `json:"ok"`
+	Total     int               `json:"total"`
+	Succeeded int               `json:"succeeded"`
+	Failed    int               `json:"failed"`
+	Results   []BatchClipResult `json:"results"`
+}
+
+// Handler manages YouTube clip registration (download + metadata + Drive + Qdrant).
+type Handler struct {
+	log              *zap.Logger
+	cfg              *config.Config
+	clipsRepo        *assets.ClipsRepository
+	driveUploader    *drive.Uploader
+	assetTreeSvc     *assettree.Service
+	providerRegistry *providers.Registry
+	clipIndexer      *clipindexer.Service
+	vectorStore      *qdrant.Service
+	metaWriter       *semantic.MetadataWriter
+	clips            *clipsources.Handler // for EnrichAndIndexClip
+}
+
+// NewHandler creates a YouTube registration handler.
+func NewHandler(
+	cfg *config.Config,
+	clipsRepo *assets.ClipsRepository,
+	driveUploader *drive.Uploader,
+	assetTreeSvc *assettree.Service,
+	providerRegistry *providers.Registry,
+	clipIndexer *clipindexer.Service,
+	vectorStore *qdrant.Service,
+	metaWriter *semantic.MetadataWriter,
+	clipsHandler *clipsources.Handler,
+	log *zap.Logger,
+) *Handler {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &Handler{
+		cfg:              cfg,
+		clipsRepo:        clipsRepo,
+		driveUploader:    driveUploader,
+		assetTreeSvc:     assetTreeSvc,
+		providerRegistry: providerRegistry,
+		clipIndexer:      clipIndexer,
+		vectorStore:      vectorStore,
+		metaWriter:       metaWriter,
+		clips:            clipsHandler,
+		log:              log,
+	}
+}
+
+// RegisterRoutes registers the registration endpoints.
+func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
+	r.POST("/register-from-youtube", h.RegisterFromYouTube)
+	r.POST("/register-batch", h.BatchRegisterFromYouTube)
+}
+
 // RegisterFromYouTube handles POST /api/media/register-from-youtube.
-//
-// Punto 9 migration: the yt-dlp download + segment extraction flow has
-// been migrated to the YouTube FetchProvider (registered via
-// providerRegistry.ByCapability(CapabilityFetch)). The handler now:
-//  1. Extracts the video ID from the URL
-//  2. Runs dedup + basic validation
-//  3. Fetches the video via FetchProvider (download + metadata)
-//  4. Fills name/description/duration from the fetched metadata
-//  5. Continues with Drive upload, DB save, indexing (unchanged).
-//
-// If providerRegistry is unwired or no YouTube FetchProvider is
-// registered, the handler returns an error.
 func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	req, ok := apiutil.BindJSON[RegisterFromYouTubeRequest](c)
 	if !ok {
@@ -56,7 +135,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// ── 1. Sanitize URL + extract video ID ──────────────────────────────
+	// ── 1. Sanitize URL + extract video ID ──
 	{
 		rawURL := req.URL
 		videoID := ""
@@ -111,13 +190,13 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		zap.String("url", req.URL),
 	)
 
-	// ── 2. Extract video ID from URL ──────────────────────────────────
+	// ── 2. Extract video ID ──
 	videoID := extractVideoIDFromURL(req.URL)
 	if videoID == "" {
 		videoID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 
-	// ── 3. Basic validation (no metadata needed yet) ───────────────────
+	// ── 3. Basic validation ──
 	if req.End > 0 && req.Start >= req.End {
 		apiutil.BadRequest(c, fmt.Sprintf("invalid segment: start (%.1f) must be less than end (%.1f)", req.Start, req.End))
 		return
@@ -127,7 +206,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		return
 	}
 
-	// ── 4. Dedup pre-check ────────────────────────────────────────────
+	// ── 4. Dedup pre-check ──
 	source := strings.TrimSpace(req.Source)
 	if source == "" {
 		source = "youtube-manual"
@@ -168,7 +247,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 
-	// ── 5. Fetch video via FetchProvider ──────────────────────────────
+	// ── 5. Fetch video via FetchProvider ──
 	log.Info("fetching YouTube video via FetchProvider",
 		zap.String("video_id", videoID),
 		zap.Float64("start", req.Start),
@@ -188,8 +267,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		zap.String("title", fetchedAsset.Name),
 		zap.Int64("bytes", fetched.Bytes))
 
-	// ── 6. Populate metadata from fetched asset ───────────────────────
-	// Name: prefer request → fetched YouTube title → video ID
+	// ── 6. Populate metadata from fetched asset ──
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		name = fetchedAsset.Name
@@ -198,7 +276,6 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		name = videoID
 	}
 
-	// Description: prefer request → fetched YouTube description
 	description := strings.TrimSpace(req.Description)
 	if description == "" {
 		desc := fetchedAsset.GetMetadataString("youtube_description")
@@ -206,7 +283,6 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		description = textutil.Truncate(description, 1000)
 	}
 
-	// Duration: from fetched asset or segment bounds
 	durationSec := 0.0
 	if fetchedAsset.Duration > 0 {
 		durationSec = fetchedAsset.Duration.Seconds()
@@ -215,7 +291,6 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	}
 	duration := int(durationSec)
 
-	// Post-fetch validation (needs duration)
 	if durationSec > 0 {
 		if req.Start > 0 && req.Start >= durationSec {
 			apiutil.BadRequest(c, fmt.Sprintf("start (%.1f) exceeds video duration (%.1f)", req.Start, durationSec))
@@ -227,7 +302,6 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 
-	// Name collision warning
 	if h.clipsRepo != nil {
 		if existingNameID, _ := h.clipsRepo.FindByName(ctx, name); existingNameID != "" {
 			log.Warn("name collision: another clip with same name exists",
@@ -235,7 +309,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 
-	// ── 7. Resolve Drive target folder ────────────────────────────────
+	// ── 7. Resolve Drive target folder ──
 	targetFolderID := clipsources.ExtractDriveFolderID(strings.TrimSpace(req.FolderID))
 	if targetFolderID == "" {
 		targetFolderID = h.cfg.Drive.ClipsFolder()
@@ -260,7 +334,6 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 
-	// Create per-video subfolder
 	if targetFolderID != "" && videoID != "" {
 		videoSlug := videoID
 		if req.Name != "" {
@@ -281,7 +354,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 
-	// ── 8. Compute MD5 hash ──────────────────────────────────────────
+	// ── 8. Compute MD5 hash ──
 	fileHash, err := hashutil.MD5File(downloadedPath)
 	if err != nil {
 		log.Error("failed to hash file", zap.Error(err))
@@ -290,13 +363,13 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	}
 	clipID := fmt.Sprintf("yt_%s_%s", videoID, fileHash[:8])
 
-	// ── 9. Transcribe audio with Whisper (best-effort) ────────────────
+	// ── 9. Transcribe audio with Whisper (best-effort) ──
 	transcript, detectedLang := h.transcribeAudio(ctx, downloadedPath, log)
 	if transcript != "" {
 		h.saveTranscriptAndStage(downloadedPath, transcript, group, log)
 	}
 
-	// ── 10. Upload to Google Drive ────────────────────────────────────
+	// ── 10. Upload to Google Drive ──
 	ext := ".mp4"
 	driveFilename := fmt.Sprintf("%s - %s%s", videoID, name, ext)
 	var uploadResult *clipsources.DriveUploadResult
@@ -318,7 +391,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 
-	// ── 11. Upload metadata.json to Drive ────────────────────────────
+	// ── 11. Upload metadata.json to Drive ──
 	if h.driveUploader != nil && targetFolderID != "" {
 		clipEntry := map[string]interface{}{
 			"clip_id":       clipID,
@@ -366,7 +439,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		clipsources.UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
 	}
 
-	// ── 12. Create MediaAsset record ──────────────────────────────────
+	// ── 12. Create MediaAsset record ──
 	now := time.Now().UTC()
 	clip := &asset.Asset{
 		ID:         clipID,
@@ -417,7 +490,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		clip.SetMetadataString("end", fmt.Sprintf("%.1f", req.End))
 	}
 
-	// ── 13. Save to database ──────────────────────────────────────────
+	// ── 13. Save to database ──
 	if h.clipsRepo != nil {
 		if err := h.clipsRepo.UpsertClip(ctx, clip); err != nil {
 			log.Error("failed to save clip to DB", zap.Error(err))
@@ -427,7 +500,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
 	}
 
-	// ── 14. Update Asset Tree ─────────────────────────────────────────
+	// ── 14. Update Asset Tree ──
 	if h.assetTreeSvc != nil {
 		node := clipsources.ClipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
@@ -435,7 +508,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 
-	// ── 15. Trigger async enrichment + Qdrant indexing ────────────────
+	// ── 15. Trigger async enrichment + Qdrant indexing ──
 	hasIndexer := h.clipIndexer != nil || h.vectorStore != nil || h.metaWriter != nil
 	if hasIndexer {
 		concurrent.SafeGo("yt-register-enrich", func() {
@@ -447,10 +520,10 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 			zap.String("clip_id", clip.ID))
 	}
 
-	// ── 16. Surface related clips via providers.Registry ──────────────
+	// ── 16. Surface related clips via providers.Registry ──
 	relatedByProvider := h.relatedClipsViaRegistry(ctx, clip, log)
 
-	// ── 17. Return success ────────────────────────────────────────────
+	// ── 17. Return success ──
 	indexingStatus := "not_configured"
 	if hasIndexer {
 		indexingStatus = "enqueued"
@@ -478,10 +551,120 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	})
 }
 
+// BatchRegisterFromYouTube handles POST /api/media/register-batch
+func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
+	var req BatchRegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
+		return
+	}
+
+	if len(req.Clips) == 0 {
+		apiutil.BadRequest(c, "clips list is empty")
+		return
+	}
+
+	for i := range req.Clips {
+		if req.Clips[i].FolderID == "" && req.FolderID != "" {
+			req.Clips[i].FolderID = req.FolderID
+		}
+	}
+
+	ctx := c.Request.Context()
+	log := h.log.With(zap.String("handler", "batch-register"), zap.Int("total", len(req.Clips)))
+
+	results := make([]BatchClipResult, len(req.Clips))
+	var succeeded, failed int
+
+	log.Info("starting batch registration", zap.Int("clips", len(req.Clips)))
+
+	for i, clip := range req.Clips {
+		result := h.processBatchClip(ctx, clip)
+		results[i] = result
+		if result.OK || result.Duplicate {
+			succeeded++
+		} else {
+			failed++
+		}
+
+		log.Info("batch clip processed",
+			zap.Int("index", i+1),
+			zap.Int("total", len(req.Clips)),
+			zap.String("name", clip.Name),
+			zap.Bool("ok", result.OK),
+			zap.Bool("duplicate", result.Duplicate),
+			zap.String("error", result.Error))
+	}
+
+	log.Info("batch registration completed",
+		zap.Int("succeeded", succeeded),
+		zap.Int("failed", failed))
+
+	apiutil.OK(c, BatchRegisterResponse{
+		OK:        true,
+		Total:     len(req.Clips),
+		Succeeded: succeeded,
+		Failed:    failed,
+		Results:   results,
+	})
+}
+
+// processBatchClip processes a single clip by calling RegisterFromYouTube
+// via a synthetic gin.Context and capturing the response.
+func (h *Handler) processBatchClip(ctx context.Context, clip RegisterFromYouTubeRequest) BatchClipResult {
+	result := BatchClipResult{
+		Name: clip.Name,
+	}
+
+	body, err := json.Marshal(clip)
+	if err != nil {
+		result.Error = "failed to serialize clip: " + err.Error()
+		return result
+	}
+
+	httpReq := &gin.Context{}
+	httpReq.Request, _ = http.NewRequestWithContext(ctx, "POST", "/api/media/register-from-youtube", bytes.NewReader(body))
+	httpReq.Request.Header.Set("Content-Type", "application/json")
+	httpReq.Set("_batch_mode", true)
+	httpReq.Keys = make(map[string]any)
+
+	w := &batchResponseWriter{body: &bytes.Buffer{}}
+	httpReq.Writer = w
+
+	h.RegisterFromYouTube(httpReq)
+
+	respBody, err := io.ReadAll(w.body)
+	if err != nil {
+		result.Error = "failed to read response"
+		return result
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		result.Error = "failed to parse response"
+		return result
+	}
+
+	if ok, exists := resp["ok"].(bool); exists && ok {
+		result.OK = true
+		result.ClipID, _ = resp["clip_id"].(string)
+		if dup, exists := resp["duplicate"].(bool); exists && dup {
+			result.Duplicate = true
+			result.OK = false
+		}
+	} else if errMsg, exists := resp["error"].(string); exists {
+		result.Error = errMsg
+	} else if msg, exists := resp["message"].(string); exists {
+		result.Error = msg
+	}
+
+	return result
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
 // extractVideoIDFromURL extracts the YouTube video ID from a URL.
-// Supports youtube.com/watch?v=ID and youtu.be/ID formats.
 func extractVideoIDFromURL(rawURL string) string {
-	// youtube.com/watch?v=ID
 	for _, part := range strings.Split(rawURL, "&") {
 		if strings.HasPrefix(part, "v=") || strings.Contains(part, "?v=") {
 			if idx := strings.Index(part, "v="); idx != -1 {
@@ -493,7 +676,6 @@ func extractVideoIDFromURL(rawURL string) string {
 			}
 		}
 	}
-	// youtu.be/ID
 	if idx := strings.LastIndex(rawURL, "youtu.be/"); idx != -1 {
 		rest := rawURL[idx+len("youtu.be/"):]
 		if end := strings.IndexAny(rest, "?&#"); end != -1 {
@@ -504,9 +686,28 @@ func extractVideoIDFromURL(rawURL string) string {
 	return ""
 }
 
-// fetchYouTubeVideo resolves the YouTube FetchProvider from the
-// provider registry and calls Fetch(). Returns the fetched asset
-// with local path and metadata.
+// findExistingYouTubeClip checks the clips repo for an existing clip
+// matching the given YouTube URL/video ID.
+func (h *Handler) findExistingYouTubeClip(ctx context.Context, videoID, sourceURL string, startSec, endSec float64) (string, error) {
+	if h.clipsRepo != nil && videoID != "" {
+		hasSegment := endSec > startSec
+		if id, err := h.clipsRepo.FindByYouTubeVideoID(ctx, videoID, hasSegment, startSec, endSec); err == nil && id != "" {
+			return id, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+	if h.clipsRepo != nil && sourceURL != "" && !(endSec > startSec) {
+		if id, err := h.clipsRepo.FindBySourceURL(ctx, sourceURL); err == nil && id != "" {
+			return id, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+	return "", nil
+}
+
+// fetchYouTubeVideo resolves the YouTube FetchProvider and calls Fetch().
 func (h *Handler) fetchYouTubeVideo(
 	ctx context.Context,
 	url string,
@@ -517,7 +718,6 @@ func (h *Handler) fetchYouTubeVideo(
 		return nil, fmt.Errorf("provider registry not wired")
 	}
 
-	// Find the YouTube FetchProvider
 	var ytFP providers.FetchProvider
 	for _, p := range h.providerRegistry.ByCapability(providers.CapabilityFetch) {
 		if p.Name() == "youtube" {
@@ -544,32 +744,7 @@ func (h *Handler) fetchYouTubeVideo(
 	})
 }
 
-// relatedClipsViaRegistry fans out providerRegistry.ByCapability(CapabilitySearch)
-// after a RegisterFromYouTube success and returns a {provider → top-N
-// candidates} map. Best-effort: nil registry, nil SearchProvider type
-// assertions, Search errors, and per-call context timeouts all
-// resolve to "no entry for that provider" rather than aborting.
-//
-// Punto 9: the download portion now routes through FetchProvider;
-// the post-registration related-clip lookup via SearchProvider is unchanged.
-//
-// Query heuristic rationale: a single registered-clip's title alone
-// (eg. "Ben Shapiro vs Destiny - DEBATE") yields effectively zero
-// hits across registered SearchProviders in production — artlist is
-// term-based but its DB indexes curated stock, and youTube's adapter
-// is live-search (it does not know about clips the local app has
-// just registered). To improve recall, we broaden the query to
-// include the clip's category + the first 2 tags. The broadening is
-// consciously light-weight: spaces between tokens, no LLM rewriting.
-// Operators reading an empty related_clips map in >95% of responses
-// is expected behaviour; non-empty indicates a real semantic hit.
-//
-// Parallelism + timeout: pkg/concurrent.WithContext fans the per-
-// provider Search calls out in parallel with first-error-wins and
-// panic recovery. The 4s ceiling is total wall time, NOT per-provider
-// (the previous serial loop was N×4s). Limit=5 keeps each
-// provider's hit list small enough that a slow upstream does not
-// flood the response.
+// relatedClipsViaRegistry fans out providerRegistry.ByCapability(CapabilitySearch).
 func (h *Handler) relatedClipsViaRegistry(
 	ctx context.Context,
 	clip *asset.Asset,
@@ -579,10 +754,6 @@ func (h *Handler) relatedClipsViaRegistry(
 	if h.providerRegistry == nil {
 		return out
 	}
-	// NOTE: do NOT name this `providers` — the package import alias
-	// `providers "internal/application/assets/providers"` is in scope
-	// here, and a local variable with the same name would shadow it
-	// and break every `providers.<Symbol>` reference below.
 	searchProviders := h.providerRegistry.ByCapability(providers.CapabilitySearch)
 	if len(searchProviders) == 0 {
 		return out
@@ -634,8 +805,7 @@ func (h *Handler) relatedClipsViaRegistry(
 	return out
 }
 
-// buildRelatedClipsQuery composes a broadened query string from a
-// freshly-registered clip for use in providerRegistry fan-out.
+// buildRelatedClipsQuery composes a broadened query string from a freshly-registered clip.
 func buildRelatedClipsQuery(clip *asset.Asset) string {
 	if clip == nil {
 		return ""
@@ -658,4 +828,162 @@ func buildRelatedClipsQuery(clip *asset.Asset) string {
 		parts = append(parts, n)
 	}
 	return strings.Join(parts, " ")
+}
+
+// ── Transcription ────────────────────────────────────────────────────────
+
+// transcriptResult holds the parsed JSON output from transcribe_detect_lang.py.
+type transcriptResult struct {
+	Language             string  `json:"language"`
+	Probability          float64 `json:"probability"`
+	TranscriptFull       string  `json:"transcript_full"`
+	TranscriptPreview    string  `json:"transcript_preview"`
+	TranscriptLength     int     `json:"transcript_length"`
+	NumSegments          int     `json:"num_segments"`
+	TranscriptionTimeSec float64 `json:"transcription_time_seconds"`
+	Error                string  `json:"error"`
+}
+
+// transcribeAudio runs Whisper transcription on a local video file.
+func (h *Handler) transcribeAudio(ctx context.Context, localPath string, log *zap.Logger) (transcript string, language string) {
+	if localPath == "" {
+		return "", ""
+	}
+
+	if _, err := os.Stat(localPath); err != nil {
+		log.Debug("transcribe: file not found, skipping", zap.String("path", localPath), zap.Error(err))
+		return "", ""
+	}
+
+	pythonBin := "python3"
+	scriptPath := filepath.Join(h.cfg.Paths.PythonScriptsDir, "tools", "transcribe_detect_lang.py")
+
+	if _, err := os.Stat(scriptPath); err != nil {
+		log.Debug("transcribe: script not found, skipping", zap.String("path", scriptPath), zap.Error(err))
+		return "", ""
+	}
+
+	execResult, err := executil.RunSimple(ctx, pythonBin, scriptPath,
+		"--transcribe", "--model", "tiny", "--json-only", localPath,
+	)
+	if err != nil {
+		log.Warn("transcription failed for clip (non-fatal)",
+			zap.String("path", localPath),
+			zap.Error(err),
+		)
+		return "", ""
+	}
+
+	var tsResult transcriptResult
+	if err := json.Unmarshal([]byte(execResult.Output), &tsResult); err != nil {
+		log.Warn("failed to parse transcription JSON",
+			zap.String("path", localPath),
+			zap.Error(err),
+		)
+		return "", ""
+	}
+
+	if tsResult.Error != "" {
+		log.Warn("transcription error from whisper",
+			zap.String("path", localPath),
+			zap.String("error", tsResult.Error),
+		)
+		return "", ""
+	}
+
+	transcript = strings.TrimSpace(tsResult.TranscriptFull)
+	language = strings.TrimSpace(tsResult.Language)
+
+	log.Info("clip transcribed",
+		zap.String("path", localPath),
+		zap.String("language", language),
+		zap.Float64("probability", tsResult.Probability),
+		zap.Int("transcript_len", tsResult.TranscriptLength),
+		zap.Float64("time_sec", tsResult.TranscriptionTimeSec),
+	)
+
+	return transcript, language
+}
+
+// saveTranscriptAndStage writes the transcript text next to the video file
+// and stages it for the embedding server.
+func (h *Handler) saveTranscriptAndStage(localPath string, transcript string, group string, log *zap.Logger) {
+	if transcript == "" {
+		return
+	}
+
+	baseNoExt := strings.TrimSuffix(localPath, filepath.Ext(localPath))
+	txtPath := baseNoExt + ".txt"
+	if err := os.WriteFile(txtPath, []byte(transcript), 0644); err != nil {
+		log.Warn("failed to write transcript .txt next to video",
+			zap.String("txt_path", txtPath),
+			zap.Error(err),
+		)
+	} else {
+		log.Debug("transcript .txt saved next to video",
+			zap.String("txt_path", txtPath),
+		)
+	}
+
+	stageRoot := h.cfg.Storage.YoutubeClipsPath()
+	if stageRoot == "" {
+		stageRoot = filepath.Join(h.cfg.Storage.DataDir, "youtube-clips")
+	}
+
+	subBucket := strings.TrimSpace(group)
+	if subBucket == "" || subBucket == "." {
+		subBucket = "_manual"
+	}
+	subBucket = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, subBucket)
+
+	stageDir := filepath.Join(stageRoot, subBucket)
+	if err := os.MkdirAll(stageDir, 0755); err != nil {
+		log.Warn("failed to create transcript staging directory",
+			zap.String("dir", stageDir),
+			zap.Error(err),
+		)
+		return
+	}
+
+	stageFile := filepath.Base(baseNoExt) + ".txt"
+	stagePath := filepath.Join(stageDir, stageFile)
+	if err := os.WriteFile(stagePath, []byte(transcript), 0644); err != nil {
+		log.Warn("failed to stage transcript for embedding server",
+			zap.String("stage_path", stagePath),
+			zap.Error(err),
+		)
+	} else {
+		log.Debug("transcript staged for embedding server",
+			zap.String("stage_path", stagePath),
+		)
+	}
+}
+
+// ── Batch response writer ───────────────────────────────────────────────
+
+// batchResponseWriter is a minimal gin.ResponseWriter that captures the body.
+type batchResponseWriter struct {
+	body *bytes.Buffer
+}
+
+func (w *batchResponseWriter) Header() http.Header                  { return http.Header{} }
+func (w *batchResponseWriter) Write(b []byte) (int, error)          { return w.body.Write(b) }
+func (w *batchResponseWriter) WriteHeader(statusCode int)           {}
+func (w *batchResponseWriter) WriteHeaderNow()                      {}
+func (w *batchResponseWriter) Written() bool                        { return w.body.Len() > 0 }
+func (w *batchResponseWriter) WriteString(s string) (int, error)    { return w.body.WriteString(s) }
+func (w *batchResponseWriter) Size() int                            { return w.body.Len() }
+func (w *batchResponseWriter) Status() int                          { return 200 }
+func (w *batchResponseWriter) Flush()                               {}
+func (w *batchResponseWriter) CloseNotify() <-chan bool             { return make(chan bool) }
+func (w *batchResponseWriter) Pusher() http.Pusher                  { return nil }
+func (w *batchResponseWriter) SetReadDeadline(_ interface{}) error  { return nil }
+func (w *batchResponseWriter) SetWriteDeadline(_ interface{}) error { return nil }
+func (w *batchResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, nil
 }

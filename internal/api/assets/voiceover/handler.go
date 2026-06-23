@@ -1,4 +1,5 @@
-package sources
+// Package voiceover provides thin HTTP handlers for voiceover operations.
+package voiceover
 
 import (
 	"context"
@@ -8,49 +9,49 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
-// VoiceoverHandler is the unified handler for all voiceover operations:
+// Handler is the unified handler for all voiceover operations:
 //   - /generate: Generate a single voiceover (sync or async)
 //   - /batch: Generate multiple voiceovers (always async via job queue)
 //   - /sync: Sync voiceovers from Google Drive
 //   - /generate-with-group: Generate a single voiceover routed via voiceover_group topic
 //     (reads the topic→folder_id mapping from asset_tree_nodes via GroupsResolver).
 //   - /groups (GET): List the canonical topic→folder_id mapping for a given parent
-//     (defaults to the configured voiceover root). Useful for "I want to know what
-//     categories exist" without hitting Drive.
-type VoiceoverHandler struct {
+//     (defaults to the configured voiceover root).
+type Handler struct {
 	service              *voiceover.Service
 	syncService          *voiceoversync.Service
 	jobsSvc              *jobservice.Service
 	groupsResolver       *voiceover.GroupsResolver // optional; nil-safe — falls back to no-routing
-	defaultVoiceoverRoot string                    // folder ID under which groups live (e.g. `1wFhLmyy...`)
+	defaultVoiceoverRoot string                    // folder ID under which groups live
 	log                  *zap.Logger
 }
 
-// NewVoiceoverHandler builds the handler. groupsResolver is REQUIRED to keep the
+// NewHandler builds the handler. groupsResolver is REQUIRED to keep the
 // API surface consistent (nil resolver would mean DB-backed routing is dead code).
 // Pass nil only if you also accept that GET /groups + voiceover_group routing
 // will return 501 Not Implemented.
-func NewVoiceoverHandler(
+func NewHandler(
 	service *voiceover.Service,
 	syncService *voiceoversync.Service,
 	jobsSvc *jobservice.Service,
 	groupsResolver *voiceover.GroupsResolver,
 	defaultVoiceoverRoot string,
 	log *zap.Logger,
-) *VoiceoverHandler {
+) *Handler {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &VoiceoverHandler{
+	return &Handler{
 		service:              service,
 		syncService:          syncService,
 		jobsSvc:              jobsSvc,
@@ -60,7 +61,7 @@ func NewVoiceoverHandler(
 	}
 }
 
-func (h *VoiceoverHandler) RegisterRoutes(r *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
 	r.POST("/generate-with-group", h.GenerateWithGroup)
 	r.POST("/batch", h.Batch)
@@ -70,7 +71,7 @@ func (h *VoiceoverHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 // Generate processes a single voiceover request (sync or async)
-func (h *VoiceoverHandler) Generate(c *gin.Context) {
+func (h *Handler) Generate(c *gin.Context) {
 	if h.service == nil {
 		apiutil.BadRequest(c, "voiceover service not initialized")
 		return
@@ -142,7 +143,7 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 }
 
 // Batch processes multiple voiceover requests (always async)
-func (h *VoiceoverHandler) Batch(c *gin.Context) {
+func (h *Handler) Batch(c *gin.Context) {
 	if h.service == nil {
 		apiutil.BadRequest(c, "voiceover service not initialized")
 		return
@@ -190,10 +191,7 @@ func (h *VoiceoverHandler) Batch(c *gin.Context) {
 // Promo generates promotional voiceovers in multiple languages.
 // Translates the source text via Ollama, then generates a voiceover per language.
 // Runs async via goroutine — returns immediately with translation preview.
-//
-// POST /api/media/voiceover/promo
-// Body: {"text": "...", "drive_folder_id": "...", "dry_run": false, "languages": ["en-US", "it-IT"]}
-func (h *VoiceoverHandler) Promo(c *gin.Context) {
+func (h *Handler) Promo(c *gin.Context) {
 	if h.service == nil {
 		apiutil.BadRequest(c, "voiceover service not initialized")
 		return
@@ -213,7 +211,6 @@ func (h *VoiceoverHandler) Promo(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	if req.DryRun {
-		// Dry run: translate only, return immediately
 		resp, err := h.service.GeneratePromo(ctx, &req)
 		if err != nil {
 			apiutil.InternalError(c, err)
@@ -250,16 +247,8 @@ func (h *VoiceoverHandler) Promo(c *gin.Context) {
 	})
 }
 
-// ListGroups lists the canonical topic→folder_id mapping under the voiceover
-// root (defaultVoiceoverRoot, set at construction time).
-//
-// GET /api/media/voiceover/groups?parent_id=<optional>
-//
-// When parent_id is omitted, the handler uses its configured default root.
-// Returns 501 if no resolver is wired (e.g. compose core didn't pass one).
-//
-// Response: { "ok": true, "parent_id": "...", "count": N, "groups": [{name, folder_id, drive_link, parent_id}, ...] }
-func (h *VoiceoverHandler) ListGroups(c *gin.Context) {
+// ListGroups lists the canonical topic→folder_id mapping under the voiceover root.
+func (h *Handler) ListGroups(c *gin.Context) {
 	if h.groupsResolver == nil {
 		apiutil.InternalError(c, fmt.Errorf("groups resolver not configured"))
 		return
@@ -289,18 +278,10 @@ func (h *VoiceoverHandler) ListGroups(c *gin.Context) {
 	})
 }
 
-// GenerateWithGroup accepts a voiceover_group string (the topic name, e.g.
-// "Boxe", "Comedy") and resolves it to a Drive folder ID via asset_tree_nodes
-// before delegating to the regular /generate flow. This is the canonical way
-// to skip the legacy "Drive deep-search → create new folder" fall-through.
-//
-// POST /api/media/voiceover/generate-with-group
-// Body: same as /generate plus "voiceover_group": "<topic>"
-//
-// If the group is not found in the DB the handler returns 404 with a hint
-// listing the available groups, so the caller can recover without having
-// to call GET /groups first.
-func (h *VoiceoverHandler) GenerateWithGroup(c *gin.Context) {
+// GenerateWithGroup accepts a voiceover_group string (the topic name) and resolves
+// it to a Drive folder ID via asset_tree_nodes before delegating to the regular
+// /generate flow.
+func (h *Handler) GenerateWithGroup(c *gin.Context) {
 	if h.groupsResolver == nil {
 		apiutil.InternalError(c, fmt.Errorf("groups resolver not configured"))
 		return
@@ -335,7 +316,6 @@ func (h *VoiceoverHandler) GenerateWithGroup(c *gin.Context) {
 	group, err := h.groupsResolver.ResolveByName(c.Request.Context(), parentID, req.VoiceoverGroup)
 	if err != nil {
 		if errors.Is(err, voiceover.ErrGroupNotFound) {
-			// Recoverable: hint caller about what categories ARE available.
 			available, _ := h.groupsResolver.ListGroups(c.Request.Context(), parentID)
 			names := make([]string, 0, len(available))
 			for _, e := range available {
@@ -368,8 +348,8 @@ func (h *VoiceoverHandler) GenerateWithGroup(c *gin.Context) {
 			batchReq.FilenameTemplate = req.Filename
 		}
 		payload := batchReq.PayloadMap()
-		payload["folder_id"] = group.FolderID           // worker reads this for Drive routing
-		payload["voiceover_group"] = req.VoiceoverGroup // explicit for /jobs status
+		payload["folder_id"] = group.FolderID
+		payload["voiceover_group"] = req.VoiceoverGroup
 
 		job, jobErr := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 			Type:    "voiceover.batch",
@@ -407,7 +387,7 @@ func (h *VoiceoverHandler) GenerateWithGroup(c *gin.Context) {
 }
 
 // Sync triggers synchronization of voiceovers from Google Drive.
-func (h *VoiceoverHandler) Sync(c *gin.Context) {
+func (h *Handler) Sync(c *gin.Context) {
 	if h.syncService == nil {
 		apiutil.InternalError(c, fmt.Errorf("voiceover sync service not configured"))
 		return

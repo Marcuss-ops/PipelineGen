@@ -313,7 +313,6 @@ func (h *Handler) GetDiagnostics(c *gin.Context) {
 		"ok": true,
 		"services": gin.H{
 			"providers": providerStatus,
-			"voiceover": h.voiceoverSvc != nil,
 			"jobs":      h.jobsSvc != nil,
 		},
 		"environment": gin.H{
