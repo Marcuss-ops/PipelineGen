@@ -192,7 +192,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 		return
 	}
 
-		repo := h.repoForSource(source)
+	repo := h.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return

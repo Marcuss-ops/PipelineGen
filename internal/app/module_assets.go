@@ -14,13 +14,15 @@ import (
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -31,8 +33,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -86,28 +86,13 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	if bundle.DriveClient != nil {
 		driveUploader = &driveutil.Uploader{Service: bundle.DriveClient, Log: log}
 	}
-	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, log)
-	if bundle.VoiceoverRepo != nil {
-		handler.SetVoiceoverRepo(bundle.VoiceoverRepo)
-	}
-	if bundle.ImageRepo != nil {
-		handler.SetImagesRepo(bundle.ImageRepo)
-	}
-	if realtimeSvc != nil {
-		handler.SetRealtimeService(realtimeSvc)
-	}
-	if bundle.ClipIndexerService != nil {
-		handler.SetClipIndexer(bundle.ClipIndexerService)
-	}
-	if vectorStore != nil {
-		handler.SetVectorStore(vectorStore)
+	var assetRepo asset.Repository
+	if bundle.Assets != nil {
+		assetRepo = bundle.Assets.Repository()
 	}
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-	handler.SetMetaWriter(metaWriter)
-	if bundle.Assets != nil {
-		handler.SetAssetRepo(bundle.Assets.Repository())
-	}
+	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
+	handler := sourcesapi.NewSourcesHandler(cfg, jobs.Facade, catalogRepo, bundle.AssetIndexService, bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, assetRepo, bundle.VoiceoverRepo, bundle.ImageRepo, folderMemSvc, bundle.AssetTreeService, driveUploader, bundle.MediaProcessor, deletionSvc, bundle.CatalogSyncService, maintenanceSvc, providerRegistry, realtimeSvc, bundle.ClipIndexerService, vectorStore, metaWriter, nil, log)
 	sourcesMod := module.NewRouteModule(
 		"assets",
 		func() bool { return handler != nil },
@@ -176,7 +161,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
 
 	// SoundEffect: wired with real repos + uploader + metaWriter
-	metaWriter = semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 	sfxHandler := assetsfx.NewHandler(bundle.ClipsRepo, driveUploader, metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
 
 	// Register: YouTube registration handler with full deps

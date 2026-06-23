@@ -2,7 +2,7 @@ package fullimages
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
+	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

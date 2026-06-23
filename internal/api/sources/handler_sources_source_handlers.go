@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/clips"
+	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
@@ -21,6 +21,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
@@ -28,7 +29,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 )
 
 // SourcesHandler handles non-clip media operations and routes the clip
@@ -67,95 +67,6 @@ type SourcesHandler struct {
 	clips *clipsources.Handler
 }
 
-// SetRealtimeService sets the realtime service for semantic search.
-func (h *SourcesHandler) SetRealtimeService(svc *realtime.Service) {
-	h.realtimeSvc = svc
-}
-
-// SetClipIndexer sets the clip indexer for generating search_text/embeddings.
-// Forwards to h.clips so the same instance is reachable from the unified
-// clips.Handler. Late-binding after NewSourcesHandler is supported.
-func (h *SourcesHandler) SetClipIndexer(ci *clipindexer.Service) {
-	h.clipIndexer = ci
-	if h.clips != nil {
-		h.clips.SetClipIndexer(ci)
-	}
-}
-
-// SetVectorStore sets the vector store for Qdrant upsert after indexing.
-// Forwards to h.clips (same reach from clips.Handler).
-func (h *SourcesHandler) SetVectorStore(vs *qdrant.Service) {
-	h.vectorStore = vs
-	if h.clips != nil {
-		h.clips.SetVectorStore(vs)
-	}
-}
-
-// SetMetaWriter sets the unified metadata writer for semantic enrichment.
-// Forwards to h.clips and to SoundEffect (legacy in-package wiring).
-func (h *SourcesHandler) SetMetaWriter(mw *semantic.MetadataWriter) {
-	h.metaWriter = mw
-	// PR4: SoundEffect handler moved to api/assets/soundeffect/; its
-	// SetMetaWriter is called directly from WireAssets in module_assets.go.
-	if h.clips != nil {
-		h.clips.SetMetaWriter(mw)
-	}
-}
-
-// SetArtifactService sets the artifact service for content-addressed file drive.
-// Forwards to h.clips so UploadVideoClip's content-addressed blob storage
-// sees the late-bound service. Same late-binding semantics as the other
-// Set* setters that delegate.
-func (h *SourcesHandler) SetArtifactService(svc *artifacts.Service) {
-	h.artifactSvc = svc
-	if h.clips != nil {
-		h.clips.SetArtifactSvc(svc)
-	}
-}
-
-// SetAssetRepo sets the canonical asset repository (replaces assets.ClipsRepository
-// for handlers that have been migrated to use asset.Asset directly). The
-// assetRepo lives only on SourcesHandler because clips.Handler received it
-// at construction time via Deps — late rebinding here does NOT update
-// h.clips (the clips.Handler assetRepo is unchanged). Callers that need to
-// rewire asset.Repository across both must rebuild h.clips; in practice
-// assetRepo is set once at startup so this limitation is theoretical.
-func (h *SourcesHandler) SetAssetRepo(repo asset.Repository) {
-	h.assetRepo = repo
-}
-
-// SetVoiceoverRepo sets the voiceover repository. Forwards to h.clips so
-// DownloadClip's voiceover-source branch sees the late-bound repo. Both
-// handlers hold the same reference; switching repos mid-process picks up
-// on the next handler invocation.
-func (h *SourcesHandler) SetVoiceoverRepo(repo *assets.VoiceoversRepository) {
-	h.voiceoverRepo = repo
-	if h.clips != nil {
-		h.clips.SetVoiceoverRepo(repo)
-	}
-}
-
-// SetImagesRepo sets the images repository. clips.Handler reads it in
-// ListClips for the "source=images" branch, so this setter forwards to
-// h.clips as well as Self.imagesRepo (legacy sources/ search_handlers.go,
-// semantic_handlers.go also use it directly).
-func (h *SourcesHandler) SetImagesRepo(repo *assets.ImagesRepository) {
-	h.imagesRepo = repo
-	if h.clips != nil {
-		h.clips.SetImagesRepo(repo)
-	}
-}
-
-// SetFolderMemSvc sets the folder memory service. clips.Handler reads it
-// in RegenerateManifest for the folder heuristic. sources/ search_handlers.go
-// also uses folderMemSvc directly for legacy path resolution.
-func (h *SourcesHandler) SetFolderMemSvc(svc *foldermemory.Service) {
-	h.folderMemSvc = svc
-	if h.clips != nil {
-		h.clips.SetFolderMemSvc(svc)
-	}
-}
-
 // NewSourcesHandler creates a new common media handler.
 //
 // PR4 (June 2026): voiceoverSvc and voiceoverSync params removed —
@@ -166,6 +77,9 @@ func NewSourcesHandler(
 	catalogRepo *catalog.Repository,
 	assetIndexSvc *assetindex.Service,
 	artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository,
+	assetRepo asset.Repository,
+	voiceoverRepo *assets.VoiceoversRepository,
+	imagesRepo *assets.ImagesRepository,
 	folderMemSvc *foldermemory.Service,
 	assetTreeSvc *assettree.Service,
 	driveUploader *drive.Uploader,
@@ -174,6 +88,11 @@ func NewSourcesHandler(
 	catalogSync *catalogsync.Service,
 	maintenanceSvc *maintenance.Service,
 	providerRegistry *providers.Registry,
+	realtimeSvc *realtime.Service,
+	clipIndexer *clipindexer.Service,
+	vectorStore *qdrant.Service,
+	metaWriter *semantic.MetadataWriter,
+	artifactSvc *artifacts.Service,
 	log *zap.Logger,
 ) *SourcesHandler {
 	h := &SourcesHandler{
@@ -184,6 +103,8 @@ func NewSourcesHandler(
 		artlistRepo:      artlistRepo,
 		clipsRepo:        clipsRepo,
 		stockRepo:        stockRepo,
+		voiceoverRepo:    voiceoverRepo,
+		imagesRepo:       imagesRepo,
 		folderMemSvc:     folderMemSvc,
 		assetTreeSvc:     assetTreeSvc,
 		driveUploader:    driveUploader,
@@ -191,12 +112,19 @@ func NewSourcesHandler(
 		deletionSvc:      deletionSvc,
 		catalogSync:      catalogSync,
 		maintenanceSvc:   maintenanceSvc,
+		realtimeSvc:      realtimeSvc,
+		clipIndexer:      clipIndexer,
+		vectorStore:      vectorStore,
+		metaWriter:       metaWriter,
+		artifactSvc:      artifactSvc,
+		assetRepo:        assetRepo,
 		providerRegistry: providerRegistry,
 		log:              log,
 	}
 
-	// PR-A Phase 4 BULK: build the unified clips.Handler with all 15 deps.
+	// PR-A Phase 4 BULK: build the unified clips.Handler with all constructor deps.
 	h.clips = clipsources.NewHandler(clipsources.Deps{
+		SourceResolver: artifacts.NewSourceResolver(h.artlistRepo, h.clipsRepo, h.stockRepo),
 		AssetRepo:      h.assetRepo,
 		ClipsRepo:      h.clipsRepo,
 		StockRepo:      h.stockRepo,
