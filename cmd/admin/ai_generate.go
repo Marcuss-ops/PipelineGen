@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
@@ -38,34 +37,4 @@ func runListStyles(args []string) error {
 		fmt.Printf("- %-15s: %s\n", s.Name, s.Description)
 	}
 	return nil
-}
-
-func runGenerateAvatar(args []string) error {
-	return fmt.Errorf("avatar generation not implemented (admin CLI pending post-PR4 admin loader)")
-}
-
-// runGenerateAIVideo is a compatibility command. Pre-PR4 it called
-// core.ImageService.GenerateVideoAI on the previous app.InitCore surface.
-// Post-PR4 the composition root reconstructs the image service stack
-// inside NewComposition.BuildDomainBundle (an opinionated chain that
-// does not include a video-generation entry-point). Reaching into the
-// composition root from cmd/admin requires a dedicated admin loader
-// (analogous to gen_api_docs.go's app.WireServices usage) — a follow-up
-// PR will reintroduce this functionality on that path. The command keeps
-// the build green + honest about the gap (CLI parses flags, surfaces a
-// clear "not implemented" error so callers see the situation).
-func runGenerateAIVideo(args []string) error {
-	fs := flag.NewFlagSet("generate-ai-video", flag.ContinueOnError)
-	prompt := fs.String("prompt", "", "Prompt for the video")
-	style := fs.String("style", "", "Style to apply")
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *prompt == "" {
-		return fmt.Errorf("prompt is required")
-	}
-
-	fmt.Printf("AI video generation compatibility command (post-PR4): prompt=%q style=%s — not yet re-linked to app.NewComposition's image/video services\n", *prompt, *style)
-	return fmt.Errorf("generate-ai-video: not implemented (post-PR4 admin re-link pending)")
 }

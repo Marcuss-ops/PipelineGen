@@ -21,14 +21,12 @@
 //   - verify-artlist-pipeline     (cmd/admin/verify.go)
 //   - seed-channels, stock-reset, stock-subfolders-reset,
 //     summarize-book, sync-outros, unify-catalogs,
-//     ai-generate, generate-avatar, generate-ai-video,
-//     backfill-missing, db, gen-api-docs  (pre-existing fleet)
-//   - ai-generate / generate-avatar / generate-ai-video / backfill-missing
-//     use the pre-existing handlers (kept untouched by AGENT-1 scope).
+//     list-styles, backfill-missing, db, gen-api-docs
+//     (pre-existing fleet).
 //
 // The contract enforced by `cmd/admin/admin_test.go::TestAdminCommands_AreRegistered`
 // is that every command documented below in `availableCommands` has a
-// matching `case "<cmd>":` arm in the switch block. New subcommands MUST
+// matching switch arm in the switch block. New subcommands MUST
 // appear in BOTH the `availableCommands` list AND the switch.
 package main
 
@@ -44,7 +42,6 @@ import (
 // `TestAdminCommands_AreRegistered` against the live switch block in
 // main(). Keep it in lock-step with the switch below.
 var availableCommands = []string{
-	"ai-generate",
 	"backfill-artlist-media-type",
 	"backfill-missing",
 	"benchmark",
@@ -55,9 +52,8 @@ var availableCommands = []string{
 	"db",
 	"delete-specific-folders",
 	"gen-api-docs",
-	"generate-ai-video",
-	"generate-avatar",
 	"list-drive-folder",
+	"list-styles",
 	"reset-video-ai",
 	"seed-channels",
 	"stock-reset",
@@ -123,12 +119,8 @@ func main() {
 		err = runSyncOutros(args)
 	case "unify-catalogs":
 		err = runUnifyCatalogs(args)
-	case "ai-generate":
+	case "list-styles":
 		err = runListStyles(args) // fallback/default
-	case "generate-avatar":
-		err = runGenerateAvatar(args)
-	case "generate-ai-video":
-		err = runGenerateAIVideo(args)
 	case "backfill-missing":
 		err = runBackfillMissing(args)
 	case "db":

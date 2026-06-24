@@ -126,7 +126,7 @@ RUN apt-get update \
 COPY --from=builder /out/admin /usr/local/bin/pipelinegen-admin
 
 # Copy Python scripts and config used by admin commands (summarize-book,
-# ai-generate, backfill-missing, etc.).
+# list-styles, backfill-missing, etc.).
 COPY scripts/ /app/scripts/
 COPY config/ /app/config/
 
