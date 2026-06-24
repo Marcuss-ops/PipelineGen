@@ -93,7 +93,7 @@ contain business logic (Pattern 8 in AGENTS.md). Business logic lives
 in `internal/application/<feature>/` (use cases + orchestration) and
 `internal/infrastructure/<X>/` (concrete adapters: DB, Drive, exec).
 Each `internal/api/<feature>/` exposes at most 1 `Handler` + 1
-`RegisterRoutes`. The legacy `CoreDeps` mega-struct was removed in
+`RegisterRoutes`. The old `CoreDeps` mega-struct was removed in
 PR4d-final (June 2026) — bundles are the only valid wiring primitive.
 
 ## 4. Module ownership
@@ -186,7 +186,7 @@ opened through `internal/infrastructure/database.DatabaseSet` (`OpenSet`,
 | **Primary** | `<DataDir>/media/media.db.sqlite` (compat default) | **Unico database** — scripts, jobs, media_assets, clip_folders, voiceovers, youtube_cache, gemma_memory, search_queries, sketchfab, pipeline_runs, worker_nodes, etc. | `migrations/sqlite/*.sql` |
 | **Observability** | `<DataDir>/observability/api_requests.db.sqlite` | API request log table + indexes (single purpose: HTTP traffic telemetry). Distinct from Primary so log retention doesn't churn the schema-versioned Primary DB. | `migrations/sqlite/*.sql` |
 
-**Configurable via `cfg.Storage`** (defaults preserve legacy single-file layout):
+**Configurable via `cfg.Storage`** (defaults preserve the previous single-file layout):
 
 | Field | YAML | Env | Default |
 |-------|------|-----|---------|
@@ -205,7 +205,7 @@ forward as-is — no distributed transaction across DBs).
 **Path migration**: the path-migration tool (`cmd/admin/path_migrate.go`,
 future PR) performs backup + SHA256 checksum + PRAGMA integrity_check +
 rollback when operators opt in to relocate the Primary DB from the
-legacy `<DataDir>/media.db.sqlite` path to the canonical
+old `<DataDir>/media.db.sqlite` path to the canonical
 `<DataDir>/media/media.db.sqlite`. Until that runs, the PrimaryDBPath
 default matches today's on-disk file so existing deployments keep
 working without a migration. Default resolution in
@@ -232,6 +232,67 @@ per-domain folders are fallbacks. The `DriveConfig` resolvers
   Cancels siblings on first error, recovers panics, one goroutine per slot.
 - **Job claims**: lease (`cfg.Jobs.LeaseTTLSeconds = 300`); dead workers
   auto-reclaimed by `RequeueExpiredLeases`. `ActiveKey` dedupes enqueues.
+
+### Extract facade contract — `monitor → orchestrator → ytextraction`
+
+Background monitors invoke the synchronous
+`*youtube.Service.Extract(ctx, req)` facade (entry point at
+`internal/application/youtube/service_orchestrator.go::Extract`).
+This is the **canonical** clip-extraction entry for the monitor path
+(POST `/api/script/*` routes run through the async job pipeline; they
+ignore this facade). The contract:
+
+1. **Thin facade, no orchestration**: the orchestrator method only
+   nil-guards `s.extraction` and forwards to `s.extraction.Extract`.
+   New capability wiring must NOT be added to the facade — every monitor
+   change should be a no-op on the orchestrator surface.
+2. **Lazy enricher / Indexer / Drive reconstruction**: the orchestrator
+   wires the `ytextraction.Service` with the root `*youtube.Service` as its
+   `ExtractionCallbacks` adapter (`NewService` →
+   `ytextraction.NewService(..., svc)`). The capability delegates every
+   external operation back through the adapter; the canonical callback
+   signature lives at `internal/application/youtube/extraction/` (the
+   `ExtractionCallbacks` interface) and is implemented wholesale on
+   `*youtube.Service`, so capability-side internals never reach into
+   orchestrator state directly. **To add a new capability-side external op,
+   extend the `ExtractionCallbacks` interface in one place and implement
+   the forwarder on `*Service` — never inject state into ytextraction.**
+   Per-invocation lazy `RebuildDeps` reconstruction for the
+   `rebuild_search_text` job type lives on `s.HandleRebuildSearchTextJob`
+   (closes over `s.clips.DB()`, `s.indexer`, `s.metadata.EnrichClip`).
+   **Callers below the orchestrator must NOT try to reconstruct any of
+   these deps themselves.**
+3. **Capability-not-wired is fatal at the facade level**: `s.extraction
+   == nil` returns an explicit `"youtube: extraction capability not
+   wired (...)"` error. The monitor path treats the error as a per-video
+   skip (Error log, not panic). The composition root must wire
+   `Cfg, Log, VideoPipeline, Clips, Monitors, AssetDestResolver,
+   FolderMemory, SegmentsSvc` in `ServiceDeps` for `NewService` to
+   wire the capability.
+4. **Monitor-path recovery convention**: every channel-monitor call site
+   that invokes a capability service MUST wrap the call in a
+   tightly-scoped `defer recover()` (e.g. inner closure returning
+   `(out, err)` with the defer reassigning `err` on panic). Tight
+   scope is required: panics in `os.MkdirAll`,
+   `findInterestingSegments` (LLM), Prometheus metric helpers, etc.
+   must NOT be silently swallowed — they are real bugs that need to
+   surface loudly. The recovery MUST include `runtime/debug.Stack()` in
+   the log so a non-trivial panic (e.g. nil-deref from a port that
+   escaped its nil-guard) is actionable in prod.
+5. **Response shape & counter discipline**: `*youtubetypes.ExtractResponse`
+   carries `OK`, `Items []ExtractItem`, `Stats` (`Requested` / `Processed`
+   / `Skipped` / `Failed`), `Folder`, `Error`. The monitor path treats
+   `err != nil` as hard failure (Error log), `resp == nil && err == nil`
+   as a defensive hard failure (treats as misconfigured; Error log),
+   `resp.OK == false` as business-level failure (Warn log + skip),
+   and on success logs `resp.Stats.Processed/Skipped/Failed` as
+   separate `zap.Int` fields — never `len(resp.Items)`, which would
+   over-report by counting failed items.
+
+Replacing the previous `channel-monitor` "WARN-skip placeholder":
+that placeholder documented `*youtube.Service.Extract` was removed
+during the ytextraction extraction; the facade above restores it
+without leaking capability internal state.
 
 `context.Background()` in non-test code: currently **~9 sites** (refactored from ~20). The remaining sites are either intentional post-write save contexts or top-level composition roots where no parent context exists. Lint gate: `bash scripts/ci-architectural-checks.sh`.
 
@@ -267,7 +328,7 @@ The runtime opens the `DatabaseSet` once via `storage.OpenSet(cfg.Storage, log)`
 in `internal/app/bootstrap.go::initDatabases`; no `sql.Open` lives outside
 `internal/infrastructure/database/**`. Override the canonical DB paths via
 the `storage.primary_db_path` and `storage.observability_db_path` config
-fields (defaults preserve legacy single-file layout; see §6).
+fields (defaults preserve the previous single-file layout; see §6).
 
 **Script-flow use cases (June 2026)**: the three HTTP endpoints that used
 to embed orchestration in `ScriptFlowHandler` now delegate to typed use
@@ -428,7 +489,7 @@ di `Service`. In sintesi:
 | `DriveFolderManagerPort` | `internal/app/youtube_adapters.go::driveFolderMgrAdapter` | wraps `*drive.Uploader` |
 | `FolderMemoryPort` | passes-through `*foldermemory.Service` directly | canonical impl lives at `internal/media/foldermemory/` |
 | `OllamaClientPort` | passes-through `*client.Client` directly | canonical impl lives at `internal/ml/ollama/client/` |
-| `SearchRunnerPort` | `internal/app/youtube_adapters.go::searchRunnerStub` (stub; real implementation deferred) | returns empty + warn-log |
+| `SearchRunnerPort` | `internal/app/youtube_adapters.go::searchRunnerStub` (compatibility adapter; implementation deferred) | returns empty + warn-log |
 | `ClipIndexerPort` | `internal/app/youtube_adapters.go::clipIndexerAdapter` | wraps `*clipindexer.Service` |
 | `WhisperTranscriberPort` | reserved; nil-by-default; segment.go nil-guards before call | — |
 | `ClipFilesPort` | reserved; nil-by-default; segment_cache.go nil-guards before call | — |
@@ -441,7 +502,7 @@ Empty-marker (opaque injection tokens, no method signature):
 ### Canonical DTO
 
 Un solo DTO per i metadata video: `*youtubedto.DownloaderMetadata`
-(con 14 fields + `CachedAt`). Back-compat per i nomi legacy:
+(con 14 fields + `CachedAt`). Back-compat per i nomi storici:
 `type VideoMetadata = DownloaderMetadata`,
 `type YouTubeMetadataPort = DownloaderMetadata`.
 
@@ -457,7 +518,7 @@ La precedente setter cascade (`Service.SetSearchRunner(...)`,
 - Settore verde sul cascade package scope (5 packages + cmd/server + cmd/worker).
 - `go test ./...` ha 7 packages falliti FUORI dal cascade scope — investigazione separata.
 - `internal/application/youtube/` è ancora un mega-package di 43 file (target 5-8) — split pianificato.
-- 3 latent-risk fissano l'agenda post-cascade (Thumbnails:nil, searchRunnerStub silent-empty, typed-nil panic).
+- 3 latent-risk fissano l'agenda post-cascade (Thumbnails:nil, searchRunner compatibility adapter silent-empty, typed-nil panic).
 
 ---
 

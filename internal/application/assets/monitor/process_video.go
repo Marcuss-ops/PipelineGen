@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 
@@ -262,27 +263,83 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, title
 	normalize := true
 	req.Normalize = &normalize
 
-	// CPR-CC-6 Phase 2 followup (June 2026): the synchronous *youtube.Service.Extract
-	// entry point was removed when the extraction flow moved into the
-	// ytextraction capability service. Full wiring (job-dispatch through
-	// the extraction capability's runtime entry) is a Phase 2+ follow-up.
-	// Until then, the channel-monitor logs the disabled state explicitly
-	// and skips the clip. /api/script/* paths are unaffected — they go
-	// through a different pipeline.
-	m.log.Warn("channel-monitor: youtube clip extraction disabled pending Phase 2+ migration follow-up; skipping clip",
-		zap.String("video_id", videoID),
-		zap.String("title", title),
-		zap.String("category", category),
-		zap.Int("segments", len(segments)),
-		zap.String("drive_folder_id", driveFolderID),
-		zap.Bool("req_normalize", *req.Normalize))
-	return
+	// Extract & upload via the orchestrator's Extract facade (Wave-2+ ladder).
+	// The orchestrator owns lazy enricher / Indexer / Drive wiring inside
+	// the ytextraction capability (see ARCHITECTURE.md §7 "Extract facade
+	// contract"); the monitor stays ignorant of those deps and treats each
+	// call as a one-shot background operation. Hard failures (capability
+	// not wired, port error) log Error and skip; business failures (no
+	// segments, asset_repo nil) are surfaced through resp.Error at Warn.
+	//
+	// Invocation is wrapped in a tightly-scoped closure so a panic from
+	// m.youtubeSvc.Extract does NOT tear down the monitor ticker goroutine.
+	// The recover is intentionally limited to this call only — panics
+	// elsewhere in downloadClip (os.MkdirAll, findInterestingSegments LLM,
+	// Prometheus clients) are NOT swallowed so real bugs surface loudly.
+	resp, err := func() (outResp *yttypes.ExtractResponse, outErr error) {
+		defer func() {
+			if r := recover(); r != nil {
+				stack := debug.Stack()
+				m.log.Error("channel-monitor: panic recovered during m.youtubeSvc.Extract; monitor loop continues",
+					zap.String("video_id", videoID),
+					zap.String("title", title),
+					zap.String("category", category),
+					zap.Any("panic", r),
+					zap.String("stack", string(stack)))
+				outErr = fmt.Errorf("youtube.Extract panicked: %v", r)
+			}
+		}()
+		return m.youtubeSvc.Extract(ctx, req)
+	}()
+	if err != nil {
+		m.log.Error("channel-monitor: youtube extract failed; skipping clip",
+			zap.String("video_id", videoID),
+			zap.String("title", title),
+			zap.String("category", category),
+			zap.Int("segments", len(segments)),
+			zap.String("drive_folder_id", driveFolderID),
+			zap.Error(err))
+		return
+	}
+	// Defensive normalise: a `(nil, nil)` return from the capability (should
+	// not happen per the orchestrator's typed contract, but might after a
+	// future refactor) would otherwise silently log a misleading "0 items
+	// extracted" success. Treat as hard failure.
+	if resp == nil {
+		m.log.Error("channel-monitor: youtube extract returned nil response without error; skipping clip",
+			zap.String("video_id", videoID),
+			zap.String("category", category))
+		return
+	}
+	if !resp.OK {
+		m.log.Warn("channel-monitor: extract pipeline reported !OK; skipping clip",
+			zap.String("video_id", videoID),
+			zap.String("title", title),
+			zap.String("category", category),
+			zap.Int("segments", len(segments)),
+			zap.String("drive_folder_id", driveFolderID),
+			zap.String("response_error", resp.Error))
+		return
+	}
 
+	// Use the dedicated counter fields, not `len(Items)` — items can be
+	// failed/skipped and a naive length would over-report. nil-guarded
+	// because the capability may legitimately leave Stats empty for a
+	// short-circuit success path (cached clip, no segments requested).
+	processed, skipped, failed := 0, 0, 0
+	if resp.Stats != nil {
+		processed = resp.Stats.Processed
+		skipped = resp.Stats.Skipped
+		failed = resp.Stats.Failed
+	}
 	m.log.Info("Successfully extracted and uploaded channel clip",
 		zap.String("video_id", videoID),
 		zap.String("category", category),
 		zap.String("channel_handle", channelHandle),
-		zap.String("destination_group", destinationGroup))
+		zap.String("destination_group", destinationGroup),
+		zap.Int("items_processed", processed),
+		zap.Int("items_skipped", skipped),
+		zap.Int("items_failed", failed))
 }
 
 // loadConfig loads the monitor configuration from file

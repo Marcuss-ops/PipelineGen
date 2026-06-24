@@ -80,13 +80,20 @@ type Service struct {
 }
 
 type DiagnosticsReport struct {
-	OK               bool     `json:"ok"`
-	Services         []string `json:"services"`
-	RepoConfigured   bool     `json:"repo_configured"`
-	DriveConfigured  bool     `json:"drive_configured"`
-	NvidiaConfigured bool     `json:"nvidia_configured"`
-	IngestConfigured bool     `json:"ingest_configured"`
-	WikidataWorks    bool     `json:"wikidata_works"`
+	OK               bool                              `json:"ok"`
+	Services         []string                          `json:"services"`
+	RepoConfigured   bool                              `json:"repo_configured"`
+	DriveConfigured  bool                              `json:"drive_configured"`
+	NvidiaConfigured bool                              `json:"nvidia_configured"`
+	IngestConfigured bool                              `json:"ingest_configured"`
+	WikidataWorks    bool                              `json:"wikidata_works"`
+	// Capabilities is the truthful per-capability availability map
+	// surfaced for /api/images/diagnostics. Single source of truth:
+	// each entry is derived from Service.CapabilityResolution; HTTP
+	// routes and this diagnostic field never read env vars or feature
+	// booleans in parallel (per fix(images): expose truthful capability
+	// availability).
+	Capabilities map[Capability]CapabilityStatus `json:"capabilities"`
 }
 
 // NewService constructs an images.Service with all optional dependencies
@@ -161,13 +168,18 @@ func NewService(
 }
 
 func (s *Service) Diagnostics() DiagnosticsReport {
+	// Single source of truth: NvidiaConfigured is derived from
+	// CapabilityResolution so HTTP routes and the diagnostic field do
+	// not duplicate the nvidiaAPIKey / placeholder check. See
+	// capability.go for the resolver.
 	return DiagnosticsReport{
 		OK:               s.repo != nil,
-		Services:         []string{"repo", "drive", "nvidia"},
+		Services:         []string{"repo", "drive", "nvidia", "remote_image_gen"},
 		RepoConfigured:   s.repo != nil,
 		DriveConfigured:  s.driveSvc != nil,
-		NvidiaConfigured: s.nvidiaAPIKey != "" && s.nvidiaAPIKey != "PASTE_YOUR_NVIDIA_API_KEY_HERE",
+		NvidiaConfigured: s.CapabilityResolution(CapImageGenNvidia) == StatusAvailable,
 		IngestConfigured: s.ingestSvc != nil,
+		Capabilities:     s.AllCapabilities(),
 	}
 }
 

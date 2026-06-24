@@ -1,5 +1,6 @@
 // Package semantic provides semantic text tagging capabilities.
-// Recreated as a minimal stub after production code was removed from remote.
+// Recreated as a minimal compatibility layer after production code was
+// removed from remote.
 package semantic
 
 import (
@@ -9,21 +10,22 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── NewMetadataWriter (AGENT-2 cascade stub, June 2026) ─────────────────
+// ── NewMetadataWriter (AGENT-2 compatibility layer, June 2026) ──────────
 
 // NewMetadataWriter is the canonical constructor for *MetadataWriter.
 // Pre-fix callers (module_artlist.go + module_stock.go inside the
 // BuildDomainBundle composition root) called semantic.NewMetadataWriter(...)
-// with these five args; the canonical stub did not expose a constructor.
-// The stub consumes the args (for future wiring parity) and returns a
-// working no-op *MetadataWriter — Write/GeneratePayload produce deterministic
-// Payload shells so downstream ports (artlist.MetadataWriter + stockpipeline)
-// stay satisfied until the real tagger is reintroduced.
+// with these five args; the earlier compatibility layer did not expose a constructor.
+// The constructor consumes the args (for future wiring parity) and returns
+// a working no-op *MetadataWriter — Write/GeneratePayload produce
+// deterministic Payload shells so downstream ports
+// (artlist.MetadataWriter + stockpipeline) stay satisfied until the real
+// tagger is reintroduced.
 func NewMetadataWriter(pythonScriptsDir, tempDir, ollamaURL, ollamaModel string, log *zap.Logger) *MetadataWriter {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	log.Info("semantic.MetadataWriter stub initialised",
+	log.Info("semantic.MetadataWriter compatibility layer initialised",
 		zap.String("python_scripts_dir", pythonScriptsDir),
 		zap.String("temp_dir", tempDir),
 		zap.String("ollama_url", ollamaURL),
@@ -318,12 +320,12 @@ func BuildVideoExtension(durationSec, width int, codec string, hasAudio bool) []
 func BuildAudioExtension(durationSec, sampleRate, channels int, isMusic bool, sourceVideoID string) []map[string]any {
 	return []map[string]any{
 		{
-			"type":          "audio",
-			"duration":      durationSec,
-			"sample_rate":   sampleRate,
-			"channels":      channels,
-			"is_music":      isMusic,
-			"source_video":  sourceVideoID,
+			"type":         "audio",
+			"duration":     durationSec,
+			"sample_rate":  sampleRate,
+			"channels":     channels,
+			"is_music":     isMusic,
+			"source_video": sourceVideoID,
 		},
 	}
 }
@@ -332,12 +334,12 @@ func BuildAudioExtension(durationSec, sampleRate, channels int, isMusic bool, so
 func BuildImageExtension(width, height int, format, dominantColor string, fileSizeBytes int) []map[string]any {
 	return []map[string]any{
 		{
-			"type":          "image",
-			"width":         width,
-			"height":        height,
-			"format":        format,
+			"type":           "image",
+			"width":          width,
+			"height":         height,
+			"format":         format,
 			"dominant_color": dominantColor,
-			"file_size":     fileSizeBytes,
+			"file_size":      fileSizeBytes,
 		},
 	}
 }

@@ -13,11 +13,15 @@
 package images
 
 import (
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 )
 
 // FullImagesHandler exposes the FullImages endpoint under /images/video/generate.
@@ -72,6 +76,40 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 			if req.Sections[i].Style == "" {
 				req.Sections[i].Style = req.DefaultStyle
 			}
+		}
+	}
+
+	// Truthful capability gate (fix(images): expose truthful capability
+	// availability). At least one section requests engine="google-vids"
+	// which needs the video_ai capability (currently NotImplemented: the
+	// GenerateVideoAI stub returns StatusNotImplemented). Surface 501
+	// honestly rather than returning a 200 with empty videos. Ken-Burns
+	// engine continues to work via the NVIDIA image-pipeline; the gate
+	// fires only when video_ai is the chosen engine.
+	needsVideoAI := false
+	for _, sec := range req.Sections {
+		if strings.EqualFold(strings.TrimSpace(sec.Engine), "google-vids") {
+			needsVideoAI = true
+			break
+		}
+	}
+	if needsVideoAI {
+		videoStatus := h.service.VideoStatus()
+		if videoStatus == imgservice.StatusNotImplemented {
+			c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
+				"error":      "video AI (Google Vids) generation is not yet implemented",
+				"capability": string(imgservice.CapVideoAI),
+				"status":     string(videoStatus),
+			})
+			return
+		}
+		if videoStatus == imgservice.StatusMissingDependency {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"error":      "video AI generation requires the configured AI backend to be Available",
+				"capability": string(imgservice.CapVideoAI),
+				"status":     string(videoStatus),
+			})
+			return
 		}
 	}
 

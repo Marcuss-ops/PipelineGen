@@ -44,14 +44,14 @@ func runGenerateAvatar(args []string) error {
 	return fmt.Errorf("avatar generation not implemented (admin CLI pending post-PR4 admin loader)")
 }
 
-// runGenerateAIVideo is a stub. Pre-PR4 it called
-// core.ImageService.GenerateVideoAI on the legacy app.InitCore surface.
+// runGenerateAIVideo is a compatibility command. Pre-PR4 it called
+// core.ImageService.GenerateVideoAI on the previous app.InitCore surface.
 // Post-PR4 the composition root reconstructs the image service stack
 // inside NewComposition.BuildDomainBundle (an opinionated chain that
 // does not include a video-generation entry-point). Reaching into the
 // composition root from cmd/admin requires a dedicated admin loader
 // (analogous to gen_api_docs.go's app.WireServices usage) — a follow-up
-// PR will reintroduce this functionality on that path. The stub keeps
+// PR will reintroduce this functionality on that path. The command keeps
 // the build green + honest about the gap (CLI parses flags, surfaces a
 // clear "not implemented" error so callers see the situation).
 func runGenerateAIVideo(args []string) error {
@@ -66,6 +66,6 @@ func runGenerateAIVideo(args []string) error {
 		return fmt.Errorf("prompt is required")
 	}
 
-	fmt.Printf("AI video generation stub (post-PR4): prompt=%q style=%s — not yet re-linked to app.NewComposition's image/video services\n", *prompt, *style)
+	fmt.Printf("AI video generation compatibility command (post-PR4): prompt=%q style=%s — not yet re-linked to app.NewComposition's image/video services\n", *prompt, *style)
 	return fmt.Errorf("generate-ai-video: not implemented (post-PR4 admin re-link pending)")
 }

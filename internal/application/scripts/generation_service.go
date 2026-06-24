@@ -3,8 +3,8 @@
 // script Handler. It translates an HTTP request into a queued background
 // job via the JobEnqueuer port declared in ports.go.
 //
-// Phase 2 activation (June 2026): replaces the previous stub at
-// internal/application/scripts/types_stubs.go that accepted
+// Phase 2 activation (June 2026): replaces the previous stub
+// implementation that accepted
 // `jobsFacade interface{}` and returned empty `FromClipsResult{}` no-ops.
 // The stub left HTTP callers with a clean 200 + job_id="" response and
 // no actual work scheduled; the worker never received a job, scripts
