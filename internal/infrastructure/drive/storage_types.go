@@ -3,7 +3,7 @@
 //
 // Context: in PR-Phase 7 the team merged versions of this package into
 // independent micro-modules (internal/upload/drive for the uploader,
-// internal/media/models for the enums, internal/core/destination for the
+// internal/media/models for the enums, internal/domain/asset for the
 // resolver). They shipped the moves without rewriting the consumer side,
 // so `internal/media/storage` is referenced from 13 files but contains
 // no Go files. The build fails with:
@@ -16,7 +16,7 @@
 // consumer should import:
 //
 //   - SourceType / MediaType  â†’ internal/media/models (canonical enums)
-//   - AssetDestinationRequest â†’ internal/core/domain/asset (canonical request)
+//   - AssetDestinationRequest â†’ internal/domain/asset (canonical request)
 //   - Drive upload logic      â†’ internal/upload/drive.Uploader
 //
 // For now, all existing `storage.SourceImage`, `storage.MediaTypeImage*`,
@@ -79,7 +79,7 @@ const (
 // Fields map closely to the legacy destinations.AssetDestinationRequest
 // pre-Phase-7 struct, kept so google_drive_upload.go and friends compile.
 //
-// Canonical migration target: internal/core/domain/asset.DestinationRequest
+// Canonical migration target: internal/domain/asset.DestinationRequest
 // (deferred â€” the 13 callers' field-name contract is too widespread to
 // reroute in a single follow-up without breaking other PRs).
 type AssetDestinationRequest struct {
