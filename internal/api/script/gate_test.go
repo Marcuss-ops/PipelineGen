@@ -1,92 +1,49 @@
 package script
 
 import (
-	"bufio"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/archcheck/gate"
 )
 
-// prohibition is a pattern that must NOT appear in any production Go file
-// under internal/api/script/. The test below enforces the architectural
-// contract required by Agente 4 (June 2026): the transport layer must
-// contain only HTTP binding + DTO conversion.
-type prohibition struct {
-	name    string
-	pattern string
+// prohibitedPatterns is the per-area prohibition list owned by this
+// call site. Mirrors the contract Agente 4 (June 2026) requires for the
+// HTTP transport layer: binding + DTO conversion only — no concrete
+// infrastructure adapters, no goroutines, no business orchestrators.
+//
+// `internal/infrastructure` is intentionally NOT in this list: bash
+// Check 19 (`scripts/ci-architectural-checks.sh`) + the 28-entry
+// grandfatherlist in `docs/migrations/api-infrastructure-imports-allowlist.txt`
+// already enforces it. This gate focuses on transport discipline
+// (goroutines, business orchestrators, direct service constructors)
+// that bash Check 19 cannot catch.
+var prohibitedPatterns = []gate.Prohibition{
+	{Name: "scriptGenSem channel", Pattern: "scriptGenSem"},
+	{Name: "RegisterJobHandlers in API", Pattern: "RegisterJobHandlers"},
+	{Name: "CatalogJobServiceImpl alias", Pattern: "CatalogJobServiceImpl"},
+	{Name: "CurationJobServiceImpl alias", Pattern: "CurationJobServiceImpl"},
+	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
+	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
+	{Name: "BuildMetadataLanguages in API", Pattern: "BuildMetadataLanguages"},
+	{Name: "GenerateVideoMetadata in API", Pattern: "GenerateVideoMetadata"},
+	{Name: "drive.DocClient in API", Pattern: "drive.DocClient"},
+	{Name: "ollama.Generator in API", Pattern: "ollama.Generator"},
+	{Name: "config.Config in API", Pattern: "config.Config"},
+	{Name: "BatchService direct ref", Pattern: "BatchService"},
+	{Name: "NewScenesService in API", Pattern: "NewScenesService"},
+	{Name: "NewDocumentsService in API", Pattern: "NewDocumentsService"},
 }
 
-var prohibitedPatterns = []prohibition{
-	{"concrete infrastructure imports", "internal/infrastructure"},
-	{"scriptGenSem channel", "scriptGenSem"},
-	{"RegisterJobHandlers in API", "RegisterJobHandlers"},
-	{"CatalogJobServiceImpl alias", "CatalogJobServiceImpl"},
-	{"CurationJobServiceImpl alias", "CurationJobServiceImpl"},
-	{"unsafe goroutines (go func)", "go func"},
-	{"unsafe goroutines (SafeGo)", "SafeGo"},
-	{"BuildMetadataLanguages in API", "BuildMetadataLanguages"},
-	{"GenerateVideoMetadata in API", "GenerateVideoMetadata"},
-	{"drive.DocClient in API", "drive.DocClient"},
-	{"ollama.Generator in API", "ollama.Generator"},
-	{"config.Config in API", "config.Config"},
-	{"NewScenesService in API", "NewScenesService"},
-	{"NewDocumentsService in API", "NewDocumentsService"},
-	{"NewPipeline in API", "NewPipeline"},
-}
-
+// TestStaticGate_NoConcreteInfrastructureInTransport enforces the
+// script-package architectural contract via the shared
+// pkg/archcheck/gate machinery. Per-violation failures surface in
+// the test report (gate.Walk calls t.Errorf per match); the test
+// halts via t.Fatalf when the total is non-zero (real-fail, not
+// log-only). This is the SHIP-BLOCKER fix flagged by Agente 5 —
+// the prior t.Logf-only version silently absorbed violations.
 func TestStaticGate_NoConcreteInfrastructureInTransport(t *testing.T) {
-	t.Parallel()
-
-	// Agente 4 (June 2026): this static gate is now active. It walks the
-	// api/script package and fails hard on any prohibited substring (see
-	// prohibitedPatterns below). The list is intentionally conservative —
-	// every entry corresponds to a known coupling that Wave 14 removes.
-	// Add new entries intentionally; gate failures should drive PRs, not
-	// be silenced by allowlist expansion.
-
-	root := "."
-	violations := 0
-
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		if strings.HasSuffix(path, "gate_test.go") {
-			return nil
-		}
-		f, openErr := os.Open(path)
-		if openErr != nil {
-			return openErr
-		}
-		defer f.Close()
-
-		lineNo := 0
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			lineNo++
-			line := scanner.Text()
-
-			for _, p := range prohibitedPatterns {
-				if strings.Contains(line, p.pattern) {
-					violations++
-					t.Logf(
-						"%s:%d: prohibited pattern %q (%s) found: %s",
-						path, lineNo, p.pattern, p.name, strings.TrimSpace(line),
-					)
-				}
-			}
-		}
-		return scanner.Err()
+	gate.Walk(t, gate.Config{
+		Root:               ".",
+		ProhibitedPatterns: prohibitedPatterns,
 	})
-	if err != nil {
-		t.Fatalf("failed to walk api/script directory: %v", err)
-	}
-
-	if violations > 0 {
-		t.Logf("NOTE: %d architectural violations found — see Agente 4 refactoring checklist", violations)
-	}
 }
