@@ -4,8 +4,10 @@ package scripts
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -230,7 +232,15 @@ type BatchService struct {
 // intentionally interface{} to avoid forcing more canonical-package
 // imports on this leaf.
 func NewBatchService(cfg, log, gen, engine, doc, vo, repo interface{}) *BatchService {
-	return &BatchService{}
+	var logger *zap.Logger
+	if l, ok := log.(*zap.Logger); ok {
+		logger = l
+	}
+	return &BatchService{
+		scriptsRepo: repo,
+		docClient:   doc,
+		log:         logger,
+	}
 }
 
 // Execute runs batch generation (stub).
@@ -245,12 +255,117 @@ func (b *BatchService) ExecuteBatchGeneration(ctx context.Context, req *Generate
 
 // createBatchDoc creates a Google Doc from batch parts (stub).
 func (b *BatchService) createBatchDoc(ctx context.Context, title string, parts []GeneratedPart, noChapters bool, language, folderID string) (string, string) {
-	return "", ""
+	if b == nil || b.docClient == nil {
+		return "", ""
+	}
+	client, ok := b.docClient.(drive.DocClient)
+	if !ok || client == nil {
+		return "", ""
+	}
+	sectionTitles := make([]string, 0, len(parts))
+	sectionContents := make([]string, 0, len(parts))
+	for _, part := range parts {
+		sectionTitles = append(sectionTitles, part.topic)
+		sectionContents = append(sectionContents, part.content)
+	}
+	content := BuildSectionDocHTML(title, sectionTitles, sectionContents, noChapters, language)
+	doc, err := client.CreateDoc(ctx, title, content, folderID)
+	if err != nil || doc == nil || doc.URL == "" || doc.ID == "" {
+		return "", ""
+	}
+	return doc.URL, doc.ID
 }
 
 // saveBatchScript persists a batch script (stub).
 func (b *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRequest, rec *batchDBRecord, sources []ScriptResearchSource) int64 {
-	return 0
+	if b == nil || req == nil || !req.SaveToDB || b.scriptsRepo == nil || rec == nil {
+		return 0
+	}
+	repo, ok := b.scriptsRepo.(ScriptRepository)
+	if !ok || repo == nil {
+		return 0
+	}
+
+	title := strings.TrimSpace(req.DocTitle)
+	if title == "" {
+		title = strings.TrimSpace(rec.docTitle)
+	}
+	if title == "" {
+		title = "Untitled script"
+	}
+	language := strings.TrimSpace(req.Language)
+	if language == "" {
+		language = "en"
+	}
+
+	fullDoc := rec.mergedScript
+	finalWordCount := countWords(fullDoc)
+	if finalWordCount == 0 {
+		for _, section := range rec.sections {
+			finalWordCount += countWords(section.Content)
+		}
+	}
+	if finalWordCount == 0 {
+		finalWordCount = 1
+	}
+
+	version, err := repo.NextVersionForTopic(ctx, title, language, "batch")
+	if err != nil || version <= 0 {
+		version = 1
+	}
+
+	scriptRec := &ScriptRecord{
+		Title:          title,
+		Topic:          title,
+		Language:       language,
+		Tone:           strings.TrimSpace(req.Tone),
+		Model:          strings.TrimSpace(req.Model),
+		ModelUsed:      strings.TrimSpace(req.Model),
+		Mode:           "batch",
+		Status:         "completed",
+		TargetWords:    rec.targetWords,
+		FinalWordCount: finalWordCount,
+		OutputText:     fullDoc,
+		NarrativeText:  fullDoc,
+		FullDocument:   fullDoc,
+		Version:        version,
+	}
+
+	scriptID, err := repo.SaveScript(ctx, scriptRec, rec.sections, nil)
+	if err != nil || scriptID <= 0 {
+		return 0
+	}
+
+	if len(rec.outlineSections) > 0 {
+		outlineSections := make([]ScriptOutlineSectionRecord, len(rec.outlineSections))
+		for i, section := range rec.outlineSections {
+			section.ScriptID = scriptID
+			outlineSections[i] = section
+		}
+		if err := repo.SaveOutlineSections(ctx, scriptID, outlineSections); err != nil {
+			return 0
+		}
+	}
+
+	if len(sources) > 0 {
+		persistedSources := make([]ScriptResearchSource, len(sources))
+		for i, source := range sources {
+			source.ScriptID = scriptID
+			persistedSources[i] = source
+		}
+		if err := repo.SaveResearchSources(ctx, scriptID, persistedSources); err != nil {
+			return 0
+		}
+	}
+
+	for _, logEntry := range rec.generationLogs {
+		logEntry.ScriptID = scriptID
+		if err := repo.SaveGenerationLog(ctx, logEntry); err != nil {
+			return 0
+		}
+	}
+
+	return scriptID
 }
 
 // ── Engine and pipeline types ───────────────────────────────────────────
@@ -405,16 +520,45 @@ func (p *Pipeline) Run(ctx context.Context, spec interface{}, script string, too
 // ── Documents types ─────────────────────────────────────────────────────
 
 // DocumentsService creates Google Docs from script content.
-type DocumentsService struct{}
+type DocumentsService struct {
+	docClient       interface{}
+	log             *zap.Logger
+	defaultFolderID string
+}
 
 // NewDocumentsService creates a new DocumentsService (stub).
 func NewDocumentsService(docClient interface{}, log interface{}, driveFolderID string) *DocumentsService {
-	return &DocumentsService{}
+	var logger *zap.Logger
+	if l, ok := log.(*zap.Logger); ok {
+		logger = l
+	}
+	return &DocumentsService{
+		docClient:       docClient,
+		log:             logger,
+		defaultFolderID: driveFolderID,
+	}
 }
 
-// CreateDoc creates a Google Doc (stub).
+// CreateDoc creates a Google Doc.
 func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string, resolveFolder FolderResolver, driveFolderID string) (docLink, docID string) {
-	return "", ""
+	if d == nil {
+		return "", ""
+	}
+	client, ok := d.docClient.(drive.DocClient)
+	if !ok || client == nil {
+		return "", ""
+	}
+	folderID := strings.TrimSpace(driveFolderID)
+	if resolveFolder != nil && folderID != "" {
+		if resolved, err := resolveFolder(ctx, folderID, d.defaultFolderID); err == nil && strings.TrimSpace(resolved) != "" {
+			folderID = resolved
+		}
+	}
+	doc, err := client.CreateDoc(ctx, title, content, folderID)
+	if err != nil || doc == nil || strings.TrimSpace(doc.URL) == "" || strings.TrimSpace(doc.ID) == "" {
+		return "", ""
+	}
+	return doc.URL, doc.ID
 }
 
 // ── VideoMetadata ───────────────────────────────────────────────────────

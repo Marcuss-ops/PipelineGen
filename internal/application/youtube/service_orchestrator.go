@@ -280,8 +280,16 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 		jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, s.HandleJob)
 		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobservice.TypeYouTubeClipExtract))
 
-		jobsSvc.RegisterHandler(jobservice.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
-		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", jobservice.TypeYouTubeRebuildST))
+		// The receiver method s.HandleRebuildSearchTextJob (defined below)
+		// wraps the canonical ytjobs.HandleRebuildSearchTextJob and lazily
+		// reconstructs RebuildDeps from this Service's runtime state at
+		// invocation time (Clips.DB → DB, log, Indexer port, metadata
+		// EnrichClip forwarder). Registering the receiver directly keeps a
+		// single registration site for the rebuild_search_text job type.
+		if s.clips != nil {
+			jobsSvc.RegisterHandler(jobservice.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
+			s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", jobservice.TypeYouTubeRebuildST))
+		}
 	}
 }
 
@@ -462,18 +470,21 @@ func (s *Service) EnrichSkippedClip(ctx context.Context, clipID, videoURL, video
 	s.enrichSkippedClip(ctx, clipID, videoURL, videoID)
 }
 
-// SliceSubtitles is a stub returning nil. The (currently missing) s.sliceSubtitles
-// private helper was lost during the 03e6b8d heavy-cleanup wave; the implementation
-// must be restored from pre-cleanup git history or rewritten as a port delegation.
-// Returning nil here preserves the ExtractionCallbacks interface contract so segment
-// processing does not block on this stub.
+// SliceSubtitles is the public ExtractionCallbacks entry point that
+// delegates to the SubtitleFetcherPort.
 //
-// TODO(wave14-followup): real subtitle-slicing logic must be restored before the next
-// drive-sync run that depends on sliced subtitles for downstream cut timing. Operators
-// should monitor ytsearch logs for `sliceSubtitles` references that resolve to nil
-// returns (this stub) and adjust their cut-timing heuristics accordingly.
+// CPR-CC-6 Phase 2 followup (June 2026): the previous body used a
+// `s.sliceSubtitles` private shell that was removed in commit aee5c867,
+// leaving a broken self-reference (Go method-set would not recurse, the
+// call site simply didn't compile). The shell has been inlined here.
+// The isUnavailablePort guard mirrors sibling forwarding methods to
+// surface an explicit error rather than nil-deref-panic when the port
+// is not wired at composition time.
 func (s *Service) SliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error {
-	return nil
+	if isUnavailablePort(s.subtitleFetcher) {
+		return fmt.Errorf("youtube: subtitle fetcher port not wired")
+	}
+	return s.subtitleFetcher.SliceSubtitles(ctx, videoID, startSec, endSec, outputPath)
 }
 
 // TranscribeAudio is a best-effort callback (ExtractionCallbacks) that

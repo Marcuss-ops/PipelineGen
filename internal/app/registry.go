@@ -20,11 +20,11 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
@@ -33,8 +33,8 @@ import (
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
@@ -43,7 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	scriptcore	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -297,11 +297,15 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		log.Info("MediaIngest module wired (service pre-built via BuildDomainBundle, no late-binding needed)")
 	}
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
+		// NewScriptHistoryModule expects two gin.HandlerFunc gate args
+		// (handler feature gate + enabled bool). The helper in
+		// internal/api/middleware reads `cfg.Features.ScriptClipsEnabled`
+		// and wraps the bool in a 403-on-disabled middleware.
 		registerModule(registry, log, scriptapi.NewScriptHistoryModule(
 			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 			log,
 			middleware.ScriptClipsEnabled(cfg),
-			cfg.Features.ScriptClipsEnabled,
+			cfg != nil && cfg.Features.ScriptClipsEnabled,
 		))
 	}
 	registerModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility))
@@ -404,7 +408,6 @@ type DriveDestinations struct {
 func (d *DriveDestinations) RootFolder() string    { return d.MediaRoot }
 func (d *DriveDestinations) ImagesFolder() string  { return d.imagesFolder }
 func (d *DriveDestinations) VideoAIFolder() string { return d.videoAIFolder }
-
 
 func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)

@@ -48,6 +48,11 @@ type serverLifecycle struct {
 	// The job runner MUST be the last entry in the plan.
 	startupPlan []StartupStep
 
+	// startedSteps tracks the steps whose Start method has been invoked.
+	// Stop uses this to tear down only the services that actually entered
+	// the startup sequence.
+	startedSteps []int
+
 	// cleanup is the LIFO teardown stack (coreClean → artlist Close →
 	// logDB Close → middleware StopLogger). Invoked during Stop.
 	cleanup func()
@@ -70,11 +75,11 @@ const probeTimeout = 5 * time.Second
 //     aborts the sequence without starting any service.
 //  3. Startup plan — each step is executed in declaration order:
 //     a. Required steps: error aborts the sequence and returns immediately
-//        (no further steps execute).
+//     (no further steps execute).
 //     b. Optional steps: error is logged and exposed (via StructuredError)
-//        but does NOT block remaining steps.
+//     but does NOT block remaining steps.
 //     c. Job runner is the last required step — it freezes the dispatcher
-//        and begins claiming jobs.
+//     and begins claiming jobs.
 //
 // Context contract: Start uses the server's runtime context (derived from
 // signal.NotifyContext in api/server.go). All background goroutines
@@ -84,6 +89,7 @@ func (l *serverLifecycle) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("lifecycle start: context already done: %w", err)
 	}
+	l.startedSteps = l.startedSteps[:0]
 
 	// Readiness barrier: pkg/concurrent.Group runs the probes in
 	// parallel under a derived context. First error wins.
@@ -114,14 +120,17 @@ func (l *serverLifecycle) Start(ctx context.Context) error {
 	}
 
 	// Run the startup plan in declaration order.
-	for _, step := range l.startupPlan {
+	for i, step := range l.startupPlan {
+		l.startedSteps = append(l.startedSteps, i)
 		if err := step.Start(ctx); err != nil {
 			if step.Required {
 				return fmt.Errorf("required step %q failed: %w", step.Name, err)
 			}
 			// Optional failure: log and continue.
-			l.log.Warn("optional startup step failed",
-				zap.String("step", step.Name), zap.Error(err))
+			if l.log != nil {
+				l.log.Warn("optional startup step failed",
+					zap.String("step", step.Name), zap.Error(err))
+			}
 		}
 	}
 	return nil
@@ -139,15 +148,18 @@ func (l *serverLifecycle) Start(ctx context.Context) error {
 func (l *serverLifecycle) Stop(ctx context.Context) error {
 	_ = ctx
 	// Run step stops in reverse order.
-	for i := len(l.startupPlan) - 1; i >= 0; i-- {
-		step := l.startupPlan[i]
+	for i := len(l.startedSteps) - 1; i >= 0; i-- {
+		step := l.startupPlan[l.startedSteps[i]]
 		if step.Stop != nil {
 			_ = step.Stop(ctx)
 		}
 	}
+	l.startedSteps = nil
 	// Run the LIFO cleanup stack.
 	if l.cleanup != nil {
-		l.cleanup()
+		cleanup := l.cleanup
+		l.cleanup = nil
+		cleanup()
 	}
 	return nil
 }
