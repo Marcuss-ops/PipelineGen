@@ -546,3 +546,25 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 	}
 	return s.search.TopicSearch(ctx, query, limit, sortMode, publishedAfter)
 }
+
+// ── AGENT-2 build-fix (June 2026): GetVideoInfo forwarding ──────────────
+//
+// GetVideoInfo fetches full YouTube metadata for the given URL by
+// forwarding to the canonical VideoMetadataFetcherPort (which exposes
+// GetVideoMetadata(ctx, videoURL) with the same return type). The
+// isUnavailablePort guard mirrors sibling forwarding methods
+// (DriveUploadFileIfChanged, OllamaSimpleGenerate) to surface a typed
+// error instead of nil-deref-panic when metaFetcher is not wired at
+// composition time.
+//
+// Fulfils the extraction.ExtractionCallbacks.GetVideoInfo interface
+// requirement on *Service. Merged into CPR-CC-6 Phase 2 (June 2026)
+// alongside the topic-search forwarder above; both sides appended at
+// end-of-file in upstream + local histories and were combined manually
+// per AGENTS.md Rebase-Conflict Lesson rule 3.
+func (s *Service) GetVideoInfo(ctx context.Context, url string) (*youtubeports.DownloaderMetadata, error) {
+	if isUnavailablePort(s.metaFetcher) {
+		return nil, fmt.Errorf("youtube: metaFetcher port not wired")
+	}
+	return s.metaFetcher.GetVideoMetadata(ctx, url)
+}
