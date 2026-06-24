@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -9,6 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 )
 
 // ── SemaphoreUseCase ────────────────────────────────────────────────────────
@@ -232,4 +237,162 @@ func TestPipelineUseCase_HandleJob_NilUseCaseErrors(t *testing.T) {
 	var pu *PipelineUseCase
 	_, err := pu.HandleJob(context.Background(), nil, nil)
 	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
+}
+
+// ── PostGenUseCase (Wave 14 problem #4 fixup) ──────────────────────────────
+
+// fakePostGenExtractor is a stand-in EntityScriptExtractor for the
+// PostGenUseCase.Run test table. It captures call count + lets tests
+// inject a canned FullEntityAnalysis or an error.
+type fakePostGenExtractor struct {
+	calls     atomic.Int32
+	analysis  *asset.FullEntityAnalysis
+	returnErr error
+}
+
+func (f *fakePostGenExtractor) ExtractEntitiesFromScriptWithModel(_ context.Context, _ []string, _ int, _ string) (*asset.FullEntityAnalysis, error) {
+	f.calls.Add(1)
+	if f.returnErr != nil {
+		return nil, f.returnErr
+	}
+	if f.analysis != nil {
+		return f.analysis, nil
+	}
+	return &asset.FullEntityAnalysis{}, nil
+}
+
+// fakePostGenInsight is the InsightBuilder narrow-port fake.
+type fakePostGenInsight struct {
+	calls atomic.Int32
+	out   ScriptInsights
+}
+
+func (f *fakePostGenInsight) Build(_ context.Context, _, _, _ string) ScriptInsights {
+	f.calls.Add(1)
+	return f.out
+}
+
+func TestPostGenUseCase_NilSafe(t *testing.T) {
+	t.Parallel()
+	var uc *PostGenUseCase
+	res, err := uc.Run(context.Background(), &scriptpkg.GenerationSpec{ExtractEntities: true}, "sample script")
+	require.NoError(t, err)
+	assert.Empty(t, res.EntitiesJSON)
+	assert.Nil(t, res.VideoMetadata)
+}
+
+func TestPostGenUseCase_EmptyScriptBypasses(t *testing.T) {
+	t.Parallel()
+	extractor := &fakePostGenExtractor{}
+	uc := NewPostGenUseCase(extractor, nil, nil, "llama3", nil, nil, zap.NewNop())
+	res, err := uc.Run(context.Background(), &scriptpkg.GenerationSpec{ExtractEntities: true, GenerateMetadata: true}, "")
+	require.NoError(t, err)
+	assert.Empty(t, res.EntitiesJSON)
+	assert.Nil(t, res.VideoMetadata)
+	assert.Equal(t, int32(0), extractor.calls.Load(), "empty script must not invoke the extractor")
+}
+
+func TestPostGenUseCase_NoFlagsBypasses(t *testing.T) {
+	t.Parallel()
+	extractor := &fakePostGenExtractor{}
+	uc := NewPostGenUseCase(extractor, nil, nil, "llama3", nil, nil, zap.NewNop())
+	res, err := uc.Run(context.Background(), &scriptpkg.GenerationSpec{ExtractEntities: false, GenerateMetadata: false}, "hello script body")
+	require.NoError(t, err)
+	assert.Empty(t, res.EntitiesJSON)
+	assert.Nil(t, res.VideoMetadata)
+	assert.Equal(t, int32(0), extractor.calls.Load(), "neither flag → extractor must not be called")
+}
+
+func TestPostGenUseCase_NilPayloadBypasses(t *testing.T) {
+	t.Parallel()
+	extractor := &fakePostGenExtractor{}
+	uc := NewPostGenUseCase(extractor, nil, nil, "llama3", nil, nil, zap.NewNop())
+	res, err := uc.Run(context.Background(), nil, "hello script body")
+	require.NoError(t, err)
+	assert.Empty(t, res.EntitiesJSON)
+	assert.Nil(t, res.VideoMetadata)
+	assert.Equal(t, int32(0), extractor.calls.Load(), "nil spec must not invoke the extractor")
+}
+
+func TestPostGenUseCase_ExtractorErrorIsLoggedNotReturned(t *testing.T) {
+	t.Parallel()
+	extractor := &fakePostGenExtractor{returnErr: errors.New("extractor boom")}
+	uc := NewPostGenUseCase(extractor, nil, nil, "llama3", nil, nil, zap.NewNop())
+	res, err := uc.Run(context.Background(), &scriptpkg.GenerationSpec{ExtractEntities: true}, "hello script body")
+	require.NoError(t, err, "extractor errors must NOT propagate (best-effort semantics)")
+	assert.Empty(t, res.EntitiesJSON, "EntitiesJSON must be empty on extractor error")
+	assert.Equal(t, int32(1), extractor.calls.Load())
+}
+
+func TestPostGenUseCase_Run_TableDriven(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		extract      bool
+		generateMeta bool
+		payloadNil   bool
+		expectExt    bool
+		expectIns    bool
+		expectMeta   bool
+	}{
+		{"both flags false bypasses both phases", false, false, false, false, false, false},
+		{"nil payload bypasses both phases", true, true, true, false, false, false},
+		{"extract only calls extractor + insight builder", true, false, false, true, true, false},
+		{"meta only calls metadata gen (with fake)", false, true, false, false, false, true},
+		{"both flags call both phases", true, true, false, true, true, true},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			extractor := &fakePostGenExtractor{}
+			insight := &fakePostGenInsight{out: ScriptInsights{ImportantWords: []string{"alpha", "beta"}}}
+			var metadataCalls atomic.Int32
+			fakeLang := func(_ string, _ []string) []string { return []string{"en", "it"} }
+			fakeMeta := func(_ context.Context, _ *ollama.Generator, title string, _ []string, _ string) []VideoMetadata {
+				metadataCalls.Add(1)
+				return []VideoMetadata{{Language: "en", Title: title, Description: "fake desc", Tags: []string{"fake"}}}
+			}
+			uc := NewPostGenUseCase(
+				extractor,
+				insight,
+				nil, // no real generator — metadata phase uses fakeMeta which ignores it
+				"llama3",
+				fakeLang,
+				fakeMeta,
+				zap.NewNop(),
+			)
+			spec := &scriptpkg.GenerationSpec{ExtractEntities: tc.extract, GenerateMetadata: tc.generateMeta, Title: "My Title"}
+			if tc.payloadNil {
+				spec = nil
+			}
+			res, err := uc.Run(context.Background(), spec, "real script body for table test")
+			require.NoError(t, err)
+
+			if tc.expectExt {
+				assert.Equal(t, int32(1), extractor.calls.Load(), "extractor must be called when ExtractEntities=true (and non-empty script + non-nil spec)")
+				assert.NotEmpty(t, res.EntitiesJSON, "EntitiesJSON must be non-empty on extractor success")
+			} else {
+				assert.Equal(t, int32(0), extractor.calls.Load(), "extractor must NOT be called when ExtractEntities=false / spec nil / script empty")
+				assert.Empty(t, res.EntitiesJSON)
+			}
+			if tc.expectIns {
+				assert.Equal(t, int32(1), insight.calls.Load(), "insight builder must be called when ExtractEntities=true + insight non-nil")
+				require.NotEmpty(t, res.Insights.ImportantWords)
+				assert.Equal(t, "alpha", res.Insights.ImportantWords[0])
+			} else {
+				assert.Equal(t, int32(0), insight.calls.Load(), "insight builder must NOT be called in the matching short-circuit path")
+			}
+			if tc.expectMeta {
+				assert.Equal(t, int32(1), metadataCalls.Load(), "metadataGen must be called when GenerateMetadata=true + generator set (fakeGen bypasses generator use)")
+				require.NotNil(t, res.VideoMetadata)
+				require.NotEmpty(t, res.VideoMetadata)
+				assert.Equal(t, "en", res.VideoMetadata[0].Language)
+				assert.Equal(t, "My Title", res.VideoMetadata[0].Title)
+			} else {
+				assert.Equal(t, int32(0), metadataCalls.Load(), "metadataGen must NOT be called when GenerateMetadata=false / generator nil / spec nil")
+				assert.Nil(t, res.VideoMetadata)
+			}
+		})
+	}
 }

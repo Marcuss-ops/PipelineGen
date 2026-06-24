@@ -555,20 +555,64 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		if docsUC != nil {
 			docsSvc = docsUC.DocumentsService()
 		}
-		// PostGeneration closure for the underlying *Pipeline. The
-		// production handler previously owned a real handlePostGeneration
-		// (~50 LOC: entities extraction + metadata generation). For
-		// Wave 14 #4 close-out we ship a minimal stub that logs a
-		// WARN so operators spot the wiring gap. A follow-up commit
-		// will promote this to a typed method on the use case.
+		// ── PostGenUseCase (Wave 14 problem #4 fixup) ─────────────────────
+		// The original ScriptFlowHandler.handlePostGeneration logic has been
+		// migrated to internal/application/scripts/postgen_usecase.go. The
+		// use case is wired here so the closure passed to scripts.NewPipeline
+		// executes the real extraction + metadata-generation phases — this
+		// eliminates the silent empty entities block when payload.ExtractEntities=true.
+		//
+		// api/script.BuildMetadataLanguages + GenerateVideoMetadata are
+		// injected as opaque function-port deps on PostGenUseCase so
+		// postgen_usecase.go itself doesn't import api/script directly
+		// (which would create an import cycle: api/script already imports
+		// application/scripts).
+		postGenMetaModel := strings.TrimSpace(cfg.External.OllamaModel)
+		if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
+			postGenMetaModel = mm
+		}
+		postGenArtlistFolder := ""
+		if cfg != nil {
+			postGenArtlistFolder = cfg.Drive.ArtlistFolder()
+		}
+		postGenInsightBuilder := &scripts.ScriptInsightBuilder{
+			Logger:      log,
+			MaxEntities: 12,
+			Services: scripts.ClipServices{
+				Logger:        log,
+				RealtimeSvc:   root.Domains.RealtimeService,
+				AssocSvc:      root.Domains.AssocService,
+				DriveSvc:      root.Drive.DriveUploader,
+				Translator:    root.AI.ScriptGen,
+				JobsSvc:       root.Jobs.Facade,
+				ImgSvc:        root.Domains.ImageService,
+				VoSvc:         root.Domains.VoiceoverService,
+				ArtlistFolder: postGenArtlistFolder,
+				MetadataModel: postGenMetaModel,
+				HarvestSvc:    harvestSvc,
+			},
+		}
+		var postGenExtractor scripts.EntityScriptExtractor
+		if root.AI.ScriptGen != nil {
+			postGenExtractor = root.AI.ScriptGen.GetClient()
+		}
+		postGenUC := scripts.NewPostGenUseCase(
+			postGenExtractor,
+			postGenInsightBuilder,
+			root.AI.ScriptGen,
+			postGenMetaModel,
+			scriptapi.BuildMetadataLanguages, // api/script function-port dep
+			scriptapi.GenerateVideoMetadata,  // api/script function-port dep
+			log,
+		)
+		// Closure adapter: scripts.NewPipeline expects a
+		//   (ctx, spec, scr) → (entitiesJSON string, insights any, videoMetadata []VideoMetadata)
+		// callback; this adapter delegates to the typed use case so the
+		// business logic lives in application/postgen_usecase.go (not in
+		// the composition root).
 		postGen := func(ctx context.Context, spec *scriptpkg.GenerationSpec, scr string) (entitiesJSON string, insights any, videoMetadata []scripts.VideoMetadata) {
-			if log != nil {
-				log.Warn("pipeline post-gen stub active: entities block will be empty when spec.ExtractEntities=true (follow-up Wave-14 commit wires the real handlePostGeneration)")
-			}
-			_ = ctx
-			_ = spec
-			_ = scr
-			return "", scripts.ScriptInsights{}, nil
+			res, _ := postGenUC.Run(ctx, spec, scr)
+			return res.EntitiesJSON, res.Insights, res.VideoMetadata
 		}
 		if scenesSvc != nil && docsSvc != nil {
 			pipeline := scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)
