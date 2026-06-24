@@ -4,9 +4,10 @@ package scripts
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -54,25 +55,25 @@ type CurateRequest struct {
 
 // CurateResult holds the output of a curation run.
 type CurateResult struct {
-	Title              string
-	ClipScenes         []ClipScene
-	Script             string
-	WordCount          int
-	CacheStatus        string
-	AcceptedClipIDs    []string
-	NarrativePlan      *NarrativePlan
-	SourceText         string
-	SourceFingerprint  string
-	SearchResults      []SearchResultInfo
-	Timings            CurateTimings
+	Title             string
+	ClipScenes        []ClipScene
+	Script            string
+	WordCount         int
+	CacheStatus       string
+	AcceptedClipIDs   []string
+	NarrativePlan     *NarrativePlan
+	SourceText        string
+	SourceFingerprint string
+	SearchResults     []SearchResultInfo
+	Timings           CurateTimings
 }
 
 // CurateTimings holds timing metrics for curation phases.
 type CurateTimings struct {
-	SearchMs       int64
-	BuildCtxMs     int64
-	WriteScriptMs  int64
-	TotalMs        int64
+	SearchMs      int64
+	BuildCtxMs    int64
+	WriteScriptMs int64
+	TotalMs       int64
 }
 
 // SearchResultInfo holds a single search result.
@@ -112,15 +113,15 @@ type NarrativeSection struct {
 
 // WriteScriptResult holds the result of a script write operation.
 type WriteScriptResult struct {
-	Script       string
-	WordCount    int
-	Model        string
-	Prompt       string
-	CacheStatus  string
-	CacheHit     bool
-	WasCached    bool
-	EstDuration  int
-	ScriptID     int64
+	Script      string
+	WordCount   int
+	Model       string
+	Prompt      string
+	CacheStatus string
+	CacheHit    bool
+	WasCached   bool
+	EstDuration int
+	ScriptID    int64
 }
 
 // JobPayloadCurate holds the payload for a curation job.
@@ -149,8 +150,8 @@ type JobPayloadCurate struct {
 // Curate executes the curation operation (stub).
 func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateResult, error) {
 	return &CurateResult{
-		Title:    req.Title,
-		Script:   req.Query,
+		Title:     req.Title,
+		Script:    req.Query,
 		WordCount: 0,
 	}, nil
 }
@@ -200,10 +201,10 @@ type BatchGenerateResponse struct {
 // ToMap converts the response to a map for job results.
 func (r BatchGenerateResponse) ToMap() map[string]any {
 	return map[string]any{
-		"ok":          true,
-		"doc_title":   r.DocTitle,
-		"doc_id":      r.DocID,
-		"doc_link":    r.DocLink,
+		"ok":           true,
+		"doc_title":    r.DocTitle,
+		"doc_id":       r.DocID,
+		"doc_link":     r.DocLink,
 		"script_count": len(r.Scripts),
 	}
 }
@@ -219,8 +220,8 @@ type BatchScriptResult struct {
 // BatchService is a stub for the batch generation service.
 type BatchService struct {
 	scriptsRepo interface{}
-	docClient    interface{}
-	log          *zap.Logger
+	docClient   interface{}
+	log         *zap.Logger
 }
 
 // NewBatchService is the canonical constructor for *BatchService.
@@ -231,7 +232,15 @@ type BatchService struct {
 // intentionally interface{} to avoid forcing more canonical-package
 // imports on this leaf.
 func NewBatchService(cfg, log, gen, engine, doc, vo, repo interface{}) *BatchService {
-	return &BatchService{}
+	var logger *zap.Logger
+	if l, ok := log.(*zap.Logger); ok {
+		logger = l
+	}
+	return &BatchService{
+		scriptsRepo: repo,
+		docClient:   doc,
+		log:         logger,
+	}
 }
 
 // Execute runs batch generation (stub).
@@ -246,12 +255,117 @@ func (b *BatchService) ExecuteBatchGeneration(ctx context.Context, req *Generate
 
 // createBatchDoc creates a Google Doc from batch parts (stub).
 func (b *BatchService) createBatchDoc(ctx context.Context, title string, parts []GeneratedPart, noChapters bool, language, folderID string) (string, string) {
-	return "", ""
+	if b == nil || b.docClient == nil {
+		return "", ""
+	}
+	client, ok := b.docClient.(drive.DocClient)
+	if !ok || client == nil {
+		return "", ""
+	}
+	sectionTitles := make([]string, 0, len(parts))
+	sectionContents := make([]string, 0, len(parts))
+	for _, part := range parts {
+		sectionTitles = append(sectionTitles, part.topic)
+		sectionContents = append(sectionContents, part.content)
+	}
+	content := BuildSectionDocHTML(title, sectionTitles, sectionContents, noChapters, language)
+	doc, err := client.CreateDoc(ctx, title, content, folderID)
+	if err != nil || doc == nil || doc.URL == "" || doc.ID == "" {
+		return "", ""
+	}
+	return doc.URL, doc.ID
 }
 
 // saveBatchScript persists a batch script (stub).
 func (b *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRequest, rec *batchDBRecord, sources []ScriptResearchSource) int64 {
-	return 0
+	if b == nil || req == nil || !req.SaveToDB || b.scriptsRepo == nil || rec == nil {
+		return 0
+	}
+	repo, ok := b.scriptsRepo.(ScriptRepository)
+	if !ok || repo == nil {
+		return 0
+	}
+
+	title := strings.TrimSpace(req.DocTitle)
+	if title == "" {
+		title = strings.TrimSpace(rec.docTitle)
+	}
+	if title == "" {
+		title = "Untitled script"
+	}
+	language := strings.TrimSpace(req.Language)
+	if language == "" {
+		language = "en"
+	}
+
+	fullDoc := rec.mergedScript
+	finalWordCount := countWords(fullDoc)
+	if finalWordCount == 0 {
+		for _, section := range rec.sections {
+			finalWordCount += countWords(section.Content)
+		}
+	}
+	if finalWordCount == 0 {
+		finalWordCount = 1
+	}
+
+	version, err := repo.NextVersionForTopic(ctx, title, language, "batch")
+	if err != nil || version <= 0 {
+		version = 1
+	}
+
+	scriptRec := &ScriptRecord{
+		Title:          title,
+		Topic:          title,
+		Language:       language,
+		Tone:           strings.TrimSpace(req.Tone),
+		Model:          strings.TrimSpace(req.Model),
+		ModelUsed:      strings.TrimSpace(req.Model),
+		Mode:           "batch",
+		Status:         "completed",
+		TargetWords:    rec.targetWords,
+		FinalWordCount: finalWordCount,
+		OutputText:     fullDoc,
+		NarrativeText:  fullDoc,
+		FullDocument:   fullDoc,
+		Version:        version,
+	}
+
+	scriptID, err := repo.SaveScript(ctx, scriptRec, rec.sections, nil)
+	if err != nil || scriptID <= 0 {
+		return 0
+	}
+
+	if len(rec.outlineSections) > 0 {
+		outlineSections := make([]ScriptOutlineSectionRecord, len(rec.outlineSections))
+		for i, section := range rec.outlineSections {
+			section.ScriptID = scriptID
+			outlineSections[i] = section
+		}
+		if err := repo.SaveOutlineSections(ctx, scriptID, outlineSections); err != nil {
+			return 0
+		}
+	}
+
+	if len(sources) > 0 {
+		persistedSources := make([]ScriptResearchSource, len(sources))
+		for i, source := range sources {
+			source.ScriptID = scriptID
+			persistedSources[i] = source
+		}
+		if err := repo.SaveResearchSources(ctx, scriptID, persistedSources); err != nil {
+			return 0
+		}
+	}
+
+	for _, logEntry := range rec.generationLogs {
+		logEntry.ScriptID = scriptID
+		if err := repo.SaveGenerationLog(ctx, logEntry); err != nil {
+			return 0
+		}
+	}
+
+	return scriptID
 }
 
 // ── Engine and pipeline types ───────────────────────────────────────────
@@ -406,16 +520,45 @@ func (p *Pipeline) Run(ctx context.Context, spec interface{}, script string, too
 // ── Documents types ─────────────────────────────────────────────────────
 
 // DocumentsService creates Google Docs from script content.
-type DocumentsService struct{}
+type DocumentsService struct {
+	docClient       interface{}
+	log             *zap.Logger
+	defaultFolderID string
+}
 
 // NewDocumentsService creates a new DocumentsService (stub).
 func NewDocumentsService(docClient interface{}, log interface{}, driveFolderID string) *DocumentsService {
-	return &DocumentsService{}
+	var logger *zap.Logger
+	if l, ok := log.(*zap.Logger); ok {
+		logger = l
+	}
+	return &DocumentsService{
+		docClient:       docClient,
+		log:             logger,
+		defaultFolderID: driveFolderID,
+	}
 }
 
-// CreateDoc creates a Google Doc (stub).
+// CreateDoc creates a Google Doc.
 func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string, resolveFolder FolderResolver, driveFolderID string) (docLink, docID string) {
-	return "", ""
+	if d == nil {
+		return "", ""
+	}
+	client, ok := d.docClient.(drive.DocClient)
+	if !ok || client == nil {
+		return "", ""
+	}
+	folderID := strings.TrimSpace(driveFolderID)
+	if resolveFolder != nil && folderID != "" {
+		if resolved, err := resolveFolder(ctx, folderID, d.defaultFolderID); err == nil && strings.TrimSpace(resolved) != "" {
+			folderID = resolved
+		}
+	}
+	doc, err := client.CreateDoc(ctx, title, content, folderID)
+	if err != nil || doc == nil || strings.TrimSpace(doc.URL) == "" || strings.TrimSpace(doc.ID) == "" {
+		return "", ""
+	}
+	return doc.URL, doc.ID
 }
 
 // ── VideoMetadata ───────────────────────────────────────────────────────
@@ -545,15 +688,15 @@ type VoiceoverService interface {
 
 // ScriptInsights holds entity and media suggestions extracted from a script.
 type ScriptInsights struct {
-	ImportantWords           []string
-	ImportantPhrases         []string
-	SpecialNames             []string
-	ArtlistPhrases           []string
-	ArtlistClipSuggestions   interface{}
-	EntityImages             interface{}
-	RecommendedDriveFolder   interface{}
-	PhraseClipSuggestions    interface{}
-	IntroClips               interface{}
+	ImportantWords         []string
+	ImportantPhrases       []string
+	SpecialNames           []string
+	ArtlistPhrases         []string
+	ArtlistClipSuggestions interface{}
+	EntityImages           interface{}
+	RecommendedDriveFolder interface{}
+	PhraseClipSuggestions  interface{}
+	IntroClips             interface{}
 }
 
 // ── Helper functions ────────────────────────────────────────────────────
@@ -646,61 +789,4 @@ type batchDBRecord struct {
 	generationLogs  []ScriptGenerationLog
 	targetWords     int
 	noChapters      bool
-}
-
-// ── GenerationService ─────────────────────────────────────────────────
-
-// GenerationService is a stub for the script-handler /api/script-docs/generate
-// service that allows synchronous Python-agent invocation via /script-docs.
-//
-// AGENT-2 (June 2026): stub conforming to the three-arg call site
-//   `scripts.NewGenerationService(root.Jobs.Facade, cfg, log)` in
-//   internal/app/wire_script.go (the second arg of `scriptapi.NewHandler(handler, genSvc)`).
-// The implementation was removed from remote in commit d61068b3.
-// Args are stored for future replacement; HandleGenerateScript returns
-// nil so HTTP-callers see a no-op 200 response.
-type GenerationService struct {
-	jobsFacade interface{}
-	cfg        interface{}
-	log        *zap.Logger
-}
-
-// NewGenerationService is the canonical constructor for *GenerationService.
-//
-// AGENT-2 (June 2026): stub ctor matching the wire_script.go call site.
-// The first two args are accepted as interface{} to avoid forcing
-// canonical-package imports into this leaf; the log is *zap.Logger
-// because that's what composition hands us.
-func NewGenerationService(jobsFacade, cfg interface{}, log *zap.Logger) *GenerationService {
-	return &GenerationService{jobsFacade: jobsFacade, cfg: cfg, log: log}
-}
-
-// EnqueueFromClips implements the canonical `scriptapi.GenerationService`
-// interface contract (internal/api/script/handler.go). It returns an
-// empty FromClipsResult so HTTP callers see a clean 200 response; the
-// real implementation was removed in commit d61068b3 and will be
-// reintroduced as a follow-up wave.
-//
-// The wire_script.go call site is:
-//   genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
-//   scriptapi.NewHandler(handler, genSvc)
-// and `scriptapi.NewHandler` requires the genSvc value to satisfy the
-// `api/script.GenerationService` interface (EnqueueFromClips +
-// EnqueueWithImages).
-func (g *GenerationService) EnqueueFromClips(ctx context.Context, spec scriptpkg.GenerationSpec) (*FromClipsResult, error) {
-	if g == nil || ctx == nil {
-		return nil, nil
-	}
-	_ = spec
-	return &FromClipsResult{}, nil
-}
-
-// EnqueueWithImages implements the canonical `scriptapi.GenerationService`
-// interface contract. Same return shape as EnqueueFromClips; the
-// enclosing handler will treat empty result as 200 with no body.
-func (g *GenerationService) EnqueueWithImages(ctx context.Context, spec scriptpkg.GenerationSpec) (*FromClipsResult, error) {
-	if g == nil || ctx == nil {
-		return nil, nil
-	}
-	return &FromClipsResult{}, nil
 }

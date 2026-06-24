@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard preflight node-version-check
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -238,3 +238,51 @@ preflight: go-version-check node-version-check
 	fi
 	@grep -q '^FROM .*golang:1.25' Dockerfile
 	@echo "Preflight passed"
+
+# ─── Black-box smoke tests ──────────────────────────────────────────────────
+# Per operator policy (AGENTS.md): never modify internal/application/scripts,
+# internal/api/script, internal/app/wire_script.go, or production business
+# logic for tests. Hammer the live HTTP surface under tests/operational/.
+
+# Lightweight startup + error-path smoke. Use this on every deploy.
+smoke:
+	@set -e; \
+	for s in tests/operational/startup_smoke.sh tests/operational/failed_job_smoke.sh; do \
+	    echo "----- $$s -----"; \
+	    bash $$s; \
+	done
+	@echo "✅ smoke OK"
+
+# Heavy path — drives a text-only script job end-to-end (dispatch + poll).
+# Will FAIL initially on the broken worker (AGENT-2 Extract residue).
+smoke-script:
+	@echo "----- tests/operational/text_script_smoke.sh -----"
+	@bash tests/operational/text_script_smoke.sh
+	@echo "----- tests/operational/failed_job_smoke.sh -----"
+	@bash tests/operational/failed_job_smoke.sh
+	@echo "✅ smoke-script completed (check individual script exit codes above)"
+
+# Aggregate: every smoke script (no --dry). Use this for the full operational
+# gate; returns non-zero if ANY script exits non-zero.
+smoke-run-all:
+	@set -e; \
+	for s in tests/operational/startup_smoke.sh \
+	         tests/operational/text_script_smoke.sh \
+	         tests/operational/failed_job_smoke.sh; do \
+	    echo "----- $$s -----"; \
+	    bash $$s; \
+	done
+	@echo "✅ smoke-run-all OK"
+
+# Dry-run for the heavy path. Prints the would-be payloads, exits 0. Honors
+# SMOKE_DRY_RUN=1 env override for CI-friendly invocations.
+smoke-dry:
+	@SMOKE_DRY_RUN=$${SMOKE_DRY_RUN:-1}; \
+	export SMOKE_DRY_RUN; \
+	for s in tests/operational/startup_smoke.sh \
+	         tests/operational/text_script_smoke.sh \
+	         tests/operational/failed_job_smoke.sh; do \
+	    echo "----- $$s (dry) -----"; \
+	    bash $$s --dry; \
+	done
+	@echo "✅ smoke-dry OK"

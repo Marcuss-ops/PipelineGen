@@ -60,7 +60,7 @@ func TestHandler_ErrorMapping(t *testing.T) {
 			t.Parallel()
 
 			gen := &fakeGenerationService{err: tc.err}
-			handler := NewHandler(nil, gen)
+			handler := NewHandler(nil, gen, FeatureGates{})
 			router := gin.New()
 			router.POST("/test", handler.GenerateFromClips)
 
@@ -77,7 +77,7 @@ func TestHandler_ErrorMapping(t *testing.T) {
 func TestHandler_NilGenerationService_Returns503(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(nil, nil)
+	handler := NewHandler(nil, nil, FeatureGates{})
 	router := gin.New()
 	router.POST("/test", handler.GenerateFromClips)
 
@@ -92,7 +92,7 @@ func TestHandler_NilGenerationService_Returns503(t *testing.T) {
 func TestHandler_NilScriptFlowHandler_GeneratesBatch503(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(nil, &fakeGenerationService{})
+	handler := NewHandler(nil, &fakeGenerationService{}, FeatureGates{})
 	router := gin.New()
 	router.POST("/test", handler.GenerateBatch)
 
@@ -109,7 +109,7 @@ func TestHandler_NilScriptFlowHandler_GeneratesBatch503(t *testing.T) {
 func TestScriptRoutes_Compatibility(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(nil, &fakeGenerationService{})
+	handler := NewHandler(nil, &fakeGenerationService{}, FeatureGates{ScriptClipsEnabled: true, ScriptDocsEnabled: true, ScriptImagesEnabled: true})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -218,7 +218,7 @@ func TestHandler_ValidRequest_Returns200(t *testing.T) {
 	t.Parallel()
 
 	gen := &fakeGenerationService{}
-	handler := NewHandler(nil, gen)
+	handler := NewHandler(nil, gen, FeatureGates{})
 	router := gin.New()
 	router.POST("/test", handler.GenerateFromClips)
 

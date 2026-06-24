@@ -90,6 +90,7 @@ type backgroundJobs struct {
 //  7. Gemma memory sweeper (optional)
 //  8. Qdrant stale cleaner (optional)
 //  9. Clip dedup sweeper (optional)
+//
 // 10. VLM auto-tag sweeper (optional)
 // 11. Qdrant ghost sweeper (optional)
 // 12. Qdrant health monitor (optional)
@@ -276,21 +277,18 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 	if runScheduler && root.Domains.YoutubeClipService != nil {
 		ytSvc := root.Domains.YoutubeClipService
+		_ = ytSvc // silence unused-var; late-bound to yt-cache-prewarm below
 		steps = append(steps, StartupStep{
 			Name: "yt-cache-prewarm", Required: false,
 			Start: func(startCtx context.Context) error {
-				concurrent.SafeGo("yt-cache-prewarm", func() {
-					select {
-					case <-startCtx.Done():
-						return
-					case <-time.After(5 * time.Second):
-					}
-					sCtx, cancel := context.WithTimeout(startCtx, 30*time.Second)
-					defer cancel()
-					if err := ytSvc.PrewarmHotVideoMetadataCache(sCtx); err != nil {
-						log.Warn("Failed to pre-warm YouTube video metadata cache", zap.Error(err))
-					}
-				})
+				// Phase 2 followup (June 2026): PrewarmHotVideoMetadataCache was removed
+				// when the metadata flow moved to the ytmetadata capability service.
+				// Logging the disabled prewarm is loud so operators see the gap;
+				// restoring the cache warming requires wiring the metadata capability
+				// service's cache loader (Phase 2+ follow-up).
+				if ytSvc != nil {
+					log.Info("yt-cache-prewarm: disabled pending Phase 2+ follow-up (ytmetadata capability cache loader not yet exposed to *youtube.Service)")
+				}
 				return nil
 			},
 			Stop: func(_ context.Context) error { return nil },
@@ -298,23 +296,10 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		steps = append(steps, StartupStep{
 			Name: "yt-nightly-prewarm", Required: false,
 			Start: func(startCtx context.Context) error {
-				concurrent.SafeGo("yt-nightly-prewarm", func() {
-					ticker := time.NewTicker(24 * time.Hour)
-					defer ticker.Stop()
-					for {
-						select {
-						case <-startCtx.Done():
-							return
-						case <-ticker.C:
-							log.Info("Running nightly pre-warming job for hot YouTube video metadata cache")
-							sCtx, cancel := context.WithTimeout(startCtx, 30*time.Second)
-							if err := ytSvc.PrewarmHotVideoMetadataCache(sCtx); err != nil {
-								log.Warn("Failed to run nightly pre-warming job for YouTube metadata", zap.Error(err))
-							}
-							cancel()
-						}
-					}
-				})
+				// Phase 2 followup (June 2026): see note above in yt-cache-prewarm.
+				if ytSvc != nil {
+					log.Info("yt-nightly-prewarm: disabled pending Phase 2+ follow-up")
+				}
 				return nil
 			},
 			Stop: func(_ context.Context) error { return nil },

@@ -29,7 +29,7 @@ var (
 		"media.reindex":                   2 * time.Minute,
 		"drive.folder.sync":               30 * time.Minute,
 		"script.generate_batch":           60 * time.Minute,
-		"script.generate_from_clips":      60 * time.Minute,
+		job.TypeClipScriptGenerate:        60 * time.Minute,
 		"script.generate_from_catalog":    60 * time.Minute,
 		"media.stock":                     60 * time.Minute,
 		"youtube_clip.extract":            60 * time.Minute,

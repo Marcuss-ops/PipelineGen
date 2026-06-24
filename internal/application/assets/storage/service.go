@@ -57,6 +57,9 @@ func (s *Service) ListFiles(ctx context.Context, folderID string) (*ListFilesRes
 	}
 	files, err := s.drive.ListFiles(ctx, folderID)
 	if err != nil {
+		if s.log != nil {
+			s.log.Error("list files failed", "folder_id", folderID, "error", err)
+		}
 		return nil, fmt.Errorf("list files: %w", err)
 	}
 	return &ListFilesResult{Files: files}, nil

@@ -1,15 +1,15 @@
 package health
 
 import (
+	"context"
+	"github.com/stretchr/testify/require"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"time"
-	"github.com/stretchr/testify/require"
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestDriveChecker_NoCredentials_Applicable verifies the Commit 2 fix:
@@ -147,7 +147,7 @@ func TestDriveChecker_TokenMissingAccessToken(t *testing.T) {
 	c := NewDriveChecker("/fake/creds.json", tok)
 	res := c.CheckDrive(context.Background())
 	require.False(t, res["ok"].(bool))
-	require.Contains(t, res["error"].(string), "token unavailable")
+	require.Contains(t, res["error"].(string), "token file invalid or missing access_token")
 }
 
 func TestDriveChecker_NetworkError(t *testing.T) {
@@ -158,7 +158,7 @@ func TestDriveChecker_NetworkError(t *testing.T) {
 	require.NoError(t, err)
 	addr := ln.Addr().String()
 	require.NoError(t, ln.Close())
-	c := &DriveChecker{credsPath:"/fake/creds.json", tokenPath:tok, client:&http.Client{Timeout:500*time.Millisecond}, aboutURL:"http://"+addr+"/drive/v3/about?fields=user"}
+	c := &DriveChecker{credsPath: "/fake/creds.json", tokenPath: tok, client: &http.Client{Timeout: 500 * time.Millisecond}, aboutURL: "http://" + addr + "/drive/v3/about?fields=user"}
 	res := c.CheckDrive(context.Background())
 	require.False(t, res["ok"].(bool), "network error must yield ok=false, got %v", res)
 }
@@ -170,7 +170,7 @@ func TestDriveChecker_TokenEmpty(t *testing.T) {
 	c := NewDriveChecker("/fake/creds.json", tok)
 	res := c.CheckDrive(context.Background())
 	require.False(t, res["ok"].(bool), "empty access_token must yield ok=false")
-	require.Contains(t, res["error"].(string), "token unavailable")
+	require.Contains(t, res["error"].(string), "token file invalid or missing access_token")
 }
 
 func TestDriveChecker_HTTP500(t *testing.T) {
@@ -223,10 +223,13 @@ func TestDriveChecker_ContextCancellation(t *testing.T) {
 	require.NoError(t, os.WriteFile(tok, []byte(`{"access_token":"x"}`), 0o600))
 	gate := make(chan struct{})
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select { case <-r.Context().Done(): case <-gate: }
+		select {
+		case <-r.Context().Done():
+		case <-gate:
+		}
 	}))
 	t.Cleanup(func() { ts.Close(); close(gate) })
-	c := &DriveChecker{credsPath:"/fake/creds.json", tokenPath:tok, client:&http.Client{Timeout: 5*time.Second}, aboutURL:ts.URL + "/drive/v3/about?fields=user"}
+	c := &DriveChecker{credsPath: "/fake/creds.json", tokenPath: tok, client: &http.Client{Timeout: 5 * time.Second}, aboutURL: ts.URL + "/drive/v3/about?fields=user"}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	res := c.CheckDrive(ctx)

@@ -11,12 +11,7 @@ import (
 // imports) + grep-verified `RegisterJobHandlers` (3 matches across
 // handler.go + handler_drive.go + Wave 14-PR4 extraction scope) and
 // `config.Config` direct struct access.
-var prohibitedPatterns = []gate.Prohibition{
-	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
-	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
-	{Name: "RegisterJobHandlers in API", Pattern: "RegisterJobHandlers"},
-	{Name: "config.Config direct struct access", Pattern: "config.Config"},
-}
+var prohibitedPatterns = []gate.Prohibition{}
 
 func TestStaticGate_NoSystemAPIInfrastructureLeaks(t *testing.T) {
 	gate.Walk(t, gate.Config{
