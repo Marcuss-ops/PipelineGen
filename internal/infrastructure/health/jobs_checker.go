@@ -44,6 +44,13 @@ func NewJobsChecker(db *sql.DB) *JobsChecker {
 // livenessQuery is the canonical probe. Schema-tolerant (TEXT updated_at
 // lexicographic comparison works for ISO8601 / RFC3339 timestamps) and
 // status-tolerant (LOWER() fold for case-insensitive match).
+//
+// TODO(codex/health-ready-contract): inject a real runner heartbeat/liveness
+// port that proves the broker loop is alive (not just DB row activity).
+// Today CheckJobs verifies DB reachability + table existence + recent
+// activity via SELECT COUNT — it does not prove the broker goroutine is
+// running. Retain this as the DB/schema probe; add a separate runner-liveness
+// port for heartbeat verification.
 const livenessQuery = `SELECT COUNT(*) FROM jobs
 	WHERE LOWER(status) IN ('running', 'leased', 'pending')
 	  AND updated_at > datetime('now', '-5 minute')`

@@ -28,7 +28,8 @@ type Router struct {
 	registry            *Registry
 	workerHandler       interface{ RegisterRoutes(*gin.RouterGroup) }
 	ctx                 context.Context
-	healthSvc           interface{} // *systemhealth.Service; typed as interface{} to avoid import coupling
+	healthSvc           interface{}                   // *systemhealth.Service; typed as interface{} to avoid import coupling
+	readyChecker        *systemhealth.ReadyChecker    // codex/health-ready-contract: concrete type, not interface{}
 }
 
 // NewRouter creates a new API router
@@ -58,6 +59,13 @@ func (r *Router) SetContext(ctx context.Context) {
 // so this file stays free of infrastructure imports (PR1 Health boundary, June 2026).
 func (r *Router) SetHealthService(svc interface{}) {
 	r.healthSvc = svc
+}
+
+// SetReadyChecker wires the application-layer ReadyChecker into the router.
+// codex/health-ready-contract (June 2026): previously ReadyChecker was silently
+// nil in Setup(), making /ready always return 503.
+func (r *Router) SetReadyChecker(rc *systemhealth.ReadyChecker) {
+	r.readyChecker = rc
 }
 
 // buildCORSConfig builds a CORS configuration from the application security settings.
@@ -120,10 +128,12 @@ func (r *Router) Setup() *gin.Engine {
 	// for aggregated DB+Drive+Qdrant+JobBroker checks. The health service
 	// lives in ComposeRoot.Utility.HealthService and is wired via
 	// SetHealthService before Setup() runs.
+	// codex/health-ready-contract (June 2026): ReadyChecker is now wired
+	// via SetReadyChecker — /ready no longer receives nil in production.
 	var healthHandler *common.HealthHandler
 	if r.healthSvc != nil {
-		if svc, ok := r.healthSvc.(*systemhealth.Service); ok {
-			healthHandler = common.NewHealthHandler(svc,  nil /* ReadyChecker wired via composition */)
+		if svc, svcOk := r.healthSvc.(*systemhealth.Service); svcOk {
+			healthHandler = common.NewHealthHandler(svc, r.readyChecker)
 		}
 	}
 	if healthHandler == nil {

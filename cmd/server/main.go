@@ -96,7 +96,7 @@ func main() {
 	// by the remote cmd/worker binary to claim jobs), the lifecycle
 	// manager (background job runner + cleanup), and the health-service
 	// (DB+Drive+Qdrant+Jobs checks wired from the composition root).
-	server := api.NewServerWithHealth(cfg, deps.Registry, deps.WorkerHandler, deps.Lifecycle, deps.HealthService)
+	server := api.NewServerWithHealth(cfg, deps.Registry, deps.WorkerHandler, deps.Lifecycle, deps.HealthService, deps.ReadyChecker)
 	if err := server.Start(); err != nil {
 		log.Fatal("server failed", zap.Error(err))
 	}

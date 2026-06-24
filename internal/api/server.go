@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	"github.com/gin-gonic/gin"
@@ -46,17 +47,20 @@ func NewServer(
 	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
 	lifecycle LifecycleManager,
 ) *Server {
-	return NewServerWithHealth(cfg, registry, workerHandler, lifecycle, nil)
+	return NewServerWithHealth(cfg, registry, workerHandler, lifecycle, nil, nil)
 }
 
 // NewServerWithHealth creates a new HTTP server with an optional
 // health-check service (PR1 Health boundary, June 2026).
+// codex/health-ready-contract (June 2026): added readyChecker parameter
+// so /ready receives the real ReadyChecker instead of nil.
 func NewServerWithHealth(
 	cfg *config.Config,
 	registry *Registry,
 	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
 	lifecycle LifecycleManager,
 	healthSvc interface{},
+	readyChecker *systemhealth.ReadyChecker,
 ) *Server {
 	router := NewRouter(cfg)
 	router.SetRegistry(registry)
@@ -65,6 +69,9 @@ func NewServerWithHealth(
 	}
 	if healthSvc != nil {
 		router.SetHealthService(healthSvc)
+	}
+	if readyChecker != nil {
+		router.SetReadyChecker(readyChecker)
 	}
 	r := router.Setup()
 

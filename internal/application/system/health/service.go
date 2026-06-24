@@ -3,6 +3,7 @@ package health
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
@@ -39,6 +40,56 @@ func NewService(deps ServiceDeps) *Service {
 		qdrant: deps.Qdrant,
 		jobs:  deps.Jobs,
 	}
+}
+
+// ValidCheckNames is the set of recognised check names.
+var ValidCheckNames = map[string]bool{
+	"db":     true,
+	"drive":  true,
+	"qdrant": true,
+	"jobs":   true,
+}
+
+// NormalizeCheckNames trims, lowercases, removes empty strings,
+// and deduplicates while preserving order. Accepts both repeated query
+// values and comma-separated strings. Names are case-insensitive ("DB" → "db").
+func NormalizeCheckNames(names []string) []string {
+	// First, split comma-separated entries to produce a flat list.
+	flat := make([]string, 0, len(names))
+	for _, name := range names {
+		for _, part := range strings.Split(name, ",") {
+			flat = append(flat, strings.ToLower(strings.TrimSpace(part)))
+		}
+	}
+
+	// Remove empty entries and deduplicate while preserving order.
+	seen := make(map[string]bool, len(flat))
+	result := make([]string, 0, len(flat))
+	for _, name := range flat {
+		if name == "" {
+			continue
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		result = append(result, name)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// ValidateCheckNames returns an *ErrUnknownCheck if any name is
+// unknown. Returns nil when all names are valid (or when names is nil).
+func ValidateCheckNames(names []string) error {
+	for _, name := range names {
+		if !ValidCheckNames[name] {
+			return &ErrUnknownCheck{Name: name}
+		}
+	}
+	return nil
 }
 
 // HealthResponse is the unified health-check payload.

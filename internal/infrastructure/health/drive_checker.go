@@ -17,6 +17,14 @@ import (
 // inline JSON token parse was extracted to drive.ParseTokenFile
 // (internal/infrastructure/drive/tokensource.go) so the parsing logic
 // has its own testable surface independent of the HTTP request path.
+//
+// TODO(codex/health-ready-contract): prefer reusing a probe on the
+// canonical OAuth Drive client (gdrive.Service.About.Get) instead of
+// manually reading and using an access token. The production composition
+// already constructs a *gdrive.Service with automatic token refresh —
+// the DriveChecker should accept an optional Drive client port and use
+// it for the About.Get probe. If this migration enlarges the PR, keep
+// the existing token-file probe with this TODO and separate the port.
 type DriveChecker struct {
 	credsPath string
 	tokenPath string

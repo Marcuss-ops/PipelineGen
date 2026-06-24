@@ -163,6 +163,60 @@ func TestDriveChecker_NetworkError(t *testing.T) {
 	require.False(t, res["ok"].(bool), "network error must yield ok=false, got %v", res)
 }
 
+func TestDriveChecker_TokenEmpty(t *testing.T) {
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{"access_token":""}`), 0o600))
+	c := NewDriveChecker("/fake/creds.json", tok)
+	res := c.CheckDrive(context.Background())
+	require.False(t, res["ok"].(bool), "empty access_token must yield ok=false")
+	require.Contains(t, res["error"].(string), "token unavailable")
+}
+
+func TestDriveChecker_HTTP500(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(ts.Close)
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{"access_token":"x"}`), 0o600))
+	c := &DriveChecker{credsPath: "/fake/creds.json", tokenPath: tok, client: ts.Client(), aboutURL: ts.URL + "/drive/v3/about?fields=user"}
+	res := c.CheckDrive(context.Background())
+	require.False(t, res["ok"].(bool), "HTTP 500 must yield ok=false")
+	require.Contains(t, res["error"].(string), "500")
+}
+
+func TestDriveChecker_Response200(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(ts.Close)
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{"access_token":"x"}`), 0o600))
+	c := &DriveChecker{credsPath: "/fake/creds.json", tokenPath: tok, client: ts.Client(), aboutURL: ts.URL + "/drive/v3/about?fields=user"}
+	res := c.CheckDrive(context.Background())
+	require.True(t, res["ok"].(bool), "HTTP 200 must yield ok=true, got %v", res)
+	require.True(t, res["configured"].(bool), "configured must be true on 200")
+}
+
+func TestDriveChecker_Timeout(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+	}))
+	t.Cleanup(ts.Close)
+	tmp := t.TempDir()
+	tok := filepath.Join(tmp, "tok.json")
+	require.NoError(t, os.WriteFile(tok, []byte(`{"access_token":"x"}`), 0o600))
+	c := &DriveChecker{credsPath: "/fake/creds.json", tokenPath: tok, client: &http.Client{Timeout: 50 * time.Millisecond}, aboutURL: ts.URL + "/drive/v3/about?fields=user"}
+	res := c.CheckDrive(context.Background())
+	require.False(t, res["ok"].(bool), "timeout must yield ok=false, got %v", res)
+}
+
 func TestDriveChecker_ContextCancellation(t *testing.T) {
 	tmp := t.TempDir()
 	tok := filepath.Join(tmp, "tok.json")
