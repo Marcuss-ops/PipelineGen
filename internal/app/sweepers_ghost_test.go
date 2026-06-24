@@ -2,14 +2,15 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ghostMockQdrant is a minimal implementation of ghostSweepable for
@@ -56,16 +57,22 @@ func (m *ghostMockQdrant) DeletePoints(ctx context.Context, assetIDs []string) e
 	return nil
 }
 
-// openTestSQLite returns an in-memory SQLite connection with the
-// minimum schema needed by runGhostSweep. We deliberately do NOT run
-// the full migration set — only the media_assets table is read.
-func openTestSQLite(t *testing.T) *sql.DB {
+// openTestSQLite returns a typed *storage.SQLiteDB with the minimum
+// schema needed by runGhostSweep already applied. We deliberately do
+// NOT run the full migration set — only the media_assets table is
+// read. The fixture is itself a typed handle (not raw *sql.DB); the
+// canonical wiring for runGhostSweep (which takes
+// *assets.ClipsRepository post PG-011) wraps it through the
+// newClipsRepo helper below via the embedded .DB accessor on
+// *storage.SQLiteDB. Any future caller that needs the raw *sql.DB
+// reach it the same way: db.DB.
+func openTestSQLite(t *testing.T) *storage.SQLiteDB {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	sqliteDB, err := storage.OpenSQLiteDB(":memory:", zap.NewNop())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = sqliteDB.Close() })
 
-	_, err = db.Exec(`
+	_, err = sqliteDB.Exec(`
 		CREATE TABLE media_assets (
 			id           TEXT PRIMARY KEY,
 			source       TEXT,
@@ -78,16 +85,29 @@ func openTestSQLite(t *testing.T) *sql.DB {
 		);
 	`)
 	require.NoError(t, err)
-	return db
+	return sqliteDB
 }
 
-func seedAsset(t *testing.T, db *sql.DB, id string) {
+func seedAsset(t *testing.T, sqliteDB *storage.SQLiteDB, id string) {
 	t.Helper()
-	_, err := db.Exec(
+	_, err := sqliteDB.Exec(
 		`INSERT INTO media_assets (id, source, name, tags, tags_norm, metadata_json, updated_at, created_at) VALUES (?, 'youtube', ?, '[]', '[]', '{}', '2026-01-01', 0)`,
 		id, id,
 	)
 	require.NoError(t, err)
+}
+
+// newClipsRepo wraps the underlying *sql.DB handle (via the embedded
+// .DB accessor on *storage.SQLiteDB) into the canonical typed
+// *assets.ClipsRepository the production runGhostSweep signature
+// expects. Logging is zap.NewNop() — tests don't read it.
+//
+// Kept local to this test file (not in pkg/testutil) because the
+// schema (media_assets) this fixture depends on is not part of the
+// canonical migration set the production repos apply.
+func newClipsRepo(t *testing.T, db *storage.SQLiteDB) *assets.ClipsRepository {
+	t.Helper()
+	return assets.NewClipsRepository(db.DB, zap.NewNop())
 }
 
 func TestRunGhostSweep_RemovesGhosts(t *testing.T) {
@@ -103,11 +123,12 @@ func TestRunGhostSweep_RemovesGhosts(t *testing.T) {
 		"ghost_orphan_1",
 		"ghost_orphan_2",
 	}}
+	clipsRepo := newClipsRepo(t, db)
 
 	deleted, err := runGhostSweep(
 		context.Background(),
 		mock,
-		db,
+		clipsRepo,
 		500,  // scrollBatchSize
 		1000, // sqlitePageSize
 		zap.NewNop(),
@@ -128,10 +149,11 @@ func TestRunGhostSweep_NoGhostsIsClean(t *testing.T) {
 		seedAsset(t, db, id)
 	}
 	mock := &ghostMockQdrant{pointIDs: []string{"clip_x", "clip_y"}}
+	clipsRepo := newClipsRepo(t, db)
 
 	deleted, err := runGhostSweep(
 		context.Background(),
-		mock, db, 500, 1000, zap.NewNop(),
+		mock, clipsRepo, 500, 1000, zap.NewNop(),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 0, deleted)
@@ -144,10 +166,11 @@ func TestRunGhostSweep_AllGhosts(t *testing.T) {
 	mock := &ghostMockQdrant{pointIDs: []string{
 		"ghost_a", "ghost_b", "ghost_c", "ghost_d", "ghost_e",
 	}}
+	clipsRepo := newClipsRepo(t, db)
 
 	deleted, err := runGhostSweep(
 		context.Background(),
-		mock, db, 500, 1000, zap.NewNop(),
+		mock, clipsRepo, 500, 1000, zap.NewNop(),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 5, deleted)
@@ -166,10 +189,11 @@ func TestRunGhostSweep_ChunkingAt100(t *testing.T) {
 		ghosts[i] = "ghost_" + string(rune('a'+i%26)) + "_" + itoa(i)
 	}
 	mock := &ghostMockQdrant{pointIDs: ghosts}
+	clipsRepo := newClipsRepo(t, db)
 
 	deleted, err := runGhostSweep(
 		context.Background(),
-		mock, db, 500, 1000, zap.NewNop(),
+		mock, clipsRepo, 500, 1000, zap.NewNop(),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 250, deleted)
@@ -192,10 +216,11 @@ func TestRunGhostSweep_ScrollErrorPropagates(t *testing.T) {
 	mock := &ghostMockQdrant{
 		scrollFn: func(_ []string) error { return errBoom },
 	}
+	clipsRepo := newClipsRepo(t, db)
 
 	deleted, err := runGhostSweep(
 		context.Background(),
-		mock, db, 500, 1000, zap.NewNop(),
+		mock, clipsRepo, 500, 1000, zap.NewNop(),
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errBoom)
@@ -206,17 +231,21 @@ func TestRunGhostSweep_ScrollErrorPropagates(t *testing.T) {
 func TestRunGhostSweep_NilInputs(t *testing.T) {
 	db := openTestSQLite(t)
 	log := zap.NewNop()
+	clipsRepo := newClipsRepo(t, db)
 	mock := &ghostMockQdrant{}
 
 	t.Run("nil qdrant", func(t *testing.T) {
-		_, err := runGhostSweep(context.Background(), nil, db, 500, 1000, log)
+		_, err := runGhostSweep(context.Background(), nil, clipsRepo, 500, 1000, log)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "qdrant store is nil")
 	})
 	t.Run("nil db", func(t *testing.T) {
 		_, err := runGhostSweep(context.Background(), mock, nil, 500, 1000, log)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "sqlite db is nil")
+		// PG-011 typed-handle migration (June 2026): runGhostSweep
+		// third arg is now *assets.ClipsRepository (was *sql.DB),
+		// so the nil-check error string changed accordingly.
+		assert.Contains(t, err.Error(), "clips repo is nil")
 	})
 }
 
