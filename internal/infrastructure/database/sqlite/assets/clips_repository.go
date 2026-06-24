@@ -433,6 +433,99 @@ func (r *ClipsRepository) ListFolders(ctx context.Context, source string) ([]*as
 	return out, nil
 }
 
+// DriveFolderAttrs captures the columns of the clip_folders table needed by
+// the Drive folder resolver. The struct is exported so the composition
+// glue can populate it without the caller holding raw *sql.DB.
+type DriveFolderAttrs struct {
+	Source     string
+	SourceURL  string
+	FolderID   string
+	FolderPath string
+	GroupName  string
+	CreatedAt  string
+	UpdatedAt  string
+}
+
+// LookupDriveFolderIDBySourcePath returns the folder_id stored in
+// clip_folders for the given (source, folder_path) tuple, or empty
+// string when no row exists. Raw sql.ErrNoRows is rewritten to "" so
+// callers can use the result as a "is present?" predicate.
+func (r *ClipsRepository) LookupDriveFolderIDBySourcePath(ctx context.Context, source, folderPath string) (string, error) {
+	var id string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT folder_id FROM clip_folders WHERE source = ? AND folder_path = ? LIMIT 1`,
+		source, folderPath,
+	).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// UpsertDriveFolder writes the (source, folder_id) row into clip_folders.
+// INSERT OR IGNORE semantics match the legacy bootstrap.go behavior so
+// re-running the resolver on an already-known folder is a no-op.
+func (r *ClipsRepository) UpsertDriveFolder(ctx context.Context, attrs DriveFolderAttrs) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO clip_folders
+		(id, source, source_url, folder_id, folder_path, group_name, created_at, updated_at, search_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		attrs.FolderID, attrs.Source, attrs.SourceURL, attrs.FolderID,
+		attrs.FolderPath, attrs.GroupName, attrs.CreatedAt, attrs.UpdatedAt,
+		strings.ToLower(strings.ReplaceAll(attrs.Source+attrs.FolderPath, " ", "")),
+	)
+	return err
+}
+
+// StreamAssetIDs pages through `SELECT id FROM media_assets LIMIT ? OFFSET ?`
+// rows calling onPage once per non-empty page. The callback can abort
+// iteration by returning a non-nil error; that error is propagated
+// verbatim. ctx.Err() is honored between pages.
+func (r *ClipsRepository) StreamAssetIDs(ctx context.Context, pageSize int, onPage func([]string) error) error {
+	if pageSize <= 0 {
+		pageSize = 1000
+	}
+	offset := 0
+	for {
+		rows, err := r.db.QueryContext(ctx, `SELECT id FROM media_assets LIMIT ? OFFSET ?`, pageSize, offset)
+		if err != nil {
+			return fmt.Errorf("stream asset ids (limit=%d, offset=%d): %w", pageSize, offset, err)
+		}
+		batch := make([]string, 0, pageSize)
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan asset id at offset %d: %w", offset, err)
+			}
+			batch = append(batch, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate asset ids: %w", err)
+		}
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := onPage(batch); err != nil {
+			return err
+		}
+		if len(batch) < pageSize {
+			return nil
+		}
+		offset += pageSize
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+	}
+}
+
 func inClause(n int, col string, notOpt ...string) string {
 	if n <= 0 {
 		return "1=1"
