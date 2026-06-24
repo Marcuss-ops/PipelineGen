@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 
@@ -284,7 +285,27 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, title
 	// call as a one-shot background operation. Hard failures (capability
 	// not wired, port error) log Error and skip; business failures (no
 	// segments, asset_repo nil) are surfaced through resp.Error at Warn.
-	resp, err := m.youtubeSvc.Extract(ctx, req)
+	//
+	// Invocation is wrapped in a tightly-scoped closure so a panic from
+	// m.youtubeSvc.Extract does NOT tear down the monitor ticker goroutine.
+	// The recover is intentionally limited to this call only — panics
+	// elsewhere in downloadClip (os.MkdirAll, findInterestingSegments LLM,
+	// Prometheus clients) are NOT swallowed so real bugs surface loudly.
+	resp, err = func() (outResp *yttypes.ExtractResponse, outErr error) {
+		defer func() {
+			if r := recover(); r != nil {
+				stack := debug.Stack()
+				m.log.Error("channel-monitor: panic recovered during m.youtubeSvc.Extract; monitor loop continues",
+					zap.String("video_id", videoID),
+					zap.String("title", title),
+					zap.String("category", category),
+					zap.Any("panic", r),
+					zap.String("stack", string(stack)))
+				outErr = fmt.Errorf("youtube.Extract panicked: %v", r)
+			}
+		}()
+		return m.youtubeSvc.Extract(ctx, req)
+	}()
 	if err != nil {
 		m.log.Error("channel-monitor: youtube extract failed; skipping clip",
 			zap.String("video_id", videoID),

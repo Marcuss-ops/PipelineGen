@@ -264,22 +264,30 @@ ignore this facade). The contract:
    these deps themselves.**
 3. **Capability-not-wired is fatal at the facade level**: `s.extraction
    == nil` returns an explicit `"youtube: extraction capability not
-   wired (...)"` error. The monitor path logs at `Error` and skips the
-   clip; a `defer recover()` at the top of `downloadClip` ensures a
-   panic from one mis-wired port doesn't tear down the ticker
-   goroutine. The composition root must wire `Cfg, Log, VideoPipeline,
-   Clips, Monitors, AssetDestResolver, FolderMemory, SegmentsSvc` in
-   `ServiceDeps` for `NewService` to wire the capability.
-4. **Response shape & counter discipline**: `*youtubetypes.ExtractResponse`
-   with `OK`, `Items []ExtractItem` (each `ExtractItem.Status` is one
-   of `processed`/`skipped`/`failed`), `Stats` (`Requested` / `Processed` /
-   `Skipped` / `Failed`), `Folder`, `Error`. The monitor path treats
+   wired (...)"` error. The monitor path treats the error as a per-video
+   skip (Error log, not panic). The composition root must wire
+   `Cfg, Log, VideoPipeline, Clips, Monitors, AssetDestResolver,
+   FolderMemory, SegmentsSvc` in `ServiceDeps` for `NewService` to
+   wire the capability.
+4. **Monitor-path recovery convention**: every channel-monitor call site
+   that invokes a capability service MUST wrap the call in a
+   tightly-scoped `defer recover()` (e.g. inner closure returning
+   `(out, err)` with the defer reassigning `err` on panic). Tight
+   scope is required: panics in `os.MkdirAll`,
+   `findInterestingSegments` (LLM), Prometheus metric helpers, etc.
+   must NOT be silently swallowed — they are real bugs that need to
+   surface loudly. The recovery MUST include `runtime/debug.Stack()` in
+   the log so a non-trivial panic (e.g. nil-deref from a port that
+   escaped its nil-guard) is actionable in prod.
+5. **Response shape & counter discipline**: `*youtubetypes.ExtractResponse`
+   carries `OK`, `Items []ExtractItem`, `Stats` (`Requested` / `Processed`
+   / `Skipped` / `Failed`), `Folder`, `Error`. The monitor path treats
    `err != nil` as hard failure (Error log), `resp == nil && err == nil`
    as a defensive hard failure (treats as misconfigured; Error log),
    `resp.OK == false` as business-level failure (Warn log + skip),
    and on success logs `resp.Stats.Processed/Skipped/Failed` as
    separate `zap.Int` fields — never `len(resp.Items)`, which would
-   over-report by including failed items.
+   over-report by counting failed items.
 
 Replacing the previous `channel-monitor` "WARN-skip placeholder":
 that placeholder documented `*youtube.Service.Extract` was removed
