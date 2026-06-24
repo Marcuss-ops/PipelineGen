@@ -2,13 +2,14 @@ package clipindexer
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
@@ -40,8 +41,14 @@ func DefaultConfig() *Config {
 }
 
 // Service provides clip indexing functionality
+//
+// PG-016 typed-handle migration (June 2026): the embedded *sql.DB handle
+// is now reached via *storage.SQLiteDB; method promotion (db.QueryContext,
+// db.ExecContext, db.BeginTx) resolves cleanly because *storage.SQLiteDB
+// embeds *sql.DB. This closes the last intentional *sql.DB escape hatch
+// inside internal/app/ test code (worker_registry_e2e_test.go).
 type Service struct {
-	db          *sql.DB
+	db          *storage.SQLiteDB
 	dbPath      string
 	cfg         *Config
 	log         *zap.Logger
@@ -53,7 +60,11 @@ type Service struct {
 }
 
 // NewService constructs a clip indexer bound to a database path and script directory.
-func NewService(cfg *Config, db *sql.DB, dbPath string, log *zap.Logger) *Service {
+//
+// PG-016 typed-handle migration (June 2026): db is now *storage.SQLiteDB
+// (see Service.db doc comment); body unchanged because method promotion
+// resolves all *sql.DB methods transparently.
+func NewService(cfg *Config, db *storage.SQLiteDB, dbPath string, log *zap.Logger) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}

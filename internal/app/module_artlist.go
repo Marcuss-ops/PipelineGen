@@ -222,7 +222,7 @@ func wireArtlistCatalog(ctx context.Context, cfg *config.Config, bundle *Artlist
 		}
 	}
 	clipCatalogRepo := clipcatalog.NewRepository(bundle.DB.DB, log)
-	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{Enabled: cfg.ClipIndexer.Enabled, ServerURL: cfg.ClipIndexer.ServerURL, ScriptPath: cfg.ClipIndexer.ScriptPath, PythonBin: cfg.ClipIndexer.PythonBin, AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist, MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing, DBPath: bundle.DB.Path()}, bundle.DB.DB, bundle.DB.Path(), log)
+	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{Enabled: cfg.ClipIndexer.Enabled, ServerURL: cfg.ClipIndexer.ServerURL, ScriptPath: cfg.ClipIndexer.ScriptPath, PythonBin: cfg.ClipIndexer.PythonBin, AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist, MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing, DBPath: bundle.DB.Path()}, bundle.DB, bundle.DB.Path(), log)
 	if err := clipIndexerSvc.StartServer(ctx); err != nil {
 		log.Warn("failed to start embedding server", zap.Error(err))
 	} else {

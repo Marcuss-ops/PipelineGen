@@ -421,7 +421,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
 		MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing,
 		DBPath:                dbs.main.Path(),
-	}, dbs.main.DB, dbs.main.Path(), log)
+	}, dbs.main, dbs.main.Path(), log)
 
 	var vectorSvc *qdrant.Service
 	var qdrantCfg qdrant.Config
