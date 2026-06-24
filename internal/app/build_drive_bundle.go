@@ -75,12 +75,10 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		if search != nil && search.AssetTreeService != nil {
 			storeOpts.AssetTree = search.AssetTreeService
 			storeOpts.TreeSources = map[string]string{
-				dests.VideoAIRoot:    "videoai",
 				dests.ImagesFolder(): "image",
 			}
 			log.Info("mediaStore: Drive roots configured",
-				zap.String("images_folder_id", dests.ImagesFolder()),
-				zap.String("video_ai_folder_id", dests.VideoAIFolder()))
+				zap.String("images_folder_id", dests.ImagesFolder()))
 		}
 
 		mediaStore = drive.NewStoreWithOptions(
@@ -88,7 +86,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 			driveUploader,
 			dests.RootFolder(),
 			dests.ImagesFolder(),
-			dests.VideoAIRoot,
+			"", // VideoAIRoot removed (PR June 2026) — pass empty string
 			dests.SoundEffectsRoot,
 			log,
 			storeOpts,
@@ -140,18 +138,17 @@ func startDriveBackgroundFolders(
 	log *zap.Logger,
 ) error {
 	// Style folder pre-creation: async after readiness (optional).
-	if driveClient != nil && dests.VideoAIFolder() != "" && dests.VideoAIFolder() != dests.MediaRoot {
+	if driveClient != nil && dests.ImagesFolder() != "" && dests.ImagesFolder() != dests.MediaRoot {
 		concurrent.SafeGo("drive-style-folders", func() {
-			ensureStyleDriveFolders(ctx, driveUploader, dests.VideoAIFolder(), styleRegistry, log)
+			ensureStyleDriveFolders(ctx, driveUploader, dests.ImagesFolder(), styleRegistry, log)
 		})
-		log.Info("Style Drive folders using AI Images root", zap.String("folder_id", dests.VideoAIFolder()))
+		log.Info("Style Drive folders using Images root", zap.String("folder_id", dests.ImagesFolder()))
 	}
 
 	// Required folder validation: synchronous, returns error on failure.
 	if driveClient != nil {
 		for name, folderID := range map[string]string{
-			"images":   dests.ImagesFolder(),
-			"video_ai": dests.VideoAIFolder(),
+			"images": dests.ImagesFolder(),
 		} {
 			if folderID == "" {
 				continue

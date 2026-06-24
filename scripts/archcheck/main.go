@@ -13,12 +13,12 @@ import (
 )
 
 func main() {
-	strict := flag.Bool("strict", false, "run the strict architectural gate")
+	ratchet := flag.Bool("ratchet", false, "run the ratchet architectural gate (allowlist + baseline)")
 	flag.Parse()
 
 	var report Report
-	if *strict {
-		report = runStrictChecks()
+	if *ratchet {
+		report = runRatchetChecks()
 	} else {
 		report = runFocusedChecks()
 	}
@@ -76,7 +76,7 @@ func runFocusedChecks() Report {
 	}
 }
 
-func runStrictChecks() Report {
+func runRatchetChecks() Report {
 	checks := map[string]int{}
 	violations := []string{}
 
@@ -105,7 +105,7 @@ func runStrictChecks() Report {
 	return Report{
 		Passed:            len(violations) == 0,
 		FocusedGatePassed: len(violations) == 0,
-		Mode:              "strict",
+		Mode:              "ratchet",
 		Commit:            "ci/archcheck-hard-fail",
 		LegacyBudget:      0,
 		Checks:            checks,

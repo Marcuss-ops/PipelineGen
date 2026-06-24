@@ -20,7 +20,6 @@ import (
 	segments "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/segments"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // ── Dependencies (≤8 fields per PR5 rule) ────────────────────────────────
@@ -31,7 +30,7 @@ import (
 // Ollama, asset processing, clip cache) are accessed through the
 // ExtractionCallbacks interface.
 type ExtractionDeps struct {
-	Cfg               *config.Config
+	Cfg               youtubetypes.RuntimeConfig
 	Log               *zap.Logger
 	VideoPipeline     youtubeports.VideoPipelinePort
 	Clips             youtubeports.ClipStorePort
@@ -100,7 +99,7 @@ type ExtractionCallbacks interface {
 
 // Service orchestrates the YouTube clip extraction pipeline.
 type Service struct {
-	cfg               *config.Config
+	cfg               youtubetypes.RuntimeConfig
 	log               *zap.Logger
 	videoPipeline     youtubeports.VideoPipelinePort
 	clips             youtubeports.ClipStorePort

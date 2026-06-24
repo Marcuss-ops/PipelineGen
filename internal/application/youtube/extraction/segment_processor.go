@@ -97,7 +97,7 @@ func (s *Service) processSegment(
 	if req.Destination != nil && req.Destination.Group != "" {
 		group = req.Destination.Group
 	}
-	outDir := filepath.Join(s.cfg.Storage.DataDir, "media", "clips", group, folderSlug)
+	outDir := filepath.Join(s.cfg.DataDir, "media", "clips", group, folderSlug)
 
 	if s.callbacks.CheckExistingClip(ctx, req, clipID, &item, outDir) {
 		s.callbacks.EnrichSkippedClip(ctx, clipID, req.URL, videoID)

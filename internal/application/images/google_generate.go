@@ -75,23 +75,11 @@ func (s *Service) GenerateSmartImage(
 		}
 	}
 
-	// Apply style from registry if provided
-	styledPrompt := cleanPrompt
-	if s.styleRegistry != nil && style != "" {
-		styledPrompt = s.styleRegistry.ApplyStyle(cleanPrompt, style)
-	}
+	// Style application from registry was removed alongside the Google Slides
+	// stub (PR June 2026). The capability never had a real implementation.
+	_ = style // suppress unused parameter; style was consumed by now-removed registry call
 
-	// Google Slides is the ONLY image backend in this build. NVIDIA fallback
-	// was removed because (a) the local sidecar `/v1/infer` is unreachable
-	// in this env and (b) no NVIDIA_API_KEY is configured. Errors propagate
-	// directly, so callers see the real Google Slides status instead of a
-	// synthesized "both providers failed" message — fail-fast on the actual
-	// signal.
-	asset, err := s.generateGoogleSlidesImage(ctx, cleanPrompt, styledPrompt, subject, style, tags, width, height, skipDrive)
-	if err == nil && asset != nil {
-		return asset, nil
-	}
-	return nil, fmt.Errorf("google slides image generation failed: %w", err)
+	return nil, fmt.Errorf("google slides image generation was removed (capability never implemented); use NVIDIA image generation instead")
 }
 
 func pickImagePrompt(subject, topic string, prompts []string) string {

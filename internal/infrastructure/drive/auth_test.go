@@ -31,7 +31,7 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			BooksRootFolder:        "books",
 			ScriptsRootFolder:      "scripts",
 			ImagesRootFolder:       "images",
-			VideoAIRootFolder:      "video-ai",
+	
 			CopertineRootFolder:    "copertine",
 			SoundEffectsRootFolder: "sfx",
 		}
@@ -43,7 +43,6 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			"BooksFolder":        d.BooksFolder(),
 			"ScriptsFolder":      d.ScriptsFolder(),
 			"ImagesFolder":       d.ImagesFolder(),
-			"VideoAIFolder":      d.VideoAIFolder(),
 			"CopertineFolder":    d.CopertineFolder(),
 			"SoundEffectsFolder": d.SoundEffectsFolder(),
 		} {

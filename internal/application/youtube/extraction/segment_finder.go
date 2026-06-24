@@ -132,7 +132,7 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 	}
 	defer os.RemoveAll(tempDir)
 
-	ytdlpPath := s.cfg.External.ResolvedYtdlpPath()
+	ytdlpPath := s.cfg.YtdlpPath
 
 	subCmd := exec.CommandContext(ctx, ytdlpPath,
 		"--write-auto-subs", "--write-subs", "--skip-download",

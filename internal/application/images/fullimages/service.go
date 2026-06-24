@@ -62,20 +62,10 @@ func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, me
 	}
 }
 
-// VideoStatus returns the canonical CapabilityStatus for the video_ai
-// capability, delegated through imgService (single source of truth per
-// fix(images): expose truthful capability availability). The route
-// handler in api/images/handler_full.go gates on this; do NOT read
-// imgservice.Service fields directly there.
-//
-// Nil-safe: a nil receiver or nil imgService returns StatusNotImplemented
-// so a mis-wired FullImagesHandler cannot panic the request handler.
-func (s *Service) VideoStatus() imgservice.CapabilityStatus {
-	if s == nil || s.imgService == nil {
-		return imgservice.StatusNotImplemented
-	}
-	return s.imgService.CapabilityResolution(imgservice.CapVideoAI)
-}
+// VideoStatus has been removed (PR cleanup June 2026).
+// CapVideoAI capability was deleted. The handler gate in api/images/handler_full.go
+// that called this method has been removed. Google Vids generation is no longer
+// advertised as a capability.
 
 const (
 	videoGenTimeout = 5 * time.Minute
@@ -186,15 +176,8 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		engine = "ken-burns" // Default
 	}
 
-	if engine == "google-vids" {
-		s.log.Info("fullimages: generating full AI video via Google Vids", zap.Int("section", idx), zap.String("prompt", prompt))
-		videoPath, err := s.imgService.GenerateVideoAI(ctx, prompt, style)
-		if err == nil && videoPath != "" {
-			// Video generated directly!
-			return s.processGeneratedVideo(ctx, sec, idx, videoPath, genID, style, prompt)
-		}
-		s.log.Warn("fullimages: google-vids failed, falling back to ken-burns", zap.Error(err))
-	}
+	// Google Vids engine was removed (PR June 2026). All sections fall
+	// through to the ken-burns path below.
 
 	s.log.Info("fullimages: generating smart image for ken-burns", zap.Int("section", idx), zap.String("subject", subject), zap.String("style", style))
 

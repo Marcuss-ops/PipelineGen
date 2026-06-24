@@ -35,8 +35,8 @@ func (s *Service) classifyCategory(ctx context.Context, title string) string {
 		return "general"
 	}
 	return classifier.CachedClassify(ctx, s.log, s.ollama, title, classifier.Options{
-		DataDir:          s.cfg.Storage.DataDir,
-		Model:            s.cfg.External.OllamaModel,
+		DataDir:          s.cfg.DataDir,
+		Model:            s.cfg.OllamaModel,
 		FallbackCategory: "general",
 		ExcludeCategories: []string{
 			"interviews", "general", "other", "clips", "youtube", "videos",

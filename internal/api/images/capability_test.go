@@ -7,10 +7,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 )
 
 // TestGenerate_Returns503_WhenAllImageCapabilitiesAreMissingDependency:
@@ -56,47 +54,6 @@ func TestGenerate_Returns503_WhenAllImageCapabilitiesAreMissingDependency(t *tes
 	}
 }
 
-// TestGenerateFullImages_Returns501_WhenVideoAIRequestedButNotImplemented:
-// Per the fix(images): expose truthful capability availability contract,
-// POST /api/images/video/generate must surface 501 when a section requests
-// engine="google-vids" but the video_ai capability is currently
-// StatusNotImplemented (GenerateVideoAI in imageSvc is a stub). The
-// handler must NOT return 200 with an empty videos slice.
-//
-// We construct a FullImagesHandler with a zero-value *imgservice.Service
-// so the resolver returns StatusNotImplemented for CapVideoAI. ffmpegProc
-// is nil because the gate fires BEFORE generateOneVideo is called.
-func TestGenerateFullImages_Returns501_WhenVideoAIRequestedButNotImplemented(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	h := &FullImagesHandler{
-		service: mediafullimages.NewService(
-			&imgservice.Service{}, // zero-valued: CapVideoAI -> StatusNotImplemented
-			nil,                  // ffmpegProc — unused because the gate fires first
-			nil,                  // mediaStore — unused
-			"",
-			zap.NewNop(),
-		),
-	}
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	body := `{"sections":[{"title":"x","text":"foo","engine":"google-vids"}],"topic":"t","language":"en"}`
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/images/video/generate",
-		strings.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	h.GenerateFullImages(c)
-
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected HTTP 501 (video AI cap is not_implemented), got %d. body=%s",
-			rec.Code, rec.Body.String())
-	}
-	respBody := rec.Body.String()
-	if !strings.Contains(respBody, "video_ai") {
-		t.Errorf("501 body should name the capability 'video_ai'; got body=%s", respBody)
-	}
-	if !strings.Contains(respBody, "not_implemented") {
-		t.Errorf("501 body should report 'not_implemented' status; got body=%s", respBody)
-	}
-}
+// TestGenerateFullImages_Returns501_WhenVideoAIRequestedButNotImplemented
+// REMOVED (June 2026 PR cleanup): CapVideoAI capability was deleted.
+// The video_ai capability gate in the handler has been removed.

@@ -300,7 +300,7 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 
 	// If no explicit folder ID, resolve category folder
 	if targetFolderID == "" {
-		clipsRoot := s.cfg.Drive.ClipsFolder()
+		clipsRoot := s.cfg.ClipsFolderID
 		if clipsRoot != "" && clipFolder.LocalFolderPath != "" {
 			categoryDir := filepath.Base(filepath.Dir(clipFolder.LocalFolderPath))
 			clipsRootRel := filepath.Base(filepath.Dir(filepath.Dir(clipFolder.LocalFolderPath)))

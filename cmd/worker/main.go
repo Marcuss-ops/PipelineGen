@@ -183,7 +183,7 @@ func main() {
 
 // resolveMasterURL returns the canonical master URL in priority order:
 //
-//	$VELOX_MASTER_URL > $VELOX_BROKER_URL > cfg.External.VeloxMasterURL > "http://127.0.0.1:8000"
+//	$VELOX_MASTER_URL > cfg.External.VeloxMasterURL > "http://127.0.0.1:8000"
 //
 // Compose users can set service-based URLs (http://velox-server:8000)
 // so the worker on the same network reaches the master without
@@ -192,9 +192,6 @@ func main() {
 // http://host.docker.internal:8000.
 func resolveMasterURL(cfg *config.Config) string {
 	if v := strings.TrimSpace(os.Getenv("VELOX_MASTER_URL")); v != "" {
-		return normalizeURL(v)
-	}
-	if v := strings.TrimSpace(os.Getenv("VELOX_BROKER_URL")); v != "" {
 		return normalizeURL(v)
 	}
 	if cfg != nil && strings.TrimSpace(cfg.External.VeloxMasterURL) != "" {
@@ -221,9 +218,6 @@ func normalizeURL(raw string) string {
 func masterURLSource(resolved string) string {
 	if v := strings.TrimSpace(os.Getenv("VELOX_MASTER_URL")); v != "" && normalizeURL(v) == resolved {
 		return "env:VELOX_MASTER_URL"
-	}
-	if v := strings.TrimSpace(os.Getenv("VELOX_BROKER_URL")); v != "" && normalizeURL(v) == resolved {
-		return "env:VELOX_BROKER_URL"
 	}
 	return "config-yaml-or-default"
 }

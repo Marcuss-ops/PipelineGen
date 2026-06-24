@@ -2,13 +2,11 @@ package images
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -202,34 +200,10 @@ func (s *Service) Repo() *assets.ImagesRepository {
 // semantic.Payload gains a new column tomorrow, both names pick it up.
 type SemanticMetadataPayload = semantic.Payload
 
-// generateGoogleSlidesImage is a temporary scaffold stub. The downstream
-// caller (google_generate.go::generateGoogleVidsImage) invokes this
-// signature with (ctx, cleanPrompt, styledPrompt, subject, style, tags,
-// width, height, skipDrive). The real Google Vids / Slides image path is
-// being tracked separately (track: image-google-slides); for now we fail
-// fast with an explicit error so the operator can see the gap instead of
-// silently rendering an empty asset. The caller already wraps this error
-// with "%w" so the message remains visible in the script job log.
-func (s *Service) generateGoogleSlidesImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, width, height int, skipDrive bool) (*asset.ImageAsset, error) {
-	if s == nil {
-		return nil, fmt.Errorf("generateGoogleSlidesImage: nil service")
-	}
-	// Respect context cancellation for parity with the other generators.
-	select {
-	case <-ctx.Done():
-		return nil, fmt.Errorf("generateGoogleSlidesImage: %w", ctx.Err())
-	default:
-	}
-	if s.log != nil {
-		s.log.Warn("generateGoogleSlidesImage stub hit (google-slides integration not yet wired)",
-			zap.String("subject", subject),
-			zap.String("style", style),
-			zap.Int("width", width),
-			zap.Int("height", height),
-		)
-	}
-	return nil, fmt.Errorf("generateGoogleSlidesImage: not yet implemented (stubbed to unblock build; integrate Google Vids / Slides image path in a follow-up PR)")
-}
+// generateGoogleSlidesImage has been removed (PR cleanup June 2026).
+// Google Slides image integration was never implemented and the stub
+// always returned an error. Callers should fail with an explicit
+// message at the point of invocation.
 
 // TriggerPrewarm satisfies the ImageSearchService interface so the script
 // job handler can request a pre-warm of the Playwright tab pool before the
@@ -260,23 +234,6 @@ func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {
 	s.log.Debug("trigger_prewarm_noop", zap.String("job_id", jobID), zap.Int("count", count), zap.String("note", "playwright tab pool not yet wired to this service; future PR will plumb prewarm hooks"))
 }
 
-// GenerateVideoAI is a stub method on *images.Service so the fullimages
-// pipeline can compile while the real video-from-prompt generator lands in
-// a follow-up PR. The only caller today is fullimages/service.go:176, which
-// expects signature (ctx, prompt string, style string) (string, error).
-// Always errors for now — fullimages should treat this as a 501-not-yet-
-// wired signal rather than silently producing empty videos.
-func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (string, error) {
-	if s == nil {
-		return "", fmt.Errorf("GenerateVideoAI: nil service")
-	}
-	select {
-	case <-ctx.Done():
-		return "", fmt.Errorf("GenerateVideoAI: %w", ctx.Err())
-	default:
-	}
-	if s.log != nil {
-		s.log.Debug("generate_video_ai_stub", zap.String("style", style), zap.Int("prompt_len", len(prompt)))
-	}
-	return "", fmt.Errorf("GenerateVideoAI: not yet implemented (stubbed to unblock build; integrate video-from-prompt generator in a follow-up PR)")
-}
+// GenerateVideoAI has been removed (PR cleanup June 2026).
+// Video-from-prompt generation was never implemented. The fullimages
+// pipeline already has a ken-burns fallback that continues to work.

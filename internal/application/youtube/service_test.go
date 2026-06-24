@@ -12,7 +12,6 @@ import (
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -381,14 +380,9 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *asset.ProcessIn
 	}, nil
 }
 
-func testConfig(tmp string) *config.Config {
-	return &config.Config{
-		Storage: config.StorageConfig{
-			DataDir: tmp,
-		},
-		Video: config.VideoConfig{
-			Duration: 30,
-		},
+func testConfig(tmp string) youtubetypes.RuntimeConfig {
+	return youtubetypes.RuntimeConfig{
+		DataDir: tmp,
 	}
 }
 

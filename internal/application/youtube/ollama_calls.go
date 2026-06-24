@@ -17,8 +17,8 @@ func (s *Service) generateClipMetadata(ctx context.Context, title, transcript, d
 
 // metadataMetadataModel returns the model to use for metadata generation.
 func (s *Service) metadataMetadataModel() string {
-	if s == nil || s.cfg == nil {
+	if s == nil {
 		return "gemma4:e2b"
 	}
-	return s.cfg.External.OllamaMetadataModel
+	return s.cfg.OllamaMetadataModel
 }

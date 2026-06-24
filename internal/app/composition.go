@@ -58,6 +58,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -336,7 +337,7 @@ func resolveRuntimeDestinations(ctx context.Context, db *sql.DB, driveClient *gd
 
 // configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
 func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
-	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), VideoAIRoot: cfg.Drive.VideoAIRootFolder, SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder(), videoAIFolder: cfg.Drive.VideoAIFolder()}
+	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
 }
 
 // BuildRepoBundle constructs the canonical Repositories.
@@ -548,6 +549,29 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	}, nil
 }
 
+// buildYouTubeRuntimeConfig resolves the flat RuntimeConfig consumed by the
+// YouTube application layer from the infrastructure *config.Config. All
+// nested config paths are flattened here so the application layer has zero
+// dependency on `internal/infrastructure/config`.
+func buildYouTubeRuntimeConfig(cfg *config.Config) youtubetypes.RuntimeConfig {
+	if cfg == nil {
+		return youtubetypes.RuntimeConfig{}
+	}
+	return youtubetypes.RuntimeConfig{
+		MaxConcurrentVideoExtracts: cfg.Concurrency.MaxConcurrentVideoExtracts,
+		MaxConcurrentOllamaCalls:   cfg.Concurrency.MaxConcurrentOllamaCalls,
+		YouTubeExtractTimeout:      cfg.Jobs.YouTubeExtractTimeout,
+		DataDir:                    cfg.Storage.DataDir,
+		YtdlpPath:                  cfg.External.ResolvedYtdlpPath(),
+		ClipsFolderID:              cfg.Drive.ClipsFolder(),
+		OllamaModel:                cfg.External.OllamaModel,
+		OllamaMetadataModel:        cfg.External.OllamaMetadataModel,
+		YouTubeCookiesPath:         cfg.External.YouTubeCookiesPath,
+		YouTubeJSRuntimePath:       cfg.External.YouTubeJSRuntimePath,
+		YouTubeEnabled:             cfg.Features.YouTubeEnabled,
+	}
+}
+
 // BuildDomainBundle builds the media-domain services.
 //
 // commit ci/composition-split wave-3: extracted to build_domain_bundle.go +
@@ -598,7 +622,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 
 	youtubeDeps := youtube.ServiceDeps{
-		Cfg:               cfg,
+		Cfg:               buildYouTubeRuntimeConfig(cfg),
 		Log:               log,
 		MediaProcessor:    process.MediaProcessor,
 		VideoPipeline:     videoPipelineAdapter,

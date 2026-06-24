@@ -32,7 +32,7 @@ func (s *Service) tryOllamaSegmentAnalysis(ctx context.Context, timedEntries []t
 	}
 	transcript := strings.Join(transcriptParts, "\n")
 
-	model := s.cfg.External.OllamaModel
+	model := s.cfg.OllamaModel
 	if model == "" {
 		model = "gemma4:e2b"
 	}

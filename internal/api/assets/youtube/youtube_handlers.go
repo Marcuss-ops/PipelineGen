@@ -302,8 +302,8 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 
 	// Check external dependencies
 	if serviceAvailable {
-		if cfg := h.service.Config(); cfg != nil {
-			ytdlpPath := cfg.External.ResolvedYtdlpPath()
+		cfg := h.service.Config()
+		ytdlpPath := cfg.YtdlpPath
 
 			// Check yt-dlp
 			if _, err := h.toolChecker.LookPath(ytdlpPath); err != nil {
@@ -327,7 +327,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 			}
 
 			// Check cookies file
-			cookiesPath := cfg.External.YouTubeCookiesPath
+			cookiesPath := cfg.YouTubeCookiesPath
 			if cookiesPath == "" {
 				cookiesPath = "config/youtube_cookies.txt"
 			}
@@ -338,12 +338,11 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 			}
 
 			checks["config"] = gin.H{
-				"youtube_enabled": cfg.Features.YouTubeEnabled,
-				"extract_timeout": cfg.Jobs.YouTubeExtractTimeout,
+				"youtube_enabled": cfg.YouTubeEnabled,
+				"extract_timeout": cfg.YouTubeExtractTimeout,
 				"cookies_path":    cookiesPath,
 				"ytdlp_path":      ytdlpPath,
-				"js_runtime_path": cfg.External.YouTubeJSRuntimePath,
-			}
+			"js_runtime_path": cfg.YouTubeJSRuntimePath,
 		}
 	}
 

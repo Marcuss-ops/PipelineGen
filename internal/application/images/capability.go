@@ -19,19 +19,11 @@ package images
 //                             nvidiaAPIKey + cfg.Concurrency.MaxConcurrentNvidiaGenerations)
 //   - CapRemoteImageGen    — Remote Google Flow image gen (depends on
 //                             remoteImageEndpointURL)
-//   - CapGoogleSlidesImage — NOT IMPLEMENTED in current PipelineGen
-//                             (track: image-google-slides)
-//   - CapVideoAI           — NOT IMPLEMENTED (GenerateVideoAI is a stub)
-//   - CapPrewarm           — NOT IMPLEMENTED (TriggerPrewarm is a no-op
-//                             debug log; Playwright tab pool not yet wired)
 type Capability string
 
 const (
-	CapImageGenNvidia    Capability = "image_gen_nvidia"
-	CapRemoteImageGen    Capability = "remote_image_gen"
-	CapGoogleSlidesImage Capability = "google_slides_image"
-	CapVideoAI           Capability = "video_ai"
-	CapPrewarm           Capability = "prewarm"
+	CapImageGenNvidia Capability = "image_gen_nvidia"
+	CapRemoteImageGen Capability = "remote_image_gen"
 )
 
 // CapabilityStatus is the explicit availability flag for a capability.
@@ -77,8 +69,6 @@ func (s *Service) CapabilityResolution(cap Capability) CapabilityStatus {
 			return StatusMissingDependency
 		}
 		return StatusAvailable
-	case CapGoogleSlidesImage, CapVideoAI, CapPrewarm:
-		return StatusNotImplemented
 	default:
 		return StatusNotImplemented
 	}
@@ -91,10 +81,7 @@ func (s *Service) CapabilityResolution(cap Capability) CapabilityStatus {
 // CapabilityResolution.
 func (s *Service) AllCapabilities() map[Capability]CapabilityStatus {
 	return map[Capability]CapabilityStatus{
-		CapImageGenNvidia:    s.CapabilityResolution(CapImageGenNvidia),
-		CapRemoteImageGen:    s.CapabilityResolution(CapRemoteImageGen),
-		CapGoogleSlidesImage: s.CapabilityResolution(CapGoogleSlidesImage),
-		CapVideoAI:           s.CapabilityResolution(CapVideoAI),
-		CapPrewarm:           s.CapabilityResolution(CapPrewarm),
+		CapImageGenNvidia: s.CapabilityResolution(CapImageGenNvidia),
+		CapRemoteImageGen: s.CapabilityResolution(CapRemoteImageGen),
 	}
 }
