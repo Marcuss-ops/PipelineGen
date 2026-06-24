@@ -93,7 +93,7 @@ contain business logic (Pattern 8 in AGENTS.md). Business logic lives
 in `internal/application/<feature>/` (use cases + orchestration) and
 `internal/infrastructure/<X>/` (concrete adapters: DB, Drive, exec).
 Each `internal/api/<feature>/` exposes at most 1 `Handler` + 1
-`RegisterRoutes`. The legacy `CoreDeps` mega-struct was removed in
+`RegisterRoutes`. The old `CoreDeps` mega-struct was removed in
 PR4d-final (June 2026) — bundles are the only valid wiring primitive.
 
 ## 4. Module ownership
@@ -186,7 +186,7 @@ opened through `internal/infrastructure/database.DatabaseSet` (`OpenSet`,
 | **Primary** | `<DataDir>/media/media.db.sqlite` (compat default) | **Unico database** — scripts, jobs, media_assets, clip_folders, voiceovers, youtube_cache, gemma_memory, search_queries, sketchfab, pipeline_runs, worker_nodes, etc. | `migrations/sqlite/*.sql` |
 | **Observability** | `<DataDir>/observability/api_requests.db.sqlite` | API request log table + indexes (single purpose: HTTP traffic telemetry). Distinct from Primary so log retention doesn't churn the schema-versioned Primary DB. | `migrations/sqlite/*.sql` |
 
-**Configurable via `cfg.Storage`** (defaults preserve legacy single-file layout):
+**Configurable via `cfg.Storage`** (defaults preserve the previous single-file layout):
 
 | Field | YAML | Env | Default |
 |-------|------|-----|---------|
@@ -205,7 +205,7 @@ forward as-is — no distributed transaction across DBs).
 **Path migration**: the path-migration tool (`cmd/admin/path_migrate.go`,
 future PR) performs backup + SHA256 checksum + PRAGMA integrity_check +
 rollback when operators opt in to relocate the Primary DB from the
-legacy `<DataDir>/media.db.sqlite` path to the canonical
+old `<DataDir>/media.db.sqlite` path to the canonical
 `<DataDir>/media/media.db.sqlite`. Until that runs, the PrimaryDBPath
 default matches today's on-disk file so existing deployments keep
 working without a migration. Default resolution in
@@ -328,7 +328,7 @@ The runtime opens the `DatabaseSet` once via `storage.OpenSet(cfg.Storage, log)`
 in `internal/app/bootstrap.go::initDatabases`; no `sql.Open` lives outside
 `internal/infrastructure/database/**`. Override the canonical DB paths via
 the `storage.primary_db_path` and `storage.observability_db_path` config
-fields (defaults preserve legacy single-file layout; see §6).
+fields (defaults preserve the previous single-file layout; see §6).
 
 **Script-flow use cases (June 2026)**: the three HTTP endpoints that used
 to embed orchestration in `ScriptFlowHandler` now delegate to typed use
@@ -489,7 +489,7 @@ di `Service`. In sintesi:
 | `DriveFolderManagerPort` | `internal/app/youtube_adapters.go::driveFolderMgrAdapter` | wraps `*drive.Uploader` |
 | `FolderMemoryPort` | passes-through `*foldermemory.Service` directly | canonical impl lives at `internal/media/foldermemory/` |
 | `OllamaClientPort` | passes-through `*client.Client` directly | canonical impl lives at `internal/ml/ollama/client/` |
-| `SearchRunnerPort` | `internal/app/youtube_adapters.go::searchRunnerStub` (stub; real implementation deferred) | returns empty + warn-log |
+| `SearchRunnerPort` | `internal/app/youtube_adapters.go::searchRunnerStub` (compatibility adapter; implementation deferred) | returns empty + warn-log |
 | `ClipIndexerPort` | `internal/app/youtube_adapters.go::clipIndexerAdapter` | wraps `*clipindexer.Service` |
 | `WhisperTranscriberPort` | reserved; nil-by-default; segment.go nil-guards before call | — |
 | `ClipFilesPort` | reserved; nil-by-default; segment_cache.go nil-guards before call | — |
@@ -502,7 +502,7 @@ Empty-marker (opaque injection tokens, no method signature):
 ### Canonical DTO
 
 Un solo DTO per i metadata video: `*youtubedto.DownloaderMetadata`
-(con 14 fields + `CachedAt`). Back-compat per i nomi legacy:
+(con 14 fields + `CachedAt`). Back-compat per i nomi storici:
 `type VideoMetadata = DownloaderMetadata`,
 `type YouTubeMetadataPort = DownloaderMetadata`.
 
@@ -518,7 +518,7 @@ La precedente setter cascade (`Service.SetSearchRunner(...)`,
 - Settore verde sul cascade package scope (5 packages + cmd/server + cmd/worker).
 - `go test ./...` ha 7 packages falliti FUORI dal cascade scope — investigazione separata.
 - `internal/application/youtube/` è ancora un mega-package di 43 file (target 5-8) — split pianificato.
-- 3 latent-risk fissano l'agenda post-cascade (Thumbnails:nil, searchRunnerStub silent-empty, typed-nil panic).
+- 3 latent-risk fissano l'agenda post-cascade (Thumbnails:nil, searchRunner compatibility adapter silent-empty, typed-nil panic).
 
 ---
 

@@ -156,21 +156,6 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, title
 		return
 	}
 
-	// Surround the extraction call with a recover so a panic from a
-	// single bad request does NOT crash the monitor loop. Without this,
-	// any un-caught panic in ytextraction (e.g. nil-deref from a mis-wired
-	// port that escaped its nil-guard) would tear down the background
-	// ticker goroutine and stop the entire monitor. Per ARCHITECTURE.md
-	// §7, the monitor path is non-fatal-by-design.
-	defer func() {
-		if r := recover(); r != nil {
-			m.log.Error("channel-monitor: panic recovered during downloadClip; monitor loop continues",
-				zap.String("video_id", videoID),
-				zap.String("title", title),
-				zap.Any("panic", r))
-		}
-	}()
-
 	// Determine category: use channel's explicit category if DriveFolderID is set (faster, no Ollama call),
 	// otherwise fall back to Ollama-based classification.
 	var category string
@@ -291,7 +276,7 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, title
 	// The recover is intentionally limited to this call only — panics
 	// elsewhere in downloadClip (os.MkdirAll, findInterestingSegments LLM,
 	// Prometheus clients) are NOT swallowed so real bugs surface loudly.
-	resp, err = func() (outResp *yttypes.ExtractResponse, outErr error) {
+	resp, err := func() (outResp *yttypes.ExtractResponse, outErr error) {
 		defer func() {
 			if r := recover(); r != nil {
 				stack := debug.Stack()
