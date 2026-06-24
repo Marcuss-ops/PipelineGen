@@ -29,9 +29,10 @@
 #
 # CURRENT STATE — Wave 14 grandfathered imports
 # ──────────────────────────────────────────────
-# The 27 entries below are real Go imports of internal/infrastructure/*
-# (verified via `grep -rln 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure/'
-# internal/api/ --include='*.go' | grep -v '_test.go'`). They are grandfathered
+# The entries below are real Go imports of internal/infrastructure/*
+# (verified via `rg -l 'github\.com/Marcuss-ops/PipelineGen/internal/infrastructure/'
+# internal/api --glob '*.go' --glob '!*_test.go'`). The archcheck gate compares
+# this file symmetrically with that scan, so stale entries fail too. They are grandfathered
 # because Wave 14 (API compaction, June 2026) is in flight: the
 # `internal/api/` subtree already dropped Drive, Realtime, SearchQueries,
 # FullImages, Workers, and Sources — but the in-flight asset handlers
@@ -42,10 +43,10 @@
 # Migration plan (per PR3 docs/roadmap/PR3_API_COMPACTION.md):
 #   * Wave 14-PR2: extract bulk_upload + handler.go + workers out of
 #     api/assets/clips/* → internal/application/assets/clips/{service,worker}.
-#     This removes 8 of the 27 entries.
+#     This removes 8 entries.
 #   * Wave 14-PR3: extract api/script/{flow,handler_flow,handler_jobs,helpers}
 #     → internal/application/scripts/{flow,service,worker} per docs/CHANGELOG_2026-06-03.md
-#     §"ScriptFlow helper extraction". Removes 4 of the 27.
+#     §"ScriptFlow helper extraction".
 #   * Wave 14-PR4: api/system/{handler,handler_drive,module} →
 #     internal/application/system/* handlers (no infra reach-through).
 #     Removes 3 of the 27.
@@ -69,9 +70,6 @@ internal/api/assets/clips/clip_ops.go
 internal/api/assets/clips/handler.go
 internal/api/assets/clips/helpers.go
 internal/api/assets/clips/upload_helpers.go
-
-# ── Wave 14 grandfathered: api/assets/searchqueries handler (PR2) ──────────
-internal/api/assets/handler_searchqueries.go
 
 # ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2) ──
 internal/api/assets/soundeffect/handler.go

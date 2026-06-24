@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "policy": "Monotone-decreasing. Operators may ONLY remove entries; raising a count requires a verified_zero PR.",
+  "policy": "Monotone-decreasing. Operators may ONLY remove entries; raising a count requires a focused-gate PR.",
   "last_reset": "2026-06-23T16:20:25Z",
   "violations": {
     "application_to_api": 3,
