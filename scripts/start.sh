@@ -122,7 +122,7 @@ fi
 
 # Pull port + master defaults if not set, so downstream checks have something
 # to reference (these are the bare defaults; .env override them).
-: "${VELOX_PORT:=8000}"
+: "${VELOX_PORT:=8080}"
 : "${VELOX_HOST:=127.0.0.1}"
 : "${VELOX_MASTER_URL:=http://127.0.0.1:${VELOX_PORT}}"
 : "${OLLAMA_ADDR:=http://localhost:11434}"
@@ -138,7 +138,7 @@ fi
 section "1/10 Go toolchain"
 
 if ! command -v go >/dev/null 2>&1; then
-  log_hard "go is not on PATH — install Go \xe2\x89\xa51.21 (server won't build)"
+  log_hard "go is not on PATH — install Go ≥1.25 (server won't build)"
 else
   GO_VERSION=$(go version 2>&1 | head -1)
   log_ready "go: $GO_VERSION"
@@ -211,7 +211,7 @@ fi
 # ── 6. server config sanity (host:port, public-host auth) ───────────────────
 section "6/10 server config sanity"
 
-log_ready "VELOX_PORT=${VELOX_PORT} (8000 = Operational Readiness PR canonical default)"
+log_ready "VELOX_PORT=${VELOX_PORT} (8080 = Operational Readiness PR canonical default)"
 log_ready "VELOX_HOST=${VELOX_HOST}"
 log_ready "VELOX_MASTER_URL=${VELOX_MASTER_URL}"
 
