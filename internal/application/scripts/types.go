@@ -5,6 +5,7 @@ package scripts
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -517,17 +518,75 @@ type ClipGenerationOptions struct {
 
 // BuildClipContext builds clip context (stub).
 func (c *ClipSourceBuilder) BuildClipContext(ctx context.Context, clipIDs []string, opts *ClipGenerationOptions) (interface{}, *NarrativePlan, string, error) {
-	return nil, nil, "", nil
+	ids := make([]string, 0, len(clipIDs))
+	for _, id := range clipIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	title := "script"
+	language := ""
+	tone := ""
+	targetWords := 0
+	model := ""
+	if opts != nil {
+		title = strings.TrimSpace(opts.Title)
+		language = strings.TrimSpace(opts.Language)
+		tone = strings.TrimSpace(opts.Tone)
+		targetWords = opts.TargetWords
+		model = strings.TrimSpace(opts.Model)
+	}
+	if title == "" {
+		title = "script"
+	}
+	plan := &NarrativePlan{
+		Title:        title,
+		Sections:     []NarrativeSection{{Role: "intro", Purpose: "establish the topic", WordBudget: targetWords}},
+		TotalWords:   targetWords,
+		Style:        tone,
+		Relationship: language,
+	}
+	sourceText := fmt.Sprintf("%s | clip_ids=%s | language=%s | tone=%s | model=%s", title, strings.Join(ids, ","), language, tone, model)
+	pack := map[string]any{
+		"clip_ids": ids,
+		"title":    title,
+		"language": language,
+		"tone":     tone,
+		"model":    model,
+	}
+	return pack, plan, sourceText, nil
 }
 
 // ComputeFingerprint computes a fingerprint (stub).
 func (c *ClipSourceBuilder) ComputeFingerprint(clipIDs []string, pack interface{}, opts *ClipGenerationOptions, fpCtx interface{}) string {
-	return ""
+	parts := []string{"clips"}
+	for _, id := range clipIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			parts = append(parts, id)
+		}
+	}
+	if opts != nil {
+		if v := strings.TrimSpace(opts.Title); v != "" {
+			parts = append(parts, "title="+v)
+		}
+		if v := strings.TrimSpace(opts.Language); v != "" {
+			parts = append(parts, "lang="+v)
+		}
+		if v := strings.TrimSpace(opts.Tone); v != "" {
+			parts = append(parts, "tone="+v)
+		}
+		if v := strings.TrimSpace(opts.Model); v != "" {
+			parts = append(parts, "model="+v)
+		}
+	}
+	return strings.Join(parts, "|")
 }
 
 // NewFingerprintContext creates a fingerprint context (stub).
 func NewFingerprintContext(model, promptModel string) interface{} {
-	return nil
+	return map[string]string{"model": strings.TrimSpace(model), "prompt_model": strings.TrimSpace(promptModel)}
 }
 
 // PipelineResult holds the output of Pipeline.Run.
