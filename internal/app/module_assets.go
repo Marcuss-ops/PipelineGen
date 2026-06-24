@@ -12,7 +12,6 @@ import (
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	assetclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
@@ -24,7 +23,7 @@ import (
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
+	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
@@ -97,6 +96,10 @@ type AssetsWiring struct {
 // (see internal/app/assets_adapters.go: diagIndexHealthAdapter.realtime
 // + searchVectorAdapter.realtimeSvc), so this change re-aligns the
 // caller signature with the adapter field types.
+// PG-005 (June 2026): the clips Handler now receives typed ports from
+// `newClipsAdapterBundle` instead of reaching through concrete
+// infrastructure types. The composition root is the ONLY place allowed
+// to import internal/infrastructure/* types.
 func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc interface{}, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry) (*AssetsWiring, error) {
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
@@ -106,34 +109,60 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	if bundle.Assets != nil {
 		assetRepo = bundle.Assets.Repository()
 	}
+
+	// PG-005 (June 2026): one canonical adapter bundle for the 11
+	// clips-wide ports. Each adapter wraps a concrete infra type
+	// and exposes a narrow structural interface — the api/ layer
+	// stays port-only. `assetRepo` is the canonical asset.Service
+	// adapter above (NOT a wrapped ClipsRepository) so the
+	// AssetRepo field on clips.Deps type-checks against
+	// asset.Repository.
 	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
+	clipsBundle := newClipsAdapterBundle(
+		cfg,
+		log,
+		bundle.ClipsRepo, // artlist slot
+		bundle.ClipsRepo, // clips slot
+		bundle.ClipsRepo, // stock slot
+		bundle.VoiceoverRepo,
+		bundle.ImageRepo,
+		driveUploader,
+		metaWriter,
+		bundle.ClipIndexerService,
+		folderMemSvc,
+		bundle.AssetTreeService,
+		vectorStore,
+	)
+	clipsSearchFunc := assetclipssearch.NewService(log, map[string]assetclipssearch.AdvancedSearchRepo{
+		"youtube": bundle.ClipsRepo,
+		"artlist": bundle.ClipsRepo,
+		"stock":   bundle.ClipsRepo,
+	})
+
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
+		SourceResolver: clipsBundle.SourceResolver,
 		AssetRepo:      assetRepo,
-		ClipsRepo:      bundle.ClipsRepo,
-		StockRepo:      bundle.ClipsRepo,
-		ArtlistRepo:    bundle.ClipsRepo,
+		ClipsRepo:      clipsBundle.ClipsRepo,
+		StockRepo:      clipsBundle.StockRepo,
+		ArtlistRepo:    clipsBundle.ArtlistRepo,
 		DeletionSvc:    deletionSvc,
-		DriveUploader:  driveUploader,
+		DriveUploader:  clipsBundle.DriveUploader,
 		MediaProcessor: bundle.MediaProcessor,
 		AssetTreeSvc:   bundle.AssetTreeService,
-		MetaWriter:     metaWriter,
-		ClipIndexer:    bundle.ClipIndexerService,
-		VectorStore:    vectorStore,
+		MetaWriter:     clipsBundle.MetaWriter,
+		ClipIndexer:    clipsBundle.ClipIndexer,
+		VectorStore:    clipsBundle.VectorStore,
 		JobsSvc:        jobs.Facade,
-		Cfg:            cfg,
+		Cfg:            clipsBundle.Cfg,
 		Log:            log,
-		VoiceoverRepo:  bundle.VoiceoverRepo,
-		ImagesRepo:     bundle.ImageRepo,
-		FolderMemSvc:   folderMemSvc,
-		SearchSvc: assetclipssearch.NewService(log, map[string]assetclipssearch.AdvancedSearchRepo{
-			"youtube": bundle.ClipsRepo,
-			"artlist": bundle.ClipsRepo,
-			"stock":   bundle.ClipsRepo,
-		}),
-		ProcessRunner: processRunnerAdapter,
+		VoiceoverRepo:  clipsBundle.VoiceoverRepo,
+		ImagesRepo:     clipsBundle.ImagesRepo,
+		HashSvc:        clipsBundle.HashSvc,
+		TreeBuilderSvc: clipsBundle.TreeBuilderSvc,
+		SearchSvc:      clipsSearchFunc,
+		ProcessRunner:  processRunnerAdapter,
 	})
 
 	// ── PR 3 (June 2026): storage thin-transport handler ─────

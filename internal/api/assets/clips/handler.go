@@ -7,93 +7,125 @@
 // receivers on *Handler — there is no longer a need for nested structs.
 // SourcesHandler keeps a single *clips.Handler field and delegates each
 // clip-route registration to clips.Handler.{CreateClip, GetClip, ...}.
+//
+// PG-005 (June 2026): every field that previously held a concrete
+// internal/infrastructure/* pointer (config.Config, assets.ClipsRepository,
+// drive.Uploader, semantic.MetadataWriter, clipindexer.Service,
+// foldermemory.Service, assets.VoiceoversRepository, assets.ImagesRepository,
+// artifacts.SourceResolver) is now a typed port declared in
+// internal/application/clips/ports.go. Concrete adapters live in
+// internal/app/clips_adapters.go. This file has zero
+// internal/infrastructure/* imports (verified by Check 19 in
+// scripts/ci-architectural-checks.sh).
 package clips
 
 import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
 // Deps is the constructor bag for Handler. Keeping deps in a struct
 // rather than 14 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
+//
+// PG-005 (June 2026): every infrastructure-shaped field is now a typed
+// port. Production wiring in internal/app/module_assets.go calls
+// newClipsAdapterBundle(...) and passes each port. Tests can pass nil
+// for any subset and observe the matching `if h.xy != nil` short-
+// circuit behaviour the handler code has long relied on.
 type Deps struct {
-	SourceResolver *artifacts.SourceResolver
+	SourceResolver appclips.SourceResolverPort
 	AssetRepo      asset.Repository
-	ClipsRepo      *assets.ClipsRepository
-	StockRepo      *assets.ClipsRepository
-	ArtlistRepo    *assets.ClipsRepository
+	ClipsRepo      appclips.ClipRepositoryPort
+	StockRepo      appclips.ClipRepositoryPort
+	ArtlistRepo    appclips.ClipRepositoryPort
 	DeletionSvc    *deletion.DeletionService
-	DriveUploader  *drive.Uploader
+	DriveUploader  appclips.ClipDriveUploaderPort
 	MediaProcessor asset.Processor
 	AssetTreeSvc   *assettree.Service
-	MetaWriter     *semantic.MetadataWriter
-	ClipIndexer    *clipindexer.Service
+	MetaWriter     appclips.ClipMetaWriterPort
+	ClipIndexer    appclips.ClipIndexerPort
 	VectorStore    appclips.VectorStorePort
 	JobsSvc        jobservice.Service
-	Cfg            *config.Config
+	Cfg            appclips.ClipConfigPort
 	Log            *zap.Logger
 	// VoiceoverRepo enables the voiceover-source branch in DownloadClip.
 	// Nil-tolerated so absence of voiceover wiring never crashes the chain.
-	VoiceoverRepo *assets.VoiceoversRepository
+	VoiceoverRepo appclips.VoiceoverRepositoryPort
 	// ImagesRepo enables the "source=images" branch in ListClips.
 	// Nil-tolerated; nil means GET /:source/clips for that source returns 400.
-	ImagesRepo *assets.ImagesRepository
+	ImagesRepo appclips.ImageRepositoryPort
 	// ArtifactSvc streams uploaded files through content-addressed drive.
 	// Used by UploadVideoClip. Nil means POST /upload-video returns 500.
 	ArtifactSvc *artifacts.Service
-	// FolderMemSvc supports manifest regeneration heuristics.
-	FolderMemSvc *foldermemory.Service
+	// FolderMemSvc supports manifest regeneration heuristics. Empty-marker
+	// port — the handler stores the dep but does not call any method.
+	FolderMemSvc appclips.ClipFolderMemoryPort
 	// SearchSvc owns advanced multi-source clip search.
 	SearchSvc *appclipssearch.Service
 	// ProcessRunner executes external subprocesses (ffprobe, mediainfo, etc.).
 	ProcessRunner appassets.ProcessRunner
+	// HashSvc computes MD5 hashes for bulk-upload workers. PG-005
+	// (June 2026): was a bare hashutil.MD5File() call inside
+	// bulk_upload_worker.go; now flows through a typed port so the
+	// handler keeps zero infra reach-through. The adapter wraps
+	// files.MD5File() at the composition root
+	// (internal/app/clips_adapters.go::clipsHashAdapter).
+	HashSvc appclips.ClipHashPort
+	// TreeBuilderSvc builds an asset-tree node from a clip asset. PG-005
+	// (June 2026): replaces the previous direct *assettree.Service dep
+	// so bulk_tags.go's BulkTagsUseCase can reach the tree through a
+	// typed port (and the use case drops its infrastructure import).
+	TreeBuilderSvc appclips.ClipTreeBuilderPort
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
 // no nested struct fan-out.
 type Handler struct {
-	sourceResolver *artifacts.SourceResolver
+	sourceResolver appclips.SourceResolverPort
 	assetRepo      asset.Repository
-	clipsRepo      *assets.ClipsRepository
-	stockRepo      *assets.ClipsRepository
-	artlistRepo    *assets.ClipsRepository
+	clipsRepo      appclips.ClipRepositoryPort
+	stockRepo      appclips.ClipRepositoryPort
+	artlistRepo    appclips.ClipRepositoryPort
 	deletionSvc    *deletion.DeletionService
-	driveUploader  *drive.Uploader
+	driveUploader  appclips.ClipDriveUploaderPort
 	mediaProcessor asset.Processor
 	assetTreeSvc   *assettree.Service
-	metaWriter     *semantic.MetadataWriter
-	clipIndexer    *clipindexer.Service
+	metaWriter     appclips.ClipMetaWriterPort
+	clipIndexer    appclips.ClipIndexerPort
 	jobsSvc        jobservice.Service
-	cfg            *config.Config
+	cfg            appclips.ClipConfigPort
 	log            *zap.Logger
 	// voiceoverRepo is mirrored from Deps.VoiceoverRepo via NewHandler
-	voiceoverRepo *assets.VoiceoversRepository
+	voiceoverRepo appclips.VoiceoverRepositoryPort
 	// imagesRepo mirrors Deps.ImagesRepo. Same late-binding semantics.
-	imagesRepo *assets.ImagesRepository
+	imagesRepo appclips.ImageRepositoryPort
 	// artifactSvc mirrors Deps.ArtifactSvc. Same late-binding semantics.
 	artifactSvc  *artifacts.Service
-	folderMemSvc *foldermemory.Service
+	folderMemSvc appclips.ClipFolderMemoryPort
 	// searchSvc mirrors Deps.SearchSvc.
 	searchSvc *appclipssearch.Service
 	// processRunner mirrors Deps.ProcessRunner.
 	processRunner appassets.ProcessRunner
+	// hashSvc mirrors Deps.HashSvc. PG-005 (June 2026): typed port
+	// that backs bulk_upload_worker.go's MD5 computation; drops the
+	// previous bare hashutil import.
+	hashSvc appclips.ClipHashPort
+	// treeBuilderSvc mirrors Deps.TreeBuilderSvc. PG-005 (June 2026):
+	// typed port that backs bulk_tags.go's BulkTagsUseCase so the
+	// use case drops the *assettree.Service concrete + assets.AssetNode
+	// imports; the converter lives in the composition-root adapter.
+	treeBuilderSvc appclips.ClipTreeBuilderPort
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -127,18 +159,22 @@ func NewHandler(d Deps) *Handler {
 		folderMemSvc:   d.FolderMemSvc,
 		searchSvc:      d.SearchSvc,
 		processRunner:  d.ProcessRunner,
+		hashSvc:        d.HashSvc,
+		treeBuilderSvc: d.TreeBuilderSvc,
 
 		// Initialize use cases
+		// PG-005 (June 2026): the constructor parameter types are now
+		// typed ports. The use-case logic is unchanged.
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
 		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
-		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
+		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.TreeBuilderSvc),
 		enrichUC:    appclips.NewEnrichUseCase(d.AssetRepo, d.ClipIndexer, d.VectorStore, d.MetaWriter, d.Log),
 	}
 }
 
 // repoForSource resolves a clip source to its canonical repository.
 // Standard clip sources are resolved through the shared source resolver.
-func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
+func (h *Handler) repoForSource(source string) appclips.ClipRepositoryPort {
 	if h.sourceResolver == nil {
 		return nil
 	}
@@ -147,19 +183,19 @@ func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 
 func (h *Handler) driveRootForSource(source string) (string, string) {
 	spec, ok := map[string]struct {
-		root   func(*config.Config) string
+		root   func(appclips.ClipConfigPort) string
 		marker string
 	}{
 		"clips": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.ClipsFolder() },
+			root:   func(cfg appclips.ClipConfigPort) string { return cfg.ClipsDriveFolder() },
 			marker: "/clips/",
 		},
 		"artlist": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.ArtlistFolder() },
+			root:   func(cfg appclips.ClipConfigPort) string { return cfg.ArtlistDriveFolder() },
 			marker: "/artlist/",
 		},
 		"stock": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.StockFolder() },
+			root:   func(cfg appclips.ClipConfigPort) string { return cfg.StockDriveFolder() },
 			marker: "/stock/",
 		},
 	}[artifacts.CanonicalSource(source)]

@@ -149,7 +149,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	targetFolderID := ExtractDriveFolderID(folderID)
 	if targetFolderID == "" {
 		// Use the MediaRootFolder as default root
-		targetFolderID = h.cfg.Drive.RootFolder()
+		targetFolderID = h.cfg.RootFolder()
 		if group != "" && targetFolderID != "" {
 			dirID, err := h.driveUploader.GetOrCreateFolder(ctx, group, targetFolderID)
 			if err != nil {
@@ -212,7 +212,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 			clipEntry["drive_file_id"] = uploadResult.FileID
 			clipEntry["drive_link"] = uploadResult.WebViewLink
 		}
-		UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
+		UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.TempPath(), targetFolderID, clipID, clipEntry, log)
 	}
 
 	// 8. Build the MediaAsset record
@@ -257,10 +257,9 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	}
 
 	// 11. Update Asset Tree
-	if h.assetTreeSvc != nil {
-		node := ClipToAssetNode(clip)
-		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
-			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
+	if h.treeBuilderSvc != nil {
+		if err := h.treeBuilderSvc.UpsertFromAsset(ctx, clip); err != nil {
+			log.Warn("failed to upsert to asset tree (PG-005 typed port)", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
 	}
 

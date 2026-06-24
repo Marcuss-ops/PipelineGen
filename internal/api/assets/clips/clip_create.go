@@ -56,10 +56,12 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		return
 	}
 
-	// 2. Update Asset Tree
-	if h.assetTreeSvc != nil {
-		node := ClipToAssetNode(&clip)
-		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
+	// 2. Update Asset Tree via the typed ClipTreeBuilderPort (PG-005).
+	// The adapter at internal/app/clips_adapters.go::clipsAssetTreeAdapter
+	// handles the domain → concrete infra node shape conversion. Caller is
+	// nil-tolerant so missing wiring never panics.
+	if h.treeBuilderSvc != nil {
+		if err := h.treeBuilderSvc.UpsertFromAsset(ctx, &clip); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
 	}
