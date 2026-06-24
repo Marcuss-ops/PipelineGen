@@ -1,10 +1,14 @@
-package youtube
+package search
 
 import (
 	"testing"
 
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 )
+
+// CPR-CC-6 Phase 2 (June 2026): moved from internal/application/youtube/.
+// Scorers live in the search package; the tests run against the canonical
+// scoring constants without needing an explicit package qualifier.
 
 func TestScoreTopicSimilarityPrefersExactTopicMatch(t *testing.T) {
 	meta := &youtubeports.DownloaderMetadata{
