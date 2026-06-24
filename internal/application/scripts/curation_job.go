@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
@@ -106,8 +106,12 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 
 	var docLink, docID, docErr string
 	docContent := BuildCurateDocContent(result.Title, result.ClipScenes)
+	docFolderID := ""
+	if c.Cfg != nil {
+		docFolderID = c.Cfg.Drive.ScriptsGenFolder()
+	}
 	if c.MaybeCreateDoc != nil {
-		if l, id := c.MaybeCreateDoc(ctx, result.Title, docContent, "", true); l != "" {
+		if l, id := c.MaybeCreateDoc(ctx, result.Title, docContent, docFolderID, true); l != "" {
 			docLink = l
 			docID = id
 		}
