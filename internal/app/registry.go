@@ -20,6 +20,7 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
