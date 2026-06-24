@@ -19,7 +19,7 @@ type DestinationResolver struct {
 
 // NewDestinationResolver returns a `asset.Resolver` built around
 // the supplied Store. The wrapping ensures calls match the canonical
-// Resolver interface in `internal/core/destination/types.go`.
+// Resolver interface in `internal/domain/asset`.
 func NewDestinationResolver(s *Store) asset.Resolver {
 	return &destinationResolverAdapter{store: s}
 }

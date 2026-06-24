@@ -80,20 +80,18 @@ func newNilServiceHandler() (*Handler, *gin.Engine) {
 func TestStorageRoutes_Compatibility(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// All 4 production routes registered in handler.go RegisterRoutes.
+	// With nil service they all return 503 (nil-svc guard fires first).
 	tests := []struct {
-		method      string
-		path        string
-		wantStatus  int    // Expected status with nil service and empty JSON body.
-		reason      string
+		method     string
+		path       string
+		wantStatus int
+		reason     string
 	}{
-		{http.MethodPost, "/storage/files", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
-		{http.MethodPost, "/storage/files/move", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
-		{http.MethodPost, "/storage/files/rename", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
-		{http.MethodPost, "/storage/folders", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
-		// local-to-drive and sync-drive-folder do ShouldBindJSON before
-		// nil-checking h.jobsSvc, so empty JSON body returns 400.
-		{http.MethodPost, "/storage/local-to-drive", http.StatusBadRequest, "bind fires before nil-svc guard"},
-		{http.MethodPost, "/storage/sync-drive-folder", http.StatusBadRequest, "bind fires before nil-svc guard"},
+		{http.MethodGet, "/drive/files?folder_id=x", http.StatusServiceUnavailable, "nil svc guard fires before query bind"},
+		{http.MethodPost, "/drive/move", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
+		{http.MethodPost, "/drive/create-folder", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
+		{http.MethodPost, "/drive/rename", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
 	}
 
 	for _, tc := range tests {
@@ -133,35 +131,37 @@ func TestStorageRoutes_NoDuplicates(t *testing.T) {
 func TestHandler_NilServiceReturns503(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	endpoints := []string{
-		"/storage/files",
-		"/storage/files/move",
-		"/storage/files/rename",
-		"/storage/folders",
+	type ep struct {
+		method string
+		path   string
 	}
-	for _, ep := range endpoints {
-		t.Run(ep, func(t *testing.T) {
+	endpoints := []ep{
+		{http.MethodGet, "/drive/files?folder_id=x"},
+		{http.MethodPost, "/drive/move"},
+		{http.MethodPost, "/drive/create-folder"},
+		{http.MethodPost, "/drive/rename"},
+	}
+	for _, e := range endpoints {
+		t.Run(e.method+" "+e.path, func(t *testing.T) {
 			_, router := newNilServiceHandler()
 
 			rec := httptest.NewRecorder()
-			req, _ := http.NewRequest(http.MethodPost, ep, strings.NewReader(`{"folder_id":"x"}`))
+			req, _ := http.NewRequest(e.method, e.path, strings.NewReader(`{}`))
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusServiceUnavailable {
-				t.Errorf("%s: expected 503, got %d", ep, rec.Code)
+				t.Errorf("%s %s: expected 503, got %d", e.method, e.path, rec.Code)
 			}
 		})
 	}
 }
 
-func TestListFiles_ValidJSON(t *testing.T) {
+func TestListFiles_WithQueryParam(t *testing.T) {
 	_, router := newWiredStorageHandler()
 
 	rec := httptest.NewRecorder()
-	body := `{"folder_id":"root"}`
-	req, _ := http.NewRequest(http.MethodPost, "/storage/files", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req, _ := http.NewRequest(http.MethodGet, "/drive/files?folder_id=root", nil)
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -171,36 +171,45 @@ func TestListFiles_ValidJSON(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if resp["count"] != float64(1) {
-		t.Errorf("count=%v want 1", resp["count"])
+	files, ok := resp["files"].([]any)
+	if !ok {
+		t.Fatalf("expected 'files' array in response, got: %v", resp)
+	}
+	if len(files) != 1 {
+		t.Errorf("files len=%d want 1", len(files))
 	}
 }
 
-func TestListFiles_MalformedJSON(t *testing.T) {
+func TestListFiles_MissingFolderID(t *testing.T) {
 	_, router := newWiredStorageHandler()
 
 	rec := httptest.NewRecorder()
-	req, _ := http.NewRequest(http.MethodPost, "/storage/files", strings.NewReader("{bad json"))
-	req.Header.Set("Content-Type", "application/json")
+	req, _ := http.NewRequest(http.MethodGet, "/drive/files", nil)
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for malformed JSON, got %d: %s", rec.Code, rec.Body.String())
+		t.Errorf("expected 400 for missing folder_id, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestMoveFiles_MissingRequiredField(t *testing.T) {
+func TestMoveFile_ValidJSON(t *testing.T) {
 	_, router := newWiredStorageHandler()
 
 	rec := httptest.NewRecorder()
-	// Missing "file_ids" and "to_folder_id" (both binding:required).
-	body := `{}`
-	req, _ := http.NewRequest(http.MethodPost, "/storage/files/move", strings.NewReader(body))
+	body := `{"file_id":"f1","from_folder_id":"src","to_folder_id":"dst"}`
+	req, _ := http.NewRequest(http.MethodPost, "/drive/move", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for missing required fields, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["status"] != "moved" {
+		t.Errorf("status=%v want moved", resp["status"])
 	}
 }
 
@@ -209,7 +218,7 @@ func TestCreateFolder_ValidJSON(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"name":"my-folder","parent_id":"root"}`
-	req, _ := http.NewRequest(http.MethodPost, "/storage/folders", strings.NewReader(body))
+	req, _ := http.NewRequest(http.MethodPost, "/drive/create-folder", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 
@@ -230,7 +239,7 @@ func TestRenameFile_ValidJSON(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"file_id":"f1","new_name":"renamed.mp4"}`
-	req, _ := http.NewRequest(http.MethodPost, "/storage/files/rename", strings.NewReader(body))
+	req, _ := http.NewRequest(http.MethodPost, "/drive/rename", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 
@@ -241,8 +250,8 @@ func TestRenameFile_ValidJSON(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp["new_name"] != "renamed.mp4" {
-		t.Errorf("new_name=%v want renamed.mp4", resp["new_name"])
+	if resp["status"] != "renamed" {
+		t.Errorf("status=%v want renamed", resp["status"])
 	}
 }
 
@@ -261,8 +270,7 @@ func TestHandler_WiredService_NilJobsAndCatalogSync(t *testing.T) {
 		h.RegisterRoutes(rg)
 
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/storage/files", strings.NewReader(`{"folder_id":"r"}`))
-		req.Header.Set("Content-Type", "application/json")
+		req, _ := http.NewRequest(http.MethodGet, "/drive/files?folder_id=r", nil)
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
