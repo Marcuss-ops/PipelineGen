@@ -852,6 +852,68 @@ post_cascade_followups:
     - scripts/archcheck/baseline-justifications.md §"PR1.7 youtube port cascade ship (2026-06-21)"
       (ratchet accounting doc)
 
+# Wave 18 (June 2026) -- Heyavatar legacy cleanup (cross-project reference).
+# Informational only -- canonical owner of Heyavatar code lives in the
+# Heyavatar repo (TODO.md), NOT in Pipelinegen.
+- id: 18
+  title: Heyavatar legacy cleanup (cross-project reference)
+  kind: cross_project_reference
+  status: done
+  verified_zero: true
+  canonical_substitute: body_template_cached (src/application/render_cached_avatar.py, replaces precompute chain)
+  description: |
+    Cross-project reference: Heyavatar repo (C:/Users/pater/Pyt/Heyavatar)
+    received a two-pass legacy cleanup on 2026-06-24.
+
+    Passata 1: 13 files removed + 2 directories (providers/lipsync/, providers/body_assets/).
+    Passata 2: 3 orphan workers removed (planner_worker, face_worker, quality_worker).
+    Dependency add: opencv-python>=4.8 in heyavatar/pyproject.toml + requirements.txt.
+
+    Verification at Heyavatar HEAD:
+      * 11 simboli rimossi -> zero ref residue in non-cache sources
+      * smoke import verde per providers, workers, contracts, src.application, OpenCVFaceCompositor, MuseTalkAdapter
+      * pytest tests/ -k 'not test_api_metrics and not test_metrics and not test_real_gpu': 224 passed, 1 failed (env-driven: mediapipe solutions API + SSD calibration; unrelated to cleanup)
+      * pytest tests/smoke/test_real_gpu/test_engine_load.py::test_engine_loads_in_real_mode: PASSED in 7.70s
+
+    Architectural shifts:
+      * Body template (cached, canonical) replaces precompute chain for render_cached_avatar.py
+      * OpenCVFaceCompositor is the SINGLE compositor path
+      * MuseTalkAdapter (providers/musetalk/adapter/engine.py) is the SINGLE musetalk path
+      * LivePortraitAdapter with liveportrait_upstream dynamic mount is the SINGLE liveportrait path
+  from_heyavatar:
+    - heyavatar/workers/lipsync_worker.py
+    - heyavatar/workers/composition_worker.py
+    - heyavatar/workers/avatar_precompute_worker.py
+    - heyavatar/workers/planner_worker.py
+    - heyavatar/workers/face_worker.py
+    - heyavatar/workers/quality_worker.py
+    - heyavatar/providers/lipsync/musetalk/lip_sync.py
+    - heyavatar/providers/compositing/ffmpeg/compositor.py
+    - heyavatar/providers/lipsync (entire directory)
+    - heyavatar/providers/body_assets (entire directory)
+    - heyavatar/src/application/precompute_avatar.py
+    - heyavatar/src/body/resolver.py
+    - heyavatar/src/motion/resolver.py
+    - heyavatar/contracts/lip_sync_engine.py
+    - heyavatar/contracts/motion_repository.py
+    - heyavatar/contracts/body_asset_provider.py
+    - heyavatar/tests/smoke/test_new_architecture.py
+  to_heyavatar:
+    - heyavatar/providers/compositing/opencv_face/compositor.OpenCVFaceCompositor (canonical, kept)
+    - heyavatar/providers/musetalk/adapter/engine.MuseTalkAdapter (canonical, kept)
+    - heyavatar/providers/liveportrait/adapter/engine.LivePortraitAdapter (canonical, kept)
+    - heyavatar/src/application/render_cached_avatar.render_cached_avatar (canonical orchestrator, kept)
+    - heyavatar/src/application/run_cached_avatar_from_text.run_cached_avatar_from_text (canonical orchestrator, kept)
+  file_count: 16
+  directory_count: 2
+  exit_gate: |
+    Cross-project check (operator-side rg on Heyavatar HEAD):
+      rg 'MuseTalkLipSyncEngine|FFmpegPoissonCompositor|LipSyncWorker|CompositionWorker|AvatarPrecomputeWorker|PlannerWorker|FaceWorker|QualityWorker|BodyAssetProvider|MotionRepository|FileMotionRepository|CachedBodyAssetProvider|AvatarPrecomputer' heyavatar/src heyavatar/providers heyavatar/workers heyavatar/contracts heyavatar/tests --type py returns zero.
+  cross_ref:
+    heyavatar_repo: C:/Users/pater/Pyt/Heyavatar
+    heyavatar_todo: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
+  no_pipelinegen_files_changed: true
+
 # ── Legacy Fallback Cleanup (June 2026) ──────────────────────────────────────
 # Removes all remaining legacy/canonical dual-path fallback mechanisms that
 # allowed the old code paths to reappear. After this cleanup, every service
