@@ -197,14 +197,20 @@ func TestDocumentsUseCase_DocumentsServiceNilIfNoClient(t *testing.T) {
 
 func TestNewPipelineUseCase_RejectsNilEngine(t *testing.T) {
 	t.Parallel()
-	_, err := NewPipelineUseCase(zap.NewNop(), nil, 100, "", nil, nil, nil, nil, &Pipeline{})
+	// Phase 2 activation (June 2026): NewPipelineUseCase signature
+	// gained a scenesReady bool parameter (compositional gate for
+	// spec.GenerateSceneImages). Tests pass `false` because the
+	// constructor's nil-engine check fires before the gate matters.
+	_, err := NewPipelineUseCase(zap.NewNop(), nil, 100, "", nil, nil, nil, nil, &Pipeline{}, false)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
 }
 
 func TestNewPipelineUseCase_RejectsNilPipeline(t *testing.T) {
 	t.Parallel()
-	_, err := NewPipelineUseCase(zap.NewNop(), &Engine{}, 100, "", nil, nil, nil, nil, nil)
+	// Phase 2 activation (June 2026): see note in
+	// TestNewPipelineUseCase_RejectsNilEngine — scenesReady=false.
+	_, err := NewPipelineUseCase(zap.NewNop(), &Engine{}, 100, "", nil, nil, nil, nil, nil, false)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
 }

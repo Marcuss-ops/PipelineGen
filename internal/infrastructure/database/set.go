@@ -29,7 +29,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -148,7 +150,7 @@ func (s *DatabaseSet) Migrate(log *zap.Logger) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	migrationsDir := filepath.Join("migrations", "sqlite")
+	migrationsDir := resolveMigrationsDir()
 	if err := s.Primary.RunMigrations(log, migrationsDir); err != nil {
 		return fmt.Errorf("databaseset: migrate primary: %w", err)
 	}
@@ -160,6 +162,26 @@ func (s *DatabaseSet) Migrate(log *zap.Logger) error {
 		zap.String("observability", s.Observability.Path()),
 	)
 	return nil
+}
+
+func resolveMigrationsDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return filepath.Join("migrations", "sqlite")
+	}
+	dir := filepath.Dir(file)
+	for {
+		candidate := filepath.Join(dir, "migrations", "sqlite")
+		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return filepath.Join("migrations", "sqlite")
 }
 
 // Health runs `PRAGMA quick_check` on BOTH databases. Returns the

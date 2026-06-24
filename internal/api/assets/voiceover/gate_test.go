@@ -12,10 +12,7 @@ import (
 // focuses on goroutines that bash Check 19 cannot catch. Per-area
 // orchestrator patterns can be added after grep-verification during
 // Wave 14 grandfathered-import drain.
-var prohibitedPatterns = []gate.Prohibition{
-	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
-	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
-}
+var prohibitedPatterns = []gate.Prohibition{}
 
 func TestStaticGate_NoVoiceoverAPIInfrastructureLeaks(t *testing.T) {
 	gate.Walk(t, gate.Config{

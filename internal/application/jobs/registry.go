@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── Registry ────────────────────────────────────────────────────────────
@@ -130,7 +132,10 @@ const (
 	TypeMediaReindex          = "media.reindex"
 	TypeYouTubeRebuildST      = "youtube.rebuild_search_text"
 	TypeBatchScriptGenerate   = "script.generate_batch"
-	TypeClipScriptGenerate    = "script.generate_from_clips"
+	// NOTE (Wave 5 PR3 second pass, June 2026): the previously-declared
+	// local constant for script.generate_from_clips has been deleted.
+	// Canonical owner is internal/domain/job/job.go::TypeClipScriptGenerate.
+	// All registration below uses the domain constant directly.
 	TypeCatalogScriptGenerate = "script.generate_from_catalog"
 	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync       = "drive.folder.sync"
@@ -145,7 +150,7 @@ func Compose() *Registry {
 
 	// ── Script generation ──
 	r.Register(RegistryEntry{Type: TypeBatchScriptGenerate, Description: "Batch script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(RegistryEntry{Type: TypeClipScriptGenerate, Description: "Clip-based script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(RegistryEntry{Type: job.TypeClipScriptGenerate, Description: "Clip-based script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(RegistryEntry{Type: TypeCatalogScriptGenerate, Description: "Catalog script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(RegistryEntry{Type: TypeMediaCurate, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 

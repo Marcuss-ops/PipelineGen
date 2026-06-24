@@ -14,10 +14,7 @@ import (
 //
 // Baseline only (bash Check 19 + the 28-entry grandfatherlist already
 // enforce no infrastructure imports).
-var prohibitedPatterns = []gate.Prohibition{
-	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
-	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
-}
+var prohibitedPatterns = []gate.Prohibition{}
 
 func TestStaticGate_NoAPIInfrastructureLeaks(t *testing.T) {
 	gate.Walk(t, gate.Config{

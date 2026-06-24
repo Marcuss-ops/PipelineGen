@@ -667,7 +667,6 @@ func TestLifecycleIntegration_IdempotentStopAfterPartialStart(t *testing.T) {
 	waitStopped(t, s1)
 
 	// Second Stop: idempotent.
-	cleanups = 0
 	rec.mu.Lock()
 	rec.calls = nil
 	rec.mu.Unlock()
@@ -675,7 +674,7 @@ func TestLifecycleIntegration_IdempotentStopAfterPartialStart(t *testing.T) {
 		t.Fatalf("second Stop failed: %v", err)
 	}
 	if cleanups != 1 {
-		t.Fatalf("cleanup expected 1 after second Stop, got %d", cleanups)
+		t.Fatalf("cleanup expected to remain 1 after second Stop, got %d", cleanups)
 	}
 	// Stops fire again (the signature is idempotent at the step level).
 }
