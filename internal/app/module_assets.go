@@ -220,6 +220,9 @@ type storageDriveAdapter struct {
 	up *driveutil.Uploader
 }
 
+// Compile-time assertion: storageDriveAdapter satisfies appstorage.DrivePort.
+var _ appstorage.DrivePort = (*storageDriveAdapter)(nil)
+
 func (a *storageDriveAdapter) ListFiles(ctx context.Context, folderID string) ([]appstorage.DriveFile, error) {
 	files, err := a.up.ListFiles(ctx, folderID)
 	if err != nil {

@@ -40,7 +40,9 @@ func (s *Service) ListFiles(ctx context.Context, req ListFilesRequest) (*ListFil
 	}
 	files, err := s.drive.ListFiles(ctx, req.FolderID)
 	if err != nil {
-		s.log.Error("list files failed", "folder_id", req.FolderID, "error", err)
+		if s.log != nil {
+			s.log.Error("list files failed", "folder_id", req.FolderID, "error", err)
+		}
 		return nil, fmt.Errorf("list files: %w", err)
 	}
 	return &ListFilesResult{
@@ -112,10 +114,14 @@ func (s *Service) RenameFile(ctx context.Context, req RenameFileRequest) (*Renam
 		return nil, fmt.Errorf("drive port not configured")
 	}
 	if err := s.drive.RenameFile(ctx, req.FileID, req.NewName); err != nil {
-		s.log.Error("rename file failed", "file_id", req.FileID, "new_name", req.NewName, "error", err)
+		if s.log != nil {
+			s.log.Error("rename file failed", "file_id", req.FileID, "new_name", req.NewName, "error", err)
+		}
 		return nil, fmt.Errorf("rename file: %w", err)
 	}
-	s.log.Info("file renamed", "file_id", req.FileID, "new_name", req.NewName)
+	if s.log != nil {
+		s.log.Info("file renamed", "file_id", req.FileID, "new_name", req.NewName)
+	}
 	return &RenameFileResult{FileID: req.FileID, NewName: req.NewName}, nil
 }
 
@@ -144,10 +150,14 @@ func (s *Service) CreateFolder(ctx context.Context, req CreateFolderRequest) (*C
 	}
 	folderID, err := s.drive.GetOrCreateFolder(ctx, req.Name, req.ParentID)
 	if err != nil {
-		s.log.Error("create folder failed", "name", req.Name, "parent_id", req.ParentID, "error", err)
+		if s.log != nil {
+			s.log.Error("create folder failed", "name", req.Name, "parent_id", req.ParentID, "error", err)
+		}
 		return nil, fmt.Errorf("create folder: %w", err)
 	}
-	s.log.Info("folder ready", "folder_id", folderID, "name", req.Name)
+	if s.log != nil {
+		s.log.Info("folder ready", "folder_id", folderID, "name", req.Name)
+	}
 	return &CreateFolderResult{
 		FolderID: folderID,
 		Name:     req.Name,
