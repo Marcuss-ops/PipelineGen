@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -8,6 +8,31 @@ LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
 
 # Default target
 all: build
+
+# Pre-flight: ensure the host Go toolchain matches go.mod's `go` directive.
+# CPR-CC-7 (June 2026): until this target landed, a stale host go (1.19 vs
+# a 1.25 directive) silently produced confusing `go mod tidy` output during
+# dep-refresh cycles and only surfaced the mismatch in CI. Wire this in as a
+# precondition of any target that invokes the Go compiler.
+go-version-guard: go-version-check
+
+go-version-check:
+	@REQ=$$(awk '/^go [0-9]/ {print $$2}' go.mod); \
+	HOST=$$(go version | awk '{print $$3}' | sed 's/^go//'); \
+	REQ_MIN=$$(echo "$$REQ" | awk -F. '{print $$1"."$$2}'); \
+	HOST_MIN=$$(echo "$$HOST" | awk -F. '{print $$1"."$$2}'); \
+	if [ "$$(printf '%s\n%s\n' "$$REQ_MIN" "$$HOST_MIN" | sort -V | head -n1)" = "$$HOST_MIN" ] && [ "$$REQ_MIN" != "$$HOST_MIN" ]; then \
+	    echo "❌ Go version mismatch: go.mod requires $$REQ, host has $$HOST"; \
+	    echo "Remediation options:"; \
+	    echo "  1. Re-run with GO=/home/pierone/.local/go/bin/go make <target>"; \
+	    echo "  2. Install the required toolchain: \`go install golang.org/dl/go$$REQ@latest && go$$REQ download\`"; \
+	    echo "  3. Update the `go ` directive in go.mod if the requirement changed"; \
+	    exit 1; \
+	elif [ "$$(printf '%s\n%s\n' "$$REQ" "$$HOST" | sort -V | head -n1)" = "$$HOST" ] && [ "$$REQ" != "$$HOST" ]; then \
+	    echo "⚠️  Host Go ($$HOST) patch is older than go.mod ($$REQ) — still compatible, but consider upgrading."; \
+	else \
+	    echo "✅ Go version $$HOST meets requirement $$REQ"; \
+	fi
 
 # Build the entry-point binaries. Outputs land in ./bin/ to keep the project
 # root clean (see `make clean`).
@@ -22,7 +47,7 @@ all: build
 #                       against an HTTP broker via VELOX_BROKER_URL for
 #                       users running the long-running worker on a
 #                       separate host from the server.
-build:
+build: go-version-check
 	@mkdir -p bin
 	go build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen ./cmd/server
 	go build -ldflags "$(LDFLAGS)" -v -o bin/admin      ./cmd/admin
@@ -60,7 +85,7 @@ fmt:
 	go fmt ./...
 
 # Run go vet
-vet:
+vet: go-version-check
 	go vet ./...
 
 # Clean build artifacts on the project root.
@@ -133,7 +158,7 @@ deps:
 	go mod download
 
 # Check if go.mod is tidy (useful in CI)
-tidy-check:
+tidy-check: go-version-check
 	go mod tidy
 	git diff --exit-code -- go.mod go.sum
 
@@ -157,5 +182,5 @@ docker-run: docker-build
 	docker run -p $${VELOX_PORT:-8080}:8080 --env-file .env pipelinegen:latest
 
 # CI pipeline (runs all checks)
-ci: fmt vet tidy-check lint test coverage-check build
+ci: go-version-check fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"
