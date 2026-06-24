@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -384,22 +383,28 @@ func TestAuth_NeverPersistsTokenValue(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 		// Wait for the async writer to flush.
 		time.Sleep(250 * time.Millisecond)
-		scanAPITableForSecret(t, db, adminToken)
+		scanAPITableForSecret(t, &drive.SQLiteDB{DB: db}, adminToken)
 	})
 
 	t.Run("rejected auth: attempted token not in api_requests", func(t *testing.T) {
 		w := makeReq(map[string]string{"X-Velox-Admin-Token": wrongToken})
 		require.Equal(t, http.StatusUnauthorized, w.Code)
 		time.Sleep(250 * time.Millisecond)
-		scanAPITableForSecret(t, db, wrongToken)
-		scanAPITableForSecret(t, db, cfg.Security.WorkerToken) // not relevant here, paranoia
+		scanAPITableForSecret(t, &drive.SQLiteDB{DB: db}, wrongToken)
+		scanAPITableForSecret(t, &drive.SQLiteDB{DB: db}, cfg.Security.WorkerToken) // not relevant here, paranoia
 	})
 }
 
 // scanAPITableForSecret fails the test if `secret` appears in any
 // column of any api_requests row. This is the load-bearing check that
 // the persistent log never stores the credential value.
-func scanAPITableForSecret(t *testing.T, db *sql.DB, secret string) {
+//
+// PG-016 typed-handle continuation (June 2026): the parameter type
+// is now *storage.SQLiteDB (no longer *sql.DB). The function body
+// still calls db.Query(...) which is satisfied via method promotion
+// from the embedded *sql.DB field on *storage.SQLiteDB. The
+// `database/sql` import is gone from this test file.
+func scanAPITableForSecret(t *testing.T, db *drive.SQLiteDB, secret string) {
 	t.Helper()
 	rows, err := db.Query(`
 		SELECT request_id, method, path, COALESCE(status, 0),

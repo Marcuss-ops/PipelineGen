@@ -693,6 +693,36 @@
   # docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits" for
   # the current state.
 
+  # PG-016 typed-handle continuation (June 2026): the post-PG-011 cleanup
+  # of internal/api/ test fixtures from raw *sql.DB / sql.Open("sqlite3", ...)
+  # to *storage.SQLiteDB via storage.OpenSQLiteDB. Tracked here under Wave 16
+  # (Zero-redundancy strict architecture) because every migration of a
+  # *sql.DB surface off internal/api/ is a direct contribution to the
+  # `sql_outside_infrastructure_database: 0` metric. Follows the same
+  # nested-tracker shape as pg_011_app_slice_merge_residuals under Wave 15.
+  pg_016_api_test_residuals:
+    description: |
+      Continuation of PG-011 typed-handle migration to the internal/api/
+      test fixture surface. Production code in internal/api/ already passes
+      the `Handlers MUST NOT import database/sql` constraint enforced by
+      internal/api/transport/transport.go. Test fixtures were lagging behind
+      (raw *sql.DB + mattn/go-sqlite3 blank import); this tracker closes them.
+    production_compile_state: GREEN (zero production-side imports of database/sql in internal/api/; enforced by Check 19)
+    test_compile_state: GREEN (after this PR — both middleware_auth_test.go and health_integration_test.go imports cleaned)
+    scope_note: |
+      The user directive referenced `internal/media/`; that directory does not exist
+      anymore (removed by Wave 13). The actual media infrastructure lives under
+      `internal/infrastructure/media/` (FFmpeg/processor) +
+      `internal/infrastructure/indexing/clipindexer/`. The clipindexer/NewService
+      raw *sql.DB parameter is the documented intentional escape hatch from PG-011
+      and is tracked as DEFERRED below (separate migration backlog, not in scope).
+    test_residuals:
+      - **RESOLVED 2026-06-24 (PG-016-api-test-residuals)** — internal/api/middleware/middleware_auth_test.go::scanAPITableForSecret now takes `*storage.SQLiteDB` (was `*sql.DB`); body uses `db.Query(...)` which resolves via method promotion from the embedded `*sql.DB` field on `*storage.SQLiteDB`. The 3 call sites (`TestAuth_NeverPersistsTokenValue`'s two subtests + a paranoid workerToken scan) wrap with `&storage.SQLiteDB{DB: db}`. `"database/sql"` import dropped from this file end-to-end; the 3 call-site wraps are the only places the typed handle appears.
+      - **RESOLVED 2026-06-24 (PG-016-api-test-residuals)** — internal/api/common/health_integration_test.go (//go:build integration): three sites migrated from raw `sql.Open("sqlite3", dbPath+"?_journal_mode=WAL")` to `storage.OpenSQLiteDB(dbPath, zaptest.NewLogger(t))` — (a) `newTestHealthHandler` once-per-handler fixture, (b) `TestHealth_DBUnreachable` closed-DB scenario (closure deferred to manual `sqliteDB.Close()`), (c) `TestRouter_WiringWithoutReadyChecker_Returns503` regression-bound scenario. Explicit `_ "github.com/mattn/go-sqlite3"` blank import dropped (storage registers the driver internally); `"database/sql"` import dropped; `_journal_mode=WAL` DSN parameter dropped (storage enables WAL by default). NewSQLiteChecker / NewJobsChecker call sites pass the typed handle directly (no `&storage.SQLiteDB{DB: db}` wrap).
+    media_infra_residuals:
+      - **DEFERRED (intentional escape hatch from PG-011)** — `internal/infrastructure/indexing/clipindexer/service.go::NewService` still takes raw `*sql.DB` as its second positional parameter. Two known callers: `internal/app/worker_registry_e2e_test.go::TestE2E_RemoteWorkerExecutesMediaReindex` (test fixture uses `clipindexer.NewService(cfg, sqliteDB.DB, dbPath, …)` → `sqliteDB.DB` escape hatch) + `internal/app/composition.go::BuildProcessBundle` line ~566 (production wiring passes `dbs.main.DB` directly). Migrating clipindexer is a separate backlog — the service has 6+ method files (service.go, indexing_hash.go, indexing_skip.go, batch.go, etc.) and a non-trivial SQLite query catalogue. The escape-hatch comment is documented here so future readers understand `sqliteDB.DB` here is intentional, not drift.
+    follow_up_ticket: PG-016-api-test-residuals
+
 # ── Wave 17 — Final verification + tag ───────────────────────────────────────
 
 - id: 17
