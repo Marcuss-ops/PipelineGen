@@ -251,3 +251,20 @@ type MetadataWriter interface {
 type Dispatcher interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, hash string) error
 }
+
+// ArtlistConfigPort is the minimal typed port that exposes the
+// artlist-defaults the HTTP handler reads for request normalization.
+// The handler consumes only one config value (`ArtlistRootFolderID`),
+// so the port is intentionally 1-method. Moving the derivation
+// behind a port keeps the api layer out of the infrastructure-layer
+// imports and gives tests a trivially-mockable seam.
+//
+// Only ArtlistRootFolderID is exposed because that is the only value
+// the handler currently reads from config (see
+// internal/api/assets/artlist/artlist_handlers.go::RunTagPipeline).
+// New defaults land here as additional methods; do NOT widen this to a
+// whole-config accessor — expanding the surface would defeat the
+// Pattern 0 minimal-port discipline (AGENTS.md).
+type ArtlistConfigPort interface {
+	ArtlistRootFolderID() string
+}

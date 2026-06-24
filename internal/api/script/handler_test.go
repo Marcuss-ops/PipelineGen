@@ -38,13 +38,19 @@ func (f *fakeGenerationService) EnqueueWithImages(ctx context.Context, spec scri
 	return f.EnqueueFromClips(ctx, spec)
 }
 
-type fakeJobEnqueuer struct {
+// fakeJobService implements job.Service for handler unit tests.
+// Only Enqueue is exercised by the focused tests; the remaining
+// methods are nil-return / no-op stubs so the interface assertion
+// holds at compile time. Mirrors the canonical job.Service contract
+// defined in internal/domain/job/service.go (7 methods: Enqueue,
+// Get, Cancel, List, IsTerminal, RegisterHandler, ListEvents).
+type fakeJobService struct {
 	t         *testing.T
 	lastReq   *job.EnqueueRequest
 	nextJobID string
 }
 
-func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+func (f *fakeJobService) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
 	f.lastReq = req
 	if f.nextJobID == "" {
 		f.nextJobID = "job-123"
@@ -52,17 +58,44 @@ func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) 
 	return &job.Job{ID: f.nextJobID, Status: job.StatusQueued, Type: req.Type}, nil
 }
 
-func newTestJobsService(t *testing.T) (*job.Service, *fakeJobEnqueuer) {
-	t.Helper()
-	fake := &fakeJobEnqueuer{t: t}
-	svc := job.NewService(
-		fake.Enqueue,
-		func(context.Context, string) (*job.Job, error) { return nil, job.ErrNotWired },
-		func(context.Context, string) error { return job.ErrNotWired },
-		func(context.Context, job.Filter) ([]*job.Job, error) { return nil, job.ErrNotWired },
-		func(status job.Status) bool { return status.IsTerminal() },
-	)
-	return svc, fake
+// Get is unused by the focused handler tests. Returning nil/nil keeps
+// the interface satisfiable without dragging in a real Job fixture.
+func (f *fakeJobService) Get(_ context.Context, _ string) (*job.Job, error) {
+	return nil, nil
+}
+
+// Cancel is unused by the focused handler tests.
+func (f *fakeJobService) Cancel(_ context.Context, _ string) error {
+	return nil
+}
+
+// List is unused by the focused handler tests.
+func (f *fakeJobService) List(_ context.Context, _ job.Filter) ([]job.Job, error) {
+	return nil, nil
+}
+
+// IsTerminal is unused by the focused handler tests.
+func (f *fakeJobService) IsTerminal(status job.Status) bool {
+	return status.IsTerminal()
+}
+
+// RegisterHandler is unused by the focused handler tests.
+func (f *fakeJobService) RegisterHandler(_ string, _ any) error {
+	return nil
+}
+
+// ListEvents is unused by the focused handler tests.
+func (f *fakeJobService) ListEvents(_ context.Context, _ string) ([]job.Event, error) {
+	return nil, nil
+}
+
+// newTestJobsService returns the canonical fake stub for handler
+// tests. Both return slots point to the same *fakeJobService so
+// callers that inspect `fake.lastReq` observe the same state the
+// handler's job.Service implementation writes.
+func newTestJobsService(t *testing.T) (job.Service, *fakeJobService) {
+	fake := &fakeJobService{t: t}
+	return fake, fake
 }
 
 func TestHandler_ErrorMapping(t *testing.T) {

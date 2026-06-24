@@ -123,7 +123,14 @@ func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bund
 	if val, ok := clipResolver.(artsources.ClipResolverPort); ok {
 		resolver = val
 	}
-	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, resolver, "node-scraper", log, cfg)
+	// Wrap `*config.Config` in the typed `ArtlistConfigPort` (defined in
+	// internal/application/assets/providers/artlist/ports.go) so the api
+	// handler stays free of infrastructure-layer imports.
+	// newArtlistConfigAdapter(nil) returns a nil interface, preserving
+	// the handler's `if h.cfg != nil` discipline if any caller adds a
+	// short-circuit path.
+	cfgPort := newArtlistConfigAdapter(cfg)
+	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, resolver, "node-scraper", log, cfgPort)
 }
 
 func wireArtlistLifecycle(bundle *ArtlistBundle, log *zap.Logger) *lifecycle.Service {
