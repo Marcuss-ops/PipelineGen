@@ -3,6 +3,7 @@ package script
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -34,6 +36,33 @@ func (f *fakeGenerationService) EnqueueFromClips(ctx context.Context, spec scrip
 
 func (f *fakeGenerationService) EnqueueWithImages(ctx context.Context, spec scriptpkg.GenerationSpec) (*scripts.FromClipsResult, error) {
 	return f.EnqueueFromClips(ctx, spec)
+}
+
+type fakeJobEnqueuer struct {
+	t         *testing.T
+	lastReq   *job.EnqueueRequest
+	nextJobID string
+}
+
+func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+	f.lastReq = req
+	if f.nextJobID == "" {
+		f.nextJobID = "job-123"
+	}
+	return &job.Job{ID: f.nextJobID, Status: job.StatusQueued, Type: req.Type}, nil
+}
+
+func newTestJobsService(t *testing.T) (*job.Service, *fakeJobEnqueuer) {
+	t.Helper()
+	fake := &fakeJobEnqueuer{t: t}
+	svc := job.NewService(
+		fake.Enqueue,
+		func(context.Context, string) (*job.Job, error) { return nil, job.ErrNotWired },
+		func(context.Context, string) error { return job.ErrNotWired },
+		func(context.Context, job.Filter) ([]*job.Job, error) { return nil, job.ErrNotWired },
+		func(status job.Status) bool { return status.IsTerminal() },
+	)
+	return svc, fake
 }
 
 func TestHandler_ErrorMapping(t *testing.T) {
@@ -110,7 +139,8 @@ func TestHandler_NilScriptFlowHandler_GeneratesBatch503(t *testing.T) {
 func TestScriptRoutes_Compatibility(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(nil, &fakeGenerationService{}, FeatureGates{ScriptClipsEnabled: true, ScriptDocsEnabled: true, ScriptImagesEnabled: true})
+	jobsSvc, _ := newTestJobsService(t)
+	handler := NewHandler(NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc}), &fakeGenerationService{}, FeatureGates{ScriptClipsEnabled: true, ScriptDocsEnabled: true, ScriptImagesEnabled: true})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -131,6 +161,12 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		{"POST", "/api/script/generate-with-images"},
 		{"POST", "/api/script/generate-batch"},
 		{"GET", "/api/script/generate-batch/progress"},
+		{"POST", "/api/script/generate-from-catalog"},
+		{"POST", "/api/script/curate"},
+		{"GET", "/api/script/jobs/:job_id"},
+		{"GET", "/api/script/jobs/:job_id/full"},
+		{"POST", "/api/script/:id/sections/:section_id/regenerate"},
+		{"POST", "/api/script/cache/evict"},
 	}
 
 	for _, want := range expectedRoutes {
@@ -138,6 +174,75 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		_, exists := routeMap[key]
 		assert.True(t, exists, "required route %s %s must be registered", want.method, want.path)
 	}
+}
+
+func TestScriptRoutes_ImagesOnlyKeepsGenerateWithImages(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(nil, &fakeGenerationService{}, FeatureGates{ScriptImagesEnabled: true})
+	router := gin.New()
+	rg := router.Group("/api/script")
+	handler.RegisterRoutes(rg)
+
+	routes := router.Routes()
+	routeMap := make(map[string]bool)
+	for _, r := range routes {
+		routeMap[r.Method+" "+r.Path] = true
+	}
+
+	assert.True(t, routeMap["POST /api/script/generate-with-images"], "generate-with-images must stay mounted when only image scripts are enabled")
+	assert.False(t, routeMap["POST /api/script/generate-from-clips"], "generate-from-clips must stay disabled when clips feature is off")
+}
+
+func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
+	t.Parallel()
+
+	jobsSvc, fake := newTestJobsService(t)
+	handler := NewHandler(NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc}), &fakeGenerationService{}, FeatureGates{})
+	router := gin.New()
+	rg := router.Group("/api/script")
+	handler.RegisterRoutes(rg)
+
+	req := httptest.NewRequest("POST", "/api/script/curate", strings.NewReader(`{"query":"why observability matters","language":"it"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "req-123")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotNil(t, fake.lastReq)
+	assert.Equal(t, "media.curate", fake.lastReq.Type)
+	payloadBytes, err := json.Marshal(fake.lastReq.Payload)
+	assert.NoError(t, err)
+	assert.Contains(t, string(payloadBytes), `"language":"en"`)
+	assert.Contains(t, w.Body.String(), `"async":true`)
+	assert.Contains(t, w.Body.String(), `"job_id":"job-123"`)
+}
+
+func TestScriptFlowCatalogRoute_EnqueuesCatalogJob(t *testing.T) {
+	t.Parallel()
+
+	jobsSvc, fake := newTestJobsService(t)
+	handler := NewHandler(NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc}), &fakeGenerationService{}, FeatureGates{})
+	router := gin.New()
+	rg := router.Group("/api/script")
+	handler.RegisterRoutes(rg)
+
+	body := `{"topic":"observability","max_clips":4,"min_coverage":0.5,"title":"Catalog Script","languages":["it","en"]}`
+	req := httptest.NewRequest("POST", "/api/script/generate-from-catalog", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotNil(t, fake.lastReq)
+	assert.Equal(t, "script.generate_from_catalog", fake.lastReq.Type)
+	payloadBytes, err := json.Marshal(fake.lastReq.Payload)
+	assert.NoError(t, err)
+	assert.Contains(t, string(payloadBytes), `"topic":"observability"`)
+	assert.Contains(t, string(payloadBytes), `"language":"en"`)
+	assert.Contains(t, string(payloadBytes), `"languages":["it","en"]`)
+	assert.Contains(t, w.Body.String(), `"async":true`)
 }
 
 // ── RequireAdminToken middleware ──────────────────────────────────────────

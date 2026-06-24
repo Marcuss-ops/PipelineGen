@@ -435,37 +435,36 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		DBPath:                dbs.main.Path(),
 	}, dbs.main.DB, dbs.main.Path(), log)
 
-	// AGENT-1 cascade fix (June 2026, cmd/admin recovery): align BuildProcessBundle
-	// to the canonical qdrant stub (commit d61068b3 "fix: recreate deleted
-	// stubs..."). The pre-fix code referenced qdrant.NewQdrantClient,
-	// the old 3-arg qdrant.NewService, and qdrant.Config fields (URL,
-	// Collection, vector name fields, etc.) that the canonical stub
-	// intentionally does NOT expose — the real qdrant package was removed
-	// from the remote and the stub returns errors for every operation.
-	// Until a real qdrant backend is reintroduced, BuildProcessBundle only
-	// needs to pass Enabled + a non-nil vectorSvc so ClipIndexerService
-	// can attach the ClipIndexerAdapter.
 	var vectorSvc *qdrant.Service
 	var qdrantCfg qdrant.Config
 	qdrantCfg.Enabled = cfg.VectorSearch.Enabled
+	qdrantCfg.URL = cfg.VectorSearch.URL
+	qdrantCfg.Collection = cfg.VectorSearch.Collection
+	qdrantCfg.EmbeddingServerURL = cfg.ClipIndexer.ServerURL
+	qdrantCfg.TextVectorName = cfg.VectorSearch.TextVectorName
+	qdrantCfg.VisualVectorName = cfg.VectorSearch.VisualVectorName
+	qdrantCfg.AudioVectorName = cfg.VectorSearch.AudioVectorName
+	qdrantCfg.TranscriptVectorName = cfg.VectorSearch.TranscriptVectorName
+	qdrantCfg.SparseVectorName = cfg.VectorSearch.SparseVectorName
+	qdrantCfg.TextDimensions = cfg.VectorSearch.TextDimensions
+	qdrantCfg.VisualDimensions = cfg.VectorSearch.VisualDimensions
+	qdrantCfg.AudioDimensions = cfg.VectorSearch.AudioDimensions
+	qdrantCfg.TranscriptDimensions = cfg.VectorSearch.TranscriptDimensions
+	qdrantCfg.MinInstantScore = cfg.VectorSearch.MinInstantScore
+	qdrantCfg.TimeoutMs = cfg.VectorSearch.TimeoutMs
 	if cfg.VectorSearch.Enabled {
-		log.Info("Qdrant enabled (canonical stub form); real backend removed from remote",
+		log.Info("Qdrant enabled",
 			zap.String("collection", cfg.VectorSearch.Collection),
 			zap.String("url", cfg.VectorSearch.URL))
 		vectorSvc = qdrant.NewService(qdrantCfg)
-		// PR9-C (June 2026): EnsureCollection is deferred to the closure.
 		// clipIndexerAdapter wiring stays here (pure construction).
 		clipIndexerAdapter := qdrant.NewClipIndexerAdapter(dbs.main.DB, vectorSvc, qdrantCfg, log)
 		if clipIndexerAdapter != nil {
 			clipIndexerService.SetVectorStore(clipIndexerAdapter)
-			log.Info("vector store enabled for clip indexer (stub backend — see qdrant/service.go)")
+			log.Info("vector store enabled for clip indexer")
 		}
 	}
 
-	// PR9-C (June 2026): side-effecting Qdrant collection setup is deferred
-	// to startQdrantCollection (defined below).
-	// Lifecycle-runtime-ownership (June 2026): now returns error so
-	// serverLifecycle.Start can abort on required service failure.
 	startClosure := func() error {
 		return startQdrantCollection(ctx, vectorSvc, log)
 	}
@@ -478,17 +477,6 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 	}, startClosure, nil
 }
 
-// startQdrantCollection performs the side-effecting Qdrant collection
-// setup that was previously inlined in BuildProcessBundle (PR9-C, June 2026).
-// It calls EnsureCollection which is idempotent — if the collection already
-// exists the call is a fast no-op.
-//
-// Lifecycle-runtime-ownership (June 2026): now returns error on failure
-// instead of logging a warning. Required service failure propagates to
-// serverLifecycle.Start which aborts the startup sequence.
-//
-// Invoked by the lifecycle after WireRegistry completes, before the HTTP
-// server begins accepting requests.
 func startQdrantCollection(
 	ctx context.Context,
 	vectorSvc *qdrant.Service,

@@ -174,11 +174,24 @@ func runBackfillArtlistMediaType(args []string) error {
 //
 // AGENT-1: the legacy code reconstructed the full Qdrant HTTP client and
 // retry policy plumbing here. Post-fix we delegate to the canonical
-// adapter; the stub form of `qdrant.NewService` (1-arg Config) is what
-// `internal/infrastructure/qdrant/service.go` currently exposes.
+// adapter and the shared qdrant service wiring.
 func upsertArtlistClipsToQdrant(ctx context.Context, db *sql.DB, cfg *config.Config, log *zap.Logger, clipIDs []string) error {
 	qdrantCfg := qdrant.Config{
-		Enabled: cfg.VectorSearch.Enabled,
+		Enabled:              cfg.VectorSearch.Enabled,
+		URL:                  cfg.VectorSearch.URL,
+		Collection:           cfg.VectorSearch.Collection,
+		EmbeddingServerURL:   cfg.ClipIndexer.ServerURL,
+		TextVectorName:       cfg.VectorSearch.TextVectorName,
+		VisualVectorName:     cfg.VectorSearch.VisualVectorName,
+		AudioVectorName:      cfg.VectorSearch.AudioVectorName,
+		TranscriptVectorName: cfg.VectorSearch.TranscriptVectorName,
+		SparseVectorName:     cfg.VectorSearch.SparseVectorName,
+		TextDimensions:       cfg.VectorSearch.TextDimensions,
+		VisualDimensions:     cfg.VectorSearch.VisualDimensions,
+		AudioDimensions:      cfg.VectorSearch.AudioDimensions,
+		TranscriptDimensions: cfg.VectorSearch.TranscriptDimensions,
+		MinInstantScore:      cfg.VectorSearch.MinInstantScore,
+		TimeoutMs:            cfg.VectorSearch.TimeoutMs,
 	}
 
 	vectorSvc := qdrant.NewService(qdrantCfg)

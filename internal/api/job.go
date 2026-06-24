@@ -37,7 +37,7 @@ type Enqueuer interface {
 // EnqueueInput parameterises EnqueueAsync.
 type EnqueueInput struct {
 	Type          string
-	Payload       map[string]any
+	Payload       any
 	Priority      int
 	ActiveKey     string
 	MaxRetries    int

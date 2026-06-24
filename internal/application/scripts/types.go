@@ -9,7 +9,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -127,25 +126,50 @@ type WriteScriptResult struct {
 
 // JobPayloadCurate holds the payload for a curation job.
 type JobPayloadCurate struct {
-	Query             string  `json:"query"`
-	Title             string  `json:"title"`
-	Language          string  `json:"language"`
-	Tone              string  `json:"tone"`
-	Model             string  `json:"model"`
-	MaxClips          int     `json:"max_clips"`
-	SelectableClips   int     `json:"selectable_clips"`
-	TargetWords       int     `json:"target_words"`
-	MaxCharsPerScene  int     `json:"max_chars_per_scene"`
-	MinScore          float64 `json:"min_score"`
-	Source            string  `json:"source"`
-	MediaType         string  `json:"media_type"`
-	Type              string  `json:"type"`
-	Style             string  `json:"style"`
-	StyleInstructions string  `json:"style_instructions"`
-	ForceRefresh      bool    `json:"force_refresh"`
-	GenerateVoiceover bool    `json:"generate_voiceover"`
-	VoiceoverFolderID string  `json:"voiceover_folder_id"`
-	VoiceoverGroup    string  `json:"voiceover_group"`
+	Query             string   `json:"query"`
+	Title             string   `json:"title"`
+	Languages         []string `json:"languages,omitempty"`
+	Language          string   `json:"language"`
+	Tone              string   `json:"tone"`
+	Model             string   `json:"model"`
+	MaxClips          int      `json:"max_clips"`
+	SelectableClips   int      `json:"selectable_clips"`
+	TargetWords       int      `json:"target_words"`
+	MaxCharsPerScene  int      `json:"max_chars_per_scene"`
+	MinScore          float64  `json:"min_score"`
+	Source            string   `json:"source"`
+	MediaType         string   `json:"media_type"`
+	Type              string   `json:"type"`
+	Style             string   `json:"style"`
+	StyleInstructions string   `json:"style_instructions"`
+	ForceRefresh      bool     `json:"force_refresh"`
+	GenerateVoiceover bool     `json:"generate_voiceover"`
+	VoiceoverFolderID string   `json:"voiceover_folder_id"`
+	VoiceoverGroup    string   `json:"voiceover_group"`
+}
+
+// JobPayloadCatalogScript holds the payload for catalog-first script generation.
+type JobPayloadCatalogScript struct {
+	Topic              string   `json:"topic"`
+	ClipIDs            []string `json:"clip_ids"`
+	Title              string   `json:"title"`
+	OutputName         string   `json:"output_name"`
+	MaxClips           int      `json:"max_clips"`
+	MinCoverage        float64  `json:"min_coverage"`
+	Languages          []string `json:"languages,omitempty"`
+	Language           string   `json:"language"`
+	Tone               string   `json:"tone"`
+	Model              string   `json:"model"`
+	TargetWords        int      `json:"target_words"`
+	Duration           int      `json:"duration"`
+	TranscriptPolicy   string   `json:"transcript_policy"`
+	OrderingStrategy   string   `json:"ordering_strategy"`
+	CreateDoc          bool     `json:"create_doc"`
+	SaveToDB           bool     `json:"save_to_db"`
+	GenerateTimeline   bool     `json:"generate_timeline"`
+	ForceRefresh       bool     `json:"force_refresh"`
+	MinQualityScore    *float64 `json:"min_quality_score,omitempty"`
+	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
 }
 
 // Curate executes the curation operation (stub).
@@ -764,6 +788,24 @@ func SupportedScriptLanguages(translateLanguages []string, sourceLang string) []
 	return langs
 }
 
+// NormalizeLanguages trims, deduplicates, and preserves order for a language list.
+func NormalizeLanguages(languages []string) []string {
+	out := make([]string, 0, len(languages))
+	seen := make(map[string]struct{}, len(languages))
+	for _, lang := range languages {
+		lang = strings.TrimSpace(lang)
+		if lang == "" {
+			continue
+		}
+		if _, ok := seen[lang]; ok {
+			continue
+		}
+		seen[lang] = struct{}{}
+		out = append(out, lang)
+	}
+	return out
+}
+
 // GeneratedPart holds a single generated part in a batch.
 type GeneratedPart struct {
 	topic   string
@@ -773,34 +815,6 @@ type GeneratedPart struct {
 // ValidateGenerateBatchRequest validates a batch request (stub).
 func ValidateGenerateBatchRequest(req *GenerateBatchRequest, folderID string, supportedLanguages []string) []string {
 	return nil
-}
-
-// ── CurationService ─────────────────────────────────────────────────────
-
-// CurationService handles generation-from-catalog and curation endpoints.
-type CurationService struct {
-	ClipBuilder *ClipSourceBuilder
-}
-
-// NewCurationService is the canonical constructor for *CurationService.
-//
-// AGENT-2 (June 2026): stub constructor wired to satisfy the
-// `scripts.NewCurationService(nil, root.Jobs.Service, log)` call site
-// in `internal/app/wire_script.go`. Args are intentionally interface{}
-// to avoid forcing more canonical-package imports on this leaf.
-func NewCurationService(cb, jobs, log interface{}) *CurationService {
-	return &CurationService{}
-}
-
-// GenerateFromCatalog is the HTTP handler for generate-from-catalog (stub).
-func (c *CurationService) GenerateFromCatalog(ginCtx *gin.Context) {}
-
-// Curate is the HTTP handler for curate (stub).
-func (c *CurationService) Curate(ginCtx *gin.Context) {}
-
-// SetClipSourceBuilder sets the clip source builder.
-func (c *CurationService) SetClipSourceBuilder(cb *ClipSourceBuilder) {
-	c.ClipBuilder = cb
 }
 
 // ── FromClipsResult ─────────────────────────────────────────────────────

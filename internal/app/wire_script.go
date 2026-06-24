@@ -57,7 +57,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	scriptsRepoAdapter := scripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 	batchSvc := scripts.NewBatchService(cfg, log, gen, engine, root.Drive.DocClient, root.Domains.VoiceoverService, scriptsRepoAdapter)
-	curationSvc := scripts.NewCurationService(nil, root.Jobs.Service, log)
 
 	// ── Clip source builder ────────────────────────────────────────────
 	var clipSourceBuilder *scripts.ClipSourceBuilder
@@ -82,6 +81,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if (root.Process.VectorSvc != nil || root.Repos.ClipsRepo != nil) && engine != nil {
 		mediaCurator = scripts.NewMediaCurator(qdrant.NewSearchAdapter(root.Process.VectorSvc), cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
 	}
+
+	var curationJobSvc *scripts.CurationJobServiceImpl
+	var catalogJobSvc *scripts.CatalogJobServiceImpl
 
 	// ── Harvest service ────────────────────────────────────────────────
 	// AGENT-2 (June 2026): clipresolver package removed from remote
@@ -135,6 +137,38 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		docClient:     root.Drive.DocClient,
 		log:           log,
 		driveFolderID: cfg.Drive.ScriptsGenFolder(),
+	}
+
+	if mediaCurator != nil {
+		var maybeCreateDoc func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string)
+		if documentCreator != nil {
+			maybeCreateDoc = func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string) {
+				if !createDoc {
+					return "", ""
+				}
+				return documentCreator.CreateDoc(ctx, title, content, folderID)
+			}
+		}
+		curateResolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
+			if driveFolderClient != nil {
+				return driveFolderClient.GetOrCreateFolder(ctx, input, defaultRootID)
+			}
+			return defaultRootID, nil
+		}
+		curationJobSvc = scripts.NewCurationJobServiceImpl(
+			mediaCurator,
+			root.Domains.VoiceoverService,
+			cfg,
+			log,
+			curateResolveFolder,
+			nil,
+			maybeCreateDoc,
+		)
+	}
+	if clipSourceBuilder != nil && engine != nil {
+		if root.Repos != nil && root.Repos.CatalogRepo != nil {
+			catalogJobSvc = scripts.NewCatalogJobServiceImpl(clipSourceBuilder, engine, &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}, log)
+		}
 	}
 
 	// ── Admin token ────────────────────────────────────────────────────
@@ -275,7 +309,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:                engine,
 		Batch:                 batchSvc,
-		Curation:              curationSvc,
 		Section:               sectionRegen,
 		GenerateBatch:         generateBatchUC,
 		CacheEviction:         cacheEvictionUC,
@@ -288,8 +321,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		ClipSourceBuilder:     clipSourceBuilder,
 		MediaCurator:          mediaCurator,
 		Harvest:               harvestSvc,
-		CurationJobService:    nil,
-		CatalogJobService:     nil,
 		ScriptsRepo:           scriptsRepoAdapter,
 		Memory:                memorySvc,
 		Jobs:                  root.Jobs.Facade,
@@ -306,6 +337,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		if batchSvc != nil {
 			root.Jobs.Service.RegisterHandler("script.generate_batch", handler.HandleBatchScriptGenerateJob)
 			log.Info("registered script.generate_batch job handler (wire_script.go)")
+		}
+		if curationJobSvc != nil {
+			root.Jobs.Service.RegisterHandler("media.curate", curationJobSvc.HandleCurateJob)
+			log.Info("registered media.curate job handler (wire_script.go)")
+		}
+		if catalogJobSvc != nil {
+			root.Jobs.Service.RegisterHandler("script.generate_from_catalog", catalogJobSvc.HandleCatalogScriptGenerateJob)
+			log.Info("registered script.generate_from_catalog job handler (wire_script.go)")
 		}
 		if pipelineUC != nil {
 			// AGENT-2 (June 2026): root.Jobs.Service is *jobs.Service;
@@ -350,10 +389,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	mod := module.NewRouteModule(
 		"script-flow",
 		// Module-level gate: expose the /script route group if
-		// EITHER clips OR docs is enabled. Per-route gating in
+		// EITHER clips, docs, or images is enabled. Per-route gating in
 		// handler.go::RegisterRoutes decides which individual
 		// endpoints respond (clip-source vs Google Docs vs images).
-		func() bool { return cfg.Features.ScriptClipsEnabled || cfg.Features.ScriptDocsEnabled },
+		func() bool { return anyScriptFeatureEnabled(cfg) },
 		"/script",
 		scriptapi.NewHandler(handler, genSvc, gates),
 		log,

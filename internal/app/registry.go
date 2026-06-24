@@ -314,13 +314,16 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
 		// NewScriptHistoryModule expects two gin.HandlerFunc gate args
 		// (handler feature gate + enabled bool). The helper in
-		// internal/api/middleware reads `cfg.Features.ScriptClipsEnabled`
-		// and wraps the bool in a 403-on-disabled middleware.
+		// internal/api/middleware reads the resolved boolean and wraps
+		// it in a 403-on-disabled middleware. Script history is shared by
+		// all script entrypoints, so we keep it alive whenever any script
+		// feature is enabled.
+		scriptHistoryEnabled := anyScriptFeatureEnabled(cfg)
 		registerModule(registry, log, scriptapi.NewScriptHistoryModule(
 			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 			log,
-			middleware.ScriptClipsEnabled(cfg),
-			cfg != nil && cfg.Features.ScriptClipsEnabled,
+			middleware.FeatureFlagChecker(cfg, "Script", scriptHistoryEnabled),
+			scriptHistoryEnabled,
 		))
 	}
 	registerModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility))

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -49,7 +50,9 @@ func NewCurationJobServiceImpl(
 
 // HandleCurateJob processes a background script.curate job.
 func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
-	c.Log.Info("handling script.curate job", zap.String("job_id", j.ID))
+	if c != nil && c.Log != nil {
+		c.Log.Info("handling script.curate job", zap.String("job_id", j.ID))
+	}
 
 	curator := c.MediaCurator
 	if curator == nil {
@@ -60,13 +63,23 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 	if err := json.Unmarshal(j.Payload, &payload); err != nil {
 		return nil, fmt.Errorf("failed to parse job payload: %w", err)
 	}
+	payload.Languages = NormalizeLanguages(payload.Languages)
+	lang := strings.TrimSpace(payload.Language)
+	if lang == "" && len(payload.Languages) > 0 {
+		lang = payload.Languages[0]
+	}
+	if lang == "" {
+		lang = "en"
+	}
 
-	c.Log.Info("curate job params",
-		zap.String("query", payload.Query),
-		zap.String("language", payload.Language),
-		zap.String("tone", payload.Tone),
-		zap.Int("max_clips", payload.MaxClips),
-		zap.Int("target_words", payload.TargetWords))
+	if c != nil && c.Log != nil {
+		c.Log.Info("curate job params",
+			zap.String("query", payload.Query),
+			zap.String("language", lang),
+			zap.String("tone", payload.Tone),
+			zap.Int("max_clips", payload.MaxClips),
+			zap.Int("target_words", payload.TargetWords))
+	}
 
 	if tools.Progress != nil {
 		tools.Progress(5, fmt.Sprintf("Searching clips for: %s", payload.Query))
@@ -75,7 +88,7 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 	req := CurateRequest{
 		Query:             payload.Query,
 		Title:             payload.Title,
-		Language:          payload.Language,
+		Language:          lang,
 		Tone:              payload.Tone,
 		Model:             payload.Model,
 		MaxClips:          payload.MaxClips,
@@ -141,7 +154,7 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 			for i, sc := range result.ClipScenes {
 				scenes[i] = VoiceoverSceneItem{Text: sc.Text, SceneIndex: sc.SceneIndex}
 			}
-			GenerateSceneVoiceovers(ctx, c.VOService, scenes, payload.Language, destReq, c.Log, tools.Progress, 95, 5)
+			GenerateSceneVoiceovers(ctx, c.VOService, scenes, lang, destReq, c.Log, tools.Progress, 95, 5)
 		}
 	}
 
@@ -185,7 +198,7 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 		"title":              result.Title,
 		"script":             result.Script,
 		"word_count":         result.WordCount,
-		"language":           payload.Language,
+		"language":           lang,
 		"tone":               payload.Tone,
 		"cache_status":       result.CacheStatus,
 		"accepted_clip_ids":  result.AcceptedClipIDs,

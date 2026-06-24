@@ -130,7 +130,7 @@ func (u *PostGenUseCase) Run(ctx context.Context, payload *scriptpkg.GenerationS
 
 	if u.generator != nil && payload != nil && payload.GenerateMetadata {
 		group.Go("video-metadata", func() error {
-			languages := BuildMetadataLanguages(payload.Language, payload.Languages)
+			languages := BuildMetadataLanguages(payload.Languages)
 			res.VideoMetadata = GenerateVideoMetadata(groupCtx, u.generator, payload.Title, languages, u.metadataModel)
 			return nil
 		})
