@@ -15,6 +15,11 @@
 // token MUST NOT suffice. The empty-AdminToken test pins the
 // fail-closed behaviour against a misconfig that would otherwise let
 // every request through.
+//
+// PG-006 (June 2026): the previous fakes used `&config.Config{...}`
+// literals — those required an `internal/infrastructure/config` import
+// that the package no longer carries. Replaced with the testSecurity
+// stub from port_fakes_test.go (3-method AuthSecurityPort fake).
 
 package middleware
 
@@ -24,8 +29,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // TestRequireAdminToken_RejectsWorkerToken is the load-bearing
@@ -36,15 +39,9 @@ import (
 func TestRequireAdminToken_RejectsWorkerToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	cfg := &config.Config{
-		Security: config.SecurityConfig{
-			EnableAuth:  true,
-			AdminToken:  "admin-secret",
-			WorkerToken: "worker-secret",
-		},
-	}
+	sec := &testSecurity{enabled: true, admin: "admin-secret", worker: "worker-secret"}
 	r := gin.New()
-	r.Use(RequireAdminToken(cfg))
+	r.Use(RequireAdminToken(sec, nil))
 	r.GET("/admin-only", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -52,7 +49,7 @@ func TestRequireAdminToken_RejectsWorkerToken(t *testing.T) {
 	// Worker token via the same header channel as the admin token:
 	// must NOT suffice.
 	req := httptest.NewRequest("GET", "/admin-only", nil)
-	req.Header.Set("X-Velox-Admin-Token", cfg.Security.WorkerToken)
+	req.Header.Set("X-Velox-Admin-Token", "worker-secret")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -61,7 +58,7 @@ func TestRequireAdminToken_RejectsWorkerToken(t *testing.T) {
 
 	// Worker token via Authorization Bearer: must NOT suffice.
 	req = httptest.NewRequest("GET", "/admin-only", nil)
-	req.Header.Set("Authorization", "Bearer "+cfg.Security.WorkerToken)
+	req.Header.Set("Authorization", "Bearer worker-secret")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -71,7 +68,7 @@ func TestRequireAdminToken_RejectsWorkerToken(t *testing.T) {
 	// Sanity: the admin token still authenticates (so the test isn't
 	// accidentally failing because the middleware refuses everything).
 	req = httptest.NewRequest("GET", "/admin-only", nil)
-	req.Header.Set("X-Velox-Admin-Token", cfg.Security.AdminToken)
+	req.Header.Set("X-Velox-Admin-Token", "admin-secret")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -88,17 +85,9 @@ func TestRequireAdminToken_RejectsWorkerToken(t *testing.T) {
 func TestRequireAdminToken_EmptyAdminTokenRefusesRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	cfg := &config.Config{
-		Security: config.SecurityConfig{
-			EnableAuth: true,
-			// AdminToken intentionally empty — operator forgot to set
-			// VELOX_ADMIN_TOKEN. The middleware MUST refuse.
-			AdminToken:  "",
-			WorkerToken: "worker-secret",
-		},
-	}
+	sec := &testSecurity{enabled: true, admin: "", worker: "worker-secret"}
 	r := gin.New()
-	r.Use(RequireAdminToken(cfg))
+	r.Use(RequireAdminToken(sec, nil))
 	r.GET("/admin-only", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -116,21 +105,16 @@ func TestRequireAdminToken_EmptyAdminTokenRefusesRequest(t *testing.T) {
 
 // TestRequireAdminToken_DisabledPassesThrough pins the opt-out
 // behaviour. When EnableAuth=false the middleware bypasses every
-// request. cfg=nil also bypasses. Tests confirm both — the dual
+// request. sec=nil also bypasses. Tests confirm both — the dual
 // bypass is intentional (test fixtures and partial compose-root
-// builds may legitimately pass nil cfg).
+// builds may legitimately pass nil port).
 func TestRequireAdminToken_DisabledPassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("EnableAuth=false", func(t *testing.T) {
-		cfg := &config.Config{
-			Security: config.SecurityConfig{
-				EnableAuth: false,
-				AdminToken: "ignored",
-			},
-		}
+		sec := &testSecurity{enabled: false, admin: "ignored"}
 		r := gin.New()
-		r.Use(RequireAdminToken(cfg))
+		r.Use(RequireAdminToken(sec, nil))
 		r.GET("/admin-only", func(c *gin.Context) {
 			c.String(http.StatusOK, "ok")
 		})
@@ -142,9 +126,9 @@ func TestRequireAdminToken_DisabledPassesThrough(t *testing.T) {
 		}
 	})
 
-	t.Run("nil cfg", func(t *testing.T) {
+	t.Run("nil sec", func(t *testing.T) {
 		r := gin.New()
-		r.Use(RequireAdminToken(nil))
+		r.Use(RequireAdminToken(nil, nil))
 		r.GET("/admin-only", func(c *gin.Context) {
 			c.String(http.StatusOK, "ok")
 		})
@@ -152,7 +136,7 @@ func TestRequireAdminToken_DisabledPassesThrough(t *testing.T) {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 when cfg is nil (test/partial-build path), got %d", w.Code)
+			t.Fatalf("expected 200 when sec is nil (test/partial-build path), got %d", w.Code)
 		}
 	})
 }

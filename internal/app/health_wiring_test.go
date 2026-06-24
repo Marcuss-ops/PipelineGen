@@ -64,7 +64,16 @@ func TestRoutes_DoNotPassNilReadyChecker(t *testing.T) {
 	ready := systemhealth.NewReadyChecker(svc)
 	require.NotNil(t, ready)
 
-	router := module.NewRouter(cfg)
+	router := module.NewRouter(&module.RouterConfig{
+		Auth:          newMiddlewareSecurityAdapter(cfg),
+		Rate:          newMiddlewareRateLimitAdapter(cfg),
+		Features:      newMiddlewareFeatureFlagsAdapter(cfg),
+		Log:           zap.NewNop(),
+		ServerGinMode: cfg.Server.GinMode,
+		DataDir:       cfg.Storage.DataDir,
+		DownloadDir:   cfg.GoogleAccounting.DownloadDir,
+		CORSOrigins:   cfg.Security.CORSOrigins,
+	})
 	router.SetHealthService(svc)
 	router.SetReadyChecker(ready)
 
@@ -106,7 +115,16 @@ func TestRoutes_WithoutReadyChecker_ReturnsNotInitialized(t *testing.T) {
 
 	svc := systemhealth.NewService(systemhealth.ServiceDeps{})
 
-	router := module.NewRouter(cfg)
+	router := module.NewRouter(&module.RouterConfig{
+		Auth:          newMiddlewareSecurityAdapter(cfg),
+		Rate:          newMiddlewareRateLimitAdapter(cfg),
+		Features:      newMiddlewareFeatureFlagsAdapter(cfg),
+		Log:           zap.NewNop(),
+		ServerGinMode: cfg.Server.GinMode,
+		DataDir:       cfg.Storage.DataDir,
+		DownloadDir:   cfg.GoogleAccounting.DownloadDir,
+		CORSOrigins:   cfg.Security.CORSOrigins,
+	})
 	router.SetHealthService(svc)
 	// Intentionally NOT calling SetReadyChecker — simulates pre-fix state.
 

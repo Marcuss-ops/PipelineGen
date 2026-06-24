@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
-	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -20,8 +19,7 @@ func SetLogSink(sink requestlog.RequestLogSink) {
 }
 
 // StopLogger flushes and stops the background log writer. Delegated
-// entirely to the sink; idempotent because SQLiteRequestLogSink.Stop
-// closes its stopChan and drains via sync.Once.
+// entirely to the sink; idempotent.
 func StopLogger() {
 	if logSink == nil {
 		return
@@ -35,7 +33,6 @@ func StopLogger() {
 var logSink requestlog.RequestLogSink
 
 // GetDroppedLogs returns the number of logs dropped due to backpressure.
-// Reflects the SQLite-backed sink's counter when the sink exposes it.
 func GetDroppedLogs() uint64 {
 	if sink, ok := logSink.(interface{ DroppedLogs() uint64 }); ok {
 		return sink.DroppedLogs()
@@ -64,7 +61,6 @@ func redactSensitiveQuery(raw string) string {
 	if raw == "" {
 		return raw
 	}
-	// Fast path: no '=' at all, no sensitive param to redact.
 	if !strings.ContainsAny(raw, "=&") {
 		return raw
 	}
@@ -83,25 +79,25 @@ func redactSensitiveQuery(raw string) string {
 }
 
 // Logger returns a gin middleware for logging requests.
-func Logger() gin.HandlerFunc {
+//
+// PG-006 (June 2026): the previous body called package-level
+// `logger.Error/Info/Warn` from internal/infrastructure/logging. The
+// middleware now takes a *zap.Logger directly — the AdapterLayer
+// (composition root) hands the standard zap logger at registration
+// time. This file has zero `internal/infrastructure/*` imports.
+func Logger(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		// SECURITY: redact sensitive query parameters (token, key, secret,
-		// password) before logging, even though extractAuthToken no longer
-		// reads ?token=... — future query parameters or third-party
-		// middleware may still surface a credential via the query string.
 		raw := redactSensitiveQuery(c.Request.URL.RawQuery)
 
 		c.Next()
 
-		// Skip health check logging to database if desired, but keep in journal
 		isHealth := c.FullPath() == "/health"
 
 		duration := time.Since(start)
 		status := c.Writer.Status()
 
-		// Efficient fields allocation
 		fields := make([]zap.Field, 0, 8)
 		fields = append(fields,
 			zap.Int("status", status),
@@ -123,14 +119,15 @@ func Logger() gin.HandlerFunc {
 			fields = append(fields, zap.Errors("errors", errs))
 		}
 
-		// Log to journal based on status code
-		switch {
-		case status >= 500:
-			logger.Error("Server error", fields...)
-		case status >= 400:
-			logger.Warn("Client error", fields...)
-		default:
-			logger.Info("Request completed", fields...)
+		if log != nil {
+			switch {
+			case status >= 500:
+				log.Error("Server error", fields...)
+			case status >= 400:
+				log.Warn("Client error", fields...)
+			default:
+				log.Info("Request completed", fields...)
+			}
 		}
 
 		// Persist via the typed sink (no raw *sql.DB in this layer).
@@ -145,8 +142,6 @@ func Logger() gin.HandlerFunc {
 }
 
 // loggerEntryFrom assembles a RequestLogEntry from the gin context.
-// Extracted to keep Logger() readable and to give tests a stable
-// entry-builder they can compare against table contents.
 func loggerEntryFrom(c *gin.Context, requestID string, duration time.Duration, status int) requestlog.RequestLogEntry {
 	return requestlog.RequestLogEntry{
 		RequestID: requestID,

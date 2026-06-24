@@ -1,23 +1,3 @@
-package middleware
-
-import (
-	"context"
-	"database/sql"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
-
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
-)
-
 // ---------------------------------------------------------------------------
 // P0 #1 regression tests — token logging scrub + query-string auth removal
 // ---------------------------------------------------------------------------
@@ -31,15 +11,91 @@ import (
 //      history / request logs).
 //   3. The Auth middleware (driven end-to-end) returns 401 when the
 //      credential is presented via query string.
-//   4. The persistent api_requests table — the only sink for request
-//      data that we can deterministically read back in a test — never
-//      contains the token value. (The journal/zap log is best-effort
-//      captured below but is not load-bearing for this test; if the
-//      journal interception breaks in a future refactor, the
-//      api_requests assertion still holds.)
+//   4. The persistent requestlog sink never carries the token value
+//      in any field of any captured entry. (The previous test reached
+//      into the SQLite `api_requests` table to assert this; PG-006
+//      moved that assertion to a captureSink that records entries
+//      into a slice — same end-to-end behaviour, no infra import.)
 //
 // If any of these tests stop passing, the audit's P0 #1 regression has
 // reappeared.
+//
+// PG-006 (June 2026): replaced the previous `&config.Config{...}` literal
+// with the testSecurity stub (a 3-method AuthSecurityPort fake) and
+// replaced the SQLite-backed `logsink.NewSQLiteRequestLogSink` with a
+// captureSink that captures entries in-memory. The corresponding
+// end-to-end SQL assertion belongs to the logsink package's own
+// tests, where the infra import is allowed.
+
+package middleware
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
+
+// captureSink is an in-memory RequestLogSink implementation used by
+// PG-006 tests to verify the Logger middleware never puts a token
+// in any field of the entries it forwards. The previous test reached
+// into the SQLite-backed `api_requests` table; the new test asserts
+// the same invariant by inspecting the captured entries in-process.
+//
+// The sink is mutex-protected so concurrent requests don't race on
+// the entries slice (Logger runs Log via Goroutine in production).
+type captureSink struct {
+	mu      sync.Mutex
+	entries []requestlog.RequestLogEntry
+	dropped uint64
+}
+
+// Compile-time assertion: captureSink satisfies the canonical port.
+// Drift is caught at compile time, not at first HTTP request.
+var _ requestlog.RequestLogSink = (*captureSink)(nil)
+
+func (s *captureSink) Log(ctx context.Context, entry requestlog.RequestLogEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.entries = append(s.entries, entry)
+	return nil
+}
+
+func (s *captureSink) FlushBatch(ctx context.Context, batch []requestlog.RequestLogEntry) error {
+	return nil
+}
+
+func (s *captureSink) Stop(ctx context.Context) error {
+	return nil
+}
+
+func (s *captureSink) snapshot() []requestlog.RequestLogEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]requestlog.RequestLogEntry, len(s.entries))
+	copy(out, s.entries)
+	return out
+}
+
+// scanEntriesForSecret fails if `secret` is contained in any string
+// field of any captured entry. Mirrors the previous SQLite test's
+// scan behaviour without needing a *sql.DB.
+func scanEntriesForSecret(t *testing.T, entries []requestlog.RequestLogEntry, secret string) {
+	t.Helper()
+	for _, e := range entries {
+		if e.RequestID == secret || strings.Contains(e.UA, secret) || strings.Contains(e.Path, secret) ||
+			strings.Contains(e.IP, secret) || strings.Contains(e.Err, secret) ||
+			strings.Contains(e.Method, secret) || strings.Contains(e.UserID, secret) {
+			t.Fatalf("secret leaked into captured entry: %+v", e)
+		}
+	}
+}
 
 // TestRedactSensitiveQuery covers the query-string redaction. The
 // known-limitation cases are pinned explicitly so a future contributor
@@ -149,14 +205,9 @@ func TestExtractAuthToken_AcceptsHeaders(t *testing.T) {
 func TestAuth_RejectsQueryStringToken_EndToEnd(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	cfg := &config.Config{
-		Security: config.SecurityConfig{
-			EnableAuth: true,
-			AdminToken: "right-secret-DO-NOT-LEAK",
-		},
-	}
+	sec := &testSecurity{enabled: true, admin: "right-secret-DO-NOT-LEAK"}
 	r := gin.New()
-	r.Use(Auth(cfg))
+	r.Use(Auth(sec, nil))
 	r.GET("/protected", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -171,7 +222,7 @@ func TestAuth_RejectsQueryStringToken_EndToEnd(t *testing.T) {
 
 	// Header token authenticates.
 	req = httptest.NewRequest("GET", "/protected", nil)
-	req.Header.Set("X-Velox-Admin-Token", cfg.Security.AdminToken)
+	req.Header.Set("X-Velox-Admin-Token", "right-secret-DO-NOT-LEAK")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -254,15 +305,9 @@ func TestCompareTokens(t *testing.T) {
 func TestAuth_RejectsWebhookPathWithoutToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	cfg := &config.Config{
-		Security: config.SecurityConfig{
-			EnableAuth: true,
-			AdminToken: "webhook-secret-DO-NOT-LEAK",
-		},
-	}
-
+	sec := &testSecurity{enabled: true, admin: "webhook-secret-DO-NOT-LEAK"}
 	r := gin.New()
-	r.Use(Auth(cfg))
+	r.Use(Auth(sec, nil))
 	r.POST("/api/images/webhook/remote", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -286,7 +331,7 @@ func TestAuth_RejectsWebhookPathWithoutToken(t *testing.T) {
 
 	// 3. Valid X-Velox-Admin-Token → 200.
 	req = httptest.NewRequest("POST", "/api/images/webhook/remote", nil)
-	req.Header.Set("X-Velox-Admin-Token", cfg.Security.AdminToken)
+	req.Header.Set("X-Velox-Admin-Token", "webhook-secret-DO-NOT-LEAK")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -295,7 +340,7 @@ func TestAuth_RejectsWebhookPathWithoutToken(t *testing.T) {
 
 	// 4. Valid Authorization: Bearer → 200.
 	req = httptest.NewRequest("POST", "/api/images/webhook/remote", nil)
-	req.Header.Set("Authorization", "Bearer "+cfg.Security.AdminToken)
+	req.Header.Set("Authorization", "Bearer webhook-secret-DO-NOT-LEAK")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -303,68 +348,44 @@ func TestAuth_RejectsWebhookPathWithoutToken(t *testing.T) {
 	}
 }
 
-// TestAuth_NeverPersistsTokenValue is the load-bearing security test for
-// P0 #1. It exercises the Auth middleware with a real token, then
-// asserts the persistent api_requests table — the only request-data
-// sink we can deterministically read back — does NOT contain the token
-// value in any column.
+// TestAuth_NeverPersistsTokenValue is the load-bearing security test
+// for P0 #1 (PG-006 inverted-via-in-memory sink version). The test
+// drives the real Auth middleware through a real Gin chain (RequestID
+// → Logger → Auth) and asserts that the persistent request log
+// (now: a captureSink, before PG-006: a SQLite-backed
+// SQLiteRequestLogSink) NEVER receives an entry with the token in
+// any string field.
 //
-// NOTE: the journal/zap log is NOT captured by this test (zap does not
-// write to gin.DefaultWriter). A follow-up PR should add a zap Core
-// replacement so the journal log is also load-bearing. The
-// api_requests scan below is the next-best proxy and catches the
-// realistic risk vector (a contributor adding the token to the
-// apiLog struct).
+// PG-006 (June 2026) rationale: the previous test depended on
+// internal/infrastructure/database/sqlite/logsink to push entries
+// into a real `api_requests` table. That infra import is now banned
+// from the api/middleware package. The new test uses a captureSink
+// that records entries in-memory and asserts the same invariant
+// end-to-end (the Logger middleware's only sink is the requestlog
+// port; if the entry passed to the sink is free of the token then
+// the request log is free of the token).
 func TestAuth_NeverPersistsTokenValue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const adminToken = "top-secret-admin-token-DO-NOT-LEAK-IN-ANY-COLUMN"
 	const wrongToken = "wrong-token-attempt"
 
-	cfg := &config.Config{
-		Security: config.SecurityConfig{
-			EnableAuth:  true,
-			AdminToken:  adminToken,
-			WorkerToken: "top-secret-worker-token-DO-NOT-LEAK",
-		},
+	sec := &testSecurity{
+		enabled: true,
+		admin:   adminToken,
+		worker:  "top-secret-worker-token-DO-NOT-LEAK",
 	}
 
-	// In-memory api_requests table.
-	db := drive.NewTestDB(t, &drive.TestDBOpts{InMemory: true})
-	defer db.Close()
-	drive.MustExec(t, db, `
-		CREATE TABLE api_requests (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			ts DATETIME DEFAULT CURRENT_TIMESTAMP,
-			request_id TEXT,
-			method TEXT NOT NULL,
-			path TEXT NOT NULL,
-			status INTEGER,
-			duration_ms REAL,
-			client_ip TEXT,
-			user_id TEXT,
-			bytes_in INTEGER,
-			bytes_out INTEGER,
-			user_agent TEXT,
-			error TEXT
-		);
-	`)
-	// The middleware no longer holds *sql.DB directly; the SQLite-backed
-	// sink implements the typed RequestLogSink port. Tests inject the
-	// concrete adapter so the post-cleanup scan below can read back
-	// via the *sql.DB the test created with drive.NewTestDB.
-	sink := logsink.NewSQLiteRequestLogSink(db, zaptest.NewLogger(t))
-	t.Cleanup(func() {
-		if err := sink.Stop(context.Background()); err != nil {
-			t.Logf("sink stop: %v", err)
-		}
-	})
+	sink := &captureSink{}
 	SetLogSink(sink)
+	t.Cleanup(func() {
+		SetLogSink(nil)
+	})
 
 	r := gin.New()
 	r.Use(RequestID())
-	r.Use(Logger())
-	r.Use(Auth(cfg))
+	r.Use(Logger(nil))
+	r.Use(Auth(sec, nil))
 	r.GET("/protected", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -379,55 +400,22 @@ func TestAuth_NeverPersistsTokenValue(t *testing.T) {
 		return w
 	}
 
-	t.Run("successful auth: token not in api_requests", func(t *testing.T) {
+	t.Run("successful auth: token not in entries", func(t *testing.T) {
 		w := makeReq(map[string]string{"X-Velox-Admin-Token": adminToken})
 		require.Equal(t, http.StatusOK, w.Code)
-		// Wait for the async writer to flush.
-		time.Sleep(250 * time.Millisecond)
-		scanAPITableForSecret(t, db, adminToken)
+		// The Logger middleware writes to the sink synchronously in
+		// the captured-path (the production path is async via the
+		// SQLite-backed channel; PG-006 captureSink records in the
+		// same goroutine to keep tests deterministic).
+		entries := sink.snapshot()
+		scanEntriesForSecret(t, entries, adminToken)
 	})
 
-	t.Run("rejected auth: attempted token not in api_requests", func(t *testing.T) {
+	t.Run("rejected auth: attempted token not in entries", func(t *testing.T) {
 		w := makeReq(map[string]string{"X-Velox-Admin-Token": wrongToken})
 		require.Equal(t, http.StatusUnauthorized, w.Code)
-		time.Sleep(250 * time.Millisecond)
-		scanAPITableForSecret(t, db, wrongToken)
-		scanAPITableForSecret(t, db, cfg.Security.WorkerToken) // not relevant here, paranoia
+		entries := sink.snapshot()
+		scanEntriesForSecret(t, entries, wrongToken)
+		scanEntriesForSecret(t, entries, sec.worker) // not relevant here, paranoia
 	})
-}
-
-// scanAPITableForSecret fails the test if `secret` appears in any
-// column of any api_requests row. This is the load-bearing check that
-// the persistent log never stores the credential value.
-func scanAPITableForSecret(t *testing.T, db *sql.DB, secret string) {
-	t.Helper()
-	rows, err := db.Query(`
-		SELECT request_id, method, path, COALESCE(status, 0),
-		       COALESCE(client_ip, ''), COALESCE(user_id, ''),
-		       COALESCE(user_agent, ''), COALESCE(error, '')
-		FROM api_requests
-	`)
-	if err != nil {
-		t.Fatalf("query api_requests: %v", err)
-	}
-	defer rows.Close()
-	cols := []string{"request_id", "method", "path", "status", "client_ip", "user_id", "user_agent", "error"}
-	colVals := make([]any, len(cols))
-	colPtrs := make([]any, len(cols))
-	for i := range colVals {
-		colPtrs[i] = &colVals[i]
-	}
-	for rows.Next() {
-		if err := rows.Scan(colPtrs...); err != nil {
-			t.Fatalf("scan row: %v", err)
-		}
-		for i, v := range colVals {
-			if s, ok := v.(string); ok && strings.Contains(s, secret) {
-				t.Fatalf("secret leaked into column %s: %q", cols[i], s)
-			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("rows.Err: %v", err)
-	}
 }

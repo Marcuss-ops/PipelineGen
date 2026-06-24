@@ -43,7 +43,27 @@ func runGenAPIDocs(args []string) error {
 	}
 	defer appDeps.Cleanup()
 
-	router := api.NewRouter(cfg)
+	// gen_api_docs is an admin CLI; the cfg here is a test fixture, NOT
+	// the production config. The typed ports on api.RouterConfig require
+	// real adapter implementations (AuthSecurityPort / RateLimitPort /
+	// FeatureFlagsPort). Mirroring server.go's pattern, we inline three
+	// trivial 1-method-per-call shims that wrap the test cfg. When
+	// PG-006 promotes the production adapters to pkg/middleware/adapters.go
+	// (follow-up), this file switches to the shared constructors.
+	authAdapter := &genDocsSecurityAdapter{cfg: cfg}
+	rateAdapter := &genDocsRateLimitAdapter{cfg: cfg}
+	featuresAdapter := &genDocsFeatureFlagsAdapter{cfg: cfg}
+	routerCfg := &api.RouterConfig{
+		ServerGinMode: cfg.Server.GinMode,
+		DataDir:       cfg.Storage.DataDir,
+		DownloadDir:   cfg.GoogleAccounting.DownloadDir,
+		CORSOrigins:   cfg.Security.CORSOrigins,
+		Log:           log,
+		Auth:          authAdapter,
+		Rate:          rateAdapter,
+		Features:      featuresAdapter,
+	}
+	router := api.NewRouter(routerCfg)
 	router.SetRegistry(appDeps.Registry)
 	engine := router.Setup()
 
@@ -157,4 +177,36 @@ func matchRoutePattern(pattern, path string) bool {
 		}
 	}
 	return true
+}
+
+// ── Typed-port adapters (PG-006 bridge: cmd/admin → api/middleware) ────────
+//
+// The api package's RouterConfig surface expects Auth/Rate/Features to
+// satisfy mwports.AuthSecurityPort / RateLimitPort / FeatureFlagsPort.
+// `*config.Config` doesn't implement those interfaces directly; the
+// production composition root wraps it via
+// internal/app/middleware_security_adapter.go. The admin CLI cannot
+// import internal/app (api→app layering violation would cross), so it
+// inlines its own minimal adapter trio below. PG-006 follow-up
+// promotes these to pkg/middleware/adapters.go for shared use.
+
+type genDocsSecurityAdapter struct{ cfg *config.Config }
+
+func (a *genDocsSecurityAdapter) EnableAuth() bool    { return a.cfg.Security.EnableAuth }
+func (a *genDocsSecurityAdapter) AdminToken() string  { return a.cfg.Security.AdminToken }
+func (a *genDocsSecurityAdapter) WorkerToken() string { return a.cfg.Security.WorkerToken }
+
+type genDocsRateLimitAdapter struct{ cfg *config.Config }
+
+func (a *genDocsRateLimitAdapter) RateLimitEnabled() bool { return a.cfg.Security.RateLimitEnabled }
+func (a *genDocsRateLimitAdapter) RateLimitRequests() int { return a.cfg.Security.RateLimitRequests }
+
+type genDocsFeatureFlagsAdapter struct{ cfg *config.Config }
+
+func (a *genDocsFeatureFlagsAdapter) ArtlistEnabled() bool { return a.cfg.Features.ArtlistEnabled }
+func (a *genDocsFeatureFlagsAdapter) ScriptDocsEnabled() bool {
+	return a.cfg.Features.ScriptDocsEnabled
+}
+func (a *genDocsFeatureFlagsAdapter) ScriptClipsEnabled() bool {
+	return a.cfg.Features.ScriptClipsEnabled
 }
