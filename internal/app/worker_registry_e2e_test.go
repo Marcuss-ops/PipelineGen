@@ -11,7 +11,6 @@ package app_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +24,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
@@ -33,6 +31,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
@@ -458,19 +457,23 @@ func containsPath(haystack, needle string) bool {
 //     integration proves the same path at the network layer in W3.
 func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	// 1. Real SQLite DB on disk in a temp dir. The mattn/go-sqlite3
-	//    driver is already imported (blank) so sql.Open("sqlite3",
-	//    ...) is registered. SetMaxOpenConns(1) so the clipindexer
-	//    handler's QueryContext + Yield goroutines share a single
-	//    connection on the file-backed DB — the per-connection
-	//    gotcha with :memory: doesn't apply here, but the single-
-	//    connection discipline keeps the test's invariants
-	//    deterministic.
+	//    driver is registered transitively by storage (the storage
+	//    package itself blanks in the driver). SetMaxOpenConns(1) so
+	//    the clipindexer handler's QueryContext + Yield goroutines
+	//    share a single connection on the file-backed DB — the
+	//    per-connection gotcha with :memory: doesn't apply here, but
+	//    the single-connection discipline keeps the test's
+	//    invariants deterministic.
+	//
+	// PG-011 typed-handle migration (June 2026): the fixture is
+	// *storage.SQLiteDB; clipindexer.NewService still takes a raw
+	// *sql.DB so we pass sqliteDB.DB (the embedded field).
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "media.db")
-	db, err := sql.Open("sqlite3", dbPath)
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, zap.NewNop())
 	require.NoError(t, err)
-	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = db.Close() })
+	sqliteDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = sqliteDB.Close() })
 
 	// 2. Create the columns HandleJob touches. The full media_assets
 	//    schema lives in migrations/0XX_*.sql — for the "0 rows
@@ -478,7 +481,7 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	//    query string HandleJob compiles (id, source, media_type,
 	//    embedding_json, transcript_embedding, metadata_json,
 	//    created_at).
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS media_assets (
+	_, err = sqliteDB.Exec(`CREATE TABLE IF NOT EXISTS media_assets (
 		id TEXT PRIMARY KEY,
 		source TEXT,
 		media_type TEXT,
@@ -499,7 +502,7 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	cfg.DBPath = dbPath
 	// clipindexer.NewService returns a single *Service value
 	// (constructor never errors — the cfg + log are in-process types).
-	clipSvc := clipindexer.NewService(cfg, db, dbPath, zap.NewNop())
+	clipSvc := clipindexer.NewService(cfg, sqliteDB.DB, dbPath, zap.NewNop())
 
 	// 4. Wire the in-process Dispatcher exactly like composition.go
 	//    does: register one handler directly. We don't go through
@@ -642,7 +645,7 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	// the same query must return the same {total:0,indexed:0,
 	// failed:0} shape. Handler logic is identical; this assertion
 	// locks the contract.
-	j2 := clipindexer.NewService(cfg, db, dbPath, zap.NewNop())
+	j2 := clipindexer.NewService(cfg, sqliteDB.DB, dbPath, zap.NewNop())
 	replayCtx, replayCancel := context.WithCancel(context.Background())
 	t.Cleanup(replayCancel)
 	// j2Result is a fresh variable so the `:=` redeclaration rule
@@ -678,10 +681,23 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	// didn't leak files OUTSIDE t.TempDir(). The workspace is rooted
 	// at tmpDir/ws which t.Cleanup removes via t.TempDir(), so the
 	// assertion is the parent path contains nothing unexpected.
+	//
+	// PG-011 typed-handle migration (June 2026): storage.OpenSQLiteDB
+	// enables WAL mode (DSN _journal_mode=WAL + PRAGMA
+	// journal_mode=WAL) so the temp dir now holds:
+	//   - media.db      (the database file itself)
+	//   - media.db-wal  (WAL journal — pre-existing on disk)
+	//   - media.db-shm  (WAL shared-memory file)
+	//   - ws/           (worker workspace subdir)
+	// Total: 4 entries (≤ 4 enforced here). Previously with raw
+	// sql.Open (default rollback journal mode) only media.db +
+	// ws = 2 entries. The lounge of WAL is intentional —
+	// storage.SQLiteDB forces WAL for production-grade
+	// concurrency.
 	entries, readErr := os.ReadDir(tmpDir)
 	require.NoError(t, readErr)
-	require.True(t, len(entries) <= 3,
-		"temp dir should hold only db + ws subdir; found %d entries", len(entries))
+	require.True(t, len(entries) <= 4,
+		"temp dir should hold db + wal + shm + ws subdir; found %d entries", len(entries))
 }
 
 // ── Phase 7 — Remote worker renews the lease during long-running execution ──
