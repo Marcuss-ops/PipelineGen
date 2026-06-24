@@ -21,18 +21,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"go.uber.org/zap"
@@ -193,8 +194,18 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 	}
 	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
 
-	// SoundEffect: wired with real repos + uploader + metaWriter
-	sfxHandler := assetsfx.NewHandler(bundle.ClipsRepo, driveUploader, metaWriter, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
+	// SoundEffect: wrapped repos + uploader + metaWriter via sfxports
+	// adapters. PG-003 (June 2026) replaces the four concrete
+	// infrastructure reach-throughs with structural ports so the api/
+	// layer stays thin (per AGENTS.md Pattern 0).
+	sfxClips := &sfxClipsRepoAdapter{repo: bundle.ClipsRepo}
+	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
+	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
+	var sfxDriveUp sfxports.DriveUploaderPort
+	if driveUploader != nil {
+		sfxDriveUp = &sfxDriveUploaderAdapter{up: driveUploader}
+	}
+	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
 	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler)

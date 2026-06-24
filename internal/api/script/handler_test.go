@@ -38,13 +38,23 @@ func (f *fakeGenerationService) EnqueueWithImages(ctx context.Context, spec scri
 	return f.EnqueueFromClips(ctx, spec)
 }
 
-type fakeJobEnqueuer struct {
-	t         *testing.T
+// fakeJobsService is a testing double for job.Service. Only Enqueue is
+// functional (records lastReq and returns a canned Job so async-enqueue
+// HTTP paths return 200); the remaining methods return errors so the
+// handler's nil/503 short-circuits are exercised without touching real
+// infrastructure. Replaces the legacy fakeJobEnqueuer + job.NewService
+// construction that previously pointed at a non-existent
+// job.ErrNotWired + pointer-to-interface (*job.Service) which the
+// domain layer never exposed.
+type fakeJobsService struct {
 	lastReq   *job.EnqueueRequest
 	nextJobID string
 }
 
-func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+// Compile-time assertion: fakeJobsService satisfies job.Service.
+var _ job.Service = (*fakeJobsService)(nil)
+
+func (f *fakeJobsService) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
 	f.lastReq = req
 	if f.nextJobID == "" {
 		f.nextJobID = "job-123"
@@ -52,17 +62,37 @@ func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, req *job.EnqueueRequest) 
 	return &job.Job{ID: f.nextJobID, Status: job.StatusQueued, Type: req.Type}, nil
 }
 
-func newTestJobsService(t *testing.T) (*job.Service, *fakeJobEnqueuer) {
+func (f *fakeJobsService) Get(ctx context.Context, id string) (*job.Job, error) {
+	return nil, errors.New("fakeJobsService: Get not implemented")
+}
+
+func (f *fakeJobsService) Cancel(ctx context.Context, id string) error {
+	return errors.New("fakeJobsService: Cancel not implemented")
+}
+
+func (f *fakeJobsService) List(ctx context.Context, filter job.Filter) ([]job.Job, error) {
+	return nil, errors.New("fakeJobsService: List not implemented")
+}
+
+func (f *fakeJobsService) IsTerminal(status job.Status) bool {
+	return status.IsTerminal()
+}
+
+func (f *fakeJobsService) RegisterHandler(jobType string, handler any) error {
+	return errors.New("fakeJobsService: RegisterHandler not implemented")
+}
+
+func (f *fakeJobsService) ListEvents(ctx context.Context, jobID string) ([]job.Event, error) {
+	return nil, errors.New("fakeJobsService: ListEvents not implemented")
+}
+
+// newTestJobsService returns the same struct value as both job.Service
+// (the iface placeholder for ScriptFlowDeps.Jobs) and *fakeJobsService
+// (for tests that need to introspect the captured lastReq after Enqueue).
+func newTestJobsService(t *testing.T) (job.Service, *fakeJobsService) {
 	t.Helper()
-	fake := &fakeJobEnqueuer{t: t}
-	svc := job.NewService(
-		fake.Enqueue,
-		func(context.Context, string) (*job.Job, error) { return nil, job.ErrNotWired },
-		func(context.Context, string) error { return job.ErrNotWired },
-		func(context.Context, job.Filter) ([]*job.Job, error) { return nil, job.ErrNotWired },
-		func(status job.Status) bool { return status.IsTerminal() },
-	)
-	return svc, fake
+	fake := &fakeJobsService{}
+	return fake, fake
 }
 
 func TestHandler_ErrorMapping(t *testing.T) {
