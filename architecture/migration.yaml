@@ -522,7 +522,7 @@
   # docs/migrations/api-infrastructure-imports-allowlist.txt. These are
   # tracked here so the gate's evidence requirement stays honest while
   # the migration backlog is processed per docs/roadmap/PR3_API_COMPACTION.md.
-  grandfathered_imports_remaining: 28
+  grandfathered_imports_remaining: 22  # June 24 cleanup: PR3 (script/*) + PR4 (system/*) retired the 6 entries shown in docs/migrations/api-infrastructure-imports-allowlist.txt. PR2 (assets/clips/* 11 entries) + PR5 (api/middleware 5 + channels/impl + images/impl + module_core_modules + routes + server = 10 entries) remain pending.
   grandfathered_imports_ref: docs/migrations/api-infrastructure-imports-allowlist.txt
   grandfathered_imports_migration: docs/roadmap/PR3_API_COMPACTION.md (target PR3-PR2..PR5)
 
