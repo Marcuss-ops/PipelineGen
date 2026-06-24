@@ -753,4 +753,79 @@ echo "  OK: archcheck evidence holds (verified_zero: true)"
 echo "$ARCHCHECK_OUT" | jq -c '{mode, commit, checks, violations_count: (.violations | length)}'
 
 echo ""
+echo "Check 22: ownership.yaml validity + duplicate route/job gate"
+# Validates architecture/ownership.yaml exists, is valid YAML, and enforces
+# the anti-redundancy rules from AGENTS.md:
+#   * Nessuna route duplicata (METHOD + PATH)
+#   * Nessun job type registrato più di una volta
+#   * Un solo owner per ogni capability (ownership.yaml è la SSOT)
+OWNERSHIP_FILE="architecture/ownership.yaml"
+if [ ! -f "$OWNERSHIP_FILE" ]; then
+    echo "FAIL: $OWNERSHIP_FILE does not exist"
+    echo "Create it with the canonical module ownership map."
+    exit 1
+fi
+if ! python3 -c "import yaml; yaml.safe_load(open('$OWNERSHIP_FILE'))" 2>/dev/null; then
+    echo "FAIL: $OWNERSHIP_FILE is not valid YAML"
+    exit 1
+fi
+echo "  OK: $OWNERSHIP_FILE exists and is valid YAML"
+
+# -- Anti-duplicate: METHOD + PATH route gate --
+# Extracts all METHOD PATH pairs from RegisterRoutes methods across modules.
+# Grep for r.METHOD("/path", ...) patterns, sed to extract "METHOD /path".
+ROUTE_DUP_FILE=$(mktemp)
+grep -rnE '\.(POST|GET|PUT|DELETE|PATCH)\("' internal/api/ --include='*.go' \
+  | grep -v '_test.go' \
+  | sed -n 's/.*\.\(POST\|GET\|PUT\|DELETE\|PATCH\)("\([^"]*\)".*/\1 \2/p' \
+  > "$ROUTE_DUP_FILE" 2>/dev/null || true
+if [ -s "$ROUTE_DUP_FILE" ]; then
+    DUPLICATES=$(sort "$ROUTE_DUP_FILE" | uniq -d)
+    if [ -n "$DUPLICATES" ]; then
+        echo "FAIL: duplicate METHOD + PATH routes detected:"
+        echo "$DUPLICATES" | sed 's/^/  /'
+        echo "Each METHOD + PATH must have exactly ONE RegisterRoutes owner."
+        echo "See architecture/ownership.yaml::module_route_map for the canonical assignment."
+        rm -f "$ROUTE_DUP_FILE"
+        exit 1
+    fi
+fi
+rm -f "$ROUTE_DUP_FILE"
+echo "  OK: no duplicate METHOD + PATH routes (scanned sub-path level)"
+
+# -- Anti-duplicate: job type handler gate --
+# Detects duplicate job type registrations by scanning for both string-literal
+# and constant-based RegisterHandler calls. Catches duplicates even when
+# one uses a string literal and another uses a constant.
+#
+# Strategy: extract ALL lines containing RegisterHandler, then grep for
+# job type patterns. Matches both `"script.generate_from_clips"` literals
+# and `job.TypeClipScriptGenerate` constants (by extracting the constant name).
+JOB_DUP_FILE=$(mktemp)
+# Phase 1: string literal job types
+(grep -rnE 'RegisterHandler\([^)]*"[^"]+\.[a-z_.]+"' internal/ --include='*.go' \
+  | grep -v '_test.go' \
+  | grep -oE '"[a-z]+\.[a-z_.]+"' \
+  | tr -d '"' \
+  || true) > "$JOB_DUP_FILE" 2>/dev/null
+# Phase 2: constant-based job types (.Type =, Type:)
+(grep -rnE '(RegisterHandler|RegisterJobHandler)\(.*(job\.Type|Type:)' internal/ --include='*.go' \
+  | grep -v '_test.go' \
+  | grep -oE '(job\.Type[A-Za-z]+|TypeScriptGenerate|TypeBatchScript|TypeArtlist|TypeYoutube|TypeStock|TypeCatalogSync|TypeClipScript|TypeDeepCleanup)' \
+  || true) >> "$JOB_DUP_FILE" 2>/dev/null
+if [ -s "$JOB_DUP_FILE" ]; then
+    DUPLICATES=$(sort "$JOB_DUP_FILE" | uniq -d)
+    if [ -n "$DUPLICATES" ]; then
+        echo "FAIL: duplicate job type registrations detected:"
+        echo "$DUPLICATES" | sed 's/^/  /'
+        echo "Each job type must have exactly ONE handler."
+        echo "See architecture/ownership.yaml::job_handler_map for the canonical assignment."
+        rm -f "$JOB_DUP_FILE"
+        exit 1
+    fi
+fi
+rm -f "$JOB_DUP_FILE"
+echo "  OK: no duplicate job type registrations (string + constant scan)"
+
+echo ""
 echo "=== All architectural checks passed ==="

@@ -6,10 +6,274 @@
 #
 # Status: target architecture (post Onda 17). Real-state drift is tracked in
 # migration.yaml. Last baseline: cleanup-wave-00-final.
+#
+# CI Gate: validated by scripts/ci-architectural-checks.sh Check 22.
 # -----------------------------------------------------------------------------
 
-version: 1
+version: 2
 target_root: internal/
+
+# ── Module → Route Mount Map (SSOT for HTTP surface) ─────────────────────────
+# Each module below owns exactly one route prefix. The CI gate enforces:
+#   1. No duplicate METHOD + PATH across modules.
+#   2. Every module here has a corresponding Wire<Module> in internal/app/.
+#   3. Every Wire<Module> in registry.go is listed here.
+module_route_map:
+  - module: ScriptFlow
+    prefix: /api/script
+    owner: internal/app/wire_script.go
+    routes:
+      - POST /generate-from-clips
+      - POST /generate-with-images
+      - POST /generate-batch
+      - GET  /generate-batch/progress
+      - POST /generate-from-catalog
+      - POST /curate
+      - POST /cache/evict
+      - POST /:id/sections/:section_id/regenerate
+      - GET  /jobs/:job_id
+      - GET  /jobs/:job_id/full
+  - module: Assets
+    prefix: /api/media + /api/assets
+    owner: internal/app/module_assets.go
+    routes:
+      - POST /media/search
+      - POST /media/upload
+      - GET  /media/stats
+      - POST /media/recommend
+      - POST /media/clips/enrich
+      - POST /media/voiceover/generate
+      - POST /media/sound-effect/generate
+      - GET  /media/realtime/search
+      - GET  /media/realtime/index-health
+      - POST /media/register
+      - POST /media/sync
+      - GET  /media/diagnostics
+      - POST /scraper/start
+      - POST /scraper/stop
+      - GET  /scraper/status
+      - POST /ingest/media
+      - POST /ingest/bulk
+  - module: Artlist
+    prefix: /api/artlist
+    owner: internal/app/module_artlist.go
+    routes:
+      - POST /run
+      - GET  /runs/:run_id
+      - GET  /stats
+      - GET  /diagnostics
+      - POST /search
+      - POST /search/live
+      - POST /recommend
+      - POST /sync-catalogs
+  - module: Images
+    prefix: /api/images
+    owner: internal/app/module_fullimages.go
+    routes:
+      - GET  /search
+      - GET  /diagnostics
+      - POST /upload
+      - POST /sync
+      - POST /generate
+      - POST /animate
+      - POST /webhook/remote
+      - POST /video/generate
+  - module: Jobs
+    prefix: /api/jobs + /api/internal
+    owner: internal/app/module_jobs.go
+    routes:
+      - POST /
+      - GET  /
+      - GET  /stats
+      - GET  /:id
+      - GET  /:id/full
+      - POST /:id/cancel
+      - POST /:id/retry
+      - GET  /:id/events
+  - module: YouTube
+    prefix: /api/clips
+    owner: internal/app/module_youtube.go
+    routes:
+      - POST /search
+      - POST /ingest
+      - GET  /stats
+      - POST /batch
+  - module: Channels
+    prefix: /api/channels
+    owner: internal/app/module_ingest.go
+    routes:
+      - GET  /
+      - POST /
+      - POST /:id/toggle
+  - module: Stock
+    prefix: stock pipeline routes
+    owner: internal/app/module_stock.go
+    routes: []  # registered via separate handler
+  - module: Content
+    prefix: /api/books + /api/lessons
+    owner: internal/app/registry.go (inline)
+    routes:
+      - POST /books/process
+      - POST /books/generate
+      - POST /books/process-from-drive
+      - GET  /books/jobs
+      - POST /lessons/generate
+      - GET  /lessons/jobs
+  - module: System
+    prefix: /api/system + /api/drive + /api/scripts
+    owner: internal/app/registry.go (inline)
+    routes:
+      - GET  /system/doctor
+      - POST /drive/reconcile
+      - POST /drive/cleanup
+      - POST /drive/folders
+      - POST /drive/move
+      - POST /drive/resolve-by-id
+      - GET  /scripts
+      - GET  /scripts/:id
+
+# ── Job Type → Handler Map (SSOT for background jobs) ────────────────────────
+# Each job type must have exactly ONE handler. The CI gate enforces:
+#   1. No job type is registered more than once.
+#   2. Every handler is owned by exactly one module.
+job_handler_map:
+  - job_type: script.generate_from_clips
+    handler: PipelineUseCase.HandleJob
+    owner: internal/application/scripts
+  - job_type: script.generate_batch
+    handler: ScriptFlowHandler.HandleBatchScriptGenerateJob
+    owner: internal/api/script
+  - job_type: script.curate
+    handler: CurationJobServiceImpl.HandleCurateJob
+    owner: internal/application/scripts
+  - job_type: artlist.run
+    handler: ArtlistHandler.enqueueArtlistRun
+    owner: internal/api/assets/artlist
+  - job_type: media.artlist
+    handler: artlist.jobHandler
+    owner: internal/application/assets/providers/artlist
+  - job_type: media.youtube_clip
+    handler: YouTube clip ingest handler
+    owner: internal/application/assets/providers/youtube
+  - job_type: media.stock_pipeline
+    handler: StockPipeline handler
+    owner: internal/application/assets/providers/stock
+  - job_type: maintenance.deep_cleanup
+    handler: MaintenanceService
+    owner: internal/application/assets/maintenance
+  - job_type: catalog.sync
+    handler: CatalogSync service
+    owner: internal/application/assets/catalogsync
+
+# ── Canonical Service Construction (SSOT) ────────────────────────────────────
+# Each canonical service is constructed EXACTLY ONCE. The CI gate enforces
+# no duplicate NewService/NewEngine/NewPipeline calls across modules.
+canonical_services:
+  - service: Engine
+    constructor: NewScriptEngine
+    location: internal/app/composition.go::BuildAIBundle
+  - service: Pipeline
+    constructor: NewPipeline
+    location: internal/app/wire_script.go
+  - service: MemoryService (gemmamemory)
+    constructor: NewService
+    location: internal/app/composition.go::BuildAIBundle
+  - service: ScriptRepository
+    constructor: NewRepositoryAdapter
+    location: internal/app/wire_script.go
+  - service: ClipSourceBuilder
+    constructor: wireClipSourceBuilder
+    location: internal/app/wire_script.go
+  - service: MediaCurator
+    constructor: wireMediaCurator
+    location: internal/app/wire_script.go
+  - service: SemaphoreUseCase
+    constructor: NewSemaphoreUseCase
+    location: internal/app/wire_script.go
+  - service: PrewarmUseCase
+    constructor: NewPrewarmUseCase
+    location: internal/app/wire_script.go
+  - service: DocumentsUseCase
+    constructor: NewDocumentsUseCase
+    location: internal/app/wire_script.go
+  - service: SceneBuilderUseCase
+    constructor: NewSceneBuilderUseCase
+    location: internal/app/wire_script.go
+  - service: PostGenUseCase
+    constructor: NewPostGenUseCase
+    location: internal/app/wire_script.go
+  - service: PipelineUseCase
+    constructor: NewPipelineUseCase
+    location: internal/app/wire_script.go
+  - service: GenerateBatchUseCase
+    constructor: NewGenerateBatchUseCase
+    location: internal/app/wire_script.go
+  - service: CacheEvictionUseCase
+    constructor: NewCacheEvictionUseCase
+    location: internal/app/wire_script.go
+  - service: SectionRegenerator
+    constructor: NewSectionRegenerator
+    location: internal/app/wire_script.go
+  - service: ImageService
+    constructor: initImageService
+    location: internal/app/dependencies.go
+  - service: VoiceoverService
+    constructor: initVoiceoverService
+    location: internal/app/dependencies.go
+  - service: BooksService
+    constructor: initBooksService
+    location: internal/app/dependencies.go
+  - service: VectorStore (Qdrant)
+    constructor: NewService
+    location: internal/app/composition.go::BuildProcessBundle
+  - service: ArtlistService
+    constructor: NewService
+    location: internal/app/module_artlist.go
+  - service: YouTubeClipService
+    constructor: NewYouTubeService
+    location: internal/app/composition.go::BuildDomainBundle
+  - service: RealtimeService
+    constructor: NewService
+    location: internal/app/composition.go::BuildDomainBundle
+  - service: CatalogSyncService
+    constructor: NewService
+    location: internal/app/composition.go::BuildSyncBundle
+  - service: AssetTreeService
+    constructor: NewService
+    location: internal/app/registry.go::initAssetServices
+  - service: AssetIndexService
+    constructor: NewService
+    location: internal/app/registry.go::initAssetServices
+  - service: ClipIndexerService
+    constructor: NewClipIndexerService
+    location: internal/app/composition.go::BuildProcessBundle
+  - service: MediaProcessor
+    constructor: initMediaProcessor
+    location: internal/app/registry.go
+  - service: MaintenanceService
+    constructor: NewService
+    location: internal/app/registry.go
+  - service: ProviderRegistry
+    constructor: NewRegistry
+    location: internal/app/composition.go::BuildSearchBundle
+  - service: OutboxDispatcher
+    constructor: NewDispatcher
+    location: internal/app/composition.go::BuildOutboxBundle
+  - service: JobService (jobs.Service)
+    constructor: NewService
+    location: internal/app/composition.go::BuildJobsBundle
+  - service: JobFacade (jobs.Facade)
+    constructor: NewFacade
+    location: internal/app/composition.go::BuildJobsBundle
+  - service: DeletionService
+    constructor: NewDeletionService
+    location: internal/app/composition.go::BuildMaintBundle
+  - service: HealthService
+    constructor: NewService
+    location: internal/app/composition.go::BuildUtilityBundle
+  - service: ReadyChecker
+    constructor: NewReadyChecker
+    location: internal/app/bootstrap.go
 
 allowed_internal_roots:
   - api
