@@ -314,6 +314,7 @@ LEGACY_DIRS=(
     internal/domain/worker
     internal/domain/outbox
     internal/upload
+    internal/modules
 )
 # Compute the change set with status (A / R / M / D / C). --
 # name-status with find-renames lets git pair renames internally, so the
@@ -620,6 +621,7 @@ ABSOLUTE_GATE_DIRS=(
     internal/domain/worker
     internal/domain/outbox
     internal/upload
+    internal/modules
 )
 for dir in "${ABSOLUTE_GATE_DIRS[@]}"; do
     if [ -d "$dir" ]; then
