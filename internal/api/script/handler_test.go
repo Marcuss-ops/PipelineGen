@@ -17,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -280,7 +281,7 @@ func TestScriptFlowCatalogRoute_EnqueuesCatalogJob(t *testing.T) {
 func TestRequireAdminToken_NoToken_ReturnsUnauthorized(t *testing.T) {
 	t.Parallel()
 
-	provider := &adminTokenAdapter{token: "secret"}
+	provider := &pkgmw.TokenSecurityAdapter{Enable: true, Admin: "secret"}
 	router := gin.New()
 	router.Use(RequireAdminToken(provider))
 	router.GET("/protected", func(c *gin.Context) {
@@ -297,7 +298,7 @@ func TestRequireAdminToken_NoToken_ReturnsUnauthorized(t *testing.T) {
 func TestRequireAdminToken_CorrectToken_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	provider := &adminTokenAdapter{token: "secret"}
+	provider := &pkgmw.TokenSecurityAdapter{Enable: true, Admin: "secret"}
 	router := gin.New()
 	router.Use(RequireAdminToken(provider))
 	router.GET("/protected", func(c *gin.Context) {
@@ -312,12 +313,15 @@ func TestRequireAdminToken_CorrectToken_Succeeds(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestRequireAdminToken_EmptyToken_NoAuth(t *testing.T) {
+func TestRequireAdminToken_DisabledByEnableFlag_NoAuth(t *testing.T) {
 	t.Parallel()
 
-	// Empty token means EnableAuth() returns false → auth is disabled.
-	// Requests pass through without authentication.
-	provider := &adminTokenAdapter{token: ""}
+	// PG-006.1 (round-2): pass-through semantics now come from the
+	// Enable=false flag, not from Admin emptiness (which admin_token.go
+	// uses for the fail-closed 500 misconfig path). Combinations of
+	// Admin content + Enable=false must short-circuit to pass-through
+	// even with admin_token-content present.
+	provider := &pkgmw.TokenSecurityAdapter{Enable: false}
 	router := gin.New()
 	router.Use(RequireAdminToken(provider))
 	router.GET("/protected", func(c *gin.Context) {

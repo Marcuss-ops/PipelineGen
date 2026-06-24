@@ -12,6 +12,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -77,7 +78,19 @@ func NewServerWithHealth(
 	readyChecker *systemhealth.ReadyChecker,
 ) *Server {
 	if cfg != nil {
-		authAdapter := &serverSecurityAdapter{cfg: cfg}
+		// PG-006.1 (June 2026): the inline serverSecurityAdapter was deleted
+		// — the canonical concrete is pkg/middleware.TokenSecurityAdapter
+		// (a leaf struct reachable from internal/api, cmd/admin, and
+		// internal/app without crossing layering boundaries). cfg.Security
+		// is snapshotted into the canonical adapter literal here; the
+		// adapter is immutable per-token-string once constructed. Enable
+		// is the cfg.Security.EnableAuth passthrough (preserves the
+		// pre-PG-006.1 serverSecurityAdapter.EnableAuth() semantics).
+		authAdapter := &pkgmw.TokenSecurityAdapter{
+			Enable: cfg.Security.EnableAuth,
+			Admin:  cfg.Security.AdminToken,
+			Worker: cfg.Security.WorkerToken,
+		}
 		rateAdapter := &serverRateLimitAdapter{cfg: cfg}
 		featuresAdapter := &serverFeatureFlagsAdapter{cfg: cfg}
 		router := NewRouter(&RouterConfig{
@@ -241,43 +254,16 @@ func (s *Server) GetRouter() *gin.Engine {
 
 // ── PG-006 typed-port bridges (server-scoped) ────────────────────────────
 //
-// server.go cannot import `internal/app/middleware_security_adapter.go`
-// (the canonical production adapters) without crossing the api→app layering
-// boundary. The 3 inline adapters below mirror the production adapters
-// exactly — drift between them is the caller's responsibility to detect
-// (a unit test comparing EnableAuth/AdminToken/WorkerToken etc. outputs
-// against a reference impl is the recommended guard).
-//
-// Each adapter implements a one-method surface so the comparison helpers
-// can be small.
-
-// serverSecurityAdapter mirrors internal/app/middleware_security_adapter.go's
-// middlewareSecurityAdapter for the AuthSecurityPort surface. PG-006 review
-// drift-fix: the receiver-`a == nil` check is intentionally OMITTED so the
-// shape matches the production adapter (a.cfg == nil only). The composition
-// setter returns nil-interface for typed-nil cfg cases; the method dispatch
-// path never sees a typed-nil pointer at runtime because the gin middleware
-// always grabs a port via the constructor.
-type serverSecurityAdapter struct{ cfg *config.Config }
-
-func (a *serverSecurityAdapter) EnableAuth() bool {
-	if a.cfg == nil {
-		return false
-	}
-	return a.cfg.Security.EnableAuth
-}
-func (a *serverSecurityAdapter) AdminToken() string {
-	if a.cfg == nil {
-		return ""
-	}
-	return a.cfg.Security.AdminToken
-}
-func (a *serverSecurityAdapter) WorkerToken() string {
-	if a.cfg == nil {
-		return ""
-	}
-	return a.cfg.Security.WorkerToken
-}
+// PG-006.1 (June 2026): the previous serverSecurityAdapter inline struct
+// was deleted. The canonical concrete is pkg/middleware.TokenSecurityAdapter
+// (a leaf struct reachable from internal/api, cmd/admin, and internal/app
+// without crossing layering boundaries); the cfg-wrapping trio that
+// lived in api/server.go + cmd/admin/gen_api_docs.go +
+// internal/app/middleware_security_adapter.go is now collapsed into
+// construction-site snapshots. Only the rate-limit and feature-flags
+// inline adapters remain below (their canonical equivalents are NOT
+// yet tracked under pkg/middleware; a separate consolidation would
+// promote them — out of scope for PG-006.1).
 
 // serverRateLimitAdapter mirrors internal/app/middleware_security_adapter.go's
 // middlewareRateLimitAdapter for the RateLimitPort surface (same nil-check
