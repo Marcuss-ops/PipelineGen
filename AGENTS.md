@@ -34,6 +34,37 @@ The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER
   `./admin gen-api-docs`; CI-failed se non committato (vedi
   `.github/workflows/ci.yml::Generate API docs`).
 
+## Operatività worker remoti (June 2026)
+
+Il runbook canonico per la certificazione dei worker remoti
+(`PRODUCTION_READY`) vive in `docs/operations/`. È la **terza
+documentazione di navigazione** insieme a `Documentation Map` e
+`ARCHITECTURE.md`: ogni nuova capability worker-facing deve essere
+allineata ai gate di ammissione elencati nei ticket RW-PROD-### prima
+di essere dichiarata production.
+
+- [`docs/operations/04-remote-worker-production-readiness-tickets.md`](docs/operations/04-remote-worker-production-readiness-tickets.md)
+  — runbook 04: 17 ticket P0 (RW-PROD-001 → RW-PROD-017) con problemi,
+  attività, criteri di accettazione, test obbligatori, evidenze
+  richieste, ordine di implementazione e regola finale di ammissione.
+- [`docs/operations/worker-certification-checklist.md`](docs/operations/worker-certification-checklist.md)
+  — checklist operativa: scheda di certificazione, gate di ammissione
+  (manuali + automatici), procedura di approvazione in 8 passi, regole
+  deroghe, audit trail.
+  Estratto delle sezioni 5 e 6 del runbook 04.
+- [`docs/operations/tickets/README.md`](docs/operations/tickets/README.md)
+  — indice sintetico dei 17 ticket (stato corrente, dipendenze, ordine
+  di esecuzione, regole di transizione, definizione di "ticket
+  implementabile").
+
+Regola pratica: qualsiasi PR che tocchi `cmd/worker/`,
+`internal/infrastructure/database/sqlite/assets/workernodes_repository.go`,
+`internal/infrastructure/jobs/local/broker.go`,
+`internal/infrastructure/observability/metrics.go` o
+`config/alerting_rules.yml` deve referenziare almeno un ticket
+RW-PROD-### nel body della PR. Le capability che non hanno ticket
+non possono diventare production-readiness criteria.
+
 ## Instructions
 
 - **Non cambiare driver SQLite** (rimanere su `mattn/go-sqlite3`)
