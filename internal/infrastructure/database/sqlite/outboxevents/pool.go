@@ -23,6 +23,13 @@ type Pool struct {
 	cfg      WorkerPollConfig
 	stopChan chan struct{}
 	wg       sync.WaitGroup
+	// stopOnce guards close(p.stopChan) so concurrent or sequential
+	// calls to Stop() — across the production SafeGo("outbox-events-shutdown")
+	// handler on ctx.Done() AND the SafeGo("cleanup-outbox-events-pool")
+	// handler in shutdown.go::buildCleanup — cannot trigger
+	// `panic: close of closed channel` (PR4.E followup commit 94853aa
+	// surfaced the second Stop caller; sync.Once here closes the race).
+	stopOnce sync.Once
 }
 
 func NewPool(name string, repo *Repository, registry *HandlerRegistry, log *zap.Logger, cfg WorkerPollConfig) *Pool {
@@ -81,9 +88,22 @@ func (p *Pool) Start(ctx context.Context, workers int) {
 	p.wg.Wait()
 }
 
+// Stop signals the pool to drain and waits for in-flight workers to exit.
+//
+// Idempotent: concurrent or sequential multiple calls are safe. The
+// `close(p.stopChan)` is guarded by sync.Once — PR4.E followup commit
+// 94853aa added a second SafeGo("cleanup-outbox-events-pool") caller
+// in shutdown.go::buildCleanup which races with the lifecycle's
+// SafeGo("outbox-events-shutdown") caller on ctx.Done(). Without
+// the guard, the second close panics with `close of closed channel`.
+// The p.wg.Wait() after the close is naturally idempotent — wg.Wait
+// returns immediately once the count hits zero on the second call,
+// so the timeout/Select arithmetic is also safe to re-enter.
 func (p *Pool) Stop(timeout time.Duration) error {
 	p.log.Info("stopping outbox events pool")
-	close(p.stopChan)
+	p.stopOnce.Do(func() {
+		close(p.stopChan)
+	})
 
 	c := make(chan struct{})
 	go func() {
