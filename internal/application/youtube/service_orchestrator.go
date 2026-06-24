@@ -151,6 +151,16 @@ func NewService(deps ServiceDeps) *Service {
 			maxOllama = v
 		}
 	}
+	// PR2 cascade followup: normalize optional typed-nil ports to bare nil
+	// during construction, so simple `== nil` checks at call sites remain
+	// correct even when composition passes a typed-nil interface.
+	if isUnavailablePort(deps.AssetProcessing) {
+		deps.AssetProcessing = nil
+	}
+	if isUnavailablePort(deps.AssetVersions) {
+		deps.AssetVersions = nil
+	}
+
 	svc := &Service{
 		cfg:               deps.Cfg,
 		log:               deps.Log,
@@ -279,7 +289,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 // DriveFolderManagerPort. The previous dummy GetOrCreateChannelFolder
 // fallback to a raw driveclient (concrete Drive SDK) has been removed.
 func (s *Service) GetOrCreateChannelFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
-	if s.driveFolderMgr == nil {
+	if isUnavailablePort(s.driveFolderMgr) {
 		return parentFolderID, fmt.Errorf("youtube: drive folder manager not wired — composition root must include DriveFolderMgr in ServiceDeps")
 	}
 	folderID, err := s.driveFolderMgr.GetOrCreateFolder(ctx, channelName, parentFolderID)
@@ -296,7 +306,7 @@ func (s *Service) GetOrCreateChannelFolder(ctx context.Context, channelName, par
 // DownloadAndCut delegates to the VideoPipeline port (no longer calls
 // concrete videomuscles.Pipeline from application via this method).
 func (s *Service) DownloadAndCut(ctx context.Context, req youtubeports.VideoCutRequest) (*youtubeports.VideoCutResult, error) {
-	if s.videoPipeline == nil {
+	if isUnavailablePort(s.videoPipeline) {
 		return nil, fmt.Errorf("youtube: video pipeline not wired")
 	}
 	return s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, req)
@@ -315,14 +325,14 @@ func (s *Service) Config() *config.Config {
 //
 // PR5 Phase 3: exported for ExtractionCallbacks compatibility.
 func (s *Service) MD5File(path string) string {
-	if s.hashSvc != nil {
-		if h, err := s.hashSvc.MD5File(path); err == nil {
+	if !isUnavailablePort(s.hashSvc) {
+		h, err := s.hashSvc.MD5File(path)
+		if err == nil {
 			return h
-		} else {
-			s.log.Debug("hashSvc.MD5File failed, falling back to local helper",
-				zap.String("path", path),
-				zap.Error(err))
 		}
+		s.log.Debug("hashSvc.MD5File failed, falling back to local helper",
+			zap.String("path", path),
+			zap.Error(err))
 	}
 	return fallbackMD5File(path)
 }
@@ -330,10 +340,40 @@ func (s *Service) MD5File(path string) string {
 // md5File is the legacy private name kept for internal callers.
 func (s *Service) md5File(path string) string { return s.MD5File(path) }
 
+// ── Typed-nil guard helpers ──────────────────────────────────────────
+
+// isUnavailablePort returns true when port is nil (either bare nil or a
+// typed-nil interface holding a nil concrete pointer). Use this for
+// required ports that MUST be wired at composition time.
+func isUnavailablePort(port any) bool {
+	return port == nil || portutil.IsNilPort(port)
+}
+
+// ValidateServiceDeps checks ServiceDeps for typed-nil interfaces on
+// required ports. Optional ports (assetProcessing, assetVersions) are
+// allowed to be nil. Composition MUST call this before constructing
+// the service so typed-nil wiring errors surface at startup, not at
+// first invocation.
+func ValidateServiceDeps(deps ServiceDeps) error {
+	if isUnavailablePort(deps.SearchRunner) {
+		return fmt.Errorf("youtube: SearchRunner is required but not wired (or typed-nil)")
+	}
+	if deps.AssetRepo == nil || portutil.IsNilPort(deps.AssetRepo) {
+		return fmt.Errorf("youtube: AssetRepo is required but not wired (or typed-nil)")
+	}
+	if isUnavailablePort(deps.VideoPipeline) {
+		return fmt.Errorf("youtube: VideoPipeline is required but not wired (or typed-nil)")
+	}
+	if deps.MediaProcessor == nil || portutil.IsNilPort(deps.MediaProcessor) {
+		return fmt.Errorf("youtube: MediaProcessor is required but not wired (or typed-nil)")
+	}
+	return nil
+}
+
 // MD5String returns the MD5 hex digest of s via the HashServicePort.
 // PR5 Phase 3: exported for ExtractionCallbacks compatibility.
 func (s *Service) MD5String(data string) string {
-	if s.hashSvc != nil {
+	if !isUnavailablePort(s.hashSvc) {
 		return s.hashSvc.MD5String(data)
 	}
 	return fallbackMD5String(data)
@@ -372,7 +412,7 @@ func (s *Service) TriggerAutoIndexing(ctx context.Context, clipID string) {
 }
 
 func (s *Service) IndexClip(ctx context.Context, clipID string) error {
-	if s.indexer == nil {
+	if isUnavailablePort(s.indexer) {
 		return nil
 	}
 	return s.indexer.IndexClip(ctx, clipID)
@@ -387,7 +427,7 @@ func (s *Service) SliceSubtitles(ctx context.Context, videoID string, startSec, 
 }
 
 func (s *Service) TranscribeAudio(ctx context.Context, localPath string) (string, error) {
-	if s.whisper == nil {
+	if isUnavailablePort(s.whisper) {
 		return "", nil
 	}
 	return s.whisper.TranscribeAudio(ctx, localPath)
@@ -422,21 +462,21 @@ func (s *Service) AssetVersionsAppend(ctx context.Context, v *asset.Version) err
 }
 
 func (s *Service) DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error) {
-	if s.driveFolderMgr == nil {
+	if isUnavailablePort(s.driveFolderMgr) {
 		return &youtubeports.UploadResultDTO{}, false, fmt.Errorf("youtube: drive folder manager not wired")
 	}
 	return s.driveFolderMgr.UploadFileIfChanged(ctx, localPath, folderID, filename)
 }
 
 func (s *Service) DriveGetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	if s.driveFolderMgr == nil {
+	if isUnavailablePort(s.driveFolderMgr) {
 		return "", fmt.Errorf("youtube: drive folder manager not wired")
 	}
 	return s.driveFolderMgr.GetOrCreateFolder(ctx, name, parentID)
 }
 
 func (s *Service) OllamaSimpleGenerate(ctx context.Context, model, prompt string, timeoutSec int, opts map[string]any) (string, error) {
-	if s.ollama == nil {
+	if isUnavailablePort(s.ollama) {
 		return "", fmt.Errorf("youtube: ollama port not wired")
 	}
 	return s.ollama.SimpleGenerate(ctx, model, prompt, time.Duration(timeoutSec)*time.Second, opts)
