@@ -21,6 +21,12 @@ jobs:
         go-version: '1.25.x'
         cache: true
 
+    - name: Verify Go toolchain contract
+      # Mirrors `make go-version-check` from the local dev workflow.
+      # Catches a host Go that drifted BELOW go.mod's `go` directive
+      # before `go mod download` prints misleading output.
+      run: make go-version-check
+
     - name: Install dependencies
       run: go mod download
 
@@ -100,6 +106,9 @@ jobs:
         go-version: '1.25.x'
         cache: true
 
+    - name: Verify Go toolchain contract
+      run: make go-version-check
+
     - name: Install golangci-lint
       uses: golangci/golangci-lint-action@v9
       with:
@@ -121,6 +130,9 @@ jobs:
         go-version: '1.25.x'
         cache: true
 
+    - name: Verify Go toolchain contract
+      run: make go-version-check
+
     - name: Install govulncheck
       run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.3
 
@@ -140,3 +152,28 @@ jobs:
       uses: gitleaks/gitleaks-action@v3
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-node-scraper:
+    name: Verify node-scraper installs cleanly on Node 22
+    # Mirrors the audit's recommendation: Dependabot already runs
+    # weekly against /node-scraper, so the runner's npm contract is
+    # exercised here too. `make node-version-check` is the single
+    # source-of-truth check against node-scraper/package.json's
+    # `engines.node` field, so the failure message in CI matches the
+    # one developers see locally.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify Node toolchain contract
+        run: make node-version-check
+
+      - name: Install node-scraper dependencies
+        working-directory: node-scraper
+        run: npm ci

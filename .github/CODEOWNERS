@@ -1,0 +1,17 @@
+# GitHub CODEOWNERS — pins reviewers on CI / automation config.
+#
+# This file alone does NOT block merges. Enable "Require review from
+# Code Owners" in a ruleset / branch protection to actually enforce.
+# Until that is set up at the org level, CODEOWNERS is purely advisory
+# (it still surfaces the reviewer badge on PRs, which is useful for
+# traceability).
+
+# Dependabot automation — high-impact file touching all five ecosystems
+# and the Monday auto-PR cadence. Any change here should be reviewed
+# before it lands.
+.github/dependabot.yml   @pierone
+
+# Workflows — both the canonical `ci.yml` and the read-only
+# `dependabot-reconcile.yml` live here. CI infra drift is hard to
+# roll back once it ships.
+.github/workflows/       @pierone

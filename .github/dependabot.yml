@@ -5,18 +5,26 @@ version: 2
 #
 # Hardening rationale (see commits f95a191 and the followups below):
 #   1. Major-version auto-bumps are BLOCKED across the board for the gomod
-#      ecosystem. They are still picked up by Dependabot's discovery but will
+#      ecosystem. They are still picked up by Dependabot's discovery but
 #      surface as ignored PRs with a clear "major-update-suppressed" marker,
 #      so a maintainer can file an E-prefixed manual PR (the same workflow
 #      used for E1/E2/E3). This prevents the first Monday auto-PR from
 #      accidentally pulling in gin v2 / validator v11 / oauth2 v1 / etc.
-#   2. Security advisories bypass the monthly minor+patch batch via a
-#      standalone `go-security` group that opens an immediate PR.
+#   2. Security advisories bypass the weekly minor+patch batch via a
+#      standalone `go-security` group whose `applies-to: security-updates`
+#      causes Dependabot to open an immediate standalone PR regardless
+#      of semver level. (v2 groups: `update-types` only accepts major /
+#      minor / patch; the security signal is expressed via
+#      `applies-to`, NOT `update-types: ["security"]`.)
 #   3. `versioning-strategy: increase` ensures Dependabot does NOT widen
 #      semver ranges (e.g. go.mod ^v1 → ^v2) when proposing updates.
-#   4. `allow: [dependency-type: direct]` keeps indirect transitive updates
-#      out of the auto-PR — the maintainer triages those during manual cycles.
-#   5. `open-pull-requests: 5` caps in-flight auto-PRs per ecosystem.
+#   4. Transitive (indirect) dependencies are scanned alongside direct
+#      ones so that downstream security advisories can surface as
+#      immediate PRs. Removing `allow: [dependency-type: direct]` was
+#      required to stop the audit's documented suppression risk.
+#   5. `open-pull-requests-limit: 5` caps in-flight auto-PRs per
+#      ecosystem (the v2 schema key — `open-pull-requests` is invalid
+#      and is silently ignored by GitHub).
 #   6. The yt-dlp Dockerfile ARG is explicitly ignored by the Docker
 #      ecosystem because we pin to a quarterly stable tag manually
 #      (see commit 62b605e for the 2024.08.06 -> 2025.03.20 bump).
@@ -29,17 +37,23 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
-    open-pull-requests: 5
+    open-pull-requests-limit: 5
     versioning-strategy: "increase"
-    allow:
-      - dependency-type: "direct"
     ignore:
-      # Catch-all: suppress every semver-major auto-bump.
+      # Catch-all: suppress every semver-major auto-bump, regardless
+      # of direct vs transitive. NOTE on processing order (v2 schema):
+      # `allow` → `ignore` → `groups`. The catch-all here therefore
+      # also filters out major-version SECURITY advisories (e.g. one
+      # that forces gin v2) — they never reach the `go-security`
+      # group. This is intentional: major bumps of any flavor are
+      # triaged manually via E-prefixed PRs (see E1/E2/E3 cycle). If
+      # you ever want auto-merge on security-driven majors, narrow
+      # this rule to specific dependency names instead of "*".
       - dependency-name: "*"
         update-types:
           - "version-update:semver-major"
-      # Explicit per-package ignores (provide a friendlier marker
-      # in the PR title when these eventually surface as ignored).
+      # Explicit per-package ignores (give a friendlier marker in
+      # the ignored-PR title when these eventually surface).
       - dependency-name: "github.com/gin-gonic/gin"
         update-types:
           - "version-update:semver-major"
@@ -66,11 +80,20 @@ updates:
           - "version-update:semver-major"
     groups:
       go-security:
+        # Security-only group. `applies-to: security-updates` makes
+        # Dependabot open an immediate standalone PR for any package
+        # affected by a GHSA, regardless of semver level. The previous
+        # form `update-types: ["security"]` was rejected by the v2
+        # schema because `update-types` only accepts major/minor/patch.
+        applies-to: "security-updates"
         patterns:
           - "*"
-        update-types:
-          - "security"
       go-minor-and-patch:
+        # Non-security version updates, grouped weekly. Explicit
+        # `applies-to: version-updates` is the default but stated
+        # here for clarity. Major bumps are suppressed upstream by
+        # the global `ignore` rule, so they never reach this group.
+        applies-to: "version-updates"
         patterns:
           - "*"
         update-types:
@@ -90,7 +113,7 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
-    open-pull-requests: 5
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "ci(actions)"
     labels:
@@ -105,7 +128,7 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
-    open-pull-requests: 5
+    open-pull-requests-limit: 5
     # yt-dlp release URL is manually pinned quarterly; suppress false-positive
     # updates from Dependabot's dockerfile parser.
     ignore:
@@ -124,7 +147,7 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
-    open-pull-requests: 5
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "deps(scraper)"
     labels:
