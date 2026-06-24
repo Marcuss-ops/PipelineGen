@@ -15,6 +15,14 @@
 //
 // Both sub-groups inherit Auth + RateLimit + WorkspaceScope from
 // the protected group mounted in routes.go.
+//
+// PR4-cleanup delta (June 24, 2026): NewModule signature dropped
+// the three concrete infrastructure deps (`*config.Config`,
+// `*drive.Uploader`, `*drivecleanup.Service`) and now relies on
+// the typed port surface (DoctorConfig + Reconciler + DriveAdminOps)
+// wired at the composition root by `internal/app/system_adapters.go`.
+// No more `internal/infrastructure/*` imports in the api/system
+// subtree (AGENTS.md Pattern 8).
 package system
 
 import (
@@ -22,15 +30,11 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // Module handles system diagnostic routes plus Drive admin ops.
 type Module struct {
 	name         string
-	cfg          *config.Config
 	log          *zap.Logger
 	handler      *SystemHandler
 	driveHandler *DriveHandler
@@ -38,26 +42,30 @@ type Module struct {
 
 // NewModule creates a new system module.
 //
-// driveUploader is optional; when nil, drive routes return 503 with
-// "drive uploader not configured". reconcileSvc is also optional; the
-// reconcile/cleanup routes return 503 when it is nil.
+// driveOps is optional; when nil, drive routes return 503 with
+// "drive uploader not configured". reconciler is also optional; the
+// reconcile/cleanup routes return 503 when it is nil. toolChecker /
+// processRunner / dbHealthChecker feed only SystemHandler (the /doctor
+// route) and are themselves application-layer ports.
 func NewModule(
-	cfg *config.Config,
+	cfg DoctorConfig,
 	log *zap.Logger,
 	toolChecker appassets.ToolChecker,
 	processRunner appassets.ProcessRunner,
 	dbHealthChecker appassets.DBHealthChecker,
-	driveUploader *drive.Uploader,
-	reconcileSvc *drivecleanup.Service,
+	driveOps DriveAdminOps,
+	reconciler Reconciler,
 ) *Module {
 	return &Module{
 		name: "system",
-		cfg:  cfg,
 		log:  log,
-		handler: NewSystemHandler(cfg, log, toolChecker, processRunner, dbHealthChecker),
+		handler: NewSystemHandler(
+			cfg, log,
+			toolChecker, processRunner, dbHealthChecker,
+		),
 		driveHandler: NewDriveHandler(
-			reconcileSvc,
-			driveUploader,
+			reconciler,
+			driveOps,
 		),
 	}
 }
