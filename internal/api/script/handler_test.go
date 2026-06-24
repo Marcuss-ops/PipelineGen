@@ -62,33 +62,6 @@ func (f *fakeJobsService) Enqueue(ctx context.Context, req *job.EnqueueRequest) 
 	return &job.Job{ID: f.nextJobID, Status: job.StatusQueued, Type: req.Type}, nil
 }
 
-// fakeJobService satisfies job.Service for handler tests. Only Enqueue is
-// exercised by the routes exercised in this file (Curate / GenerateFromCatalog
-// + a couple of route-compatibility probes), so the other 6 methods are
-// minimum-fidelity stubs. Replace this whole struct with a shared
-// `internal/<x>/testfakes` once a second consumer appears.
-type fakeJobService struct {
-	fake *fakeJobEnqueuer
-}
-
-func (f *fakeJobService) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
-	return f.fake.Enqueue(ctx, req)
-}
-func (f *fakeJobService) Get(_ context.Context, _ string) (*job.Job, error) { return nil, nil }
-func (f *fakeJobService) Cancel(_ context.Context, _ string) error {
-	return errors.New("test: cancel not wired")
-}
-func (f *fakeJobService) List(_ context.Context, _ job.Filter) ([]job.Job, error) { return nil, nil }
-func (f *fakeJobService) IsTerminal(status job.Status) bool                       { return status.IsTerminal() }
-func (f *fakeJobService) RegisterHandler(_ string, _ any) error                   { return nil }
-func (f *fakeJobService) ListEvents(_ context.Context, _ string) ([]job.Event, error) {
-	return nil, nil
-}
-
-func newTestJobsService(t *testing.T) (job.Service, *fakeJobEnqueuer) {
-	t.Helper()
-	fake := &fakeJobEnqueuer{t: t}
-	return &fakeJobService{fake: fake}, fake
 func (f *fakeJobsService) Get(ctx context.Context, id string) (*job.Job, error) {
 	return nil, errors.New("fakeJobsService: Get not implemented")
 }
