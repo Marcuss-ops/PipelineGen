@@ -97,7 +97,10 @@ internal/api/server.go
 internal/api/script/flow.go
 internal/api/script/handler_flow.go
 internal/api/script/handler_jobs.go
-internal/api/script/helpers.go
+# Agente 4 (June 2026): helpers.go no longer imports internal/infrastructure
+# (config dep was moved to the composition root). The Check 19 hard-fail
+# gate now enforces a clean transport for this file.
+# internal/api/script/helpers.go  ← removed from allowlist
 
 # ── Wave 14 grandfathered: api/system handlers (PR4) ───────────────────────
 internal/api/system/handler.go

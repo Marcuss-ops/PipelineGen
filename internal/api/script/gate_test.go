@@ -38,9 +38,12 @@ var prohibitedPatterns = []prohibition{
 func TestStaticGate_NoConcreteInfrastructureInTransport(t *testing.T) {
 	t.Parallel()
 
-	t.Skip("goal test — violations will be resolved incrementally as Agente 4 refactoring completes. See comments in handler_flow.go, handler_jobs.go, helpers.go.")
-
-	_ = prohibitedPatterns
+	// Agente 4 (June 2026): this static gate is now active. It walks the
+	// api/script package and fails hard on any prohibited substring (see
+	// prohibitedPatterns below). The list is intentionally conservative —
+	// every entry corresponds to a known coupling that Wave 14 removes.
+	// Add new entries intentionally; gate failures should drive PRs, not
+	// be silenced by allowlist expansion.
 
 	root := "."
 	violations := 0

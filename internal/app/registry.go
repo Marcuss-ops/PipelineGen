@@ -295,7 +295,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		log.Info("MediaIngest module wired (service pre-built via BuildDomainBundle, no late-binding needed)")
 	}
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
-		registerModule(registry, log, scriptapi.NewScriptHistoryModule(cfg, log, scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log)))
+		registerModule(registry, log, scriptapi.NewScriptHistoryModule(
+			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
+			log,
+			middleware.ScriptClipsEnabled(cfg),
+			cfg.Features.ScriptClipsEnabled,
+		))
 	}
 	registerModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility))
 

@@ -1,20 +1,14 @@
 // Package script (api/script) — helpers.go carrying the cross-cutting
 // helpers shared across the script-flow transport: post-write context,
-// metadata builders, the CurationJob/CatalogJob service interfaces,
-// and the embedded script-history HTTP transport.
+// the CurationJob/CatalogJob service interfaces, and the embedded
+// script-history HTTP transport.
 //
-// PR3 (June 2026): this file consolidates four prior files:
-//
-//   postwrite.go               (withPostWriteContext — survives client disconnect)
-//   handler_metadata.go        (BuildMetadataLanguages, GenerateVideoMetadata)
-//   interfaces.go              (CurationJobService + CatalogJobService)
-//   script_history_handler.go  (GET /api/scripts/{, /:id})
-//   module_scripthistory.go    (ScriptHistoryModule)
-//
-// The script-history module is mounted on /scripts (sibling of /script)
-// with its own admin-gated middleware. Both handler and module are
-// co-located here because they share ScriptHistoryHandler as a receiver
-// and the module is essentially a 30-line wiring shim.
+// Agente 4 (June 2026): this file consolidates prior legacy files.
+// Wave 14 (API compaction) means the script-history module is wired
+// by the composition root with feature flags and a prebuilt feature
+// guard, so this transport file has no concrete configuration imports.
+// Forwarding type aliases for application-side services were deleted:
+// callers in flow.go / handler_flow.go use scripts.* directly.
 package script
 
 import (
@@ -23,11 +17,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job" // alias JobEnqueueService
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 
 	"github.com/gin-gonic/gin"
@@ -58,21 +50,18 @@ func withPostWriteContext(parent context.Context, log *zap.Logger, op string) (c
 	return contextutil.PostWriteContext(parent, log, op, postWriteTimeout)
 }
 
-// ── Metadata helpers → now in application/scripts/metadata.go ──────────────
+// ── Post-gen metadata helpers ───────────────────────────────────────────────
 //
-// Agente 4 — F (June 2026): BuildMetadataLanguages and GenerateVideoMetadata
-// moved to internal/application/scripts/metadata.go. PostGenUseCase calls
-// them directly from the same package. VideoMetadata is re-exported as a
-// type alias for back-compat.
+// Agente 4 (June 2026): post-gen metadata builders live in the
+// application/scripts package. PostGenUseCase calls them directly
+// from its own package; this transport no longer re-exports them.
 
-// ── Job service interfaces ──────────────────────────────────────────────────
+// ── Job service interfaces (port-only contracts) ────────────────────────────
 //
 // CurationJobService and CatalogJobService are the narrow ports the
 // ScriptFlowHandler binds to via ScriptFlowDeps.{Curation,Catalog}JobService.
-// They are NOT instantiated by WireRegistry today (both fields are nil in
-// PR4.E June 2026 — see AGENTS.md), but the types are kept so the future
-// wiring (background script.curate / script.generate_from_catalog jobs)
-// can drop them in without API churn.
+// They are satisfied by implementations under
+// internal/application/scripts/ (see corresponding JobService impl files).
 
 // CurationJobService handles background curation jobs (script.curate).
 type CurationJobService interface {
@@ -228,61 +217,44 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 	})
 }
 
-// ── ClipServices bundle (back-compat type aliases — PR2 extraction) ──────
-//
-// PR2 (June 2026): ClipServices and its 7 narrow port interfaces have been
-// extracted to internal/application/scripts/clip_services.go. The API layer
-// re-exports them as type aliases for zero-churn back-compat. New code should
-// import from internal/application/scripts/ directly.
-
-// ClipSearchService narrows realtime.MatchAsset search.
-type ClipSearchService = scripts.ClipSearchService
-
-// AssociationService narrows association.CandidatesRequest building.
-type AssociationService = scripts.AssociationService
-
-// DriveCheckService narrows drive.Uploader.FileIsNotTrashed.
-type DriveCheckService = scripts.DriveCheckService
-
-// ImageSearchService narrows images.Service ingest + generation.
-type ImageSearchService = scripts.ImageSearchService
-
-// TextTranslationService narrows ollama.Generator.TranslateTextWithModel.
-type TextTranslationService = scripts.TextTranslationService
-
-// JobEnqueueService narrows job.Service.Enqueue.
-type JobEnqueueService = scripts.JobEnqueueService
-
-// HarvestService narrows AutoHarvestService.EnqueueHarvest.
-type HarvestService = scripts.HarvestService
-
-// VoiceoverService narrows voiceover.Service.GenerateWithDestination.
-type VoiceoverService = scripts.VoiceoverService
-
-// ClipServices bundles all service dependencies for standalone clip-related
-// functions. Back-compat alias for scripts.ClipServices.
-type ClipServices = scripts.ClipServices
-
 // ── Script-history module + handler ────────────────────────────────────────
+//
+// Agente 4 (June 2026): ScriptHistoryModule no longer takes the dense
+// application config struct. Composition root injects:
+//
+//   - the handler (always)
+//   - the logger (always)
+//   - a prebuilt feature_guard middleware (always; may be a no-op
+//     gin.HandlerFunc if the caller skips the guard)
+//   - an enabled flag reflecting the feature-flag decision
+//
+// This keeps zero configuration reach-through into the transport layer.
 
 // ScriptHistoryModule is a registrable module for Script History functionality.
 // Mounted on the /scripts prefix (sibling of /script).
 type ScriptHistoryModule struct {
-	cfg     *config.Config
-	log     *zap.Logger
-	handler *ScriptHistoryHandler
+	enabled      bool
+	log          *zap.Logger
+	handler      *ScriptHistoryHandler
+	featureGuard gin.HandlerFunc
 }
 
 // NewScriptHistoryModule creates a new ScriptHistory module.
+//
+// enabled reflects the resolved feature-flag value at composition time.
+// featureGuard is the prebuilt route middleware (may be nil for tests or
+// when the composition root has already enforced the flag decision).
 func NewScriptHistoryModule(
-	cfg *config.Config,
-	log *zap.Logger,
 	handler *ScriptHistoryHandler,
+	log *zap.Logger,
+	featureGuard gin.HandlerFunc,
+	enabled bool,
 ) *ScriptHistoryModule {
 	return &ScriptHistoryModule{
-		cfg:     cfg,
-		log:     log,
-		handler: handler,
+		handler:      handler,
+		log:          log,
+		featureGuard: featureGuard,
+		enabled:      enabled,
 	}
 }
 
@@ -292,18 +264,25 @@ func (m *ScriptHistoryModule) Name() string {
 }
 
 // Enabled checks if this module is enabled.
+// Composition root passes the resolved feature-flag value at construction
+// time so no live configuration lookup is required here.
 func (m *ScriptHistoryModule) Enabled() bool {
-	return m.cfg.Features.ScriptClipsEnabled
+	return m.enabled
 }
 
-// RegisterRoutes registers the module's routes.
+// RegisterRoutes registers the module's routes. The feature guard (when
+// non-nil) is applied to the /scripts sub-group.
 func (m *ScriptHistoryModule) RegisterRoutes(rg *gin.RouterGroup) {
 	if m.handler == nil {
-		m.log.Warn("script history handler is nil, skipping route registration")
+		if m.log != nil {
+			m.log.Warn("script history handler is nil, skipping route registration")
+		}
 		return
 	}
 
 	group := rg.Group("/scripts")
-	group.Use(middleware.ScriptClipsEnabled(m.cfg))
+	if m.featureGuard != nil {
+		group.Use(m.featureGuard)
+	}
 	m.handler.RegisterRoutes(group)
 }

@@ -57,7 +57,7 @@ type ScriptFlowHandler struct {
 	generateBatch      *scripts.GenerateBatchUseCase
 	cacheEviction      *scripts.CacheEvictionUseCase
 	insightBuilder     *ScriptInsightBuilder
-	clipServices       ClipServices
+	clipServices       scripts.ClipServices
 	driveFolderClient  DriveFolderClient
 	documentCreator    DocumentCreator
 	jobsSvc            *jobservice.Service
@@ -106,7 +106,7 @@ type ScriptFlowDeps struct {
 	DriveFolderClient     DriveFolderClient
 	DocumentCreator       DocumentCreator
 	DriveScriptsGenFolder string
-	ClipServices          ClipServices   // pre-built in wire_script.go
+	ClipServices          scripts.ClipServices   // pre-built in wire_script.go
 	Log                   *zap.Logger
 }
 
@@ -185,10 +185,10 @@ func (h *ScriptFlowHandler) registerJobRoutes(r *gin.RouterGroup) {
 }
 
 // RequireAdminToken wraps middleware.RequireAdminToken accepting the local
-// AdminTokenProvider interface instead of concrete *config.Config.
+// AdminTokenProvider interface instead of the dense configuration struct.
 func RequireAdminToken(cfg AdminTokenProvider) gin.HandlerFunc {
 	// Delegate to the canonical middleware via an adapter that bridges
-	// AdminTokenProvider → *config.Config fields.
+	// AdminTokenProvider → adapter fields.
 	return func(c *gin.Context) {
 		if cfg == nil || !cfg.EnableAuth() {
 			c.Set("is_admin", true)
