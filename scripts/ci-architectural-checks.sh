@@ -429,11 +429,9 @@ echo ""
 # removals below the baseline are encouraged and the baseline can be
 # shrunk by followup migration PRs that port a file off database/sql.
 #
-# IMPORTANT: per the user's mandate (June 2026), this gate replaces
-# the historical `scripts/archcheck/baseline.json` (deleted in
-# codex/dir-strict-gates as a "ratchet excuse"). The baseline now
-# lives inside this script so it is revision-controlled and visible
-# inline — no JSON sidecar.
+# IMPORTANT: per the user's mandate (June 2026), this gate replaces the
+# historical JSON ratchet excuse. The database/sql baseline now lives
+# inside this script so it is revision-controlled and visible inline.
 echo ""
 echo "Check 17: database/sql import in api/app/domain (zero NEW violations)"
 LEGACY_DB_SQL_FILES=$(
@@ -755,16 +753,16 @@ if [ -n "${HITS}" ]; then
 fi
 echo "  OK: no retired-package imports in cmd/admin/ production code"
 
-# ── Check 21: migration.yaml verified_zero policy (HARD-FAIL, evidence-based, ci/archcheck-hard-fail) ────
+# ── Check 21: focused architecture gate (HARD-FAIL, evidence-based) ────
 echo ""
-echo "Check 21: migration.yaml verified_zero policy (HARD-FAIL, evidence-based)"
+echo "Check 21: focused architecture gate (HARD-FAIL, evidence-based)"
 # POLICY (commit ci/archcheck-hard-fail, June 2026):
 #   * Promoted from yq/python-regex fallback to evidence-based.
 #   * Single source of truth: `go run ./scripts/archcheck` produces a
-#     JSON snapshot with `verified_zero: boolean`. We assert via `jq -e`
+#     JSON snapshot with `focused_gate_passed: boolean`. We assert via `jq -e`
 #     so the JSON shape (NOT the exit code) is the contract.
 #   * Fail-closed: if the script cannot run, or jq fails to parse, or
-#     `verified_zero != true`, this check exits 1.
+#     `focused_gate_passed != true`, this check exits 1.
 #   * Legacy parser (yq OR python heredoc) REMOVED in this commit. The
 #     JSON contract is the single point of truth; new policies added in
 #     scripts/archcheck automatically extend the gate without CI edits.
@@ -781,7 +779,7 @@ if [ -z "$ARCHCHECK_OUT" ]; then
     exit 1
 fi
 rm -f "$ARCHCHECK_STDERR"
-if ! echo "$ARCHCHECK_OUT" | jq -e '.verified_zero == true' >/dev/null 2>&1; then
+if ! echo "$ARCHCHECK_OUT" | jq -e '.focused_gate_passed == true' >/dev/null 2>&1; then
     echo "FAIL: archcheck evidence check failed"
     echo "$ARCHCHECK_OUT" | jq . 2>/dev/null || echo "$ARCHCHECK_OUT"
     echo ""
@@ -791,7 +789,7 @@ if ! echo "$ARCHCHECK_OUT" | jq -e '.verified_zero == true' >/dev/null 2>&1; the
     echo "to \`status: in_progress\` until the gate can pass."
     exit 1
 fi
-echo "  OK: archcheck evidence holds (verified_zero: true)"
+echo "  OK: archcheck focused gate passed"
 echo "$ARCHCHECK_OUT" | jq -c '{mode, commit, checks, violations_count: (.violations | length)}'
 
 echo ""

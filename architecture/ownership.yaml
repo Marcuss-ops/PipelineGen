@@ -216,13 +216,13 @@ canonical_services:
     location: internal/app/wire_script.go
   - service: ImageService
     constructor: initImageService
-    location: internal/app/dependencies.go
+    location: internal/app/compose_images.go
   - service: VoiceoverService
     constructor: initVoiceoverService
-    location: internal/app/dependencies.go
+    location: internal/app/compose_voiceover.go
   - service: BooksService
     constructor: initBooksService
-    location: internal/app/dependencies.go
+    location: internal/app/compose_content.go
   - service: VectorStore (Qdrant)
     constructor: NewService
     location: internal/app/composition.go::BuildProcessBundle
@@ -411,10 +411,15 @@ application_voiceover:
   owner: internal/application/voiceover
   target_subdirs: [voiceover/service, voiceover/sync]
 
-application_content:
-  owner: internal/application/content
+application_books:
+  owner: internal/application/books
   rationale: Books + lessons; produces Markdown/PDF deliverables.
-  target_subdirs: [content/books, content/lessons]
+  target_subdirs: [books]
+
+application_lessons:
+  owner: internal/application/lessons
+  rationale: Lesson generation; produces Markdown/PDF deliverables.
+  target_subdirs: [lessons]
 
 # ── Infrastructure (adapters to external systems) ────────────────────────────
 

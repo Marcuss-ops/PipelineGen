@@ -1,46 +1,50 @@
 // scripts/archcheck — focused-mode architectural gate (commit ci/archcheck-hard-fail).
 //
 // Produces a JSON snapshot consumed by `scripts/ci-architectural-checks.sh::Check 21`
-// via `jq -e '.verified_zero == true'`. The script owns the canonical definition
-// of "verified zero" for the codebase policies that have been promoted to hard
-// fail. Future migrations may add new focused checks here without changing the
-// CI script — the JSON shape is the contract.
+// via `jq -e '.focused_gate_passed == true'`. The script owns the canonical
+// focused gate for codebase policies that have been promoted to hard fail.
+// Future migrations may add new focused checks here without changing the CI
+// script — the JSON shape is the contract.
 //
 // POLICY (commit ci/archcheck-hard-fail, June 2026):
 //
-//   * Focused-mode (this binary): validates the policies that have been
+//   - Focused-mode (this binary): validates the policies that have been
 //     promoted to hard-fail evidence-based:
-//       - Forbidden infrastructure imports in internal/api/ (Check 19 promotion)
-//       - migration.yaml structural integrity: every `status: done` wave
-//         carries `verified_zero: true` (Check 21 promotion)
-//     If all focused checks pass, emits `{"verified_zero": true, ...}`.
 //
-//   * Allowlist symmetry: the Go binary applies the SAME allowlist
+//   - Forbidden infrastructure imports in internal/api/ (Check 19 promotion)
+//
+//   - migration.yaml structural integrity: every `status: done` wave
+//     carries `verified_zero: true` (Check 21 promotion)
+//     If all focused checks pass, emits `{"focused_gate_passed": true, ...}`.
+//
+//   - Allowlist symmetry: the Go binary applies the SAME allowlist
 //     subtraction rule that bash Check 19 uses (comm -13 against
 //     docs/migrations/api-infrastructure-imports-allowlist.txt) so both
 //     gates produce identical verdicts.
 //
-//   * Hard-fail semantics: any non-zero violations or missing
-//     verified_zero on done waves flips `verified_zero: false` in the
-//     output. Check 21 then fails the CI with `jq -e` assertion.
+//   - Hard-fail semantics: any non-zero violations or missing
+//     verified_zero on done waves flips `focused_gate_passed: false` in
+//     the output. Check 21 then fails the CI with `jq -e` assertion.
 //
-//   * Comprehensive-mode (Wave 16 target_metrics): NOT implemented here.
+//   - Comprehensive-mode (Wave 16 target_metrics): NOT implemented here.
 //     Wave 16 status remains `in_progress` until comprehensive mode
 //     lands in a followup commit (per migration.yaml's own roadmap).
 //
 // OUTPUT (JSON to stdout):
 //
-//   {
-//     "verified_zero": true,
-//     "mode": "focused",
-//     "commit": "ci/archcheck-hard-fail",
-//     "checks": {
-//       "api_infrastructure_imports": 0,
-//       "migration_yaml_done_waves_total": 15,
-//       "migration_yaml_done_waves_with_verified_zero_true": 15
-//     },
-//     "violations": []
-//   }
+//	{
+//	  "focused_gate_passed": true,
+//	  "mode": "focused",
+//	  "commit": "ci/archcheck-hard-fail",
+//	  "checks": {
+//	    "api_infrastructure_imports": 0,
+//	    "api_infrastructure_allowlist_stale": 0,
+//	    "migration_yaml_done_waves_total": 15,
+//	    "migration_yaml_done_waves_with_verified_zero_true": 15,
+//	    "ownership_yaml_missing_paths": 0
+//	  },
+//	  "violations": []
+//	}
 package main
 
 import (
@@ -48,6 +52,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -64,9 +69,9 @@ func main() {
 	}
 
 	// Exit code is for local pre-commit use. CI consumes stdout via
-	// `jq -e '.verified_zero == true'` so the JSON shape remains the
-	// contract (allows new fields without changing CI).
-	if !report.VerifiedZero {
+	// `jq -e '.focused_gate_passed == true'` so the JSON shape remains
+	// the contract (allows new fields without changing CI).
+	if !report.FocusedGatePassed {
 		os.Exit(1)
 	}
 }
@@ -74,24 +79,28 @@ func main() {
 // Report is the JSON contract for `scripts/archcheck` consumers.
 // Keep field tags stable — they are the interface to Check 21.
 type Report struct {
-	VerifiedZero bool          `json:"verified_zero"`
-	Mode         string        `json:"mode"`
-	Commit       string        `json:"commit"`
-	Checks       map[string]int `json:"checks"`
-	Violations   []string      `json:"violations"`
+	FocusedGatePassed bool           `json:"focused_gate_passed"`
+	Mode              string         `json:"mode"`
+	Commit            string         `json:"commit"`
+	Checks            map[string]int `json:"checks"`
+	Violations        []string       `json:"violations"`
 }
 
 // runFocusedChecks runs every focused check and aggregates the verdict.
-// A violation in ANY focused check flips verified_zero to false. The CI
-// gate is fail-CLOSED: each exposed path must hold.
+// A violation in ANY focused check flips focused_gate_passed to false. The
+// CI gate is fail-CLOSED: each exposed path must hold.
 func runFocusedChecks() Report {
 	checks := map[string]int{}
 	violations := []string{}
 
 	// Focused check #1: forbidden infrastructure imports in internal/api/
 	// (promoted from soft-log to hard-fail by Check 19 in this commit).
-	apiViolCount, apiViolations := checkAPIInfrastructureImports()
+	apiStats, apiViolations := checkAPIInfrastructureImports()
+	apiViolCount := apiStats["violations"]
 	checks["api_infrastructure_imports"] = apiViolCount
+	checks["api_infrastructure_imports_actual"] = apiStats["actual"]
+	checks["api_infrastructure_imports_allowed"] = apiStats["allowed"]
+	checks["api_infrastructure_allowlist_stale"] = apiStats["stale"]
 	violations = append(violations, apiViolations...)
 
 	// Focused check #2: migration.yaml structural integrity — every
@@ -101,12 +110,16 @@ func runFocusedChecks() Report {
 	checks["migration_yaml_done_waves_with_verified_zero_true"] = yamlVerifiedOK
 	violations = append(violations, yamlViolations...)
 
+	ownershipMissing, ownershipViolations := checkOwnershipYAML()
+	checks["ownership_yaml_missing_paths"] = ownershipMissing
+	violations = append(violations, ownershipViolations...)
+
 	return Report{
-		VerifiedZero: len(violations) == 0,
-		Mode:         "focused",
-		Commit:       "ci/archcheck-hard-fail",
-		Checks:       checks,
-		Violations:   violations,
+		FocusedGatePassed: len(violations) == 0,
+		Mode:              "focused",
+		Commit:            "ci/archcheck-hard-fail",
+		Checks:            checks,
+		Violations:        violations,
 	}
 }
 
@@ -115,25 +128,58 @@ func runFocusedChecks() Report {
 // `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/`. Applies
 // the same allowlist subtraction that bash Check 19 uses so the Go
 // binary's verdict matches the bash gate's verdict exactly.
-func checkAPIInfrastructureImports() (int, []string) {
-	out, err := exec.Command("bash", "-c",
-		`grep -rln 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure/' internal/api/ --include='*.go' 2>/dev/null | grep -v '_test.go' | sort -u || true`,
+func checkAPIInfrastructureImports() (map[string]int, []string) {
+	stats := map[string]int{
+		"actual":     0,
+		"allowed":    0,
+		"stale":      0,
+		"violations": 0,
+	}
+	out, err := exec.Command("rg", "-l",
+		`github\.com/Marcuss-ops/PipelineGen/internal/infrastructure/`,
+		"internal/api",
+		"--glob", "*.go",
+		"--glob", "!*_test.go",
 	).Output()
 	if err != nil {
-		return -1, []string{fmt.Sprintf("checkAPIInfrastructureImports: grep failed: %v", err)}
+		if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+			actual := []string{}
+			allowlist, allowErr := loadAllowlist("docs/migrations/api-infrastructure-imports-allowlist.txt")
+			if allowErr != nil {
+				return stats, []string{fmt.Sprintf("checkAPIInfrastructureImports: load allowlist: %v", allowErr)}
+			}
+			staleAllowlist := subtractSet(allowlist, actual)
+			stats["allowed"] = len(allowlist)
+			stats["stale"] = len(staleAllowlist)
+			stats["violations"] = len(staleAllowlist)
+			var violations []string
+			for _, stale := range staleAllowlist {
+				violations = append(violations, "stale allowlist entry with no matching API infrastructure import: "+stale)
+			}
+			return stats, violations
+		}
+		stats["violations"] = -1
+		return stats, []string{fmt.Sprintf("checkAPIInfrastructureImports: rg failed: %v", err)}
 	}
-	actual := splitNonEmpty(string(out))
-	if len(actual) == 0 {
-		return 0, nil
-	}
+	actual := normalizePaths(splitNonEmpty(string(out)))
 
 	allowlist, err := loadAllowlist("docs/migrations/api-infrastructure-imports-allowlist.txt")
 	if err != nil {
-		return -1, []string{fmt.Sprintf("checkAPIInfrastructureImports: load allowlist: %v", err)}
+		stats["violations"] = -1
+		return stats, []string{fmt.Sprintf("checkAPIInfrastructureImports: load allowlist: %v", err)}
 	}
 
+	staleAllowlist := subtractSet(allowlist, actual)
 	violations := subtractSet(actual, allowlist)
-	return len(violations), violations
+	for _, stale := range staleAllowlist {
+		violations = append(violations, "stale allowlist entry with no matching API infrastructure import: "+stale)
+	}
+	sort.Strings(violations)
+	stats["actual"] = len(actual)
+	stats["allowed"] = len(allowlist)
+	stats["stale"] = len(staleAllowlist)
+	stats["violations"] = len(violations)
+	return stats, violations
 }
 
 // loadAllowlist reads an allowlist file (one repo-root-relative path per
@@ -155,7 +201,7 @@ func loadAllowlist(path string) ([]string, error) {
 		out = append(out, trimmed)
 	}
 	sort.Strings(out)
-	return out, nil
+	return normalizePaths(out), nil
 }
 
 // splitNonEmpty splits a newline-delimited string into non-empty trimmed
@@ -167,6 +213,21 @@ func splitNonEmpty(s string) []string {
 		if t != "" {
 			out = append(out, t)
 		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normalizePaths(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	var out []string
+	for _, p := range paths {
+		norm := filepath.ToSlash(strings.TrimSpace(p))
+		if norm == "" || seen[norm] {
+			continue
+		}
+		seen[norm] = true
+		out = append(out, norm)
 	}
 	sort.Strings(out)
 	return out
@@ -226,13 +287,7 @@ func scanYAML(raw string) (int, []string) {
 		doneTotal  int
 		violations []string
 	)
-	for _, b := range strings.Split(raw, "\n- id:") {
-		// First split chunk is the preamble (file header BEFORE any
-		// wave). Skip it — it doesn't contain a wave.
-		if !strings.HasPrefix(b, "- id:") {
-			continue
-		}
-
+	for _, b := range topLevelWaveBlocks(raw) {
 		var idv, status, verified string
 		for _, line := range strings.Split(b, "\n") {
 			// Subwave break-out: as soon as the parent id is captured,
@@ -276,4 +331,75 @@ func scanYAML(raw string) (int, []string) {
 	}
 	sort.Strings(violations)
 	return doneTotal, violations
+}
+
+func topLevelWaveBlocks(raw string) []string {
+	var blocks []string
+	var current strings.Builder
+	inBlock := false
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.HasPrefix(line, "- id:") {
+			if inBlock {
+				blocks = append(blocks, current.String())
+				current.Reset()
+			}
+			inBlock = true
+		}
+		if inBlock {
+			current.WriteString(line)
+			current.WriteString("\n")
+		}
+	}
+	if inBlock {
+		blocks = append(blocks, current.String())
+	}
+	return blocks
+}
+
+var ownershipPathPattern = regexp.MustCompile(`(?m)^\s+(?:owner|location):\s+([^#\n]+)`)
+
+func checkOwnershipYAML() (int, []string) {
+	const path = "architecture/ownership.yaml"
+	text, err := os.ReadFile(path)
+	if err != nil {
+		return -1, []string{fmt.Sprintf("checkOwnershipYAML: read %s: %v", path, err)}
+	}
+	var violations []string
+	for _, match := range ownershipPathPattern.FindAllStringSubmatch(string(text), -1) {
+		ref := strings.TrimSpace(match[1])
+		ref = strings.Trim(ref, `"'`)
+		if ref == "" || strings.HasPrefix(ref, "/") {
+			continue
+		}
+		for _, part := range strings.Split(ref, " + ") {
+			checkOwnershipRef(strings.TrimSpace(part), &violations)
+		}
+	}
+	sort.Strings(violations)
+	return len(violations), violations
+}
+
+func checkOwnershipRef(ref string, violations *[]string) {
+	ref = strings.TrimSpace(strings.Trim(ref, `"'`))
+	if ref == "" {
+		return
+	}
+	if strings.Contains(ref, " ") && !strings.Contains(ref, "::") {
+		return
+	}
+	if strings.Contains(ref, "(") || strings.Contains(ref, "{") || strings.Contains(ref, "[") {
+		return
+	}
+	candidate := strings.SplitN(ref, "::", 2)[0]
+	candidate = strings.TrimSuffix(candidate, "/")
+	candidate = filepath.FromSlash(candidate)
+	if candidate == "" {
+		return
+	}
+	if strings.HasPrefix(filepath.ToSlash(candidate), "heyavatar/") {
+		return
+	}
+	if _, err := os.Stat(candidate); err != nil {
+		*violations = append(*violations, fmt.Sprintf("ownership.yaml references missing path: %s", ref))
+	}
 }

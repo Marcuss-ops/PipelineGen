@@ -428,8 +428,9 @@ sezione corrispondente di migration.yaml per audit di avanzamento.
 **Truth sources** (in ordine di autorità):
 1. `architecture/migration.yaml` — stato canonico per wave + exit-gate.
 2. `architecture/ownership.yaml` — chi possiede ogni package canonico.
-3. `scripts/archcheck/baseline.json` — snapshot ratchet (directory,
-   alias, wrapper) rigenerabile con `go run ./scripts/archcheck -update`.
+3. `scripts/archcheck/grandfathered_allowlist.json` — ratchet canonico
+   monotone-decreasing per le violazioni grand-parented; `go run
+   ./scripts/archcheck` espone il focused gate corrente.
 
 Se i tre layer sopra raccontano versioni diverse della stessa realtà,
 vince (1) ma è necessario aprire una PR di sincronizzazione come
