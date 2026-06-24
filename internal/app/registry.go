@@ -35,9 +35,11 @@ import (
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
@@ -57,7 +59,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 // RegistryWiring holds the registry and all wired modules.
@@ -398,13 +399,6 @@ func (d *DriveDestinations) RootFolder() string    { return d.MediaRoot }
 func (d *DriveDestinations) ImagesFolder() string  { return d.imagesFolder }
 func (d *DriveDestinations) VideoAIFolder() string { return d.videoAIFolder }
 
-func resolveRuntimeDestinations(ctx context.Context, db *sql.DB, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) *DriveDestinations {
-	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), VideoAIRoot: cfg.Drive.VideoAIRootFolder, SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder(), videoAIFolder: cfg.Drive.VideoAIFolder()}
-}
-
-func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
-	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), VideoAIRoot: cfg.Drive.VideoAIRootFolder, SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder(), videoAIFolder: cfg.Drive.VideoAIFolder()}
-}
 
 func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
@@ -529,7 +523,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 		// 3. SceneBuilderUseCase — pure factory wrapping NewScenesService.
 		scenesUC = scripts.NewSceneBuilderUseCase(
-			prewarmSvc,
+			prewarmSvc.(*imgservice.Service),
 			root.Domains.VoiceoverService,
 			log, cfg,
 			nil, // resolveFolder is captured into PipelineUseCase by composition root
@@ -602,7 +596,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			root.AI.ScriptGen,
 			postGenMetaModel,
 			scriptapi.BuildMetadataLanguages, // api/script function-port dep
-			scriptapi.GenerateVideoMetadata,  // api/script function-port dep
+			func(ctx context.Context, g *ollama.Generator, title string, langs []string, model string) []scripts.VideoMetadata {
+				apiMeta := scriptapi.GenerateVideoMetadata(ctx, g, title, langs, model)
+				out := make([]scripts.VideoMetadata, len(apiMeta))
+				for i, m := range apiMeta {
+					out[i] = scripts.VideoMetadata{Language: m.Language, Title: m.Title, Description: m.Description, Tags: m.Tags}
+				}
+				return out
+			},
 			log,
 		)
 		// Closure adapter: scripts.NewPipeline expects a
