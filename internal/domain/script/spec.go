@@ -9,9 +9,12 @@
 // FromClipsCommand, jobPayloadUnified, and map[string]any.
 package script
 
-// JobTypeGenerateFromClips is the canonical job type string for the
-// unified script generation pipeline.
-const JobTypeGenerateFromClips = "script.generate_from_clips"
+// (Removed June 2026, Wave 5 PR3) JobTypeGenerateFromClips was a duplicate
+// of job.TypeClipScriptGenerate in internal/domain/job/job.go. The job
+// broker is the canonical owner of job-type strings per
+// architecture/ownership.yaml; route all dispatch through
+//   job.TypeClipScriptGenerate
+// (which holds the value "script.generate_from_clips").
 
 // GenerationSpec is the canonical payload for script generation.
 // It contains every field the worker needs to execute the generation
