@@ -159,7 +159,7 @@ func (a *searchProviderAdapter) Search(ctx context.Context, req appsearch.Search
 
 // searchVectorAdapter combines the embedder and vector store into search.VectorSearchPort.
 type searchVectorAdapter struct {
-	embedder   appsearch.VectorStorePort
+	embedder    appsearch.VectorStorePort
 	realtimeSvc interface{} // was *realtime.Service (package removed)
 }
 

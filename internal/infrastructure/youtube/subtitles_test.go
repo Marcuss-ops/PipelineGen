@@ -39,14 +39,14 @@ func writeVTTFixture(t *testing.T, name, body string) string {
 
 func TestParseVTTFile_AllCues_WhenWindowIsZero(t *testing.T) {
 	p := writeVTTFixture(t, "rolling.vtt", rollingVTTFixture)
-	got, err := parseVTTFile(p, 0, 0)
+	got, err := ParseVTTFile(p, 0, 0)
 	require.NoError(t, err)
 	assert.NotEmpty(t, got)
 }
 
 func TestParseVTTFile_WindowFilter(t *testing.T) {
 	p := writeVTTFixture(t, "rolling.vtt", rollingVTTFixture)
-	got, err := parseVTTFile(p, 5.5, 9.0)
+	got, err := ParseVTTFile(p, 5.5, 9.0)
 	require.NoError(t, err)
 	// Window 5.5–9.0 keeps the cue at 6→8.5 and partial coverage of the
 	// 4→6 cue, but NOT the 0–2 and 10–12 cues. After dedup + stripCueOverlap
@@ -58,13 +58,13 @@ func TestParseVTTFile_WindowFilter(t *testing.T) {
 
 func TestParseVTTFile_EmptyBodyReturnsEmpty(t *testing.T) {
 	p := writeVTTFixture(t, "empty.vtt", "WEBVTT\n\n")
-	got, err := parseVTTFile(p, 0, 0)
+	got, err := ParseVTTFile(p, 0, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "", got)
 }
 
 func TestParseVTTFile_NonExistentPathFails(t *testing.T) {
-	_, err := parseVTTFile(filepath.Join(t.TempDir(), "missing.vtt"), 0, 0)
+	_, err := ParseVTTFile(filepath.Join(t.TempDir(), "missing.vtt"), 0, 0)
 	require.Error(t, err)
 }
 

@@ -191,6 +191,20 @@ func (s *Service) Repo() *assets.ImagesRepository {
 	return s.repo
 }
 
+// FormatDriveLink mirrors internal/infrastructure/drive.FileURLFromID —
+// the API layer used to call drive.FileURLFromID directly, which kept
+// `internal/infrastructure/drive` in the API imports. Per PG-002 the
+// formatting helper is now exposed here so the handler only depends on
+// the application-level service contract. Output is byte-identical to
+// the previous behaviour so the public HTTP contract is unchanged
+// (zero-change fix for /api/images/generate responses).
+func (s *Service) FormatDriveLink(id string) string {
+	if id == "" {
+		return ""
+	}
+	return "https://drive.google.com/file/d/" + id
+}
+
 // SemanticMetadataPayload is the cross-package carrier returned by
 // uploadVideoMetadata. google_vids_assets.go mixes `semantic.Payload` and
 // the legacy `SemanticMetadataPayload` identifier at the same call site

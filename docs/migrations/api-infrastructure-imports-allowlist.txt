@@ -76,8 +76,6 @@ internal/api/assets/soundeffect/handler.go
 internal/api/assets/youtube/youtube_handlers.go
 
 # ── Wave 14 grandfathered: api/channels + api/images impl (PR5) ────────────
-internal/api/channels/impl.go
-internal/api/images/impl.go
 
 # ── Wave 14 grandfathered: api/middleware (PR5) ────────────────────────────
 internal/api/middleware/admin_token.go
