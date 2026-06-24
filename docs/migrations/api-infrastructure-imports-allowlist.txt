@@ -59,8 +59,16 @@
 # for that file.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Wave 14 grandfathered: api/assets/artlist handlers (PR2) ───────────────
-internal/api/assets/artlist/artlist_handlers.go
+# ── Wave 14 grandfathered: api/assets/artlist handlers (PR2 — CLEANED, June 2026) ──
+# Internal cleanup wave, June 24 2026: api/assets/artlist/artlist_handlers.go
+# no longer imports internal/infrastructure. The handler now depends on
+# `artlist.ArtlistConfigPort` (a 1-method typed port defined in
+# internal/application/assets/providers/artlist/ports.go); the concrete
+# adapter wrapping `*config.Config` lives in
+# internal/app/artlist_config_adapter.go (the only composition-root site
+# allowed to wire infrastructure types into api ports). Removed from
+# allowlist at PG-004-cleanup.
+# internal/api/assets/artlist/artlist_handlers.go     ← removed from allowlist
 
 # ── Wave 14 grandfathered: api/assets/clips handlers (PR2) ─────────────────
 internal/api/assets/clips/bulk_upload_helpers.go
