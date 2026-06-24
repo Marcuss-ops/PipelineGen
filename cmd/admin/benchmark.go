@@ -12,8 +12,74 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime/benchmark"
 )
+
+// Stub types replacing the removed benchmark package.
+type benchQueriesFile struct {
+	Queries []benchQuery `json:"queries"`
+}
+type benchQuery struct {
+	Label  string `json:"label"`
+	Text   string `json:"text"`
+	Source string `json:"source"`
+}
+type benchSearchFunc func(ctx context.Context, query, source string, limit int) ([]benchResult, error)
+type benchResult struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Score     float64 `json:"score"`
+	DriveLink string  `json:"drive_link"`
+}
+type benchReport struct {
+	Queries  []benchQueryResult `json:"queries"`
+	TimingMS int64              `json:"timing_ms"`
+}
+type benchQueryResult struct {
+	Label   string        `json:"label"`
+	Query   string        `json:"query"`
+	Results []benchResult `json:"results"`
+	Latency int64         `json:"latency_ms"`
+}
+
+func benchLoadQueries(path string) (*benchQueriesFile, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var qf benchQueriesFile
+	if err := json.NewDecoder(f).Decode(&qf); err != nil {
+		return nil, err
+	}
+	return &qf, nil
+}
+
+func benchRun(ctx context.Context, queries []benchQuery, searchFn benchSearchFunc, limit int) *benchReport {
+	start := time.Now()
+	report := &benchReport{}
+	for _, q := range queries {
+		reqStart := time.Now()
+		results, _ := searchFn(ctx, q.Text, q.Source, limit)
+		report.Queries = append(report.Queries, benchQueryResult{
+			Label:   q.Label,
+			Query:   q.Text,
+			Results: results,
+			Latency: time.Since(reqStart).Milliseconds(),
+		})
+	}
+	report.TimingMS = time.Since(start).Milliseconds()
+	return report
+}
+
+func benchPrintSummary(r *benchReport) string { return fmt.Sprintf("Benchmark: %d queries in %dms", len(r.Queries), r.TimingMS) }
+func benchSaveReport(r *benchReport, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return json.NewEncoder(f).Encode(r)
+}
 
 func runBenchmark(args []string) error {
 	fs := flag.NewFlagSet("benchmark", flag.ExitOnError)
@@ -30,7 +96,7 @@ func runBenchmark(args []string) error {
 		token = os.Getenv("VELOX_ADMIN_TOKEN")
 	}
 
-	qf, err := benchmark.LoadQueries(*queriesPath)
+	qf, err := benchLoadQueries(*queriesPath)
 	if err != nil {
 		return fmt.Errorf("load queries: %w", err)
 	}
@@ -38,20 +104,20 @@ func runBenchmark(args []string) error {
 	searchFn := httpSearchFunc(*serverURL, *searchLimit, time.Duration(*timeoutSec)*time.Second, token)
 
 	ctx := context.Background()
-	report := benchmark.Run(ctx, qf.Queries, searchFn, *searchLimit)
+	report := benchRun(ctx, qf.Queries, searchFn, *searchLimit)
 	report.Description = qf.Description
 	report.Version = qf.Version
 
-	fmt.Println(benchmark.PrintSummary(report))
+	fmt.Println(benchPrintSummary(report))
 
-	if err := benchmark.SaveReport(report, *outputPath); err != nil {
+	if err := benchSaveReport(report, *outputPath); err != nil {
 		return fmt.Errorf("save report: %w", err)
 	}
 	fmt.Printf("\nReport saved to %s\n", *outputPath)
 	return nil
 }
 
-func httpSearchFunc(serverURL string, defaultLimit int, timeout time.Duration, authToken string) benchmark.SearchFunc {
+func httpSearchFunc(serverURL string, defaultLimit int, timeout time.Duration, authToken string) benchSearchFunc {
 	baseURL := strings.TrimRight(serverURL, "/")
 	client := &http.Client{Timeout: timeout}
 

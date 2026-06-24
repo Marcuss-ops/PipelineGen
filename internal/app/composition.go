@@ -48,10 +48,9 @@ import (
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	associationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
@@ -195,7 +194,7 @@ type DomainBundle struct {
 	MetaWriter         *semantic.MetadataWriter
 	RealtimeService    *realtime.Service
 	AutotagService     *autotag.Service
-	AssocService       *associationpkg.Service
+	AssocService       interface{} // was *associationpkg.Service (package removed)
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and
@@ -674,15 +673,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, autotagVectorStore, log)
 
-	embedder := embeddings.NewPythonScriptEmbedder("python3", cfg.Paths.PythonScriptsDir)
-	assocService := associationpkg.NewService(
-		cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir,
-		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.CatalogRepo,
-		qdrant.NewSearchAdapter(process.VectorSvc), embedder,
-	)
-	log.Info("embedding.Embedder injected into association service (infrastructure/embeddings/python)")
-	if process.VectorSvc != nil {
-		log.Info("vector store wired into association service for hybrid search")
+	var assocService interface{} = nil // was associationpkg.NewService(...) — package removed
+	log.Info("association service unavailable — package removed from remote")
 	}
 
 	lessonsS := lessonsSvc.NewService(

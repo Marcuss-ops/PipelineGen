@@ -9,7 +9,6 @@ import (
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	realtime "github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -21,34 +20,12 @@ import (
 
 // diagIndexHealthAdapter adapts *realtime.Service to diagnostics.IndexHealthPort.
 type diagIndexHealthAdapter struct {
-	realtime  *realtime.Service
+	realtime  interface{} // was *realtime.Service (package removed)
 	vectorSvc *qdrant.Service
 }
 
 func (a *diagIndexHealthAdapter) IndexHealth(ctx context.Context) (*appdiag.IndexHealthReport, error) {
-	qReport, err := a.realtime.IndexHealth(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if qReport == nil {
-		return nil, fmt.Errorf("realtime.IndexHealth returned nil report")
-	}
-	return &appdiag.IndexHealthReport{
-		OK:              qReport.OK,
-		Degraded:        qReport.Degraded,
-		SQLiteAssets:    int(qReport.SQLiteAssets),
-		SQLiteIndexed:   int(qReport.SQLiteIndexed),
-		QdrantPoints:    qReport.QdrantPoints,
-		MissingInQdrant: int(qReport.MissingInQdrant),
-		OrphanInQdrant:  int(qReport.OrphanInQdrant),
-		PendingOutbox:   int(qReport.PendingOutbox),
-		DeadLetter:      int(qReport.DeadLetter),
-		DegradedSources: qReport.DegradedSources,
-		DBTotal:         int(qReport.DBTotal),
-		WithEmbedding:   int(qReport.WithEmbedding),
-		DBToQdrantDelta: int(qReport.DBToQdrantDelta),
-		StaleQdrantIDs:  qReport.StaleQdrantIDs,
-	}, nil
+	return nil, fmt.Errorf("realtime service unavailable — package removed")
 }
 
 func (a *diagIndexHealthAdapter) VectorStore() appdiag.VectorStorePort {
@@ -178,14 +155,11 @@ func (a *searchProviderAdapter) Search(ctx context.Context, req appsearch.Search
 // searchVectorAdapter combines the embedder and vector store into search.VectorSearchPort.
 type searchVectorAdapter struct {
 	embedder   appsearch.VectorStorePort
-	realtimeSvc *realtime.Service
+	realtimeSvc interface{} // was *realtime.Service (package removed)
 }
 
 func (a *searchVectorAdapter) EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error) {
-	if a.realtimeSvc == nil {
-		return nil, fmt.Errorf("realtime service not configured")
-	}
-	return a.realtimeSvc.EmbedTextForVector(ctx, text, vectorName)
+	return nil, fmt.Errorf("realtime service not configured — package removed")
 }
 
 func (a *searchVectorAdapter) VectorStore() appsearch.VectorStorePort {

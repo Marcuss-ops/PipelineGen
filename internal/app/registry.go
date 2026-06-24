@@ -48,7 +48,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	scriptcore	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"

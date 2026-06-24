@@ -14,15 +14,36 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-
-	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 )
 
-// RealtimeMatcher is the narrow port the handler depends on. The
-// concrete *mediarealtime.Service satisfies it; tests can substitute
-// a mock without importing the real service.
+// RealtimeMatchRequest is a local type replacing the removed
+// mediarealtime.MatchRequest (package internal/application/assets/realtime).
+type RealtimeMatchRequest struct {
+	Query    string   `json:"query"`
+	Source   string   `json:"source"`
+	TopK     int      `json:"top_k"`
+	MinScore float64  `json:"min_score"`
+	Filters  []string `json:"filters"`
+}
+
+// RealtimeMatchResponse is a local type replacing the removed
+// mediarealtime.MatchResponse.
+type RealtimeMatchResponse struct {
+	Matches []RealtimeMatchAsset `json:"matches"`
+}
+
+// RealtimeMatchAsset is a local type for match results.
+type RealtimeMatchAsset struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Source    string  `json:"source"`
+	Score     float64 `json:"score"`
+	DriveLink string  `json:"drive_link"`
+}
+
+// RealtimeMatcher is the narrow port the handler depends on.
 type RealtimeMatcher interface {
-	Match(ctx context.Context, req *mediarealtime.MatchRequest) (*mediarealtime.MatchResponse, error)
+	Match(ctx context.Context, req *RealtimeMatchRequest) (*RealtimeMatchResponse, error)
 }
 
 // RealtimeMatchHandler handles the POST /api/realtime/match endpoint.
@@ -51,7 +72,7 @@ func (h *RealtimeMatchHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // Match handles the real-time asset matching request.
 func (h *RealtimeMatchHandler) Match(c *gin.Context) {
-	var req mediarealtime.MatchRequest
+	var req RealtimeMatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"ok":    false,

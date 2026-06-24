@@ -20,7 +20,6 @@ import (
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
