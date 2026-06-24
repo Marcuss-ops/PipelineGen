@@ -6,6 +6,7 @@
 package artlist
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"

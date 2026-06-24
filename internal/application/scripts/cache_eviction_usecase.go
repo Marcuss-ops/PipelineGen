@@ -161,7 +161,7 @@ func (u *CacheEvictionUseCase) Run(ctx context.Context, in CacheEvictionInput) (
 
 	return &CacheEvictionOutput{
 		CircuitBreakersReset: resetCount,
-		DeletedCount:         count,
+		DeletedCount:         int64(count),
 		EvictedTitles:        titles,
 	}, nil
 }
