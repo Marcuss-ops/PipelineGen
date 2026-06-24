@@ -23,7 +23,6 @@ package youtube
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -31,7 +30,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	ytcache "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/cache"
 	ytextraction "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/extraction"
 	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/jobs"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
@@ -80,6 +78,7 @@ type ServiceDeps struct {
 
 	// PR1.5 — port-backed store/cache/index collaborators.
 	Clips        youtubeports.ClipStorePort
+	Cache        youtubeports.CachePort
 	Monitors     youtubeports.MonitorsStorePort
 	Indexer      youtubeports.ClipIndexerPort
 	FolderMemory youtubeports.FolderMemoryPort
@@ -105,7 +104,7 @@ type Service struct {
 	assetVersions   asset.VersionRepository
 
 	// Capability services (PR5 — June 2026).
-	cache      *ytcache.Service
+	cache      youtubeports.CachePort
 	search     *ytsearch.Service
 	metadata   *ytmetadata.Service
 	segSvc     *ytsegments.Service
@@ -136,8 +135,8 @@ type Service struct {
 // surrogate setters are needed. Composition root (internal/app/composition.go)
 // is the only intended caller.
 //
-// PR5 (June 2026): the L2 cache is extracted to youtube/cache/. If deps.Clips
-// provides a *sql.DB, NewService wires the cache service automatically.
+// PR5 (June 2026): the L2 cache is injected through CachePort; composition
+// owns the SQLite-backed infrastructure adapter.
 func NewService(deps ServiceDeps) *Service {
 	maxVideo := 1
 	maxOllama := 1
@@ -179,6 +178,7 @@ func NewService(deps ServiceDeps) *Service {
 		hashSvc:         deps.HashSvc,
 
 		clips:        deps.Clips,
+		cache:        deps.Cache,
 		monitors:     deps.Monitors,
 		indexer:      deps.Indexer,
 		folderMemory: deps.FolderMemory,
@@ -186,13 +186,6 @@ func NewService(deps ServiceDeps) *Service {
 
 		videoExtractSem: make(chan struct{}, maxVideo),
 		ollamaSem:       make(chan struct{}, maxOllama),
-	}
-
-	// Wire L2 cache service when Clips provides a *sql.DB (PR5 Phase 1).
-	if clipsPort := deps.Clips; clipsPort != nil {
-		if db := clipsPort.DB(); db != nil {
-			svc.cache = ytcache.NewService(ytcache.Deps{DB: db, Log: deps.Log})
-		}
 	}
 
 	// Wire search service (PR5 Phase 2).
@@ -235,6 +228,7 @@ func NewService(deps ServiceDeps) *Service {
 		Log:               deps.Log,
 		VideoPipeline:     deps.VideoPipeline,
 		Clips:             deps.Clips,
+		Cache:             deps.Cache,
 		Monitors:          deps.Monitors,
 		AssetDestResolver: deps.AssetDestResolver,
 		FolderMemory:      deps.FolderMemory,
@@ -290,7 +284,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 // HandleRebuildSearchTextJob wraps the free function form of ytjobs.HandleRebuildSearchTextJob
 // (which expects a RebuildDeps dep struct as its first arg) into the method-form signature
 // expected by jobtools.Service.RegisterHandler (ctx, j, tools) -> (map, error). The dep
-// surface (DB via the clipsPort, Log, Indexer, Enricher closure) is reconstructed lazily from
+// surface (clip lister, Log, Indexer, Enricher closure) is reconstructed lazily from
 // the orchestrator's runtime state at job-invocation time so the composition root does not
 // have to thread a fifth dep through ServiceDeps for this job type specifically.
 //
@@ -299,14 +293,10 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 // `meta any` closure-cast to `*youtubeports.DownloaderMetadata`) needs verification once a
 // real rebuild_search_text job is exercised end-to-end.
 func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
-	var db *sql.DB
-	if s.clips != nil {
-		db = s.clips.DB()
-	}
 	deps := ytjobs.RebuildDeps{
-		DB:      db,
 		Log:     s.log,
 		Indexer: s.indexer,
+		Clips:   s.clips,
 		Enricher: func(ctx context.Context, clipID string, meta any, force bool) {
 			if s.metadata == nil {
 				return

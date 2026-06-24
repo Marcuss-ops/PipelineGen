@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -29,7 +28,6 @@ func newClipStoreAdapter(r *assets.ClipsRepository) youtubeports.ClipStorePort {
 	return &clipStoreAdapter{inner: r}
 }
 
-func (a *clipStoreAdapter) DB() *sql.DB { return a.inner.DB() }
 func (a *clipStoreAdapter) Get(ctx context.Context, id string) (*asset.Asset, error) {
 	return a.inner.Get(ctx, id)
 }
@@ -47,6 +45,37 @@ func (a *clipStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 }
 func (a *clipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
 	return a.inner.GetFolder(ctx, folderID)
+}
+func (a *clipStoreAdapter) ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error) {
+	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
+	args := []any{}
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+	if offset > 0 {
+		if limit <= 0 {
+			query += " LIMIT -1"
+		}
+		query += " OFFSET ?"
+		args = append(args, offset)
+	}
+
+	rows, err := a.inner.DB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // ── MonitorsStoreAdapter wraps *assets.MonitorsRepository to satisfy youtubeports.MonitorsStorePort ──
