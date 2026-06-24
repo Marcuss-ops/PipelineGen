@@ -238,38 +238,36 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			return res.EntitiesJSON, res.Insights, res.VideoMetadata
 		}
 
-		if scenesSvc != nil && docsSvc != nil {
-			pipeline := scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)
-			// Phase 2 activation (June 2026): track whether scenes
-			// were actually built at composition time. We pass this
-			// flag to NewPipelineUseCase so it can reject jobs
-			// asking for scene images when scenes aren't wired
-			// (a typed ErrSceneImagesUnavailable surfaces at
-			// worker-time rather than silently producing empty
-			// scene arrays).
-			scenesReady := scenesSvc != nil
-			minFloor := 100
-			ollamaModel := ""
-			if cfg != nil {
-				if cfg.Scripts.MinWordFloor > 0 {
-					minFloor = cfg.Scripts.MinWordFloor
-				}
-				ollamaModel = cfg.External.OllamaModel
+		pipeline := scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)
+		// Phase 2 activation (June 2026): track whether scenes
+		// were actually built at composition time. We pass this
+		// flag to NewPipelineUseCase so it can reject jobs
+		// asking for scene images when scenes aren't wired
+		// (a typed ErrSceneImagesUnavailable surfaces at
+		// worker-time rather than silently producing empty
+		// scene arrays).
+		scenesReady := scenesSvc != nil
+		minFloor := 100
+		ollamaModel := ""
+		if cfg != nil {
+			if cfg.Scripts.MinWordFloor > 0 {
+				minFloor = cfg.Scripts.MinWordFloor
 			}
-			pu, puErr := scripts.NewPipelineUseCase(
-				log, root.AI.ScriptEngine,
-				minFloor, ollamaModel,
-				clipSourceBuilder,
-				mediaCurator,
-				semUC, prewarmUC,
-				pipeline,
-				scenesReady,
-			)
-			if puErr != nil {
-				log.Warn("pipeline use case: construction failed", zap.Error(puErr))
-			} else {
-				pipelineUC = pu
-			}
+			ollamaModel = cfg.External.OllamaModel
+		}
+		pu, puErr := scripts.NewPipelineUseCase(
+			log, root.AI.ScriptEngine,
+			minFloor, ollamaModel,
+			clipSourceBuilder,
+			mediaCurator,
+			semUC, prewarmUC,
+			pipeline,
+			scenesReady,
+		)
+		if puErr != nil {
+			log.Warn("pipeline use case: construction failed", zap.Error(puErr))
+		} else {
+			pipelineUC = pu
 		}
 	}
 
