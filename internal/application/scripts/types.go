@@ -1,5 +1,6 @@
-// Package scripts — type stubs for types that were removed from remote.
-// These stubs satisfy the compiler until production types are re-created.
+// Package scripts — compatibility types and adapters for the script pipeline.
+// Some surfaces remain intentionally simplified while the pipeline is being
+// reconstituted, but the package now carries real orchestration logic too.
 package scripts
 
 import (

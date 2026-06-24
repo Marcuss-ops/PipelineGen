@@ -233,6 +233,59 @@ per-domain folders are fallbacks. The `DriveConfig` resolvers
 - **Job claims**: lease (`cfg.Jobs.LeaseTTLSeconds = 300`); dead workers
   auto-reclaimed by `RequeueExpiredLeases`. `ActiveKey` dedupes enqueues.
 
+### Extract facade contract — `monitor → orchestrator → ytextraction`
+
+Background monitors invoke the synchronous
+`*youtube.Service.Extract(ctx, req)` facade (entry point at
+`internal/application/youtube/service_orchestrator.go::Extract`).
+This is the **canonical** clip-extraction entry for the monitor path
+(POST `/api/script/*` routes run through the async job pipeline; they
+ignore this facade). The contract:
+
+1. **Thin facade, no orchestration**: the orchestrator method only
+   nil-guards `s.extraction` and forwards to `s.extraction.Extract`.
+   New capability wiring must NOT be added to the facade — every monitor
+   change should be a no-op on the orchestrator surface.
+2. **Lazy enricher / Indexer / Drive reconstruction**: the orchestrator
+   wires the `ytextraction.Service` with the root `*youtube.Service` as its
+   `ExtractionCallbacks` adapter (`NewService` →
+   `ytextraction.NewService(..., svc)`). The capability delegates every
+   external operation back through the adapter; the canonical callback
+   signature lives at `internal/application/youtube/extraction/` (the
+   `ExtractionCallbacks` interface) and is implemented wholesale on
+   `*youtube.Service`, so capability-side internals never reach into
+   orchestrator state directly. **To add a new capability-side external op,
+   extend the `ExtractionCallbacks` interface in one place and implement
+   the forwarder on `*Service` — never inject state into ytextraction.**
+   Per-invocation lazy `RebuildDeps` reconstruction for the
+   `rebuild_search_text` job type lives on `s.HandleRebuildSearchTextJob`
+   (closes over `s.clips.DB()`, `s.indexer`, `s.metadata.EnrichClip`).
+   **Callers below the orchestrator must NOT try to reconstruct any of
+   these deps themselves.**
+3. **Capability-not-wired is fatal at the facade level**: `s.extraction
+   == nil` returns an explicit `"youtube: extraction capability not
+   wired (...)"` error. The monitor path logs at `Error` and skips the
+   clip; a `defer recover()` at the top of `downloadClip` ensures a
+   panic from one mis-wired port doesn't tear down the ticker
+   goroutine. The composition root must wire `Cfg, Log, VideoPipeline,
+   Clips, Monitors, AssetDestResolver, FolderMemory, SegmentsSvc` in
+   `ServiceDeps` for `NewService` to wire the capability.
+4. **Response shape & counter discipline**: `*youtubetypes.ExtractResponse`
+   with `OK`, `Items []ExtractItem` (each `ExtractItem.Status` is one
+   of `processed`/`skipped`/`failed`), `Stats` (`Requested` / `Processed` /
+   `Skipped` / `Failed`), `Folder`, `Error`. The monitor path treats
+   `err != nil` as hard failure (Error log), `resp == nil && err == nil`
+   as a defensive hard failure (treats as misconfigured; Error log),
+   `resp.OK == false` as business-level failure (Warn log + skip),
+   and on success logs `resp.Stats.Processed/Skipped/Failed` as
+   separate `zap.Int` fields — never `len(resp.Items)`, which would
+   over-report by including failed items.
+
+Replacing the previous `channel-monitor` "WARN-skip placeholder":
+that placeholder documented `*youtube.Service.Extract` was removed
+during the ytextraction extraction; the facade above restores it
+without leaking capability internal state.
+
 `context.Background()` in non-test code: currently **~9 sites** (refactored from ~20). The remaining sites are either intentional post-write save contexts or top-level composition roots where no parent context exists. Lint gate: `bash scripts/ci-architectural-checks.sh`.
 
 ## 8. External services
