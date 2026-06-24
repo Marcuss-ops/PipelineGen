@@ -65,6 +65,67 @@ type Config struct {
 	Outbox           OutboxConfig           `yaml:"outbox"`
 }
 
+// AuthSecurityPort compatibility helpers. These keep the application-layer
+// middleware ports satisfied without forcing the router to construct an
+// extra adapter layer.
+func (c *Config) EnableAuth() bool {
+	if c == nil {
+		return false
+	}
+	return c.Security.EnableAuth
+}
+
+func (c *Config) AdminToken() string {
+	if c == nil {
+		return ""
+	}
+	return c.Security.AdminToken
+}
+
+func (c *Config) WorkerToken() string {
+	if c == nil {
+		return ""
+	}
+	return c.Security.WorkerToken
+}
+
+// RateLimitPort compatibility helpers.
+func (c *Config) RateLimitEnabled() bool {
+	if c == nil {
+		return false
+	}
+	return c.Security.RateLimitEnabled
+}
+
+func (c *Config) RateLimitRequests() int {
+	if c == nil {
+		return 0
+	}
+	return c.Security.RateLimitRequests
+}
+
+// FeatureFlagsPort compatibility helpers.
+func (c *Config) ArtlistEnabled() bool {
+	if c == nil {
+		return false
+	}
+	return c.Features.ArtlistEnabled
+}
+
+func (c *Config) ScriptDocsEnabled() bool {
+	if c == nil {
+		return false
+	}
+	return c.Features.ScriptDocsEnabled
+}
+
+func (c *Config) ScriptClipsEnabled() bool {
+	if c == nil {
+		return false
+	}
+	return c.Features.ScriptClipsEnabled
+}
+
 // GoogleAccountingConfig configures the Google Accounting sidecar used for
 // AI-video flows. The sidecar is OFF by default; when Enabled=true the
 // pipeline routes per-clip image and AI-avatar requests through it and

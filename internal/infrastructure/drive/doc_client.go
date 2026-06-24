@@ -16,6 +16,14 @@ const (
 	googleDocsBaseURL = "https://docs.google.com/document/d/%s/edit"
 )
 
+func googleDocsEditURL(docID string) string {
+	docID = strings.TrimSpace(docID)
+	if docID == "" {
+		return ""
+	}
+	return fmt.Sprintf(googleDocsBaseURL, docID)
+}
+
 // DocClient is an interface for Google Docs operations.
 // The canonical `Doc` DTO is declared in types.go (same package) so
 // every application caller can `*drive.Doc` through this interface
@@ -71,7 +79,7 @@ func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID 
 		return &Doc{
 			ID:      created.Id,
 			Title:   docTitle,
-			URL:     created.WebViewLink,
+			URL:     googleDocsEditURL(created.Id),
 			Content: content,
 		}, nil
 	}
@@ -94,7 +102,7 @@ func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID 
 	return &Doc{
 		ID:      created.DocumentId,
 		Title:   docTitle,
-		URL:     fmt.Sprintf(googleDocsBaseURL, created.DocumentId),
+		URL:     googleDocsEditURL(created.DocumentId),
 		Content: content,
 	}, nil
 }
@@ -179,7 +187,7 @@ func (d *DocClientImpl) ListRecentDocs(ctx context.Context, folderID string, lim
 		docs = append(docs, Doc{
 			ID:        f.Id,
 			Title:     f.Name,
-			URL:       f.WebViewLink,
+			URL:       googleDocsEditURL(f.Id),
 			CreatedAt: f.CreatedTime,
 		})
 	}
