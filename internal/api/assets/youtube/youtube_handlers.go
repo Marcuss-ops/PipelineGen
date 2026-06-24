@@ -16,13 +16,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -34,7 +34,7 @@ type YouTubeClipHandler struct {
 	service         *youtube.Service
 	log             *zap.Logger
 	jobsSvc         jobservice.Service
-	clipsRepo       *assets.ClipsRepository
+	clipsRepo       ytports.ClipStorePort
 	providerSearch  providers.SearchProvider
 	providerReg     *providers.Registry
 	providerResolve sync.Once
@@ -49,7 +49,7 @@ type YouTubeClipHandler struct {
 //	providerRegistry - providers.Registry for search dispatch (nil = legacy path).
 //	                    Resolved lazily on first SearchTopics call so providers
 //	                    registered after construction are still discovered.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, providerRegistry *providers.Registry, clipsRepo *assets.ClipsRepository, toolChecker appassets.ToolChecker) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, providerRegistry *providers.Registry, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
 		service:     service,
 		log:         log,
@@ -305,43 +305,43 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 		cfg := h.service.Config()
 		ytdlpPath := cfg.YtdlpPath
 
-			// Check yt-dlp
-			if _, err := h.toolChecker.LookPath(ytdlpPath); err != nil {
-				checks["ytdlp"] = "not_found"
-			} else {
-				checks["ytdlp"] = "ok"
-			}
+		// Check yt-dlp
+		if _, err := h.toolChecker.LookPath(ytdlpPath); err != nil {
+			checks["ytdlp"] = "not_found"
+		} else {
+			checks["ytdlp"] = "ok"
+		}
 
-			// Check ffmpeg
-			if _, err := h.toolChecker.LookPath("ffmpeg"); err != nil {
-				checks["ffmpeg"] = "not_found"
-			} else {
-				checks["ffmpeg"] = "ok"
-			}
+		// Check ffmpeg
+		if _, err := h.toolChecker.LookPath("ffmpeg"); err != nil {
+			checks["ffmpeg"] = "not_found"
+		} else {
+			checks["ffmpeg"] = "ok"
+		}
 
-			// Check Node.js (for YouTube signature solving)
-			if _, err := h.toolChecker.LookPath("node"); err != nil {
-				checks["node"] = "not_found"
-			} else {
-				checks["node"] = "ok"
-			}
+		// Check Node.js (for YouTube signature solving)
+		if _, err := h.toolChecker.LookPath("node"); err != nil {
+			checks["node"] = "not_found"
+		} else {
+			checks["node"] = "ok"
+		}
 
-			// Check cookies file
-			cookiesPath := cfg.YouTubeCookiesPath
-			if cookiesPath == "" {
-				cookiesPath = "config/youtube_cookies.txt"
-			}
-			if _, err := filepath.Abs(cookiesPath); err != nil {
-				checks["cookies"] = "invalid_path"
-			} else {
-				checks["cookies"] = "configured"
-			}
+		// Check cookies file
+		cookiesPath := cfg.YouTubeCookiesPath
+		if cookiesPath == "" {
+			cookiesPath = "config/youtube_cookies.txt"
+		}
+		if _, err := filepath.Abs(cookiesPath); err != nil {
+			checks["cookies"] = "invalid_path"
+		} else {
+			checks["cookies"] = "configured"
+		}
 
-			checks["config"] = gin.H{
-				"youtube_enabled": cfg.YouTubeEnabled,
-				"extract_timeout": cfg.YouTubeExtractTimeout,
-				"cookies_path":    cookiesPath,
-				"ytdlp_path":      ytdlpPath,
+		checks["config"] = gin.H{
+			"youtube_enabled": cfg.YouTubeEnabled,
+			"extract_timeout": cfg.YouTubeExtractTimeout,
+			"cookies_path":    cookiesPath,
+			"ytdlp_path":      ytdlpPath,
 			"js_runtime_path": cfg.YouTubeJSRuntimePath,
 		}
 	}
@@ -354,7 +354,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 
 // SearchAdvanced performs advanced clip search with structured filters.
 func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
-	var req assets.AdvancedSearchRequest
+	var req asset.AdvancedSearchRequest
 
 	// Support both GET (query params) and POST (JSON body)
 	if c.Request.Method == "GET" {
@@ -442,8 +442,8 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 // getAllClipRepos returns all available clip repositories keyed by source.
 // Currently only YouTube has a registered clips repo; other sources can be
 // added here once their repo wiring is migrated.
-func (h *YouTubeClipHandler) getAllClipRepos() map[string]*assets.ClipsRepository {
-	repos := make(map[string]*assets.ClipsRepository)
+func (h *YouTubeClipHandler) getAllClipRepos() map[string]ytports.ClipStorePort {
+	repos := make(map[string]ytports.ClipStorePort)
 	if h.clipsRepo != nil {
 		repos["youtube"] = h.clipsRepo
 	}

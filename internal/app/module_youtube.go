@@ -26,8 +26,14 @@ type YouTubeClipWiring struct {
 // only 4 cross-bundle reads, no coherence warrant for a bundle).
 // PR3 (June 2026): providerRegistry added for constructor injection
 // (replaces post-construction SetProviderRegistry).
+// PG-003 (June 2026): clipsRepo (still typed *assets.ClipsRepository
+// at the wiring seam) is passed through the canonical
+// newClipStoreAdapter(...) helper defined in youtube_adapters.go. The
+// handler depends on the typed youtubeports.ClipStorePort only; the
+// helper itself preserves `if h.clipsRepo != nil` semantics in the
+// handler because newClipStoreAdapter(nil) returns a nil interface.
 func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, providerRegistry *providers.Registry, toolChecker appassets.ToolChecker) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry, clipsRepo, toolChecker)
+	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry, newClipStoreAdapter(clipsRepo), toolChecker)
 	var mod api.Module
 	if ytSvc != nil {
 		mod = api.NewRouteModule(

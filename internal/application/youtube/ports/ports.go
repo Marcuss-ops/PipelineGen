@@ -112,6 +112,12 @@ type ClipStorePort interface {
 	UpsertFolder(ctx context.Context, f *asset.ClipFolder) error
 	DeleteClip(ctx context.Context, id string) error
 	ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error)
+	// PR3-Wave14 PR5 / PG-003 (June 2026): the youtube handler used to
+	// reach through *assets.ClipsRepository for advanced search + counts;
+	// now those flow through the port so the handler depends only on
+	// application-layer contracts.
+	SearchClipsAdvanced(ctx context.Context, req asset.AdvancedSearchRequest) (*asset.AdvancedSearchResult, error)
+	CountClips(ctx context.Context) (int, error)
 }
 
 type MonitorsStorePort interface {

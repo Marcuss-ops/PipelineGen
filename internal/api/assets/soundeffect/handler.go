@@ -1,4 +1,10 @@
 // Package soundeffect provides thin HTTP handlers for sound effect generation.
+//
+// PG-003 (June 2026): handler now depends on typed sfxports ports rather
+// than concrete *assets.ClipsRepository, *drive.Uploader,
+// *semantic.MetadataWriter, *drive.Resolver. Composition root (in
+// internal/app/module_assets.go) injects the adapters — see
+// internal/app/adapters_soundeffect.go for the concrete implementations.
 package soundeffect
 
 import (
@@ -13,40 +19,42 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Handler manages sound effect generation via Python synth + ffmpeg.
 type Handler struct {
-	clipsRepo              *assets.ClipsRepository
-	driveUploader          *drive.Uploader
-	metaWriter             *semantic.MetadataWriter
-	resolver               *drive.Resolver
+	clipsRepo              sfxports.ClipRepositoryPort
+	driveUploader          sfxports.DriveUploaderPort
+	metaWriter             sfxports.SemanticMetadataWriterPort
+	resolver               sfxports.DestinationResolverPort
 	soundEffectsRootFolder string
 	processRunner          appassets.ProcessRunner
 	log                    *zap.Logger
 }
 
 // NewHandler creates a sound effect handler.
+//
+// All concrete infrastructure collaborators are injected via structural
+// ports (sfxports.*). The composition root is responsible for instantiating
+// the adapters in internal/app and wiring them here.
 func NewHandler(
-	clipsRepo *assets.ClipsRepository,
-	driveUploader *drive.Uploader,
-	metaWriter *semantic.MetadataWriter,
+	clipsRepo sfxports.ClipRepositoryPort,
+	driveUploader sfxports.DriveUploaderPort,
+	metaWriter sfxports.SemanticMetadataWriterPort,
+	resolver sfxports.DestinationResolverPort,
 	soundEffectsRootFolder string,
 	processRunner appassets.ProcessRunner,
 	log *zap.Logger,
 ) *Handler {
-	r := drive.NewResolver("data", "")
 	return &Handler{
 		clipsRepo:              clipsRepo,
 		driveUploader:          driveUploader,
 		metaWriter:             metaWriter,
-		resolver:               r,
+		resolver:               resolver,
 		soundEffectsRootFolder: soundEffectsRootFolder,
 		processRunner:          processRunner,
 		log:                    log,
@@ -54,7 +62,7 @@ func NewHandler(
 }
 
 // SetMetaWriter updates the metadata writer (late-binding support).
-func (h *Handler) SetMetaWriter(mw *semantic.MetadataWriter) {
+func (h *Handler) SetMetaWriter(mw sfxports.SemanticMetadataWriterPort) {
 	h.metaWriter = mw
 }
 
@@ -129,8 +137,8 @@ func (h *Handler) Generate(c *gin.Context) {
 	f.Close()
 	hashStr := fmt.Sprintf("%x", hsh.Sum(nil))
 
-	// 3. Resolve destination paths
-	destReq := drive.AssetDestinationRequest{
+	// 3. Resolve destination paths (typed-port adapter around drive.Resolver).
+	destReq := sfxports.AssetDestinationRequest{
 		Source:    "sound_effect",
 		MediaType: "sound_effect",
 		Group:     name,
@@ -166,7 +174,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	searchText := name + " sound effect sfx audio"
 
 	if h.metaWriter != nil {
-		writeReq := semantic.WriteRequest{
+		writeReq := sfxports.MetadataWriteRequest{
 			AssetID:   "sfx_" + hashStr[:12],
 			AssetType: "audio",
 			MediaType: "sound_effect",
@@ -179,12 +187,12 @@ func (h *Handler) Generate(c *gin.Context) {
 		writeRes, err := h.metaWriter.Write(ctx, writeReq)
 		if err != nil {
 			h.log.Warn("failed to write semantic metadata.json locally", zap.Error(err))
-		} else if writeRes != nil && writeRes.Payload != nil {
-			if writeRes.Payload.SearchText != "" {
-				searchText = writeRes.Payload.SearchText
+		} else if writeRes != nil {
+			if writeRes.SearchText != "" {
+				searchText = writeRes.SearchText
 			}
-			if len(writeRes.Payload.Tags) > 0 {
-				tags = writeRes.Payload.Tags
+			if len(writeRes.Tags) > 0 {
+				tags = writeRes.Tags
 			}
 
 			if h.driveUploader != nil && h.soundEffectsRootFolder != "" {
@@ -215,7 +223,7 @@ func (h *Handler) Generate(c *gin.Context) {
 			parentFolderID, err = h.driveUploader.GetOrCreateFolder(ctx, name, h.soundEffectsRootFolder)
 			if err == nil {
 				uploadRes, err := h.driveUploader.UploadFile(ctx, dest.LocalPath, parentFolderID, filepath.Base(dest.LocalPath))
-				if err == nil {
+				if err == nil { //nolint:revive // preserve original err-shadow
 					driveFileID = uploadRes.FileID
 					driveLink = uploadRes.WebViewLink
 				}
