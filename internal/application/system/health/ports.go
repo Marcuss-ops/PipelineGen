@@ -35,3 +35,14 @@ type QdrantChecker interface {
 type JobsChecker interface {
 	CheckJobs(ctx context.Context) CheckResult
 }
+
+// ErrUnknownCheck is returned when the caller requests an unknown health
+// check name. The HTTP handler maps this typed error to HTTP 400 (not 503),
+// distinguishing misconfiguration from genuine unhealthiness.
+type ErrUnknownCheck struct {
+	Name string
+}
+
+func (e *ErrUnknownCheck) Error() string {
+	return "unknown health check: " + e.Name
+}

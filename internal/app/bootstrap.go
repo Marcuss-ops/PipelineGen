@@ -27,6 +27,8 @@ import (
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -280,9 +282,10 @@ func migrateLegacyScriptDocs(ctx context.Context, driveClient *gdrive.Service, c
 type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	Lifecycle     module.LifecycleManager // wraps startBackgroundJobs + buildCleanup
-	HealthService interface{}             // *systemhealth.Service; consumed by api.NewServerWithHealth
-	Cleanup       func()                  // kept for backward compat (tests); delegates to Lifecycle.Stop
+	Lifecycle     module.LifecycleManager          // wraps startBackgroundJobs + buildCleanup
+	HealthService interface{}                      // *systemhealth.Service; consumed by api.NewServerWithHealth
+	ReadyChecker  *systemhealth.ReadyChecker       // codex/health-ready-contract: concrete type, not interface{}
+	Cleanup       func()                           // kept for backward compat (tests); delegates to Lifecycle.Stop
 }
 
 // openLogDB was REMOVED in codex/db-set-and-paths. The Observability DB
@@ -455,11 +458,16 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if root != nil && root.Utility != nil {
 		healthSvc = root.Utility.HealthService
 	}
+	var readyChecker *systemhealth.ReadyChecker
+	if root != nil && root.Utility != nil {
+		readyChecker = root.Utility.ReadyChecker
+	}
 	return &AppDeps{
 		Registry:      registryWiring.Registry,
 		WorkerHandler: workerHandler,
 		Lifecycle:     lifecycle,
 		HealthService: healthSvc,
+		ReadyChecker:  readyChecker,
 		Cleanup:       cleanup,
 	}, nil
 }

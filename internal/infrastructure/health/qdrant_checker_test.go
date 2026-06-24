@@ -158,6 +158,83 @@ func TestQdrantChecker_NetworkError(t *testing.T) {
 	require.Contains(t, res["error"].(string), "connect", "error pin")
 }
 
+func TestQdrantChecker_Readyz500(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(ts.Close)
+	c := NewQdrantChecker(ts.URL, "col", true)
+	c.client = ts.Client()
+	res := c.CheckQdrant(context.Background())
+	require.False(t, res["ok"].(bool), "/readyz 500 must yield ok=false")
+	require.Contains(t, res["error"].(string), "500")
+}
+
+func TestQdrantChecker_Collection401(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/collections/") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(ts.Close)
+	c := NewQdrantChecker(ts.URL, "col", true)
+	c.client = ts.Client()
+	res := c.CheckQdrant(context.Background())
+	require.False(t, res["ok"].(bool), "collection 401 must yield ok=false, got %v", res)
+	require.Contains(t, res["error"].(string), "401")
+}
+
+func TestQdrantChecker_CollectionStatusGreen(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/collections/") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": map[string]any{"status": "green", "points_count": 10},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(ts.Close)
+	c := NewQdrantChecker(ts.URL, "col", true)
+	c.client = ts.Client()
+	res := c.CheckQdrant(context.Background())
+	require.True(t, res["ok"].(bool), "green status must be ok=true, got %v", res)
+	require.Equal(t, "green", res["collection_status"])
+}
+
+func TestQdrantChecker_CollectionStatusYellow(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/collections/") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": map[string]any{"status": "yellow", "points_count": 5},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(ts.Close)
+	c := NewQdrantChecker(ts.URL, "col", true)
+	c.client = ts.Client()
+	res := c.CheckQdrant(context.Background())
+	// Yellow status still ok=true (collection exists, just degraded).
+	require.True(t, res["ok"].(bool), "yellow status should still be ok=true for liveness")
+	require.Equal(t, "yellow", res["collection_status"])
+}
+
 func TestQdrantChecker_ContextCancellation(t *testing.T) {
 	gate := make(chan struct{})
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

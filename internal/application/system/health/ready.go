@@ -32,6 +32,21 @@ func NewReadyChecker(svc *Service) *ReadyChecker {
 // CheckReady runs the deep health set (db + drive + qdrant + jobs) and
 // returns the aggregated HealthResponse. Callers map the response.OK
 // to HTTP 200 vs 503 — the status-mapping lives at the transport layer.
+//
+// codex/health-ready-contract (June 2026): nil svc is handled gracefully
+// — returns ok=false with an explicit error rather than panicking.
 func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
+	if r == nil || r.svc == nil {
+		return HealthResponse{
+			OK:     false,
+			Status: "unhealthy",
+			Checks: map[string]CheckResult{
+				"db":    {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"drive": {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"qdrant": {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"jobs":  {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+			},
+		}
+	}
 	return r.svc.Check(ctx, []string{"db", "drive", "qdrant", "jobs"})
 }
