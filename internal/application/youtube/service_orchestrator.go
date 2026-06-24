@@ -13,12 +13,8 @@
 //   - Drive operations go exclusively through DriveFolderManagerPort.
 //   - Concrete imports of outbox / drive SDK / clipsRepo have been removed
 //     from this package; concrete wiring belongs to composition + infra.
-//   - PR2 cascade followup: legacy optional fields `assetProcessing` +
-//     `assetVersions` were re-added on ServiceDeps + Service (NOT removed)
-//     because the application still calls them as nil-safe parallel
-//     writers during segment cutting (assetProcessing for cron-status
-//     trails + assetVersions for content-hash version writes). Composition
-//     may pass nil for either; callers nil-check each before use.
+//   - Asset-processing/version callbacks were removed from the extraction
+//     flow; the canonical asset writer is AssetRepo.
 package youtube
 
 import (
@@ -59,14 +55,6 @@ type ServiceDeps struct {
 	// Required: dispatchOrIndex refuses to persist without it.
 	AssetRepo asset.Repository
 
-	// PR2 cascade followup: re-added legacy optional repositories that
-	// `segment.go::135-191` still references for upsert + version-write
-	// operations on freshly-cut clips. Composition passes nil for both
-	// when the canonical `AssetRepo` (PR1.6) is the only writer in scope;
-	// `segment.go` callers nil-check each before use.
-	AssetProcessing asset.ProcessingRepository
-	AssetVersions   asset.VersionRepository
-
 	// Port dependencies.
 	SearchRunner    youtubeports.SearchRunnerPort
 	SubtitleFetcher youtubeports.SubtitleFetcherPort
@@ -96,12 +84,6 @@ type Service struct {
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
 	assetRepo         asset.Repository
-
-	// PR2 cascade followup — optional repositories still referenced from
-	// processSegment for upsert + version-write on freshly-cut clips.
-	// Composition may pass nil for both; callers nil-check each before use.
-	assetProcessing asset.ProcessingRepository
-	assetVersions   asset.VersionRepository
 
 	// Capability services (PR5 — June 2026).
 	cache      youtubeports.CachePort
@@ -148,16 +130,6 @@ func NewService(deps ServiceDeps) *Service {
 			maxOllama = v
 		}
 	}
-	// PR2 cascade followup: normalize optional typed-nil ports to bare nil
-	// during construction, so simple `== nil` checks at call sites remain
-	// correct even when composition passes a typed-nil interface.
-	if isUnavailablePort(deps.AssetProcessing) {
-		deps.AssetProcessing = nil
-	}
-	if isUnavailablePort(deps.AssetVersions) {
-		deps.AssetVersions = nil
-	}
-
 	svc := &Service{
 		cfg:               deps.Cfg,
 		log:               deps.Log,
@@ -166,8 +138,6 @@ func NewService(deps ServiceDeps) *Service {
 		lifecycleService:  deps.LifecycleService,
 		assetDestResolver: deps.AssetDestResolver,
 		assetRepo:         deps.AssetRepo,
-		assetProcessing:   deps.AssetProcessing,
-		assetVersions:     deps.AssetVersions,
 
 		searchRunner:    deps.SearchRunner,
 		subtitleFetcher: deps.SubtitleFetcher,
@@ -378,10 +348,9 @@ func isUnavailablePort(port any) bool {
 }
 
 // ValidateServiceDeps checks ServiceDeps for typed-nil interfaces on
-// required ports. Optional ports (assetProcessing, assetVersions) are
-// allowed to be nil. Composition MUST call this before constructing
-// the service so typed-nil wiring errors surface at startup, not at
-// first invocation.
+// required ports. Composition MUST call this before constructing the
+// service so typed-nil wiring errors surface at startup, not at first
+// invocation.
 func ValidateServiceDeps(deps ServiceDeps) error {
 	if isUnavailablePort(deps.SearchRunner) {
 		return fmt.Errorf("youtube: SearchRunner is required but not wired (or typed-nil)")
@@ -481,34 +450,6 @@ func (s *Service) TranscribeAudio(ctx context.Context, localPath string) (string
 		return "", nil
 	}
 	return s.whisper.TranscribeAudio(ctx, localPath)
-}
-
-func (s *Service) AssetProcessingStart(ctx context.Context, clipID, stage string) error {
-	if s.assetProcessing == nil {
-		return nil
-	}
-	return s.assetProcessing.Start(ctx, clipID, stage)
-}
-
-func (s *Service) AssetProcessingComplete(ctx context.Context, clipID, stage string) error {
-	if s.assetProcessing == nil {
-		return nil
-	}
-	return s.assetProcessing.Complete(ctx, clipID, stage)
-}
-
-func (s *Service) AssetProcessingFail(ctx context.Context, clipID, stage, errorMsg string) error {
-	if s.assetProcessing == nil {
-		return nil
-	}
-	return s.assetProcessing.Fail(ctx, clipID, stage, errorMsg)
-}
-
-func (s *Service) AssetVersionsAppend(ctx context.Context, v *asset.Version) error {
-	if s.assetVersions == nil {
-		return nil
-	}
-	return s.assetVersions.Append(ctx, v)
 }
 
 func (s *Service) DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error) {

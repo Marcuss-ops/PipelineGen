@@ -203,8 +203,6 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 		VideoPipeline:     pipeline,
 		LifecycleService:  nil, // lifecycle
 		AssetDestResolver: nil, // asset dest resolver
-		AssetProcessing:   nil, // assetProcessing (test)
-		AssetVersions:     nil, // assetVersions (test)
 	})
 
 	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{
@@ -254,8 +252,6 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 		VideoPipeline:     pipeline,
 		LifecycleService:  nil, // lifecycle
 		AssetDestResolver: nil, // asset dest resolver
-		AssetProcessing:   nil, // assetProcessing (test)
-		AssetVersions:     nil, // assetVersions (test)
 	})
 
 	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{

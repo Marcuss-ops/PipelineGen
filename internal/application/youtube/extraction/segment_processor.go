@@ -14,7 +14,6 @@ import (
 	segments "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/segments"
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -127,8 +126,6 @@ func (s *Service) processSegment(
 		PreDownloadedPath: preDownloadedPath,
 	}
 
-	_ = s.callbacks.AssetProcessingStart(ctx, clipID, "download_and_cut")
-
 	var result *youtubeports.VideoCutResult
 	err = retry.Do(ctx, func() error {
 		candidatePath := filepath.Join(outDir, item.Filename)
@@ -142,31 +139,12 @@ func (s *Service) processSegment(
 		IsRetryable: tagutil.IsTransientDownloadError,
 	})
 	if err != nil {
-		_ = s.callbacks.AssetProcessingFail(ctx, clipID, "download_and_cut", err.Error())
 		s.log.Warn("segment video pipeline failed after retries",
 			zap.String("clip_id", clipID),
 			zap.Error(err))
 		item.Status = "failed"
 		item.Error = fmt.Sprintf("video processing failed: %v", err)
 		return item
-	}
-
-	_ = s.callbacks.AssetProcessingComplete(ctx, clipID, "download_and_cut")
-
-	// Track asset version
-	if result.LocalPath != "" {
-		versionHash := s.callbacks.MD5File(result.LocalPath)
-		fileSize := s.segmentsSvc.FileSizeFromPath(result.LocalPath)
-		if versionHash != "" {
-			v := &asset.Version{
-				AssetID:       clipID,
-				FileHash:      versionHash,
-				FileSizeBytes: fileSize,
-				MimeType:      "video/mp4",
-				MetadataJSON:  `{"pipeline":"youtube","source":"download_and_cut","createdBy":"youtube-pipeline"}`,
-			}
-			_ = s.callbacks.AssetVersionsAppend(ctx, v)
-		}
 	}
 
 	localPath := result.LocalPath
