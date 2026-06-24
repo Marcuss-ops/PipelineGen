@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"strings"
 	"time"
 
@@ -159,6 +160,30 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		return
 	}
 
+	// Truthful capability gate (fix(images): expose truthful capability
+	// availability). GenerateSmartImage falls back from Remote to NVIDIA,
+	// so EITHER being StatusAvailable suffices. If BOTH are missing we
+	// surface 503 (configurable dep absent) rather than returning a 200
+	// with an empty asset. If either is NotImplemented we surface 501.
+	nvidiaStatus := h.service.CapabilityResolution(imgservice.CapImageGenNvidia)
+	remoteStatus := h.service.CapabilityResolution(imgservice.CapRemoteImageGen)
+	if nvidiaStatus == imgservice.StatusNotImplemented || remoteStatus == imgservice.StatusNotImplemented {
+		c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
+			"error":         "image generation capability not implemented",
+			"nvidia_status": nvidiaStatus,
+			"remote_status": remoteStatus,
+		})
+		return
+	}
+	if nvidiaStatus != imgservice.StatusAvailable && remoteStatus != imgservice.StatusAvailable {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"error":         "image generation services unavailable: configure NVIDIA_API_KEY or VELOX_REMOTE_IMAGE_ENDPOINT",
+			"nvidia_status": nvidiaStatus,
+			"remote_status": remoteStatus,
+		})
+		return
+	}
+
 	// Create a long-lived context for AI generation
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 6*time.Minute)
 	defer cancel()
@@ -217,6 +242,24 @@ func (h *ImagesHandler) Animate(c *gin.Context) {
 
 	if req.Duration <= 0 {
 		req.Duration = 7
+	}
+
+	// Truthful capability gate (fix(images): expose truthful capability
+	// availability). AnimateImage is supplied by nvidia_animate.go and
+	// requires the NVIDIA pipeline (NVENC + the per-frame warp).
+	nvidiaStatus := h.service.CapabilityResolution(imgservice.CapImageGenNvidia)
+	if nvidiaStatus == imgservice.StatusNotImplemented {
+		c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
+			"error": "image animation capability not implemented",
+		})
+		return
+	}
+	if nvidiaStatus != imgservice.StatusAvailable {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"error":         "image animation requires NVIDIA_API_KEY (NVENC per-frame warp)",
+			"nvidia_status": nvidiaStatus,
+		})
+		return
 	}
 
 	outputPath, err := h.service.AnimateImage(c.Request.Context(), req.ImageHash, req.Duration)

@@ -1,6 +1,6 @@
-// Package semantic — NormalizeSearchText stub. AGENT-2 (June 2026): the
-// real implementation was removed from remote (commit d61068b3);
-// regenerate a minimal version that satisfies the canonical contract
+// Package semantic — NormalizeSearchText compatibility helper. AGENT-2
+// (June 2026): the real implementation was removed from remote
+// (commit d61068b3); this minimal version satisfies the canonical contract
 // documented in `internal/infrastructure/ai/semantic/normalize_test.go`:
 //
 //	NormalizeSearchText(parts ...string) string

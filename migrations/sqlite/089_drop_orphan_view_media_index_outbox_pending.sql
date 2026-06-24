@@ -1,0 +1,27 @@
+-- 089_drop_orphan_view_media_index_outbox_pending.sql
+--
+-- WHY: migration/sqlite/034_media_index_outbox.sql created three objects:
+--   1. media_index_outbox   (TABLE)
+--   2. trg_outbox_updated_at (TRIGGER on media_index_outbox)
+--   3. media_index_outbox_pending (VIEW that SELECTs FROM media_index_outbox)
+-- migration/sqlite/056_drop_media_index_outbox.sql then dropped only
+-- the TABLE. SQLite's DROP TABLE cascades to triggers and indices but
+-- does NOT drop dependent views — so the view
+-- `media_index_outbox_pending` is left as an orphan pointing at a
+-- non-existent table.
+--
+-- Any subsequent ALTER TABLE / RENAME on unrelated tables triggers
+-- SQLite schema validation which references the orphan view and fails
+-- with: `error in view media_index_outbox_pending: no such table:
+-- main.media_index_outbox`. This was surfaced by
+-- internal/infrastructure/database/migrations_test.go::
+-- TestMigrations_Smoke/ForeignKeysCheck when migration 090's
+-- ALTER TABLE job_assets RENAME TO job_assets_v090_tmp ran against
+-- a fresh schema.
+--
+-- This migration drops the orphan view so subsequent ALTER TABLE
+-- statements can proceed. Triggered by FK typo fix in 090, but the
+-- orphan view is a self-contained schema-cleanup concern and lives
+-- in its own migration per the "one concern per migration" rule.
+
+DROP VIEW IF EXISTS media_index_outbox_pending;
