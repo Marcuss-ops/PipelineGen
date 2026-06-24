@@ -4,10 +4,10 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	fullimagessvc "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	fullimagessvc "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
 	"go.uber.org/zap"
 )
 
@@ -65,4 +65,3 @@ func WireFullImages(cfg *config.Config, log *zap.Logger, imageSvc *imgservice.Se
 	log.Info("created FullImages module (handler in api/images/, prefix /fullimages retained for zero-change-contract)")
 	return &FullImagesWiring{Handler: handler, Module: mod}, nil
 }
-

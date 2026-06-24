@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	youtubesubtitles "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -287,7 +288,7 @@ Second cue
 		t.Fatal(err)
 	}
 
-	got, err := parseVTTFile(tmpFile, 0, 10)
+	got, err := youtubesubtitles.ParseVTTFile(tmpFile, 0, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -317,7 +318,7 @@ Late text
 	}
 
 	// Only get cues from 8s to 15s
-	got, err := parseVTTFile(tmpFile, 8, 15)
+	got, err := youtubesubtitles.ParseVTTFile(tmpFile, 8, 15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -338,7 +339,7 @@ func TestParseVTTFile_EmptyFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := parseVTTFile(tmpFile, 0, 10)
+	got, err := youtubesubtitles.ParseVTTFile(tmpFile, 0, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,7 +359,7 @@ func TestParseVTTFile_HTMLTagsStripped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := parseVTTFile(tmpFile, 0, 10)
+	got, err := youtubesubtitles.ParseVTTFile(tmpFile, 0, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -391,7 +392,7 @@ world goodbye
 		t.Fatal(err)
 	}
 
-	got, err := parseVTTFile(tmpFile, 0, 10)
+	got, err := youtubesubtitles.ParseVTTFile(tmpFile, 0, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

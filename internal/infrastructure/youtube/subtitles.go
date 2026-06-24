@@ -15,7 +15,7 @@ import (
 // SubtitleFetcherAdapter is the concrete impl of the SubtitleFetcher
 // port declared in ports.go. It owns:
 //
-//   - the VTT rolling-cue parser (loadCues + parseVTTFile + parseVTTEntries)
+//   - the VTT rolling-cue parser (loadCues + ParseVTTFile + parseVTTEntries)
 //     MOVED from internal/application/youtube/subtitles.go;
 //   - a process runner for the yt-dlp --write-auto-subs download;
 //   - a per-cacheDir store so SliceSubtitles can locate the
@@ -109,7 +109,7 @@ func (a *SubtitleFetcherAdapter) SliceSubtitles(_ context.Context, videoID strin
 		}
 		return nil
 	}
-	text, err := parseVTTFile(vttPath, float64(startSec), float64(endSec))
+	text, err := ParseVTTFile(vttPath, float64(startSec), float64(endSec))
 	if err != nil {
 		return fmt.Errorf("subtitles: parse %s: %w", vttPath, err)
 	}
@@ -216,10 +216,10 @@ func loadCues(vttPath string, startSec, endSec float64) ([]vttCue, error) {
 	return cues, nil
 }
 
-// parseVTTFile applies the YouTube rolling-cue dedup algorithm on
+// ParseVTTFile applies the YouTube rolling-cue dedup algorithm on
 // loadCues' output and returns the cleaned, concatenated transcript
 // text (post-dedup + collapse).
-func parseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
+func ParseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
 	cues, err := loadCues(vttPath, startSec, endSec)
 	if err != nil {
 		return "", err

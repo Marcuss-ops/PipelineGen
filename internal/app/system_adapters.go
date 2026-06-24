@@ -163,14 +163,14 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 		return systemapi.DoctorConfig{}
 	}
 	return systemapi.DoctorConfig{
-		DataDir:                  cfg.Storage.DataDir,
-		AssetsPath:               cfg.Storage.AssetsPath(),
-		ImagesPath:               cfg.Storage.ImagesPath(),
-		TempPath:                 cfg.Storage.TempPath(),
-		AnimationsPath:           cfg.Storage.AnimationsPath(),
-		YoutubeClipsPath:         cfg.Storage.YoutubeClipsPath(),
-		PythonScriptsDir:         cfg.Paths.PythonScriptsDir,
-		GoogleAccountingEnabled:  cfg.GoogleAccounting.Enabled,
+		DataDir:                   cfg.Storage.DataDir,
+		AssetsPath:                cfg.Storage.AssetsPath(),
+		ImagesPath:                cfg.Storage.ImagesPath(),
+		TempPath:                  cfg.Storage.TempPath(),
+		AnimationsPath:            cfg.Storage.AnimationsPath(),
+		YoutubeClipsPath:          cfg.Storage.YoutubeClipsPath(),
+		PythonScriptsDir:          cfg.Paths.PythonScriptsDir,
+		GoogleAccountingEnabled:   cfg.GoogleAccounting.Enabled,
 		GoogleAccountingServerURL: cfg.GoogleAccounting.ServerURL,
 	}
 }

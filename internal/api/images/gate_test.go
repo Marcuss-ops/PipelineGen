@@ -23,6 +23,11 @@ var prohibitedPatterns = []gate.Prohibition{
 	// here. Grep-verified: zero hits in internal/api/* production code
 	// at HEAD, safe to enforce as hard-fail pattern.
 	{Name: "imgservice.NewService direct construction", Pattern: "imgservice.NewService"},
+	// PG-002 (June 2026): enforce no infrastructure imports locally so a
+	// regression cannot sneak past CI's Check 19 unnoticed while a
+	// developer runs `go test ./internal/api/images/...` in isolation.
+	// Cross-ref: docs/migrations/api-infrastructure-imports-allowlist.txt.
+	{Name: "infrastructure imports", Pattern: "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/"},
 }
 
 func TestStaticGate_NoImagesAPIInfrastructureLeaks(t *testing.T) {

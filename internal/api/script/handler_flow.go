@@ -57,7 +57,7 @@ type ScriptFlowHandler struct {
 	clipServices      scripts.ClipServices
 	driveFolderClient DriveFolderClient
 	documentCreator   DocumentCreator
-	jobsSvc           *jobservice.Service
+	jobsSvc           jobservice.Service
 	scriptsRepo       scripts.ScriptRepository
 	memorySvc         *gemmamemory.Service
 	harvestSvc        AutoHarvestService
