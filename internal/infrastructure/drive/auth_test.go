@@ -1,9 +1,11 @@
 package drive
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"golang.org/x/oauth2"
 )
 
 func TestDriveConfigResolveFolder(t *testing.T) {
@@ -50,4 +52,50 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			}
 		}
 	})
+}
+
+type testTokenSource struct {
+	token *oauth2.Token
+	err   error
+}
+
+func (t testTokenSource) Token() (*oauth2.Token, error) {
+	if t.err != nil {
+		return nil, t.err
+	}
+	return t.token, nil
+}
+
+func TestFallbackTokenSource_UsesFallbackOnOAuthRefreshErrors(t *testing.T) {
+	primaryErr := errors.New(`oauth2: "unauthorized_client" "Unauthorized"`)
+	fallbackTok := &oauth2.Token{AccessToken: "fallback-token"}
+
+	src := &fallbackTokenSource{
+		primary:  testTokenSource{err: primaryErr},
+		fallback: oauth2.StaticTokenSource(fallbackTok),
+	}
+
+	got, err := src.Token()
+	if err != nil {
+		t.Fatalf("expected fallback token, got error: %v", err)
+	}
+	if got == nil || got.AccessToken != "fallback-token" {
+		t.Fatalf("expected fallback token, got %#v", got)
+	}
+}
+
+func TestFallbackTokenSource_ReturnsPrimaryTokenOnSuccess(t *testing.T) {
+	want := &oauth2.Token{AccessToken: "primary-token"}
+	src := &fallbackTokenSource{
+		primary:  testTokenSource{token: want},
+		fallback: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "fallback-token"}),
+	}
+
+	got, err := src.Token()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || got.AccessToken != "primary-token" {
+		t.Fatalf("expected primary token, got %#v", got)
+	}
 }
