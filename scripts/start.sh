@@ -38,7 +38,7 @@
 #   scripts/start.sh --strict              # gate CI (fails on warnings)
 #   scripts/start.sh --quick               # dev fast-path (~5s)
 #   scripts/start.sh --full                # after server boots, dispatch a job
-#   VELOX_PORT=8080 scripts/start.sh       # override the listen port
+#   VELOX_PORT=8000 scripts/start.sh       # override the listen port
 #   NO_COLOR=1 scripts/start.sh            # disable ANSI colors (CI)
 #
 # COMPANION FILES:
@@ -122,7 +122,7 @@ fi
 
 # Pull port + master defaults if not set, so downstream checks have something
 # to reference (these are the bare defaults; .env override them).
-: "${VELOX_PORT:=8080}"
+: "${VELOX_PORT:=8000}"
 : "${VELOX_HOST:=127.0.0.1}"
 : "${VELOX_MASTER_URL:=http://127.0.0.1:${VELOX_PORT}}"
 : "${OLLAMA_ADDR:=http://localhost:11434}"
@@ -211,7 +211,7 @@ fi
 # ── 6. server config sanity (host:port, public-host auth) ───────────────────
 section "6/10 server config sanity"
 
-log_ready "VELOX_PORT=${VELOX_PORT} (8080 = Operational Readiness PR canonical default)"
+log_ready "VELOX_PORT=${VELOX_PORT} (8000 = Operational Readiness PR canonical default)"
 log_ready "VELOX_HOST=${VELOX_HOST}"
 log_ready "VELOX_MASTER_URL=${VELOX_MASTER_URL}"
 

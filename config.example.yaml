@@ -1,9 +1,13 @@
 server:
   host: "127.0.0.1"
-  # Port is configurable via VELOX_PORT env var at runtime; the yaml
-  # default stays 8080 to match Client defaults in pkg/veloxclient,
-  # scripts/velox_client.py and Makefile `doctor`/`artlist` targets.
-  port: 8080
+  # Canonical port is 8000 (chosen in the Operational Readiness PR — June 2026
+  # Canonical port 8000 (Operational Readiness PR, June 2026).
+  # Override at runtime via VELOX_PORT; see `internal/infrastructure/config/types.go::ServerConfig` for single source of truth.). Override at runtime via
+  # VELOX_PORT; SeeServerConfig in internal/infrastructure/config/types.go
+  # is the single source of truth. Makefile `doctor`/`artlist` targets and
+  # scripts/velox_client.py read $VELOX_PORT with a 8000 fallback so the
+  # whole stack stays consistent without editing every recipe.
+  port: 8000
   gin_mode: "release"
 
 logging:
@@ -142,9 +146,18 @@ features:
   script_docs_enabled: false
   script_clips_enabled: false
   stock_pipeline_enabled: false
-  google_accounting_enabled: false
   images_enabled: false
-  workflow_enabled: false
+  voiceover_enabled: false
+  catalog_script_vector_search: false
+
+# NOTE (June 2026 drft-fix): the previous config.example.yaml featured
+# `google_accounting_enabled` and `workflow_enabled` under `features:`.
+# These are NOT part of internal/infrastructure/config/types.go
+# FeaturesConfig: google_accounting has its own top-level GoogleAccountingConfig
+# section below, and `workflow_enabled` is no longer a feature flag (the
+# workflow module was retired). The replacement flags
+# (voiceover_enabled, catalog_script_vector_search) match the in-tree
+# FeaturesConfig exactly so the yaml loader cannot silently drop fields.
 
 google_accounting:
   enabled: false
