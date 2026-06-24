@@ -1,14 +1,60 @@
 package images
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"go.uber.org/zap"
 )
+
+// pythonEmbeddingAdapter is a local replacement for the removed
+// realtime.NewPythonEmbeddingAdapter. It calls the Python embedding
+// server directly via HTTP.
+type pythonEmbeddingAdapter struct {
+	serverURL string
+	client    *http.Client
+}
+
+func newPythonEmbeddingAdapter(serverURL string) *pythonEmbeddingAdapter {
+	return &pythonEmbeddingAdapter{
+		serverURL: serverURL,
+		client:    &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (a *pythonEmbeddingAdapter) EmbedPassage(ctx context.Context, text string) ([]float64, error) {
+	if a.serverURL == "" {
+		return nil, fmt.Errorf("embedding server URL not configured")
+	}
+	reqBody := map[string]string{"text": text, "type": "passage"}
+	body, _ := json.Marshal(reqBody)
+	req, err := http.NewRequestWithContext(ctx, "POST", a.serverURL+"/embed", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("embedding server returned %d", resp.StatusCode)
+	}
+	var result struct {
+		Embedding []float64 `json:"embedding"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result.Embedding, nil
+}
 
 // callSemanticTagger RIMOSSO: usa semantic.Tagger() o semantic.MetadataWriter.Write() direttamente.
 // callSemanticTagger era un duplicato identico di semantic.Tagger() — contribuiva alla
@@ -20,7 +66,7 @@ func (s *Service) indexAssetInVectorStore(ctx context.Context, assetID, source, 
 	}
 
 	// 1. Get passage embedding from Python server (type="passage" per E5 prefix)
-	adapter := realtime.NewPythonEmbeddingAdapter(s.cfg.ClipIndexer.ServerURL)
+	adapter := newPythonEmbeddingAdapter(s.cfg.ClipIndexer.ServerURL)
 	embedding, err := adapter.EmbedPassage(ctx, searchText)
 	if err != nil {
 		s.log.Warn("Failed to generate embedding for search_text", zap.String("asset_id", assetID), zap.Error(err))

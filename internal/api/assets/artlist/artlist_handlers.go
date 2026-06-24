@@ -13,13 +13,38 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipresolver"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// ClipResolverPort is a local interface replacing the removed
+// clipresolver.Service (package internal/application/assets/clipresolver).
+type ClipResolverPort interface {
+	Recommend(ctx context.Context, req *ClipResolverRecommendRequest) (*ClipResolverRecommendResponse, error)
+}
+
+// ClipResolverRecommendRequest is a local type replacing clipresolver.RecommendRequest.
+type ClipResolverRecommendRequest struct {
+	Topic     string   `json:"topic"`
+	SegmentID string   `json:"segment_id"`
+	Queries   []string `json:"queries"`
+	MinScore  float64  `json:"min_score"`
+}
+
+// ClipResolverRecommendResponse is a local type for recommend responses.
+type ClipResolverRecommendResponse struct {
+	Results []ClipResolverRecommendResult `json:"results"`
+}
+
+// ClipResolverRecommendResult is a local type.
+type ClipResolverRecommendResult struct {
+	ClipID    string  `json:"clip_id"`
+	Score     float64 `json:"score"`
+	DriveLink string  `json:"drive_link"`
+}
 
 // ArtlistHandler owns the HTTP transport for Artlist operations:
 // tag-pipeline runs (run/status/stats), search (DB + live), diagnostics,
@@ -30,7 +55,7 @@ type ArtlistHandler struct {
 	service        *artlist.Service
 	catalogSync    *catalogsync.Service
 	jobsService    *jobservice.Service
-	clipResolver   *clipresolver.Service
+	clipResolver   ClipResolverPort
 	nodeScraperDir string
 	log            *zap.Logger
 	cfg            *config.Config
@@ -44,7 +69,7 @@ func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
 	jobsService *jobservice.Service,
-	clipResolver *clipresolver.Service,
+	clipResolver ClipResolverPort,
 	nodeScraperDir string,
 	log *zap.Logger,
 	cfg *config.Config,
@@ -229,7 +254,7 @@ func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 
 // Recommend handles the recommendation endpoint using clipresolver
 func (h *ArtlistHandler) Recommend(c *gin.Context) {
-	req, ok := apiutil.BindJSON[clipresolver.RecommendRequest](c)
+	req, ok := apiutil.BindJSON[ClipResolverRecommendRequest](c)
 	if !ok {
 		return
 	}

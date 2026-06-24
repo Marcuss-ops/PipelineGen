@@ -13,8 +13,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -23,6 +21,47 @@ import (
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
+
+// ── Local type stubs for removed packages ───────────────────────────────────
+// realtime.MatchAsset and association.CandidatesRequest were defined in
+// packages that no longer exist (removed from remote, June 2026). These
+// local types preserve compilation until the real types are restored.
+
+// RealtimeMatchAsset mirrors the removed realtime.MatchAsset.
+type RealtimeMatchAsset struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Source    string  `json:"source"`
+	Score     float64 `json:"score"`
+	DriveLink string  `json:"drive_link"`
+}
+
+// AssociationCandidatesRequest mirrors the removed association.CandidatesRequest.
+type AssociationCandidatesRequest struct {
+	Topic     string   `json:"topic"`
+	Subject   string   `json:"subject"`
+	Narrative string   `json:"narrative"`
+	Keywords  []string `json:"keywords"`
+	Entities  []string `json:"entities"`
+	TopK      int      `json:"top_k"`
+}
+
+// AssociationCandidate mirrors a single candidate from the removed association package.
+type AssociationCandidate struct {
+	Database string  `json:"database"`
+	Source   string  `json:"source"`
+	Name     string  `json:"name"`
+	Path     string  `json:"path"`
+	Link     string  `json:"link"`
+	FolderID string  `json:"folder_id"`
+	Score    float64 `json:"score"`
+	Reason   string  `json:"reason"`
+}
+
+// AssociationCandidatesResponse mirrors the removed association response.
+type AssociationCandidatesResponse struct {
+	Candidates []AssociationCandidate `json:"candidates"`
+}
 
 // ── SearchScriptAssets ──────────────────────────────────────────────────────
 
@@ -83,7 +122,7 @@ func SearchScriptAssets(ctx context.Context, svc ClipServices, queries []string,
 	return out
 }
 
-func filterSearchAssets(matches []realtime.MatchAsset, topicKeywords string, seen map[string]struct{}, limit int) []ScriptAssetSuggestion {
+func filterSearchAssets(matches []RealtimeMatchAsset, topicKeywords string, seen map[string]struct{}, limit int) []ScriptAssetSuggestion {
 	out := make([]ScriptAssetSuggestion, 0, minInt(limit, len(matches)))
 	for _, asset := range matches {
 		if len(out) >= limit {
@@ -216,7 +255,7 @@ func resolveArtlistFolderForPhrase(ctx context.Context, svc ClipServices, phrase
 	if svc.AssocSvc == nil || strings.TrimSpace(phrase) == "" {
 		return "", "", ""
 	}
-	req := association.CandidatesRequest{
+	req := AssociationCandidatesRequest{
 		Topic:    phrase,
 		Subject:  phrase,
 		Keywords: []string{phrase},
@@ -595,7 +634,7 @@ func ResolveRecommendedDriveFolder(ctx context.Context, svc ClipServices, title,
 	keywords = sliceutil.UniqueLimitedStrings(keywords, 12)
 
 	entities := sliceutil.UniqueLimitedStrings(insights.SpecialNames, 12)
-	req := association.CandidatesRequest{
+	req := AssociationCandidatesRequest{
 		Topic:     strings.TrimSpace(title),
 		Subject:   strings.TrimSpace(title),
 		Narrative: strings.TrimSpace(script),

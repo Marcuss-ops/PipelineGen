@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -114,7 +113,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	return &ArtlistWiring{Handler: handler, Module: mod, Service: artlistSvc}, nil
 }
 
-func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bundle *ArtlistBundle, clipResolver *clipresolver.Service, log *zap.Logger) *artsources.ArtlistHandler {
+func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bundle *ArtlistBundle, clipResolver interface{}, log *zap.Logger) *artsources.ArtlistHandler {
 	if artlistSvc == nil {
 		return nil
 	}
@@ -135,56 +134,8 @@ func wireAssetDestinationResolver(cfg *config.Config, bundle *ArtlistBundle, log
 	return nil
 }
 
-func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, vectorStore *qdrant.Service, log *zap.Logger) *clipresolver.Service {
-	if clipCatalogRepo == nil {
-		return nil
-	}
-	var harvestSvc clipresolver.ArtlistHarvestService
-	if bundle.Jobs.Service != nil {
-		harvestSvc = clipresolver.NewJobHarvestService(bundle.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
-	}
-	matchingCfg, err := config.LoadMatchingConfig("config/matching.yaml")
-	if err != nil {
-		log.Warn("failed to load matching config, using defaults", zap.Error(err))
-	}
-	ontologyReg, err := ontology.LoadRegistry("config/ontology.yaml")
-	var ontologyScorer clipresolver.OntologyScorer
-	if err != nil {
-		log.Warn("failed to load ontology registry", zap.Error(err))
-	} else {
-		ontologyScorer = ontology.NewScorer(ontologyReg)
-	}
-	embedServerURL := cfg.ClipIndexer.ServerURL
-	if embedServerURL == "" {
-		embedServerURL = "http://127.0.0.1:8001"
-	}
-	embedProvider := clipresolver.NewPythonEmbeddingProvider(embedServerURL)
-	var vectorStoreSearcher clipresolver.VectorStoreSearcher
-	if vectorStore != nil && vectorStore.Enabled() {
-		vectorStoreSearcher = clipresolver.NewVectorStoreAdapter(vectorStore)
-		log.Info("vector store searcher enabled for clip resolver")
-	}
-	repos := make(map[string]*clipcatalog.Repository)
-	if bundle.ClipsRepo != nil && bundle.ClipsRepo.DB() != nil {
-		repos["stock"] = clipcatalog.NewRepository(bundle.ClipsRepo.DB(), log)
-		repos["stock"].SetSource("stock")
-	}
-	if bundle.DB != nil && bundle.DB.DB != nil {
-		repos["youtube"] = clipcatalog.NewRepository(bundle.DB.DB, log)
-		repos["youtube"].SetSource("youtube")
-	}
-	repos["artlist"] = clipCatalogRepo
-	repos["artlist"].SetSource("artlist")
-	llmCfg := clipresolver.DefaultLLMDecisionConfig()
-	llmCfg.Model = cfg.External.OllamaModel
-	llmCfg.Timeout = time.Duration(cfg.External.OllamaTimeoutSeconds) * time.Second
-	var llmDecision *clipresolver.LLMDecisionService
-	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
-	if ollamaClient != nil {
-		llmDecision = clipresolver.NewLLMDecisionService(ollamaClient, llmCfg, log)
-		log.Info("LLM decision layer enabled for clip resolver", zap.String("model", llmCfg.Model), zap.Int("top_k", llmCfg.TopK))
-	}
-	return clipresolver.NewService(repos, harvestSvc, embedProvider, ontologyScorer, matchingCfg, vectorStoreSearcher, llmDecision)
+func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, vectorStore *qdrant.Service, log *zap.Logger) interface{} {
+	return nil // clipresolver package removed from remote
 }
 
 // wireArtlistService composes the artlist service via ServiceDeps (PR2.5+PR2.7).

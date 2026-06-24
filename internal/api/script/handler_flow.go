@@ -10,16 +10,14 @@ package script
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
@@ -48,8 +46,8 @@ type ScriptFlowHandler struct {
 	curationJobService CurationJobService
 	catalogJobService  CatalogJobService
 	imgService         *images.Service
-	realtimeSvc        *realtime.Service
-	associationSvc     *association.Service
+	realtimeSvc        interface{} // was *realtime.Service (package removed)
+	associationSvc     interface{} // was *association.Service (package removed)
 	voService          *voiceover.Service
 	assetTreeSvc       *assettree.Service
 	groupsResolver     *voiceover.GroupsResolver
@@ -88,8 +86,8 @@ type ScriptFlowDeps struct {
 	PipelineUseCase    *scripts.PipelineUseCase
 
 	Image            *images.Service
-	Realtime         *realtime.Service
-	Association      *association.Service
+	Realtime         interface{} // was *realtime.Service (package removed)
+	Association      interface{} // was *association.Service (package removed)
 	Voiceover        *voiceover.Service
 	AssetTree        *assettree.Service
 
