@@ -102,7 +102,7 @@ func (u *DocumentsUseCase) DocumentsService() *DocumentsService {
 func (u *DocumentsUseCase) BuildAndCreate(
 	ctx context.Context,
 	title, content string,
-	resolveFolder ResolveFolderFunc,
+	resolveFolder FolderResolver,
 	driveFolderID string,
 ) (docLink, docID string, err error) {
 	if u == nil {
