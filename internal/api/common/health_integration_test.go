@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	healthapp "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 )
 
@@ -60,10 +61,10 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 
 	// Build the health Service with infra checkers pointing at the temp DB.
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:    infrahealth.NewSQLiteChecker(db),
-		Drive: infrahealth.NewDriveChecker("", ""),  // no Drive creds → applicable=false
+		DB:     infrahealth.NewSQLiteChecker(&storage.SQLiteDB{DB: db}),
+		Drive:  infrahealth.NewDriveChecker("", ""),                                          // no Drive creds → applicable=false
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false), // disabled
-		Jobs:  infrahealth.NewJobsChecker(db),
+		Jobs:   infrahealth.NewJobsChecker(&storage.SQLiteDB{DB: db}),
 	})
 
 	gin.SetMode(gin.TestMode)
@@ -303,10 +304,10 @@ func TestHealth_DBUnreachable(t *testing.T) {
 	db.Close() // close to make it unreachable
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:    infrahealth.NewSQLiteChecker(db),
-		Drive: infrahealth.NewDriveChecker("", ""),
+		DB:     infrahealth.NewSQLiteChecker(&storage.SQLiteDB{DB: db}),
+		Drive:  infrahealth.NewDriveChecker("", ""),
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
-		Jobs:  infrahealth.NewJobsChecker(db),
+		Jobs:   infrahealth.NewJobsChecker(&storage.SQLiteDB{DB: db}),
 	})
 
 	ready := healthapp.NewReadyChecker(svc)
@@ -453,10 +454,10 @@ func TestRouter_WiringWithoutReadyChecker_Returns503(t *testing.T) {
 	require.NoError(t, err)
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:    infrahealth.NewSQLiteChecker(db),
-		Drive: infrahealth.NewDriveChecker("", ""),
+		DB:     infrahealth.NewSQLiteChecker(&storage.SQLiteDB{DB: db}),
+		Drive:  infrahealth.NewDriveChecker("", ""),
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
-		Jobs:  infrahealth.NewJobsChecker(db),
+		Jobs:   infrahealth.NewJobsChecker(&storage.SQLiteDB{DB: db}),
 	})
 
 	// Simulate the pre-fix bug: healthSvc wired, but readyChecker is nil.

@@ -8,6 +8,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// newSQLiteTestDB returns the *sql.DB handle so existing tests can
+// still use db.Exec / db.Close for fixture setup. Checker construction
+// wraps the raw handle in *storage.SQLiteDB (PG-011 typed-canonical
+// migration: composition root must not import database/sql).
 func newSQLiteTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -18,12 +22,15 @@ func newSQLiteTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+// wrapDB is declared in jobs_checker_test.go (single canonical helper
+// shared by both checker tests in this package — same semantics).
+
 func TestSQLiteChecker_OK(t *testing.T) {
 	db := newSQLiteTestDB(t)
 	if _, err := db.Exec("CREATE TABLE media_assets (id TEXT PRIMARY KEY)"); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
-	c := NewSQLiteChecker(db)
+	c := NewSQLiteChecker(wrapDB(db))
 	res := c.CheckDB(context.Background())
 	ok, _ := res["ok"].(bool)
 	if !ok {
@@ -39,7 +46,7 @@ func TestSQLiteChecker_TableMissing(t *testing.T) {
 	if _, err := db.Exec("CREATE TABLE unrelated (id INTEGER)"); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	c := NewSQLiteChecker(db)
+	c := NewSQLiteChecker(wrapDB(db))
 	res := c.CheckDB(context.Background())
 	ok, _ := res["ok"].(bool)
 	if ok {
@@ -56,7 +63,7 @@ func TestSQLiteChecker_PingFails(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatalf("close before check: %v", err)
 	}
-	c := NewSQLiteChecker(db)
+	c := NewSQLiteChecker(wrapDB(db))
 	res := c.CheckDB(context.Background())
 	ok, _ := res["ok"].(bool)
 	if ok {
