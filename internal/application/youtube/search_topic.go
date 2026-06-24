@@ -78,7 +78,7 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 		limit = 50
 	}
 
-	baseResults, err := s.SearchLive(ctx, query, limit*2, sortMode) // fetch more than needed for filtering
+	baseResults, err := s.search.SearchLive(ctx, query, limit*2, sortMode) // fetch more than needed for filtering
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asse
 		return TopicSearchResult{}, fmt.Errorf("missing youtube url for clip %s", clip.ID)
 	}
 
-	metadata, err := s.GetVideoInfo(ctx, videoURL)
+	metadata, err := s.search.GetVideoInfo(ctx, videoURL)
 	if err != nil {
 		return TopicSearchResult{}, err
 	}

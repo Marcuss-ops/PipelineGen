@@ -12,8 +12,8 @@ import (
 // triggerAutoIndexing fires a background goroutine to:
 //  1. First enrich the clip with YouTube metadata (title, description, tags, language)
 //     if missing — this ensures search_text is available for embedding generation.
-//     Uses the resilient enrichYouTubeClipWithMetadata which falls back to direct
-//     yt-dlp fetch if the original metadata wasn't available during extraction.
+//     The metadata capability service fetches via yt-dlp if the original metadata
+//     wasn't available during extraction.
 //  2. Then generate embeddings and upsert to Qdrant vector store.
 func (s *Service) triggerAutoIndexing(ctx context.Context, clipID string) {
 	if s.indexer == nil || !s.indexer.IsEnabled() {
@@ -26,7 +26,7 @@ func (s *Service) triggerAutoIndexing(ctx context.Context, clipID string) {
 		defer cancel()
 
 		// Step 1: Enrich with YouTube metadata if missing (resilient — fetches via yt-dlp if needed)
-		s.enrichYouTubeClipWithMetadata(indexCtx, id, nil, false)
+		s.metadata.EnrichClip(indexCtx, id, nil, false)
 
 		// Step 2: Generate embeddings and upsert to Qdrant
 		s.log.Info("triggering automatic indexing for YouTube clip", zap.String("clip_id", id))

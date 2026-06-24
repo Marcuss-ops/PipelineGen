@@ -1,4 +1,11 @@
-package youtube
+// Package metadata — Persistence side of the YouTube metadata capability.
+// Per Phase 1B of CPR-CC-6 (June 2026): extracted from the root youtube
+// package. ym* helpers take downloaded metadata + an existing clip row
+// and produce canonical, clip-DB-friendly fields (description, tags,
+// categories, view-count, upload-date, thumbnail URL). The generic
+// metadata* helpers extract typed values from arbitrary clip metadata
+// maps (used by both YouTube path + future capability services).
+package metadata
 
 import (
 	"encoding/json"

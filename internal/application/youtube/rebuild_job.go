@@ -41,8 +41,9 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 	}
 
 	// Query all YouTube clips that have been enriched (have youtube_title).
-	// We only target clips with youtube_title because enrichYouTubeClipWithMetadata
-	// needs either pre-fetched metadata or a YouTube URL to fetch from.
+	// We only target clips with youtube_title because the metadata
+	// capability service needs either pre-fetched DownloaderMetadata
+	// or a YouTube URL to derive it from.
 	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
 	if p.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", p.Limit)
@@ -113,7 +114,7 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, 
 
 			// Re-enrich with force=true — bypasses the "already enriched" skip.
 			// Uses the new field order: Transcript before Description.
-			s.enrichYouTubeClipWithMetadata(clipCtx, id, nil, true)
+			s.metadata.EnrichClip(clipCtx, id, nil, true)
 
 			mu.Lock()
 			rebuilt++

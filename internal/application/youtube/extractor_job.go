@@ -50,7 +50,7 @@ func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *job
 		tools.Progress(5, "Job started, preparing extraction")
 	}
 
-	resp, err := s.Extract(ctx, &req)
+	resp, err := s.extraction.Extract(ctx, &req)
 	if err != nil {
 		s.log.Warn("YouTube extract job failed",
 			zap.String("job_id", job.ID),

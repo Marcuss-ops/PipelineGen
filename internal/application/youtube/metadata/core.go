@@ -4,7 +4,7 @@
 //
 //   - metadata_core.go    : ClipMetadataFile alias shim (canonical definition
 //     extracted to youtube/types/ per PR3 Phase 2)
-//   - metadata_enrich.go  : orchestration (writeClipMetadataFile)
+//   - metadata_persist.go : pure helpers (June 2026 extraction)
 //   - metadata_persist.go : field accessors and content helpers
 package metadata
 
