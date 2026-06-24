@@ -645,6 +645,7 @@ func (pu *PipelineUseCase) buildFinalResult(
 	}
 	if docLink != "" {
 		out["doc_url"] = docLink
+		out["doc_link"] = docLink
 		out["doc_id"] = docID
 	}
 	if len(pathResult.ClipScenes) > 0 {

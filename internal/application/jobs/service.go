@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -43,11 +44,45 @@ func NewService(repo *sqljobs.SQLiteStore, dispatcher *Dispatcher, log *zap.Logg
 // Accepts any handler; performs a type-assertion to HandlerFunc.
 // Implements job.Service interface.
 func (s *Service) RegisterHandler(jobType string, handler any) error {
-	h, ok := handler.(HandlerFunc)
-	if !ok {
+	switch h := handler.(type) {
+	case HandlerFunc:
+		return s.dispatcher.Register(jobType, h)
+	case func(context.Context, *job.Job, *JobTools) (map[string]any, error):
+		return s.dispatcher.Register(jobType, HandlerFunc(h))
+	}
+
+	rv := reflect.ValueOf(handler)
+	if rv.Kind() != reflect.Func {
 		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
 	}
-	return s.dispatcher.Register(jobType, h)
+	rt := rv.Type()
+	if rt.NumIn() != 3 || rt.NumOut() != 2 {
+		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
+	}
+	if !rt.In(0).AssignableTo(reflect.TypeOf((*context.Context)(nil)).Elem()) ||
+		!rt.In(1).AssignableTo(reflect.TypeOf((*job.Job)(nil))) ||
+		!rt.In(2).AssignableTo(reflect.TypeOf((*JobTools)(nil))) ||
+		!rt.Out(1).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
+	}
+
+	wrapped := func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
+		results := rv.Call([]reflect.Value{
+			reflect.ValueOf(ctx),
+			reflect.ValueOf(j),
+			reflect.ValueOf(tools),
+		})
+		var out map[string]any
+		if !results[0].IsNil() {
+			out, _ = results[0].Interface().(map[string]any)
+		}
+		var err error
+		if !results[1].IsNil() {
+			err, _ = results[1].Interface().(error)
+		}
+		return out, err
+	}
+	return s.dispatcher.Register(jobType, wrapped)
 }
 
 // validateEnqueueRequest checks the domain EnqueueRequest for common errors.
