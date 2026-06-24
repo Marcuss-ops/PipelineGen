@@ -179,7 +179,9 @@ docker-build:
 # Docker run: maps the canonical VELOX_PORT (default 8080) host port
 # onto the container's 8080 listener. Use VELOX_PORT=NNNN to override.
 docker-run: docker-build
-	docker run -p $${VELOX_PORT:-8080}:8080 --env-file .env pipelinegen:latest# CI pipeline (runs all checks)
+	docker run -p $${VELOX_PORT:-8080}:8080 --env-file .env pipelinegen:latest
+
+# CI pipeline (runs all checks)
 ci: go-version-check fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"
 
