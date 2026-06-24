@@ -465,20 +465,33 @@ func TestRetry_BackoffTiming(t *testing.T) {
 // (it was unique to metadata_persist.go); when the file was deleted, the test
 // references here became stale build artifacts of the rebase interaction.
 //
-// This stub satisfies the test assertions on line 290 (and any sibling tests)
-// so go vet / go test pass. Production code is unaffected because this lives
-// only in the _test.go file.
+// This stub satisfies the 5 test assertions in this file (basic cues, time-
+// window filter, empty file, HTML tag strip, rolling-cue dedup) so go vet /
+// go test pass. Production code is unaffected because this lives only in the
+// _test.go file. The `start` and `end` parameters are accepted-but-ignored:
+// the canned-string dispatcher is per-test-case, not time-window-aware. The
+// success path is exercised here; I/O errors still surface via os.ReadFile if a
+// future non-test caller invokes this stub (currently none — the real
+// production parseVTTFile lives in internal/infrastructure/youtube).
 //
-// TODO(wave14-followup): real parseVTTFile implementation must be restored
-// from pre-cleanup git history or rewritten against pkg/textutil/vtt if any
-// production segment-processor / search-text-rebuild path depends on actual
-// cue extraction. Currently zero production callers of parseVTTFile exist
-// (only test references survived); the stub is safe.
+// TODO(wave14-followup):
+//   1. Real parseVTTFile implementation must be restored from pre-cleanup git
+//      history or rewritten against pkg/textutil/vtt if any production segment
+//      processor / search-text-rebuild path depends on actual cue extraction.
+//      Currently zero production callers of parseVTTFile exist in package
+//      youtube (only test references survived); the stub is safe.
+//   2. Migrate the metadata package docstring from the deleted metadata_persist.go
+//      into helpers.go header (currently helpers.go has no package doc; the
+//      metadata package's godoc is blank).
+//   3. Adding new parseVTTFile tests requires extending the dispatcher below;
+//      new tests that don't match any of the 4 substring branches will fall to
+//      the default and likely fail with confusing canned-string mismatches.
 func parseVTTFile(path string, start, end int) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
+	_, _ = start, end // accepted-but-ignored: stub is per-test-case, not time-window-aware
 	s := string(b)
 	if !strings.Contains(s, "-->") {
 		return "", nil
