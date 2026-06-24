@@ -107,3 +107,46 @@ Expected signals:
 - Keep server/worker split mode explicit; do not run `server --mode all` and an
   external worker against the same production queue unless intentionally
   testing compatibility behavior.
+
+## Operatività worker remoti (June 2026)
+
+Questo runbook di runtime è la **fetta operativa quotidiana**. La
+documentazione canonica per la **certificazione production** di un
+worker remoto (`PRODUCTION_READY`) vive nella directory
+[`docs/operations/`](docs/operations/04-remote-worker-production-readiness-tickets.md)
+e si articola in tre MD che vanno letti **insieme**:
+
+| Doc | Quando consultarlo |
+|-----|--------------------|
+| [`docs/operations/04-remote-worker-production-readiness-tickets.md`](docs/operations/04-remote-worker-production-readiness-tickets.md) | Quando si certifica un nuovo worker o si aggiorna una classe hardware. Definisce i 17 ticket P0 (RW-PROD-001 → RW-PROD-017), i criteri di accettazione, l'ordine di implementazione e la regola finale di ammissione. |
+| [`docs/operations/worker-certification-checklist.md`](docs/operations/worker-certification-checklist.md) | Quando si firma una scheda di certificazione o si aggiorna l'allowlist production del master. Traduce i ticket in gate verificabili (manuali + automatici) e fissa la procedura di approvazione in 8 passi. |
+| [`docs/operations/tickets/README.md`](docs/operations/tickets/README.md) | Quando si sceglie *quale* ticket attaccare per primo o si verifica l'avanzamento del parco. Indice sintetico (stato, dipendenze, ordine). |
+
+### Gate derivati da questo runbook di runtime
+
+Le sezioni sopra di questo file si collegano direttamente ai ticket
+RW-PROD-###:
+
+| Sezione di questo runbook | Ticket di riferimento |
+|---------------------------|-----------------------|
+| `Runtime Topology` (split `server --mode server` + `cmd/worker`) | RW-PROD-009, RW-PROD-010, RW-PROD-017 |
+| `Worker Startup Contract` (`BuildWorkerRegistry`, registry non vuoto) | RW-PROD-003 (`bootstrap runtime ed executor reale`) |
+| `Capability Selection` (validazione di `VELOX_WORKER_CAPABILITIES`) | RW-PROD-006 (`admission control` + capability non vuote) |
+| `Authentication` (`VELOX_WORKER_TOKEN`, NO admin token) | RW-PROD-001, RW-PROD-014 |
+| `Verification` comandi | RW-PROD-016 (`worker doctor`) |
+| `Maintenance Rules` (no fallback registry, capability non vuote) | RW-PROD-013 (alert su fallback=0 / emergency=0) |
+
+### Regola pratica
+
+- Ogni PR che modifica `cmd/worker/`,
+  `internal/infrastructure/database/sqlite/assets/workernodes_repository.go`,
+  `internal/infrastructure/jobs/local/broker.go` o il lifecycle del
+  worker deve citare almeno un ticket RW-PROD-### nel body e fare
+  riferimento al gate di ammissione che la PR contribuisce a soddisfare.
+- Le capability introdotte senza un ticket RW-PROD-### collegato
+  non possono cambiare lo stato `PRODUCTION_READY` di un worker né
+  entrare nei `velox_worker_alerts` di `config/alerting_rules.yml`.
+- Per deroghe temporanee (es. canary workers nuovi prima del soak
+  completo) consultare la sezione 4 della checklist; nessuna deroga è
+  ammessa sui gate non derogabili (mTLS valido, cert non scaduto,
+  fallback=0, emergency=0, `active_tasks ≤ task_slots`).
