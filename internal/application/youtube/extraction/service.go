@@ -84,14 +84,6 @@ type ExtractionCallbacks interface {
 	MD5File(path string) string
 	MD5String(data string) string
 
-	// Asset processing (optional — nil-safe)
-	AssetProcessingStart(ctx context.Context, clipID, stage string) error
-	AssetProcessingComplete(ctx context.Context, clipID, stage string) error
-	AssetProcessingFail(ctx context.Context, clipID, stage, errorMsg string) error
-
-	// Version tracking (optional — nil-safe)
-	AssetVersionsAppend(ctx context.Context, v *asset.Version) error
-
 	// Drive upload (→ driveFolderMgr)
 	DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error)
 	DriveGetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)

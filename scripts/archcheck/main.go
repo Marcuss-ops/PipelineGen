@@ -1,54 +1,8 @@
-// scripts/archcheck — focused-mode architectural gate (commit ci/archcheck-hard-fail).
-//
-// Produces a JSON snapshot consumed by `scripts/ci-architectural-checks.sh::Check 21`
-// via `jq -e '.focused_gate_passed == true'`. The script owns the canonical
-// focused gate for codebase policies that have been promoted to hard fail.
-// Future migrations may add new focused checks here without changing the CI
-// script — the JSON shape is the contract.
-//
-// POLICY (commit ci/archcheck-hard-fail, June 2026):
-//
-//   - Focused-mode (this binary): validates the policies that have been
-//     promoted to hard-fail evidence-based:
-//
-//   - Forbidden infrastructure imports in internal/api/ (Check 19 promotion)
-//
-//   - migration.yaml structural integrity: every `status: done` wave
-//     carries `verified_zero: true` (Check 21 promotion)
-//     If all focused checks pass, emits `{"focused_gate_passed": true, ...}`.
-//
-//   - Allowlist symmetry: the Go binary applies the SAME allowlist
-//     subtraction rule that bash Check 19 uses (comm -13 against
-//     docs/migrations/api-infrastructure-imports-allowlist.txt) so both
-//     gates produce identical verdicts.
-//
-//   - Hard-fail semantics: any non-zero violations or missing
-//     verified_zero on done waves flips `focused_gate_passed: false` in
-//     the output. Check 21 then fails the CI with `jq -e` assertion.
-//
-//   - Comprehensive-mode (Wave 16 target_metrics): NOT implemented here.
-//     Wave 16 status remains `in_progress` until comprehensive mode
-//     lands in a followup commit (per migration.yaml's own roadmap).
-//
-// OUTPUT (JSON to stdout):
-//
-//	{
-//	  "focused_gate_passed": true,
-//	  "mode": "focused",
-//	  "commit": "ci/archcheck-hard-fail",
-//	  "checks": {
-//	    "api_infrastructure_imports": 0,
-//	    "api_infrastructure_allowlist_stale": 0,
-//	    "migration_yaml_done_waves_total": 15,
-//	    "migration_yaml_done_waves_with_verified_zero_true": 15,
-//	    "ownership_yaml_missing_paths": 0
-//	  },
-//	  "violations": []
-//	}
 package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -59,7 +13,15 @@ import (
 )
 
 func main() {
-	report := runFocusedChecks()
+	strict := flag.Bool("strict", false, "run the strict architectural gate")
+	flag.Parse()
+
+	var report Report
+	if *strict {
+		report = runStrictChecks()
+	} else {
+		report = runFocusedChecks()
+	}
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -68,43 +30,33 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Exit code is for local pre-commit use. CI consumes stdout via
-	// `jq -e '.focused_gate_passed == true'` so the JSON shape remains
-	// the contract (allows new fields without changing CI).
-	if !report.FocusedGatePassed {
+	if !report.Passed {
 		os.Exit(1)
 	}
 }
 
-// Report is the JSON contract for `scripts/archcheck` consumers.
-// Keep field tags stable — they are the interface to Check 21.
+// Report is the JSON contract for scripts/archcheck consumers.
 type Report struct {
-	FocusedGatePassed bool           `json:"focused_gate_passed"`
+	Passed            bool           `json:"passed"`
+	FocusedGatePassed bool           `json:"focused_gate_passed,omitempty"`
 	Mode              string         `json:"mode"`
 	Commit            string         `json:"commit"`
+	LegacyBudget      int            `json:"legacy_budget,omitempty"`
 	Checks            map[string]int `json:"checks"`
 	Violations        []string       `json:"violations"`
 }
 
-// runFocusedChecks runs every focused check and aggregates the verdict.
-// A violation in ANY focused check flips focused_gate_passed to false. The
-// CI gate is fail-CLOSED: each exposed path must hold.
 func runFocusedChecks() Report {
 	checks := map[string]int{}
 	violations := []string{}
 
-	// Focused check #1: forbidden infrastructure imports in internal/api/
-	// (promoted from soft-log to hard-fail by Check 19 in this commit).
 	apiStats, apiViolations := checkAPIInfrastructureImports()
-	apiViolCount := apiStats["violations"]
-	checks["api_infrastructure_imports"] = apiViolCount
+	checks["api_infrastructure_imports"] = apiStats["violations"]
 	checks["api_infrastructure_imports_actual"] = apiStats["actual"]
 	checks["api_infrastructure_imports_allowed"] = apiStats["allowed"]
 	checks["api_infrastructure_allowlist_stale"] = apiStats["stale"]
 	violations = append(violations, apiViolations...)
 
-	// Focused check #2: migration.yaml structural integrity — every
-	// `status: done` wave carries `verified_zero: true`.
 	yamlVerifiedOK, yamlVerifiedTotal, yamlViolations := checkMigrationYAML()
 	checks["migration_yaml_done_waves_total"] = yamlVerifiedTotal
 	checks["migration_yaml_done_waves_with_verified_zero_true"] = yamlVerifiedOK
@@ -115,6 +67,7 @@ func runFocusedChecks() Report {
 	violations = append(violations, ownershipViolations...)
 
 	return Report{
+		Passed:            len(violations) == 0,
 		FocusedGatePassed: len(violations) == 0,
 		Mode:              "focused",
 		Commit:            "ci/archcheck-hard-fail",
@@ -123,11 +76,43 @@ func runFocusedChecks() Report {
 	}
 }
 
-// checkAPIInfrastructureImports scans internal/api/ (excluding _test.go)
-// for any file whose source contains a real Go import of a package under
-// `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/`. Applies
-// the same allowlist subtraction that bash Check 19 uses so the Go
-// binary's verdict matches the bash gate's verdict exactly.
+func runStrictChecks() Report {
+	checks := map[string]int{}
+	violations := []string{}
+
+	apiStats, apiViolations := checkAPIInfrastructureImports()
+	checks["api_infrastructure_imports"] = apiStats["violations"]
+	checks["api_infrastructure_imports_actual"] = apiStats["actual"]
+	checks["api_infrastructure_imports_allowed"] = apiStats["allowed"]
+	checks["api_infrastructure_allowlist_stale"] = apiStats["stale"]
+	violations = append(violations, apiViolations...)
+
+	sqlStats, sqlViolations := checkDatabaseSQLGate()
+	checks["database_sql_actual"] = sqlStats["actual"]
+	checks["database_sql_baseline"] = sqlStats["baseline"]
+	checks["database_sql_regressions"] = sqlStats["regressions"]
+	violations = append(violations, sqlViolations...)
+
+	yamlVerifiedOK, yamlVerifiedTotal, yamlViolations := checkMigrationYAML()
+	checks["migration_yaml_done_waves_total"] = yamlVerifiedTotal
+	checks["migration_yaml_done_waves_with_verified_zero_true"] = yamlVerifiedOK
+	violations = append(violations, yamlViolations...)
+
+	ownershipMissing, ownershipViolations := checkOwnershipYAML()
+	checks["ownership_yaml_missing_paths"] = ownershipMissing
+	violations = append(violations, ownershipViolations...)
+
+	return Report{
+		Passed:            len(violations) == 0,
+		FocusedGatePassed: len(violations) == 0,
+		Mode:              "strict",
+		Commit:            "ci/archcheck-hard-fail",
+		LegacyBudget:      0,
+		Checks:            checks,
+		Violations:        violations,
+	}
+}
+
 func checkAPIInfrastructureImports() (map[string]int, []string) {
 	stats := map[string]int{
 		"actual":     0,
@@ -182,11 +167,50 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 	return stats, violations
 }
 
-// loadAllowlist reads an allowlist file (one repo-root-relative path per
-// line; `#` comments + blank lines ignored) and returns the sorted unique
-// set of paths. The file is REQUIRED by the gate's contract — a missing
-// file is treated as an operational error so a fresh checkout does not
-// silently pass.
+func checkDatabaseSQLGate() (map[string]int, []string) {
+	stats := map[string]int{
+		"actual":      0,
+		"baseline":    len(databaseSQLLegacyBaseline),
+		"regressions": 0,
+	}
+	out, err := exec.Command("rg", "-ln", `"database/sql"`,
+		"internal/api",
+		"internal/application",
+		"internal/domain",
+		"--type", "go",
+	).Output()
+	if err != nil && !(execErrIsNoMatch(err)) {
+		stats["regressions"] = -1
+		return stats, []string{fmt.Sprintf("checkDatabaseSQLGate: rg failed: %v", err)}
+	}
+
+	actual := normalizePaths(splitNonEmpty(string(out)))
+	baseline := normalizePaths(databaseSQLLegacyBaseline)
+	added := subtractSet(actual, baseline)
+	removed := subtractSet(baseline, actual)
+	stats["actual"] = len(actual)
+	stats["regressions"] = len(added)
+
+	var violations []string
+	for _, path := range added {
+		violations = append(violations, "new database/sql import in api/application/domain: "+path)
+	}
+	if len(removed) > 0 {
+		stats["baseline"] = len(baseline) - len(removed)
+	}
+	return stats, violations
+}
+
+func execErrIsNoMatch(err error) bool {
+	if err == nil {
+		return false
+	}
+	if exit, ok := err.(*exec.ExitError); ok {
+		return exit.ExitCode() == 1
+	}
+	return false
+}
+
 func loadAllowlist(path string) ([]string, error) {
 	text, err := os.ReadFile(path)
 	if err != nil {
@@ -204,8 +228,6 @@ func loadAllowlist(path string) ([]string, error) {
 	return normalizePaths(out), nil
 }
 
-// splitNonEmpty splits a newline-delimited string into non-empty trimmed
-// lines. Used for both allowlist and actual-violation sets.
 func splitNonEmpty(s string) []string {
 	var out []string
 	for _, line := range strings.Split(s, "\n") {
@@ -233,8 +255,6 @@ func normalizePaths(paths []string) []string {
 	return out
 }
 
-// subtractSet returns the entries in `actual` that are NOT in `allowed`.
-// Mirrors the behaviour of `comm -13` invoked from bash Check 19.
 func subtractSet(actual, allowed []string) []string {
 	allowedSet := make(map[string]bool, len(allowed))
 	for _, a := range allowed {
@@ -249,18 +269,51 @@ func subtractSet(actual, allowed []string) []string {
 	return diff
 }
 
+// databaseSQLLegacyBaseline captures the pre-gate db/sql surface that still
+// exists in api/application/domain and is being shrunk incrementally.
+var databaseSQLLegacyBaseline = []string{
+	"internal/api/common/health_integration_test.go",
+	"internal/api/middleware/middleware_auth_test.go",
+	"internal/api/middleware/middleware_logger.go",
+	"internal/application/assets/artifacts/clips_adapter.go",
+	"internal/application/assets/artifacts/finalizer_test.go",
+	"internal/application/assets/artifacts/repository.go",
+	"internal/application/assets/artifacts/resolvers/resolvers.go",
+	"internal/application/assets/ingest/adapter_clip.go",
+	"internal/application/assets/maintenance/deep_cleanup.go",
+	"internal/application/assets/maintenance/run_cleanup.go",
+	"internal/application/assets/maintenance/service.go",
+	"internal/application/assets/monitor/channel_monitor.go",
+	"internal/application/assets/providers/artlist/assetrepo_integration_test.go",
+	"internal/application/assets/providers/artlist/search_cache.go",
+	"internal/application/assets/providers/artlist/service.go",
+	"internal/application/assets/providers/artlist/service_test.go",
+	"internal/application/books/service.go",
+	"internal/application/images/google_generate.go",
+	"internal/application/jobs/outbox/delivery.go",
+	"internal/application/jobs/outbox/metadata_export.go",
+	"internal/application/jobs/outbox/registry.go",
+	"internal/application/jobs/service_test.go",
+	"internal/application/scripts/batch_persistence_test.go",
+	"internal/application/scripts/gemmamemory/gemmamemory.go",
+	"internal/application/scripts/gemmamemory/stub_test.go",
+	"internal/application/voiceover/groups_resolver_test.go",
+	"internal/application/voiceover/service.go",
+	"internal/application/youtube/assetrepo_integration_test.go",
+	"internal/domain/asset/assets.go",
+	"internal/domain/asset/dedup.go",
+	"internal/domain/asset/list_clips.go",
+	"internal/domain/asset/locations.go",
+	"internal/domain/asset/processing.go",
+	"internal/domain/asset/scan.go",
+	"internal/domain/asset/store_core.go",
+	"internal/domain/asset/tags.go",
+	"internal/domain/asset/utility.go",
+	"internal/domain/asset/versions.go",
+}
+
 // checkMigrationYAML validates that every `status: done` wave in
-// architecture/migration.yaml carries `verified_zero: true`. Counts
-// done waves and emits violations in a single pass.
-//
-// Wave blocks are top-level list items starting with `- id:` at column 0.
-// The split token `\n- id:` correctly partitions the file because
-// preamble (file header before any wave) and subwave bullets (`\n  - id:`
-// or `\n    - id:`) are inside the parent block's content.
-//
-// Subwave break-out: any `\s*-\s+id:` line AFTER the parent's id has
-// been captured indicates a subwave boundary; scanning stops at that
-// line so subwave status/verified_zero does not pollute the parent.
+// architecture/migration.yaml carries `verified_zero: true`.
 func checkMigrationYAML() (verifiedOK int, total int, violations []string) {
 	const migPath = "architecture/migration.yaml"
 	text, err := os.ReadFile(migPath)
@@ -272,16 +325,8 @@ func checkMigrationYAML() (verifiedOK int, total int, violations []string) {
 	return verifiedOK, total, violations
 }
 
-// subwavePattern matches any indented list item starting `- id:`. The
-// `\s*` prefix captures any leading whitespace (0/2/4-space YAML indents
-// all match); the `\s+` after `-` ensures we don't accidentally match
-// other dash-prefixed lines.
 var subwavePattern = regexp.MustCompile(`^\s*-\s+id:\s+\S+`)
 
-// scanYAML walks the migration.yaml file in a SINGLE pass over the
-// `\n- id:` block partition, returning (doneWaveCount, []violationString).
-// No fragile reconstruction like `"- id:" + b[6:]` — the parent block
-// retains its original `- id:` prefix because that's what we split on.
 func scanYAML(raw string) (int, []string) {
 	var (
 		doneTotal  int
@@ -290,9 +335,6 @@ func scanYAML(raw string) (int, []string) {
 	for _, b := range topLevelWaveBlocks(raw) {
 		var idv, status, verified string
 		for _, line := range strings.Split(b, "\n") {
-			// Subwave break-out: as soon as the parent id is captured,
-			// the first indented `- id:` line signals a subwave. Stop
-			// reading parent fields at that point.
 			if idv != "" && subwavePattern.MatchString(line) {
 				break
 			}
