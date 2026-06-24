@@ -1,4 +1,16 @@
-package youtube
+// TopicSearch is the end-to-end "find me videos for this topic" entry point
+// for the YouTube search capability. It reuses the existing SearchLive +
+// GetVideoInfo L1/L2 caches owned by the same service so the candidate
+// fetch, metadata enrichment, and scoring sit next to each other.
+//
+// Extracted from the root youtube package during CPR-CC-6 Phase 2
+// (June 2026). Before Phase 2 the receiver lived on *youtube.Service
+// as SearchByTopicWithFilter; the orchestrator now exposes a 1-line
+// forwarder (Service.SearchByTopicWithFilter) that delegates here.
+//
+// Scoring constants live alongside the scorer routines; future refactors
+// can swap the scorers without touching the orchestrator.
+package search
 
 import (
 	"context"
@@ -9,14 +21,16 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"go.uber.org/zap"
 )
+
+// ── Public types (canonical shape at the search capability boundary) ───
 
 // TopicSearchResult represents a ranked YouTube result for a topic query.
 type TopicSearchResult struct {
@@ -43,6 +57,11 @@ type TopicSearchResponse struct {
 	Error   string              `json:"error,omitempty"`
 }
 
+// ── Scoring constants ───────────────────────────────────────────────────
+
+// formatKeywords maps each canonical "format" term to its surface aliases.
+// Used by scoreFormatMatch and detectFormatTerms so callers can write
+// "interview" and find "interviews", "qa", "podcast", etc.
 var formatKeywords = map[string][]string{
 	"interview":   {"interview", "interviews", "qa", "q&a", "conversation", "talk", "podcast", "discussion"},
 	"podcast":     {"podcast", "podcasts", "conversation", "discussion"},
@@ -55,18 +74,24 @@ var formatKeywords = map[string][]string{
 	"lecture":     {"lecture", "talk", "presentation", "seminar"},
 }
 
-// SearchByTopicWithFilter ranks YouTube search results with an optional publishedAfter date filter.
+// ── Service.TopicSearch — single canonical entry point ──────────────────
+
+// TopicSearch ranks YouTube search results with an optional publishedAfter
+// date filter.
 //
-// publishedAfter: RFC3339 date string (e.g. "2025-01-01T00:00:00Z") or empty for no filter.
-// When set, only videos published after this date are returned.
+// query: non-empty trimmed search string.
+// limit: clamps to [1, 50]; defaults to 10 when <= 0.
+// sortMode: forwarded verbatim to SearchLive; "" means "no preference".
+// publishedAfter: RFC3339 date string (e.g. "2025-01-01T00:00:00Z") or ""
+// for no filter. When set, only videos uploaded after this date remain in
+// the response.
 //
-// PR-3F: this is the SINGLE surviving YouTube search entry point at
-// the application-layer boundary. The Application-layer YouTube
-// provider (internal/application/assets/providers/youtube) translates
-// providers.SearchRequest into a single call to this method. The
-// legacy SearchByTopic / SearchTopicVideos / SearchTopicVideosWithFilter
-// wrappers were removed in the same PR.
-func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, limit int, sortMode string, publishedAfter string) (*TopicSearchResponse, error) {
+// Pipeline (1) calls SearchLive with limit*2 to over-fetch for the
+// publishedAfter filter, (2) enriches each candidate in parallel with
+// GetVideoInfo (re-using the existing L1/L2 metadata cache), (3) scores
+// each row by topic-similarity (70%) + format-match (30%) with view count
+// + duration as tiebreakers, (4) returns the ranked list.
+func (s *Service) TopicSearch(ctx context.Context, query string, limit int, sortMode string, publishedAfter string) (*TopicSearchResponse, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, fmt.Errorf("query is required")
@@ -78,7 +103,7 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 		limit = 50
 	}
 
-	baseResults, err := s.search.SearchLive(ctx, query, limit*2, sortMode) // fetch more than needed for filtering
+	baseResults, err := s.SearchLive(ctx, query, limit*2, sortMode) // fetch more than needed for filtering
 	if err != nil {
 		return nil, err
 	}
@@ -170,16 +195,16 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 }
 
 // enrichTopicResult fetches the metadata for a single topic search
-// candidate and packs it into a YouTube-shaped result row.
-// PR-3F: helpers below remain internal to the youtube package; the
-// only externally visible search entry point is SearchByTopicWithFilter.
+// candidate (re-using the L1/L2 cache) and packs it into a YouTube-shaped
+// result row. Returns an empty result + error when the candidate lacks a
+// resolvable URL.
 func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asset.Asset) (TopicSearchResult, error) {
 	videoURL := directYouTubeLink(clip)
 	if videoURL == "" {
 		return TopicSearchResult{}, fmt.Errorf("missing youtube url for clip %s", clip.ID)
 	}
 
-	metadata, err := s.search.GetVideoInfo(ctx, videoURL)
+	metadata, err := s.GetVideoInfo(ctx, videoURL)
 	if err != nil {
 		return TopicSearchResult{}, err
 	}
@@ -201,6 +226,7 @@ func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asse
 	}, nil
 }
 
+// directYouTubeLink returns the canonical watch URL for a clip.
 func directYouTubeLink(clip asset.Asset) string {
 	if strings.TrimSpace(clip.ExternalURL()) != "" {
 		return clip.ExternalURL()
@@ -212,7 +238,12 @@ func directYouTubeLink(clip asset.Asset) string {
 	return "https://www.youtube.com/watch?v=" + id
 }
 
-func scoreTopicSimilarity(query string, metadata *youtubeports.DownloaderMetadata) int {
+// ── Scoring helpers (package-private, used by TopicSearch + tests) ──────
+
+// scoreTopicSimilarity returns a [0,100] integer score for how well the
+// query matches the video metadata (title / uploader / description /
+// tags / categories). Exact substring matches in metadata yield 100.
+func scoreTopicSimilarity(query string, metadata *ports.DownloaderMetadata) int {
 	queryTokens := meaningfulTokens(query)
 	if len(queryTokens) == 0 || metadata == nil {
 		return 0
@@ -244,7 +275,11 @@ func scoreTopicSimilarity(query string, metadata *youtubeports.DownloaderMetadat
 	return score
 }
 
-func scoreFormatMatch(query string, metadata *youtubeports.DownloaderMetadata) int {
+// scoreFormatMatch returns a [0,100] integer score for how well the
+// query's format terms (interview, podcast, clip, ...) match the
+// metadata. Returns 45 as a neutral floor when neither side mentions a
+// recognised format, 60 when only the metadata mentions a format.
+func scoreFormatMatch(query string, metadata *ports.DownloaderMetadata) int {
 	if metadata == nil {
 		return 0
 	}
@@ -286,6 +321,8 @@ func scoreFormatMatch(query string, metadata *youtubeports.DownloaderMetadata) i
 	return score
 }
 
+// detectFormatTerms returns the set of canonical format terms present in
+// text (matched either by the canonical token or any of its aliases).
 func detectFormatTerms(text string) map[string]bool {
 	out := map[string]bool{}
 	tokens := meaningfulTokens(text)
@@ -309,6 +346,7 @@ func detectFormatTerms(text string) map[string]bool {
 	return out
 }
 
+// tokenSet returns the unique tokens of text as a set.
 func tokenSet(text string) map[string]bool {
 	out := map[string]bool{}
 	for _, token := range meaningfulTokens(text) {
@@ -317,6 +355,8 @@ func tokenSet(text string) map[string]bool {
 	return out
 }
 
+// meaningfulTokens lower-cases text, splits on non-word runes, drops stop
+// words, and returns the remaining tokens (preserving order).
 func meaningfulTokens(text string) []string {
 	text = strings.ToLower(text)
 	words := strings.FieldsFunc(text, func(r rune) bool {
@@ -333,6 +373,8 @@ func meaningfulTokens(text string) []string {
 	return out
 }
 
+// isStopWord returns true when s is a noise token that shouldn't affect
+// the similarity score.
 func isStopWord(s string) bool {
 	switch s {
 	case "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "with", "by", "from", "at", "about", "video", "clip":
