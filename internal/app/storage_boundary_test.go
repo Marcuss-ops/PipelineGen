@@ -6,9 +6,20 @@ package app
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func repoPath(parts ...string) string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return filepath.Join(parts...)
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	return filepath.Join(append([]string{root}, parts...)...)
+}
 
 // TestStoragePackages_NoPhantomTypes verifies that storage packages
 // contain no type-aliases that redirect to another package (anti-pattern:
@@ -16,8 +27,8 @@ import (
 // when they serve a documented back-compat purpose with a removal plan.
 func TestStoragePackages_NoPhantomTypes(t *testing.T) {
 	paths := []string{
-		"internal/api/assets/storage",
-		"internal/application/assets/storage",
+		repoPath("internal", "api", "assets", "storage"),
+		repoPath("internal", "application", "assets", "storage"),
 	}
 	for _, pkg := range paths {
 		entries, err := os.ReadDir(pkg)
@@ -59,8 +70,8 @@ func TestStoragePackages_NoPhantomTypes(t *testing.T) {
 // with real declarations (not empty stubs).
 func TestStoragePackages_ExistAndAreNotEmpty(t *testing.T) {
 	paths := map[string]string{
-		"api":         "internal/api/assets/storage",
-		"application": "internal/application/assets/storage",
+		"api":         repoPath("internal", "api", "assets", "storage"),
+		"application": repoPath("internal", "application", "assets", "storage"),
 	}
 	for role, pkg := range paths {
 		entries, err := os.ReadDir(pkg)

@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"go.uber.org/zap/zaptest"
+	"go.uber.org/zap"
 )
 
 // recorder tracks the order in which probes + steps are invoked.
@@ -75,7 +75,7 @@ func newLifecycleForTest(plan []StartupStep, probes map[string]func(context.Cont
 	sl := &serverLifecycle{
 		startupPlan: plan,
 		cleanup:     cleanup,
-		log:         zaptest.NewLogger(nil),
+		log:         zap.NewNop(),
 	}
 	if probes != nil {
 		sl.dbProbe = probes["db"]
@@ -131,8 +131,8 @@ func TestLifecycle_Start_PropagatesContextError(t *testing.T) {
 func TestLifecycle_BarrierFails_ReturnsError(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name       string
-		probeErr   string // "db", "vector", or "drive"
+		name     string
+		probeErr string // "db", "vector", or "drive"
 	}{
 		{name: "db-fails", probeErr: "db"},
 		{name: "vector-fails", probeErr: "vector"},

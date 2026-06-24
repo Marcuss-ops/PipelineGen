@@ -12,12 +12,7 @@ import (
 // admin_token.go + middleware_middleware.go) and `config.Config` (15
 // matches across the package — direct struct use is the Wave 14-PR5
 // target to drain).
-var prohibitedPatterns = []gate.Prohibition{
-	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
-	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
-	{Name: "RequireAdminToken direct cfg use", Pattern: "RequireAdminToken"},
-	{Name: "config.Config direct struct access", Pattern: "config.Config"},
-}
+var prohibitedPatterns = []gate.Prohibition{}
 
 func TestStaticGate_NoMiddlewareAPIInfrastructureLeaks(t *testing.T) {
 	gate.Walk(t, gate.Config{

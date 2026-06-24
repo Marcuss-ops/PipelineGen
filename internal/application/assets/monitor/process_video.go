@@ -262,11 +262,21 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, title
 	normalize := true
 	req.Normalize = &normalize
 
-	_, err := m.youtubeSvc.Extract(ctx, req)
-	if err != nil {
-		m.log.Error("Failed to extract clip with youtubeSvc", zap.String("video_id", videoID), zap.Error(err))
-		return
-	}
+	// CPR-CC-6 Phase 2 followup (June 2026): the synchronous *youtube.Service.Extract
+	// entry point was removed when the extraction flow moved into the
+	// ytextraction capability service. Full wiring (job-dispatch through
+	// the extraction capability's runtime entry) is a Phase 2+ follow-up.
+	// Until then, the channel-monitor logs the disabled state explicitly
+	// and skips the clip. /api/script/* paths are unaffected — they go
+	// through a different pipeline.
+	m.log.Warn("channel-monitor: youtube clip extraction disabled pending Phase 2+ migration follow-up; skipping clip",
+		zap.String("video_id", videoID),
+		zap.String("title", title),
+		zap.String("category", category),
+		zap.Int("segments", len(segments)),
+		zap.String("drive_folder_id", driveFolderID),
+		zap.Bool("req_normalize", *req.Normalize))
+	return
 
 	m.log.Info("Successfully extracted and uploaded channel clip",
 		zap.String("video_id", videoID),

@@ -53,10 +53,17 @@ func NewJobsChecker(db *sql.DB) *JobsChecker {
 // port for heartbeat verification.
 const livenessQuery = `SELECT COUNT(*) FROM jobs
 	WHERE LOWER(status) IN ('running', 'leased', 'pending')
-	  AND updated_at > datetime('now', '-5 minute')`
+	  AND julianday(updated_at) > julianday('now', '-5 minute')`
 
 func (c *JobsChecker) CheckJobs(ctx context.Context) healthport.CheckResult {
 	start := time.Now()
+	if c == nil || c.db == nil {
+		return healthport.CheckResult{
+			"ok":          false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       "database unavailable",
+		}
+	}
 	if err := c.db.PingContext(ctx); err != nil {
 		return healthport.CheckResult{
 			"ok":          false,

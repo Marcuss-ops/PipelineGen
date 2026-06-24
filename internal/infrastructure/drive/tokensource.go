@@ -2,8 +2,15 @@ package drive
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+)
+
+var (
+	ErrTokenUnreadable         = errors.New("token file not readable")
+	ErrTokenInvalidAccessToken = errors.New("token file invalid or missing access_token")
+	ErrTokenUnavailable        = errors.New("token unavailable")
 )
 
 // ParseTokenFile reads a Google OAuth2 token file (the JSON shape produced
@@ -27,16 +34,16 @@ func ParseTokenFile(path string) (string, error) {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("drive.ParseTokenFile: read %q: %w", path, err)
+		return "", fmt.Errorf("%w: drive.ParseTokenFile: read %q: %w", ErrTokenUnreadable, path, err)
 	}
 	var tok struct {
 		AccessToken string `json:"access_token"`
 	}
 	if err := json.Unmarshal(data, &tok); err != nil {
-		return "", fmt.Errorf("drive.ParseTokenFile: decode token JSON (%d bytes): %w", len(data), err)
+		return "", fmt.Errorf("%w: drive.ParseTokenFile: decode token JSON (%d bytes): %w", ErrTokenUnavailable, len(data), err)
 	}
 	if tok.AccessToken == "" {
-		return "", fmt.Errorf("drive.ParseTokenFile: token file missing access_token field")
+		return "", fmt.Errorf("%w", ErrTokenInvalidAccessToken)
 	}
 	return tok.AccessToken, nil
 }

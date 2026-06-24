@@ -3,6 +3,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -57,6 +58,26 @@ func (c *DriveChecker) CheckDrive(ctx context.Context) healthport.CheckResult {
 
 	accessToken, err := drive.ParseTokenFile(c.tokenPath)
 	if err != nil {
+		switch {
+		case errors.Is(err, drive.ErrTokenUnreadable):
+			return healthport.CheckResult{
+				"ok":          false,
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       drive.ErrTokenUnreadable.Error(),
+			}
+		case errors.Is(err, drive.ErrTokenInvalidAccessToken):
+			return healthport.CheckResult{
+				"ok":          false,
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       drive.ErrTokenInvalidAccessToken.Error(),
+			}
+		case errors.Is(err, drive.ErrTokenUnavailable):
+			return healthport.CheckResult{
+				"ok":          false,
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       err.Error(),
+			}
+		}
 		return healthport.CheckResult{
 			"ok":          false,
 			"duration_ms": time.Since(start).Milliseconds(),
