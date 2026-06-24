@@ -502,7 +502,13 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	cfg.DBPath = dbPath
 	// clipindexer.NewService returns a single *Service value
 	// (constructor never errors — the cfg + log are in-process types).
-	clipSvc := clipindexer.NewService(cfg, sqliteDB.DB, dbPath, zap.NewNop())
+	//
+	// PG-016 typed-handle migration (June 2026): clipindexer.NewService now
+	// accepts *storage.SQLiteDB directly; sqliteDB is already *storage.SQLiteDB
+	// (storage.OpenSQLiteDB above), so this is the typed handle with no .DB
+	// unwrap. This call site is one of the two that previously had to use
+	// `sqliteDB.DB` to escape the *sql.DB typed-handle gap.
+	clipSvc := clipindexer.NewService(cfg, sqliteDB, dbPath, zap.NewNop())
 
 	// 4. Wire the in-process Dispatcher exactly like composition.go
 	//    does: register one handler directly. We don't go through
@@ -645,7 +651,10 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	// the same query must return the same {total:0,indexed:0,
 	// failed:0} shape. Handler logic is identical; this assertion
 	// locks the contract.
-	j2 := clipindexer.NewService(cfg, sqliteDB.DB, dbPath, zap.NewNop())
+	//
+	// PG-016 typed-handle migration (June 2026): passes *storage.SQLiteDB
+	// directly (sqliteDB); mirrors the clipSvc construction above.
+	j2 := clipindexer.NewService(cfg, sqliteDB, dbPath, zap.NewNop())
 	replayCtx, replayCancel := context.WithCancel(context.Background())
 	t.Cleanup(replayCancel)
 	// j2Result is a fresh variable so the `:=` redeclaration rule

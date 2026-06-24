@@ -70,14 +70,19 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// 4. Create Service
+	// 4. Create Service.
 	cfg := &Config{
 		Enabled:    true,
 		ServerURL:  server.URL,
 		PythonBin:  "python-invalid-should-not-be-called", // if subprocess is spawned, it will fail
 		ScriptPath: "scripts/bridges/index_clips.py",
 	}
-	svc := NewService(cfg, db, ":memory:", zap.NewNop())
+	//
+	// PG-016 typed-handle migration (June 2026): clipindexer.NewService now
+	// accepts *storage.SQLiteDB; wrap the test fixture's *sql.DB (returned by
+	// drive.NewTestDBWithSchema) into the typed handle. The body uses
+	// method promotion transparently.
+	svc := NewService(cfg, &drive.SQLiteDB{DB: db}, ":memory:", zap.NewNop())
 	vs := &mockVectorStoreIndexer{}
 	svc.vectorStore = vs
 
