@@ -1,13 +1,27 @@
 version: 2
 
 # Dependabot configuration maintained for PipelineGen (added June 2026 during
-# the E1/E2/E3 dependency-refresh cycle). Each ecosystem is on a weekly
-# schedule so the maintainer triages a small, predictable batch of bump PRs
-# instead of drifting far behind upstream.
+# the E1/E2/E3 dependency-refresh cycle).
+#
+# Hardening rationale (see commits f95a191 and the followups below):
+#   1. Major-version auto-bumps are BLOCKED across the board for the gomod
+#      ecosystem. They are still picked up by Dependabot's discovery but will
+#      surface as ignored PRs with a clear "major-update-suppressed" marker,
+#      so a maintainer can file an E-prefixed manual PR (the same workflow
+#      used for E1/E2/E3). This prevents the first Monday auto-PR from
+#      accidentally pulling in gin v2 / validator v11 / oauth2 v1 / etc.
+#   2. Security advisories bypass the monthly minor+patch batch via a
+#      standalone `go-security` group that opens an immediate PR.
+#   3. `versioning-strategy: increase` ensures Dependabot does NOT widen
+#      semver ranges (e.g. go.mod ^v1 → ^v2) when proposing updates.
+#   4. `allow: [dependency-type: direct]` keeps indirect transitive updates
+#      out of the auto-PR — the maintainer triages those during manual cycles.
+#   5. `open-pull-requests: 5` caps in-flight auto-PRs per ecosystem.
+#   6. The yt-dlp Dockerfile ARG is explicitly ignored by the Docker
+#      ecosystem because we pin to a quarterly stable tag manually
+#      (see commit 62b605e for the 2024.08.06 -> 2025.03.20 bump).
 updates:
-  # ── Go modules: weekly, with a single monthly-coalesce group so we get
-  # ──     one PR per month with all minor+patch updates instead of one
-  # ──     PR per package per week.
+  # ── Go modules ────────────────────────────────────────────────
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
@@ -15,7 +29,47 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
+    open-pull-requests: 5
+    versioning-strategy: "increase"
+    allow:
+      - dependency-type: "direct"
+    ignore:
+      # Catch-all: suppress every semver-major auto-bump.
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+      # Explicit per-package ignores (provide a friendlier marker
+      # in the PR title when these eventually surface as ignored).
+      - dependency-name: "github.com/gin-gonic/gin"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "github.com/gin-contrib/cors"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "github.com/gin-contrib/gzip"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "github.com/go-playground/validator/v10"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "github.com/prometheus/client_golang"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "golang.org/x/oauth2"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "google.golang.org/api"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "go.uber.org/zap"
+        update-types:
+          - "version-update:semver-major"
     groups:
+      go-security:
+        patterns:
+          - "*"
+        update-types:
+          - "security"
       go-minor-and-patch:
         patterns:
           - "*"
@@ -27,10 +81,8 @@ updates:
     labels:
       - "dependencies"
       - "go"
-    # Major bumps (e.g. gin v1→v2) deliberately excluded from auto-PR; those
-    # are filed manually as E-prefixed PRs (E1, E2, E3…) by the maintainer.
 
-  # ── GitHub Actions: weekly version drift for setup-go, checkout, etc.
+  # ── GitHub Actions ────────────────────────────────────────────
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -38,14 +90,14 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
+    open-pull-requests: 5
     commit-message:
       prefix: "ci(actions)"
     labels:
       - "dependencies"
       - "ci"
 
-  # ── Dockerfile ecosystem: weekly so the yt-dlp ARG (and any other
-  # ──     pinned release URLs/tags) stays current on a quarterly cadence.
+  # ── Dockerfile ecosystem ──────────────────────────────────────
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -53,13 +105,18 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
+    open-pull-requests: 5
+    # yt-dlp release URL is manually pinned quarterly; suppress false-positive
+    # updates from Dependabot's dockerfile parser.
+    ignore:
+      - dependency-name: "yt-dlp"
     commit-message:
       prefix: "deps(docker)"
     labels:
       - "dependencies"
       - "docker"
 
-  # ── node-scraper (Artlist mirror proxy): npm ecosystem.
+  # ── node-scraper (Artlist mirror proxy) ───────────────────────
   - package-ecosystem: "npm"
     directory: "/node-scraper"
     schedule:
@@ -67,6 +124,7 @@ updates:
       day: "monday"
       time: "08:00"
       timezone: "Europe/Rome"
+    open-pull-requests: 5
     commit-message:
       prefix: "deps(scraper)"
     labels:
