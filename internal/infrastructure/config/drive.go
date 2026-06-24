@@ -7,7 +7,7 @@ import "strings"
 type DriveConfig struct {
 	// MediaRootFolder is the single Drive root folder for all PipelineGen media.
 	// Example: "1ABCdef..." points to "PipelineGen Media" at Drive root.
-	MediaRootFolder string `yaml:"media_root_folder" env:"PIPELINEGEN_DRIVE_MEDIA_ROOT" default:""`
+	MediaRootFolder string `yaml:"media_root_folder" env:"VELOX_DRIVE_MEDIA_ROOT" default:""`
 
 	// Stock footage root folder
 	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
