@@ -682,7 +682,7 @@ func ResolveRecommendedDriveFolder(ctx context.Context, svc ClipServices, title,
 			Path:     strings.TrimSpace(candidate.Path),
 			Link:     link,
 			FolderID: folderID,
-			Score:    candidate.Score,
+			Score:    int(candidate.Score),
 			Reason:   strings.TrimSpace(candidate.Reason),
 		}
 	}

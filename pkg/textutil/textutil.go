@@ -367,6 +367,14 @@ func IsStopWord(term string) bool {
 	return stopwordsMap[strings.ToLower(term)]
 }
 
+// ── Script text stripping ───────────────────────────────────────────────
+
+// StripNarrationMarkerRe matches narration markers like [NARRATION] or [NARRATORE].
+var StripNarrationMarkerRe = regexp.MustCompile(`(?i)\[(?:narration|narratore|narrador|narrateur|erzähler|narracja|narratione)\]`)
+
+// StripClipMarkerRe matches clip markers like [CLIP:...] or [VIDEO:...].
+var StripClipMarkerRe = regexp.MustCompile(`(?i)\[(?:clip|video|film|media):[^\]]+\]`)
+
 // TokenizeWithStopWords removes stop words from tokenization.
 func TokenizeWithStopWords(text string) []string {
 	tokens := Tokenize(text)
