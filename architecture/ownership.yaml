@@ -496,3 +496,27 @@ pkg:
     - pkg/timeutil
     - pkg/urlutil
     - pkg/veloxclient
+cross_project_refs:
+  heyavatar:
+    kind: cross_project_reference
+    repo_path: C:/Users/pater/Pyt/Heyavatar
+    cleanup_wave_ref: architecture/migration.yaml#wave-18
+    todo_ref: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
+    cleanup_date: 2026-06-24
+    n_files_removed: 16
+    n_directories_removed: 2
+    no_pipelinegen_files_changed: true
+    canonical_owners_after_cleanup:
+      - heyavatar/providers/compositing/opencv_face/compositor.OpenCVFaceCompositor
+      - heyavatar/providers/musetalk/adapter/engine.MuseTalkAdapter
+      - heyavatar/providers/liveportrait/adapter/engine.LivePortraitAdapter
+      - heyavatar/src/application/render_cached_avatar.render_cached_avatar
+    contract_status_post_cleanup:
+      removed:
+        - heyavatar/contracts/lip_sync_engine (orphan)
+        - heyavatar/contracts/motion_repository (orphan)
+        - heyavatar/contracts/body_asset_provider (orphan -- precompute chain removed)
+      retained:
+        - heyavatar/contracts/avatar_engine (canonical)
+        - heyavatar/contracts/compositor (canonical)
+        - heyavatar/contracts/quality_checker (canonical)
