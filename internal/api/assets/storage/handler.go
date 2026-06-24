@@ -19,7 +19,7 @@ import (
 type Handler struct {
 	svc         *appstorage.Service
 	log         *zap.Logger
-	jobsSvc     *jobdomain.Service
+	jobsSvc     jobdomain.Service
 	catalogSync *catalogsync.Service
 }
 
@@ -27,7 +27,7 @@ type Handler struct {
 // jobs and catalogSync are accepted for forward-compatibility with
 // future route handlers (sync-after-move, job-enqueue-on-rename)
 // but are not yet consumed by the current route set.
-func NewHandler(svc *appstorage.Service, jobs *jobdomain.Service, catalogSync *catalogsync.Service, log *zap.Logger) *Handler {
+func NewHandler(svc *appstorage.Service, jobs jobdomain.Service, catalogSync *catalogsync.Service, log *zap.Logger) *Handler {
 	return &Handler{svc: svc, log: log, jobsSvc: jobs, catalogSync: catalogSync}
 }
 

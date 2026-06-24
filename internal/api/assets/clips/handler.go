@@ -46,7 +46,7 @@ type Deps struct {
 	MetaWriter     *semantic.MetadataWriter
 	ClipIndexer    *clipindexer.Service
 	VectorStore    appclips.VectorStorePort
-	JobsSvc        *jobservice.Service
+	JobsSvc        jobservice.Service
 	Cfg            *config.Config
 	Log            *zap.Logger
 	// VoiceoverRepo enables the voiceover-source branch in DownloadClip.
@@ -80,7 +80,7 @@ type Handler struct {
 	assetTreeSvc   *assettree.Service
 	metaWriter     *semantic.MetadataWriter
 	clipIndexer    *clipindexer.Service
-	jobsSvc        *jobservice.Service
+	jobsSvc        jobservice.Service
 	cfg            *config.Config
 	log            *zap.Logger
 	// voiceoverRepo is mirrored from Deps.VoiceoverRepo via NewHandler

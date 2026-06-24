@@ -76,7 +76,7 @@ type ServiceDependencies struct {
 	MediaProcessor    asset.Processor
 	LifecycleService  *lifecycle.Service
 	AssetDestResolver asset.Resolver
-	JobsSvc           *jobs.Service
+	JobsSvc           jobs.Service
 	AssetProcRepo     asset.ProcessingRepository
 	AssetVerRepo      asset.VersionRepository
 	AssetLocRepo      asset.LocationRepository
@@ -164,7 +164,7 @@ type Service struct {
 	mediaProcessor    asset.Processor
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver
-	jobsSvc           *jobs.Service
+	jobsSvc           jobs.Service
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
 	assetProcessing asset.ProcessingRepository

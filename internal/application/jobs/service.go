@@ -39,13 +39,19 @@ func NewService(repo *sqljobs.SQLiteStore, dispatcher *Dispatcher, log *zap.Logg
 	}
 }
 
-// RegisterHandler registers a handler for the given job type (string).
-func (s *Service) RegisterHandler(jobType string, handler HandlerFunc) error {
-	return s.dispatcher.Register(jobType, handler)
+// RegisterHandler registers a handler for the given job type.
+// Accepts any handler; performs a type-assertion to HandlerFunc.
+// Implements job.Service interface.
+func (s *Service) RegisterHandler(jobType string, handler any) error {
+	h, ok := handler.(HandlerFunc)
+	if !ok {
+		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
+	}
+	return s.dispatcher.Register(jobType, h)
 }
 
-// validateEnqueueRequest checks the EnqueueRequest for common errors.
-func validateEnqueueRequest(req *EnqueueRequest) error {
+// validateEnqueueRequest checks the domain EnqueueRequest for common errors.
+func validateEnqueueRequest(req *job.EnqueueRequest) error {
 	if req == nil {
 		return fmt.Errorf("enqueue request is nil")
 	}
@@ -61,7 +67,8 @@ func validateEnqueueRequest(req *EnqueueRequest) error {
 	return nil
 }
 
-func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*job.Job, error) {
+// Enqueue enqueues a job from a domain request. Implements job.Service.
+func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
 	if err := validateEnqueueRequest(req); err != nil {
 		return nil, err
 	}
@@ -215,6 +222,12 @@ func (s *Service) MarkStaleRunningJobsFailed(ctx context.Context, olderThan time
 	return s.repo.MarkRunningJobsOlderThanFailed(ctx, cutoff, "stale job timeout")
 }
 
+// IsTerminal reports whether the job status is a terminal state.
+// Implements job.Service interface.
+func (s *Service) IsTerminal(status job.Status) bool {
+	return status.IsTerminal()
+}
+
 // Complete marks a job as completed.
 func (s *Service) Complete(ctx context.Context, id string, result map[string]any) error {
 	resultJSON, _ := json.Marshal(result)
@@ -225,6 +238,9 @@ func (s *Service) Complete(ctx context.Context, id string, result map[string]any
 func (s *Service) Fail(ctx context.Context, id string, err error) error {
 	return s.repo.Fail(ctx, id, "", "", 0, err.Error())
 }
+
+// Compile-time assertion: *Service satisfies the domain job.Service interface.
+var _ job.Service = (*Service)(nil)
 
 func generateJobID() string {
 	return fmt.Sprintf("job_%d_%s", time.Now().UnixNano(), hashutil.RandomString(8))

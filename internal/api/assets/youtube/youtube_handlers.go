@@ -33,7 +33,7 @@ import (
 type YouTubeClipHandler struct {
 	service         *youtube.Service
 	log             *zap.Logger
-	jobsSvc         *jobservice.Service
+	jobsSvc         jobservice.Service
 	clipsRepo       *assets.ClipsRepository
 	providerSearch  providers.SearchProvider
 	providerReg     *providers.Registry
@@ -49,7 +49,7 @@ type YouTubeClipHandler struct {
 //	providerRegistry - providers.Registry for search dispatch (nil = legacy path).
 //	                    Resolved lazily on first SearchTopics call so providers
 //	                    registered after construction are still discovered.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service, providerRegistry *providers.Registry, clipsRepo *assets.ClipsRepository, toolChecker appassets.ToolChecker) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, providerRegistry *providers.Registry, clipsRepo *assets.ClipsRepository, toolChecker appassets.ToolChecker) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
 		service:     service,
 		log:         log,
