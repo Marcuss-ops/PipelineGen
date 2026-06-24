@@ -289,7 +289,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			"channels",
 			func() bool { return true },
 			"/channels",
-			channelsapi.NewChannelsHandler(assets.NewChannelsRepository(root.DB.DB), log),
+			channelsapi.NewChannelsHandler(newChannelRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)), log),
 			log,
 		))
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/

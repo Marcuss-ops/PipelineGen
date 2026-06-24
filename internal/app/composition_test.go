@@ -288,7 +288,7 @@ const (
 	// PR9-A (June 2026): `go ensureStyleDriveFolders(...)` moved from
 	// BuildDriveBundle body into the returned startDriveBackgroundFolders
 	// closure. The builder body is now side-effect-free.
-	frozenGoroutineInBuildDriveBundle  = 0
+	frozenGoroutineInBuildDriveBundle = 0
 	// PR9-B (June 2026): concurrent.SafeGo x2 (pool start + shutdown)
 	// moved from BuildOutboxBundle body into the standalone
 	// startOutboxEventsPool function.
