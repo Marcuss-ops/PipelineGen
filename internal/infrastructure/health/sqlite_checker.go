@@ -3,23 +3,27 @@ package health
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // SQLiteChecker verifies the primary SQLite database.
 //
-// The *sql.DB is supplied by the composition root so this checker
-// reuses the canonical connection pool (WAL, busy_timeout, pool size)
-// and does not open/close a fresh sqlite handle on every health probe.
+// The *storage.SQLiteDB is supplied by the composition root so this
+// checker reuses the canonical connection pool (WAL, busy_timeout, pool
+// size) and does not open/close a fresh sqlite handle on every health
+// probe. All *sql.DB methods are promoted through the embedded field,
+// so c.db.PingContext / c.db.QueryRowContext resolve at compile time
+// without leaking the underlying *sql.DB handle to the caller.
 type SQLiteChecker struct {
-	db *sql.DB
+	db *storage.SQLiteDB
 }
 
-// NewSQLiteChecker creates a DB-health checker for the supplied *sql.DB.
-func NewSQLiteChecker(db *sql.DB) *SQLiteChecker {
+// NewSQLiteChecker creates a DB-health checker for the supplied
+// *storage.SQLiteDB.
+func NewSQLiteChecker(db *storage.SQLiteDB) *SQLiteChecker {
 	return &SQLiteChecker{db: db}
 }
 

@@ -3,10 +3,10 @@ package health
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // JobsChecker verifies the jobs broker / runner is alive in the primary DB.
@@ -34,10 +34,14 @@ import (
 // legacy aliases ('running'|'failed'|'completed') from older callers,
 // and LOWER(status) keeps the comparison immune to that drift.
 type JobsChecker struct {
-	db *sql.DB
+	db *storage.SQLiteDB
 }
 
-func NewJobsChecker(db *sql.DB) *JobsChecker {
+// NewJobsChecker creates a jobs-table liveness checker for the supplied
+// *storage.SQLiteDB. The PingContext / QueryRowContext methods resolve
+// through the embedded *sql.DB field of storage.SQLiteDB, so the
+// underlying *sql.DB handle is never leaked to implementations.
+func NewJobsChecker(db *storage.SQLiteDB) *JobsChecker {
 	return &JobsChecker{db: db}
 }
 

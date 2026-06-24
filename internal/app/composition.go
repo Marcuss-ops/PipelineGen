@@ -35,7 +35,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -917,13 +916,19 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB) *UtilityBundle
 // checkers. Lives in composition.go because it's the only place that
 // wires concrete adapters (PR1 Health boundary, June 2026). Will move
 // to build_utility_bundle.go in wave-4.
+//
+// PG-011 typed-handle migration (June 2026): the previous
+// implementation unwrapped `db *storage.SQLiteDB` to `*sql.DB` via
+// `var sqlDB *sql.DB; if db != nil { sqlDB = db.DB }` so it could hand
+// a raw handle to infrahealth.NewSQLiteChecker / NewJobsChecker. The
+// checkers now accept *storage.SQLiteDB directly (the underlying
+// *sql.DB is reached via the embedded field), which removes the
+// `database/sql` import from this file. The `db` arg may itself be
+// nil — infrahealth.Checker constructors accept nil and the zero
+// value remains safe.
 func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.Service {
 	if cfg == nil {
 		return nil
-	}
-	var sqlDB *sql.DB
-	if db != nil {
-		sqlDB = db.DB
 	}
 
 	var driveChecker systemhealth.DriveChecker
@@ -943,10 +948,10 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 	}
 
 	return systemhealth.NewService(systemhealth.ServiceDeps{
-		DB:     infrahealth.NewSQLiteChecker(sqlDB),
+		DB:     infrahealth.NewSQLiteChecker(db),
 		Drive:  driveChecker,
 		Qdrant: qdrantChecker,
-		Jobs:   infrahealth.NewJobsChecker(sqlDB),
+		Jobs:   infrahealth.NewJobsChecker(db),
 	})
 }
 
