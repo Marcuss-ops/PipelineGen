@@ -34,9 +34,9 @@ import (
 	ytextraction "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/extraction"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	ytsearch "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/search"
 	ytsegments "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/segments"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -507,4 +507,42 @@ func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
 	case <-ctx.Done():
 		return nil
 	}
+}
+
+// ── CPR-CC-6 Phase 2 (June 2026): topic search absorbed into search capability ──
+//
+// Before Phase 2 the canonical "topic search" entry point — TopicSearchResult
+// / TopicSearchResponse types plus the score-and-rank routine — lived as a
+// receiver on *Service. Phase 2 moves the implementation into the search
+// capability service (ytsearch.Service.TopicSearch) so that the end-to-end
+// "find me videos for this topic" request is co-located with the L1/L2
+// caches that already back SearchLive + GetVideoInfo. The orchestrator
+// remains the external entry point: SearchByTopicWithFilter forwards to
+// the capability service and returns an explicit error if not wired.
+type (
+	TopicSearchResult   = ytsearch.TopicSearchResult
+	TopicSearchResponse = ytsearch.TopicSearchResponse
+)
+
+// SearchByTopicWithFilter is the single canonical YouTube search entry
+// point at the application-layer boundary. It ranks YouTube search
+// results with an optional publishedAfter date filter.
+//
+// query: non-empty trimmed search string.
+// limit: clamps to [1, 50]; defaults to 10 when <= 0.
+// sortMode: forwarded verbatim to SearchLive; "" means "no preference".
+// publishedAfter: RFC3339 date string (e.g. "2025-01-01T00:00:00Z") or
+// "" for no filter. When set, only videos uploaded AFTER this date
+// remain in the response.
+//
+// CPR-CC-6 Phase 2 (June 2026): this method is a 1-line forwarder to
+// the search capability. The implementation + scorers + types live in
+// internal/application/youtube/search/topic.go. Returns an explicit
+// error when the search capability is not wired (composition root must
+// include SearchRunner + Log in ServiceDeps for NewService to wire it).
+func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, limit int, sortMode, publishedAfter string) (*ytsearch.TopicSearchResponse, error) {
+	if s.search == nil {
+		return nil, fmt.Errorf("youtube: search capability not wired (composition root must include SearchRunner + Log in ServiceDeps for NewService to wire the search service)")
+	}
+	return s.search.TopicSearch(ctx, query, limit, sortMode, publishedAfter)
 }
