@@ -130,13 +130,16 @@ func (h *Handler) GenerateBatch(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "batch generation not initialized"})
 		return
 	}
-	// Delegate to the full handler
-	h.inner.ExecuteBatchGeneration(c.Request.Context(), nil, nil)
+	h.inner.GenerateBatch(c)
 }
 
 // GetBatchProgress handles GET /generate-batch/progress.
 func (h *Handler) GetBatchProgress(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"ok": true, "progress": 0})
+	if h.inner == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "batch generation not initialized"})
+		return
+	}
+	h.inner.GetBatchProgress(c)
 }
 
 // mapErrorToHTTP maps domain errors to HTTP status codes.

@@ -1,6 +1,7 @@
 package script
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -228,4 +229,45 @@ func TestHandler_ValidRequest_Returns200(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandler_GenerateBatch_DelegatesToInner(t *testing.T) {
+	t.Parallel()
+
+	inner := NewScriptFlowHandler(ScriptFlowDeps{
+		GenerateBatch: scripts.NewGenerateBatchUseCase(
+			nil,
+			nil,
+			nil,
+			scripts.NewBatchService(nil, nil, nil, nil, nil, nil, nil),
+			"",
+		),
+	})
+	handler := NewHandler(inner, &fakeGenerationService{}, FeatureGates{ScriptDocsEnabled: true})
+	router := gin.New()
+	router.POST("/test", handler.GenerateBatch)
+
+	body := `{"doc_title":"Batch probe","async":false,"items":[{"topic":"t1"}],"batch_topics":[{"topic":"t1"}]}`
+	req := httptest.NewRequest("POST", "/test", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"doc_title":"Batch probe"`)
+}
+
+func TestHandler_GetBatchProgress_DelegatesToInner(t *testing.T) {
+	t.Parallel()
+
+	inner := NewScriptFlowHandler(ScriptFlowDeps{})
+	handler := NewHandler(inner, &fakeGenerationService{}, FeatureGates{ScriptDocsEnabled: true})
+	router := gin.New()
+	router.GET("/test", handler.GetBatchProgress)
+
+	req := httptest.NewRequest("GET", "/test?job_id=job-123", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
