@@ -4,8 +4,8 @@
 // app-layer `youtubeapp.VideoCutRequest`/`youtubeapp.VideoCutResult` DTOs.
 //
 // Per PR2 followup (June 2026): the metadata inside `VideoCutResult` is
-// the canonical `*youtubeapp.DownloaderMetadata` DTO, not the legacy
-// empty-marker `*YouTubeMetadataPort`. The infra `videomuscles.YouTubeMetadata`
+// the canonical `*youtubeapp.DownloaderMetadata` DTO. The infra
+// `videomuscles.YouTubeMetadata`
 // struct is converted to `*youtubeapp.DownloaderMetadata` here at the seam
 // (no leakage to caller beyond the canonical DTO).
 package youtube
@@ -14,8 +14,8 @@ import (
 	"context"
 
 	// DTOs (VideoCutRequest/Result, DownloaderMetadata, VideoChapter) live in ports/.
-	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 )
 
 // VideoPipelineAdapter wraps videomuscles.Pipeline and converts between

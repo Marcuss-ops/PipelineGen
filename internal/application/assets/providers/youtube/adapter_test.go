@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	// DTOs (VideoCutRequest/Result, YouTubeMetadataPort) live in ports/.
+	// DTOs (VideoCutRequest/Result, DownloaderMetadata) live in ports/.
 	// TopicSearchResponse/Result stay top-level.
 	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	youtubesrcports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
@@ -85,7 +85,7 @@ func TestFetch_FullVideo_UsesSentinelDuration(t *testing.T) {
 	ff := &fakeFetcher{
 		result: &youtubesrcports.VideoCutResult{
 			LocalPath: "/tmp/yt_full.mp4",
-			Metadata: &youtubesrcports.YouTubeMetadataPort{
+			Metadata: &youtubesrcports.DownloaderMetadata{
 				Title:    "Full Video Title",
 				Uploader: "Test Channel",
 				Duration: 300.0,
@@ -118,7 +118,7 @@ func TestFetch_SegmentExtraction_SetsBounds(t *testing.T) {
 	ff := &fakeFetcher{
 		result: &youtubesrcports.VideoCutResult{
 			LocalPath: "/tmp/yt_segment.mp4",
-			Metadata: &youtubesrcports.YouTubeMetadataPort{
+			Metadata: &youtubesrcports.DownloaderMetadata{
 				Title:    "Segment Title",
 				Duration: 60.0,
 			},

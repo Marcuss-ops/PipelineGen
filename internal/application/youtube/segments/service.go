@@ -84,7 +84,7 @@ type BuildClipMetadataInput struct {
 	FolderSlug                                   string
 	ShouldNormalize, KeepAudio                   bool
 	DriveFolderID, FolderPath, FileHash, Group   string
-	YouTubeMeta                                  *ports.YouTubeMetadataPort
+	YouTubeMeta                                  *ports.DownloaderMetadata
 	Segment                                      *types.Segment
 }
 

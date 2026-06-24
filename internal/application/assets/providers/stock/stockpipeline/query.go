@@ -86,7 +86,7 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 }
 
 // getDirectVideoInfo fetches metadata for a direct YouTube URL.
-func (s *Service) getDirectVideoInfo(ctx context.Context, videoURL string) (*youtubeports.VideoMetadata, error) {
+func (s *Service) getDirectVideoInfo(ctx context.Context, videoURL string) (*youtubeports.DownloaderMetadata, error) {
 	if s.youtubeSvc == nil {
 		return nil, nil
 	}
