@@ -1,10 +1,9 @@
 package app
 
 import (
-	"database/sql"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -17,14 +16,21 @@ import (
 // so it stays regression-safe even when other tests trip pre-existing
 // migration issues (see docs/followups/2026-06-migration-053-test-failure.md).
 func TestBuildJobsBundle_FieldsAreNonNil(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	// PG-011 typed-handle migration (June 2026): *storage.SQLiteDB
+	// fixture; BuildJobsBundle receives sqliteDB.DB (the embedded
+	// *sql.DB handle) so the test file can drop its bare database/sql
+	// import while exercising the production ctor signature.
+	sqliteDB, err := storage.OpenSQLiteDB(":memory:", zaptest.NewLogger(t))
 	if err != nil {
-		t.Fatalf("sql.Open in-memory: %v", err)
+		t.Fatalf("storage.OpenSQLiteDB: %v", err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = sqliteDB.Close() })
 
 	log := zaptest.NewLogger(t)
-	bundle, err := BuildJobsBundle(db, log)
+	// PG-011 typed-handle migration (June 2026): BuildJobsBundle
+	// signature is now `*storage.SQLiteDB` so we pass the typed
+	// handle directly (no `.DB` accessor).
+	bundle, err := BuildJobsBundle(sqliteDB, log)
 	if err != nil {
 		t.Fatalf("BuildJobsBundle: %v", err)
 	}

@@ -29,7 +29,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,9 +36,8 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
@@ -264,11 +262,21 @@ func TestComposition_NilObligatory_BuildSearchBundle(t *testing.T) {
 func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 	chdirToProjectRoot(t)
 
-	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	// PG-011 typed-handle migration (June 2026): the fixture is
+	// *storage.SQLiteDB; the underlying *sql.DB handle is reached via
+	// the embedded field (.DB) so BuildJobsBundle — which still takes
+	// a raw handle — receives the same connection without leaking
+	// the database/sql import into this file.
+	sqliteDB, err := storage.OpenSQLiteDB(":memory:", zaptest.NewLogger(t))
+	require.NoError(t, err, "open SQLiteDB")
+	t.Cleanup(func() { _ = sqliteDB.Close() })
 
-	bundle, err := BuildJobsBundle(db, zaptest.NewLogger(t))
+	// PG-011 typed-handle migration (June 2026): BuildJobsBundle
+	// signature is now `*storage.SQLiteDB`, so we pass the typed
+	// handle directly. Underlying *sql.DB is reached via the
+	// embedded `.DB` accessor only for callers (e.g.
+	// clipindexer.NewService) that have not yet been migrated.
+	bundle, err := BuildJobsBundle(sqliteDB, zaptest.NewLogger(t))
 	require.NoError(t, err)
 	require.NotNil(t, bundle)
 	require.NotNil(t, bundle.Repo)
