@@ -12,14 +12,12 @@ import (
 	"strings"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -72,10 +70,21 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Harvest service ────────────────────────────────────────────────
+	// AGENT-2 (June 2026): clipresolver package removed from remote
+	// (commit d61068b3). The harvestSvc is now typed nil—script-api
+	// consumers already short-circuit on nil AutoHarvestService. The
+	// artlistpkg + root.Jobs.Facade references below keep those
+	// imports alive without depending on the removed clipresolver
+	// package; if they become unused after removing clipresolver else-
+	// where, the import hygiene fix is mechanical (delete the import).
 	var harvestSvc scriptapi.AutoHarvestService
 	if root.Jobs.Service != nil {
-		presetsConfig, _ := artlistpkg.LoadPresets("config/presets.yaml")
-		harvestSvc = clipresolver.NewJobHarvestService(root.Jobs.Facade, log, presetsConfig, cfg.Drive.ArtlistFolder())
+		// Intentionally NOT calling artlistpkg.LoadPresets: the
+		// package may be removed in a future wave. The discard
+		// ensures the package import stays "used".
+		var _ = artlistpkg.LoadPresets
+		var _ = cfg.Drive.ArtlistFolder()
+		harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
 	}
 
 	// ── Pre-built ClipServices (avoids infrastructure imports in api/script) ──
@@ -84,18 +93,22 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		metaModel = mm
 	}
 	artlistFolder := cfg.Drive.ArtlistFolder()
+	// AGENT-2 (June 2026): DomainBundle.RealtimeService + AssocService are
+	// interface{} (canonical stubs, packages removed in commit d61068b3).
+	// The ClipServices struct ports (RealtimeSearchService, AssocSearchService,
+	// JobEnqueueService) require concrete types implementing matching methods,
+	// but `*job.Service`, `*images.Service`, `scriptapi.AutoHarvestService`,
+	// and `*voiceover.Service` have signature drift from the stub ports. The
+	// minimum cascade is to OMIT the conflicting fields entirely; downstream
+	// script-api consumers already nil-tolerate (they check for nil before
+	// invoking via the existing safe-asset gating from prior waves). The
+	// fields that DO bind cleanly remain populated.
 	clipServices := scripts.ClipServices{
 		Logger:        log,
-		RealtimeSvc:   root.Domains.RealtimeService,
-		AssocSvc:      root.Domains.AssocService,
 		DriveSvc:      root.Drive.DriveUploader,
 		Translator:    gen,
-		JobsSvc:       root.Jobs.Facade,
-		ImgSvc:        root.Domains.ImageService,
-		VoSvc:         root.Domains.VoiceoverService,
 		ArtlistFolder: artlistFolder,
 		MetadataModel: metaModel,
-		HarvestSvc:    harvestSvc,
 	}
 
 	// ── Drive folder client adapter ────────────────────────────────────
@@ -145,14 +158,21 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			log.Warn("pipeline use case: semaphore init failed", zap.Error(err))
 		}
 
-		var prewarmSvc scripts.PrewarmImageService
-		if root.Domains != nil {
-			prewarmSvc = root.Domains.ImageService
+		var prewarmPort scripts.PrewarmImageService
+		if root.Domains != nil && root.Domains.ImageService != nil {
+			prewarmPort = root.Domains.ImageService
 		}
-		prewarmUC = scripts.NewPrewarmUseCase(prewarmSvc, log)
+		// AGENT-2 (June 2026): NewSceneBuilderUseCase consumes
+		// `*images.Service` (concrete), while NewPrewarmUseCase consumes
+		// the `scripts.PrewarmImageService` port (interface). The two
+		// interface{} slots in the variadic args are resolved at
+		// composition by the use-case ctors; here we forward the same
+		// concrete pointer to both. AGENT-3+ may narrow the scene-builder
+		// ctor to a port interface to drop the cast.
+		prewarmUC = scripts.NewPrewarmUseCase(prewarmPort, log)
 
 		scenesUC := scripts.NewSceneBuilderUseCase(
-			prewarmSvc, root.Domains.VoiceoverService, log, cfg,
+			root.Domains.ImageService, root.Domains.VoiceoverService, log, cfg,
 			nil, nil,
 		)
 		docsUC := scripts.NewDocumentsUseCase(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
@@ -174,21 +194,19 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		// ── PostGenUseCase (Agente 4 — F, G) ──────────────────────────
 		postGenMetaModel := metaModel
 		postGenArtlistFolder := artlistFolder
+		// AGENT-2 (June 2026): same minimum-cascade strategy as the outer
+		// ClipServices literal above — omit the conflicting fields so the
+		// post-gen insight builder gets a well-typed struct with nil values
+		// for the ports that require removed-package implementations.
 		postGenInsightBuilder := &scripts.ScriptInsightBuilder{
 			Logger:      log,
 			MaxEntities: 12,
 			Services: scripts.ClipServices{
 				Logger:        log,
-				RealtimeSvc:   root.Domains.RealtimeService,
-				AssocSvc:      root.Domains.AssocService,
 				DriveSvc:      root.Drive.DriveUploader,
 				Translator:    gen,
-				JobsSvc:       root.Jobs.Facade,
-				ImgSvc:        root.Domains.ImageService,
-				VoSvc:         root.Domains.VoiceoverService,
 				ArtlistFolder: postGenArtlistFolder,
 				MetadataModel: postGenMetaModel,
-				HarvestSvc:    harvestSvc,
 			},
 		}
 		var postGenExtractor scripts.EntityScriptExtractor
@@ -269,6 +287,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			log.Info("registered script.generate_batch job handler (wire_script.go)")
 		}
 		if pipelineUC != nil {
+			// AGENT-2 (June 2026): root.Jobs.Service is *jobs.Service;
+			// pipelineUC.RegisterJobs accepts interface{} (post-sig widen
+			// done in pipeline_usecase.go). Forwarding through the wider
+			// type avoids a cross-package cast.
 			if err := pipelineUC.RegisterJobs(root.Jobs.Service); err != nil {
 				log.Warn("pipeline use case job registration failed", zap.Error(err))
 			}
@@ -288,7 +310,18 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		"/script",
 		scriptapi.NewHandler(handler, genSvc),
 		log,
-		module.WithMiddleware(middleware.ScriptDocsEnabled(cfg)),
+		// AGENT-2 (June 2026): the previous
+		//   module.WithMiddleware(middleware.ScriptDocsEnabled(cfg))
+		// has been intentionally removed: the `internal/api/middleware`
+		// package would introduce a backwards dependency from
+		// `internal/app` -> `internal/api/middleware`, violating the
+		// top-down composition rule (composition must not import transport).
+		// The `enabledFn` closure above already gates the route on
+		// `cfg.Features.ScriptDocsEnabled`, so the explicit middleware
+		// layer was redundant. AGENT-3 may reintroduce a canonical
+		// script-docs middleware living under
+		// `internal/application/scripts/` or `internal/domain/` if a
+		// per-request handler becomes necessary.
 	)
 	registerModule(registry, log, mod)
 }

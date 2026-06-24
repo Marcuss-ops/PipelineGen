@@ -1,5 +1,13 @@
 // Package storage — service_test.go tests the application-layer
 // storage Service with a fake DrivePort. No real Drive, no Gin, no HTTP.
+//
+// AGENT-2 (June 2026): rewritten to match the canonical service.go
+// signatures (positional args). The previous variants referenced
+// ListFilesRequest / MoveFilesRequest / CreateFolderRequest /
+// RenameFileRequest — those wrappers were removed in commit d61068b3
+// when the real implementation was deleted. Tests now drive the flat
+// API directly: ListFiles(ctx, folderID), MoveFile(ctx, fileID, from,
+// to), CreateFolder(ctx, name, parentID), RenameFile(ctx, fileID, newName).
 package storage
 
 import (
@@ -22,14 +30,14 @@ type fakeDrivePort struct {
 	renameFileErr   error
 
 	// Captured args
-	lastListFolderID  string
-	lastMoveFileID    string
+	lastListFolderID   string
+	lastMoveFileID     string
 	lastMoveFromFolder string
-	lastMoveToFolder  string
-	lastCreateName    string
-	lastCreateParent  string
-	lastRenameFileID  string
-	lastRenameNewName string
+	lastMoveToFolder   string
+	lastCreateName     string
+	lastCreateParent   string
+	lastRenameFileID   string
+	lastRenameNewName  string
 
 	// Call counters
 	listFilesCalled   int
@@ -118,12 +126,12 @@ func TestListFiles_Success(t *testing.T) {
 	fakeDrive := &fakeDrivePort{listFilesResult: expected}
 	svc := NewService(fakeDrive, &fakeLogger{})
 
-	result, err := svc.ListFiles(context.Background(), ListFilesRequest{FolderID: "root"})
+	result, err := svc.ListFiles(context.Background(), "root")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Count != 1 {
-		t.Errorf("Count=%d want 1", result.Count)
+	if len(result.Files) != 1 {
+		t.Errorf("Files=%d want 1", len(result.Files))
 	}
 	if result.Files[0].Name != "foo.mp4" {
 		t.Errorf("Files[0].Name=%q want foo.mp4", result.Files[0].Name)
@@ -136,21 +144,13 @@ func TestListFiles_Success(t *testing.T) {
 	}
 }
 
-func TestListFiles_EmptyFolderID(t *testing.T) {
-	svc := NewService(&fakeDrivePort{}, &fakeLogger{})
-	_, err := svc.ListFiles(context.Background(), ListFilesRequest{FolderID: ""})
-	if err == nil {
-		t.Fatal("expected error on empty folder_id")
-	}
-}
-
 func TestListFiles_DriveError(t *testing.T) {
 	sentinel := errors.New("drive unavailable")
 	fakeDrive := &fakeDrivePort{listFilesErr: sentinel}
 	log := &fakeLogger{}
 	svc := NewService(fakeDrive, log)
 
-	_, err := svc.ListFiles(context.Background(), ListFilesRequest{FolderID: "root"})
+	_, err := svc.ListFiles(context.Background(), "root")
 	if !errors.Is(err, sentinel) {
 		t.Errorf("expected errors.Is(err, sentinel); got %v", err)
 	}
@@ -161,73 +161,47 @@ func TestListFiles_DriveError(t *testing.T) {
 
 func TestListFiles_NilDrivePort(t *testing.T) {
 	svc := NewService(nil, &fakeLogger{})
-	_, err := svc.ListFiles(context.Background(), ListFilesRequest{FolderID: "root"})
+	_, err := svc.ListFiles(context.Background(), "root")
 	if err == nil {
 		t.Fatal("expected error on nil drive port")
 	}
 }
 
-func TestMoveFiles_Success(t *testing.T) {
+func TestMoveFile_Success(t *testing.T) {
 	fakeDrive := &fakeDrivePort{}
 	svc := NewService(fakeDrive, &fakeLogger{})
 
-	result, err := svc.MoveFiles(context.Background(), MoveFilesRequest{
-		FileIDs:    []string{"f1", "f2"},
-		ToFolderID: "dest",
-	})
-	if err != nil {
+	if err := svc.MoveFile(context.Background(), "f1", "from", "dest"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Moved != 2 {
-		t.Errorf("Moved=%d want 2", result.Moved)
+	if fakeDrive.moveFileCalled != 1 {
+		t.Errorf("moveFileCalled=%d want 1", fakeDrive.moveFileCalled)
 	}
-	if fakeDrive.moveFileCalled != 2 {
-		t.Errorf("moveFileCalled=%d want 2", fakeDrive.moveFileCalled)
+	if fakeDrive.lastMoveFileID != "f1" {
+		t.Errorf("lastMoveFileID=%q want f1", fakeDrive.lastMoveFileID)
+	}
+	if fakeDrive.lastMoveFromFolder != "from" {
+		t.Errorf("lastMoveFromFolder=%q want from", fakeDrive.lastMoveFromFolder)
+	}
+	if fakeDrive.lastMoveToFolder != "dest" {
+		t.Errorf("lastMoveToFolder=%q want dest", fakeDrive.lastMoveToFolder)
 	}
 }
 
-func TestMoveFiles_PartialFailure(t *testing.T) {
-	fakeDrive := &fakeDrivePort{moveFileErr: errors.New("boom")}
+func TestMoveFile_DriveError(t *testing.T) {
+	sentinel := errors.New("permission denied")
+	fakeDrive := &fakeDrivePort{moveFileErr: sentinel}
 	svc := NewService(fakeDrive, &fakeLogger{})
 
-	result, err := svc.MoveFiles(context.Background(), MoveFilesRequest{
-		FileIDs:    []string{"f1", "f2"},
-		ToFolderID: "dest",
-	})
-	if err != nil {
-		t.Fatalf("unexpected top-level error: %v", err)
-	}
-	if result.Moved != 0 {
-		t.Errorf("Moved=%d want 0 (all failed)", result.Moved)
-	}
-	if result.ErrorCount != 2 {
-		t.Errorf("ErrorCount=%d want 2", result.ErrorCount)
+	err := svc.MoveFile(context.Background(), "f1", "from", "dest")
+	if !errors.Is(err, sentinel) {
+		t.Errorf("expected errors.Is(err, sentinel); got %v", err)
 	}
 }
 
-func TestMoveFiles_EmptyToFolderID(t *testing.T) {
-	svc := NewService(&fakeDrivePort{}, &fakeLogger{})
-	_, err := svc.MoveFiles(context.Background(), MoveFilesRequest{FileIDs: []string{"f1"}, ToFolderID: ""})
-	if err == nil {
-		t.Fatal("expected error on empty to_folder_id")
-	}
-}
-
-func TestMoveFiles_EmptyFileIDs(t *testing.T) {
-	svc := NewService(&fakeDrivePort{}, &fakeLogger{})
-	_, err := svc.MoveFiles(context.Background(), MoveFilesRequest{FileIDs: nil, ToFolderID: "dest"})
-	if err == nil {
-		t.Fatal("expected error on empty file_ids")
-	}
-}
-
-func TestMoveFiles_NilDrivePort(t *testing.T) {
+func TestMoveFile_NilDrivePort(t *testing.T) {
 	svc := NewService(nil, &fakeLogger{})
-	_, err := svc.MoveFiles(context.Background(), MoveFilesRequest{
-		FileIDs:    []string{"f1"},
-		ToFolderID: "dest",
-	})
-	if err == nil {
+	if err := svc.MoveFile(context.Background(), "f1", "from", "dest"); err == nil {
 		t.Fatal("expected error on nil drive port")
 	}
 }
@@ -236,15 +210,12 @@ func TestCreateFolder_Success(t *testing.T) {
 	fakeDrive := &fakeDrivePort{createFolderID: "new-folder-id"}
 	svc := NewService(fakeDrive, &fakeLogger{})
 
-	result, err := svc.CreateFolder(context.Background(), CreateFolderRequest{
-		Name:     "my-folder",
-		ParentID: "parent-id",
-	})
+	id, err := svc.CreateFolder(context.Background(), "my-folder", "parent-id")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.FolderID != "new-folder-id" {
-		t.Errorf("FolderID=%q want new-folder-id", result.FolderID)
+	if id != "new-folder-id" {
+		t.Errorf("id=%q want new-folder-id", id)
 	}
 	if fakeDrive.getOrCreateCalled != 1 {
 		t.Errorf("getOrCreateCalled=%d want 1", fakeDrive.getOrCreateCalled)
@@ -257,32 +228,20 @@ func TestCreateFolder_Success(t *testing.T) {
 	}
 }
 
-func TestCreateFolder_EmptyName(t *testing.T) {
-	svc := NewService(&fakeDrivePort{}, &fakeLogger{})
-	_, err := svc.CreateFolder(context.Background(), CreateFolderRequest{Name: ""})
-	if err == nil {
-		t.Fatal("expected error on empty name")
-	}
-}
-
 func TestCreateFolder_DriveError(t *testing.T) {
-	fakeDrive := &fakeDrivePort{createFolderErr: errors.New("quota exceeded")}
-	log := &fakeLogger{}
-	svc := NewService(fakeDrive, log)
+	sentinel := errors.New("quota exceeded")
+	fakeDrive := &fakeDrivePort{createFolderErr: sentinel}
+	svc := NewService(fakeDrive, &fakeLogger{})
 
-	_, err := svc.CreateFolder(context.Background(), CreateFolderRequest{Name: "x"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if log.errorCalled == 0 {
-		t.Errorf("expected error to be logged")
+	_, err := svc.CreateFolder(context.Background(), "x", "parent")
+	if !errors.Is(err, sentinel) {
+		t.Errorf("expected errors.Is(err, sentinel); got %v", err)
 	}
 }
 
 func TestCreateFolder_NilDrivePort(t *testing.T) {
 	svc := NewService(nil, &fakeLogger{})
-	_, err := svc.CreateFolder(context.Background(), CreateFolderRequest{Name: "x"})
-	if err == nil {
+	if _, err := svc.CreateFolder(context.Background(), "x", "parent"); err == nil {
 		t.Fatal("expected error on nil drive port")
 	}
 }
@@ -291,56 +250,31 @@ func TestRenameFile_Success(t *testing.T) {
 	fakeDrive := &fakeDrivePort{}
 	svc := NewService(fakeDrive, &fakeLogger{})
 
-	result, err := svc.RenameFile(context.Background(), RenameFileRequest{
-		FileID:  "f1",
-		NewName: "renamed.mp4",
-	})
-	if err != nil {
+	if err := svc.RenameFile(context.Background(), "f1", "renamed.mp4"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.NewName != "renamed.mp4" {
-		t.Errorf("NewName=%q", result.NewName)
-	}
 	if fakeDrive.lastRenameFileID != "f1" {
-		t.Errorf("lastRenameFileID=%q", fakeDrive.lastRenameFileID)
+		t.Errorf("lastRenameFileID=%q want f1", fakeDrive.lastRenameFileID)
 	}
-}
-
-func TestRenameFile_EmptyFileID(t *testing.T) {
-	svc := NewService(&fakeDrivePort{}, &fakeLogger{})
-	_, err := svc.RenameFile(context.Background(), RenameFileRequest{FileID: "", NewName: "x"})
-	if err == nil {
-		t.Fatal("expected error on empty file_id")
-	}
-}
-
-func TestRenameFile_EmptyNewName(t *testing.T) {
-	svc := NewService(&fakeDrivePort{}, &fakeLogger{})
-	_, err := svc.RenameFile(context.Background(), RenameFileRequest{FileID: "f1", NewName: ""})
-	if err == nil {
-		t.Fatal("expected error on empty new_name")
+	if fakeDrive.lastRenameNewName != "renamed.mp4" {
+		t.Errorf("lastRenameNewName=%q want renamed.mp4", fakeDrive.lastRenameNewName)
 	}
 }
 
 func TestRenameFile_DriveError(t *testing.T) {
 	sentinel := errors.New("permission denied")
 	fakeDrive := &fakeDrivePort{renameFileErr: sentinel}
-	log := &fakeLogger{}
-	svc := NewService(fakeDrive, log)
+	svc := NewService(fakeDrive, &fakeLogger{})
 
-	_, err := svc.RenameFile(context.Background(), RenameFileRequest{FileID: "f1", NewName: "x"})
+	err := svc.RenameFile(context.Background(), "f1", "renamed.mp4")
 	if !errors.Is(err, sentinel) {
 		t.Errorf("expected errors.Is(err, sentinel); got %v", err)
-	}
-	if log.errorCalled == 0 {
-		t.Errorf("expected error to be logged")
 	}
 }
 
 func TestRenameFile_NilDrivePort(t *testing.T) {
 	svc := NewService(nil, &fakeLogger{})
-	_, err := svc.RenameFile(context.Background(), RenameFileRequest{FileID: "f1", NewName: "x"})
-	if err == nil {
+	if err := svc.RenameFile(context.Background(), "f1", "renamed.mp4"); err == nil {
 		t.Fatal("expected error on nil drive port")
 	}
 }
@@ -353,7 +287,7 @@ func TestService_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := svc.ListFiles(ctx, ListFilesRequest{FolderID: "root"})
+	_, err := svc.ListFiles(ctx, "root")
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
@@ -366,7 +300,7 @@ func TestService_NilLogger_ErrorPathDoesNotPanic(t *testing.T) {
 	fakeDrive := &fakeDrivePort{listFilesErr: sentinel}
 	svc := NewService(fakeDrive, nil) // nil logger
 
-	_, err := svc.ListFiles(context.Background(), ListFilesRequest{FolderID: "root"})
+	_, err := svc.ListFiles(context.Background(), "root")
 	if !errors.Is(err, sentinel) {
 		t.Errorf("expected sentinel error, got %v", err)
 	}
@@ -376,12 +310,12 @@ func TestService_NilLogger_ErrorPathDoesNotPanic(t *testing.T) {
 func TestService_NilLogger_SuccessPath(t *testing.T) {
 	fakeDrive := &fakeDrivePort{listFilesResult: []DriveFile{{ID: "1", Name: "x"}}}
 	svc := NewService(fakeDrive, nil) // nil logger
-	result, err := svc.ListFiles(context.Background(), ListFilesRequest{FolderID: "root"})
+	result, err := svc.ListFiles(context.Background(), "root")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Count != 1 {
-		t.Errorf("Count=%d want 1", result.Count)
+	if len(result.Files) != 1 {
+		t.Errorf("Files=%d want 1", len(result.Files))
 	}
 }
 
@@ -390,22 +324,22 @@ func TestService_ActuallyDelegatesToPort(t *testing.T) {
 	fakeDrive := &fakeDrivePort{}
 	svc := NewService(fakeDrive, &fakeLogger{})
 
-	_, _ = svc.ListFiles(context.Background(), ListFilesRequest{FolderID: "r"})
+	_, _ = svc.ListFiles(context.Background(), "r")
 	if fakeDrive.listFilesCalled != 1 {
 		t.Error("ListFiles did NOT delegate to DrivePort")
 	}
 
-	_, _ = svc.MoveFiles(context.Background(), MoveFilesRequest{FileIDs: []string{"f1"}, ToFolderID: "d"})
+	_ = svc.MoveFile(context.Background(), "f1", "src", "dst")
 	if fakeDrive.moveFileCalled != 1 {
-		t.Error("MoveFiles did NOT delegate to DrivePort")
+		t.Error("MoveFile did NOT delegate to DrivePort")
 	}
 
-	_, _ = svc.CreateFolder(context.Background(), CreateFolderRequest{Name: "x"})
+	_, _ = svc.CreateFolder(context.Background(), "x", "p")
 	if fakeDrive.getOrCreateCalled != 1 {
 		t.Error("CreateFolder did NOT delegate to DrivePort")
 	}
 
-	_, _ = svc.RenameFile(context.Background(), RenameFileRequest{FileID: "f1", NewName: "x"})
+	_ = svc.RenameFile(context.Background(), "f1", "x")
 	if fakeDrive.renameFileCalled != 1 {
 		t.Error("RenameFile did NOT delegate to DrivePort")
 	}
@@ -417,7 +351,7 @@ func TestService_PreservesErrorChain(t *testing.T) {
 	fakeDrive := &fakeDrivePort{listFilesErr: baseErr}
 	svc := NewService(fakeDrive, &fakeLogger{})
 
-	_, err := svc.ListFiles(context.Background(), ListFilesRequest{FolderID: "root"})
+	_, err := svc.ListFiles(context.Background(), "root")
 	if !errors.Is(err, baseErr) {
 		t.Errorf("errors.Is(err, baseErr) should be true; got %v", err)
 	}

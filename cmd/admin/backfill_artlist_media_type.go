@@ -1,3 +1,26 @@
+// cmd/admin/backfill_artlist_media_type.go — AGENT-1 recovery (June 2026)
+//
+// Two-step backfill for Artlist clips whose `metadata_json.media_type`
+// field is missing or stale (= "artlist" rather than "video"):
+//
+//  1. UPDATE media_assets.metadata_json to pin `media_type: "video"`,
+//     guarded by a `--apply` flag (default: dry-run).
+//  2. Upsert the patched clips into Qdrant via the canonical
+//     `*qdrant.ClipIndexerAdapter`, guarded by `--qdrant`.
+//
+// Post-fix wiring (AGENT-1):
+//
+//   - `internal/config`         → `internal/infrastructure/config`
+//   - `internal/storage`        → `internal/infrastructure/database`
+//   - `internal/media/vectorstore` → `internal/infrastructure/qdrant`
+//     The canonical `qdrant.NewService` is the single-arg stub that
+//     pairs with `qdrant.NewClipIndexerAdapter(db, vectorSvc, cfg, log)`.
+//     The adapter ultimately calls `vectorSvc.UpsertAsset(s)` which is
+//     a stub returning "qdrant service not available" until the real
+//     backend is re-introduced (commit d61068b3 stub-restore note).
+//     Operators running with `--qdrant` against an offline service will
+//     see the stub error in the report and the DB step will still have
+//     succeeded — the pipeline remains usable as an audit/ops tool.
 package main
 
 import (
@@ -8,19 +31,12 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
-// runBackfillArtlistMediaType updates Artlist clips that have media_type != 'video'
-// in metadata_json and optionally upserts them to Qdrant.
-//
-// Usage:
-//
-//	admin backfill-artlist-media-type              # dry-run: count only
-//	admin backfill-artlist-media-type --apply      # apply: update DB
-//	admin backfill-artlist-media-type --apply --qdrant  # apply + upsert to Qdrant
 func runBackfillArtlistMediaType(args []string) error {
 	cfg, log, cleanup, err := appLogger()
 	if err != nil {
@@ -43,9 +59,15 @@ func runBackfillArtlistMediaType(args []string) error {
 	dataDir := cfg.Storage.DataDir
 	log.Info("opening media database", zap.String("data_dir", dataDir))
 
-	// Use the same DB path as the production code: storage.NewSQLiteDB(dataDir, storage.DBMedia, log)
-	// DBMedia = "media/media.db.sqlite"
-	sqliteDB, err := storage.NewSQLiteDB(dataDir, storage.DBMedia, log)
+	// AGENT-1: the canonical SQLite opener in `internal/infrastructure/database`
+	// (was internal/storage — retired). The path resolves to a Go package
+	// named `storage` (Go-package-name vs directory-name drift retained
+	// on purpose during consolidation); the import alias `storage` is
+	// used here to match the convention from sibling cmd/admin/* files.
+	// `OpenSQLiteDB` accepts a fully-qualified path; we resolve it from
+	// cfg.Storage.PrimaryDBFullPath() so we don't carry the legacy
+	// <DataDir>/media/media.db.sqlite concatenated string.
+	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
 	if err != nil {
 		return fmt.Errorf("failed to open media DB: %w", err)
 	}
@@ -127,7 +149,7 @@ func runBackfillArtlistMediaType(args []string) error {
 		return nil
 	}
 
-	// Step 3: Upsert to Qdrant via vectorstore adapter
+	// Step 3: Upsert to Qdrant via canonical ClipIndexerAdapter
 	log.Info("starting Qdrant upsert for updated clips")
 	clipIDs := make([]string, 0, len(clips))
 	for _, clip := range clips {
@@ -145,31 +167,23 @@ func runBackfillArtlistMediaType(args []string) error {
 	return nil
 }
 
-// upsertArtlistClipsToQdrant reads the given clip IDs from DB and upserts them
-// to Qdrant via the vectorstore adapter (same path as production indexer).
+// upsertArtlistClipsToQdrant reads the given clip IDs from DB and upserts
+// them to Qdrant via the canonical `qdrant.ClipIndexerAdapter`. Mirrors
+// the wiring in `internal/app/composition.go::BuildProcessBundle`:
+// qdrant.NewService(cfg) + qdrant.NewClipIndexerAdapter(db, svc, cfg, log).
+//
+// AGENT-1: the legacy code reconstructed the full Qdrant HTTP client and
+// retry policy plumbing here. Post-fix we delegate to the canonical
+// adapter; the stub form of `qdrant.NewService` (1-arg Config) is what
+// `internal/infrastructure/qdrant/service.go` currently exposes.
 func upsertArtlistClipsToQdrant(ctx context.Context, db *sql.DB, cfg *config.Config, log *zap.Logger, clipIDs []string) error {
-	// Build vectorstore service
-	vsCfg := vectorstore.Config{
-		URL:                  cfg.VectorSearch.URL,
-		Collection:           cfg.VectorSearch.Collection,
-		TextVectorName:       cfg.VectorSearch.TextVectorName,       // "text"
-		VisualVectorName:     cfg.VectorSearch.VisualVectorName,     // "visual"
-		AudioVectorName:      cfg.VectorSearch.AudioVectorName,      // "audio"
-		TranscriptVectorName: cfg.VectorSearch.TranscriptVectorName, // "transcript"
-		SparseVectorName:     cfg.VectorSearch.SparseVectorName,     // "bm25_text"
-		TextDimensions:       cfg.VectorSearch.TextDimensions,       // 768
-		VisualDimensions:     cfg.VectorSearch.VisualDimensions,     // 512
-		AudioDimensions:      cfg.VectorSearch.AudioDimensions,      // 512
-		TranscriptDimensions: cfg.VectorSearch.TranscriptDimensions, // 768
-		MinInstantScore:      cfg.VectorSearch.MinInstantScore,
-		TimeoutMs:            cfg.VectorSearch.TimeoutMs,
-		BatchSize:            500,
+	qdrantCfg := qdrant.Config{
+		Enabled: cfg.VectorSearch.Enabled,
 	}
 
-	qdrantClient := vectorstore.NewQdrantClient(vsCfg)
-	vs := vectorstore.NewService(qdrantClient, vsCfg, log)
+	vectorSvc := qdrant.NewService(qdrantCfg)
+	adapter := qdrant.NewClipIndexerAdapter(db, vectorSvc, qdrantCfg, log)
 
-	adapter := vectorstore.NewClipIndexerAdapter(db, vs, vsCfg, log)
 	if err := adapter.UpsertFromClips(ctx, clipIDs); err != nil {
 		return fmt.Errorf("batch upsert to Qdrant: %w", err)
 	}

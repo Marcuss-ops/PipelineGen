@@ -3,14 +3,20 @@
 // One-shot admin utility. Run from the project root:
 //
 //	./pipelinegen admin upload-t5pre
+//
+// NOTE (AGENT-1, June 2026): legacy imports replaced with canonical
+// versions as part of the wave-internal cmd/admin recovery PR. Pre-fix
+// this file imported the removed `internal/{config,storage,upload/drive}`
+// packages. Post-fix it imports the canonical
+// `internal/infrastructure/{config,database,drive}`.
 package main
 
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 func runUploadT5Pre(_ []string) error {
@@ -30,7 +36,7 @@ func runUploadT5Pre(_ []string) error {
 
 	uploader := &drive.Uploader{Service: driveSvc, Log: log}
 
-	dbPath := cfg.Storage.DataDir + "/media/media.db.sqlite"
+	dbPath := cfg.Storage.PrimaryDBFullPath()
 	db, err := storage.OpenSQLiteDB(dbPath, log)
 	if err != nil {
 		return fmt.Errorf("init db (path=%s): %w", dbPath, err)

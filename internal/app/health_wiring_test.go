@@ -31,7 +31,6 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 			DataDir: t.TempDir(),
 		},
 		Security: config.SecurityConfig{
-			WorkspaceTokens: make(map[string]string),
 		},
 	}
 	log := zap.NewNop()
@@ -59,7 +58,6 @@ func TestRoutes_DoNotPassNilReadyChecker(t *testing.T) {
 			DataDir: t.TempDir(),
 		},
 		Security: config.SecurityConfig{
-			WorkspaceTokens: make(map[string]string),
 		},
 	}
 
@@ -106,7 +104,6 @@ func TestRoutes_WithoutReadyChecker_ReturnsNotInitialized(t *testing.T) {
 			DataDir: t.TempDir(),
 		},
 		Security: config.SecurityConfig{
-			WorkspaceTokens: make(map[string]string),
 		},
 	}
 

@@ -24,7 +24,6 @@ import (
 	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
@@ -33,23 +32,16 @@ import (
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	scriptcore	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -241,11 +233,20 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		realtimeEnabled := cfg != nil && cfg.VectorSearch.RealtimeEnabled
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
 		// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
+		// AGENT-2 (June 2026): realtime package removed (commit d61068b3).
+		// The DomainBundle.RealtimeService field is interface{}; the
+		// RealtimeMatchHandler constructor wants the explicit
+		// RealtimeMatcher port. Safe type-assertion preserves the
+		// pragma (handler stays nil-tolerant when typed nil).
+		var matcher assetsapi.RealtimeMatcher
+		if m, ok := root.Domains.RealtimeService.(assetsapi.RealtimeMatcher); ok {
+			matcher = m
+		}
 		registerModule(registry, log, module.NewRouteModule(
 			"realtime",
 			func() bool { return root.Domains.RealtimeService != nil && realtimeEnabled },
 			"",
-			assetsapi.NewRealtimeMatchHandler(root.Domains.RealtimeService, log),
+			assetsapi.NewRealtimeMatchHandler(matcher, log),
 			log,
 		))
 	}

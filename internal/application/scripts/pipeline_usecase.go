@@ -62,6 +62,17 @@ import (
 // permanent failure (no retry).
 var ErrInvalidPayload = errors.New("pipeline: invalid job payload")
 
+// ErrBrokerNotSatisfied is the sentinel for "the caller supplied a
+// jobsSvc value that does not implement the canonical Broker port".
+// Returned from RegisterJobs when the type-assertion to Broker fails
+// on a non-nil input. Maps to a job-system permanent failure (no retry):
+// the composition root wired the wrong shape, retrying the same input
+// will not recover. Replaces the silent-skip behavior of the prior
+// structural-interface widening (AGENT-2 cycle 5), giving first-
+// integration-test feedback instead of a missing-handler surprise at
+// first job dispatch.
+var ErrBrokerNotSatisfied = errors.New("pipeline: jobsSvc does not satisfy Broker port")
+
 // ErrClipPipelineUnavailable is the sentinel for "the request gave
 // explicit ClipIDs but no ClipSourceBuilder is wired". Maps to a
 // typed 503-class error in the handler.
@@ -258,14 +269,38 @@ func (pu *PipelineUseCase) Run(
 // RegisterJobs wires the pipeline job handler into the canonical
 // jobs service. Lives on the use case so the handler no longer
 // owns job-registration logic (handler is purely transport).
-func (pu *PipelineUseCase) RegisterJobs(jobsSvc *job.Service) error {
+//
+// AGENT-2 (June 2026): the canonical Broker port is declared in
+// `ports.go` of this package; it uses the same `appjobs.HandlerFunc`
+// shape that `*jobs.Service.RegisterHandler` exposes, so the type
+// assertion is structural and matches without a cast. The parameter
+// stays `interface{}` to preserve the upstream convention that
+// composition root can hand in either `*job.Service` or `*jobs.Service`
+// without import gymnastics; the assert-then-error path promotes
+// the prior silent-skip behavior to a typed `ErrBrokerNotSatisfied`
+// so a wrong-shape wiring is detected at first integration test
+// rather than as a missing-handler at first job dispatch.
+//
+// Producer-side compile assertion (see ports.go): `var _ Broker = (*appjobs.Service)(nil)`
+// guards signature drift at build time.
+func (pu *PipelineUseCase) RegisterJobs(jobsSvc interface{}) error {
 	if pu == nil {
 		return fmt.Errorf("%w: not constructed", ErrPipelineGenerationFailed)
 	}
 	if jobsSvc == nil {
 		return nil
 	}
-	jobsSvc.RegisterHandler(job.TypeClipScriptGenerate, pu.HandleJob)
+	broker, ok := jobsSvc.(Broker)
+	if !ok {
+		if pu.log != nil {
+			pu.log.Error("pipeline use case: jobsSvc did not satisfy Broker port — composition root wiring error",
+				zap.String("concrete_type", fmt.Sprintf("%T", jobsSvc)))
+		}
+		return fmt.Errorf("%w: got %T", ErrBrokerNotSatisfied, jobsSvc)
+	}
+	if err := broker.RegisterHandler(job.TypeClipScriptGenerate, pu.HandleJob); err != nil {
+		return fmt.Errorf("pipeline: register handler: %w", err)
+	}
 	if pu.log != nil {
 		pu.log.Info("registered script.generate_from_clips job handler")
 	}

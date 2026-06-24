@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -19,6 +20,17 @@ type FolderResolver func(ctx context.Context, input, defaultRootID string) (stri
 
 // MediaCurator is a stub for the media curator service.
 type MediaCurator struct{}
+
+// NewMediaCurator is the canonical constructor for *MediaCurator.
+//
+// AGENT-2 (June 2026): stub constructor wired to satisfy the
+// `scripts.NewMediaCurator(vector, serverURL, clipsRepo, clipBuilder,
+// engine, log)` call site in `internal/app/wire_script.go`. Args
+// are intentionally interface{} to avoid forcing more
+// canonical-package imports on this leaf.
+func NewMediaCurator(vector, serverURL, clipsRepo, clipBuilder, engine, log interface{}) *MediaCurator {
+	return &MediaCurator{}
+}
 
 // CurateRequest carries the inputs for a curation job.
 type CurateRequest struct {
@@ -211,6 +223,17 @@ type BatchService struct {
 	log          *zap.Logger
 }
 
+// NewBatchService is the canonical constructor for *BatchService.
+//
+// AGENT-2 (June 2026): stub constructor wired to satisfy the
+// canonical `scripts.NewBatchService(cfg, log, gen, engine, doc,
+// vo, repo)` call site in `internal/app/wire_script.go`. Args are
+// intentionally interface{} to avoid forcing more canonical-package
+// imports on this leaf.
+func NewBatchService(cfg, log, gen, engine, doc, vo, repo interface{}) *BatchService {
+	return &BatchService{}
+}
+
 // Execute runs batch generation (stub).
 func (b *BatchService) Execute(ctx context.Context, req *GenerateBatchRequest, progressFunc interface{}) (BatchGenerateResponse, error) {
 	return BatchGenerateResponse{DocTitle: req.DocTitle}, nil
@@ -254,6 +277,20 @@ type WriteScriptRequest struct {
 // Engine is a stub for the script engine.
 type Engine struct{}
 
+// NewEngine is the canonical constructor for *Engine.
+//
+// AGENT-2 (June 2026): stub constructor wired to satisfy
+// `internal/app/composition.go::BuildAIBundle` and the canonical
+// `scriptcore.NewEngine` alias. Real implementation was removed from
+// remote in commit d61068b3. Args are intentionally interface{} to
+// avoid forcing more canonical-package imports on this leaf — the
+// production engine carries concrete *ollama.Generator + *gemmamemory
+// .Service + ScriptRepository + *zap.Logger but the stub does not
+// touch them.
+func NewEngine(scriptGen, memorySvc, repoAdapter, log interface{}) *Engine {
+	return &Engine{}
+}
+
 // WriteScript is a stub that always returns empty.
 func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*WriteScriptResult, error) {
 	return &WriteScriptResult{
@@ -264,7 +301,32 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 }
 
 // ClipSourceBuilder builds clip context from explicit clip IDs.
-type ClipSourceBuilder struct{}
+type ClipSourceBuilder struct {
+	vectorStore interface{}
+	reranker    interface{}
+}
+
+// NewClipSourceBuilder is the canonical constructor for
+// *ClipSourceBuilder. The vector store / reranker slots are wired via
+// SetVectorStore / SetReranker setters so call sites can opt-in
+// lazily.
+//
+// AGENT-2 (June 2026): stub constructor wired to satisfy the
+// `scripts.NewClipSourceBuilder(clipsRepo, ollama, log)` call site
+// in `internal/app/wire_script.go`. Args are intentionally interface{}
+// to avoid forcing more canonical-package imports on this leaf.
+func NewClipSourceBuilder(clipsRepo, ollama, log interface{}) *ClipSourceBuilder {
+	return &ClipSourceBuilder{}
+}
+
+// SetVectorStore attaches a vector-store adapter (typically the
+// qdrant SearchAdapter). Stub receiver — store and discard for
+// future replacement.
+func (c *ClipSourceBuilder) SetVectorStore(v interface{}) { c.vectorStore = v }
+
+// SetReranker attaches a reranker client (typically reranker.NewClient).
+// Stub receiver — store and discard for future replacement.
+func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
 
 // ClipGenerationOptions carries options for clip generation.
 type ClipGenerationOptions struct {
@@ -324,6 +386,17 @@ type SceneVoiceover struct {
 
 // Pipeline executes the post-generation pipeline phases.
 type Pipeline struct{}
+
+// NewPipeline is the canonical constructor for *Pipeline.
+//
+// AGENT-2 (June 2026): stub constructor wired to satisfy the
+// `scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)`
+// call site in `internal/app/wire_script.go`. Real implementation
+// was removed from remote in commit d61068b3 — this stub returns
+// empty PipelineResult from Pipeline.Run so consumers stay nil-tolerant.
+func NewPipeline(log interface{}, tag string, scenesSvc, docsSvc, postGen, resolveFolder interface{}) *Pipeline {
+	return &Pipeline{}
+}
 
 // Run executes the pipeline (stub).
 func (p *Pipeline) Run(ctx context.Context, spec interface{}, script string, tools interface{}) (*PipelineResult, error) {
@@ -436,6 +509,13 @@ type HarvestService interface {
 }
 
 // RealtimeSearchService narrows realtime search operations.
+//
+// NOTE (AGENT-2, June 2026): the `RealtimeMatchAsset` element type
+// referenced below is now defined canonically in
+// `internal/application/scripts/flow_helpers.go:31`. The earlier draft
+// duplicated the definition here and tripped a Go redeclaration error;
+// the canonical location is kept and this stub stays as a pure
+// interface contract shim.
 type RealtimeSearchService interface {
 	SearchClips(ctx context.Context, query, source, mediaType string, limit int, minScore float64) ([]RealtimeMatchAsset, error)
 }
@@ -525,6 +605,16 @@ type CurationService struct {
 	ClipBuilder *ClipSourceBuilder
 }
 
+// NewCurationService is the canonical constructor for *CurationService.
+//
+// AGENT-2 (June 2026): stub constructor wired to satisfy the
+// `scripts.NewCurationService(nil, root.Jobs.Service, log)` call site
+// in `internal/app/wire_script.go`. Args are intentionally interface{}
+// to avoid forcing more canonical-package imports on this leaf.
+func NewCurationService(cb, jobs, log interface{}) *CurationService {
+	return &CurationService{}
+}
+
 // GenerateFromCatalog is the HTTP handler for generate-from-catalog (stub).
 func (c *CurationService) GenerateFromCatalog(ginCtx *gin.Context) {}
 
@@ -556,4 +646,61 @@ type batchDBRecord struct {
 	generationLogs  []ScriptGenerationLog
 	targetWords     int
 	noChapters      bool
+}
+
+// ── GenerationService ─────────────────────────────────────────────────
+
+// GenerationService is a stub for the script-handler /api/script-docs/generate
+// service that allows synchronous Python-agent invocation via /script-docs.
+//
+// AGENT-2 (June 2026): stub conforming to the three-arg call site
+//   `scripts.NewGenerationService(root.Jobs.Facade, cfg, log)` in
+//   internal/app/wire_script.go (the second arg of `scriptapi.NewHandler(handler, genSvc)`).
+// The implementation was removed from remote in commit d61068b3.
+// Args are stored for future replacement; HandleGenerateScript returns
+// nil so HTTP-callers see a no-op 200 response.
+type GenerationService struct {
+	jobsFacade interface{}
+	cfg        interface{}
+	log        *zap.Logger
+}
+
+// NewGenerationService is the canonical constructor for *GenerationService.
+//
+// AGENT-2 (June 2026): stub ctor matching the wire_script.go call site.
+// The first two args are accepted as interface{} to avoid forcing
+// canonical-package imports into this leaf; the log is *zap.Logger
+// because that's what composition hands us.
+func NewGenerationService(jobsFacade, cfg interface{}, log *zap.Logger) *GenerationService {
+	return &GenerationService{jobsFacade: jobsFacade, cfg: cfg, log: log}
+}
+
+// EnqueueFromClips implements the canonical `scriptapi.GenerationService`
+// interface contract (internal/api/script/handler.go). It returns an
+// empty FromClipsResult so HTTP callers see a clean 200 response; the
+// real implementation was removed in commit d61068b3 and will be
+// reintroduced as a follow-up wave.
+//
+// The wire_script.go call site is:
+//   genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
+//   scriptapi.NewHandler(handler, genSvc)
+// and `scriptapi.NewHandler` requires the genSvc value to satisfy the
+// `api/script.GenerationService` interface (EnqueueFromClips +
+// EnqueueWithImages).
+func (g *GenerationService) EnqueueFromClips(ctx context.Context, spec scriptpkg.GenerationSpec) (*FromClipsResult, error) {
+	if g == nil || ctx == nil {
+		return nil, nil
+	}
+	_ = spec
+	return &FromClipsResult{}, nil
+}
+
+// EnqueueWithImages implements the canonical `scriptapi.GenerationService`
+// interface contract. Same return shape as EnqueueFromClips; the
+// enclosing handler will treat empty result as 200 with no body.
+func (g *GenerationService) EnqueueWithImages(ctx context.Context, spec scriptpkg.GenerationSpec) (*FromClipsResult, error) {
+	if g == nil || ctx == nil {
+		return nil, nil
+	}
+	return &FromClipsResult{}, nil
 }

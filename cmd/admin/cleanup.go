@@ -1,3 +1,32 @@
+// cmd/admin/cleanup.go — AGENT-1 recovery (June 2026)
+//
+// All cleanup subcommands (cleanup-orphans, cleanup-all-orphans,
+// cleanup-artlist-empty-folders, cleanup-stock-orphans,
+// delete-specific-folders, sync-all-drive, test-youtube) were migrated
+// off the deleted legacy packages `internal/media`, `internal/upload/drive`
+// and the deleted `app.ExportInitCoreMinimal` helper.
+//
+// Post-fix wiring:
+//
+//   - `app.InitComposition(cfg, log)` returns the canonical *ComposeRoot
+//     (replacing `app.ExportInitCoreMinimal(cfg, log) *CoreDeps` which
+//     was removed in PR4d-final).
+//   - The deletion service now lives at `root.Maint.DeletionSvc`. The
+//     canonical `deletion.NewDeletionService` (PR-wave 11) collapsed the
+//     historical three source-specific clip repos
+//     (ArtlistRepo / ClipsOnlyRepo / StockDriveRepo) into ONE
+//     `*assets.ClipsRepository` — the source discriminator is now on the
+//     row, not on the repo constructor argument. Caller code that passed
+//     three different repos for artlist/stock/clips simply passes the
+//     single `root.Repos.ClipsRepo` three times (matches the wiring in
+//     `internal/app/composition.go::BuildMaintBundle`).
+//   - The Google Drive client and uploader are reached through
+//     `root.Drive.DriveClient` and `root.Drive.DriveUploader` (canonical
+//     `internal/infrastructure/drive` types), no longer through the
+//     removed `internal/upload/drive` package.
+//
+// Public subcommand dispatch is documented in `cmd/admin/main.go::main()`
+// and covered by `cmd/admin/admin_test.go::TestAdminCommands_AreRegistered`.
 package main
 
 import (
@@ -9,8 +38,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 func runCleanupOrphans(args []string) error {
@@ -28,11 +56,16 @@ func runCleanupOrphans(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
+	// AGENT-1 fix: app.ExportInitCoreMinimal was removed in PR4d-final.
+	// Use app.InitComposition to obtain the canonical *ComposeRoot.
+	// The returned *backgroundJobs is internal to internal/app; we
+	// discard it with `_` since the cmd/admin CLI does not start any
+	// background workers — it just uses the configured root + cleanup.
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize core services", zap.Error(err))
+		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
-	defer coreCleanup()
+	defer rootCleanup()
 
 	assetsDir := *dir
 	if assetsDir == "" {
@@ -43,21 +76,27 @@ func runCleanupOrphans(args []string) error {
 	}
 
 	var driveUploader *drive.Uploader
-	if deps.DriveClient != nil {
-		driveUploader = &drive.Uploader{Service: deps.DriveClient, Log: log}
+	if root.Drive != nil && root.Drive.DriveClient != nil {
+		driveUploader = root.Drive.DriveUploader
 	}
 
-	deletionSvc := media.NewDeletionService(
-		deps.ArtlistRepo,
-		deps.ClipsOnlyRepo,
-		deps.StockDriveRepo,
-		deps.VoiceoverRepo,
-		deps.ImageRepo,
-		driveUploader,
-		deps.AssetTreeService,
-		deps.AssetIndexService,
-		log,
-	)
+	// AGENT-1 fix: the canonical DeletionService is pre-built by the
+	// composition root (BuildMaintBundle). The old code constructed a
+	// one-off service with three source-specific clip repos; the new
+	// code reuses the singleton because repo collapsing makes the
+	// per-source diff a row discriminator, not a constructor argument.
+	deletionSvc := root.Maint.DeletionSvc
+	if deletionSvc == nil {
+		return fmt.Errorf("deletion service is not available (composition root missing Maint bundle)")
+	}
+
+	// AGENT-1 note: in the legacy wrapper, three repos (artlist/clips/
+	// stock) collapsed to a single *assets.ClipsRepository on the
+	// canonical DeletionService. Root.Repos.ClipsRepo already carries
+	// all three responsibilities. Maint.DeletionSvc is itself built
+	// with the right collapsed shape in BuildMaintBundle — no further
+	// constructor adaptation is required at this site.
+	_ = driveUploader
 
 	if *apply {
 		fmt.Printf("Starting DEEP ORPHAN CLEANUP in %s (APPLY mode - files WILL be deleted)\n", assetsDir)
@@ -95,16 +134,17 @@ func runCleanupAllOrphans(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize core services", zap.Error(err))
+		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
-	defer coreCleanup()
+	defer rootCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive == nil || root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
-	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
+	driveClient := root.Drive.DriveClient
+	driveUploader := root.Drive.DriveUploader
 
 	targets := []struct {
 		name     string
@@ -125,7 +165,7 @@ func runCleanupAllOrphans(args []string) error {
 
 		fmt.Printf("\n--- Checking %s (Root: %s) ---\n", t.name, t.rootID)
 		query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", t.rootID)
-		list, err := deps.DriveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+		list, err := driveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
 		if err != nil {
 			fmt.Printf("Error listing %s: %v\n", t.name, err)
 			continue
@@ -139,7 +179,7 @@ func runCleanupAllOrphans(args []string) error {
 			var dbErr error
 			switch t.dbPrefix {
 			case "artlist", "stock", "clips":
-				dbErr = deps.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ?", f.Id).Scan(&dummy)
+				dbErr = root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ?", f.Id).Scan(&dummy)
 			}
 
 			if dbErr != nil {
@@ -162,6 +202,10 @@ func runCleanupAllOrphans(args []string) error {
 
 		for _, f := range orphans {
 			fmt.Printf("  - Deleting %s (%s)... ", f.name, f.id)
+			if driveUploader == nil {
+				fmt.Println("SKIPPED (no drive uploader)")
+				continue
+			}
 			err := driveUploader.DeleteFolder(ctx, f.id)
 			if err != nil {
 				fmt.Printf("FAILED: %v\n", err)
@@ -189,22 +233,23 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize core services", zap.Error(err))
+		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
-	defer coreCleanup()
+	defer rootCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive == nil || root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
-	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
+	driveClient := root.Drive.DriveClient
+	driveUploader := root.Drive.DriveUploader
 
 	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", *parentID)
 
-	list, err := deps.DriveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	list, err := driveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
 	if err != nil {
 		log.Fatal("Failed to list folders on Drive", zap.Error(err))
 	}
@@ -214,7 +259,7 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 	var orphanFolders []struct{ id, name string }
 	for _, f := range list.Files {
 		var dummy int
-		err := deps.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
+		err := root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
 		if err != nil {
 			orphanFolders = append(orphanFolders, struct{ id, name string }{f.Id, f.Name})
 		}
@@ -234,6 +279,9 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 		return nil
 	}
 
+	if driveUploader == nil {
+		return fmt.Errorf("drive uploader not available for apply mode")
+	}
 	fmt.Println("Deleting orphan folders from Drive...")
 	for _, f := range orphanFolders {
 		fmt.Printf("Deleting %s (%s)... ", f.name, f.id)
@@ -264,22 +312,23 @@ func runCleanupStockOrphans(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize core services", zap.Error(err))
+		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
-	defer coreCleanup()
+	defer rootCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive == nil || root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
-	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
+	driveClient := root.Drive.DriveClient
+	driveUploader := root.Drive.DriveUploader
 
 	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", *parentID)
 
-	list, err := deps.DriveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	list, err := driveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
 	if err != nil {
 		log.Fatal("Failed to list folders on Drive", zap.Error(err))
 	}
@@ -289,7 +338,7 @@ func runCleanupStockOrphans(args []string) error {
 	var orphanFolders []struct{ id, name string }
 	for _, f := range list.Files {
 		var dummy int
-		err := deps.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
+		err := root.DB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
 		if err != nil {
 			orphanFolders = append(orphanFolders, struct{ id, name string }{f.Id, f.Name})
 		}
@@ -309,6 +358,9 @@ func runCleanupStockOrphans(args []string) error {
 		return nil
 	}
 
+	if driveUploader == nil {
+		return fmt.Errorf("drive uploader not available for apply mode")
+	}
 	fmt.Println("Deleting orphan folders from Drive...")
 	for _, f := range orphanFolders {
 		fmt.Printf("Deleting %s (%s)... ", f.name, f.id)
@@ -324,6 +376,11 @@ func runCleanupStockOrphans(args []string) error {
 	return nil
 }
 
+// AGENT-1 note: pre-fix the legacy `media.NewDeletionService` was rebuilt
+// here with source-specific repos. Post-fix we reuse root.Maint.DeletionSvc;
+// the source discriminator is on the row (column `source`) and the
+// canonical DeletionService.DeleteClip handles all sources through the
+// single ClipsRepo.
 func runDeleteSpecificFolders(args []string) error {
 	cfg, log, cleanup, err := appLogger()
 	if err != nil {
@@ -331,27 +388,17 @@ func runDeleteSpecificFolders(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize core services", zap.Error(err))
+		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
-	defer coreCleanup()
+	defer rootCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive == nil || root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
-	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
-	deletionSvc := media.NewDeletionService(
-		deps.ArtlistRepo,
-		deps.ClipsOnlyRepo,
-		deps.StockDriveRepo,
-		deps.VoiceoverRepo,
-		deps.ImageRepo,
-		driveUploader,
-		deps.AssetTreeService,
-		deps.AssetIndexService,
-		log,
-	)
+	driveUploader := root.Drive.DriveUploader
+	deletionSvc := root.Maint.DeletionSvc
 
 	ctx := cmdContext()
 	folderIDs := []string{
@@ -397,19 +444,25 @@ func runDeleteSpecificFolders(args []string) error {
 	for _, id := range folderIDs {
 		fmt.Printf("Deleting %s... ", id)
 
-		err := deletionSvc.DeleteClip(ctx, "artlist", id, true)
-		if err == nil {
-			fmt.Println("OK (Artlist DB)")
-			continue
+		if deletionSvc != nil {
+			err := deletionSvc.DeleteClip(ctx, "artlist", id, true)
+			if err == nil {
+				fmt.Println("OK (Artlist DB)")
+				continue
+			}
+
+			err = deletionSvc.DeleteClip(ctx, "stock", id, true)
+			if err == nil {
+				fmt.Println("OK (Stock DB)")
+				continue
+			}
 		}
 
-		err = deletionSvc.DeleteClip(ctx, "stock", id, true)
-		if err == nil {
-			fmt.Println("OK (Stock DB)")
+		if driveUploader == nil {
+			fmt.Println("FAILED (drive uploader unavailable)")
 			continue
 		}
-
-		err = driveUploader.DeleteFolder(ctx, id)
+		err := driveUploader.DeleteFolder(ctx, id)
 		if err == nil {
 			fmt.Println("OK (Drive only)")
 		} else {
@@ -430,30 +483,30 @@ func runSyncAllDrive(args []string) error {
 
 	ctx := cmdContext()
 
-	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize core services", zap.Error(err))
+		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
-	defer coreCleanup()
+	defer rootCleanup()
 
 	fmt.Println("Starting full Google Drive synchronization...")
 
-	if deps.CatalogSyncService != nil {
+	if root.Sync != nil && root.Sync.CatalogSync != nil {
 		fmt.Println("Syncing catalog (stock, clips, artlist)...")
-		summary, err := deps.CatalogSyncService.SyncAll(ctx)
+		summary, err := root.Sync.CatalogSync.SyncAll(ctx)
 		if err != nil {
 			fmt.Printf("Catalog sync failed: %v\n", err)
 		} else {
 			fmt.Printf("Catalog sync completed: %d synced, %d failed\n", summary.Synced, summary.Failed)
-			for _, root := range summary.Roots {
-				fmt.Printf("  - %s: %d synced, %d failed\n", root.Name, root.Synced, root.Failed)
+			for _, item := range summary.Roots {
+				fmt.Printf("  - %s: %d synced, %d failed\n", item.Name, item.Synced, item.Failed)
 			}
 		}
 	}
 
-	if deps.VoiceoverSync != nil {
+	if root.Domains != nil && root.Domains.VoiceoverSync != nil {
 		fmt.Println("Syncing voiceovers...")
-		summary, err := deps.VoiceoverSync.Sync(ctx)
+		summary, err := root.Domains.VoiceoverSync.Sync(ctx)
 		if err != nil {
 			fmt.Printf("Voiceover sync failed: %v\n", err)
 		} else {
@@ -461,9 +514,9 @@ func runSyncAllDrive(args []string) error {
 		}
 	}
 
-	if deps.ImageService != nil {
+	if root.Domains != nil && root.Domains.ImageService != nil {
 		fmt.Println("Syncing images...")
-		if err := deps.ImageService.SyncFromDrive(ctx); err != nil {
+		if err := root.Domains.ImageService.SyncFromDrive(ctx); err != nil {
 			fmt.Printf("Image sync failed: %v\n", err)
 		} else {
 			fmt.Println("Image sync completed")

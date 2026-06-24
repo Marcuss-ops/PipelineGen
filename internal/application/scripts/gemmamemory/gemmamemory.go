@@ -30,8 +30,11 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{DB: db}
 }
 
-// SweepAll is a stub that always returns 0.
-func (r *Repository) SweepAll(ctx context.Context) (int, error) {
+// SweepAll is a stub that always returns 0. AGENT-2 (June 2026): return
+// type upgraded from int → int64 so callers (internal/app/lifecycle.go
+// `zap.Int64("total_deleted", deleted)` row-count log line) compile
+// without ad-hoc casts. Stub semantics unchanged.
+func (r *Repository) SweepAll(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 

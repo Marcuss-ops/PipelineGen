@@ -69,6 +69,65 @@ func (s *Service) UpsertAssets(ctx context.Context, assets []VectorAsset) error 
 	return fmt.Errorf("qdrant service not available")
 }
 
+// EnsureCollection creates the underlying Qdrant collection if absent.
+//
+// AGENT-2 cascade stub (June 2026, d61068b3 followup): the real Qdrant
+// implementation was removed from the remote; the stub returns the
+// canonical "not available" sentinel error so composition.go's
+// startQdrantCollection (now an IOpaqueStartFunc attached to
+// ComposeRoot.ProcessStart) can surface the failure during lifecycle
+// startup. Idempotent when the service is disabled (config.Enabled=false
+// or receiver is nil) — returns nil in those cases so callers can run
+// unconditionally.
+func (s *Service) EnsureCollection(ctx context.Context) error {
+	if s == nil || !s.config.Enabled {
+		return nil
+	}
+	return fmt.Errorf("qdrant service not available — implementation removed from remote (ensure_collection)")
+}
+
+// CleanupStalePoints scrolls every Qdrant point and removes those whose
+// Drive file is trashed (per the validator).
+//
+// AGENT-2 cascade stub (June 2026): returns (0, sentinel-error) so
+// lifecycle.go's startQdrantCleaner logs the failure once per 12h tick
+// without spamming. Idempotent when disabled (returns 0, nil).
+func (s *Service) CleanupStalePoints(ctx context.Context, validator func(assetID, driveFileID, driveLink string) (bool, error)) (int, error) {
+	if s == nil || !s.config.Enabled {
+		return 0, nil
+	}
+	_ = validator
+	return 0, fmt.Errorf("qdrant service not available — implementation removed from remote (cleanup_stale_points)")
+}
+
+// ScrollAssetIDsPage streams Qdrant asset IDs in batches through fn.
+//
+// AGENT-2 cascade stub (June 2026): returns the sentinel error so
+// lifecycle.go::runGhostSweep can short-circuit the ghost-points scan
+// without invoking nil-protocol validation paths. Idempotent when
+// disabled (returns nil).
+func (s *Service) ScrollAssetIDsPage(ctx context.Context, batchSize int, fn func([]string) error) error {
+	if s == nil || !s.config.Enabled {
+		return nil
+	}
+	_ = batchSize
+	_ = fn
+	return fmt.Errorf("qdrant service not available — implementation removed from remote (scroll_asset_ids)")
+}
+
+// DeletePoints removes qdrant points for the given asset IDs.
+//
+// AGENT-2 cascade stub (June 2026): returns the sentinel error so
+// lifecycle.go::runGhostSweep wraps it consistently with the scroll
+// error above. Idempotent when disabled (returns nil).
+func (s *Service) DeletePoints(ctx context.Context, assetIDs []string) error {
+	if s == nil || !s.config.Enabled {
+		return nil
+	}
+	_ = assetIDs
+	return fmt.Errorf("qdrant service not available — implementation removed from remote (delete_points)")
+}
+
 // IndexHealthReport is returned by IndexHealth.
 type IndexHealthReport struct {
 	OK              bool     `json:"ok"`

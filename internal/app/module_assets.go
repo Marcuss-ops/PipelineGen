@@ -86,7 +86,17 @@ type AssetsWiring struct {
 // catalogRepo, maintenanceSvc). ClipIndexer is in the bundle now.
 // PR3 (June 2026): providerRegistry added for constructor injection
 // (replaces post-construction SetProviderRegistry).
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc *realtime.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry) (*AssetsWiring, error) {
+// AGENT-1 cascade fix (June 2026, cmd/admin recovery collateral): the
+// `realtime` package was removed in commit d61068b3. The WireAssets
+// signature below accepts a realtimeSvc parameter typed as `interface{}`
+// (was `*realtime.Service`) so the caller in registry.go can pass
+// `root.Domains.RealtimeService` (also interface{} post-fix) without any
+// type assertions. The diagnostic / search adapters downstream of this
+// function already use `interface{}` for the realtimeSvc field type
+// (see internal/app/assets_adapters.go: diagIndexHealthAdapter.realtime
+// + searchVectorAdapter.realtimeSvc), so this change re-aligns the
+// caller signature with the adapter field types.
+func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc interface{}, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry) (*AssetsWiring, error) {
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
 		driveUploader = &driveutil.Uploader{Service: bundle.DriveClient, Log: log}
