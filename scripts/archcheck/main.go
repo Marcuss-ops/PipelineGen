@@ -274,7 +274,6 @@ func subtractSet(actual, allowed []string) []string {
 var databaseSQLLegacyBaseline = []string{
 	"internal/api/common/health_integration_test.go",
 	"internal/api/middleware/middleware_auth_test.go",
-	"internal/api/middleware/middleware_logger.go",
 	"internal/application/assets/artifacts/clips_adapter.go",
 	"internal/application/assets/artifacts/finalizer_test.go",
 	"internal/application/assets/artifacts/repository.go",
