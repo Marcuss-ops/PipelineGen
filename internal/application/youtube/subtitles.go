@@ -12,7 +12,7 @@ import (
 
 // sliceSubtitles delegates to SubtitleFetcherPort for downloading and slicing VTT subtitles.
 func (s *Service) sliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error {
-	if s.subtitleFetcher == nil {
+	if isUnavailablePort(s.subtitleFetcher) {
 		return fmt.Errorf("youtube: subtitle fetcher not wired")
 	}
 	return s.subtitleFetcher.SliceSubtitles(ctx, videoID, startSec, endSec, outputPath)

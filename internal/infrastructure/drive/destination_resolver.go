@@ -18,8 +18,8 @@ type DestinationResolver struct {
 }
 
 // NewDestinationResolver returns a `asset.Resolver` built around
-// the supplied Store. The wrapping ensures calls match the canonical
-// Resolver interface in `internal/domain/asset`.
+// the supplied Store. The canonical Resolver interface lives in
+// internal/domain/asset (migrated from internal/core/destination in Wave 4C).
 func NewDestinationResolver(s *Store) asset.Resolver {
 	return &destinationResolverAdapter{store: s}
 }

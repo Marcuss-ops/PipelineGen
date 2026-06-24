@@ -777,39 +777,34 @@ post_cascade_followups:
   theme: PR1.7 youtube port cascade +
          PR2 canonical DownloaderMetadata DTO cleanup
   blocking_items:
-    - id: CPR-LR-1
-      title: Thumbnails:nil data loss
-      location: internal/infrastructure/youtube/metadata.go::GetVideoMetadata
-      severity: BLOCKING
-      suggested_PR: pr/post-cascade-latent-risks-2026-06-21
-      fix: translate raw.Thumbnails (anonymous-struct array from yt-dlp) →
-           []youtubedto.VideoThumbnail at the seam
-    - id: CPR-LR-2
-      title: searchRunnerStub silent-empty
-      location: internal/app/youtube_adapters.go::searchRunnerStub
-      severity: BLOCKING
-      suggested_PR: pr/post-cascade-latent-risks-2026-06-21
-      fix: 1-line `if err := ctx.Err(); err != nil { return nil, err }`
-           at top of SearchLive + GetVideoInfo
     - id: CPR-LR-3
       title: Typed-nil composition panic
       locations:
-        - internal/application/youtube/service.go::md5File
+        - internal/application/youtube/service_orchestrator.go (port-backed fields)
         - internal/application/youtube/subtitles.go::sliceSubtitles
-        - internal/application/youtube/segment.go indexer block
       severity: BLOCKING
       suggested_PR: pr/post-cascade-typed-nil-guard-2026-06-21
-      fix: introduce pkg/portutil/isNilPort[T] utility +
-           audit composition.go::BuildDomainBundle for typed-nil casts
+      fix: use pkg/portutil.IsNilPort consistently across all port-backed fields +
+           add ValidateServiceDeps(deps ServiceDeps) error
+  resolved_items:
+    - id: CPR-LR-1
+      title: Thumbnails:nil data loss
+      status: done
+      verified_by:
+        - "metadata thumbnail round-trip: GetVideoMetadata copies every raw thumbnail into dto.Thumbnails preserving URL, width, height"
+        - "ThumbnailURL fallback is coherent when thumbnails array is non-empty"
+    - id: CPR-LR-2
+      title: searchRunnerStub silent-empty
+      status: done
+      verified_by:
+        - "searchRunnerStub no longer exists; production wiring uses SearchRunnerAdapter with ctx propagation and typed errors"
+        - "SearchRunnerAdapter tests verify cancellation propagation"
     - id: CPR-CI-4
       title: Verify gate expansion (api + worker)
-      locations:
-        - scripts/ci-architectural-checks.sh
-        - .github/workflows/ci.yml
-      severity: BLOCKING
-      fix: add `go vet ./internal/api/...` + `go build ./cmd/worker/...`
-           to both gates; future port/migration renames cannot slip through
-           unlinked handler/worker binaries
+      status: done
+      verified_by:
+        - ".github/workflows/ci.yml runs go vet ./... + go build ./cmd/server/ + go build ./cmd/worker/ + go build ./cmd/admin/"
+        - "scripts/ci-architectural-checks.sh Check 14 hard-fails on vet/build regression"
   medium_items:
     - id: CPR-CC-6
       title: Split internal/application/youtube mega-package (43 files)
