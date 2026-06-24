@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	clipspkg "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -16,14 +17,15 @@ func (h *Handler) GetClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	// Handle Voiceover source — use canonical converter directly.
+	// Handle Voiceover source — PG-005 typed-port path: adapter yields
+	// *ClipVoiceoverRecordDTO, helper projects to canonical *asset.Asset.
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 		rec, err := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
 		if err != nil {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := artifacts.VoiceoverRecordToClip(rec)
+		clip := clipspkg.VoiceoverDTOToAsset(rec)
 		apiutil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
 		return
 	}
@@ -120,7 +122,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, rec := range records {
-			allClips = append(allClips, artifacts.VoiceoverRecordToClip(rec))
+			allClips = append(allClips, clipspkg.VoiceoverDTOToAsset(rec))
 		}
 	} else if sourceLower == "images" {
 		if h.imagesRepo == nil {

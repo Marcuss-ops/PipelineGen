@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // DownloadUseCase resolves where a clip's video file lives and returns
@@ -91,7 +91,7 @@ func (uc *DownloadUseCase) Resolve(ctx context.Context, source, clipID string) (
 
 	// Resolve drive link → drive ID if needed
 	if res.DriveID == "" && clip.DriveLink() != "" {
-		if id := driveutil.FileIDFromLink(clip.DriveLink()); id != "" {
+		if id, _ := urlutil.FileIDFromDriveLink(clip.DriveLink()); id != "" {
 			res.DriveID = id
 		}
 	}

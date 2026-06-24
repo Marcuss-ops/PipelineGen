@@ -32,6 +32,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -223,6 +224,13 @@ func (a *clipsRepoAdapter) FindClipsByHash(ctx context.Context, hash string) ([]
 // clips.VoiceoverRepositoryPort. Only 3 methods are exposed —
 // GetByID + ListAll + Upsert — because those are the only ones the
 // clips handler dispatches voiceover source through.
+//
+// PG-005 (June 2026): returns/takes clips.ClipVoiceoverRecordDTO (a
+// application-layer DTO that mirrors the 22-column voiceovers
+// schema). The converter is inlined here as voiceoverRecordToDTO /
+// voiceoverDTOToRecord so the api/ + application/ layers see only the
+// DTO while the adapter keeps the concrete SQLite contract at the
+// infra seam.
 type voiceoverRepoAdapter struct {
 	inner *assets.VoiceoversRepository
 }
@@ -237,16 +245,97 @@ func newVoiceoverRepoAdapter(r *assets.VoiceoversRepository) clips.VoiceoverRepo
 	return &voiceoverRepoAdapter{inner: r}
 }
 
-func (a *voiceoverRepoAdapter) GetByID(ctx context.Context, id string) (*assets.Record, error) {
-	return a.inner.GetByID(ctx, id)
+func (a *voiceoverRepoAdapter) GetByID(ctx context.Context, id string) (*clips.ClipVoiceoverRecordDTO, error) {
+	rec, err := a.inner.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if rec == nil {
+		return nil, nil
+	}
+	return voiceoverRecordToDTO(rec), nil
 }
 
-func (a *voiceoverRepoAdapter) ListAll(ctx context.Context) ([]*assets.Record, error) {
-	return a.inner.ListAll(ctx)
+func (a *voiceoverRepoAdapter) ListAll(ctx context.Context) ([]*clips.ClipVoiceoverRecordDTO, error) {
+	recs, err := a.inner.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*clips.ClipVoiceoverRecordDTO, len(recs))
+	for i, r := range recs {
+		out[i] = voiceoverRecordToDTO(r)
+	}
+	return out, nil
 }
 
-func (a *voiceoverRepoAdapter) Upsert(ctx context.Context, rec *assets.Record) error {
-	return a.inner.Upsert(ctx, rec)
+func (a *voiceoverRepoAdapter) Upsert(ctx context.Context, dto *clips.ClipVoiceoverRecordDTO) error {
+	if dto == nil {
+		return nil
+	}
+	return a.inner.Upsert(ctx, voiceoverDTOToRecord(dto))
+}
+
+// voiceoverRecordToDTO projects the concrete infra *assets.Record
+// onto the canonical application-layer *ClipVoiceoverRecordDTO. The
+// 22 fields are in 1:1 correspondence; RFC3339 timestamps are kept
+// as strings to keep the DTO free of time.Time (a typed value the
+// api layer cares nothing about).
+func voiceoverRecordToDTO(rec *assets.Record) *clips.ClipVoiceoverRecordDTO {
+	if rec == nil {
+		return nil
+	}
+	return &clips.ClipVoiceoverRecordDTO{
+		ID:              rec.ID,
+		RequestID:       rec.RequestID,
+		TextHash:        rec.TextHash,
+		TextPreview:     rec.TextPreview,
+		Language:        rec.Language,
+		Voice:           rec.Voice,
+		Filename:        rec.Filename,
+		LocalPath:       rec.LocalPath,
+		CleanedPath:     rec.CleanedPath,
+		FolderID:        rec.FolderID,
+		FolderPath:      rec.FolderPath,
+		DriveFileID:     rec.DriveFileID,
+		DriveLink:       rec.DriveLink,
+		DownloadLink:    rec.DownloadLink,
+		FileHash:        rec.FileHash,
+		DurationSeconds: rec.DurationSeconds,
+		Status:          rec.Status,
+		Error:           rec.Error,
+		Strategy:        rec.Strategy,
+		Metadata:        rec.Metadata,
+		CreatedAtRFC:    rec.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAtRFC:    rec.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+// voiceoverDTOToRecord inverts the projection above. Empty Created/Updated
+// timestamps cause the repository to populate them on insert (matching
+// the existing Upsert semantics in voiceovers_repository.go).
+func voiceoverDTOToRecord(dto *clips.ClipVoiceoverRecordDTO) *assets.Record {
+	return &assets.Record{
+		ID:              dto.ID,
+		RequestID:       dto.RequestID,
+		TextHash:        dto.TextHash,
+		TextPreview:     dto.TextPreview,
+		Language:        dto.Language,
+		Voice:           dto.Voice,
+		Filename:        dto.Filename,
+		LocalPath:       dto.LocalPath,
+		CleanedPath:     dto.CleanedPath,
+		FolderID:        dto.FolderID,
+		FolderPath:      dto.FolderPath,
+		DriveFileID:     dto.DriveFileID,
+		DriveLink:       dto.DriveLink,
+		DownloadLink:    dto.DownloadLink,
+		FileHash:        dto.FileHash,
+		DurationSeconds: dto.DurationSeconds,
+		Status:          dto.Status,
+		Error:           dto.Error,
+		Strategy:        dto.Strategy,
+		Metadata:        dto.Metadata,
+	}
 }
 
 // ── ImageRepository adapter ──────────────────────────────────────
@@ -496,11 +585,24 @@ func (a *clipsIndexerAdapter) IndexClip(ctx context.Context, id string) error {
 	return a.inner.IndexClip(ctx, id)
 }
 
-func (a *clipsIndexerAdapter) BatchReindex(ctx context.Context, source, mediaType string, limit int) (*clipindexer.BatchReindexResult, error) {
+func (a *clipsIndexerAdapter) BatchReindex(ctx context.Context, source, mediaType string, limit int) (*clips.ClipIndexBatchResultDTO, error) {
 	if a.inner == nil {
 		return nil, fmt.Errorf("clipsIndexerAdapter: indexer not wired")
 	}
-	return a.inner.BatchReindex(ctx, source, mediaType, limit)
+	res, err := a.inner.BatchReindex(ctx, source, mediaType, limit)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return &clips.ClipIndexBatchResultDTO{}, nil
+	}
+	return &clips.ClipIndexBatchResultDTO{
+		Total:    res.Total,
+		Indexed:  res.Indexed,
+		Skipped:  res.Skipped,
+		Failed:   res.Failed,
+		AssetIDs: res.AssetIDs,
+	}, nil
 }
 
 // ── Folder memory adapter (empty marker) ─────────────────────────

@@ -128,7 +128,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	} else if sourceLower == "voiceover" && h.voiceoverRepo != nil {
 		recs, _ := h.voiceoverRepo.ListAll(ctx)
 		for _, rec := range recs {
-			allClips = append(allClips, artifacts.VoiceoverRecordToClip(rec))
+			allClips = append(allClips, clipspkg.VoiceoverDTOToAsset(rec))
 		}
 	} else if repo != nil {
 		clips, err := repo.ListClipsPaged(ctx, source, 10000, 0, "")
@@ -190,7 +190,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := artifacts.VoiceoverRecordToClip(rec)
+		clip := clipspkg.VoiceoverDTOToAsset(rec)
 		result := h.verifyClip(c.Request.Context(), source, nil, clip)
 		c.JSON(http.StatusOK, result)
 		return
