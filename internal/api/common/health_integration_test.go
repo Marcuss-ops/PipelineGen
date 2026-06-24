@@ -4,7 +4,6 @@ package common
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 
 	healthapp "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -34,12 +33,18 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 	require.NoError(t, os.MkdirAll(mediaDir, 0755))
 
 	dbPath := filepath.Join(mediaDir, "media.db.sqlite")
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL")
+
+	// PG-016 typed-handle continuation (June 2026): storage.OpenSQLiteDB
+	// registers the mattn/go-sqlite3 driver internally and enforces WAL
+	// mode, so both the `_ "github.com/mattn/go-sqlite3"` blank import
+	// and the explicit `_journal_mode=WAL` DSN parameter are no longer
+	// needed here. The fixture is the typed *storage.SQLiteDB handle.
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, zaptest.NewLogger(t))
 	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = sqliteDB.Close() })
 
 	// Create tables that the health checks verify.
-	_, err = db.Exec(`
+	_, err = sqliteDB.Exec(`
 		CREATE TABLE IF NOT EXISTS media_assets (
 			id TEXT PRIMARY KEY,
 			name TEXT,
@@ -61,10 +66,10 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 
 	// Build the health Service with infra checkers pointing at the temp DB.
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:     infrahealth.NewSQLiteChecker(&storage.SQLiteDB{DB: db}),
+		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
 		Drive:  infrahealth.NewDriveChecker("", ""),                                          // no Drive creds → applicable=false
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false), // disabled
-		Jobs:   infrahealth.NewJobsChecker(&storage.SQLiteDB{DB: db}),
+		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
 
 	gin.SetMode(gin.TestMode)
@@ -292,22 +297,24 @@ func TestHealth_DBUnreachable(t *testing.T) {
 	// Use a closed DB to simulate unreachable database.
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	db, err := sql.Open("sqlite3", dbPath)
+	// PG-016 typed-handle continuation: storage.OpenSQLiteDB replaces
+	// sql.Open + mattn blank import + manual close ordering.
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, zaptest.NewLogger(t))
 	require.NoError(t, err)
 
 	// Create tables so schema is valid.
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS media_assets (id TEXT)`)
+	_, err = sqliteDB.Exec(`CREATE TABLE IF NOT EXISTS media_assets (id TEXT)`)
 	require.NoError(t, err)
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS jobs (id TEXT, status TEXT, updated_at TEXT)`)
+	_, err = sqliteDB.Exec(`CREATE TABLE IF NOT EXISTS jobs (id TEXT, status TEXT, updated_at TEXT)`)
 	require.NoError(t, err)
 
-	db.Close() // close to make it unreachable
+	_ = sqliteDB.Close() // close to make it unreachable
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:     infrahealth.NewSQLiteChecker(&storage.SQLiteDB{DB: db}),
+		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
 		Drive:  infrahealth.NewDriveChecker("", ""),
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
-		Jobs:   infrahealth.NewJobsChecker(&storage.SQLiteDB{DB: db}),
+		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
 
 	ready := healthapp.NewReadyChecker(svc)
@@ -446,18 +453,20 @@ func TestRouter_WiringWithoutReadyChecker_Returns503(t *testing.T) {
 	// codex/health-ready-contract.
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	db, err := sql.Open("sqlite3", dbPath)
+	// PG-016 typed-handle continuation: storage.OpenSQLiteDB replaces
+	// sql.Open + mattn blank import; t.Cleanup closes the typed handle.
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, zaptest.NewLogger(t))
 	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = sqliteDB.Close() })
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS media_assets (id TEXT); CREATE TABLE IF NOT EXISTS jobs (id TEXT, status TEXT, updated_at TEXT)`)
+	_, err = sqliteDB.Exec(`CREATE TABLE IF NOT EXISTS media_assets (id TEXT); CREATE TABLE IF NOT EXISTS jobs (id TEXT, status TEXT, updated_at TEXT)`)
 	require.NoError(t, err)
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:     infrahealth.NewSQLiteChecker(&storage.SQLiteDB{DB: db}),
+		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
 		Drive:  infrahealth.NewDriveChecker("", ""),
 		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
-		Jobs:   infrahealth.NewJobsChecker(&storage.SQLiteDB{DB: db}),
+		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
 
 	// Simulate the pre-fix bug: healthSvc wired, but readyChecker is nil.
