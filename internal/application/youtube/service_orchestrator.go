@@ -568,3 +568,4 @@ func (s *Service) GetVideoInfo(ctx context.Context, url string) (*youtubeports.D
 	}
 	return s.metaFetcher.GetVideoMetadata(ctx, url)
 }
+
