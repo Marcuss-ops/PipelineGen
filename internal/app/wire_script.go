@@ -28,7 +28,21 @@ import (
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) {
-	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil || root.Domains.ImageService == nil {
+	// Phase 2 activation (June 2026) — ImageService is now OPTIONAL:
+	// text-only script generation no longer requires ImageService to be
+	// wired. The gate that previously aborted whole ScriptFlow when
+	// ImageService was missing prevented operators from running a
+	// bare /api/script/generate-from-clips request with no clip_ids,
+	// no num_clips, no scene images. From this point on:
+	//   - text-only path    → always works (engine.WriteScript only)
+	//   - clip-source path  → works if clipSourceBuilder is wired
+	//   - scene-image path  → gated by PipelineUseCase.Run with
+	//                          typed error when ImageService missing
+	//                          + spec.GenerateSceneImages=true
+	// Keeps ScriptFlow routes mounted as long as the script engine,
+	// generator, and AI bundle are present (the minimum required for
+	// any script generation path).
+	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil {
 		return
 	}
 
@@ -226,6 +240,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 		if scenesSvc != nil && docsSvc != nil {
 			pipeline := scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)
+			// Phase 2 activation (June 2026): track whether scenes
+			// were actually built at composition time. We pass this
+			// flag to NewPipelineUseCase so it can reject jobs
+			// asking for scene images when scenes aren't wired
+			// (a typed ErrSceneImagesUnavailable surfaces at
+			// worker-time rather than silently producing empty
+			// scene arrays).
+			scenesReady := scenesSvc != nil
 			minFloor := 100
 			ollamaModel := ""
 			if cfg != nil {
@@ -241,6 +263,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 				mediaCurator,
 				semUC, prewarmUC,
 				pipeline,
+				scenesReady,
 			)
 			if puErr != nil {
 				log.Warn("pipeline use case: construction failed", zap.Error(puErr))
@@ -303,12 +326,38 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Register HTTP module ───────────────────────────────────────────
+	// Phase 2 activation (June 2026):
+	//   - root.Jobs.Facade (NOT root.Jobs.Service) is passed to
+	//     NewGenerationService because the canonical JobEnqueuer port
+	//     (internal/application/scripts/ports.go) takes *job.EnqueueRequest
+	//     (the domain type). root.Jobs.Facade = *job.Service (the
+	//     domain facade) whose Enqueue method signature matches the
+	//     port exactly; the facade internally translates to
+	//     *appjobs.EnqueueRequest via its installed EnqueueFn closure
+	//     (see internal/app/module_jobs.go::BuildJobsBundle). The
+	//     concrete application-layer *appjobs.Service uses
+	//     *appjobs.EnqueueRequest, a distinct Go type that does NOT
+	//     satisfy this port — passing root.Jobs.Service would fail
+	//     compile-time at the JobEnqueuer contract.
+	//   - FeatureGates is the typed snapshot of cfg.Features consumed
+	//     by the transport package (handler.go) — keeps the API layer
+	//     free of `internal/infrastructure/config` imports (AGENTS.md
+	//     Pattern 8).
 	genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
+	gates := scriptapi.FeatureGates{
+		ScriptClipsEnabled:  cfg.Features.ScriptClipsEnabled,
+		ScriptDocsEnabled:   cfg.Features.ScriptDocsEnabled,
+		ScriptImagesEnabled: cfg.Features.ImagesEnabled,
+	}
 	mod := module.NewRouteModule(
 		"script-flow",
-		func() bool { return cfg.Features.ScriptDocsEnabled },
+		// Module-level gate: expose the /script route group if
+		// EITHER clips OR docs is enabled. Per-route gating in
+		// handler.go::RegisterRoutes decides which individual
+		// endpoints respond (clip-source vs Google Docs vs images).
+		func() bool { return cfg.Features.ScriptClipsEnabled || cfg.Features.ScriptDocsEnabled },
 		"/script",
-		scriptapi.NewHandler(handler, genSvc),
+		scriptapi.NewHandler(handler, genSvc, gates),
 		log,
 		// AGENT-2 (June 2026): the previous
 		//   module.WithMiddleware(middleware.ScriptDocsEnabled(cfg))

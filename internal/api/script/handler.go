@@ -1,6 +1,19 @@
 // Package script — handler.go defines the Handler type and NewHandler
 // constructor for the legacy generation endpoints (GenerateFromClips,
 // GenerateBatch). The full ScriptFlowHandler is wired separately.
+//
+// Phase 2 activation (June 2026) — per-route feature gating:
+//   - /generate-from-clips   → ScriptClipsEnabled
+//   - /generate-with-images  → ScriptImagesEnabled
+//   - /generate-batch        → ScriptDocsEnabled (creates Google Doc)
+//   - /generate-batch/progress → ScriptDocsEnabled
+//
+// Each route is gated individually so an operator can enable script-
+// clips without enabling script-docs, and vice versa. The gate state
+// is passed in via the typed FeatureGates struct (no infrastructure/
+// config dependency introduced into the transport package — AGENTS.md
+// Pattern 8 forbids `internal/api/**` from importing `internal/
+// infrastructure/config`).
 package script
 
 import (
@@ -13,6 +26,20 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+// FeatureGates is the typed snapshot of the script-feature flags that
+// the composition root hands to NewHandler. The shape mirrors the
+// canonical `cfg.Features` booleans in `internal/infrastructure/config`
+// but is decoupled from the config import so the API package remains
+// transport-only (AGENTS.md Pattern 8).
+//
+// Each route is gated on ONE boolean — see RegisterRoutes. The
+// composition root wires these from cfg.Features in wire_script.go.
+type FeatureGates struct {
+	ScriptClipsEnabled  bool
+	ScriptDocsEnabled   bool
+	ScriptImagesEnabled bool
+}
+
 // GenerationService narrows the generation operations for the Handler.
 type GenerationService interface {
 	EnqueueFromClips(ctx context.Context, spec scriptpkg.GenerationSpec) (*scripts.FromClipsResult, error)
@@ -23,19 +50,38 @@ type GenerationService interface {
 type Handler struct {
 	inner *ScriptFlowHandler
 	gen   GenerationService
+	gates FeatureGates
 }
 
 // NewHandler creates a new Handler.
-func NewHandler(inner *ScriptFlowHandler, gen GenerationService) *Handler {
-	return &Handler{inner: inner, gen: gen}
+//
+// gates is the typed feature-flag snapshot; composition root populates
+// it from cfg.Features. When all three booleans are false the handler
+// still mounts (so legacy /api/script/* returns 404 not 500) but every
+// route emits a uniform 404. This is intentional — the module-level
+// enabledFn in wire_script.go decides whether the entire /script
+// router group is exposed at all; the per-route gates decide which
+// inner endpoints respond.
+func NewHandler(inner *ScriptFlowHandler, gen GenerationService, gates FeatureGates) *Handler {
+	return &Handler{inner: inner, gen: gen, gates: gates}
 }
 
-// RegisterRoutes registers legacy script routes.
+// RegisterRoutes registers legacy script routes with per-route feature
+// gating. Routes whose feature flag is false are NOT registered at all
+// (gin returns 404 for unmatched paths). This is the canonical pattern
+// for grouping endpoints under shared prefixes but disabling individual
+// routes per-feature.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/generate-from-clips", h.GenerateFromClips)
-	r.POST("/generate-with-images", h.GenerateWithImages)
-	r.POST("/generate-batch", h.GenerateBatch)
-	r.GET("/generate-batch/progress", h.GetBatchProgress)
+	if h.gates.ScriptClipsEnabled {
+		r.POST("/generate-from-clips", h.GenerateFromClips)
+	}
+	if h.gates.ScriptImagesEnabled {
+		r.POST("/generate-with-images", h.GenerateWithImages)
+	}
+	if h.gates.ScriptDocsEnabled {
+		r.POST("/generate-batch", h.GenerateBatch)
+		r.GET("/generate-batch/progress", h.GetBatchProgress)
+	}
 }
 
 // GenerateFromClips handles POST /generate-from-clips.
