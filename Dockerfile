@@ -90,8 +90,9 @@ RUN apt-get update \
       python3 \
  && rm -rf /var/lib/apt/lists/*
 
-# yt-dlp pinned to a recent release.
-ARG YTDLP_VERSION=2024.08.06
+# yt-dlp pinned to a recent release. Bumped June 2026 from
+# 2024.08.06 -> 2025.03.20 (Q1-2025 stable, quarterly cadence).
+ARG YTDLP_VERSION=2025.03.20
 RUN curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" \
       -o /usr/local/bin/yt-dlp \
  && chmod a+rx /usr/local/bin/yt-dlp
