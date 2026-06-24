@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 )
 
 func runGenAPIDocs(args []string) error {
@@ -43,14 +44,20 @@ func runGenAPIDocs(args []string) error {
 	}
 	defer appDeps.Cleanup()
 
-	// gen_api_docs is an admin CLI; the cfg here is a test fixture, NOT
-	// the production config. The typed ports on api.RouterConfig require
-	// real adapter implementations (AuthSecurityPort / RateLimitPort /
-	// FeatureFlagsPort). Mirroring server.go's pattern, we inline three
-	// trivial 1-method-per-call shims that wrap the test cfg. When
-	// PG-006 promotes the production adapters to pkg/middleware/adapters.go
-	// (follow-up), this file switches to the shared constructors.
-	authAdapter := &genDocsSecurityAdapter{cfg: cfg}
+	// PG-006.1 (June 2026): inline genDocsSecurityAdapter was deleted —
+	// cfg.Security is now snapshotted into the canonical pkg/middleware
+	// leaf struct (TokenSecurityAdapter) directly. Enable carries
+	// cfg.Security.EnableAuth (preserves the pre-PG-006.1
+	// genDocsSecurityAdapter.EnableAuth() semantics; round-2 fix
+	// makes EnableAuth a passthrough, not an Admin-content derivation).
+	// The rate-limit + feature-flags inline adapters remain in this
+	// file (out of scope for PG-006.1; candidate for a separate
+	// consolidation).
+	authAdapter := &pkgmw.TokenSecurityAdapter{
+		Enable: cfg.Security.EnableAuth,
+		Admin:  cfg.Security.AdminToken,
+		Worker: cfg.Security.WorkerToken,
+	}
 	rateAdapter := &genDocsRateLimitAdapter{cfg: cfg}
 	featuresAdapter := &genDocsFeatureFlagsAdapter{cfg: cfg}
 	routerCfg := &api.RouterConfig{
@@ -181,20 +188,14 @@ func matchRoutePattern(pattern, path string) bool {
 
 // ── Typed-port adapters (PG-006 bridge: cmd/admin → api/middleware) ────────
 //
-// The api package's RouterConfig surface expects Auth/Rate/Features to
-// satisfy mwports.AuthSecurityPort / RateLimitPort / FeatureFlagsPort.
-// `*config.Config` doesn't implement those interfaces directly; the
-// production composition root wraps it via
-// internal/app/middleware_security_adapter.go. The admin CLI cannot
-// import internal/app (api→app layering violation would cross), so it
-// inlines its own minimal adapter trio below. PG-006 follow-up
-// promotes these to pkg/middleware/adapters.go for shared use.
-
-type genDocsSecurityAdapter struct{ cfg *config.Config }
-
-func (a *genDocsSecurityAdapter) EnableAuth() bool    { return a.cfg.Security.EnableAuth }
-func (a *genDocsSecurityAdapter) AdminToken() string  { return a.cfg.Security.AdminToken }
-func (a *genDocsSecurityAdapter) WorkerToken() string { return a.cfg.Security.WorkerToken }
+// PG-006.1 (June 2026): the genDocsSecurityAdapter inline struct was
+// deleted — the canonical concrete is pkg/middleware.TokenSecurityAdapter
+// (a leaf struct reachable from internal/api, cmd/admin, and internal/app
+// without crossing layering boundaries); cfg.Security is snapshot-fed
+// into the canonical at the call-site. Only the rate-limit and
+// feature-flags inline adapters remain below (their canonical equivalents
+// are NOT yet tracked under pkg/middleware; a separate consolidation would
+// promote them — out of scope for PG-006.1).
 
 type genDocsRateLimitAdapter struct{ cfg *config.Config }
 

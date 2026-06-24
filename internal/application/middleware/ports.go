@@ -12,10 +12,23 @@
 // adapters live in internal/app/middleware_security_adapter.go with
 // explicit compile-time `var _ <Port> = (*<Adapter>)(nil)` assertions.
 //
+// PG-006.1 (June 2026): the canonical concrete adapter for
+// AuthSecurityPort is pkg/middleware.TokenSecurityAdapter (a leaf
+// struct reachable from internal/api, cmd/admin, and internal/app
+// without crossing layering boundaries). The cfg-wrapping trio that
+// previously lived as inline auth adapters in api/server.go +
+// cmd/admin/gen_api_docs.go + internal/app/middleware_security_adapter.go
+// was deleted; callers now snapshot cfg.Security fields into
+// &pkg/middleware.TokenSecurityAdapter{...} literals. The
+// compile-time assertion below pins the contract that the leaf
+// struct satisfies this port.
+//
 // Rule: define only methods the middleware actually calls — do NOT
 // widen any port to expose the whole underlying concrete. New
 // consumer sites land as additional methods, one PR at a time.
 package middleware
+
+import pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 
 // AuthSecurityPort is the canonical narrow surface of *config.Config's
 // Security substruct used by the auth/worker-auth/admin-token
@@ -39,6 +52,13 @@ type AuthSecurityPort interface {
 	// accidental admin/worker token interchange).
 	WorkerToken() string
 }
+
+// Compile-time assertion (PG-006.1, June 2026): the canonical leaf
+// adapter pkg/middleware.TokenSecurityAdapter satisfies
+// AuthSecurityPort. Required by Pattern 0 — drift in either
+// signature trips build at compile time, not at runtime under the
+// first auth-gated request.
+var _ AuthSecurityPort = (*pkgmw.TokenSecurityAdapter)(nil)
 
 // RateLimitPort is the canonical narrow surface of *config.Config's
 // Security substruct used by the rate-limit middleware. The 2 methods
