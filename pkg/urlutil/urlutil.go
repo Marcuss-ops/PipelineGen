@@ -140,6 +140,25 @@ func FileIDFromDriveLink(rawLink string) (string, error) {
 	return "", fmt.Errorf("unrecognised Drive URL path: %q", parsed.Path)
 }
 
+// DriveFileURLFromID builds the canonical
+// https://drive.google.com/file/d/<id>/view URL for a Drive file ID.
+//
+// PG-005 (June 2026): mirrored from
+// internal/infrastructure/drive.FileURLFromID so callers across
+// packages can stop importing internal/infrastructure/drive
+// directly. The adapter layer (internal/app/clips_adapters.go) is
+// still allowed to wrap drive.FileURLFromID for composition-root
+// wiring, but transport-layer helpers (api/, application/, pkg/)
+// must consume this pkg/urlutil variant per the package-leak rule
+// documented in AGENTS.md and the architectural ratchet in
+// scripts/ci-architectural-checks.sh.
+func DriveFileURLFromID(fileID string) string {
+	if fileID == "" {
+		return ""
+	}
+	return "https://drive.google.com/file/d/" + fileID + "/view"
+}
+
 // FolderIDFromDriveLink extracts the folder ID from a Google Drive folder
 // URL. Behaviour is permissive: if the input is empty, the function
 // returns "". If the input is not a URL (or is a URL whose path doesn't

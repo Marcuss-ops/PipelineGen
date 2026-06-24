@@ -43,11 +43,14 @@ func NewService(repo *sqljobs.SQLiteStore, dispatcher *Dispatcher, log *zap.Logg
 // Accepts any handler; performs a type-assertion to HandlerFunc.
 // Implements job.Service interface.
 func (s *Service) RegisterHandler(jobType string, handler any) error {
-	h, ok := handler.(HandlerFunc)
-	if !ok {
+	switch h := handler.(type) {
+	case HandlerFunc:
+		return s.dispatcher.Register(jobType, h)
+	case func(context.Context, *job.Job, *JobTools) (map[string]any, error):
+		return s.dispatcher.Register(jobType, HandlerFunc(h))
+	default:
 		return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
 	}
-	return s.dispatcher.Register(jobType, h)
 }
 
 // validateEnqueueRequest checks the domain EnqueueRequest for common errors.

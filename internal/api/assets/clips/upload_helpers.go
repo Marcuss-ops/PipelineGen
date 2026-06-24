@@ -154,48 +154,26 @@ func UpdateCumulativeMetadataJSON(
 	}
 
 	var existing []map[string]interface{}
-	switch u := driveUploader.(type) {
-	case appclips.ClipDriveUploaderPort:
-		query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
-		list, err := u.ListFiles(ctx, query)
-		if err != nil {
-			log.Warn("failed to list metadata.json", zap.Error(err))
-		} else if len(list) > 0 {
-			existingFileID := list[0].ID
-			body, _, dlErr := u.DownloadFile(ctx, existingFileID)
-			if dlErr == nil && body != nil {
-				defer body.Close()
-				var raw []map[string]interface{}
-				if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
-					existing = raw
-				}
-			}
-			if err := u.TrashFile(ctx, existingFileID); err != nil {
-				log.Warn("failed to trash old metadata.json", zap.Error(err))
+	u, ok := driveUploader.(appclips.ClipDriveUploaderPort)
+	if !ok || u == nil {
+		return
+	}
+	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
+	list, err := u.ListFiles(ctx, query)
+	if err != nil {
+		log.Warn("failed to list metadata.json", zap.Error(err))
+	} else if len(list) > 0 {
+		existingFileID := list[0].ID
+		body, _, dlErr := u.DownloadFile(ctx, existingFileID)
+		if dlErr == nil && body != nil {
+			defer body.Close()
+			var raw []map[string]interface{}
+			if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
+				existing = raw
 			}
 		}
-	case *driveUploaderImpl:
-		list, err := u.ListFiles(ctx, folderID)
-		if err != nil {
-			log.Warn("failed to list metadata.json", zap.Error(err))
-		} else {
-			for _, f := range list {
-				if f.Name != metaFilename {
-					continue
-				}
-				body, _, dlErr := u.DownloadFile(ctx, f.ID)
-				if dlErr == nil && body != nil {
-					defer body.Close()
-					var raw []map[string]interface{}
-					if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
-						existing = raw
-					}
-				}
-				if err := u.TrashFile(ctx, f.ID); err != nil {
-					log.Warn("failed to trash old metadata.json", zap.Error(err))
-				}
-				break
-			}
+		if err := u.TrashFile(ctx, existingFileID); err != nil {
+			log.Warn("failed to trash old metadata.json", zap.Error(err))
 		}
 	}
 
@@ -221,19 +199,10 @@ func UpdateCumulativeMetadataJSON(
 		log.Warn("failed to write metadata json temp file", zap.Error(err))
 		return
 	}
-	switch u := driveUploader.(type) {
-	case appclips.ClipDriveUploaderPort:
-		if _, err := u.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
-			log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
-		} else {
-			log.Info("uploaded cumulative metadata.json to Drive", zap.Int("entries", len(existing)))
-		}
-	case *driveUploaderImpl:
-		if _, err := u.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
-			log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
-		} else {
-			log.Info("uploaded cumulative metadata.json to Drive", zap.Int("entries", len(existing)))
-		}
+	if _, err := u.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
+		log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
+	} else {
+		log.Info("uploaded cumulative metadata.json to Drive", zap.Int("entries", len(existing)))
 	}
 	os.Remove(metaTempPath)
 
@@ -250,35 +219,19 @@ func cleanupLegacyMetadataJSON(ctx context.Context, driveUploader any, folderID 
 		return
 	}
 	const metaFilename = "metadata.json"
-	switch u := driveUploader.(type) {
-	case appclips.ClipDriveUploaderPort:
-		query := fmt.Sprintf("'%s' in parents and trashed = false and name contains '.json' and name != 'metadata.json'", folderID)
-		list, err := u.ListFiles(ctx, query)
-		if err != nil {
-			return
-		}
-		for _, f := range list {
-			log.Info("cleaning up legacy metadata json", zap.String("file_id", f.ID), zap.String("name", f.Name))
-			if err := u.TrashFile(ctx, f.ID); err != nil {
-				log.Warn("failed to trash legacy metadata json", zap.String("file_id", f.ID), zap.Error(err))
-			}
-		}
-	case *driveUploaderImpl:
-		list, err := u.ListFiles(ctx, folderID)
-		if err != nil {
-			return
-		}
-		for _, f := range list {
-			if f.Name == metaFilename {
-				continue
-			}
-			if !strings.Contains(f.Name, ".json") {
-				continue
-			}
-			log.Info("cleaning up legacy metadata json", zap.String("file_id", f.ID), zap.String("name", f.Name))
-			if err := u.TrashFile(ctx, f.ID); err != nil {
-				log.Warn("failed to trash legacy metadata json", zap.String("file_id", f.ID), zap.Error(err))
-			}
+	u, ok := driveUploader.(appclips.ClipDriveUploaderPort)
+	if !ok || u == nil {
+		return
+	}
+	query := fmt.Sprintf("'%s' in parents and trashed = false and name contains '.json' and name != 'metadata.json'", folderID)
+	list, err := u.ListFiles(ctx, query)
+	if err != nil {
+		return
+	}
+	for _, f := range list {
+		log.Info("cleaning up legacy metadata json", zap.String("file_id", f.ID), zap.String("name", f.Name))
+		if err := u.TrashFile(ctx, f.ID); err != nil {
+			log.Warn("failed to trash legacy metadata json", zap.String("file_id", f.ID), zap.Error(err))
 		}
 	}
 }
