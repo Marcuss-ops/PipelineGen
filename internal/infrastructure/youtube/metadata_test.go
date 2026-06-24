@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	// DTOs (VideoThumbnail, etc.) now live in ports/.
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

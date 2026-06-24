@@ -7,7 +7,10 @@ import (
 	"testing"
 	"time"
 
+	// DTOs (VideoCutRequest/Result, YouTubeMetadataPort) live in ports/.
+	// TopicSearchResponse/Result stay top-level.
 	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubesrcports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 )
@@ -48,12 +51,12 @@ func newFetchAdapterWith(s searcher, f fetcher) *Adapter { return &Adapter{src: 
 // ── Fetch test double ───────────────────────────────────────────────
 
 type fakeFetcher struct {
-	lastReq youtubesrc.VideoCutRequest
-	result  *youtubesrc.VideoCutResult
+	lastReq youtubesrcports.VideoCutRequest
+	result  *youtubesrcports.VideoCutResult
 	err     error
 }
 
-func (f *fakeFetcher) DownloadAndCut(_ context.Context, req youtubesrc.VideoCutRequest) (*youtubesrc.VideoCutResult, error) {
+func (f *fakeFetcher) DownloadAndCut(_ context.Context, req youtubesrcports.VideoCutRequest) (*youtubesrcports.VideoCutResult, error) {
 	f.lastReq = req
 	return f.result, f.err
 }
@@ -80,9 +83,9 @@ func TestFetch_EmptySourceRef_ReturnsError(t *testing.T) {
 
 func TestFetch_FullVideo_UsesSentinelDuration(t *testing.T) {
 	ff := &fakeFetcher{
-		result: &youtubesrc.VideoCutResult{
+		result: &youtubesrcports.VideoCutResult{
 			LocalPath: "/tmp/yt_full.mp4",
-			Metadata: &youtubesrc.YouTubeMetadataPort{
+			Metadata: &youtubesrcports.YouTubeMetadataPort{
 				Title:    "Full Video Title",
 				Uploader: "Test Channel",
 				Duration: 300.0,
@@ -113,9 +116,9 @@ func TestFetch_FullVideo_UsesSentinelDuration(t *testing.T) {
 
 func TestFetch_SegmentExtraction_SetsBounds(t *testing.T) {
 	ff := &fakeFetcher{
-		result: &youtubesrc.VideoCutResult{
+		result: &youtubesrcports.VideoCutResult{
 			LocalPath: "/tmp/yt_segment.mp4",
-			Metadata: &youtubesrc.YouTubeMetadataPort{
+			Metadata: &youtubesrcports.YouTubeMetadataPort{
 				Title:    "Segment Title",
 				Duration: 60.0,
 			},
@@ -145,7 +148,7 @@ func TestFetch_SegmentExtraction_SetsBounds(t *testing.T) {
 func TestFetch_NilMetadata_FallsBackToAssetID(t *testing.T) {
 	// Cache hits in the pipeline return Metadata: nil.
 	ff := &fakeFetcher{
-		result: &youtubesrc.VideoCutResult{
+		result: &youtubesrcports.VideoCutResult{
 			LocalPath: "/tmp/yt_cached.mp4",
 			Metadata:  nil,
 		},

@@ -144,6 +144,8 @@ google-accounting/profiles/
 # Local state and data
 storage/
 !internal/storage/
+!internal/application/assets/storage/
+!internal/api/assets/storage/
 .qdrant-initialized
 cookies.txt
 debug_output.txt
