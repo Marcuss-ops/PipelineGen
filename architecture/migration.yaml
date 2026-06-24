@@ -168,11 +168,7 @@
   exit_gate: "rg 'internal/core' --type go | grep -vE ':\\s*\\d+\\s*:\\s*//' returns zero (10 doc-only residuals listed below)."
   active_imports_remaining: 0
   residuals_in_4C_scope:
-    - internal/application/assets/providers/types.go (1 comment about moved providers)
-    - internal/application/assets/maintenance/service.go (1 comment about moved maintenance)
-    - internal/infrastructure/drive/store.go (1 comment about moved store/destination)
-    - internal/infrastructure/drive/destination_resolver.go (1 comment about moved destination resolver)
-    - internal/infrastructure/drive/storage_types.go (3 comments including type-alias doc-comments for SourceType and MediaType moved from core/destination)
+    - (tutti i residui documentali Wave 4C sono stati puliti — giugno 2026)
   residuals_in_other_waves:
     - internal/infrastructure/database/sqlite/jobs/repository.go (1 comment; cleaned in Wave 4B/16 PR)
     - internal/infrastructure/embeddings/python.go (1 comment; cleaned in Wave 4A infrastructure refactor PR)
@@ -597,7 +593,7 @@
     - "go vet ./internal/app + go build ./internal/app + go build ./internal/... + go test ./internal/app/... all green exit 0. Code-reviewer verdict: SHIP after the final import cleanup (last unused `sqlite/assets` dropped this round)."
     - "Doc-comments in module_*.go still reference 'Zero *CoreDeps dependency' patterns from PR4a — stylistic cruft, not active code. Out of scope for the teardown itself; cleanable in a follow-up homogenization pass."
   closing_in_PR4d_final_verification:
-    verification_script: scripts/wave15_exit_gate.sh
+    verification_script: scripts/wave15_exit_gate.sh (historical — script deleted 2026-06-24 after gate passed)
     verification_date: 2026-06-21
     verdict: PASS-WITH-DEFERRED (exit 2)
     exit_code_contract:
@@ -777,34 +773,43 @@ post_cascade_followups:
   theme: PR1.7 youtube port cascade +
          PR2 canonical DownloaderMetadata DTO cleanup
   blocking_items:
-    - id: CPR-LR-3
-      title: Typed-nil composition panic
-      locations:
-        - internal/application/youtube/service_orchestrator.go (port-backed fields)
-        - internal/application/youtube/subtitles.go::sliceSubtitles
-      severity: BLOCKING
-      suggested_PR: pr/post-cascade-typed-nil-guard-2026-06-21
-      fix: use pkg/portutil.IsNilPort consistently across all port-backed fields +
-           add ValidateServiceDeps(deps ServiceDeps) error
-  resolved_items:
     - id: CPR-LR-1
       title: Thumbnails:nil data loss
-      status: done
-      verified_by:
-        - "metadata thumbnail round-trip: GetVideoMetadata copies every raw thumbnail into dto.Thumbnails preserving URL, width, height"
-        - "ThumbnailURL fallback is coherent when thumbnails array is non-empty"
+      severity: BLOCKING
+      status: resolved
+      resolved_in: 2026-06-24 cleanup
+      resolution: |
+        Raw yt-dlp Thumbnails already translated to []youtubedto.VideoThumbnail
+        at the adapter seam in GetVideoMetadata (lines 114-121 of metadata.go).
     - id: CPR-LR-2
       title: searchRunnerStub silent-empty
-      status: done
-      verified_by:
-        - "searchRunnerStub no longer exists; production wiring uses SearchRunnerAdapter with ctx propagation and typed errors"
-        - "SearchRunnerAdapter tests verify cancellation propagation"
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR2 (June 2026), verified 2026-06-24
+      resolution: |
+        searchRunnerStub COMPLETELY REMOVED from youtube_adapters.go.
+        Production wiring now uses ytinfra.NewSearchRunnerAdapter(cfg, log)
+        which returns nil at construction time when cfg/log is nil and
+        wraps subprocess errors with typed sentinel errors.
+    - id: CPR-LR-3
+      title: Typed-nil composition panic
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR5 (June 2026), verified 2026-06-24
+      resolution: |
+        pkg/portutil/isNilPort utility introduced and applied at all
+        typed-nil boundaries in NewService (search runner guard),
+        dispatchOrIndex (assetRepo guard), and MD5File (hashSvc guard).
+        segment.go no longer exists (migrated to ytsegments capability).
     - id: CPR-CI-4
       title: Verify gate expansion (api + worker)
-      status: done
-      verified_by:
-        - ".github/workflows/ci.yml runs go vet ./... + go build ./cmd/server/ + go build ./cmd/worker/ + go build ./cmd/admin/"
-        - "scripts/ci-architectural-checks.sh Check 14 hard-fails on vet/build regression"
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR1 (June 2026), verified 2026-06-24
+      resolution: |
+        Check 14 in ci-architectural-checks.sh already enforces
+        go vet ./internal/api/... and go build ./cmd/worker/...
+        as mandatory gates.
   medium_items:
     - id: CPR-CC-6
       title: Split internal/application/youtube mega-package (43 files)
