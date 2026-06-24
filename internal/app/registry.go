@@ -13,7 +13,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -37,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
@@ -164,9 +164,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			return mod, nil
 		}},
 		{"MediaIngest", func() (module.Module, error) {
-			// PR4d-chunk2: WireMediaIngest takes *MediaIngestBundle.
+			// PR4d-chunk2: WireMediaIngest takes *MediaIngestBundle. PG-011:
+			// bundle.DB is now *storage.SQLiteDB (no raw *sql.DB in this layer).
 			ingestBundle := &MediaIngestBundle{
-				DB:                root.DB.DB,
+				DB:                root.DB,
 				Assets:            root.Repos.Assets,
 				DriveClient:       root.Drive.DriveClient,
 				ImageRepo:         root.Repos.ImageRepo,
@@ -426,11 +427,17 @@ type DriveDestinations struct {
 func (d *DriveDestinations) RootFolder() string   { return d.MediaRoot }
 func (d *DriveDestinations) ImagesFolder() string { return d.imagesFolder }
 
-func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
+// initMediaProcessor wires the media processor. PG-011: db is now
+// *storage.SQLiteDB (the typed canonical handle) instead of raw *sql.DB;
+// the artifacts.NewClipsRegistry constructor still takes *sql.DB so we
+// deref via db.DB at the call site — this keeps the upstream contract
+// unchanged while letting the composition layer stop holding a raw
+// sqlite handle in signatures.
+func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
-	clipsRegistry := artifacts.NewClipsRegistry(db, assetsRepo, querySvc, locations, processing)
+	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing)
 	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
 }
 

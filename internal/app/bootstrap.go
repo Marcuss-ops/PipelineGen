@@ -18,7 +18,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -32,6 +31,7 @@ import (
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
@@ -150,17 +150,19 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	return root, jobs, cleanup, nil
 }
 
-func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) {
-	if cfg.Drive.MediaRootFolder == "" || driveClient == nil {
+func resolveDynamicDriveFolders(ctx context.Context, db *sqassets.ClipsRepository, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) {
+	if cfg.Drive.MediaRootFolder == "" || driveClient == nil || db == nil {
 		return
 	}
 
 	uploader := &drive.Uploader{Service: driveClient, Log: log}
 
 	resolveFolder := func(name, source string) string {
-		var id string
-		err := db.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE source = ? AND folder_path = ? LIMIT 1", source, name).Scan(&id)
-		if err == nil && id != "" {
+		id, err := db.LookupDriveFolderIDBySourcePath(ctx, source, name)
+		if err != nil {
+			log.Warn("Drive folder lookup failed", zap.String("source", source), zap.String("name", name), zap.Error(err))
+		}
+		if id != "" {
 			return id
 		}
 
@@ -171,12 +173,17 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gd
 		}
 
 		now := timeutil.FormatRFC3339(time.Now())
-		searchKey := strings.ToLower(source + name)
-		searchKey = strings.ReplaceAll(searchKey, " ", "")
-		_, _ = db.ExecContext(ctx, `
-			INSERT OR IGNORE INTO clip_folders (id, source, source_url, folder_id, folder_path, group_name, created_at, updated_at, search_key)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, source, "https://drive.google.com/drive/folders/"+id, id, name, name, now, now, searchKey)
+		if err := db.UpsertDriveFolder(ctx, sqassets.DriveFolderAttrs{
+			Source:     source,
+			SourceURL:  "https://drive.google.com/drive/folders/" + id,
+			FolderID:   id,
+			FolderPath: name,
+			GroupName:  name,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}); err != nil {
+			log.Warn("Failed to upsert Drive folder row", zap.String("source", source), zap.String("name", name), zap.Error(err))
+		}
 		return id
 	}
 
@@ -208,9 +215,11 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gd
 	}
 	if cfg.Drive.ScriptsRootFolder != "" {
 		resolveScriptsSubfolder := func(name, source string) string {
-			var id string
-			err := db.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE source = ? AND folder_path = ? LIMIT 1", source, name).Scan(&id)
-			if err == nil && id != "" {
+			id, err := db.LookupDriveFolderIDBySourcePath(ctx, source, name)
+			if err != nil {
+				log.Warn("Scripts folder lookup failed", zap.String("source", source), zap.String("name", name), zap.Error(err))
+			}
+			if id != "" {
 				return id
 			}
 			id, err = uploader.GetOrCreateFolder(ctx, name, cfg.Drive.ScriptsRootFolder)
@@ -219,10 +228,17 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gd
 				return ""
 			}
 			now := timeutil.FormatRFC3339(time.Now())
-			searchKey := strings.ToLower(source + name)
-			searchKey = strings.ReplaceAll(searchKey, " ", "")
-			_, _ = db.ExecContext(ctx, `INSERT OR IGNORE INTO clip_folders (id, source, source_url, folder_id, folder_path, group_name, created_at, updated_at, search_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				id, source, "https://drive.google.com/drive/folders/"+id, id, name, name, now, now, searchKey)
+			if err := db.UpsertDriveFolder(ctx, sqassets.DriveFolderAttrs{
+				Source:     source,
+				SourceURL:  "https://drive.google.com/drive/folders/" + id,
+				FolderID:   id,
+				FolderPath: name,
+				GroupName:  name,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}); err != nil {
+				log.Warn("Failed to upsert scripts folder row", zap.String("source", source), zap.String("name", name), zap.Error(err))
+			}
 			return id
 		}
 		if cfg.Drive.ScriptsGenerateFolder == "" {
@@ -280,10 +296,10 @@ func migrateLegacyScriptDocs(ctx context.Context, driveClient *gdrive.Service, c
 type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	Lifecycle     module.LifecycleManager          // wraps startBackgroundJobs + buildCleanup
-	HealthService interface{}                      // *systemhealth.Service; consumed by api.NewServerWithHealth
-	ReadyChecker  *systemhealth.ReadyChecker       // codex/health-ready-contract: concrete type, not interface{}
-	Cleanup       func()                           // kept for backward compat (tests); delegates to Lifecycle.Stop
+	Lifecycle     module.LifecycleManager    // wraps startBackgroundJobs + buildCleanup
+	HealthService interface{}                // *systemhealth.Service; consumed by api.NewServerWithHealth
+	ReadyChecker  *systemhealth.ReadyChecker // codex/health-ready-contract: concrete type, not interface{}
+	Cleanup       func()                     // kept for backward compat (tests); delegates to Lifecycle.Stop
 }
 
 // openLogDB was REMOVED in codex/db-set-and-paths. The Observability DB
@@ -309,11 +325,14 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// Observability DB is now opened (and schema-validated) by
 	// storage.OpenSet; middleware uses the typed *sql.DB inside
 	// `set.Observability` so app-layer never owns a raw *sql.DB.
-	var logDB *sql.DB
+	// PG-011: pass the typed handle directly (Go resolves *sql.DB via
+	// the storage package import — no `database/sql` import needed
+	// in this layer).
 	if root.DB != nil && root.DB.DB != nil {
-		logDB = root.DB.DB
+		middleware.SetLogDB(root.DB.DB)
+	} else {
+		middleware.SetLogDB(nil)
 	}
-	middleware.SetLogDB(logDB)
 
 	registryWiring, err := WireRegistry(root.Ctx, cfg, log, root)
 	if err != nil {
@@ -378,13 +397,11 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			registryWiring.ArtlistSvc.Service.Close()
 		}
 	})
-	cleanupStack = append(cleanupStack, func() {
-		if logDB != nil && logDB != root.DB.DB {
-			if err := logDB.Close(); err != nil {
-				log.Warn("failed to close log database", zap.Error(err))
-			}
-		}
-	})
+	// PG-011: removed the defensive logDB.Close block — the observability
+	// DB is the same handle as root.DB (the OpenSet opens both as a single
+	// SQLiteDB-set; root.DB and dbs.main share the underlying *sql.DB).
+	// Closing it twice would error; the partialCleanup inside coreClean
+	// already handles dbs.main.Close() once.
 	cleanupStack = append(cleanupStack, middleware.StopLogger)
 
 	// Wire the internal worker handler so external workers (including

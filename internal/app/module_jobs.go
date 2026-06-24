@@ -1,11 +1,11 @@
 package app
 
 import (
-	"database/sql"
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"go.uber.org/zap"
 )
@@ -37,7 +37,7 @@ type JobsBundle struct {
 //
 // Returning `(nil, error)` is reserved for unrecoverable construction errors
 // (nil db / nil logger). All four fields are required to be non-nil on success.
-func BuildJobsBundle(db *sql.DB, log *zap.Logger) (*JobsBundle, error) {
+func BuildJobsBundle(db *storage.SQLiteDB, log *zap.Logger) (*JobsBundle, error) {
 	if db == nil {
 		return nil, fmt.Errorf("build jobs bundle: db is nil")
 	}
@@ -45,7 +45,7 @@ func BuildJobsBundle(db *sql.DB, log *zap.Logger) (*JobsBundle, error) {
 		return nil, fmt.Errorf("build jobs bundle: log is nil")
 	}
 
-	repo := sqljobs.NewSQLiteStore(db, log)
+	repo := sqljobs.NewSQLiteStore(db.DB, log)
 	dispatcher := appjobs.NewDispatcher()
 	svc := appjobs.NewService(repo, dispatcher, log)
 
