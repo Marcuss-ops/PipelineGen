@@ -2,7 +2,6 @@
 import os
 import json
 import argparse
-import urllib.parse
 from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -10,14 +9,20 @@ from google.oauth2.credentials import Credentials
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Scopes required for Google Drive access
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+# Scopes required for Google Drive + Google Docs creation.
+# Drive readonly is insufficient for the script doc flow because the
+# repo creates and updates documents in Google Drive.
+SCOPES = [
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/documents',
+]
 
 def main():
     parser = argparse.ArgumentParser(description='Generate Google Drive token.json for PipelineGen')
     parser.add_argument('--credentials', default=str(ROOT / 'credentials.json'), help='Path to credentials.json')
     parser.add_argument('--token', default=str(ROOT / 'token.json'), help='Path to output token.json')
     parser.add_argument('--console', action='store_true', help='Use console auth instead of local server')
+    parser.add_argument('--manual', action='store_true', help='Print auth URL and ask for the redirected URL with code')
     args = parser.parse_args()
 
     creds = None
@@ -45,7 +50,28 @@ def main():
 
             print("Starting OAuth2 flow...")
             flow = InstalledAppFlow.from_client_secrets_file(args.credentials, SCOPES)
-            if args.console:
+            if args.manual:
+                flow.redirect_uri = "http://localhost"
+                os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+                auth_url, _ = flow.authorization_url(
+                    access_type="offline",
+                    prompt="consent",
+                    include_granted_scopes="true",
+                )
+                print("\nOpen this URL in your browser:\n")
+                print(auth_url)
+                print("\nAfter approval, copy the FULL redirected URL from the browser address bar and paste it here: ", end="", flush=True)
+                redirected_url = input().strip()
+                try:
+                    flow.fetch_token(authorization_response=redirected_url)
+                    creds = flow.credentials
+                except Exception as e:
+                    creds = flow.credentials
+                    if not creds or not creds.token:
+                        raise
+                    print(f"Token exchange warning: {e}")
+            elif args.console:
+                os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
                 auth_url, _ = flow.authorization_url(
                     access_type="offline",
                     prompt="consent",
@@ -55,8 +81,19 @@ def main():
                 print(auth_url)
                 print("\nPaste the authorization code here: ", end="", flush=True)
                 code = input().strip()
-                flow.fetch_token(code=code)
-                creds = flow.credentials
+                try:
+                    flow.fetch_token(code=code)
+                    creds = flow.credentials
+                except Exception as e:
+                    # Some Google accounts return a token response with
+                    # a superset of scopes; oauthlib may surface that as a
+                    # warning/error even though the access token is usable.
+                    # Retry by forcing the underlying credentials object if
+                    # token exchange actually succeeded.
+                    creds = flow.credentials
+                    if not creds or not creds.token:
+                        raise
+                    print(f"Token exchange warning: {e}")
             else:
                 creds = flow.run_local_server(port=0)
 
