@@ -1,6 +1,6 @@
 // Package system (api/system) — handler_drive.go holds the DriveHandler
 // (reconcile/cleanup/folders/move/resolve-by-id) as a second receiver in
-// the system package. Wave 14 close (June 2026): this file absorbed
+// the system package. Wave 14 PR4 close (June 24, 2026): this file absorbed
 // the legacy internal/api/drive/handler.go when the standalone
 // internal/api/drive/ directory was eliminated.
 //
@@ -9,33 +9,74 @@
 // All exports are reconciled with the canonical system handler:
 // package `system` now owns both SystemHandler (doctor) and
 // DriveHandler (admin/Drive ops).
+//
+// PR4-cleanup delta (June 24, 2026): the previous concrete deps
+// (*drivecleanup.Service, *drive.Uploader) were replaced with
+// `Reconciler` + `DriveAdminOps` port interfaces declared right here.
+// The concrete adapters live in `internal/app/system_adapters.go`
+// (composition root). This keeps the api layer free of
+// `internal/infrastructure/*` imports per AGENTS.md Pattern 8.
 package system
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
 
-	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"        // api.Error, api.BadRequest, api.OK — gin response helpers
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips" // clips.ExtractDriveFolderID — URL/ID parsing helper
 )
+
+// ── Port interfaces (AGENTS.md Pattern 0 / Wiki §14) ─────────────────────────
+
+// ReconcileResult is the JSON-shaped summary returned by Reconciler.Reconcile.
+// Mirrors the canonical `drivecleanup.Result` struct (Deleted + Kept); having
+// the mirror in the api package keeps the port contract stable across
+// infrastructure refactors.
+type ReconcileResult struct {
+	Deleted int `json:"deleted"`
+	Kept    int `json:"kept"`
+}
+
+// Reconciler is the port for Drive → SQLite reconciliation flows. It is
+// satisfied at composition time by the adapter wrapping
+// `*drivecleanup.Service`.
+type Reconciler interface {
+	Reconcile(ctx context.Context, source, rootFolderID string, dryRun bool) (*ReconcileResult, error)
+}
+
+// DriveAdminOps is the port for the small set of Drive operations the
+// admin handlers need: create folders, move files, resolve ID metadata.
+// It is satisfied at composition time by the adapter wrapping
+// `*drive.Uploader`. The Google Files.Get round-trip (which the previous
+// code spelled out inline) is encapsulated inside ResolveFileInfo so the
+// api package never reaches into the Google Drive SDK directly.
+type DriveAdminOps interface {
+	GetOrCreateFolder(ctx context.Context, folderName, parentID string) (string, error)
+	MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error
+	ResolveFileInfo(ctx context.Context, fileID string) (ResolveByIDsItem, error)
+}
+
+// ── Handler ─────────────────────────────────────────────────────────────────
 
 // DriveHandler handles Drive admin ops (reconcile, cleanup, folders,
 // move, resolve-by-id). It is constructed in app.WireRegistry and
 // mounted by system.Module on the /drive sub-group.
 type DriveHandler struct {
-	reconcileSvc  *drivecleanup.Service
-	driveUploader *drive.Uploader
+	reconciler Reconciler
+	driveOps   DriveAdminOps
 }
 
 // NewDriveHandler creates a new DriveHandler.
-func NewDriveHandler(reconcileSvc *drivecleanup.Service, driveUploader *drive.Uploader) *DriveHandler {
-	return &DriveHandler{reconcileSvc: reconcileSvc, driveUploader: driveUploader}
+func NewDriveHandler(reconciler Reconciler, driveOps DriveAdminOps) *DriveHandler {
+	return &DriveHandler{
+		reconciler: reconciler,
+		driveOps:   driveOps,
+	}
 }
 
 // RegisterRoutes registers the Drive routes on the supplied RouterGroup.
@@ -61,7 +102,7 @@ type CreateFoldersRequest struct {
 // Body: { "parent_id": "root-folder-id", "folders": ["ziwe", "TeamCoco"] }
 // Response: { "ok": true, "created": {"ziwe": "folder-id-1", "TeamCoco": "folder-id-2"} }
 func (h *DriveHandler) CreateFolders(c *gin.Context) {
-	if h.driveUploader == nil {
+	if h.driveOps == nil {
 		api.Error(c, 500, "drive uploader not configured")
 		return
 	}
@@ -77,7 +118,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		return
 	}
 
-	parentID := clipsources.ExtractDriveFolderID(strings.TrimSpace(req.ParentID))
+	parentID := clips.ExtractDriveFolderID(strings.TrimSpace(req.ParentID))
 	if parentID == "" {
 		api.BadRequest(c, "parent_id is required")
 		return
@@ -91,7 +132,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		if folderName == "" {
 			continue
 		}
-		folderID, err := h.driveUploader.GetOrCreateFolder(ctx, folderName, parentID)
+		folderID, err := h.driveOps.GetOrCreateFolder(ctx, folderName, parentID)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", folderName, err))
 			continue
@@ -112,7 +153,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 // Reconcile checks for mismatches between SQLite and Google Drive.
 // Body: { "source": "artlist", "root_folder_id": "xxx", "dry_run": true }
 func (h *DriveHandler) Reconcile(c *gin.Context) {
-	if h.reconcileSvc == nil {
+	if h.reconciler == nil {
 		api.Error(c, 500, "reconcile service not configured")
 		return
 	}
@@ -129,7 +170,7 @@ func (h *DriveHandler) Reconcile(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.reconcileSvc.Reconcile(ctx, req.Source, req.RootFolderID, req.DryRun)
+	result, err := h.reconciler.Reconcile(ctx, req.Source, req.RootFolderID, req.DryRun)
 	if err != nil {
 		api.Error(c, 500, err.Error())
 		return
@@ -141,7 +182,7 @@ func (h *DriveHandler) Reconcile(c *gin.Context) {
 // Cleanup performs orphan removal.
 // Body: { "source": "artlist", "root_folder_id": "xxx" }
 func (h *DriveHandler) Cleanup(c *gin.Context) {
-	if h.reconcileSvc == nil {
+	if h.reconciler == nil {
 		api.Error(c, 500, "reconcile service not configured")
 		return
 	}
@@ -157,7 +198,7 @@ func (h *DriveHandler) Cleanup(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	result, err := h.reconcileSvc.Reconcile(ctx, req.Source, req.RootFolderID, false)
+	result, err := h.reconciler.Reconcile(ctx, req.Source, req.RootFolderID, false)
 	if err != nil {
 		api.Error(c, 500, err.Error())
 		return
@@ -176,7 +217,7 @@ type MoveFileRequest struct {
 // MoveFile moves one or more files from one Drive folder to another.
 // POST /api/drive/move
 func (h *DriveHandler) MoveFile(c *gin.Context) {
-	if h.driveUploader == nil {
+	if h.driveOps == nil {
 		api.Error(c, 500, "drive uploader not configured")
 		return
 	}
@@ -189,7 +230,7 @@ func (h *DriveHandler) MoveFile(c *gin.Context) {
 	var moved int
 	var errs []string
 	for _, fid := range req.FileIDs {
-		if err := h.driveUploader.MoveFile(ctx, fid, req.FromFolderID, req.ToFolderID); err != nil {
+		if err := h.driveOps.MoveFile(ctx, fid, req.FromFolderID, req.ToFolderID); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", fid, err))
 			continue
 		}
@@ -236,7 +277,7 @@ const resolveMaxBatchSize = 100
 //	Body: { "ids": ["1oOlaSOwq1P7_yLfanvBqxwMvEoV1n4Wo", "https://drive.google.com/drive/folders/..."] }
 //	Response: { "ok": true, "resolved": [{id,name,mime_type,parents,trashed,...}], "errors": ["id: msg"], "resolved_count": N, "error_count": M }
 func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
-	if h.driveUploader == nil || h.driveUploader.Service == nil {
+	if h.driveOps == nil {
 		api.Error(c, 500, "drive uploader not configured")
 		return
 	}
@@ -266,7 +307,7 @@ func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
 	var wg sync.WaitGroup
 
 	for i, raw := range req.IDs {
-		id := clipsources.ExtractDriveFolderID(strings.TrimSpace(raw))
+		id := clips.ExtractDriveFolderID(strings.TrimSpace(raw))
 		if id == "" {
 			errorsByIdx[i] = fmt.Sprintf("empty id in input: %q", raw)
 			continue
@@ -285,22 +326,12 @@ func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
 				return
 			}
 
-			file, err := h.driveUploader.Service.Files.Get(folderID).
-				Fields("id, name, mimeType, parents, trashed, webViewLink, size").
-				Context(ctx).Do()
+			item, err := h.driveOps.ResolveFileInfo(ctx, folderID)
 			if err != nil {
 				errorsByIdx[idx] = fmt.Sprintf("%s: %v", folderID, err)
 				return
 			}
-			resolved[idx] = ResolveByIDsItem{
-				ID:          file.Id,
-				Name:        file.Name,
-				MimeType:    file.MimeType,
-				Parents:     file.Parents,
-				WebViewLink: file.WebViewLink,
-				Size:        file.Size,
-				Trashed:     file.Trashed,
-			}
+			resolved[idx] = item
 		}(i, id)
 	}
 

@@ -95,7 +95,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		driveUploaderAdapter = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
 	}
 	reconcileSvcAdapter := drivecleanup.NewService()
-	registerModule(registry, log, systemapi.NewModule(cfg, log, toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter, driveUploaderAdapter, reconcileSvcAdapter))
+	registerModule(registry, log, systemapi.NewModule(
+		doctorConfigFrom(cfg),
+		log,
+		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
+		newDriveAdminAdapter(driveUploaderAdapter, log),
+		newReconcilerAdapter(reconcileSvcAdapter, log),
+	))
 
 	// Artlist (PR4d-chunk2): takes *ArtlistBundle + vectorStore.
 	artlistBundle := &ArtlistBundle{
@@ -182,7 +188,16 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				driveUploader = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
 			}
 			reconcileSvc := drivecleanup.NewService()
-			handler := systemapi.NewDriveHandler(reconcileSvc, driveUploader)
+			// PR4-cleanup delta (June 24, 2026): NewDriveHandler now takes
+			// typed ports (Reconciler + DriveAdminOps) instead of concrete
+			// infrastructure types. Wrap them in the composition-side adapters
+			// declared in internal/app/system_adapters.go. ComposeRoot is the
+			// ONLY place allowed to import internal/infrastructure/*, so this
+			// wrapping happens here per AGENTS.md §13.
+			handler := systemapi.NewDriveHandler(
+				newReconcilerAdapter(reconcileSvc, log),
+				newDriveAdminAdapter(driveUploader, log),
+			)
 			mod := module.NewRouteModule("drive", func() bool { return cfg.Features.DriveEnabled }, "/drive", handler, log)
 			log.Info("created Drive module")
 			return mod, nil

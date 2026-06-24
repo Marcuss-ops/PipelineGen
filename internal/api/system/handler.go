@@ -1,3 +1,9 @@
+// Package system (api/system) — SystemHandler handles the `/system/doctor`
+// diagnostic endpoint. Wave 14 PR4 cleanup (June 24, 2026): the handler
+// no longer imports `internal/infrastructure/config`. The previous `*config.Config`
+// dependency was replaced with a typed `DoctorConfig` struct populated at the
+// composition root by `internal/app/system_adapters.go::doctorConfigFrom(*config.Config)`,
+// keeping api/system a thin transport per AGENTS.md Pattern 8.
 package system
 
 import (
@@ -10,24 +16,42 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
-// SystemHandler handles system diagnostic endpoints
+// DoctorConfig is the typed snapshot of configuration fields the
+// `/system/doctor` endpoint reads. The composition root populates it
+// from `*config.Config` and passes it by value — the handler has no
+// other reason to know about the canonical config struct.
+//
+// Each field is computed eagerly at composition time (paths are
+// pre-resolved strings, not method receivers) so the handler is a
+// pure data consumer and easy to test.
+type DoctorConfig struct {
+	DataDir                  string
+	AssetsPath               string
+	ImagesPath               string
+	TempPath                 string
+	AnimationsPath           string
+	YoutubeClipsPath         string
+	PythonScriptsDir         string
+	GoogleAccountingEnabled  bool
+	GoogleAccountingServerURL string
+}
+
+// SystemHandler handles system diagnostic endpoints.
 type SystemHandler struct {
-	cfg             *config.Config
+	cfg             DoctorConfig
 	log             *zap.Logger
 	toolChecker     appassets.ToolChecker
 	processRunner   appassets.ProcessRunner
 	dbHealthChecker appassets.DBHealthChecker
 }
 
-// NewHandler creates a new system handler
-func NewSystemHandler(cfg *config.Config, log *zap.Logger, toolChecker appassets.ToolChecker, processRunner appassets.ProcessRunner, dbHealthChecker appassets.DBHealthChecker) *SystemHandler {
+// NewSystemHandler creates a new system handler.
+func NewSystemHandler(cfg DoctorConfig, log *zap.Logger, toolChecker appassets.ToolChecker, processRunner appassets.ProcessRunner, dbHealthChecker appassets.DBHealthChecker) *SystemHandler {
 	return &SystemHandler{
 		cfg:             cfg,
 		log:             log,
@@ -37,7 +61,7 @@ func NewSystemHandler(cfg *config.Config, log *zap.Logger, toolChecker appassets
 	}
 }
 
-// DoctorResponse represents the response from the doctor endpoint
+// DoctorResponse represents the response from the doctor endpoint.
 type DoctorResponse struct {
 	OK      bool                     `json:"ok"`
 	Checks  map[string]string        `json:"checks"`
@@ -45,6 +69,7 @@ type DoctorResponse struct {
 	Fixes   []string                 `json:"fixes,omitempty"`
 }
 
+// StorageStatus describes the writability/existence of one storage path.
 type StorageStatus struct {
 	Path     string `json:"path"`
 	Exists   bool   `json:"exists"`
@@ -108,12 +133,12 @@ func (h *SystemHandler) Doctor(c *gin.Context) {
 
 func (h *SystemHandler) checkStorageDeep(ctx context.Context, resp *DoctorResponse) {
 	dirs := map[string]string{
-		"data_dir":      h.cfg.Storage.DataDir,
-		"assets_dir":    h.cfg.Storage.AssetsPath(),
-		"images_dir":    h.cfg.Storage.ImagesPath(),
-		"temp_dir":      h.cfg.Storage.TempPath(),
-		"animations":    h.cfg.Storage.AnimationsPath(),
-		"youtube_clips": h.cfg.Storage.YoutubeClipsPath(),
+		"data_dir":      h.cfg.DataDir,
+		"assets_dir":    h.cfg.AssetsPath,
+		"images_dir":    h.cfg.ImagesPath,
+		"temp_dir":      h.cfg.TempPath,
+		"animations":    h.cfg.AnimationsPath,
+		"youtube_clips": h.cfg.YoutubeClipsPath,
 	}
 
 	for key, path := range dirs {
@@ -170,11 +195,10 @@ func (h *SystemHandler) checkExternalTools(ctx context.Context, resp *DoctorResp
 	} else {
 		resp.Checks["python3"] = "ok"
 	}
-
 }
 
 func (h *SystemHandler) checkGoogleToken(ctx context.Context, resp *DoctorResponse) {
-	tokenPath := filepath.Join(h.cfg.Storage.DataDir, "token.json")
+	tokenPath := filepath.Join(h.cfg.DataDir, "token.json")
 	if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
 		// Try root directory too
 		if _, err := os.Stat("token.json"); os.IsNotExist(err) {
@@ -190,7 +214,7 @@ func (h *SystemHandler) checkDatabases(ctx context.Context, resp *DoctorResponse
 	dbs := h.dbHealthChecker.GetAllDBs()
 	for _, dbRelPath := range dbs {
 		name := strings.Split(dbRelPath, "/")[0]
-		path := h.dbHealthChecker.GetDBPath(h.cfg.Storage.DataDir, dbRelPath)
+		path := h.dbHealthChecker.GetDBPath(h.cfg.DataDir, dbRelPath)
 
 		key := fmt.Sprintf("db_%s", name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -212,7 +236,7 @@ func (h *SystemHandler) checkDatabases(ctx context.Context, resp *DoctorResponse
 }
 
 func (h *SystemHandler) checkVoiceover(ctx context.Context, resp *DoctorResponse) {
-	scriptPath := filepath.Join(h.cfg.Paths.PythonScriptsDir, "bridges", "tts_edge.py")
+	scriptPath := filepath.Join(h.cfg.PythonScriptsDir, "bridges", "tts_edge.py")
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		resp.Checks["voiceover_script"] = "missing"
 		resp.Fixes = append(resp.Fixes, "Restore scripts/tts_edge.py")
@@ -230,12 +254,12 @@ func (h *SystemHandler) checkVoiceover(ctx context.Context, resp *DoctorResponse
 }
 
 func (h *SystemHandler) checkGoogleAccounting(ctx context.Context, resp *DoctorResponse) {
-	if !h.cfg.GoogleAccounting.Enabled {
+	if !h.cfg.GoogleAccountingEnabled {
 		resp.Checks["google_accounting"] = "disabled"
 		return
 	}
 
-	url := h.cfg.GoogleAccounting.ServerURL
+	url := h.cfg.GoogleAccountingServerURL
 	if url == "" {
 		resp.Checks["google_accounting"] = "misconfigured"
 		resp.Fixes = append(resp.Fixes, "Set google_accounting.server_url in config.yaml")
