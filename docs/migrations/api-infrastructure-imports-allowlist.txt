@@ -71,9 +71,16 @@ internal/api/assets/clips/handler.go
 internal/api/assets/clips/helpers.go
 internal/api/assets/clips/upload_helpers.go
 
-# ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2) ──
-internal/api/assets/soundeffect/handler.go
-internal/api/assets/youtube/youtube_handlers.go
+# ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2 — CLEANED, June 2026) ─
+# Internal cleanup wave, June 24 2026: api/assets/soundeffect/handler.go +
+# api/assets/youtube/youtube_handlers.go no longer import internal/infrastructure.
+# Sfx depends on 4 sfxports.* interfaces (ClipRepositoryPort, DriveUploaderPort,
+# SemanticMetadataWriterPort, DestinationResolverPort); youtube depends on
+# ytports.ClipStorePort. Concrete adapters live in internal/app/adapters_soundeffect.go
+# + internal/app/adapters_youtube.go respectively. Removed from allowlist at
+# PG-003-cleanup.
+# internal/api/assets/soundeffect/handler.go     ← removed from allowlist
+# internal/api/assets/youtube/youtube_handlers.go ← removed from allowlist
 
 # ── Wave 14 grandfathered: api/channels + api/images impl (PR5) ────────────
 

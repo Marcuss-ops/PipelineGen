@@ -28,6 +28,13 @@ func newClipStoreAdapter(r *assets.ClipsRepository) youtubeports.ClipStorePort {
 	return &clipStoreAdapter{inner: r}
 }
 
+// Compile-time assertion: clipStoreAdapter satisfies youtubeports.ClipStorePort.
+// Pattern 0 (AGENTS.md): explicit structural-port assertion so future
+// port-extension drift surfaces at compile time, not at first runtime call.
+// PG-003 (June 2026): confirmed the adapter satisfies the extended port
+// after SearchClipsAdvanced + CountClips were added.
+var _ youtubeports.ClipStorePort = (*clipStoreAdapter)(nil)
+
 func (a *clipStoreAdapter) Get(ctx context.Context, id string) (*asset.Asset, error) {
 	return a.inner.Get(ctx, id)
 }
@@ -46,6 +53,21 @@ func (a *clipStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 func (a *clipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error) {
 	return a.inner.GetFolder(ctx, folderID)
 }
+
+// SearchClipsAdvanced routes the orchestrator's domain-typed advanced
+// search straight to the concrete repository. Added in PG-003 (June
+// 2026) so the youtube handler no longer imports *assets.ClipsRepository.
+func (a *clipStoreAdapter) SearchClipsAdvanced(ctx context.Context, req asset.AdvancedSearchRequest) (*asset.AdvancedSearchResult, error) {
+	return a.inner.SearchClipsAdvanced(ctx, req)
+}
+
+// CountClips counts all non-deleted clips in the store. Added in
+// PG-003 (June 2026) so the youtube handler Stats endpoint no longer
+// imports *assets.ClipsRepository.
+func (a *clipStoreAdapter) CountClips(ctx context.Context) (int, error) {
+	return a.inner.CountClips(ctx)
+}
+
 func (a *clipStoreAdapter) ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error) {
 	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
 	args := []any{}
