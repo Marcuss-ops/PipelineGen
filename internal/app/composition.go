@@ -682,7 +682,6 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	var assocService interface{} = nil // was associationpkg.NewService(...) — package removed
 	log.Info("association service unavailable — package removed from remote")
-	}
 
 	lessonsS := lessonsSvc.NewService(
 		&lessonsSvc.LessonsConfig{

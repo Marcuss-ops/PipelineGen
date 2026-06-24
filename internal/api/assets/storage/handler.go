@@ -17,8 +17,10 @@ import (
 
 // Handler is the thin HTTP transport for storage operations.
 type Handler struct {
-	svc *appstorage.Service
-	log *zap.Logger
+	svc         *appstorage.Service
+	log         *zap.Logger
+	jobsSvc     *jobdomain.Service
+	catalogSync *catalogsync.Service
 }
 
 // NewHandler creates a storage Handler.
@@ -26,9 +28,7 @@ type Handler struct {
 // future route handlers (sync-after-move, job-enqueue-on-rename)
 // but are not yet consumed by the current route set.
 func NewHandler(svc *appstorage.Service, jobs *jobdomain.Service, catalogSync *catalogsync.Service, log *zap.Logger) *Handler {
-	_ = jobs        // reserved for future route handlers
-	_ = catalogSync // reserved for future route handlers
-	return &Handler{svc: svc, log: log}
+	return &Handler{svc: svc, log: log, jobsSvc: jobs, catalogSync: catalogSync}
 }
 
 // RegisterRoutes registers storage routes under the given group.
