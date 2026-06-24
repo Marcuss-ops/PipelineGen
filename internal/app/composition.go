@@ -322,18 +322,8 @@ type IOpaqueStartFunc func() error
 // incremental migration (waves 2-5). The end state of the 5-commit refactor
 // leaves composition.go with ONLY NewComposition + the bundle types + IOpaqueStartFunc.
 
-// resolveRuntimeDestinations is split out so BuildDriveBundle can fall back
-// to configOnlyDestinations when Drive is offline. wave-5 will DELETE this
-// function (proven no-op): until then it remains as a thin alias for the
-// in-flight ensureResolveDrive calls.
-func resolveRuntimeDestinations(ctx context.Context, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) *DriveDestinations {
-	_ = ctx
-	_ = driveClient
-	_ = log
-	return configOnlyDestinations(cfg)
-}
-
 // configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
+// Post PG-011-residual-cleanup: this is now the sole dest-resolver for the Drive bundle; resolveRuntimeDestinations was deleted. See architecture/migration.yaml Wave 15 production_residuals[1].
 func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
 }
