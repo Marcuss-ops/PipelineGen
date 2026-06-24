@@ -15,7 +15,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -52,6 +51,12 @@ type ClipResolverRecommendResult struct {
 // recommendation, and catalog sync. Construction mirrors the legacy
 // api/sources package, but lives here (package artlist) so the handler
 // can be tested in isolation from the rest of SourcesHandler.
+//
+// The `cfg` field is the 1-method typed port `artlist.ArtlistConfigPort`,
+// not the concrete `*config.Config`. The composition root wraps the
+// config concrete in `internal/app/artlist_config_adapter.go` so this
+// package stays free of infrastructure-layer imports
+// (AGENTS.md Pattern 0).
 type ArtlistHandler struct {
 	service        *artlist.Service
 	catalogSync    *catalogsync.Service
@@ -59,13 +64,15 @@ type ArtlistHandler struct {
 	clipResolver   ClipResolverPort
 	nodeScraperDir string
 	log            *zap.Logger
-	cfg            *config.Config
+	cfg            artlist.ArtlistConfigPort
 }
 
 // NewArtlistHandler builds the ArtlistHandler. service is the domain
 // Artlist service; catalogSync handles catalog reconciliation; jobsSvc
 // enqueues the artlist.run job; clipResolver is used by /recommend;
-// nodeScraperDir is the path to the persistent Node scraper dir.
+// nodeScraperDir is the path to the persistent Node scraper dir;
+// cfgPort exposes the artlist-side config defaults the handler reads
+// during request normalization (e.g. the default Artlist root folder).
 func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
@@ -73,7 +80,7 @@ func NewArtlistHandler(
 	clipResolver ClipResolverPort,
 	nodeScraperDir string,
 	log *zap.Logger,
-	cfg *config.Config,
+	cfgPort artlist.ArtlistConfigPort,
 ) *ArtlistHandler {
 	return &ArtlistHandler{
 		service:        service,
@@ -82,7 +89,7 @@ func NewArtlistHandler(
 		clipResolver:   clipResolver,
 		nodeScraperDir: nodeScraperDir,
 		log:            log,
-		cfg:            cfg,
+		cfg:            cfgPort,
 	}
 }
 
@@ -119,9 +126,14 @@ func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
 		return
 	}
 
-	// Normalize request before enqueue
+	// Normalize request before enqueue. `h.cfg` is a typed port
+	// (`artlist.ArtlistConfigPort`); `ArtlistRootFolderID()` exposes
+	// only the default Artlist root folder the handler reads during
+	// request normalization. The port is the narrow contraction of
+	// `artlist.ResolveRootFolderID(cfg)` so the api package stays free
+	// of infrastructure-layer imports.
 	req = artlist.NormalizeRunTagRequest(req, artlist.RunDefaults{
-		DefaultRootFolderID: artlist.ResolveRootFolderID(h.cfg),
+		DefaultRootFolderID: h.cfg.ArtlistRootFolderID(),
 		MaxLimit:            500,
 	})
 	if strings.TrimSpace(req.RootFolderID) == "" {

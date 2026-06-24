@@ -24,6 +24,11 @@ var prohibitedPatterns = []gate.Prohibition{
 	// at HEAD, safe to enforce as hard-fail patterns.
 	{Name: "artlistadapter.NewAdapter direct construction", Pattern: "artlistadapter.NewAdapter"},
 	{Name: "artlist.NewService direct construction", Pattern: "artlist.NewService"},
+	// Per-area hard-fail rule that mirrors the channels + images +
+	// soundeffect + youtube precedent. Any reference to the
+	// infrastructure path fails the gate so future regressions
+	// surface before they reach the allowlist.
+	{Name: "no infrastructure imports", Pattern: "internal/infrastructure/"},
 }
 
 func TestStaticGate_NoArtlistAPIInfrastructureLeaks(t *testing.T) {
