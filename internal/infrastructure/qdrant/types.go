@@ -6,12 +6,48 @@ import "time"
 
 // Config holds qdrant service configuration.
 type Config struct {
-	Enabled  bool
-	Host     string
-	Port     int
-	APIKey   string
-	UseTLS   bool
-	GrpcPort int
+	Enabled              bool
+	URL                  string
+	Collection           string
+	EmbeddingServerURL   string
+	APIKey               string
+	TextVectorName       string
+	VisualVectorName     string
+	AudioVectorName      string
+	TranscriptVectorName string
+	SparseVectorName     string
+	TextDimensions       int
+	VisualDimensions     int
+	AudioDimensions      int
+	TranscriptDimensions int
+	MinInstantScore      float64
+	TimeoutMs            int
+	CollectionVersion    string
+	CollectionAlias      string
+	DisableAlias         bool
+}
+
+// IndexHealthReport summarizes the Qdrant index state.
+type IndexHealthReport struct {
+	OK              bool     `json:"ok"`
+	Degraded        bool     `json:"degraded"`
+	SQLiteAssets    int      `json:"sqlite_assets"`
+	SQLiteIndexed   int      `json:"sqlite_indexed"`
+	QdrantPoints    int      `json:"qdrant_points"`
+	MissingInQdrant int      `json:"missing_in_qdrant"`
+	OrphanInQdrant  int      `json:"orphan_in_qdrant"`
+	PendingOutbox   int      `json:"pending_outbox"`
+	DeadLetter      int      `json:"dead_letter"`
+	DegradedSources []string `json:"degraded_sources"`
+	DBTotal         int      `json:"db_total"`
+	WithEmbedding   int      `json:"with_embedding"`
+	DBToQdrantDelta int      `json:"db_to_qdrant_delta"`
+	StaleQdrantIDs  []string `json:"stale_qdrant_ids"`
+}
+
+// CollectionInfo holds Qdrant collection info.
+type CollectionInfo struct {
+	PointsCount int `json:"points_count"`
 }
 
 // SearchRequest is a Qdrant dense vector search request.

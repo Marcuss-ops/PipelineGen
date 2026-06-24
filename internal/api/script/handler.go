@@ -82,6 +82,9 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		r.POST("/generate-batch", h.GenerateBatch)
 		r.GET("/generate-batch/progress", h.GetBatchProgress)
 	}
+	if h.inner != nil {
+		h.inner.RegisterRoutesRemaining(r)
+	}
 }
 
 // GenerateFromClips handles POST /generate-from-clips.

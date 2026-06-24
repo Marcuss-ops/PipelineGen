@@ -19,12 +19,14 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type RegenerateSectionRequest struct {
@@ -118,6 +120,129 @@ func (h *ScriptFlowHandler) mapRegenError(c *gin.Context, scriptID, sectionID in
 // EvictCacheRequest is the JSON body for POST /api/script/cache/evict.
 type EvictCacheRequest struct {
 	Titles []string `json:"titles,omitempty"`
+}
+
+// GenerateFromCatalog handles POST /api/script/generate-from-catalog.
+func (h *ScriptFlowHandler) GenerateFromCatalog(c *gin.Context) {
+	if h.jobsSvc == nil {
+		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		return
+	}
+
+	var req scripts.JobPayloadCatalogScript
+	if err := c.ShouldBindJSON(&req); err != nil {
+		api.Error(c, http.StatusBadRequest, "invalid payload")
+		return
+	}
+
+	req.Topic = strings.TrimSpace(req.Topic)
+	req.Title = strings.TrimSpace(req.Title)
+	req.OutputName = strings.TrimSpace(req.OutputName)
+	if req.Topic == "" {
+		req.Topic = req.Title
+	}
+	if req.Title == "" {
+		req.Title = req.Topic
+	}
+	if req.Title == "" {
+		req.Title = "catalog script"
+	}
+	if req.OutputName == "" {
+		req.OutputName = req.Title
+	}
+	if req.Topic == "" && len(req.ClipIDs) == 0 {
+		api.Error(c, http.StatusBadRequest, "topic or clip_ids are required")
+		return
+	}
+	if req.MaxClips <= 0 {
+		req.MaxClips = 10
+	}
+	if req.MinCoverage < 0 {
+		req.MinCoverage = 0
+	}
+	if req.MinCoverage > 1 {
+		req.MinCoverage = 1
+	}
+	req.Language = "en"
+	if req.Model == "" {
+		req.Model = "fallback"
+	}
+	if req.Tone == "" {
+		req.Tone = "clear"
+	}
+	if req.TargetWords <= 0 {
+		req.TargetWords = 1800
+	}
+	req.Languages = scripts.NormalizeLanguages(req.Languages)
+	if len(req.Languages) == 0 {
+		req.Languages = []string{"en"}
+	}
+
+	api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
+		Type:       job.TypeCatalogScriptGenerate,
+		Payload:    req,
+		Priority:   5,
+		MaxRetries: 2,
+	}, "Catalog script generation queued.")
+}
+
+// Curate handles POST /api/script/curate.
+func (h *ScriptFlowHandler) Curate(c *gin.Context) {
+	if h.jobsSvc == nil {
+		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		return
+	}
+
+	var req scripts.JobPayloadCurate
+	if err := c.ShouldBindJSON(&req); err != nil {
+		api.Error(c, http.StatusBadRequest, "invalid payload")
+		return
+	}
+
+	req.Query = strings.TrimSpace(req.Query)
+	req.Title = strings.TrimSpace(req.Title)
+	if req.Query == "" {
+		req.Query = req.Title
+	}
+	if req.Query == "" {
+		api.Error(c, http.StatusBadRequest, "query is required")
+		return
+	}
+	if req.Title == "" {
+		if grp := strings.TrimSpace(req.VoiceoverGroup); grp != "" {
+			req.Title = grp
+		} else {
+			req.Title = req.Query
+		}
+	}
+	req.Language = "en"
+	req.Languages = scripts.NormalizeLanguages(req.Languages)
+	if len(req.Languages) == 0 {
+		req.Languages = []string{"en"}
+	}
+	req.Tone = strings.TrimSpace(req.Tone)
+	if req.Tone == "" {
+		req.Tone = "comedy"
+	}
+	if req.MaxClips <= 0 {
+		req.MaxClips = 10
+	}
+	if req.MaxClips > 30 {
+		req.MaxClips = 30
+	}
+	if req.TargetWords <= 0 {
+		req.TargetWords = 2000
+	}
+	if req.MinScore <= 0 {
+		req.MinScore = 0.5
+	}
+
+	api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
+		Type:       job.TypeMediaCurate,
+		Payload:    req,
+		Priority:   5,
+		MaxRetries: 2,
+	}, "Curation queued.")
 }
 
 // EvictCache handles POST /api/script/cache/evict.

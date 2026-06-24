@@ -17,26 +17,19 @@ import (
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
-// BuildMetadataLanguages builds the list of languages for metadata generation.
-// Always includes English first, then adds base language if different, then
-// additional languages.
-func BuildMetadataLanguages(baseLanguage string, additionalLanguages []string) []string {
-	languages := []string{"en"} // Always include English for YouTube
-	languageSet := map[string]bool{"en": true}
-
-	if baseLanguage != "" && baseLanguage != "en" && !languageSet[baseLanguage] {
-		languages = append(languages, baseLanguage)
-		languageSet[baseLanguage] = true
-	}
-
-	for _, lang := range additionalLanguages {
-		if !languageSet[lang] {
-			languages = append(languages, lang)
-			languageSet[lang] = true
+// BuildMetadataLanguages normalizes the requested metadata languages.
+// English is always first, then any additional unique languages from the
+// payload in the order they were provided.
+func BuildMetadataLanguages(languages []string) []string {
+	out := []string{"en"}
+	for _, lang := range NormalizeLanguages(languages) {
+		if lang == "en" {
+			continue
 		}
+		out = append(out, lang)
 	}
 
-	return languages
+	return out
 }
 
 // GenerateVideoMetadata generates YouTube metadata (title, description, tags)

@@ -40,33 +40,30 @@ type DocumentCreator interface {
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 type ScriptFlowHandler struct {
-	engine             *scripts.Engine
-	batchService       *scripts.BatchService
-	curationService    *scripts.CurationService
-	curationJobService CurationJobService
-	catalogJobService  CatalogJobService
-	imgService         *images.Service
-	realtimeSvc        interface{} // was *realtime.Service (package removed)
-	associationSvc     interface{} // was *association.Service (package removed)
-	voService          *voiceover.Service
-	assetTreeSvc       *assettree.Service
-	groupsResolver     *voiceover.GroupsResolver
-	clipSourceBuilder  *scripts.ClipSourceBuilder
-	mediaCurator       *scripts.MediaCurator
-	sectionRegen       *scripts.SectionRegenerator
-	generateBatch      *scripts.GenerateBatchUseCase
-	cacheEviction      *scripts.CacheEvictionUseCase
-	insightBuilder     *ScriptInsightBuilder
-	clipServices       scripts.ClipServices
-	driveFolderClient  DriveFolderClient
-	documentCreator    DocumentCreator
-	jobsSvc            jobservice.Service
-	scriptsRepo        scripts.ScriptRepository
-	memorySvc          *gemmamemory.Service
-	harvestSvc         AutoHarvestService
-	driveFolderID      string
-	adminToken         string
-	log                *zap.Logger
+	engine            *scripts.Engine
+	batchService      *scripts.BatchService
+	imgService        *images.Service
+	realtimeSvc       interface{} // was *realtime.Service (package removed)
+	associationSvc    interface{} // was *association.Service (package removed)
+	voService         *voiceover.Service
+	assetTreeSvc      *assettree.Service
+	groupsResolver    *voiceover.GroupsResolver
+	clipSourceBuilder *scripts.ClipSourceBuilder
+	mediaCurator      *scripts.MediaCurator
+	sectionRegen      *scripts.SectionRegenerator
+	generateBatch     *scripts.GenerateBatchUseCase
+	cacheEviction     *scripts.CacheEvictionUseCase
+	insightBuilder    *ScriptInsightBuilder
+	clipServices      scripts.ClipServices
+	driveFolderClient DriveFolderClient
+	documentCreator   DocumentCreator
+	jobsSvc           *jobservice.Service
+	scriptsRepo       scripts.ScriptRepository
+	memorySvc         *gemmamemory.Service
+	harvestSvc        AutoHarvestService
+	driveFolderID     string
+	adminToken        string
+	log               *zap.Logger
 
 	pipelineUC *scripts.PipelineUseCase
 }
@@ -77,26 +74,22 @@ type AutoHarvestService interface {
 
 // ScriptFlowDeps groups all constructor inputs.
 type ScriptFlowDeps struct {
-	Engine             *scripts.Engine
-	Batch              *scripts.BatchService
-	Curation           *scripts.CurationService
-	Section            *scripts.SectionRegenerator
-	GenerateBatch      *scripts.GenerateBatchUseCase
-	CacheEviction      *scripts.CacheEvictionUseCase
-	PipelineUseCase    *scripts.PipelineUseCase
+	Engine          *scripts.Engine
+	Batch           *scripts.BatchService
+	Section         *scripts.SectionRegenerator
+	GenerateBatch   *scripts.GenerateBatchUseCase
+	CacheEviction   *scripts.CacheEvictionUseCase
+	PipelineUseCase *scripts.PipelineUseCase
 
-	Image            *images.Service
-	Realtime         interface{} // was *realtime.Service (package removed)
-	Association      interface{} // was *association.Service (package removed)
-	Voiceover        *voiceover.Service
-	AssetTree        *assettree.Service
+	Image       *images.Service
+	Realtime    interface{} // was *realtime.Service (package removed)
+	Association interface{} // was *association.Service (package removed)
+	Voiceover   *voiceover.Service
+	AssetTree   *assettree.Service
 
 	ClipSourceBuilder *scripts.ClipSourceBuilder
 	MediaCurator      *scripts.MediaCurator
 	Harvest           AutoHarvestService
-
-	CurationJobService CurationJobService
-	CatalogJobService  CatalogJobService
 
 	ScriptsRepo scripts.ScriptRepository
 	Memory      *gemmamemory.Service
@@ -106,7 +99,7 @@ type ScriptFlowDeps struct {
 	DriveFolderClient     DriveFolderClient
 	DocumentCreator       DocumentCreator
 	DriveScriptsGenFolder string
-	ClipServices          scripts.ClipServices   // pre-built in wire_script.go
+	ClipServices          scripts.ClipServices // pre-built in wire_script.go
 	Log                   *zap.Logger
 }
 
@@ -124,39 +117,33 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	}
 
 	h := &ScriptFlowHandler{
-		engine:             deps.Engine,
-		batchService:       deps.Batch,
-		curationService:    deps.Curation,
-		curationJobService: deps.CurationJobService,
-		catalogJobService:  deps.CatalogJobService,
-		imgService:         deps.Image,
-		realtimeSvc:        deps.Realtime,
-		associationSvc:     deps.Association,
-		voService:          deps.Voiceover,
-		assetTreeSvc:       deps.AssetTree,
-		groupsResolver:     groupsResolver,
-		clipSourceBuilder:  deps.ClipSourceBuilder,
-		mediaCurator:       deps.MediaCurator,
-		sectionRegen:       deps.Section,
-		generateBatch:      deps.GenerateBatch,
-		cacheEviction:      deps.CacheEviction,
-		driveFolderClient:  deps.DriveFolderClient,
-		documentCreator:    deps.DocumentCreator,
-		jobsSvc:            deps.Jobs,
-		scriptsRepo:        deps.ScriptsRepo,
-		memorySvc:          deps.Memory,
-		harvestSvc:         deps.Harvest,
-		driveFolderID:      deps.DriveScriptsGenFolder,
-		adminToken:         deps.AdminToken,
-		log:                log,
-		clipServices:       clipSvc,
-		insightBuilder:     NewScriptInsightBuilder(log, 12, clipSvc),
-		pipelineUC:         deps.PipelineUseCase,
+		engine:            deps.Engine,
+		batchService:      deps.Batch,
+		imgService:        deps.Image,
+		realtimeSvc:       deps.Realtime,
+		associationSvc:    deps.Association,
+		voService:         deps.Voiceover,
+		assetTreeSvc:      deps.AssetTree,
+		groupsResolver:    groupsResolver,
+		clipSourceBuilder: deps.ClipSourceBuilder,
+		mediaCurator:      deps.MediaCurator,
+		sectionRegen:      deps.Section,
+		generateBatch:     deps.GenerateBatch,
+		cacheEviction:     deps.CacheEviction,
+		driveFolderClient: deps.DriveFolderClient,
+		documentCreator:   deps.DocumentCreator,
+		jobsSvc:           deps.Jobs,
+		scriptsRepo:       deps.ScriptsRepo,
+		memorySvc:         deps.Memory,
+		harvestSvc:        deps.Harvest,
+		driveFolderID:     deps.DriveScriptsGenFolder,
+		adminToken:        deps.AdminToken,
+		log:               log,
+		clipServices:      clipSvc,
+		insightBuilder:    NewScriptInsightBuilder(log, 12, clipSvc),
+		pipelineUC:        deps.PipelineUseCase,
 	}
 
-	if deps.Curation != nil && deps.ClipSourceBuilder != nil {
-		deps.Curation.SetClipSourceBuilder(deps.ClipSourceBuilder)
-	}
 	return h
 }
 
@@ -172,7 +159,7 @@ type adminTokenAdapter struct {
 	token string
 }
 
-func (a *adminTokenAdapter) EnableAuth() bool { return a.token != "" }
+func (a *adminTokenAdapter) EnableAuth() bool   { return a.token != "" }
 func (a *adminTokenAdapter) AdminToken() string { return a.token }
 
 // ── Route registration ──────────────────────────────────────────────────────
@@ -229,10 +216,8 @@ func extractHeaderToken(c *gin.Context) string {
 }
 
 func (h *ScriptFlowHandler) RegisterRoutesRemaining(r *gin.RouterGroup) {
-	if h.curationService != nil {
-		r.POST("/generate-from-catalog", h.curationService.GenerateFromCatalog)
-		r.POST("/curate", h.curationService.Curate)
-	}
+	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
+	r.POST("/curate", h.Curate)
 	h.registerJobRoutes(r)
 	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
 	r.POST("/cache/evict", h.EvictCache)

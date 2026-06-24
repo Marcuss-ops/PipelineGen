@@ -18,8 +18,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 
 	"github.com/gin-gonic/gin"
@@ -55,23 +53,6 @@ func withPostWriteContext(parent context.Context, log *zap.Logger, op string) (c
 // Agente 4 (June 2026): post-gen metadata builders live in the
 // application/scripts package. PostGenUseCase calls them directly
 // from its own package; this transport no longer re-exports them.
-
-// ── Job service interfaces (port-only contracts) ────────────────────────────
-//
-// CurationJobService and CatalogJobService are the narrow ports the
-// ScriptFlowHandler binds to via ScriptFlowDeps.{Curation,Catalog}JobService.
-// They are satisfied by implementations under
-// internal/application/scripts/ (see corresponding JobService impl files).
-
-// CurationJobService handles background curation jobs (script.curate).
-type CurationJobService interface {
-	HandleCurateJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error)
-}
-
-// CatalogJobService handles background catalog-to-script generation jobs.
-type CatalogJobService interface {
-	HandleCatalogScriptGenerateJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error)
-}
 
 // ── Script history HTTP transport (companion to /api/script) ──────────────
 

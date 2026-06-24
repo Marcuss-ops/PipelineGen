@@ -40,12 +40,12 @@ func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
 // wired ServiceDeps passes validation and can construct a Service.
 func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
 	deps := youtube.ServiceDeps{
-		Cfg:              youtubetypes.RuntimeConfig{},
-		Log:              zap.NewNop(),
-		SearchRunner:     &stubSearchRunner{},
-		AssetRepo:        &stubAssetRepo{},
-		VideoPipeline:    &stubVideoPipeline{},
-		MediaProcessor:   &stubMediaProcessor{},
+		Cfg:            youtubetypes.RuntimeConfig{},
+		Log:            zap.NewNop(),
+		SearchRunner:   &stubSearchRunner{},
+		AssetRepo:      &stubAssetRepo{},
+		VideoPipeline:  &stubVideoPipeline{},
+		MediaProcessor: &stubMediaProcessor{},
 	}
 
 	err := youtube.ValidateServiceDeps(deps)
@@ -122,8 +122,8 @@ func (s *stubSearchRunner) GetVideoInfo(ctx context.Context, videoURL string) (*
 
 type stubAssetRepo struct{}
 
-func (s *stubAssetRepo) Upsert(ctx context.Context, a *asset.Asset) error              { return nil }
-func (s *stubAssetRepo) Get(ctx context.Context, id string) (*asset.Asset, error)      { return nil, nil }
+func (s *stubAssetRepo) Upsert(ctx context.Context, a *asset.Asset) error         { return nil }
+func (s *stubAssetRepo) Get(ctx context.Context, id string) (*asset.Asset, error) { return nil, nil }
 func (s *stubAssetRepo) List(ctx context.Context, filter asset.Filter) ([]*asset.Asset, error) {
 	return nil, nil
 }
