@@ -295,7 +295,12 @@ type ComposeRoot struct {
 // PR9-B/C; commit ci/composition-split retains the IOpaqueStartFunc for
 // backward source compatibility with NewComposition's gather-then-fire
 // pattern.
-type IOpaqueStartFunc func()
+//
+// Lifecycle-runtime-ownership (June 2026): changed from func() to
+// func() error so prerequisite services (Drive, Qdrant, Outbox) can
+// propagate errors to the caller. Required service failures now abort
+// the startup sequence instead of being logged as warnings.
+type IOpaqueStartFunc func() error
 
 // ── Bundle constructors (per-bundle files under build_<bundle>.go) ───────
 
@@ -473,8 +478,10 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 
 	// PR9-C (June 2026): side-effecting Qdrant collection setup is deferred
 	// to startQdrantCollection (defined below).
-	startClosure := func() {
-		startQdrantCollection(ctx, vectorSvc, log)
+	// Lifecycle-runtime-ownership (June 2026): now returns error so
+	// serverLifecycle.Start can abort on required service failure.
+	startClosure := func() error {
+		return startQdrantCollection(ctx, vectorSvc, log)
 	}
 
 	return &ProcessBundle{
@@ -490,19 +497,25 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 // It calls EnsureCollection which is idempotent — if the collection already
 // exists the call is a fast no-op.
 //
+// Lifecycle-runtime-ownership (June 2026): now returns error on failure
+// instead of logging a warning. Required service failure propagates to
+// serverLifecycle.Start which aborts the startup sequence.
+//
 // Invoked by the lifecycle after WireRegistry completes, before the HTTP
 // server begins accepting requests.
 func startQdrantCollection(
 	ctx context.Context,
 	vectorSvc *qdrant.Service,
 	log *zap.Logger,
-) {
+) error {
 	if vectorSvc == nil {
-		return
+		return nil
 	}
 	if err := vectorSvc.EnsureCollection(ctx); err != nil {
-		log.Warn("vector store collection setup failed (will retry on upsert)", zap.Error(err))
+		return fmt.Errorf("vector store collection setup failed: %w", err)
 	}
+	log.Info("Qdrant collection ensured")
+	return nil
 }
 
 // BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
@@ -775,8 +788,8 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	eventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, eventsRegistry, log, outboxEventsCfg)
 
-	startClosure := func() {
-		startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log)
+	startClosure := func() error {
+		return startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log)
 	}
 
 	return &OutboxBundle{
@@ -790,14 +803,20 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 // startOutboxEventsPool performs the side-effecting outbox events pool
 // initialisation. Preserved here for back-compat during the wave-3 file
 // split (will move to build_outbox_bundle.go with BuildOutboxBundle).
+//
+// Lifecycle-runtime-ownership (June 2026): Pool.Start is void-returning
+// so the goroutine is launched via SafeGo (panic-recovery). The shutdown
+// goroutine drains the pool on ctx.Done(). The caller treats this as a
+// required step — if the goroutine panics, SafeGo recovers and logs the
+// panic without crashing the server.
 func startOutboxEventsPool(
 	ctx context.Context,
 	eventsPool *outboxevents.Pool,
 	cfg outboxevents.WorkerPollConfig,
 	log *zap.Logger,
-) {
+) error {
 	if eventsPool == nil {
-		return
+		return nil
 	}
 	concurrent.SafeGo("outbox-events-pool", func() {
 		eventsPool.Start(ctx, 1)
@@ -809,6 +828,7 @@ func startOutboxEventsPool(
 		}
 	})
 	log.Info("outbox events pool started", zap.Duration("poll_interval", cfg.PollInterval))
+	return nil
 }
 
 // BuildSyncBundle constructs ONLY the catalog→Drive sync. ProviderRegistry

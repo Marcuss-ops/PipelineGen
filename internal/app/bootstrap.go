@@ -322,35 +322,52 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	registryWiring.Registry.Freeze()
 
-	// Defer the JobRunner.Start loop to the lifecycle. The closure is
-	// captured by lifecycle.go::startBackgroundJobs and freezes the
-	// Dispatcher so no further handlers can register once the runner
-	// claims jobs. It is invoked by serverLifecycle.Start() which
-	// runs inside server.Start() after all wiring is complete.
-	var deferredStartJobRunner func()
-	if jobs != nil && jobs.startJobRunner != nil {
-		deferredStartJobRunner = jobs.startJobRunner
+	// Lifecycle-runtime-ownership (June 2026): ALL background workers, scanners,
+	// monitors, sweepers, and the job runner are captured in the startupPlan
+	// built by startBackgroundJobs during composition but NOT executed until
+	// serverLifecycle.Start. The plan includes Drive, Qdrant, and Outbox
+	// prerequisite steps (from root.DriveStart/ProcessStart/OutboxStart) so
+	// the dependency order is preserved: Drive → Qdrant → Outbox → plan
+	// steps → job runner (always last).
+	var startupPlan []StartupStep
+
+	// Prerequisite steps: Drive folder validation, Qdrant collection, Outbox pool.
+	// These are required steps — failure aborts the entire startup sequence.
+	if root != nil && root.DriveStart != nil {
+		ds := root.DriveStart
+		startupPlan = append(startupPlan, StartupStep{
+			Name: "drive-init", Required: true,
+			Start: func(ctx context.Context) error {
+				return ds()
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+	if root != nil && root.ProcessStart != nil {
+		ps := root.ProcessStart
+		startupPlan = append(startupPlan, StartupStep{
+			Name: "qdrant-collection", Required: true,
+			Start: func(ctx context.Context) error {
+				return ps()
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+	if root != nil && root.OutboxStart != nil {
+		os := root.OutboxStart
+		startupPlan = append(startupPlan, StartupStep{
+			Name: "outbox-pool", Required: true,
+			Start: func(ctx context.Context) error {
+				return os()
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
 	}
 
-	// PR9-A (June 2026): capture the Drive background-initialisation
-	// closure extracted from BuildDriveBundle.
-	var driveStart func()
-	if root != nil {
-		driveStart = root.DriveStart
-	}
-
-	// PR9-B (June 2026): capture the outbox events pool start closure
-	// extracted from BuildOutboxBundle.
-	var outboxStart func()
-	if root != nil {
-		outboxStart = root.OutboxStart
-	}
-
-	// PR9-C (June 2026): capture the Qdrant collection setup closure
-	// extracted from BuildProcessBundle.
-	var processStart func()
-	if root != nil {
-		processStart = root.ProcessStart
+	// Append the background services plan (scanner, monitor, sweepers, etc.)
+	// followed by the job runner (always last, required).
+	if jobs != nil {
+		startupPlan = append(startupPlan, jobs.startupPlan...)
 	}
 
 	cleanupStack := make([]func(), 0, 8)
@@ -429,8 +446,9 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		}
 	}
 	lifecycle := NewServerLifecycleWithProbes(
-		deferredStartJobRunner, driveStart, outboxStart, processStart, cleanup,
+		startupPlan, cleanup,
 		dbProbe, vectorProbe, driveProbe,
+		log,
 	)
 
 	var healthSvc interface{}

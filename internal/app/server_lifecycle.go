@@ -1,26 +1,16 @@
-// Package app — server lifecycle manager (PR 1 completion).
+// Package app — server lifecycle manager (PR 1 completion, lifecycle-runtime-ownership).
 //
-// serverLifecycle implements api.LifecycleManager by wrapping the
-// deferred startJobRunner closure (from lifecycle.go::startBackgroundJobs)
-// and the cleanup function (from shutdown.go::buildCleanup). This completes
-// the separation of route modules from lifecycle management: background
-// services startup and teardown are owned by the lifecycle, not by the HTTP
-// server or a raw defer in main.go.
+// serverLifecycle implements api.LifecycleManager and owns ALL runtime
+// service startups. The startup plan is ordered:
 //
-// Problem #1 (fix/lifecycle-readiness-barrier): serverLifecycle.Start now
-// actually USES the ctx argument. A real readiness barrier (pkg/concurrent
-// Group with first-error-wins semantics) runs the optional capability
-// probes (db ping / Qdrant /readyz / Drive About.Get) before any
-// deferred-start closure fires. If a probe returns an error, Start
-// returns it WITHOUT firing the closures (fail-closed). Cleanup stays
-// safe to invoke after a Start failure (idempotent), so the HTTP server
-// retains the contract that Stop is always callable.
+//  1. Readiness barrier (probes: db / vector / drive — parallel, first-error-wins)
+//  2. Required services (Drive folder validation, Qdrant collection, outbox pool)
+//  3. Optional services (scanners, monitors, sweepers, refreshers, health checks)
+//  4. Job consumers (job runner — always last)
 //
-// NOTE: the broader scope of problem #1 — moving the 15+ concurrent.SafeGo
-// calls inside lifecycle.go::startBackgroundJobs from "fire at scope exit"
-// to "fire behind serverLifecycle.Start" — is split into followup commits.
-// This commit establishes the barrier + ctx discipline at the lifecycle
-// boundary; the SafeGo migration is mechanical once the barrier exists.
+// Stop runs the plan steps in reverse order, then the LIFO cleanup stack.
+// No background goroutines are launched during composition — all startups
+// are deferred to serverLifecycle.Start.
 package app
 
 import (
@@ -30,33 +20,40 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
+	"go.uber.org/zap"
 )
 
 // Compile-time assertion: serverLifecycle satisfies module.LifecycleManager.
 var _ module.LifecycleManager = (*serverLifecycle)(nil)
 
-// serverLifecycle wraps the startJobRunner closure (deferred from WireServices
-// until after registry freeze), the driveStart + outboxStart + processStart
-// closures (extracted from BuildDriveBundle/BuildOutboxBundle/BuildProcessBundle
-// per PR9-A/B/C), and the cleanup function (LIFO teardown stack: coreClean →
-// artlist Close → logDB Close → middleware StopLogger).
+// serverLifecycle owns the full runtime lifecycle: readiness probes,
+// the ordered startup plan (built by startBackgroundJobs during composition
+// but NOT executed until Start), and the LIFO cleanup stack.
 //
-// Optional capability probes (dbProbe / vectorProbe / driveProbe) feed the
-// readiness barrier — when nil the corresponding probe is skipped, so
-// deployments that opt out of a capability (no Drive creds, vector search
-// disabled) still pass the barrier.
+// The startupPlan encodes the dependency order — all background workers,
+// scanners, monitors, sweepers, and the job runner are listed as
+// StartupStep entries. Prerequisite services (Drive, Qdrant, outbox)
+// are also included as required steps.
 type serverLifecycle struct {
-	startJobRunner func()
-	driveStart     func() // PR9-A: deferred Drive side-effect initialisation
-	outboxStart    func() // PR9-B: deferred outbox events pool initialisation
-	processStart   func() // PR9-C: deferred Qdrant collection setup
-	cleanup        func()
-
-	// Capability probes for the readiness barrier (commit fix/lifecycle-readiness).
-	// Each returns nil on success. nil probes are skipped.
+	// Capability probes for the readiness barrier.
+	// Each returns nil on success; nil probes are skipped.
 	dbProbe     func(ctx context.Context) error
 	vectorProbe func(ctx context.Context) error
 	driveProbe  func(ctx context.Context) error
+
+	// startupPlan is the ordered list of services to start.
+	// Required steps that fail abort the entire Start sequence.
+	// Optional failures are logged but do not block remaining steps.
+	// The job runner MUST be the last entry in the plan.
+	startupPlan []StartupStep
+
+	// cleanup is the LIFO teardown stack (coreClean → artlist Close →
+	// logDB Close → middleware StopLogger). Invoked during Stop.
+	cleanup func()
+
+	// log is used for reporting optional step failures.
+	log *zap.Logger
 }
 
 // probeTimeout caps each per-probe wall-clock so a slow dependency cannot
@@ -66,32 +63,23 @@ type serverLifecycle struct {
 // clouds can override via env-driven probe timeouts in a followup commit.
 const probeTimeout = 5 * time.Second
 
-// Start triggers the deferred initialisation closures in dependency order:
-// Drive + Qdrant must be ready BEFORE the outbox pool and job runner can
-// safely claim and process jobs that depend on them.
+// Start executes the full startup sequence:
 //
-// Lifecycle (commit fix/lifecycle-readiness) — replaces the legacy
-// "fire-and-forget" version that ignored ctx:
+//  1. ctx.Err() — fail-closed if the parent context is already done.
+//  2. Readiness barrier — runs configured probes in parallel; first error
+//     aborts the sequence without starting any service.
+//  3. Startup plan — each step is executed in declaration order:
+//     a. Required steps: error aborts the sequence and returns immediately
+//        (no further steps execute).
+//     b. Optional steps: error is logged and exposed (via StructuredError)
+//        but does NOT block remaining steps.
+//     c. Job runner is the last required step — it freezes the dispatcher
+//        and begins claiming jobs.
 //
-//  1. ctx.Err() — fail-closed if the parent context is already done
-//     (covers the listener-failure scenario: server.Start's signal
-//     NotifyContext for SIGINT/SIGTERM cancels the lifecycle ctx, so a
-//     subsequent Start is a no-op rather than a goroutine leak).
-//  2. Readiness barrier via pkg/concurrent.WithContext — runs the
-//     configured probes (db + vector + drive) in parallel under a
-//     derived context. Each probe internally derives a probeTimeout
-//     to avoid stalling the barrier on slow dependencies. First error
-//     wins; remaining probes are cancelled via the Group's internal
-//     cancel. If any probe fails, Start returns the error WITHOUT
-//     firing the deferred-start closures (fail-closed).
-//  3. Drive + Qdrant + Outbox + JobRunner — fire only after barrier
-//     succeeds; each closure is wrapped in SafeCall (panic-recovery
-//     + name-tagged error) so a synchronous panic inside any closure
-//     surfaces to the caller instead of crashing the server.
-//
-// PR7 fix (June 2026): reordered to start Drive+Qdrant first, then outbox,
-// then job runner last. Previously the job runner started before Qdrant
-// EnsureCollection, risking jobs that depend on vector search.
+// Context contract: Start uses the server's runtime context (derived from
+// signal.NotifyContext in api/server.go). All background goroutines
+// launched here MUST use this context so they shut down when the server
+// receives SIGINT/SIGTERM.
 func (l *serverLifecycle) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("lifecycle start: context already done: %w", err)
@@ -125,23 +113,41 @@ func (l *serverLifecycle) Start(ctx context.Context) error {
 		return fmt.Errorf("lifecycle readiness barrier failed: %w", err)
 	}
 
-	// Barrier passed — fire the deferred-start closures in dependency
-	// order. Driving each one through SafeCall preserves the PR9-A/B/C
-	// semantic (each Build*Bundle still constructs only; only Start
-	// actually fires the side-effect). SafeCall attaches panic recovery
-	// so a misbehaving closure returns an error rather than crashing
-	// the server.
-	if err := SafeCall("driveStart", l.driveStart); err != nil {
-		return err
+	// Run the startup plan in declaration order.
+	for _, step := range l.startupPlan {
+		if err := step.Start(ctx); err != nil {
+			if step.Required {
+				return fmt.Errorf("required step %q failed: %w", step.Name, err)
+			}
+			// Optional failure: log and continue.
+			l.log.Warn("optional startup step failed",
+				zap.String("step", step.Name), zap.Error(err))
+		}
 	}
-	if err := SafeCall("processStart", l.processStart); err != nil {
-		return err
+	return nil
+}
+
+// Stop runs the cleanup sequence in LIFO order:
+//  1. Startup plan stops in reverse order (each step.Stop is called).
+//  2. LIFO cleanup stack (coreClean → artlist Close → logDB Close →
+//     middleware StopLogger).
+//
+// Idempotent: calling Stop after a failed Start (or after a previous
+// Stop) is safe. Stops swallow errors to avoid masking the shutdown
+// cause — the original signal (SIGINT/SIGTERM) is the canonical exit
+// reason.
+func (l *serverLifecycle) Stop(ctx context.Context) error {
+	_ = ctx
+	// Run step stops in reverse order.
+	for i := len(l.startupPlan) - 1; i >= 0; i-- {
+		step := l.startupPlan[i]
+		if step.Stop != nil {
+			_ = step.Stop(ctx)
+		}
 	}
-	if err := SafeCall("outboxStart", l.outboxStart); err != nil {
-		return err
-	}
-	if err := SafeCall("startJobRunner", l.startJobRunner); err != nil {
-		return err
+	// Run the LIFO cleanup stack.
+	if l.cleanup != nil {
+		l.cleanup()
 	}
 	return nil
 }
@@ -168,48 +174,29 @@ func SafeCall(name string, fn func()) (err error) {
 	return nil
 }
 
-// Stop runs the cleanup stack: cancels the parent context (signals
-// goroutines), stops channel monitor + drive sync scheduler, drains
-// the outbox events pool, and closes the main database.
-//
-// Idempotent: calling Stop after a failed Start (or after a previous
-// Stop) is safe — the innerCancel cleanup table is nil-checked, and
-// the LIFO stack is walked over a defensive nil guard.
-func (l *serverLifecycle) Stop(ctx context.Context) error {
-	_ = ctx
-	if l.cleanup != nil {
-		l.cleanup()
-	}
-	return nil
-}
-
 // NewServerLifecycleWithProbes is the canonical constructor that wires
-// the readiness-barrier probes. Probes may be nil (capability opted out
-// at composition time). Nil-fn closures are also skipped (e.g. a role-
-// minimal deployment may not need the job runner). Returns nil if every
-// argument is nil so callers can default to a no-op lifecycle.
+// the readiness-barrier probes and the startup plan. Probes may be nil
+// (capability opted out at composition time). The startup plan may be
+// empty (background jobs disabled). Returns nil if every argument is nil
+// so callers can default to a no-op lifecycle.
 func NewServerLifecycleWithProbes(
-	startJobRunner func(),
-	driveStart func(),
-	outboxStart func(),
-	processStart func(),
+	startupPlan []StartupStep,
 	cleanup func(),
 	dbProbe func(ctx context.Context) error,
 	vectorProbe func(ctx context.Context) error,
 	driveProbe func(ctx context.Context) error,
+	log *zap.Logger,
 ) module.LifecycleManager {
-	if startJobRunner == nil && driveStart == nil && outboxStart == nil && processStart == nil && cleanup == nil &&
+	if len(startupPlan) == 0 && cleanup == nil &&
 		dbProbe == nil && vectorProbe == nil && driveProbe == nil {
 		return nil
 	}
 	return &serverLifecycle{
-		startJobRunner: startJobRunner,
-		driveStart:     driveStart,
-		outboxStart:    outboxStart,
-		processStart:   processStart,
-		cleanup:        cleanup,
-		dbProbe:        dbProbe,
-		vectorProbe:    vectorProbe,
-		driveProbe:     driveProbe,
+		dbProbe:     dbProbe,
+		vectorProbe: vectorProbe,
+		driveProbe:  driveProbe,
+		startupPlan: startupPlan,
+		cleanup:     cleanup,
+		log:         log,
 	}
 }
