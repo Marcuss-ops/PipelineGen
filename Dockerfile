@@ -16,7 +16,7 @@
 # never use.
 
 # ─── builder ─────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS builder
 ARG TARGETOS=linux
 ARG TARGETPLATFORM
 ARG VERSION=dev
