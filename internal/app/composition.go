@@ -327,9 +327,8 @@ type IOpaqueStartFunc func() error
 // to configOnlyDestinations when Drive is offline. wave-5 will DELETE this
 // function (proven no-op): until then it remains as a thin alias for the
 // in-flight ensureResolveDrive calls.
-func resolveRuntimeDestinations(ctx context.Context, db *sql.DB, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) *DriveDestinations {
+func resolveRuntimeDestinations(ctx context.Context, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) *DriveDestinations {
 	_ = ctx
-	_ = db
 	_ = driveClient
 	_ = log
 	return configOnlyDestinations(cfg)
@@ -414,7 +413,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 // build_process_bundle.go + `vectorSvc.SetRetryPolicy` replaced with
 // retry fields absorbed in qdrant.NewService Config.
 func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader) (*ProcessBundle, IOpaqueStartFunc, error) {
-	mediaProcessor := initMediaProcessor(cfg, dbs.main.DB, repos.Assets.Repository(), repos.Assets,
+	mediaProcessor := initMediaProcessor(cfg, dbs.main, repos.Assets.Repository(), repos.Assets,
 		repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), log, driveUploader)
 
 	vlmClient := vlm.NewClient(vlm.Config{
@@ -983,7 +982,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
 
-	jobs, err := BuildJobsBundle(dbs.main.DB, log)
+	jobs, err := BuildJobsBundle(dbs.main, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
 	}

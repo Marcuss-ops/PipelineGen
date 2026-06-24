@@ -12,7 +12,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -180,19 +179,15 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 	if runScheduler {
 		if cfg.Jobs.EnableChannelMonitor {
-			var dbForChannels *sql.DB
-			if dbs.main != nil && dbs.main.DB != nil {
-				dbForChannels = dbs.main.DB
-			}
-
 			channelMon = monitor.NewChannelMonitor(cfg, root.Repos.ClipsRepo, log,
-				root.Domains.YoutubeClipService, dbForChannels, root.AI.OllamaClient)
+				root.Domains.YoutubeClipService, root.DB.DB, root.AI.OllamaClient)
 
-			if dbForChannels != nil {
-				sqRepo := assets.NewSearchQueriesRepository(dbForChannels)
-				channelMon.SetSearchQueriesRepo(sqRepo)
-				log.Info("Search queries repo wired to channel monitor")
-			}
+			// Channel monitor uses the primary *sql.DB internally,
+			// already exposed via root.DB. Repo wiring happens against
+			// the same handle, no separate plumbing needed (PG-011).
+			sqRepo := assets.NewSearchQueriesRepository(root.DB.DB)
+			channelMon.SetSearchQueriesRepo(sqRepo)
+			log.Info("Search queries repo wired to channel monitor")
 
 			if cfg.Jobs.SearchRateLimit > 0 {
 				channelMon.SetSearchRateLimit(cfg.Jobs.SearchRateLimit)
@@ -380,15 +375,15 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			})
 		}
 
-		if root.Process.VectorSvc != nil && dbs.main != nil && dbs.main.DB != nil {
+		if root.Process.VectorSvc != nil && root.Repos.ClipsRepo != nil {
 			vs := root.Process.VectorSvc
-			db := dbs.main.DB
+			cr := root.Repos.ClipsRepo
 			steps = append(steps, StartupStep{
 				Name: "qdrant-ghost-sweeper", Required: false,
 				Start: func(startCtx context.Context) error {
 					log.Info("Qdrant ghost-points sweeper starting (interval=24h, initialDelay=10m)")
 					concurrent.SafeGo("qdrant-ghost-sweeper", func() {
-						startQdrantGhostSweeper(startCtx, vs, db, log)
+						startQdrantGhostSweeper(startCtx, vs, cr, log)
 					})
 					return nil
 				},
@@ -738,7 +733,7 @@ type ghostSweepable interface {
 	DeletePoints(ctx context.Context, assetIDs []string) error
 }
 
-func startQdrantGhostSweeper(ctx context.Context, vectorSvc *qdrant.Service, db *sql.DB, log *zap.Logger) {
+func startQdrantGhostSweeper(ctx context.Context, vectorSvc *qdrant.Service, clipsRepo *assets.ClipsRepository, log *zap.Logger) {
 	const (
 		initialDelay    = 10 * time.Minute
 		interval        = 24 * time.Hour
@@ -758,7 +753,7 @@ func startQdrantGhostSweeper(ctx context.Context, vectorSvc *qdrant.Service, db 
 	sweep := func() {
 		sCtx, cancel := context.WithTimeout(ctx, maxWorkBudget)
 		defer cancel()
-		deleted, err := runGhostSweep(sCtx, vectorSvc, db, scrollBatchSize, sqlitePageSize, log)
+		deleted, err := runGhostSweep(sCtx, vectorSvc, clipsRepo, scrollBatchSize, sqlitePageSize, log)
 		if err != nil {
 			log.Warn("Qdrant ghost sweep failed", zap.Error(err))
 			return
@@ -781,12 +776,17 @@ func startQdrantGhostSweeper(ctx context.Context, vectorSvc *qdrant.Service, db 
 	}
 }
 
-func runGhostSweep(ctx context.Context, qdrant ghostSweepable, db *sql.DB, scrollBatchSize, sqlitePageSize int, log *zap.Logger) (int, error) {
+// runGhostSweep loads `clipsRepo`'s media_assets ids (handled via the
+// typed StreamAssetIDs port) into a set, scrolls Qdrant, deletes any
+// ghost points that no longer have a corresponding SQLite row. The
+// pagination, ctx honoring, and per-batch error semantics mirror the
+// previous raw-SQL implementation exactly.
+func runGhostSweep(ctx context.Context, qdrant ghostSweepable, clipsRepo *assets.ClipsRepository, scrollBatchSize, sqlitePageSize int, log *zap.Logger) (int, error) {
 	if qdrant == nil {
 		return 0, fmt.Errorf("qdrant store is nil")
 	}
-	if db == nil {
-		return 0, fmt.Errorf("sqlite db is nil")
+	if clipsRepo == nil {
+		return 0, fmt.Errorf("clips repo is nil")
 	}
 	if scrollBatchSize <= 0 {
 		scrollBatchSize = 500
@@ -796,35 +796,13 @@ func runGhostSweep(ctx context.Context, qdrant ghostSweepable, db *sql.DB, scrol
 	}
 
 	sqliteIDs := make(map[string]struct{}, 8192)
-	offset := 0
-	for {
-		rows, err := db.QueryContext(ctx, `SELECT id FROM media_assets LIMIT ? OFFSET ?`, sqlitePageSize, offset)
-		if err != nil {
-			return 0, fmt.Errorf("query sqlite asset ids (limit=%d, offset=%d): %w", sqlitePageSize, offset, err)
-		}
-		batchN := 0
-		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return 0, fmt.Errorf("scan asset id at offset %d: %w", offset, err)
-			}
+	if err := clipsRepo.StreamAssetIDs(ctx, sqlitePageSize, func(batch []string) error {
+		for _, id := range batch {
 			sqliteIDs[id] = struct{}{}
-			batchN++
 		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return 0, fmt.Errorf("iterate sqlite asset ids: %w", err)
-		}
-		if batchN < sqlitePageSize {
-			break
-		}
-		offset += sqlitePageSize
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-		}
+		return nil
+	}); err != nil {
+		return 0, fmt.Errorf("stream asset ids via clipsRepo: %w", err)
 	}
 	log.Debug("ghost sweep loaded sqlite ids", zap.Int("count", len(sqliteIDs)))
 
