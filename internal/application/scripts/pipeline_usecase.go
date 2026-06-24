@@ -49,8 +49,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -86,10 +86,27 @@ var ErrAutoSearchUnavailable = errors.New("pipeline: auto-search pipeline unavai
 // inside Run. The inner error is accessible via errors.Unwrap.
 var ErrPipelineGenerationFailed = errors.New("pipeline: generation failed")
 
+// Phase 2 activation (June 2026) — ErrSceneImagesUnavailable is the
+// sentinel for "the request asked for scene images (spec.GenerateSceneImages=true)
+// but imageService was not wired at composition time, so
+// PipelineUseCase was constructed with scenesReady=false". Maps to a
+// 503-class error in the handler. Surfaces as a typed job failure
+// (no retry — the wiring is missing) rather than silently producing
+// empty scenes.
+var ErrSceneImagesUnavailable = errors.New("pipeline: scene image generation unavailable (image service not wired)")
+
 // PipelineUseCase orchestrates the unified clip-source job. The
 // *Pipeline it holds is pre-built by composition (it already carries
 // scenes-svc, docs-svc, postGen callback, and resolve-folder — so
 // Reuse the existing application-layer infrastructure unchanged).
+//
+// Phase 2 activation (June 2026): added `scenesReady bool` flag so
+// the use case can reject jobs asking for scene image generation
+// when ImageService was not wired at composition time. Composition
+// passes scenesReady = (scenesSvc != nil) which is true iff both
+// scenesUC.Build() succeeded and docsSvc was non-nil (the existing
+// outer gate). When false, Run returns ErrSceneImagesUnavailable
+// before doing any work.
 type PipelineUseCase struct {
 	log          *zap.Logger
 	engine       *Engine
@@ -99,6 +116,7 @@ type PipelineUseCase struct {
 	semUC        *SemaphoreUseCase
 	prewarmUC    *PrewarmUseCase
 	pipeline     *Pipeline
+	scenesReady  bool
 }
 
 // configShim wraps *config.Config so a nil cfg doesn't break the
@@ -121,9 +139,19 @@ func newConfigShim(minWordFloor int, ollamaModel string) *configShim {
 // as a typed error at the dispatch step or as a no-op for prewarm.
 //
 // Composition root builds:
-//   the *Pipeline via NewPipeline(... scenesUC.Build(...) ...
-//      documentsUC.DocumentsService() ... postGenClosure ...).
+//
+//	the *Pipeline via NewPipeline(... scenesUC.Build(...) ...
+//	   documentsUC.DocumentsService() ... postGenClosure ...).
+//
 // This use-case receives that pre-built pointer.
+//
+// Phase 2 activation (June 2026): added scenesReady bool param. When
+// false, the use case rejects any job that sets spec.GenerateSceneImages=true
+// with typed ErrSceneImagesUnavailable — surfaces missing image wiring
+// at first integration rather than silently producing empty scene
+// arrays in the final result. Composition passes scenesReady = true
+// iff scenesSvc was successfully built at composition time (i.e.
+// ImageService was wired AND scenesUC.Build() succeeded).
 func NewPipelineUseCase(
 	log *zap.Logger,
 	engine *Engine,
@@ -134,6 +162,7 @@ func NewPipelineUseCase(
 	semUC *SemaphoreUseCase,
 	prewarmUC *PrewarmUseCase,
 	pipeline *Pipeline,
+	scenesReady bool,
 ) (*PipelineUseCase, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("%w: engine is required", ErrPipelineGenerationFailed)
@@ -150,6 +179,7 @@ func NewPipelineUseCase(
 		semUC:        semUC,
 		prewarmUC:    prewarmUC,
 		pipeline:     pipeline,
+		scenesReady:  scenesReady,
 	}, nil
 }
 
@@ -174,6 +204,18 @@ func (pu *PipelineUseCase) Run(
 		return nil, fmt.Errorf("%w: decode payload: %w", ErrInvalidPayload, err)
 	}
 	spec := &genPayload.Spec
+
+	// Phase 2 activation (June 2026) — gate scene image generation:
+	// reject any job asking for scene images when scenesReady is false
+	// (= ImageService was not wired at composition time). Surfaces the
+	// missing dependency as a typed 503-class error instead of silently
+	// producing an empty scenes array in the response. The gate runs
+	// BEFORE the path dispatch so we fail fast and don't pay the cost
+	// of clip curation / engine.WriteScript when the call cannot
+	// succeed.
+	if spec.GenerateSceneImages && !pu.scenesReady {
+		return nil, fmt.Errorf("%w: generate_scene_images=true requested but imageService is not initialized", ErrSceneImagesUnavailable)
+	}
 
 	if pu.log != nil {
 		pu.log.Info("pipeline_dispatch_decided",
