@@ -1,0 +1,74 @@
+version: 2
+
+# Dependabot configuration maintained for PipelineGen (added June 2026 during
+# the E1/E2/E3 dependency-refresh cycle). Each ecosystem is on a weekly
+# schedule so the maintainer triages a small, predictable batch of bump PRs
+# instead of drifting far behind upstream.
+updates:
+  # ── Go modules: weekly, with a single monthly-coalesce group so we get
+  # ──     one PR per month with all minor+patch updates instead of one
+  # ──     PR per package per week.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Europe/Rome"
+    groups:
+      go-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "deps(go)"
+    labels:
+      - "dependencies"
+      - "go"
+    # Major bumps (e.g. gin v1→v2) deliberately excluded from auto-PR; those
+    # are filed manually as E-prefixed PRs (E1, E2, E3…) by the maintainer.
+
+  # ── GitHub Actions: weekly version drift for setup-go, checkout, etc.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Europe/Rome"
+    commit-message:
+      prefix: "ci(actions)"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  # ── Dockerfile ecosystem: weekly so the yt-dlp ARG (and any other
+  # ──     pinned release URLs/tags) stays current on a quarterly cadence.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Europe/Rome"
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # ── node-scraper (Artlist mirror proxy): npm ecosystem.
+  - package-ecosystem: "npm"
+    directory: "/node-scraper"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Europe/Rome"
+    commit-message:
+      prefix: "deps(scraper)"
+    labels:
+      - "dependencies"
+      - "node"
