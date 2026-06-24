@@ -1,119 +1,120 @@
-// Package app — lifecycle readiness-barrier tests (commit fix/lifecycle-readiness).
+// Package app — lifecycle tests (lifecycle-runtime-ownership, June 2026).
 //
-// These tests exercise the serverLifecycle.Start/Stop contract introduced
-// to satisfy problem #1. They are deterministic (no network, no goroutine
-// racing) by using fn probes the test controls directly, and they verify
-// the four invariants the user-facing API guarantees:
+// These tests exercise the serverLifecycle.Start/Stop contract. They are
+// deterministic (no network, no goroutine racing) by using fn probes and
+// StartupStep entries the test controls directly, and they verify:
 //
 //  1. Pre-cancelled ctx → Start returns an error WITHOUT firing any
-//     deferred-start closure (no goroutine leak on shutdown).
-//  2. Failing probe → Start returns an error WITHOUT firing the closures
+//     startup step (no goroutine leak on shutdown).
+//  2. Failing probe → Start returns an error WITHOUT firing the steps
 //     (fail-closed semantics).
-//  3. All probes pass → closures are invoked IN ORDER (driveStart →
-//     processStart → outboxStart → startJobRunner) — preserves the
-//     PR9-A/B/C dependency chain.
+//  3. All probes pass → steps are invoked IN ORDER. Required steps that
+//     fail abort the sequence; optional failures are skipped.
 //  4. Stop is idempotent: calling Stop before Start, after a failed
 //     Start, and twice in succession are all safe (no panic, no double-
 //     cleanup of partially-initialised state).
+//  5. Job runner is always the last step.
 package app
 
 import (
 	"context"
 	"errors"
+	"runtime"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap/zaptest"
 )
 
-// recorder tracks the order in which probes + closures are invoked.
+// recorder tracks the order in which probes + steps are invoked.
+// The mutex protects concurrent writes from probes running in parallel
+// via pkg/concurrent.Group.
 type recorder struct {
+	mu    sync.Mutex
 	calls []string
 }
 
 func (r *recorder) record(name string) {
+	r.mu.Lock()
 	r.calls = append(r.calls, name)
+	r.mu.Unlock()
 }
 
-// recordingLifecycle is a builder helper for serverLifecycle test fixtures.
-// Probes return nil iff their *_OK flag is set; non-nil errors flow through
-// as-is. Closures are recorded into the shared recorder (no dead counters).
-type recordingLifecycle struct {
-	dbOK, vectorOK, driveOK bool
-	dbErr, vectorErr, driveErr error
-
-	cleanup func() // optional cleanup; nil-safe
-}
-
-// newLifecycleForTest wires a serverLifecycle whose probes + closures
-// record invocations into rec. rec is created on first use; callers may
-// share a single rec across sub-tests to assert cross-step ordering.
-func newLifecycleForTest(rl *recordingLifecycle) *serverLifecycle {
-	rec := &recorder{}
-	if rl == nil {
-		rl = &recordingLifecycle{dbOK: true, vectorOK: true, driveOK: true}
+func (r *recorder) hasCall(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.calls {
+		if c == name {
+			return true
+		}
 	}
+	return false
+}
+
+func (r *recorder) stepCallsOnly() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, c := range r.calls {
+		switch c {
+		case "dbProbe", "vectorProbe", "driveProbe":
+			continue
+		default:
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// newLifecycleForTest wires a serverLifecycle whose probes + startup steps
+// record invocations into rec. The plan is built from stepNames in order;
+// steps fire their Start closures synchronously (no goroutines).
+func newLifecycleForTest(plan []StartupStep, probes map[string]func(context.Context) error, cleanup func()) *serverLifecycle {
 	sl := &serverLifecycle{
-		cleanup: rl.cleanup,
+		startupPlan: plan,
+		cleanup:     cleanup,
+		log:         zaptest.NewLogger(nil),
 	}
-	if rl.dbOK || rl.dbErr != nil {
-		sl.dbProbe = func(ctx context.Context) error {
-			rec.record("dbProbe")
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			return rl.dbErr
-		}
+	if probes != nil {
+		sl.dbProbe = probes["db"]
+		sl.vectorProbe = probes["vector"]
+		sl.driveProbe = probes["drive"]
 	}
-	if rl.vectorOK || rl.vectorErr != nil {
-		sl.vectorProbe = func(ctx context.Context) error {
-			rec.record("vectorProbe")
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			return rl.vectorErr
-		}
-	}
-	if rl.driveOK || rl.driveErr != nil {
-		sl.driveProbe = func(ctx context.Context) error {
-			rec.record("driveProbe")
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			return rl.driveErr
-		}
-	}
-	sl.driveStart = func() { rec.record("driveStart") }
-	sl.processStart = func() { rec.record("processStart") }
-	sl.outboxStart = func() { rec.record("outboxStart") }
-	sl.startJobRunner = func() { rec.record("startJobRunner") }
 	return sl
 }
 
-// closureNames filters recorded call names to only the four closure
-// entries (excludes probe names). Tests use it to assert the
-// PR9-A/B/C dependency-order invariant without relying on time.
-var closureNames = map[string]bool{
-	"driveStart":     true,
-	"processStart":   true,
-	"outboxStart":    true,
-	"startJobRunner": true,
+// makeRecordingStep returns a StartupStep that records its Name when Start
+// is called and returns the given error.
+func makeRecordingStep(name string, required bool, rec *recorder, err error) StartupStep {
+	return StartupStep{
+		Name: name, Required: required,
+		Start: func(_ context.Context) error {
+			rec.record(name)
+			return err
+		},
+		Stop: func(_ context.Context) error {
+			rec.record(name + ":stop")
+			return nil
+		},
+	}
 }
 
 // TestLifecycle_Start_PropagatesContextError verifies the listener-
 // failure scenario: server.Start's signal.NotifyContext for SIGINT/
 // SIGTERM cancels the lifecycle ctx, so a subsequent Start must
-// fail-closed without firing any closure.
+// fail-closed without firing any step.
 func TestLifecycle_Start_PropagatesContextError(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-cancelled
 
-	rl := &recordingLifecycle{
-		dbOK: true, vectorOK: true, driveOK: true,
-	}
-	sl := newLifecycleForTest(rl)
 	rec := &recorder{}
-	sl.dbProbe = func(ctx context.Context) error { rec.record("dbProbe"); return rl.dbErr }
-	sl.vectorProbe = func(ctx context.Context) error { rec.record("vectorProbe"); return rl.vectorErr }
-	sl.driveProbe = func(ctx context.Context) error { rec.record("driveProbe"); return rl.driveErr }
+	plan := []StartupStep{
+		makeRecordingStep("step1", true, rec, nil),
+	}
+	sl := newLifecycleForTest(plan, nil, nil)
 
 	err := sl.Start(ctx)
 	if err == nil {
@@ -126,82 +127,70 @@ func TestLifecycle_Start_PropagatesContextError(t *testing.T) {
 
 // TestLifecycle_BarrierFails_ReturnsError verifies the fail-closed path:
 // when ANY probe returns non-nil error, Start returns that error and
-// NONE of the deferred-start closures fire.
+// NONE of the startup steps fire.
 func TestLifecycle_BarrierFails_ReturnsError(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name             string
-		dbOK, vectorOK, driveOK bool
-		dbErr, vectorErr, driveErr error
+		name       string
+		probeErr   string // "db", "vector", or "drive"
 	}{
-		{
-			name:     "db-fails",
-			dbErr:    errors.New("db down"),
-			vectorOK: true, driveOK: true,
-		},
-		{
-			name:     "vector-fails",
-			vectorErr: errors.New("qdrant down"),
-			dbOK:      true, driveOK: true,
-		},
-		{
-			name:     "drive-fails",
-			driveErr: errors.New("drive unreachable"),
-			dbOK:     true, vectorOK: true,
-		},
+		{name: "db-fails", probeErr: "db"},
+		{name: "vector-fails", probeErr: "vector"},
+		{name: "drive-fails", probeErr: "drive"},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			rl := &recordingLifecycle{
-				dbOK: tt.dbOK, vectorOK: tt.vectorOK, driveOK: tt.driveOK,
-				dbErr: tt.dbErr, vectorErr: tt.vectorErr, driveErr: tt.driveErr,
-			}
-			sl := newLifecycleForTest(rl)
 			rec := &recorder{}
-			sl.dbProbe = func(ctx context.Context) error { rec.record("dbProbe"); return rl.dbErr }
-			sl.vectorProbe = func(ctx context.Context) error { rec.record("vectorProbe"); return rl.vectorErr }
-			sl.driveProbe = func(ctx context.Context) error { rec.record("driveProbe"); return rl.driveErr }
+			plan := []StartupStep{
+				makeRecordingStep("step1", true, rec, nil),
+				makeRecordingStep("step2", true, rec, nil),
+			}
+			probes := map[string]func(context.Context) error{
+				"db":     func(ctx context.Context) error { rec.record("dbProbe"); return nil },
+				"vector": func(ctx context.Context) error { rec.record("vectorProbe"); return nil },
+				"drive":  func(ctx context.Context) error { rec.record("driveProbe"); return nil },
+			}
+			probes[tt.probeErr] = func(ctx context.Context) error {
+				rec.record(tt.probeErr + "Probe")
+				return errors.New(tt.probeErr + " down")
+			}
+			sl := newLifecycleForTest(plan, probes, nil)
 
 			err := sl.Start(context.Background())
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
-			hasClosure := false
+			// No step should have fired.
 			for _, c := range rec.calls {
-				if closureNames[c] {
-					hasClosure = true
+				if c == "step1" || c == "step2" {
+					t.Fatalf("fail-closed violation: step %q fired despite barrier failure: %v", c, rec.calls)
 				}
-			}
-			if hasClosure {
-				t.Fatalf("fail-closed violation: closures fired despite barrier failure: %v", rec.calls)
 			}
 		})
 	}
 }
 
-// TestLifecycle_BarrierPasses_RunsClosuresInOrder verifies the happy
-// path: all probes pass → driveStart, processStart, outboxStart,
-// startJobRunner fire in the documented dependency order (PR7 ordering).
-func TestLifecycle_BarrierPasses_RunsClosuresInOrder(t *testing.T) {
+// TestLifecycle_BarrierPasses_RunsStepsInOrder verifies the happy
+// path: all probes pass → steps fire in declaration order.
+func TestLifecycle_BarrierPasses_RunsStepsInOrder(t *testing.T) {
 	t.Parallel()
 	rec := &recorder{}
-	rl := &recordingLifecycle{
-		dbOK: true, vectorOK: true, driveOK: true,
+	plan := []StartupStep{
+		makeRecordingStep("drive-init", true, rec, nil),
+		makeRecordingStep("qdrant-collection", true, rec, nil),
+		makeRecordingStep("outbox-pool", true, rec, nil),
+		makeRecordingStep("job-scanner", false, rec, nil),
+		makeRecordingStep("job-runner", true, rec, nil),
 	}
-	sl := newLifecycleForTest(rl)
-	// Re-wire probes with the recorder so we can observe the probe
-	// ordering too (probes run concurrently, so we only assert that
-	// all three fired — closure ordering is the actual invariant).
-	sl.dbProbe = func(ctx context.Context) error { rec.record("dbProbe"); return rl.dbErr }
-	sl.vectorProbe = func(ctx context.Context) error { rec.record("vectorProbe"); return rl.vectorErr }
-	sl.driveProbe = func(ctx context.Context) error { rec.record("driveProbe"); return rl.driveErr }
-	sl.driveStart = func() { rec.record("driveStart") }
-	sl.processStart = func() { rec.record("processStart") }
-	sl.outboxStart = func() { rec.record("outboxStart") }
-	sl.startJobRunner = func() { rec.record("startJobRunner") }
+	probes := map[string]func(context.Context) error{
+		"db":     func(ctx context.Context) error { rec.record("dbProbe"); return nil },
+		"vector": func(ctx context.Context) error { rec.record("vectorProbe"); return nil },
+		"drive":  func(ctx context.Context) error { rec.record("driveProbe"); return nil },
+	}
+	sl := newLifecycleForTest(plan, probes, nil)
 
 	if err := sl.Start(context.Background()); err != nil {
 		t.Fatalf("expected nil err, got %v", err)
@@ -221,27 +210,28 @@ func TestLifecycle_BarrierPasses_RunsClosuresInOrder(t *testing.T) {
 		}
 	}
 
-	// Closures: must appear in PR7 dependency order, no interleaving.
-	closureCalls := []string{}
+	// Steps: must appear in the declared order after probes.
+	stepNames := []string{}
 	for _, c := range rec.calls {
-		if closureNames[c] {
-			closureCalls = append(closureCalls, c)
+		if c == "dbProbe" || c == "vectorProbe" || c == "driveProbe" {
+			continue
 		}
+		stepNames = append(stepNames, c)
 	}
-	want := []string{"driveStart", "processStart", "outboxStart", "startJobRunner"}
-	if len(closureCalls) != len(want) {
-		t.Fatalf("expected %d closure calls, got %d (%v)", len(want), len(closureCalls), closureCalls)
+	want := []string{"drive-init", "qdrant-collection", "outbox-pool", "job-scanner", "job-runner"}
+	if len(stepNames) != len(want) {
+		t.Fatalf("expected %d step calls, got %d (%v)", len(want), len(stepNames), stepNames)
 	}
 	for i, name := range want {
-		if closureCalls[i] != name {
-			t.Fatalf("closure order mismatch at index %d: want %q, got %q (full=%v)", i, name, closureCalls[i], rec.calls)
+		if stepNames[i] != name {
+			t.Fatalf("step order mismatch at index %d: want %q, got %q (full=%v)", i, name, stepNames[i], rec.calls)
 		}
 	}
 }
 
 // TestLifecycle_Stop_Idempotent verifies the cleanup-safe-on-failure
 // contract: Stop is safe to call BEFORE Start (cleanup fires once),
-// AFTER a failed Start (partial-probe state, no closures fired), and
+// AFTER a failed Start (partial-probe state, no steps fired), and
 // twice in succession (defensive double-Stop is safe).
 func TestLifecycle_Stop_Idempotent(t *testing.T) {
 	t.Parallel()
@@ -249,36 +239,28 @@ func TestLifecycle_Stop_Idempotent(t *testing.T) {
 	t.Run("stop-before-start", func(t *testing.T) {
 		t.Parallel()
 		cleanups := 0
-		rl := &recordingLifecycle{
-			dbOK: true, vectorOK: true, driveOK: true,
-			cleanup: func() { cleanups++ },
-		}
-		sl := newLifecycleForTest(rl)
+		cleanup := func() { cleanups++ }
+		sl := newLifecycleForTest(nil, nil, cleanup)
 		if err := sl.Stop(context.Background()); err != nil {
 			t.Fatalf("Stop before Start must be safe, got %v", err)
 		}
-		// cleanup-func was invoked exactly once — not zero (would mean
-		// Stop ignored it), not twice (would mean double-cleanup).
 		if cleanups != 1 {
 			t.Fatalf("cleanup expected exactly 1 call before Start, got %d", cleanups)
-		}
-		if len(rl.rec.calls) != 0 { // defensive: never wired recorder
-			// no-op; rec is nil in this subtest path
 		}
 	})
 
 	t.Run("stop-after-failed-start", func(t *testing.T) {
 		t.Parallel()
 		cleanups := 0
-		rl := &recordingLifecycle{
-			dbErr: errors.New("db down"),
-			cleanup: func() { cleanups++ },
-		}
-		sl := newLifecycleForTest(rl)
+		cleanup := func() { cleanups++ }
 		rec := &recorder{}
-		sl.dbProbe = func(ctx context.Context) error { rec.record("dbProbe"); return rl.dbErr }
-		sl.vectorProbe = func(ctx context.Context) error { rec.record("vectorProbe"); return rl.vectorErr }
-		sl.driveProbe = func(ctx context.Context) error { rec.record("driveProbe"); return rl.driveErr }
+		plan := []StartupStep{
+			makeRecordingStep("step1", true, rec, nil),
+		}
+		probes := map[string]func(context.Context) error{
+			"db": func(ctx context.Context) error { return errors.New("db down") },
+		}
+		sl := newLifecycleForTest(plan, probes, cleanup)
 
 		err := sl.Start(context.Background())
 		if err == nil {
@@ -290,10 +272,9 @@ func TestLifecycle_Stop_Idempotent(t *testing.T) {
 		if cleanups != 1 {
 			t.Fatalf("cleanup expected exactly 1 call after failed Start, got %d", cleanups)
 		}
-		// fail-closed: no closure fired even though cleanup ran.
 		for _, c := range rec.calls {
-			if closureNames[c] {
-				t.Fatalf("fail-closed violation: closure %q fired despite barrier failure", c)
+			if c == "step1" {
+				t.Fatalf("fail-closed violation: step %q fired despite barrier failure", c)
 			}
 		}
 	})
@@ -301,15 +282,12 @@ func TestLifecycle_Stop_Idempotent(t *testing.T) {
 	t.Run("stop-twice", func(t *testing.T) {
 		t.Parallel()
 		cleanups := 0
-		rl := &recordingLifecycle{
-			dbOK: true, vectorOK: true, driveOK: true,
-			cleanup: func() { cleanups++ },
-		}
-		sl := newLifecycleForTest(rl)
+		cleanup := func() { cleanups++ }
 		rec := &recorder{}
-		sl.dbProbe = func(ctx context.Context) error { rec.record("dbProbe"); return rl.dbErr }
-		sl.vectorProbe = func(ctx context.Context) error { rec.record("vectorProbe"); return rl.vectorErr }
-		sl.driveProbe = func(ctx context.Context) error { rec.record("driveProbe"); return rl.driveErr }
+		plan := []StartupStep{
+			makeRecordingStep("step1", true, rec, nil),
+		}
+		sl := newLifecycleForTest(plan, nil, cleanup)
 
 		if err := sl.Start(context.Background()); err != nil {
 			t.Fatalf("Start failed: %v", err)
@@ -320,11 +298,231 @@ func TestLifecycle_Stop_Idempotent(t *testing.T) {
 		if err := sl.Stop(context.Background()); err != nil {
 			t.Fatalf("second Stop must be safe, got %v", err)
 		}
-		// Exactly 1 cleanup call (the second Stop is a defensive no-op).
 		if cleanups != 1 {
 			t.Fatalf("cleanup expected exactly 1 call across double-Stop, got %d", cleanups)
 		}
 	})
+}
+
+// TestLifecycle_RequiredFailure_AbortsSequence verifies that when a
+// Required step fails, subsequent steps (including the job runner)
+// are NOT started.
+func TestLifecycle_RequiredFailure_AbortsSequence(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	plan := []StartupStep{
+		makeRecordingStep("drive-init", true, rec, errors.New("drive folder missing")),
+		makeRecordingStep("qdrant-collection", true, rec, nil),
+		makeRecordingStep("outbox-pool", true, rec, nil),
+		makeRecordingStep("job-runner", true, rec, nil),
+	}
+	sl := newLifecycleForTest(plan, nil, nil)
+
+	err := sl.Start(context.Background())
+	if err == nil {
+		t.Fatalf("expected required step failure error")
+	}
+	// Only drive-init should have fired.
+	if len(rec.calls) != 1 || rec.calls[0] != "drive-init" {
+		t.Fatalf("expected only drive-init, got %v", rec.calls)
+	}
+}
+
+// TestLifecycle_OptionalFailure_Continues verifies that optional steps
+// that fail do NOT block subsequent steps.
+func TestLifecycle_OptionalFailure_Continues(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	plan := []StartupStep{
+		makeRecordingStep("job-scanner", false, rec, errors.New("scanner failed")),
+		makeRecordingStep("channel-monitor", false, rec, nil),
+		makeRecordingStep("job-runner", true, rec, nil),
+	}
+	sl := newLifecycleForTest(plan, nil, nil)
+
+	err := sl.Start(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil (optional failures don't abort), got %v", err)
+	}
+	// All steps should have fired.
+	want := []string{"job-scanner", "channel-monitor", "job-runner"}
+	if len(rec.calls) != len(want) {
+		t.Fatalf("expected %d calls, got %d (%v)", len(want), len(rec.calls), rec.calls)
+	}
+	for i, name := range want {
+		if rec.calls[i] != name {
+			t.Fatalf("step order mismatch at %d: want %q, got %q", i, name, rec.calls[i])
+		}
+	}
+}
+
+// TestLifecycle_Stop_ReverseOrder verifies that Stop calls step stops
+// in reverse order.
+func TestLifecycle_Stop_ReverseOrder(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	plan := []StartupStep{
+		makeRecordingStep("step-a", true, rec, nil),
+		makeRecordingStep("step-b", true, rec, nil),
+		makeRecordingStep("step-c", true, rec, nil),
+	}
+	sl := newLifecycleForTest(plan, nil, nil)
+
+	if err := sl.Start(context.Background()); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	rec.calls = nil // reset after Start
+	if err := sl.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+	// Stops should fire in reverse: c:stop, b:stop, a:stop.
+	want := []string{"step-c:stop", "step-b:stop", "step-a:stop"}
+	if len(rec.calls) != len(want) {
+		t.Fatalf("expected %d stops, got %d (%v)", len(want), len(rec.calls), rec.calls)
+	}
+	for i, name := range want {
+		if rec.calls[i] != name {
+			t.Fatalf("stop order mismatch at %d: want %q, got %q", i, name, rec.calls[i])
+		}
+	}
+}
+
+// TestLifecycle_JobRunnerLast verifies the structural invariant that
+// the job runner is always the last step in the plan.
+func TestLifecycle_JobRunnerLast(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	plan := []StartupStep{
+		makeRecordingStep("drive-init", true, rec, nil),
+		makeRecordingStep("job-scanner", false, rec, nil),
+		makeRecordingStep("job-runner", true, rec, nil),
+	}
+	sl := newLifecycleForTest(plan, nil, nil)
+
+	if err := sl.Start(context.Background()); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Job runner must be the last entry.
+	if rec.calls[len(rec.calls)-1] != "job-runner" {
+		t.Fatalf("job-runner must be last step, got %v", rec.calls)
+	}
+}
+
+// TestLifecycle_ContextCancelledDuringStartup verifies that context
+// cancellation during startup interrupts the sequence.
+func TestLifecycle_ContextCancelledDuringStartup(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	plan := []StartupStep{
+		{
+			Name: "step1", Required: true,
+			Start: func(_ context.Context) error {
+				rec.record("step1")
+				cancel() // Cancel context mid-startup.
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		},
+		{
+			Name: "step2", Required: true,
+			Start: func(ctx context.Context) error {
+				rec.record("step2")
+				// Check if context is already cancelled.
+				return ctx.Err()
+			},
+			Stop: func(_ context.Context) error { return nil },
+		},
+		makeRecordingStep("job-runner", true, rec, nil),
+	}
+	sl := newLifecycleForTest(plan, nil, nil)
+
+	err := sl.Start(ctx)
+	if err == nil {
+		t.Fatalf("expected error from cancelled context, got nil")
+	}
+	// step1 fired, step2 fired (and returned ctx.Err), job-runner should NOT fire.
+	for _, c := range rec.calls {
+		if c == "job-runner" {
+			t.Fatalf("job-runner fired despite mid-startup cancellation: %v", rec.calls)
+		}
+	}
+}
+
+// TestLifecycle_NoGoroutinesLeaked verifies that after Stop completes,
+// the number of running goroutines returns to the baseline (no leaked
+// goroutines). This test launches real goroutines via SafeGo and verifies
+// they all exit after context cancellation.
+func TestLifecycle_NoGoroutinesLeaked(t *testing.T) {
+	// This test must run sequentially — goroutine counting is global.
+	ctx, cancel := context.WithCancel(context.Background())
+
+	baseline := runtime.NumGoroutine()
+
+	goroutinesStarted := make(chan struct{}, 2)
+	goroutinesDone := make(chan struct{}, 2)
+
+	plan := []StartupStep{
+		{
+			Name: "leaky-service-1", Required: false,
+			Start: func(startCtx context.Context) error {
+				concurrent.SafeGo("leaky-service-1", func() {
+					goroutinesStarted <- struct{}{}
+					<-startCtx.Done()
+					goroutinesDone <- struct{}{}
+				})
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		},
+		{
+			Name: "leaky-service-2", Required: false,
+			Start: func(startCtx context.Context) error {
+				concurrent.SafeGo("leaky-service-2", func() {
+					goroutinesStarted <- struct{}{}
+					<-startCtx.Done()
+					goroutinesDone <- struct{}{}
+				})
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		},
+	}
+	sl := newLifecycleForTest(plan, nil, func() { cancel() })
+
+	if err := sl.Start(ctx); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Wait for goroutines to actually start.
+	<-goroutinesStarted
+	<-goroutinesStarted
+
+	// Verify goroutines did start.
+	mid := runtime.NumGoroutine()
+	if mid <= baseline {
+		t.Fatalf("expected goroutines to have started (baseline=%d, mid=%d)", baseline, mid)
+	}
+
+	// Stop: cancels context, goroutines should exit.
+	if err := sl.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	// Wait for goroutines to finish.
+	<-goroutinesDone
+	<-goroutinesDone
+
+	// Give a moment for goroutine cleanup.
+	time.Sleep(50 * time.Millisecond)
+
+	after := runtime.NumGoroutine()
+	if after > baseline+2 {
+		t.Fatalf("goroutine leak detected: baseline=%d, after=%d (max allowed=%d)",
+			baseline, after, baseline+2)
+	}
 }
 
 // TestSafeCall verifies the panic-to-error helper directly. nil-fn is

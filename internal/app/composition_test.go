@@ -142,6 +142,7 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.Utility, "root.Utility")
 	require.NotNil(t, root.Ctx, "root.Ctx")
 	// PR9-A (June 2026): DriveStart closure is always non-nil when Drive bundle is built.
+	// Lifecycle-runtime-ownership (June 2026): IOpaqueStartFunc now returns error.
 	require.NotNil(t, root.DriveStart, "root.DriveStart (PR9-A deferred side-effect closure)")
 	// PR9-B (June 2026): OutboxStart closure is always non-nil when Outbox bundle is built.
 	require.NotNil(t, root.OutboxStart, "root.OutboxStart (PR9-B deferred side-effect closure)")

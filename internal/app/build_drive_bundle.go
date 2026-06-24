@@ -17,6 +17,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"go.uber.org/zap"
@@ -100,8 +101,10 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// startDriveBackgroundFolders (defined below). Package-level function
 	// so the source-level goroutine-count freeze test reports zero spawns
 	// in BuildDriveBundle's own body.
-	startClosure := func() {
-		startDriveBackgroundFolders(ctx, cfg, driveClient, driveUploader, dests, styleRegistry, log)
+	// Lifecycle-runtime-ownership (June 2026): now returns error so
+	// serverLifecycle.Start can abort on required folder validation failure.
+	startClosure := func() error {
+		return startDriveBackgroundFolders(ctx, cfg, driveClient, driveUploader, dests, styleRegistry, log)
 	}
 
 	return &DriveBundle{
@@ -120,6 +123,11 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 // pre-creates style folders on Drive, validates critical Drive folder
 // paths, and ensures local storage directories exist.
 //
+// Lifecycle-runtime-ownership (June 2026): now returns error on required
+// folder validation failure. Style folder creation remains async (background
+// after readiness passes). Local storage directory creation errors are
+// logged as warnings (they are non-fatal).
+//
 // Invoked by the lifecycle after WireRegistry completes, before the HTTP
 // server begins accepting requests.
 func startDriveBackgroundFolders(
@@ -130,7 +138,8 @@ func startDriveBackgroundFolders(
 	dests *DriveDestinations,
 	styleRegistry *generation.StyleRegistry,
 	log *zap.Logger,
-) {
+) error {
+	// Style folder pre-creation: async after readiness (optional).
 	if driveClient != nil && dests.VideoAIFolder() != "" && dests.VideoAIFolder() != dests.MediaRoot {
 		concurrent.SafeGo("drive-style-folders", func() {
 			ensureStyleDriveFolders(ctx, driveUploader, dests.VideoAIFolder(), styleRegistry, log)
@@ -138,6 +147,7 @@ func startDriveBackgroundFolders(
 		log.Info("Style Drive folders using AI Images root", zap.String("folder_id", dests.VideoAIFolder()))
 	}
 
+	// Required folder validation: synchronous, returns error on failure.
 	if driveClient != nil {
 		for name, folderID := range map[string]string{
 			"images":   dests.ImagesFolder(),
@@ -147,15 +157,14 @@ func startDriveBackgroundFolders(
 				continue
 			}
 			if _, err := driveClient.Files.Get(folderID).Fields("id, name").Context(ctx).Do(); err != nil {
-				log.Warn("Drive folder validation failed at startup",
-					zap.String("folder_name", name), zap.String("folder_id", folderID), zap.Error(err))
-			} else {
-				log.Info("Drive folder validated",
-					zap.String("folder_name", name), zap.String("folder_id", folderID))
+				return fmt.Errorf("required Drive folder %q (id=%s) validation failed: %w", name, folderID, err)
 			}
+			log.Info("Drive folder validated",
+				zap.String("folder_name", name), zap.String("folder_id", folderID))
 		}
 	}
 
+	// Local storage directories: optional (logged as warnings).
 	for _, dir := range []string{
 		cfg.Storage.DataDir, cfg.Storage.VoiceoversPath(), cfg.Storage.AssetsPath(),
 		cfg.Storage.DownloadsPath(), cfg.Storage.BackupsPath(), cfg.Storage.TempPath(),
@@ -169,4 +178,5 @@ func startDriveBackgroundFolders(
 			log.Warn("Failed to create storage directory", zap.String("path", dir), zap.Error(err))
 		}
 	}
+	return nil
 }

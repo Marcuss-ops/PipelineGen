@@ -42,27 +42,58 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
-// backgroundJobs holds references to goroutines and services started by
-// startBackgroundJobs that need explicit Stop() during shutdown.
+// StartupStep defines a service that the server lifecycle manages.
+// Steps are executed in declaration order by serverLifecycle.Start.
+// Required steps that fail abort the sequence; optional failures are
+// logged and exposed but do not block the remaining steps.
 //
-// In PR4, the Monitor reference is also published to root.LateBindings so
-// other subsystems can read it after bootstrap.go returns. The handle here
-// also powers shutdown.go's LIFO orchestration.
-type backgroundJobs struct {
-	channelMonitor *monitor.ChannelMonitor
-	jobRunner      *appjobs.Runner
-	jobScanner     *sqlitejobs.Scanner
-	scriptsRepo    *sqlitescripts.ScriptRepository
-	// startJobRunner is called by WireServices AFTER registry Freeze() so that
-	// the JobRunner.Start loop begins claiming jobs only when no further
-	// handlers can register. Captures ctx + root + log from
-	// startBackgroundJobs' local scope via closure. PR4d-final (June 2026):
-	// replaces CoreDeps.startJobRunner.
-	startJobRunner func()
+// Stop is invoked in reverse order during serverLifecycle.Stop.
+// For goroutine-based services that listen on ctx.Done(), Stop is a
+// no-op (context cancellation signals them). For services with explicit
+// shutdown methods (channel monitor, outbox pool), Stop calls those.
+type StartupStep struct {
+	Name     string
+	Required bool
+	Start    func(ctx context.Context) error
+	Stop     func(ctx context.Context) error
 }
 
-// startBackgroundJobs creates + starts the per-mode background workers.
-// Takes the assembled *ComposeRoot (PR4a). Returns a handle for shutdown.
+// backgroundJobs holds references to services started by startBackgroundJobs
+// that need explicit Stop() during shutdown, plus the startup plan that
+// defers ALL goroutine launches to serverLifecycle.Start.
+//
+// After lifecycle-runtime-ownership (June 2026), only channelMonitor needs
+// explicit Stop (via buildCleanup in shutdown.go). All other services
+// (job runner, scanner, sweepers) stop via context cancellation.
+// The startupPlan field replaces the previous startJobRunner closure —
+// ALL background workers, scanners, monitors, sweepers, and the job runner
+// now flow through the plan so zero goroutines start during composition.
+type backgroundJobs struct {
+	channelMonitor *monitor.ChannelMonitor
+	// startupPlan is the ordered list of services to start during
+	// serverLifecycle.Start. The job runner is the last required step.
+	// WireServices reads this field to construct the lifecycle.
+	startupPlan []StartupStep
+}
+
+// startBackgroundJobs creates the per-mode background workers and returns a
+// startup plan WITHOUT launching any goroutines. All runtime startups are
+// deferred to serverLifecycle.Start via the returned StartupStep list.
+//
+// The startup plan ordering (left-to-right):
+//  1. Job scanner (optional)
+//  2. Metrics refresher (optional)
+//  3. Channel monitor (optional)
+//  4. Maintenance schedulers (optional)
+//  5. YouTube cache prewarm + nightly (optional)
+//  6. Research cache sweeper (optional)
+//  7. Gemma memory sweeper (optional)
+//  8. Qdrant stale cleaner (optional)
+//  9. Clip dedup sweeper (optional)
+// 10. VLM auto-tag sweeper (optional)
+// 11. Qdrant ghost sweeper (optional)
+// 12. Qdrant health monitor (optional)
+// 13. Job runner (REQUIRED, always last)
 //
 // Mode mapping (matches previous semantics):
 //   - "all"        → runWorker + runScheduler + runMaintenance
@@ -93,7 +124,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	var jobRunner *appjobs.Runner
 	var jobScanner *sqlitejobs.Scanner
 	var channelMon *monitor.ChannelMonitor
-	var startJobRunner func()
+	var steps []StartupStep
 
 	if runWorker {
 		// Jobs system - Runner and Scanner. Reads from root.Jobs (PR4a).
@@ -119,27 +150,30 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			log.Info("Job runner created", zap.Int("workers", runnerConfig.Workers))
 
 			jobScanner = sqlitejobs.NewScanner(jobsRepo, log)
-			concurrent.SafeGo("job-scanner", func() { jobScanner.Start(ctx, 5*time.Minute) })
-			log.Info("Job scanner started")
 
-			appjobs.StartMetricsRefresher(ctx, jobsRepo, 30*time.Second, log)
+			// Job scanner: optional background service.
+			sc := jobScanner
+			steps = append(steps, StartupStep{
+				Name: "job-scanner", Required: false,
+				Start: func(startCtx context.Context) error {
+					concurrent.SafeGo("job-scanner", func() { sc.Start(startCtx, 5*time.Minute) })
+					log.Info("Job scanner started")
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
 
-			// Closure stored on backgroundJobs.startJobRunner (assigned at the
-			// bottom of startBackgroundJobs) so WireServices can trigger
-			// Dispatcher.Freeze() + JobRunner.Start AFTER WireRegistry has
-			// registered all handlers. PR4d-final (June 2026) replaces
-			// CoreDeps.startJobRunner with this field; the closure captures
-			// jobRunner + root + ctx + cfg + log by reference.
-			startJobRunnerClosure := func() {
-				if jobRunner == nil || root == nil || root.Jobs == nil || root.Jobs.Dispatcher == nil {
-					return
-				}
-				root.Jobs.Dispatcher.Freeze()
-				concurrent.SafeGo("job-runner", func() { jobRunner.Start(ctx) })
-				log.Info("Job runner started after full wiring",
-					zap.Int("workers", cfg.Jobs.MaxParallelPerProject))
-			}
-			startJobRunner = startJobRunnerClosure
+			// Metrics refresher: optional background service.
+			jr := jobsRepo
+			steps = append(steps, StartupStep{
+				Name: "metrics-refresher", Required: false,
+				Start: func(startCtx context.Context) error {
+					appjobs.StartMetricsRefresher(startCtx, jr, 30*time.Second, log)
+					log.Info("Metrics refresher started")
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
 		}
 	}
 
@@ -163,14 +197,18 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				channelMon.SetSearchRateLimit(cfg.Jobs.SearchRateLimit)
 			}
 
-			concurrent.SafeGo("channel-monitor", func() { channelMon.Start(ctx) })
-			log.Info("Channel monitor started")
+			// Channel monitor: optional background service.
+			cm := channelMon
+			steps = append(steps, StartupStep{
+				Name: "channel-monitor", Required: false,
+				Start: func(startCtx context.Context) error {
+					concurrent.SafeGo("channel-monitor", func() { cm.Start(startCtx) })
+					log.Info("Channel monitor started")
+					return nil
+				},
+				Stop: func(_ context.Context) error { cm.Stop(); return nil },
+			})
 		}
-
-		// Periodic Drive sync scheduler removed: the previous implementation
-		// was a compatibility shim that only blocked on ctx.Done().
-		// The actual catalog/voiceover/image sync paths remain wired through
-		// the existing jobs and maintenance services.
 	}
 
 	if runMaintenance {
@@ -188,37 +226,46 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		}
 
 		if root.Jobs.Service != nil {
-			scheduleMaintenanceJob := func(interval time.Duration, label string) {
-				concurrent.SafeGo("maintenance-scheduler-"+label, func() {
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(2 * time.Minute):
-					}
-					for {
-						_, err := root.Jobs.Service.Enqueue(ctx, &appjobs.EnqueueRequest{
-							Type:     "system.cleanup",
-							Priority: 5,
-							Payload: map[string]any{
-								"label":  label,
-								"source": "scheduled",
-							},
+			jsvc := root.Jobs.Service
+			makeSchedulerStep := func(interval time.Duration, label string) StartupStep {
+				return StartupStep{
+					Name: "maintenance-scheduler-" + label, Required: false,
+					Start: func(startCtx context.Context) error {
+						concurrent.SafeGo("maintenance-scheduler-"+label, func() {
+							select {
+							case <-startCtx.Done():
+								return
+							case <-time.After(2 * time.Minute):
+							}
+							for {
+								_, err := jsvc.Enqueue(startCtx, &appjobs.EnqueueRequest{
+									Type:     "system.cleanup",
+									Priority: 5,
+									Payload: map[string]any{
+										"label":  label,
+										"source": "scheduled",
+									},
+								})
+								if err != nil {
+									log.Warn("failed to enqueue maintenance job", zap.String("label", label), zap.Error(err))
+								} else {
+									log.Info("scheduled maintenance job enqueued", zap.String("label", label))
+								}
+								select {
+								case <-startCtx.Done():
+									return
+								case <-time.After(interval):
+								}
+							}
 						})
-						if err != nil {
-							log.Warn("failed to enqueue maintenance job", zap.String("label", label), zap.Error(err))
-						} else {
-							log.Info("scheduled maintenance job enqueued", zap.String("label", label))
-						}
-						select {
-						case <-ctx.Done():
-							return
-						case <-time.After(interval):
-						}
-					}
-				})
+						log.Info("scheduled maintenance job", zap.String("label", label), zap.Duration("interval", interval))
+						return nil
+					},
+					Stop: func(_ context.Context) error { return nil },
+				}
 			}
-			scheduleMaintenanceJob(maintenanceInterval, "maintenance")
-			scheduleMaintenanceJob(backupInterval, "backup")
+			steps = append(steps, makeSchedulerStep(maintenanceInterval, "maintenance"))
+			steps = append(steps, makeSchedulerStep(backupInterval, "backup"))
 			log.Info("scheduled maintenance and backup jobs via jobs system",
 				zap.Duration("maintenance_interval", maintenanceInterval),
 				zap.Duration("backup_interval", backupInterval))
@@ -228,102 +275,181 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	}
 
 	if runScheduler && root.Domains.YoutubeClipService != nil {
-		concurrent.SafeGo("yt-cache-prewarm", func() {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-			}
-			sCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			if err := root.Domains.YoutubeClipService.PrewarmHotVideoMetadataCache(sCtx); err != nil {
-				log.Warn("Failed to pre-warm YouTube video metadata cache", zap.Error(err))
-			}
-		})
-
-		concurrent.SafeGo("yt-nightly-prewarm", func() {
-			ticker := time.NewTicker(24 * time.Hour)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					log.Info("Running nightly pre-warming job for hot YouTube video metadata cache")
-					sCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-					if err := root.Domains.YoutubeClipService.PrewarmHotVideoMetadataCache(sCtx); err != nil {
-						log.Warn("Failed to run nightly pre-warming job for YouTube metadata", zap.Error(err))
+		ytSvc := root.Domains.YoutubeClipService
+		steps = append(steps, StartupStep{
+			Name: "yt-cache-prewarm", Required: false,
+			Start: func(startCtx context.Context) error {
+				concurrent.SafeGo("yt-cache-prewarm", func() {
+					select {
+					case <-startCtx.Done():
+						return
+					case <-time.After(5 * time.Second):
 					}
-					cancel()
-				}
-			}
+					sCtx, cancel := context.WithTimeout(startCtx, 30*time.Second)
+					defer cancel()
+					if err := ytSvc.PrewarmHotVideoMetadataCache(sCtx); err != nil {
+						log.Warn("Failed to pre-warm YouTube video metadata cache", zap.Error(err))
+					}
+				})
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+		steps = append(steps, StartupStep{
+			Name: "yt-nightly-prewarm", Required: false,
+			Start: func(startCtx context.Context) error {
+				concurrent.SafeGo("yt-nightly-prewarm", func() {
+					ticker := time.NewTicker(24 * time.Hour)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-startCtx.Done():
+							return
+						case <-ticker.C:
+							log.Info("Running nightly pre-warming job for hot YouTube video metadata cache")
+							sCtx, cancel := context.WithTimeout(startCtx, 30*time.Second)
+							if err := ytSvc.PrewarmHotVideoMetadataCache(sCtx); err != nil {
+								log.Warn("Failed to run nightly pre-warming job for YouTube metadata", zap.Error(err))
+							}
+							cancel()
+						}
+					}
+				})
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
 		})
 	}
 
-	// PR9-B (June 2026): outbox events pool lifecycle is now managed by
-	// the startOutboxEventsPool closure extracted from BuildOutboxBundle.
-	// It is invoked via serverLifecycle.Start() after WireRegistry — the
-	// duplicate concurrent.SafeGo("outbox-events-pool", ...) previously
-	// present here has been removed.
-
 	if runMaintenance {
 		if root.Repos.ScriptsRepo != nil {
-			concurrent.SafeGo("research-cache-sweeper", func() {
-				startResearchCacheSweeper(ctx, root.Repos.ScriptsRepo, log)
+			repo := root.Repos.ScriptsRepo
+			steps = append(steps, StartupStep{
+				Name: "research-cache-sweeper", Required: false,
+				Start: func(startCtx context.Context) error {
+					concurrent.SafeGo("research-cache-sweeper", func() {
+						startResearchCacheSweeper(startCtx, repo, log)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
 			})
 		}
 
-		// PR4.A (June 2026): MemoryRepo relocated RepoBundle → AIBundle.
-		// The single consumer (startGemmaMemorySweeper) reads root.AI.MemoryRepo
-		// instead of root.Repos.MemoryRepo, reflecting the new ownership.
 		if root.AI != nil && root.AI.MemoryRepo != nil {
-			concurrent.SafeGo("gemma-memory-sweeper", func() {
-				startGemmaMemorySweeper(ctx, root.AI.MemoryRepo, log)
+			mrepo := root.AI.MemoryRepo
+			steps = append(steps, StartupStep{
+				Name: "gemma-memory-sweeper", Required: false,
+				Start: func(startCtx context.Context) error {
+					concurrent.SafeGo("gemma-memory-sweeper", func() {
+						startGemmaMemorySweeper(startCtx, mrepo, log)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
 			})
 		}
 
 		if root.Process.VectorSvc != nil && root.Drive.DriveUploader != nil {
-			concurrent.SafeGo("qdrant-cleaner", func() {
-				startQdrantCleaner(ctx, root.Process.VectorSvc, root.Drive.DriveUploader, log)
+			vs := root.Process.VectorSvc
+			up := root.Drive.DriveUploader
+			steps = append(steps, StartupStep{
+				Name: "qdrant-cleaner", Required: false,
+				Start: func(startCtx context.Context) error {
+					concurrent.SafeGo("qdrant-cleaner", func() {
+						startQdrantCleaner(startCtx, vs, up, log)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
 			})
 		}
 
 		if root.Repos.ClipsRepo != nil {
-			concurrent.SafeGo("clip-dedup-sweeper", func() {
-				log.Info("clip dedup sweeper starting (interval=30m)")
-				startClipDedupSweeper(ctx, root.Repos.ClipsRepo, log)
+			cr := root.Repos.ClipsRepo
+			steps = append(steps, StartupStep{
+				Name: "clip-dedup-sweeper", Required: false,
+				Start: func(startCtx context.Context) error {
+					log.Info("clip dedup sweeper starting (interval=30m)")
+					concurrent.SafeGo("clip-dedup-sweeper", func() {
+						startClipDedupSweeper(startCtx, cr, log)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
 			})
 		}
 
 		if root.Domains.AutotagService != nil {
-			concurrent.SafeGo("vlm-autotag-sweeper", func() {
-				log.Info("VLM auto-tag sweeper starting (interval=15m)")
-				startVLMAutoTagSweeper(ctx, root.Domains.AutotagService, log)
+			at := root.Domains.AutotagService
+			steps = append(steps, StartupStep{
+				Name: "vlm-autotag-sweeper", Required: false,
+				Start: func(startCtx context.Context) error {
+					log.Info("VLM auto-tag sweeper starting (interval=15m)")
+					concurrent.SafeGo("vlm-autotag-sweeper", func() {
+						startVLMAutoTagSweeper(startCtx, at, log)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
 			})
 		}
 
 		if root.Process.VectorSvc != nil && dbs.main != nil && dbs.main.DB != nil {
-			concurrent.SafeGo("qdrant-ghost-sweeper", func() {
-				db := dbs.main.DB
-				log.Info("Qdrant ghost-points sweeper starting (interval=24h, initialDelay=10m)")
-				startQdrantGhostSweeper(ctx, root.Process.VectorSvc, db, log)
+			vs := root.Process.VectorSvc
+			db := dbs.main.DB
+			steps = append(steps, StartupStep{
+				Name: "qdrant-ghost-sweeper", Required: false,
+				Start: func(startCtx context.Context) error {
+					log.Info("Qdrant ghost-points sweeper starting (interval=24h, initialDelay=10m)")
+					concurrent.SafeGo("qdrant-ghost-sweeper", func() {
+						startQdrantGhostSweeper(startCtx, vs, db, log)
+					})
+					return nil
+				},
+				Stop: func(_ context.Context) error { return nil },
 			})
 		}
 	}
 
 	if root.Process.VectorSvc != nil {
-		concurrent.SafeGo("qdrant-health-monitor", func() {
-			log.Info("Qdrant health monitor starting (interval=60s)")
-			startQdrantHealthMonitor(ctx, root.Process.VectorSvc, log)
+		vs := root.Process.VectorSvc
+		steps = append(steps, StartupStep{
+			Name: "qdrant-health-monitor", Required: false,
+			Start: func(startCtx context.Context) error {
+				log.Info("Qdrant health monitor starting (interval=60s)")
+				concurrent.SafeGo("qdrant-health-monitor", func() {
+					startQdrantHealthMonitor(startCtx, vs, log)
+				})
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+
+	// Job runner: REQUIRED, always LAST in the plan.
+	// The closure freezes the Dispatcher so no further handlers can
+	// register once the runner starts claiming jobs. It is invoked
+	// AFTER all other services are up and WireRegistry has completed.
+	if jobRunner != nil && root.Jobs.Dispatcher != nil {
+		jr := jobRunner
+		disp := root.Jobs.Dispatcher
+		steps = append(steps, StartupStep{
+			Name: "job-runner", Required: true,
+			Start: func(startCtx context.Context) error {
+				disp.Freeze()
+				concurrent.SafeGo("job-runner", func() { jr.Start(startCtx) })
+				log.Info("Job runner started after full wiring",
+					zap.Int("workers", cfg.Jobs.MaxParallelPerProject))
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
 		})
 	}
 
 	return &backgroundJobs{
 		channelMonitor: channelMon,
-		jobRunner:      jobRunner,
-		jobScanner:     jobScanner,
-		scriptsRepo:    root.Repos.ScriptsRepo,
-		startJobRunner: startJobRunner,
+		startupPlan:    steps,
 	}
 }
 
