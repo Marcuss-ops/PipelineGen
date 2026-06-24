@@ -51,13 +51,19 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		log.Warn("Google Drive client not initialized", zap.Error(err))
 	}
 
+	// PG-011-residual-cleanup (June 2026): the previous
+	// resolveRuntimeDestinations function (a no-op alias for
+	// configOnlyDestinations — both pre-existing branches converged
+	// on the same cfg-derived *DriveDestinations) was deleted;
+	// dests is now derived once, unconditionally. driveClient
+	// remains a dependency for driveUploader construction, the
+	// mediaStore block below, and the startClosure's folder
+	// validation, but it is no longer threaded through a
+	// dests-resolution alias that ignored it.
 	var driveUploader *drive.Uploader
-	var dests *DriveDestinations
+	var dests = configOnlyDestinations(cfg)
 	if driveClient != nil {
 		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
-		dests = resolveRuntimeDestinations(ctx, driveClient, cfg, log)
-	} else {
-		dests = configOnlyDestinations(cfg)
 	}
 
 	var mediaStore *drive.Store
