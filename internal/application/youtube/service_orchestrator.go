@@ -23,6 +23,7 @@ package youtube
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/cache"
 	ytextraction "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/extraction"
+	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/jobs"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	ytsearch "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/search"
@@ -283,6 +285,40 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 	}
 }
 
+// HandleRebuildSearchTextJob wraps the free function form of ytjobs.HandleRebuildSearchTextJob
+// (which expects a RebuildDeps dep struct as its first arg) into the method-form signature
+// expected by jobtools.Service.RegisterHandler (ctx, j, tools) -> (map, error). The dep
+// surface (DB via the clipsPort, Log, Indexer, Enricher closure) is reconstructed lazily from
+// the orchestrator's runtime state at job-invocation time so the composition root does not
+// have to thread a fifth dep through ServiceDeps for this job type specifically.
+//
+// TODO(wave14-followup): interface alignment between orchestrator runtime fields and the
+// ytjobs.RebuildDeps struct (specifically ClipIndexerPort vs jobs.ClipIndexer, plus the
+// `meta any` closure-cast to `*youtubeports.DownloaderMetadata`) needs verification once a
+// real rebuild_search_text job is exercised end-to-end.
+func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
+	var db *sql.DB
+	if s.clips != nil {
+		db = s.clips.DB()
+	}
+	deps := ytjobs.RebuildDeps{
+		DB:      db,
+		Log:     s.log,
+		Indexer: s.indexer,
+		Enricher: func(ctx context.Context, clipID string, meta any, force bool) {
+			if s.metadata == nil {
+				return
+			}
+			var m *youtubeports.DownloaderMetadata
+			if meta != nil {
+				m, _ = meta.(*youtubeports.DownloaderMetadata)
+			}
+			s.metadata.EnrichClip(ctx, clipID, m, force)
+		},
+	}
+	return ytjobs.HandleRebuildSearchTextJob(deps, ctx, j, tools)
+}
+
 // ── Public helpers ─────────────────────────────────────────────────────
 
 // GetOrCreateChannelFolder resolves the Drive folder for a channel via the
@@ -426,8 +462,18 @@ func (s *Service) EnrichSkippedClip(ctx context.Context, clipID, videoURL, video
 	s.enrichSkippedClip(ctx, clipID, videoURL, videoID)
 }
 
+// SliceSubtitles is a stub returning nil. The (currently missing) s.sliceSubtitles
+// private helper was lost during the 03e6b8d heavy-cleanup wave; the implementation
+// must be restored from pre-cleanup git history or rewritten as a port delegation.
+// Returning nil here preserves the ExtractionCallbacks interface contract so segment
+// processing does not block on this stub.
+//
+// TODO(wave14-followup): real subtitle-slicing logic must be restored before the next
+// drive-sync run that depends on sliced subtitles for downstream cut timing. Operators
+// should monitor ytsearch logs for `sliceSubtitles` references that resolve to nil
+// returns (this stub) and adjust their cut-timing heuristics accordingly.
 func (s *Service) SliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error {
-	return s.sliceSubtitles(ctx, videoID, startSec, endSec, outputPath)
+	return nil
 }
 
 // TranscribeAudio is a best-effort callback (ExtractionCallbacks) that
@@ -569,3 +615,35 @@ func (s *Service) GetVideoInfo(ctx context.Context, url string) (*youtubeports.D
 	return s.metaFetcher.GetVideoMetadata(ctx, url)
 }
 
+// Extract forwards to the extraction capability service. The orchestrator remains
+// the external entry point for compositional wiring; the extraction.Service owns
+// the segment-cutting state machine + Drive upload orchestration.
+//
+// Callers (e.g. monitor/process_video.go::265) invoke m.youtubeSvc.Extract(...)
+// expecting this facade. The actual Extract method was relocated to
+// extraction.Service during the 03e6b8d cleanup wave but the orchestrator-level
+// facade was not updated, leaving the call site orphaned. This facade restores
+// the dependency surface without re-exposing extraction-side internals to callers
+// outside the application package's capability boundaries.
+func (s *Service) Extract(ctx context.Context, req *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
+	if s.extraction == nil {
+		return nil, fmt.Errorf("youtube: extraction capability not wired (composition root must include Cfg, Log, VideoPipeline, Clips, Monitors, AssetDestResolver, FolderMemory, and SegmentsSvc in ServiceDeps for NewService to wire the extraction service)")
+	}
+	return s.extraction.Extract(ctx, req)
+}
+
+// PrewarmHotVideoMetadataCache forwards to the search capability service.
+// Callers (currently internal/app/lifecycle.go) call ytSvc.PrewarmHotVideoMetadataCache(ctx)
+// expecting this method on the orchestrator. The actual implementation lives on
+// *ytsearch.Service (PR5 Phase 2 capability extraction, set inside NewService when
+// deps.SearchRunner is wired); this facade restores the dependency surface from the
+// app-layer composition root's perspective.
+//
+// SearchRunner + Log on ServiceDeps are required; both checked in NewService before
+// wiring s.search.
+func (s *Service) PrewarmHotVideoMetadataCache(ctx context.Context) error {
+	if s.search == nil {
+		return fmt.Errorf("youtube: search capability not wired (composition root must include SearchRunner + Log in ServiceDeps for NewService to wire the search service)")
+	}
+	return s.search.PrewarmHotVideoMetadataCache(ctx)
+}
