@@ -1,10 +1,12 @@
-// Package script (api/script) — flow.go re-exports types and functions
-// from internal/application/scripts/ (PR2, June 2026).
+// Package script (api/script) — flow.go carries the script-flow helper
+// functions used by handler.go (re-exports types and functions from
+// internal/application/scripts/, PR2 June 2026).
 //
 // Agente 4 — I (June 2026): resolveDriveFolderID and findFolderByNameDeep
 // moved out; the handler now stores a FolderResolver closure for Drive
-// folder resolution. All type aliases and forwarding functions remain
-// for back-compat.
+// folder resolution. Package-level aliases declared in this file remain
+// for back-compat with handler callers. Cross-package script<->transport
+// aliases were removed in helpers.go (use scripts.<Type> directly).
 
 package script
 
@@ -37,23 +39,23 @@ type EntityScriptExtractor = scripts.EntityScriptExtractor
 
 // ── Forwarding functions ────────────────────────────────────────────────────
 
-func SearchScriptAssets(ctx context.Context, svc ClipServices, queries []string, targets []assetSearchTarget, limit int) []ScriptAssetSuggestion {
+func SearchScriptAssets(ctx context.Context, svc scripts.ClipServices, queries []string, targets []assetSearchTarget, limit int) []ScriptAssetSuggestion {
 	return scripts.SearchScriptAssets(ctx, svc, queries, targets, limit)
 }
 
-func SearchArtlistClips(ctx context.Context, svc ClipServices, title string, phrases []string) []ScriptArtlistClipSuggestion {
+func SearchArtlistClips(ctx context.Context, svc scripts.ClipServices, title string, phrases []string) []ScriptArtlistClipSuggestion {
 	return scripts.SearchArtlistClips(ctx, svc, title, phrases)
 }
 
-func BuildPhraseClipSuggestions(ctx context.Context, svc ClipServices, title string, insights ScriptInsights, targets []assetSearchTarget) []ScriptPhraseClipSuggestion {
+func BuildPhraseClipSuggestions(ctx context.Context, svc scripts.ClipServices, title string, insights ScriptInsights, targets []assetSearchTarget) []ScriptPhraseClipSuggestion {
 	return scripts.BuildPhraseClipSuggestions(ctx, svc, title, insights, targets)
 }
 
-func SearchIntroClips(ctx context.Context, svc ClipServices, title, script string, insights ScriptInsights, targets []assetSearchTarget) []ScriptAssetSuggestion {
+func SearchIntroClips(ctx context.Context, svc scripts.ClipServices, title, script string, insights ScriptInsights, targets []assetSearchTarget) []ScriptAssetSuggestion {
 	return scripts.SearchIntroClips(ctx, svc, title, script, insights, targets)
 }
 
-func EnrichSpecialNamesWithImages(ctx context.Context, svc ClipServices, specialNames []string) []ScriptEntityImage {
+func EnrichSpecialNamesWithImages(ctx context.Context, svc scripts.ClipServices, specialNames []string) []ScriptEntityImage {
 	return scripts.EnrichSpecialNamesWithImages(ctx, svc, specialNames)
 }
 
@@ -67,7 +69,7 @@ type ScriptInsightBuilder struct {
 	inner *scripts.ScriptInsightBuilder
 }
 
-func NewScriptInsightBuilder(logger *zap.Logger, maxEntities int, svc ClipServices) *ScriptInsightBuilder {
+func NewScriptInsightBuilder(logger *zap.Logger, maxEntities int, svc scripts.ClipServices) *ScriptInsightBuilder {
 	return &ScriptInsightBuilder{
 		inner: &scripts.ScriptInsightBuilder{
 			Logger:      logger,
@@ -81,7 +83,7 @@ func (b *ScriptInsightBuilder) Build(ctx context.Context, title, script, entitie
 	return b.inner.Build(ctx, title, script, entitiesJSON)
 }
 
-func ResolveRecommendedDriveFolder(ctx context.Context, svc ClipServices, title, script string, insights ScriptInsights) *ScriptDriveFolderSuggestion {
+func ResolveRecommendedDriveFolder(ctx context.Context, svc scripts.ClipServices, title, script string, insights ScriptInsights) *ScriptDriveFolderSuggestion {
 	return scripts.ResolveRecommendedDriveFolder(ctx, svc, title, script, insights)
 }
 

@@ -1,7 +1,7 @@
 // Package script (api/script) — handler_jobs.go carries the
 // job-system handler receiver methods for ScriptFlowHandler.
 //
-// Agente 4 — A (June 2026): RegisterJobHandlers moved to wire_script.go.
+// Agente 4 — A (June 2026): job handler registration moved to wire_script.go.
 // HandleClipScriptGenerateJob delegates to PipelineUseCase.
 // HandleBatchScriptGenerateJob is a thin decoder+delegate.
 package script
