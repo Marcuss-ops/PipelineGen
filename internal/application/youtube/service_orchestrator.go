@@ -508,3 +508,26 @@ func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
 		return nil
 	}
 }
+
+// GetVideoInfo fetches the YouTube metadata for the given URL.
+//
+// AGENT-2 build-fix (June 2026): this is the 1-line forwarding method that
+// completes the extraction.ExtractionCallbacks interface conformance on
+// *Service. The interface expects
+//	GetVideoInfo(ctx context.Context, url string) (*youtubeports.DownloaderMetadata, error)
+// while the canonical port held by *Service is VideoMetadataFetcherPort,
+// which exposes GetVideoMetadata(ctx, videoURL) with the same return type.
+// We forward to the canonical port so the AGENT-1 cascade's intent —
+// single source of truth via the port layer (AGENTS.md Pattern 0) — is
+// preserved without introducing a duplicate fetcher.
+//
+// The isUnavailablePort guard mirrors sibling forwarding methods
+// (DriveUploadFileIfChanged, OllamaSimpleGenerate) to surface a typed
+// error instead of nil-deref-panic when the orchestrator has not
+// yet wired metaFetcher at composition time.
+func (s *Service) GetVideoInfo(ctx context.Context, url string) (*youtubeports.DownloaderMetadata, error) {
+	if isUnavailablePort(s.metaFetcher) {
+		return nil, fmt.Errorf("youtube: metaFetcher port not wired")
+	}
+	return s.metaFetcher.GetVideoMetadata(ctx, url)
+}
