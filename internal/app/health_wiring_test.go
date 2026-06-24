@@ -30,8 +30,7 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 		Storage: config.StorageConfig{
 			DataDir: t.TempDir(),
 		},
-		Security: config.SecurityConfig{
-		},
+		Security: config.SecurityConfig{},
 	}
 	log := zap.NewNop()
 
@@ -57,8 +56,7 @@ func TestRoutes_DoNotPassNilReadyChecker(t *testing.T) {
 		Storage: config.StorageConfig{
 			DataDir: t.TempDir(),
 		},
-		Security: config.SecurityConfig{
-		},
+		Security: config.SecurityConfig{},
 	}
 
 	// Build a Service with all optional checkers nil (healthy empty state).
@@ -103,8 +101,7 @@ func TestRoutes_WithoutReadyChecker_ReturnsNotInitialized(t *testing.T) {
 		Storage: config.StorageConfig{
 			DataDir: t.TempDir(),
 		},
-		Security: config.SecurityConfig{
-		},
+		Security: config.SecurityConfig{},
 	}
 
 	svc := systemhealth.NewService(systemhealth.ServiceDeps{})

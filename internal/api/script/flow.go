@@ -26,12 +26,12 @@ import (
 type (
 	assetSearchTarget = scripts.AssetSearchTarget
 
-	ScriptAssetSuggestion        = scripts.ScriptAssetSuggestion
-	ScriptPhraseClipSuggestion   = scripts.ScriptPhraseClipSuggestion
-	ScriptDriveFolderSuggestion  = scripts.ScriptDriveFolderSuggestion
-	ScriptArtlistClipSuggestion  = scripts.ScriptArtlistClipSuggestion
-	ScriptEntityImage            = scripts.ScriptEntityImage
-	ScriptInsights               = scripts.ScriptInsights
+	ScriptAssetSuggestion       = scripts.ScriptAssetSuggestion
+	ScriptPhraseClipSuggestion  = scripts.ScriptPhraseClipSuggestion
+	ScriptDriveFolderSuggestion = scripts.ScriptDriveFolderSuggestion
+	ScriptArtlistClipSuggestion = scripts.ScriptArtlistClipSuggestion
+	ScriptEntityImage           = scripts.ScriptEntityImage
+	ScriptInsights              = scripts.ScriptInsights
 )
 
 // EntityScriptExtractor is the canonical entity extractor interface.

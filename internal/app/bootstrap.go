@@ -280,10 +280,10 @@ func migrateLegacyScriptDocs(ctx context.Context, driveClient *gdrive.Service, c
 type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	Lifecycle     module.LifecycleManager          // wraps startBackgroundJobs + buildCleanup
-	HealthService interface{}                      // *systemhealth.Service; consumed by api.NewServerWithHealth
-	ReadyChecker  *systemhealth.ReadyChecker       // codex/health-ready-contract: concrete type, not interface{}
-	Cleanup       func()                           // kept for backward compat (tests); delegates to Lifecycle.Stop
+	Lifecycle     module.LifecycleManager    // wraps startBackgroundJobs + buildCleanup
+	HealthService interface{}                // *systemhealth.Service; consumed by api.NewServerWithHealth
+	ReadyChecker  *systemhealth.ReadyChecker // codex/health-ready-contract: concrete type, not interface{}
+	Cleanup       func()                     // kept for backward compat (tests); delegates to Lifecycle.Stop
 }
 
 // openLogDB was REMOVED in codex/db-set-and-paths. The Observability DB

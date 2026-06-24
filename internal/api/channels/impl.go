@@ -9,18 +9,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ChannelsHandler handles CRUD operations for category_channels (channel subscriptions per Drive folder).
+//
+// PG-002 (June 2026): the repository field is the typed port declared
+// in internal/application/channels/ports.go rather than the concrete
+// SQLite repository. The composition root passes an adapter built on
+// top of *assets.ChannelsRepository — see internal/app/adapters_channels.go.
 type ChannelsHandler struct {
-	repo *assets.ChannelsRepository
+	repo channels.Repository
 	log  *zap.Logger
 }
 
-// NewHandler creates a new channels API handler.
-func NewChannelsHandler(repo *assets.ChannelsRepository, log *zap.Logger) *ChannelsHandler {
+// NewHandler creates a new channels API handler. The repository is the
+// typed channels.Repository port (PG-002).
+func NewChannelsHandler(repo channels.Repository, log *zap.Logger) *ChannelsHandler {
 	return &ChannelsHandler{repo: repo, log: log}
 }
 

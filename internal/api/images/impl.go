@@ -15,7 +15,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -226,7 +225,7 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 			"url_full":      "/assets/" + asset.PathRel,
 			"desc":          asset.Description,
 			"tags":          asset.Tags,
-			"drive_link":    drive.FileURLFromID(asset.DriveFileID),
+			"drive_link":    h.service.FormatDriveLink(asset.DriveFileID),
 			"drive_file_id": asset.DriveFileID,
 		},
 	})
