@@ -29,7 +29,7 @@
 #
 # CURRENT STATE — Wave 14 grandfathered imports
 # ──────────────────────────────────────────────
-# The 28 entries below are real Go imports of internal/infrastructure/*
+# The 27 entries below are real Go imports of internal/infrastructure/*
 # (verified via `grep -rln 'github.com/Marcuss-ops/PipelineGen/internal/infrastructure/'
 # internal/api/ --include='*.go' | grep -v '_test.go'`). They are grandfathered
 # because Wave 14 (API compaction, June 2026) is in flight: the
@@ -42,16 +42,16 @@
 # Migration plan (per PR3 docs/roadmap/PR3_API_COMPACTION.md):
 #   * Wave 14-PR2: extract bulk_upload + handler.go + workers out of
 #     api/assets/clips/* → internal/application/assets/clips/{service,worker}.
-#     This removes 8 of the 28 entries.
+#     This removes 8 of the 27 entries.
 #   * Wave 14-PR3: extract api/script/{flow,handler_flow,handler_jobs,helpers}
 #     → internal/application/scripts/{flow,service,worker} per docs/CHANGELOG_2026-06-03.md
-#     §"ScriptFlow helper extraction". Removes 4 of the 28.
+#     §"ScriptFlow helper extraction". Removes 4 of the 27.
 #   * Wave 14-PR4: api/system/{handler,handler_drive,module} →
 #     internal/application/system/* handlers (no infra reach-through).
-#     Removes 3 of the 28.
+#     Removes 3 of the 27.
 #   * Wave 14-PR5: api/{image,middleware,server,routes,module_core_modules,soundeffect}
 #     thin-transport rewriting per docs/api-package-boundaries.md.
-#     Removes the remaining 13.
+#     Removes the remaining 12.
 #
 # Once the corresponding PR lands, the file path here MUST be REMOVED in
 # the same PR (or in a followup) so the gate starts enforcing zero leaks
