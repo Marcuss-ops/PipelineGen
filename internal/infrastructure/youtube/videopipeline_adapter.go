@@ -13,7 +13,8 @@ package youtube
 import (
 	"context"
 
-	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	// DTOs (VideoCutRequest/Result, DownloaderMetadata, VideoChapter) live in ports/.
+	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 )
 

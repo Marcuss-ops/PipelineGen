@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	// SearchRunnerPort + sentinel errors live in ports/.
+	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
@@ -57,7 +57,7 @@ func TestSearchRunnerAdapter_SearchLive_ContextCancel(t *testing.T) {
 		"ctx.Err() should be returned unwrapped so callers can branch")
 	// Critically: the wrapped error MUST NOT include ErrSearchRunnerUnavailable
 	// because the failure is caller-driven, not infrastructure-driven.
-	assert.NotErrorIs(t, err, youtubeports.ErrSearchRunnerUnavailable,
+	assert.NotErrorIs(t, err, youtubedto.ErrSearchRunnerUnavailable,
 		"caller-driven cancellation must not look like infrastructure unavailability")
 }
 
@@ -75,7 +75,7 @@ func TestSearchRunnerAdapter_GetVideoInfo_ContextCancel(t *testing.T) {
 	assert.Nil(t, meta)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.NotErrorIs(t, err, youtubeports.ErrSearchRunnerVideoInfoUnavailable)
+	assert.NotErrorIs(t, err, youtubedto.ErrSearchRunnerVideoInfoUnavailable)
 }
 
 // TestSearchRunnerAdapter_NilReceiver verifies defensive programming: even
@@ -90,13 +90,13 @@ func TestSearchRunnerAdapter_NilReceiver(t *testing.T) {
 	results, err := nilAdapter.SearchLive(context.Background(), "test", 5, "relevance")
 	assert.Nil(t, results)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, youtubeports.ErrSearchRunnerUnavailable),
+	assert.True(t, errors.Is(err, youtubedto.ErrSearchRunnerUnavailable),
 		"typed-nil receiver must return ErrSearchRunnerUnavailable, never panic")
 
 	// GetVideoInfo
 	meta, err := nilAdapter.GetVideoInfo(context.Background(), "https://www.youtube.com/watch?v=xyz")
 	assert.Nil(t, meta)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, youtubeports.ErrSearchRunnerVideoInfoUnavailable),
+	assert.True(t, errors.Is(err, youtubedto.ErrSearchRunnerVideoInfoUnavailable),
 		"typed-nil receiver must return ErrSearchRunnerVideoInfoUnavailable, never panic")
 }

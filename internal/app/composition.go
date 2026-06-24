@@ -319,6 +319,11 @@ func resolveRuntimeDestinations(ctx context.Context, db *sql.DB, driveClient *gd
 	return configOnlyDestinations(cfg)
 }
 
+// configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
+func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
+	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), VideoAIRoot: cfg.Drive.VideoAIRootFolder, SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder(), videoAIFolder: cfg.Drive.VideoAIFolder()}
+}
+
 // BuildRepoBundle constructs the canonical Repositories.
 func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*RepoBundle, error) {
 	_ = ctx
