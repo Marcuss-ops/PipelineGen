@@ -7,14 +7,25 @@ import (
 )
 
 // prohibitedPatterns is the per-area list for internal/api/jobs (impl.go
-// + handler_workers.go). Job HTTP transport layer. Baseline only — bash
-// Check 19 + the 28-entry grandfatherlist already enforce no
-// infrastructure imports; this gate focuses on goroutines that bash
-// Check 19 cannot catch. Per-area orchestrator patterns can be added
-// after grep-verification during Wave 14 grandfathered-import drain.
+// + handler_workers.go). Job HTTP transport layer. Baseline (no
+// goroutines; bash Check 19 enforces no infrastructure imports) + the
+// grep-verified `jobs.NewService` orchestrator (added 2026-06-24
+// followup). See architecture/migration.yaml::Wave 14 grandfathered-
+// imports + scripts/ci-architectural-checks.sh::Check 19. Cross-ref:
+// docs/migrations/api-infrastructure-imports-allowlist.txt (28
+// grandfathered-import entries as of Wave 14-PR3).
 var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
 	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
+	// Per-area orchestrator pattern (added 2026-06-24 followup, code-review
+	// NIT-B): `jobs.NewService` is the canonical direct-orchestrator
+	// constructor; the API layer must reach the job broker via the
+	// composition root's JobsBundle, not via direct construction.
+	// Grep-verified: zero hits in internal/api/* production code at HEAD,
+	// safe to enforce as a hard-fail pattern. `appjobs.NewService` mirrors
+	// the same risk and is intentionally NOT included yet — see Wave 14
+	// grandfathered-import drain (architecture/migration.yaml).
+	{Name: "jobs.NewService direct construction", Pattern: "jobs.NewService"},
 }
 
 func TestStaticGate_NoJobsAPIInfrastructureLeaks(t *testing.T) {
