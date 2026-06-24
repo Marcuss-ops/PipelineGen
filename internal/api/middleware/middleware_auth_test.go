@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
@@ -10,9 +11,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
 )
 
 // ---------------------------------------------------------------------------
@@ -346,7 +349,17 @@ func TestAuth_NeverPersistsTokenValue(t *testing.T) {
 			error TEXT
 		);
 	`)
-	SetLogDB(db)
+	// The middleware no longer holds *sql.DB directly; the SQLite-backed
+	// sink implements the typed RequestLogSink port. Tests inject the
+	// concrete adapter so the post-cleanup scan below can read back
+	// via the *sql.DB the test created with drive.NewTestDB.
+	sink := logsink.NewSQLiteRequestLogSink(db, zaptest.NewLogger(t))
+	t.Cleanup(func() {
+		if err := sink.Stop(context.Background()); err != nil {
+			t.Logf("sink stop: %v", err)
+		}
+	})
+	SetLogSink(sink)
 
 	r := gin.New()
 	r.Use(RequestID())

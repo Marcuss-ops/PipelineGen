@@ -33,6 +33,7 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -323,15 +324,17 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 
 	// Observability DB is now opened (and schema-validated) by
-	// storage.OpenSet; middleware uses the typed *sql.DB inside
-	// `set.Observability` so app-layer never owns a raw *sql.DB.
-	// PG-011: pass the typed handle directly (Go resolves *sql.DB via
-	// the storage package import — no `database/sql` import needed
-	// in this layer).
+	// storage.OpenSet. The middleware no longer holds *sql.DB; the
+	// composition root constructs a typed SQLiteRequestLogSink that
+	// owns the *sql.DB internally and exposes the typed
+	// RequestLogSink port to middleware.SetLogSink. The adapter lives
+	// under internal/infrastructure/database/sqlite/logsink so the
+	// API layer never carries raw database/sql imports.
 	if root.DB != nil && root.DB.DB != nil {
-		middleware.SetLogDB(root.DB.DB)
+		logSink := logsink.NewSQLiteRequestLogSink(root.DB.DB, log)
+		middleware.SetLogSink(logSink)
 	} else {
-		middleware.SetLogDB(nil)
+		middleware.SetLogSink(nil)
 	}
 
 	registryWiring, err := WireRegistry(root.Ctx, cfg, log, root)
