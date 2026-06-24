@@ -45,9 +45,9 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
-	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
@@ -70,31 +70,31 @@ import (
 	// keep the package alive at the infrastructure level — this package
 	// no longer needs to import it directly.
 	// "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
+	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
@@ -605,7 +605,6 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		AssetRepo:         repos.Assets.Repository(),
 		Clips:             newClipStoreAdapter(repos.ClipsRepo),
 		Monitors:          newMonitorsStoreAdapter(repos.MonitorsRepo),
-		CacheStore:        newCacheStoreAdapter(repos.ClipsRepo),
 		Indexer:           clipIndexerAdapterValue,
 		Ollama:            ai.OllamaClient,
 		MetaFetcher:       metaFetcher,

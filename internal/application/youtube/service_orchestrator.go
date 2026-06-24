@@ -77,12 +77,10 @@ type ServiceDeps struct {
 	MetaFetcher     youtubeports.VideoMetadataFetcherPort
 	DriveFolderMgr  youtubeports.DriveFolderManagerPort
 	HashSvc         youtubeports.HashServicePort
-	TempFiles       youtubeports.TempFileManagerPort
 
 	// PR1.5 — port-backed store/cache/index collaborators.
 	Clips        youtubeports.ClipStorePort
 	Monitors     youtubeports.MonitorsStorePort
-	CacheStore   youtubeports.YouTubeCacheStorePort
 	Indexer      youtubeports.ClipIndexerPort
 	FolderMemory youtubeports.FolderMemoryPort
 	Ollama       youtubeports.OllamaClientPort
@@ -121,11 +119,9 @@ type Service struct {
 	metaFetcher     youtubeports.VideoMetadataFetcherPort
 	driveFolderMgr  youtubeports.DriveFolderManagerPort
 	hashSvc         youtubeports.HashServicePort
-	tempFiles       youtubeports.TempFileManagerPort
 
 	clips        youtubeports.ClipStorePort
 	monitors     youtubeports.MonitorsStorePort
-	cacheStore   youtubeports.YouTubeCacheStorePort
 	indexer      youtubeports.ClipIndexerPort
 	folderMemory youtubeports.FolderMemoryPort
 	ollama       youtubeports.OllamaClientPort
@@ -181,11 +177,9 @@ func NewService(deps ServiceDeps) *Service {
 		metaFetcher:     deps.MetaFetcher,
 		driveFolderMgr:  deps.DriveFolderMgr,
 		hashSvc:         deps.HashSvc,
-		tempFiles:       deps.TempFiles,
 
 		clips:        deps.Clips,
 		monitors:     deps.Monitors,
-		cacheStore:   deps.CacheStore,
 		indexer:      deps.Indexer,
 		folderMemory: deps.FolderMemory,
 		ollama:       deps.Ollama,

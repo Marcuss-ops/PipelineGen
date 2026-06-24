@@ -9,8 +9,8 @@
 // compile-time `var _ <Port> = (*<Concrete>)(nil)` assertions catch drift.
 // Empty markers are reserved for opaque injection tokens.
 //
-// Per PR2 (June 2026): the concrete `DownloaderMetadata` DTO replaced the empty-marker
-// `YouTubeMetadataPort interface{}` bug in `VideoCutResult.Metadata`.
+// Per PR2 (June 2026): the concrete `DownloaderMetadata` DTO replaced the old
+// empty-marker metadata slot in `VideoCutResult.Metadata`.
 package ports
 
 import (
@@ -104,12 +104,6 @@ type SearchLiveResult struct {
 	Thumbnail string  `json:"thumbnail"`
 }
 
-// VideoMetadata is a back-compat alias for DownloaderMetadata.
-type VideoMetadata = DownloaderMetadata
-
-// YouTubeMetadataPort is a back-compat alias for DownloaderMetadata.
-type YouTubeMetadataPort = DownloaderMetadata
-
 // ── Structural ports (signature-bearing) ─────────────────────────────────
 
 type ClipStorePort interface {
@@ -173,7 +167,3 @@ type HashServicePort interface {
 	MD5String(data string) string
 	MD5File(path string) (string, error)
 }
-
-type TempFileManagerPort interface{}
-
-type YouTubeCacheStorePort interface{}

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,10 +42,10 @@ func (f *fakeAssetRepo) HardDelete(ctx context.Context, id string) error { retur
 // validDeps returns a ServiceDeps with all required ports wired (non-nil).
 func validDeps() ServiceDeps {
 	return ServiceDeps{
-		SearchRunner:    &fakeSearchRunner{},
-		AssetRepo:       &fakeAssetRepo{},
-		VideoPipeline:   &fakeVideoPipeline{},
-		MediaProcessor:  &fakeMediaProcessor{},
+		SearchRunner:   &fakeSearchRunner{},
+		AssetRepo:      &fakeAssetRepo{},
+		VideoPipeline:  &fakeVideoPipeline{},
+		MediaProcessor: &fakeMediaProcessor{},
 	}
 }
 
@@ -126,10 +126,8 @@ func TestValidateServiceDeps_AllowsOptionalTypedNilPorts(t *testing.T) {
 	deps.SubtitleFetcher = nil
 	deps.ClipFiles = nil
 	deps.MetaFetcher = nil
-	deps.TempFiles = nil
 	deps.Clips = nil
 	deps.Monitors = nil
-	deps.CacheStore = nil
 	deps.FolderMemory = nil
 
 	err := ValidateServiceDeps(deps)
