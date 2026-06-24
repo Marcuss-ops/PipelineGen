@@ -1,26 +1,144 @@
 package app
 
 import (
+	"context"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
-// PR2 (June 2026): SearchRunnerStub has been deleted. These tests verify
-// the composition root is fail-closed at the new boundary:
+// ── YouTube composition fail-fast tests (PR2 typed-nil defence) ─────────
 
-// TestNewSearchRunnerStub_Removed confirms the legacy constructor and type
-// are gone. This is a compile-time-ish assertion: if the type was
-// resurrected, this test would fail to compile (because the symbol
-// `searchRunnerStub` no longer exists).
-func TestNewSearchRunnerStub_Removed(t *testing.T) {
-	// We do NOT reference `*searchRunnerStub` or `newSearchRunnerStub`
-	// directly because the symbols are intentionally deleted. Instead we
-	// re-assert runtime invariants: the SearchRunnerAdapter contract
-	// (nil returns when cfg is nil) lives in
-	// internal/infrastructure/youtube/search_runner_adapter_test.go.
-	if zap.NewNop() == nil {
-		t.Fatal("precondition: zap.NewNop should return a non-nil logger (sanity)")
+// TestYouTubeComposition_FailsBeforeServiceConstruction verifies that
+// typed-nil required dependencies are caught at composition time (before
+// NewService returns), not at first invocation.
+func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
+	var nilRunner *stubSearchRunner
+	var runner youtubeports.SearchRunnerPort = nilRunner // typed-nil
+
+	deps := youtube.ServiceDeps{
+		SearchRunner:  runner,
+		AssetRepo:     &stubAssetRepo{},
+		VideoPipeline: &stubVideoPipeline{},
 	}
-	t.Log("OK: stub type + constructor are deleted; see search_runner_adapter_test.go for fail-closed verification")
+	// MediaProcessor is intentionally missing (nil).
+	err := youtube.ValidateServiceDeps(deps)
+	require.Error(t, err, "ValidateServiceDeps should reject typed-nil SearchRunner")
+	assert.True(t, portutil.IsNilPort(runner), "precondition: runner should be typed-nil")
+	assert.True(t, runner != nil, "precondition: typed-nil runner should != nil (Go semantics)")
+}
+
+// TestYouTubeComposition_ValidDepsBuildSuccessfully verifies that a fully
+// wired ServiceDeps passes validation and can construct a Service.
+func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
+	deps := youtube.ServiceDeps{
+		Cfg:              nil,
+		Log:              zap.NewNop(),
+		SearchRunner:     &stubSearchRunner{},
+		AssetRepo:        &stubAssetRepo{},
+		VideoPipeline:    &stubVideoPipeline{},
+		MediaProcessor:   &stubMediaProcessor{},
+	}
+
+	err := youtube.ValidateServiceDeps(deps)
+	require.NoError(t, err, "fully wired deps should pass validation")
+
+	svc := youtube.NewService(deps)
+	require.NotNil(t, svc, "NewService should return non-nil with valid deps")
+
+	// Smoke: optional port methods should not panic.
+	err = svc.IndexClip(context.Background(), "test")
+	assert.NoError(t, err, "IndexClip should no-op when no indexer wired")
+
+	transcript, err := svc.TranscribeAudio(context.Background(), "/tmp/test.wav")
+	assert.NoError(t, err, "TranscribeAudio should no-op when no whisper wired")
+	assert.Empty(t, transcript)
+}
+
+// TestYouTubeComposition_AllRequiredDepsRejectsNil validates that every
+// required port is checked individually.
+func TestYouTubeComposition_AllRequiredDepsRejectsNil(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(*youtube.ServiceDeps)
+		wantMsg string
+	}{
+		{
+			name:    "nil SearchRunner",
+			mutate:  func(d *youtube.ServiceDeps) { d.SearchRunner = nil },
+			wantMsg: "SearchRunner",
+		},
+		{
+			name:    "nil AssetRepo",
+			mutate:  func(d *youtube.ServiceDeps) { d.AssetRepo = nil },
+			wantMsg: "AssetRepo",
+		},
+		{
+			name:    "nil VideoPipeline",
+			mutate:  func(d *youtube.ServiceDeps) { d.VideoPipeline = nil },
+			wantMsg: "VideoPipeline",
+		},
+		{
+			name:    "nil MediaProcessor",
+			mutate:  func(d *youtube.ServiceDeps) { d.MediaProcessor = nil },
+			wantMsg: "MediaProcessor",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			deps := youtube.ServiceDeps{
+				SearchRunner:   &stubSearchRunner{},
+				AssetRepo:      &stubAssetRepo{},
+				VideoPipeline:  &stubVideoPipeline{},
+				MediaProcessor: &stubMediaProcessor{},
+			}
+			tc.mutate(&deps)
+			err := youtube.ValidateServiceDeps(deps)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantMsg)
+		})
+	}
+}
+
+// ── Stub types for composition tests ─────────────────────────────────────
+
+type stubSearchRunner struct{}
+
+func (s *stubSearchRunner) SearchLive(ctx context.Context, query string, limit int, sort string) ([]youtubeports.SearchLiveResult, error) {
+	return nil, nil
+}
+func (s *stubSearchRunner) GetVideoInfo(ctx context.Context, videoURL string) (*youtubeports.DownloaderMetadata, error) {
+	return nil, nil
+}
+
+type stubAssetRepo struct{}
+
+func (s *stubAssetRepo) Upsert(ctx context.Context, a *asset.Asset) error              { return nil }
+func (s *stubAssetRepo) Get(ctx context.Context, id string) (*asset.Asset, error)      { return nil, nil }
+func (s *stubAssetRepo) List(ctx context.Context, filter asset.Filter) ([]*asset.Asset, error) {
+	return nil, nil
+}
+func (s *stubAssetRepo) Count(ctx context.Context, filter asset.Filter) (int64, error) { return 0, nil }
+func (s *stubAssetRepo) SoftDelete(ctx context.Context, id string) error               { return nil }
+func (s *stubAssetRepo) Restore(ctx context.Context, id string) error                  { return nil }
+func (s *stubAssetRepo) HardDelete(ctx context.Context, id string) error               { return nil }
+
+type stubVideoPipeline struct{}
+
+func (s *stubVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req youtubeports.VideoCutRequest) (*youtubeports.VideoCutResult, error) {
+	return &youtubeports.VideoCutResult{}, nil
+}
+
+type stubMediaProcessor struct{}
+
+func (s *stubMediaProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
+	return &asset.ProcessResult{Status: "ok"}, nil
 }

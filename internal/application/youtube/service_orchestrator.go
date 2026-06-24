@@ -411,6 +411,10 @@ func (s *Service) TriggerAutoIndexing(ctx context.Context, clipID string) {
 	s.triggerAutoIndexing(ctx, clipID)
 }
 
+// IndexClip is a best-effort callback (ExtractionCallbacks) that delegates
+// to the ClipIndexerPort. When no indexer is wired the call returns nil
+// (no-op) — indexing is a value-add, not a correctness gate. Callers that
+// require indexing must check IsEnabled() before calling.
 func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if isUnavailablePort(s.indexer) {
 		return nil
@@ -426,6 +430,11 @@ func (s *Service) SliceSubtitles(ctx context.Context, videoID string, startSec, 
 	return s.sliceSubtitles(ctx, videoID, startSec, endSec, outputPath)
 }
 
+// TranscribeAudio is a best-effort callback (ExtractionCallbacks) that
+// delegates to the WhisperTranscriberPort. When Whisper is not wired the
+// call returns ("", nil) — an empty transcript signals "no transcription
+// available" rather than a hard failure. Callers downstream treat an empty
+// string as a missing transcript.
 func (s *Service) TranscribeAudio(ctx context.Context, localPath string) (string, error) {
 	if isUnavailablePort(s.whisper) {
 		return "", nil

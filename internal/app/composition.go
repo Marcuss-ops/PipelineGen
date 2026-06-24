@@ -610,7 +610,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
-	youtubeClipService := youtube.NewService(youtube.ServiceDeps{
+	youtubeDeps := youtube.ServiceDeps{
 		Cfg:               cfg,
 		Log:               log,
 		MediaProcessor:    process.MediaProcessor,
@@ -627,7 +627,14 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		DriveFolderMgr:    driveFolderMgr,
 		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
 		SearchRunner:      searchRunnerAdapter,
-	})
+	}
+	// PR2 fail-closed (June 2026): validate typed-nil required deps at
+	// composition time so the server refuses to start rather than
+	// failing at first invocation.
+	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
+		return nil, fmt.Errorf("compose youtube: %w", err)
+	}
+	youtubeClipService := youtube.NewService(youtubeDeps)
 
 	voiceoverSvc, voiceoverRepo := initVoiceoverService(ctx, cfg, dbs, log,
 		drive.DriveClient, drive.DriveUploader,
