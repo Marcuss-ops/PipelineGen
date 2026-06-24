@@ -6,34 +6,32 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
 
-// VectorStorePort is the port interface for vector store upserts.
-// The composition root injects *qdrant.Service which satisfies this.
-type VectorStorePort interface {
-	UpsertAsset(ctx context.Context, asset qdrant.VectorAsset) error
-}
-
 // EnrichUseCase handles semantic enrichment and vector store indexing for clips.
+//
+// PG-005 (June 2026): vectorStore is now VectorStorePort (defined in
+// ports.go) and accepts a ClipVectorAssetDTO instead of a concrete
+// infrastructure type. This file has zero internal/infrastructure
+// imports.
 type EnrichUseCase struct {
-	assetRepo    asset.Repository
-	clipIndexer  *clipindexer.Service
-	vectorStore  VectorStorePort
-	metaWriter   *semantic.MetadataWriter
-	log          *zap.Logger
+	assetRepo   asset.Repository
+	clipIndexer ClipIndexerPort
+	vectorStore VectorStorePort
+	metaWriter  ClipMetaWriterPort
+	log         *zap.Logger
 }
 
-// NewEnrichUseCase constructs the use case.
+// NewEnrichUseCase constructs the use case. PG-005 (June 2026): all
+// four parameter types (assetRepo, clipIndexer, vs, mw) are fully
+// typed ports or domain types — zero infrastructure-layer reach-through.
 func NewEnrichUseCase(
 	repo asset.Repository,
-	indexer *clipindexer.Service,
+	indexer ClipIndexerPort,
 	vs VectorStorePort,
-	mw *semantic.MetadataWriter,
+	mw ClipMetaWriterPort,
 	log *zap.Logger,
 ) *EnrichUseCase {
 	return &EnrichUseCase{
@@ -48,7 +46,7 @@ func NewEnrichUseCase(
 // EnrichAndIndex runs the full enrichment pipeline in background:
 //  1. LLM semantic tagger -> search_text, tags, subjects
 //  2. Clip indexer -> embedding computation
-//  3. Vector store (Qdrant) upsert
+//  3. Vector store (Qdrant) upsert via the typed port
 func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, source string) {
 	enrichCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
@@ -57,14 +55,16 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 		zap.String("clip_id", clip.ID),
 		zap.String("source", source))
 
-	// Step 1: Semantic enrichment via MetadataWriter
+	// Step 1: Semantic enrichment via MetaWriter (typed port).
+	// PG-005 (June 2026): now built via the package-internal DTO
+	// (ClipMetaWriteRequest) so this file has zero infra reach-through.
 	if uc.metaWriter != nil && clip.Name != "" {
 		prompt := clip.Name
 		if clip.Category != "" {
 			prompt = clip.Category + ": " + prompt
 		}
 
-		payload, _, err := uc.metaWriter.GeneratePayload(enrichCtx, semantic.WriteRequest{
+		payload, _, err := uc.metaWriter.GeneratePayload(enrichCtx, ClipMetaWriteRequest{
 			AssetID:   clip.ID,
 			AssetType: "clip",
 			MediaType: string(clip.MediaType),
@@ -105,15 +105,17 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 		}
 	}
 
-	// Step 2: Clip indexer
+	// Step 2: Clip indexer (typed port)
 	if uc.clipIndexer != nil && uc.clipIndexer.IsEnabled() {
 		if err := uc.clipIndexer.IndexClip(enrichCtx, clip.ID); err != nil {
 			uc.log.Warn("clip indexer failed for clip",
 				zap.String("clip_id", clip.ID), zap.Error(err))
 		}
 	} else if uc.vectorStore != nil && clip.SearchText != "" {
-		// Step 3: Direct vector store upsert (fallback)
-		va := qdrant.VectorAsset{
+		// Step 3: Direct vector store upsert (fallback) via typed port.
+		// PG-005 (June 2026): builds ClipVectorAssetDTO (domain
+		// shape) instead of qdrant.VectorAsset (infra type).
+		dto := ClipVectorAssetDTO{
 			AssetID:    clip.ID,
 			Source:     source,
 			Name:       clip.Name,
@@ -124,7 +126,7 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 			SearchText: clip.SearchText,
 			Tags:       clip.Tags,
 		}
-		if err := uc.vectorStore.UpsertAsset(enrichCtx, va); err != nil {
+		if err := uc.vectorStore.UpsertAsset(enrichCtx, dto); err != nil {
 			uc.log.Warn("vector store upsert failed for clip",
 				zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -133,14 +135,15 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 	uc.log.Info("enrichment complete for clip", zap.String("clip_id", clip.ID))
 }
 
-// UpsertToVectorStore constructs a VectorAsset from the clip fields and
-// upserts it to Qdrant. This centralises the VectorAsset mapping so
-// handlers never import infrastructure/qdrant directly.
+// UpsertToVectorStore constructs a ClipVectorAssetDTO from the clip
+// fields and upserts it via the typed VectorStorePort. This centralises
+// the vector-asset mapping so handlers never import infrastructure/qdrant
+// directly.
 func (uc *EnrichUseCase) UpsertToVectorStore(ctx context.Context, clip *asset.Asset, source string) error {
 	if uc.vectorStore == nil {
 		return fmt.Errorf("vector store not configured")
 	}
-	va := qdrant.VectorAsset{
+	dto := ClipVectorAssetDTO{
 		AssetID:    clip.ID,
 		Source:     source,
 		Name:       clip.Name,
@@ -151,7 +154,7 @@ func (uc *EnrichUseCase) UpsertToVectorStore(ctx context.Context, clip *asset.As
 		SearchText: clip.SearchText,
 		Tags:       clip.Tags,
 	}
-	return uc.vectorStore.UpsertAsset(ctx, va)
+	return uc.vectorStore.UpsertAsset(ctx, dto)
 }
 
 // HasVectorStore reports whether the vector store backend is configured.

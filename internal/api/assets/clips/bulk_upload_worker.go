@@ -16,11 +16,16 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by
 // RegisterJobHandlers (called from NewHandler).
+//
+// PG-005 (June 2026): hashutil.MD5File call replaced with
+// h.hashSvc.MD5File (typed port) — the file no longer imports
+// internal/infrastructure/files. cfg.Storage.YoutubeClipsPath() /
+// cfg.Storage.DataDir() ports through the typed
+// appclips.ClipConfigPort accessors (YoutubeClipsPath / DataDir).
 func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	// Job-level deadline so abandoned jobs can't sit half-done forever.
 	// Worker ctx only times out on shutdown, which leaves orphans otherwise.
@@ -46,6 +51,9 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *job.Jo
 	}
 	if h.clipsRepo == nil {
 		return nil, fmt.Errorf("clips repository not configured")
+	}
+	if h.hashSvc == nil {
+		return nil, fmt.Errorf("hash service not configured")
 	}
 	if payload.DriveFolderID == "" {
 		return nil, fmt.Errorf("drive_folder_id is required (enqueue path should have resolved it)")
@@ -200,6 +208,9 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *job.Jo
 //  4. Create / update MediaAsset record
 //  5. Generate embeddings via Python server (unless skip_embeddings)
 //  6. Push to Qdrant (handled automatically by clipIndexer.IndexClip unless skip_qdrant)
+//
+// PG-005 (June 2026): the only infra reach-throughs in this function
+// (hashutil.MD5File + cfg.Storage paths) flow through typed ports.
 func (h *Handler) processOneClip(
 	ctx context.Context,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
@@ -214,8 +225,8 @@ func (h *Handler) processOneClip(
 	// The previous GetClip(localPath) approach was broken because GetClip
 	// looks up by primary key (clip ID), not by local_path.
 
-	// Step 1: hash
-	fileHash, err := hashutil.MD5File(cand.LocalPath)
+	// Step 1: hash (PG-005: typed port)
+	fileHash, err := h.hashSvc.MD5File(cand.LocalPath)
 	if err != nil {
 		failed.Add(1)
 		return fmt.Errorf("hash: %w", err)
@@ -378,9 +389,10 @@ func (h *Handler) processOneClip(
 		// base filename in different source subdirs from racing on the same
 		// stage file.
 		if cand.Transcript != "" {
-			stageRoot := h.cfg.Storage.YoutubeClipsPath()
+			// PG-005: typed config port accessors.
+			stageRoot := h.cfg.YoutubeClipsPath()
 			if stageRoot == "" {
-				stageRoot = filepath.Join(h.cfg.Storage.DataDir, "youtube-clips")
+				stageRoot = filepath.Join(h.cfg.DataDir(), "youtube-clips")
 			}
 			baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
 			// Per-clip subdir = sanitised subdir; falls back to "_root" for

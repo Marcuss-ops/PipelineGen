@@ -70,14 +70,21 @@
 # allowlist at PG-004-cleanup.
 # internal/api/assets/artlist/artlist_handlers.go     ← removed from allowlist
 
-# ── Wave 14 grandfathered: api/assets/clips handlers (PR2) ─────────────────
-internal/api/assets/clips/bulk_upload_helpers.go
-internal/api/assets/clips/bulk_upload_worker.go
-internal/api/assets/clips/clip_action.go
-internal/api/assets/clips/clip_ops.go
-internal/api/assets/clips/handler.go
-internal/api/assets/clips/helpers.go
-internal/api/assets/clips/upload_helpers.go
+# ── Wave 14 grandfathered: api/assets/clips handlers (PR2 — CLEANED, June 2026) ─
+# Internal cleanup wave, June 24 2026: api/assets/clips/** no longer
+# imports internal/infrastructure. The 7 handler files now depend on
+# typed application-layer ports (defined in
+# internal/application/clips/ports.go); concrete adapters wrapping
+# *config.Config, *assets.ClipsRepository, *assets.VoiceoversRepository,
+# *assets.ImagesRepository, *drive.Uploader, *semantic.MetadataWriter,
+# *clipindexer.Service, *foldermemory.Service, and hashutil.MD5File
+# live in internal/app/clips_adapters.go (the only composition-root
+# site allowed to wire infrastructure types into api ports). The
+# companion use cases in internal/application/clips/ (download,
+# enrich, bulk_tags) consume the same typed ports; the qdrant
+# VectorAsset inject is via clips.ClipVectorAssetDTO and the assettree
+# bridge is via clips.ClipTreeBuilderPort — both domain shapes inside
+# the application package. Removed from allowlist at PG-005-cleanup.
 
 # ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/assets/soundeffect/handler.go +

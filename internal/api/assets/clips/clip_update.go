@@ -82,10 +82,11 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 		return
 	}
 
-	// Also update Asset Tree if service is available
-	if h.assetTreeSvc != nil {
-		node := ClipToAssetNode(clip)
-		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
+	// Also update Asset Tree via the typed ClipTreeBuilderPort (PG-005).
+	// Adapter does the domain → concrete infra node shape conversion. PG-005
+	// replaces the previous direct *assettree.Service.UpsertNode call.
+	if h.treeBuilderSvc != nil {
+		if err := h.treeBuilderSvc.UpsertFromAsset(ctx, clip); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clipID), zap.Error(err))
 		}
 	}

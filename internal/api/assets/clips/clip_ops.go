@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	clipspkg "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -24,6 +24,10 @@ import (
 // clips.Handler owns the entire clip lifecycle (including reconcile/cleanup
 // verbs that operate across the clip surface). SourcesHandler no longer
 // needs these.
+//
+// PG-005 (June 2026): verifyClip signature now takes clipspkg.ClipRepositoryPort
+// instead of *assets.ClipsRepository so the api handler no longer imports
+// internal/infrastructure/database/sqlite/assets.
 
 // Reconcile reconciles database with Drive files.
 func (h *Handler) Reconcile(c *gin.Context) {
@@ -96,7 +100,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 
 		// Fallback to synchronous if no jobs service (unlikely)
 		if h.deletionSvc != nil && !req.DryRun {
-			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), h.cfg.Storage.AssetsPath(), false)
+			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), h.cfg.AssetsStoragePath(), false)
 			if err != nil {
 				apiutil.InternalError(c, err)
 				return
@@ -214,8 +218,13 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 // h.voiceoverRepo which are on *clips.Handler; the legacy
 // imageAssetToClip / voiceoverRecordToClip private methods were dropped
 // in favor of the canonical artifacts.* converters.
+//
+// PG-005 (June 2026): repo parameter is now clipspkg.ClipRepositoryPort
+// (instead of *assets.ClipsRepository) so the file has zero
+// internal/infrastructure imports. Method bodies remain unchanged —
+// UpsertClip/ListClipsPaged/GetClip are all on the port interface.
 
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *assets.ClipsRepository, clip *asset.Asset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo clipspkg.ClipRepositoryPort, clip *asset.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

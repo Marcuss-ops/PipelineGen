@@ -3,22 +3,29 @@ package clips
 import (
 	"context"
 	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // BulkTagsUseCase adds or removes tags from multiple clips atomically.
+//
+// PG-005 (June 2026): treeBuilder replaces the previous concrete
+// *assettree.Service dependency. The infra-to-domain bridges (the
+// clipToAssetNode converter and the UpsertNode call) live in the
+// composition-root adapter at
+// internal/app/clips_adapters.go::clipsAssetTreeAdapter, so this use
+// case has zero internal/infrastructure imports.
 type BulkTagsUseCase struct {
-	sourceResolver *artifacts.SourceResolver
-	assetTreeSvc   *assettree.Service
+	sourceResolver SourceResolverPort
+	treeBuilder    ClipTreeBuilderPort
 }
 
 // NewBulkTagsUseCase constructs the use case.
-func NewBulkTagsUseCase(resolver *artifacts.SourceResolver, treeSvc *assettree.Service) *BulkTagsUseCase {
-	return &BulkTagsUseCase{sourceResolver: resolver, assetTreeSvc: treeSvc}
+// PG-005 (June 2026): the resolver parameter is the typed
+// SourceResolverPort (defined in this package's ports.go) and the
+// tree parameter is the typed ClipTreeBuilderPort. Both return
+// ports (NOT the concrete *assets.ClipsRepository or *assets.AssetNode)
+// so the use case stays domain-only.
+func NewBulkTagsUseCase(resolver SourceResolverPort, tree ClipTreeBuilderPort) *BulkTagsUseCase {
+	return &BulkTagsUseCase{sourceResolver: resolver, treeBuilder: tree}
 }
 
 // BulkTagsRequest contains the input for bulk tag operations.
@@ -35,7 +42,7 @@ type BulkTagsResult struct {
 	Message string `json:"message"`
 }
 
-func (uc *BulkTagsUseCase) repoForSource(source string) *assets.ClipsRepository {
+func (uc *BulkTagsUseCase) repoForSource(source string) ClipRepositoryPort {
 	if uc.sourceResolver == nil {
 		return nil
 	}
@@ -57,13 +64,13 @@ func (uc *BulkTagsUseCase) AddTags(ctx context.Context, req BulkTagsRequest) (*B
 		return nil, fmt.Errorf("bulk add tags failed: %w", err)
 	}
 
-	// Update Asset Tree if available
-	if uc.assetTreeSvc != nil {
+	// Update Asset Tree via the typed port. The adapter handles the
+	// domain-to-infra shape conversion.
+	if uc.treeBuilder != nil {
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(ctx, id)
 			if err == nil && clip != nil {
-				node := clipToAssetNode(clip)
-				uc.assetTreeSvc.UpsertNode(ctx, node)
+				uc.treeBuilder.UpsertFromAsset(ctx, clip)
 			}
 		}
 	}
@@ -90,13 +97,13 @@ func (uc *BulkTagsUseCase) RemoveTags(ctx context.Context, req BulkTagsRequest) 
 		return nil, fmt.Errorf("bulk remove tags failed: %w", err)
 	}
 
-	// Update Asset Tree if available
-	if uc.assetTreeSvc != nil {
+	// Update Asset Tree via the typed port. Adapter handles the
+	// domain-to-infra shape conversion.
+	if uc.treeBuilder != nil {
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(ctx, id)
 			if err == nil && clip != nil {
-				node := clipToAssetNode(clip)
-				uc.assetTreeSvc.UpsertNode(ctx, node)
+				uc.treeBuilder.UpsertFromAsset(ctx, clip)
 			}
 		}
 	}
@@ -106,34 +113,4 @@ func (uc *BulkTagsUseCase) RemoveTags(ctx context.Context, req BulkTagsRequest) 
 		Count:   len(req.IDs),
 		Message: fmt.Sprintf("removed tags from %d items", len(req.IDs)),
 	}, nil
-}
-
-// clipToAssetNode converts a canonical asset.Asset to an assets.AssetNode.
-func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
-	if clip == nil {
-		return nil
-	}
-	nodeType := "file"
-	if clip.IsFolder() {
-		nodeType = "folder"
-	} else if clip.MediaType != "" {
-		nodeType = string(clip.MediaType)
-	}
-	return &assets.AssetNode{
-		ID:          clip.ID,
-		Source:      string(clip.Source),
-		AssetID:     clip.ID,
-		Name:        clip.Name,
-		Type:        nodeType,
-		ParentID:    clip.ParentFolderID(),
-		Path:        clip.FolderPath(),
-		Depth:       clip.Depth(),
-		IsFolder:    clip.IsFolder(),
-		DriveFileID: clip.DriveFileID(),
-		DriveLink:   clip.DriveLink(),
-		Metadata:    clip.MetadataJSON(),
-		CreatedAt:   clip.CreatedAt,
-		UpdatedAt:   clip.UpdatedAt,
-		ChildCount:  clip.ChildCount(),
-	}
 }

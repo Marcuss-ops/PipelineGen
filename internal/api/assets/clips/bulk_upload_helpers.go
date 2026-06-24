@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // isLocalFolderAllowed returns true if abs lives under any of the configured
@@ -18,14 +18,20 @@ import (
 // Both the input path and the allowed bases are resolved through symlinks
 // (filepath.EvalSymlinks) so a symlink under an allowed base pointing to
 // /etc cannot bypass the check.
-func isLocalFolderAllowed(abs string, cfg *config.Config) bool {
+//
+// PG-005 (June 2026): the cfg parameter is now the typed
+// appclips.ClipConfigPort (declared in internal/application/clips/ports.go)
+// instead of *config.Config, so the handler keeps zero
+// internal/infrastructure/* reach-through. Allowed paths are read
+// via the port methods MediaPath(), TempPath(), DataDir().
+func isLocalFolderAllowed(abs string, cfg appclips.ClipConfigPort) bool {
 	if cfg == nil {
 		return false
 	}
 	allowed := []string{
-		cfg.Storage.MediaPath(),
-		cfg.Storage.TempPath(),
-		cfg.Storage.DataDir,
+		cfg.MediaPath(),
+		cfg.TempPath(),
+		cfg.DataDir(),
 	}
 	resolve := func(p string) string {
 		p = strings.TrimSpace(p)
