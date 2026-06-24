@@ -30,7 +30,7 @@ import (
 type Handler struct {
 	service              *voiceover.Service
 	syncService          *voiceoversync.Service
-	jobsSvc              *jobservice.Service
+	jobsSvc              jobservice.Service
 	groupsResolver       *voiceover.GroupsResolver // optional; nil-safe — falls back to no-routing
 	defaultVoiceoverRoot string                    // folder ID under which groups live
 	log                  *zap.Logger
@@ -43,7 +43,7 @@ type Handler struct {
 func NewHandler(
 	service *voiceover.Service,
 	syncService *voiceoversync.Service,
-	jobsSvc *jobservice.Service,
+	jobsSvc jobservice.Service,
 	groupsResolver *voiceover.GroupsResolver,
 	defaultVoiceoverRoot string,
 	log *zap.Logger,

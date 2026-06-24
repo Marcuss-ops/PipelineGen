@@ -77,7 +77,7 @@ func TestCreateJobStoresPendingJob(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	j, err := svc.Enqueue(ctx, &EnqueueRequest{
+	j, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:     "test_job",
 		Priority: 1,
 		Project:  "test-project",
@@ -98,7 +98,7 @@ func TestJobMovesToCompleted(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type: "test_job",
 	})
 	if err != nil {
@@ -133,7 +133,7 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type: "test_job",
 	})
 	if err != nil {
@@ -167,7 +167,7 @@ func TestJobPayloadRoundTrip(t *testing.T) {
 
 	ctx := context.Background()
 	payload := map[string]any{"key": "value", "number": float64(42)}
-	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:    "test_job",
 		Payload: payload,
 	})
@@ -190,7 +190,7 @@ func TestUnknownJobTypeFailsClearly(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type: "unknown_type",
 	})
 	if err != nil {
@@ -214,7 +214,7 @@ func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			_, err := svc.Enqueue(ctx, &EnqueueRequest{
+			_, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 				Type:    "concurrent_job",
 				Project: "concurrent-test",
 			})
@@ -313,7 +313,7 @@ func TestEnqueue_Idempotence_DuplicateCorrelationID(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	req := &EnqueueRequest{
+	req := &job.EnqueueRequest{
 		Type:          "idem_test",
 		CorrelationID: "client-req-abc-123",
 	}
@@ -347,12 +347,12 @@ func TestEnqueue_Idempotence_DifferentCorrelationID(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	j1, err := svc.Enqueue(ctx, &EnqueueRequest{
+	j1, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:          "idem_test",
 		CorrelationID: "key-1",
 	})
 	require.NoError(t, err)
-	j2, err := svc.Enqueue(ctx, &EnqueueRequest{
+	j2, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:          "idem_test",
 		CorrelationID: "key-2",
 	})
@@ -370,12 +370,12 @@ func TestEnqueue_Idempotence_AutoInjectsFromContext(t *testing.T) {
 	defer cleanup()
 
 	ctx := corid.WithCorrelationID(context.Background(), "auto-injected-key")
-	j1, err := svc.Enqueue(ctx, &EnqueueRequest{Type: "idem_test"})
+	j1, err := svc.Enqueue(ctx, &job.EnqueueRequest{Type: "idem_test"})
 	require.NoError(t, err)
 	assert.Equal(t, "auto-injected-key", j1.CorrelationID, "correlation_id must be auto-injected from context")
 
 	// Same context, same correlation_id, same type — same job_id.
-	j2, err := svc.Enqueue(ctx, &EnqueueRequest{Type: "idem_test"})
+	j2, err := svc.Enqueue(ctx, &job.EnqueueRequest{Type: "idem_test"})
 	require.NoError(t, err)
 	assert.Equal(t, j1.ID, j2.ID, "auto-injected correlation_id must dedupe subsequent enqueues")
 }
@@ -390,7 +390,7 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	j1, err := svc.Enqueue(ctx, &EnqueueRequest{
+	j1, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:          "idem_test",
 		CorrelationID: "completed-key",
 	})
@@ -404,7 +404,7 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 	}
 	require.NoError(t, svc.Complete(ctx, j1.ID, map[string]any{"ok": true}))
 
-	j2, err := svc.Enqueue(ctx, &EnqueueRequest{
+	j2, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:          "idem_test",
 		CorrelationID: "completed-key",
 	})
@@ -430,7 +430,7 @@ func TestEnqueue_Idempotence_ConcurrentSameCorrelation(t *testing.T) {
 		i := i
 		go func() {
 			defer wg.Done()
-			j, err := svc.Enqueue(ctx, &EnqueueRequest{
+			j, err := svc.Enqueue(ctx, &job.EnqueueRequest{
 				Type:          "concurrent_idem",
 				CorrelationID: "concurrent-key",
 			})
@@ -489,7 +489,7 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		j, err := svcA.Enqueue(ctxA, &EnqueueRequest{Type: "rescue_test"})
+		j, err := svcA.Enqueue(ctxA, &job.EnqueueRequest{Type: "rescue_test"})
 		if err == nil && j != nil {
 			ids[0] = j.ID
 		}
@@ -497,7 +497,7 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		j, err := svcB.Enqueue(ctxB, &EnqueueRequest{Type: "rescue_test"})
+		j, err := svcB.Enqueue(ctxB, &job.EnqueueRequest{Type: "rescue_test"})
 		if err == nil && j != nil {
 			ids[1] = j.ID
 		}

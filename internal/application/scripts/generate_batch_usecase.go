@@ -131,7 +131,7 @@ var ErrGenerateBatchSyncFailed = errors.New("generate-batch: sync execute failed
 type GenerateBatchUseCase struct {
 	Cfg   *config.Config
 	Log   *zap.Logger
-	Jobs  *jobservice.Service
+	Jobs  jobservice.Service
 	Batch *BatchService
 
 	// DefaultScriptsGenFolder is the per-deployment scripts-gen Drive
@@ -145,7 +145,7 @@ type GenerateBatchUseCase struct {
 func NewGenerateBatchUseCase(
 	cfg *config.Config,
 	log *zap.Logger,
-	jobs *jobservice.Service,
+	jobs jobservice.Service,
 	batch *BatchService,
 	defaultScriptsGenFolder string,
 ) *GenerateBatchUseCase {

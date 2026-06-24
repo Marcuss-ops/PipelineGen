@@ -18,14 +18,14 @@ import (
 // in internal/application/lessons. ListJobs stays handler-direct.
 type LessonsHandler struct {
 	generateLessonUC *lessonsApp.GenerateLessonUseCase
-	jobsSvc          *jobs.Service
+	jobsSvc          jobs.Service
 	log              *zap.Logger
 }
 
 // NewLessonsHandler constructs a LessonsHandler. Same signature as
 // the pre-transport migration so internal/app/registry.go needs no
 // edits.
-func NewLessonsHandler(svc *lessonsService.Service, jobsSvc *jobs.Service, log *zap.Logger) *LessonsHandler {
+func NewLessonsHandler(svc *lessonsService.Service, jobsSvc jobs.Service, log *zap.Logger) *LessonsHandler {
 	return &LessonsHandler{
 		generateLessonUC: lessonsApp.NewGenerateLessonUseCase(svc, jobsSvc, log),
 		jobsSvc:          jobsSvc,
@@ -80,12 +80,7 @@ func (h *LessonsHandler) ListJobs(c *gin.Context) {
 		return
 	}
 
-	// Dereference []*job.Job → []job.Job for BuildJobSummaries.
-	jobVals := make([]jobs.Job, len(jobsList))
-	for i, j := range jobsList {
-		if j != nil {
-			jobVals[i] = *j
-		}
-	}
+	// jobsList is already []job.Job (value type) from the domain interface.
+	jobVals := jobsList
 	api.ListJobsResponse(c, api.BuildJobSummaries(jobVals))
 }

@@ -23,11 +23,11 @@ func stockPayloadToMap(p *stockpipeline.StockRunPayload) map[string]any {
 
 type Handler struct {
 	service *stockpipeline.Service
-	jobsSvc *jobservice.Service
+	jobsSvc jobservice.Service
 	log     *zap.Logger
 }
 
-func NewHandler(service *stockpipeline.Service, jobsSvc *jobservice.Service, log *zap.Logger) *Handler {
+func NewHandler(service *stockpipeline.Service, jobsSvc jobservice.Service, log *zap.Logger) *Handler {
 	return &Handler{
 		service: service,
 		jobsSvc: jobsSvc,

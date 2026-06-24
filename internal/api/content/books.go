@@ -21,7 +21,7 @@ import (
 type BooksHandler struct {
 	processBookUC          *booksApp.ProcessBookUseCase
 	processBookFromDriveUC *booksApp.ProcessBookFromDriveUseCase
-	jobsSvc                *jobs.Service
+	jobsSvc                jobs.Service
 	log                    *zap.Logger
 }
 
@@ -30,7 +30,7 @@ type BooksHandler struct {
 // query-param ListJobs endpoint. The constructor signature is
 // unchanged from the pre-transport migration so the app composition
 // root (internal/app/registry.go) needs no edits.
-func NewBooksHandler(svc *booksService.Service, jobsSvc *jobs.Service, log *zap.Logger) *BooksHandler {
+func NewBooksHandler(svc *booksService.Service, jobsSvc jobs.Service, log *zap.Logger) *BooksHandler {
 	return &BooksHandler{
 		processBookUC:          booksApp.NewProcessBookUseCase(svc, jobsSvc, log),
 		processBookFromDriveUC: booksApp.NewProcessBookFromDriveUseCase(svc, log),
@@ -100,12 +100,7 @@ func (h *BooksHandler) ListJobs(c *gin.Context) {
 		return
 	}
 
-	// Dereference []*job.Job → []job.Job for BuildJobSummaries.
-	jobVals := make([]jobs.Job, len(jobsList))
-	for i, j := range jobsList {
-		if j != nil {
-			jobVals[i] = *j
-		}
-	}
+	// jobsList is already []job.Job (value type) from the domain interface.
+	jobVals := jobsList
 	api.ListJobsResponse(c, api.BuildJobSummaries(jobVals))
 }

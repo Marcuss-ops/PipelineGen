@@ -60,7 +60,7 @@ type ScriptFlowHandler struct {
 	clipServices       scripts.ClipServices
 	driveFolderClient  DriveFolderClient
 	documentCreator    DocumentCreator
-	jobsSvc            *jobservice.Service
+	jobsSvc            jobservice.Service
 	scriptsRepo        scripts.ScriptRepository
 	memorySvc          *gemmamemory.Service
 	harvestSvc         AutoHarvestService
@@ -100,7 +100,7 @@ type ScriptFlowDeps struct {
 
 	ScriptsRepo scripts.ScriptRepository
 	Memory      *gemmamemory.Service
-	Jobs        *jobservice.Service
+	Jobs        jobservice.Service
 
 	AdminToken            string
 	DriveFolderClient     DriveFolderClient

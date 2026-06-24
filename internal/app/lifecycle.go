@@ -27,7 +27,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	_ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
-	_ "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
@@ -239,7 +239,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 							case <-time.After(2 * time.Minute):
 							}
 							for {
-								_, err := jsvc.Enqueue(startCtx, &appjobs.EnqueueRequest{
+								_, err := jsvc.Enqueue(startCtx, &job.EnqueueRequest{
 									Type:     "system.cleanup",
 									Priority: 5,
 									Payload: map[string]any{

@@ -35,9 +35,21 @@ func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 func (h *JobsHandler) Enqueue(c *gin.Context) {
-	req, ok := api.BindJSON[appjobs.EnqueueRequest](c)
+	dto, ok := api.BindJSON[appjobs.EnqueueRequest](c)
 	if !ok {
 		return
+	}
+
+	// Map HTTP DTO to domain request
+	req := domainjob.EnqueueRequest{
+		Type:          dto.Type,
+		Project:       dto.Project,
+		VideoName:     dto.VideoName,
+		Payload:       dto.Payload,
+		Priority:      dto.Priority,
+		MaxRetries:    dto.MaxRetries,
+		ActiveKey:     dto.ActiveKey,
+		CorrelationID: dto.CorrelationID,
 	}
 
 	j, err := h.service.Enqueue(c.Request.Context(), &req)

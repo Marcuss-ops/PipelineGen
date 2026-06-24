@@ -55,7 +55,7 @@ type ClipResolverRecommendResult struct {
 type ArtlistHandler struct {
 	service        *artlist.Service
 	catalogSync    *catalogsync.Service
-	jobsService    *jobservice.Service
+	jobsService    jobservice.Service
 	clipResolver   ClipResolverPort
 	nodeScraperDir string
 	log            *zap.Logger
@@ -69,7 +69,7 @@ type ArtlistHandler struct {
 func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
-	jobsService *jobservice.Service,
+	jobsService jobservice.Service,
 	clipResolver ClipResolverPort,
 	nodeScraperDir string,
 	log *zap.Logger,

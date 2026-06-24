@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 
@@ -39,7 +40,7 @@ func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
 // wired ServiceDeps passes validation and can construct a Service.
 func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
 	deps := youtube.ServiceDeps{
-		Cfg:              nil,
+		Cfg:              youtubetypes.RuntimeConfig{},
 		Log:              zap.NewNop(),
 		SearchRunner:     &stubSearchRunner{},
 		AssetRepo:        &stubAssetRepo{},

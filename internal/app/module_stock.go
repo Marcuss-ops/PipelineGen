@@ -24,7 +24,7 @@ import (
 type StockBundle struct {
 	DriveClient        *gdrive.Service
 	Jobs               *appjobs.Service
-	JobFacade          *jobdomain.Service
+	JobFacade          jobdomain.Service
 	AssetIndexService  *assetindex.Service
 	ClipsRepo          *assets.ClipsRepository
 	YoutubeClipService *ytService.Service
