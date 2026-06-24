@@ -211,9 +211,12 @@ python3 scripts/generate_drive_token.py
 
 ---## Rebase-Conflict Lesson (June 2026)
 
-When `git pull --rebase` hits a conflict on a **test file** (or any
-file where both local and remote added independent hunks), prefer
-**manual merge inspection** over `git checkout --ours` / `--theirs`.
+When `git fetch origin` reveals that `origin/main` advanced while you had
+unpushed local commits on the same branch, the recovery is
+`git rebase origin/main` (or `git pull --rebase origin main`). When that
+rebase hits a conflict (e.g. on a **test file** where both local and remote
+added independent hunks), prefer **manual merge inspection** over
+`git checkout --ours` / `--theirs`.
 
 Why this matters:
 
@@ -227,10 +230,10 @@ Why this matters:
 - `git checkout --theirs` silently drops the local skip — the
   obsolete test runs and fails on CI again.
 
-Safe procedure when a **test file** conflicts during rebase:
+Safe procedure when a **test file** conflicts during rebase onto `origin/main`:
 
 1. `git rebase --abort` and start fresh.
-2. `git diff --name-only origin/<branch> HEAD` to list the conflict
+2. `git diff --name-only origin/main HEAD` to list the conflict
    candidates.
 3. For test files (`*_test.go`), open both sides with a three-way
    diff tool and **re-read the intent of each hunk first** (what
@@ -245,30 +248,34 @@ Safe procedure when a **test file** conflicts during rebase:
    visual confirmation (grep for the marker strings the previous
    reviewer asked for).
 5. `git add <file> && git rebase --continue`.
+6. After the rebase finishes, `git push origin main` will fast-forward
+   cleanly. No `--force` needed.
 
 **Anti-pattern**: a loop of
 `pull --rebase, conflict, checkout --ours, commit --amend, push, non-fast-forward, ...`.
 Each `commit --amend` creates a fresh commit hash that re-diverges
-from `origin/<branch>` and triggers the next failure. If you find
+from `origin/main` and triggers the next failure. If you find
 yourself in that loop:
 
 - **First, try the cheap exit**: stop amending, run a clean
-  `git fetch && git rebase origin/<branch>`. If the resulting tree
-  is a clean fast-forward over `origin/<branch>`, an ordinary
-  `git push origin <branch>` will land it — no force-push needed.
+  `git fetch && git rebase origin/main`. If the resulting tree
+  is a clean fast-forward over `origin/main`, an ordinary
+  `git push origin main` will land it — no force-push needed.
 - **Only if the tree is genuinely divergent** (e.g. you and
-  another agent both landed on the same branch in the interim) is
-  `git push --force-with-lease origin <branch>` appropriate, and
+  another agent both landed on `main` in the interim) is
+  `git push --force-with-lease origin main` appropriate, and
   then **only after** running
   `git fetch && git log --oneline HEAD..@{u}` to confirm no
-  in-flight commit from another agent (commits in `origin/<branch>`
+  in-flight commit from another agent (commits in `origin/main`
   that you don't have locally) is about to be clobbered. The
   reverse view, `git log --oneline @{u}..HEAD`, lists your own
   unpushed commits — useful for an audit, **not** a clobber-check.
 
 Canonical reference: the obsolete-batch-tests disposition shipped
 in commits `39071b40` + `a55e38f1` is the case where this lesson
-was learned.
+was learned. Note: the canonical path under the current workflow
+(see [`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow))
+is `git rebase origin/main`, not `git rebase origin/<branch>`.
 
 
 ## Git-Lesson-1 (June 2026) — `git rebase -i` vs `--autosquash`
@@ -306,34 +313,52 @@ branch after a force-push, see
 [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
 
 
-## Git-Lesson-2 (June 2026) — `--no-ff` merge vs rebase on shared branches
+## Git-Lesson-2 (June 2026) — direct-to-main workflow
 
-The choice between rebase and a `--no-ff` merge comes down to
-**what kind of merge you're doing**:
+The PipelineGen convention (June 2026 update) is to **commit directly on `main`**.
+The legacy `topic-branch → PR → merge --no-ff` pattern was retired because it
+added a no-value merge commit per landing and an extra host round-trip without
+improving audit (the commit message itself already carries the agent + body that
+PR descriptions would summarise).
 
-- **Pulling remote updates into your local branch**:
-  `git pull --rebase` is **safe**. It replays your local,
-  unpushed commits on top of the remote tip and only rewrites
-  **your** copy; it never touches the shared branch itself.
-- **Integrating a completed feature branch into `main`**:
-  use `git merge --no-ff <feature-branch>`. The non-fast-
-  forward flag preserves the merge commit so the audit trail
-  shows **when** and **what** was integrated even after the
-  feature branch is deleted. Plain `git merge` quietly
-  fast-forwards and erases that signal.
-- **What is actually dangerous on shared branches**:
-  `git push --force`. Force-pushing rewrites remote history
-  and invalidates copies held by anyone who already pulled.
-  Use `git push --force-with-lease` only as the explicit exit
-  from the amend-loop anti-pattern documented in the
-  [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
+**Default for PipelineGen**:
 
-**Default for PipelineGen** (Operational Readiness PR):
-`main` is the active integration branch. Local work on a
-topic branch → `git pull --rebase` to stay current →
-ordinary `git push` of the topic branch → open PR/MR →
-host squash-merge, or local `git merge --no-ff` to land.
-Never `git push --force` against `origin/main`.
+```bash
+# Stay current if your local main has unpushed commits relative to origin.
+git fetch origin
+git rebase origin/main                    # replay your local commits on top
+
+# Publish. Never `git push --force` against `origin/main`.
+git push origin main
+```
+
+The `--no-ff` flag is **retired**: a fast-forwarding `git push origin main`
+records each commit individually on `origin/main` (the same audit signal that
+`--no-ff` claimed to provide, just cheaper). No merge commit stands between your
+commit and the canonical history. If a divergent tree needs force-push, see
+the [`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026) — but in
+practice the cheap exit (rebase + ff-push) always works.
+
+**Topic branches**: **strictly opt-in** and rarer than the prior workflow assumed.
+Use one ONLY when **all three** of the following hold:
+
+1. The feature spans >24h of multi-agent work (e.g. a Wave-X typed-handle sweep
+   distributed across commits that would each break CI independently).
+2. Intermediate commits would break the build or test them if landed
+   individually (a single feature with green-every-commit shape does NOT need
+   a topic branch — land incrementally on main).
+3. The team agrees the workflow-deferral cost is worth it.
+
+The default remains direct-on-main. When in doubt, land incrementally on main:
+reviewers comment on commits in `git log`, not on PR descriptions. A feature
+that "feels too big for main" usually feels that way because the commits are
+too coarse — split them before reaching for a branch.
+
+**What is actually dangerous on `main`**: `git push --force`. Force-pushing
+rewrites remote history and invalidates copies held by anyone who already
+pulled. Use `git push --force-with-lease origin main` only as the explicit
+exit from the amend-loop anti-pattern documented in the
+[`Rebase-Conflict Lesson`](#rebase-conflict-lesson-june-2026).
 
 
 ## Git-Lesson-3 (June 2026) — `Co-authored-by:` trailers for agent commits
@@ -345,7 +370,8 @@ agent amend: the trailer keeps the agent's work attributable
 to the agent's identity in **local logs** (`git shortlog`,
 `git log --author=<agent>`, `git log --format='%(trailers)'`).
 
-Convention for agent commits in this repo:
+Convention for agent commits in this repo (commit directly on `main` per
+[`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow)):
 
 ```
 <subject>
@@ -363,6 +389,7 @@ is the canonical no-reply email. The agent runner sets it via:
 git -c user.email='agent@pipelinegen.local' \
     -c user.name='PipelineGen Agent' \
     commit ...
+git push origin main     # direct-to-main; no topic branch, no PR, no --force
 ```
 
 **Caveat**: the `@pipelinegen.local` email is for **local-log
@@ -372,18 +399,20 @@ avatars by **registered** email; unrecognised domains
 alias) will not render on the host's social graph. Use this
 trailer for internal audit; if you also need GitHub avatars,
 add the agent's verified email through the host's
-collaborator UI.
-
-**Format rule**: trailers must appear after a **blank line**
-following the body. A `Co-authored-by:` line in the subject
-is NOT parsed as a trailer. Verify with:
+collaborator UI.**Format rule**: trailers must appear after a **blank line** following the body. A `Co-authored-by:` line in the subject is NOT parsed as a trailer. Verify with:
 
 ```
 git log --format='%(trailers)' -1 <sha>
 ```
 
-after committing. Empty output means the trailer landed in
-the wrong place.
+after committing. Empty output means the trailer landed in the wrong place.
+
+**Workflow integration** (per [`Git-Lesson-2`](#git-lesson-2-june-2026--direct-to-main-workflow)):
+agent commits go **directly on `main`** — after `git commit` with the agent
+identity flags, publish via `git push origin main` (no topic branch, no
+`--no-ff` merge commit, no `--force`). The trailer mechanism itself is
+unchanged by the workflow switch: the *body* of the commit carries the audit
+provenance that PR descriptions used to summarise.
 
 
 The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
