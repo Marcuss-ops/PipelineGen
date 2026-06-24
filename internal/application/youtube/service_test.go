@@ -6,10 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
@@ -392,4 +393,104 @@ func testConfig(tmp string) *config.Config {
 			Duration: 30,
 		},
 	}
+}
+
+// ── PR5 Phase 3 forwarding tests (June 2026) ────────────────────────────────────────
+//
+// These tests cover the public Extract forwarding method on the root Service.
+// The canonical extraction logic lives in internal/application/youtube/extraction/;
+// the root Service is a thin forwarder. Three contracts are guaranteed:
+//
+//   1. ctx.Err() is honoured BEFORE internal-state inspection, so a cancelled
+//      request short-circuits without paying for nil-unwrapping.
+//   2. If the extraction capability is not wired (`s.extraction == nil`),
+//      callers get an explicit error rather than a silent nil panic.
+//   3. The forwarding path reaches the canonical extraction service so the
+//      rest of the pipeline (validation, video info, segments, lifecycle) is
+//      observable through the root method.
+
+// TestExtract_ReturnsContextCancelledIfContextCancelled ensures the
+// forwarding wrapper honours cancellation BEFORE inspecting internal state.
+// A pre-cancelled context must surface ctx.Err() without reaching the
+// extraction service (no downstream work performed).
+func TestExtract_ReturnsContextCancelledIfContextCancelled(t *testing.T) {
+	svc := &Service{extraction: nil} // ctx check fires before nil check
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// TestExtract_ReturnsContextDeadlineExceededIfContextExpired mirrors the
+// cancellation test for the deadline variant. Same short-circuit contract
+// observable for both cancellation modes.
+func TestExtract_ReturnsContextDeadlineExceededIfContextExpired(t *testing.T) {
+	svc := &Service{extraction: nil}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+// TestExtract_ReturnsErrorIfExtractionNotWired ensures the forwarding
+// wrapper returns an EXPLICIT error when `s.extraction == nil` rather
+// than silently panicking on a downstream nil dereference. NewService
+// always wires extraction in production; this test exercises a defensive
+// failure mode (e.g. post-construction nil assignment, future refactor).
+func TestExtract_ReturnsErrorIfExtractionNotWired(t *testing.T) {
+	svc := &Service{extraction: nil}
+
+	resp, err := svc.Extract(context.Background(), &youtubetypes.ExtractRequest{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "youtube: extraction capability service not wired")
+}
+
+// TestExtract_DelegatesToExtractionCapability is the LIGHTWEIGHT positive
+// contract for "delega corretta" (correct delegation). We deliberately
+// avoid duplicating the heavier TestYouTubeClipHandlesPipelineFailure
+// assertions on OK=false / Stats.Failed=1; that test covers end-to-end
+// behaviour. Here we only assert that pipeline.called flips: if root
+// .Extract re-implemented the pipeline locally instead of delegating,
+// the fake port would never see the call. The "yt-dlp failed" sentinel
+// gives the extraction service something concrete to record against.
+func TestExtract_DelegatesToExtractionCapability(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	security.AddAllowedHost("www.youtube.com")
+	security.AddAllowedHost("youtu.be")
+
+	pipeline := &fakeVideoPipeline{
+		err: errors.New("yt-dlp failed"),
+	}
+
+	svc := NewService(ServiceDeps{
+		Cfg:           testConfig(tmp),
+		Log:           zap.NewNop(),
+		VideoPipeline: pipeline,
+		AssetRepo:     &fakeAssetRepo{},
+		SearchRunner:  &fakeSearchRunner{},
+	})
+
+	_, _ = svc.Extract(ctx, &youtubetypes.ExtractRequest{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+		Segments: []youtubetypes.Segment{
+			{Name: "intro", Start: "0", End: "5"},
+		},
+	})
+
+	require.True(t, pipeline.called, "root.Extract must forward to extraction capability (pipeline.called proves the call traversed the chain)")
 }
