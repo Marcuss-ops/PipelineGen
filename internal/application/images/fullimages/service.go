@@ -62,6 +62,21 @@ func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, me
 	}
 }
 
+// VideoStatus returns the canonical CapabilityStatus for the video_ai
+// capability, delegated through imgService (single source of truth per
+// fix(images): expose truthful capability availability). The route
+// handler in api/images/handler_full.go gates on this; do NOT read
+// imgservice.Service fields directly there.
+//
+// Nil-safe: a nil receiver or nil imgService returns StatusNotImplemented
+// so a mis-wired FullImagesHandler cannot panic the request handler.
+func (s *Service) VideoStatus() imgservice.CapabilityStatus {
+	if s == nil || s.imgService == nil {
+		return imgservice.StatusNotImplemented
+	}
+	return s.imgService.CapabilityResolution(imgservice.CapVideoAI)
+}
+
 const (
 	videoGenTimeout = 5 * time.Minute
 	imageGenWidth   = 1344
