@@ -35,7 +35,6 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
@@ -44,7 +43,7 @@ import (
 // setters are intentionally absent.
 type ServiceDeps struct {
 	// Core collaborators (always required).
-	Cfg               *config.Config
+	Cfg               youtubetypes.RuntimeConfig
 	Log               *zap.Logger
 	MediaProcessor    asset.Processor
 	VideoPipeline     youtubeports.VideoPipelinePort
@@ -77,7 +76,7 @@ type ServiceDeps struct {
 // (no setters). Methods received on nil-receiver port fields surface an
 // explicit error rather than silently no-op'ing.
 type Service struct {
-	cfg               *config.Config
+	cfg               youtubetypes.RuntimeConfig
 	log               *zap.Logger
 	mediaProcessor    asset.Processor
 	videoPipeline     youtubeports.VideoPipelinePort
@@ -120,15 +119,13 @@ type Service struct {
 // PR5 (June 2026): the L2 cache is injected through CachePort; composition
 // owns the SQLite-backed infrastructure adapter.
 func NewService(deps ServiceDeps) *Service {
-	maxVideo := 1
-	maxOllama := 1
-	if deps.Cfg != nil {
-		if v := deps.Cfg.Concurrency.MaxConcurrentVideoExtracts; v > 0 {
-			maxVideo = v
-		}
-		if v := deps.Cfg.Concurrency.MaxConcurrentOllamaCalls; v > 0 {
-			maxOllama = v
-		}
+	maxVideo := deps.Cfg.MaxConcurrentVideoExtracts
+	if maxVideo <= 0 {
+		maxVideo = 1
+	}
+	maxOllama := deps.Cfg.MaxConcurrentOllamaCalls
+	if maxOllama <= 0 {
+		maxOllama = 1
 	}
 	svc := &Service{
 		cfg:               deps.Cfg,
@@ -312,7 +309,7 @@ func (s *Service) DownloadAndCut(ctx context.Context, req youtubeports.VideoCutR
 
 // Config returns the resolved runtime configuration (for callers that need
 // to read it without taking a direct dependency on the config loader).
-func (s *Service) Config() *config.Config {
+func (s *Service) Config() youtubetypes.RuntimeConfig {
 	return s.cfg
 }
 

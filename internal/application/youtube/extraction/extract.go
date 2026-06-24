@@ -33,9 +33,9 @@ func (s *Service) Extract(ctx context.Context, req *youtubetypes.ExtractRequest)
 	s.log.Info("YouTube Extract service called", zap.String("url", req.URL))
 
 	// Apply configurable timeout if no deadline is set
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline && s.cfg.Jobs.YouTubeExtractTimeout > 0 {
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && s.cfg.YouTubeExtractTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Jobs.YouTubeExtractTimeout)*time.Second)
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.YouTubeExtractTimeout)*time.Second)
 		defer cancel()
 	}
 
@@ -180,7 +180,7 @@ func (s *Service) Extract(ctx context.Context, req *youtubetypes.ExtractRequest)
 		req.Destination.CreateSubfolder = true
 	}
 
-	outDir := filepath.Join(s.cfg.Storage.DataDir, "media", "clips", group, folderSlug)
+	outDir := filepath.Join(s.cfg.DataDir, "media", "clips", group, folderSlug)
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		resp.OK = false
 		resp.Error = err.Error()

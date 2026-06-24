@@ -417,12 +417,11 @@ func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *a
 }
 
 type DriveDestinations struct {
-	MediaRoot, VideoAIRoot, SoundEffectsRoot, imagesFolder, videoAIFolder string
+	MediaRoot, SoundEffectsRoot, imagesFolder string
 }
 
-func (d *DriveDestinations) RootFolder() string    { return d.MediaRoot }
-func (d *DriveDestinations) ImagesFolder() string  { return d.imagesFolder }
-func (d *DriveDestinations) VideoAIFolder() string { return d.videoAIFolder }
+func (d *DriveDestinations) RootFolder() string   { return d.MediaRoot }
+func (d *DriveDestinations) ImagesFolder() string { return d.imagesFolder }
 
 func initMediaProcessor(cfg *config.Config, db *sql.DB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
@@ -438,9 +437,7 @@ func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository,
 		{Name: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Source: "youtube", MediaType: "clip", Repo: clipsOnlyRepo},
 		{Name: "artlist", RootFolderID: cfg.Drive.ArtlistFolder(), Source: "artlist", MediaType: "artlist", Repo: artlistRepo},
 	}
-	if videoAIRoot := cfg.Drive.VideoAIFolder(); videoAIRoot != "" {
-		targets = append(targets, catalogsync.Target{Name: "videoai", RootFolderID: videoAIRoot, Source: "videoai", MediaType: "image", Repo: artlistRepo})
-	}
+
 	return targets
 }
 

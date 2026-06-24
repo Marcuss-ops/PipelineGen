@@ -11,9 +11,6 @@ func TestCapabilityResolution_NilSafe(t *testing.T) {
 	for _, cap := range []Capability{
 		CapImageGenNvidia,
 		CapRemoteImageGen,
-		CapGoogleSlidesImage,
-		CapVideoAI,
-		CapPrewarm,
 	} {
 		if got := s.CapabilityResolution(cap); got != StatusNotImplemented {
 			t.Errorf("nil receiver for %s: got %s, want %s", cap, got, StatusNotImplemented)
@@ -31,11 +28,8 @@ func TestCapabilityResolution_TruthfulMapping(t *testing.T) {
 	s := &Service{} // zero-valued: nvidiaAPIKey == "", remoteImageEndpointURL == ""
 
 	want := map[Capability]CapabilityStatus{
-		CapImageGenNvidia:    StatusMissingDependency, // NVIDIA_API_KEY not set
-		CapRemoteImageGen:    StatusMissingDependency, // VELOX_REMOTE_IMAGE_ENDPOINT not set
-		CapGoogleSlidesImage: StatusNotImplemented,    // stub (track: image-google-slides)
-		CapVideoAI:           StatusNotImplemented,    // stub (GenerateVideoAI is a no-op error)
-		CapPrewarm:           StatusNotImplemented,    // stub (TriggerPrewarm is a debug-log no-op)
+		CapImageGenNvidia: StatusMissingDependency, // NVIDIA_API_KEY not set
+		CapRemoteImageGen: StatusMissingDependency, // VELOX_REMOTE_IMAGE_ENDPOINT not set
 	}
 	for cap, want := range want {
 		if got := s.CapabilityResolution(cap); got != want {
@@ -58,7 +52,7 @@ func TestCapabilityResolution_NvidiaKeyAvailable(t *testing.T) {
 		t.Errorf("CapRemoteImageGen: got %s, want %s", got, StatusMissingDependency)
 	}
 	// Stubs unchanged.
-	for _, cap := range []Capability{CapGoogleSlidesImage, CapVideoAI, CapPrewarm} {
+	for _, cap := range []Capability{} {
 		if got := s.CapabilityResolution(cap); got != StatusNotImplemented {
 			t.Errorf("capability %s: got %s, want %s (stubs unchanged by NVIDIA key)", cap, got, StatusNotImplemented)
 		}
@@ -100,15 +94,12 @@ func TestAllCapabilities_ContainsAllFiveCapabilities(t *testing.T) {
 	for _, cap := range []Capability{
 		CapImageGenNvidia,
 		CapRemoteImageGen,
-		CapGoogleSlidesImage,
-		CapVideoAI,
-		CapPrewarm,
 	} {
 		if _, ok := all[cap]; !ok {
 			t.Errorf("AllCapabilities missing entry for %s", cap)
 		}
 	}
-	if len(all) != 5 {
-		t.Errorf("AllCapabilities length = %d, want 5 (one per known Capability)", len(all))
+	if len(all) != 2 {
+		t.Errorf("AllCapabilities length = %d, want 2 (one per known Capability)", len(all))
 	}
 }

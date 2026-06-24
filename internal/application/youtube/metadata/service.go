@@ -23,7 +23,6 @@ import (
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/tagutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -34,7 +33,7 @@ type MetadataDeps struct {
 	MetaFetcher ports.VideoMetadataFetcherPort
 	Ollama      ports.OllamaClientPort
 	AssetRepo   asset.Repository
-	Cfg         *config.Config
+	Cfg         types.RuntimeConfig
 	Log         *zap.Logger
 }
 
@@ -44,7 +43,7 @@ type Service struct {
 	metaFetcher ports.VideoMetadataFetcherPort
 	ollama      ports.OllamaClientPort
 	assetRepo   asset.Repository
-	cfg         *config.Config
+	cfg         types.RuntimeConfig
 	log         *zap.Logger
 }
 
@@ -597,12 +596,9 @@ Rules:
 }
 
 func (s *Service) metadataModel() string {
-	if s.cfg == nil {
-		return "gemma4:e2b"
-	}
-	model := strings.TrimSpace(s.cfg.External.OllamaMetadataModel)
+	model := strings.TrimSpace(s.cfg.OllamaMetadataModel)
 	if model == "" {
-		model = strings.TrimSpace(s.cfg.External.OllamaModel)
+		model = strings.TrimSpace(s.cfg.OllamaModel)
 	}
 	if model == "" {
 		model = "gemma4:e2b"

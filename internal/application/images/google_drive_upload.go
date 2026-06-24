@@ -30,7 +30,7 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, asset *asset.ImageAsse
 		Subject:           asset.SubjectID,
 		Hash:              asset.Hash,
 		Ext:               filepath.Ext(asset.PathRel),
-		DriveRootOverride: s.cfg.Drive.VideoAIFolder(),
+		DriveRootOverride: s.cfg.Drive.ImagesFolder(),
 	}
 	imagePath := filepath.Join(s.imagesDir, asset.PathRel)
 

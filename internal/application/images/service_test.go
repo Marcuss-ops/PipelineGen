@@ -265,7 +265,7 @@ func TestAIImageDriveRootForSource(t *testing.T) {
 	svc := &Service{
 		cfg: &config.Config{
 			Drive: config.DriveConfig{
-				VideoAIRootFolder: "ai-root",
+				ImagesRootFolder: "ai-root",
 			},
 		},
 	}

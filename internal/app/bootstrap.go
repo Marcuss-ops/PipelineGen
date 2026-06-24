@@ -229,9 +229,7 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gd
 			cfg.Drive.ScriptsGenerateFolder = resolveScriptsSubfolder("Generate", "scripts_generate")
 		}
 	}
-	if cfg.Drive.VideoAIRootFolder == "" {
-		cfg.Drive.VideoAIRootFolder = resolveFolder("Ai Images", "videoai")
-	}
+
 	if cfg.Drive.CopertineRootFolder == "" {
 		cfg.Drive.CopertineRootFolder = resolveFolder("Copertine", "copertine")
 	}

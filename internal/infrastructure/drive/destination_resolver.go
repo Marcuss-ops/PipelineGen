@@ -52,7 +52,7 @@ func (d *destinationResolverAdapter) Resolve(_ context.Context, req *asset.Resol
 		if d.store.imagesFolder != "" {
 			folderID = d.store.imagesFolder
 		}
-	case "video", "video_ai":
+	case "video":
 		if d.store.videoAIRoot != "" {
 			folderID = d.store.videoAIRoot
 		}

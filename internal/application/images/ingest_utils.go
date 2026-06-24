@@ -42,7 +42,7 @@ func (s *Service) aiImageDriveRootForSource(source, style string) string {
 		return folderID
 	}
 
-	return s.cfg.Drive.VideoAIFolder()
+	return s.cfg.Drive.ImagesFolder()
 }
 
 func isAIImageSource(source string) bool {
