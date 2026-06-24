@@ -323,7 +323,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		registerModule(registry, log, scriptapi.NewScriptHistoryModule(
 			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 			log,
-			middleware.FeatureFlagChecker(cfg, "Script", scriptHistoryEnabled),
+			middleware.FeatureFlagChecker("Script", scriptHistoryEnabled),
 			scriptHistoryEnabled,
 		))
 	}

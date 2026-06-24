@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/gin-gonic/gin"
 )
 
 // tokenBucketRateLimiter implements a simple token-bucket per IP.
-// It is O(1) for Allow, O(1) for cleanup, and avoids the quadratic
-// sort and unbounded slice growth of the old implementation.
+// O(1) for Allow, O(1) for cleanup, and avoids the quadratic sort
+// and unbounded slice growth of the old implementation.
 type tokenBucketRateLimiter struct {
 	mu       sync.RWMutex
 	buckets  map[string]*bucket
@@ -49,7 +49,6 @@ func (rl *tokenBucketRateLimiter) Allow(key string) bool {
 		return true
 	}
 
-	// Refill tokens based on elapsed time since last request
 	elapsed := now.Sub(b.lastRef)
 	refill := int(elapsed / rl.window * time.Duration(rl.limit))
 	if refill > 0 {
@@ -94,7 +93,6 @@ func (rl *tokenBucketRateLimiter) cleanupOnce() {
 		}
 	}
 
-	// If still over maxKeys, evict oldest entries.
 	if len(rl.buckets) > rl.maxKeys {
 		for k := range rl.buckets {
 			delete(rl.buckets, k)
@@ -111,23 +109,29 @@ func (rl *tokenBucketRateLimiter) Stop() {
 	})
 }
 
-// RateLimitMiddleware holds the middleware and its associated rate limiter
+// RateLimitMiddleware holds the middleware and its associated rate limiter.
 type RateLimitMiddleware struct {
 	Handler gin.HandlerFunc
 	limiter *tokenBucketRateLimiter
 }
 
-// Stop signals the rate limiter's cleanup goroutine to terminate
+// Stop signals the rate limiter's cleanup goroutine to terminate.
 func (r *RateLimitMiddleware) Stop() {
 	if r.limiter != nil {
 		r.limiter.Stop()
 	}
 }
 
-// RateLimit creates a rate limiting middleware. The returned RateLimitMiddleware
-// must have its Stop() method called during server shutdown to prevent goroutine leaks.
-func RateLimit(cfg *config.Config) *RateLimitMiddleware {
-	if !cfg.Security.RateLimitEnabled {
+// RateLimit creates a rate limiting middleware.
+//
+// PG-006 (June 2026): the previous signature took *config.Config. The
+// middleware now consumes middleware.RateLimitPort (defined in
+// internal/application/middleware/ports.go). Concrete adapter lives
+// at internal/app/middleware_security_adapter.go. The returned
+// RateLimitMiddleware must have its Stop() method called during
+// server shutdown to prevent goroutine leaks.
+func RateLimit(rl middleware.RateLimitPort) *RateLimitMiddleware {
+	if rl == nil || !rl.RateLimitEnabled() {
 		return &RateLimitMiddleware{
 			Handler: func(c *gin.Context) {
 				c.Next()
@@ -135,9 +139,8 @@ func RateLimit(cfg *config.Config) *RateLimitMiddleware {
 		}
 	}
 
-	limiter := newTokenBucketRateLimiter(cfg.Security.RateLimitRequests, time.Minute)
+	limiter := newTokenBucketRateLimiter(rl.RateLimitRequests(), time.Minute)
 
-	// Start periodic cleanup (manages its own ticker and stop channel)
 	go limiter.Cleanup()
 
 	return &RateLimitMiddleware{

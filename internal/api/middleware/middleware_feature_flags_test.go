@@ -1,3 +1,11 @@
+// Feature flag middleware tests (PG-006, June 2026).
+//
+// Previously these tests constructed `&config.Config{Features:
+// config.FeaturesConfig{...}}` literals to drive the ArtlistEnabled
+// per-feature gate. With the typed-port cascade, the package no longer
+// imports `internal/infrastructure/config` — the testFlags stub from
+// port_fakes_test.go (a 3-method FeatureFlagsPort fake) replaces the
+// config literal.
 package middleware
 
 import (
@@ -5,21 +13,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/gin-gonic/gin"
 )
 
 func TestFeatureFlagCheckerDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	cfg := &config.Config{
-		Features: config.FeaturesConfig{
-			ArtlistEnabled: false,
-		},
-	}
-
+	flags := &testFlags{artlist: false}
 	r := gin.New()
-	r.Use(ArtlistEnabled(cfg))
+	r.Use(ArtlistEnabled(flags))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -36,14 +38,9 @@ func TestFeatureFlagCheckerDisabled(t *testing.T) {
 func TestFeatureFlagCheckerEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	cfg := &config.Config{
-		Features: config.FeaturesConfig{
-			ArtlistEnabled: true,
-		},
-	}
-
+	flags := &testFlags{artlist: true}
 	r := gin.New()
-	r.Use(ArtlistEnabled(cfg))
+	r.Use(ArtlistEnabled(flags))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

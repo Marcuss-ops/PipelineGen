@@ -8,54 +8,54 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
-// Auth returns a gin middleware for authentication
-func Auth(cfg *config.Config) gin.HandlerFunc {
+// Auth returns a gin middleware for authentication.
+//
+// PG-006 (June 2026): the previous signature took *config.Config
+// (`internal/infrastructure/config`) and used the package-level
+// logger aliases from `internal/infrastructure/logging`. The middleware
+// is now strictly domain-shaped — AuthSecurityPort (defined in
+// internal/application/middleware/ports.go) carries the bool + token
+// values, and *zap.Logger is passed at registration time.
+func Auth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !cfg.Security.EnableAuth {
+		if sec != nil && !sec.EnableAuth() {
 			c.Set("is_admin", true)
 			c.Next()
 			return
 		}
 
 		token := extractAuthToken(c)
-		// SECURITY: never log the token itself (not even hashed / truncated).
-		// Logging `received_token` / `expected_token` / `token` leaks the
-		// full secret into the journal and the persistent api_requests
-		// table via the request logger. We intentionally log only a
-		// boolean — not the credential's length, prefix, or hash — to
-		// also avoid timing-style attacks against short admin tokens.
-		logger.Info("Auth check",
-			zap.String("path", c.Request.URL.Path),
-			zap.Bool("has_credential", token != ""))
 
-		// Check admin token. Comparison MUST go through compareTokens
-		// (crypto/subtle.ConstantTimeCompare) to resist byte-by-byte
-		// network-level timing attacks — Go's `==` short-circuits on
-		// the first byte mismatch, leaking the secret's prefix.
-		if compareTokens(token, cfg.Security.AdminToken) {
+		if log != nil {
+			log.Info("Auth check",
+				zap.String("path", c.Request.URL.Path),
+				zap.Bool("has_credential", token != ""))
+		}
+
+		if sec != nil && compareTokens(token, sec.AdminToken()) {
 			c.Set("is_admin", true)
 			c.Next()
 			return
 		}
 
-		// Check worker token (constant-time — see compareTokens doc).
-		if compareTokens(token, cfg.Security.WorkerToken) {
+		if sec != nil && compareTokens(token, sec.WorkerToken()) {
 			c.Set("is_worker", true)
 			c.Next()
 			return
 		}
 
-		logger.Warn("Unauthorized access attempt",
-			zap.String("path", c.Request.URL.Path),
-			zap.Bool("has_credential", token != ""),
-			zap.String("client_ip", c.ClientIP()))
+		if log != nil {
+			log.Warn("Unauthorized access attempt",
+				zap.String("path", c.Request.URL.Path),
+				zap.Bool("has_credential", token != ""),
+				zap.String("client_ip", c.ClientIP()))
+		}
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"ok":    false,
 			"error": "Unauthorized",
@@ -65,13 +65,6 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 }
 
 func extractAuthToken(c *gin.Context) string {
-	// SECURITY: tokens are only accepted via HTTP headers, never via
-	// query string. Query strings are routinely logged by reverse
-	// proxies, browser history, and our own request logger; allowing
-	// ?token=... would leak the secret into multiple persistent stores.
-	//
-	// The Authorization header value itself is never logged. Do not add
-	// `logger.Debug("got auth", zap.String("header", authHeader))` here.
 	if token := strings.TrimSpace(c.GetHeader("X-Velox-Admin-Token")); token != "" {
 		return token
 	}
@@ -92,20 +85,6 @@ func extractAuthToken(c *gin.Context) string {
 // compareTokens returns true iff `provided` and `expected` are
 // non-empty, equal length, and byte-equal — computed in constant time
 // via crypto/subtle.ConstantTimeCompare.
-//
-// Why constant-time matters here: a network-adjacent attacker who can
-// repeatedly send authenticated requests can in principle measure
-// microsecond-level response-time differences and recover the token
-// byte-by-byte. Go's `==` operator on strings short-circuits on the
-// first byte mismatch, leaking that prefix timing. ConstantTimeCompare
-// always compares every byte, eliminating this signal.
-//
-// Length-mismatch returns false immediately (subtle.ConstantTimeCompare
-// itself returns 0 on length mismatch, but we short-circuit first to
-// keep the helper easy to reason about). The expected token has a
-// fixed length set at config time, so the length is not a secret —
-// only its bytes are. The empty-provided short-circuit mirrors the
-// previous `token != ""` guard the call sites used to spell out by hand.
 func compareTokens(provided, expected string) bool {
 	if provided == "" || expected == "" {
 		return false
@@ -116,31 +95,38 @@ func compareTokens(provided, expected string) bool {
 	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
-// WorkerAuth returns a gin middleware that accepts ONLY worker tokens.
+// WorkerAuth returns a gin middleware that accepts ONLY worker
+// tokens. Defense-in-depth mirror of Auth() — see the long comment on
+// the previous implementation in the git history (PR1 era, June
+// 2026) for threat model.
 //
-// Distinct from Auth() which accepts both admin and worker tokens —
-// /internal/v1/* routes serve the remote worker broker (claim,
-// heartbeat, asset transfer), and a leaked admin token MUST NOT grant
-// those rights. Defense-in-depth: even if an operator ships an
-// environment where the worker token and admin token are accidentally
-// interchangeable, WorkerAuth refuses anything that is not byte-exactly
-// the configured worker token.
-//
-// No EnableAuth short-circuit on purpose: /internal/v1 must always be
-// authenticated (no auth-less scrimmage path). Operators that want to
-// disable worker auth entirely should set WorkerToken to a known
-// literal and accept the obvious risk — there is no silent bypass.
-func WorkerAuth(cfg *config.Config) gin.HandlerFunc {
-	expected := strings.TrimSpace(cfg.Security.WorkerToken)
-	if expected == "" {
-		// Refuse to start serving unauthenticated worker routes. A
-		// blank WorkerToken in production would make every
-		// /internal/v1/* endpoint an open door; fail loud at first
-		// request instead of leaking the misconfig.
+// PG-006 (June 2026): zero infra imports; takes AuthSecurityPort +
+// *zap.Logger.
+func WorkerAuth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFunc {
+	if sec == nil {
+		// Pre-token resolution: refuse to mount unauthenticated routes.
 		return func(c *gin.Context) {
-			logger.Error("WorkerAuth mounted with empty WorkerToken — refusing request",
-				zap.String("path", c.Request.URL.Path),
-				zap.String("client_ip", c.ClientIP()))
+			if log != nil {
+				log.Error("WorkerAuth mounted without AuthSecurityPort — refusing request",
+					zap.String("path", c.Request.URL.Path),
+					zap.String("client_ip", c.ClientIP()))
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"ok":    false,
+				"error": "WorkerAuth misconfigured (no AuthSecurityPort supplied)",
+			})
+			c.Abort()
+		}
+	}
+
+	expected := strings.TrimSpace(sec.WorkerToken())
+	if expected == "" {
+		return func(c *gin.Context) {
+			if log != nil {
+				log.Error("WorkerAuth mounted with empty WorkerToken — refusing request",
+					zap.String("path", c.Request.URL.Path),
+					zap.String("client_ip", c.ClientIP()))
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"ok":    false,
 				"error": "WorkerAuth misconfigured (VELOX_WORKER_TOKEN is empty)",
@@ -151,24 +137,25 @@ func WorkerAuth(cfg *config.Config) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		token := extractAuthToken(c)
-		// SECURITY: never log token value (same invariant as Auth() —
-		// see that function's comment for the reasoning).
-		logger.Info("WorkerAuth check",
-			zap.String("path", c.Request.URL.Path),
-			zap.Bool("has_credential", token != ""))
 
-		// Constant-time compare to resist byte-by-byte network-level
-		// timing attacks against the worker secret.
+		if log != nil {
+			log.Info("WorkerAuth check",
+				zap.String("path", c.Request.URL.Path),
+				zap.Bool("has_credential", token != ""))
+		}
+
 		if compareTokens(token, expected) {
 			c.Set("is_worker", true)
 			c.Next()
 			return
 		}
 
-		logger.Warn("WorkerAuth rejected request (admin token or wrong secret)",
-			zap.String("path", c.Request.URL.Path),
-			zap.Bool("has_credential", token != ""),
-			zap.String("client_ip", c.ClientIP()))
+		if log != nil {
+			log.Warn("WorkerAuth rejected request (admin token or wrong secret)",
+				zap.String("path", c.Request.URL.Path),
+				zap.Bool("has_credential", token != ""),
+				zap.String("client_ip", c.ClientIP()))
+		}
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"ok":    false,
 			"error": "Unauthorized: worker token required",
@@ -177,13 +164,18 @@ func WorkerAuth(cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-// Recovery returns a gin middleware for recovering from panics
-func Recovery() gin.HandlerFunc {
+// Recovery returns a gin middleware for recovering from panics.
+//
+// PG-006 (June 2026): previously called the package-level
+// logger.Error alias; now takes *zap.Logger at registration time.
+func Recovery(log *zap.Logger) gin.HandlerFunc {
 	return gin.CustomRecovery(func(c *gin.Context, err any) {
-		logger.Error("Panic recovered",
-			zap.Any("error", err),
-			zap.String("path", c.Request.URL.Path),
-		)
+		if log != nil {
+			log.Error("Panic recovered",
+				zap.Any("error", err),
+				zap.String("path", c.Request.URL.Path),
+			)
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": "Internal server error",
@@ -191,20 +183,16 @@ func Recovery() gin.HandlerFunc {
 	})
 }
 
-// RequestID returns a gin middleware that adds a unique ID to each request
-// and stores it both in the gin context (as "request_id") and in the
-// request's context.Context (as a correlation id, retrievable via
-// corid.FromContext). Downstream code — background jobs, the Ollama
-// client, Python scripts exec'd via subprocess — can pull the same
-// value out without having to thread it through every function signature.
+// RequestID returns a gin middleware that adds a unique ID to each
+// request and stores it both in the gin context and the request's
+// context.Context (as a correlation id, retrievable via
+// corid.FromContext).
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqID := c.GetHeader("X-Request-ID")
 		if reqID == "" {
 			reqID = generateRequestID()
 		} else {
-			// Validate client-provided IDs to prevent log injection and
-			// excessively long strings.
 			reqID = sanitizeRequestID(reqID)
 		}
 		c.Set("request_id", reqID)
@@ -220,12 +208,12 @@ func generateRequestID() string {
 	if _, err := rand.Read(b); err == nil {
 		return time.Now().Format("20060102-150405") + "-" + hex.EncodeToString(b)
 	}
-	// Fallback only if the system's CSPRNG is unavailable.
 	return time.Now().Format("20060102-150405") + "-" + randomString(8)
 }
 
-// sanitizeRequestID clamps length and strips non-alphanumeric characters
-// to prevent log injection from client-supplied X-Request-ID headers.
+// sanitizeRequestID clamps length and strips non-alphanumeric
+// characters to prevent log injection from client-supplied
+// X-Request-ID headers.
 func sanitizeRequestID(raw string) string {
 	const maxLen = 64
 	if len(raw) > maxLen {
