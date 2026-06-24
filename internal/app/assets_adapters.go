@@ -52,7 +52,12 @@ func (a *diagVectorStoreAdapter) OperationCollectionInfo(ctx context.Context) (*
 	if info == nil {
 		return nil, fmt.Errorf("OperationCollectionInfo returned nil")
 	}
-	return &appdiag.CollectionInfo{PointsCount: info.PointsCount}, nil
+	// AGENT-1 cascade fix (June 2026): the canonical qdrant stub
+	// (internal/infrastructure/qdrant/service.go::CollectionInfo) declares
+	// PointsCount as `int` while diagnostics.CollectionInfo (the app
+	// port) declares it as `int64`. Cast at the adapter boundary so
+	// callers receive the canonical wider type.
+	return &appdiag.CollectionInfo{PointsCount: int64(info.PointsCount)}, nil
 }
 
 // diagAssetStatsAdapter adapts *assets.ClipsRepository to diagnostics.AssetStatsPort.

@@ -5,7 +5,31 @@ package semantic
 import (
 	"context"
 	"encoding/json"
+
+	"go.uber.org/zap"
 )
+
+// ── NewMetadataWriter (AGENT-2 cascade stub, June 2026) ─────────────────
+
+// NewMetadataWriter is the canonical constructor for *MetadataWriter.
+// Pre-fix callers (module_artlist.go + module_stock.go inside the
+// BuildDomainBundle composition root) called semantic.NewMetadataWriter(...)
+// with these five args; the canonical stub did not expose a constructor.
+// The stub consumes the args (for future wiring parity) and returns a
+// working no-op *MetadataWriter — Write/GeneratePayload produce deterministic
+// Payload shells so downstream ports (artlist.MetadataWriter + stockpipeline)
+// stay satisfied until the real tagger is reintroduced.
+func NewMetadataWriter(pythonScriptsDir, tempDir, ollamaURL, ollamaModel string, log *zap.Logger) *MetadataWriter {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	log.Info("semantic.MetadataWriter stub initialised",
+		zap.String("python_scripts_dir", pythonScriptsDir),
+		zap.String("temp_dir", tempDir),
+		zap.String("ollama_url", ollamaURL),
+		zap.String("ollama_model", ollamaModel))
+	return &MetadataWriter{}
+}
 
 // ── AssetSemanticInput ─────────────────────────────────────────────────
 

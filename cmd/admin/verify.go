@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 const (
@@ -259,11 +259,18 @@ func pollRunStatus(runID string) (*statusResponse, error) {
 }
 
 func verifyJobInDB(runID string, cfg *config.Config) error {
-	dbPath := filepath.Join(cfg.Storage.DataDir, "media", "media.db.sqlite")
+	// AGENT-1 (June 2026): canonical primary DB path is exposed by
+	// cfg.Storage.PrimaryDBFullPath() (single source of truth — see
+	// internal/infrastructure/config.StorageConfig). The historical
+	// <DataDir>/media/media.db.sqlite fallback is preserved so that
+	// existing operators who kept the legacy path still get a usable
+	// "job status" check (see internal/infrastructure/database/set.go
+	// for the path-migration history).
+	dbPath := cfg.Storage.PrimaryDBFullPath()
 	if _, err := os.Stat(dbPath); err != nil {
-		dbPath = filepath.Join(cfg.Storage.DataDir, "media.db.sqlite")
+		dbPath = filepath.Join(cfg.Storage.DataDir, "media", "media.db.sqlite")
 		if _, err := os.Stat(dbPath); err != nil {
-			return fmt.Errorf("cannot find media db at %s/media/media.db.sqlite or %s/media.db.sqlite: %w", cfg.Storage.DataDir, cfg.Storage.DataDir, err)
+			return fmt.Errorf("cannot find media db at %s or %s/media/media.db.sqlite: %w", dbPath, cfg.Storage.DataDir, err)
 		}
 	}
 

@@ -1,3 +1,18 @@
+// cmd/admin/reset_video_ai.go — AGENT-1 recovery (June 2026)
+//
+// Recreates the stock "video ai" sub-folder on Google Drive and registers
+// an entry in the canonical `clip_folders` SQLite table.
+//
+// Post-fix wiring (AGENT-1):
+//
+//   - app.ExportInitCoreMinimal was removed in PR4d-final; we use
+//     app.InitComposition(cfg, log) to obtain *ComposeRoot. The
+//     Drive client and Uploader are reached through
+//     root.Drive.DriveClient / root.Drive.DriveUploader.
+//   - Internal driveapi.File calls (Files.List/Delete/Create) remain
+//     direct because the operator-driven flow needs raw SDK shape
+//     (`Trashed:true` semantics, mime-type folder detection) not yet
+//     wrapped by *drive.Uploader.
 package main
 
 import (
@@ -31,26 +46,28 @@ func runResetVideoAI(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
+	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize core services", zap.Error(err))
+		log.Fatal("Failed to initialize composition root", zap.Error(err))
 	}
-	defer coreCleanup()
+	defer rootCleanup()
 
-	if deps.DriveClient == nil {
+	if root.Drive == nil || root.Drive.DriveClient == nil {
 		return fmt.Errorf("drive client is not available")
 	}
 
 	ctx := cmdContext()
+	driveClient := root.Drive.DriveClient
 	stockRootFolder := cfg.Drive.RootFolder()
 
 	// Step 1: List and delete all items in the source folder
 	fmt.Printf("📂 Source folder: %s\n", *sourceFolder)
 	query := fmt.Sprintf("'%s' in parents and trashed = false", *sourceFolder)
-	list, err := deps.DriveClient.Files.List().Q(query).
+	list, err := driveClient.Files.List().Q(query).
 		Fields("files(id, name, mimeType)").
 		PageSize(1000).
-		Context(ctx).Do()
+		Context(ctx).
+		Do()
 	if err != nil {
 		return fmt.Errorf("failed to list folder: %w", err)
 	}
@@ -63,7 +80,7 @@ func runResetVideoAI(args []string) error {
 	if *apply && len(list.Files) > 0 {
 		fmt.Println("\nDeleting items...")
 		for _, f := range list.Files {
-			if err := deps.DriveClient.Files.Delete(f.Id).Context(ctx).Do(); err != nil {
+			if err := driveClient.Files.Delete(f.Id).Context(ctx).Do(); err != nil {
 				log.Warn("Failed to delete file", zap.String("name", f.Name), zap.String("id", f.Id), zap.Error(err))
 			} else {
 				fmt.Printf("  ✅ Deleted: %s\n", f.Name)
@@ -74,7 +91,7 @@ func runResetVideoAI(args []string) error {
 	// Step 2: Create "video ai" folder on Drive under stock root
 	var videoAIFolderID string
 	if *apply {
-		videoAIFolderID, err = getOrCreateDriveFolder(ctx, deps.DriveClient, videoAIFolderName, stockRootFolder)
+		videoAIFolderID, err = getOrCreateDriveFolder(ctx, driveClient, videoAIFolderName, stockRootFolder)
 		if err != nil {
 			return fmt.Errorf("failed to create video ai folder: %w", err)
 		}
@@ -85,7 +102,7 @@ func runResetVideoAI(args []string) error {
 
 	// Step 3: Create DB entry in clip_folders
 	if *apply {
-		if err := createClipFolderEntry(ctx, deps.DB.DB, videoAIFolderID, log); err != nil {
+		if err := createClipFolderEntry(ctx, root.DB.DB, videoAIFolderID); err != nil {
 			return fmt.Errorf("failed to create DB entry: %w", err)
 		}
 		fmt.Printf("✅ Created DB entry: clipfolder_stock_video-ai\n")
@@ -132,13 +149,18 @@ func escapeName(name string) string {
 	return result
 }
 
-func createClipFolderEntry(ctx context.Context, db *sql.DB, folderID string, log *zap.Logger) error {
+// createClipFolderEntry upserts the canonical `clip_folders` row for the
+// "video ai" sub-folder. Column shape matches migration
+// 011_create_characters.sql + the canonical INSERT in
+// internal/app/bootstrap.go::resolveDynamicDriveFolders.
+func createClipFolderEntry(ctx context.Context, db *sql.DB, folderID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.ExecContext(ctx, `
 		INSERT OR REPLACE INTO clip_folders
-			(id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name,
-			 manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count,
-			 skipped_count, last_error, metadata, created_at, updated_at, search_key)
+			(id, source, source_url, video_id, folder_id, folder_path,
+			 local_folder_path, group_name, manifest_txt_path, manifest_json_path,
+			 clip_count, processed_count, failed_count, skipped_count, last_error,
+			 metadata, created_at, updated_at, search_key)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"clipfolder_stock_video-ai",
@@ -151,10 +173,7 @@ func createClipFolderEntry(ctx context.Context, db *sql.DB, folderID string, log
 		videoAIFolderName,
 		"",
 		"",
-		0, // clip_count
-		0, // processed_count
-		0, // failed_count
-		0, // skipped_count
+		0, 0, 0, 0,
 		"",
 		"{}",
 		now,

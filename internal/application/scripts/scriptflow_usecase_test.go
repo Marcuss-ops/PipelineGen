@@ -223,6 +223,23 @@ func TestPipelineUseCase_RegisterJobs_NilSvcNoOp(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestPipelineUseCase_RegisterJobs_WrongShapeReturnsTypedError verifies
+// that passing a non-nil but untyped value to RegisterJobs surfaces a
+// typed `ErrBrokerNotSatisfied` error rather than silently skipping —
+// the AGENT-2 (June 2026) port-tightening replaces silent-skip with
+// fail-fast so a wrong-shape composition root is detected at first
+// integration test, not at first job dispatch. The signature stays
+// `interface{}` to preserve upstream flexibility (caller can pass
+// either `*job.Service` or `*jobs.Service`); the assertion against
+// the canonical `Broker` port typed the no-match path.
+func TestPipelineUseCase_RegisterJobs_WrongShapeReturnsTypedError(t *testing.T) {
+	t.Parallel()
+	pu := &PipelineUseCase{log: zap.NewNop()} // intentionally under-populated
+	err := pu.RegisterJobs(struct{}{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrBrokerNotSatisfied)
+}
+
 func TestPipelineUseCase_HandleJob_NilUseCaseErrors(t *testing.T) {
 	t.Parallel()
 	var pu *PipelineUseCase

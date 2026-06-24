@@ -63,7 +63,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	// AGENT-1 cascade fix (June 2026): reranker import removed.
+	// The realtime NewService wiring that consumed *reranker.Client was
+	// replaced by a nil-value assignment (realtime package removed in
+	// commit d61068b3). The Diagnostic adapters in assets_adapters.go
+	// keep the package alive at the infrastructure level — this package
+	// no longer needs to import it directly.
+	// "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -73,7 +79,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
@@ -192,9 +197,14 @@ type DomainBundle struct {
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
 	MetaWriter         *semantic.MetadataWriter
-	RealtimeService    *realtime.Service
-	AutotagService     *autotag.Service
-	AssocService       interface{} // was *associationpkg.Service (package removed)
+	// AGENT-1 cascade fix (June 2026): realtime package removed in commit
+	// d61068b3. Field type flipped to interface{} so callers (registry.go
+	// wire-up at line ~248 + wire_script.go at ~89/182/245) continue to
+	// compile. Production-wired value is always nil until the realtime
+	// package is reintroduced.
+	RealtimeService interface{} `yaml:"-" json:"-"` // was *realtime.Service (package removed)
+	AutotagService  *autotag.Service
+	AssocService    interface{} // was *associationpkg.Service (package removed)
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and
@@ -423,55 +433,30 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		DBPath:                dbs.main.Path(),
 	}, dbs.main.DB, dbs.main.Path(), log)
 
+	// AGENT-1 cascade fix (June 2026, cmd/admin recovery): align BuildProcessBundle
+	// to the canonical qdrant stub (commit d61068b3 "fix: recreate deleted
+	// stubs..."). The pre-fix code referenced qdrant.NewQdrantClient,
+	// the old 3-arg qdrant.NewService, and qdrant.Config fields (URL,
+	// Collection, vector name fields, etc.) that the canonical stub
+	// intentionally does NOT expose — the real qdrant package was removed
+	// from the remote and the stub returns errors for every operation.
+	// Until a real qdrant backend is reintroduced, BuildProcessBundle only
+	// needs to pass Enabled + a non-nil vectorSvc so ClipIndexerService
+	// can attach the ClipIndexerAdapter.
 	var vectorSvc *qdrant.Service
+	var qdrantCfg qdrant.Config
+	qdrantCfg.Enabled = cfg.VectorSearch.Enabled
 	if cfg.VectorSearch.Enabled {
-		qdrantCfg := qdrant.Config{
-			URL:                  cfg.VectorSearch.URL,
-			Collection:           cfg.VectorSearch.Collection,
-			TextVectorName:       cfg.VectorSearch.TextVectorName,
-			VisualVectorName:     cfg.VectorSearch.VisualVectorName,
-			AudioVectorName:      cfg.VectorSearch.AudioVectorName,
-			TranscriptVectorName: cfg.VectorSearch.TranscriptVectorName,
-			SparseVectorName:     cfg.VectorSearch.SparseVectorName,
-			TextDimensions:       cfg.VectorSearch.TextDimensions,
-			VisualDimensions:     cfg.VectorSearch.VisualDimensions,
-			AudioDimensions:      cfg.VectorSearch.AudioDimensions,
-			TranscriptDimensions: cfg.VectorSearch.TranscriptDimensions,
-			MinInstantScore:      cfg.VectorSearch.MinInstantScore,
-			TimeoutMs:            cfg.VectorSearch.TimeoutMs,
-			CollectionVersion:    cfg.VectorSearch.CollectionVersion,
-			CollectionAlias:      cfg.VectorSearch.CollectionAlias,
-			DisableAlias:         cfg.VectorSearch.DisableAlias,
-		}
-		if cfg.VectorSearch.CollectionVersion != "" {
-			mode := "alias-routed"
-			if cfg.VectorSearch.DisableAlias {
-				mode = "versioned-direct"
-			}
-			log.Info("Qdrant collection versioning enabled",
-				zap.String("collection", cfg.VectorSearch.Collection),
-				zap.String("version", cfg.VectorSearch.CollectionVersion),
-				zap.String("alias", cfg.VectorSearch.CollectionAlias),
-				zap.String("routing", mode))
-		}
-		qdrantClient := qdrant.NewQdrantClient(qdrantCfg)
-		vectorSvc = qdrant.NewService(qdrantClient, qdrantCfg, log)
-		vectorSvc.SetRetryPolicy(
-			cfg.VectorSearch.RetryAttempts,
-			time.Duration(cfg.VectorSearch.RetryInitialWaitMs)*time.Millisecond,
-			time.Duration(cfg.VectorSearch.RetryMaxWaitMs)*time.Millisecond,
-		)
-		log.Info("Qdrant retry policy applied",
-			zap.Int("attempts", cfg.VectorSearch.RetryAttempts),
-			zap.Int("initial_wait_ms", cfg.VectorSearch.RetryInitialWaitMs),
-			zap.Int("max_wait_ms", cfg.VectorSearch.RetryMaxWaitMs),
-		)
+		log.Info("Qdrant enabled (canonical stub form); real backend removed from remote",
+			zap.String("collection", cfg.VectorSearch.Collection),
+			zap.String("url", cfg.VectorSearch.URL))
+		vectorSvc = qdrant.NewService(qdrantCfg)
 		// PR9-C (June 2026): EnsureCollection is deferred to the closure.
 		// clipIndexerAdapter wiring stays here (pure construction).
 		clipIndexerAdapter := qdrant.NewClipIndexerAdapter(dbs.main.DB, vectorSvc, qdrantCfg, log)
 		if clipIndexerAdapter != nil {
 			clipIndexerService.SetVectorStore(clipIndexerAdapter)
-			log.Info("vector store enabled for clip indexer")
+			log.Info("vector store enabled for clip indexer (stub backend — see qdrant/service.go)")
 		}
 	}
 
@@ -654,25 +639,15 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		voMetaWriter, ingestSvc,
 	)
 
-	var realtimeSvc *realtime.Service
-	if cfg.VectorSearch.Enabled && cfg.VectorSearch.RealtimeEnabled && process.VectorSvc != nil {
-		embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
-		rerankerClient := reranker.NewClient(reranker.Config{
-			Enabled:   cfg.Reranker.Enabled,
-			URL:       cfg.Reranker.URL,
-			Model:     cfg.Reranker.Model,
-			TopK:      cfg.Reranker.TopK,
-			TimeoutMs: cfg.Reranker.TimeoutMs,
-			Weight:    cfg.Reranker.Weight,
-		})
-		realtimeSvc = realtime.NewService(process.VectorSvc, embedder, nil, rerankerClient,
-			cfg.Reranker, &cfg.VectorSearch, repos.ClipsRepo, nil, log)
-		log.Info("real-time matching service enabled",
-			zap.Bool("reranker_enabled", cfg.Reranker.Enabled),
-			zap.Int("reranker_top_k", cfg.Reranker.TopK),
-			zap.Int("reranker_timeout_ms", cfg.Reranker.TimeoutMs),
-		)
-	}
+	// AGENT-1 cascade fix (June 2026, cmd/admin recovery): the `realtime`
+	// package was removed in commit d61068b3. The DomainBundle.RealtimeService
+	// field has been flipped to interface{}; the wiring below is replaced
+	// by a nil-assignment so root.Domains.RealtimeService is always the zero
+	// value until the realtime package is reintroduced. Existing callers
+	// (registry.go, wire_script.go) already accept interface{} for the field
+	// (they lived through the same stub during script-flow era; their own
+	// fields use `interface{} // was *realtime.Service` markers).
+	var realtimeSvc interface{} = nil
 
 	var autotagVectorStore clipindexer.VectorStoreIndexer
 	if process.ClipIndexerService != nil {
@@ -680,6 +655,15 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, autotagVectorStore, log)
 
+	// AGENT-1 close-out (June 2026, cmd/admin recovery collateral): the
+	// association service was removed from the remote (commit d61068b3
+	// "fix: recreate deleted stubs..."). A stray `}` after `log.Info`
+	// prematurely closed BuildDomainBundle, leaking subsequent statements
+	// (lessonsSvc / voiceover sync wiring / return) to package scope —
+	// producing "non-declaration statement outside function body" errors
+	// that broke `go build ./cmd/admin/`. Removed so the function body
+	// runs through to the `return &DomainBundle{...}`.
+	// Pragmatic stub (deleted-package contract preserved via field).
 	var assocService interface{} = nil // was associationpkg.NewService(...) — package removed
 	log.Info("association service unavailable — package removed from remote")
 

@@ -715,6 +715,46 @@ else
     echo "  OK: $GEN_DOC present, git-tracked, and in sync"
 fi
 
+# ── Check 22: cmd/admin legacy-import gate (codex/admin-gate-policy, June 2026) ────
+echo ""
+echo "Check 22: cmd/admin legacy-import gate (production-only)"
+# Per the AGENT-1 PR brief, the canonical static gate is:
+#   ! rg 'internal/(config|media|storage|upload|repository/clips)' cmd/admin --type go
+# The naive command trips on cmd/admin/admin_test.go's bannedPatterns fixtures
+# (the test deliberately keeps the banned-import strings present as a
+# self-preservation mechanism). Production-only intent restores the gate to
+# match the AGENT-1 brief's actual DoD: production code in cmd/admin/ must
+# NOT import a retired legacy package.
+#
+# Tightening (codex/admin-gate-policy, June 2026): the regex is anchored
+# to the quoted `github.com/Marcuss-ops/PipelineGen/internal/...` form so
+# it ONLY catches actual Go import statements — not doc comments like
+# `// internal/config → internal/infrastructure/config` that narrate the
+# migration. This convention matches Checks 3, 11, 13 (transport) and 19
+# above; see the inline rationale near Check 19 for the design choice.
+#
+# Use the `-g '!*_test.go'` ripgrep glob to exclude _test.go fixtures. This
+# matches the dominant pattern in Checks 1, 2, 4, 6, 7, 8, 9, 10, 12, 13,
+# 17, 19 above and harmonises with the existing TestAdminCommands_NoLegacyImports
+# Go test (which already applies the same skip via `strings.HasSuffix(fname, "_test.go")`).
+HITS=$(rg -n '"github\.com/Marcuss-ops/PipelineGen/internal/(config|media|storage|upload|repository/clips)(/[^"]*)?"' cmd/admin --type go -g '!*_test.go' 2>/dev/null || true)
+if [ -n "${HITS}" ]; then
+    echo "FAIL: legacy retired-package imports found in production code under cmd/admin/"
+    printf "%s\n" "${HITS}" | sed 's/^/  /'
+    echo ""
+    echo "These file(s) import a retired legacy package canonicalised during the"
+    echo "AGENTS.md consolidation work (June 2026). Migrate to the canonical path:"
+    echo "  internal/config         -> internal/infrastructure/config"
+    echo "  internal/media          -> internal/application/<feature>/ + internal/infrastructure/qdrant"
+    echo "  internal/storage        -> internal/infrastructure/database"
+    echo "  internal/upload/drive   -> internal/infrastructure/drive"
+    echo "  internal/repository/clips -> internal/infrastructure/database/sqlite/assets (ClipsRepository)"
+    echo ""
+    echo "Production code only — test fixtures are exempted via -g '!*_test.go'."
+    exit 1
+fi
+echo "  OK: no retired-package imports in cmd/admin/ production code"
+
 # ── Check 21: migration.yaml verified_zero policy (HARD-FAIL, evidence-based, ci/archcheck-hard-fail) ────
 echo ""
 echo "Check 21: migration.yaml verified_zero policy (HARD-FAIL, evidence-based)"

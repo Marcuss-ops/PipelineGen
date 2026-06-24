@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"time"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
@@ -12,8 +11,6 @@ import (
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/clipcatalog"
@@ -117,7 +114,16 @@ func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bund
 	if artlistSvc == nil {
 		return nil
 	}
-	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, clipResolver, "node-scraper", log, cfg)
+	// AGENT-2 (June 2026): the clipresolver package was removed from
+	// remote (commit d61068b3). wireClipResolver returns nil typed as
+	// interface{}. The ArtlistHandler constructor expects a typed
+	// ClipResolverPort; perform a safe type assertion so the typed nil
+	// is forwarded (handler stays nil-tolerant and short-circuits).
+	var resolver artsources.ClipResolverPort
+	if val, ok := clipResolver.(artsources.ClipResolverPort); ok {
+		resolver = val
+	}
+	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, resolver, "node-scraper", log, cfg)
 }
 
 func wireArtlistLifecycle(bundle *ArtlistBundle, log *zap.Logger) *lifecycle.Service {
