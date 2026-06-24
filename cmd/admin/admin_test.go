@@ -8,21 +8,21 @@
 //
 // These tests protect the static invariants the PR fixes:
 //
-//   1. Every command listed in `availableCommands` must have a
-//      `case "X":` arm in cmd/admin/main.go's switch (otherwise operators
-//      trigger an "Unknown command" exit-code-1 trip).
-//   2. benchQueriesFile.Description/Version metadata must survive a
-//      JSON round-trip through benchSaveReport / benchLoadQueries
-//      (DRY-run observability).
-//   3. Errors from the search-fn MUST propagate through benchRun into
-//      benchQueryResult.Error and the aggregate benchReport.TotalErrors.
-//      Pre-fix the code did `results, _ := searchFn(...)` and dropped
-//      the error entirely — this test pins the fail-visible behaviour.
-//   4. No *.go file in cmd/admin/ may import a retired legacy
-//      package (`internal/config`, `internal/media`, `internal/media/*`,
-//      `internal/storage`, `internal/upload/drive`, `internal/repository/clips`).
-//      This mirrors the gate `! rg 'internal/(config|media|storage|upload|repository/clips)' cmd/admin --type go`
-//      mentioned in the Definition of Done.
+//  1. Every command listed in `availableCommands` must have a
+//     `case "X":` arm in cmd/admin/main.go's switch (otherwise operators
+//     trigger an "Unknown command" exit-code-1 trip).
+//  2. benchQueriesFile.Description/Version metadata must survive a
+//     JSON round-trip through benchSaveReport / benchLoadQueries
+//     (DRY-run observability).
+//  3. Errors from the search-fn MUST propagate through benchRun into
+//     benchQueryResult.Error and the aggregate benchReport.TotalErrors.
+//     Pre-fix the code did `results, _ := searchFn(...)` and dropped
+//     the error entirely — this test pins the fail-visible behaviour.
+//  4. No *.go file in cmd/admin/ may import a retired legacy
+//     package (`internal/config`, `internal/media`, `internal/media/*`,
+//     `internal/storage`, `internal/upload/drive`, `internal/repository/clips`).
+//     This mirrors the gate `! rg 'internal/(config|media|storage|upload|repository/clips)' cmd/admin --type go`
+//     mentioned in the Definition of Done.
 package main
 
 import (
@@ -78,7 +78,7 @@ func TestAdminCommands_AreRegistered(t *testing.T) {
 	}
 	if len(dead) > 0 {
 		sort.Strings(dead)
-		t.Logf("warning: case arm(s) present without availableCommands entry: %v (likely intentional for legacy back-compat paths)", dead)
+		t.Errorf("case arm(s) present without availableCommands entry: %v", dead)
 	}
 }
 
