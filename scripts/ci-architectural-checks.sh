@@ -435,7 +435,8 @@ echo ""
 echo ""
 echo "Check 17: database/sql import in api/app/domain (zero NEW violations)"
 LEGACY_DB_SQL_FILES=$(
-echo "    internal/api/middleware/middleware_auth_test.go
+echo "    internal/api/common/health_integration_test.go
+    internal/api/middleware/middleware_auth_test.go
     internal/api/middleware/middleware_logger.go
     internal/application/assets/artifacts/clips_adapter.go
     internal/application/assets/artifacts/finalizer_test.go
@@ -450,7 +451,6 @@ echo "    internal/api/middleware/middleware_auth_test.go
     internal/application/assets/providers/artlist/search_cache.go
     internal/application/assets/providers/artlist/service.go
     internal/application/assets/providers/artlist/service_test.go
-    internal/application/assets/realtime/index_health_test.go
     internal/application/books/service.go
     internal/application/images/google_generate.go
     internal/application/jobs/outbox/delivery.go
@@ -458,14 +458,11 @@ echo "    internal/api/middleware/middleware_auth_test.go
     internal/application/jobs/outbox/registry.go
     internal/application/jobs/service_test.go
     internal/application/scripts/batch_persistence_test.go
-    internal/application/scripts/gemmamemory/stub.go
+    internal/application/scripts/gemmamemory/gemmamemory.go
     internal/application/scripts/gemmamemory/stub_test.go
     internal/application/voiceover/groups_resolver_test.go
     internal/application/voiceover/service.go
     internal/application/youtube/assetrepo_integration_test.go
-    internal/application/youtube/cache/service.go
-    internal/application/youtube/jobs/rebuild.go
-    internal/application/youtube/ports/ports.go
     internal/domain/asset/assets.go
     internal/domain/asset/dedup.go
     internal/domain/asset/list_clips.go
@@ -474,13 +471,14 @@ echo "    internal/api/middleware/middleware_auth_test.go
     internal/domain/asset/scan.go
     internal/domain/asset/store_core.go
     internal/domain/asset/tags.go
-    internal/domain/asset/utility.go"
+    internal/domain/asset/utility.go
+    internal/domain/asset/versions.go"
 )
 LEGACY_COUNT=$(echo "$LEGACY_DB_SQL_FILES" | grep -c '^' || true)
-if [ "$LEGACY_COUNT" -ne 40 ]; then
+if [ "$LEGACY_COUNT" -ne 38 ]; then
     echo "FAIL: Check 17 baseline drift."
     echo "  The in-script baseline lists $LEGACY_COUNT files but the"
-    echo "  expected count is 40. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
+    echo "  expected count is 38. Re-run \`rg -ln \\\"database/sql\\\" internal/api internal/application internal/domain --type go | sort\`"
     echo "  and update this list. If the count legitimately changed, also update"
     echo "  the \`expected_count\` match above."
     exit 1

@@ -1,7 +1,7 @@
 package asset
 
 // GenerationStyle defines a reusable prompt style for AI generation.
-// Used by internal/media/generation/style_registry.go which loads
+// Used by internal/application/assets/generation/style_registry.go, which loads
 // style definitions from config/generation_styles.yaml.
 //
 // This type moved here from internal/domain/media/styles.go during the

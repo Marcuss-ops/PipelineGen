@@ -95,6 +95,7 @@ import (
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
@@ -581,6 +582,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
 	driveFolderMgr := newDriveFolderMgrAdapter(drive.DriveUploader, log)
+	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
 	if process.ClipIndexerService != nil {
@@ -604,6 +606,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		AssetDestResolver: drive.DestResolver,
 		AssetRepo:         repos.Assets.Repository(),
 		Clips:             newClipStoreAdapter(repos.ClipsRepo),
+		Cache:             youtubeCache,
 		Monitors:          newMonitorsStoreAdapter(repos.MonitorsRepo),
 		Indexer:           clipIndexerAdapterValue,
 		Ollama:            ai.OllamaClient,

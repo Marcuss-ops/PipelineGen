@@ -3,7 +3,6 @@ package jobs
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -17,9 +16,9 @@ import (
 
 // RebuildDeps holds the dependencies for HandleRebuildSearchTextJob.
 type RebuildDeps struct {
-	DB       *sql.DB
 	Log      *zap.Logger
 	Indexer  ClipIndexer
+	Clips    YouTubeClipLister
 	Enricher func(ctx context.Context, clipID string, meta any, force bool)
 }
 
@@ -29,10 +28,14 @@ type ClipIndexer interface {
 	IndexClip(ctx context.Context, clipID string) error
 }
 
+type YouTubeClipLister interface {
+	ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error)
+}
+
 // HandleRebuildSearchTextJob rebuilds search_text for YouTube clips.
 func HandleRebuildSearchTextJob(deps RebuildDeps, ctx context.Context, j *job.Job, tools *jobtools.JobTools) (map[string]any, error) {
-	if deps.DB == nil {
-		return nil, fmt.Errorf("database not available")
+	if deps.Clips == nil {
+		return nil, fmt.Errorf("youtube clip lister not available")
 	}
 
 	type payload struct {
@@ -56,27 +59,9 @@ func HandleRebuildSearchTextJob(deps RebuildDeps, ctx context.Context, j *job.Jo
 		tools.Progress(0, "Querying YouTube clips for search_text rebuild")
 	}
 
-	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
-	if p.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", p.Limit)
-	}
-	if p.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", p.Offset)
-	}
-
-	rows, err := deps.DB.QueryContext(ctx, query)
+	clipIDs, err := deps.Clips.ListYouTubeClipIDsForSearchText(ctx, p.Limit, p.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("query youtube clips: %w", err)
-	}
-	defer rows.Close()
-
-	var clipIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
-		}
-		clipIDs = append(clipIDs, id)
 	}
 
 	if len(clipIDs) == 0 {

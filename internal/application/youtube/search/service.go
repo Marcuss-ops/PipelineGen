@@ -1,5 +1,5 @@
 // Package search provides YouTube search and video metadata retrieval, with
-// L1 (in-memory sync.Map) and L2 (SQLite via youtube/cache) caching.
+// L1 (in-memory sync.Map) and L2 cache-port backed caching.
 // Extracted from the root youtube package during PR5 Phase 2 (June 2026).
 //
 // Design: SearchDeps accepts max 3 fields. The L1 caches live on the Service
@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	ytcache "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/cache"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -28,7 +27,7 @@ import (
 // PR5 Phase 2 target: ≤8 fields — currently 3.
 type SearchDeps struct {
 	SearchRunner ports.SearchRunnerPort
-	Cache        *ytcache.Service
+	Cache        ports.CachePort
 	Log          *zap.Logger
 }
 
@@ -36,7 +35,7 @@ type SearchDeps struct {
 // two-tier caching (L1 in-memory + L2 SQLite).
 type Service struct {
 	searchRunner ports.SearchRunnerPort
-	cache        *ytcache.Service
+	cache        ports.CachePort
 	log          *zap.Logger
 
 	searchL1   sync.Map // map[string]searchL1Entry — live search results

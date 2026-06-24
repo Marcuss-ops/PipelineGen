@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 )
 
 // Deps holds the cache service dependencies (max 2 fields).
@@ -122,7 +124,7 @@ func (s *Service) BumpMetaHits(ctx context.Context, videoID string) {
 }
 
 // PrewarmMeta returns the top N (video_id, metadata_json) rows from the hot cache.
-func (s *Service) PrewarmMeta(ctx context.Context, limit int) ([]VideoMetaRow, error) {
+func (s *Service) PrewarmMeta(ctx context.Context, limit int) ([]youtubeports.VideoMetaRow, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not available")
 	}
@@ -132,21 +134,15 @@ func (s *Service) PrewarmMeta(ctx context.Context, limit int) ([]VideoMetaRow, e
 		return nil, fmt.Errorf("query hot metadata cache: %w", err)
 	}
 	defer rows.Close()
-	var out []VideoMetaRow
+	var out []youtubeports.VideoMetaRow
 	for rows.Next() {
-		var r VideoMetaRow
+		var r youtubeports.VideoMetaRow
 		if err := rows.Scan(&r.VideoID, &r.MetadataJSON); err != nil {
 			continue
 		}
 		out = append(out, r)
 	}
 	return out, nil
-}
-
-// VideoMetaRow is a row from youtube_video_metadata_cache.
-type VideoMetaRow struct {
-	VideoID      string
-	MetadataJSON string
 }
 
 // ── Segments cache ─────────────────────────────────────────────────────────

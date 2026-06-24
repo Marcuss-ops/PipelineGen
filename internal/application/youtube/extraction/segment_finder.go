@@ -86,12 +86,10 @@ func splitLongSegments(segs []youtubetypes.Segment) []youtubetypes.Segment {
 // ── Segment cache ────────────────────────────────────────────────────────
 
 func (s *Service) getCachedSegments(ctx context.Context, videoID string) ([]youtubetypes.Segment, bool) {
-	if s.clips == nil || s.clips.DB() == nil {
+	if s.cache == nil {
 		return nil, false
 	}
-	var segmentsJSON string
-	err := s.clips.DB().QueryRowContext(ctx, "SELECT segments_json FROM youtube_segments_cache WHERE video_id = ?", videoID).Scan(&segmentsJSON)
-	if err == nil {
+	if segmentsJSON, ok := s.cache.GetSegments(ctx, videoID); ok {
 		var segments []youtubetypes.Segment
 		if err := json.Unmarshal([]byte(segmentsJSON), &segments); err == nil {
 			return segments, true
@@ -101,17 +99,14 @@ func (s *Service) getCachedSegments(ctx context.Context, videoID string) ([]yout
 }
 
 func (s *Service) setCachedSegments(ctx context.Context, videoID string, segments []youtubetypes.Segment) {
-	if s.clips == nil || s.clips.DB() == nil {
+	if s.cache == nil {
 		return
 	}
 	segmentsJSON, err := json.Marshal(segments)
 	if err != nil {
 		return
 	}
-	_, err = s.clips.DB().ExecContext(ctx, "INSERT OR REPLACE INTO youtube_segments_cache (video_id, segments_json, cached_at) VALUES (?, ?, datetime('now'))", videoID, string(segmentsJSON))
-	if err != nil {
-		s.log.Warn("failed to cache youtube segments", zap.Error(err))
-	}
+	s.cache.SetSegments(ctx, videoID, string(segmentsJSON))
 }
 
 // ── Subtitle-based segment discovery ─────────────────────────────────────

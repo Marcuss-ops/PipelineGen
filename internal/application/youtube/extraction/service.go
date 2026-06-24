@@ -35,6 +35,7 @@ type ExtractionDeps struct {
 	Log               *zap.Logger
 	VideoPipeline     youtubeports.VideoPipelinePort
 	Clips             youtubeports.ClipStorePort
+	Cache             youtubeports.CachePort
 	Monitors          youtubeports.MonitorsStorePort
 	AssetDestResolver asset.Resolver
 	FolderMemory      youtubeports.FolderMemoryPort
@@ -111,6 +112,7 @@ type Service struct {
 	log               *zap.Logger
 	videoPipeline     youtubeports.VideoPipelinePort
 	clips             youtubeports.ClipStorePort
+	cache             youtubeports.CachePort
 	monitors          youtubeports.MonitorsStorePort
 	assetDestResolver asset.Resolver
 	folderMemory      youtubeports.FolderMemoryPort
@@ -127,6 +129,7 @@ func NewService(deps ExtractionDeps, cb ExtractionCallbacks) *Service {
 		log:               deps.Log,
 		videoPipeline:     deps.VideoPipeline,
 		clips:             deps.Clips,
+		cache:             deps.Cache,
 		monitors:          deps.Monitors,
 		assetDestResolver: deps.AssetDestResolver,
 		folderMemory:      deps.FolderMemory,

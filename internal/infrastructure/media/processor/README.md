@@ -1,10 +1,10 @@
-# Media Asset Service
+# Media Processor Service
 
-The `mediaasset` package provides the concrete pipeline for downloading, processing, normalizing, deduplicating, hashing, and uploading media assets. It hides external tools such as `yt-dlp`, `ffmpeg`, the Artlist scraper, and Google Drive behind focused ports.
+The `processor` package provides the concrete pipeline for downloading, processing, normalizing, deduplicating, hashing, and uploading media assets. It hides external tools such as `yt-dlp`, `ffmpeg`, the Artlist scraper, and Google Drive behind focused ports.
 
 ## Canonical contract
 
-`Processor` implements `internal/core/processor.Processor` directly:
+`Processor` implements `internal/domain/asset.Processor` directly:
 
 ```go
 type Processor interface {
@@ -12,7 +12,7 @@ type Processor interface {
 }
 ```
 
-`ProcessInput` and `ProcessResult` belong only to `internal/core/processor`. The media package must not recreate local mirrors or adapters for that contract.
+`ProcessInput` and `ProcessResult` belong only to `internal/domain/asset`. The media package must not recreate local mirrors or adapters for that contract.
 
 ## Processing stages
 
@@ -34,8 +34,8 @@ The package uses interfaces in `ports.go` to isolate infrastructure:
 ## Usage
 
 ```go
-p := mediaasset.NewProcessor(dl, httpDL, ff, log, cfg, registry, driveUploader)
-result, err := p.Process(ctx, &processor.ProcessInput{
+p := processor.NewProcessor(dl, httpDL, ff, log, cfg, registry, driveUploader)
+result, err := p.Process(ctx, &asset.ProcessInput{
     ID:        "asset-123",
     Name:      "Example clip",
     SourceURL: sourceURL,

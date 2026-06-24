@@ -17,8 +17,6 @@ import (
 	"context"
 	"time"
 
-	"database/sql"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
@@ -107,13 +105,13 @@ type SearchLiveResult struct {
 // ── Structural ports (signature-bearing) ─────────────────────────────────
 
 type ClipStorePort interface {
-	DB() *sql.DB
 	Get(ctx context.Context, id string) (*asset.Asset, error)
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
 	GetFolder(ctx context.Context, folderID string) (*asset.ClipFolder, error)
 	Upsert(ctx context.Context, m *asset.Asset) error
 	UpsertFolder(ctx context.Context, f *asset.ClipFolder) error
 	DeleteClip(ctx context.Context, id string) error
+	ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error)
 }
 
 type MonitorsStorePort interface {
@@ -166,4 +164,22 @@ type ClipFilesPort interface {
 type HashServicePort interface {
 	MD5String(data string) string
 	MD5File(path string) (string, error)
+}
+
+type VideoMetaRow struct {
+	VideoID      string
+	MetadataJSON string
+}
+
+type CachePort interface {
+	GetSearch(ctx context.Context, key string) (string, bool)
+	SetSearch(ctx context.Context, key, resultsJSON string)
+	GetVideoMeta(ctx context.Context, videoID string) (string, bool)
+	SetVideoMeta(ctx context.Context, videoID, metadataJSON string)
+	BumpMetaHits(ctx context.Context, videoID string)
+	PrewarmMeta(ctx context.Context, limit int) ([]VideoMetaRow, error)
+	GetSegments(ctx context.Context, videoID string) (string, bool)
+	SetSegments(ctx context.Context, videoID, segmentsJSON string)
+	GetCategory(ctx context.Context, videoTitle string) (string, bool)
+	SetCategory(ctx context.Context, videoTitle, category string)
 }
