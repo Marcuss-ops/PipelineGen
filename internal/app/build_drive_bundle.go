@@ -55,7 +55,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	var dests *DriveDestinations
 	if driveClient != nil {
 		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
-		dests = resolveRuntimeDestinations(ctx, dbs.main.DB, driveClient, cfg, log)
+		dests = resolveRuntimeDestinations(ctx, driveClient, cfg, log)
 	} else {
 		dests = configOnlyDestinations(cfg)
 	}
