@@ -300,7 +300,7 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 // SearchPoints performs an ANN search.
 func (c *Client) SearchPoints(ctx context.Context, collection string, req SearchRequest) ([]SearchResult, error) {
 	body := map[string]interface{}{
-		"vector":       req.Vector,
+		"vector":       req.QueryVector,
 		"limit":        req.Limit,
 		"with_payload": true,
 	}

@@ -12,7 +12,10 @@
 //   - No synthetic/fake vectors are ever written.
 package qdrant
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // ── Embedding specification ──────────────────────────────────────────
 
@@ -160,46 +163,147 @@ type Point struct {
 
 // SearchRequest is a canonical ANN search request.
 type SearchRequest struct {
-	Vector     []float32              `json:"vector"`
-	VectorName string                 `json:"vector_name"`
-	Limit      int                    `json:"limit"`
-	MinScore   float64                `json:"min_score,omitempty"`
-	Filter     map[string]interface{} `json:"filter,omitempty"`
+	QueryVector []float32              `json:"vector"`
+	VectorName  string                 `json:"vector_name"`
+	Limit       int                    `json:"limit"`
+	MinScore    float64                `json:"min_score,omitempty"`
+	Filter      map[string]interface{} `json:"filter,omitempty"`
+
+	// Convenience filter fields — set directly instead of building a Filter map.
+	// If Filter is also set, the combination is implementation-defined.
+	Source    string `json:"-"`
+	Category  string `json:"-"`
+	MediaType string `json:"-"`
+	Language  string `json:"-"`
 }
 
 // HybridSearchRequest combines dense + sparse for hybrid retrieval.
 type HybridSearchRequest struct {
-	DenseVector      []float32              `json:"dense_vector"`
-	DenseVectorName  string                 `json:"dense_vector_name"`
-	SparseVectorName string                 `json:"sparse_vector_name,omitempty"`
-	Limit            int                    `json:"limit"`
-	MinScore         float64                `json:"min_score,omitempty"`
-	Filter           map[string]interface{} `json:"filter,omitempty"`
+	DenseVector          []float32              `json:"dense_vector"`
+	DenseVectorName      string                 `json:"dense_vector_name"`
+	TranscriptVector     []float32              `json:"transcript_vector,omitempty"`
+	TranscriptVectorName string                 `json:"transcript_vector_name,omitempty"`
+	SparseVectorName     string                 `json:"sparse_vector_name,omitempty"`
+	Limit                int                    `json:"limit"`
+	MinScore             float64                `json:"min_score,omitempty"`
+	Filter               map[string]interface{} `json:"filter,omitempty"`
+
+	// Convenience filter fields.
+	Source    string `json:"-"`
+	Category  string `json:"-"`
+	MediaType string `json:"-"`
+	Language  string `json:"-"`
 }
 
 // SearchResult is a single match from Qdrant.
+// Raw fields (ID, Score, Payload, Version) come directly from the Qdrant API.
+// Derived fields (AssetID, Name, …) are populated from Payload by convenience
+// helpers (searchResultFromPoint, etc.).
 type SearchResult struct {
+	// Raw Qdrant fields.
 	ID      string                 `json:"id"`
 	Score   float64                `json:"score"`
 	Payload map[string]interface{} `json:"payload,omitempty"`
 	Version int64                  `json:"version,omitempty"`
+
+	// Derived convenience fields (populated from Payload).
+	AssetID        string   `json:"asset_id,omitempty"`
+	QdrantPointID  string   `json:"qdrant_point_id,omitempty"`
+	Source         string   `json:"source,omitempty"`
+	Name           string   `json:"name,omitempty"`
+	LocalPath      string   `json:"local_path,omitempty"`
+	DriveLink      string   `json:"drive_link,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	MediaType      string   `json:"media_type,omitempty"`
+	Style          string   `json:"style,omitempty"`
+	Language       string   `json:"language,omitempty"`
+	YouTubeVideoID string   `json:"youtube_video_id,omitempty"`
+	YouTubeURL     string   `json:"youtube_url,omitempty"`
+	StartTime      string   `json:"start_time,omitempty"`
+	EndTime        string   `json:"end_time,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	SearchText     string   `json:"search_text,omitempty"`
 }
 
 // ── Config ───────────────────────────────────────────────────────────
 
 // Config holds Qdrant client configuration.
 type Config struct {
+	// ── Connection ──
+
 	// BaseURL is the Qdrant REST API base URL (e.g. "http://127.0.0.1:6333").
 	BaseURL string `yaml:"base_url"`
 
-	// Timeout is the HTTP client timeout in seconds.
+	// URL is a legacy alias for BaseURL.
+	URL string `yaml:"url"`
+
+	// APIKey is an optional Qdrant API key.
+	APIKey string `yaml:"api_key"`
+
+	// Timeout is the HTTP client timeout in seconds (new code).
 	Timeout int `yaml:"timeout"`
+
+	// TimeoutMs is the HTTP client timeout in milliseconds (legacy code).
+	TimeoutMs int `yaml:"timeout_ms"`
 
 	// RetryMaxAttempts is the maximum number of retries for transient failures.
 	RetryMaxAttempts int `yaml:"retry_max_attempts"`
 
+	// ── Feature flags ──
+
+	// Enabled is whether Qdrant integration is active.
+	Enabled bool `yaml:"enabled"`
+
+	// ── Collection ──
+
+	// Collection is the base collection name (e.g. "media_assets").
+	Collection string `yaml:"collection"`
+
+	// CollectionVersion pins a schema version (e.g. "v3").
+	CollectionVersion string `yaml:"collection_version"`
+
+	// CollectionAlias is the runtime alias for reads/writes.
+	CollectionAlias string `yaml:"collection_alias"`
+
+	// DisableAlias forces direct physical-collection access.
+	DisableAlias bool `yaml:"disable_alias"`
+
 	// CollectionRetentionDays is how many days to keep old collections after switch.
 	CollectionRetentionDays int `yaml:"collection_retention_days"`
+
+	// ── Vector names and dimensions ──
+
+	// TextVectorName is the dense vector name for semantic text (e.g. "text").
+	TextVectorName string `yaml:"text_vector_name"`
+
+	// TranscriptVectorName is the dense vector name for transcripts.
+	TranscriptVectorName string `yaml:"transcript_vector_name"`
+
+	// VisualVectorName is the dense vector name for visual embeddings.
+	VisualVectorName string `yaml:"visual_vector_name"`
+
+	// AudioVectorName is the dense vector name for audio embeddings.
+	AudioVectorName string `yaml:"audio_vector_name"`
+
+	// SparseVectorName is the sparse vector name (e.g. "bm25_text").
+	SparseVectorName string `yaml:"sparse_vector_name"`
+
+	// TextDimensions is the vector size for text embeddings.
+	TextDimensions int `yaml:"text_dimensions"`
+
+	// TranscriptDimensions is the vector size for transcript embeddings.
+	TranscriptDimensions int `yaml:"transcript_dimensions"`
+
+	// VisualDimensions is the vector size for visual embeddings.
+	VisualDimensions int `yaml:"visual_dimensions"`
+
+	// AudioDimensions is the vector size for audio embeddings.
+	AudioDimensions int `yaml:"audio_dimensions"`
+
+	// ── Embedding ──
+
+	// EmbeddingServerURL is the sidecar URL for text embeddings.
+	EmbeddingServerURL string `yaml:"embedding_server_url"`
 }
 
 // DefaultConfig returns a safe default configuration.
@@ -210,6 +314,60 @@ func DefaultConfig() *Config {
 		RetryMaxAttempts:        3,
 		CollectionRetentionDays: 7,
 	}
+}
+
+// ── Legacy asset types ───────────────────────────────────────────────
+
+// VectorAsset is the canonical domain type for a Qdrant-upsertable asset.
+type VectorAsset struct {
+	AssetID             string    `json:"asset_id"`
+	Name                string    `json:"name"`
+	Source              string    `json:"source"`
+	Category            string    `json:"category,omitempty"`
+	Style               string    `json:"style,omitempty"`
+	MediaType           string    `json:"media_type"`
+	SearchText          string    `json:"search_text,omitempty"`
+	DriveLink           string    `json:"drive_link,omitempty"`
+	LocalPath           string    `json:"local_path,omitempty"`
+	Tags                []string  `json:"tags,omitempty"`
+	DurationMs          int64     `json:"duration_ms,omitempty"`
+	Language            string    `json:"language,omitempty"`
+	YouTubeVideoID      string    `json:"youtube_video_id,omitempty"`
+	YouTubeURL          string    `json:"youtube_url,omitempty"`
+	StartTime           string    `json:"start_time,omitempty"`
+	EndTime             string    `json:"end_time,omitempty"`
+	TextEmbedding       []float32 `json:"text_embedding,omitempty"`
+	VisualEmbedding     []float32 `json:"visual_embedding,omitempty"`
+	TranscriptEmbedding []float32 `json:"transcript_embedding,omitempty"`
+	EmbeddingVersion    string    `json:"embedding_version,omitempty"`
+	SearchTextVersion   string    `json:"search_text_version,omitempty"`
+	CreatedAt           string    `json:"created_at,omitempty"`
+}
+
+// IndexHealthReport is the result of an index health check.
+type IndexHealthReport struct {
+	OK              bool `json:"ok"`
+	Degraded        bool `json:"degraded,omitempty"`
+	QdrantPoints    int  `json:"qdrant_points"`
+	DBTotal         int  `json:"db_total"`
+	WithEmbedding   int  `json:"with_embedding"`
+	DBToQdrantDelta int  `json:"db_to_qdrant_delta"`
+}
+
+// CurrentEmbeddingVersion is the canonical embedding schema version.
+const CurrentEmbeddingVersion = "v3"
+
+// IndexWriterPort is the contract for indexing clips into Qdrant (used by clipindexer).
+// Concrete implementation: *IndexWriter.
+type IndexWriterPort interface {
+	UpsertFromClip(ctx context.Context, clipID string) error
+	UpsertFromClips(ctx context.Context, clipIDs []string) error
+}
+
+// QdrantDeleter is the contract for deleting points from Qdrant (used by outbox).
+// Concrete implementation: *IndexWriter.
+type QdrantDeleter interface {
+	DeletePoints(ctx context.Context, ids []string) error
 }
 
 // ── Reindex types ────────────────────────────────────────────────────
