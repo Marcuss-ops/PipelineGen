@@ -2,10 +2,11 @@
 // stub with a real implementation that fetches clips from the repository
 // and builds context from their metadata + transcripts.
 //
-// AGENT-3 (June 2026): the previous stub returned hardcoded fake data.
-// The real implementation fetches clips by ID from the ClipsRepository,
-// builds a source text from their names, search text, and transcripts,
-// and computes a deterministic fingerprint for cache key derivation.
+// PG-033 (June 2026): NewClipSourceBuilder drops the dead `ollamaClient`
+// argument (field was unused, removed in PG-033); clipsRepo is typed
+// *assets.ClipsRepository (was `interface{}`); BuildClipContext returns
+// map[string]any (was `interface{}`); ComputeFingerprint / NewFingerprintContext
+// signatures are concrete (no `interface{}` slots).
 package scripts
 
 import (
@@ -20,27 +21,28 @@ import (
 )
 
 // NewClipSourceBuilder constructs a real ClipSourceBuilder backed by
-// the clips repository. Accepts concrete typed args.
+// the clips repository. PG-033 dropped the unused `ollamaClient` arg.
 //
-// clipsRepo is the canonical *assets.ClipsRepository; may be nil
-// (BuildClipContext returns an error when nil and clip IDs are provided).
+// clipsRepo may be nil (BuildClipContext returns an error when nil
+// and clip IDs are provided).
 func NewClipSourceBuilder(
 	clipsRepo *assets.ClipsRepository,
-	ollamaClient interface{},
 	log *zap.Logger,
 ) *ClipSourceBuilder {
 	return &ClipSourceBuilder{
-		clipsRepo:    clipsRepo,
-		ollamaClient: ollamaClient,
-		log:          log,
+		clipsRepo: clipsRepo,
+		log:       log,
 	}
 }
 
 // SetVectorStore attaches a vector-store adapter for future semantic
-// enrichment of clip context.
+// enrichment of clip context. The arg stays `interface{}` because
+// multiple backend adapters (qdrant.SearchAdapter, ...) are accepted;
+// see MediaCurator.vectorStore for the live match-port definition.
 func (c *ClipSourceBuilder) SetVectorStore(v interface{}) { c.vectorStore = v }
 
 // SetReranker attaches a reranker client for future search reranking.
+// Same multi-backend rationale as SetVectorStore.
 func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
 
 // BuildClipContext fetches clips by ID from the repository and builds
@@ -50,11 +52,14 @@ func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
 //   - pack: a map[string]any with clip data (IDs, names, transcripts, metadata)
 //   - plan: a NarrativePlan derived from the clip titles
 //   - sourceText: a concatenated string of clip names + search text + transcript excerpts
+//
+// PG-033: return shape changed from`interface{}` to `map[string]any`
+// (the canonical shape produced by this builder; callers typed accordingly).
 func (c *ClipSourceBuilder) BuildClipContext(
 	ctx context.Context,
 	clipIDs []string,
 	opts *ClipGenerationOptions,
-) (interface{}, *NarrativePlan, string, error) {
+) (map[string]any, *NarrativePlan, string, error) {
 	if c == nil {
 		return nil, nil, "", fmt.Errorf("clip source builder: not constructed")
 	}
@@ -81,12 +86,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		return nil, nil, "", fmt.Errorf("clip source builder: no valid clip IDs provided")
 	}
 
-	// Fetch clips from repository.
-	clipsRepo, ok := c.clipsRepo.(*assets.ClipsRepository)
-	if !ok || clipsRepo == nil {
-		return nil, nil, "", fmt.Errorf("clip source builder: clipsRepo is not a *assets.ClipsRepository")
-	}
-
+	clipsRepo := c.clipsRepo
 	clips := make([]*asset.Asset, 0, len(uniqueIDs))
 	clipNames := make([]string, 0, len(uniqueIDs))
 	var sourceTextBuilder strings.Builder
@@ -195,11 +195,13 @@ func (c *ClipSourceBuilder) BuildClipContext(
 
 // ComputeFingerprint builds a deterministic fingerprint string from clip
 // IDs and generation options. Used as a cache key for the memory gate.
+// PG-033: pack is map[string]any and fpCtx is map[string]string (the
+// canonical shapes produced by BuildClipContext / NewFingerprintContext).
 func (c *ClipSourceBuilder) ComputeFingerprint(
 	clipIDs []string,
-	pack interface{},
+	pack map[string]any,
 	opts *ClipGenerationOptions,
-	fpCtx interface{},
+	fpCtx map[string]string,
 ) string {
 	parts := []string{"clips"}
 	for _, id := range clipIDs {
@@ -228,16 +230,25 @@ func (c *ClipSourceBuilder) ComputeFingerprint(
 			parts = append(parts, "order="+v)
 		}
 	}
+	// fpCtx keys (model / prompt_model) become suffix tokens so the
+	// cache key carries both clip identity and model identity.
+	if fpCtx != nil {
+		if v := strings.TrimSpace(fpCtx["model"]); v != "" {
+			parts = append(parts, "model_ctx="+v)
+		}
+		if v := strings.TrimSpace(fpCtx["prompt_model"]); v != "" {
+			parts = append(parts, "prompt_model_ctx="+v)
+		}
+	}
 	return strings.Join(parts, "|")
 }
 
 // NewFingerprintContext creates a fingerprint context for cache key derivation.
-func NewFingerprintContext(model, promptModel string) interface{} {
+// PG-033: return shape changed from `interface{}` to `map[string]string`
+// (always the canonical two-key map; matches ComputeFingerprint's typed param).
+func NewFingerprintContext(model, promptModel string) map[string]string {
 	return map[string]string{
 		"model":        strings.TrimSpace(model),
 		"prompt_model": strings.TrimSpace(promptModel),
 	}
 }
-
-// maxInt returns the maximum of two ints.
-

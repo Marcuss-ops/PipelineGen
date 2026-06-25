@@ -2,10 +2,10 @@
 // with a real implementation that generates scene images and voiceovers
 // during the post-generation pipeline phase.
 //
-// AGENT-3 (June 2026): the previous stub was a bare struct{} that ignored
-// all constructor args. The real implementation holds typed fields and
-// delegates scene image generation to images.Service and voiceover
-// generation to voiceover.Service.
+// The previous stub was a bare struct{} that ignored all constructor
+// args. The real implementation holds typed fields and delegates scene
+// image generation to images.Service and voiceover generation to
+// voiceover.Service.
 package scripts
 
 import (
@@ -80,10 +80,12 @@ func (s *ScenesService) GenerateSceneImages(
 
 		visualPrompt := buildVisualPrompt(sceneText, topic, style, i)
 
-		imgSvc, ok := s.imgSvc.(*images.Service)
-		if !ok || imgSvc == nil {
+		// PG-033: s.imgSvc is *images.Service (concrete); drop the
+		// runtime `s.imgSvc.(*images.Service)` guard.
+		if s.imgSvc == nil {
 			continue
 		}
+		imgSvc := s.imgSvc
 
 		name := fmt.Sprintf("scene_%d", i+1)
 		asset, err := imgSvc.GenerateSmartImage(
@@ -139,9 +141,9 @@ func (s *ScenesService) GenerateSceneImages(
 // ── BuildScenesWithMarkers ───────────────────────────────────────────────
 
 // BuildScenesWithMarkers parses a script for [CLIP:xxx] and [NARRATION]
-// markers and produces a slice of ClipScene entries with associated ClipIDs
-// from the pack. Used by PipelineUseCase.handleClipPathExplicit.
-func BuildScenesWithMarkers(script string, pack interface{}) []ClipScene {
+// markers and produces a slice of ClipScene entries with associated ClipIDs.
+// Used by PipelineUseCase.handleClipPathExplicit.
+func BuildScenesWithMarkers(script string) []ClipScene {
 	if script == "" {
 		return nil
 	}

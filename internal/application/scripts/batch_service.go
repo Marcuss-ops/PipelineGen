@@ -1,13 +1,8 @@
-// Package scripts — batch_service.go replaces the BatchService stub
-// with a real implementation that iterates batch items, calls the
-// Engine for each, creates a Google Doc, and persists results.
-//
-// AGENT-3 (June 2026): the previous stub returned an empty response.
-// The real implementation:
-//   1. Iterates over req.Items and req.BatchTopics
-//   2. Calls engine.WriteScript for each item
-//   3. Concatenates results into a Google Doc via docClient
-//   4. Persists the batch script via ScriptRepository
+// Package scripts — batch_service.go is the canonical multi-section
+// script-generation worker. PG-033 (June 2026): Execute signature
+// tightened (progressFunc is concrete `func(int, string)` instead of
+// `interface{}`); all internal field accesses are direct (no runtime
+// `ok := x.(*Type)` assertions, fields are already concrete).
 package scripts
 
 import (
@@ -23,12 +18,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// NewBatchService constructs a real BatchService backed by the
-// config, logger, ollama generator, engine, doc client, voiceover
-// service, and script repository.
-//
-// All args are concrete typed. Any arg may be nil; Execute returns
-// an error when required deps are missing.
+// NewBatchService constructs a real BatchService. All args are concrete
+// typed; any arg may be nil — Execute returns an error when required
+// deps are missing.
 func NewBatchService(
 	cfg *config.Config,
 	log *zap.Logger,
@@ -49,13 +41,18 @@ func NewBatchService(
 	}
 }
 
-// Execute runs the batch generation synchronously. Iterates over
-// req.Items and req.BatchTopics, calls engine.WriteScript for each,
-// concatenates results, creates a Google Doc, and persists.
+// DefaultProgressFunc is the no-op progress callback used by Execute
+// when the caller passes a nil onProgress. Exposed so tests + future
+// callers don't need to declare a no-op closure at every call site.
+func DefaultProgressFunc(pct int, msg string) {}
+
+// Execute runs the batch generation synchronously.
+// PG-033: progressFunc is concrete `func(int, string)` (was `interface{}`
+// with a reflection-style unwrap).
 func (b *BatchService) Execute(
 	ctx context.Context,
 	req *GenerateBatchRequest,
-	progressFunc interface{},
+	progressFunc func(int, string),
 ) (BatchGenerateResponse, error) {
 	if b == nil {
 		return BatchGenerateResponse{}, fmt.Errorf("batch service: not constructed")
@@ -67,10 +64,9 @@ func (b *BatchService) Execute(
 		return BatchGenerateResponse{}, fmt.Errorf("batch service: nil request")
 	}
 
-	// Unwrap progress function.
-	onProgress := func(pct int, msg string) {}
-	if pf, ok := progressFunc.(func(int, string)); ok && pf != nil {
-		onProgress = pf
+	onProgress := progressFunc
+	if onProgress == nil {
+		onProgress = DefaultProgressFunc
 	}
 
 	// Collect items from both sources.
@@ -166,7 +162,7 @@ func (b *BatchService) Execute(
 
 	// Create Google Doc.
 	var docLink, docID string
-	if docClient, ok := b.docClient.(drive.DocClient); ok && docClient != nil {
+	if b.docClient != nil {
 		sectionTitles := make([]string, len(allSections))
 		sectionContents := make([]string, len(allSections))
 		for i, sec := range allSections {
@@ -174,7 +170,7 @@ func (b *BatchService) Execute(
 			sectionContents[i] = sec.Content
 		}
 		htmlContent := BuildSectionDocHTML(docTitle, sectionTitles, sectionContents, req.NoChapters, req.Language)
-		doc, err := docClient.CreateDoc(ctx, docTitle, htmlContent, req.DriveFolderID)
+		doc, err := b.docClient.CreateDoc(ctx, docTitle, htmlContent, req.DriveFolderID)
 		if err != nil {
 			if b.log != nil {
 				b.log.Warn("batch service: failed to create Google Doc", zap.Error(err))

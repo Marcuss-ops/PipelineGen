@@ -68,9 +68,9 @@ var ErrInvalidPayload = errors.New("pipeline: invalid job payload")
 // on a non-nil input. Maps to a job-system permanent failure (no retry):
 // the composition root wired the wrong shape, retrying the same input
 // will not recover. Replaces the silent-skip behavior of the prior
-// structural-interface widening (AGENT-2 cycle 5), giving first-
-// integration-test feedback instead of a missing-handler surprise at
-// first job dispatch.
+// structural-interface widening, giving first-integration-test
+// feedback instead of a missing-handler surprise at first job
+// dispatch.
 var ErrBrokerNotSatisfied = errors.New("pipeline: jobsSvc does not satisfy Broker port")
 
 // ErrClipPipelineUnavailable is the sentinel for "the request gave
@@ -283,10 +283,7 @@ func (pu *PipelineUseCase) Run(
 		tools.Progress(100, "Generation completed")
 	}
 
-	var scriptInsights ScriptInsights
-	if ins, ok := pipelineResult.Insights.(ScriptInsights); ok {
-		scriptInsights = ins
-	}
+	scriptInsights := pipelineResult.Insights
 	scriptMeta := make([]VideoMetadata, len(pipelineResult.VideoMetadata))
 	for i, m := range pipelineResult.VideoMetadata {
 		scriptMeta[i] = VideoMetadata{
@@ -312,35 +309,19 @@ func (pu *PipelineUseCase) Run(
 // jobs service. Lives on the use case so the handler no longer
 // owns job-registration logic (handler is purely transport).
 //
-// AGENT-2 (June 2026): the canonical Broker port is declared in
-// `ports.go` of this package; it uses the same `appjobs.HandlerFunc`
-// shape that `*jobs.Service.RegisterHandler` exposes, so the type
-// assertion is structural and matches without a cast. The parameter
-// stays `interface{}` to preserve the upstream convention that
-// composition root can hand in either `*job.Service` or `*jobs.Service`
-// without import gymnastics; the assert-then-error path promotes
-// the prior silent-skip behavior to a typed `ErrBrokerNotSatisfied`
-// so a wrong-shape wiring is detected at first integration test
-// rather than as a missing-handler at first job dispatch.
-//
-// Producer-side compile assertion (see ports.go): `var _ Broker = (*appjobs.Service)(nil)`
-// guards signature drift at build time.
-func (pu *PipelineUseCase) RegisterJobs(jobsSvc interface{}) error {
+// Accepts the canonical Broker port declared in ports.go. The
+// parameter was previously `interface{}` with an internal type
+// assertion; PG-042 tightens it to the concrete port so composition
+// root passes the typed value directly and the compiler enforces
+// the contract at build time.
+func (pu *PipelineUseCase) RegisterJobs(jobsSvc Broker) error {
 	if pu == nil {
 		return fmt.Errorf("%w: not constructed", ErrPipelineGenerationFailed)
 	}
 	if jobsSvc == nil {
 		return nil
 	}
-	broker, ok := jobsSvc.(Broker)
-	if !ok {
-		if pu.log != nil {
-			pu.log.Error("pipeline use case: jobsSvc did not satisfy Broker port — composition root wiring error",
-				zap.String("concrete_type", fmt.Sprintf("%T", jobsSvc)))
-		}
-		return fmt.Errorf("%w: got %T", ErrBrokerNotSatisfied, jobsSvc)
-	}
-	if err := broker.RegisterHandler(job.TypeClipScriptGenerate, pu.HandleJob); err != nil {
+	if err := jobsSvc.RegisterHandler(job.TypeClipScriptGenerate, pu.HandleJob); err != nil {
 		return fmt.Errorf("pipeline: register handler: %w", err)
 	}
 	if pu.log != nil {
@@ -447,12 +428,11 @@ func (pu *PipelineUseCase) handleClipPathExplicit(ctx context.Context, payload *
 		UseMemory:   !payload.ForceRefresh,
 		SaveToDB:    payload.SaveToDB,
 		SaveTimeout: 60,
-		ClipPack:    pack,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("clip-script generation failed: %w", err)
 	}
-	clipScenes := BuildScenesWithMarkers(writeResult.Script, pack)
+	clipScenes := BuildScenesWithMarkers(writeResult.Script)
 	if pu.log != nil {
 		pu.log.Info("clip-script generated",
 			zap.Int("scenes", len(clipScenes)),

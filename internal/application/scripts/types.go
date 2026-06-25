@@ -1,13 +1,43 @@
-// Package scripts — compatibility types and adapters for the script pipeline.
-// Some surfaces remain intentionally simplified while the pipeline is being
-// reconstituted, but the package now carries real orchestration logic too.
+// Package scripts — types.go declares the canonical types shared by
+// the script-pipeline orchestration layer (Engine, BatchService,
+// ScenesService, Pipeline, MediaCurator, DocumentsService, etc.).
+//
+// PG-033 (June 2026): all service struct fields are now CONCRETE TYPES.
+// The previous shape used `interface{}` slots with comments naming the
+// expected concrete holder (e.g. `*ollama.Generator`) and runtime
+// `ok := x.(*Type)` assertions. PG-033 collapses those to direct typed
+// access — the compiler now enforces the contract at build time, and
+// redundant runtime assertions are deleted from the method bodies.
+//
+// Cross-package imports added to this file (ollama, gemmamemory,
+// voiceover, images, config, assets, scriptpkg) are ALREADY consumed
+// by sibling files in the same package — verified zero cycle risk
+// (images and voiceover do not import back into scripts).
+//
+// Two struct fields deliberately remain `interface{}` because they
+// accept multiple backend implementations at runtime:
+//
+//   - MediaCurator.vectorStore
+//   - ClipSourceBuilder.vectorStore
+//   - ClipSourceBuilder.reranker
+//
+// These are matched against locally-defined narrow ports (e.g.
+// clipSearcher) at use site; concrete static binding would force a
+// single adapter and remove swap-at-composition flexibility.
 package scripts
 
 import (
 	"context"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 )
@@ -19,12 +49,21 @@ type FolderResolver func(ctx context.Context, input, defaultRootID string) (stri
 
 // ── Curate types ────────────────────────────────────────────────────────
 
+// narrowClipSearcher is the runtime-port MediaCurator uses to talk to
+// the (dynamic) vector store. Kept local because we accept multiple
+// backends (qdrant.NewSearchAdapter, ...) and the shape is too narrow
+// to live in a public port interface.
+type narrowClipSearcher interface {
+	SearchClips(ctx context.Context, query, source, mediaType string, limit int, minScore float64) ([]RealtimeMatchAsset, error)
+}
+
 // MediaCurator orchestrates semantic clip search + script generation.
-// All fields are concrete typed.
+// PG-033: vectorStore remains `interface{}` (multi-backend); clipsRepo
+// is now concrete (*assets.ClipsRepository).
 type MediaCurator struct {
 	vectorStore interface{}
 	serverURL   string
-	clipsRepo   interface{} // *assets.ClipsRepository (avoid import cycle)
+	clipsRepo   *assets.ClipsRepository
 	clipBuilder *ClipSourceBuilder
 	engine      *Engine
 	log         *zap.Logger
@@ -233,27 +272,24 @@ type BatchScriptResult struct {
 }
 
 // BatchService orchestrates multi-section script generation with
-// Google Doc output. All fields are concrete typed.
+// Google Doc output. PG-033: all service fields are concrete types
+// (no interface{} slots).
 type BatchService struct {
-	cfg         interface{} // *config.Config
+	cfg         *config.Config
 	log         *zap.Logger
-	gen         interface{} // *ollama.Generator
+	gen         *ollama.Generator
 	engine      *Engine
-	docClient   interface{} // drive.DocClient
-	voSvc       interface{} // *voiceover.Service
-	scriptsRepo interface{} // ScriptRepository
+	docClient   drive.DocClient
+	voSvc       *voiceover.Service
+	scriptsRepo ScriptRepository
 }
 
 // Execute runs batch generation (real implementation in batch_service.go).
 // ExecuteBatchGeneration runs batch generation (real implementation in batch_service.go).
 
-// createBatchDoc creates a Google Doc from batch parts (stub).
+// createBatchDoc creates a Google Doc from batch parts.
 func (b *BatchService) createBatchDoc(ctx context.Context, title string, parts []GeneratedPart, noChapters bool, language, folderID string) (string, string) {
 	if b == nil || b.docClient == nil {
-		return "", ""
-	}
-	client, ok := b.docClient.(drive.DocClient)
-	if !ok || client == nil {
 		return "", ""
 	}
 	sectionTitles := make([]string, 0, len(parts))
@@ -263,22 +299,19 @@ func (b *BatchService) createBatchDoc(ctx context.Context, title string, parts [
 		sectionContents = append(sectionContents, part.content)
 	}
 	content := BuildSectionDocHTML(title, sectionTitles, sectionContents, noChapters, language)
-	doc, err := client.CreateDoc(ctx, title, content, folderID)
+	doc, err := b.docClient.CreateDoc(ctx, title, content, folderID)
 	if err != nil || doc == nil || doc.URL == "" || doc.ID == "" {
 		return "", ""
 	}
 	return doc.URL, doc.ID
 }
 
-// saveBatchScript persists a batch script (stub).
+// saveBatchScript persists a batch script.
 func (b *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRequest, rec *batchDBRecord, sources []ScriptResearchSource) int64 {
 	if b == nil || req == nil || !req.SaveToDB || b.scriptsRepo == nil || rec == nil {
 		return 0
 	}
-	repo, ok := b.scriptsRepo.(ScriptRepository)
-	if !ok || repo == nil {
-		return 0
-	}
+	repo := b.scriptsRepo
 
 	title := strings.TrimSpace(req.DocTitle)
 	if title == "" {
@@ -365,8 +398,11 @@ func (b *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRe
 // ── Engine and pipeline types ───────────────────────────────────────────
 
 // WriteScriptRequest carries the inputs for WriteScript.
+// PG-033: Plan is now *ScriptGenerationPlan (concrete) and ClipPack
+// was removed — engine.WriteScript never read it; callers retained
+// `pack` in local scope and used `summarizeClipPack(pack)` directly.
 type WriteScriptRequest struct {
-	Plan        interface{} // *scriptpkg.ScriptGenerationPlan
+	Plan        *scriptpkg.ScriptGenerationPlan
 	Topic       string
 	Title       string
 	Language    string
@@ -379,16 +415,15 @@ type WriteScriptRequest struct {
 	UseMemory   bool
 	SaveToDB    bool
 	SaveTimeout int
-	ClipPack    interface{}
 }
 
 // Engine is the canonical script generation engine backed by
 // ollama.Generator, gemmamemory.Service, and ScriptRepository.
-// All fields are concrete typed.
+// PG-033: all fields are concrete types.
 type Engine struct {
-	ollamaGen interface{} // *ollama.Generator
-	memorySvc interface{} // *gemmamemory.Service
-	repo      interface{} // ScriptRepository
+	ollamaGen *ollama.Generator
+	memorySvc *gemmamemory.Service
+	repo      ScriptRepository
 	log       *zap.Logger
 }
 
@@ -396,13 +431,15 @@ type Engine struct {
 
 // ClipSourceBuilder builds clip context from explicit clip IDs
 // using the clips repository and optional vector store + reranker.
-// All fields are concrete typed where possible.
+// PG-033: clipsRepo is concrete *assets.ClipsRepository; the
+// `ollamaClient` field was unused and REMOVED. vectorStore and
+// reranker remain `interface{}` (multi-backend composition-time
+// setters; see SetVectorStore / SetReranker).
 type ClipSourceBuilder struct {
-	clipsRepo    interface{} // *assets.ClipsRepository
-	ollamaClient interface{} // *client.Client
-	vectorStore  interface{}
-	reranker     interface{}
-	log          *zap.Logger
+	clipsRepo   *assets.ClipsRepository
+	vectorStore interface{}
+	reranker    interface{}
+	log         *zap.Logger
 }
 
 // SetVectorStore and SetReranker are implemented in clip_source_builder.go.
@@ -429,7 +466,7 @@ type ClipGenerationOptions struct {
 // PipelineResult holds the output of Pipeline.Run.
 type PipelineResult struct {
 	EntitiesJSON  string
-	Insights      interface{}
+	Insights      ScriptInsights
 	VideoMetadata []VideoMetadata
 	DocLink       string
 	DocID         string
@@ -459,7 +496,7 @@ type Pipeline struct {
 	tag           string
 	scenesSvc     *ScenesService
 	docsSvc       *DocumentsService
-	postGen       interface{} // PostGenFunc callback
+	postGen       PostGenFunc
 	resolveFolder FolderResolver
 }
 
@@ -468,21 +505,19 @@ type Pipeline struct {
 // ── Documents types ─────────────────────────────────────────────────────
 
 // DocumentsService creates Google Docs from script content.
+// PG-033: docClient is concrete drive.DocClient (no interface{} slot).
 type DocumentsService struct {
-	docClient       interface{}
+	docClient       drive.DocClient
 	log             *zap.Logger
 	defaultFolderID string
 }
 
-// NewDocumentsService creates a new DocumentsService (stub).
-func NewDocumentsService(docClient interface{}, log interface{}, driveFolderID string) *DocumentsService {
-	var logger *zap.Logger
-	if l, ok := log.(*zap.Logger); ok {
-		logger = l
-	}
+// NewDocumentsService creates a new DocumentsService with concrete
+// typed arguments. Returns nil docClient → CreateDoc short-circuits.
+func NewDocumentsService(docClient drive.DocClient, log *zap.Logger, driveFolderID string) *DocumentsService {
 	return &DocumentsService{
 		docClient:       docClient,
-		log:             logger,
+		log:             log,
 		defaultFolderID: driveFolderID,
 	}
 }
@@ -492,8 +527,7 @@ func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string,
 	if d == nil {
 		return "", ""
 	}
-	client, ok := d.docClient.(drive.DocClient)
-	if !ok || client == nil {
+	if d.docClient == nil {
 		return "", ""
 	}
 	folderID := strings.TrimSpace(driveFolderID)
@@ -502,7 +536,7 @@ func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string,
 			folderID = resolved
 		}
 	}
-	doc, err := client.CreateDoc(ctx, title, content, folderID)
+	doc, err := d.docClient.CreateDoc(ctx, title, content, folderID)
 	if err != nil || doc == nil || strings.TrimSpace(doc.URL) == "" || strings.TrimSpace(doc.ID) == "" {
 		return "", ""
 	}
@@ -523,13 +557,14 @@ type VideoMetadata struct {
 
 // ScenesService handles scene image/voiceover generation during
 // the post-generation pipeline phase.
+// PG-033: every service field is concrete typed.
 type ScenesService struct {
-	imgSvc        interface{} // *images.Service
-	voSvc         interface{} // *voiceover.Service
+	imgSvc        *images.Service
+	voSvc         *voiceover.Service
 	log           *zap.Logger
-	cfg           interface{} // *config.Config
+	cfg           *config.Config
 	resolveFolder FolderResolver
-	groupsRes     interface{} // *voiceover.GroupsResolver
+	groupsRes     *voiceover.GroupsResolver
 	albumCapacity int
 }
 
@@ -549,15 +584,22 @@ const (
 // ── ClipServices ────────────────────────────────────────────────────────
 
 // ClipServices bundles all service dependencies for clip-related functions.
+//
+// PG-033 (June 2026): removed dead shim interfaces (`AssociationService`,
+// `ImageSearchService`, `JobEnqueueService`, `VoiceoverService`) and the
+// duplicate `Harvest` field. The remaining slots are typed:
+//
+//   - HarvestSvc    : HarvestService      (signature tightened to concrete types)
+//   - JobsSvc       : JobEnqueuer         (canonical typed port from ports.go;
+//                                        *job.Service / *appjobs.Service, façade)
+//   - ImgSvc        : ImageGenService     (signature tightened to match *images.Service
+//                                        so composition root can bind directly)
+//
+// All `interface{}` slots inside the ClipServices surface are gone.
 type ClipServices struct {
 	ClipSearch    ClipSearchService
-	Association   AssociationService
 	DriveCheck    DriveCheckService
-	ImageSearch   ImageSearchService
 	Translation   TextTranslationService
-	JobEnqueue    JobEnqueueService
-	Harvest       HarvestService
-	Voiceover     VoiceoverService
 	RealtimeSvc   RealtimeSearchService
 	HarvestSvc    HarvestService
 	Logger        *zap.Logger
@@ -565,7 +607,7 @@ type ClipServices struct {
 	MetadataModel string
 	AssocSvc      AssocSearchService
 	DriveSvc      DriveCheckService
-	JobsSvc       JobEnqueueService
+	JobsSvc       JobEnqueuer
 	ArtlistFolder string
 	ImgSvc        ImageGenService
 }
@@ -575,19 +617,9 @@ type ClipSearchService interface {
 	EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error)
 }
 
-// AssociationService narrows association operations.
-type AssociationService interface {
-	BuildCandidates(ctx context.Context, req interface{}) (interface{}, error)
-}
-
 // DriveCheckService narrows drive check operations.
 type DriveCheckService interface {
 	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
-}
-
-// ImageSearchService narrows image search operations.
-type ImageSearchService interface {
-	Search(ctx context.Context, query string, limit int) ([]interface{}, error)
 }
 
 // TextTranslationService narrows text translation operations.
@@ -595,20 +627,19 @@ type TextTranslationService interface {
 	Translate(ctx context.Context, text, targetLang string) (string, error)
 }
 
-// JobEnqueueService narrows job enqueue operations.
-type JobEnqueueService interface {
-	Enqueue(ctx context.Context, req interface{}) (interface{}, error)
-}
-
 // HarvestService narrows harvest operations.
+// PG-033: signature tightened to the canonical typed shape matching
+// `internal/api/script/handler_flow.go:76`. The previous `interface{}`
+// sliding-door was structurally incompatible with the (forthcoming)
+// clipresolver replacement; the concrete signature is forward-compatible
+// regardless of who implements it.
 type HarvestService interface {
-	EnqueueHarvest(ctx context.Context, req interface{}, maxClips int, profile string) (interface{}, error)
+	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
 // RealtimeSearchService narrows realtime search operations.
 //
-// NOTE (AGENT-2, June 2026): the `RealtimeMatchAsset` element type
-// referenced below is now defined canonically in
+// NOTE: the `RealtimeMatchAsset` element type is defined canonically in
 // `internal/application/scripts/flow_helpers.go:31`. The earlier draft
 // duplicated the definition here and tripped a Go redeclaration error;
 // the canonical location is kept and this stub stays as a pure
@@ -628,14 +659,13 @@ type AssocSearchService interface {
 }
 
 // ImageGenService narrows image search + generation operations.
+// PG-033: SearchAndDownload signature tightened to match *images.Service
+// (production: subjectSlug, displayName, query, lang, tags []string),
+// so *images.Service satisfies the interface directly without a
+// structural wrapper. GenerateSmartImage is unchanged (already typed).
 type ImageGenService interface {
-	SearchAndDownload(ctx context.Context, name, description, query, language string, extra interface{}) (*asset.ImageAsset, error)
+	SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error)
 	GenerateSmartImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error)
-}
-
-// VoiceoverService narrows voiceover operations.
-type VoiceoverService interface {
-	Generate(ctx context.Context, text, language, filename string) (interface{}, error)
 }
 
 // ── ScriptInsights ──────────────────────────────────────────────────────
