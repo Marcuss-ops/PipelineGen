@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -92,6 +93,19 @@ type ProcessBookRequest struct {
 	PDFStyle      string `json:"pdf_style,omitempty"`
 }
 
+// ProcessBookResult is the synchronous payload carried in the shared
+// generation envelope.
+type ProcessBookResult struct {
+	OutputPath      string `json:"output_path"`
+	PDFPath         string `json:"pdf_path"`
+	DriveFolder     string `json:"drive_folder"`
+	DriveDocURL     string `json:"drive_doc_url"`
+	DrivePDFURL     string `json:"drive_pdf_url"`
+	WordCount       int    `json:"word_count"`
+	ChunksProcessed int    `json:"chunks_processed"`
+	Language        string `json:"language"`
+}
+
 // Validate implements transport.JSONBound. transport.JSON calls this
 // after binding and BEFORE invoking the use case; on error the handler
 // returns 400 via api.BadRequest.
@@ -131,33 +145,9 @@ func (r ProcessBookRequest) payload() map[string]any {
 	}
 }
 
-// ProcessBookResponse covers BOTH sync execution results and async
-// enqueue acknowledgments. Sync fields are populated when Async=false;
-// async fields when Async=true. Every field is omitempty so the
-// response is symmetric regardless of branch. Wire shape stays
-// compatible with the legacy gin.H-based responses because the JSON
-// keys are unchanged.
-type ProcessBookResponse struct {
-	OK bool `json:"ok"`
-
-	// sync fields.
-	Success         bool   `json:"success,omitempty"`
-	OutputPath      string `json:"output_path,omitempty"`
-	PDFPath         string `json:"pdf_path,omitempty"`
-	DriveFolder     string `json:"drive_folder,omitempty"`
-	DriveDocURL     string `json:"drive_doc_url,omitempty"`
-	DrivePDFURL     string `json:"drive_pdf_url,omitempty"`
-	WordCount       int    `json:"word_count,omitempty"`
-	ChunksProcessed int    `json:"chunks_processed,omitempty"`
-	Language        string `json:"language,omitempty"`
-
-	// async fields.
-	Enqueued  bool   `json:"enqueued,omitempty"`
-	JobID     string `json:"job_id,omitempty"`
-	JobType   string `json:"job_type,omitempty"`
-	ActiveKey string `json:"active_key,omitempty"`
-	Priority  int    `json:"priority,omitempty"`
-}
+// ProcessBookResponse reuses the shared generation envelope so books
+// matches the other text-generation endpoints.
+type ProcessBookResponse = generation.Response[ProcessBookResult]
 
 // Sentinels returned by the use case. transport.JSON's ErrorMapper
 // translates each into a stable HTTP status so the wire surface is
@@ -260,9 +250,7 @@ func (uc *ProcessBookUseCase) handleSync(ctx context.Context, req ProcessBookReq
 	if !result.Success {
 		return ProcessBookResponse{}, ErrProcessFailed{Message: result.Error}
 	}
-	return ProcessBookResponse{
-		OK:              true,
-		Success:         true,
+	return generation.Sync("book", ProcessBookResult{
 		OutputPath:      result.OutputPath,
 		PDFPath:         result.PDFPath,
 		DriveFolder:     result.DriveFolderURL,
@@ -271,7 +259,7 @@ func (uc *ProcessBookUseCase) handleSync(ctx context.Context, req ProcessBookReq
 		WordCount:       result.WordCount,
 		ChunksProcessed: result.ChunksProcessed,
 		Language:        result.Language,
-	}, nil
+	}), nil
 }
 
 // enqueueBookJob is the shared helper for the async branch of any
@@ -314,17 +302,12 @@ func (uc *ProcessBookUseCase) enqueueBookJob(ctx context.Context, req ProcessBoo
 		)
 	}
 	jobID := ""
+	status := ""
 	if enqueued != nil {
 		jobID = enqueued.ID
+		status = string(enqueued.Status)
 	}
-	return ProcessBookResponse{
-		OK:        true,
-		Enqueued:  true,
-		JobID:     jobID,
-		JobType:   jobType,
-		ActiveKey: activeKey,
-		Priority:  processBookEnqueuePriority,
-	}, nil
+	return generation.Async[ProcessBookResult]("book", jobID, status, jobType), nil
 }
 
 // ProcessBookErrMapper maps use-case errors to HTTP status codes. It

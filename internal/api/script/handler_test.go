@@ -378,7 +378,7 @@ func TestHandler_GenerateBatch_DelegatesToInner(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			scripts.NewBatchService(nil, nil, nil, nil, nil, nil, nil),
+			scripts.NewBatchService(nil, nil, nil, scripts.NewEngine(nil, nil, nil, nil), nil, nil, nil),
 			"",
 		),
 		Gates: FeatureGates{ScriptDocsEnabled: true},
@@ -386,7 +386,7 @@ func TestHandler_GenerateBatch_DelegatesToInner(t *testing.T) {
 	router := gin.New()
 	router.POST("/test", handler.GenerateBatch)
 
-	body := `{"doc_title":"Batch probe","async":false,"items":[{"topic":"t1"}],"batch_topics":[{"topic":"t1"}]}`
+	body := `{"doc_title":"Batch probe","async":false,"items":[],"batch_topics":[]}`
 	req := httptest.NewRequest("POST", "/test", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

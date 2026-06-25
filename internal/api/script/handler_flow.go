@@ -161,7 +161,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 //
 // Local narrow (2-method) interface. The canonical concrete is
 // pkg/middleware.TokenSecurityAdapter (leaf struct, PG-006.1); tests
-// + CLI utilities that don't carry a full *config.Config construct
+// + CLI utilities that do not carry the full config object can use
 // &pkgmw.TokenSecurityAdapter{...} literals which structurally satisfy
 // this local interface. No local adapter struct is required here anymore
 // — the local adminTokenAdapter was retired in PG-006.1.

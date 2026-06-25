@@ -127,16 +127,19 @@ func TestGenerateLessonUseCase_HandleSyncOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.OK || !resp.Success {
-		t.Fatalf("expected OK+Success, got: %+v", resp)
+	if !resp.OK || resp.Kind != "lesson" || resp.Mode != "sync" {
+		t.Fatalf("expected OK+sync lesson envelope, got: %+v", resp)
 	}
-	if resp.Title != "Recap: kubernetes networking" {
-		t.Fatalf("title not projected: got %q", resp.Title)
+	if resp.Result == nil {
+		t.Fatalf("expected sync result payload, got nil")
 	}
-	if resp.TotalWords != 2500 || resp.MarkdownPath != "/tmp/lesson.md" || resp.PDFPath != "/tmp/lesson.pdf" {
-		t.Fatalf("sync fields not projected: %+v", resp)
+	if resp.Result.Title != "Recap: kubernetes networking" {
+		t.Fatalf("title not projected: got %q", resp.Result.Title)
 	}
-	if resp.Enqueued || resp.JobID != "" {
+	if resp.Result.TotalWords != 2500 || resp.Result.MarkdownPath != "/tmp/lesson.md" || resp.Result.PDFPath != "/tmp/lesson.pdf" {
+		t.Fatalf("sync fields not projected: %+v", resp.Result)
+	}
+	if resp.JobID != "" || resp.JobType != "" || resp.Status != "" {
 		t.Fatalf("async fields must be empty on sync, got: %+v", resp)
 	}
 }
@@ -157,11 +160,14 @@ func TestGenerateLessonUseCase_HandleAsyncOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.OK || !resp.Enqueued {
-		t.Fatalf("expected OK+Enqueued=true, got: ok=%v enqueued=%v", resp.OK, resp.Enqueued)
+	if !resp.OK || resp.Kind != "lesson" || resp.Mode != "async" {
+		t.Fatalf("expected OK+async lesson envelope, got: %+v", resp)
 	}
 	if resp.JobID != "job-lesson-456" {
 		t.Fatalf("JobID mismatch: got %q", resp.JobID)
+	}
+	if resp.JobType != string(jobs.TypeLessonsProcess) {
+		t.Fatalf("JobType mismatch: got %q", resp.JobType)
 	}
 	if fakeJobs.LastRequest == nil {
 		t.Fatalf("asyncEnqueuer was not called")
@@ -173,8 +179,8 @@ func TestGenerateLessonUseCase_HandleAsyncOK(t *testing.T) {
 		t.Fatalf("EnqueueRequest.Priority = %d, want %d", fakeJobs.LastRequest.Priority, generateLessonEnqueuePriority)
 	}
 	// sync fields must be empty on async ack
-	if resp.Success || resp.MarkdownPath != "" {
-		t.Fatalf("sync fields must be empty on async, got: %+v", resp)
+	if resp.Result != nil {
+		t.Fatalf("sync result must be empty on async, got: %+v", resp)
 	}
 }
 
