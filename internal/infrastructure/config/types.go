@@ -62,6 +62,7 @@ type Config struct {
 	Multilingual     MultilingualConfig     `yaml:"multilingual"`
 	Scripts          ScriptsConfig          `yaml:"scripts"`
 	Outbox           OutboxConfig           `yaml:"outbox"`
+	Qdrant           QdrantConfig           `yaml:"qdrant"`
 }
 
 // AuthSecurityPort compatibility helpers. These keep the application-layer
@@ -135,6 +136,18 @@ type GoogleAccountingConfig struct {
 	ServerURL     string `yaml:"server_url" env:"VELOX_GOOGLE_ACCOUNTING_URL" default:""`
 	DownloadDir   string `yaml:"download_dir" env:"VELOX_GOOGLE_ACCOUNTING_DOWNLOAD_DIR" default:"./data/google_vids"`
 	VidsProjectID string `yaml:"vids_project_id" env:"VELOX_GOOGLE_ACCOUNTING_VIDS_PROJECT_ID" default:""`
+}
+
+// QdrantConfig holds Qdrant vector-database connection parameters.
+// QDRANT-003 (June 2026): canonical Qdrant configuration.
+type QdrantConfig struct {
+	// BaseURL is the Qdrant REST API base URL (e.g. "http://127.0.0.1:6333").
+	BaseURL string `yaml:"base_url" env:"VELOX_QDRANT_URL" default:"http://127.0.0.1:6333"`
+	// Timeout is the HTTP client timeout in seconds.
+	Timeout int `yaml:"timeout" env:"VELOX_QDRANT_TIMEOUT" default:"10"`
+	// Enabled controls whether Qdrant capability is active.
+	// Default false: operators must explicitly opt in.
+	Enabled bool `yaml:"enabled" env:"VELOX_QDRANT_ENABLED" default:"false"`
 }
 
 // OutboxConfig tunes the outbox_events worker pool. Defaults follow the
@@ -352,10 +365,10 @@ type ExternalConfig struct {
 	VLLMURL   string `yaml:"vllm_url" env:"VLLM_URL" default:"http://localhost:8000"`
 	VLLMModel string `yaml:"vllm_model" env:"VLLM_MODEL" default:"gemma4:e4b"`
 
-	PixabayAPIKey          string `yaml:"pixabay_api_key" env:"PIXABAY_API_KEY" default:""`
-	PixabayBaseURL         string `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
-	PexelsAPIKey           string `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
-	PexelsBaseURL          string `yaml:"pexels_base_url" env:"PEXELS_BASE_URL" default:"https://api.pexels.com/v1"`
+	PixabayAPIKey  string `yaml:"pixabay_api_key" env:"PIXABAY_API_KEY" default:""`
+	PixabayBaseURL string `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
+	PexelsAPIKey   string `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
+	PexelsBaseURL  string `yaml:"pexels_base_url" env:"PEXELS_BASE_URL" default:"https://api.pexels.com/v1"`
 
 	// NodeScraperDir directory containing the Node.js scraper scripts (artlist_search.js, etc.).
 	// Default "node-scraper" relative to working dir.

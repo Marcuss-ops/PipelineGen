@@ -56,6 +56,12 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		InsecureDev: cfg.Security.DeliveryInsecureDev,
 		Jobs:        jobs.Service,
 	}
+	// QDRANT-003: wire IndexWriter as QdrantDeleter for index.delete_requested events.
+	if process.QdrantDeleter != nil {
+		if qd, ok := process.QdrantDeleter.(jobsoutbox.QdrantDeleter); ok {
+			outboxDeps.QdrantDeleter = qd
+		}
+	}
 	if err := jobsoutbox.RegisterAll(eventsRegistry, log, process.ClipIndexerService, outboxDeps); err != nil {
 		log.Warn("failed to register outbox events handlers", zap.Error(err))
 	}

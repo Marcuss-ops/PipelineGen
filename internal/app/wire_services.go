@@ -136,9 +136,9 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// steps → job runner (always last).
 	var startupPlan []StartupStep
 
-	// Prerequisite steps: Drive folder validation, Outbox pool.
-	// PG-034 (June 2026): qdrant-collection step removed. These are
-	// required steps — failure aborts the entire startup sequence.
+	// Prerequisite steps: Drive folder validation, Qdrant collection, Outbox pool.
+	// QDRANT-003 (June 2026): qdrant-collection step re-added with EnsureSchema.
+	// These are required steps — failure aborts the entire startup sequence.
 	if root != nil && root.DriveStart != nil {
 		ds := root.DriveStart
 		startupPlan = append(startupPlan, StartupStep{
@@ -149,6 +149,23 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			Stop: func(_ context.Context) error { return nil },
 		})
 	}
+
+	// QDRANT-003: EnsureSchema step — creates/validates the versioned Qdrant collection
+	// and sets the runtime alias. Only when Qdrant is enabled.
+	if cfg.Qdrant.Enabled && root.Process != nil && root.Process.QdrantClient != nil {
+		if cm, ok := root.Process.QdrantClient.(interface {
+			EnsureSchema(ctx context.Context) error
+		}); ok {
+			startupPlan = append(startupPlan, StartupStep{
+				Name: "qdrant-collection", Required: true,
+				Start: func(ctx context.Context) error {
+					return cm.EnsureSchema(ctx)
+				},
+				Stop: func(_ context.Context) error { return nil },
+			})
+		}
+	}
+
 	if root != nil && root.OutboxStart != nil {
 		os := root.OutboxStart
 		startupPlan = append(startupPlan, StartupStep{
