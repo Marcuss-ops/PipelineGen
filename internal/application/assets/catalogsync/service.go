@@ -6,11 +6,11 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
@@ -50,6 +50,10 @@ type Service struct {
 	assetIndex  *assetindex.Service
 	assetTree   *assettree.Service
 	clipIndexer *clipindexer.Service
+	// defaultClipsRepo is the fallback ClipsRepository for ad-hoc sync
+	// requests (e.g. source="drive") that don't have a pre-configured target.
+	// Initialised from the first target's Repo in NewService.
+	defaultClipsRepo *assets.ClipsRepository
 	// dispatcher is the canonical ingestion entry point. Routes media_assets
 	// upserts + outbox enqueues through Dispatcher.EnqueueAndIndex (atomic),
 	// replacing the legacy `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)`
@@ -64,7 +68,7 @@ type Service struct {
 }
 
 func NewService(uploader *uploaddrive.Uploader, targets []Target, assetIndex *assetindex.Service, assetTree *assettree.Service, clipIndexer *clipindexer.Service, log *zap.Logger) *Service {
-	return &Service{
+	s := &Service{
 		uploader:    uploader,
 		log:         log,
 		targets:     targets,
@@ -72,6 +76,14 @@ func NewService(uploader *uploaddrive.Uploader, targets []Target, assetIndex *as
 		assetTree:   assetTree,
 		clipIndexer: clipIndexer,
 	}
+	// Use the first non-nil target repo as the default fallback repo
+	for _, t := range targets {
+		if t.Repo != nil {
+			s.defaultClipsRepo = t.Repo
+			break
+		}
+	}
+	return s
 }
 
 // SetDispatcher installs the canonical outbox dispatcher. After installation,
