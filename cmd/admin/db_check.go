@@ -8,7 +8,6 @@
 //   - WAL size on disk
 //   - Table counts (top-N by row count)
 //   - Critical columns/indexes presence
-//   - Qdrant connectivity (HTTP /healthz if -qdrant-url non-empty)
 //
 // Exits 0 when all checks pass, 1 on any failure (prints the failing
 // check). Exit-code contract matches the other admin commands.
