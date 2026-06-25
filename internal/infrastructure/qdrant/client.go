@@ -340,11 +340,47 @@ func (c *Client) SearchPoints(ctx context.Context, collection string, req Search
 	return c.executeSearch(ctx, collection, body)
 }
 
-// HybridSearchPoints performs a hybrid (dense + sparse) search.
+// HybridSearchPoints performs a hybrid (dense + sparse) search using
+// Qdrant's query API with prefetch + RRF fusion.
+//
+// QDRANT-004: Uses the /points/query endpoint (not /points/search) to
+// perform real hybrid retrieval. The dense vector prefetch provides
+// semantic ANN; when SparseVectorName is set, a second prefetch channel
+// is registered for BM25 lexical matching. Results are fused via
+// Reciprocal Rank Fusion (RRF).
+//
+// When the sparse channel is named but no sparse query vector is provided,
+// the sparse prefetch is skipped (BM25 tokenizer not yet implemented in Go;
+// pending QDRANT-005 follow-up). The query API structure is correct and
+// the sparse channel can be added without API changes when the tokenizer
+// ships.
 func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req HybridSearchRequest) ([]SearchResult, error) {
+	// Build prefetch list: always include dense vector.
+	prefetch := []map[string]interface{}{
+		{
+			"query": req.DenseVector,
+			"using": req.DenseVectorName,
+			"limit": req.Limit * 3, // over-fetch for fusion
+		},
+	}
+
+	// QDRANT-004: register sparse channel for real BM25 lexical matching.
+	// When SparseVectorName is set AND a SparseQueryVector is provided,
+	// add a second prefetch for lexical BM25 retrieval fused via RRF.
+	if req.SparseVectorName != "" && req.SparseQueryVector != nil && len(req.SparseQueryVector.Indices) > 0 {
+		prefetch = append(prefetch, map[string]interface{}{
+			"query": map[string]interface{}{
+				"indices": req.SparseQueryVector.Indices,
+				"values":  req.SparseQueryVector.Values,
+			},
+			"using": req.SparseVectorName,
+			"limit": req.Limit * 3,
+		})
+	}
+
 	body := map[string]interface{}{
-		"vector":       req.DenseVector,
-		"using":        req.DenseVectorName,
+		"prefetch":     prefetch,
+		"query":        map[string]string{"fusion": "rrf"},
 		"limit":        req.Limit,
 		"with_payload": true,
 	}
@@ -355,14 +391,26 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 		body["filter"] = req.Filter
 	}
 
-	return c.executeSearch(ctx, collection, body)
+	return c.executeQuery(ctx, collection, body)
 }
 
 func (c *Client) executeSearch(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
 	url := fmt.Sprintf("%s/collections/%s/points/search", c.baseURL, collection)
+	return c.doSearchAndDecode(ctx, url, body)
+}
+
+// executeQuery sends a search request to Qdrant's query API endpoint
+// (/points/query) which supports prefetch + RRF fusion for hybrid search.
+// Used by HybridSearchPoints (QDRANT-004).
+func (c *Client) executeQuery(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
+	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
+	return c.doSearchAndDecode(ctx, url, body)
+}
+
+func (c *Client) doSearchAndDecode(ctx context.Context, url string, body map[string]interface{}) ([]SearchResult, error) {
 	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("search %q: %w", collection, err)
+		return nil, fmt.Errorf("search: %w", err)
 	}
 	defer resp.Body.Close()
 

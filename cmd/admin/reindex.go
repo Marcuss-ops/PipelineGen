@@ -31,7 +31,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -115,7 +114,7 @@ func runReindex(args []string) error {
 		return err
 	}
 
-	if !cfg.VectorSearch.Enabled {
+	if !cfg.Qdrant.Enabled {
 		return errors.New(
 			"vector search is disabled in config (vector_search.enabled=false); " +
 				"reindex requires it to push embeddings into the canonical Qdrant collection",
@@ -123,14 +122,15 @@ func runReindex(args []string) error {
 	}
 
 	ctx := cmdContext()
+	schema := qdrant.DefaultV3Schema()
 	log.Info("opening media database for reindex",
 		zap.String("data_dir", cfg.Storage.DataDir),
 		zap.Bool("apply", deps.Apply),
 		zap.Int("limit", deps.Limit),
 		zap.Int("batch", deps.BatchSize),
 		zap.String("source", deps.Source),
-		zap.String("qdrant_url", cfg.VectorSearch.URL),
-		zap.String("qdrant_collection", cfg.VectorSearch.Collection),
+		zap.String("qdrant_url", cfg.Qdrant.BaseURL),
+		zap.String("qdrant_collection", schema.PhysicalName),
 	)
 
 	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
@@ -141,7 +141,7 @@ func runReindex(args []string) error {
 	db := sqliteDB.DB
 
 	qdClient := buildReindexClient(cfg, log)
-	collection := reindexCollectionName(cfg)
+	collection := schema.PhysicalName
 
 	start := time.Now()
 	totalFound, pushed, skipped, failed, err := reindexQdrant(ctx, db, qdClient, collection, deps, log)
@@ -159,8 +159,8 @@ func runReindex(args []string) error {
 		"source":            deps.Source,
 		"limit":             deps.Limit,
 		"batch":             deps.BatchSize,
-		"qdrant_url":        cfg.VectorSearch.URL,
-		"qdrant_collection": cfg.VectorSearch.Collection,
+		"qdrant_url":        cfg.Qdrant.BaseURL,
+		"qdrant_collection": schema.PhysicalName,
 		"total_found":       totalFound,
 		"pushed":            pushed,
 		"skipped":           skipped,
@@ -194,21 +194,9 @@ func buildReindexClient(cfg *config.Config, log *zap.Logger) *qdrant.Client {
 		return nil
 	}
 	return qdrant.NewClient(&qdrant.Config{
-		BaseURL: cfg.VectorSearch.URL,
-		Timeout: cfg.VectorSearch.TimeoutMs / 1000,
+		BaseURL: cfg.Qdrant.BaseURL,
+		Timeout: cfg.Qdrant.Timeout,
 	}, log)
-}
-
-// reindexCollectionName resolves the collection to write to.
-func reindexCollectionName(cfg *config.Config) string {
-	col := cfg.VectorSearch.Collection
-	if col == "" {
-		col = "media_assets"
-	}
-	if v := cfg.VectorSearch.CollectionVersion; v != "" {
-		col += "_" + v
-	}
-	return col
 }
 
 // reindexQdrant walks media_assets rows that carry at least one valid
