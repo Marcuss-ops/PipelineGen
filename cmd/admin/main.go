@@ -53,6 +53,7 @@ var availableCommands = []string{
 	"gen-api-docs",
 	"list-drive-folder",
 	"list-styles",
+	"reindex",
 	"reset-video-ai",
 	"seed-channels",
 	"stock-reset",
@@ -89,6 +90,8 @@ func main() {
 		err = runDeleteSpecificFolders(args)
 	case "list-drive-folder":
 		err = runListDriveFolder(args)
+	case "reindex":
+		err = runReindex(args)
 	case "reset-video-ai":
 		err = runResetVideoAI(args)
 	case "sync-all-drive":

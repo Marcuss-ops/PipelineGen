@@ -2,6 +2,8 @@
 import os
 import json
 import sqlite3
+import subprocess
+import sys
 import urllib.request
 import urllib.error
 import uuid
@@ -45,6 +47,45 @@ def qdrant_request(endpoint, method="GET", payload=None):
     )
     with urllib.request.urlopen(req) as res:
         return json.loads(res.read().decode('utf-8'))
+
+
+# ── QDRANT-001 thin-client sync helper ─────────────────────────────────────────
+# QDRANT-001 (June 2026, docs/qdrant/QDRANT-001_OWNERSHIP_API_GATEWAY_AND_LEGACY_REMOVAL.md):
+# this script is a TEST driver. It must NOT reach into Qdrant or SQLite directly
+# to mutate state — every restore / re-sync goes through the Go canonical HTTP
+# API via scripts/tools/sync_drive_qdrant.py.
+#
+# The Drive folder ID is read from the env var VELOX_TEST_FOLDER_ID. We do not
+# hardcode the previous ROOT_FOLDER_ID inside this file (QDRANT-001 forbids
+# hardcoded IDs in Python); the test runner sets the env var before invoking.
+def _invoke_sync_drive_folder() -> None:
+    folder_id = os.environ.get("VELOX_TEST_FOLDER_ID", "").strip()
+    if not folder_id:
+        print(
+            "error: VELOX_TEST_FOLDER_ID env var is required to re-sync the "
+            "countertest fixtures. QDRANT-001 forbids this script from "
+            "writing Qdrant/SQLite directly — it must go through the Go "
+            "canonical /api/media/sync-drive-folder endpoint.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    # Pick the same interpreter the caller is running; fall back to PATH
+    # resolution only when sys.executable is empty (frozen/embedded case).
+    interpreter = sys.executable if sys.executable else "python3"
+    script_path = Path(__file__).resolve().parent / "sync_drive_qdrant.py"
+    proc = subprocess.run(
+        [interpreter, str(script_path), "--folder-id", folder_id],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    if proc.returncode != 0:
+        # Surface WHY the sync failed — without stderr visibility the test
+        # driver aborts with only a Python traceback (silent root cause).
+        stderr_tail = (proc.stderr or b"").decode("utf-8", "ignore")[-500:]
+        raise SystemExit(
+            f"sync_drive_qdrant.py exited {proc.returncode} for folder_id={folder_id!r}: "
+            f"{stderr_tail.strip() or '<no stderr>'}"
+        )
 
 def main():
     print("\n" + "="*50)
@@ -104,9 +145,9 @@ def main():
     # RESTORE: Untrash the file on Drive and restore to Qdrant so we keep files intact
     print("  Restoring Kobe Bryant file on Google Drive (untrashing)...")
     drive_service.files().update(fileId=kobe_drive_id, body={'trashed': False}).execute()
-    # Re-run sync to restore the point to Qdrant/SQLite
+    # Re-run sync via the Go canonical HTTP API (QDRANT-001 thin client).
     print("  Re-syncing to restore point...")
-    os.system("python3 scripts/tools/sync_drive_qdrant.py > /dev/null")
+    _invoke_sync_drive_folder()
     print("  Restored!")
     print("-" * 50 + "\n")
 
@@ -159,9 +200,9 @@ def main():
     cnt_before = qdrant_request(f"collections/{QDRANT_COLLECTION}")["result"]["points_count"]
     print(f"  Points in Qdrant before re-running sync: {cnt_before}")
     
-    # 2. Run sync script again
-    print("  Running sync script again...")
-    os.system("python3 scripts/tools/sync_drive_qdrant.py > /dev/null")
+    # 2. Run sync script again (QDRANT-001: thin HTTP client)
+    print("  Running sync via the Go canonical HTTP API...")
+    _invoke_sync_drive_folder()
     
     # 3. Count points after
     cnt_after = qdrant_request(f"collections/{QDRANT_COLLECTION}")["result"]["points_count"]
