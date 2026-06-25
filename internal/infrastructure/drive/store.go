@@ -198,6 +198,10 @@ func (s *Store) UploadToDrive(ctx context.Context, req AssetDestinationRequest, 
 		return "", "", fmt.Errorf("resolve destination folder: %w", err)
 	}
 
+	if s.rootFolder != "" && folderID == s.rootFolder {
+		return "", "", fmt.Errorf("upload: uploading directly to the Media root folder (%s) is not permitted; files must be uploaded to a specific subdirectory", s.rootFolder)
+	}
+
 	filename := driveFilename(filePath, req.Ext)
 	if filename == "" {
 		return "", "", fmt.Errorf("storage.UploadToDrive: cannot derive filename from filePath=%q ext=%q", filePath, req.Ext)
