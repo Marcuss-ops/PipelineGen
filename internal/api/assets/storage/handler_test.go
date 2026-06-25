@@ -89,7 +89,7 @@ func TestStorageRoutes_Compatibility(t *testing.T) {
 		reason     string
 	}{
 		{http.MethodGet, "/drive/files?folder_id=x", http.StatusServiceUnavailable, "nil svc guard fires before query bind"},
-		{http.MethodPost, "/drive/move", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
+		{http.MethodPost, "/drive/move-file", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
 		{http.MethodPost, "/drive/create-folder", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
 		{http.MethodPost, "/drive/rename", http.StatusServiceUnavailable, "nil svc guard fires before bind"},
 	}
@@ -137,7 +137,7 @@ func TestHandler_NilServiceReturns503(t *testing.T) {
 	}
 	endpoints := []ep{
 		{http.MethodGet, "/drive/files?folder_id=x"},
-		{http.MethodPost, "/drive/move"},
+		{http.MethodPost, "/drive/move-file"},
 		{http.MethodPost, "/drive/create-folder"},
 		{http.MethodPost, "/drive/rename"},
 	}
@@ -197,7 +197,7 @@ func TestMoveFile_ValidJSON(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	body := `{"file_id":"f1","from_folder_id":"src","to_folder_id":"dst"}`
-	req, _ := http.NewRequest(http.MethodPost, "/drive/move", strings.NewReader(body))
+	req, _ := http.NewRequest(http.MethodPost, "/drive/move-file", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 

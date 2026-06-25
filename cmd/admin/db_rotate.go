@@ -35,15 +35,18 @@ func runDBRotate(ctx context.Context, args []string) error {
 	backupDir := fs.String("backup-dir", "", "override backup directory (defaults to <DataDir>/backups)")
 	fs.Parse(args)
 
-	if *maxAgeDays <= 0 {
-		return fmt.Errorf("-max-age-days must be > 0")
+	fullCfg := config.Get()
+	if *dataDir != "" && *dataDir != "./data" {
+		fullCfg.Storage.DataDir = *dataDir
 	}
-
-	cfg := config.StorageConfig{DataDir: *dataDir}
-	resolved := cfg.ToDatabaseStorageConfig()
+	resolved := fullCfg.Storage.ToDatabaseStorageConfig()
 	bd := *backupDir
 	if bd == "" {
 		bd = filepath.Join(*dataDir, "backups")
+	}
+
+	if *maxAgeDays <= 0 {
+		return fmt.Errorf("-max-age-days must be > 0")
 	}
 
 	log, _ := zap.NewProduction()

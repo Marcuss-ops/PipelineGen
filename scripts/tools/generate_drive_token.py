@@ -70,6 +70,7 @@ def main():
                         raise
                     print(f"Token exchange warning: {e}")
             elif args.console:
+                flow.redirect_uri = "http://localhost"
                 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
                 auth_url, _ = flow.authorization_url(
                     prompt="consent",

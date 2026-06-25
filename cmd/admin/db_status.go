@@ -26,11 +26,11 @@ func runDBStatus(ctx context.Context, args []string) error {
 	backupDir := fs.String("backup-dir", "", "override backup directory (defaults to <DataDir>/backups)")
 	fs.Parse(args)
 
-	cfg := config.StorageConfig{
-		DataDir: *dataDir,
-		// PrimaryDBPath + ObservabilityDBPath empty → ResolveStorageConfig defaults.
+	fullCfg := config.Get()
+	if *dataDir != "" && *dataDir != "./data" {
+		fullCfg.Storage.DataDir = *dataDir
 	}
-	resolved := cfg.ToDatabaseStorageConfig()
+	resolved := fullCfg.Storage.ToDatabaseStorageConfig()
 	log, _ := zap.NewProduction()
 	defer log.Sync()
 

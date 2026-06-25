@@ -34,7 +34,7 @@ func NewHandler(svc *appstorage.Service, jobs jobdomain.Service, catalogSync *ca
 // RegisterRoutes registers storage routes under the given group.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/drive/files", h.ListFiles)
-	r.POST("/drive/move", h.MoveFile)
+	r.POST("/drive/move-file", h.MoveFile)
 	r.POST("/drive/create-folder", h.CreateFolder)
 	r.POST("/drive/rename", h.RenameFile)
 }
