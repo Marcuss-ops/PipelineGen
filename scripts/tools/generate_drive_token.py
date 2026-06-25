@@ -54,7 +54,6 @@ def main():
                 flow.redirect_uri = "http://localhost"
                 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
                 auth_url, _ = flow.authorization_url(
-                    access_type="offline",
                     prompt="consent",
                     include_granted_scopes="true",
                 )
@@ -73,7 +72,6 @@ def main():
             elif args.console:
                 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
                 auth_url, _ = flow.authorization_url(
-                    access_type="offline",
                     prompt="consent",
                     include_granted_scopes="true",
                 )
