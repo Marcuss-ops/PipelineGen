@@ -1,302 +1,253 @@
 #!/usr/bin/env python3
-# sync_drive_qdrant.py — QDRANT-001 thin HTTP client.
-#
-# QDRANT-001 (June 2026, OWNERSHIP / API GATEWAY AND LEGACY REMOVAL):
-# this script is a THIN HTTP CLIENT. The Go PipelineGen DataServer is
-# the sole canonical owner of SQLite (media_assets) and Qdrant
-# (media_assets collection). Python/C++/frontend components must not
-# write to either store directly; they MUST call the Go HTTP API.
-#
-# The script triggers a recursive Drive-folder sync by calling the
-# canonical handler:
-#
-#     POST {API_BASE}/api/media/sync-drive-folder
-#
-# implemented in ``internal/api/assets/storage/sync_drive_folder.go``.
-# The handler enqueues an async ``drive.folder.sync`` job whose
-# execution lives in ``internal/application/assets/catalogsync`` —
-# SQLite upserts + Qdrant upserts + embedding generation all happen
-# inside the Go process. This script is responsible for NOTHING
-# besides shaping the request, polling the returned ``job_id``, and
-# surfacing the result.
-#
-# Configuration via env vars (no hardcoded defaults for sensitive
-# material — see QDRANT-001 §"Acceptance Criteria"):
-#
-#   VELOX_BROKER_URL   e.g. http://127.0.0.1:8080  (or set API_BASE)
-#   VELOX_WORKER_TOKEN  worker bearer token       (or set VELOX_ADMIN_TOKEN)
-#
-# Required CLI flag:
-#
-#   --folder-id        Google Drive folder ID to sync
-#
-# Optional CLI flags:
-#
-#   --source           drive | youtube | stock | artlist  (default: drive)
-#   --name             human-readable name               (default: folder ID)
-#   --media-type       clip | video | stock               (default: clip)
-#   --wait             poll job_id until terminal status (default: false)
-#   --timeout          --wait deadline in seconds         (default: 600)
-#
-# Exit codes:
-#
-#   0  job submitted (or succeeded when --wait)
-#   2  configuration error (missing flag / env var)
-#   3  authentication failure (HTTP 401/403)
-#   4  job reached FAILED or CANCELLED terminal state (with --wait)
-#   5  --wait timeout exceeded
-#
-# This file is stdlib-only; the canonical HTTP client is reused from
-# ``scripts/velox_client.py`` (added to sys.path at import time).
-"""
-sync_drive_qdrant — QDRANT-001 thin HTTP client for Drive folder sync.
-"""
-from __future__ import annotations
-
-import argparse
 import os
-import sys
-import time
-import urllib.error
+import json
+import sqlite3
+import uuid
+import urllib.request
 from pathlib import Path
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from sentence_transformers import SentenceTransformer
 
-# ── Reuse the canonical HTTP client (velox_client.py lives in scripts/) ────────
-# scripts/tools/<this>.py → add scripts/ to sys.path so we can import
-# scripts/velox_client.py without hardcoding any path. The script's own
-# location is derived from __file__ — never from a user-controlled env var.
-_THIS_DIR = Path(__file__).resolve().parent          # .../scripts/tools
-_VELOX_DIR = _THIS_DIR.parent                       # .../scripts
-if str(_VELOX_DIR) not in sys.path:
-    sys.path.insert(0, str(_VELOX_DIR))
+# ── Configuration ─────────────────────────────────────────────────────────────
+ROOT = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored"
+TOKEN_FILE = os.path.join(ROOT, "token.json")
+DB_PATH = os.path.join(ROOT, "data", "media", "media.db.sqlite")
+QDRANT_URL = "http://127.0.0.1:6333"
+QDRANT_COLLECTION = "media_assets"
 
-from velox_client import (  # noqa: E402 — intentional sys.path bootstrap
-    AuthError,
-    BadRequestError,
-    NotFoundError,
-    ServerError,
-    VeloxClient,
-    VeloxError,
-    is_retryable,
+# Initialize E5 model (intfloat/multilingual-e5-base -> 768 dims)
+print("Loading multilingual-e5-base embedding model...")
+model = SentenceTransformer("intfloat/multilingual-e5-base")
+
+# Load Google credentials
+with open(TOKEN_FILE, 'r') as f:
+    token_data = json.load(f)
+
+creds = Credentials(
+    token=token_data["access_token"],
+    refresh_token=token_data.get("refresh_token"),
+    token_uri="https://oauth2.googleapis.com/token",
+    client_id="964460747662-8oielvpbphij44agin684r57ojfio9h1.apps.googleusercontent.com",
+    client_secret=None,
 )
 
-__all__ = ["main", "SyncFolderCLI"]
+drive_service = build('drive', 'v3', credentials=creds)
+
+def get_file_content(file_id):
+    """Download Google Drive text file content directly in memory."""
+    try:
+        content = drive_service.files().get_media(fileId=file_id).execute()
+        return content.decode('utf-8', errors='ignore').strip()
+    except Exception as e:
+        print(f"Error reading file content for {file_id}: {e}")
+        return ""
+
+def generate_deterministic_uuid(drive_id):
+    """Generate a deterministic UUID v5 from the Google Drive file ID."""
+    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8') # DNS namespace
+    return str(uuid.uuid5(namespace, drive_id))
+
+# QDRANT-003: generate_normalized_vector removed — synthetic pseudo-random
+# vectors are banned. Visual embeddings must come from a real model (CLIP/SigLIP)
+# and audio embeddings from CLAP. Placeholder zero-filled vectors are also banned.
+# See docs/qdrant/QDRANT-003_SCHEMA_VERSIONING_ALIASES_AND_REAL_EMBEDDINGS.md
 
 
-# ── Config helpers ────────────────────────────────────────────────────────────
-
-def _resolve_base_url() -> str:
-    """Resolve the API base URL from env vars. Required (no hardcoded default)."""
-    base = os.environ.get("VELOX_BROKER_URL") or os.environ.get("API_BASE")
-    if not base:
-        raise ConfigError(
-            "VELOX_BROKER_URL (or API_BASE) env var is required. "
-            "See AGENTS.md §Port policy for the canonical server URL shape."
-        )
-    return base.rstrip("/")
-
-
-def _resolve_token() -> str:
-    """Resolve the bearer token. Worker token preferred; admin token is a fallback."""
-    worker = os.environ.get("VELOX_WORKER_TOKEN")
-    admin = os.environ.get("VELOX_ADMIN_TOKEN")
-    if worker:
-        return worker
-    if admin:
-        print(
-            "warning: VELOX_ADMIN_TOKEN used as fallback (worker token preferred "
-            "for non-admin callers — see scripts/velox_client.py docstring)",
-            file=sys.stderr,
-        )
-        return admin
-    raise ConfigError(
-        "VELOX_WORKER_TOKEN (or VELOX_ADMIN_TOKEN) env var is required to call "
-        "the canonical /api/media/sync-drive-folder endpoint."
+def upsert_to_qdrant(point_id, vectors, payload):
+    """Upsert a point to Qdrant using the REST API."""
+    url = f"{QDRANT_URL}/collections/{QDRANT_COLLECTION}/points?wait=true"
+    data = {
+        "points": [
+            {
+                "id": point_id,
+                "vectors": vectors,
+                "payload": payload
+            }
+        ]
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode('utf-8'),
+        headers={'Content-Type': 'application/json'},
+        method='PUT'
     )
+    try:
+        with urllib.request.urlopen(req) as res:
+            res_body = res.read().decode('utf-8')
+            return True, res_body
+    except Exception as e:
+        return False, str(e)
 
+def scan_folder_recursive(folder_id, current_path=""):
+    """Recursively fetch files in Google Drive folder."""
+    print(f"Scanning Drive folder: {current_path or 'Root'} (ID: {folder_id})")
+    files = []
+    page_token = None
+    
+    while True:
+        query = f"'{folder_id}' in parents and trashed = false"
+        response = drive_service.files().list(
+            q=query,
+            spaces="drive",
+            fields="nextPageToken, files(id, name, mimeType, createdTime, webViewLink)",
+            pageToken=page_token,
+            pageSize=100
+        ).execute()
+        
+        files.extend(response.get("files", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
 
-# ── Custom exceptions ─────────────────────────────────────────────────────────
+    # Separate folders, videos and metadata
+    folders = []
+    video_files = []
+    metadata_files = {} # name_stem -> file_object
+    
+    video_extensions = ('.mp4', '.mov', '.avi', '.mkv', '.webm')
+    meta_extensions = ('.json', '.txt')
+    
+    for f in files:
+        name = f['name']
+        mime = f['mimeType']
+        
+        if mime == 'application/vnd.google-apps.folder':
+            folders.append(f)
+        elif name.lower().endswith(video_extensions):
+            video_files.append(f)
+        elif name.lower().endswith(meta_extensions):
+            stem = Path(name).stem.lower()
+            metadata_files[stem] = f
 
-class ConfigError(RuntimeError):
-    """Raised when CLI args / env vars are invalid. Mapped to exit code 2."""
-
-
-class JobFailedError(RuntimeError):
-    """Raised when --wait observed a terminal FAILED/CANCELLED state."""
-
-
-class JobTimeoutError(RuntimeError):
-    """Raised when --wait exceeded its deadline."""
-
-
-# ── CLI driver ─────────────────────────────────────────────────────────────────
-
-class SyncFolderCLI:
-    """Encapsulates the CLI contract so tests can drive it without argv parsing."""
-
-    # Canonical HTTP endpoint (relative — base_url comes from VeloxClient).
-    # The job-status poll path is owned by VeloxClient.get_job (which builds
-    # ``api/jobs/{id}/full`` internally); do not duplicate it here.
-    ENDPOINT = "/api/media/sync-drive-folder"
-    POLL_INTERVAL_S = 2.0
-
-    def __init__(self, client: VeloxClient) -> None:
-        self.client = client
-
-    def enqueue(
-        self,
-        folder_id: str,
-        source: str = "drive",
-        name: str = "",
-        media_type: str = "clip",
-    ) -> str:
-        """POST /api/media/sync-drive-folder and return the declared job_id.
-
-        `req_id` is set to the folder_id for natural idempotency: re-running
-        the script with the same --folder-id returns the SAME job_id (no
-        duplicate enqueue). This is the QDRANT-001 idempotency knob.
-        """
-        payload = {
-            "drive_folder_id": folder_id,
-            "source": source,
-            "name": name,
-            "media_type": media_type,
+    # Process videos in the current folder
+    db_conn = sqlite3.connect(DB_PATH)
+    cursor = db_conn.cursor()
+    
+    for video in video_files:
+        video_name = video['name']
+        video_id = video['id']
+        video_link = video['webViewLink']
+        created_time = video['createdTime']
+        stem = Path(video_name).stem
+        stem_lower = stem.lower()
+        
+        print(f"\nProcessing video: {video_name} (ID: {video_id})")
+        
+        # Pairing logic
+        title = stem
+        description = ""
+        tags = []
+        
+        if stem_lower in metadata_files:
+            meta_file = metadata_files[stem_lower]
+            meta_name = meta_file['name']
+            meta_id = meta_file['id']
+            print(f"  -> Found paired metadata: {meta_name}")
+            
+            content = get_file_content(meta_id)
+            if meta_name.lower().endswith('.json'):
+                try:
+                    meta_json = json.loads(content)
+                    title = meta_json.get('title', title)
+                    description = meta_json.get('description', '')
+                    # handle tags as string or list
+                    raw_tags = meta_json.get('tags', [])
+                    if isinstance(raw_tags, str):
+                        tags = [t.strip() for t in raw_tags.split(',') if t.strip()]
+                    elif isinstance(raw_tags, list):
+                        tags = [str(t).strip() for t in raw_tags if str(t).strip()]
+                except Exception as e:
+                    print(f"  Warning: failed to parse JSON metadata: {e}. Falling back to plain text.")
+                    description = content
+            else:
+                description = content
+        else:
+            print("  -> No paired metadata found. Using folder fallback tags.")
+        
+        # Fallback tags based on folder hierarchy
+        fallback_tags = [part.strip().lower() for part in current_path.split('/') if part.strip()]
+        for ft in fallback_tags:
+            if ft not in tags:
+                tags.append(ft)
+                
+        # Generate Text embeddings (prefixed with "passage: " for storage as recommended by E5)
+        text_payload = f"passage: {title} {description} " + " ".join(tags)
+        print(f"  Generating text embeddings for: '{title}'...")
+        text_vector = model.encode(text_payload, normalize_embeddings=True).tolist()
+        
+        # Transcript vector
+        transcript_vector = text_vector
+        if description:
+            transcript_vector = model.encode(f"passage: {description}", normalize_embeddings=True).tolist()
+            
+        # QDRANT-003: visual and audio vectors are no longer synthesized.
+        # Visual embeddings require a real CLIP/SigLIP model.
+        # Audio embeddings require a real CLAP model (optional until service available).
+        # Clips without real model output omit these channels.
+        visual_vector = None
+        audio_vector = None
+        
+        # Deterministic Point ID
+        point_id = generate_deterministic_uuid(video_id)
+        
+        # Qdrant Upsert
+        print(f"  Upserting to Qdrant (ID: {point_id})...")
+        vectors = {
+            "text": text_vector,
+            "transcript": transcript_vector,
         }
-        resp = self.client.submit_async(
-            path=self.ENDPOINT,
-            payload=payload,
-            req_id=folder_id,
-        )
-        job_id = (resp or {}).get("job_id", "")
-        if not job_id:
-            raise ServerError(
-                f"server returned 202 without job_id (response={resp!r})"
-            )
-        return job_id
+        # QDRANT-003: visual and audio vectors only included when produced by a real model.
+        if visual_vector is not None:
+            vectors["visual"] = visual_vector
+        if audio_vector is not None:
+            vectors["audio"] = audio_vector
+        payload = {
+            "drive_file_id": video_id,
+            "drive_link": video_link,
+            "name": title,
+            "folder_path": current_path,
+            "tags": tags,
+            "status": "active",
+            "created_at": created_time
+        }
+        
+        success, q_res = upsert_to_qdrant(point_id, vectors, payload)
+        if success:
+            print("  Qdrant upsert success!")
+        else:
+            print(f"  Qdrant upsert failed: {q_res}")
+            
+        # SQLite Upsert (Dual Store Synchronization)
+        print("  Saving metadata to SQLite...")
+        meta_json_str = json.dumps(payload)
+        now = created_time
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO media_assets (
+                id, source, name, tags, media_type, status, lifecycle_state,
+                drive_file_id, drive_link, folder_path, folder_id, metadata_json,
+                embedding_json, transcript_embedding, visual_embedding, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            point_id, "drive", title, json.dumps(tags), "video", "ready", "ready",
+            video_id, video_link, current_path, folder_id, meta_json_str,
+            json.dumps(text_vector), json.dumps(transcript_vector), json.dumps(visual_vector),
+            now, now
+        ))
+        db_conn.commit()
+        print("  SQLite database record updated!")
+        
+    db_conn.close()
 
-    def poll_until_terminal(self, job_id: str, timeout_s: float) -> dict:
-        deadline = time.monotonic() + timeout_s
-        last: dict = {}
-        while time.monotonic() < deadline:
-            last = self.client.get_job(job_id)
-            status = (last.get("status") or "").upper()
-            if status in ("SUCCEEDED", "FAILED", "CANCELLED"):
-                return last
-            time.sleep(self.POLL_INTERVAL_S)
-        raise JobTimeoutError(
-            f"job {job_id} did not reach a terminal state within {timeout_s:.0f}s "
-            f"(last status={last.get('status')!r})"
-        )
-
-
-# ── Entry point ───────────────────────────────────────────────────────────────
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="sync_drive_qdrant",
-        description=(
-            "Trigger an async Drive folder sync via the Go canonical HTTP API. "
-            "QDRANT-001: this script is a thin HTTP client and owns no state."
-        ),
-    )
-    parser.add_argument(
-        "--folder-id",
-        required=True,
-        help="Google Drive folder ID to sync (required).",
-    )
-    parser.add_argument(
-        "--source",
-        default="drive",
-        choices=("drive", "youtube", "stock", "artlist"),
-        help="logical source label written to media_assets (default: drive).",
-    )
-    parser.add_argument(
-        "--name",
-        default="",
-        help="human-readable name; defaults to the folder ID.",
-    )
-    parser.add_argument(
-        "--media-type",
-        default="clip",
-        choices=("clip", "video", "stock"),
-        help="media_type label written to media_assets (default: clip).",
-    )
-    parser.add_argument(
-        "--wait",
-        action="store_true",
-        help="block until the enqueued job reaches a terminal status.",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=600.0,
-        help="--wait deadline in seconds (default: 600).",
-    )
-    args = parser.parse_args(argv)
-
-    try:
-        base_url = _resolve_base_url()
-        token = _resolve_token()
-    except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-
-    client = VeloxClient(base_url=base_url, token=token)
-    cli = SyncFolderCLI(client)
-
-    print(
-        f"→ POST {base_url}{SyncFolderCLI.ENDPOINT}  "
-        f"folder_id={args.folder_id}  source={args.source}  "
-        f"media_type={args.media_type}"
-    )
-
-    # ── enqueue ────────────────────────────────────────────────────────────
-    try:
-        job_id = cli.enqueue(
-            folder_id=args.folder_id,
-            source=args.source,
-            name=args.name,
-            media_type=args.media_type,
-        )
-    except AuthError as exc:
-        print(f"error: authentication rejected: {exc}", file=sys.stderr)
-        return 3
-    except (BadRequestError, NotFoundError) as exc:
-        print(f"error: server rejected the request: {exc}", file=sys.stderr)
-        return 2
-    except ServerError as exc:
-        # VeloxClient already retried; bubble up as transport failure.
-        print(f"error: server unavailable after retries: {exc}", file=sys.stderr)
-        return 2
-    except VeloxError as exc:
-        print(f"error: unexpected velox error: {exc}", file=sys.stderr)
-        return 2
-    except urllib.error.URLError as exc:
-        print(f"error: network failure: {exc}", file=sys.stderr)
-        return 2
-
-    print(f"✓ enqueued job_id={job_id}")
-
-    # ── optional: poll ─────────────────────────────────────────────────────
-    if not args.wait:
-        return 0
-
-    try:
-        final = cli.poll_until_terminal(job_id, args.timeout)
-    except JobTimeoutError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 5
-    except (AuthError, BadRequestError, NotFoundError, ServerError, VeloxError) as exc:
-        print(f"error: poll failed: {exc}", file=sys.stderr)
-        return 2
-
-    status = (final.get("status") or "").upper()
-    print(f"✓ job {job_id} finished: status={status}")
-    if status != "SUCCEEDED":
-        err = final.get("error") or "no error detail in response"
-        print(f"  error_detail={err}", file=sys.stderr)
-        return 4
-    return 0
-
+    # Recurse into subfolders
+    for subfolder in folders:
+        sub_path = f"{current_path}/{subfolder['name']}" if current_path else subfolder['name']
+        scan_folder_recursive(subfolder['id'], sub_path)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Scan the specified root folder
+    ROOT_FOLDER_ID = "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
+    print(f"Starting synchronization of Drive folder ID: {ROOT_FOLDER_ID}")
+    scan_folder_recursive(ROOT_FOLDER_ID)
+    print("\nAll synchronization and indexing completed successfully!")

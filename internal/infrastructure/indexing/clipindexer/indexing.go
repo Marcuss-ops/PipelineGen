@@ -22,7 +22,9 @@ const (
 	// When the collection schema changes (e.g. new named vector, payload
 	// field, BM25 tokenization rules), bump this and all clips will be
 	// identified as needing re-indexing via content hash mismatch.
-	collectionVersion = "v1"
+	// QDRANT-003: bumped to v3 to match the new versioned collection schema
+	// with real SigLIP visual vectors and CLAP audio (no synthetic placeholders).
+	collectionVersion = "v3"
 )
 
 // EmbeddingModel returns the current embedding model name.
