@@ -44,12 +44,12 @@ func (d DriveConfig) RootFolder() string {
 }
 
 // ResolveFolder returns the effective folder ID for a given specific root.
-// Priority: MediaRootFolder (unified root) > specific root folder > "".
+// Priority: specific root folder > MediaRootFolder (unified root) > "".
 func (d DriveConfig) ResolveFolder(specificRoot string) string {
-	if mediaRoot := strings.TrimSpace(d.MediaRootFolder); mediaRoot != "" {
-		return mediaRoot
+	if specific := strings.TrimSpace(specificRoot); specific != "" {
+		return specific
 	}
-	return strings.TrimSpace(specificRoot)
+	return strings.TrimSpace(d.MediaRootFolder)
 }
 
 func (d DriveConfig) resolveSubfolder(parentFolder, specificFolder string) string {

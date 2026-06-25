@@ -9,10 +9,10 @@ import (
 )
 
 func TestDriveConfigResolveFolder(t *testing.T) {
-	t.Run("returns MediaRootFolder when set", func(t *testing.T) {
+	t.Run("returns specific root over MediaRootFolder when set", func(t *testing.T) {
 		d := config.DriveConfig{MediaRootFolder: "media-root", ImagesRootFolder: "images-root"}
-		if got := d.ResolveFolder(d.ImagesRootFolder); got != "media-root" {
-			t.Fatalf("expected media-root, got %q", got)
+		if got := d.ResolveFolder(d.ImagesRootFolder); got != "images-root" {
+			t.Fatalf("expected images-root, got %q", got)
 		}
 	})
 	t.Run("returns specific root when no MediaRoot", func(t *testing.T) {
@@ -21,7 +21,7 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			t.Fatalf("expected images-root, got %q", got)
 		}
 	})
-	t.Run("convenience methods use ResolveFolder", func(t *testing.T) {
+	t.Run("convenience methods use ResolveFolder and prioritize specific", func(t *testing.T) {
 		d := config.DriveConfig{
 			MediaRootFolder:        "media-root",
 			StockRootFolder:        "stock",
@@ -46,8 +46,22 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			"CopertineFolder":    d.CopertineFolder(),
 			"SoundEffectsFolder": d.SoundEffectsFolder(),
 		} {
-			if got != "media-root" {
-				t.Fatalf("%s expected media-root with MediaRoot set, got %q", name, got)
+			expected := name
+			// Strip 'Folder' from end to get key
+			expectedKey := name[:len(name)-6]
+			switch expectedKey {
+			case "Stock": expected = "stock"
+			case "Clips": expected = "clips"
+			case "Voiceover": expected = "voiceover"
+			case "Artlist": expected = "artlist"
+			case "Books": expected = "books"
+			case "Scripts": expected = "scripts"
+			case "Images": expected = "images"
+			case "Copertine": expected = "copertine"
+			case "SoundEffects": expected = "sfx"
+			}
+			if got != expected {
+				t.Fatalf("%s expected %s, got %q", name, expected, got)
 			}
 		}
 	})

@@ -140,8 +140,8 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 		specificRoot string
 		expected     string
 	}{
-		// Priority 1: MediaRootFolder
-		{"prefers media root over specific", DriveConfig{MediaRootFolder: "mediaRoot", StockRootFolder: "stockRoot"}, "stockRoot", "mediaRoot"},
+		// Priority 1: specific root
+		{"prefers specific over media root", DriveConfig{MediaRootFolder: "mediaRoot", StockRootFolder: "stockRoot"}, "stockRoot", "stockRoot"},
 		{"prefers media root when specific is empty", DriveConfig{MediaRootFolder: "mediaRoot"}, "", "mediaRoot"},
 		{"trims spaces on media root", DriveConfig{MediaRootFolder: "  mediaRoot  "}, "", "mediaRoot"},
 		// Priority 2: specific root
@@ -163,7 +163,7 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 
 func TestDriveConfigConvenienceMethods(t *testing.T) {
 	// Each convenience method is tested across 3 scenarios:
-	// 1. MediaRootFolder set → returns MediaRootFolder
+	// 1. MediaRootFolder set, specific root set → returns specific root (post priority change)
 	// 2. Only specific root set → returns specific root
 	// 3. Neither set → returns ""
 	tests := []struct {
@@ -187,8 +187,8 @@ func TestDriveConfigConvenienceMethods(t *testing.T) {
 		t.Run(tt.name+"/mediaRoot", func(t *testing.T) {
 			d := DriveConfig{MediaRootFolder: "mediaRoot"}
 			tt.setSpecific(&d, "specific")
-			if got := tt.callMethod(d); got != "mediaRoot" {
-				t.Errorf("%s() = %q, want %q when MediaRootFolder is set", tt.name, got, "mediaRoot")
+			if got := tt.callMethod(d); got != "specific" {
+				t.Errorf("%s() = %q, want %q when MediaRootFolder is set but specific is also set", tt.name, got, "specific")
 			}
 		})
 
