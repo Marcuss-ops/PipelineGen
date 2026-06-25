@@ -53,6 +53,7 @@ var availableCommands = []string{
 	"list-drive-folder",
 	"list-styles",
 	"reindex",
+	"reindex-qdrant",
 	"reset-video-ai",
 	"seed-channels",
 	"stock-reset",
@@ -91,6 +92,8 @@ func main() {
 		err = runListDriveFolder(args)
 	case "reindex":
 		err = runReindex(args)
+	case "reindex-qdrant":
+		err = runReindexQdrant(args)
 	case "reset-video-ai":
 		err = runResetVideoAI(args)
 	case "sync-all-drive":
