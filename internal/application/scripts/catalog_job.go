@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"go.uber.org/zap"
@@ -158,7 +157,6 @@ func (s *CatalogJobServiceImpl) HandleCatalogScriptGenerateJob(ctx context.Conte
 		UseMemory:   !payload.ForceRefresh,
 		SaveToDB:    payload.SaveToDB,
 		SaveTimeout: 60,
-		ClipPack:    pack,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("script generation failed: %w", err)
@@ -241,53 +239,27 @@ func (s *CatalogJobServiceImpl) selectCatalogClipIDs(ctx context.Context, topic 
 	return clipIDs, nil
 }
 
-func summarizeClipPack(pack interface{}) (accepted int, excluded int, excludedDetails []map[string]any) {
+// summarizeClipPack produces the `accepted` integer for the
+// `clip_coverage` telemetry block in the catalog-job response.
+// PG-033: pack is now `map[string]any` (the canonical shape returned
+// by ClipSourceBuilder.BuildClipContext, which populates a
+// `"clip_count"` int key). The previous reflection-based version
+// looked up struct fields ("Clips" / "ExcludedClips") that no longer
+// exist — silently returning 0/0/nil in production.
+//
+// Excluded-clip reasons are no longer surfaced by this telemetry
+// channel. If/when operator-facing exclusion telemetry is needed,
+// extend BuildClipContext to populate an "excluded_clips" key with
+// {clip_id, reason} entries and re-introduce the detail extraction
+// here.
+func summarizeClipPack(pack map[string]any) (accepted int, excluded int, excludedDetails []map[string]any) {
 	if pack == nil {
 		return 0, 0, nil
 	}
-
-	v := reflect.ValueOf(pack)
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return 0, 0, nil
-		}
-		v = v.Elem()
+	if v, ok := pack["clip_count"].(int); ok {
+		accepted = v
 	}
-	if v.Kind() != reflect.Struct {
-		return 0, 0, nil
-	}
-
-	if clips := v.FieldByName("Clips"); clips.IsValid() && clips.Kind() == reflect.Slice {
-		accepted = clips.Len()
-	}
-	if excludedField := v.FieldByName("ExcludedClips"); excludedField.IsValid() && excludedField.Kind() == reflect.Slice {
-		excluded = excludedField.Len()
-		excludedDetails = make([]map[string]any, 0, excludedField.Len())
-		for i := 0; i < excludedField.Len(); i++ {
-			item := excludedField.Index(i)
-			if item.Kind() == reflect.Ptr {
-				if item.IsNil() {
-					continue
-				}
-				item = item.Elem()
-			}
-			if item.Kind() != reflect.Struct {
-				continue
-			}
-			detail := map[string]any{}
-			if f := item.FieldByName("ClipID"); f.IsValid() && f.Kind() == reflect.String {
-				detail["clip_id"] = f.String()
-			}
-			if f := item.FieldByName("ExcludeReason"); f.IsValid() && f.Kind() == reflect.String {
-				detail["reason"] = f.String()
-			}
-			if len(detail) > 0 {
-				excludedDetails = append(excludedDetails, detail)
-			}
-		}
-	}
-
-	return accepted, excluded, excludedDetails
+	return accepted, 0, nil
 }
 
 func maxInt(a, b int) int {

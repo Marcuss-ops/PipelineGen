@@ -1,13 +1,9 @@
-// Package scripts — media_curator.go replaces the MediaCurator stub
-// with a real implementation that searches clips semantically via
-// Qdrant vector store and generates scripts via the Engine.
-//
-// AGENT-3 (June 2026): the previous stub returned the query string as
-// the script text. The real implementation:
-//   1. Searches for clips semantically via the vector store
-//   2. Converts results to clip IDs
-//   3. Builds clip context via ClipSourceBuilder
-//   4. Generates the script via Engine.WriteScript
+// Package scripts — media_curator.go is the canonical clip-curation
+// service. PG-033 (June 2026): clipsRepo is now concrete
+// *assets.ClipsRepository (no runtime `ok := ... (*assets.ClipsRepository)`
+// check). vectorStore remains `interface{}` because it accepts
+// multiple backend adapters (qdrant.NewSearchAdapter, etc.) and is
+// matched against the narrow `clipSearcher` port at use site.
 package scripts
 
 import (
@@ -21,14 +17,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// NewMediaCurator constructs a real MediaCurator backed by the
-// vector store, clips repository, ClipSourceBuilder, and Engine.
-// All concrete typed args.
+// NewMediaCurator constructs a real MediaCurator. All concrete typed args.
 //
-// vectorStore and clipsRepo may be nil (Curate returns an error
-// when they're needed and missing). engine is required for the
-// script generation leg; clipBuilder is required for the clip
-// context building leg.
+// vectorStore and clipsRepo may be nil (Curate returns an error when
+// they're needed and missing). engine is required for the script
+// generation leg; clipBuilder is required for the clip context
+// building leg.
 func NewMediaCurator(
 	vectorStore interface{},
 	serverURL string,
@@ -55,6 +49,11 @@ func NewMediaCurator(
 //  3. Build clip context via ClipSourceBuilder
 //  4. Generate script via Engine.WriteScript
 //  5. Build CurateResult with timings
+//
+// PG-033: the previous `clipsRepo.(*assets.ClipsRepository)` runtime
+// assertion is gone (field is already concrete). clipsRepo is read
+// for the nil-gate only (the clips come from the vector store's
+// RealtimeMatchAsset list, not directly from the repo at this layer).
 func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateResult, error) {
 	if m == nil {
 		return nil, fmt.Errorf("media curator: not constructed")
@@ -77,13 +76,10 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 	var searchResults []SearchResultInfo
 
 	if m.vectorStore != nil && m.clipsRepo != nil && req.MaxClips > 0 {
-		// Try semantic search via the vector store.
-		// The vectorStore is typically a qdrant.SearchAdapter; we attempt
-		// to call its search method via a well-known interface.
-		type clipSearcher interface {
-			SearchClips(ctx context.Context, query, source, mediaType string, limit int, minScore float64) ([]RealtimeMatchAsset, error)
-		}
-		if searcher, ok := m.vectorStore.(clipSearcher); ok {
+		// The vectorStore is a multi-backend adapter (typically
+		// qdrant.NewSearchAdapter). Match the narrow `narrowClipSearcher`
+		// port declared in types.go (PG-033 hoisted it from inline).
+		if searcher, ok := m.vectorStore.(narrowClipSearcher); ok {
 			results, searchErr := searcher.SearchClips(ctx, query, req.Source, req.MediaType, req.MaxClips, req.MinScore)
 			if searchErr != nil && m.log != nil {
 				m.log.Warn("media curator: vector search failed, falling back to text-only",
@@ -133,25 +129,23 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 			sourceFingerprint = m.clipBuilder.ComputeFingerprint(clipIDs, pack, opts, NewFingerprintContext(req.Model, req.Model))
 
 			// Build clip scenes from the pack.
-			if packMap, ok := pack.(map[string]any); ok {
-				if names, ok := packMap["clip_names"].([]string); ok {
-					for i, name := range names {
-						id := ""
-						if i < len(clipIDs) {
-							id = clipIDs[i]
-						}
-						link := ""
-						if i < len(searchResults) {
-							link = searchResults[i].DriveLink
-						}
-						clipScenes = append(clipScenes, ClipScene{
-							SceneIndex: i,
-							Text:       name,
-							ClipID:     id,
-							DriveLink:  link,
-							Kind:       "clip",
-						})
+			if names, ok := pack["clip_names"].([]string); ok {
+				for i, name := range names {
+					id := ""
+					if i < len(clipIDs) {
+						id = clipIDs[i]
 					}
+					link := ""
+					if i < len(searchResults) {
+						link = searchResults[i].DriveLink
+					}
+					clipScenes = append(clipScenes, ClipScene{
+						SceneIndex: i,
+						Text:       name,
+						ClipID:     id,
+						DriveLink:  link,
+						Kind:       "clip",
+					})
 				}
 			}
 		}
@@ -215,4 +209,3 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 		},
 	}, nil
 }
-
