@@ -21,6 +21,14 @@ type IndexWriter struct {
 }
 
 // NewIndexWriter creates an IndexWriter.
+//
+// Compile-time assertions: IndexWriter satisfies both the generic IndexWriterPort
+// (used by clipindexer) and QdrantDeleter (used by outbox).
+var (
+	_ IndexWriterPort = (*IndexWriter)(nil)
+	_ QdrantDeleter   = (*IndexWriter)(nil)
+)
+
 func NewIndexWriter(client *Client, schema *IndexSchema, mapper *PayloadMapper, log *zap.Logger) *IndexWriter {
 	return &IndexWriter{
 		client: client,
