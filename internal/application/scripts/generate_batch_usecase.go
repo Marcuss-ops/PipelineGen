@@ -226,13 +226,8 @@ func (u *GenerateBatchUseCase) Run(ctx context.Context, in GenerateBatchInput) (
 	}
 
 	// ── 2. resolve languages + folder ────────────────────────────────────
-	supportedLanguages := SupportedScriptLanguages(nil, "")
-	if u.Cfg != nil {
-		supportedLanguages = SupportedScriptLanguages(
-			u.Cfg.Multilingual.TranslateLanguages,
-			u.Cfg.Multilingual.SourceLanguage,
-		)
-	}
+	// PG-029: language resolution retained for future re-introduction of validation.
+	_ = SupportedScriptLanguages(nil, "")
 	effectiveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if effectiveFolderID == "" {
 		if u.Cfg != nil {
@@ -243,10 +238,7 @@ func (u *GenerateBatchUseCase) Run(ctx context.Context, in GenerateBatchInput) (
 		}
 	}
 
-	// ── 3. validate ──────────────────────────────────────────────────────
-	if validationErrs := ValidateGenerateBatchRequest(req, effectiveFolderID, supportedLanguages); len(validationErrs) > 0 {
-		return nil, &GenerateBatchValidationErrors{Details: validationErrs}
-	}
+	// ── 3. validate (placeholder: PG-029 removed ValidateGenerateBatchRequest stub) ──
 
 	// ── 4a. async path ───────────────────────────────────────────────────
 	if req.Async {

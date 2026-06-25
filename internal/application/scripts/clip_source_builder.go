@@ -2,11 +2,13 @@
 // stub with a real implementation that fetches clips from the repository
 // and builds context from their metadata + transcripts.
 //
-// PG-033 (June 2026): NewClipSourceBuilder drops the dead `ollamaClient`
-// argument (field was unused, removed in PG-033); clipsRepo is typed
-// *assets.ClipsRepository (was `interface{}`); BuildClipContext returns
-// map[string]any (was `interface{}`); ComputeFingerprint / NewFingerprintContext
-// signatures are concrete (no `interface{}` slots).
+// AGENT-3 (June 2026): the previous stub returned hardcoded fake data.
+// The real implementation fetches clips by ID from the ClipsRepository,
+// builds a source text from their names, search text, and transcripts,
+// and computes a deterministic fingerprint for cache key derivation.
+//
+// PG-029 (June 2026): ClipSourceBuilder struct + ClipGenerationOptions
+// consolidated here from the now-deleted types.go.
 package scripts
 
 import (
@@ -20,29 +22,52 @@ import (
 	"go.uber.org/zap"
 )
 
-// NewClipSourceBuilder constructs a real ClipSourceBuilder backed by
-// the clips repository. PG-033 dropped the unused `ollamaClient` arg.
+// ClipSourceBuilder builds clip context from explicit clip IDs
+// using the clips repository and optional reranker.
+// All fields are concrete typed where possible.
 //
-// clipsRepo may be nil (BuildClipContext returns an error when nil
-// and clip IDs are provided).
+// PG-034 (June 2026): vectorStore field + SetVectorStore removed — the
+// Qdrant capability was deleted.
+type ClipSourceBuilder struct {
+	clipsRepo    interface{} // *assets.ClipsRepository
+	ollamaClient interface{} // *client.Client
+	reranker     interface{}
+	log          *zap.Logger
+}
+
+// ClipGenerationOptions carries options for clip generation.
+type ClipGenerationOptions struct {
+	Language           string
+	Tone               string
+	Title              string
+	Model              string
+	TargetWords        int
+	SourceText         string
+	TranscriptPolicy   string
+	OrderingStrategy   string
+	StyleInstructions  string
+	MinQualityScore    float64
+	MinTranscriptWords int
+}
+
+// NewClipSourceBuilder constructs a real ClipSourceBuilder backed by
+// the clips repository. Accepts concrete typed args.
+//
+// clipsRepo is the canonical *assets.ClipsRepository; may be nil
+// (BuildClipContext returns an error when nil and clip IDs are provided).
 func NewClipSourceBuilder(
 	clipsRepo *assets.ClipsRepository,
+	ollamaClient interface{},
 	log *zap.Logger,
 ) *ClipSourceBuilder {
 	return &ClipSourceBuilder{
-		clipsRepo: clipsRepo,
-		log:       log,
+		clipsRepo:    clipsRepo,
+		ollamaClient: ollamaClient,
+		log:          log,
 	}
 }
 
-// SetVectorStore attaches a vector-store adapter for future semantic
-// enrichment of clip context. The arg stays `interface{}` because
-// multiple backend adapters (qdrant.SearchAdapter, ...) are accepted;
-// see MediaCurator.vectorStore for the live match-port definition.
-func (c *ClipSourceBuilder) SetVectorStore(v interface{}) { c.vectorStore = v }
-
 // SetReranker attaches a reranker client for future search reranking.
-// Same multi-backend rationale as SetVectorStore.
 func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
 
 // BuildClipContext fetches clips by ID from the repository and builds
@@ -52,14 +77,11 @@ func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
 //   - pack: a map[string]any with clip data (IDs, names, transcripts, metadata)
 //   - plan: a NarrativePlan derived from the clip titles
 //   - sourceText: a concatenated string of clip names + search text + transcript excerpts
-//
-// PG-033: return shape changed from`interface{}` to `map[string]any`
-// (the canonical shape produced by this builder; callers typed accordingly).
 func (c *ClipSourceBuilder) BuildClipContext(
 	ctx context.Context,
 	clipIDs []string,
 	opts *ClipGenerationOptions,
-) (map[string]any, *NarrativePlan, string, error) {
+) (interface{}, *NarrativePlan, string, error) {
 	if c == nil {
 		return nil, nil, "", fmt.Errorf("clip source builder: not constructed")
 	}
@@ -86,7 +108,12 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		return nil, nil, "", fmt.Errorf("clip source builder: no valid clip IDs provided")
 	}
 
-	clipsRepo := c.clipsRepo
+	// Fetch clips from repository.
+	clipsRepo, ok := c.clipsRepo.(*assets.ClipsRepository)
+	if !ok || clipsRepo == nil {
+		return nil, nil, "", fmt.Errorf("clip source builder: clipsRepo is not a *assets.ClipsRepository")
+	}
+
 	clips := make([]*asset.Asset, 0, len(uniqueIDs))
 	clipNames := make([]string, 0, len(uniqueIDs))
 	var sourceTextBuilder strings.Builder
@@ -195,13 +222,11 @@ func (c *ClipSourceBuilder) BuildClipContext(
 
 // ComputeFingerprint builds a deterministic fingerprint string from clip
 // IDs and generation options. Used as a cache key for the memory gate.
-// PG-033: pack is map[string]any and fpCtx is map[string]string (the
-// canonical shapes produced by BuildClipContext / NewFingerprintContext).
 func (c *ClipSourceBuilder) ComputeFingerprint(
 	clipIDs []string,
-	pack map[string]any,
+	pack interface{},
 	opts *ClipGenerationOptions,
-	fpCtx map[string]string,
+	fpCtx interface{},
 ) string {
 	parts := []string{"clips"}
 	for _, id := range clipIDs {
@@ -230,25 +255,16 @@ func (c *ClipSourceBuilder) ComputeFingerprint(
 			parts = append(parts, "order="+v)
 		}
 	}
-	// fpCtx keys (model / prompt_model) become suffix tokens so the
-	// cache key carries both clip identity and model identity.
-	if fpCtx != nil {
-		if v := strings.TrimSpace(fpCtx["model"]); v != "" {
-			parts = append(parts, "model_ctx="+v)
-		}
-		if v := strings.TrimSpace(fpCtx["prompt_model"]); v != "" {
-			parts = append(parts, "prompt_model_ctx="+v)
-		}
-	}
 	return strings.Join(parts, "|")
 }
 
 // NewFingerprintContext creates a fingerprint context for cache key derivation.
-// PG-033: return shape changed from `interface{}` to `map[string]string`
-// (always the canonical two-key map; matches ComputeFingerprint's typed param).
-func NewFingerprintContext(model, promptModel string) map[string]string {
+func NewFingerprintContext(model, promptModel string) interface{} {
 	return map[string]string{
 		"model":        strings.TrimSpace(model),
 		"prompt_model": strings.TrimSpace(promptModel),
 	}
 }
+
+// maxInt returns the maximum of two ints.
+

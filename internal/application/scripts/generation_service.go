@@ -3,25 +3,8 @@
 // script Handler. It translates an HTTP request into a queued background
 // job via the JobEnqueuer port declared in ports.go.
 //
-// Phase 2 activation (June 2026): replaces the previous stub
-// implementation that accepted
-// `jobsFacade interface{}` and returned empty `FromClipsResult{}` no-ops.
-// The stub left HTTP callers with a clean 200 + job_id="" response and
-// no actual work scheduled; the worker never received a job, scripts
-// never got generated, and operators could not differentiate "service
-// not wired" from "service intentionally produced no jobs".
-//
-// The real implementation:
-//  1. Marshals the scriptpkg.GenerationSpec into a JSON payload that
-//     the worker's pipeline_usecase.go::Run() can decode (the
-//     `EncodeGeneratePayload` round-trip is shared with the worker).
-//  2. Calls enq.Enqueue(ctx, &job.EnqueueRequest{Type: job.TypeClipScriptGenerate, Payload: bytes})
-//     — JobEnqueuer port, satisfied by *job.Service and *appjobs.Service.
-//  3. Returns *FromClipsResult{OK: true, JobID, JobStatus} so the
-//     handler can emit `{ok: true, job_id, status}` to the client.
-//  4. Returns a typed error when enq is nil or the enqueue fails so
-//     the handler maps it to 503 Service Unavailable (canonical
-//     fail-closed contract — better than a silent 200 with empty ID).
+// PG-029 (June 2026): FromClipsResult consolidated here from the
+// now-deleted types.go.
 package scripts
 
 import (
@@ -35,6 +18,13 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// FromClipsResult holds the result of an enqueue-from-clips operation.
+type FromClipsResult struct {
+	OK        bool   `json:"ok"`
+	JobID     string `json:"job_id"`
+	JobStatus string `json:"job_status"`
+}
 
 // GenerationService is the canonical implementation of
 // `scriptapi.GenerationService` (internal/api/script/handler.go:17).

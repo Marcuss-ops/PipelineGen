@@ -1,4 +1,7 @@
 // Package scripts — ScriptInsightBuilder extracted from api/script/flow.go (PR2, June 2026).
+//
+// PG-029 (June 2026): ScriptInsights struct consolidated here from the
+// now-deleted types.go.
 package scripts
 
 import (
@@ -11,6 +14,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
+
+// ScriptInsights holds entity and media suggestions extracted from a script.
+type ScriptInsights struct {
+	ImportantWords         []string
+	ImportantPhrases       []string
+	SpecialNames           []string
+	ArtlistPhrases         []string
+	ArtlistClipSuggestions interface{}
+	EntityImages           interface{}
+	RecommendedDriveFolder interface{}
+	PhraseClipSuggestions  interface{}
+	IntroClips             interface{}
+}
 
 // ScriptInsightBuilder builds structured ScriptInsights from extracted entities.
 type ScriptInsightBuilder struct {

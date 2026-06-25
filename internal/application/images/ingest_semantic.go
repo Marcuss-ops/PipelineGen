@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"go.uber.org/zap"
 )
 
@@ -60,59 +59,28 @@ func (a *pythonEmbeddingAdapter) EmbedPassage(ctx context.Context, text string) 
 // callSemanticTagger era un duplicato identico di semantic.Tagger() — contribuiva alla
 // frammentazione dei metadati. Ogni media type ora usa lo stesso semantic.Tagger() centralizzato.
 
+// indexAssetInVectorStore persists the clip/image embedding into a
+// vector store after a clip/image has been semantically enriched.
+//
+// PG-034 (June 2026): Qdrant removed. The function is preserved as a
+// no-op so callers in ingest_direct.go (et al.) compile unchanged.
+// The DB-side embedding JSON is still persisted via
+// s.repo.UpdateEmbeddingData in the earlier semantic-enrichment leg
+// (not in this no-op), so embeddings survive in SQLite canonically.
 func (s *Service) indexAssetInVectorStore(ctx context.Context, assetID, source, name, localPath, driveLink, style, mediaType, searchText string, tags []string) {
-	if s.vectorSvc == nil {
+	if s == nil {
 		return
 	}
-
-	// 1. Get passage embedding from Python server (type="passage" per E5 prefix)
-	adapter := newPythonEmbeddingAdapter(s.cfg.ClipIndexer.ServerURL)
-	embedding, err := adapter.EmbedPassage(ctx, searchText)
-	if err != nil {
-		s.log.Warn("Failed to generate embedding for search_text", zap.String("asset_id", assetID), zap.Error(err))
-		return
+	if s.log != nil {
+		s.log.Debug("indexAssetInVectorStore noop (Qdrant removed PG-034)",
+			zap.String("asset_id", assetID),
+			zap.String("media_type", mediaType))
 	}
-
-	// Convert to float32
-	vec := make([]float32, len(embedding))
-	for i, f := range embedding {
-		vec[i] = float32(f)
-	}
-
-	// 2. PERSIST embedding in DB (so it survives Qdrant wipes)
-	if s.repo != nil && s.repo.DB() != nil {
-		embJSON, _ := json.Marshal(embedding)
-		_ = s.repo.UpdateEmbeddingData(ctx, assetID, string(embJSON), "ready")
-	}
-
-	// 3. Upsert to Qdrant
-	vAsset := qdrant.VectorAsset{
-		AssetID:       assetID,
-		Source:        source,
-		Name:          name,
-		LocalPath:     localPath,
-		DriveLink:     driveLink,
-		Style:         style,
-		MediaType:     mediaType,
-		TextEmbedding: vec,
-		Tags:          tags,
-		CreatedAt:     time.Now(),
-	}
-
-	if err := s.vectorSvc.UpsertAsset(ctx, vAsset); err != nil {
-		s.log.Warn("Failed to upsert to vector store", zap.String("asset_id", assetID), zap.Error(err))
-		// DB already has the embedding, Qdrant can be retried later
-		return
-	}
-
-	// 4. Update DB status to reflect Qdrant success
-	if s.repo != nil && s.repo.DB() != nil {
-		_ = s.repo.UpdateEmbeddingData(ctx, assetID, "", "completed")
-	}
-
-	s.log.Info("Asset indexed in vector store",
-		zap.String("asset_id", assetID),
-		zap.String("media_type", mediaType),
-		zap.Int("embedding_dim", len(vec)),
-	)
+	_ = source
+	_ = name
+	_ = localPath
+	_ = driveLink
+	_ = style
+	_ = searchText
+	_ = tags
 }

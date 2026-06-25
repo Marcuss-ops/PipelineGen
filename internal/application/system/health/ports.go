@@ -26,11 +26,6 @@ type DriveChecker interface {
 	CheckDrive(ctx context.Context) CheckResult
 }
 
-// QdrantChecker verifies the Qdrant vector store is alive.
-type QdrantChecker interface {
-	CheckQdrant(ctx context.Context) CheckResult
-}
-
 // JobsChecker verifies the job broker DB table exists and is reachable.
 type JobsChecker interface {
 	CheckJobs(ctx context.Context) CheckResult

@@ -178,18 +178,23 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		searchText = metaResult.Payload.SearchText
 	}
 
-	// NEW: Asynchronous Vector Indexing
-	if s.vectorSvc != nil {
-		asyncCtx, asyncCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		concurrent.SafeGo("image-vector-indexing", func() {
-			defer asyncCancel()
-			driveLink := ""
-			if driveFileID != "" {
-				driveLink = storedrive.FileURLFromID(driveFileID)
-			}
-			s.indexAssetInVectorStore(asyncCtx, hash, source, searchText, relPath, driveLink, style, "image", searchText, tags)
-		})
-	}
+	// PG-034 (June 2026): vector indexing call site kept as a no-op
+	// (s.indexAssetInVectorStore is now a no-op stub). The DB-side
+	// embedding JSON was already persisted earlier in the pipeline via
+	// UpdateEmbeddingData, so the canonical metadata survives in SQLite
+	// even without a vector-store backend. The function call is
+	// preserved so the legacy image-vector-indexing goroutine contract
+	// continues to hold — callers may add new behaviors behind the
+	// indexAssetInVectorStore seam without changing this site.
+	asyncCtx, asyncCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	concurrent.SafeGo("image-vector-indexing", func() {
+		defer asyncCancel()
+		driveLink := ""
+		if driveFileID != "" {
+			driveLink = storedrive.FileURLFromID(driveFileID)
+		}
+		s.indexAssetInVectorStore(asyncCtx, hash, source, searchText, relPath, driveLink, style, "image", searchText, tags)
+	})
 
 	return asset, nil
 }

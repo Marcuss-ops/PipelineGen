@@ -7,6 +7,9 @@
 // (which was already wired in wire_script.go via PostGenUseCase)
 // and passes through the scenes/doc services for the caller's
 // downstream use.
+//
+// PG-029 (June 2026): Pipeline types + VideoMetadata + FolderResolver
+// consolidated here from the now-deleted types.go.
 package scripts
 
 import (
@@ -16,6 +19,56 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// ── Pipeline types ───────────────────────────────────────────────────────
+
+// Pipeline executes the post-generation phases (entity extraction,
+// scene images, voiceovers, doc creation). All fields are concrete typed.
+type Pipeline struct {
+	log           *zap.Logger
+	tag           string
+	scenesSvc     *ScenesService
+	docsSvc       *DocumentsService
+	postGen       interface{} // PostGenFunc callback
+	resolveFolder FolderResolver
+}
+
+// FolderResolver resolves a folder ID from an input name and default root.
+type FolderResolver func(ctx context.Context, input, defaultRootID string) (string, error)
+
+// PipelineResult holds the output of Pipeline.Run.
+type PipelineResult struct {
+	EntitiesJSON  string
+	Insights      interface{}
+	VideoMetadata []VideoMetadata
+	DocLink       string
+	DocID         string
+	Scenes        []SceneImage
+	Voiceovers    []SceneVoiceover
+}
+
+// SceneImage represents a scene with an image.
+type SceneImage struct {
+	Index int    `json:"index"`
+	Text  string `json:"text"`
+	URL   string `json:"url"`
+}
+
+// SceneVoiceover represents a scene with a voiceover.
+type SceneVoiceover struct {
+	SceneIndex int    `json:"scene_index"`
+	Status     string `json:"status"`
+	Link       string `json:"link"`
+	LocalPath  string `json:"local_path"`
+}
+
+// VideoMetadata holds YouTube metadata for a single language.
+type VideoMetadata struct {
+	Language    string   `json:"language"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+}
 
 // PostGenFunc is the callback signature for the post-generation phase.
 // Matches the closure wired in wire_script.go:

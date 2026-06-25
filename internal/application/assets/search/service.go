@@ -2,15 +2,23 @@ package search
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 )
 
+// errSemanticSearchRemoved is the sentinel error for callsites that
+// previously reached for the deleted Qdrant vector-search backend
+// (PG-034, June 2026). Surfacing the error keeps existing call paths
+// loud rather than silently producing empty result sets.
+var errSemanticSearchRemoved = errors.New("semantic search backend removed (PG-034)")
+
 // Service orchestrates search operations through narrow ports.
+// PG-034 (June 2026): vector field removed — Qdrant capability deleted.
+// Cross-provider search + local catalog + local clips remain canonical.
 type Service struct {
 	providers SearchProviderRegistry
-	vector    VectorSearchPort
 	catalog   LocalCatalogPort
 	clips     LocalClipPort
 	cfg       ConfigPort
@@ -18,9 +26,9 @@ type Service struct {
 }
 
 // NewService creates a SearchService.
+// PG-034 (June 2026): vector arg removed — Qdrant capability deleted.
 func NewService(
 	providers SearchProviderRegistry,
-	vector VectorSearchPort,
 	catalog LocalCatalogPort,
 	clips LocalClipPort,
 	cfg ConfigPort,
@@ -28,7 +36,6 @@ func NewService(
 ) *Service {
 	return &Service{
 		providers: providers,
-		vector:    vector,
 		catalog:   catalog,
 		clips:     clips,
 		cfg:       cfg,
@@ -113,186 +120,33 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (map[string]any
 
 // ── Semantic Search ───────────────────────────────────────────────────
 
-// SemanticSearch runs a Qdrant vector search (ANN or hybrid).
+// SemanticSearch was removed in PG-034 (June 2026) — the Qdrant
+// vector-search backend was deleted. Callers that previously reached
+// for semantic-search should fall back to cross-provider Search on
+// local catalog/clips. The SemanticSearchRequest / Result types are
+// preserved in ports.go for the rare case a future vector-store
+// backend is reintroduced.
+//
+// The method now returns an errSemanticSearchRemoved so callers that
+// still attempt to invoke it get a loud failure instead of an empty
+// result set.
 func (s *Service) SemanticSearch(ctx context.Context, req SemanticSearchRequest) (*SemanticSearchResult, error) {
-	if s.vector == nil {
-		return nil, fmt.Errorf("vector search not configured")
-	}
-	req.Query = strings.TrimSpace(req.Query)
-	if req.Query == "" {
-		return nil, fmt.Errorf("query is required")
-	}
-
-	vectorName := resolveVectorName(req.VectorName, s.cfg)
-	if vectorName == "" {
-		return nil, fmt.Errorf("invalid vector name: %q", req.VectorName)
-	}
-
-	minScore := req.MinScore
-	if minScore <= 0 && s.cfg != nil {
-		minScore = s.cfg.VectorConfig().MinInstantScore
-	}
-
-	mode := "ann"
-	if req.Mode == "hybrid" {
-		mode = "hybrid"
-	}
-
-	s.log.Info("semantic search",
-		"query", req.Query,
-		"vector", vectorName,
-		"mode", mode,
-		"min_score", minScore)
-
-	queryVector, err := s.vector.EmbedTextForVector(ctx, req.Query, vectorName)
-	if err != nil {
-		return nil, fmt.Errorf("embed query: %w", err)
-	}
-
-	var results []VectorSearchResult
-	if mode == "hybrid" {
-		vc := s.cfg.VectorConfig()
-		results, err = s.vector.VectorStore().HybridSearch(ctx, HybridSearchRequest{
-			QueryText:        req.Query,
-			DenseVector:      queryVector,
-			DenseVectorName:  vectorName,
-			SparseVectorName: vc.TranscriptVectorName,
-			Limit:            req.Limit,
-			MinScore:         minScore,
-			Source:           req.Source,
-			MediaType:        req.MediaType,
-		})
-	} else {
-		results, err = s.vector.VectorStore().Search(ctx, VectorSearchRequest{
-			QueryVector: queryVector,
-			VectorName:  vectorName,
-			Limit:       req.Limit,
-			MinScore:    minScore,
-			Source:      req.Source,
-			MediaType:   req.MediaType,
-		})
-	}
-	if err != nil {
-		return nil, fmt.Errorf("qdrant search: %w", err)
-	}
-
-	// Add reason to each result.
-	for i := range results {
-		results[i].Reason = buildSearchReason(results[i], req.Query)
-	}
-
-	return &SemanticSearchResult{
-		Query:    req.Query,
-		Vector:   req.VectorName,
-		Mode:     mode,
-		MinScore: minScore,
-		Count:    len(results),
-		Results:  results,
-	}, nil
+	_ = ctx
+	_ = req
+	return nil, errSemanticSearchRemoved
 }
 
 // ── Recommend ─────────────────────────────────────────────────────────
 
-// Recommend splits script text into scenes and recommends clips per scene.
+// Recommend was removed in PG-034 (June 2026) — the Qdrant
+// vector-search backend was deleted. Callers that previously reached
+// for scene-based clip recommendations should fall back to the
+// cross-provider Search endpoint on local catalog/clips. Returns
+// errSemanticSearchRemoved so callers get a loud failure.
 func (s *Service) Recommend(ctx context.Context, req RecommendRequest) (*RecommendResult, error) {
-	if s.vector == nil {
-		return nil, fmt.Errorf("vector search not configured")
-	}
-
-	req.ScriptText = strings.TrimSpace(req.ScriptText)
-	if req.ScriptText == "" {
-		return nil, fmt.Errorf("script_text is required")
-	}
-	if req.TopK <= 0 {
-		req.TopK = 5
-	}
-	vc := s.cfg.VectorConfig()
-	minScore := req.MinScore
-	if minScore <= 0 {
-		minScore = vc.MinInstantScore
-	}
-	if minScore <= 0 {
-		minScore = 0.5
-	}
-
-	scenes := splitScriptIntoScenes(req.ScriptText)
-	s.log.Info("recommend: splitting script", "scenes", len(scenes))
-
-	resp := &RecommendResult{
-		ScriptPreview: truncate(req.ScriptText, 100),
-		SceneCount:    len(scenes),
-		Scenes:        make([]RecommendSceneResult, 0, len(scenes)),
-		Language:      req.Language,
-	}
-
-	totalClips := 0
-	used := make(map[string]bool)
-
-	for i, sceneText := range scenes {
-		sceneText = strings.TrimSpace(sceneText)
-		if sceneText == "" {
-			continue
-		}
-		queryText := cleanQueryText(sceneText)
-		if len(queryText) > 300 {
-			queryText = queryText[:300]
-		}
-
-		queryVector, err := s.vector.EmbedTextForVector(ctx, queryText, "text")
-		if err != nil {
-			s.log.Warn("recommend: embed failed", "scene", i, "error", err)
-			continue
-		}
-
-		results, err := s.vector.VectorStore().HybridSearch(ctx, HybridSearchRequest{
-			QueryText:            cleanQueryText(queryText),
-			DenseVector:          queryVector,
-			DenseVectorName:      vc.TextVectorName,
-			TranscriptVector:     queryVector,
-			TranscriptVectorName: vc.TranscriptVectorName,
-			Limit:                req.TopK * 2,
-			MinScore:             minScore,
-			Source:               req.Source,
-			MediaType:            req.MediaType,
-			Language:             req.Language,
-		})
-		if err != nil {
-			s.log.Warn("recommend: search failed", "scene", i, "error", err)
-			continue
-		}
-
-		sceneResult := RecommendSceneResult{
-			Scene:      truncate(sceneText, 120),
-			SceneIndex: i,
-			Query:      queryText,
-		}
-		for _, r := range results {
-			if used[r.AssetID] {
-				continue
-			}
-			item := RecommendClipItem{
-				AssetID:   r.AssetID,
-				Title:     r.Name,
-				Score:     r.Score,
-				Source:    r.Source,
-				MediaType: r.MediaType,
-				DriveLink: r.DriveLink,
-				Tags:      r.Tags,
-				Reason:    buildSearchReason(r, queryText),
-			}
-			sceneResult.Recommendations = append(sceneResult.Recommendations, item)
-			used[r.AssetID] = true
-			if len(sceneResult.Recommendations) >= req.TopK {
-				break
-			}
-		}
-		resp.Scenes = append(resp.Scenes, sceneResult)
-		totalClips += len(sceneResult.Recommendations)
-	}
-	resp.TotalClips = totalClips
-
-	s.log.Info("recommend: completed", "scenes", len(resp.Scenes), "clips", totalClips)
-	return resp, nil
+	_ = ctx
+	_ = req
+	return nil, errSemanticSearchRemoved
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────

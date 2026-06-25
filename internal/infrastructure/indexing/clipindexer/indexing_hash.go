@@ -7,8 +7,14 @@ import (
 	"strings"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
+
+// bm25SchemaVersion is the hash-stamp field for the BM25 lexical-index
+// schema. PG-034 (June 2026): Qdrant has been removed; the sparse
+// vector identity that used to live in qdrant.BM25SchemaVersion is now
+// a local package const. Bumping this constant invalidates every
+// previously-stored content_hash, forcing a one-time re-index.
+const bm25SchemaVersion = "v0-removed-qdrant-pg034"
 
 // computeContentHash builds a deterministic SHA-256 hash from the clip's
 // searchable content (name + search_text + transcript) plus the embedding
@@ -39,7 +45,7 @@ func (s *Service) computeContentHash(ctx context.Context, clipID string) (hash s
 		"model:" + embeddingModel,
 		"model_ver:" + embeddingModelVersion,
 		"coll_ver:" + collectionVersion,
-		"bm25_ver:" + qdrant.BM25SchemaVersion,
+		"bm25_ver:" + bm25SchemaVersion,
 	}, "|")
 	contentParts := strings.SplitN(content, "|model:", 2)
 	if len(contentParts) == 2 && strings.TrimSpace(contentParts[0]) == "name:|search_text:|transcript:" {

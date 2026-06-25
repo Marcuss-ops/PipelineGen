@@ -19,19 +19,13 @@ import (
 
 // mockDiagService implements diagnostics.Service-like behavior for handler tests.
 // We wrap a real appdiag.Service created with mock ports.
+// PG-034 (June 2026): VectorStorePort + vsFn removed — Qdrant capability deleted.
 type mockIndexHealth struct {
 	checkFn func(ctx context.Context) (*appdiag.IndexHealthReport, error)
-	vsFn    func() appdiag.VectorStorePort
 }
 
 func (m *mockIndexHealth) IndexHealth(ctx context.Context) (*appdiag.IndexHealthReport, error) {
 	return m.checkFn(ctx)
-}
-func (m *mockIndexHealth) VectorStore() appdiag.VectorStorePort {
-	if m.vsFn != nil {
-		return m.vsFn()
-	}
-	return nil
 }
 
 type mockAssetStats struct {
@@ -84,7 +78,7 @@ func TestDiagnostics_HappyPath(t *testing.T) {
 	ih := &mockIndexHealth{
 		checkFn: func(ctx context.Context) (*appdiag.IndexHealthReport, error) {
 			return &appdiag.IndexHealthReport{
-				OK: true, SQLiteAssets: 150, QdrantPoints: 150,
+				OK: true, SQLiteAssets: 150,
 			}, nil
 		},
 	}
@@ -137,7 +131,6 @@ func TestIndexHealth_HappyPath(t *testing.T) {
 		checkFn: func(ctx context.Context) (*appdiag.IndexHealthReport, error) {
 			return &appdiag.IndexHealthReport{
 				OK: true, SQLiteAssets: 100, SQLiteIndexed: 95,
-				QdrantPoints: 95, MissingInQdrant: 5,
 			}, nil
 		},
 	}
@@ -159,16 +152,5 @@ func TestIndexHealth_NilService(t *testing.T) {
 
 // ── QdrantCleanup ─────────────────────────────────────────────────────
 
-func TestQdrantCleanup_AlwaysOK(t *testing.T) {
-	// Cleanup is a no-op placeholder that always returns 200.
-	handler := NewHandler(nil, zap.NewNop())
-	r := setupDiagRouter(handler)
-
-	w := doDiagJSON(t, r, "POST", "/media/qdrant/cleanup", nil)
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.True(t, resp["ok"].(bool))
-	assert.Contains(t, resp["message"], "Qdrant stale-link cleaner")
-}
+// PG-034 (June 2026): TestQdrantCleanup_AlwaysOK removed — Qdrant
+// cleanup route deleted along with the Qdrant capability.

@@ -32,10 +32,11 @@ func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, sou
 //	POST /api/artlist/enrich    — uses path param :source from route
 //	POST /api/enrich            — uses source from JSON body
 func (h *Handler) EnrichMedia(c *gin.Context) {
+	// PG-034 (June 2026): SkipQdrant field removed — Qdrant capability
+	// deleted. The clip indexer is the canonical semantic-search backend.
 	var req struct {
 		AssetID      string `json:"asset_id"`
 		Source       string `json:"source"`
-		SkipQdrant   bool   `json:"skip_qdrant"`
 		SkipEmbedGen bool   `json:"skip_embed_gen"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -51,13 +52,11 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 	h.log.Info("enriching media asset",
 		zap.String("asset_id", req.AssetID),
 		zap.String("source", req.Source),
-		zap.Bool("skip_qdrant", req.SkipQdrant),
 	)
 
 	result, err := h.enrichUC.EnrichMedia(c.Request.Context(), appclips.EnrichMediaRequest{
 		AssetID:      req.AssetID,
 		Source:       req.Source,
-		SkipQdrant:   req.SkipQdrant,
 		SkipEmbedGen: req.SkipEmbedGen,
 	}, func(source string) appclips.ClipFinder {
 		repo := h.repoForSource(source)
@@ -132,26 +131,15 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 		return
 	}
 
-	// Fallback: direct vector store upsert if we have search_text
-	if h.enrichUC != nil && h.enrichUC.HasVectorStore() && clip.SearchText != "" {
-		if err := h.enrichUC.UpsertToVectorStore(ctx, clip, source); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("vector upsert failed: %w", err))
-			return
-		}
-		apiutil.OK(c, gin.H{
-			"ok":      true,
-			"action":  "reindexed",
-			"clip_id": clipID,
-			"method":  "direct_vector_upsert",
-		})
-		return
-	}
+	// PG-034 (June 2026): direct-vector-store fallback removed — Qdrant
+	// capability deleted. The clip indexer is the canonical
+	// semantic-search backend.
 
 	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"action":  "skipped",
 		"clip_id": clipID,
-		"reason":  "no indexer or vector store configured, and no search_text available",
+		"reason":  "no indexer configured and no search_text available",
 	})
 }
 

@@ -136,24 +136,15 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// steps → job runner (always last).
 	var startupPlan []StartupStep
 
-	// Prerequisite steps: Drive folder validation, Qdrant collection, Outbox pool.
-	// These are required steps — failure aborts the entire startup sequence.
+	// Prerequisite steps: Drive folder validation, Outbox pool.
+	// PG-034 (June 2026): qdrant-collection step removed. These are
+	// required steps — failure aborts the entire startup sequence.
 	if root != nil && root.DriveStart != nil {
 		ds := root.DriveStart
 		startupPlan = append(startupPlan, StartupStep{
 			Name: "drive-init", Required: true,
 			Start: func(ctx context.Context) error {
 				return ds()
-			},
-			Stop: func(_ context.Context) error { return nil },
-		})
-	}
-	if root != nil && root.ProcessStart != nil {
-		ps := root.ProcessStart
-		startupPlan = append(startupPlan, StartupStep{
-			Name: "qdrant-collection", Required: true,
-			Start: func(ctx context.Context) error {
-				return ps()
 			},
 			Stop: func(_ context.Context) error { return nil },
 		})
@@ -216,17 +207,13 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// commit fix/lifecycle-readiness — wire readiness-barrier probes so
 	// serverLifecycle.Start actually USES ctx and fail-closes if any
 	// dependency is unreachable. Probes are nil when the corresponding
-	// capability is opted out at composition time (no DB / no Drive /
-	// no VectorSearch); the Group skips nil probes automatically.
+	// capability is opted out at composition time (no DB / no Drive);
+	// PG-034 (June 2026): the vector probe was removed along with Qdrant.
+	// The Group skips nil probes automatically.
 	var dbProbe func(ctx context.Context) error
 	if root.DB != nil && root.DB.DB != nil {
 		conn := root.DB.DB
 		dbProbe = func(ctx context.Context) error { return conn.PingContext(ctx) }
-	}
-	var vectorProbe func(ctx context.Context) error
-	if root.Process.VectorSvc != nil {
-		vs := root.Process.VectorSvc
-		vectorProbe = func(ctx context.Context) error { return vs.Health(ctx) }
 	}
 	var driveProbe func(ctx context.Context) error
 	if root.Drive != nil && root.Drive.DriveClient != nil {
@@ -250,7 +237,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 	lifecycle := NewServerLifecycleWithProbes(
 		startupPlan, cleanup,
-		dbProbe, vectorProbe, driveProbe,
+		dbProbe, nil, driveProbe,
 		log,
 	)
 

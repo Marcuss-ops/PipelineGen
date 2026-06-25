@@ -8,19 +8,23 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
-// ServiceDeps wires the four health checkers into the Service.
+// ServiceDeps wires the health checkers into the Service.
 //
-// Drive and Qdrant are OPTIONAL capabilities: passing a nil check
+// Drive is an OPTIONAL capability: passing a nil check
 // (or a typed-nil pointer wrapped in the interface — see
 // pkg/portutil.IsNilPort) makes the corresponding health check return
 // {ok: true, applicable: false} without contacting the dependency.
 // DB and Jobs are MANDATORY: a missing checker produces
 // {ok: false, error: "<name> checker not wired"} so misconfiguration
 // is surfaced loudly instead of silently passing.
+//
+// PG-034 (June 2026): Qdrant removed — the vector-search capability is
+// no longer wired, so the QdrantChecker port and its ServiceDeps slot
+// have been removed. Health-endpoint callers asking for `?check=qdrant`
+// now receive `unknown health check` (defensive — surfaces typos loudly).
 type ServiceDeps struct {
 	DB    DBChecker
 	Drive DriveChecker
-	Qdrant QdrantChecker
 	Jobs  JobsChecker
 }
 
@@ -28,7 +32,6 @@ type ServiceDeps struct {
 type Service struct {
 	db    DBChecker
 	drive DriveChecker
-	qdrant QdrantChecker
 	jobs  JobsChecker
 }
 
@@ -37,17 +40,17 @@ func NewService(deps ServiceDeps) *Service {
 	return &Service{
 		db:    deps.DB,
 		drive: deps.Drive,
-		qdrant: deps.Qdrant,
 		jobs:  deps.Jobs,
 	}
 }
 
 // ValidCheckNames is the set of recognised check names.
+// PG-034 (June 2026): "qdrant" removed — vector search capability
+// is no longer wired.
 var ValidCheckNames = map[string]bool{
-	"db":     true,
-	"drive":  true,
-	"qdrant": true,
-	"jobs":   true,
+	"db":    true,
+	"drive": true,
+	"jobs":  true,
 }
 
 // NormalizeCheckNames trims, lowercases, removes empty strings,
@@ -145,14 +148,13 @@ func (s *Service) Check(ctx context.Context, names []string) HealthResponse {
 				}
 			}
 		case "qdrant":
-			// Qdrant is optional: nil OR typed-nil checker = vector search disabled.
-			if s.qdrant != nil && !portutil.IsNilPort(s.qdrant) {
-				res = s.qdrant.CheckQdrant(ctx)
-			} else {
-				res = CheckResult{
-					"ok": true, "applicable": false, "duration_ms": 0,
-					"note": "qdrant checker not wired",
-				}
+			// PG-034 (June 2026): Qdrant removed. Callers asking for
+			// `?check=qdrant` get a defensive "unknown check" so typos
+			// surface loudly instead of silently passing.
+			res = CheckResult{
+				"ok":          false,
+				"duration_ms": 0,
+				"error":       "unknown check: " + name,
 			}
 		case "jobs":
 			// Jobs is mandatory: nil OR typed-nil checker is a misconfiguration.
