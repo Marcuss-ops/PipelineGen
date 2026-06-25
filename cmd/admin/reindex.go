@@ -140,10 +140,11 @@ func runReindex(args []string) error {
 	defer sqliteDB.Close()
 	db := sqliteDB.DB
 
-	vecSvc := buildReindexQdrantService(cfg)
+	qdClient := buildReindexClient(cfg, log)
+	collection := reindexCollectionName(cfg)
 
 	start := time.Now()
-	totalFound, pushed, skipped, failed, err := reindexQdrant(ctx, db, vecSvc, deps, log)
+	totalFound, pushed, skipped, failed, err := reindexQdrant(ctx, db, qdClient, collection, deps, log)
 	elapsed := time.Since(start)
 	if err != nil {
 		return err
@@ -187,47 +188,41 @@ func runReindex(args []string) error {
 		zap.Duration("elapsed", elapsed),
 	)
 	return nil
-}
-
-// buildReindexQdrantService projects cfg.VectorSearch into the canonical
-// qdrant.Config used by the admin reindex command.
-func buildReindexQdrantService(cfg *config.Config) *qdrant.Service {
+}// buildReindexClient creates a Qdrant Client from config for the admin reindex command.
+func buildReindexClient(cfg *config.Config, log *zap.Logger) *qdrant.Client {
 	if cfg == nil {
 		return nil
 	}
-	return qdrant.NewService(qdrant.Config{
-		Enabled:              cfg.VectorSearch.Enabled,
-		URL:                  cfg.VectorSearch.URL,
-		Collection:           cfg.VectorSearch.Collection,
-		TextVectorName:       cfg.VectorSearch.TextVectorName,
-		VisualVectorName:     cfg.VectorSearch.VisualVectorName,
-		AudioVectorName:      cfg.VectorSearch.AudioVectorName,
-		TranscriptVectorName: cfg.VectorSearch.TranscriptVectorName,
-		SparseVectorName:     cfg.VectorSearch.SparseVectorName,
-		TextDimensions:       cfg.VectorSearch.TextDimensions,
-		VisualDimensions:     cfg.VectorSearch.VisualDimensions,
-		AudioDimensions:      cfg.VectorSearch.AudioDimensions,
-		TranscriptDimensions: cfg.VectorSearch.TranscriptDimensions,
-		MinInstantScore:      cfg.VectorSearch.MinInstantScore,
-		TimeoutMs:            cfg.VectorSearch.TimeoutMs,
-		CollectionVersion:    cfg.VectorSearch.CollectionVersion,
-		CollectionAlias:      cfg.VectorSearch.CollectionAlias,
-		DisableAlias:         cfg.VectorSearch.DisableAlias,
-	})
+	return qdrant.NewClient(&qdrant.Config{
+		BaseURL: cfg.VectorSearch.URL,
+		Timeout: cfg.VectorSearch.TimeoutMs / 1000,
+	}, log)
+}
+
+// reindexCollectionName resolves the collection to write to.
+func reindexCollectionName(cfg *config.Config) string {
+	col := cfg.VectorSearch.Collection
+	if col == "" {
+		col = "media_assets"
+	}
+	if v := cfg.VectorSearch.CollectionVersion; v != "" {
+		col += "_" + v
+	}
+	return col
 }
 
 // reindexQdrant walks media_assets rows that carry at least one valid
 // embedding JSON, builds qdrant.VectorAsset batches of size
-// deps.BatchSize, and (only when deps.Apply=true) calls qdrant.Service::UpsertAssets.
-// On a per-batch failure the batch is logged + counted toward `failed`,
+// deps.BatchSize, and (only when deps.Apply=true) calls Client.UpsertVectorAssets.
+// On a per-batch failure the batch is logged + counted toward failed,
 // but iteration continues so a bad batch never blocks subsequent ones.
 //
-// Returns (totalFound, pushed, skipped, failed, err). The pure shape
-// matches backfillMediaAssetsSearchTerms so test patterns transfer.
+// Returns (totalFound, pushed, skipped, failed, err).
 func reindexQdrant(
 	ctx context.Context,
 	db *sql.DB,
-	qdrantSvc *qdrant.Service,
+	qdClient *qdrant.Client,
+	collection string,
 	deps ReindexDeps,
 	log *zap.Logger,
 ) (int, int, int, int, error) {
@@ -292,7 +287,7 @@ func reindexQdrant(
 			batch = batch[:0]
 			return nil
 		}
-		if err := qdrantSvc.UpsertAssets(ctx, batch); err != nil {
+		if err := qdClient.UpsertVectorAssets(ctx, collection, batch); err != nil {
 			log.Warn("qdrant batch upsert failed",
 				zap.Int("batch_size", len(batch)),
 				zap.Error(err))
