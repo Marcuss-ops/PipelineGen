@@ -46,9 +46,9 @@ func runSyncOutros(args []string) error {
 
 	ctx := cmdContext()
 
-	outroRootID := ""
+	outroRootID := cfg.Drive.OutroFolder()
 	if outroRootID == "" {
-		outroRootID = "12z9U1KRM5C5WmC9xOS2kRtdBDCyL-vbq" // fallback
+		outroRootID = "1MB9pTRjvHUdMXUtGOMBcvgRc-MZG2rA4" // user specified folder
 	}
 
 	if *apply {

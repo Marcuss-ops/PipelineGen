@@ -30,6 +30,8 @@ type DriveConfig struct {
 	CopertineRootFolder string `yaml:"copertine_root_folder" env:"VELOX_DRIVE_COPERTINE_ROOT" default:""`
 	// Sound effects root folder
 	SoundEffectsRootFolder string `yaml:"sound_effects_root_folder" env:"VELOX_DRIVE_SOUND_EFFECTS_ROOT" default:""`
+	// Outro root folder
+	OutroRootFolder string `yaml:"outro_root_folder" env:"VELOX_DRIVE_OUTRO_ROOT" default:""`
 	// Avatar AI generated content root folder
 	AvatarAIRootFolder string `yaml:"avatar_ai_root_folder" env:"VELOX_DRIVE_AVATAR_AI_ROOT" default:""`
 	// SharedWithEmail is the Google account email to automatically share generated docs with.
@@ -71,3 +73,4 @@ func (d DriveConfig) ImagesFolder() string       { return d.ResolveFolder(d.Imag
 
 func (d DriveConfig) CopertineFolder() string    { return d.ResolveFolder(d.CopertineRootFolder) }
 func (d DriveConfig) SoundEffectsFolder() string { return d.ResolveFolder(d.SoundEffectsRootFolder) }
+func (d DriveConfig) OutroFolder() string        { return d.ResolveFolder(d.OutroRootFolder) }
