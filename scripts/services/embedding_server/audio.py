@@ -3,9 +3,6 @@
 Uses APIRouter; __init__.py mounts this via `app.include_router(audio.router)`.
 """
 
-import json
-import sqlite3
-
 from fastapi import APIRouter, HTTPException
 
 from . import _inference_sem, clap_model
@@ -52,22 +49,17 @@ async def embed_audio_from_file(req: AudioFileEmbedRequest):
 
 @router.post("/index_audio")
 async def index_audio(req: IndexAudioRequest):
-    """Generate CLAP embedding from audio file and update SQLite."""
+    """Generate CLAP embedding from audio file and return it to Go."""
     if clap_model is None:
         raise HTTPException(status_code=501, detail="CLAP model not loaded")
     async with _inference_sem:
         try:
             embedding = clap_model.encode(req.audio_path).tolist()
-
-            conn = sqlite3.connect(req.db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.audio_embedding_json', ?) WHERE id = ?",
-                (json.dumps(embedding), req.clip_id),
-            )
-            conn.commit()
-            conn.close()
-
-            return {"status": "success", "dimensions": len(embedding)}
+            return {
+                "status": "success",
+                "clip_id": req.clip_id,
+                "embedding": embedding,
+                "dimensions": len(embedding),
+            }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

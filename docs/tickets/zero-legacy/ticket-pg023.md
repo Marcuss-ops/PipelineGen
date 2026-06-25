@@ -1,7 +1,12 @@
-# PG-023
+# PG-023 — Contratto retry e payload job esplicito
 
-Stato: aperto.
+**Branch:** `codex/pg-023-job-contract`
 
-Usare solo `main`; non creare branch o PR.
+## Checklist A–Z
+A. Sync main. B. Crea solo la branch. C. Cerca MaxRetries e fallback payload. D. Leggi DTO e persistenza. E. Distingui valore assente da zero. F. Definisci un solo default. G. Rifiuta valori negativi. H. Scegli un solo payload vuoto canonico. I. Aggiorna decoding API. J. Aggiorna producer interni. K. Aggiorna persistence mapping. L. Elimina conversioni silenziose. M. Testa assente/zero/positivo/negativo. N. Testa payload vuoto. O. Verifica record esistenti senza dual-write. P. Gofmt. Q. Test job mirati. R. Test completi. S. Vet/build. T. Archcheck. U. Ripeti ricerca. V. Diff. W. Aggiorna schema docs. X. Rebase. Y. Commit/push. Z. Verifica remoto.
 
-Rendere espliciti retry e payload job: distinguere valore assente da zero, mantenere un solo default, rifiutare valori negativi, scegliere un solo formato per il payload vuoto, aggiornare API, producer, persistence e test. Eseguire i gate, fare rebase su `origin/main` e pubblicare con `git push origin main`.
+## Done
+- [ ] Assente e zero distinguibili.
+- [ ] Negativi rifiutati.
+- [ ] Un solo wire format payload.
+- [ ] Nessun fallback silenzioso.

@@ -9,9 +9,9 @@
 #   - No backwards entry: once a wave is done, it does not reappear.
 #
 # Last baseline: cleanup-wave-00-final.
-# Version: 2 (PG-025 cleanup, June 2026 — collapsed resolved sub-trackers,
-#   stripped verbose done-wave bodies, removed Wave 18 cross-project ref).
+# Version: 1 (YAML list of waves; metadata embedded in comment header above).
 # Policy ref: architecture/ownership.yaml.
+# Note: top-level is a YAML LIST (not a mapping) so the per-wave `- id:` flow stays valid.
 # -----------------------------------------------------------------------------
 
 # ── Wave 0 — Baseline snapshot ───────────────────────────────────────────────
@@ -31,6 +31,10 @@
   title: Ratcheting cleanup guard
   status: done
   verified_zero: true
+  description: |
+    scripts/archcheck runs in ratchet mode: accepts current violations only,
+    forbids new directories, new aliases, new wrappers, new os/exec calls.
+    ratchet count is monotone-decreasing per rule.
   implemented_in: scripts/archcheck/main.go
   exit_gate: "go run ./scripts/archcheck exits 0 baseline-on-baseline."
   blocked_by: [0]
@@ -41,6 +45,12 @@
   title: Empty directories removal
   status: done
   verified_zero: true
+  description: |
+    All empty legacy directories removed (June 2026):
+      • internal/admin — removed
+      • internal/media/repository — removed (internal/media fully gone)
+      • internal/api/sources/{artlist,root,youtube} — removed (empty shells)
+    .blackboxcli retained as external tool artifact.
   exit_gate: "find . -type d -empty -not -path './.git/*' -not -path './data/*' returns only ./.blackboxcli."
 
 # ── Wave 3 — Mega-package infrastructure → pkg/* ─────────────────────────────
@@ -49,6 +59,26 @@
   title: infrastructure root → pkg/*
   status: done
   verified_zero: true
+  rationale: |
+    Files at internal/infrastructure/<root>.go (corid, retry, ptrutil, defaults,
+    sliceutil, sqlutil, textutil, timeutil, urlutil, group, safe, concurrent,
+    similarity, etc.) were extracted into pkg/<x> with zero wrappers.
+  pkg_packages:
+    - pkg/concurrent
+    - pkg/corid
+    - pkg/defaults
+    - pkg/hashutil
+    - pkg/pathutil
+    - pkg/ptrutil
+    - pkg/retry
+    - pkg/similarity
+    - pkg/sliceutil
+    - pkg/sqlutil
+    - pkg/testutil
+    - pkg/textutil
+    - pkg/timeutil
+    - pkg/urlutil
+    - pkg/veloxclient
   exit_gate: "find internal/infrastructure -maxdepth 1 -name '*.go' returns empty."
 
 # ── Wave 4A — Asset/Media domain unification ─────────────────────────────────
@@ -59,11 +89,31 @@
   verified_zero: true
   description: |
     internal/assets/, internal/artifacts/, internal/core/{assetop,audio,
-    destination,embedding,processor,scoring}/ → internal/domain/asset/ +
-    internal/application/assets/ + internal/infrastructure/database/sqlite/assets/.
-    Zero active imports remain; 7 doc-only residuals in Go comments.
-  exit_gate: "rg 'internal/(assets|artifacts|core/assetop|core/audio|core/destination|core/embedding|core/processor|core/scoring)' --type go | grep -vE ':\\s*\\d+\\s*://' returns zero."
-  residuals: 7 doc-only comment mentions across 4 files.
+    destination,embedding,processor,scoring}/ migrati verso
+    internal/domain/asset/ + internal/application/assets/ +
+    internal/infrastructure/database/sqlite/assets/ +
+    internal/infrastructure/drive/. Nessun import attivo residuo.
+    I riferimenti superstiti sono tutti in commenti Go (`// ...`) e non
+    generano traffico di compilazione: sono elencati sotto `residuals:` per
+    una PR di cleanup puramente documentale.
+  from:
+    - internal/assets
+    - internal/artifacts
+    - internal/core/assetop
+    - internal/core/audio
+    - internal/core/destination
+    - internal/core/embedding
+    - internal/core/processor
+    - internal/core/scoring
+  to:
+    - internal/domain/asset
+    - internal/application/assets
+  exit_gate: "rg 'internal/(assets|artifacts|core/assetop|core/audio|core/destination|core/embedding|core/processor|core/scoring)' --type go | grep -vE ':\\s*\\d+\\s*:\\s*//' returns zero (7 doc-only residuals listed below)."
+  residuals:
+    - internal/application/assets/artifacts/types_test.go (4 menzioni in commenti test)
+    - internal/infrastructure/drive/destination_resolver.go (1 menzione in commento)
+    - internal/infrastructure/drive/storage_types.go (1 menzione in commento)
+    - internal/infrastructure/embeddings/python.go (1 menzione in commento)
 
 # ── Wave 4B — Job/Worker/Outbox contracts consolidation ──────────────────────
 
@@ -71,22 +121,58 @@
   title: Job, Worker, Outbox contracts into domain/job
   status: done
   verified_zero: true
-  exit_gate: "rg 'internal/(contracts|jobs/domain_)' --type go returns zero."
-
-# ── Wave 4C — Remove core + legacy domain/media ──────────────────────────────
+  description: |
+    internal/contracts/ rimosso. I tipi di dominio (Job, WorkerSession,
+    Store, Command variants) vivono ora in internal/domain/job/.
+    Exit gate verificato zero.
+  from:
+    - internal/contracts
+    - internal/jobs/domain_types.go
+    - internal/jobs/domain_commands.go
+  to: internal/domain/job
+  exit_gate: "rg 'internal/(contracts|jobs/domain_)' --type go returns zero."# ── Wave 4C — Remove core + legacy domain/media ──────────────────────────────
 
 - id: "4C"
   title: Remove internal/core + internal/domain/media
   status: done
   verified_zero: true
   description: |
-    internal/core/ → internal/application/assets/{lifecycle,maintenance}/ +
-    internal/domain/job/workspace/ + internal/domain/asset/analysis.go.
-    internal/domain/media/ removed; types now in internal/domain/asset/.
+    internal/core/ rimosso come root legacy. I quattro sotto-package
+    pianificati sono stati migrati:
+      • internal/core/lifecycle    → internal/application/assets/lifecycle/
+      • internal/core/maintenance  → internal/application/assets/maintenance/
+      • internal/core/workspace    → internal/domain/job/workspace/
+      • internal/core/analysis.go  → internal/domain/asset/analysis.go (assorbito)
+    Tutti i 10 riferimenti superstiti a `internal/core/` nel codice Go
+    sono commenti Go (zero import attivi). Sono elencati sotto
+    `residuals_in_4C_scope:` / `residuals_in_other_waves:`, divisi per
+    wave di competenza della pulizia futura, in modo che la PR di
+    cleanup documentale sappia chi possiede ciascun cleanup.
+    Nota: il filtro `grep -vE ':\\s*\\d+\\s*:\\s*//'` dell'exit_gate
+    riconosce solo i commenti di linea `// ...`. Eventuali commenti
+    di blocco `/* ... */` che contenessero la sottostringa non
+    verrebbero esclusi — attualmente nessun residuo reale usa quella
+    forma, ma è un limite noto del gate rilassato.
+    internal/domain/media/ è stato rimosso in June 2026; i tipi sono
+    ora dichiarati nativamente in internal/domain/asset/ (SourceType,
+    AssetStatus, AssetNode, AssetExecutionResult, ClipFolder,
+    ClipManifest, IndexingCheckpoint, PipelineStrategy, NormalizeStrategy,
+    ActiveKey, MonitoredSource, Subject, ImageAsset, ImageUsage, ImageTag,
+    CategoryChannel, SearchQuery, SearchQueryResult).
   blocked_by: ["4A", "4B"]
-  exit_gate: "rg 'internal/core' --type go | grep -vE ':\\s*\\d+\\s*://' returns zero."
-  residuals_in_4C_scope: all documental residuals cleaned (June 2026).
-  residuals_in_other_waves: 3 comment-only mentions (cleaned in respective wave PRs).
+  moves:
+    - {from: internal/core/lifecycle,   to: internal/application/assets/lifecycle/}
+    - {from: internal/core/maintenance, to: internal/application/assets/maintenance/}
+    - {from: internal/core/workspace,   to: internal/domain/job/workspace/}
+    - {from: internal/core/analysis.go, to: internal/domain/asset/analysis.go}
+  exit_gate: "rg 'internal/core' --type go | grep -vE ':\\s*\\d+\\s*:\\s*//' returns zero (10 doc-only residuals listed below)."
+  active_imports_remaining: 0
+  residuals_in_4C_scope:
+    - (tutti i residui documentali Wave 4C sono stati puliti — giugno 2026)
+  residuals_in_other_waves:
+    - internal/infrastructure/database/sqlite/jobs/repository.go (1 comment; cleaned in Wave 4B/16 PR)
+    - internal/infrastructure/embeddings/python.go (1 comment; cleaned in Wave 4A infrastructure refactor PR)
+    - internal/media/stockpipeline/payloads.go (1 comment; cleaned in Wave 11/13 PR when stockpipeline is migrated)
 
 # ── Wave 5 — Jobs consolidation ──────────────────────────────────────────────
 
@@ -94,12 +180,60 @@
   title: Full jobs consolidation
   status: done
   verified_zero: true
-  description: |
-    internal/jobs/, internal/outboxhandlers/, internal/application/jobbroker/,
-    internal/application/workerassets/ → internal/application/jobs/ +
-    internal/infrastructure/jobs/local/ + internal/application/jobs/assets.
-    Three sub-PRs landed (5_PR1 domain/types, 5_PR2 composition wiring, 5_PR3
-    alias removal). All build errors fixed, exit gate zero.
+  subwaves:
+    - id: 5_PR1
+      title: Domain & Types Recovery
+      status: done
+      merged_in_commit: 91980ef7ac3da563eca96de178efee571df0646c
+      resolved_in_tag: cleanup-wave-05-pr1-land
+      status_note: "Onda 5 PR 1 landed. The 14 residue build errors are now fixed: ffmpeg.go + ffmpeg_encode.go + image_to_video.go + probe.go dropped the deleted internal/infrastructure root import and adopted the new pkg/platform leaf (Run / RunSimple / ExecOptions); internal/api/job.go received a full rewrite that fixed 6 perl-sed syntax errors (j.job.Status -> j.Status, jobs.EnqueueRequest -> appjobs.EnqueueRequest, struct field job.job.Status -> Status job.Status, ParseJobStatusFilter return type *job.job.Status -> *job.Status, etc.); internal/infrastructure/database/sqlite/assets/workernodes_repository.go line 23 cleaned - the WorkerNode struct fields lost the job. prefix as field names (Go does not accept qualified identifiers as field names); internal/media/clipindexer/batch.go added the appjobs import (jobs.Service + jobs.JobTools migrated to appjobs.Service + appjobs.JobTools; the local job param was renamed to j to avoid shadowing the new appjobs alias). Note: chapter_single.go x2 imports of internal/scripts + internal/scripts/gemmamemory are intentionally OUT OF SCOPE per user directive (Wave 6 territory); this PR closes only the build errors that are PR1 residue. The 5_PR1 fixed-list items from the migration.yaml (internal/domain/job/store.go - promoted rich 12-method Store with fencing, etc.) were already applied at cleanup-wave-00-final."
+      fixed:
+        - "pkg/platform/platform.go - NEW leaf package wrapping os/exec.Run with context + ExecOptions + RunSimple; replaces the deleted internal/infrastructure platform helper"
+        - "internal/infrastructure/media/ffmpeg/ffmpeg.go - dropped deleted internal/infrastructure import; imports pkg/platform"
+        - "internal/infrastructure/media/ffmpeg/ffmpeg_encode.go - same drop + adopt pkg/platform (uses platform.Run x5 sites)"
+        - "internal/infrastructure/media/ffmpeg/image_to_video.go - same drop + adopt pkg/platform"
+        - "internal/infrastructure/media/ffmpeg/probe.go - same drop + adopt pkg/platform; Run signature aligned (CombinedOutput:false field removed; out.Stdout -> out since pkg/platform returns []byte combined)"
+        - "internal/infrastructure/database/sqlite/assets/workernodes_repository.go - line 23 WorkerNode struct fields re-aligned: Status (was job.Status), and column alignment fixed across all 11 fields"
+        - "internal/api/job.go - full rewrite: added appjobs internal/application/jobs import; fixed 6x perl-sed syntax errors (j.job.Status -> j.Status, jobs.EnqueueRequest -> appjobs.EnqueueRequest, struct field job.job.Status -> Status job.Status, ParseJobStatusFilter return type *job.job.Status -> *job.Status, etc.)"
+        - "internal/media/clipindexer/batch.go - added appjobs internal/application/jobs import; RegisterJobHandler(jobs *jobs.Service) -> (jobs *appjobs.Service); HandleJob(..., tools *jobs.JobTools) -> (tools *appjobs.JobTools); renamed local job *job.Job param to j *job.Job to avoid shadowing the new appjobs alias"
+    - id: 5_PR2
+      title: Application composition wiring (app/dependencies.go, cmd/*)
+      status: done
+      merged_in_commit: c2516fdb
+      resolved_in_tag: cleanup-wave-05-pr2-final-fix
+      status_note: "Onda 5 PR 2 landed. Exit gate satisfied: no references to internal/jobs/, internal/outboxhandlers/, internal/application/jobbroker/, or internal/application/workerassets/ remain in the codebase. Four files in-scope: cmd/worker/main.go (worker subpkg import + appjobs.Broker + WorkerCapabilities/RegisterWorkerCommand/HeartbeatCommand migrated to appjobs.*), internal/infrastructure/jobs/local/broker.go (job.Store/Command types to appjobs.*, StatusCancelled to domainjob.*), internal/infrastructure/remote/jobbrokerclient/client.go (HTTP client migrated to appjobs.* — symmetric to handler.go Broker interface), internal/api/workers/handler.go (workerassets alias to internal/application/jobs/assets; Broker interface and body migrated to appjobs.*). Note: cmd/server/main.go does not exist at HEAD — the actual server wiring is internal/app/dependencies.go + internal/app/bootstrap.go (both already use appjobs and required no edits). Pre-existing build errors in internal/api/job.go and internal/infrastructure/database/sqlite/assets/workernodes_repository.go are PR1 residue (perl-sed syntax issues) and not in PR2 scope per migration.yaml needs_list."
+      fixed:
+        - "cmd/worker/main.go — internal/jobs/worker subpkg deleted-path replaced by internal/application/jobs/worker; cmd-side types WorkerCapabilities/RegisterWorkerCommand/HeartbeatCommand/Broker migrated from job (domain/job) to appjobs to match the runner contract"
+        - "internal/infrastructure/jobs/local/broker.go — internal/jobs deleted-path replaced by internal/application/jobs (Store/Command types as appjobs.*, ErrLeaseLost as appjobs.ErrLeaseLost); StatusCancelled routed to domainjob.StatusCancelled since application/jobs does not re-export the Status* constants"
+        - "internal/infrastructure/remote/jobbrokerclient/client.go — transitive dep of cmd/worker (NOT in user spec, but sits in same migration wave and breaks cmd/worker compile); HTTP client migrated to appjobs.* types symmetric to handler.go Broker interface"
+        - "internal/api/workers/handler.go — workerassets deleted-path replaced by internal/application/jobs/assets (UploadResponse lives there as assets.UploadResponse); Broker interface and request structs migrated to appjobs.* to match the local broker implementation"
+    - id: 5_PR3
+      title: "Jobs canonical — remove application-layer type aliases"
+      status: done
+      description: |
+        Removes the three zero-copy forwarding type aliases from
+        internal/application/jobs/types.go (Store, StartJob, RequeueResult)
+        and migrates the single known consumer (internal/infrastructure/jobs/local/broker.go)
+        to import domain/job directly. Sets the precedent for Wave 16
+        zero-redundancy strict mode. Application-layer Runner.NewRunner
+        is re-typed to take the canonical job.Store interface. SQLiteStore
+        alias in internal/application/jobs/store.go is intentionally
+        deferred to Wave 16 (single solid call site, low blast radius,
+        but architecturally equivalent — not dropping here to keep PR
+        surface minimal).
+      exit_gate: "rg '^\\s*type\\s+(Store|StartJob|RequeueResult)\\s*=' internal/application/jobs/types.go --type go returns zero."
+      fixed_files:
+        - internal/application/jobs/types.go
+        - internal/infrastructure/jobs/local/broker.go
+  from:
+    - internal/jobs
+    - internal/outboxhandlers
+    - internal/application/jobbroker
+    - internal/application/workerassets
+  to:
+    - internal/application/jobs
+    - internal/infrastructure/jobs/local
+    - internal/application/jobs/assets
   exit_gate: "rg 'internal/(jobs/|outboxhandlers|application/jobbroker|application/workerassets)' --type go returns zero."
 
 # ── Wave 6 — Scripts consolidation ───────────────────────────────────────────
@@ -109,11 +243,22 @@
   status: done
   verified_zero: true
   description: |
-    internal/scripts/ + internal/application/scriptflow/ →
-    internal/domain/script/ + internal/application/scripts/ +
-    internal/infrastructure/database/sqlite/scripts/.
-    1 doc-only residual in gemmamemory/stub.go.
-  exit_gate: "rg 'internal/(scripts|application/scriptflow)' --type go | grep -vE ':\\s*\\d+\\s*://' returns zero."
+    Eliminazione di internal/application/scriptflow/ e internal/scripts/
+    completata. Il flat-merge ha assorbito tutti i sub-package storici in
+    internal/application/scripts/ + internal/domain/script/ +
+    internal/infrastructure/database/sqlite/scripts/. Exit gate verificato
+    con un'unica occorrenza residua in un commento Go (non attivo a
+    compilazione): per trasparenza è elencata sotto `residuals:`.
+  from:
+    - internal/scripts/{models,repository,generators,validators,normalize,write_script}
+    - internal/application/scriptflow/{batch,curation,documents,generate,jobs,scenes}
+  to:
+    - internal/domain/script
+    - internal/application/scripts
+    - internal/infrastructure/database/sqlite/scripts
+  exit_gate: "rg 'internal/(scripts|application/scriptflow)' --type go | grep -vE ':\\s*\\d+\\s*:\\s*//' returns zero (1 doc-only residual listed below)."
+  residuals:
+    - internal/application/scripts/gemmamemory/stub.go (1 reference, comment only)
 
 # ── Wave 7 — Assets + Artifacts + Registry unification ───────────────────────
 
@@ -121,9 +266,24 @@
   title: Assets + Artifacts + Registry unification
   status: done
   verified_zero: true
+  description: |
+    internal/artifacts/ e internal/assets/ rimossi come root legacy. I
+    consumer vivono ora sotto internal/application/assets/artifacts/ +
+    internal/infrastructure/database/sqlite/assets/. Exit gate verificato
+    con sole 2 occorrenze residue, entrambe in commenti di un test file
+    (non attivi a compilazione): cleanup puramente documentale da
+    affrontare nella stessa PR documentale di Wave 4A.
   blocked_by: ["4A"]
-  exit_gate: "rg 'internal/(artifacts|^internal/assets$)' --type go | grep -vE ':\\s*\\d+\\s*://' returns zero."
-  residuals: 2 doc-only mentions in artifacts/types_test.go.
+  from:
+    - internal/artifacts
+    - internal/assets
+  to:
+    - internal/application/assets
+    - internal/infrastructure/blob
+    - internal/infrastructure/database/sqlite/{assets,artifacts}
+  exit_gate: "rg 'internal/(artifacts|^internal/assets$)' --type go | grep -vE ':\\s*\\d+\\s*:\\s*//' returns zero (2 doc-only residuals listed below)."
+  residuals:
+    - internal/application/assets/artifacts/types_test.go (2 mentions, both doc-comment strings)
 
 # ── Wave 8 — Association + Realtime → assets search/sync ─────────────────────
 
@@ -131,6 +291,17 @@
   title: Association + Realtime consolidation
   status: done
   verified_zero: true
+  description: |
+    association/ e realtime/ sono stati completamento migrati da
+    internal/sources/ a internal/application/assets/{association,realtime}/.
+    Nessun riferimento residuo ai path originali. Exit gate verificato zero.
+  from:
+    - internal/application/association
+    - internal/application/realtime
+  to:
+    - internal/application/assets/association
+    - internal/application/assets/realtime
+  active_importers_remaining: 0
   exit_gate: "rg 'internal/application/(association|realtime)' --type go returns zero."
 
 # ── Wave 9 — Images + Content + Voiceover ────────────────────────────────────
@@ -139,6 +310,25 @@
   title: Images, Books, Lessons, VoiceoverSync consolidation
   status: done
   verified_zero: true
+  description: |
+    Wave 9 completata (June 2026). Tutte le sotto-directory target di
+    internal/media/ sono state migrate ai percorsi canonici:
+      • internal/media/fullimages → internal/application/images/fullimages/
+      • internal/media/generation → internal/application/images/
+      • internal/media/books → internal/application/content/ (assorbito)
+      • internal/media/lessons → internal/application/content/ (assorbito)
+      • internal/media/voiceoversync → internal/application/voiceover/
+    internal/media/ non esiste più. Exit gate verificato.
+  from:
+    - internal/media/fullimages
+    - internal/media/generation
+    - internal/media/books
+    - internal/media/lessons
+    - internal/media/voiceoversync
+  to:
+    - internal/application/images
+    - internal/application/content/{books,lessons}
+    - internal/application/voiceover/{sync.go}
   exit_gate: "rg 'internal/media/(fullimages|generation|books|lessons|voiceoversync)' --type go returns zero."
 
 # ── Wave 10 — Storage + Drive adapters (Qdrant removed by PG-034) ─────────────
@@ -147,7 +337,26 @@
   title: Media storage + Drive consolidation (Qdrant removed by PG-034)
   status: done
   verified_zero: true
-  exit_gate: "rg 'internal/(media/(mediaasset|vectorstore|storage)|upload)' --type go returns zero."
+  description: |
+    Wave 10 completata (June 2026):
+      • internal/media/mediaasset/ → internal/infrastructure/media/processor/ ✅
+      • internal/upload/drive/ → internal/infrastructure/drive/ ✅
+      • internal/media/vectorstore/ → internal/infrastructure/qdrant/ ✅
+      • internal/media/storage/ → internal/infrastructure/files/storage/ ✅
+      • internal/upload/ (root vuoto) → rimosso ✅
+    Zero riferimenti residui ai path originali verificato con rg.
+  from:
+    - internal/media/mediaasset
+    - internal/media/vectorstore
+    - internal/media/storage
+    - internal/upload
+  to:
+    - internal/infrastructure/media/processor
+    - internal/infrastructure/qdrant
+    - internal/infrastructure/drive
+    - internal/infrastructure/files/storage
+  active_files_remaining: 0
+  exit_gate: "rg 'internal/(media/(mediaasset|vectorstore|storage)|upload)' --type go returns zero (verified June 2026)."
 
 # ── Wave 11 — Catalog + Intelligence ─────────────────────────────────────────
 
@@ -156,8 +365,36 @@
   status: done
   verified_zero: true
   description: |
-    All internal/media/ subdirectories migrated to canonical paths;
-    internal/media/ removed from filesystem. Zero active imports.
+    Wave 11 completata (June 2026). Tutte le sotto-directory di
+    internal/media/ sono state migrate:
+      • internal/media/ingest/   → internal/application/ingest/
+      • internal/media/monitor/  → internal/application/monitor/
+      • internal/media/clipindexer/ → internal/application/assets/clipssearch/
+      • internal/media/clipresolver/ → internal/application/assets/clipresolver/
+      • internal/media/stockpipeline/ → internal/application/assets/providers/stock/
+      • internal/media/catalogsync/ → internal/application/assets/catalogsync/
+      • internal/media/assettree/ → internal/application/assets/assettree/
+      • internal/media/deletion.go → internal/application/assets/deletion/
+      • internal/media/foldermemory/ → internal/infrastructure/files/foldermemory/
+      • Tutti gli altri sotto-pacchetti migrati ai percorsi canonici.
+    internal/media/ è stato rimosso completamente dal filesystem.
+    Exit gate verificato: zero file Go risolvono simboli da internal/media/.
+  from:
+    - internal/media/assetindex
+    - internal/media/assettree
+    - internal/media/clipcatalog
+    - internal/media/clipindexer
+    - internal/media/clipresolver
+    - internal/media/foldermemory
+    - internal/media/ingest
+    - internal/media/deletion.go
+    - internal/media/{autotag,classifier,ontology,semantic,catalogsync,monitor}
+  to:
+    - internal/application/assets/{catalog,tree,index,resolve,ingest,manifest,delete}
+    - internal/application/assets/{classification,enrichment,ontology,tags,sync,monitor}
+    - internal/infrastructure/database/sqlite/assets
+    - internal/infrastructure/ai/{semantic,classification}
+  active_files_remaining: 0
   exit_gate: "rg 'internal/media/(assetindex|assettree|clipcatalog|clipindexer|clipresolver|foldermemory|ingest|autotag|classifier|ontology|semantic|catalogsync|monitor)' --type go returns zero."
 
 # ── Wave 12 — Providers + Sources ────────────────────────────────────────────
@@ -167,8 +404,34 @@
   status: done
   verified_zero: true
   description: |
-    Typed registry in internal/application/assets/providers/.
-    Artlist, YouTube, Stock providers migrated. internal/sources/ removed.
+    Provider migration completata (June 2026):
+      • Registry tipizzato in internal/application/assets/providers/
+      • Artlist SearchProvider + FetchProvider
+      • YouTube SearchProvider + FetchProvider
+      • Stock pipeline integrato
+      • internal/sources/ rimosso completamente
+      • internal/api/sources/ rimosso (directory vuote eliminate)
+      • Fallback generale rimosso
+      • register-from-youtube migrato a FetchProvider
+    Exit gate verificato: zero riferimenti a internal/sources/.
+  from:
+    - internal/sources/artlist
+    - internal/sources/youtube
+    - internal/media/stockpipeline
+    - internal/media/videomuscles
+    - node-scraper
+  to:
+    - internal/application/assets/providers/{artlist,youtube,stock}
+    - scripts/artlist-scraper
+  completed:
+    - "Registry tipizzato in internal/application/assets/providers/"
+    - "Artlist SearchProvider (artlistadapter.NewAdapter)"
+    - "YouTube SearchProvider (youtubeadapter.NewAdapter)"
+    - "YouTube FetchProvider"
+    - "Rimozione fallback generale"
+    - "Migrazione register-from-youtube → FetchProvider"
+    - "Rimozione internal/sources/"
+    - "Rimozione internal/api/sources/"
   exit_gate: "rg 'internal/sources' --type go returns zero."
 
 # ── Wave 13 — Eliminate internal/media ───────────────────────────────────────
@@ -178,38 +441,48 @@
   status: done
   verified_zero: true
   blocked_by: ["4A", "11", "10"]
+  description: |
+    Wave 13 completata (June 2026). internal/media/ è stato rimosso
+    completamente dal filesystem. Zero file Go risolvono simboli da
+    internal/media/. Exit gate verificato con rg.
+  from: internal/media
+  active_files_remaining: 0
   exit_gate: "rg 'internal/media' --type go returns zero."
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ── ACTIVE WAVES (in_progress) ────────────────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
 
 # ── Wave 14 — API compaction ─────────────────────────────────────────────────
 
 - id: 14
   title: API transport modules consolidation
+  # ci/archcheck-hard-fail (June 2026) PROMOTED Check 19 to hard-fail.
+  # Wave 14's rule forbids internal/infrastructure imports in internal/api/,
+  # but 28 real imports remain grandfathered in
+  # docs/migrations/api-infrastructure-imports-allowlist.txt while the
+  # API compaction migrates per docs/roadmap/PR3_API_COMPACTION.md.
+  # Per the user's literal instruction ("Cancella `status: done` sui
+  # wave che NON hanno passato il nuovo gate"), Wave 14 is honestly
+  # downgraded to in_progress until those 28 imports are extracted.
   status: in_progress
   verified_zero: false
   description: |
-    Consolidamento moduli API:
-    — api/books + api/lessons → api/content ✅
-    — api/scraper + api/mediaingest → api/assets ✅
-    — api/realtime → api/assets/handler_realtime.go ✅
-    — api/searchqueries → api/assets/handler_searchqueries.go ✅
-    — api/fullimages → api/images/handler_full.go ✅
-    — api/workers → api/jobs/handler_workers.go ✅
-    — api/script compacted 25 → 8 ✅
-    — api/drive → removed ✅
-    — api/sources → removed ✅
-    — api/transport introduced ✅
+    Consolidamento dei moduli API completato (June 2026 snapshot):
+    — api/books + api/lessons → api/content
+    — api/scraper + api/mediaingest → api/assets
+    — api/sources rimosso (directory vuote eliminate)
+    — api/transport introdotto
+    — api/realtime → api/assets/handler_realtime.go
+    — api/searchqueries → api/assets/handler_searchqueries.go
+    — api/fullimages → api/images/handler_full.go
+    — api/workers → api/jobs/handler_workers.go
+    — api/script 25 → 8 production files (handler, handler_batch, handler_flow,
+      handler_flow_ops, handler_jobs, flow, types, helpers)
+    — api/drive → rimosso
     
-    PR1 Health boundary: health handler thin-transport; infra checks in
-    internal/infrastructure/health/, orchestrated by
+    Stato attuale: api/ root = 9 file (sotto il limite di 15);
+    api/script/ = 8 produzione + test (sotto il limite hard di 40).
+    
+    PR1 Health boundary (June 2026): health handler thin-transport only;
+    infra checks in internal/infrastructure/health/, orchestrated by
     internal/application/system/health/Service.
-    
-    Remaining: 20 grandfathered infrastructure imports in internal/api/
-    (ref: docs/migrations/api-infrastructure-imports-allowlist.txt).
-    PR2-PR5 pending per docs/roadmap/PR3_API_COMPACTION.md.
   target_subdirs:
     - api/assets
     - api/channels
@@ -222,40 +495,152 @@
     - api/transport
     - api/routes.go
     - api/server.go
-  rule: "API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
-  exit_gate: "internal/api root ≤ 15 files; each api/<feature> dir ≤ 40 files."
-  grandfathered_imports_remaining: 20
+  completed:
+    - "api/books + api/lessons → api/content"
+    - "api/scraper + api/mediaingest → api/assets"
+    - "api/sources → rimosso (directory vuote)"
+    - "api/drive → rimosso"
+    - "api/realtime → api/assets"
+    - "api/searchqueries → api/assets"
+    - "api/fullimages → api/images"
+    - "api/workers → api/jobs"
+    - "api/script compacted 25 → 8"
+    - "api/transport introdotto"
+  merges:
+    - {from: internal/api/drive,        to: internal/api/assets (consolidato)}
+    - {from: internal/api/realtime,     to: internal/api/assets}
+    - {from: internal/api/searchqueries,to: internal/api/assets}
+    - {from: internal/api/fullimages,   to: internal/api/images}
+    - {from: internal/api/workers,      to: internal/api/jobs}
+    - {from: internal/api/script,       to: internal/api/script (compacted in-place)}
+  rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
+  exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files."
+  # ci/archcheck-hard-fail (June 2026) PROMOTED Check 19 (no
+  # internal/infrastructure imports in internal/api/) to hard-fail. Wave
+  # 14's rule above technically forbids such imports, but the in-flight
+  # consolidation has 20 grandfathered entries documented in
+  # docs/migrations/api-infrastructure-imports-allowlist.txt. These are
+  # tracked here so the gate's evidence requirement stays honest while
+  # the migration backlog is processed per docs/roadmap/PR3_API_COMPACTION.md.
+  grandfathered_imports_remaining: 20  # June 24 cleanup: PR3 (script/*), PR4 (system/*), and stale searchqueries allowlist entries retired. PR2 (assets/clips/artlist/soundeffect/youtube) + PR5 (api/middleware 5 + channels/impl + images/impl + module_core_modules + routes + server) remain pending.
+  grandfathered_imports_ref: docs/migrations/api-infrastructure-imports-allowlist.txt
+  grandfathered_imports_migration: docs/roadmap/PR3_API_COMPACTION.md (target PR3-PR2..PR5)
 
 # ── Wave 15 — Composition root alignment ─────────────────────────────────────
 
 - id: 15
   title: App composition root with capability modules
   status: in_progress
-  verified_zero: false
-  blocked_by: ["14"]
-  description: |
-    11 capability bundles built via ComposeRoot + Build*Bundle().
-    CoreDeps mega-struct DELETED (PR4d-final, June 2026).
-    services struct DELETED from dependencies.go.
-    WireRegistry takes (ctx, cfg, log, root *ComposeRoot).
-    All 9 Wire<Module>() constructors take narrow bundle slices.
-    
-    PG-011 app-slice merge: resolved 2026-06-24 — all production and test
-    residuals migrated to *storage.SQLiteDB, zero database/sql imports in app layer.
+  target_structure:
+    - internal/app/composition.go (NEW — ComposeRoot + 11 Build*Bundle())
+    - internal/app/bootstrap.go
+    - internal/app/lifecycle.go
+    - internal/app/shutdown.go
+    - internal/app/registry.go (FREEZE at end)
+    - internal/app/modules/{assets,content,images,jobs,scripts,system,voiceover}.go
   rule: |
     - max 8-10 dependencies per module
     - no single mega-Struct Dependencies with 40 fields
+    - no NewService inside API packages
     - app is the ONLY place where concrete adapters are built
-  exit_gate: |
-    internal/app/dependencies.go no longer exports `services struct`;
-    `internal/app/bootstrap.go` no longer exports `CoreDeps`;
-    `rg '\\*CoreDeps' internal/app/module_*.go` returns zero;
-    `WireRegistry(.*, *CoreDeps)` returns zero;
-    `go test ./internal/app/... -short` green exit 0.
-    scripts/wave15_exit_gate.sh exit 2 (PASS-WITH-DEFERRED, June 2026-06-21).
-  remaining_items:
-    - "Migrate 3 shared helpers (initVoiceoverService, initBooksService, initImageService) from dependencies.go to per-capability modules (PR4.3, PR4.4)"
-    - "Split *backgroundJobs closure in lifecycle.go into typed lifecycle (PR4.8)"
+  blocked_by: ["14"]
+  completed_in_PR4_round:
+    - "internal/app/composition.go — NEW. 11 capability bundles, each ≤10 deps: Drive(7) Repo(9) Search(4) Process(4) AI(8) Domain(10) Jobs(?) Outbox(4) Sync(1) Maint(2) Utility(1). ComposeRoot tree assembled top-down by NewComposition(ctx, cfg, dbs, log) in dependency order."
+    - "Internal/app/lifecycle.go — startBackgroundJobs(ctx, cfg, dbs, root, log, mode) → reads from root.Domains / root.Repos / root.Process, not from *services or *CoreDeps."
+    - "internal/app/shutdown.go — buildCleanup(dbs, root, jobs, cancel, log) is LIFO teardown; single source of truth."
+    - "internal/app/registry.go — WireRegistry(ctx, cfg, log, root, cd) freezes ProviderRegistry at end (after all adapter registrations)."
+    - "internal/app/bootstrap.go — InitCore (returns *CoreDeps for transitional back-compat) + InitComposition (returns *ComposeRoot, preferred path). WireServices + WireMinimal both go through initCompositionMinimal|/initCoreMinimal."
+    - "ProviderRegistry migrated from SyncBundle to SearchBundle (real cohesion, not shuffle: SearchBundle holds asset-search dispatch + resolver)."
+    - "Late-bindings consolidated in NewComposition (jobs.RegisterHandler for YouTube/Voiceover/Books/Lessons/ClipIndexer, ScriptFlowHandler.SetBatchService, ImageService.SetIngestService scheduled in WireRegistry, etc.)."
+    - "go vet ./internal/app + go build ./internal/app + go test ./internal/app/ all GREEN (PR4 round validation)."
+    - "go build ./internal/... whole project GREEN."
+  pending_in_PR4b_P PR4c_P PR4d:
+    - "PR4b — migrate each Wire<Module>() to take narrow bundle(s) instead of *CoreDeps; smallest first: WireSystem, WireScraper, WireJobs (already takes only JobsBundle-ish deps), then WireYouTubeClip (uses only DomainBundle + 2 cross-bundles)."
+    - "PR4c — refactor lifecycle.go to take individual bundle interfaces (not *ComposeRoot) so startBackgroundJobs expresses which bundles it uses."
+    - "PR4d — TEARDOWN: delete `type services struct` in dependencies.go, delete transitional CoreDeps struct in bootstrap.go, delete projectRootToCoreDeps. App root exclusively deals with bundles + 9 Wire<Module> constructors taking narrow bundle slices."
+  completed_in_PR4b:
+    - "CoreDeps struct trimmed 45 → 37 fields. 8 DEAD fields removed: MonitorsRepo, MemoryService, ScriptEngine, ScriptFlowHandler, BooksHandler, LessonsHandler, ProviderRegistry, StyleRegistry (verified by 2x audit: cross-module reads + post-projection writes)."
+    - "projectRootToCoreDeps signature simplified: lost `styleRegistry` parameter; lose local `styleRegistry, _ := generation.NewStyleRegistry(...)` constructor in initCoreMinimalWithContext."
+    - "Imports cleaned up: dropped providers, scriptpkg, scriptcore, gemmamemory, contentapi, generation. (clipresolver + artifacts re-added because the corresponding fields ClipResolver + ArtifactService are post-projection writes, not dead — see PR4c for the migration to bundle ownership)."
+    - "WireJobs MIGRATED from `(cfg, log, coreDeps *CoreDeps)` → `(cfg, log, jobsBundle *JobsBundle)`. Reads jobsBundle.Service directly. WireRegistry callsite updated to `WireJobs(cfg, log, root.Jobs)` — template for the 6 remaining Wire<Module> migrations."
+    - "WireSystem and WireScraper confirmed narrow: signatures `(cfg, log)` → zero coreDeps.X reads. PR4b doc comments added flagging the narrow-bundle pattern."
+    - "go vet ./internal/app + go build ./internal/... + go test ./internal/app/... -short all GREEN. "
+  completed_in_PR4d_chunk1:
+    - "WireImages MIGRATED: `(cfg, log, coreDeps *CoreDeps)` → `(cfg, log, imageSvc *imgservice.Service)`. Body now uses imageSvc directly. WireRegistry callsite updated to WireImages(cfg, log, root.Domains.ImageService)."
+    - "WireDrive MIGRATED: `(cfg, log, coreDeps *CoreDeps)` → `(cfg, log, driveClient *gdrive.Service)`. Body now uses driveClient directly + builds driveUploader. WireRegistry callsite updated to WireDrive(cfg, log, root.Drive.DriveClient)."
+    - "WireFullImages MIGRATED: `(cfg, log, coreDeps *CoreDeps)` → `(cfg, log, imageSvc *imgservice.Service, mediaStore *driveup.Store)`. Body uses imageSvc + mediaStore directly. WireRegistry callsite updated to WireFullImages(cfg, log, root.Domains.ImageService, root.Drive.MediaStore)."
+    - "Comments added in WireImages/WireDrive/WireFullImages flagging the narrow-bundle pattern as the template for the 5 remaining migrations in PR4d-chunk2."
+    - "go vet + go build ./internal/app + go build ./internal/... + go test ./internal/app/... all GREEN."
+  pending_in_PR4d_chunk2:
+    - "Migrate the 5 remaining Wire<Module>() still on coreDeps: WireArtlist (25 reads), WireAssets (19), WireMediaIngest (11), WireStockPipeline (12), WireYouTubeClip (7). Each takes a narrow bundle slice sourced from root.<bundle>.<field>."
+    - "After all 5 migrate, drop `cd.X` access from inside WireRegistry (the late-bindings on cd.ImageService, cd.MaintenanceService, cd.DeletionService, cd.VoiceoverService, cd.VoiceoverSync still go through CoreDeps — but those are in registry.go, not in Wire<Module>)."
+    - "Once no Wire<Module> uses CoreDeps, the CoreDeps struct + projectRootToCoreDeps + the deps projection can be deleted."
+    - "In the SAME final chunk, also delete `type services struct` from internal/app/dependencies.go (the legacy mega-struct that PR4 was supposed to retire). With that gone, the original PR4 directive 'elimina services struct + CoreDeps' finally holds."
+  exit_gate: "internal/app/modules has ≤ 10 files; per-module dependency count ≤ 10; `rg 'type services struct' internal/app/dependencies.go` returns zero; `CoreDeps` struct no longer exported; `rg 'coreDeps \*CoreDeps' internal/app/module_*.go` returns zero."
+  mail_box_to_resolve_in_PR4c_RESOLVED_in_PR4d_chunk2:
+    - "clipResolver (post-projection write from WireArtlist at internal/app/module_artlist.go:56) and ArtifactService (post-projection read at internal/app/module_assets.go:58-59) — PR4c migrates wireClipResolver into BuildDomainBundle + artifacts.NewClipsRegistry into BuildProcessBundle so CoreDeps shrinks further to ~30 fields and the mail-box mutation in modules can be deleted."
+  completed_in_PR4d_chunk2: "5 remaining Wire<Module>() MIGRATED to narrow bundle signatures (WireArtlist + ArtlistBundle 10 fields, WireAssets + AssetsBundle 10 fields, WireMediaIngest + MediaIngestBundle 7 fields, WireStockPipeline + StockBundle 7 fields, WireYouTubeClip 4 direct args). 4 NEW capability bundles created respecting the AGENTS.md ≤10 fields/bundle cap. maintenanceSvc/deletionSvc/clipResolver mail-box antipattern RESOLVED (constructed locally in registry.go with root.* fields, never written back to CoreDeps). MaintenanceService + DeletionService + ArtifactService fields DROPPED from CoreDeps struct; 3 now-unused imports (artifacts, maintenance, media) removed from bootstrap.go. Var _ maintenance.Service dead-code line at end of module_assets.go REMOVED. SetHarvestService keeps the JobHarvestService fallback path as the canonical late-binding (clipresolver.Service doesn't implement script.AutoHarvestService; Resolver field on ArtlistWiring was honestly dropped). go vet + go build + go test ./internal/app/... all GREEN. Reviewer verdict: SHIP."
+  partial_target_met: "Bundle decomposition done; CoreDeps trimmed 45 → 37 → ~33 (MaintenanceService + DeletionService + ArtifactService deletions in PR4d-chunk2). WireJobs narrow; mail-box pattern documented AND resolved across WireArtlist/WireMediaIngest/WireStockPipeline/WireAssets late-bindings."
+  partial_target_met: "Bundle boundary decomposition done. CoreDeps kept as transitional shim — DELETE in PR4d-final. services struct: still present as dead weight in dependencies.go."
+  completed_in_PR4d_final:
+    - "DELETED `type CoreDeps struct` (33 fields) from bootstrap.go; deleted `func InitCore`, `func initCoreMinimal`, `func initCoreMinimalWithContext`, `func projectRootToCoreDeps`. The 8 cd.X reads in registry.go's ScriptFlow inline block + late-bindings + module registrations were refactored to read directly from root.<bundle>.<field>."
+    - "DELETED `type services struct` (40+ fields), `initServices`, `type CoreInfra`, `composeCoreInfra`, `composeRealtimeService`, `type MediaDomain`, `composeMediaDomain`, `composeIntegration` from internal/app/dependencies.go. The file now contains ONLY the 3 shared helpers (initVoiceoverService, initBooksService, initImageService) that composition.go::BuildDomainBundle calls — composition.go's Build*Bundle() functions became the canonical orchestrators."
+    - "WireRegistry signature refactored uniformly to `WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*RegistryWiring, error)`. Last cd.X reference (`cd.JobServiceFacade` at line 142) replaced with `root.Jobs.Facade`."
+    - "Added `startJobRunner func()` field to backgroundJobs struct in lifecycle.go. startBackgroundJobs now captures (jobRunner + root + ctx + cfg + log) in a closure that calls `root.Jobs.Dispatcher.Freeze()` then `concurrent.SafeGo('job-runner', ...)` to start the runner. Replaces the previous `cd.startJobRunner` projection write."
+    - "Added `Ctx context.Context` field to ComposeRoot in composition.go, populated by NewComposition from the bootstrap ctx. WireServices forwards `root.Ctx` to WireRegistry. The ctx-param + root.Ctx duality mirrors the convention of all 9 Wire<Module>() constructors (which also accept ctx)."
+    - "WireServices + WireMinimal in bootstrap.go migrated to use the 4-tuple `initCompositionMinimal(...) → (*ComposeRoot, *backgroundJobs, CleanupFunc, error)`. WireServices triggers `jobs.startJobRunner()` AFTER registryWiring.Registry.Freeze() so the JobRunner picks up jobs only when no further handlers can register."
+    - "BREAKING API CHANGE: `app.InitComposition` return tuple was `(*ComposeRoot, CleanupFunc, error)`, now `(*ComposeRoot, *backgroundJobs, CleanupFunc, error)`. Today only WireServices + WireMinimal (both inside internal/app) call it. Any downstream `go get`-style consumer must recompile. This is documented here so an external grep for `InitComposition` returns the new shape."
+    - "go vet ./internal/app + go build ./internal/app + go build ./internal/... + go test ./internal/app/... all green exit 0. Code-reviewer verdict: SHIP after the final import cleanup (last unused `sqlite/assets` dropped this round)."
+    - "Doc-comments in module_*.go still reference 'Zero *CoreDeps dependency' patterns from PR4a — stylistic cruft, not active code. Out of scope for the teardown itself; cleanable in a follow-up homogenization pass."
+  closing_in_PR4d_final_verification:
+    verification_script: scripts/wave15_exit_gate.sh (historical — script deleted 2026-06-24 after gate passed)
+    verification_date: 2026-06-21
+    verdict: PASS-WITH-DEFERRED (exit 2)
+    exit_code_contract:
+      "0": FULL-PASS — every component check passes AND archcheck -strict flag exists
+      "1": BLOCKED — dupl fails, archcheck fails, residual hits > 0, or AST helper build error
+      "2": PASS-WITH-DEFERRED — all current Wave 15/17 checks pass, but Wave 16 strict-mode flag still missing
+    components_sample_results:
+      go_vet: exit 0 (PR4d-final round)
+      go_test_internal_app: exit 0 (PR4d-final round)
+      dupl_t_100: exit 0, 0 cluster groups >= 100 tokens (dupl-cluster-count awk bug FIXED in this round)
+      archcheck_default: exit 0 (focused gate passed; historical baseline refresh path retired)
+      archcheck_strict: IMPLEMENTED — -strict flag exists (June 2026); exits 1 due to 701 pre-existing aliases + 61 rule violations; Wave 16 target
+      ast_residual_check: zero hits for all 8 PR4d-final-deleted symbols (go/parser-based scan)
+    methodology:
+      residual_scanner: scripts/cmd/residual_ast_scan/main.go (Go AST via go/parser + ast.Inspect)
+      ast_aware_comments: handled at parser level — `//` and `/* */` content never produces ast.Ident
+      selector_expr_limitation: "Searching for dotted names like `cd.JobServiceFacade` is NOT supported (bare names only)"
+      archcheck_update_audit: "retired; focused gate now emits JSON directly from go run ./scripts/archcheck"
+  exit_gate: "internal/app/dependencies.go no longer exports `services struct`; `internal/app/bootstrap.go` no longer exports `CoreDeps`; `rg '\\*CoreDeps' internal/app/module_*.go` returns zero; `WireRegistry(.*, *CoreDeps)` returns zero; `go test ./internal/app/... -short` is green exit 0; `bash scripts/wave15_exit_gate.sh` exit 2 (PASS-WITH-DEFERRED)."
+
+  # PG-011 app-slice merge (June 2026): the canonical *storage.SQLiteDB
+  # substitution landed on internal/app/** + 3 new typed methods on
+  # *assets.ClipsRepository were added at
+  # internal/infrastructure/database/sqlite/assets/clips_repository.go.
+  # Production build + go vet are GREEN on the merge. Test compile for
+  # internal/app/ is broken at 4 test sites and one composition.go
+  # residual remains. Tracked here as residuals per the Brutal Care Plan
+  # convention; cleanup in a follow-up PR.
+  pg_011_app_slice_merge_residuals:
+    production_compile_state: GREEN (go build ./internal/app + go vet ./internal/app clean)
+    test_compile_state: BROKEN (4 test files reference raw *sql.DB; typed-handle refactor deferred)
+    production_residuals:
+      - **RESOLVED 2026-06-24 (PG-011-residual-cleanup)** — internal/app/composition.go::buildHealthService (~line 920): imports database/sql to construct var sqlDB *sql.DB passed to infrahealth.NewSQLiteChecker(*sql.DB). **Fix landed**: `internal/infrastructure/health/sqlite_checker.go::NewSQLiteChecker` and `jobs_checker.go::NewJobsChecker` migrated to accept `*storage.SQLiteDB`. The struct embeds `*sql.DB` anonymously so `PingContext` / `QueryRowContext` resolve via method promotion — `composition.go::buildHealthService` now drops both the `var sqlDB` intermediate and the `\"database/sql\"` import. Test fixtures in `internal/infrastructure/health/{sqlite,jobs}_checker_test.go` and `internal/api/common/health_integration_test.go` (6 wrapper sites) use a single canonical `wrapDB(db *sql.DB) *storage.SQLiteDB` helper declared once in `package health`. Validation: `go build ./...` clean, `go vet ./internal/infrastructure/health/ ./internal/api/common/` clean, `go test ./internal/infrastructure/health/...` PASS, integration tests (`-tags=integration -run='TestHealth|TestReady|TestRouter'`) PASS. Pre-existing test_residual at `composition_test.go:271` (referenced `*sql.DB` for `BuildJobsBundle`) is unrelated to this fix — still tracked below in `test_residuals`.
+      - **RESOLVED 2026-06-24 (PG-011-residual-cleanup)** — internal/app/composition.go::resolveRuntimeDestinations deleted as a no-op alias for configOnlyDestinations. The single caller in build_drive_bundle.go::BuildDriveBundle was rewired to call `var dests = configOnlyDestinations(cfg)` once, unconditionally (both pre-existing branches — drive-online and drive-offline — converged on the cfg-derived *DriveDestinations). The rewire dropped `ctx` / `driveClient` / `log` from the dests construction site (matching the user's note: dests derive from cfg only); driveClient remains a bundle dependency for driveUploader construction + the downstream mediaStore block + the startClosure's folder validation. Composition comment block updated to point at migration.yaml as the audit trail.
+    test_residuals:
+      - **RESOLVED 2026-06-24 (PG-011-residual-cleanup)** — internal/app/composition_test.go TestComposition_NilObligatory_BuildJobsBundle migrated from raw *sql.DB to *storage.SQLiteDB via storage.OpenSQLiteDB. The fixture passes the typed handle to BuildJobsBundle(*storage.SQLiteDB, log) directly; defer replaced with t.Cleanup (panic-safe, matches other test files). database/sql import gone, mattn/go-sqlite3 blank import gone (storage registers internally).
+      - **RESOLVED 2026-06-24 (PG-011-residual-cleanup)** — internal/app/module_jobs_test.go TestBuildJobsBundle_FieldsAreNonNil + _RejectsNilInputs migrated to storage.OpenSQLiteDB("...", zaptest.NewLogger(t)) with BuildJobsBundle(sqliteDB, log). defer → t.Cleanup. database/sql import gone.
+      - **RESOLVED 2026-06-24 (PG-011-residual-cleanup)** — internal/app/sweepers_ghost_test.go helper openTestSQLite now returns *storage.SQLiteDB (was raw *sql.DB); runGhostSweep signature changed upstream to *assets.ClipsRepository (third arg), so each test body constructs clipsRepo via new local helper `newClipsRepo(t, db) *assets.ClipsRepository` that wraps db.DB through `assets.NewClipsRepository`. NilInputs sub-tests preserve nil-pass semantics. database/sql import gone.
+      - **RESOLVED 2026-06-24 (PG-011-residual-cleanup)** — internal/app/worker_registry_e2e_test.go (package app_test) TestE2E_RemoteWorkerExecutesMediaReindex migrated to storage.OpenSQLiteDB(dbPath, zap.NewNop()) on a t.TempDir() file-backed DB. clipindexer.NewService still takes *sql.DB so the canonical escape-hatch pattern `sqliteDB.DB` is intentional (documented as a future wave residual). database/sql import gone.
+    added_typed_methods_in_repository_layer:
+      - internal/infrastructure/database/sqlite/assets/clips_repository.go::DriveFolderAttrs (struct)
+      - internal/infrastructure/database/sqlite/assets/clips_repository.go::LookupDriveFolderIDBySourcePath(ctx, source, folderPath) (folderID, error)
+      - internal/infrastructure/database/sqlite/assets/clips_repository.go::UpsertDriveFolder(ctx, attrs DriveFolderAttrs) error
+      - internal/infrastructure/database/sqlite/assets/clips_repository.go::StreamAssetIDs(ctx, pageSize, onPage func([]string) error) error
+    production_database_sql_residue:
+      - internal/app/composition.go (1 import, 1 var) — see production_residuals above
+    follow_up_ticket: PG-011-residual-cleanup
 
 # ── Wave 16 — Zero-redundancy strict mode ────────────────────────────────────
 
@@ -263,16 +648,20 @@
   title: Zero-redundancy strict architecture
   status: in_progress
   verified_zero: false
-  description: |
-    Strict-mode framework exposed (--strict flag on archcheck, June 2026).
-    Current state: 601 alias hits + 61 rule violations vs. zero target.
-    Full alignment remains a multi-PR backlog (see
-    docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits").
-    
-    PG-016 typed-handle continuation: resolved 2026-06-24 — all internal/api/
-    test fixtures migrated to *storage.SQLiteDB, zero database/sql imports
-    in api layer. clipindexer typed-handle closure landed.
-  blocked_by: ["15"]
+  status_note: |
+    Wave 16 closed 2026-06-22 by operator override at the
+    `architecture-clean-v1` checkpoint tag. The strict-mode
+    `--strict` flag was exposed on `scripts/archcheck/main.go`
+    in codex/db-set-and-paths (June 2026) and wired into the
+    docs/POST_CASCADE_OPERATIONAL_READINESS.md operational readiness
+    doc. The strict-mode gate currently rejects 601 alias hits + 61
+    rule violations vs. the zero target; full zero-redundancy alignment
+    remains a multi-PR migration backlog documented in
+    docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known
+    limits". This closure freezes the framework (strict mode exposed,
+    Check 17 baseline frozen, observability retention policy committed)
+    and unblocks Wave 17 Final Verification + the architecture-clean-v1
+    canonical tag.
   target_metrics:
     forbidden_internal_roots: 0
     legacy_imports: 0
@@ -289,10 +678,50 @@
     duplicate_blocks_above_threshold: 0
     architecture_exceptions: 0
   exit_gate: "All target_metrics are zero. archcheck exits 0 in strict mode (no ratchet)."
-  removes_on_completion:
+  removes:
     - architecture/migration.yaml
     - allowlist temporanee
     - compat.go / aliases.go / legacy.go wrappers
+    - migration TODO comments
+  blocked_by: ["15"]
+  # NOTE: target_metrics above (legacy_imports: 0, type_aliases: 0, etc.) are
+  # ASPIRATIONAL. The Wave 16 operator-override closure keeps the file as
+  # `status: done` while the framework (strict mode + Check 17) prevents new
+  # regressions. Current counts (per migration.yaml comments): 42 grandfathered
+  # DB-imports, 89 alive files in internal/media/, 21 importers in
+  # internal/application/(association|realtime). See
+  # docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits" for
+  # the current state.
+
+  # PG-016 typed-handle continuation (June 2026): the post-PG-011 cleanup
+  # of internal/api/ test fixtures from raw *sql.DB / sql.Open("sqlite3", ...)
+  # to *storage.SQLiteDB via storage.OpenSQLiteDB. Tracked here under Wave 16
+  # (Zero-redundancy strict architecture) because every migration of a
+  # *sql.DB surface off internal/api/ is a direct contribution to the
+  # `sql_outside_infrastructure_database: 0` metric. Follows the same
+  # nested-tracker shape as pg_011_app_slice_merge_residuals under Wave 15.
+  pg_016_api_test_residuals:
+    description: |
+      Continuation of PG-011 typed-handle migration to the internal/api/
+      test fixture surface. Production code in internal/api/ already passes
+      the `Handlers MUST NOT import database/sql` constraint enforced by
+      internal/api/transport/transport.go. Test fixtures were lagging behind
+      (raw *sql.DB + mattn/go-sqlite3 blank import); this tracker closes them.
+    production_compile_state: GREEN (zero production-side imports of database/sql in internal/api/; enforced by Check 19)
+    test_compile_state: GREEN (after this PR — both middleware_auth_test.go and health_integration_test.go imports cleaned)
+    scope_note: |
+      The user directive referenced `internal/media/`; that directory does not exist
+      anymore (removed by Wave 13). The actual media infrastructure lives under
+      `internal/infrastructure/media/` (FFmpeg/processor) +
+      `internal/infrastructure/indexing/clipindexer/`. The clipindexer/NewService
+      raw *sql.DB parameter is the documented intentional escape hatch from PG-011
+      and is tracked as DEFERRED below (separate migration backlog, not in scope).
+    test_residuals:
+      - **RESOLVED 2026-06-24 (PG-016-api-test-residuals)** — internal/api/middleware/middleware_auth_test.go::scanAPITableForSecret now takes `*storage.SQLiteDB` (was `*sql.DB`); body uses `db.Query(...)` which resolves via method promotion from the embedded `*sql.DB` field on `*storage.SQLiteDB`. The 3 call sites (`TestAuth_NeverPersistsTokenValue`'s two subtests + a paranoid workerToken scan) wrap with `&storage.SQLiteDB{DB: db}`. `"database/sql"` import dropped from this file end-to-end; the 3 call-site wraps are the only places the typed handle appears.
+      - **RESOLVED 2026-06-24 (PG-016-api-test-residuals)** — internal/api/common/health_integration_test.go (//go:build integration): three sites migrated from raw `sql.Open("sqlite3", dbPath+"?_journal_mode=WAL")` to `storage.OpenSQLiteDB(dbPath, zaptest.NewLogger(t))` — (a) `newTestHealthHandler` once-per-handler fixture, (b) `TestHealth_DBUnreachable` closed-DB scenario (closure deferred to manual `sqliteDB.Close()`), (c) `TestRouter_WiringWithoutReadyChecker_Returns503` regression-bound scenario. Explicit `_ "github.com/mattn/go-sqlite3"` blank import dropped (storage registers the driver internally); `"database/sql"` import dropped; `_journal_mode=WAL` DSN parameter dropped (storage enables WAL by default). NewSQLiteChecker / NewJobsChecker call sites pass the typed handle directly (no `&storage.SQLiteDB{DB: db}` wrap).
+    media_infra_residuals:
+      - **RESOLVED 2026-06-24** — `internal/infrastructure/indexing/clipindexer/service.go::NewService` + `Service.db` field now use `*storage.SQLiteDB`; `.DB` escape hatch dropped from both call sites in `internal/app/worker_registry_e2e_test.go::TestE2E_RemoteWorkerExecutesMediaReindex` (the `clipSvc` ctor + the `j2` replay ctor). All 4 callers migrated: (1) production `internal/app/composition.go::BuildProcessBundle` passes `dbs.main` directly, (2) production `internal/app/module_artlist.go::wireArtlistCatalog` passes `bundle.DB` directly, (3) `internal/infrastructure/indexing/clipindexer/service_test.go::TestIndexingDoesNotSpawnPythonPerClip` wraps the `drive.NewTestDBWithSchema` fixture via `&drive.SQLiteDB{DB: db}`, (4) the two `worker_registry_e2e_test.go` sites pass `sqliteDB` (a `*storage.SQLiteDB` returned by `storage.OpenSQLiteDB`). "PG-016 clipindexer typed-handle" closure — `database/sql` import removed from `service.go`; the service's 6+ method files query via method promotion on the embedded `*sql.DB` field of `*storage.SQLiteDB`, so query bodies are unchanged. Closes the last intentional `*sql.DB` reference inside `internal/app/` test code.
+    follow_up_ticket: PG-016-api-test-residuals
 
 # ── Wave 17 — Final verification + tag ───────────────────────────────────────
 
@@ -300,12 +729,16 @@
   title: Final verification + canonical tag
   status: in_progress
   verified_zero: false
-  blocked_by: ["16"]
-  description: |
-    architecture-clean-v1 checkpoint tag stamped (June 2026).
-    Partial-strict cert: framework + Check 17 + observability retention
-    + admin db subsystem are green. Reopen only if a future commit
-    invalidates an Approval checkbox.
+  status_note: |
+    Wave 17 closed 2026-06-22. `architecture-clean-v1` checkpoint tag
+    stamped onto main. Per operator override the cert is partial-strict:
+    the framework + Check 17 git gate + observability retention + new
+    admin db subsystem are green; Wave 13 / Wave 8 / pre-existing
+    build errors remain on the Wave-13-pending / separate-fix branch
+    backlog (documented in
+    docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known
+    limits"). Reopen Wave 17 only if any future commit invalidates
+    one of the four Approval checkboxes above.
   gate:
     - gofmt -w .
     - go mod tidy
@@ -316,102 +749,283 @@
     - go test -race ./...
     - go run ./scripts/archcheck
     - dupl -t 100 ./internal/... ./pkg/...
+  structural_diff: []  # referenced files removed; see cleanup-wave-05-pr1-land followup dangle-ref cleanup
+  blocked_by: ["16"]
   tag: architecture-clean-v1
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ── OPERATIONAL ROADMAP ──────────────────────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── Operational Roadmap PR0–PR4 ──────────────────────────────────────────────
-# Source of truth: docs/roadmap/
+# ── Operational Roadmap PR0–PR4 (PR #26, commit fd8e3a43) ────────────────────
+# Source of truth for the next consolidation cycle:
+#   docs/roadmap/README.md
+#   docs/roadmap/PR0_REPOSITORY_TRUTH.md
+#   docs/roadmap/PR1_YOUTUBE_INFRASTRUCTURE.md
+#   docs/roadmap/PR2_ARTLIST_INFRASTRUCTURE.md
+#   docs/roadmap/PR3_API_COMPACTION.md
+#   docs/roadmap/PR4_COMPOSITION_ROOT.md
 #
 # Cross-link matrix (legacy Wave → operational PR):
 #   PR0  — repo docs/baseline alignment only (no code changes).
 #   PR1  — extends Wave 12 (provider extract for YouTube) +
-#          creates internal/infrastructure/youtube/.
+#          creates internal/infrastructure/youtube/ (new package).
 #   PR2  — extends Wave 12 (provider/surface-vs-scraper split for Artlist) +
-#          creates internal/infrastructure/artlist/.
-#   PR3  — finishes Wave 14 (api directory consolidation).
-#   PR4  — finishes Wave 15 residual items (services struct + CoreDeps removed).
+#          creates internal/infrastructure/artlist/ (new package with
+#          scraper/ subdir [client, process, parser] and downloader/ subdir
+#          [download.go, hls.go]); also extracts HLS streaming,
+#          FFmpeg integration, and owns the Artlist `database/sql` adapter
+#          (these last 3 are NOT covered by Wave 12).
+#   PR3  — finishes Wave 14 (api/{drive,realtime,searchqueries,sources,
+#          fullimages,workers,script} → api/{assets,images,jobs,scripts}).
+#   PR4  — finishes Wave 15 residual items (services struct + CoreDeps
+#          already removed by Wave 15 PR4d-final).
 #
 # Synchronisation rules (do not regress):
 #   * Wave 14 stays `in_progress` until PR3 closes all 7 api/ directories.
-#   * Wave 15 stays `in_progress` until the 3 shared helpers in
-#     dependencies.go migrate to per-capability modules and the
-#     *backgroundJobs closure splits into a typed lifecycle.
-#   * Wave 16 closes only when archcheck --strict mode exits 0.
+#   * Wave 15 stays `in_progress` until the three shared helpers
+#     (`initVoiceoverService`, `initBooksService`, `initImageService`)
+#     currently in `internal/app/dependencies.go` migrate to per-capability
+#     modules — `modules/voiceover.go` (PR4.4), `modules/content.go`
+#     (PR4.3), `modules/images.go` (PR4.4) — and the `*backgroundJobs`
+#     closure in `lifecycle.go` splits into a typed lifecycle (PR4.8).
+#   * Wave 16 closes only when archcheck --strict mode exits 0 AND the
+#     strict-mode ratchet holds (no alias hits, no violation counts).
 #   * Wave 17 is the final verification gate; tag architecture-clean-v1
-#     preserved but NO new waves may use operator-override without
-#     verified_zero: true.
-
-# ── Verified-zero policy (June 2026) ─────────────────────────────────────────
-# Enforced by Check 21 in scripts/ci-architectural-checks.sh:
+#     is preserved as a historical milestone but NO new waves may use
+#     operator-override to flip to `done` without verified_zero: true.
+# -----------------------------------------------------------------------------
+#
+# ── Verified-zero policy (PR1, June 2026) ───────────────────────────────
+# Enforced by Check 21 in `scripts/ci-architectural-checks.sh`:
 #   1. A wave with `status: done` MUST have `verified_zero: true`.
 #   2. `verified_zero: true` requires `go run ./scripts/archcheck`
 #      to exit 0 for the promoted focused gates.
 #   3. A missing `verified_zero` field is interpreted as `false` (fail).
-
-# ── Archcheck ratchet split (June 2026) ──────────────────────────────────────
-# Two files own the current split:
-#   * scripts/archcheck/grandfathered_allowlist.json — single source of
-#     truth for the ratchet; contains ONLY violations counts dict.
+# Waves 16, 17 had been flipped to `done` via "operator override" before
+# this policy existed; both are now downgraded to `in_progress` until the
+# strict-mode ratchet reports zero.
+# -----------------------------------------------------------------------------
+#
+# ── Archcheck ratchet split (PR1, June 2026) ──────────────────────────
+# The legacy full-snapshot JSON baseline has been deleted. Two files own
+# the current split:
+#   * `scripts/archcheck/grandfathered_allowlist.json` — single source of
+#     truth for the ratchet; contains ONLY `violations` counts dict.
 #     Monotone-decreasing (operators may remove entries; never raise them).
-#   * scripts/archcheck/current_report.json — diagnostic snapshot of the
-#     CURRENT scan. Generated on every run; NEVER used as an allowlist.
-#     Directory/alias/wrapper evolution is NOT ratcheted.
+#   * `scripts/archcheck/current_report.json` — diagnostic snapshot of the
+#     CURRENT scan (directories + aliases + wrappers + violations).
+#     Generated on every run; NEVER used as an allowlist; suitable for
+#     gitignore (regenerated cheaply). Directory/alias/wrapper evolution
+#     is NOT ratcheted (they are legitimate new artifacts); only violation
+#     counts participate in the ratchet.
+# -----------------------------------------------------------------------------
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ── FOLLOWUPS ────────────────────────────────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── Post-cascade operational followups (June 2026) ───────────────────────────
+# ── Post-cascade operational followups (June 2026) ─────────────────────────────
 # Source of truth: docs/POST_CASCADE_OPERATIONAL_READINESS.md
-# Cascade ship commit: 62ae9cd62a8770e95f6e33b00318dc3ed203c685
+#
+# After PR1.7 cascade ship (`62ae9cd6` merge ✓), 3 latent-risk items are
+# BLOCKING and 5+ items are MEDIUM/LOW priority. These belong to waves in
+# flight and NEW followups. Tracked here as a non-wave exit-gate so the next
+# operator sees the full scope of remaining items without flipping wave
+# statuses prematurely.
 
 post_cascade_followups:
   ref_doc: docs/POST_CASCADE_OPERATIONAL_READINESS.md
-  theme: PR1.7 youtube port cascade + PR2 canonical DownloaderMetadata DTO cleanup
-  resolved_blocking_items:
-    - CPR-LR-1: Thumbnails:nil data loss → resolved 2026-06-24 (yt-dlp translation at adapter seam)
-    - CPR-LR-2: searchRunnerStub silent-empty → resolved PR2 (June 2026), stub removed
-    - CPR-LR-3: Typed-nil composition panic → resolved PR5 (June 2026), pkg/portutil guard
-    - CPR-CI-4: Verify gate expansion → resolved PR1 (June 2026), Check 14 in CI
-  pending_items:
+  cascade_ship_commit: 62ae9cd62a8770e95f6e33b00318dc3ed203c685
+  theme: PR1.7 youtube port cascade +
+         PR2 canonical DownloaderMetadata DTO cleanup
+  blocking_items:
+    - id: CPR-LR-1
+      title: Thumbnails:nil data loss
+      severity: BLOCKING
+      status: resolved
+      resolved_in: 2026-06-24 cleanup
+      resolution: |
+        Raw yt-dlp Thumbnails already translated to []youtubedto.VideoThumbnail
+        at the adapter seam in GetVideoMetadata (lines 114-121 of metadata.go).
+    - id: CPR-LR-2
+      title: searchRunnerStub silent-empty
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR2 (June 2026), verified 2026-06-24
+      resolution: |
+        searchRunnerStub COMPLETELY REMOVED from youtube_adapters.go.
+        Production wiring now uses ytinfra.NewSearchRunnerAdapter(cfg, log)
+        which returns nil at construction time when cfg/log is nil and
+        wraps subprocess errors with typed sentinel errors.
+    - id: CPR-LR-3
+      title: Typed-nil composition panic
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR5 (June 2026), verified 2026-06-24
+      resolution: |
+        pkg/portutil/isNilPort utility introduced and applied at all
+        typed-nil boundaries in NewService (search runner guard),
+        dispatchOrIndex (assetRepo guard), and MD5File (hashSvc guard).
+        segment.go no longer exists (migrated to ytsegments capability).
+    - id: CPR-CI-4
+      title: Verify gate expansion (api + worker)
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR1 (June 2026), verified 2026-06-24
+      resolution: |
+        Check 14 in ci-architectural-checks.sh already enforces
+        go vet ./internal/api/... and go build ./cmd/worker/...
+        as mandatory gates.
+  medium_items:
     - id: CPR-CC-6
       title: Split internal/application/youtube mega-package (43 files)
       severity: MEDIUM
+      suggested_PR: pr/split-youtube-megapackage-2026-06-21
+      target_layout: see docs/POST_CASCADE_OPERATIONAL_READINESS.md §6.PR3
       size_target: 5-8 production files per subdir per AGENTS.md Pattern 5
+    - id: CPR-CC-7
+      title: Relocate YouTubeCacheEntry DTO
+      severity: MEDIUM
+      status: done
+      merged_in_commit: pr/post-cascade-cleanup-2026-06-21
+      from: internal/application/youtube/ports.go
+      to: internal/infrastructure/database/sqlite/assets/youtube_cache.go
+      reason: AGENTS.md Pattern 8 (application layer = thin transport only)
     - id: CPR-TC-8
       title: MetadataFetcherAdapter preserves Thumbnails array (round-trip)
       severity: MEDIUM
+      co_landing: should land with CPR-LR-1 to verify the fix
     - id: CPR-TC-9
       title: searchRunnerStub empty-state + ctx.Err() coverage
       severity: MEDIUM
+      co_landing: should land with CPR-LR-2 to verify the fix
     - id: CPR-CC-10
-      title: archcheck --strict flag baseline regeneration
+      title: archcheck --strict flag exposure
       severity: MEDIUM
-      wave_precondition: Wave 16
+      wave_precondition: Wave 16 (zero-redundancy strict)
+      fix: expose `-strict` in scripts/archcheck/main.go +
+           rerun baseline regeneration in strict mode
+  process_guide:
+    per_PR_descriptions: see docs/POST_CASCADE_OPERATIONAL_READINESS.md §5
+    dont_do_list: see docs/POST_CASCADE_OPERATIONAL_READINESS.md §6
+    day_1_commands_from_another_machine:
+      see docs/POST_CASCADE_OPERATIONAL_READINESS.md §7
+  cross_references:
+    - docs/migration-maps/internal-application-youtube.md  (per-cascade migration map)
+    - AGENTS.md §"Pattern 0 — Port abstraction layer"  (design rule)
+    - ARCHITECTURE.md §14  (post-cascade section)
+    - scripts/archcheck/baseline-justifications.md §"PR1.7 youtube port cascade ship (2026-06-21)"
+      (ratchet accounting doc)
+
+# Wave 18 (June 2026) -- Heyavatar legacy cleanup (cross-project reference).
+# Informational only -- canonical owner of Heyavatar code lives in the
+# Heyavatar repo (TODO.md), NOT in Pipelinegen.
+- id: 18
+  title: Heyavatar legacy cleanup (cross-project reference)
+  kind: cross_project_reference
+  status: done
+  verified_zero: true
+  canonical_substitute: body_template_cached (src/application/render_cached_avatar.py, replaces precompute chain)
+  description: |
+    Cross-project reference: Heyavatar repo (C:/Users/pater/Pyt/Heyavatar)
+    received a two-pass legacy cleanup on 2026-06-24.
+
+    Passata 1: 13 files removed + 2 directories (providers/lipsync/, providers/body_assets/).
+    Passata 2: 3 orphan workers removed (planner_worker, face_worker, quality_worker).
+    Dependency add: opencv-python>=4.8 in heyavatar/pyproject.toml + requirements.txt.
+
+    Verification at Heyavatar HEAD:
+      * 11 simboli rimossi -> zero ref residue in non-cache sources
+      * smoke import verde per providers, workers, contracts, src.application, OpenCVFaceCompositor, MuseTalkAdapter
+      * pytest tests/ -k 'not test_api_metrics and not test_metrics and not test_real_gpu': 224 passed, 1 failed (env-driven: mediapipe solutions API + SSD calibration; unrelated to cleanup)
+      * pytest tests/smoke/test_real_gpu/test_engine_load.py::test_engine_loads_in_real_mode: PASSED in 7.70s
+
+    Architectural shifts:
+      * Body template (cached, canonical) replaces precompute chain for render_cached_avatar.py
+      * OpenCVFaceCompositor is the SINGLE compositor path
+      * MuseTalkAdapter (providers/musetalk/adapter/engine.py) is the SINGLE musetalk path
+      * LivePortraitAdapter with liveportrait_upstream dynamic mount is the SINGLE liveportrait path
+  from_heyavatar:
+    - heyavatar/workers/lipsync_worker.py
+    - heyavatar/workers/composition_worker.py
+    - heyavatar/workers/avatar_precompute_worker.py
+    - heyavatar/workers/planner_worker.py
+    - heyavatar/workers/face_worker.py
+    - heyavatar/workers/quality_worker.py
+    - heyavatar/providers/lipsync/musetalk/lip_sync.py
+    - heyavatar/providers/compositing/ffmpeg/compositor.py
+    - heyavatar/providers/lipsync (entire directory)
+    - heyavatar/providers/body_assets (entire directory)
+    - heyavatar/src/application/precompute_avatar.py
+    - heyavatar/src/body/resolver.py
+    - heyavatar/src/motion/resolver.py
+    - heyavatar/contracts/lip_sync_engine.py
+    - heyavatar/contracts/motion_repository.py
+    - heyavatar/contracts/body_asset_provider.py
+    - heyavatar/tests/smoke/test_new_architecture.py
+  to_heyavatar:
+    - heyavatar/providers/compositing/opencv_face/compositor.OpenCVFaceCompositor (canonical, kept)
+    - heyavatar/providers/musetalk/adapter/engine.MuseTalkAdapter (canonical, kept)
+    - heyavatar/providers/liveportrait/adapter/engine.LivePortraitAdapter (canonical, kept)
+    - heyavatar/src/application/render_cached_avatar.render_cached_avatar (canonical orchestrator, kept)
+    - heyavatar/src/application/run_cached_avatar_from_text.run_cached_avatar_from_text (canonical orchestrator, kept)
+  file_count: 16
+  directory_count: 2
+  exit_gate: |
+    Cross-project check (operator-side rg on Heyavatar HEAD):
+      rg 'MuseTalkLipSyncEngine|FFmpegPoissonCompositor|LipSyncWorker|CompositionWorker|AvatarPrecomputeWorker|PlannerWorker|FaceWorker|QualityWorker|BodyAssetProvider|MotionRepository|FileMotionRepository|CachedBodyAssetProvider|AvatarPrecomputer' heyavatar/src heyavatar/providers heyavatar/workers heyavatar/contracts heyavatar/tests --type py returns zero.
+  cross_ref:
+    heyavatar_repo: C:/Users/pater/Pyt/Heyavatar
+    heyavatar_todo: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
+  no_pipelinegen_files_changed: true
 
 # ── Legacy Fallback Cleanup (June 2026) ──────────────────────────────────────
-# Removes all remaining legacy/canonical dual-path fallback mechanisms.
+# Removes all remaining legacy/canonical dual-path fallback mechanisms that
+# allowed the old code paths to reappear. After this cleanup, every service
+# uses the canonical outbox dispatcher exclusively.
 
 legacy_fallback_cleanup:
   date: 2026-06-23
-  status: done
   description: |
-    Eliminates all legacy fallback patterns. Every service uses the
-    canonical outbox dispatcher exclusively. SetDispatcher methods removed,
-    EnqueueOrFallback replaced with Dispatch. realtime.NewService panics
-    if clips or outbox are nil.
-  items:
-    - LFC-1: stockpipeline dispatcher wired + legacy fallback removed ✅
-    - LFC-2: artlist dispatch_bridge legacy fallback removed ✅
-    - LFC-3: realtime clips/outbox required ✅
-    - LFC-4: youtube legacy fallback comment removed ✅
-    - LFC-5: catalogsync dispatcher wired + legacy fallback removed ✅
-    - LFC-6: assets module legacy handlers removed ✅
+    Eliminates all remaining legacy fallback patterns that maintained
+    dual code paths (canonical + legacy). After this cleanup:
+    - Every service requires the outbox dispatcher (no nil tolerance)
+    - Legacy UpsertClip + SafeGoFunc(IndexClip) paths are removed
+    - SetDispatcher methods removed from stockpipeline and catalogsync
+    - dispatch_bridge.go EnqueueOrFallback replaced with Dispatch (error-returning)
+    - realtime.NewService panics if clips or outbox are nil
+    - assets module Dependencies no longer aggregates legacy handlers
+  changes:
+    - id: LFC-1
+      title: stockpipeline dispatcher wired + legacy fallback removed
+      files:
+        - internal/app/module_stock.go (Dispatcher added to StockBundle, wired in WireStockPipeline)
+        - internal/app/registry.go (root.Outbox.Dispatcher passed to StockBundle)
+        - internal/application/assets/providers/stock/stockpipeline/service.go (SetDispatcher removed, dispatcher required)
+        - internal/application/assets/providers/stock/stockpipeline/run_upload.go (legacy UpsertClip + SafeGoFunc path removed)
+    - id: LFC-2
+      title: artlist dispatch_bridge legacy fallback removed
+      files:
+        - internal/application/assets/providers/artlist/dispatch_bridge.go (EnqueueOrFallback → Dispatch, dispatcher required)
+        - internal/application/assets/providers/artlist/semantic_enricher.go (updated to use Dispatch)
+        - internal/application/assets/providers/artlist/run_orchestrator_stages.go (stageIndexAsync no-op, stagePersistResults uses Dispatch)
+    - id: LFC-3
+      title: realtime clips/outbox required
+      files:
+        - internal/application/assets/realtime/service.go (NewService panics if nil)
+        - internal/application/assets/realtime/index_health.go (nil-safe fallbacks removed)
+    - id: LFC-4
+      title: youtube legacy fallback comment removed
+      files:
+        - internal/application/youtube/searcher_metadata.go (legacy os/exec comment removed)
+    - id: LFC-5
+      title: catalogsync dispatcher wired + legacy fallback removed
+      files:
+        - internal/app/composition.go (BuildSyncBundle takes OutboxBundle, wires dispatcher)
+        - internal/application/assets/catalogsync/service.go (dispatcher comment updated)
+        - internal/application/assets/catalogsync/sync_persist.go (legacy UpsertClip + SafeGoFunc path removed)
+        - internal/application/assets/catalogsync/dispatcher_test.go (nil dispatcher test now expects error)
+    - id: LFC-6
+      title: assets module legacy handlers removed
+      files:
+        - internal/api/assets/module.go (MediaIngest/Scraper fields removed from Dependencies)
   exit_gate: |
     rg 'dispatcher != nil' internal/application/assets/providers/stock/ returns zero.
     rg 'EnqueueOrFallback' internal/application/assets/providers/artlist/ returns zero.
+    rg 'legacy fallback' internal/application/assets/ returns zero (comments only).
     rg 'SetDispatcher' internal/application/assets/providers/stock/ returns zero.
     rg 'MediaIngest.*Handler|Scraper.*Handler' internal/api/assets/module.go returns zero.
+# -----------------------------------------------------------------------------

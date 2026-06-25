@@ -5,7 +5,6 @@ Uses APIRouter; __init__.py mounts this via `app.include_router(visual.router)`.
 
 import json
 import os
-import sqlite3
 import subprocess
 
 from fastapi import APIRouter, HTTPException
@@ -25,7 +24,7 @@ router = APIRouter()
 
 @router.post("/index_visual")
 async def index_visual(req: IndexVisualRequest):
-    """Generate CLIP embedding from image file and update SQLite."""
+    """Generate SigLIP embedding from image file and return it to Go."""
     async with _inference_sem:
         try:
             from PIL import Image
@@ -34,18 +33,13 @@ async def index_visual(req: IndexVisualRequest):
             img = Image.open(req.frame_path)
             embedding = siglip_model.encode(img).tolist()
             h = str(imagehash.phash(img))
-
-            conn = sqlite3.connect(req.db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.visual_embedding_json', ?), "
-                "metadata_json = json_set(metadata_json, '$.phash', ?) WHERE id = ?",
-                (json.dumps(embedding), h, req.clip_id),
-            )
-            conn.commit()
-            conn.close()
-
-            return {"status": "success", "phash": h, "dimensions": len(embedding)}
+            return {
+                "status": "success",
+                "clip_id": req.clip_id,
+                "embedding": embedding,
+                "phash": h,
+                "dimensions": len(embedding),
+            }
         except Exception as e:
             import traceback
             print(traceback.format_exc())
@@ -88,9 +82,7 @@ async def index_visual_multi(req: IndexVisualMultiRequest):
     """Generate multi-frame CLIP embeddings from a video file.
 
     Extracts frames at 20%, 50%, 80% of video duration (configurable).
-    Returns 3 CLIP embeddings (512d each) and updates SQLite with:
-    - visual_frame_embeddings: JSON array of per-frame embeddings
-    - visual_embedding: averaged embedding (main vector, backward-compatible)
+    Returns 3 SigLIP embeddings and their averaged embedding.
     """
     async with _inference_sem:
         try:
@@ -144,23 +136,13 @@ async def index_visual_multi(req: IndexVisualMultiRequest):
             import numpy as np
             avg_embedding = np.mean(frame_embeddings, axis=0).tolist()
 
-            # Update SQLite
-            conn = sqlite3.connect(req.db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE media_assets SET "
-                "visual_embedding = ?, "
-                "metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.visual_frame_embeddings', ?) "
-                "WHERE id = ?",
-                (json.dumps(avg_embedding), json.dumps(frame_embeddings), req.clip_id),
-            )
-            conn.commit()
-            conn.close()
-
             return {
                 "status": "success",
+                "clip_id": req.clip_id,
                 "frame_count": len(frame_embeddings),
                 "frame_positions": req.frame_positions[:len(frame_embeddings)],
+                "frame_embeddings": frame_embeddings,
+                "averaged_embedding": avg_embedding,
                 "dimensions": len(avg_embedding),
             }
         except HTTPException:

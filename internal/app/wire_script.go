@@ -299,11 +299,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// ── Construct handler ──────────────────────────────────────────────
-	// PG-024: genSvc and gates flow through ScriptFlowDeps directly;
-	// the legacy Handler wrapper that duplicated per-route gating
-	// has been removed. ScriptFlowHandler.RegisterRoutes is now the
-	// single canonical route registration.
+	// ── Generation service + feature gates ───────────────────────────
+	// genSvc backs the /generate-from-clips and /generate-with-images
+	// HTTP endpoints; gates decide which routes are mounted.
 	//
 	// root.Jobs.Facade (NOT root.Jobs.Service) is passed to
 	// NewGenerationService because the canonical JobEnqueuer port
@@ -312,6 +310,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// domain facade) whose Enqueue method signature matches the
 	// port exactly; the facade internally translates to
 	// *appjobs.EnqueueRequest via its installed EnqueueFn closure.
+	genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
+	gates := scriptapi.FeatureGates{
+		ScriptClipsEnabled:  cfg.Features.ScriptClipsEnabled,
+		ScriptDocsEnabled:   cfg.Features.ScriptDocsEnabled,
+		ScriptImagesEnabled: cfg.Features.ImagesEnabled,
+	}
+
+	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:                engine,
 		Batch:                 batchSvc,
@@ -368,32 +374,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Register HTTP module ───────────────────────────────────────────
-	// PG-024: handler (*ScriptFlowHandler) is passed directly — the
-	// legacy Handler wrapper (NewHandler) that duplicated per-route
-	// gating has been removed. ScriptFlowHandler.RegisterRoutes is
-	// now the single canonical route registration.
 	mod := module.NewRouteModule(
 		"script-flow",
-		// Module-level gate: expose the /script route group if
-		// EITHER clips, docs, or images is enabled. Per-route gating in
-		// ScriptFlowHandler.RegisterRoutes decides which individual
-		// endpoints respond (clip-source vs Google Docs vs images).
 		func() bool { return anyScriptFeatureEnabled(cfg) },
 		"/script",
 		handler,
 		log,
-		// AGENT-2 (June 2026): the previous
-		//   module.WithMiddleware(middleware.ScriptDocsEnabled(cfg))
-		// has been intentionally removed: the `internal/api/middleware`
-		// package would introduce a backwards dependency from
-		// `internal/app` -> `internal/api/middleware`, violating the
-		// top-down composition rule (composition must not import transport).
-		// The `enabledFn` closure above already gates the route on
-		// `cfg.Features.ScriptDocsEnabled`, so the explicit middleware
-		// layer was redundant. AGENT-3 may reintroduce a canonical
-		// script-docs middleware living under
-		// `internal/application/scripts/` or `internal/domain/` if a
-		// per-request handler becomes necessary.
 	)
 	registerModule(registry, log, mod)
 }

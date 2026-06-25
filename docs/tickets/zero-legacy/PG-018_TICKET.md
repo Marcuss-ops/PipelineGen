@@ -1,11 +1,45 @@
-# PG-018 — Boundary application/jobs
+# PG-018 — Boundary del servizio job
 
-**Stato:** PARZIALE
+**Priorità:** P0
+**Branch unica:** `codex/pg-018-jobs-boundary`
 
-Workflow: solo `main`, senza branch e senza PR.
+## Obiettivo
 
-PG-017 ha già eliminato la facade. Non ricrearla.
+Il servizio applicativo usa contratti domain e collaboratori tipizzati. I dettagli concreti restano nei rispettivi adapter.
 
-Todo: sincronizzare `main`; verificare dipendenze concrete nel service jobs; completare il contratto Store minimo; introdurre un generatore ID testabile; rendere canonico il DTO statistiche; spostare dettagli SQLite negli adapter; aggiornare costruttore, composition, fake e test; aggiungere assertion compile-time; verificare nessun dettaglio adapter nell’application; eseguire gofmt, test jobs, test completi, vet, build e archcheck; rebase su `origin/main`; commit mirato; `git push origin main`.
+## Checklist A–Z
 
-Done: service jobs basato solo su porte domain, ID testabile, nessun adapter concreto.
+A. Sincronizzare main.
+B. Creare soltanto la branch indicata.
+C. Inventariare dipendenze concrete e generatori ID.
+D. Leggere Store, DTO e composition correnti.
+E. Completare il contratto Store minimo.
+F. Definire statistiche canoniche.
+G. Iniettare il contratto Store.
+H. Definire un generatore ID testabile.
+I. Aggiornare il costruttore.
+J. Aggiornare l’adapter di persistenza.
+K. Aggiornare il composition root.
+L. Aggiungere assertion compile-time.
+M. Aggiornare fake e fixture.
+N. Testare active key e correlation ID.
+O. Verificare assenza di dettagli concreti nel service.
+P. Eseguire gofmt.
+Q. Eseguire test mirati.
+R. Eseguire tutti i test.
+S. Eseguire vet e build.
+T. Eseguire archcheck ratchet.
+U. Ripetere l’inventario.
+V. Controllare diff e scope.
+W. Aggiornare solo documentazione canonica.
+X. Rebase e ritestare.
+Y. Commit e push.
+Z. Verificare log, status e check.
+
+## Criteri di accettazione
+
+- [ ] Store domain unico.
+- [ ] Generatore ID testabile.
+- [ ] Statistiche canoniche.
+- [ ] Nessun dettaglio adapter nel service.
+- [ ] Test e gate verdi.

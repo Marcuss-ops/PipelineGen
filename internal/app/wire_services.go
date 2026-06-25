@@ -35,6 +35,7 @@ import (
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -264,12 +265,17 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if root != nil && root.Utility != nil {
 		readyChecker = root.Utility.ReadyChecker
 	}
+	var internalMediaHandler interface{ RegisterInternalMediaRoutes(*gin.RouterGroup) }
+	if registryWiring.Assets != nil {
+		internalMediaHandler = registryWiring.Assets.InternalMediaHandler
+	}
 	return &AppDeps{
-		Registry:      registryWiring.Registry,
-		WorkerHandler: workerHandler,
-		Lifecycle:     lifecycle,
-		HealthService: healthSvc,
-		ReadyChecker:  readyChecker,
+		Registry:             registryWiring.Registry,
+		WorkerHandler:        workerHandler,
+		InternalMediaHandler: internalMediaHandler,
+		Lifecycle:            lifecycle,
+		HealthService:        healthSvc,
+		ReadyChecker:         readyChecker,
 	}, nil
 }
 

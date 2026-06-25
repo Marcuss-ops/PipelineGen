@@ -5,6 +5,7 @@
 //
 // The post-recovery dispatcher honours all subcommands plus the pre-existing fleet:
 //
+//   - backfill-artlist-media-type (cmd/admin/backfill_artlist_media_type.go)
 //   - benchmark                   (cmd/admin/benchmark.go)
 //   - cleanup-orphans             (cmd/admin/cleanup.go)
 //   - cleanup-all-orphans         (cmd/admin/cleanup.go)
@@ -14,15 +15,13 @@
 //   - list-drive-folder           (cmd/admin/list_drive_folder.go)
 //   - reset-video-ai              (cmd/admin/reset_video_ai.go)
 //   - sync-all-drive              (cmd/admin/cleanup.go)
+//   - test-youtube                (cmd/admin/cleanup.go)
+//   - upload-t5pre                (cmd/admin/upload_t5pre.go)
 //   - verify-artlist-pipeline     (cmd/admin/verify.go)
 //   - seed-channels, stock-reset, stock-subfolders-reset,
-//     summarize-book, sync-outros,
-//     list-styles, db, gen-api-docs
+//     summarize-book, sync-outros, unify-catalogs,
+//     list-styles, backfill-missing, db, gen-api-docs
 //     (pre-existing fleet).
-//
-// PG-026 (June 2026): retired concluded migration commands:
-//   - backfill-artlist-media-type, backfill-missing, unify-catalogs
-//   - test-youtube, upload-t5pre (compatibility stubs)
 //
 // The contract enforced by `cmd/admin/admin_test.go::TestAdminCommands_AreRegistered`
 // is that every command documented below in `availableCommands` has a
@@ -42,6 +41,8 @@ import (
 // `TestAdminCommands_AreRegistered` against the live switch block in
 // main(). Keep it in lock-step with the switch below.
 var availableCommands = []string{
+	"backfill-artlist-media-type",
+	"backfill-missing",
 	"benchmark",
 	"cleanup-all-orphans",
 	"cleanup-artlist-empty-folders",
@@ -60,6 +61,9 @@ var availableCommands = []string{
 	"summarize-book",
 	"sync-all-drive",
 	"sync-outros",
+	"test-youtube",
+	"unify-catalogs",
+	"upload-t5pre",
 	"verify-artlist-pipeline",
 }
 
@@ -74,7 +78,9 @@ func main() {
 
 	var err error
 	switch cmd {
-	// ── Subcommands (cmd/admin/<file>.go) ──────────────────────────
+	// ── AGENT-1 owned subcommands (cmd/admin/<file>.go) ─────────────
+	case "backfill-artlist-media-type":
+		err = runBackfillArtlistMediaType(args)
 	case "benchmark":
 		err = runBenchmark(args)
 	case "cleanup-all-orphans":
@@ -95,6 +101,10 @@ func main() {
 		err = runResetVideoAI(args)
 	case "sync-all-drive":
 		err = runSyncAllDrive(args)
+	case "test-youtube":
+		err = runTestYouTube(args)
+	case "upload-t5pre":
+		err = runUploadT5Pre(args)
 	case "verify-artlist-pipeline":
 		err = runVerifyArtlistPipeline(args)
 
@@ -109,8 +119,12 @@ func main() {
 		err = runSummarizeBook(args)
 	case "sync-outros":
 		err = runSyncOutros(args)
+	case "unify-catalogs":
+		err = runUnifyCatalogs(args)
 	case "list-styles":
-		err = runListStyles(args)
+		err = runListStyles(args) // fallback/default
+	case "backfill-missing":
+		err = runBackfillMissing(args)
 	case "db":
 		err = runDB(args)
 	case "gen-api-docs":

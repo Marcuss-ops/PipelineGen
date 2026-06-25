@@ -66,6 +66,10 @@ func runFocusedChecks() Report {
 	checks["ownership_yaml_missing_paths"] = ownershipMissing
 	violations = append(violations, ownershipViolations...)
 
+	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
+	checks["python_legacy_writer_violations"] = pythonWriterViolations
+	violations = append(violations, pythonWriterFindings...)
+
 	return Report{
 		Passed:            len(violations) == 0,
 		FocusedGatePassed: len(violations) == 0,
@@ -101,6 +105,10 @@ func runRatchetChecks() Report {
 	ownershipMissing, ownershipViolations := checkOwnershipYAML()
 	checks["ownership_yaml_missing_paths"] = ownershipMissing
 	violations = append(violations, ownershipViolations...)
+
+	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
+	checks["python_legacy_writer_violations"] = pythonWriterViolations
+	violations = append(violations, pythonWriterFindings...)
 
 	return Report{
 		Passed:            len(violations) == 0,
@@ -443,4 +451,56 @@ func checkOwnershipRef(ref string, violations *[]string) {
 	if _, err := os.Stat(candidate); err != nil {
 		*violations = append(*violations, fmt.Sprintf("ownership.yaml references missing path: %s", ref))
 	}
+}
+
+type pythonLegacyRule struct {
+	Path     string
+	Patterns []string
+}
+
+func checkPythonLegacyWriterGate() (int, []string) {
+	rules := []pythonLegacyRule{
+		{
+			Path: "scripts/tools/sync_drive_qdrant.py",
+			Patterns: []string{
+				"sqlite3",
+				"SentenceTransformer",
+				"qdrant_client",
+				"googleapiclient",
+				"google.oauth2",
+				"/collections/",
+			},
+		},
+		{
+			Path:     "scripts/services/embedding_server/text.py",
+			Patterns: []string{"sqlite3"},
+		},
+		{
+			Path:     "scripts/services/embedding_server/visual.py",
+			Patterns: []string{"sqlite3"},
+		},
+		{
+			Path:     "scripts/services/embedding_server/audio.py",
+			Patterns: []string{"sqlite3"},
+		},
+	}
+
+	var violations []string
+	for _, rule := range rules {
+		raw, err := os.ReadFile(rule.Path)
+		if err != nil {
+			violations = append(violations, fmt.Sprintf("python legacy writer gate: read %s: %v", rule.Path, err))
+			continue
+		}
+		text := string(raw)
+		for _, pattern := range rule.Patterns {
+			if strings.Contains(text, pattern) {
+				violations = append(violations,
+					fmt.Sprintf("python legacy writer gate: %s contains prohibited pattern %q", rule.Path, pattern))
+			}
+		}
+	}
+
+	sort.Strings(violations)
+	return len(violations), violations
 }

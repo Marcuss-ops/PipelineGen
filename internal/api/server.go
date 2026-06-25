@@ -46,9 +46,10 @@ func NewServer(
 	cfg *config.Config,
 	registry *Registry,
 	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
+	internalMediaHandler MediaInternalRouter,
 	lifecycle LifecycleManager,
 ) *Server {
-	return NewServerWithHealth(cfg, registry, workerHandler, lifecycle, nil, nil)
+	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, lifecycle, nil, nil)
 }
 
 // NewServerWithHealth creates a new HTTP server with an optional
@@ -73,6 +74,7 @@ func NewServerWithHealth(
 	cfg *config.Config,
 	registry *Registry,
 	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
+	internalMediaHandler MediaInternalRouter,
 	lifecycle LifecycleManager,
 	healthSvc interface{},
 	readyChecker *systemhealth.ReadyChecker,
@@ -107,6 +109,9 @@ func NewServerWithHealth(
 		if workerHandler != nil {
 			router.SetWorkerHandler(workerHandler)
 		}
+		if internalMediaHandler != nil {
+			router.SetInternalMediaHandler(internalMediaHandler)
+		}
 		if healthSvc != nil {
 			router.SetHealthService(healthSvc)
 		}
@@ -135,6 +140,9 @@ func NewServerWithHealth(
 	router.SetRegistry(registry)
 	if workerHandler != nil {
 		router.SetWorkerHandler(workerHandler)
+	}
+	if internalMediaHandler != nil {
+		router.SetInternalMediaHandler(internalMediaHandler)
 	}
 	if healthSvc != nil {
 		router.SetHealthService(healthSvc)
