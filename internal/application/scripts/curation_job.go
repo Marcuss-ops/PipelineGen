@@ -217,6 +217,7 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 	}
 
 	if docLink != "" {
+		response["doc_url"] = docLink
 		response["doc_link"] = docLink
 		response["doc_id"] = docID
 	}

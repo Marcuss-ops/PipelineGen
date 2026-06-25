@@ -1,3 +1,26 @@
+// Logger + RequestID middleware tests (PG-006, June 2026).
+//
+// The PG-006 typed-port cascade removes `internal/infrastructure/database`
+// and `internal/infrastructure/database/sqlite/logsink` imports from every
+// file under `internal/api/middleware/**`. The previous
+// TestPersistentLoggerMiddleware asserted the SQLite-backed
+// SQLiteRequestLogSink end-to-end (open in-memory DB → create
+// api_requests table → SetLogSink → request → sleep 300ms → query DB
+// → assert row count + field shape). That test stays correct but
+// belongs to the infra package, where the SQLite import is allowed.
+// It moves to the logsink test directory; this middleware test
+// focuses on:
+//
+//   1. RequestID middleware — verifies request ID propagation, header
+//      echoing, sanitization of client-provided values, and recovery to
+//      a generated ID when all sanitization would blank the value.
+//   2. LoggerBackpressure — verifies that the Logger middleware never
+//      blocks the request handler when the downstream sink is
+//      overwhelmed.
+//
+// The StuckSink stub (below) implements the canonical RequestLogSink port
+// without any infra dependency.
+
 package middleware
 
 import (
@@ -8,14 +31,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware/requestlog"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
 )
 
 func TestRequestIDMiddleware(t *testing.T) {
@@ -38,95 +56,66 @@ func TestRequestIDMiddleware(t *testing.T) {
 	assert.NotEmpty(t, w.Header().Get("X-Request-ID"))
 }
 
-func TestPersistentLoggerMiddleware(t *testing.T) {
+func TestRequestID_ClientProvidedIsSanitized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	// Create an in-memory SQLite database for testing
-	db := drive.NewTestDB(t, &drive.TestDBOpts{InMemory: true})
-	defer db.Close()
-
-	// Set up the api_requests table (simulating migration 008)
-	drive.MustExec(t, db, `
-		CREATE TABLE api_requests (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			ts DATETIME DEFAULT CURRENT_TIMESTAMP,
-			request_id TEXT,
-			method TEXT NOT NULL,
-			path TEXT NOT NULL,
-			status INTEGER,
-			duration_ms REAL,
-			client_ip TEXT,
-			user_id TEXT,
-			bytes_in INTEGER,
-			bytes_out INTEGER,
-			user_agent TEXT,
-			error TEXT
-		);
-	`)
-
-	// The middleware layer no longer holds *sql.DB. The composition
-	// root wires a SQLite-backed sink; tests inject one directly so
-	// the test remains authoritative without depending on the
-	// internal/adapter internals.
-	sink := logsink.NewSQLiteRequestLogSink(db, zaptest.NewLogger(t))
-	defer func() { _ = sink.Stop(context.Background()) }()
-	SetLogSink(sink)
 
 	r := gin.New()
 	r.Use(RequestID())
-	r.Use(Logger())
-	r.GET("/test-endpoint", func(c *gin.Context) {
-		c.String(http.StatusOK, "hello world")
+	r.GET("/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
 	})
 
-	req, _ := http.NewRequest("GET", "/test-endpoint", nil)
-	req.Header.Set("User-Agent", "GoTest-Agent")
+	// Injecting control chars into X-Request-ID: sanitizeRequestID
+	// should strip them, preserving only alphanumerics + - _ .
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Request-ID", "bad\x00\x01name")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-
-	// The writer writes asynchronously and flushes every 100ms or on batch size 200.
-	// Wait long enough for the channel-buffered entry to flush into the DB.
-	time.Sleep(300 * time.Millisecond)
-
-	// Query the database to verify the request was logged
-	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM api_requests").Scan(&count)
-	require.NoError(t, err)
-	assert.Equal(t, 1, count)
-
-	var reqID, method, path, clientIP, userID, userAgent, errStr string
-	var status, bytesIn, bytesOut int
-	var durationMs float64
-
-	err = db.QueryRow(`
-		SELECT request_id, method, path, status, duration_ms, client_ip, user_id, bytes_in, bytes_out, user_agent, error
-		FROM api_requests
-	`).Scan(&reqID, &method, &path, &status, &durationMs, &clientIP, &userID, &bytesIn, &bytesOut, &userAgent, &errStr)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, reqID)
-	assert.Equal(t, "GET", method)
-	assert.Equal(t, "/test-endpoint", path)
-	assert.Equal(t, http.StatusOK, status)
-	assert.Greater(t, durationMs, 0.0)
-	assert.Equal(t, "anonymous", userID)
-	assert.Equal(t, "GoTest-Agent", userAgent)
+	echoed := w.Header().Get("X-Request-ID")
+	assert.NotEqual(t, "bad\x00\x01name", echoed, "control chars must be stripped")
+	for _, r := range echoed {
+		isAllowed := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.'
+		assert.True(t, isAllowed, "rejected char %q in echoed ID %q", r, echoed)
+	}
 }
 
-// stuckSink is a RequestLogSink whose Log method always reports as
-// dropped (channel full) without blocking. Used by TestLoggerBackpressure
-// to verify that the Logger middleware never blocks the request handler
-// when the downstream sink is overwhelmed.
+func TestRequestID_BlankClientProvidedRegenerates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	r.Use(RequestID())
+	r.GET("/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	// If every char of the client-provided ID is stripped, the
+	// helper MUST fall through to generateRequestID rather than
+	// return an empty string. We send a single control char to force
+	// the strip-everything branch.
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Request-ID", "\x00\x01\x02")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotEmpty(t, w.Header().Get("X-Request-ID"), "blank ID must regenerate, not echo empty")
+}
+
+// stuckSink is a RequestLogSink whose Log method always records the
+// drop (no downstream work). Used by TestLoggerBackpressure to verify
+// the Logger middleware never blocks the request handler when the
+// downstream sink is overwhelmed.
 type stuckSink struct {
 	dropped uint64
 }
 
-// Compile-time assertion: stuckSink satisfies the RequestLogSink port.
-// Any drift in the port signature is caught by `go build` immediately,
-// so the backpressure test cannot silently regress against the
-// renamed surface.
+// Compile-time assertion: stuckSink satisfies the canonical port.
+// Drift in the port signature is caught at compile time, so the
+// backpressure test cannot silently regress against the renamed
+// surface.
 var _ requestlog.RequestLogSink = (*stuckSink)(nil)
 
 func (s *stuckSink) Log(ctx context.Context, entry requestlog.RequestLogEntry) error {
@@ -136,12 +125,8 @@ func (s *stuckSink) Log(ctx context.Context, entry requestlog.RequestLogEntry) e
 func (s *stuckSink) FlushBatch(ctx context.Context, batch []requestlog.RequestLogEntry) error {
 	return nil
 }
-func (s *stuckSink) Stop(ctx context.Context) error {
-	return nil
-}
-func (s *stuckSink) DroppedLogs() uint64 {
-	return atomic.LoadUint64(&s.dropped)
-}
+func (s *stuckSink) Stop(ctx context.Context) error { return nil }
+func (s *stuckSink) DroppedLogs() uint64            { return atomic.LoadUint64(&s.dropped) }
 
 // TestLoggerBackpressure verifies the non-blocking invariant: the
 // Logger middleware must not let a downstream sink overflow block
@@ -168,7 +153,7 @@ func TestLoggerBackpressure(t *testing.T) {
 		c.Set("request_id", "test-id")
 		c.Next()
 	})
-	r.Use(Logger())
+	r.Use(Logger(nil))
 	r.GET("/overflow", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})

@@ -15,25 +15,63 @@ import (
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 	"go.uber.org/zap"
 )
 
-// Router holds the API router configuration
+// Router holds the API router configuration.
+//
+// PG-006 (June 2026): RouterConfig is now strictly transport-shaped —
+// no concrete `*config.Config`. Auth/Rate/Features flow through the
+// application-layer typed ports defined in
+// internal/application/middleware/ports.go. The composition root
+// (internal/app/wire_services.go and the bootstrap adapters in
+// internal/app/middleware_security_adapter.go) constructs and passes
+// these ports. Runtime fields the router NEEDS at request time are
+// exposed as primitive typed fields (ServerGinMode, DataDir,
+// DownloadDir, CORSOrigins) so the API layer stays free of
+// internal/infrastructure/config imports.
 type Router struct {
-	cfg                 *config.Config
+	cfg                 *RouterConfig
 	rateLimitMiddleware *middleware.RateLimitMiddleware
 	registry            *Registry
 	workerHandler       interface{ RegisterRoutes(*gin.RouterGroup) }
 	ctx                 context.Context
-	healthSvc           interface{}                   // *systemhealth.Service; typed as interface{} to avoid import coupling
-	readyChecker        *systemhealth.ReadyChecker    // codex/health-ready-contract: concrete type, not interface{}
+	healthSvc           interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
+	readyChecker        *systemhealth.ReadyChecker
 }
 
-// NewRouter creates a new API router
-func NewRouter(cfg *config.Config) *Router {
+// RouterConfig is the typed-port + primitive bundle the api.Router
+// proxies to middleware constructors and the static-asset router.
+//
+// PG-006 (June 2026): every field is either a typed application port
+// or a primitive (string / []string / *zap.Logger). The composition
+// root (internal/app/wire_services.go) constructs the RouterConfig
+// from `*config.Config` at startup time; once handed to the api
+// layer, the router does not need access to the concrete config shape.
+type RouterConfig struct {
+	// Typed application ports (PG-006 typed-port cascade).
+	Auth     mwports.AuthSecurityPort
+	Rate     mwports.RateLimitPort
+	Features mwports.FeatureFlagsPort
+
+	// Structured logger — required by Logger/Recovery/Auth/WorkerAuth
+	// since these now accept *zap.Logger directly instead of going
+	// through `internal/infrastructure/logging`'s package-level aliases.
+	Log *zap.Logger
+
+	// Primitive runtime fields (constructed from *config.Config by
+	// the composition root before RouterConfig reaches the api layer).
+	ServerGinMode string   // cfg.Server.GinMode
+	DataDir       string   // cfg.Storage.DataDir
+	DownloadDir   string   // cfg.GoogleAccounting.DownloadDir
+	CORSOrigins   []string // cfg.Security.CORSOrigins
+}
+
+// NewRouter creates a new API router.
+func NewRouter(cfg *RouterConfig) *Router {
 	return &Router{
 		cfg: cfg,
 	}
@@ -68,9 +106,11 @@ func (r *Router) SetReadyChecker(rc *systemhealth.ReadyChecker) {
 	r.readyChecker = rc
 }
 
-// buildCORSConfig builds a CORS configuration from the application security settings.
-// If no origins are configured, cross-origin requests are blocked entirely.
-func buildCORSConfig(cfg *config.Config) cors.Config {
+// buildCORSConfig builds a CORS configuration from the supplied origins.
+// PG-006 (June 2026): now takes origins directly instead of a
+// *config.Config — composition root extracts cfg.Security.CORSOrigins
+// and hands the slice to the api layer.
+func buildCORSConfig(corsOrigins []string) cors.Config {
 	corsCfg := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Velox-Admin-Token"},
@@ -79,21 +119,18 @@ func buildCORSConfig(cfg *config.Config) cors.Config {
 		MaxAge:           12 * time.Hour,
 	}
 
-	origins := cfg.Security.CORSOrigins
-
 	// Require explicit CORS origins - default closed
-	if len(origins) == 0 {
-		// No origins configured - block all cross-origin requests
+	if len(corsOrigins) == 0 {
 		corsCfg.AllowOrigins = []string{}
 		return corsCfg
 	}
 
-	if len(origins) == 1 && origins[0] == "*" {
+	if len(corsOrigins) == 1 && corsOrigins[0] == "*" {
 		corsCfg.AllowAllOrigins = true
 		return corsCfg
 	}
 
-	corsCfg.AllowOrigins = origins
+	corsCfg.AllowOrigins = corsOrigins
 	return corsCfg
 }
 
@@ -101,14 +138,14 @@ func buildCORSConfig(cfg *config.Config) cors.Config {
 // health endpoints, and dynamically registered module routes.
 func (r *Router) Setup() *gin.Engine {
 	log := zap.L().Named("router")
-	gin.SetMode(r.cfg.Server.GinMode)
+	gin.SetMode(r.cfg.ServerGinMode)
 
 	engine := gin.New()
 
 	// Global middleware
 	engine.Use(middleware.RequestID())
-	engine.Use(middleware.Logger())
-	engine.Use(middleware.Recovery())
+	engine.Use(middleware.Logger(r.cfg.Log))
+	engine.Use(middleware.Recovery(r.cfg.Log))
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// Root redirect to health
@@ -117,7 +154,7 @@ func (r *Router) Setup() *gin.Engine {
 	})
 
 	// Only add CORS middleware if origins are configured
-	corsConfig := buildCORSConfig(r.cfg)
+	corsConfig := buildCORSConfig(r.cfg.CORSOrigins)
 	if len(corsConfig.AllowOrigins) > 0 || corsConfig.AllowAllOrigins {
 		engine.Use(cors.New(corsConfig))
 	} else {
@@ -158,17 +195,17 @@ func (r *Router) Setup() *gin.Engine {
 	}
 
 	// Serve static assets (images, etc.)
-	assetsDir := filepath.Join(r.cfg.Storage.DataDir, "assets")
+	assetsDir := filepath.Join(r.cfg.DataDir, "assets")
 	engine.Static("/assets", assetsDir)
-	engine.Static("/media/google-accounting", r.cfg.GoogleAccounting.DownloadDir)
+	engine.Static("/media/google-accounting", r.cfg.DownloadDir)
 
 	// API routes
 	api := engine.Group("/api")
 	{
 		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
-		protected.Use(middleware.Auth(r.cfg))
-		r.rateLimitMiddleware = middleware.RateLimit(r.cfg)
+		protected.Use(middleware.Auth(r.cfg.Auth, r.cfg.Log))
+		r.rateLimitMiddleware = middleware.RateLimit(r.cfg.Rate)
 		protected.Use(r.rateLimitMiddleware.Handler)
 		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
@@ -183,7 +220,7 @@ func (r *Router) Setup() *gin.Engine {
 	}
 
 	internalGroup := engine.Group(remoteshared.InternalPathPrefix)
-	internalGroup.Use(middleware.WorkerAuth(r.cfg))
+	internalGroup.Use(middleware.WorkerAuth(r.cfg.Auth, r.cfg.Log))
 	{
 		if r.workerHandler != nil {
 			r.workerHandler.RegisterRoutes(internalGroup)

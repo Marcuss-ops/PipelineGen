@@ -147,20 +147,18 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	return h
 }
 
-// ── AdminTokenProvider satisfies middleware.RequireAdminToken's config needs ─
-// by implementing EnableAuth() and AdminToken() accessors.
+// ── AdminTokenProvider satisfies RequireAdminTokenn's config needs ─
+//
+// Local narrow (2-method) interface. The canonical concrete is
+// pkg/middleware.TokenSecurityAdapter (leaf struct, PG-006.1); tests
+// + CLI utilities that don't carry a full *config.Config construct
+// &pkgmw.TokenSecurityAdapter{...} literals which structurally satisfy
+// this local interface. No local adapter struct is required here anymore
+// — the local adminTokenAdapter was retired in PG-006.1.
 type AdminTokenProvider interface {
 	EnableAuth() bool
 	AdminToken() string
 }
-
-// adminTokenAdapter implements AdminTokenProvider backed by a simple token.
-type adminTokenAdapter struct {
-	token string
-}
-
-func (a *adminTokenAdapter) EnableAuth() bool   { return a.token != "" }
-func (a *adminTokenAdapter) AdminToken() string { return a.token }
 
 // ── Route registration ──────────────────────────────────────────────────────
 

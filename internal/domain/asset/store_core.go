@@ -193,6 +193,11 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, details *Details) error {
 	}
 
 	nowStr := timeutil.FormatRFC3339(time.Now())
+	// Companion to migration 091: caller-supplied SearchTerms (typically
+	// semantic_enricher's subjects) take precedence; auto-derive from
+	// name + tags + search_text + filename + category + clipindexer
+	// metadata keys to backfill when callers pass nil. See DeriveSearchTerms.
+	a.SearchTerms = mergeSearchTerms(a.SearchTerms, DeriveSearchTerms(a))
 	tagsJSON, _ := json.Marshal(a.Tags)
 	searchTermsJSON, _ := json.Marshal(a.SearchTerms)
 	metadataJSON := a.MetadataJSON()

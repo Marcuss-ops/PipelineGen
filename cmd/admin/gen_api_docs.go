@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 )
 
 func runGenAPIDocs(args []string) error {
@@ -43,7 +44,33 @@ func runGenAPIDocs(args []string) error {
 	}
 	defer appDeps.Cleanup()
 
-	router := api.NewRouter(cfg)
+	// PG-006.1 (June 2026): inline genDocsSecurityAdapter was deleted —
+	// cfg.Security is now snapshotted into the canonical pkg/middleware
+	// leaf struct (TokenSecurityAdapter) directly. Enable carries
+	// cfg.Security.EnableAuth (preserves the pre-PG-006.1
+	// genDocsSecurityAdapter.EnableAuth() semantics; round-2 fix
+	// makes EnableAuth a passthrough, not an Admin-content derivation).
+	// The rate-limit + feature-flags inline adapters remain in this
+	// file (out of scope for PG-006.1; candidate for a separate
+	// consolidation).
+	authAdapter := &pkgmw.TokenSecurityAdapter{
+		Enable: cfg.Security.EnableAuth,
+		Admin:  cfg.Security.AdminToken,
+		Worker: cfg.Security.WorkerToken,
+	}
+	rateAdapter := &genDocsRateLimitAdapter{cfg: cfg}
+	featuresAdapter := &genDocsFeatureFlagsAdapter{cfg: cfg}
+	routerCfg := &api.RouterConfig{
+		ServerGinMode: cfg.Server.GinMode,
+		DataDir:       cfg.Storage.DataDir,
+		DownloadDir:   cfg.GoogleAccounting.DownloadDir,
+		CORSOrigins:   cfg.Security.CORSOrigins,
+		Log:           log,
+		Auth:          authAdapter,
+		Rate:          rateAdapter,
+		Features:      featuresAdapter,
+	}
+	router := api.NewRouter(routerCfg)
 	router.SetRegistry(appDeps.Registry)
 	engine := router.Setup()
 
@@ -157,4 +184,30 @@ func matchRoutePattern(pattern, path string) bool {
 		}
 	}
 	return true
+}
+
+// ── Typed-port adapters (PG-006 bridge: cmd/admin → api/middleware) ────────
+//
+// PG-006.1 (June 2026): the genDocsSecurityAdapter inline struct was
+// deleted — the canonical concrete is pkg/middleware.TokenSecurityAdapter
+// (a leaf struct reachable from internal/api, cmd/admin, and internal/app
+// without crossing layering boundaries); cfg.Security is snapshot-fed
+// into the canonical at the call-site. Only the rate-limit and
+// feature-flags inline adapters remain below (their canonical equivalents
+// are NOT yet tracked under pkg/middleware; a separate consolidation would
+// promote them — out of scope for PG-006.1).
+
+type genDocsRateLimitAdapter struct{ cfg *config.Config }
+
+func (a *genDocsRateLimitAdapter) RateLimitEnabled() bool { return a.cfg.Security.RateLimitEnabled }
+func (a *genDocsRateLimitAdapter) RateLimitRequests() int { return a.cfg.Security.RateLimitRequests }
+
+type genDocsFeatureFlagsAdapter struct{ cfg *config.Config }
+
+func (a *genDocsFeatureFlagsAdapter) ArtlistEnabled() bool { return a.cfg.Features.ArtlistEnabled }
+func (a *genDocsFeatureFlagsAdapter) ScriptDocsEnabled() bool {
+	return a.cfg.Features.ScriptDocsEnabled
+}
+func (a *genDocsFeatureFlagsAdapter) ScriptClipsEnabled() bool {
+	return a.cfg.Features.ScriptClipsEnabled
 }

@@ -12,6 +12,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -54,6 +55,20 @@ func NewServer(
 // health-check service (PR1 Health boundary, June 2026).
 // codex/health-ready-contract (June 2026): added readyChecker parameter
 // so /ready receives the real ReadyChecker instead of nil.
+//
+// PG-006 (June 2026): every typed-port field on RouterConfig must be
+// constructed via an adapter because the api package cannot import
+// `internal/app` (the canonical composition root for the adapters).
+// server.go is the single production caller that lives OUTSIDE the
+// app-root composition boundary, so it bridges via local inline
+// adapters (5 lines each) that mirror the production wrappers in
+// internal/app/middleware_security_adapter.go. The duplication is
+// accepted by PG-006's "no compatibility layer" rule: there is no
+// shared interface — the production adapter is the wire root, the
+// server.go adapters are transport bridges. Drift between the two
+// must be caught by a unit-test cross-comparison; a follow-up PR
+// could promote the adapters to a more shareable location, but doing
+// so would require lifting the layering rule.
 func NewServerWithHealth(
 	cfg *config.Config,
 	registry *Registry,
@@ -62,7 +77,61 @@ func NewServerWithHealth(
 	healthSvc interface{},
 	readyChecker *systemhealth.ReadyChecker,
 ) *Server {
-	router := NewRouter(cfg)
+	if cfg != nil {
+		// PG-006.1 (June 2026): the inline serverSecurityAdapter was deleted
+		// — the canonical concrete is pkg/middleware.TokenSecurityAdapter
+		// (a leaf struct reachable from internal/api, cmd/admin, and
+		// internal/app without crossing layering boundaries). cfg.Security
+		// is snapshotted into the canonical adapter literal here; the
+		// adapter is immutable per-token-string once constructed. Enable
+		// is the cfg.Security.EnableAuth passthrough (preserves the
+		// pre-PG-006.1 serverSecurityAdapter.EnableAuth() semantics).
+		authAdapter := &pkgmw.TokenSecurityAdapter{
+			Enable: cfg.Security.EnableAuth,
+			Admin:  cfg.Security.AdminToken,
+			Worker: cfg.Security.WorkerToken,
+		}
+		rateAdapter := &serverRateLimitAdapter{cfg: cfg}
+		featuresAdapter := &serverFeatureFlagsAdapter{cfg: cfg}
+		router := NewRouter(&RouterConfig{
+			Auth:          authAdapter,
+			Rate:          rateAdapter,
+			Features:      featuresAdapter,
+			Log:           zap.L().Named("router"),
+			ServerGinMode: cfg.Server.GinMode,
+			DataDir:       cfg.Storage.DataDir,
+			DownloadDir:   cfg.GoogleAccounting.DownloadDir,
+			CORSOrigins:   cfg.Security.CORSOrigins,
+		})
+		router.SetRegistry(registry)
+		if workerHandler != nil {
+			router.SetWorkerHandler(workerHandler)
+		}
+		if healthSvc != nil {
+			router.SetHealthService(healthSvc)
+		}
+		if readyChecker != nil {
+			router.SetReadyChecker(readyChecker)
+		}
+		r := router.Setup()
+
+		return &Server{
+			cfg:       cfg,
+			router:    r,
+			appRouter: router,
+			lifecycle: lifecycle,
+			httpServer: &http.Server{
+				Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+				Handler:           r,
+				ReadTimeout:       time.Duration(cfg.Server.ReadTimeout) * time.Second,
+				ReadHeaderTimeout: 15 * time.Second,
+				WriteTimeout:      time.Duration(cfg.Server.WriteTimeout) * time.Second,
+				IdleTimeout:       120 * time.Second,
+			},
+		}
+	}
+
+	router := NewRouter(&RouterConfig{Log: zap.L().Named("router")})
 	router.SetRegistry(registry)
 	if workerHandler != nil {
 		router.SetWorkerHandler(workerHandler)
@@ -81,12 +150,11 @@ func NewServerWithHealth(
 		appRouter: router,
 		lifecycle: lifecycle,
 		httpServer: &http.Server{
-			Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-			Handler:           r,
-			ReadTimeout:       time.Duration(cfg.Server.ReadTimeout) * time.Second,
-			ReadHeaderTimeout: 15 * time.Second,
-			WriteTimeout:      time.Duration(cfg.Server.WriteTimeout) * time.Second,
-			IdleTimeout:       120 * time.Second,
+			Addr:         ":0",
+			Handler:      r,
+			ReadTimeout:  300 * time.Second,
+			WriteTimeout: 300 * time.Second,
+			IdleTimeout:  120 * time.Second,
 		},
 	}
 }
@@ -182,4 +250,59 @@ func (s *Server) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 // GetRouter returns the gin router (for testing)
 func (s *Server) GetRouter() *gin.Engine {
 	return s.router
+}
+
+// ── PG-006 typed-port bridges (server-scoped) ────────────────────────────
+//
+// PG-006.1 (June 2026): the previous serverSecurityAdapter inline struct
+// was deleted. The canonical concrete is pkg/middleware.TokenSecurityAdapter
+// (a leaf struct reachable from internal/api, cmd/admin, and internal/app
+// without crossing layering boundaries); the cfg-wrapping trio that
+// lived in api/server.go + cmd/admin/gen_api_docs.go +
+// internal/app/middleware_security_adapter.go is now collapsed into
+// construction-site snapshots. Only the rate-limit and feature-flags
+// inline adapters remain below (their canonical equivalents are NOT
+// yet tracked under pkg/middleware; a separate consolidation would
+// promote them — out of scope for PG-006.1).
+
+// serverRateLimitAdapter mirrors internal/app/middleware_security_adapter.go's
+// middlewareRateLimitAdapter for the RateLimitPort surface (same nil-check
+// shape as the production adapter).
+type serverRateLimitAdapter struct{ cfg *config.Config }
+
+func (a *serverRateLimitAdapter) RateLimitEnabled() bool {
+	if a.cfg == nil {
+		return false
+	}
+	return a.cfg.Security.RateLimitEnabled
+}
+func (a *serverRateLimitAdapter) RateLimitRequests() int {
+	if a.cfg == nil {
+		return 0
+	}
+	return a.cfg.Security.RateLimitRequests
+}
+
+// serverFeatureFlagsAdapter mirrors internal/app/middleware_security_adapter.go's
+// middlewareFeatureFlagsAdapter for the FeatureFlagsPort surface (same nil-check
+// shape as the production adapter).
+type serverFeatureFlagsAdapter struct{ cfg *config.Config }
+
+func (a *serverFeatureFlagsAdapter) ArtlistEnabled() bool {
+	if a.cfg == nil {
+		return false
+	}
+	return a.cfg.Features.ArtlistEnabled
+}
+func (a *serverFeatureFlagsAdapter) ScriptDocsEnabled() bool {
+	if a.cfg == nil {
+		return false
+	}
+	return a.cfg.Features.ScriptDocsEnabled
+}
+func (a *serverFeatureFlagsAdapter) ScriptClipsEnabled() bool {
+	if a.cfg == nil {
+		return false
+	}
+	return a.cfg.Features.ScriptClipsEnabled
 }

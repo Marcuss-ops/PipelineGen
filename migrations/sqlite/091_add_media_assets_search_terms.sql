@@ -1,0 +1,27 @@
+-- 091_add_media_assets_search_terms.sql
+--
+-- REDUNDANT after canonical.go update (June 2026, PR-followup):
+-- the `search_terms` column is already declared in
+--   internal/infrastructure/database/canonical.go (CanonicalMediaAssetsSchema)
+-- as `search_terms TEXT NOT NULL DEFAULT '[]'`.
+-- Any live database created via the canonical schema already has this
+-- column — the original ALTER TABLE ADD COLUMN would fail with
+-- "duplicate column name".
+--
+-- This file is preserved (rather than deleted) so the migration
+-- sequence number `091` stays stable: tooling that iterates
+-- `migrations/sqlite/*.sql` files keeps a consistent count.
+--
+-- Companion code lives in:
+--   internal/domain/asset/search_terms.go
+--     `DeriveSearchTerms(a *Asset) []string`     — derivation helper
+--     `mergeSearchTerms(caller, derived)`        — caller-takes-precedence merge
+--   internal/domain/asset/store_core.go
+--     `Save(...)` calls the merge before marshaling — every ingest
+--     path now auto-populates the column when callers pass nil.
+--   cmd/admin/backfill_media_assets_search_terms.go
+--     One-shot backfill CLI for rows still holding the default '[]'.
+--
+-- Intentionally a no-op so re-running on any DB (existing column or
+-- pending column) succeeds without ALTER errors.
+SELECT 1;
