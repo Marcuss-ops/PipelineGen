@@ -121,7 +121,7 @@ func TestHandler_ErrorMapping(t *testing.T) {
 			t.Parallel()
 
 			gen := &fakeGenerationService{err: tc.err}
-			handler := NewHandler(nil, gen, FeatureGates{})
+			handler := NewScriptFlowHandler(ScriptFlowDeps{GenService: gen})
 			router := gin.New()
 			router.POST("/test", handler.GenerateFromClips)
 
@@ -138,7 +138,7 @@ func TestHandler_ErrorMapping(t *testing.T) {
 func TestHandler_NilGenerationService_Returns503(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(nil, nil, FeatureGates{})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{})
 	router := gin.New()
 	router.POST("/test", handler.GenerateFromClips)
 
@@ -150,10 +150,10 @@ func TestHandler_NilGenerationService_Returns503(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-func TestHandler_NilScriptFlowHandler_GeneratesBatch503(t *testing.T) {
+func TestHandler_NilGenerateBatchUseCase_Returns503(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(nil, &fakeGenerationService{}, FeatureGates{})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{})
 	router := gin.New()
 	router.POST("/test", handler.GenerateBatch)
 
@@ -171,7 +171,7 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	t.Parallel()
 
 	jobsSvc, _ := newTestJobsService(t)
-	handler := NewHandler(NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc}), &fakeGenerationService{}, FeatureGates{ScriptClipsEnabled: true, ScriptDocsEnabled: true, ScriptImagesEnabled: true})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc, Gates: FeatureGates{ScriptClipsEnabled: true, ScriptDocsEnabled: true, ScriptImagesEnabled: true}})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -210,7 +210,7 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 func TestScriptRoutes_ImagesOnlyKeepsGenerateWithImages(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(nil, &fakeGenerationService{}, FeatureGates{ScriptImagesEnabled: true})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{Gates: FeatureGates{ScriptImagesEnabled: true}})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -229,7 +229,7 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	t.Parallel()
 
 	jobsSvc, fake := newTestJobsService(t)
-	handler := NewHandler(NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc}), &fakeGenerationService{}, FeatureGates{})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -254,7 +254,7 @@ func TestScriptFlowCatalogRoute_EnqueuesCatalogJob(t *testing.T) {
 	t.Parallel()
 
 	jobsSvc, fake := newTestJobsService(t)
-	handler := NewHandler(NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc}), &fakeGenerationService{}, FeatureGates{})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{Jobs: jobsSvc})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -358,7 +358,7 @@ func TestHandler_ValidRequest_Returns200(t *testing.T) {
 	t.Parallel()
 
 	gen := &fakeGenerationService{}
-	handler := NewHandler(nil, gen, FeatureGates{})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{GenService: gen})
 	router := gin.New()
 	router.POST("/test", handler.GenerateFromClips)
 
@@ -373,7 +373,7 @@ func TestHandler_ValidRequest_Returns200(t *testing.T) {
 func TestHandler_GenerateBatch_DelegatesToInner(t *testing.T) {
 	t.Parallel()
 
-	inner := NewScriptFlowHandler(ScriptFlowDeps{
+	handler := NewScriptFlowHandler(ScriptFlowDeps{
 		GenerateBatch: scripts.NewGenerateBatchUseCase(
 			nil,
 			nil,
@@ -381,8 +381,8 @@ func TestHandler_GenerateBatch_DelegatesToInner(t *testing.T) {
 			scripts.NewBatchService(nil, nil, nil, nil, nil, nil, nil),
 			"",
 		),
+		Gates: FeatureGates{ScriptDocsEnabled: true},
 	})
-	handler := NewHandler(inner, &fakeGenerationService{}, FeatureGates{ScriptDocsEnabled: true})
 	router := gin.New()
 	router.POST("/test", handler.GenerateBatch)
 
@@ -399,8 +399,7 @@ func TestHandler_GenerateBatch_DelegatesToInner(t *testing.T) {
 func TestHandler_GetBatchProgress_DelegatesToInner(t *testing.T) {
 	t.Parallel()
 
-	inner := NewScriptFlowHandler(ScriptFlowDeps{})
-	handler := NewHandler(inner, &fakeGenerationService{}, FeatureGates{ScriptDocsEnabled: true})
+	handler := NewScriptFlowHandler(ScriptFlowDeps{Gates: FeatureGates{ScriptDocsEnabled: true}})
 	router := gin.New()
 	router.GET("/test", handler.GetBatchProgress)
 
