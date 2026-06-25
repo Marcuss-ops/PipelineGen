@@ -306,6 +306,24 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Construct handler ──────────────────────────────────────────────
+	// PG-024: genSvc and gates flow through ScriptFlowDeps directly;
+	// the legacy Handler wrapper that duplicated per-route gating
+	// has been removed. ScriptFlowHandler.RegisterRoutes is now the
+	// single canonical route registration.
+	//
+	// root.Jobs.Facade (NOT root.Jobs.Service) is passed to
+	// NewGenerationService because the canonical JobEnqueuer port
+	// (internal/application/scripts/ports.go) takes *job.EnqueueRequest
+	// (the domain type). root.Jobs.Facade = *job.Service (the
+	// domain facade) whose Enqueue method signature matches the
+	// port exactly; the facade internally translates to
+	// *appjobs.EnqueueRequest via its installed EnqueueFn closure.
+	genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
+	gates := scriptapi.FeatureGates{
+		ScriptClipsEnabled:  cfg.Features.ScriptClipsEnabled,
+		ScriptDocsEnabled:   cfg.Features.ScriptDocsEnabled,
+		ScriptImagesEnabled: cfg.Features.ImagesEnabled,
+	}
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:                engine,
 		Batch:                 batchSvc,
@@ -330,6 +348,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
 		ClipServices:          clipServices,
 		Log:                   log,
+		GenService:            genSvc,
+		Gates:                 gates,
 	})
 
 	// ── Register job handlers at composition time ──────────────────────
@@ -363,38 +383,19 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Register HTTP module ───────────────────────────────────────────
-	// Phase 2 activation (June 2026):
-	//   - root.Jobs.Facade (NOT root.Jobs.Service) is passed to
-	//     NewGenerationService because the canonical JobEnqueuer port
-	//     (internal/application/scripts/ports.go) takes *job.EnqueueRequest
-	//     (the domain type). root.Jobs.Facade = *job.Service (the
-	//     domain facade) whose Enqueue method signature matches the
-	//     port exactly; the facade internally translates to
-	//     *appjobs.EnqueueRequest via its installed EnqueueFn closure
-	//     (see internal/app/module_jobs.go::BuildJobsBundle). The
-	//     concrete application-layer *appjobs.Service uses
-	//     *appjobs.EnqueueRequest, a distinct Go type that does NOT
-	//     satisfy this port — passing root.Jobs.Service would fail
-	//     compile-time at the JobEnqueuer contract.
-	//   - FeatureGates is the typed snapshot of cfg.Features consumed
-	//     by the transport package (handler.go) — keeps the API layer
-	//     free of `internal/infrastructure/config` imports (AGENTS.md
-	//     Pattern 8).
-	genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
-	gates := scriptapi.FeatureGates{
-		ScriptClipsEnabled:  cfg.Features.ScriptClipsEnabled,
-		ScriptDocsEnabled:   cfg.Features.ScriptDocsEnabled,
-		ScriptImagesEnabled: cfg.Features.ImagesEnabled,
-	}
+	// PG-024: handler (*ScriptFlowHandler) is passed directly — the
+	// legacy Handler wrapper (NewHandler) that duplicated per-route
+	// gating has been removed. ScriptFlowHandler.RegisterRoutes is
+	// now the single canonical route registration.
 	mod := module.NewRouteModule(
 		"script-flow",
 		// Module-level gate: expose the /script route group if
 		// EITHER clips, docs, or images is enabled. Per-route gating in
-		// handler.go::RegisterRoutes decides which individual
+		// ScriptFlowHandler.RegisterRoutes decides which individual
 		// endpoints respond (clip-source vs Google Docs vs images).
 		func() bool { return anyScriptFeatureEnabled(cfg) },
 		"/script",
-		scriptapi.NewHandler(handler, genSvc, gates),
+		handler,
 		log,
 		// AGENT-2 (June 2026): the previous
 		//   module.WithMiddleware(middleware.ScriptDocsEnabled(cfg))

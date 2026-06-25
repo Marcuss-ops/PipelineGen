@@ -23,6 +23,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── Local interfaces (Agente 4 — avoid concrete infrastructure types) ────────
@@ -64,6 +66,8 @@ type ScriptFlowHandler struct {
 	driveFolderID     string
 	adminToken        string
 	log               *zap.Logger
+	genSvc            GenerationService
+	gates             FeatureGates
 
 	pipelineUC *scripts.PipelineUseCase
 }
@@ -101,6 +105,10 @@ type ScriptFlowDeps struct {
 	DriveScriptsGenFolder string
 	ClipServices          scripts.ClipServices // pre-built in wire_script.go
 	Log                   *zap.Logger
+
+	// PG-024: moved from legacy Handler wrapper to eliminate route duplication.
+	GenService GenerationService
+	Gates      FeatureGates
 }
 
 func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
@@ -142,6 +150,8 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		clipServices:      clipSvc,
 		insightBuilder:    NewScriptInsightBuilder(log, 12, clipSvc),
 		pipelineUC:        deps.PipelineUseCase,
+		genSvc:            deps.GenService,
+		gates:             deps.Gates,
 	}
 
 	return h
@@ -167,6 +177,48 @@ func (h *ScriptFlowHandler) registerJobRoutes(r *gin.RouterGroup) {
 	jobs.Use(RequireAdminToken(h))
 	jobs.GET("/jobs/:job_id", h.GetJobStatus)
 	jobs.GET("/jobs/:job_id/full", h.GetJobFullStatus)
+}
+
+// GenerateFromClips handles POST /generate-from-clips.
+// PG-024: moved from legacy Handler wrapper.
+func (h *ScriptFlowHandler) GenerateFromClips(c *gin.Context) {
+	if h.genSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
+		return
+	}
+	var spec scriptpkg.GenerationSpec
+	if err := c.ShouldBindJSON(&spec); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
+		return
+	}
+	result, err := h.genSvc.EnqueueFromClips(c.Request.Context(), spec)
+	if err != nil {
+		status := mapErrorToHTTP(err)
+		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
+}
+
+// GenerateWithImages handles POST /generate-with-images.
+// PG-024: moved from legacy Handler wrapper.
+func (h *ScriptFlowHandler) GenerateWithImages(c *gin.Context) {
+	if h.genSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
+		return
+	}
+	var spec scriptpkg.GenerationSpec
+	if err := c.ShouldBindJSON(&spec); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
+		return
+	}
+	result, err := h.genSvc.EnqueueWithImages(c.Request.Context(), spec)
+	if err != nil {
+		status := mapErrorToHTTP(err)
+		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
 }
 
 // RequireAdminToken wraps middleware.RequireAdminToken accepting the local
@@ -213,7 +265,21 @@ func extractHeaderToken(c *gin.Context) string {
 	return strings.TrimSpace(bearer)
 }
 
-func (h *ScriptFlowHandler) RegisterRoutesRemaining(r *gin.RouterGroup) {
+// RegisterRoutes registers ALL script routes with per-route feature gating.
+// PG-024 (June 2026): unified route registration — the legacy Handler wrapper
+// that duplicated per-route gating has been removed. This is now the single
+// canonical route registration for /api/script/.
+func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
+	if h.gates.ScriptClipsEnabled {
+		r.POST("/generate-from-clips", h.GenerateFromClips)
+	}
+	if h.gates.ScriptImagesEnabled {
+		r.POST("/generate-with-images", h.GenerateWithImages)
+	}
+	if h.gates.ScriptDocsEnabled {
+		r.POST("/generate-batch", h.GenerateBatch)
+		r.GET("/generate-batch/progress", h.GetBatchProgress)
+	}
 	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
 	r.POST("/curate", h.Curate)
 	h.registerJobRoutes(r)
