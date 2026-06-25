@@ -29,9 +29,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-)
-
-// Deps bundles the optional dependencies RegisterAll forwards to the
+) // Deps bundles the optional dependencies RegisterAll forwards to the
 // real outbox event handlers. Each field is optional; a nil field
 // means the corresponding handler is skipped from registration.
 //
@@ -69,13 +67,26 @@ import (
 //	                  dispatch onto jobs.Service for drive|youtube).
 //	                  nil → drive|youtube events fail-open as retryable
 //	                  errors so the outbox pool retries — no silent ack.
+//
+//	QdrantDeleter : QdrantDeleter for the IndexDeleteHandler (real
+//	                  DELETE-points onto Qdrant via the canonical
+//	                  *qdrant.Service). nil → IndexDeleteHandler is
+//	                  skipped; events then dead-letter with "no
+//	                  handler for event type X" in the pool's pool log.
+//
+//	AssetDeleter  : AssetDeleter for the IndexDeleteHandler (real
+//	                  media_assets soft-delete via
+//	                  *assets.ClipsRepository). nil → IndexDeleteHandler
+//	                  is skipped (same effect as QdrantDeleter nil).
 type Deps struct {
-	DB          *sql.DB
-	HTTPClient  *http.Client
-	MetadataDir string
-	HMACSecrets [][]byte
-	InsecureDev bool
-	Jobs        JobsEnqueuer
+	DB            *sql.DB
+	HTTPClient    *http.Client
+	MetadataDir   string
+	HMACSecrets   [][]byte
+	InsecureDev   bool
+	Jobs          JobsEnqueuer
+	QdrantDeleter QdrantDeleter
+	AssetDeleter  AssetDeleter
 }
 
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
@@ -137,6 +148,15 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 	// that case, never silently acks).
 	realHandlers = append(realHandlers, NewProviderSyncHandler(log, depsOrNil(deps).Jobs))
 
+	// IndexDeleteHandler (QDRANT-002 PR2) needs BOTH the Qdrant deleter
+	// and the assets deleter. Both non-nil → register; either nil →
+	// skip. Events arriving during the partial-wiring window will
+	// dead-letter with "no handler for event type X" — correct loud
+	// failure mode.
+	if deps != nil && deps.QdrantDeleter != nil && deps.AssetDeleter != nil {
+		realHandlers = append(realHandlers, NewIndexDeleteHandler(log, deps.QdrantDeleter, deps.AssetDeleter))
+	}
+
 	for _, h := range realHandlers {
 		if err := registry.Register(h); err != nil {
 			return err
@@ -148,6 +168,7 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 		zap.Bool("delivery_wired", deps != nil && (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev)),
 		zap.Bool("metadata_export_wired", deps != nil && deps.DB != nil && deps.MetadataDir != ""),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs != nil),
+		zap.Bool("index_delete_wired", deps != nil && deps.QdrantDeleter != nil && deps.AssetDeleter != nil),
 	)
 	return nil
 }
