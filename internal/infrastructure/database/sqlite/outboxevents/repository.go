@@ -248,6 +248,40 @@ func (r *Repository) CountByStatus(ctx context.Context, status string) (int64, e
 	return n, nil
 }
 
+// MarkDeadLetter moves a claimed event straight to dead_letter,
+// bypassing the attempt-count+max-attempts comparison in MarkFailed.
+// Use this when the handler reports a terminal error (see errors.go
+// for classification). Lease-fenced: the UPDATE matches only when the
+// supplied lease_id is still active, returning ErrLeaseLost when
+// another consumer has already taken over the event.
+//
+// Marks worker_id / lease_id / lease_expiry to the empty/null set
+// (mirrors the in-line dead_letter branch of MarkFailed) so a stale
+// consumer cannot resurrect the row once it has been retired.
+//
+// Guard style intentionally matches the neighbouring MarkFailed /
+// MarkCompleted / RequeueExpiredLeases methods (no input-validation
+// fences inside these methods — the Pool caller already proves
+// the lease_id is the one it holds by being the sole claimer of
+// the row in processEvent).
+func (r *Repository) MarkDeadLetter(ctx context.Context, eventID int64, leaseID string, errMsg string) error {
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE outbox_events
+		SET status = 'dead_letter', last_error = ?, updated_at = ?,
+		    worker_id = '', lease_id = '', lease_expiry = NULL
+		WHERE id = ? AND lease_id = ? AND status = 'processing'
+	`, errMsg, nowStr, eventID, leaseID)
+	if err != nil {
+		return fmt.Errorf("outboxevents.MarkDeadLetter(%d): %w", eventID, err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("outboxevents.MarkDeadLetter(%d): %w", eventID, ErrLeaseLost)
+	}
+	return nil
+}
+
 // RequeueExpiredLeases resets processing events with expired lease back to pending.
 func (r *Repository) RequeueExpiredLeases(ctx context.Context) (int, error) {
 	now := timeutil.FormatRFC3339(time.Now())

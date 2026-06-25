@@ -172,7 +172,34 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 
 	err := handler.Handle(procCtx, evt)
 	if err != nil {
-		p.log.Error("handler failed", zap.Int64("event_id", evt.ID), zap.Error(err))
+		// QDRANT-002 item G: classify errors as retryable vs terminal.
+		// Terminal errors (malformed payload, schema mismatch, unknown
+		// provider, unsupported destination) bypass the exponential
+		// backoff and go straight to dead_letter. Retryable errors
+		// keep the existing backoff path; after max_attempts the row
+		// dead_letters naturally via MarkFailed.
+		//
+		// IsTerminal recognises both the typed *TerminalError wrap
+		// (canonical path) and the legacy "(terminal)" string
+		// breadcrumb already inlined by delivery.go / provider_sync.go
+		// — see outboxevents/errors.go for the rationale.
+		if IsTerminal(err) {
+			p.log.Warn("handler returned terminal error — dead-lettering without retry",
+				zap.Int64("event_id", evt.ID),
+				zap.String("type", evt.EventType),
+				zap.Int("attempt", evt.AttemptCount),
+				zap.Error(err))
+			if markErr := p.repo.MarkDeadLetter(ctx, evt.ID, claim.LeaseID, err.Error()); markErr != nil {
+				p.log.Error("failed to dead-letter terminal event",
+					zap.Int64("event_id", evt.ID),
+					zap.Error(markErr))
+			}
+			return
+		}
+		p.log.Error("handler failed (retryable) — applying backoff",
+			zap.Int64("event_id", evt.ID),
+			zap.Int("attempt", evt.AttemptCount),
+			zap.Error(err))
 		nextAttempt := time.Now().Add(time.Duration(1<<evt.AttemptCount) * time.Minute)
 		if markErr := p.repo.MarkFailed(ctx, evt.ID, claim.LeaseID, err.Error(), nextAttempt); markErr != nil {
 			p.log.Error("failed to mark event as failed", zap.Int64("event_id", evt.ID), zap.Error(markErr))

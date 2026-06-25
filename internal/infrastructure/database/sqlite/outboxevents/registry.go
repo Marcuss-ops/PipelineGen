@@ -6,8 +6,16 @@ import (
 	"sync"
 )
 
+// event-type constants are shared between producers (Dispatcher.Enqueue,
+// EnqueueDeleteAndDelete) and consumers (Handler.EventType). The ticket
+// docs use "media.index.*" in prose; the codebase standard adopted here
+// is "asset.index.*" because that prefix matches the sibling Indexing
+// event (asset.index.requested) and keeps greppability symmetric across
+// the outbox-events column. The QDRANT-002 ticket's "media.index.*"
+// naming maps to these constants 1:1.
 const (
 	EventAssetIndexRequested          = "asset.index.requested"
+	EventAssetIndexDeleteRequested    = "asset.index.delete_requested"
 	EventDeliveryRequested            = "delivery.requested"
 	EventAssetMetadataExportRequested = "asset.metadata_export.requested"
 	EventProviderSyncRequested        = "provider.sync.requested"
