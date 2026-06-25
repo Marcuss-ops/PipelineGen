@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+⚠️ QDRANT-003 (June 2026): LEGACY SCRIPT. Direct SQLite + Qdrant access
+violates QDRANT-001 ownership. Counter-tests should migrate to Go integration
+tests using testcontainers. Preserved for manual one-off validation ONLY.
+"""
 import os
 import json
 import sqlite3

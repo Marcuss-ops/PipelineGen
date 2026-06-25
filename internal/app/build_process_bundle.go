@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"go.uber.org/zap"
 
@@ -10,16 +9,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+)
+
+// Compile-time assertions for QDRANT-003 wiring.
+var (
+	_ clipindexer.VectorStoreIndexer = (*qdrant.IndexWriter)(nil)
 )
 
 // BuildProcessBundle builds media-processing adapters. driveUploader
 // passed in directly.
 //
-// PG-034 (June 2026): Qdrant removed entirely. VectorSvc field,
-// startQdrantCollection closure, and the IOpaqueStartFunc return are
-// gone — the process bundle is now a pure struct with no deferred
-// startup closure. The clip indexer is the canonical semantic-search
-// backend.
+// QDRANT-003 (June 2026): Qdrant vector-store capability reintroduced.
+// IndexWriter is created and wired as the clipindexer's VectorStoreIndexer.
+// EnsureSchema is deferred to wire_services.go startup plan (startup-time).
 func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader) (*ProcessBundle, error) {
 	_ = ctx
 	mediaProcessor := initMediaProcessor(cfg, dbs.main, repos.Assets.Repository(), repos.Assets,
@@ -43,9 +46,42 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		DBPath:                dbs.main.Path(),
 	}, dbs.main, dbs.main.Path(), log)
 
+	// QDRANT-003: wire IndexWriter as clipindexer VectorStoreIndexer.
+	// Only when Qdrant is enabled AND the clip indexer is enabled.
+	var collectionMgr interface {
+		EnsureSchema(ctx context.Context) error
+	}
+	var indexDeleter interface {
+		DeletePoints(ctx context.Context, ids []string) error
+	}
+
+	if cfg.Qdrant.Enabled && clipIndexerService.IsEnabled() {
+		qdrantCfg := &qdrant.Config{
+			BaseURL: cfg.Qdrant.BaseURL,
+			Timeout: cfg.Qdrant.Timeout,
+		}
+		schema := qdrant.DefaultV3Schema()
+		qdrantClient := qdrant.NewClient(qdrantCfg, log)
+		assetStore := qdrant.NewSQLiteAssetStore(dbs.main.DB)
+		mapper := qdrant.NewPayloadMapper(assetStore, log)
+		indexWriter := qdrant.NewIndexWriter(qdrantClient, schema, mapper, log)
+		collectionMgr = qdrant.NewCollectionManager(qdrantClient, schema, log)
+		indexDeleter = indexWriter
+
+		clipIndexerService.SetVectorStore(indexWriter)
+		log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
+			zap.String("qdrant_url", cfg.Qdrant.BaseURL),
+			zap.String("schema_version", schema.Version),
+			zap.String("runtime_alias", schema.RuntimeAlias))
+	} else {
+		log.Info("QDRANT-003: Qdrant disabled — vector store upserts will be skipped")
+	}
+
 	return &ProcessBundle{
 		MediaProcessor:     mediaProcessor,
 		ClipIndexerService: clipIndexerService,
 		VLMClient:          vlmClient,
+		QdrantClient:       collectionMgr,
+		QdrantDeleter:      indexDeleter,
 	}, nil
 }
