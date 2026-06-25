@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -37,6 +37,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/drive/move-file", h.MoveFile)
 	r.POST("/drive/create-folder", h.CreateFolder)
 	r.POST("/drive/rename", h.RenameFile)
+	r.POST("/sync-drive-folder", h.SyncDriveFolder)
 }
 
 // ── ListFiles (GET /drive/files) ─────────────────────────────────
@@ -145,4 +146,3 @@ func (h *Handler) RenameFile(c *gin.Context) {
 	}
 	apiutil.OK(c, map[string]string{"status": "renamed"})
 }
-
