@@ -521,13 +521,19 @@ type VideoMetadata struct {
 
 // ── ScenesService ───────────────────────────────────────────────────────
 
-// ScenesService handles scene image/voiceover generation.
-type ScenesService struct{}
-
-// NewScenesService creates a new ScenesService (stub).
-func NewScenesService(imgSvc, voSvc, log, cfg, resolveFolder, groupsRes interface{}, albumCapacity int) *ScenesService {
-	return &ScenesService{}
+// ScenesService handles scene image/voiceover generation during
+// the post-generation pipeline phase.
+type ScenesService struct {
+	imgSvc        interface{} // *images.Service
+	voSvc         interface{} // *voiceover.Service
+	log           *zap.Logger
+	cfg           interface{} // *config.Config
+	resolveFolder FolderResolver
+	groupsRes     interface{} // *voiceover.GroupsResolver
+	albumCapacity int
 }
+
+// NewScenesService is implemented in scenes_service.go (real implementation).
 
 // ── Default prompt version constants ────────────────────────────────────
 
@@ -649,10 +655,7 @@ type ScriptInsights struct {
 
 // ── Helper functions ────────────────────────────────────────────────────
 
-// BuildScenesWithMarkers builds scenes with narration/clip markers (stub).
-func BuildScenesWithMarkers(script string, pack interface{}) []ClipScene {
-	return nil
-}
+// BuildScenesWithMarkers is implemented in scenes_service.go (real implementation).
 
 // SupportedScriptLanguages returns the list of supported script languages.
 func SupportedScriptLanguages(translateLanguages []string, sourceLang string) []string {
