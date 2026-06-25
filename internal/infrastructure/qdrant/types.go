@@ -357,6 +357,9 @@ type IndexHealthReport struct {
 // CurrentEmbeddingVersion is the canonical embedding schema version.
 const CurrentEmbeddingVersion = "v3"
 
+// CurrentSearchTextVersion is the canonical search-text generation version.
+const CurrentSearchTextVersion = "v3"
+
 // IndexWriterPort is the contract for indexing clips into Qdrant (used by clipindexer).
 // Concrete implementation: *IndexWriter.
 type IndexWriterPort interface {

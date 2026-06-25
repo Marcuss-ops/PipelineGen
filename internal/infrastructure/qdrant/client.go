@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -295,6 +297,27 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 	return result.Result.PointsCount, nil
 }
 
+// UpsertVectorAssets converts a batch of VectorAsset domain objects into
+// Qdrant points and upserts them into the given collection. Used by the
+// admin reindex command to bulk-load assets from SQLite into Qdrant.
+func (c *Client) UpsertVectorAssets(ctx context.Context, collection string, assets []VectorAsset) error {
+	if len(assets) == 0 {
+		return nil
+	}
+	points := make([]Point, 0, len(assets))
+	for _, a := range assets {
+		pt, ok := vectorAssetToPoint(a)
+		if !ok {
+			continue
+		}
+		points = append(points, pt)
+	}
+	if len(points) == 0 {
+		return nil
+	}
+	return c.UpsertPoints(ctx, collection, points)
+}
+
 // ── Search API ───────────────────────────────────────────────────────
 
 // SearchPoints performs an ANN search.
@@ -416,4 +439,47 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 func (c *Client) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("qdrant HTTP %d: %s", resp.StatusCode, string(body))
+}
+
+// vectorAssetToPoint converts a VectorAsset into a qdrant Point.
+// Returns (Point, false) when the asset has no embeddings or no AssetID.
+func vectorAssetToPoint(a VectorAsset) (Point, bool) {
+	vectors := make(map[string]interface{})
+	if len(a.TextEmbedding) > 0 {
+		vectors["text"] = a.TextEmbedding
+	}
+	if len(a.VisualEmbedding) > 0 {
+		vectors["visual"] = a.VisualEmbedding
+	}
+	if len(a.TranscriptEmbedding) > 0 {
+		vectors["transcript"] = a.TranscriptEmbedding
+	}
+	if len(vectors) == 0 || strings.TrimSpace(a.AssetID) == "" {
+		return Point{}, false
+	}
+	return Point{
+		ID:      uuid.NewSHA1(uuid.NameSpaceDNS, []byte(a.AssetID)).String(),
+		Vectors: vectors,
+		Payload: map[string]interface{}{
+			"asset_id":            a.AssetID,
+			"name":                a.Name,
+			"source":              a.Source,
+			"category":            a.Category,
+			"style":               a.Style,
+			"media_type":          a.MediaType,
+			"search_text":         a.SearchText,
+			"drive_link":          a.DriveLink,
+			"local_path":          a.LocalPath,
+			"tags":                a.Tags,
+			"duration_ms":         a.DurationMs,
+			"language":            a.Language,
+			"youtube_video_id":    a.YouTubeVideoID,
+			"youtube_url":         a.YouTubeURL,
+			"start_time":          a.StartTime,
+			"end_time":            a.EndTime,
+			"embedding_version":   a.EmbeddingVersion,
+			"search_text_version": a.SearchTextVersion,
+			"created_at":          a.CreatedAt,
+		},
+	}, true
 }
