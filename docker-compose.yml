@@ -129,10 +129,43 @@ services:
     networks:
       - backend
 
+  # vLLM server — continuous batching LLM inference engine.
+  # Uncomment and configure when USE_VLLM=true is set.
+  # Requires NVIDIA GPU and nvidia-container-toolkit.
+  # Model download on first start (~8GB for gemma-2-4b).
+  #
+  # vllm:
+  #   image: vllm/vllm-openai:latest
+  #   container_name: pipelinegen-vllm
+  #   restart: unless-stopped
+  #   # runtime: nvidia    # uncomment for GPU access
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: all
+  #   #           capabilities: [gpu]
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - vllm-models:/root/.cache/huggingface
+  #   environment:
+  #     HUGGING_FACE_HUB_TOKEN: ""  # set for gated models (e.g. Gemma, Llama)
+  #   command: >
+  #     --model google/gemma-2-4b-it
+  #     --max-model-len 32768
+  #     --dtype auto
+  #     --gpu-memory-utilization 0.90
+  #   networks:
+  #     - backend
+
 volumes:
   pipelinegen-data:
     driver: local
   qdrant-storage:
+    driver: local
+  vllm-models:
     driver: local
 
 networks:
