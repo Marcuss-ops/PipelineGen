@@ -163,7 +163,15 @@ func (s *CatalogJobServiceImpl) HandleCatalogScriptGenerateJob(ctx context.Conte
 	}
 
 	wordCount := textutil.CountWords(writeResult.Script)
-	acceptedClips, excludedClips, excludedDetails := summarizeClipPack(pack)
+	// Defensive type assertion (PG-033 followup, June 2026):
+	// if BuildClipContext ever widens pack's type to `any`,
+	// summarizeClipPack must not panic on a non-map value. Mirror the
+	// pattern already used inside summarizeClipPack itself.
+	var acceptedClips, excludedClips int
+	var excludedDetails []map[string]any
+	if m, ok := pack.(map[string]any); ok {
+		acceptedClips, excludedClips, excludedDetails = summarizeClipPack(m)
+	}
 
 	if tools != nil && tools.Progress != nil {
 		tools.Progress(100, "Catalog-first generation completed")
