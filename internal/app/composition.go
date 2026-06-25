@@ -494,6 +494,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	_ = drive
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
 	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
+	ollamaClient.SetVLLMConfig(cfg.External.UseVLLM, cfg.External.VLLMURL, cfg.External.VLLMModel)
 
 	if cfg.External.SearxngURL != "" {
 		ws := client.NewWebSearcher(cfg.External.SearxngURL, cfg.External.SearxngMaxResults)

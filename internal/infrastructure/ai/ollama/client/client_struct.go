@@ -79,7 +79,12 @@ type Client struct {
 	useNvidiaForLLM bool
 	nvidiaAPIKey    string
 	nvidiaLLMModel  string
-	webSearcher     *WebSearcher
+
+	useVLLM   bool
+	vllmURL   string
+	vllmModel string
+
+	webSearcher *WebSearcher
 }
 
 // BaseURL returns the configured Ollama base URL.
@@ -89,6 +94,9 @@ func (c *Client) BaseURL() string {
 
 // Model returns the configured primary model.
 func (c *Client) Model() string {
+	if c.useVLLM && c.vllmModel != "" {
+		return c.vllmModel
+	}
 	if c.useNvidiaForLLM && c.nvidiaLLMModel != "" {
 		return c.nvidiaLLMModel
 	}
@@ -99,6 +107,19 @@ func (c *Client) SetNvidiaConfig(useNvidia bool, apiKey, model string) {
 	c.useNvidiaForLLM = useNvidia
 	c.nvidiaAPIKey = apiKey
 	c.nvidiaLLMModel = model
+}
+
+// SetVLLMConfig enables vLLM backend mode (OpenAI-compatible API).
+// When useVLLM is true, doChatRequest sends requests to vllmURL/v1/chat/completions
+// instead of the Ollama /api/chat endpoint. Mutually exclusive with SetNvidiaConfig
+// (vLLM takes precedence if both are set).
+func (c *Client) SetVLLMConfig(useVLLM bool, url, model string) {
+	c.useVLLM = useVLLM
+	c.vllmURL = url
+	c.vllmModel = model
+	if useVLLM {
+		c.useNvidiaForLLM = false
+	}
 }
 
 // SetWebSearcher enables RAG web search augmentation for Chat calls.
