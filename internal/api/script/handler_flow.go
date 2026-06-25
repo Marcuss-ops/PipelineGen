@@ -273,16 +273,6 @@ func extractHeaderToken(c *gin.Context) string {
 // that duplicated per-route gating has been removed. This is now the single
 // canonical route registration for /api/script/.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
-	if h.gates.ScriptClipsEnabled {
-		r.POST("/generate-from-clips", h.GenerateFromClips)
-	}
-	if h.gates.ScriptImagesEnabled {
-		r.POST("/generate-with-images", h.GenerateWithImages)
-	}
-	if h.gates.ScriptDocsEnabled {
-		r.POST("/generate-batch", h.GenerateBatch)
-		r.GET("/generate-batch/progress", h.GetBatchProgress)
-	}
 	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
 	r.POST("/curate", h.Curate)
 	h.registerJobRoutes(r)
