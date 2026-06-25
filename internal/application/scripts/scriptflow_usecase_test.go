@@ -270,6 +270,31 @@ func TestPipelineUseCase_RegisterJobs_AcceptsBrokerPort(t *testing.T) {
 	require.Equal(t, job.TypeClipScriptGenerate, broker.jobType)
 }
 
+// rejectingBroker is the negative-path companion to fakeBroker: it
+// implements the Broker port but returns a sentinel error from
+// RegisterHandler. Preserved across the 2026-06-25 stash-pop merge
+// that collided with PG-042's typed-Broker positive-path test.
+//
+// Pointer receiver matches fakeBroker's pointer receiver for style
+// consistency across the Broker port fakes in this file.
+type rejectingBroker struct{}
+
+func (b *rejectingBroker) RegisterHandler(string, any) error {
+	return errors.New("register rejected")
+}
+
+// TestPipelineUseCase_RegisterJobs_PropagatesBrokerErrors verifies
+// that a broker returning an error from RegisterHandler surfaces in
+// the caller's RegisterJobs return value — not silently swallowed.
+func TestPipelineUseCase_RegisterJobs_PropagatesBrokerErrors(t *testing.T) {
+	t.Parallel()
+	pu := &PipelineUseCase{log: zap.NewNop()} // intentionally under-populated
+	err := pu.RegisterJobs(&rejectingBroker{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "register handler")
+	require.Contains(t, err.Error(), "register rejected")
+}
+
 func TestPipelineUseCase_HandleJob_NilUseCaseErrors(t *testing.T) {
 	t.Parallel()
 	var pu *PipelineUseCase
