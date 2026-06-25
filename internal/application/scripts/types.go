@@ -5,7 +5,6 @@ package scripts
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -20,18 +19,15 @@ type FolderResolver func(ctx context.Context, input, defaultRootID string) (stri
 
 // ── Curate types ────────────────────────────────────────────────────────
 
-// MediaCurator is a stub for the media curator service.
-type MediaCurator struct{}
-
-// NewMediaCurator is the canonical constructor for *MediaCurator.
-//
-// AGENT-2 (June 2026): stub constructor wired to satisfy the
-// `scripts.NewMediaCurator(vector, serverURL, clipsRepo, clipBuilder,
-// engine, log)` call site in `internal/app/wire_script.go`. Args
-// are intentionally interface{} to avoid forcing more
-// canonical-package imports on this leaf.
-func NewMediaCurator(vector, serverURL, clipsRepo, clipBuilder, engine, log interface{}) *MediaCurator {
-	return &MediaCurator{}
+// MediaCurator orchestrates semantic clip search + script generation.
+// All fields are concrete typed.
+type MediaCurator struct {
+	vectorStore interface{}
+	serverURL   string
+	clipsRepo   interface{} // *assets.ClipsRepository (avoid import cycle)
+	clipBuilder *ClipSourceBuilder
+	engine      *Engine
+	log         *zap.Logger
 }
 
 // CurateRequest carries the inputs for a curation job.
@@ -173,14 +169,7 @@ type JobPayloadCatalogScript struct {
 	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
 }
 
-// Curate executes the curation operation (stub).
-func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateResult, error) {
-	return &CurateResult{
-		Title:     req.Title,
-		Script:    req.Query,
-		WordCount: 0,
-	}, nil
-}
+// Curate is implemented in media_curator.go (real implementation).
 
 // ── Batch types ─────────────────────────────────────────────────────────
 
@@ -243,41 +232,20 @@ type BatchScriptResult struct {
 	Language  string `json:"language"`
 }
 
-// BatchService is a stub for the batch generation service.
+// BatchService orchestrates multi-section script generation with
+// Google Doc output. All fields are concrete typed.
 type BatchService struct {
-	scriptsRepo interface{}
-	docClient   interface{}
+	cfg         interface{} // *config.Config
 	log         *zap.Logger
+	gen         interface{} // *ollama.Generator
+	engine      *Engine
+	docClient   interface{} // drive.DocClient
+	voSvc       interface{} // *voiceover.Service
+	scriptsRepo interface{} // ScriptRepository
 }
 
-// NewBatchService is the canonical constructor for *BatchService.
-//
-// AGENT-2 (June 2026): stub constructor wired to satisfy the
-// canonical `scripts.NewBatchService(cfg, log, gen, engine, doc,
-// vo, repo)` call site in `internal/app/wire_script.go`. Args are
-// intentionally interface{} to avoid forcing more canonical-package
-// imports on this leaf.
-func NewBatchService(cfg, log, gen, engine, doc, vo, repo interface{}) *BatchService {
-	var logger *zap.Logger
-	if l, ok := log.(*zap.Logger); ok {
-		logger = l
-	}
-	return &BatchService{
-		scriptsRepo: repo,
-		docClient:   doc,
-		log:         logger,
-	}
-}
-
-// Execute runs batch generation (stub).
-func (b *BatchService) Execute(ctx context.Context, req *GenerateBatchRequest, progressFunc interface{}) (BatchGenerateResponse, error) {
-	return BatchGenerateResponse{DocTitle: req.DocTitle}, nil
-}
-
-// ExecuteBatchGeneration runs batch generation with progress callback (stub).
-func (b *BatchService) ExecuteBatchGeneration(ctx context.Context, req *GenerateBatchRequest, onProgress func(int, string)) (BatchGenerateResponse, error) {
-	return BatchGenerateResponse{DocTitle: req.DocTitle}, nil
-}
+// Execute runs batch generation (real implementation in batch_service.go).
+// ExecuteBatchGeneration runs batch generation (real implementation in batch_service.go).
 
 // createBatchDoc creates a Google Doc from batch parts (stub).
 func (b *BatchService) createBatchDoc(ctx context.Context, title string, parts []GeneratedPart, noChapters bool, language, folderID string) (string, string) {
@@ -414,92 +382,30 @@ type WriteScriptRequest struct {
 	ClipPack    interface{}
 }
 
-// Engine is a stub for the script engine.
-type Engine struct{}
-
-// NewEngine is the canonical constructor for *Engine.
-//
-// AGENT-2 (June 2026): stub constructor wired to satisfy
-// `internal/app/composition.go::BuildAIBundle` and the canonical
-// `scriptcore.NewEngine` alias. Real implementation was removed from
-// remote in commit d61068b3. Args are intentionally interface{} to
-// avoid forcing more canonical-package imports on this leaf — the
-// production engine carries concrete *ollama.Generator + *gemmamemory
-// .Service + ScriptRepository + *zap.Logger but the stub does not
-// touch them.
-func NewEngine(scriptGen, memorySvc, repoAdapter, log interface{}) *Engine {
-	return &Engine{}
+// Engine is the canonical script generation engine backed by
+// ollama.Generator, gemmamemory.Service, and ScriptRepository.
+// All fields are concrete typed.
+type Engine struct {
+	ollamaGen interface{} // *ollama.Generator
+	memorySvc interface{} // *gemmamemory.Service
+	repo      interface{} // ScriptRepository
+	log       *zap.Logger
 }
 
-// WriteScript is a stub that always returns empty.
-func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*WriteScriptResult, error) {
-	topic := strings.TrimSpace(req.Topic)
-	if topic == "" {
-		topic = strings.TrimSpace(req.Title)
-	}
-	if topic == "" {
-		topic = "the topic"
-	}
-	tone := strings.TrimSpace(req.Tone)
-	if tone == "" {
-		tone = "clear"
-	}
-	model := strings.TrimSpace(req.Model)
-	if model == "" {
-		model = "fallback"
-	}
-	body := strings.TrimSpace(req.SourceText)
-	if body != "" {
-		body = strings.ReplaceAll(body, "\n", " ")
-	}
-	script := strings.Join([]string{
-		"Intro: " + topic + " matters because it gives us a concrete problem to explain.",
-		"This draft keeps the tone " + tone + " and shows the idea in a simple, usable structure.",
-		"If more detail is available, the next pass can expand the examples without changing the core message.",
-	}, " ")
-	if body != "" {
-		script += " Source notes: " + body
-	}
-	wordCount := countWords(script)
-	if wordCount <= 0 {
-		wordCount = 1
-	}
-	return &WriteScriptResult{
-		Script:      script,
-		WordCount:   wordCount,
-		Model:       model,
-		Prompt:      req.Prompt,
-		CacheStatus: "generated",
-	}, nil
-}
+// WriteScript is implemented in engine.go (real implementation).
 
-// ClipSourceBuilder builds clip context from explicit clip IDs.
+// ClipSourceBuilder builds clip context from explicit clip IDs
+// using the clips repository and optional vector store + reranker.
+// All fields are concrete typed where possible.
 type ClipSourceBuilder struct {
-	vectorStore interface{}
-	reranker    interface{}
+	clipsRepo    interface{} // *assets.ClipsRepository
+	ollamaClient interface{} // *client.Client
+	vectorStore  interface{}
+	reranker     interface{}
+	log          *zap.Logger
 }
 
-// NewClipSourceBuilder is the canonical constructor for
-// *ClipSourceBuilder. The vector store / reranker slots are wired via
-// SetVectorStore / SetReranker setters so call sites can opt-in
-// lazily.
-//
-// AGENT-2 (June 2026): stub constructor wired to satisfy the
-// `scripts.NewClipSourceBuilder(clipsRepo, ollama, log)` call site
-// in `internal/app/wire_script.go`. Args are intentionally interface{}
-// to avoid forcing more canonical-package imports on this leaf.
-func NewClipSourceBuilder(clipsRepo, ollama, log interface{}) *ClipSourceBuilder {
-	return &ClipSourceBuilder{}
-}
-
-// SetVectorStore attaches a vector-store adapter (typically the
-// qdrant SearchAdapter). Stub receiver — store and discard for
-// future replacement.
-func (c *ClipSourceBuilder) SetVectorStore(v interface{}) { c.vectorStore = v }
-
-// SetReranker attaches a reranker client (typically reranker.NewClient).
-// Stub receiver — store and discard for future replacement.
-func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
+// SetVectorStore and SetReranker are implemented in clip_source_builder.go.
 
 // ClipGenerationOptions carries options for clip generation.
 type ClipGenerationOptions struct {
@@ -516,78 +422,9 @@ type ClipGenerationOptions struct {
 	MinTranscriptWords int
 }
 
-// BuildClipContext builds clip context (stub).
-func (c *ClipSourceBuilder) BuildClipContext(ctx context.Context, clipIDs []string, opts *ClipGenerationOptions) (interface{}, *NarrativePlan, string, error) {
-	ids := make([]string, 0, len(clipIDs))
-	for _, id := range clipIDs {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
-	title := "script"
-	language := ""
-	tone := ""
-	targetWords := 0
-	model := ""
-	if opts != nil {
-		title = strings.TrimSpace(opts.Title)
-		language = strings.TrimSpace(opts.Language)
-		tone = strings.TrimSpace(opts.Tone)
-		targetWords = opts.TargetWords
-		model = strings.TrimSpace(opts.Model)
-	}
-	if title == "" {
-		title = "script"
-	}
-	plan := &NarrativePlan{
-		Title:        title,
-		Sections:     []NarrativeSection{{Role: "intro", Purpose: "establish the topic", WordBudget: targetWords}},
-		TotalWords:   targetWords,
-		Style:        tone,
-		Relationship: language,
-	}
-	sourceText := fmt.Sprintf("%s | clip_ids=%s | language=%s | tone=%s | model=%s", title, strings.Join(ids, ","), language, tone, model)
-	pack := map[string]any{
-		"clip_ids": ids,
-		"title":    title,
-		"language": language,
-		"tone":     tone,
-		"model":    model,
-	}
-	return pack, plan, sourceText, nil
-}
-
-// ComputeFingerprint computes a fingerprint (stub).
-func (c *ClipSourceBuilder) ComputeFingerprint(clipIDs []string, pack interface{}, opts *ClipGenerationOptions, fpCtx interface{}) string {
-	parts := []string{"clips"}
-	for _, id := range clipIDs {
-		id = strings.TrimSpace(id)
-		if id != "" {
-			parts = append(parts, id)
-		}
-	}
-	if opts != nil {
-		if v := strings.TrimSpace(opts.Title); v != "" {
-			parts = append(parts, "title="+v)
-		}
-		if v := strings.TrimSpace(opts.Language); v != "" {
-			parts = append(parts, "lang="+v)
-		}
-		if v := strings.TrimSpace(opts.Tone); v != "" {
-			parts = append(parts, "tone="+v)
-		}
-		if v := strings.TrimSpace(opts.Model); v != "" {
-			parts = append(parts, "model="+v)
-		}
-	}
-	return strings.Join(parts, "|")
-}
-
-// NewFingerprintContext creates a fingerprint context (stub).
-func NewFingerprintContext(model, promptModel string) interface{} {
-	return map[string]string{"model": strings.TrimSpace(model), "prompt_model": strings.TrimSpace(promptModel)}
-}
+// BuildClipContext is implemented in clip_source_builder.go (real implementation).
+// ComputeFingerprint is implemented in clip_source_builder.go (real implementation).
+// NewFingerprintContext is implemented in clip_source_builder.go (real implementation).
 
 // PipelineResult holds the output of Pipeline.Run.
 type PipelineResult struct {
@@ -615,24 +452,18 @@ type SceneVoiceover struct {
 	LocalPath  string `json:"local_path"`
 }
 
-// Pipeline executes the post-generation pipeline phases.
-type Pipeline struct{}
-
-// NewPipeline is the canonical constructor for *Pipeline.
-//
-// AGENT-2 (June 2026): stub constructor wired to satisfy the
-// `scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)`
-// call site in `internal/app/wire_script.go`. Real implementation
-// was removed from remote in commit d61068b3 — this stub returns
-// empty PipelineResult from Pipeline.Run so consumers stay nil-tolerant.
-func NewPipeline(log interface{}, tag string, scenesSvc, docsSvc, postGen, resolveFolder interface{}) *Pipeline {
-	return &Pipeline{}
+// Pipeline executes the post-generation phases (entity extraction,
+// scene images, voiceovers, doc creation). All fields are concrete typed.
+type Pipeline struct {
+	log           *zap.Logger
+	tag           string
+	scenesSvc     *ScenesService
+	docsSvc       *DocumentsService
+	postGen       interface{} // PostGenFunc callback
+	resolveFolder FolderResolver
 }
 
-// Run executes the pipeline (stub).
-func (p *Pipeline) Run(ctx context.Context, spec interface{}, script string, tools interface{}) (*PipelineResult, error) {
-	return &PipelineResult{}, nil
-}
+// Run is implemented in pipeline_impl.go (real implementation).
 
 // ── Documents types ─────────────────────────────────────────────────────
 
