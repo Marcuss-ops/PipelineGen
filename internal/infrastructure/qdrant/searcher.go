@@ -27,7 +27,7 @@ func NewSearcher(client *Client, schema *IndexSchema, log *zap.Logger) *Searcher
 
 // Search performs an ANN dense vector search using the runtime alias.
 func (s *Searcher) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {
-	if req.Vector == nil {
+	if req.QueryVector == nil {
 		return nil, fmt.Errorf("search vector must not be nil")
 	}
 	if req.Limit <= 0 {
@@ -37,11 +37,11 @@ func (s *Searcher) Search(ctx context.Context, req SearchRequest) ([]SearchResul
 	// Validate vector dimensions against the manifest.
 	if req.VectorName != "" {
 		spec := s.schema.GetDense(req.VectorName)
-		if spec != nil && len(req.Vector) != spec.Dimensions {
+		if spec != nil && len(req.QueryVector) != spec.Dimensions {
 			return nil, &ErrVectorDimensionMismatch{
 				Channel:  req.VectorName,
 				Expected: spec.Dimensions,
-				Actual:   len(req.Vector),
+				Actual:   len(req.QueryVector),
 				AssetID:  "(query)",
 			}
 		}
@@ -102,10 +102,10 @@ func (s *Searcher) SearchByText(ctx context.Context, text string, embedder TextE
 		return nil, fmt.Errorf("embed query text: %w", err)
 	}
 	return s.Search(ctx, SearchRequest{
-		Vector:     vec,
-		VectorName: vectorName,
-		Limit:      limit,
-		MinScore:   minScore,
+		QueryVector: vec,
+		VectorName:  vectorName,
+		Limit:       limit,
+		MinScore:    minScore,
 	})
 }
 
@@ -138,52 +138,6 @@ type AudioEmbedder interface {
 	EmbedAudio(ctx context.Context, audioPaths []string) ([][]float32, error)
 }
 
-// ── Application-level search adapter ─────────────────────────────────
-
-// SearchAdapter adapts the qdrant Searcher to the application-level
-// search.VectorStorePort interface. This lives in the infrastructure
-// layer because it depends directly on the qdrant package.
-type SearchAdapter struct {
-	searcher *Searcher
-	log      *zap.Logger
-}
-
-// NewSearchAdapter creates a SearchAdapter.
-func NewSearchAdapter(searcher *Searcher, log *zap.Logger) *SearchAdapter {
-	return &SearchAdapter{searcher: searcher, log: log}
-}
-
-// SearchResultToVectorSearchResult converts a qdrant.SearchResult to
-// the application-level VectorSearchResult type.
-func SearchResultToVectorSearchResult(r SearchResult, log *zap.Logger) map[string]interface{} {
-	result := map[string]interface{}{
-		"score": r.Score,
-	}
-
-	if r.Payload != nil {
-		if v, ok := r.Payload["asset_id"].(string); ok {
-			result["asset_id"] = v
-		}
-		if v, ok := r.Payload["source"].(string); ok {
-			result["source"] = v
-		}
-		if v, ok := r.Payload["name"].(string); ok {
-			result["name"] = v
-		}
-		if v, ok := r.Payload["drive_link"].(string); ok {
-			result["drive_link"] = v
-		}
-		if v, ok := r.Payload["media_type"].(string); ok {
-			result["media_type"] = v
-		}
-		if v, ok := r.Payload["language"].(string); ok {
-			result["language"] = v
-		}
-		if v, ok := r.Payload["category"].(string); ok {
-			result["category"] = v
-		}
-		result["tags"] = r.Payload["tags"]
-		result["search_text"] = r.Payload["search_text"]
-	}
-	return result
-}
+// ── QDRANT-003: SearchAdapter moved to search_adapter.go ─────────────
+// The SearchAdapter that bridges qdrant.Searcher → search.VectorStorePort
+// now lives in search_adapter.go with full DTO conversion and filter building.
