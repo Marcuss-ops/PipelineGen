@@ -1,15 +1,12 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -72,29 +69,16 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 		zap.String("media_type", mediaType),
 	)
 
-	// Marshal payload for job
-	payload := appjobs.DriveFolderSyncPayload{
-		DriveFolderID: folderID,
-		Source:        source,
-		Name:          req.Name,
-		MediaType:     mediaType,
-	}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to marshal job payload: %w", err))
-		return
-	}
-
-	var payloadMap map[string]any
-	if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to unmarshal job payload: %w", err))
-		return
-	}
-
-	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       "drive.folder.sync",
-		Payload:    payloadMap,
-		MaxRetries: 2,
+	// QDRANT-001 closure: route through the shared dispatch helper so the
+	// admin (/api) and server-to-server (/internal/v1) variants stay in
+	// lockstep on payload schema, job type, and error envelope.
+	out, err := h.dispatchDriveFolderSync(c, &DispatchSyncInput{
+		FolderID:  folderID,
+		Source:    source,
+		Name:      req.Name,
+		MediaType: mediaType,
+		IdemKey:   "", // admin variant: no client-supplied Idempotency-Key
+		Caller:    "api_admin",
 	})
 	if err != nil {
 		h.log.Error("failed to enqueue drive folder sync job",
@@ -107,10 +91,10 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 
 	c.JSON(202, gin.H{
 		"ok":              true,
-		"job_id":          job.ID,
+		"job_id":          out.JobID,
 		"drive_folder_id": folderID,
 		"source":          source,
 		"name":            req.Name,
-		"message":         "Drive folder sync dispatched. Poll GET /api/jobs/" + job.ID + " for status.",
+		"message":         "Drive folder sync dispatched. Poll GET /api/jobs/" + out.JobID + " for status.",
 	})
 }

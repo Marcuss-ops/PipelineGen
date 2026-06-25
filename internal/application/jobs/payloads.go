@@ -125,11 +125,19 @@ type BulkUploadYouTubeClipsPayload struct {
 }
 
 // DriveFolderSyncPayload is sent with JobTypeDriveFolderSync.
+//
+// QDRANT-001 (June 2026) closure: the /internal/v1 variant (server-to-server)
+// also copies the Idempotency-Key header into the payload so the worker
+// has a stable per-request key for retry dedup. The Caller field is for
+// observability ("api_admin" vs "internal_v1"); the dispatch helper
+// stamps it when the job is enqueued.
 type DriveFolderSyncPayload struct {
-	DriveFolderID string `json:"drive_folder_id"`
-	Source        string `json:"source,omitempty"`
-	Name          string `json:"name,omitempty"`
-	MediaType     string `json:"media_type,omitempty"`
+	DriveFolderID  string `json:"drive_folder_id"`
+	Source         string `json:"source,omitempty"`
+	Name           string `json:"name,omitempty"`
+	MediaType      string `json:"media_type,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	Caller         string `json:"caller,omitempty"`
 }
 
 // TypedPayload is a constraint satisfied by all job payload structs.

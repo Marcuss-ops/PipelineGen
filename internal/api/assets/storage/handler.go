@@ -1,6 +1,13 @@
 // Package storage provides the thin HTTP transport for storage operations
 // (list, move, create-folder, rename). All business logic is delegated
 // to application/assets/storage.Service.
+//
+// QDRANT-001 (June 2026) closure: this package also exposes
+// RegisterInternalMediaRoutes (a separate RegisterRoutes surface that
+// mounts under /internal/v1/media/ for the server-to-server variant).
+// The api.Router uses a narrow MediaInternalRouter interface to keep
+// the registration surface minimal and avoid leaking storage.Handler
+// into non-storage callers.
 package storage
 
 import (
@@ -38,6 +45,22 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/drive/create-folder", h.CreateFolder)
 	r.POST("/drive/rename", h.RenameFile)
 	r.POST("/sync-drive-folder", h.SyncDriveFolder)
+}
+
+// RegisterInternalMediaRoutes registers the QDRANT-001 server-to-server
+// surface under /internal/v1/media/*. Currently exposes:
+//
+//	POST /internal/v1/media/sync-drive-folder
+//
+// Idempotency-Key header is REQUIRED. The auth surface comes from
+// the upstream middleware.WorkerAuth mounted by api.Router.Setup() —
+// callers authenticate as services/workers (AdminBearer is rejected).
+func (h *Handler) RegisterInternalMediaRoutes(r *gin.RouterGroup) {
+	if r == nil {
+		return
+	}
+	mediaGroup := r.Group("/media")
+	mediaGroup.POST("/sync-drive-folder", h.InternalSyncDriveFolder)
 }
 
 // ── ListFiles (GET /drive/files) ─────────────────────────────────
