@@ -223,6 +223,8 @@ func TestPipelineUseCase_RunNilSafe(t *testing.T) {
 	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
 }
 
+// PG-042: typed-Broker port + nil broker → panic at RegisterHandler;
+// this nil short-circuit prevents the runtime dereference.
 func TestPipelineUseCase_RegisterJobs_NilSvcNoOp(t *testing.T) {
 	t.Parallel()
 	pu := &PipelineUseCase{log: zap.NewNop()} // intentionally under-populated
