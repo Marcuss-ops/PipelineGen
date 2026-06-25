@@ -141,6 +141,55 @@ var (
 		Help: "Total number of media indexing retries, by source",
 	}, []string{"source"})
 
+	// MediaIndexAttemptsTotal counts every handler entry into the
+	// asset.index.* event consumer (IndexingHandler). Distinct from
+	// RetryTotal (which counts retries specifically) and SuccessTotal /
+	// FailureTotal (which count terminal outcomes): the attempts counter
+	// is the sum of in-flight + retrying + succeeded + failed. Stable
+	// high attempts with low success_total indicates an embedding-server
+	// or Qdrant bottleneck — alert thresholds draw on the delta.
+	//
+	// QDRANT-002 item M: "media_index_attempts_total".
+	MediaIndexAttemptsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "media_index_attempts_total",
+		Help: "Total number of asset.index.* handler entries, by event_type",
+	}, []string{"event_type"})
+
+	// MediaIndexSupersededTotal counts events short-circuited by the
+	// source_version supersede gate (see outboxevents.SupersedeError).
+	// Steady-state growth during Drive sync waves is normal (catalogsync
+	// streams hundreds of updates for the same aggregate in a burst).
+	// Out-of-band growth indicates an upstream regression — same
+	// aggregate re-streamed unnecessarily.
+	//
+	// QDRANT-002 item M: success-like terminal state surfaced alongside
+	// dead_letter so dashboards tell "producer broken" apart from
+	// "upstream streamed a fresh update — old events no-op".
+	MediaIndexSupersededTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "media_index_superseded_total",
+		Help: "Total number of asset.index.requested events short-circuited by source_version supersede, by event_type",
+	}, []string{"event_type"})
+
+	// MediaIndexDuration measures wall-clock duration of the asset.index.*
+	// handler (IndexingHandler.Handle), bucketed for the typical
+	// 30s process timeout window plus a 120s tail bucket for embedding
+	// worst-case. Pairs naturally with attempts_total + success_total to
+	// spot slow processing.
+	//
+	// outcome label values:
+	//   - "success"   — IndexClip returned nil, MarkCompleted path
+	//   - "superseded"— source_version mismatch, MarkSuperseded path
+	//   - "terminal"  — handler returned *TerminalError, MarkDeadLetter
+	//   - "retryable" — handler returned retryable error, MarkFailed path
+	//   - "parse_err" — payload malformed / schema mismatch / missing fields
+	//
+	// QDRANT-002 item M: "media_index_duration_seconds".
+	MediaIndexDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "media_index_duration_seconds",
+		Help:    "Duration of asset.index.* handler invocations by outcome",
+		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+	}, []string{"event_type", "outcome"})
+
 	// StaleAssets counts media_assets rows in non-terminal indexing states
 	// beyond a freshness threshold (default 1h). Updated by the indexer
 	// health sweeper — alert if it grows monotonically.

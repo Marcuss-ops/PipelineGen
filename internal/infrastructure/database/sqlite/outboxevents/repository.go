@@ -11,7 +11,19 @@
 //	COMMIT
 //
 // A worker polls ClaimNext and dispatches to the appropriate handler.
-// Events have four states: pending, processing, completed, dead_letter.
+// Events have five states:
+//   - pending     — eligible for ClaimNext
+//   - processing  — claimed by a worker (lease_id non-empty)
+//   - completed   — terminal success
+//   - dead_letter — terminal failure (terminal error or max_attempts)
+//   - superseded  — terminal "skipped" (event obsoleted by a newer
+//     aggregate version; routed by *SupersedeError —
+//     see outboxevents/supersede.go)
+//
+// The status column accepts any TEXT (no CHECK constraint on the
+// canonical lifecycle set); writes to completed / dead_letter /
+// superseded MUST go through MarkCompleted / MarkDeadLetter /
+// MarkSuperseded respectively to keep lease fencing intact.
 package outboxevents
 
 import (
@@ -278,6 +290,52 @@ func (r *Repository) MarkDeadLetter(ctx context.Context, eventID int64, leaseID 
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		return fmt.Errorf("outboxevents.MarkDeadLetter(%d): %w", eventID, ErrLeaseLost)
+	}
+	return nil
+}
+
+// SupersedeStatus is the canonical outbox status for events
+// obsoleted by a newer version of the same aggregate. Distinct from
+// dead_letter so an operator dashboard distinguishes "the producer
+// is broken" from "the upstream streamed a fresh update — old events
+// became no-ops". Written by MarkSuperseded; recognised by the
+// realtime.IndexHealth counters.
+//
+// Mirrors the terminal-success state introduced by the
+// *SupersedeError path (see supersede.go). The status string is
+// intentionally lower-cased + pluralised to map unambiguously onto
+// the "completed | dead_letter | superseded" triad.
+const SupersedeStatus = "superseded"
+
+// MarkSuperseded moves a claimed event straight to status='superseded',
+// bypassing the attempt-count+max-attempts comparison that
+// MarkFailed applies on a retryable error. Use this when the
+// handler returns a *SupersedeError — IsSupersede owns the classifier
+// in Pool.processEvent.
+//
+// Lease-fenced — matches MarkCompleted / MarkDeadLetter. Mirrors the
+// same worker_id / lease_id / lease_expiry reset to the empty/null
+// set so a stale consumer cannot resurrect the row once retired.
+// errMsg goes verbatim into last_error so operator log queries
+// (last_error LIKE '%superseded%') surface this terminal state
+// cleanly.
+//
+// Reference: QDRANT-002 checklist item F — "Se l'evento è obsoleto,
+// marcarlo SUPERSEDED senza indicizzare dati vecchi."
+func (r *Repository) MarkSuperseded(ctx context.Context, eventID int64, leaseID string, errMsg string) error {
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE outbox_events
+		SET status = ?, last_error = ?, updated_at = ?,
+		    worker_id = '', lease_id = '', lease_expiry = NULL
+		WHERE id = ? AND lease_id = ? AND status = 'processing'
+	`, SupersedeStatus, errMsg, nowStr, eventID, leaseID)
+	if err != nil {
+		return fmt.Errorf("outboxevents.MarkSuperseded(%d): %w", eventID, err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("outboxevents.MarkSuperseded(%d): %w", eventID, ErrLeaseLost)
 	}
 	return nil
 }

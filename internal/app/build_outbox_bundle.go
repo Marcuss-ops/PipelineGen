@@ -48,13 +48,29 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		hmacSecrets = append(hmacSecrets, []byte(prev))
 	}
 
+	// AssetSourceChecker is the load-bearing GetClip port used by
+	// the IndexingHandler source_version supersede gate (QDRANT-002
+	// item F). The production concrete is the same ClipsRepository
+	// already wired into the dispatcher's MultiClipsUpserter; both
+	// expose GetClip, so a single instance satisfies the interface.
+	// nil ClipsRepo → nil AssetSourceChecker → IndexingHandler skips
+	// the supersede gate (acceptable in test dbs; production always
+	// wires non-nil).
+	var assetSourceChecker jobsoutbox.AssetSourceChecker
+	if repos.ClipsRepo != nil {
+		if sc, ok := repos.ClipsRepo.(jobsoutbox.AssetSourceChecker); ok {
+			assetSourceChecker = sc
+		}
+	}
+
 	outboxDeps := &jobsoutbox.Deps{
-		DB:          dbs.main.DB,
-		HTTPClient:  httpClient,
-		MetadataDir: cfg.Storage.FullPath("asset_metadata"),
-		HMACSecrets: hmacSecrets,
-		InsecureDev: cfg.Security.DeliveryInsecureDev,
-		Jobs:        jobs.Service,
+		DB:                 dbs.main.DB,
+		HTTPClient:         httpClient,
+		MetadataDir:        cfg.Storage.FullPath("asset_metadata"),
+		HMACSecrets:        hmacSecrets,
+		InsecureDev:        cfg.Security.DeliveryInsecureDev,
+		Jobs:               jobs.Service,
+		AssetSourceChecker: assetSourceChecker,
 	}
 	// QDRANT-003: wire IndexWriter as QdrantDeleter for index.delete_requested events.
 	if process.QdrantDeleter != nil {
