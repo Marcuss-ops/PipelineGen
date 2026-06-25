@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,7 +52,7 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 	if deps == nil {
 		t.Fatal("expected non-nil deps")
 	}
-	defer deps.Cleanup()
+	defer deps.Lifecycle.Stop(context.Background())
 }
 
 func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
@@ -95,9 +96,9 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 	}
 
 	// Call Cleanup multiple times
-	deps.Cleanup()
-	deps.Cleanup()
-	deps.Cleanup()
+	deps.Lifecycle.Stop(context.Background())
+	deps.Lifecycle.Stop(context.Background())
+	deps.Lifecycle.Stop(context.Background())
 }
 
 func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
@@ -140,7 +141,7 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WireServices failed: %v", err)
 	}
-	defer deps.Cleanup()
+	defer deps.Lifecycle.Stop(context.Background())
 
 	if deps.Registry == nil {
 		t.Fatal("expected non-nil Registry")
@@ -190,5 +191,5 @@ func TestStartupIntegration(t *testing.T) {
 	if deps == nil {
 		t.Fatal("expected non-nil deps")
 	}
-	defer deps.Cleanup()
+	defer deps.Lifecycle.Stop(context.Background())
 }

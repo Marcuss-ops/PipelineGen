@@ -268,7 +268,6 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		Lifecycle:     lifecycle,
 		HealthService: healthSvc,
 		ReadyChecker:  readyChecker,
-		Cleanup:       cleanup,
 	}, nil
 }
 
@@ -282,9 +281,22 @@ func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, er
 		return nil, err
 	}
 	return &AppDeps{
-		Registry: nil,
-		Cleanup: func() {
-			coreClean()
-		},
+		Registry:  nil,
+		Lifecycle: &minimalLifecycle{stop: coreClean},
 	}, nil
+}
+
+// minimalLifecycle wraps a single stop function as a LifecycleManager.
+// Used by WireMinimal to keep the AppDeps contract uniform: all callers
+// use Lifecycle.Stop for teardown, never a separate Cleanup func.
+type minimalLifecycle struct {
+	stop func()
+}
+
+func (m *minimalLifecycle) Start(_ context.Context) error { return nil }
+func (m *minimalLifecycle) Stop(_ context.Context) error {
+	if m.stop != nil {
+		m.stop()
+	}
+	return nil
 }

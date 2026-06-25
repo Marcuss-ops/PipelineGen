@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,8 +70,8 @@ func runVerifyArtlistPipeline(args []string) error {
 		log.Error("Failed to wire services", zap.Error(err))
 		return err
 	}
-	if deps.Cleanup != nil {
-		defer deps.Cleanup()
+	if deps.Lifecycle != nil {
+		defer deps.Lifecycle.Stop(context.Background())
 	}
 
 	allOK := true

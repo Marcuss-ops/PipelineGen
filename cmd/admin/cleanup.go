@@ -30,6 +30,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -543,8 +544,8 @@ func runTestYouTube(args []string) error {
 	fmt.Println("Services wired successfully!")
 	fmt.Printf("Registry: %v\n", deps.Registry != nil)
 
-	if deps.Cleanup != nil {
-		defer deps.Cleanup()
+	if deps.Lifecycle != nil {
+		defer deps.Lifecycle.Stop(context.Background())
 	}
 	return nil
 }
