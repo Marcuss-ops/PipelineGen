@@ -1,17 +1,28 @@
 """Text-embedding endpoints (multilingual-e5-base) + text normalization.
 
-Uses an APIRouter so route registration is bulletproof (no `from . import app`
-relative-import resolution edge cases). __init__.py mounts the router on the
-FastAPI app via `app.include_router(text.router)`.
+QDRANT-001 (June 2026) closure: the /index, /index_transcript, and /index_bulk
+endpoints used to read clip rows from media.db.sqlite and write embedding
+results back to SQLite inside this sidecar. Per QDRANT-001 (single-writer
+rule), Go is now the sole writer of SQLite.
+
+These endpoints are now PURE compute operators:
+  input  → JSON body {clip_id, name, search_text, [transcript_path]}
+  output → JSON body {clip_id, field, embedding, dimensions, ...}
+
+The Go caller (clipindexer.indexViaAPI / indexBulkAPI) reads the
+embedding JSON from the response and persists it via the canonical
+outbox/indexed flow (QDRANT-002 PR4 contract).
+
+Uses APIRouter; __init__.py mounts the router on the FastAPI app via
+app.include_router(text.router).
 """
 
-import json
-import sqlite3
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from . import _inference_sem, model, nlp, nlp_it
-from .models import EmbedRequest, IndexBulkRequest, IndexTextRequest
+from .models import BulkClipSpec, EmbedRequest, IndexBulkRequest, IndexTextRequest
 
 router = APIRouter()
 
@@ -47,220 +58,136 @@ async def embed(req: EmbedRequest):
             normalized = normalize_text(req.text)
             prefixed = prefix + normalized
             embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
-            return {"embedding": embedding, "normalized_text": normalized, "type": req.type}
+            return {
+                "embedding": embedding,
+                "normalized_text": normalized,
+                "type": req.type,
+            }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/index")
 async def index_text(req: IndexTextRequest):
-    """Generate SEMANTIC text embedding for a clip and save to DB.
+    """QDRANT-001 closure: compute-and-return. Caller (Go) persists.
 
-    Reads the clip's search_text (title + summary + topics + hook) from
-    media_assets, generates a 768d passage embedding via multilingual-e5,
-    and stores it in embedding_json. Called by Go clipindexer.IndexClip()
-    via indexViaAPI() — avoids spawning a separate Python process.
+    QDRANT-001 review fix: the request body carries `name` and `search_text`
+    directly (Go is canonical owner of media_assets). This endpoint never
+    touches SQLite.
+
+    Response:
+        {"status": "success", "clip_id": "...", "field": "embedding_json",
+         "embedding": [...768 floats...], "dimensions": 768, "text_length": int}
     """
     async with _inference_sem:
         try:
-            conn = sqlite3.connect(req.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            row = cursor.execute(
-                "SELECT name, json_extract(metadata_json, '$.search_text') as search_text "
-                "FROM media_assets WHERE id = ?",
-                (req.clip_id,),
-            ).fetchone()
-
-            if row is None:
-                conn.close()
-                raise HTTPException(status_code=404, detail=f"Clip {req.clip_id} not found")
-
-            text = row["search_text"] or row["name"] or ""
-            if not text.strip():
-                conn.close()
+            text = (req.search_text or req.name or "").strip()
+            if not text:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Clip {req.clip_id} has no search_text or name",
+                    detail=(
+                        f"clip {req.clip_id or '<unknown>'} has no "
+                        "search_text or name in request body"
+                    ),
                 )
-
             normalized = normalize_text(text)
             prefixed = "passage: " + normalized
             embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
-            embedding_json = json.dumps(embedding)
-
-            cursor.execute(
-                "UPDATE media_assets SET embedding_json = ? WHERE id = ?",
-                (embedding_json, req.clip_id),
-            )
-            conn.commit()
-            conn.close()
 
             return {
                 "status": "success",
                 "clip_id": req.clip_id,
+                "field": "embedding_json",
+                "embedding": embedding,
                 "dimensions": len(embedding),
                 "text_length": len(text),
             }
         except HTTPException:
             raise
         except Exception as e:
-            import traceback
-            print(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/index_transcript")
 async def index_transcript(req: IndexTextRequest):
-    """Generate TRANSCRIPT embedding for a clip and save to DB.
-
-    Reads the clip's transcript text (full Whisper transcription) from a
-    .txt file associated with the clip, generates a 768d passage
-    embedding, stores it in transcript_embedding. Enables dual-vector
-    search: semantic (general meaning) + transcript (precise speech).
-    """
+    """QDRANT-001 closure: transcript compute-and-return. Caller persists."""
     async with _inference_sem:
         try:
-            from pathlib import Path
-
-            conn = sqlite3.connect(req.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            row = cursor.execute(
-                "SELECT name, json_extract(metadata_json, '$.local_path') as local_path "
-                "FROM media_assets WHERE id = ?",
-                (req.clip_id,),
-            ).fetchone()
-
-            if row is None:
-                conn.close()
-                raise HTTPException(status_code=404, detail=f"Clip {req.clip_id} not found")
-
-            clip_name = row["name"] or ""
-            local_path = row["local_path"] or ""
             transcript_text = ""
-
-            if local_path:
-                txt_file = Path(local_path).with_suffix(".txt")
-                if txt_file.exists() and txt_file.is_file():
-                    transcript_text = txt_file.read_text(
+            if req.transcript_path:
+                p = Path(req.transcript_path)
+                if p.exists() and p.is_file():
+                    transcript_text = p.read_text(
                         encoding="utf-8", errors="ignore"
                     ).strip()
 
-            if not transcript_text and clip_name:
-                base_name = Path(clip_name).stem
-                search_dirs = [
-                    Path("data/media"),
-                    Path("data/downloads"),
-                    Path("data/youtube-clips"),
-                ]
-                if local_path:
-                    search_dirs.insert(0, Path(local_path).parent)
-                for s_dir in search_dirs:
-                    if s_dir.exists():
-                        for candidate in [s_dir / f"{base_name}.txt"]:
-                            if candidate.exists():
-                                transcript_text = candidate.read_text(
-                                    encoding="utf-8", errors="ignore"
-                                ).strip()
-                                break
-                        if transcript_text:
-                            break
-
             if not transcript_text:
-                conn.close()
                 return {
                     "status": "skipped",
                     "clip_id": req.clip_id,
-                    "reason": "no transcript .txt file found",
+                    "reason": "no transcript file provided",
                 }
 
             normalized = normalize_text(transcript_text)
             prefixed = "passage: " + normalized
             embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
-            transcript_embedding_json = json.dumps(embedding)
-
-            cursor.execute(
-                "UPDATE media_assets SET transcript_embedding = ? WHERE id = ?",
-                (transcript_embedding_json, req.clip_id),
-            )
-            conn.commit()
-            conn.close()
 
             return {
                 "status": "success",
                 "clip_id": req.clip_id,
+                "field": "transcript_embedding",
+                "embedding": embedding,
                 "dimensions": len(embedding),
                 "text_length": len(transcript_text),
             }
         except HTTPException:
             raise
         except Exception as e:
-            import traceback
-            print(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/index_bulk")
 async def index_bulk(req: IndexBulkRequest):
-    """Generate text embeddings for multiple clips and save to DB in one transaction."""
+    """QDRANT-001 closure: bulk compute-and-return. Caller persists.
+
+    Input: list of BulkClipSpec {clip_id, name, search_text}.
+    Output: list of {clip_id, field, embedding, dimensions, text_length, status}.
+
+    Replaces the previous flow that opened SQLite inside this sidecar.
+    """
     async with _inference_sem:
-        conn = None
         try:
-            from pathlib import Path
+            # Build the canonical work list from clips (preferred) or
+            # fall back to the legacy clip_ids + DB-side lookup contract
+            # (which is no longer supported — compute surfaces that here).
+            work_items: list[BulkClipSpec] = list(req.clips or [])
+            for legacy_id in req.clip_ids:
+                work_items.append(BulkClipSpec(clip_id=legacy_id))
 
-            db_path = Path(req.db_path)
-            if not db_path.exists():
-                raise HTTPException(status_code=400, detail=f"Database file not found: {req.db_path}")
+            if not work_items:
+                return {"status": "empty", "results": []}
 
-            conn = sqlite3.connect(req.db_path, timeout=10)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            indexed_count = 0
-            for clip_id in req.clip_ids:
-                try:
-                    row = cursor.execute(
-                        "SELECT name, json_extract(metadata_json, '$.search_text') as search_text "
-                        "FROM media_assets WHERE id = ?",
-                        (clip_id,),
-                    ).fetchone()
-
-                    if row is None:
-                        continue
-
-                    text = row["search_text"] or row["name"] or ""
-                    if not text.strip():
-                        continue
-
-                    normalized = normalize_text(text)
-                    prefixed = "passage: " + normalized
-                    embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
-                    embedding_json = json.dumps(embedding)
-
-                    cursor.execute(
-                        "UPDATE media_assets SET embedding_json = ? WHERE id = ?",
-                        (embedding_json, clip_id),
-                    )
-                    indexed_count += 1
-                except Exception as clip_err:
-                    print(f"Warning: failed to index clip {clip_id}: {clip_err}")
-
-            conn.commit()
-            return {"status": "success", "count": indexed_count, "total": len(req.clip_ids)}
-        except HTTPException:
-            raise
+            results: list[dict] = []
+            for clip in work_items:
+                text = (clip.search_text or clip.name or "").strip()
+                if not text:
+                    results.append({
+                        "status": "skipped",
+                        "clip_id": clip.clip_id,
+                        "reason": "no search_text or name",
+                    })
+                    continue
+                normalized = normalize_text(text)
+                prefixed = "passage: " + normalized
+                embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
+                results.append({
+                    "status": "success",
+                    "clip_id": clip.clip_id,
+                    "field": "embedding_json",
+                    "embedding": embedding,
+                    "dimensions": len(embedding),
+                    "text_length": len(text),
+                })
+            return {"status": "success", "results": results}
         except Exception as e:
-            if conn:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-            import traceback
-            print(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
-        finally:
-            if conn:
-                conn.close()

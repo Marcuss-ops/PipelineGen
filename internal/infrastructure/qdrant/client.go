@@ -443,6 +443,24 @@ func (c *Client) parseError(resp *http.Response) error {
 
 // vectorAssetToPoint converts a VectorAsset into a qdrant Point.
 // Returns (Point, false) when the asset has no embeddings or no AssetID.
+//
+// QDRANT-001 (June 2026) point-ID convention (single canonical generator):
+//
+//	Point.ID = UUIDv5(asset_id)
+//
+// The asset ID is the canonical media_assets.id primary key; UUIDv5
+// (RFC 4122 namespace+DNS) gives a stable, deterministic, opaque Qdrant
+// point ID derived from it. Three earlier conventions converged onto
+// this one:
+//   - legacy Python sync_drive_qdrant.py used UUIDv5(drive_file_id)
+//     (REMOVED in QDRANT-001 closure — Python is now HTTP client only).
+//   - legacy admin path used UUIDv5(asset_id) (same value computed here).
+//   - new Go mapper is `Point.ID = asset.ID` — explicitly NOT the form
+//     this function returns; production callers must use this helper.
+//
+// Any caller outside the qdrant package that needs to write a point
+// MUST go through IndexWriter.Port.UpsertVectorAssets which uses this
+// function. Do not introduce a second point-ID convention.
 func vectorAssetToPoint(a VectorAsset) (Point, bool) {
 	vectors := make(map[string]interface{})
 	if len(a.TextEmbedding) > 0 {

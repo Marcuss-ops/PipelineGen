@@ -33,14 +33,27 @@ import (
 // exposed as primitive typed fields (ServerGinMode, DataDir,
 // DownloadDir, CORSOrigins) so the API layer stays free of
 // internal/infrastructure/config imports.
+//
+// QDRANT-001 (June 2026) closure: internalMediaHandler is the narrow
+// port for /internal/v1/media/* routes (server-to-server surface) —
+// the production binding is *internal/api/assets/storage.Handler
+// (RegisterInternalMediaRoutes method). Keeping it behind an
+// interface prevents this router from importing api/assets/storage.
 type Router struct {
-	cfg                 *RouterConfig
-	rateLimitMiddleware *middleware.RateLimitMiddleware
-	registry            *Registry
-	workerHandler       interface{ RegisterRoutes(*gin.RouterGroup) }
-	ctx                 context.Context
-	healthSvc           interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
-	readyChecker        *systemhealth.ReadyChecker
+	cfg                  *RouterConfig
+	rateLimitMiddleware  *middleware.RateLimitMiddleware
+	registry             *Registry
+	workerHandler        interface{ RegisterRoutes(*gin.RouterGroup) }
+	internalMediaHandler MediaInternalRouter
+	ctx                  context.Context
+	healthSvc            interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
+	readyChecker         *systemhealth.ReadyChecker
+}
+
+// MediaInternalRouter is the narrow port for /internal/v1/media/*
+// routes. Production bind: *internal/api/assets/storage.Handler.
+type MediaInternalRouter interface {
+	RegisterInternalMediaRoutes(*gin.RouterGroup)
 }
 
 // RouterConfig is the typed-port + primitive bundle the api.Router
@@ -85,6 +98,14 @@ func (r *Router) SetRegistry(reg *Registry) {
 // SetWorkerHandler wires internal worker routes into the router.
 func (r *Router) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
 	r.workerHandler = h
+}
+
+// SetInternalMediaHandler wires the QDRANT-001 server-to-server media
+// routes (POST /internal/v1/media/sync-drive-folder) into the router.
+// nil-safe — if no media handler has been wired the routes simply
+// won't register. Wire-up is performed by the composition root.
+func (r *Router) SetInternalMediaHandler(h MediaInternalRouter) {
+	r.internalMediaHandler = h
 }
 
 // SetContext sets the context for module lifecycle management
@@ -224,6 +245,12 @@ func (r *Router) Setup() *gin.Engine {
 	{
 		if r.workerHandler != nil {
 			r.workerHandler.RegisterRoutes(internalGroup)
+		}
+		// QDRANT-001 /internal/v1/media/* surface — server-to-server.
+		// WorkerAuth above enforces Bearer token (rejects admin tokens —
+		// see middleware_worker_auth_test.go). nil-tolerant if not wired.
+		if r.internalMediaHandler != nil {
+			r.internalMediaHandler.RegisterInternalMediaRoutes(internalGroup)
 		}
 	}
 

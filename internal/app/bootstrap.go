@@ -75,7 +75,15 @@ import (
 type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	Lifecycle     module.LifecycleManager
-	HealthService interface{}
-	ReadyChecker  *systemhealth.ReadyChecker
+	// InternalMediaHandler is the QDRANT-001 server-to-server surface
+	// for /internal/v1/media/* (currently just /sync-drive-folder).
+	// Same shape as WorkerHandler — narrow interface, no infra imports
+	// leak back into bootstrap.go. Wire-time: cmd/server/main.go calls
+	// server.SetInternalMediaHandler(deps.InternalMediaHandler) so the
+	// /internal/v1/media/sync-drive-folder route registers on the
+	// WorkerAuth-protected group.
+	InternalMediaHandler interface{ RegisterInternalMediaRoutes(*gin.RouterGroup) }
+	Lifecycle            module.LifecycleManager
+	HealthService        interface{}
+	ReadyChecker         *systemhealth.ReadyChecker
 }
