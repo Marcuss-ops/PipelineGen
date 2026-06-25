@@ -1,66 +1,92 @@
-# Regole operative obbligatorie
+# Regole operative obbligatorie — solo `main`
 
-Queste regole valgono per ogni ticket.
+Queste regole prevalgono su qualsiasi istruzione storica nei ticket PG-001–PG-047.
 
-## Git e branch
+## Workflow Git
 
-- Base consentita: solo `origin/main`.
-- Una sola branch dedicata per ticket, indicata nel ticket.
-- Non creare branch secondarie, stacked branch, branch di esperimento o branch di supporto.
-- Non lavorare direttamente su `main`.
-- Non fare push diretto su `main`.
-- Non combinare due ticket nella stessa branch o PR.
-- Prima di iniziare:
-  ```bash
-  git fetch origin
-  git checkout main
-  git pull --ff-only origin main
-  git status -sb
-  ```
-- La working tree deve essere pulita.
-- Creare la branch esatta indicata nel ticket.
-- Prima del push:
-  ```bash
-  git fetch origin
-  git rebase origin/main
-  git status -sb
-  git diff --check
-  ```
-- Dopo il push:
-  ```bash
-  git log -n 5 --oneline
-  git status -sb
-  ```
-- Verificare che il commit remoto sia realmente aggiornato.
+- Lavorare esclusivamente su `main` sincronizzato con `origin/main`.
+- Non creare branch di ticket, feature branch, stacked branch o branch di prova.
+- Non aprire PR per i ticket Zero Legacy.
+- Non usare force-push su `main`.
+- Un solo agente writer alla volta. Agenti di analisi e test non committano e non pushano.
+- Il ticket successivo parte soltanto dopo la verifica del commit precedente su `origin/main`.
 
-## Regole architetturali
+## Prima di iniziare
 
-- Cercare sempre il codice esistente prima di aggiungere nuovi tipi o package.
-- Non duplicare registry, resolver, sampler, mapping o logica di routing.
-- Ogni nuova astrazione deve entrare nel contratto canonico esistente.
-- Nessun alias di compatibilità.
-- Nessun wrapper pass-through lasciato “temporaneamente”.
-- Nessun fallback silenzioso verso nomi, route, env var o payload vecchi.
-- Nessun import `internal/infrastructure/*` da `internal/api`, `internal/application` o `internal/domain`, salvo ticket che sta eliminando una baseline già esistente e solo nei file esplicitamente autorizzati.
+```bash
+git fetch origin
+git checkout main
+git status -sb
+```
+
+Se esistono commit locali non pubblicati:
+
+```bash
+git rebase origin/main
+```
+
+Altrimenti:
+
+```bash
+git pull --ff-only origin main
+```
+
+La working tree deve essere pulita. Se contiene modifiche di un altro writer, fermarsi senza reset, stash o sovrascritture.
+
+## Durante il ticket
+
+- Un ticket e uno scope alla volta.
+- Cercare il codice esistente prima di aggiungere tipi o package.
+- Non duplicare registry, resolver, sampler, writer, mapping o routing.
+- Nessun alias di compatibilità, wrapper pass-through o fallback silenzioso.
 - SQL solo sotto `internal/infrastructure/database/**`.
 - Adapter concreti costruiti solo in `internal/app`.
-- API = trasporto; application = casi d'uso; domain = contratti; infrastructure = implementazioni.
-- Non modificare comportamento pubblico non incluso nello scope.
-- Non aggiornare baseline o allowlist per nascondere una violazione.
-- Non aggiungere nuove feature.
-- Non committare file generati, output, `node_modules`, `*.tsbuildinfo`, database o artefatti di test.
+- Non aggiornare baseline o allowlist per nascondere violazioni.
+- Non aggiungere feature fuori scope.
+- Non committare output, database o artefatti generati.
+
+## Prima del commit
+
+```bash
+git fetch origin
+git rebase origin/main
+git status -sb
+git diff
+git diff --check
+```
+
+Eseguire i test mirati. Quando richiesto:
+
+```bash
+go test ./...
+go vet ./...
+go build ./...
+go run ./scripts/archcheck --ratchet
+```
+
+Il vero `--strict` si usa soltanto dopo PG-001 e PG-046.
+
+## Commit e push
+
+```bash
+git add <solo-file-del-ticket>
+git commit -m "<tipo>(<scope>): <descrizione>"
+git fetch origin
+git rebase origin/main
+git push origin main
+git log -n 5 --oneline
+git status -sb
+```
+
+Verificare sempre che il commit sia presente su `origin/main`.
+
+## Conflitti
+
+- Ticket che toccano lo stesso file non lavorano in parallelo.
+- Il ticket successivo parte dall’ultimo `origin/main`.
+- Risolvere i conflitti manualmente; non usare ciecamente `--ours` o `--theirs`.
+- Non creare una branch per evitare il conflitto.
 
 ## Stop conditions
 
-Fermarsi senza improvvisare se:
-
-- il path indicato non esiste più su `origin/main`;
-- il codice canonico esiste già in un altro package;
-- la modifica richiede una nuova route, un nuovo payload o un nuovo job type;
-- è necessario mantenere una compatibility layer;
-- emergono due writer per lo stesso stato persistente;
-- il ticket richiede file fuori dallo scope;
-- i test dimostrano una dipendenza pubblica non documentata;
-- il rebase introduce conflitti architetturali.
-
-In questi casi documentare il blocco nella PR; non inventare una soluzione laterale.
+Fermarsi se il ticket è già completato, il path non esiste più, serve una compatibility layer, emerge un secondo writer, servono file fuori scope o un altro writer ha pubblicato modifiche sovrapposte. Non creare branch o PR per aggirare il blocco.
