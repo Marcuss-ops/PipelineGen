@@ -11,7 +11,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"go.uber.org/zap"
@@ -66,8 +65,11 @@ type Service struct {
 	mediaStore *drive.Store
 
 	// NEW: Intelligence & Search
-	llmGen    *ollama.Generator
-	vectorSvc *qdrant.Service
+	llmGen *ollama.Generator
+	// PG-034 (June 2026): vectorSvc removed — Qdrant capability deleted.
+	// Callers index embeddings through the Python embedding server only
+	// (s.repo.UpdateEmbeddingData persists them in SQLite so they survive
+	// even without a vector-store backend).
 
 	// Centralized style registry
 	styleRegistry *generation.StyleRegistry
@@ -120,7 +122,6 @@ func NewService(
 	gaCfg GoogleAccountingConfig,
 	mediaStore *drive.Store,
 	llmGen *ollama.Generator,
-	vectorSvc *qdrant.Service,
 	metaWriter *semantic.MetadataWriter,
 	ingestSvc *ingest.Service,
 	log *zap.Logger,
@@ -157,7 +158,6 @@ func NewService(
 		styleRegistry:          styleRegistry,
 		mediaStore:             mediaStore,
 		llmGen:                 llmGen,
-		vectorSvc:              vectorSvc,
 		metaWriter:             metaWriter,
 		ingestSvc:              ingestSvc,
 	}

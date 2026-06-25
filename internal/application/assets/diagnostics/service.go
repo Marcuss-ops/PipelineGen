@@ -38,19 +38,15 @@ func (s *Service) Check(ctx context.Context, cmd HealthCommand) (*HealthResult, 
 			result.Checks["index_health"] = map[string]any{
 				"ok":    false,
 				"error": err.Error(),
-			}
-		} else if report != nil {
-			result.Degraded = report.Degraded
-			result.Checks["index_health"] = map[string]any{
-				"ok":               report.OK,
-				"sqlite_assets":    report.SQLiteAssets,
-				"sqlite_indexed":   report.SQLiteIndexed,
-				"qdrant_points":    report.QdrantPoints,
-				"missing_qdrant":   report.MissingInQdrant,
-				"orphan_qdrant":    report.OrphanInQdrant,
-				"degraded_sources": report.DegradedSources,
-			}
+			}	} else if report != nil {
+		result.Degraded = report.Degraded
+		result.Checks["index_health"] = map[string]any{
+			"ok":               report.OK,
+			"sqlite_assets":    report.SQLiteAssets,
+			"sqlite_indexed":   report.SQLiteIndexed,
+			"degraded_sources": report.DegradedSources,
 		}
+	}
 	}
 
 	// Asset stats.

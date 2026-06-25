@@ -35,7 +35,6 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -97,7 +96,8 @@ type AssetsWiring struct {
 // (see internal/app/assets_adapters.go: diagIndexHealthAdapter.realtime
 // + searchVectorAdapter.realtimeSvc), so this change re-aligns the
 // caller signature with the adapter field types.
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vectorStore *qdrant.Service, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc interface{}, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc interface{}, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry) (*AssetsWiring, error) {
+	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
 		driveUploader = &driveutil.Uploader{Service: bundle.DriveClient, Log: log}
@@ -121,7 +121,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 		AssetTreeSvc:   bundle.AssetTreeService,
 		MetaWriter:     metaWriter,
 		ClipIndexer:    bundle.ClipIndexerService,
-		VectorStore:    vectorStore,
 		JobsSvc:        jobs.Facade,
 		Cfg:            cfg,
 		Log:            log,
@@ -146,24 +145,25 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, vecto
 
 	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
 	// Diagnostics: IndexHealth via realtime.Service + AssetStats via ClipsRepository.
-	// When realtimeSvc is nil (vector search disabled), the handler falls back to 503.
+	// PG-034 (June 2026): vectorSvc field removed from diagIndexHealthAdapter
+	// — Qdrant capability deleted. When realtimeSvc is nil, the handler
+	// falls back to 503.
 	var diagSvc *appdiag.Service
 	if realtimeSvc != nil {
 		diagSvc = appdiag.NewService(
-			&diagIndexHealthAdapter{realtime: realtimeSvc, vectorSvc: vectorStore},
+			&diagIndexHealthAdapter{realtime: realtimeSvc},
 			&diagAssetStatsAdapter{clips: bundle.ClipsRepo},
 			&zapDiagLogAdapter{log: log},
 		)
 	}
 	diagHandler := assetsdiag.NewHandler(diagSvc, log)
 
-	// Search: providers registry + vector search + local catalog/clips.
-	// Only wired when both vectorStore and realtimeSvc are non-nil.
+	// PG-034 (June 2026): searchVectorAdapter removed (Qdrant capability deleted).
+	// Search service now requires realtimeSvc + provider registry + local catalog only.
 	var searchSvc *appsearchsvc.Service
-	if vectorStore != nil && realtimeSvc != nil {
+	if realtimeSvc != nil {
 		searchSvc = appsearchsvc.NewService(
 			&searchRegistryAdapter{registry: providerRegistry},
-			&searchVectorAdapter{embedder: qdrant.NewSearchAdapter(vectorStore), realtimeSvc: realtimeSvc},
 			&searchCatalogAdapter{catalog: catalogRepo},
 			&searchClipAdapter{catalog: catalogRepo},
 			&searchConfigAdapter{cfg: cfg},

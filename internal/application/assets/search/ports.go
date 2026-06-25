@@ -65,13 +65,11 @@ type SemanticSearchResult struct {
 	Results  []VectorSearchResult `json:"results"`
 }
 
-// VectorSearchPort embeds text and performs ANN/hybrid search.
-type VectorSearchPort interface {
-	EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error)
-	VectorStore() VectorStorePort
-}
-
-// VectorStorePort is a narrow Qdrant port for search operations.
+// PG-034 (June 2026): VectorSearchPort + VectorStorePort removed —
+// Qdrant capability deleted. Cross-provider search remains the canonical
+// search path; the application-layer types VectorSearchRequest /
+// HybridSearchRequest / VectorSearchResult are preserved for future
+// re-introduction if a vector-store backend comes back.
 type VectorStorePort interface {
 	Search(ctx context.Context, req VectorSearchRequest) ([]VectorSearchResult, error)
 	HybridSearch(ctx context.Context, req HybridSearchRequest) ([]VectorSearchResult, error)

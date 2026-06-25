@@ -21,7 +21,7 @@ func TestReadyChecker_RequiredSet(t *testing.T) {
 	resp := ready.CheckReady(context.Background())
 	require.True(t, resp.OK)
 	require.Len(t, resp.Checks, 4, "ready should check exactly db, drive, qdrant, jobs")
-	for _, name := range []string{"db", "drive", "qdrant", "jobs"} {
+	for _, name := range []string{"db", "drive", "jobs"} {
 		require.Contains(t, resp.Checks, name, "ready missing %s", name)
 	}
 }

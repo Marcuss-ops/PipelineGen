@@ -55,7 +55,6 @@ type Config struct {
 	Features         FeaturesConfig         `yaml:"features"`
 	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
 	ClipIndexer      ClipIndexerConfig      `yaml:"clip_indexer"`
-	VectorSearch     VectorSearchConfig     `yaml:"vector_search"`
 	Reranker         RerankerConfig         `yaml:"reranker"`
 	Books            BooksConfig            `yaml:"books"`
 	VLM              VLMConfig              `yaml:"vlm"`

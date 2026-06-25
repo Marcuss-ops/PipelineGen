@@ -48,5 +48,5 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 			},
 		}
 	}
-	return r.svc.Check(ctx, []string{"db", "drive", "qdrant", "jobs"})
+	return r.svc.Check(ctx, []string{"db", "drive", "jobs"})
 }

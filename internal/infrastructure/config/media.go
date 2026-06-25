@@ -13,60 +13,6 @@ type ClipIndexerConfig struct {
 	MaxConcurrentIndexing int `yaml:"max_concurrent_indexing" env:"VELOX_CONCURRENT_CLIP_INDEXING" default:"10"`
 }
 
-// VectorSearchConfig holds settings for the vector search (Qdrant) integration.
-// CollectionAliasPattern:
-//
-//	When UseCollectionAlias is true (default), the system creates a versioned
-//	collection (e.g. pipelinegen_clips_v1) and an alias (e.g. pipelinegen_clips_current).
-//	This enables zero-downtime migration: backfill v2, then switch the alias.
-type VectorSearchConfig struct {
-	Enabled              bool    `yaml:"enabled" default:"false"`
-	Provider             string  `yaml:"provider" default:"qdrant"`
-	URL                  string  `yaml:"url" default:"http://127.0.0.1:6333"`
-	Collection           string  `yaml:"collection" default:"media_assets"`
-	TextVectorName       string  `yaml:"text_vector_name" default:"text"`
-	VisualVectorName     string  `yaml:"visual_vector_name" default:"visual"`
-	AudioVectorName      string  `yaml:"audio_vector_name" default:"audio"`
-	TranscriptVectorName string  `yaml:"transcript_vector_name" default:"transcript"`
-	SparseVectorName     string  `yaml:"sparse_vector_name" default:"bm25_text"`
-	TextDimensions       int     `yaml:"text_dimensions" default:"768"`
-	VisualDimensions     int     `yaml:"visual_dimensions" default:"512"`
-	AudioDimensions      int     `yaml:"audio_dimensions" default:"512"`
-	TranscriptDimensions int     `yaml:"transcript_dimensions" default:"768"`
-	MinInstantScore      float64 `yaml:"min_instant_score" default:"0.85"`
-	TimeoutMs            int     `yaml:"timeout_ms" default:"5000"`
-	GRPCPort             int     `yaml:"grpc_port" default:"6334"`
-	RealtimeEnabled      bool    `yaml:"realtime_enabled" default:"false"`
-	AllowBackgroundGen   bool    `yaml:"allow_background_generation" default:"false"`
-	// RetryAttempts is the number of attempts (including the first try) for
-	// transient Qdrant errors (5xx, 429, network). 1 disables retries.
-	// Default 3: two retries after the first failure.
-	RetryAttempts int `yaml:"retry_attempts" env:"VELOX_QDRANT_RETRY_ATTEMPTS" default:"3"`
-	// RetryInitialWaitMs is the backoff before the first retry, in ms.
-	// Default 200ms; doubles each attempt up to RetryMaxWaitMs.
-	RetryInitialWaitMs int `yaml:"retry_initial_wait_ms" env:"VELOX_QDRANT_RETRY_INITIAL_WAIT_MS" default:"200"`
-	// RetryMaxWaitMs caps the exponential backoff between retries, in ms.
-	// Default 5000ms (5s) — long enough to ride out a brief Qdrant restart.
-	RetryMaxWaitMs int `yaml:"retry_max_wait_ms" env:"VELOX_QDRANT_RETRY_MAX_WAIT_MS" default:"5000"`
-
-	// CollectionVersion is the schema version suffix appended to the
-	// physical Qdrant collection (e.g. "v2" → "{Collection}_v2"). When set,
-	// reads and writes route through the alias `{Collection}_current`
-	// (or CollectionAlias) so that schema bumps become zero-downtime
-	// operations: create the new version, backfill, then SwitchAlias.
-	// Leave empty for legacy mode that operates directly on Collection.
-	CollectionVersion string `yaml:"collection_version" env:"VELOX_QDRANT_COLLECTION_VERSION" default:""`
-	// CollectionAlias overrides the default `{Collection}_current` alias
-	// name. Useful when multiple PipelineGen clusters share one Qdrant
-	// and need distinct alias names per cluster.
-	CollectionAlias string `yaml:"collection_alias" env:"VELOX_QDRANT_COLLECTION_ALIAS" default:""`
-	// DisableAlias forces reads and writes to target the versioned
-	// collection directly instead of the alias. Use only for one-off
-	// backfill scripts against a specific versioned collection; never
-	// set in normal operation since it bypasses zero-downtime migration.
-	DisableAlias bool `yaml:"disable_alias" env:"VELOX_QDRANT_DISABLE_ALIAS" default:"false"`
-}
-
 // RerankerConfig holds settings for the CrossEncoder reranking service.
 // The reranker is an optional post-Qdrant reordering layer that improves
 // semantic precision for all media types (clips, stock, artlist, images, voiceovers).
@@ -101,12 +47,12 @@ type VLMConfig struct {
 
 // LessonsConfig holds settings for the lesson generation service.
 type LessonsConfig struct {
-	Enabled             bool   `yaml:"enabled" default:"true"`
-	DefaultModel        string `yaml:"default_model" default:"gemma4:e4b"`
-	DefaultTone         string `yaml:"default_tone" default:"educational"`
-	DefaultLanguage     string `yaml:"default_language" default:"it"`
-	DefaultImageModel   string `yaml:"default_image_model" default:"flux-1-dev"`
-	MaxParallelChapters int    `yaml:"max_parallel_chapters" default:"5"`
+	Enabled              bool   `yaml:"enabled" default:"true"`
+	DefaultModel         string `yaml:"default_model" default:"gemma4:e4b"`
+	DefaultTone          string `yaml:"default_tone" default:"educational"`
+	DefaultLanguage      string `yaml:"default_language" default:"it"`
+	DefaultImageModel    string `yaml:"default_image_model" default:"flux-1-dev"`
+	MaxParallelChapters  int    `yaml:"max_parallel_chapters" default:"5"`
 }
 
 // MultilingualConfig holds settings for multilingual metadata generation.

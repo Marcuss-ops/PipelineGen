@@ -33,6 +33,7 @@ import (
 // Deps is the constructor bag for Handler. Keeping deps in a struct
 // rather than 14 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
+// PG-034 (June 2026): VectorStore field removed — Qdrant capability deleted.
 type Deps struct {
 	SourceResolver *artifacts.SourceResolver
 	AssetRepo      asset.Repository
@@ -45,7 +46,6 @@ type Deps struct {
 	AssetTreeSvc   *assettree.Service
 	MetaWriter     *semantic.MetadataWriter
 	ClipIndexer    *clipindexer.Service
-	VectorStore    appclips.VectorStorePort
 	JobsSvc        jobservice.Service
 	Cfg            *config.Config
 	Log            *zap.Logger
@@ -132,7 +132,7 @@ func NewHandler(d Deps) *Handler {
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
 		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
 		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
-		enrichUC:    appclips.NewEnrichUseCase(d.AssetRepo, d.ClipIndexer, d.VectorStore, d.MetaWriter, d.Log),
+		enrichUC:    appclips.NewEnrichUseCase(d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log),
 	}
 }
 

@@ -18,7 +18,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"go.uber.org/zap"
 )
 
@@ -44,7 +43,8 @@ type ArtlistWiring struct {
 // the canonical UpsertClip + IndexClip path stays wired in production).
 // Returns ArtlistWiring with Resolver populated so caller can use the
 // clipresolver for ScriptFlow late-binding without round-tripping.
-func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, vectorStore *qdrant.Service, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
+func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
+	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	artlistLifecycle := wireArtlistLifecycle(bundle, log)
 	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
 	assetDestResolver := wireAssetDestinationResolver(cfg, bundle, log)
@@ -93,7 +93,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err
 	}
-	clipResolver := wireClipResolver(cfg, bundle, clipCatalogRepo, presetsConfig, vectorStore, log)
+	clipResolver := wireClipResolver(cfg, bundle, clipCatalogRepo, presetsConfig, log)
 	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
 	var mod api.Module
 	if artlistSvc != nil && handler != nil {
@@ -147,7 +147,12 @@ func wireAssetDestinationResolver(cfg *config.Config, bundle *ArtlistBundle, log
 	return nil
 }
 
-func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, vectorStore *qdrant.Service, log *zap.Logger) interface{} {
+func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, log *zap.Logger) interface{} {
+	_ = cfg
+	_ = bundle
+	_ = clipCatalogRepo
+	_ = presetsConfig
+	_ = log
 	return nil // clipresolver package removed from remote
 }
 

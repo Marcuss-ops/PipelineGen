@@ -20,7 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // initImageService creates the image generation service.
@@ -40,10 +39,11 @@ func initImageService(
 	ctx context.Context, cfg *config.Config, log *zap.Logger,
 	driveClient *gdrive.Service, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository,
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
-	mediaStore *drive.Store, vectorSvc *qdrant.Service, imageRepo *assets.ImagesRepository,
+	mediaStore *drive.Store, imageRepo *assets.ImagesRepository,
 	voMetaWriter *semantic.MetadataWriter,
 	ingestSvc *ingest.Service,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
+	// PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
 
 	imageService := imgservice.NewService(
 		cfg,
@@ -60,7 +60,6 @@ func initImageService(
 		},
 		mediaStore,
 		scriptGen,
-		vectorSvc,
 		voMetaWriter,
 		ingestSvc,
 		log,

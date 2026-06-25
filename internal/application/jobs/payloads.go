@@ -119,7 +119,6 @@ type BulkUploadYouTubeClipsPayload struct {
 	Limit               int      `json:"limit,omitempty"`             // cap number of clips (0 = no limit)
 	SkipUpload          bool     `json:"skip_upload,omitempty"`       // only create DB records + embeddings
 	SkipEmbeddings      bool     `json:"skip_embeddings,omitempty"`   // only upload + create DB records
-	SkipQdrant          bool     `json:"skip_qdrant,omitempty"`       // generate embeddings but skip Qdrant push
 	Concurrency         int      `json:"concurrency,omitempty"`       // parallel uploads (default 2)
 	FilePatterns        []string `json:"file_patterns,omitempty"`     // extra glob patterns to include (default [*.mp4])
 	SkipPatterns        []string `json:"skip_patterns,omitempty"`     // paths to skip (substring match)

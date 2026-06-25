@@ -8,38 +8,30 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
 
-// VectorStorePort is the port interface for vector store upserts.
-// The composition root injects *qdrant.Service which satisfies this.
-type VectorStorePort interface {
-	UpsertAsset(ctx context.Context, asset qdrant.VectorAsset) error
-}
-
-// EnrichUseCase handles semantic enrichment and vector store indexing for clips.
+// EnrichUseCase handles semantic enrichment for clips.
+// PG-034 (June 2026): vectorStore removed — Qdrant capability deleted.
+// The clip indexer is the canonical semantic-search backend now.
 type EnrichUseCase struct {
-	assetRepo    asset.Repository
-	clipIndexer  *clipindexer.Service
-	vectorStore  VectorStorePort
-	metaWriter   *semantic.MetadataWriter
-	log          *zap.Logger
+	assetRepo   asset.Repository
+	clipIndexer *clipindexer.Service
+	metaWriter  *semantic.MetadataWriter
+	log         *zap.Logger
 }
 
 // NewEnrichUseCase constructs the use case.
 func NewEnrichUseCase(
 	repo asset.Repository,
 	indexer *clipindexer.Service,
-	vs VectorStorePort,
 	mw *semantic.MetadataWriter,
 	log *zap.Logger,
 ) *EnrichUseCase {
 	return &EnrichUseCase{
 		assetRepo:   repo,
 		clipIndexer: indexer,
-		vectorStore: vs,
 		metaWriter:  mw,
 		log:         log,
 	}
@@ -105,27 +97,11 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 		}
 	}
 
-	// Step 2: Clip indexer
+	// Step 2: Clip indexer (PG-034: only the canonical search backend — vector
+	// store fallback was deleted with Qdrant).
 	if uc.clipIndexer != nil && uc.clipIndexer.IsEnabled() {
 		if err := uc.clipIndexer.IndexClip(enrichCtx, clip.ID); err != nil {
 			uc.log.Warn("clip indexer failed for clip",
-				zap.String("clip_id", clip.ID), zap.Error(err))
-		}
-	} else if uc.vectorStore != nil && clip.SearchText != "" {
-		// Step 3: Direct vector store upsert (fallback)
-		va := qdrant.VectorAsset{
-			AssetID:    clip.ID,
-			Source:     source,
-			Name:       clip.Name,
-			LocalPath:  clip.LocalPath(),
-			DriveLink:  clip.DriveLink(),
-			Category:   clip.Category,
-			MediaType:  string(clip.MediaType),
-			SearchText: clip.SearchText,
-			Tags:       clip.Tags,
-		}
-		if err := uc.vectorStore.UpsertAsset(enrichCtx, va); err != nil {
-			uc.log.Warn("vector store upsert failed for clip",
 				zap.String("clip_id", clip.ID), zap.Error(err))
 		}
 	}
@@ -133,37 +109,20 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 	uc.log.Info("enrichment complete for clip", zap.String("clip_id", clip.ID))
 }
 
-// UpsertToVectorStore constructs a VectorAsset from the clip fields and
-// upserts it to Qdrant. This centralises the VectorAsset mapping so
-// handlers never import infrastructure/qdrant directly.
-func (uc *EnrichUseCase) UpsertToVectorStore(ctx context.Context, clip *asset.Asset, source string) error {
-	if uc.vectorStore == nil {
-		return fmt.Errorf("vector store not configured")
-	}
-	va := qdrant.VectorAsset{
-		AssetID:    clip.ID,
-		Source:     source,
-		Name:       clip.Name,
-		LocalPath:  clip.LocalPath(),
-		DriveLink:  clip.DriveLink(),
-		Category:   clip.Category,
-		MediaType:  string(clip.MediaType),
-		SearchText: clip.SearchText,
-		Tags:       clip.Tags,
-	}
-	return uc.vectorStore.UpsertAsset(ctx, va)
-}
+// UpsertToVectorStore was removed in PG-034 (June 2026) along with the
+// Qdrant capability. The clip indexer's IndexClip path is now the
+// single canonical semantic indexing entry point.
 
-// HasVectorStore reports whether the vector store backend is configured.
-func (uc *EnrichUseCase) HasVectorStore() bool {
-	return uc.vectorStore != nil
-}
+// HasVectorStore was removed in PG-034 (June 2026).
+// The clip indexer is now the canonical semantic-search backend.
 
 // EnrichMediaRequest contains the input for the EnrichMedia endpoint.
+// PG-034 (June 2026): SkipQdrant removed — Qdrant capability deleted.
+// SkipEmbedGen is preserved for callers that want to skip the embedding
+//-generation leg altogether (the indexer now handles the whole pipeline).
 type EnrichMediaRequest struct {
 	AssetID      string `json:"asset_id"`
 	Source       string `json:"source"`
-	SkipQdrant   bool   `json:"skip_qdrant"`
 	SkipEmbedGen bool   `json:"skip_embed_gen"`
 }
 
@@ -189,7 +148,7 @@ func (uc *EnrichUseCase) EnrichMedia(ctx context.Context, req EnrichMediaRequest
 	}
 
 	// Try to find and enrich via clip indexer first
-	if req.Source != "" && (uc.clipIndexer != nil || uc.vectorStore != nil) {
+	if req.Source != "" && uc.clipIndexer != nil {
 		finder := findClip(req.Source)
 		if finder != nil {
 			clip, err := finder.GetClip(ctx, req.AssetID)

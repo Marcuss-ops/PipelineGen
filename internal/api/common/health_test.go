@@ -15,6 +15,10 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 )
 
+// PG-034 (June 2026): Qdrant removed — blockingChecker / healthyMock /
+// failingMock no longer implement CheckQdrant. Three capability checks
+// (db, drive, jobs) replace the previous four.
+
 // blockingChecker blocks until ctx is done, then returns ok=false.
 // Used for context-timeout tests.
 type blockingChecker struct {
@@ -25,9 +29,8 @@ func (b *blockingChecker) CheckDB(ctx context.Context) systemhealth.CheckResult 
 	<-ctx.Done()
 	return systemhealth.CheckResult{"ok": false, "error": "context done", "duration_ms": int64(0)}
 }
-func (b *blockingChecker) CheckDrive(ctx context.Context) systemhealth.CheckResult  { return b.CheckDB(ctx) }
-func (b *blockingChecker) CheckQdrant(ctx context.Context) systemhealth.CheckResult { return b.CheckDB(ctx) }
-func (b *blockingChecker) CheckJobs(ctx context.Context) systemhealth.CheckResult   { return b.CheckDB(ctx) }
+func (b *blockingChecker) CheckDrive(ctx context.Context) systemhealth.CheckResult { return b.CheckDB(ctx) }
+func (b *blockingChecker) CheckJobs(ctx context.Context) systemhealth.CheckResult { return b.CheckDB(ctx) }
 
 // healthyService returns a Service where all checks report ok=true.
 func healthyService() *systemhealth.Service {
@@ -35,7 +38,6 @@ func healthyService() *systemhealth.Service {
 	return systemhealth.NewService(systemhealth.ServiceDeps{
 		DB:    m,
 		Drive: m,
-		Qdrant: m,
 		Jobs:  m,
 	})
 }
@@ -48,9 +50,6 @@ func (h *healthyMock) CheckDB(ctx context.Context) systemhealth.CheckResult {
 func (h *healthyMock) CheckDrive(ctx context.Context) systemhealth.CheckResult {
 	return systemhealth.CheckResult{"ok": true, "duration_ms": int64(1)}
 }
-func (h *healthyMock) CheckQdrant(ctx context.Context) systemhealth.CheckResult {
-	return systemhealth.CheckResult{"ok": true, "duration_ms": int64(1)}
-}
 func (h *healthyMock) CheckJobs(ctx context.Context) systemhealth.CheckResult {
 	return systemhealth.CheckResult{"ok": true, "duration_ms": int64(1)}
 }
@@ -61,7 +60,6 @@ func failingService() *systemhealth.Service {
 	return systemhealth.NewService(systemhealth.ServiceDeps{
 		DB:    m,
 		Drive: m,
-		Qdrant: m,
 		Jobs:  m,
 	})
 }
@@ -72,9 +70,6 @@ func (f *failingMock) CheckDB(ctx context.Context) systemhealth.CheckResult {
 	return systemhealth.CheckResult{"ok": false, "duration_ms": int64(1), "error": "fail"}
 }
 func (f *failingMock) CheckDrive(ctx context.Context) systemhealth.CheckResult {
-	return systemhealth.CheckResult{"ok": false, "duration_ms": int64(1), "error": "fail"}
-}
-func (f *failingMock) CheckQdrant(ctx context.Context) systemhealth.CheckResult {
 	return systemhealth.CheckResult{"ok": false, "duration_ms": int64(1), "error": "fail"}
 }
 func (f *failingMock) CheckJobs(ctx context.Context) systemhealth.CheckResult {
@@ -103,7 +98,6 @@ func TestHealthHandler_FastHealth(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp["ok"].(bool))
 	assert.Equal(t, "healthy", resp["status"])
-	// Fast health: no checks key.
 	_, hasChecks := resp["checks"]
 	assert.False(t, hasChecks, "fast health should not include checks")
 }
@@ -119,7 +113,6 @@ func TestHealthHandler_DeepHealth(t *testing.T) {
 	router := gin.New()
 	router.GET("/health", handler.Health)
 
-	// Healthy case.
 	t.Run("healthy", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/health?deep=true", nil)
@@ -129,12 +122,11 @@ func TestHealthHandler_DeepHealth(t *testing.T) {
 		var resp map[string]any
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 		checks := resp["checks"].(map[string]any)
-		for _, name := range []string{"db", "drive", "qdrant", "jobs"} {
+		for _, name := range []string{"db", "drive", "jobs"} {
 			assert.Contains(t, checks, name, "deep health missing check: %s", name)
 		}
 	})
 
-	// Unhealthy case.
 	t.Run("unhealthy", func(t *testing.T) {
 		failSvc := failingService()
 		failReady := systemhealth.NewReadyChecker(failSvc)
@@ -175,7 +167,6 @@ func TestHealthHandler_RepeatedCheckParams(t *testing.T) {
 	assert.Contains(t, checks, "db")
 	assert.Contains(t, checks, "jobs")
 	assert.NotContains(t, checks, "drive")
-	assert.NotContains(t, checks, "qdrant")
 }
 
 // ── Query comma-separated ─────────────────────────────────────────────
@@ -212,9 +203,8 @@ func TestHealthHandler_MixedCheckSyntax(t *testing.T) {
 	router := gin.New()
 	router.GET("/health", handler.Health)
 
-	// ?check=db,jobs&check=qdrant&check=db → db,jobs,qdrant (dedup + preserve order)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/health?check=db,jobs&check=qdrant&check=db", nil)
+	req := httptest.NewRequest("GET", "/health?check=db,jobs&check=db", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -223,8 +213,6 @@ func TestHealthHandler_MixedCheckSyntax(t *testing.T) {
 	checks := resp["checks"].(map[string]any)
 	assert.Contains(t, checks, "db")
 	assert.Contains(t, checks, "jobs")
-	assert.Contains(t, checks, "qdrant")
-	// db should be deduplicated: only appears once.
 }
 
 // ── Unknown check → HTTP 400 ──────────────────────────────────────────
@@ -296,10 +284,10 @@ func TestHealthHandler_NilReadyCheckerReturns503(t *testing.T) {
 
 func TestHealthHandler_ReadyStatusMapping(t *testing.T) {
 	type tc struct {
-		name          string
-		svcHealthy    bool
-		wantHTTP      int
-		wantStatus    string
+		name       string
+		svcHealthy bool
+		wantHTTP   int
+		wantStatus string
 	}
 	cases := []tc{
 		{name: "ok_maps_to_200_ready", svcHealthy: true, wantHTTP: http.StatusOK, wantStatus: "ready"},
@@ -341,7 +329,6 @@ func TestHealthHandler_ContextTimeout(t *testing.T) {
 	svc := systemhealth.NewService(systemhealth.ServiceDeps{
 		DB:    blocker,
 		Drive: blocker,
-		Qdrant: blocker,
 		Jobs:  blocker,
 	})
 	ready := systemhealth.NewReadyChecker(svc)
@@ -350,10 +337,8 @@ func TestHealthHandler_ContextTimeout(t *testing.T) {
 	router := gin.New()
 	router.GET("/health", handler.Health)
 
-	// Use an already-cancelled context to avoid real sleep.
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/health?deep=true", nil)
-	// Cancel the request context immediately.
 	ctx, cancel := context.WithCancel(req.Context())
 	req = req.WithContext(ctx)
 	cancel()
@@ -362,7 +347,6 @@ func TestHealthHandler_ContextTimeout(t *testing.T) {
 	router.ServeHTTP(w, req)
 	elapsed := time.Since(start)
 
-	// Handler should terminate quickly (not 5+ seconds).
 	assert.Less(t, elapsed, 500*time.Millisecond,
 		"handler should terminate quickly with cancelled context, took %v", elapsed)
 }

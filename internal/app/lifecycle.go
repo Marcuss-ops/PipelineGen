@@ -32,7 +32,6 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -87,13 +86,16 @@ type backgroundJobs struct {
 //  5. YouTube cache prewarm + nightly (optional)
 //  6. Research cache sweeper (optional)
 //  7. Gemma memory sweeper (optional)
-//  8. Qdrant stale cleaner (optional)
-//  9. Clip dedup sweeper (optional)
+//  8. Clip dedup sweeper (optional)
+//  9. VLM auto-tag sweeper (optional)
+// 10. Job runner (REQUIRED, always last)
 //
-// 10. VLM auto-tag sweeper (optional)
-// 11. Qdrant ghost sweeper (optional)
-// 12. Qdrant health monitor (optional)
-// 13. Job runner (REQUIRED, always last)
+// PG-034 (June 2026): three Qdrant-driven background steps were removed:
+//   - qdrant-stale-cleaner
+//   - qdrant-ghost-sweeper
+//   - qdrant-health-monitor
+// Qdrant is gone; its embeddings are now stored solely in SQLite
+// (media_assets.embedding_json / transcript_embedding).
 //
 // Mode mapping (matches previous semantics):
 //   - "all"        → runWorker + runScheduler + runMaintenance
@@ -330,20 +332,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			})
 		}
 
-		if root.Process.VectorSvc != nil && root.Drive.DriveUploader != nil {
-			vs := root.Process.VectorSvc
-			up := root.Drive.DriveUploader
-			steps = append(steps, StartupStep{
-				Name: "qdrant-cleaner", Required: false,
-				Start: func(startCtx context.Context) error {
-					concurrent.SafeGo("qdrant-cleaner", func() {
-						startQdrantCleaner(startCtx, vs, up, log)
-					})
-					return nil
-				},
-				Stop: func(_ context.Context) error { return nil },
-			})
-		}
+		// PG-034 (June 2026): Qdrant-cleaner step removed — Qdrant capability deleted.
 
 		if root.Repos.ClipsRepo != nil {
 			cr := root.Repos.ClipsRepo
@@ -375,36 +364,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			})
 		}
 
-		if root.Process.VectorSvc != nil && root.Repos.ClipsRepo != nil {
-			vs := root.Process.VectorSvc
-			cr := root.Repos.ClipsRepo
-			steps = append(steps, StartupStep{
-				Name: "qdrant-ghost-sweeper", Required: false,
-				Start: func(startCtx context.Context) error {
-					log.Info("Qdrant ghost-points sweeper starting (interval=24h, initialDelay=10m)")
-					concurrent.SafeGo("qdrant-ghost-sweeper", func() {
-						startQdrantGhostSweeper(startCtx, vs, cr, log)
-					})
-					return nil
-				},
-				Stop: func(_ context.Context) error { return nil },
-			})
-		}
-	}
-
-	if root.Process.VectorSvc != nil {
-		vs := root.Process.VectorSvc
-		steps = append(steps, StartupStep{
-			Name: "qdrant-health-monitor", Required: false,
-			Start: func(startCtx context.Context) error {
-				log.Info("Qdrant health monitor starting (interval=60s)")
-				concurrent.SafeGo("qdrant-health-monitor", func() {
-					startQdrantHealthMonitor(startCtx, vs, log)
-				})
-				return nil
-			},
-			Stop: func(_ context.Context) error { return nil },
-		})
+		// PG-034 (June 2026): Qdrant-ghost-sweeper step removed — Qdrant capability deleted.
 	}
 
 	// Job runner: REQUIRED, always LAST in the plan.
@@ -470,47 +430,8 @@ func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 	}
 }
 
-func startQdrantHealthMonitor(ctx context.Context, vectorSvc *qdrant.Service, log *zap.Logger) {
-	const (
-		initialDelay = 15 * time.Second
-		interval     = 60 * time.Second
-	)
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(initialDelay):
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	var wasHealthy *bool
-	check := func() {
-		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		err := vectorSvc.Health(checkCtx)
-		healthy := err == nil
-		if wasHealthy == nil || *wasHealthy != healthy {
-			if healthy {
-				log.Info("Qdrant is healthy", zap.String("check_interval", interval.String()))
-			} else {
-				log.Warn("Qdrant health check FAILED — semantic search/upserts may degrade",
-					zap.Error(err))
-			}
-			wasHealthy = &healthy
-		}
-	}
-
-	check()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			check()
-		}
-	}
-}
+// PG-034 (June 2026): startQdrantHealthMonitor was removed — Qdrant
+// capability deleted.
 
 func startClipDedupSweeper(ctx context.Context, clipsRepo *assets.ClipsRepository, log *zap.Logger) {
 	const (
@@ -602,56 +523,10 @@ func runDedupSweep(ctx context.Context, clipsRepo *assets.ClipsRepository, log *
 	return swept, nil
 }
 
-func startQdrantCleaner(ctx context.Context, vectorSvc *qdrant.Service, driveUploader *drive.Uploader, log *zap.Logger) {
-	const (
-		initialDelay = 5 * time.Minute
-		interval     = 12 * time.Hour
-	)
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(initialDelay):
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	clean := func() {
-		sCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-		defer cancel()
-
-		validator := func(assetID, driveFileID, driveLink string) (bool, error) {
-			fileID := driveFileID
-			if fileID == "" {
-				var err error
-				fileID, err = urlutil.FileIDFromDriveLink(driveLink)
-				if err != nil || fileID == "" {
-					return false, fmt.Errorf("cannot extract file ID from link %q: %w", driveLink, err)
-				}
-			}
-			return driveUploader.FileIsNotTrashed(sCtx, fileID)
-		}
-
-		deleted, err := vectorSvc.CleanupStalePoints(sCtx, validator)
-		if err != nil {
-			log.Warn("Qdrant stale point cleanup failed", zap.Error(err))
-			return
-		}
-		if deleted > 0 {
-			log.Info("Qdrant stale points removed", zap.Int("deleted", deleted))
-		}
-	}
-
-	clean()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			clean()
-		}
-	}
-}
+// PG-034 (June 2026): startQdrantCleaner was removed — Qdrant capability
+// deleted. Dead-link drift is now caught by the SQLite metadata layer
+// (media_assets.drive_file_id_clean += json_extract checks) and the
+// existing clip-dedup sweeper already enumerates sqliteIDs.
 
 func startGemmaMemorySweeper(ctx context.Context, repo *gemmamemory.Repository, log *zap.Logger) {
 	const (
@@ -728,124 +603,11 @@ func startVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, lo
 	}
 }
 
-type ghostSweepable interface {
-	ScrollAssetIDsPage(ctx context.Context, batchSize int, fn func([]string) error) error
-	DeletePoints(ctx context.Context, assetIDs []string) error
-}
-
-func startQdrantGhostSweeper(ctx context.Context, vectorSvc *qdrant.Service, clipsRepo *assets.ClipsRepository, log *zap.Logger) {
-	const (
-		initialDelay    = 10 * time.Minute
-		interval        = 24 * time.Hour
-		scrollBatchSize = 500
-		sqlitePageSize  = 1000
-		maxWorkBudget   = 30 * time.Minute
-	)
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(initialDelay):
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	sweep := func() {
-		sCtx, cancel := context.WithTimeout(ctx, maxWorkBudget)
-		defer cancel()
-		deleted, err := runGhostSweep(sCtx, vectorSvc, clipsRepo, scrollBatchSize, sqlitePageSize, log)
-		if err != nil {
-			log.Warn("Qdrant ghost sweep failed", zap.Error(err))
-			return
-		}
-		if deleted > 0 {
-			log.Info("Qdrant ghost points removed", zap.Int("deleted", deleted))
-		} else {
-			log.Info("Qdrant ghost sweep clean (no drift detected)", zap.Int("deleted", 0))
-		}
-	}
-
-	sweep()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			sweep()
-		}
-	}
-}
-
-// runGhostSweep loads `clipsRepo`'s media_assets ids (handled via the
-// typed StreamAssetIDs port) into a set, scrolls Qdrant, deletes any
-// ghost points that no longer have a corresponding SQLite row. The
-// pagination, ctx honoring, and per-batch error semantics mirror the
-// previous raw-SQL implementation exactly.
-func runGhostSweep(ctx context.Context, qdrant ghostSweepable, clipsRepo *assets.ClipsRepository, scrollBatchSize, sqlitePageSize int, log *zap.Logger) (int, error) {
-	if qdrant == nil {
-		return 0, fmt.Errorf("qdrant store is nil")
-	}
-	if clipsRepo == nil {
-		return 0, fmt.Errorf("clips repo is nil")
-	}
-	if scrollBatchSize <= 0 {
-		scrollBatchSize = 500
-	}
-	if sqlitePageSize <= 0 {
-		sqlitePageSize = 1000
-	}
-
-	sqliteIDs := make(map[string]struct{}, 8192)
-	if err := clipsRepo.StreamAssetIDs(ctx, sqlitePageSize, func(batch []string) error {
-		for _, id := range batch {
-			sqliteIDs[id] = struct{}{}
-		}
-		return nil
-	}); err != nil {
-		return 0, fmt.Errorf("stream asset ids via clipsRepo: %w", err)
-	}
-	log.Debug("ghost sweep loaded sqlite ids", zap.Int("count", len(sqliteIDs)))
-
-	var ghosts []string
-	scrollErr := qdrant.ScrollAssetIDsPage(ctx, scrollBatchSize, func(batch []string) error {
-		for _, id := range batch {
-			if _, ok := sqliteIDs[id]; !ok {
-				ghosts = append(ghosts, id)
-			}
-		}
-		return nil
-	})
-	if scrollErr != nil {
-		return 0, fmt.Errorf("scroll qdrant asset ids: %w", scrollErr)
-	}
-
-	log.Debug("ghost sweep scanned qdrant",
-		zap.Int("sqlite", len(sqliteIDs)),
-		zap.Int("ghosts", len(ghosts)))
-	if len(ghosts) == 0 {
-		return 0, nil
-	}
-
-	for i := 0; i < len(ghosts); i += 100 {
-		end := i + 100
-		if end > len(ghosts) {
-			end = len(ghosts)
-		}
-		if err := qdrant.DeletePoints(ctx, ghosts[i:end]); err != nil {
-			return i, fmt.Errorf("delete ghosts %d-%d: %w", i, end, err)
-		}
-	}
-
-	sample := ghosts
-	if len(sample) > 20 {
-		sample = sample[:20]
-	}
-	log.Debug("Qdrant ghost points deleted — sample",
-		zap.Int("total_deleted", len(ghosts)),
-		zap.Strings("sample_ids", sample))
-
-	return len(ghosts), nil
-}
+// PG-034 (June 2026): ghostSweepable, startQdrantGhostSweeper, and
+// runGhostSweep were removed — Qdrant capability deleted. Ghost-point
+// cleanup is now exclusively a SQLite concern (handled by the
+// clip-dedup sweeper plus future drift checks on
+// media_assets.drive_file_id).
 
 // LifecycleDeps holds the dependencies needed to create a lifecycle service
 type LifecycleDeps struct {

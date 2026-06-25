@@ -367,25 +367,21 @@ func (h *Handler) processOneClip(
 	}
 	log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
 
-	// Step 5 + 6: embeddings + Qdrant via existing IndexClip pipeline
+	// Step 5: embeddings via existing IndexClip pipeline.
+	// PG-034 (June 2026): Qdrant capability deleted, so the SkipQdrant
+	// gating and the direct-vector-store fallback (HasVectorStore /
+	// UpsertToVectorStore) are gone. The indexer is now the canonical
+	// semantic-search backend and is the only post-DB-side leg.
 	if !payload.SkipEmbeddings {
 		// Stage the transcript in data/youtube-clips/ so the indexer's
 		// /index_transcript endpoint (which looks for {base}.txt there) can
-		// find it. Without this, only the semantic embedding would be
-		// generated and the transcript vector would be empty.
-		//
-		// Stage under a per-clip subdir to prevent two clips with the same
-		// base filename in different source subdirs from racing on the same
-		// stage file.
+		// find it.
 		if cand.Transcript != "" {
 			stageRoot := h.cfg.Storage.YoutubeClipsPath()
 			if stageRoot == "" {
 				stageRoot = filepath.Join(h.cfg.Storage.DataDir, "youtube-clips")
 			}
 			baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
-			// Per-clip subdir = sanitised subdir; falls back to "_root" for
-			// clips at the top of the scan root, and "_dup" for collisions
-			// within the same source subdir.
 			subBucket := strings.TrimSpace(cand.Subdir)
 			if subBucket == "" || subBucket == "." {
 				subBucket = "_root"
@@ -399,34 +395,15 @@ func (h *Handler) processOneClip(
 			stageDir := filepath.Join(stageRoot, subBucket)
 			_ = os.MkdirAll(stageDir, 0o755)
 			stagePath := filepath.Join(stageDir, baseNoExt+".txt")
-			// Best effort: don't fail the whole pipeline if staging fails
 			if err := os.WriteFile(stagePath, []byte(cand.Transcript), 0o644); err != nil {
 				log.Warn("transcript staging failed (non-fatal)", zap.String("path", stagePath), zap.Error(err))
 			}
 		}
-		// If the caller asked to skip Qdrant, generate embeddings but bypass
-		// the indexer (which always pushes to Qdrant). Fall back to a no-op
-		// after UpsertClip so the user still has a searchable record in the DB
-		// but no Qdrant point.
-		if h.clipIndexer != nil && h.clipIndexer.IsEnabled() && !payload.SkipQdrant {
-			// Note: IndexClip always pushes to Qdrant (no skip_qdrant option in
-			// the indexer). Gating with !payload.SkipQdrant means the indexer
-			// doesn't run at all when the flag is set — so embeddings are also
-			// skipped. To "generate embeddings without Qdrant push", the indexer
-			// would need a new flag; for now, set SkipEmbeddings=true and
-			// pre-populate embedding_json to use the no-Qdrant-push path.
+		if h.clipIndexer != nil && h.clipIndexer.IsEnabled() {
 			if err := h.clipIndexer.IndexClip(ctx, clip.ID); err != nil {
 				log.Warn("indexer failed (non-fatal)", zap.Error(err))
 			} else {
 				indexed.Add(1)
-				pushed.Add(1) // IndexClip internally upserts to Qdrant via the fast path
-			}
-		} else if h.enrichUC != nil && h.enrichUC.HasVectorStore() && clip.SearchText != "" && !payload.SkipQdrant {
-			// Direct vector store upsert (fallback)
-			if err := h.enrichUC.UpsertToVectorStore(ctx, clip, string(clip.Source)); err != nil {
-				log.Warn("vector upsert failed (non-fatal)", zap.Error(err))
-			} else {
-				pushed.Add(1)
 			}
 		}
 	}

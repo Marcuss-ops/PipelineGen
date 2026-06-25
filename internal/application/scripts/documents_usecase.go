@@ -4,27 +4,11 @@
 // closure shape.
 //
 // Wave 14 problem #4 (June 2026): previously the handler called the
-// service directly:
+// service directly. Moving the construction here collapses the wiring
+// to a single NewDocumentsUseCase call from composition.
 //
-//	docsSvc := scripts.NewDocumentsService(
-//	    h.docClient,
-//	    h.log,
-//	    h.driveFolderID,
-//	)
-//	...
-//	pipeline := scripts.NewPipeline(..., docsSvc, ...)
-//
-// and from inside the Pipeline.createDoc:
-//
-//	return p.docs.CreateDoc(
-//	    ctx, title, content, p.resolveFolder, driveFolderID,
-//	)
-//
-// Two separate construction points (handler + every Pipeline build)
-// and the resolveFolder closure leaking from the handler. Moving the
-// construction here collapses the wiring to a single NewDocumentsUseCase
-// call from composition; downstream callers (PipelineUseCase) get a
-// typed method.
+// PG-029 (June 2026): DocumentsService struct + NewDocumentsService +
+// CreateDoc consolidated here from the now-deleted types.go.
 //
 // The use case owns:
 //   - DocumentsService construction with the resolved driveFolderID
@@ -37,18 +21,60 @@
 // The use case does NOT own:
 //   - the resolveFolder closure (caller-supplied; the use case is
 //     folder-resolver-agnostic)
-//   - the html body content builder (BuildContent) — callers wanting
-//     to render HTML before CreateDoc call BuildContent directly.
+//   - the html body content builder (BuildContent)
 package scripts
 
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
+
+// DocumentsService creates Google Docs from script content.
+type DocumentsService struct {
+	docClient       interface{}
+	log             *zap.Logger
+	defaultFolderID string
+}
+
+// NewDocumentsService creates a new DocumentsService.
+func NewDocumentsService(docClient interface{}, log interface{}, driveFolderID string) *DocumentsService {
+	var logger *zap.Logger
+	if l, ok := log.(*zap.Logger); ok {
+		logger = l
+	}
+	return &DocumentsService{
+		docClient:       docClient,
+		log:             logger,
+		defaultFolderID: driveFolderID,
+	}
+}
+
+// CreateDoc creates a Google Doc.
+func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string, resolveFolder FolderResolver, driveFolderID string) (docLink, docID string) {
+	if d == nil {
+		return "", ""
+	}
+	client, ok := d.docClient.(drive.DocClient)
+	if !ok || client == nil {
+		return "", ""
+	}
+	folderID := strings.TrimSpace(driveFolderID)
+	if resolveFolder != nil && folderID != "" {
+		if resolved, err := resolveFolder(ctx, folderID, d.defaultFolderID); err == nil && strings.TrimSpace(resolved) != "" {
+			folderID = resolved
+		}
+	}
+	doc, err := client.CreateDoc(ctx, title, content, folderID)
+	if err != nil || doc == nil || strings.TrimSpace(doc.URL) == "" || strings.TrimSpace(doc.ID) == "" {
+		return "", ""
+	}
+	return doc.URL, doc.ID
+}
 
 // ErrDocumentCreationFailed is the sentinel for "CreateDoc returned
 // an error or empty doc-link". The typed error chain enables
