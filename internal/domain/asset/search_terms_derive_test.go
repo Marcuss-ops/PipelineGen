@@ -168,7 +168,9 @@ func TestDeriveSearchTerms_PunctuationStripsJSONLiterals(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("punctuation strip failed; got=%v want empty", got)
 	}
-}func TestDeriveSearchTerms_OrderPreservedAcrossFields(t *testing.T) {
+}
+
+func TestDeriveSearchTerms_OrderPreservedAcrossFields(t *testing.T) {
 	t.Parallel()
 
 	// Field call order in DeriveSearchTerms is documented in search_terms.go
