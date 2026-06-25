@@ -12,6 +12,7 @@ type Repository interface {
 	SoftDelete(ctx context.Context, id string) error
 	Restore(ctx context.Context, id string) error
 	HardDelete(ctx context.Context, id string) error
+	FindByExternalRef(ctx context.Context, provider, externalID string) (*Asset, error)
 }
 
 // LocationRepository is the contract for asset_locations persistence.

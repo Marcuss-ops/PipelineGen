@@ -384,6 +384,32 @@ func (s *AssetStoreSQLite) AssetRepository() Repository {
 	return &assetRepositoryAdapter{store: s}
 }
 
+// FindByExternalRef looks up an asset by its external provider reference.
+// For google_drive it matches on the drive_file_id column; for all other
+// providers it matches on source + metadata_json.external_id.
+// Returns (nil, nil) when no matching asset exists.
+func (a *assetRepositoryAdapter) FindByExternalRef(ctx context.Context, provider, externalID string) (*Asset, error) {
+	if provider == "" || externalID == "" {
+		return nil, nil
+	}
+	var row *sql.Row
+	if provider == "google_drive" {
+		query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE drive_file_id = ? AND " + SoftDeleteFilter() + " LIMIT 1"
+		row = a.store.db.QueryRowContext(ctx, query, externalID)
+	} else {
+		query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE source = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.external_id') = ? AND " + SoftDeleteFilter() + " LIMIT 1"
+		row = a.store.db.QueryRowContext(ctx, query, provider, externalID)
+	}
+	asset, err := scanMediaAsset(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("FindByExternalRef(%s, %s): %w", provider, externalID, err)
+	}
+	return asset, nil
+}
+
 // listAssetsByFilter is a helper used internally by the adapter
 // to return []*Asset matching a Filter. It reuses the shared media asset
 // query builder and scanner.
