@@ -7,7 +7,7 @@ import (
 )
 
 // prohibitedPatterns is the per-area prohibition list owned by this
-// call site. Mirrors the contract Agente 4 (June 2026) requires for the
+// call site. Mirrors the contract the transport layer requires for the
 // HTTP transport layer: binding + DTO conversion only — no concrete
 // infrastructure adapters, no goroutines, no business orchestrators.
 //
@@ -45,7 +45,7 @@ var prohibitedPatterns = []gate.Prohibition{
 // pkg/archcheck/gate machinery. Per-violation failures surface in
 // the test report (gate.Walk calls t.Errorf per match); the test
 // halts via t.Fatalf when the total is non-zero (real-fail, not
-// log-only). This is the SHIP-BLOCKER fix flagged by Agente 5 —
+// log-only). This is the SHIP-BLOCKER fix —
 // the prior t.Logf-only version silently absorbed violations.
 func TestStaticGate_NoConcreteInfrastructureInTransport(t *testing.T) {
 	gate.Walk(t, gate.Config{

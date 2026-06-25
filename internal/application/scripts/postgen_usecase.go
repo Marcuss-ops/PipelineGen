@@ -2,10 +2,9 @@
 // for the unified clip-source script generation job (entities
 // extraction + insights + multi-lingual video metadata).
 //
-// Agente 4 — F (June 2026): BuildMetadataLanguages and GenerateVideoMetadata
-// are now in the same package (metadata.go). The use case calls them
-// directly instead of receiving them as opaque function-port deps from
-// the API layer. LanguageBuilderFunc and MetadataGenFunc are removed;
+// BuildMetadataLanguages and GenerateVideoMetadata are in the same
+// package (metadata.go). The use case calls them directly instead of
+// receiving them as opaque function-port deps from the API layer. LanguageBuilderFunc and MetadataGenFunc are removed;
 // the constructor is simplified accordingly.
 //
 // The use case owns:

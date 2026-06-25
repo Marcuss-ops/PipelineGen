@@ -2,9 +2,9 @@
 // post-generation metadata helpers previously co-located in
 // api/script/helpers.go (BuildMetadataLanguages, GenerateVideoMetadata).
 //
-// Agente 4 — F (June 2026): moved here so the application layer owns
-// these functions directly; PostGenUseCase no longer receives them as
-// opaque function-port deps from the API layer. The call site in
+// These functions live in the application layer so PostGenUseCase
+// calls them directly instead of receiving them as opaque
+// function-port deps from the API layer. The call site in
 // app/wire_script.go imports this package and passes the functions
 // directly (no import cycle).
 package scripts

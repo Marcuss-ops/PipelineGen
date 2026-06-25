@@ -1,4 +1,4 @@
-// cmd/admin/cleanup.go — AGENT-1 recovery (June 2026)
+// cmd/admin/cleanup.go — cleanup subcommands
 //
 // All cleanup subcommands (cleanup-orphans, cleanup-all-orphans,
 // cleanup-artlist-empty-folders, cleanup-stock-orphans,
@@ -56,7 +56,6 @@ func runCleanupOrphans(args []string) error {
 	}
 	defer cleanup()
 
-	// AGENT-1 fix: app.ExportInitCoreMinimal was removed in PR4d-final.
 	// Use app.InitComposition to obtain the canonical *ComposeRoot.
 	// The returned *backgroundJobs is internal to internal/app; we
 	// discard it with `_` since the cmd/admin CLI does not start any
@@ -80,19 +79,19 @@ func runCleanupOrphans(args []string) error {
 		driveUploader = root.Drive.DriveUploader
 	}
 
-	// AGENT-1 fix: the canonical DeletionService is pre-built by the
-	// composition root (BuildMaintBundle). The old code constructed a
-	// one-off service with three source-specific clip repos; the new
-	// code reuses the singleton because repo collapsing makes the
-	// per-source diff a row discriminator, not a constructor argument.
+	// The canonical DeletionService is pre-built by the composition
+	// root (BuildMaintBundle). The old code constructed a one-off
+	// service with three source-specific clip repos; the new code
+	// reuses the singleton because repo collapsing makes the per-source
+	// diff a row discriminator, not a constructor argument.
 	deletionSvc := root.Maint.DeletionSvc
 	if deletionSvc == nil {
 		return fmt.Errorf("deletion service is not available (composition root missing Maint bundle)")
 	}
 
-	// AGENT-1 note: in the legacy wrapper, three repos (artlist/clips/
-	// stock) collapsed to a single *assets.ClipsRepository on the
-	// canonical DeletionService. Root.Repos.ClipsRepo already carries
+	// In the legacy wrapper, three repos (artlist/clips/stock)
+	// collapsed to a single *assets.ClipsRepository on the canonical
+	// DeletionService. Root.Repos.ClipsRepo already carries
 	// all three responsibilities. Maint.DeletionSvc is itself built
 	// with the right collapsed shape in BuildMaintBundle — no further
 	// constructor adaptation is required at this site.
@@ -376,7 +375,7 @@ func runCleanupStockOrphans(args []string) error {
 	return nil
 }
 
-// AGENT-1 note: pre-fix the legacy `media.NewDeletionService` was rebuilt
+// Pre-fix the legacy `media.NewDeletionService` was rebuilt
 // here with source-specific repos. Post-fix we reuse root.Maint.DeletionSvc;
 // the source discriminator is on the row (column `source`) and the
 // canonical DeletionService.DeleteClip handles all sources through the

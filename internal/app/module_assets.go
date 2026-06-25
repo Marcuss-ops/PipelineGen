@@ -86,7 +86,7 @@ type AssetsWiring struct {
 // catalogRepo, maintenanceSvc). ClipIndexer is in the bundle now.
 // PR3 (June 2026): providerRegistry added for constructor injection
 // (replaces post-construction SetProviderRegistry).
-// AGENT-1 cascade fix (June 2026, cmd/admin recovery collateral): the
+// Cascade fix (June 2026, cmd/admin recovery collateral): the
 // `realtime` package was removed in commit d61068b3. The WireAssets
 // signature below accepts a realtimeSvc parameter typed as `interface{}`
 // (was `*realtime.Service`) so the caller in registry.go can pass

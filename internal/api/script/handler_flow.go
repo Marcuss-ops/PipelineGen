@@ -1,8 +1,8 @@
 // Package script (api/script) — ScriptFlowHandler is the canonical entry
 // point for the script-flow HTTP surface.
 //
-// Agente 4 (June 2026): concrete infrastructure imports (ollama, config, drive)
-// removed. ClipServices is pre-built in wire_script.go. Admin token is stored
+// Concrete infrastructure imports (ollama, config, drive) removed.
+// ClipServices is pre-built in wire_script.go. Admin token is stored
 // as a string for route middleware. Document creation uses a local interface.
 
 package script
@@ -25,7 +25,7 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
-// ── Local interfaces (Agente 4 — avoid concrete infrastructure types) ────────
+// ── Local interfaces ────────────────────────────────────────────────────────
 
 // DriveFolderClient abstracts folder creation for Drive resolution.
 type DriveFolderClient interface {

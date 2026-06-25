@@ -1,9 +1,9 @@
-// cmd/admin/reset_video_ai.go — AGENT-1 recovery (June 2026)
+// cmd/admin/reset_video_ai.go — recreate video AI Drive folder
 //
 // Recreates the stock "video ai" sub-folder on Google Drive and registers
 // an entry in the canonical `clip_folders` SQLite table.
 //
-// Post-fix wiring (AGENT-1):
+// Post-fix wiring:
 //
 //   - app.ExportInitCoreMinimal was removed in PR4d-final; we use
 //     app.InitComposition(cfg, log) to obtain *ComposeRoot. The

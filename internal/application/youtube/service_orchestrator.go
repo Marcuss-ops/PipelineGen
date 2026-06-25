@@ -526,7 +526,7 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 	return s.search.TopicSearch(ctx, query, limit, sortMode, publishedAfter)
 }
 
-// ── AGENT-2 build-fix (June 2026): GetVideoInfo forwarding ──────────────
+// ── GetVideoInfo forwarding ─────────────────────────────────────────────
 //
 // GetVideoInfo fetches full YouTube metadata for the given URL by
 // forwarding to the canonical VideoMetadataFetcherPort (which exposes

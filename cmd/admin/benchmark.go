@@ -1,9 +1,9 @@
-// cmd/admin/benchmark.go — AGENT-1 recovery (June 2026)
+// cmd/admin/benchmark.go — semantic search benchmark
 //
 // Loads a labeled set of queries from a JSON file, runs each through an
 // HTTP-backed semantic-search endpoint, and emits a structured report.
 //
-// Pre-fix signature inconsistencies fixed by AGENT-1:
+// Pre-fix signature inconsistencies fixed:
 //
 //   - `benchQueriesFile` only declared `Queries`. The runBenchmark
 //     driver referenced `qf.Description` and `qf.Version` which did not
@@ -162,7 +162,7 @@ func runBenchmark(args []string) error {
 
 	ctx := context.Background()
 	report := benchRun(ctx, qf.Queries, searchFn, *searchLimit)
-	// AGENT-1: propagate optional metadata so the round-trip preserves
+	// Propagate optional metadata so the round-trip preserves it
 	// it (asserted by TestBenchmarkReport_PreservesMetadata).
 	report.Description = qf.Description
 	report.Version = qf.Version
@@ -177,7 +177,7 @@ func runBenchmark(args []string) error {
 }
 
 // httpSearchFunc returns a benchSearchFunc bound to the supplied server
-// URL, default limit, timeout and admin token. AGENT-1: the inner
+// URL, default limit, timeout and admin token. The inner closure's
 // closure's accepted parameters and returns now MATCH the
 // benchSearchFunc signature `(ctx, query, source, limit) →
 // ([]benchResult, error)`. The pre-fix closure silently dropped `source`

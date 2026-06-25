@@ -1,8 +1,8 @@
 // Package scripts — ports.go canonicalises the cross-application port
 // declarations that the script-feature handlers consume.
 //
-// AGENT-2 (June 2026): replaces the structural `jobRegistrar` that lived
-// inline in pipeline_usecase.go with the typed Broker port below. The
+// Replaces the structural `jobRegistrar` that lived inline in
+// pipeline_usecase.go with the typed Broker port below. The
 // port uses the canonical `appjobs.HandlerFunc` shape from
 // `internal/application/jobs` so consumer and producer share a single
 // typed handler contract; the structural widening of `RegisterJobs'

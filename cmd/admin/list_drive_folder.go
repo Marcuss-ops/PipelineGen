@@ -1,10 +1,10 @@
-// cmd/admin/list_drive_folder.go — AGENT-1 recovery (June 2026)
+// cmd/admin/list_drive_folder.go — Drive folder scanner
 //
 // Recursive Drive folder scan, optional sync of discovered folders
 // into the canonical `clip_folders` SQLite table, plus cleanup-polluted
 // flag for the operator-driven Drive style cleanup.
 //
-// Post-fix wiring (AGENT-1):
+// Post-fix wiring:
 //
 //   - app.ExportInitCoreMinimal was removed in PR4d-final; we use
 //     app.InitComposition instead.
@@ -143,7 +143,7 @@ func runListDriveFolderCleanupPolluted(ctx context.Context, db *sql.DB, uploader
 // and (when syncDB is true) upserts each discovered folder into the
 // canonical `clip_folders` SQLite table.
 //
-// AGENT-1: replaces the legacy `clips.Repository.UpsertClipFolder` call,
+// Replaces the legacy `clips.Repository.UpsertClipFolder` call, which
 // which lived in the deleted internal/repository/clips package. The
 // upward-compatible column shape (id, source, source_url, folder_id,
 // folder_path, group_name, search_key, created_at, updated_at) matches

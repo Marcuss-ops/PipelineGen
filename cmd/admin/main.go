@@ -1,10 +1,9 @@
-// cmd/admin/main.go — AGENT-1 recovery (June 2026)
+// cmd/admin/main.go — admin CLI entry point
 //
 // CLI entry point for one-shot admin operations (single binary entry,
 // invoked as `pipelinegen admin <subcommand>` or directly as `./admin`).
 //
-// The post-recovery dispatcher honours all of AGENT-1's owned
-// subcommands plus the pre-existing fleet:
+// The post-recovery dispatcher honours all subcommands plus the pre-existing fleet:
 //
 //   - benchmark                   (cmd/admin/benchmark.go)
 //   - cleanup-orphans             (cmd/admin/cleanup.go)
@@ -74,7 +73,7 @@ func main() {
 
 	var err error
 	switch cmd {
-	// ── AGENT-1 owned subcommands (cmd/admin/<file>.go) ─────────────
+	// ── Subcommands (cmd/admin/<file>.go) ──────────────────────────
 	case "benchmark":
 		err = runBenchmark(args)
 	case "cleanup-all-orphans":
@@ -96,7 +95,7 @@ func main() {
 	case "verify-artlist-pipeline":
 		err = runVerifyArtlistPipeline(args)
 
-	// ── Pre-existing fleet (kept untouched by AGENT-1) ──────────────
+	// ── Pre-existing fleet ─────────────────────────────────────────
 	case "seed-channels":
 		err = runSeedChannels(args)
 	case "stock-reset":

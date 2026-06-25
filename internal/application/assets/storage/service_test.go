@@ -1,11 +1,11 @@
 // Package storage — service_test.go tests the application-layer
 // storage Service with a fake DrivePort. No real Drive, no Gin, no HTTP.
 //
-// AGENT-2 (June 2026): rewritten to match the canonical service.go
-// signatures (positional args). The previous variants referenced
-// ListFilesRequest / MoveFilesRequest / CreateFolderRequest /
-// RenameFileRequest — those wrappers were removed in commit d61068b3
-// when the real implementation was deleted. Tests now drive the flat
+// Rewritten to match the canonical service.go signatures (positional
+// args). The previous variants referenced ListFilesRequest /
+// MoveFilesRequest / CreateFolderRequest / RenameFileRequest — those
+// wrappers were removed in commit d61068b3 when the real
+// implementation was deleted. Tests now drive the flat
 // API directly: ListFiles(ctx, folderID), MoveFile(ctx, fileID, from,
 // to), CreateFolder(ctx, name, parentID), RenameFile(ctx, fileID, newName).
 package storage
