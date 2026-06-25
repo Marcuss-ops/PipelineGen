@@ -172,6 +172,35 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 
 	err := handler.Handle(procCtx, evt)
 	if err != nil {
+		// QDRANT-002 item F: classify a *SupersedeError as
+		// success-like. The handler determined the event was
+		// obsoleted by a newer aggregate version, so re-running it
+		// would burn a wasted upsert for no gain. Route to
+		// status='superseded' (terminal, distinct from dead_letter
+		// so dashboards can tell "producer broken" apart from
+		// "upstream streamed a fresh update — old events no-op").
+		//
+		// Order matters: supersede is checked BEFORE IsTerminal. The
+		// two are not mutually exclusive (a future handler could
+		// wrap either around the other) but in practice a handler
+		// returns exactly one shape per error path, so first match
+		// wins.
+		if IsSupersede(err) {
+			p.log.Info("event superseded by newer aggregate version — closing as superseded",
+				zap.Int64("event_id", evt.ID),
+				zap.String("type", evt.EventType),
+				zap.Int("attempt", evt.AttemptCount),
+				zap.Error(err))
+			if markErr := p.repo.MarkSuperseded(ctx, evt.ID, claim.LeaseID, err.Error()); markErr != nil {
+				// Lease-lost is the only acceptable non-success here
+				// (another worker raced us to terminal status).
+				// Surface all other failures loudly.
+				p.log.Error("failed to supersede event",
+					zap.Int64("event_id", evt.ID),
+					zap.Error(markErr))
+			}
+			return
+		}
 		// QDRANT-002 item G: classify errors as retryable vs terminal.
 		// Terminal errors (malformed payload, schema mismatch, unknown
 		// provider, unsupported destination) bypass the exponential

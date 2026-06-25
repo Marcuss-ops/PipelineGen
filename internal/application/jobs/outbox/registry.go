@@ -78,15 +78,27 @@ import (
 //	                  media_assets soft-delete via
 //	                  *assets.ClipsRepository). nil → IndexDeleteHandler
 //	                  is skipped (same effect as QdrantDeleter nil).
+//
+//	AssetSourceChecker : AssetSourceChecker for the IndexingHandler
+//	                  pre-flight supersede gate (real
+//	                  media_assets GET via *assets.ClipsRepository).
+//	                  Same concrete as AssetDeleter in production
+//	                  (both expose GetClip as the load-bearing method);
+//	                  declared as a separate field so the gating decision
+//	                  is explicit at every composition call site. nil →
+//	                  IndexingHandler is wired WITHOUT the
+//	                  source_version supersede gate (works, just leaves
+//	                  stale-event short-circuit on the IndexClip layer).
 type Deps struct {
-	DB            *sql.DB
-	HTTPClient    *http.Client
-	MetadataDir   string
-	HMACSecrets   [][]byte
-	InsecureDev   bool
-	Jobs          JobsEnqueuer
-	QdrantDeleter QdrantDeleter
-	AssetDeleter  AssetDeleter
+	DB                 *sql.DB
+	HTTPClient         *http.Client
+	MetadataDir        string
+	HMACSecrets        [][]byte
+	InsecureDev        bool
+	Jobs               JobsEnqueuer
+	QdrantDeleter      QdrantDeleter
+	AssetDeleter       AssetDeleter
+	AssetSourceChecker AssetSourceChecker
 }
 
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
@@ -117,11 +129,17 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 		&WorkflowStepFailedHandler{log: log},
 	}
 
-	// IndexClipper-backed IndexingHandler is optional.
+	// IndexClipper-backed IndexingHandler is optional (gated on
+	// indexer != nil). AssetSourceChecker is wired best-effort when
+	// non-nil so the source_version supersede gate activates — nil
+	// is acceptable in tests + partial wiring windows; pool will
+	// simply skip the supersede gate (IndexClip's own internal
+	// indexed_content_hash check still runs as a fallback).
 	if indexer != nil {
 		realHandlers = append(realHandlers, &IndexingHandler{
-			indexer: indexer,
-			log:     log,
+			indexer:       indexer,
+			sourceChecker: depsOrNil(deps).AssetSourceChecker,
+			log:           log,
 		})
 	}
 
