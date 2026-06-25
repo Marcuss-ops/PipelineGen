@@ -184,15 +184,26 @@ type HybridSearchRequest struct {
 	TranscriptVector     []float32              `json:"transcript_vector,omitempty"`
 	TranscriptVectorName string                 `json:"transcript_vector_name,omitempty"`
 	SparseVectorName     string                 `json:"sparse_vector_name,omitempty"`
-	Limit                int                    `json:"limit"`
-	MinScore             float64                `json:"min_score,omitempty"`
-	Filter               map[string]interface{} `json:"filter,omitempty"`
+	// QDRANT-004: SparseQueryVector carries the client-side BM25 tokenization
+	// result. When non-nil, it is sent as a second prefetch channel for
+	// lexical matching fused via RRF.
+	SparseQueryVector *SparseQueryVector `json:"sparse_query_vector,omitempty"`
+	Limit             int                `json:"limit"`
+	MinScore          float64            `json:"min_score,omitempty"`
+	Filter            map[string]interface{} `json:"filter,omitempty"`
 
 	// Convenience filter fields.
 	Source    string `json:"-"`
 	Category  string `json:"-"`
 	MediaType string `json:"-"`
 	Language  string `json:"-"`
+}
+
+// SparseQueryVector is a Qdrant-compatible sparse vector for hybrid search.
+// Indices are hashed token IDs; Values are term-frequency scores in (0, 1].
+type SparseQueryVector struct {
+	Indices []uint32  `json:"indices"`
+	Values  []float32 `json:"values"`
 }
 
 // SearchResult is a single match from Qdrant.

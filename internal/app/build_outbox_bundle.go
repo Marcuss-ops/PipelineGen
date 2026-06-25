@@ -58,7 +58,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// wires non-nil).
 	var assetSourceChecker jobsoutbox.AssetSourceChecker
 	if repos.ClipsRepo != nil {
-		if sc, ok := repos.ClipsRepo.(jobsoutbox.AssetSourceChecker); ok {
+		if sc, ok := interface{}(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker); ok {
 			assetSourceChecker = sc
 		}
 	}

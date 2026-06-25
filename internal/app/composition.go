@@ -91,15 +91,20 @@ type SearchBundle struct {
 // ProcessBundle holds the heavy media-processing adapters.
 // QDRANT-003 (June 2026): IndexWriter and QdrantClient re-added for schema-versioned
 // vector store with real embeddings (no synthetic vectors).
+// QDRANT-004 (June 2026): VectorSvc added — search.VectorStorePort adapter for
+// the mediasearch unified search API.
 type ProcessBundle struct {
 	MediaProcessor     asset.Processor
 	ClipIndexerService *clipindexer.Service
 	VLMClient          *vlm.Client
 	// QDRANT-003 (June 2026): canonical Qdrant adapters.
-	QdrantClient  interface{ QdrantClient() }
+	QdrantClient  interface{}
 	QdrantDeleter interface {
 		DeletePoints(ctx context.Context, ids []string) error
 	}
+	// QDRANT-004 (June 2026): search.VectorStorePort for the mediasearch API.
+	// Populated by BuildProcessBundle when Qdrant is enabled.
+	VectorSvc interface{}
 }
 
 // AIBundle owns script generation, engine, and memory.

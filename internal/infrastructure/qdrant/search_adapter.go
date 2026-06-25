@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
 )
 
 // searchAdapter adapts qdrant.Searcher to search.VectorStorePort.
@@ -118,13 +119,26 @@ func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		filter = map[string]interface{}{"must": must}
 	}
 
+	// QDRANT-004: tokenize query text into BM25 sparse vector
+	// for real hybrid (dense + sparse) retrieval via RRF fusion.
+	var sparseVec *SparseQueryVector
+	if req.SparseVectorName != "" && req.QueryText != "" {
+		if sv := bm25.Tokenize(req.QueryText); sv != nil {
+			sparseVec = &SparseQueryVector{
+				Indices: sv.Indices,
+				Values:  sv.Values,
+			}
+		}
+	}
+
 	qReq := HybridSearchRequest{
-		DenseVector:      req.DenseVector,
-		DenseVectorName:  req.DenseVectorName,
-		SparseVectorName: req.SparseVectorName,
-		Limit:            req.Limit,
-		MinScore:         req.MinScore,
-		Filter:           filter,
+		DenseVector:       req.DenseVector,
+		DenseVectorName:   req.DenseVectorName,
+		SparseVectorName:  req.SparseVectorName,
+		SparseQueryVector: sparseVec,
+		Limit:             req.Limit,
+		MinScore:          req.MinScore,
+		Filter:            filter,
 	}
 
 	results, err := a.searcher.HybridSearch(ctx, qReq)
