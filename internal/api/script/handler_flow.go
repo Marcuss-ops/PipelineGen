@@ -113,6 +113,9 @@ type ScriptFlowDeps struct {
 
 func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	log := deps.Log
+	if log == nil {
+		log = zap.NewNop()
+	}
 	clipSvc := deps.ClipServices
 
 	var groupsResolver *voiceover.GroupsResolver
