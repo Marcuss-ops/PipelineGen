@@ -22,7 +22,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from . import _inference_sem, model, nlp, nlp_it
-from .models import BulkClipSpec, EmbedRequest, IndexBulkRequest, IndexTextRequest
+from .models import EmbedRequest, IndexBulkRequest, IndexTextRequest
 
 router = APIRouter()
 
@@ -150,25 +150,15 @@ async def index_transcript(req: IndexTextRequest):
 async def index_bulk(req: IndexBulkRequest):
     """QDRANT-001 closure: bulk compute-and-return. Caller persists.
 
-    Input: list of BulkClipSpec {clip_id, name, search_text}.
+    Input: list of clip specs {clip_id, name, search_text}.
     Output: list of {clip_id, field, embedding, dimensions, text_length, status}.
 
     Replaces the previous flow that opened SQLite inside this sidecar.
     """
     async with _inference_sem:
         try:
-            # Build the canonical work list from clips (preferred) or
-            # fall back to the legacy clip_ids + DB-side lookup contract
-            # (which is no longer supported — compute surfaces that here).
-            work_items: list[BulkClipSpec] = list(req.clips or [])
-            for legacy_id in req.clip_ids:
-                work_items.append(BulkClipSpec(clip_id=legacy_id))
-
-            if not work_items:
-                return {"status": "empty", "results": []}
-
             results: list[dict] = []
-            for clip in work_items:
+            for clip in req.clips:
                 text = (clip.search_text or clip.name or "").strip()
                 if not text:
                     results.append({
@@ -188,6 +178,6 @@ async def index_bulk(req: IndexBulkRequest):
                     "dimensions": len(embedding),
                     "text_length": len(text),
                 })
-            return {"status": "success", "results": results}
+            return {"status": "success", "count": len(results), "total": len(req.clips), "results": results}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

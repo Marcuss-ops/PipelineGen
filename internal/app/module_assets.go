@@ -84,8 +84,9 @@ type AssetsBundle struct {
 
 // AssetsWiring holds the Assets module wiring.
 type AssetsWiring struct {
-	Module      module.Module
-	DeletionSvc *deletion.DeletionService
+	Module               module.Module
+	DeletionSvc          *deletion.DeletionService
+	InternalMediaHandler *assetstorage.Handler
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -251,8 +252,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	log.Info("created unified Assets module (thin transport)")
 
 	return &AssetsWiring{
-		Module:      assetsRouteMod,
-		DeletionSvc: deletionSvc,
+		Module:               assetsRouteMod,
+		DeletionSvc:          deletionSvc,
+		InternalMediaHandler: storageHandler,
 	}, nil
 }
 

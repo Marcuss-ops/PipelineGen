@@ -525,3 +525,25 @@ func runSyncAllDrive(args []string) error {
 	fmt.Println("Synchronization complete!")
 	return nil
 }
+
+func runTestYouTube(args []string) error {
+	cfg, log, cleanup, err := appLogger()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	deps, err := app.WireServices(cfg, log, "")
+	if err != nil {
+		log.Error("Failed to wire services", zap.Error(err))
+		return err
+	}
+
+	fmt.Println("Services wired successfully!")
+	fmt.Printf("Registry: %v\n", deps.Registry != nil)
+
+	if deps.Lifecycle != nil {
+		defer deps.Lifecycle.Stop(context.Background())
+	}
+	return nil
+}

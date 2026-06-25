@@ -24,23 +24,17 @@ class PhashRequest(BaseModel):
 
 # ── DEPRECATED: serve 410 Gone. Kept for schema discovery only. ─────────
 class IndexVisualRequest(BaseModel):
-    db_path: str = ""
     clip_id: str = ""
     frame_path: str = ""
 
 
 class IndexAudioRequest(BaseModel):
-    db_path: str = ""
     clip_id: str = ""
     audio_path: str = ""
 
 
 # ── QDRANT-001: caller-supplied text, no DB access. ──────────────────────
 class IndexTextRequest(BaseModel):
-    # Legacy fields retained as optional so a stale client surfaces a
-    # clear request-validation error rather than a 500 from the underlying
-    # code path.
-    db_path: str = ""
     clip_id: str = ""
 
     # New canonical inputs — caller (Go) supplies text inline.
@@ -56,14 +50,13 @@ class BulkClipSpec(BaseModel):
 
 
 class IndexBulkRequest(BaseModel):
-    # Legacy fields kept optional. The canonical path requires `clips`.
-    db_path: str = ""
-    clip_ids: list[str] = []
     clips: list[BulkClipSpec] = []
 
-    @field_validator("clip_ids", "clips")
+    @field_validator("clips")
     @classmethod
     def _validate_size(cls, v):
+        if not v:
+            raise ValueError("clips cannot be empty")
         if isinstance(v, list) and len(v) > 200:
             raise ValueError("batch cannot exceed 200 items")
         return v
@@ -86,8 +79,6 @@ class VisualAnalyzeRequest(BaseModel):
 
 
 class IndexVisualMultiRequest(BaseModel):
-    # Legacy fields retained optional — caller must supply video_path.
-    db_path: str = ""
     clip_id: str = ""
     video_path: str
     frame_positions: list[float] = [0.2, 0.5, 0.8]  # percentage of duration

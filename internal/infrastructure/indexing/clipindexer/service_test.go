@@ -67,11 +67,23 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 		if r.URL.Path == "/index" {
 			apiCalled++
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{"status": "success", "clip_id": "clip_1", "dimensions": 768})
+			json.NewEncoder(w).Encode(map[string]any{
+				"status":     "success",
+				"clip_id":    "clip_1",
+				"embedding":  []float64{0.1, 0.2, 0.3},
+				"dimensions": 3,
+			})
 		} else if r.URL.Path == "/index_bulk" {
 			bulkCalled++
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{"status": "success", "count": 2})
+			json.NewEncoder(w).Encode(map[string]any{
+				"status": "success",
+				"count":  2,
+				"results": []map[string]any{
+					{"clip_id": "clip_1", "embedding": []float64{0.1, 0.2, 0.3}},
+					{"clip_id": "clip_2", "embedding": []float64{0.4, 0.5, 0.6}},
+				},
+			})
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}

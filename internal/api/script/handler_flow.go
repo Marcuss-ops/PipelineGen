@@ -1,9 +1,12 @@
 // Package script (api/script) — ScriptFlowHandler is the canonical entry
 // point for the script-flow HTTP surface.
 //
-// Concrete infrastructure imports (ollama, config, drive) removed.
-// ClipServices is pre-built in wire_script.go. Admin token is stored
-// as a string for route middleware. Document creation uses a local interface.
+// Concrete adapter packages from `internal/infrastructure/**` are not
+// imported here; ClipServices is pre-built by wire_script.go and the
+// handler consumes it through narrow local interfaces (DriveFolderClient,
+// DocumentCreator). Admin token is held as a plain string and exposed
+// via the local AdminTokenProvider interface so RequireAdminToken can
+// accept the handler directly without intermediate adapters.
 
 package script
 
@@ -23,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── Local interfaces ────────────────────────────────────────────────────────
@@ -62,8 +66,11 @@ type ScriptFlowHandler struct {
 	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
-	log          *zap.Logger
-	pipelineUC   *scripts.PipelineUseCase
+	log               *zap.Logger
+	genSvc            GenerationService // backing service for /generate-from-clips, /generate-with-images
+	gates             FeatureGates      // per-route feature flags (clips / images / docs)
+
+	pipelineUC *scripts.PipelineUseCase
 }
 
 type AutoHarvestService interface {
@@ -96,8 +103,11 @@ type ScriptFlowDeps struct {
 	DriveFolderClient     DriveFolderClient
 	DocumentCreator       DocumentCreator
 	DriveScriptsGenFolder string
-	ClipServices scripts.ClipServices // pre-built in wire_script.go
-	Log          *zap.Logger
+	ClipServices          scripts.ClipServices // pre-built in wire_script.go
+	Log                   *zap.Logger
+
+	GenService GenerationService // backs /generate-from-clips, /generate-with-images
+	Gates      FeatureGates      // per-route feature flags (clips / images / docs)
 }
 
 func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
@@ -140,20 +150,20 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		log:               log,
 		clipServices:      clipSvc,
 		insightBuilder:    NewScriptInsightBuilder(log, 12, clipSvc),
-		pipelineUC: deps.PipelineUseCase,
+		pipelineUC:        deps.PipelineUseCase,
+		genSvc:            deps.GenService,
+		gates:             deps.Gates,
 	}
 
 	return h
 }
 
-// ── AdminTokenProvider satisfies RequireAdminTokenn's config needs ─
+// ── Local AdminTokenProvider port ──────────────────────────────────────────
 //
-// Local narrow (2-method) interface. The canonical concrete is
-// pkg/middleware.TokenSecurityAdapter (leaf struct, PG-006.1); tests
-// + CLI utilities that do not carry the full config object can use
-// &pkgmw.TokenSecurityAdapter{...} literals which structurally satisfy
-// this local interface. No local adapter struct is required here anymore
-// — the local adminTokenAdapter was retired in PG-006.1.
+// Two-method interface consumed by RequireAdminToken. The canonical
+// concrete is pkg/middleware.TokenSecurityAdapter; ScriptFlowHandler
+// itself satisfies the port structurally so it can be passed in without
+// an intermediate adapter struct.
 type AdminTokenProvider interface {
 	EnableAuth() bool
 	AdminToken() string
@@ -212,8 +222,25 @@ func extractHeaderToken(c *gin.Context) string {
 	return strings.TrimSpace(bearer)
 }
 
-// RegisterRoutes registers non-generation script routes.
+// RegisterRoutes mounts every script-flow route under r. Each legacy
+// generation route (/generate-from-clips, /generate-with-images, the
+// /generate-batch pair) is feature-gated; the flow routes (/curate,
+// /generate-from-catalog, /:id/sections/:section_id/regenerate,
+// /cache/evict, /jobs/:job_id[/full]) are always mounted because they
+// cover all script-flow use cases regardless of which generation path
+// is enabled.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
+	if h.gates.ScriptClipsEnabled {
+		r.POST("/generate-from-clips", h.GenerateFromClips)
+	}
+	if h.gates.ScriptImagesEnabled {
+		r.POST("/generate-with-images", h.GenerateWithImages)
+	}
+	if h.gates.ScriptDocsEnabled {
+		r.POST("/generate-batch", h.GenerateBatch)
+		r.GET("/generate-batch/progress", h.GetBatchProgress)
+	}
+
 	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
 	r.POST("/curate", h.Curate)
 	h.registerJobRoutes(r)
@@ -223,11 +250,13 @@ func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // ── Accessors for job services ──────────────────────────────────────────────
 
-// AdminToken satisfies the local AdminTokenProvider interface.
+// EnableAuth + AdminToken implement the local AdminTokenProvider
+// interface so handlers can be passed directly to RequireAdminToken
+// without a wrapping adapter. EnableAuth resolves true when an admin
+// token has been wired (adminToken field is non-empty); AdminToken
+// returns the configured token verbatim.
 func (h *ScriptFlowHandler) EnableAuth() bool { return h.adminToken != "" }
 
-// AdminToken satisfies the local AdminTokenProvider interface.
-// (Overrides the existing unexported adminToken field method.)
 func (h *ScriptFlowHandler) AdminToken() string {
 	if h == nil {
 		return ""
@@ -255,6 +284,48 @@ func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, con
 }
 
 // ── Job endpoints ───────────────────────────────────────────────────────────
+
+// ── Legacy generation endpoints (/generate-from-clips, /generate-with-images) ─
+
+// GenerateFromClips handles POST /generate-from-clips.
+func (h *ScriptFlowHandler) GenerateFromClips(c *gin.Context) {
+	if h.genSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
+		return
+	}
+	var spec scriptpkg.GenerationSpec
+	if err := c.ShouldBindJSON(&spec); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
+		return
+	}
+	result, err := h.genSvc.EnqueueFromClips(c.Request.Context(), spec)
+	if err != nil {
+		status := mapErrorToHTTP(err)
+		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
+}
+
+// GenerateWithImages handles POST /generate-with-images.
+func (h *ScriptFlowHandler) GenerateWithImages(c *gin.Context) {
+	if h.genSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
+		return
+	}
+	var spec scriptpkg.GenerationSpec
+	if err := c.ShouldBindJSON(&spec); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
+		return
+	}
+	result, err := h.genSvc.EnqueueWithImages(c.Request.Context(), spec)
+	if err != nil {
+		status := mapErrorToHTTP(err)
+		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
+}
 
 func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
@@ -306,5 +377,3 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 		"progress": job.Progress, "error": job.Error, "result": job.Result,
 	})
 }
-
-

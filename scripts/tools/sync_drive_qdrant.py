@@ -1,218 +1,159 @@
 #!/usr/bin/env python3
-import os
+"""Queue a Drive-folder sync through PipelineGen's internal HTTP API."""
+
+import argparse
 import json
-import sqlite3
-import uuid
-from pathlib import Path
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from sentence_transformers import SentenceTransformer
-
-# ── Configuration ─────────────────────────────────────────────────────────────
-ROOT = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored"
-TOKEN_FILE = os.path.join(ROOT, "token.json")
-DB_PATH = os.path.join(ROOT, "data", "media", "media.db.sqlite")
-
-# QDRANT-003: Qdrant writes are now handled exclusively by the Go-side
-# IndexWriter via outbox events. This script only syncs Drive metadata
-# into SQLite; the outbox dispatcher triggers Qdrant upserts.
-# See internal/infrastructure/qdrant/index_writer.go and
-# internal/infrastructure/database/sqlite/outbox/ for the canonical write path.
-
-# Initialize E5 model (intfloat/multilingual-e5-base -> 768 dims)
-print("Loading multilingual-e5-base embedding model...")
-model = SentenceTransformer("intfloat/multilingual-e5-base")
-
-# Load Google credentials
-with open(TOKEN_FILE, 'r') as f:
-    token_data = json.load(f)
-
-creds = Credentials(
-    token=token_data["access_token"],
-    refresh_token=token_data.get("refresh_token"),
-    token_uri="https://oauth2.googleapis.com/token",
-    client_id="964460747662-8oielvpbphij44agin684r57ojfio9h1.apps.googleusercontent.com",
-    client_secret=None,
-)
-
-drive_service = build('drive', 'v3', credentials=creds)
-
-def get_file_content(file_id):
-    """Download Google Drive text file content directly in memory."""
-    try:
-        content = drive_service.files().get_media(fileId=file_id).execute()
-        return content.decode('utf-8', errors='ignore').strip()
-    except Exception as e:
-        print(f"Error reading file content for {file_id}: {e}")
-        return ""
-
-def generate_deterministic_uuid(drive_id):
-    """Generate a deterministic UUID v5 from the Google Drive file ID."""
-    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8') # DNS namespace
-    return str(uuid.uuid5(namespace, drive_id))
-
-# QDRANT-003: generate_normalized_vector removed — synthetic pseudo-random
-# vectors are banned. Visual embeddings must come from a real model (CLIP/SigLIP)
-# and audio embeddings from CLAP. Placeholder zero-filled vectors are also banned.
-# See docs/qdrant/QDRANT-003_SCHEMA_VERSIONING_ALIASES_AND_REAL_EMBEDDINGS.md
+import os
+import socket
+import sys
+import time
+import urllib.error
+import urllib.request
 
 
-def scan_folder_recursive(folder_id, current_path=""):
-    """Recursively fetch files in Google Drive folder."""
-    print(f"Scanning Drive folder: {current_path or 'Root'} (ID: {folder_id})")
-    files = []
-    page_token = None
-    
-    while True:
-        query = f"'{folder_id}' in parents and trashed = false"
-        response = drive_service.files().list(
-            q=query,
-            spaces="drive",
-            fields="nextPageToken, files(id, name, mimeType, createdTime, webViewLink)",
-            pageToken=page_token,
-            pageSize=100
-        ).execute()
-        
-        files.extend(response.get("files", []))
-        page_token = response.get("nextPageToken")
-        if not page_token:
-            break
+DEFAULT_BASE_URL = "http://127.0.0.1:8080"
+DEFAULT_TIMEOUT_SECONDS = 30.0
+DEFAULT_RETRIES = 4
+IDEMPOTENCY_HEADER = "Idempotency-Key"
+REQUEST_ID_HEADER = "X-Request-ID"
 
-    # Separate folders, videos and metadata
-    folders = []
-    video_files = []
-    metadata_files = {} # name_stem -> file_object
-    
-    video_extensions = ('.mp4', '.mov', '.avi', '.mkv', '.webm')
-    meta_extensions = ('.json', '.txt')
-    
-    for f in files:
-        name = f['name']
-        mime = f['mimeType']
-        
-        if mime == 'application/vnd.google-apps.folder':
-            folders.append(f)
-        elif name.lower().endswith(video_extensions):
-            video_files.append(f)
-        elif name.lower().endswith(meta_extensions):
-            stem = Path(name).stem.lower()
-            metadata_files[stem] = f
 
-    # Process videos in the current folder
-    db_conn = sqlite3.connect(DB_PATH)
-    cursor = db_conn.cursor()
-    
-    for video in video_files:
-        video_name = video['name']
-        video_id = video['id']
-        video_link = video['webViewLink']
-        created_time = video['createdTime']
-        stem = Path(video_name).stem
-        stem_lower = stem.lower()
-        
-        print(f"\nProcessing video: {video_name} (ID: {video_id})")
-        
-        # Pairing logic
-        title = stem
-        description = ""
-        tags = []
-        
-        if stem_lower in metadata_files:
-            meta_file = metadata_files[stem_lower]
-            meta_name = meta_file['name']
-            meta_id = meta_file['id']
-            print(f"  -> Found paired metadata: {meta_name}")
-            
-            content = get_file_content(meta_id)
-            if meta_name.lower().endswith('.json'):
-                try:
-                    meta_json = json.loads(content)
-                    title = meta_json.get('title', title)
-                    description = meta_json.get('description', '')
-                    # handle tags as string or list
-                    raw_tags = meta_json.get('tags', [])
-                    if isinstance(raw_tags, str):
-                        tags = [t.strip() for t in raw_tags.split(',') if t.strip()]
-                    elif isinstance(raw_tags, list):
-                        tags = [str(t).strip() for t in raw_tags if str(t).strip()]
-                except Exception as e:
-                    print(f"  Warning: failed to parse JSON metadata: {e}. Falling back to plain text.")
-                    description = content
-            else:
-                description = content
-        else:
-            print("  -> No paired metadata found. Using folder fallback tags.")
-        
-        # Fallback tags based on folder hierarchy
-        fallback_tags = [part.strip().lower() for part in current_path.split('/') if part.strip()]
-        for ft in fallback_tags:
-            if ft not in tags:
-                tags.append(ft)
-                
-        # Generate Text embeddings (prefixed with "passage: " for storage as recommended by E5)
-        text_payload = f"passage: {title} {description} " + " ".join(tags)
-        print(f"  Generating text embeddings for: '{title}'...")
-        text_vector = model.encode(text_payload, normalize_embeddings=True).tolist()
-        
-        # Transcript vector
-        transcript_vector = text_vector
-        if description:
-            transcript_vector = model.encode(f"passage: {description}", normalize_embeddings=True).tolist()
-            
-        # QDRANT-003: visual and audio vectors require real model output.
-        # Visual: SigLIP (768d) via embedding_server /embed_visual_from_image.
-        # Audio: CLAP (512d) via embedding_server /embed_audio_from_file.
-        # Clips without real model output omit these channels — the outbox
-        # dispatcher will call the Go-side embedders when indexing.
-        visual_vector = None
-        audio_vector = None
-        
-        # Deterministic Point ID (reused as asset_id in SQLite)
-        point_id = generate_deterministic_uuid(video_id)
-        
-        # QDRANT-003: Qdrant writes are REMOVED — the canonical write path
-        # is the Go-side IndexWriter via outbox events. This script only
-        # populates SQLite with metadata + embeddings; the outbox dispatcher
-        # will upsert to Qdrant when the asset.index.requested event fires.
-        
-        # SQLite Upsert (Canonical Metadata Store)
-        print("  Saving metadata to SQLite...")
-        meta_json_str = json.dumps({
-            "drive_file_id": video_id,
-            "drive_link": video_link,
-            "name": title,
-            "folder_path": current_path,
-            "tags": tags,
-            "status": "active",
-            "created_at": created_time,
-        })
-        now = created_time
-        
-        cursor.execute("""
-            INSERT OR REPLACE INTO media_assets (
-                id, source, name, tags, media_type, status, lifecycle_state,
-                drive_file_id, drive_link, folder_path, folder_id, metadata_json,
-                embedding_json, transcript_embedding, visual_embedding, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            point_id, "drive", title, json.dumps(tags), "video", "ready", "ready",
-            video_id, video_link, current_path, folder_id, meta_json_str,
-            json.dumps(text_vector), json.dumps(transcript_vector), json.dumps(visual_vector),
-            now, now
-        ))
-        db_conn.commit()
-        print("  SQLite database record updated!")
-        
-    db_conn.close()
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Dispatch POST /internal/v1/media/sync-drive-folder."
+    )
+    parser.add_argument(
+        "--base-url",
+        default=os.getenv("PIPELINEGEN_BASE_URL", DEFAULT_BASE_URL),
+        help="PipelineGen server base URL (env: PIPELINEGEN_BASE_URL)",
+    )
+    parser.add_argument(
+        "--token",
+        default=os.getenv("VELOX_WORKER_TOKEN", ""),
+        help="Worker/service bearer token (env: VELOX_WORKER_TOKEN)",
+    )
+    parser.add_argument(
+        "--folder-id",
+        default=os.getenv("DRIVE_FOLDER_ID", ""),
+        help="Google Drive folder ID to sync (env: DRIVE_FOLDER_ID)",
+    )
+    parser.add_argument(
+        "--source",
+        default=os.getenv("SYNC_SOURCE", "drive"),
+        help="Source label for the sync job (env: SYNC_SOURCE)",
+    )
+    parser.add_argument(
+        "--name",
+        default=os.getenv("SYNC_NAME", ""),
+        help="Optional human-readable folder name (env: SYNC_NAME)",
+    )
+    parser.add_argument(
+        "--media-type",
+        default=os.getenv("SYNC_MEDIA_TYPE", "clip"),
+        help="Media type label for the sync job (env: SYNC_MEDIA_TYPE)",
+    )
+    parser.add_argument(
+        "--idempotency-key",
+        default=os.getenv("IDEMPOTENCY_KEY", ""),
+        help="Explicit Idempotency-Key override (env: IDEMPOTENCY_KEY)",
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help="Per-request timeout in seconds",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=DEFAULT_RETRIES,
+        help="Retries for timeout, 429, and 5xx responses",
+    )
+    return parser.parse_args()
 
-    # Recurse into subfolders
-    for subfolder in folders:
-        sub_path = f"{current_path}/{subfolder['name']}" if current_path else subfolder['name']
-        scan_folder_recursive(subfolder['id'], sub_path)
+
+def build_idempotency_key(args: argparse.Namespace) -> str:
+    if args.idempotency_key.strip():
+        return args.idempotency_key.strip()
+    source = args.source.strip() or "drive"
+    folder_id = args.folder_id.strip()
+    return f"{source}:{folder_id}:sync-drive-folder"
+
+
+def should_retry(status_code: int | None, err: Exception | None) -> bool:
+    if status_code is not None:
+        return status_code == 429 or status_code >= 500
+    return isinstance(err, (TimeoutError, urllib.error.URLError, socket.timeout))
+
+
+def dispatch_sync(args: argparse.Namespace, idem_key: str) -> dict:
+    url = args.base_url.rstrip("/") + "/internal/v1/media/sync-drive-folder"
+    payload = {
+        "drive_folder_id": args.folder_id.strip(),
+        "source": args.source.strip() or "drive",
+        "name": args.name.strip(),
+        "media_type": args.media_type.strip() or "clip",
+    }
+    body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {args.token.strip()}",
+        IDEMPOTENCY_HEADER: idem_key,
+    }
+
+    attempts = max(1, args.retries + 1)
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=args.timeout_seconds) as resp:
+                raw = resp.read().decode("utf-8")
+                data = json.loads(raw) if raw else {}
+                data["http_status"] = resp.status
+                data["request_id"] = resp.headers.get(REQUEST_ID_HEADER, "")
+                return data
+        except urllib.error.HTTPError as err:
+            raw = err.read().decode("utf-8", errors="replace")
+            status_code = err.code
+            last_error = RuntimeError(f"HTTP {status_code}: {raw}")
+            if attempt == attempts or not should_retry(status_code, None):
+                raise last_error
+        except (urllib.error.URLError, TimeoutError, socket.timeout) as err:
+            last_error = err
+            if attempt == attempts or not should_retry(None, err):
+                raise
+        time.sleep(min(2 ** (attempt - 1), 8))
+
+    raise RuntimeError(f"sync dispatch failed: {last_error}")
+
+
+def main() -> int:
+    args = parse_args()
+    if not args.folder_id.strip():
+        print("error: --folder-id (or DRIVE_FOLDER_ID) is required", file=sys.stderr)
+        return 2
+    if not args.token.strip():
+        print("error: --token (or VELOX_WORKER_TOKEN) is required", file=sys.stderr)
+        return 2
+
+    idem_key = build_idempotency_key(args)
+    result = dispatch_sync(args, idem_key)
+    print(
+        json.dumps(
+            {
+                "ok": bool(result.get("ok")),
+                "job_id": result.get("job_id", ""),
+                "drive_folder_id": result.get("drive_folder_id", args.folder_id.strip()),
+                "idempotency_key": idem_key,
+                "request_id": result.get("request_id", ""),
+                "http_status": result.get("http_status", 0),
+                "message": result.get("message", ""),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
 
 if __name__ == "__main__":
-    # Scan the specified root folder
-    ROOT_FOLDER_ID = "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
-    print(f"Starting synchronization of Drive folder ID: {ROOT_FOLDER_ID}")
-    scan_folder_recursive(ROOT_FOLDER_ID)
-    print("\nAll synchronization and indexing completed successfully!")
+    raise SystemExit(main())

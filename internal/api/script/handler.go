@@ -1,15 +1,51 @@
-// Package script — handler.go carries the shared types consumed by
-// ScriptFlowHandler. Handler is a thin wrapper that delegates route
-// registration to ScriptFlowHandler.RegisterRoutes. All generation-
-// specific endpoints have been removed — use POST /api/generations
-// instead.
+// Package script — handler.go defines the shared types FeatureGates,
+// GenerationService, and mapErrorToHTTP consumed by ScriptFlowHandler.
+// All route registrations and endpoint implementations live directly
+// on ScriptFlowHandler (handler_flow.go).
+//
+// Per-route feature gating:
+//   - /generate-from-clips   → ScriptClipsEnabled
+//   - /generate-with-images  → ScriptImagesEnabled
+//   - /generate-batch        → ScriptDocsEnabled (creates Google Doc)
+//   - /generate-batch/progress → ScriptDocsEnabled
+//
+// Each route is gated individually so an operator can enable script-
+// clips without enabling script-docs, and vice versa. The gate state
+// is passed in via the typed FeatureGates struct (no infrastructure/
+// config dependency introduced into the transport package — AGENTS.md
+// Pattern 8 forbids `internal/api/**` from importing `internal/
+// infrastructure/config`).
 package script
 
-import "github.com/gin-gonic/gin"
+import (
+	"context"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
+// FeatureGates is the typed snapshot of the script-feature flags that
+// the composition root hands to NewScriptFlowHandler via ScriptFlowDeps.
+// The shape mirrors the canonical `cfg.Features` booleans in
+// `internal/infrastructure/config` but is decoupled from the config
+// import so the API package remains transport-only (AGENTS.md Pattern 8).
+type FeatureGates struct {
+	ScriptClipsEnabled  bool
+	ScriptDocsEnabled   bool
+	ScriptImagesEnabled bool
+}
+
+// GenerationService narrows the generation operations for the Handler.
+type GenerationService interface {
+	EnqueueFromClips(ctx context.Context, spec scriptpkg.GenerationSpec) (*scripts.FromClipsResult, error)
+	EnqueueWithImages(ctx context.Context, spec scriptpkg.GenerationSpec) (*scripts.FromClipsResult, error)
+}
 
 // Handler is a thin wrapper that delegates to ScriptFlowHandler for
-// non-generation script routes. All generation-specific endpoints have
-// been removed — use POST /api/generations instead.
+// script routes. Generation-specific endpoints are mounted directly
+// via ScriptFlowHandler.RegisterRoutes.
 type Handler struct {
 	inner *ScriptFlowHandler
 }
@@ -19,7 +55,7 @@ func NewHandler(inner *ScriptFlowHandler) *Handler {
 	return &Handler{inner: inner}
 }
 
-// RegisterRoutes registers the non-generation script routes.
+// RegisterRoutes delegates route registration to the inner ScriptFlowHandler.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	if h.inner != nil {
 		h.inner.RegisterRoutes(r)
