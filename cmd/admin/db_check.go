@@ -34,8 +34,11 @@ func runDBCheck(ctx context.Context, args []string) error {
 	topN := fs.Int("top-n-tables", 10, "show row counts for the top-N tables")
 	fs.Parse(args)
 
-	cfg := config.StorageConfig{DataDir: *dataDir}
-	resolved := cfg.ToDatabaseStorageConfig()
+	fullCfg := config.Get()
+	if *dataDir != "" && *dataDir != "./data" {
+		fullCfg.Storage.DataDir = *dataDir
+	}
+	resolved := fullCfg.Storage.ToDatabaseStorageConfig()
 	log, _ := zap.NewProduction()
 	defer log.Sync()
 

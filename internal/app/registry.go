@@ -183,26 +183,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			}
 			return nil, e
 		}},
-		{"Drive", func() (module.Module, error) {
-			var driveUploader *driveup.Uploader
-			if root.Drive.DriveClient != nil {
-				driveUploader = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
-			}
-			reconcileSvc := drivecleanup.NewService()
-			// PR4-cleanup delta (June 24, 2026): NewDriveHandler now takes
-			// typed ports (Reconciler + DriveAdminOps) instead of concrete
-			// infrastructure types. Wrap them in the composition-side adapters
-			// declared in internal/app/system_adapters.go. ComposeRoot is the
-			// ONLY place allowed to import internal/infrastructure/*, so this
-			// wrapping happens here per AGENTS.md §13.
-			handler := systemapi.NewDriveHandler(
-				newReconcilerAdapter(reconcileSvc, log),
-				newDriveAdminAdapter(driveUploader, log),
-			)
-			mod := module.NewRouteModule("drive", func() bool { return cfg.Features.DriveEnabled }, "/drive", handler, log)
-			log.Info("created Drive module")
-			return mod, nil
-		}},
 		{"Scraper", func() (module.Module, error) {
 			handler := assetsapi.NewScraperHandler(cfg.External.NodeScraperDir, processRunnerAdapter)
 			mod := module.NewRouteModule("scraper", func() bool { return handler != nil }, "/scraper", handler, log)

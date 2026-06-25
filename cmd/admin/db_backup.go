@@ -30,8 +30,11 @@ func runDBBackup(ctx context.Context, args []string) error {
 		return fmt.Errorf("-out is required")
 	}
 
-	cfg := config.StorageConfig{DataDir: *dataDir}
-	resolved := cfg.ToDatabaseStorageConfig()
+	fullCfg := config.Get()
+	if *dataDir != "" && *dataDir != "./data" {
+		fullCfg.Storage.DataDir = *dataDir
+	}
+	resolved := fullCfg.Storage.ToDatabaseStorageConfig()
 	srcPath := *src
 	if srcPath == "" {
 		srcPath = resolved.PrimaryDBPath()
