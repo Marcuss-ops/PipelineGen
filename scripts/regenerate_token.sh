@@ -36,6 +36,8 @@ echo "Starting Google OAuth manual flow..."
 echo "Please follow the instructions on screen."
 echo ""
 
+export OAUTHLIB_INSECURE_TRANSPORT=1
+
 python3 "${REPO_ROOT}/scripts/tools/generate_drive_token.py" \
     --credentials "$CRED_FILE" \
     --token "$TOKEN_FILE" \
