@@ -103,7 +103,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 			"/artlist",
 			handler,
 			log,
-			api.WithMiddleware(middleware.ArtlistEnabled(cfg)),
+			api.WithMiddleware(middleware.FeatureFlagChecker("Artlist", cfg.Features.ArtlistEnabled)),
 		)
 		log.Info("created Artlist module")
 	}

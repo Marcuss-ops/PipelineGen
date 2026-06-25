@@ -92,12 +92,25 @@ internal/api/assets/clips/upload_helpers.go
 
 # ── Wave 14 grandfathered: api/channels + api/images impl (PR5) ────────────
 
-# ── Wave 14 grandfathered: api/middleware (PR5) ────────────────────────────
-internal/api/middleware/admin_token.go
-internal/api/middleware/middleware_feature_flags.go
-internal/api/middleware/middleware_logger.go
-internal/api/middleware/middleware_middleware.go
-internal/api/middleware/middleware_ratelimit.go
+# ── Wave 14 grandfathered: api/middleware (PR5 — CLEANED, June 2026) ────────
+# Internal cleanup wave, PG-006 (June 2026): every middleware file under
+# internal/api/middleware/ now consumes typed ports (AuthSecurityPort,
+# RateLimitPort, FeatureFlagsPort) declared in
+# internal/application/middleware/ports.go. Concrete adapters wrapping
+# `*config.Config` live in internal/app/middleware_security_adapter.go.
+# The Logger middleware now holds the typed RequestLogSink port (defined
+# in internal/application/middleware/requestlog) instead of *sql.DB; the
+# SQLite implementation lives in internal/infrastructure/database/sqlite/logsink
+# and never crosses the api/middleware import boundary.
+# Bootstrap entry-point: internal/app/bootstrap.go no longer imports
+# internal/infrastructure/* (concrete wiring moved to databases_helpers.go,
+# drive_folders_resolve.go and wire_services.go in the same package).
+# Removed from allowlist at PG-006-cleanup.
+# internal/api/middleware/admin_token.go            ← removed from allowlist
+# internal/api/middleware/middleware_feature_flags.go ← removed from allowlist
+# internal/api/middleware/middleware_logger.go       ← removed from allowlist
+# internal/api/middleware/middleware_middleware.go   ← removed from allowlist
+# internal/api/middleware/middleware_ratelimit.go    ← removed from allowlist
 
 # ── Wave 14 grandfathered: api root files (PR5) ─────────────────────────────
 internal/api/module_core_modules.go

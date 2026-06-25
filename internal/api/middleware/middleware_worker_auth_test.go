@@ -1,20 +1,4 @@
-package middleware
-
-import (
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-)
-
-// --------------------------------------------------------------------------------
 // WorkerAuth tests — PR-B locking
-// --------------------------------------------------------------------------------
 //
 // WorkerAuth is mounted on /internal/v1/* to gate the remote-worker's
 // claim / heartbeat / asset-transfer endpoints. The invariant we lock
@@ -35,15 +19,31 @@ import (
 // A bonus assertion (separate test) checks that an empty
 // WorkerToken configuration refuses to serve — a misconfigured
 // production server must fail loud, not silently open the door.
+//
+// PG-006 (June 2026): the previous tests constructed
+// `&config.Config{Security: config.SecurityConfig{...}}` literals to
+// drive WorkerAuth. With the typed-port cascade those imports are gone
+// from this package; the testSecurity stub from port_fakes_test.go
+// (a 3-method AuthSecurityPort fake) replaces them.
+
+package middleware
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
 
 // TestWorkerAuth_RejectsMissingToken — sanity baseline.
 func TestWorkerAuth_RejectsMissingToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	cfg := &config.Config{
-		Security: config.SecurityConfig{WorkerToken: "worker-secret-DO-NOT-LEAK"},
-	}
+	sec := &testSecurity{enabled: true, worker: "worker-secret-DO-NOT-LEAK"}
 	r := gin.New()
-	r.Use(WorkerAuth(cfg))
+	r.Use(WorkerAuth(sec, nil))
 	r.POST("/internal/v1/jobs/claim", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -62,14 +62,9 @@ func TestWorkerAuth_RejectsAdminToken(t *testing.T) {
 
 	const adminToken = "admin-secret-DO-NOT-LEAK"
 	const workerToken = "worker-secret-DO-NOT-LEAK"
-	cfg := &config.Config{
-		Security: config.SecurityConfig{
-			WorkerToken: workerToken,
-			AdminToken:  adminToken,
-		},
-	}
+	sec := &testSecurity{enabled: true, admin: adminToken, worker: workerToken}
 	r := gin.New()
-	r.Use(WorkerAuth(cfg))
+	r.Use(WorkerAuth(sec, nil))
 	r.POST("/internal/v1/jobs/claim", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -95,11 +90,9 @@ func TestWorkerAuth_RejectsAdminToken(t *testing.T) {
 // TestWorkerAuth_RejectsWrongWorkerToken — wrong value must 401.
 func TestWorkerAuth_RejectsWrongWorkerToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	cfg := &config.Config{
-		Security: config.SecurityConfig{WorkerToken: "right-worker-secret"},
-	}
+	sec := &testSecurity{enabled: true, worker: "right-worker-secret"}
 	r := gin.New()
-	r.Use(WorkerAuth(cfg))
+	r.Use(WorkerAuth(sec, nil))
 	r.POST("/internal/v1/jobs/claim", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -119,11 +112,9 @@ func TestWorkerAuth_AcceptsCorrectWorkerToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const workerToken = "right-worker-secret-DO-NOT-LEAK"
-	cfg := &config.Config{
-		Security: config.SecurityConfig{WorkerToken: workerToken},
-	}
+	sec := &testSecurity{enabled: true, worker: workerToken}
 	r := gin.New()
-	r.Use(WorkerAuth(cfg))
+	r.Use(WorkerAuth(sec, nil))
 	r.POST("/internal/v1/jobs/claim", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -152,11 +143,9 @@ func TestWorkerAuth_DoesNotLeakTokenInResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const workerToken = "very-secret-DO-NOT-LEAK-IN-RESPONSE"
-	cfg := &config.Config{
-		Security: config.SecurityConfig{WorkerToken: workerToken},
-	}
+	sec := &testSecurity{enabled: true, worker: workerToken}
 	r := gin.New()
-	r.Use(WorkerAuth(cfg))
+	r.Use(WorkerAuth(sec, nil))
 	r.POST("/internal/v1/jobs/claim", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -185,15 +174,17 @@ func TestWorkerAuth_DoesNotLeakTokenInResponse(t *testing.T) {
 // typo'd the env var name) MUST NOT serve /internal/v1/* requests
 // as if auth were optional; that would be an open door. We refuse
 // the request with a 500 and a clear message so the operator notices.
+//
+// PG-006 (June 2026): the previous implementation returned 500 from a
+// `cfg == nil` branch in the WorkerAuth constructor. With the typed
+// port cascade, that branch lives in `sec == nil` or `sec.WorkerToken()
+// == ""`. Whichever defaults the port to empty token, the production
+// middleware returns 500 with a clear env-var hint.
 func TestWorkerAuth_RefusesEmptyWorkerToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	cfg := &config.Config{
-		Security: config.SecurityConfig{
-			WorkerToken: "", // intentionally empty
-		},
-	}
+	sec := &testSecurity{enabled: true, worker: ""} // intentionally empty
 	r := gin.New()
-	r.Use(WorkerAuth(cfg))
+	r.Use(WorkerAuth(sec, nil))
 	r.POST("/internal/v1/jobs/claim", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
