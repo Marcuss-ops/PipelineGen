@@ -149,11 +149,13 @@ func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *appjobs.Job
 }
 
 // resolveRepo returns the assets.ClipsRepository for the given source name.
+// Falls back to s.defaultClipsRepo (set from the first configured target)
+// for ad-hoc sources like "drive" that don't have a pre-configured target.
 func (s *Service) resolveRepo(source string) *assets.ClipsRepository {
 	for _, t := range s.targets {
 		if strings.EqualFold(t.Source, source) {
 			return t.Repo
 		}
 	}
-	return nil
+	return s.defaultClipsRepo
 }
