@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── NewMetadataWriter (AGENT-2 compatibility layer, June 2026) ──────────
+// ── NewMetadataWriter (compatibility layer) ─────────────────────────────
 
 // NewMetadataWriter is the canonical constructor for *MetadataWriter.
 // Pre-fix callers (module_artlist.go + module_stock.go inside the

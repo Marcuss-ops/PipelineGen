@@ -114,9 +114,8 @@ func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bund
 	if artlistSvc == nil {
 		return nil
 	}
-	// AGENT-2 (June 2026): the clipresolver package was removed from
-	// remote (commit d61068b3). wireClipResolver returns nil typed as
-	// interface{}. The ArtlistHandler constructor expects a typed
+	// The clipresolver package was removed from remote (commit
+	// d61068b3). wireClipResolver returns nil typed as interface{}. The ArtlistHandler constructor expects a typed
 	// ClipResolverPort; perform a safe type assertion so the typed nil
 	// is forwarded (handler stays nil-tolerant and short-circuits).
 	var resolver artsources.ClipResolverPort

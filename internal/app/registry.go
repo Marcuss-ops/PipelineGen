@@ -230,7 +230,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		realtimeEnabled := cfg != nil && cfg.VectorSearch.RealtimeEnabled
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
 		// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
-		// AGENT-2 (June 2026): realtime package removed (commit d61068b3).
+		// Realtime package removed (commit d61068b3).
 		// The DomainBundle.RealtimeService field is interface{}; the
 		// RealtimeMatchHandler constructor wants the explicit
 		// RealtimeMatcher port. Safe type-assertion preserves the
@@ -431,7 +431,7 @@ func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository,
 	return targets
 }
 
-// wireScriptFlow is defined in wire_script.go (Agente 4 — H, June 2026).
+// wireScriptFlow is defined in wire_script.go.
 
 func ensureStyleDriveFolders(ctx context.Context, uploader *driveup.Uploader, rootID string, styleRegistry *generation.StyleRegistry, log *zap.Logger) {
 	if uploader == nil || strings.TrimSpace(rootID) == "" || styleRegistry == nil {

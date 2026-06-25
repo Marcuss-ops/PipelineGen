@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -229,21 +230,44 @@ func TestPipelineUseCase_RegisterJobs_NilSvcNoOp(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestPipelineUseCase_RegisterJobs_WrongShapeReturnsTypedError verifies
-// that passing a non-nil but untyped value to RegisterJobs surfaces a
-// typed `ErrBrokerNotSatisfied` error rather than silently skipping —
-// the AGENT-2 (June 2026) port-tightening replaces silent-skip with
-// fail-fast so a wrong-shape composition root is detected at first
-// integration test, not at first job dispatch. The signature stays
-// `interface{}` to preserve upstream flexibility (caller can pass
-// either `*job.Service` or `*jobs.Service`); the assertion against
-// the canonical `Broker` port typed the no-match path.
-func TestPipelineUseCase_RegisterJobs_WrongShapeReturnsTypedError(t *testing.T) {
+// TestPipelineUseCase_RegisterJobs_NilBrokerIsNoOp verifies
+// that passing nil to RegisterJobs is a no-op (returns nil).
+// PG-042 (June 2026): RegisterJobs now accepts the typed Broker
+// port; nil is still handled as a no-op for back-compat with
+// test fixtures and nil-checking callers.
+func TestPipelineUseCase_RegisterJobs_NilBrokerIsNoOp(t *testing.T) {
 	t.Parallel()
 	pu := &PipelineUseCase{log: zap.NewNop()} // intentionally under-populated
-	err := pu.RegisterJobs(struct{}{})
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrBrokerNotSatisfied)
+	err := pu.RegisterJobs(nil)
+	require.NoError(t, err)
+}
+
+// fakeBroker is a test double that implements the Broker port.
+type fakeBroker struct {
+	registered bool
+	jobType    string
+}
+
+func (b *fakeBroker) RegisterHandler(jobType string, handler any) error {
+	b.registered = true
+	b.jobType = jobType
+	return nil
+}
+
+// TestPipelineUseCase_RegisterJobs_AcceptsBrokerPort verifies
+// that a struct implementing the Broker interface is accepted.
+// PG-042 (June 2026): RegisterJobs now accepts the typed Broker
+// port — wrong-shape inputs are caught at compile time, not at
+// runtime, so the old runtime type-assertion test is replaced
+// by a positive-path test.
+func TestPipelineUseCase_RegisterJobs_AcceptsBrokerPort(t *testing.T) {
+	t.Parallel()
+	pu := &PipelineUseCase{log: zap.NewNop()}
+	broker := &fakeBroker{}
+	err := pu.RegisterJobs(broker)
+	require.NoError(t, err)
+	require.True(t, broker.registered, "RegisterHandler should have been called")
+	require.Equal(t, job.TypeClipScriptGenerate, broker.jobType)
 }
 
 func TestPipelineUseCase_HandleJob_NilUseCaseErrors(t *testing.T) {

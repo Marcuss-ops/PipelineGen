@@ -1,6 +1,6 @@
-// cmd/admin/admin_test.go — AGENT-1 recovery (June 2026)
+// cmd/admin/admin_test.go — static invariants guard
 //
-// Test suite mandated by the AGENT-1 PR brief:
+// Test suite:
 //   - TestAdminCommands_AreRegistered
 //   - TestBenchmarkReport_PreservesMetadata
 //   - TestBenchmark_PropagatesSearchErrors
@@ -174,7 +174,7 @@ func TestBenchmark_PropagatesSearchErrors(t *testing.T) {
 }
 
 func TestAdminCommands_NoLegacyImports(t *testing.T) {
-	// Forbidden imports — the gate from the AGENT-1 PR brief:
+	// Forbidden imports — the static gate:
 	//   ! rg 'internal/(config|media|storage|upload|repository/clips)' cmd/admin --type go
 	// Banned patterns (anchored to the import line):
 	bannedPatterns := []string{

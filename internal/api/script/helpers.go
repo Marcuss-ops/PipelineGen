@@ -3,10 +3,9 @@
 // the CurationJob/CatalogJob service interfaces, and the embedded
 // script-history HTTP transport.
 //
-// Agente 4 (June 2026): this file consolidates prior legacy files.
-// Wave 14 (API compaction) means the script-history module is wired
-// by the composition root with feature flags and a prebuilt feature
-// guard, so this transport file has no concrete configuration imports.
+// Wave 14 (API compaction): the script-history module is wired by the
+// composition root with feature flags and a prebuilt feature guard,
+// so this transport file has no concrete configuration imports.
 // Forwarding type aliases for application-side services were deleted:
 // callers in flow.go / handler_flow.go use scripts.* directly.
 package script
@@ -50,8 +49,7 @@ func withPostWriteContext(parent context.Context, log *zap.Logger, op string) (c
 
 // ── Post-gen metadata helpers ───────────────────────────────────────────────
 //
-// Agente 4 (June 2026): post-gen metadata builders live in the
-// application/scripts package. PostGenUseCase calls them directly
+// Post-gen metadata builders live in the application/scripts package. PostGenUseCase calls them directly
 // from its own package; this transport no longer re-exports them.
 
 // ── Script history HTTP transport (companion to /api/script) ──────────────
@@ -200,8 +198,8 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 
 // ── Script-history module + handler ────────────────────────────────────────
 //
-// Agente 4 (June 2026): ScriptHistoryModule no longer takes the dense
-// application config struct. Composition root injects:
+// ScriptHistoryModule no longer takes the dense application config
+// struct. Composition root injects:
 //
 //   - the handler (always)
 //   - the logger (always)

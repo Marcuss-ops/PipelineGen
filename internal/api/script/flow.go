@@ -2,9 +2,8 @@
 // functions used by handler.go (re-exports types and functions from
 // internal/application/scripts/, PR2 June 2026).
 //
-// Agente 4 — I (June 2026): resolveDriveFolderID and findFolderByNameDeep
-// moved out; the handler now stores a FolderResolver closure for Drive
-// folder resolution. Package-level aliases declared in this file remain
+// resolveDriveFolderID and findFolderByNameDeep moved out; the handler
+// now stores a FolderResolver closure for Drive folder resolution. Package-level aliases declared in this file remain
 // for back-compat with handler callers. Cross-package script<->transport
 // aliases were removed in helpers.go (use scripts.<Type> directly).
 
@@ -102,8 +101,8 @@ func buildTextOnlyScriptPlan(
 }
 
 // ── resolveDriveFolderID (ScriptFlowHandler method) ─────────────────────────
-// Agente 4 — I (June 2026): uses the handler's DriveFolderClient instead of
-// concrete *drive.Uploader. Folder resolution logic unchanged.
+// Uses the handler's DriveFolderClient instead of concrete
+// *drive.Uploader. Folder resolution logic unchanged.
 
 func (h *ScriptFlowHandler) resolveDriveFolderID(ctx context.Context, input, defaultRootID string) (string, error) {
 	input = strings.TrimSpace(input)

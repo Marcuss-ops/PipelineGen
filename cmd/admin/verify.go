@@ -260,7 +260,7 @@ func pollRunStatus(runID string) (*statusResponse, error) {
 }
 
 func verifyJobInDB(runID string, cfg *config.Config) error {
-	// AGENT-1 (June 2026): canonical primary DB path is exposed by
+	// Canonical primary DB path is exposed by cfg.Storage.PrimaryDBFullPath()
 	// cfg.Storage.PrimaryDBFullPath() (single source of truth — see
 	// internal/infrastructure/config.StorageConfig). The historical
 	// <DataDir>/media/media.db.sqlite fallback is preserved so that
