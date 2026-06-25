@@ -1,26 +1,14 @@
 // cmd/admin/backfill_artlist_media_type.go — AGENT-1 recovery (June 2026)
 //
-// Two-step backfill for Artlist clips whose `metadata_json.media_type`
-// field is missing or stale (= "artlist" rather than "video"):
+// Backfill for Artlist clips whose `metadata_json.media_type` field is
+// missing or stale (= "artlist" rather than "video"):
 //
 //  1. UPDATE media_assets.metadata_json to pin `media_type: "video"`,
 //     guarded by a `--apply` flag (default: dry-run).
-//  2. Upsert the patched clips into Qdrant via the canonical
-//     `*qdrant.ClipIndexerAdapter`, guarded by `--qdrant`.
 //
-// Post-fix wiring (AGENT-1):
-//
-//   - `internal/config`         → `internal/infrastructure/config`
-//   - `internal/storage`        → `internal/infrastructure/database`
-//   - `internal/media/vectorstore` → `internal/infrastructure/qdrant`
-//     The canonical `qdrant.NewService` is the single-arg stub that
-//     pairs with `qdrant.NewClipIndexerAdapter(db, vectorSvc, cfg, log)`.
-//     The adapter ultimately calls `vectorSvc.UpsertAsset(s)` which is
-//     a stub returning "qdrant service not available" until the real
-//     backend is re-introduced (commit d61068b3 stub-restore note).
-//     Operators running with `--qdrant` against an offline service will
-//     see the stub error in the report and the DB step will still have
-//     succeeded — the pipeline remains usable as an audit/ops tool.
+// The optional `--qdrant` flag (formerly a Qdrant upsert) is a no-op
+// since PG-034 (June 2026); after `--apply`, the canonical record is
+// the SQLite `media_assets.metadata_json` row.
 package main
 
 import (
