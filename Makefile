@@ -286,3 +286,8 @@ smoke-dry:
 	    bash $$s --dry; \
 	done
 	@echo "✅ smoke-dry OK"
+
+# Regenerate Google Drive token.json
+regenerate-token:
+	@bash scripts/regenerate_token.sh
+
