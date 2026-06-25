@@ -182,10 +182,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		scriptsRepoAdapter, gen,
 		root.Drive.DocClient, cfg, log,
 	)
-	generateBatchUC := scripts.NewGenerateBatchUseCase(
-		cfg, log, root.Jobs.Facade, batchSvc,
-		cfg.Drive.ScriptsGenFolder(),
-	)
 	cacheEvictionUC := scripts.NewCacheEvictionUseCase(
 		gen, memorySvc, log,
 	)
@@ -306,29 +302,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Construct handler ──────────────────────────────────────────────
-	// PG-024: genSvc and gates flow through ScriptFlowDeps directly;
-	// the legacy Handler wrapper that duplicated per-route gating
-	// has been removed. ScriptFlowHandler.RegisterRoutes is now the
-	// single canonical route registration.
-	//
-	// root.Jobs.Facade (NOT root.Jobs.Service) is passed to
-	// NewGenerationService because the canonical JobEnqueuer port
-	// (internal/application/scripts/ports.go) takes *job.EnqueueRequest
-	// (the domain type). root.Jobs.Facade = *job.Service (the
-	// domain facade) whose Enqueue method signature matches the
-	// port exactly; the facade internally translates to
-	// *appjobs.EnqueueRequest via its installed EnqueueFn closure.
-	genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
-	gates := scriptapi.FeatureGates{
-		ScriptClipsEnabled:  cfg.Features.ScriptClipsEnabled,
-		ScriptDocsEnabled:   cfg.Features.ScriptDocsEnabled,
-		ScriptImagesEnabled: cfg.Features.ImagesEnabled,
-	}
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:                engine,
 		Batch:                 batchSvc,
 		Section:               sectionRegen,
-		GenerateBatch:         generateBatchUC,
 		CacheEviction:         cacheEvictionUC,
 		PipelineUseCase:       pipelineUC,
 		Image:                 root.Domains.ImageService,
@@ -348,8 +325,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
 		ClipServices:          clipServices,
 		Log:                   log,
-		GenService:            genSvc,
-		Gates:                 gates,
 	})
 
 	// ── Register job handlers at composition time ──────────────────────

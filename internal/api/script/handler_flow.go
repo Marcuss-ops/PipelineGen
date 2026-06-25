@@ -23,8 +23,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── Local interfaces (Agente 4 — avoid concrete infrastructure types) ────────
@@ -52,9 +50,8 @@ type ScriptFlowHandler struct {
 	groupsResolver    *voiceover.GroupsResolver
 	clipSourceBuilder *scripts.ClipSourceBuilder
 	mediaCurator      *scripts.MediaCurator
-	sectionRegen      *scripts.SectionRegenerator
-	generateBatch     *scripts.GenerateBatchUseCase
-	cacheEviction     *scripts.CacheEvictionUseCase
+	sectionRegen   *scripts.SectionRegenerator
+	cacheEviction  *scripts.CacheEvictionUseCase
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      scripts.ClipServices
 	driveFolderClient DriveFolderClient
@@ -65,11 +62,8 @@ type ScriptFlowHandler struct {
 	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
-	log               *zap.Logger
-	genSvc            GenerationService
-	gates             FeatureGates
-
-	pipelineUC *scripts.PipelineUseCase
+	log          *zap.Logger
+	pipelineUC   *scripts.PipelineUseCase
 }
 
 type AutoHarvestService interface {
@@ -78,11 +72,10 @@ type AutoHarvestService interface {
 
 // ScriptFlowDeps groups all constructor inputs.
 type ScriptFlowDeps struct {
-	Engine          *scripts.Engine
-	Batch           *scripts.BatchService
-	Section         *scripts.SectionRegenerator
-	GenerateBatch   *scripts.GenerateBatchUseCase
-	CacheEviction   *scripts.CacheEvictionUseCase
+	Engine         *scripts.Engine
+	Batch          *scripts.BatchService
+	Section        *scripts.SectionRegenerator
+	CacheEviction  *scripts.CacheEvictionUseCase
 	PipelineUseCase *scripts.PipelineUseCase
 
 	Image       *images.Service
@@ -103,12 +96,8 @@ type ScriptFlowDeps struct {
 	DriveFolderClient     DriveFolderClient
 	DocumentCreator       DocumentCreator
 	DriveScriptsGenFolder string
-	ClipServices          scripts.ClipServices // pre-built in wire_script.go
-	Log                   *zap.Logger
-
-	// PG-024: moved from legacy Handler wrapper to eliminate route duplication.
-	GenService GenerationService
-	Gates      FeatureGates
+	ClipServices scripts.ClipServices // pre-built in wire_script.go
+	Log          *zap.Logger
 }
 
 func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
@@ -138,9 +127,8 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		groupsResolver:    groupsResolver,
 		clipSourceBuilder: deps.ClipSourceBuilder,
 		mediaCurator:      deps.MediaCurator,
-		sectionRegen:      deps.Section,
-		generateBatch:     deps.GenerateBatch,
-		cacheEviction:     deps.CacheEviction,
+		sectionRegen:   deps.Section,
+		cacheEviction:  deps.CacheEviction,
 		driveFolderClient: deps.DriveFolderClient,
 		documentCreator:   deps.DocumentCreator,
 		jobsSvc:           deps.Jobs,
@@ -152,9 +140,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		log:               log,
 		clipServices:      clipSvc,
 		insightBuilder:    NewScriptInsightBuilder(log, 12, clipSvc),
-		pipelineUC:        deps.PipelineUseCase,
-		genSvc:            deps.GenService,
-		gates:             deps.Gates,
+		pipelineUC: deps.PipelineUseCase,
 	}
 
 	return h
@@ -180,48 +166,6 @@ func (h *ScriptFlowHandler) registerJobRoutes(r *gin.RouterGroup) {
 	jobs.Use(RequireAdminToken(h))
 	jobs.GET("/jobs/:job_id", h.GetJobStatus)
 	jobs.GET("/jobs/:job_id/full", h.GetJobFullStatus)
-}
-
-// GenerateFromClips handles POST /generate-from-clips.
-// PG-024: moved from legacy Handler wrapper.
-func (h *ScriptFlowHandler) GenerateFromClips(c *gin.Context) {
-	if h.genSvc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
-		return
-	}
-	var spec scriptpkg.GenerationSpec
-	if err := c.ShouldBindJSON(&spec); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
-		return
-	}
-	result, err := h.genSvc.EnqueueFromClips(c.Request.Context(), spec)
-	if err != nil {
-		status := mapErrorToHTTP(err)
-		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
-}
-
-// GenerateWithImages handles POST /generate-with-images.
-// PG-024: moved from legacy Handler wrapper.
-func (h *ScriptFlowHandler) GenerateWithImages(c *gin.Context) {
-	if h.genSvc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
-		return
-	}
-	var spec scriptpkg.GenerationSpec
-	if err := c.ShouldBindJSON(&spec); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
-		return
-	}
-	result, err := h.genSvc.EnqueueWithImages(c.Request.Context(), spec)
-	if err != nil {
-		status := mapErrorToHTTP(err)
-		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
 }
 
 // RequireAdminToken wraps middleware.RequireAdminToken accepting the local
@@ -268,10 +212,7 @@ func extractHeaderToken(c *gin.Context) string {
 	return strings.TrimSpace(bearer)
 }
 
-// RegisterRoutes registers ALL script routes with per-route feature gating.
-// PG-024 (June 2026): unified route registration — the legacy Handler wrapper
-// that duplicated per-route gating has been removed. This is now the single
-// canonical route registration for /api/script/.
+// RegisterRoutes registers non-generation script routes.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
 	r.POST("/curate", h.Curate)
@@ -366,9 +307,4 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	})
 }
 
-func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *scripts.GenerateBatchRequest, onProgress func(int, string)) (scripts.BatchGenerateResponse, error) {
-	if h.batchService == nil {
-		return scripts.BatchGenerateResponse{}, fmt.Errorf("batch service not initialized")
-	}
-	return h.batchService.ExecuteBatchGeneration(ctx, req, onProgress)
-}
+
