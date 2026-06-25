@@ -105,13 +105,7 @@ func TestPrewarmUseCase_ShouldStart(t *testing.T) {
 	assert.False(t, ShouldStart(false, 0, 0))
 }
 
-func TestPrewarmUseCase_NilImgSvcNoop(t *testing.T) {
-	t.Parallel()
-	uc := NewPrewarmUseCase(nil, zap.NewNop())
-	err := uc.Start(context.Background(), "jobA", true)
-	require.NoError(t, err)
-	uc.Wait()
-}
+// TestPrewarmUseCase_ImageServiceNil is now in prewarm_usecase_test.go
 
 func TestPrewarmUseCase_NotStartedWhenGuardFalse(t *testing.T) {
 	t.Parallel()
@@ -137,12 +131,7 @@ func TestPrewarmUseCase_FiresGoroutineWhenShouldStart(t *testing.T) {
 	assert.Equal(t, 7, last.count)
 }
 
-func TestPrewarmUseCase_StartNilSafe(t *testing.T) {
-	t.Parallel()
-	var uc *PrewarmUseCase
-	err := uc.Start(context.Background(), "jobA", true)
-	require.ErrorIs(t, err, ErrPrewarmUnconfigured)
-}
+// TestPrewarmUseCase_NilUseCase is now in prewarm_usecase_test.go
 
 // ── SceneBuilderUseCase ─────────────────────────────────────────────────────
 
@@ -170,24 +159,9 @@ func TestSceneBuilderUseCase_BuildWhenDepsNil(t *testing.T) {
 
 // ── DocumentsUseCase ────────────────────────────────────────────────────────
 
-func TestDocumentsUseCase_BuildAndCreateRejectsNilUseCase(t *testing.T) {
-	t.Parallel()
-	var uc *DocumentsUseCase
-	ln, id, err := uc.BuildAndCreate(context.Background(), "T", "C", nil, "F")
-	require.ErrorIs(t, err, ErrDocumentCreationFailed)
-	assert.Empty(t, ln)
-	assert.Empty(t, id)
-}
+// TestDocumentsUseCase_NilUseCase is now in documents_usecase_test.go
 
-func TestDocumentsUseCase_DocumentsServiceNilIfNoClient(t *testing.T) {
-	t.Parallel()
-	uc := NewDocumentsUseCase(nil, zap.NewNop(), "")
-	assert.Nil(t, uc.DocumentsService())
-	ln, id, err := uc.BuildAndCreate(context.Background(), "T", "C", nil, "F")
-	require.ErrorIs(t, err, ErrDocumentCreationFailed)
-	assert.Empty(t, ln)
-	assert.Empty(t, id)
-}
+// TestDocumentsUseCase_NilDocClient is now in documents_usecase_test.go
 
 // ── PipelineUseCase (dispatch) ────────────────────────────────────────────
 //
