@@ -283,7 +283,13 @@ func (pu *PipelineUseCase) Run(
 		tools.Progress(100, "Generation completed")
 	}
 
-	scriptInsights := pipelineResult.Insights
+	// PG-033 phase 2 (June 2026): defensive narrowing (mirrors
+	// catalog_job.go:166 / commit 290e9cd5). The zero value of
+	// ScriptInsights is safe — buildFinalResult only emits insights
+	// fields when payload.ExtractEntities is true, and every
+	// ScriptInsights field is JSON-zero-safe (nil []string → [],
+	// nil interface{} → null).
+	scriptInsights, _ := pipelineResult.Insights.(ScriptInsights)
 	scriptMeta := make([]VideoMetadata, len(pipelineResult.VideoMetadata))
 	for i, m := range pipelineResult.VideoMetadata {
 		scriptMeta[i] = VideoMetadata{
@@ -432,7 +438,10 @@ func (pu *PipelineUseCase) handleClipPathExplicit(ctx context.Context, payload *
 	if err != nil {
 		return nil, fmt.Errorf("clip-script generation failed: %w", err)
 	}
-	clipScenes := BuildScenesWithMarkers(writeResult.Script)
+	// PG-033 phase 2 (June 2026): match the canonical signature.
+	// BuildScenesWithMarkers now takes both the script and the source
+	// clip pack so scene-kind labels can be anchored to clip IDs.
+	clipScenes := BuildScenesWithMarkers(writeResult.Script, pack)
 	if pu.log != nil {
 		pu.log.Info("clip-script generated",
 			zap.Int("scenes", len(clipScenes)),
