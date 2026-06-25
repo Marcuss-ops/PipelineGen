@@ -69,13 +69,13 @@ import (
 //   - ReadyChecker: concrete *systemhealth.ReadyChecker. Kept as a
 //     concrete pointer so the router can call CheckReady without an
 //     extra method-set assertion.
-//   - Cleanup: LIFO teardown (delegates to Lifecycle.Stop but kept
-//     for backward compatibility with pre-lifecycle callers).
+//   - Cleanup: REMOVED in PG-020 (June 2026). All teardown now goes
+//     through Lifecycle.Stop. Callers that previously referenced
+//     deps.Cleanup() now call deps.Lifecycle.Stop(ctx).
 type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 	Lifecycle     module.LifecycleManager
 	HealthService interface{}
 	ReadyChecker  *systemhealth.ReadyChecker
-	Cleanup       func()
 }

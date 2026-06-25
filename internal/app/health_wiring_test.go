@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,7 +38,7 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 
 	deps, err := WireMinimal(cfg, log, "")
 	require.NoError(t, err)
-	t.Cleanup(func() { deps.Cleanup() })
+	t.Cleanup(func() { deps.Lifecycle.Stop(context.Background()) })
 
 	// WireMinimal returns nil ReadyChecker (no composition root).
 	assert.Nil(t, deps.ReadyChecker, "WireMinimal should have nil ReadyChecker")
