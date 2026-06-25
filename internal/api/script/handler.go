@@ -22,6 +22,8 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -64,5 +66,24 @@ func mapErrorToHTTP(err error) int {
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
+	}
+}
+
+// Handler is a thin wrapper that delegates to ScriptFlowHandler for
+// non-generation script routes. All generation-specific endpoints have
+// been removed — use POST /api/generations instead.
+type Handler struct {
+	inner *ScriptFlowHandler
+}
+
+// NewHandler creates a Handler that delegates to the given ScriptFlowHandler.
+func NewHandler(inner *ScriptFlowHandler) *Handler {
+	return &Handler{inner: inner}
+}
+
+// RegisterRoutes registers the non-generation script routes.
+func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
+	if h.inner != nil {
+		h.inner.RegisterRoutes(r)
 	}
 }
