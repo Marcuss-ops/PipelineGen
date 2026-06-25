@@ -230,18 +230,6 @@ func TestPipelineUseCase_RegisterJobs_NilSvcNoOp(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestPipelineUseCase_RegisterJobs_NilBrokerIsNoOp verifies
-// that passing nil to RegisterJobs is a no-op (returns nil).
-// PG-042 (June 2026): RegisterJobs now accepts the typed Broker
-// port; nil is still handled as a no-op for back-compat with
-// test fixtures and nil-checking callers.
-func TestPipelineUseCase_RegisterJobs_NilBrokerIsNoOp(t *testing.T) {
-	t.Parallel()
-	pu := &PipelineUseCase{log: zap.NewNop()} // intentionally under-populated
-	err := pu.RegisterJobs(nil)
-	require.NoError(t, err)
-}
-
 // fakeBroker is a test double that implements the Broker port.
 type fakeBroker struct {
 	registered bool
