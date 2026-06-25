@@ -145,16 +145,19 @@ func TestProcessBookUseCase_HandleSyncOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.OK || !resp.Success {
-		t.Fatalf("expected OK+Success, got: ok=%v success=%v", resp.OK, resp.Success)
+	if !resp.OK || resp.Kind != "book" || resp.Mode != "sync" {
+		t.Fatalf("expected OK+sync book envelope, got: %+v", resp)
 	}
-	if resp.OutputPath != "/tmp/out.md" {
-		t.Fatalf("OutputPath mismatch: got %q", resp.OutputPath)
+	if resp.Result == nil {
+		t.Fatalf("expected sync result payload, got nil")
 	}
-	if resp.WordCount != 1234 || resp.ChunksProcessed != 7 || resp.Language != "en" {
-		t.Fatalf("sync fields not projected correctly: %+v", resp)
+	if resp.Result.OutputPath != "/tmp/out.md" {
+		t.Fatalf("OutputPath mismatch: got %q", resp.Result.OutputPath)
 	}
-	if resp.Enqueued || resp.JobID != "" {
+	if resp.Result.WordCount != 1234 || resp.Result.ChunksProcessed != 7 || resp.Result.Language != "en" {
+		t.Fatalf("sync fields not projected correctly: %+v", resp.Result)
+	}
+	if resp.JobID != "" || resp.JobType != "" || resp.Status != "" {
 		t.Fatalf("async fields must be empty on sync, got: %+v", resp)
 	}
 	if fakeSvc.LastRequest == nil || fakeSvc.LastRequest.FilePath != "/tmp/in.pdf" {
@@ -183,11 +186,14 @@ func TestProcessBookUseCase_HandleAsyncOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.OK || !resp.Enqueued {
-		t.Fatalf("expected OK+Enqueued=true, got: ok=%v enqueued=%v", resp.OK, resp.Enqueued)
+	if !resp.OK || resp.Kind != "book" || resp.Mode != "async" {
+		t.Fatalf("expected OK+async book envelope, got: %+v", resp)
 	}
 	if resp.JobID != "job-abc-123" {
 		t.Fatalf("JobID mismatch: got %q", resp.JobID)
+	}
+	if resp.JobType != string(jobs.TypeBooksProcess) {
+		t.Fatalf("JobType mismatch: got %q", resp.JobType)
 	}
 	if fakeJobs.LastRequest == nil {
 		t.Fatalf("asyncEnqueuer was not called")
@@ -199,8 +205,8 @@ func TestProcessBookUseCase_HandleAsyncOK(t *testing.T) {
 		t.Fatalf("EnqueueRequest.Priority = %d, want %d", fakeJobs.LastRequest.Priority, processBookEnqueuePriority)
 	}
 	// sync fields must be empty on async ack
-	if resp.Success || resp.OutputPath != "" {
-		t.Fatalf("sync fields must be empty on async, got: %+v", resp)
+	if resp.Result != nil {
+		t.Fatalf("sync result must be empty on async, got: %+v", resp)
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -87,6 +88,17 @@ type GenerateLessonRequest struct {
 	Async          bool   `json:"async,omitempty"`
 }
 
+// GenerateLessonResult is the synchronous payload carried in the
+// shared generation envelope.
+type GenerateLessonResult struct {
+	Title        string `json:"title"`
+	Language     string `json:"language"`
+	TotalWords   int    `json:"total_words"`
+	MarkdownPath string `json:"markdown_path"`
+	PDFPath      string `json:"pdf_path"`
+	GeneratedAt  string `json:"generated_at"`
+}
+
 // Validate implements transport.JSONBound.
 func (r GenerateLessonRequest) Validate() error {
 	if strings.TrimSpace(r.SourceText) == "" {
@@ -122,28 +134,9 @@ func (r GenerateLessonRequest) payload() map[string]any {
 	}
 }
 
-// GenerateLessonResponse covers sync execution results and async
-// enqueue acknowledgments. Every field is omitempty so the wire body
-// only contains the branch's relevant keys.
-type GenerateLessonResponse struct {
-	OK bool `json:"ok"`
-
-	// sync fields.
-	Success      bool   `json:"success,omitempty"`
-	Title        string `json:"title,omitempty"`
-	Language     string `json:"language,omitempty"`
-	TotalWords   int    `json:"total_words,omitempty"`
-	MarkdownPath string `json:"markdown_path,omitempty"`
-	PDFPath      string `json:"pdf_path,omitempty"`
-	GeneratedAt  string `json:"generated_at,omitempty"`
-
-	// async fields.
-	Enqueued  bool   `json:"enqueued,omitempty"`
-	JobID     string `json:"job_id,omitempty"`
-	JobType   string `json:"job_type,omitempty"`
-	ActiveKey string `json:"active_key,omitempty"`
-	Priority  int    `json:"priority,omitempty"`
-}
+// GenerateLessonResponse reuses the shared generation envelope so the
+// lessons API matches the other text-generation endpoints.
+type GenerateLessonResponse = generation.Response[GenerateLessonResult]
 
 // Sentinels returned by the use case. transport.JSON's ErrorMapper
 // translates each into a stable HTTP status so the wire surface is
@@ -227,16 +220,14 @@ func (uc *GenerateLessonUseCase) handleSync(ctx context.Context, req GenerateLes
 	if !result.Success {
 		return GenerateLessonResponse{}, ErrGenerateFailed{Message: result.Error}
 	}
-	return GenerateLessonResponse{
-		OK:           true,
-		Success:      true,
+	return generation.Sync("lesson", GenerateLessonResult{
 		Title:        result.Title,
 		Language:     result.Language,
 		TotalWords:   result.TotalWords,
 		MarkdownPath: result.MarkdownPath,
 		PDFPath:      result.PDFPath,
 		GeneratedAt:  result.GeneratedAt,
-	}, nil
+	}), nil
 }
 
 // enqueueLessonJob is the shared helper for the async branch of any
@@ -277,17 +268,12 @@ func (uc *GenerateLessonUseCase) enqueueLessonJob(ctx context.Context, req Gener
 		)
 	}
 	jobID := ""
+	status := ""
 	if enqueued != nil {
 		jobID = enqueued.ID
+		status = string(enqueued.Status)
 	}
-	return GenerateLessonResponse{
-		OK:        true,
-		Enqueued:  true,
-		JobID:     jobID,
-		JobType:   jobType,
-		ActiveKey: activeKey,
-		Priority:  generateLessonEnqueuePriority,
-	}, nil
+	return generation.Async[GenerateLessonResult]("lesson", jobID, status, jobType), nil
 }
 
 // GenerateLessonErrMapper maps use-case errors to HTTP responses.

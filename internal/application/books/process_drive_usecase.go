@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 )
 
 // processBookFromDriveTimeout caps the synchronous
@@ -54,6 +55,22 @@ type ProcessBookFromDriveRequest struct {
 	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
 }
 
+// ProcessBookFromDriveResult is the synchronous payload carried in the
+// shared generation envelope.
+type ProcessBookFromDriveResult struct {
+	OutputPath         string `json:"output_path"`
+	PDFPath            string `json:"pdf_path"`
+	DriveFolder        string `json:"drive_folder"`
+	DriveDocURL        string `json:"drive_doc_url"`
+	DrivePDFURL        string `json:"drive_pdf_url"`
+	ChunksProcessed    int    `json:"chunks_processed"`
+	Language           string `json:"language"`
+	VoiceoverPath      string `json:"voiceover_path"`
+	VoiceoverDriveLink string `json:"voiceover_drive_link"`
+	VoiceoverDriveID   string `json:"voiceover_drive_id"`
+	VoiceoverError     string `json:"voiceover_error"`
+}
+
 // Validate implements transport.JSONBound.
 func (r ProcessBookFromDriveRequest) Validate() error {
 	if strings.TrimSpace(r.DriveFileURL) == "" {
@@ -62,26 +79,9 @@ func (r ProcessBookFromDriveRequest) Validate() error {
 	return nil
 }
 
-// ProcessBookFromDriveResponse mirrors the legacy gin.H response
-// shape: a top-level OK + success flag, optional BookResult (only
-// when the underlying book service succeeds), and three optional
-// voiceover fields that are populated when GenerateVoiceover=true.
-// All fields are omitempty so empty slices stay empty on the wire.
-type ProcessBookFromDriveResponse struct {
-	OK                 bool   `json:"ok"`
-	Success            bool   `json:"success,omitempty"`
-	OutputPath         string `json:"output_path,omitempty"`
-	PDFPath            string `json:"pdf_path,omitempty"`
-	DriveFolder        string `json:"drive_folder,omitempty"`
-	DriveDocURL        string `json:"drive_doc_url,omitempty"`
-	DrivePDFURL        string `json:"drive_pdf_url,omitempty"`
-	ChunksProcessed    int    `json:"chunks_processed,omitempty"`
-	Language           string `json:"language,omitempty"`
-	VoiceoverPath      string `json:"voiceover_path,omitempty"`
-	VoiceoverDriveLink string `json:"voiceover_drive_link,omitempty"`
-	VoiceoverDriveID   string `json:"voiceover_drive_id,omitempty"`
-	VoiceoverError     string `json:"voiceover_error,omitempty"`
-}
+// ProcessBookFromDriveResponse reuses the shared generation envelope
+// so the books API matches the other text-generation endpoints.
+type ProcessBookFromDriveResponse = generation.Response[ProcessBookFromDriveResult]
 
 // ErrDriveMissing is returned when the books Service is nil at
 // construction. The ErrorMapper translates to 503. Reuses the same
@@ -142,10 +142,7 @@ func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBo
 	if !result.Success {
 		return ProcessBookFromDriveResponse{}, ErrProcessFailed{Message: result.Error}
 	}
-	resp := ProcessBookFromDriveResponse{
-		OK:      true,
-		Success: true,
-	}
+	resp := ProcessBookFromDriveResult{}
 	if result.BookResult != nil {
 		resp.OutputPath = result.BookResult.OutputPath
 		resp.PDFPath = result.BookResult.PDFPath
@@ -161,7 +158,7 @@ func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBo
 		resp.VoiceoverDriveID = result.VoiceoverDriveID
 	}
 	resp.VoiceoverError = result.VoiceoverError
-	return resp, nil
+	return generation.Sync("book", resp), nil
 }
 
 // ProcessBookFromDriveErrMapper maps use-case errors to HTTP responses.

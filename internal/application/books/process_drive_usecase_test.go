@@ -114,17 +114,20 @@ func TestProcessBookFromDriveUseCase_HandleSyncOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.OK || !resp.Success {
-		t.Fatalf("expected OK+Success, got: ok=%v success=%v", resp.OK, resp.Success)
+	if !resp.OK || resp.Kind != "book" || resp.Mode != "sync" {
+		t.Fatalf("expected OK+sync book envelope, got: %+v", resp)
 	}
-	if resp.OutputPath != "/tmp/out.md" || resp.ChunksProcessed != 7 || resp.Language != "en" {
-		t.Fatalf("BookResult fields not projected: %+v", resp)
+	if resp.Result == nil {
+		t.Fatalf("expected sync result payload, got nil")
 	}
-	if resp.VoiceoverPath != "/tmp/voiceover.mp3" || resp.VoiceoverDriveID != "vo-id-xyz" {
-		t.Fatalf("voiceover fields not projected: %+v", resp)
+	if resp.Result.OutputPath != "/tmp/out.md" || resp.Result.ChunksProcessed != 7 || resp.Result.Language != "en" {
+		t.Fatalf("BookResult fields not projected: %+v", resp.Result)
 	}
-	if resp.VoiceoverError != "" {
-		t.Fatalf("VoiceoverError should be empty on success, got %q", resp.VoiceoverError)
+	if resp.Result.VoiceoverPath != "/tmp/voiceover.mp3" || resp.Result.VoiceoverDriveID != "vo-id-xyz" {
+		t.Fatalf("voiceover fields not projected: %+v", resp.Result)
+	}
+	if resp.Result.VoiceoverError != "" {
+		t.Fatalf("VoiceoverError should be empty on success, got %q", resp.Result.VoiceoverError)
 	}
 }
 

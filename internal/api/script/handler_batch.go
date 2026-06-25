@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -161,18 +162,16 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 	}
 
 	if out.Async != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"ok":         true,
-			"async":      true,
-			"job_id":     out.Async.JobID,
-			"status":     out.Async.Status,
-			"message":    "Batch script generation enqueued. Poll /api/jobs/" + out.Async.JobID + "/full for status.",
-			"status_url": out.Async.StatusURL,
-		})
+		c.JSON(http.StatusOK, generation.Async[scripts.BatchGenerateResponse](
+			"script",
+			out.Async.JobID,
+			out.Async.Status,
+			"script.generate_batch",
+		))
 		return
 	}
 
-	c.JSON(http.StatusOK, out.Response)
+	c.JSON(http.StatusOK, generation.Sync("script", *out.Response))
 }
 
 // mapGenerateBatchError translates a use-case error to an HTTP response.

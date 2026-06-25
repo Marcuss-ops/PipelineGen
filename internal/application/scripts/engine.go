@@ -30,6 +30,24 @@ import (
 	"go.uber.org/zap"
 )
 
+// scriptOllamaGenerator is the narrow GenerateScript surface that
+// Engine.WriteScript depends on. The concrete *ollama.Generator satisfies
+// it at compile time; tests inject a fake to bypass the real LLM.
+type scriptOllamaGenerator interface {
+	GenerateScript(ctx context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error)
+}
+
+// memoryGateChecker is the narrow CheckGate surface for the memory-cache
+// fast-path in WriteScript. The concrete *gemmamemory.Service satisfies it;
+// tests inject a fake to simulate cache hits/misses.
+type memoryGateChecker interface {
+	CheckGate(ctx context.Context, req gemmamemory.MemoryGateRequest) (*gemmamemory.GateResult, error)
+}
+
+// Compile-time assertions.
+var _ scriptOllamaGenerator = (*ollama.Generator)(nil)
+var _ memoryGateChecker = (*gemmamemory.Service)(nil)
+
 // NewEngine constructs a real Engine backed by the canonical
 // *ollama.Generator. Accepts concrete typed args.
 func NewEngine(
@@ -52,7 +70,7 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 		return nil, fmt.Errorf("engine: ollama generator not configured")
 	}
 
-	ollamaGen, ok := e.ollamaGen.(*ollama.Generator)
+	ollamaGen, ok := e.ollamaGen.(scriptOllamaGenerator)
 	if !ok || ollamaGen == nil {
 		return nil, fmt.Errorf("engine: ollama generator not properly configured")
 	}
@@ -132,7 +150,7 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 
 	// Memory gate: check if we have a cached result.
 	if useMemory && e.memorySvc != nil {
-		if memSvc, ok := e.memorySvc.(*gemmamemory.Service); ok {
+		if memSvc, ok := e.memorySvc.(memoryGateChecker); ok {
 			memoryReq := gemmamemory.MemoryGateRequest{
 				Title:    title,
 				Language: language,
