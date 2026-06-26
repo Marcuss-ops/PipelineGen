@@ -102,6 +102,18 @@ func runFocusedChecks() Report {
 	checks["python_legacy_writer_violations"] = pythonWriterViolations
 	violations = append(violations, pythonWriterFindings...)
 
+	// Wave 19 (PR1 — observation only): surface capability-direction
+	// edge counts. NO violations emitted (would break the active
+	// Wave 14-18 ratchet until the baseline is agreed). PR2+ will
+	// promote the counts to hard gates via allowlist-based subtraction.
+	atiStats, atiViolations := checkApplicationToInfrastructure()
+	checks["application_to_infrastructure_files"] = atiStats["actual"]
+	violations = append(violations, atiViolations...)
+
+	cciStats, cciViolations := checkCrossCapabilityImport()
+	checks["cross_capability_import_pairs"] = cciStats["actual"]
+	violations = append(violations, cciViolations...)
+
 	return Report{
 		Passed:            len(violations) == 0,
 		FocusedGatePassed: len(violations) == 0,
@@ -141,6 +153,15 @@ func runRatchetChecks() Report {
 	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
 	checks["python_legacy_writer_violations"] = pythonWriterViolations
 	violations = append(violations, pythonWriterFindings...)
+
+	// Wave 19 (PR1 — observation only). See runFocusedChecks for rationale.
+	atiStats, atiViolations := checkApplicationToInfrastructure()
+	checks["application_to_infrastructure_files"] = atiStats["actual"]
+	violations = append(violations, atiViolations...)
+
+	cciStats, cciViolations := checkCrossCapabilityImport()
+	checks["cross_capability_import_pairs"] = cciStats["actual"]
+	violations = append(violations, cciViolations...)
 
 	return Report{
 		Passed:            len(violations) == 0,
@@ -205,6 +226,215 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 	stats["stale"] = len(staleAllowlist)
 	stats["violations"] = len(violations)
 	return stats, violations
+}
+
+// checkApplicationToInfrastructure is the Wave 19 (June 2026) Portland
+// import-edge counter for the operator-pasted "Dependency Rules" spec.
+//
+// Vocabulary mapping (PR1 does NOT rename directories — would invalidate
+// the active Wave 14-18 ratchet):
+//   * capabilities = internal/application/<cap>
+//   * platform     = internal/infrastructure/<sub>
+//   * kernel       = internal/domain/<x>
+//   * app          = internal/app
+//
+// Target after Wave 15-18 hardening: 0. For the FIRST PR the function
+// reports COUNTS in the `Checks` map and emits NO violations, so the
+// CI stays GREEN while operators see the surface area before any
+// hard-gate promotion (PR2+: violations fail ratchet unless the edge
+// is allowlisted in docs/migrations/application-infrastructure-imports-allowlist.txt).
+//
+// The reverse direction (infrastructure -> application) is allowed
+// (composition-only bridge — Wave 15 PR4d). The `cmd -> app ->
+// capabilities -> kernel` direction is enforced by the existing
+// rules (pkg_to_internal, domain_to_application, domain_to_infrastructure,
+// application_to_api, application_to_database_sql).
+func checkApplicationToInfrastructure() (map[string]int, []string) {
+	stats := map[string]int{
+		"actual":     0,
+		"violations": 0,
+	}
+	out, err := exec.Command("rg", "-l",
+		`"github\.com/Marcuss-ops/PipelineGen/internal/infrastructure/`,
+		"internal/application",
+		"--glob", "*.go",
+		"--glob", "!*_test.go",
+	).Output()
+	if err != nil && !execErrIsNoMatch(err) {
+		stats["violations"] = -1
+		return stats, []string{fmt.Sprintf("checkApplicationToInfrastructure: rg failed: %v", err)}
+	}
+	actual := normalizePaths(splitNonEmpty(string(out)))
+	stats["actual"] = len(actual)
+	// PR1 observation-only: no violations emitted (would break active
+	// Wave 14-18 ratchet). PR2 promotes the edge to hard-gate via
+	// subtractSet(actual, allowlist) — see Wave 19 description in
+	// architecture/current.yaml.
+	return stats, nil
+}
+
+// checkCrossCapabilityImport is the Wave 19 (June 2026) edge counter
+// for `internal/application/<capA>/` -> `internal/application/<capB>/`.
+//
+// Per the operator-pasted Dependency Rules spec, Section "Cross-capability
+// communication": "Capability A must not import Capability B's
+// transport, repository implementation, or internal service concrete."
+// The preferred order is typed port > typed event > owned read model;
+// direct cross-capability import is reserved for composition adapters.
+//
+// Target after Wave 19 hardening: 0 — except for a documented per-edge
+// allowlist. PR1 reports COUNTS in the `Checks` map; no violations
+// are emitted.
+//
+// Distinguish same-package from cross-package imports: a file at
+// `internal/application/<capA>/x.go` importing
+// `internal/application/<capA>/y` is a SAME-package reference (legal
+// under any layout) and DOES NOT count. Only when the source file's
+// capability differs from the imported capability does the edge
+// contribute to the counter.
+func checkCrossCapabilityImport() (map[string]int, []string) {
+	stats := map[string]int{
+		"actual":     0,
+		"violations": 0,
+	}
+	out, err := exec.Command("rg", "-n",
+		`github\.com/Marcuss-ops/PipelineGen/internal/application/`,
+		"internal/application",
+		"--type", "go",
+		"--glob", "!*_test.go",
+	).Output()
+	if err != nil && !execErrIsNoMatch(err) {
+		stats["violations"] = -1
+		return stats, []string{fmt.Sprintf("checkCrossCapabilityImport: rg failed: %v", err)}
+	}
+
+	capabilities := applicationCapabilities()
+	pairCount := 0
+	seenPairs := make(map[string]bool)
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		// rg -n emits `path:linenum:matched_text`. SplitN with limit 3
+		// gives us [path, linenum, content] — robust against path
+		// strings that could in theory contain additional colons
+		// (and a safer shape than strings.IndexByte for any future
+		// rg output-format change). The "content" slice contains the
+		// matched substring (the import string itself for our pattern).
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		src := parts[0]
+		content := parts[2]
+		srcCap := capabilityOfFile(src, capabilities)
+		importCap := capabilityOfImport(content, capabilities)
+		if srcCap == "" || importCap == "" {
+			continue
+		}
+		if srcCap == importCap {
+			continue
+		}
+		pairKey := srcCap + "->" + importCap
+		if seenPairs[pairKey] {
+			continue
+		}
+		seenPairs[pairKey] = true
+		pairCount++
+	}
+	stats["actual"] = pairCount
+	// PR1 observation-only (no violations). Operators can read the
+	// pair count as a summary statistic; the full edge list (file-
+	// level) is intentionally deferred to PR2 alongside the ratchet
+	// baseline — see Wave 19 exit_gate in architecture/current.yaml.
+	return stats, nil
+}
+
+// applicationCapabilities returns the set of well-known capability
+// sub-package names under internal/application/. Used by
+// checkCrossCapabilityImport to classify source files and imports.
+//
+// PR2 HOOK (do not forget when promoting this rule to hard gate):
+// the current list is a HARDCODED SNAPSHOT of known capability
+// directories. New capability directories added after this snapshot
+// will be SILENTLY IGNORED (no error, no warning) until the list is
+// re-rolled. PR2 must replace this map with one of:
+//  1. os.ReadDir("internal/application") at archcheck startup (auto-
+//     discover, immune to new capability dirs), OR
+//  2. Compute the list from architecture/ownership.yaml::application_*
+//     keys (single source of truth, requires ownership.yaml to have
+//     one entry per capability — see ownership.yaml::application_assets
+//     as the canonical shape).
+// PR1 remains safe for now because the in_progress Wave 14-18 waves
+// are the only ones adding/removing capabilities and we re-roll the
+// list in lockstep with each wave.
+func applicationCapabilities() map[string]bool {
+	return map[string]bool{
+		"assets":             true,
+		"artlist":            true,
+		"association":        true,
+		"books":              true,
+		"catalog":            true,
+		"channels":           true,
+		"clips":              true,
+		"content":            true,
+		"generation":         true,
+		"images":             true,
+		"ingest":             true,
+		"jobs":               true,
+		"lessons":            true,
+		"mediasearch":        true,
+		"middleware":         true,
+		"monitor":            true,
+		"realtime":           true,
+		"scriptassets":       true,
+		"scripts":            true,
+		"searchqueries":      true,
+		"system":             true,
+		"voiceover":          true,
+		"youtube":            true,
+	}
+}
+
+// capabilityOfFile returns the capability name for a Go file under
+// `internal/application/<cap>/...`. Returns "" for files OUTSIDE that
+// layout (e.g. architecture metadata, scripts directory).
+func capabilityOfFile(relPath string, caps map[string]bool) string {
+	const prefix = "internal/application/"
+	if !strings.HasPrefix(relPath, prefix) {
+		return ""
+	}
+	rest := relPath[len(prefix):]
+	slash := strings.IndexByte(rest, '/')
+	if slash < 0 {
+		return "" // file directly in internal/application/ root
+	}
+	candidate := rest[:slash]
+	if !caps[candidate] {
+		return "" // unknown sub-package — classification is best-effort
+	}
+	return candidate
+}
+
+// capabilityOfImport returns the capability name for an import line
+// shaped like `github.com/Marcuss-ops/PipelineGen/internal/application/<cap>/...`.
+// Returns "" for non-matching imports.
+func capabilityOfImport(importLine string, caps map[string]bool) string {
+	const marker = "github.com/Marcuss-ops/PipelineGen/internal/application/"
+	idx := strings.Index(importLine, marker)
+	if idx < 0 {
+		return ""
+	}
+	rest := importLine[idx+len(marker):]
+	slash := strings.IndexByte(rest, '/')
+	if slash < 0 {
+		return "" // import of internal/application/ root (no Go file there, but defensive)
+	}
+	candidate := rest[:slash]
+	if !caps[candidate] {
+		return ""
+	}
+	return candidate
 }
 
 func checkDatabaseSQLGate() (map[string]int, []string) {

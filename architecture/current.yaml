@@ -228,6 +228,93 @@
     heyavatar_repo: C:/Users/pater/Pyt/Heyavatar
     heyavatar_todo: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
 
+# ── Wave 19 — Dependency Direction & Ports (in_progress, June 2026) ─────────
+# Triggers: copy of "Dependency Rules" pasted by operator on 2026-06-26.
+# This wave hardens the import graph along the direction
+#     internal/app/ -> internal/application/<cap>/ -> internal/domain/
+#     internal/application/<cap>/ -> internal/infrastructure/   ⟵ FORBIDDEN (ports)
+#     internal/application/<capA>/ -> internal/application/<capB>/ ⟵ FORBIDDEN (events/ports)
+# without renaming directories. Vocabulary mapping: capabilities=internal/application,
+# kernel=internal/domain, platform=internal/infrastructure, app=internal/app.
+# PR1 (this commit) ships the OBSERVATION counters (counts in `Checks`, no
+# violations → CI stays green). PR2+ promote selected edges to hard gates
+# via the existing ratchet mechanism (subtractSet vs allowlist per edge family).
+- id: 19
+  title: Dependency Direction & consumer-owned ports (Vocabulary: capabilities/kernel/platform)
+  status: in_progress
+  verified_zero: false
+  description: |
+    Implements the 10 "Actions to execute" from the operator-pasted
+    Dependency Rules spec (June 2026). Map: `capabilities` =
+    `internal/application/<cap>`, `kernel` = `internal/domain`,
+    `platform` = `internal/infrastructure`, `app` = `internal/app`,
+    `cmd` = `cmd/{server,worker,admin,archcheck}`.
+
+    Vocabulary of the spec is preserved as a comment block; the
+    directory names are NOT renamed (would invalidate the active
+    Wave 14-18 ratchet, ownership.yaml entries, and 60+ existing
+    path refs).
+
+    PR1 (this commit) — observation only — edge COUNTS, not edge GRAPH:
+      * `check_application_to_infrastructure` counts files
+        `internal/application/...` containing a Go import of
+        `internal/infrastructure/...` (anchored on `"` prefix to
+        exclude comments and non-import string hits). Reported as
+        `Checks["application_to_infrastructure_files"]`.
+      * `check_cross_capability_import` counts distinct (capA, capB)
+        pairs in `internal/application/<capA>/...` ->
+        `internal/application/<capB>/...` (same-package references
+        are excluded by the `srcCap == importCap` filter). Reported
+        as `Checks["cross_capability_import_pairs"]`.
+      * PR1 HONESTLY PARTIALS Actions 1-2: we generate edge COUNTS
+        only, not a full per-file edge graph. Full graph emission
+        (file-level list of each edge + classification per
+        forbidden-pattern) and per-edge classification ship with
+        PR2 alongside the ratchet baseline. Operators should read
+        the count as a smoke signal — a non-zero count means the
+        edge family exists, not that those edges are catalogued.
+
+    PR2+ — promote selected edges to hard gates:
+      * `application -> infrastructure` violations fail ratchet
+        unless allowlisted in
+        `docs/migrations/application-infrastructure-imports-allowlist.txt`
+        (mirror of the existing api-infrastructure allowlist pattern).
+      * `cross_capability` violations fail ratchet unless the pair
+        is allowlisted in
+        `docs/migrations/cross-capability-imports-allowlist.txt`.
+  rule: |
+    internal/application/<cap>/ must NOT import internal/infrastructure/
+    unless the import is a structural port interface declared in
+    internal/application/<cap>/ports.go (PR2 hardening).
+    internal/application/<capA>/ must NOT import internal/application/<capB>/
+    unless they communicate via a shared port, a typed event, or a
+    composition-only bridge in internal/app/.
+  blocked_by: ["16"]  # share the zero-redundancy surface
+  target_metrics:
+    application_to_infrastructure_files: 0
+    cross_capability_import_pairs: 0
+    documented_event_families: 0
+    ports_with_owner_decl: 0
+  pr1_exit_gate: >-
+    Both `Checks["application_to_infrastructure_files"]` and
+    `Checks["cross_capability_import_pairs"]` are PRESENT (i.e. the
+    runner wiring is alive) and non-negative. CI stays GREEN. Wave
+    19 PR1 does NOT emit any violations — the ratchet-promotion
+    baseline MUST be agreed with operators before flipping any
+    metric to enforcement (see `exit_gate` below, deferred to PR2).
+  exit_gate: >-
+    Both edge counters report 0 in the focused/ratchet report
+    AND the allowlist files exist (or are explicitly empty)
+    AND CI strict-mode exit code is 0 with `verified_zero: true`
+    toggled. NOTE: this gate is for PR2 promotion; PR1 satisfies
+    `pr1_exit_gate` only — operators should NOT flip
+    `verified_zero: true` on PR1.
+  observation_only_PR1:
+    description: "PR1 ships observation counters in `Checks` (no violations). CI stays GREEN during the obfuscation pass."
+    files_changed_PR1:
+      - scripts/archcheck/main.go (add checkApplicationToInfrastructure + checkCrossCapabilityImport + wire into runFocusedChecks/runRatchetChecks)
+      - architecture/current.yaml (this Wave 19 block)
+
 # ── Post-cascade operational followups (June 2026) ─────────────────────────
 
 post_cascade_followups:
