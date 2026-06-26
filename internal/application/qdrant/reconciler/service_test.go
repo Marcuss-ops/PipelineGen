@@ -144,12 +144,12 @@ func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 				"embedding_version_text": "v0",
 			}},
 			"orphan": {ID: "pt-orphan", Payload: map[string]interface{}{"asset_id": "orphan"}},
-			"legacy_status": {ID: "pt-legacy-status", Payload: map[string]interface{}{
+			"legacy_status": {ID: "pt-legacy_status", Payload: map[string]interface{}{
 				"asset_id": "legacy_status", "name": "x", "source": "youtube",
 				"lifecycle_state": "ACTIVE", "status": "ACTIVE",
 				"embedding_version_text": "2026-06-16-v1",
 			}},
-			"legacy_drive": {ID: "pt-legacy-drive", Payload: map[string]interface{}{
+			"legacy_drive": {ID: "pt-legacy_drive", Payload: map[string]interface{}{
 				"asset_id": "legacy_drive", "name": "x", "source": "youtube",
 				"lifecycle_state": "ACTIVE",
 				"drive_link":            "https://drive.example/x",
@@ -200,15 +200,15 @@ func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 	if len(statusKeyCall.keys) != 1 || statusKeyCall.keys[0] != "status" {
 		t.Fatalf("expected first call to strip status key, got %v", statusKeyCall.keys)
 	}
-	if len(statusKeyCall.pointIDs) != 1 || statusKeyCall.pointIDs[0] != "pt-legacy-status" {
-		t.Fatalf("expected first call to point at pt-legacy-status, got %v", statusKeyCall.pointIDs)
+	if len(statusKeyCall.pointIDs) != 1 || statusKeyCall.pointIDs[0] != "pt-legacy_status" {
+		t.Fatalf("expected first call to point at pt-legacy_status, got %v", statusKeyCall.pointIDs)
 	}
 	driveCall := payload.calls[1]
 	if len(driveCall.keys) != 2 {
 		t.Fatalf("expected second call to strip drive_link+local_path, got %v", driveCall.keys)
 	}
-	if len(driveCall.pointIDs) != 1 || driveCall.pointIDs[0] != "pt-legacy-drive" {
-		t.Fatalf("expected second call to point at pt-legacy-drive, got %v", driveCall.pointIDs)
+	if len(driveCall.pointIDs) != 1 || driveCall.pointIDs[0] != "pt-legacy_drive" {
+		t.Fatalf("expected second call to point at pt-legacy_drive, got %v", driveCall.pointIDs)
 	}
 }
 
