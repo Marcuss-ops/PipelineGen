@@ -482,7 +482,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// wiring site; the test internal/api/routes_test.go::TestRoutes_
 	// NoApiInternalV1Prefix enforces this split at CI time.
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		outboxH := outboxapi.NewHandler(root.Outbox.EventsRepo, log)
+		// Wave 14 PR5 (June 2026): wrap the concrete *outboxevents.Repository
+		// in a typed outbox.MonitorPort adapter so the api layer stays free of
+		// internal/infrastructure/* imports. Adapter is constructed here
+		// because the api package must not import outboxevents directly per
+		// AGENTS.md Pattern 8 ("API package: thin transport only").
+		outboxPort := newOutboxMonitorAdapter(root.Outbox.EventsRepo)
+		outboxH := outboxapi.NewHandler(outboxPort, log)
 		wiring.OutboxHandler = outboxH
 		log.Info("QDRANT-002: outbox events handler BUILT (mounted on /internal/v1/outbox via AppDeps, NOT via /api)")
 	}
