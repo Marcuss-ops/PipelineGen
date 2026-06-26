@@ -90,12 +90,22 @@ type ReconcileOptions struct {
 // asset is missing entirely from Qdrant. Channel applies only when
 // Kind == KindVersionStale and identifies the embedding channel whose
 // payload value mismatched the schema.
+//
+// LocatorKeys applies only when Kind == KindLocatorLegacy and lists
+// the retired locator keys observed in this particular point's payload
+// (subset of {"drive_link", "local_path"}). The scanner populates
+// LocatorKeys with EXACTLY the keys present in the payload —
+// service-layer metric accounting uses LocatorKeys to bump the
+// canonical payload_legacy_cleaned_total{legacy_key=...} series so
+// the counter reflects "keys actually removed" rather than "points
+// touched".
 type Classification struct {
 	Kind          ClassificationKind `json:"kind"`
 	AssetID       string              `json:"asset_id"`
 	QdrantPointID string              `json:"qdrant_point_id,omitempty"`
 	Channel       string              `json:"channel,omitempty"`
 	Details       string              `json:"details"`
+	LocatorKeys   []string            `json:"locator_keys,omitempty"`
 }
 
 // ReconcileReport is the machine-readable output of a reconcile run.

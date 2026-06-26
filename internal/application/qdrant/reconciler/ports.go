@@ -108,3 +108,81 @@ func (filesystemReportWriter) Write(path string, report *ReconcileReport) error 
 var writeJSONFile = func(path string, v interface{}) error {
 	return writeFileDefault(path, v)
 }
+
+// ── Metrics port ─────────────────────────────────────────────────────
+//
+// The reconciler does NOT import observability/metrics.go directly —
+// this indirection lets tests substitute a stubMetrics and keeps
+// adapter concrete in internal/infrastructure/qdrant.
+//
+// Emission contract (per QDRANT-005C):
+//   - RecordFindings                : emitted on EVERY run (DryRun + Apply)
+//   - RecordVersionMismatchPerChannel: emitted on EVERY run
+//   - RecordErrors                  : emitted on EVERY run (counts report.Errors)
+//   - RecordRunComplete             : emitted on EVERY run (sets last_success +
+//                                     populates duration histogram)
+//   - RecordDispatch                : emitted on Apply ONLY (DryRun emits zero
+//                                     so dashboards distinguish "scan ran" from
+//                                     "repairs ran")
+//   - RecordLegacyKeyStripped       : emitted on Apply ONLY
+//
+// A noopMetrics default is used when Deps.Metrics is nil so test
+// callers don't have to plumb a recorder.
+
+type Metrics interface {
+	// RecordFindings iterates counts (9 ClassificationKind values)
+	// and bumps findings_total{kind=...} for each non-zero entry.
+	// Implementations MUST NOT crash on zero-value counts.
+	RecordFindings(counts map[ClassificationKind]int)
+
+	// RecordVersionMismatchPerChannel iterates the per-channel count
+	// map (channel -> count) and bumps
+	// version_mismatch_per_channel_total{channel=...} per entry.
+	// Values NOT in the map emit ZERO.
+	RecordVersionMismatchPerChannel(perChannel map[string]int)
+
+	// RecordDispatch bumps dispatches_total{action=...} by n. Action
+	// label values: "reindex" | "delete" | "payload_strip".
+	RecordDispatch(action string, n int)
+
+	// RecordLegacyKeyStripped bumps legacy_cleaned_total{legacy_key=...}
+	// by n. legacy_key label values: "status" | "drive_link" | "local_path".
+	RecordLegacyKeyStripped(legacyKey string, n int)
+
+	// RecordErrors bumps errors_total by n. n may be 0 (no-op).
+	RecordErrors(n int)
+
+	// RecordRunComplete records mode ("dry_run" | "apply") + duration
+	// in seconds. Implementations also set last_success_timestamp_seconds
+	// to time.Now().Unix() so "no reconcile in N minutes" alerts work.
+	RecordRunComplete(mode string, durationSeconds float64)
+}
+
+// noopMetrics is the default Metrics implementation when Deps.Metrics
+// is nil. Satisfies the interface with empty bodies; tests + dry-run
+// callers don't have to construct a recorder.
+type noopMetrics struct{}
+
+func (noopMetrics) RecordFindings(map[ClassificationKind]int)              {}
+func (noopMetrics) RecordVersionMismatchPerChannel(map[string]int)          {}
+func (noopMetrics) RecordDispatch(string, int)                              {}
+func (noopMetrics) RecordLegacyKeyStripped(string, int)                     {}
+func (noopMetrics) RecordErrors(int)                                        {}
+func (noopMetrics) RecordRunComplete(string, float64)                        {}
+
+// noopOutboxEnqueuer is the default OutboxRepairEnqueuer when
+// Deps.Outbox is nil. Enables DryRun without crashing applyRepair's
+// nil dereference — production callers MUST pass a real adapter;
+// passing nil in Apply mode silently no-ops the repairs.
+type noopOutboxEnqueuer struct{}
+
+func (noopOutboxEnqueuer) EnqueueReindex(context.Context, string) error { return nil }
+func (noopOutboxEnqueuer) EnqueueDelete(context.Context, string) error  { return nil }
+
+// noopPayloadMutator is the default QdrantPayloadMutator when
+// Deps.Payload is nil. Same caveat as noopOutboxEnqueuer.
+type noopPayloadMutator struct{}
+
+func (noopPayloadMutator) DeletePayloadKeys(context.Context, string, []string, []string) error {
+	return nil
+}
