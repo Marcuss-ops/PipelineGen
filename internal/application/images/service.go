@@ -79,19 +79,16 @@ type Service struct {
 	// Replaces separate callSemanticTagger + fallback + upload logic per file
 	metaWriter *semantic.MetadataWriter
 
-	// QDRANT-002: canonical ingestion dispatcher — nil until late-bound
-	// via SetDispatcher after BuildOutboxBundle in NewComposition.
-	// When non-nil, RegisterVideoAsset and registerAudioClip route through
-	// dispatcher.EnqueueAndIndex instead of raw stockRepo.Upsert.
+	// QDRANT-002: canonical ingestion dispatcher — wired via constructor
+	// argument (PR-12d, June 2026) to eliminate the late-bind ordering
+	// hazard that previously kept RegisterVideoAsset / registerAudioClip
+	// on the raw stockRepo.Upsert path between BuildDomainBundle and
+	// SetDispatcher's post-construction call in NewComposition. Nil at
+	// construction time means "dispatcher not wired (tests, partial
+	// deployments)" and the write methods fall back to raw stockRepo
+	// upserts — no more silent window between BuildDomainBundle and
+	// SetDispatcher, since the field is now set in the ctor.
 	dispatcher *outbox.Dispatcher
-}
-
-// SetDispatcher late-binds the canonical outbox.Dispatcher after
-// BuildOutboxBundle (composition.go::NewComposition). Nil-tolerant —
-// when the dispatcher is not wired (tests, partial deployments), the
-// write methods fall back to raw stockRepo.Upsert with a debug log.
-func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
-	s.dispatcher = d
 }
 
 type DiagnosticsReport struct {
@@ -125,6 +122,15 @@ type DiagnosticsReport struct {
 // PR3 (June 2026): ingestSvc is now wired via constructor injection.
 // The SetIngestService setter has been removed — ingestService is built
 // during BuildDomainBundle and passed directly to NewService.
+//
+// PR-12d (June 2026): dispatcher is wired via constructor injection.
+// SetDispatcher has been removed — the late-bind created an ordering
+// hazard where ImageService calls between BuildDomainBundle returning
+// and SetDispatcher's call in NewComposition silently fell back to raw
+// stockRepo.Upsert. Construction-time injection closes that window.
+// Composition root responsibility: build outbox bundle BEFORE the
+// domain bundle (reorder in composition.go::NewComposition) so the
+// dispatcher is available when NewService runs.
 func NewService(
 	cfg *config.Config,
 	repo *assets.ImagesRepository,
@@ -139,6 +145,7 @@ func NewService(
 	llmGen *ollama.Generator,
 	metaWriter *semantic.MetadataWriter,
 	ingestSvc *ingest.Service,
+	dispatcher *outbox.Dispatcher,
 	log *zap.Logger,
 ) *Service {
 	maxNvidia := cfg.Concurrency.MaxConcurrentNvidiaGenerations
@@ -175,6 +182,7 @@ func NewService(
 		llmGen:                 llmGen,
 		metaWriter:             metaWriter,
 		ingestSvc:              ingestSvc,
+		dispatcher:             dispatcher,
 	}
 
 	return s

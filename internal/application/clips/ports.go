@@ -255,3 +255,29 @@ type SourceResolverPort interface {
 type ClipTreeBuilderPort interface {
 	UpsertFromAsset(ctx context.Context, clip *asset.Asset) error
 }
+
+// ClipIndexDispatcherPort is the canonical narrow surface of
+// outbox.Dispatcher consumed by the unified clips HTTP handler
+// (UpdateClip route). The implementation atomically upserts the
+// asset AND enqueues an outbox event in a single tx — the QDRANT-002
+// pattern that eliminates the SQLite → Qdrant indexing gap.
+//
+// contentHash is the ingest-time file hash used for the dispatcher's
+// supersede-gate dedup field.
+//
+// Pattern 8 rationale: the API layer was previously importing the
+// concrete *outbox.Dispatcher directly, in violation of AGENTS.md
+// Pattern 0 / Pattern 8 ("internal/api/** non deve contenere business
+// orchestration, no concrete infrastructure imports"). The handler
+// now depends on this interface; the concrete wiring lives in the
+// composition root at `internal/app/clips_dispatcher_adapter.go` with
+// a compile-time `var _ clips.ClipIndexDispatcherPort =
+// (*clipsDispatcherAdapter)(nil)` assertion.
+//
+// Nil semantics: handler treats a nil port as "dispatcher not wired"
+// (tests, partial deployments) and falls back to raw repo.UpsertClip.
+// The composition root only constructs the adapter when
+// outbox.Dispatcher is non-nil.
+type ClipIndexDispatcherPort interface {
+	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error
+}

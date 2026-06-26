@@ -24,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
@@ -67,6 +68,7 @@ func initImageService(
 	mediaStore *drive.Store, imageRepo *assets.ImagesRepository,
 	voMetaWriter *semantic.MetadataWriter,
 	ingestSvc *ingest.Service,
+	dispatcher *outbox.Dispatcher,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
 	// PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
 
@@ -87,6 +89,7 @@ func initImageService(
 		scriptGen,
 		voMetaWriter,
 		ingestSvc,
+		dispatcher,
 		log,
 	)
 

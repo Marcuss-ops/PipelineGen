@@ -265,14 +265,21 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose ai: %w", err)
 	}
 
-	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai)
-	if err != nil {
-		return nil, fmt.Errorf("compose domains: %w", err)
-	}
-
+	// PR-12d (June 2026): BuildOutboxBundle now runs BEFORE
+	// BuildDomainBundle. Previously BuildDomainBundle ran first and
+	// ImageService.SetDispatcher was called AFTER BuildOutboxBundle
+	// returned; that ordering hazard meant any ImageService call
+	// between the two landed on the raw stockRepo.Upsert path. The
+	// dispatcher is now passed through BuildDomainBundle's signature
+	// and consumed by images.Service via constructor injection.
 	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, process, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
+	}
+
+	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox)
+	if err != nil {
+		return nil, fmt.Errorf("compose domains: %w", err)
 	}
 
 	sync, err := BuildSyncBundle(ctx, cfg, dbs, log, repos, search, process, driveBundle, outbox)
@@ -306,15 +313,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	}
 	if domains.LessonsService != nil && jobs.Service != nil {
 		domains.LessonsService.RegisterJobHandler(jobs.Service)
-	}
-
-	// QDRANT-002: late-bind the canonical outbox.Dispatcher to the image
-	// service after BuildOutboxBundle. The dispatcher is built after
-	// BuildDomainBundle, so SetDispatcher bridges the composition order gap.
-	// When nil (tests, partial deployments), the write methods fall back to
-	// raw stockRepo.Upsert.
-	if domains.ImageService != nil && outbox.Dispatcher != nil {
-		domains.ImageService.SetDispatcher(outbox.Dispatcher)
 	}
 
 	root := &ComposeRoot{
