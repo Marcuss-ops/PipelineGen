@@ -332,9 +332,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		ClipIndexerService:      root.Process.ClipIndexerService,
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
-	}		// Wave 15 (June 2026): WireAssets accepts a generic `interface{}`
-		// carrier for backward compatibility (signature untouched). The
-		// typed DomainBundle.RealtimeMatcher is auto-bridged into it.
+	}		// Wave 16 (June 2026): WireAssets realtimeSvc is typed
+		// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
+		// Pass-through is direct: DomainBundle.RealtimeMatcher → WireAssets
+		// (typed-to-typed, no auto-bridge required).
 		if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)

@@ -47,8 +47,13 @@ type ScriptFlowHandler struct {
 	engine            *scripts.Engine
 	batchService      *scripts.BatchService
 	imgService        *images.Service
-	realtimeSvc       interface{} // was *realtime.Service (package removed)
-	associationSvc    interface{} // was *association.Service (package removed)
+	// Wave 16 (June 2026): typed ports — `realtimeSvc` is
+	// `scripts.RealtimeSearchService`, `associationSvc` is
+	// `scripts.AssocSearchService`. Packages removed in commit
+	// d61068b3 → fields stay typed-nil. NewScriptFlowHandler assigns
+	// directly from deps.Realtime / deps.Association (typed-to-typed).
+	realtimeSvc       scripts.RealtimeSearchService
+	associationSvc    scripts.AssocSearchService
 	voService         *voiceover.Service
 	assetTreeSvc      *assettree.Service
 	groupsResolver    *voiceover.GroupsResolver
@@ -86,8 +91,12 @@ type ScriptFlowDeps struct {
 	PipelineUseCase *scripts.PipelineUseCase
 
 	Image       *images.Service
-	Realtime    interface{} // was *realtime.Service (package removed)
-	Association interface{} // was *association.Service (package removed)
+	// Wave 16 (June 2026): typed ports — replace the `interface{}`
+	// carrier for the script-side realtime + association consumers
+	// (packages removed in commit d61068b3; fields stay typed-nil).
+	// Compile-time enforcement replaces the prior runtime safety net.
+	Realtime    scripts.RealtimeSearchService
+	Association scripts.AssocSearchService
 	Voiceover   *voiceover.Service
 	AssetTree   *assettree.Service
 

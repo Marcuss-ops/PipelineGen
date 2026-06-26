@@ -325,14 +325,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		CacheEviction:         cacheEvictionUC,
 		PipelineUseCase:       pipelineUC,
 		Image:                 root.Domains.ImageService,
-		// Wave 15 (June 2026): realtime slot renamed
-		// RealtimeService → RealtimeSearch after the realtime package was
-		// removed. ScriptFlowDeps.Realtime stays `interface{}` (the field
-		// is documented as a former-*realtime.Service carrier) so we
-		// auto-bridge the typed `scriptcore.RealtimeSearchService` into
-		// its slot without a runtime cast. Association is also the
-		// typed `scriptcore.AssocSearchService` slot — auto-bridged into
-		// the scriptapi.ScriptFlowDeps `interface{}` carrier.
+		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
+		// typed ports — `scripts.RealtimeSearchService` and
+		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +
+		// AssocService fields (typed in Wave 15 Onda 3) feed them
+		// directly — typed-to-typed assignment, no auto-bridge.
 		Realtime:              root.Domains.RealtimeSearch,
 		Association:           root.Domains.AssocService,
 		Voiceover:             root.Domains.VoiceoverService,
