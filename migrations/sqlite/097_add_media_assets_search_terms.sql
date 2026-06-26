@@ -1,0 +1,25 @@
+-- 097_add_media_assets_search_terms.sql
+-- Adds the search_terms column referenced by clips_repository.go
+-- and the clip create/update paths, but missing from the existing
+-- media_assets schema in the local database snapshot.
+--
+-- Originally slotted at 069; renamed to 097 (June 2026) after the
+-- duplicate-version-069 conflict with 069_job_status_check_uppercase.sql
+-- was resolved by keeping the jobs-table rebuild at 069 (because it
+-- is tightly coupled to the 066_job_status_uppercase.sql data
+-- normalisation). 097 is the next free slot above 096.
+--
+-- Fixes: "table media_assets has no column named search_terms"
+--        when POST /api/media/:source/clips persists clip records.
+--
+-- This slot-097 file is functionally redundant with
+-- 091_add_media_assets_search_terms.sql; kept only for
+-- slot-conflict audit and SHA-256 ledger validity. The runner's
+-- soft-skip on duplicate ADD COLUMN
+-- (internal/infrastructure/database/migrations.go::isDuplicateColumnError)
+-- makes the rerun safe on any DB that already has the column —
+-- the statement logs at INFO "skipping duplicate ADD COLUMN" and
+-- the migration is recorded as fully applied. Do not extend the
+-- soft-skip to non-ADD-COLUMN DDL; the runner scopes it deliberately.
+
+ALTER TABLE media_assets ADD COLUMN search_terms TEXT NOT NULL DEFAULT '';
