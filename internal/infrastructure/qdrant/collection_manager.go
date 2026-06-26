@@ -227,6 +227,21 @@ func (cm *CollectionManager) createPayloadIndexes(ctx context.Context, collectio
 
 // ── Types ────────────────────────────────────────────────────────────
 
+// CreateCollection creates a new physical collection with the schema's
+// vector config and payload indexes, then returns nil. Used by the admin
+// reindex command (QDRANT-003 immutable-collection pattern) to create a
+// timestamped target before ReindexAll, so the reindex never writes into
+// the active (aliased) collection.
+func (cm *CollectionManager) CreateCollection(ctx context.Context, name string) error {
+	if err := cm.createPhysicalCollection(ctx, name); err != nil {
+		return fmt.Errorf("create physical collection %q: %w", name, err)
+	}
+	if err := cm.createPayloadIndexes(ctx, name); err != nil {
+		return fmt.Errorf("create payload indexes for %q: %w", name, err)
+	}
+	return nil
+}
+
 // EnsureResult is the outcome of EnsureSchema.
 type EnsureResult struct {
 	Collection   string `json:"collection"`

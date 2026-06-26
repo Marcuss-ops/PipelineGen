@@ -309,25 +309,16 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 		clip.DriveFileID = uploadResult.FileID
 	}
 
-	viaDispatcher := false
-	if s.indexDisp != nil {
-		// QDRANT-002 canonical path: atomic UPSERT + outbox event via dispatcher.
-		// The dispatcher writes media_assets and outbox_events in a single tx,
-		// then the outbox pool picks up the event and runs IndexClip async.
-		if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
-			return nil, fmt.Errorf("save clip via dispatcher: %w", err)
-		}
-		viaDispatcher = true
-	} else if s.clips != nil {
-		// Legacy path: raw UpsertClip without outbox event.
-		// QDRANT-002: kept for backward compatibility when dispatcher is not wired.
-		if err := s.clips.UpsertClip(ctx, clip); err != nil {
-			return nil, fmt.Errorf("save clip: %w", err)
-		}
+	if s.indexDisp == nil {
+		return nil, fmt.Errorf("RegisterFromYouTube: index dispatcher is nil — production wiring must configure the canonical IndexDispatcherPort (QDRANT-002 close-out)")
 	}
-	if viaDispatcher || s.clips != nil {
-		s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", viaDispatcher)
+	// QDRANT-002 canonical path: atomic UPSERT + outbox event via dispatcher.
+	// The dispatcher writes media_assets and outbox_events in a single tx,
+	// then the outbox pool picks up the event and runs IndexClip async.
+	if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
+		return nil, fmt.Errorf("save clip via dispatcher: %w", err)
 	}
+	s.log.Info("saved clip to DB via dispatcher", "clip_id", clipID)
 
 	// ── 12. Update Asset Tree ───────────────────────────────────────
 	if s.assetTree != nil {

@@ -416,11 +416,11 @@ type SwitchReport struct {
 	// point carried the expected per-channel model version (or the legacy
 	// global fallback honoured the global schema version).
 	VersionMismatchPerChannel map[string]int `json:"version_mismatch_per_channel,omitempty"`
-	GoldenQueriesOK           bool           `json:"golden_queries_ok"`
-	FiltersOK                 bool           `json:"filters_ok"`
-	DeadLetterOpen            int            `json:"dead_letter_open"`
-	Ready                     bool           `json:"ready"`
-	Errors                    []string       `json:"errors,omitempty"`
+	GoldenQueriesOK      bool           `json:"golden_queries_ok"`
+	GoldenQueryFailures   int            `json:"golden_query_failures,omitempty"`
+	DeadLetterOpen        int            `json:"dead_letter_open"`
+	Ready                 bool           `json:"ready"`
+	Errors                []string       `json:"errors,omitempty"`
 }
 
 // ScrollResult holds a page of scrolled points and the next offset.

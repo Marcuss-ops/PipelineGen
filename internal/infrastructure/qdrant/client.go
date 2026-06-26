@@ -533,6 +533,12 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// QDRANT-003 close-out (June 2026): send the API key on every
+	// request. Previously stored but never sent — Qdrant Cloud
+	// deployments would fail to authenticate silently.
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
 	return c.httpClient.Do(req)
 }
 

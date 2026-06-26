@@ -42,7 +42,7 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMismatch(t *testing.T)
 
 	schema := DefaultV3Schema() // ModelVersion=2026-06-16-v1 for text+transcript+visual
 	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, zap.NewNop())
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
 
 	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
 
 	schema := DefaultV3Schema()
 	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, zap.NewNop())
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
 
 	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
 	require.NoError(t, err)
@@ -100,7 +100,7 @@ func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallback(t *testi
 
 	schema := DefaultV3Schema()
 	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, zap.NewNop())
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
 
 	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail(t *t
 
 	schema := DefaultV3Schema()
 	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, zap.NewNop())
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
 
 	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestReindexVerifier_PerChannelCounter_BumpsOncePerPoint(t *testing.T) {
 
 	schema := DefaultV3Schema()
 	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, zap.NewNop())
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
 
 	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
 	require.NoError(t, err)

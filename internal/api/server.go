@@ -59,7 +59,7 @@ func NewServer(
 	internalMediaHandler MediaInternalRouter,
 	lifecycle LifecycleManager,
 ) *Server {
-	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, lifecycle, nil, nil)
+	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, lifecycle, nil, nil, nil, nil)
 }
 
 // NewServerWithHealth creates a new HTTP server with an optional
@@ -80,6 +80,13 @@ func NewServer(
 // must be caught by a unit-test cross-comparison; a follow-up PR
 // could promote the adapters to a more shareable location, but doing
 // so would require lifting the layering rule.
+// QDRANT-002 route-production fix (June 2026): outboxHandler and
+// mediasearchHandler are now constructor parameters rather than
+// post-construction setters. The previous order in cmd/server/main.go
+// called NewServerWithHealth (which invokes router.Setup()) BEFORE
+// server.SetOutboxHandler / server.SetMediasearchHandler, so the
+// gin engine was already built with nil handlers — the outbox + media
+// search routes were never registered in production.
 func NewServerWithHealth(
 	cfg *config.Config,
 	registry *Registry,
@@ -88,6 +95,8 @@ func NewServerWithHealth(
 	lifecycle LifecycleManager,
 	healthSvc interface{},
 	readyChecker *systemhealth.ReadyChecker,
+	outboxHandler InternalOutboxRouter,
+	mediasearchHandler InternalMediaSearchRouter,
 ) *Server {
 	if cfg != nil {
 		// PG-006.1 (June 2026): the inline serverSecurityAdapter was deleted
@@ -128,6 +137,17 @@ func NewServerWithHealth(
 		if readyChecker != nil {
 			router.SetReadyChecker(readyChecker)
 		}
+		if outboxHandler != nil {
+			router.SetOutboxHandler(outboxHandler)
+		}
+		if mediasearchHandler != nil {
+			router.SetMediasearchHandler(mediasearchHandler)
+		}
+		// QDRANT-002: Setup() MUST run after all handlers (including
+		// outbox + mediasearch) are wired so the gin engine registers
+		// their routes. The previous code wired them via post-construction
+		// setters which set fields on the Router struct but never
+		// re-registered routes on an already-built engine.
 		r := router.Setup()
 
 		return &Server{
@@ -159,6 +179,12 @@ func NewServerWithHealth(
 	}
 	if readyChecker != nil {
 		router.SetReadyChecker(readyChecker)
+	}
+	if outboxHandler != nil {
+		router.SetOutboxHandler(outboxHandler)
+	}
+	if mediasearchHandler != nil {
+		router.SetMediasearchHandler(mediasearchHandler)
 	}
 	r := router.Setup()
 
@@ -280,6 +306,12 @@ func (s *Server) SetInternalMediaHandler(h MediaInternalRouter) {
 // SetOutboxHandler wires the QDRANT-002 outbox monitoring handler onto
 // the WorkerAuth-protected /internal/v1/outbox/* group.
 // Delegates to Router.SetOutboxHandler.
+//
+// Deprecated (QDRANT-002 fix, June 2026): use the NewServerWithHealth
+// constructor to wire outboxHandler BEFORE Setup() runs. This setter
+// updates the Router struct field but the gin engine was already built
+// during construction — routes are NOT re-registered. Kept for test
+// compatibility only.
 func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
 	s.appRouter.SetOutboxHandler(h)
 }
@@ -287,6 +319,12 @@ func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
 // SetMediasearchHandler wires the QDRANT-004 mediasearch handler onto
 // the WorkerAuth-protected /internal/v1/media/search route.
 // Delegates to Router.SetMediasearchHandler.
+//
+// Deprecated (QDRANT-002 fix, June 2026): use the NewServerWithHealth
+// constructor to wire mediasearchHandler BEFORE Setup() runs. This
+// setter updates the Router struct field but the gin engine was already
+// built during construction — routes are NOT re-registered. Kept for
+// test compatibility only.
 func (s *Server) SetMediasearchHandler(h InternalMediaSearchRouter) {
 	s.appRouter.SetMediasearchHandler(h)
 }

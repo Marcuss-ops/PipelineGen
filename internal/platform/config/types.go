@@ -145,6 +145,11 @@ type QdrantConfig struct {
 	BaseURL string `yaml:"base_url" env:"VELOX_QDRANT_URL" default:"http://127.0.0.1:6333"`
 	// Timeout is the HTTP client timeout in seconds.
 	Timeout int `yaml:"timeout" env:"VELOX_QDRANT_TIMEOUT" default:"10"`
+	// APIKey is an optional Qdrant API key (required for Qdrant Cloud).
+	// QDRANT-003 close-out (June 2026): previously missing from the
+	// platform config — all Qdrant clients (admin CLI, server) must
+	// pass this through to the qdrant.Config so X-Api-Key is sent.
+	APIKey string `yaml:"api_key" env:"VELOX_QDRANT_API_KEY" default:""`
 	// Enabled controls whether Qdrant capability is active.
 	// Default false: operators must explicitly opt in.
 	Enabled bool `yaml:"enabled" env:"VELOX_QDRANT_ENABLED" default:"false"`

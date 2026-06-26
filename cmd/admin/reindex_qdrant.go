@@ -155,6 +155,7 @@ func runReindexQdrant(args []string) error {
 	client := qdrant.NewClient(&qdrant.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
 		Timeout: cfg.Qdrant.Timeout,
+		APIKey:  cfg.Qdrant.APIKey,
 	}, log)
 	writer := qdrant.NewIndexWriter(client, schema, mapper, log)
 	collectionMgr := qdrant.NewCollectionManager(client, schema, log)
@@ -208,15 +209,38 @@ func runReindexQdrant(args []string) error {
 		)
 	}
 
-	// Phase 1: Ensure the target collection exists with matching schema.
-	if _, err := collectionMgr.EnsureSchema(ctx); err != nil {
-		return fmt.Errorf("ensure schema for %q: %w", targetCollection, err)
-	}
-	log.Info("schema ensured", zap.String("collection", targetCollection))
+	// QDRANT-003 closed (June 2026): generate a NEW timestamped
+	// collection name so ReindexAll NEVER writes into the active
+	// (aliased) collection. The previous code called EnsureSchema
+	// which returned the existing physical collection when the alias
+	// already pointed to a compatible one — ReindexAll then wrote
+	// directly into the production collection that was concurrently
+	// serving search traffic. The immutable-collection pattern is:
+	//   1. Create new collection <PhysicalName>_<timestamp>
+	//   2. Populate it (ReindexAll)
+	//   3. Verify it (ReindexVerifier)
+	//   4. Switch alias atomically (SwitchAlias)
+	//
+	// The old active collection is NOT deleted — operators clean
+	// up old timestamped collections manually after confirming the
+	// switch was successful (keep-at-least-2 policy).
+	newCollection := fmt.Sprintf("%s_%s", schema.PhysicalName, time.Now().Format("20060102150405"))
+	log.Info("creating new reindex collection (immutable-collection pattern)",
+		zap.String("new_collection", newCollection),
+		zap.String("canonical_physical", schema.PhysicalName))
 
-	// Phase 2: Reindex all assets into the target collection.
+	// Phase 1: Create the new physical collection with matching schema.
+	// We do NOT call EnsureSchema because that would return the existing
+	// active collection. Instead we create the collection and payload
+	// indexes explicitly on the timestamped name.
+	if err := collectionMgr.CreateCollection(ctx, newCollection); err != nil {
+		return fmt.Errorf("create reindex collection %q: %w", newCollection, err)
+	}
+	log.Info("reindex collection created", zap.String("collection", newCollection))
+
+	// Phase 2: Reindex all assets into the NEW timestamped collection.
 	start := time.Now()
-	reindexResult, err := writer.ReindexAll(ctx, targetCollection, deps.Limit)
+	reindexResult, err := writer.ReindexAll(ctx, newCollection, deps.Limit)
 	elapsed := time.Since(start)
 	if err != nil {
 		// QDRANT-003 fix: guard nil reindexResult before dereference.
@@ -234,25 +258,13 @@ func runReindexQdrant(args []string) error {
 	}
 
 	// Phase 3: Post-reindex verification (QDRANT-003 gates).
-	// The verifier runs the full suite: point count parity, missing/orphan
-	// ID detection, payload minimum, embedding version, and dead-letter
-	// check. Ready==true only when all gates pass.
-	//
-	// QDRANT-003 closed (June 2026): the verifier replaced the
-	// buildSwitchReport placeholder. The count mismatch — previously a
-	// logged warning — is now a HARD gate: Ready stays false and the
-	// report captures the specific error.
-	//
-	// QDRANT-026 (June 2026) closure: NewReindexVerifier gained a 5th
-	// `schema` argument so the per-channel embedding version check
-	// (`report.VersionMismatchPerChannel`) fires against the manifest. The
-	// dead-letter adapter (qdrant.NewOutboxEventsDeadLetterAdapter) is
-	// the production wiring for `report.DeadLetterOpen` — until this
-	// closure the admin CLI passed `nil`, so the dead-letter gate was
-	// trivially satisfied (any count === 0 → Ready=true).
+	// Verify the NEW collection before promoting it. Ready==true only
+	// when all gates (count parity, missing/orphan IDs, payload
+	// minimum, embedding version, dead-letter) pass.
 	deadLetter := qdrant.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB.DB))
-	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, log)
-	report, verifyErr := verifier.VerifyReindex(ctx, targetCollection, reindexResult.IndexedAssets)
+	goldenRunner := qdrant.NewDefaultGoldenQueryRunner(client, schema, log)
+	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, goldenRunner, log)
+	report, verifyErr := verifier.VerifyReindex(ctx, newCollection, reindexResult.IndexedAssets)
 	if verifyErr != nil {
 		// The verifier returns an error when critical infrastructure
 		// (count / scroll / SQLite) fails entirely. In that case the
@@ -264,39 +276,42 @@ func runReindexQdrant(args []string) error {
 		fmt.Println(string(b))
 	}
 	if !report.Ready {
-		log.Error("alias switch BLOCKED by SwitchReport.Ready=false (no alias mutation performed)",
-			zap.String("target", targetCollection),
+		log.Error("alias switch BLOCKED by SwitchReport.Ready=false (new collection NOT promoted)",
+			zap.String("new_collection", newCollection),
 			zap.Int("expected_points", report.ExpectedPoints),
 			zap.Int("actual_points", report.ActualPoints),
 			zap.Strings("errors", report.Errors))
 		return &qdrant.ErrAliasSwitchNotReady{Report: report}
 	}
 	log.Info("switch gate PASSED (Ready=true)",
-		zap.String("target", targetCollection),
+		zap.String("new_collection", newCollection),
 		zap.Int("expected_points", report.ExpectedPoints),
 		zap.Int("actual_points", report.ActualPoints),
 		zap.Int("missing", report.MissingCount),
 		zap.Int("orphan", report.OrphanCount),
 		zap.Int("dead_letter_open", report.DeadLetterOpen),
 		zap.Bool("golden_queries_ok", report.GoldenQueriesOK),
-		zap.Bool("filters_ok", report.FiltersOK))
+		zap.Int("golden_query_failures", report.GoldenQueryFailures))
 
+	// Phase 4: Promote the new collection by switching the alias.
+	// The old collection stays online (no deletion) — operators
+	// clean up old timestamped collections manually.
 	oldTarget, err := collectionMgr.GetActiveCollection(ctx)
 	if err != nil {
 		log.Warn("could not read active collection before switch",
 			zap.Error(err))
 	}
-	if err := collectionMgr.SwitchAlias(ctx, oldTarget, targetCollection); err != nil {
-		log.Error("alias switch failed — rollback may be needed",
+	if err := collectionMgr.SwitchAlias(ctx, oldTarget, newCollection); err != nil {
+		log.Error("alias switch failed — new collection NOT promoted, old collection still active",
 			zap.String("from", oldTarget),
-			zap.String("to", targetCollection),
+			zap.String("to", newCollection),
 			zap.Error(err))
-		return fmt.Errorf("switch alias from %q to %q: %w", oldTarget, targetCollection, err)
+		return fmt.Errorf("switch alias from %q to %q: %w", oldTarget, newCollection, err)
 	}
-	log.Info("alias switched",
+	log.Info("alias switched (new collection promoted)",
 		zap.String("alias", schema.RuntimeAlias),
 		zap.String("old", oldTarget),
-		zap.String("new", targetCollection))
+		zap.String("new", newCollection))
 
 	if deps.JSON {
 		b, _ := json.Marshal(reindexResult)

@@ -245,6 +245,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		qdrantCfg := &qdrant.Config{
 			BaseURL: cfg.Qdrant.BaseURL,
 			Timeout: cfg.Qdrant.Timeout,
+			APIKey:  cfg.Qdrant.APIKey,
 		}
 		schema := qdrant.DefaultV3Schema()
 		qdrantClient = qdrant.NewClient(qdrantCfg, log)
