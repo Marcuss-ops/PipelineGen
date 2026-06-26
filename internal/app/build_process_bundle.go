@@ -89,5 +89,6 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		CollectionManager:  collectionMgr,
 		QdrantDeleter:      indexDeleter,
 		VectorSvc:          vectorSvc,
+		QdrantClient:       qdrantClient,
 	}, nil
 }

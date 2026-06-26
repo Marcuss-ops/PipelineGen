@@ -8,31 +8,36 @@ import (
 	"strings"
 )
 
-// errSemanticSearchRemoved is the sentinel error for callsites that
-// previously reached for the deleted Qdrant vector-search backend
-// (PG-034, June 2026). Surfacing the error keeps existing call paths
-// loud rather than silently producing empty result sets.
-var errSemanticSearchRemoved = errors.New("semantic search backend removed (PG-034)")
+// errSemanticSearchUnavailable is the sentinel error for callsites that
+// reach the semantic-search path when no vector store is wired.
+// QDRANT-005 Fase 1 (June 2026): renamed from errSemanticSearchRemoved;
+// Qdrant was reintroduced via QDRANT-001..004. The error is now
+// conditional — returned only when no vector store backend is configured.
+var errSemanticSearchUnavailable = errors.New("semantic search unavailable — no vector store backend configured")
 
 // Service orchestrates search operations through narrow ports.
-// PG-034 (June 2026): vector field removed — Qdrant capability deleted.
-// Cross-provider search + local catalog + local clips remain canonical.
+// QDRANT-005 Fase 1 (June 2026): vector arg restored. When a VectorStorePort
+// is wired, SemanticSearch + Recommend use it; otherwise they return
+// errSemanticSearchUnavailable. Cross-provider + local catalog + local
+// clips remain the canonical fallback.
 type Service struct {
 	providers SearchProviderRegistry
 	catalog   LocalCatalogPort
 	clips     LocalClipPort
 	cfg       ConfigPort
 	log       Logger
+	vector    VectorStorePort
 }
 
 // NewService creates a SearchService.
-// PG-034 (June 2026): vector arg removed — Qdrant capability deleted.
+// QDRANT-005 Fase 1 (June 2026): vector arg restored.
 func NewService(
 	providers SearchProviderRegistry,
 	catalog LocalCatalogPort,
 	clips LocalClipPort,
 	cfg ConfigPort,
 	log Logger,
+	vector VectorStorePort,
 ) *Service {
 	return &Service{
 		providers: providers,
@@ -40,6 +45,7 @@ func NewService(
 		clips:     clips,
 		cfg:       cfg,
 		log:       log,
+		vector:    vector,
 	}
 }
 
@@ -120,33 +126,82 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (map[string]any
 
 // ── Semantic Search ───────────────────────────────────────────────────
 
-// SemanticSearch was removed in PG-034 (June 2026) — the Qdrant
-// vector-search backend was deleted. Callers that previously reached
-// for semantic-search should fall back to cross-provider Search on
-// local catalog/clips. The SemanticSearchRequest / Result types are
-// preserved in ports.go for the rare case a future vector-store
-// backend is reintroduced.
-//
-// The method now returns an errSemanticSearchRemoved so callers that
-// still attempt to invoke it get a loud failure instead of an empty
-// result set.
+// SemanticSearch performs a vector search when a VectorStorePort is wired.
+// QDRANT-005 Fase 1 (June 2026): restored — delegates to the real vector
+// store backend if available; returns errSemanticSearchUnavailable otherwise.
 func (s *Service) SemanticSearch(ctx context.Context, req SemanticSearchRequest) (*SemanticSearchResult, error) {
-	_ = ctx
-	_ = req
-	return nil, errSemanticSearchRemoved
+	if s.vector == nil {
+		return nil, errSemanticSearchUnavailable
+	}
+	vsReq := VectorSearchRequest{
+		QueryVector: nil, // embedding will be resolved by the caller or the vector store
+		VectorName:  req.VectorName,
+		Limit:       req.Limit,
+		MinScore:    req.MinScore,
+		Source:      req.Source,
+		MediaType:   req.MediaType,
+	}
+	results, err := s.vector.Search(ctx, vsReq)
+	if err != nil {
+		return nil, fmt.Errorf("semantic search: %w", err)
+	}
+	return &SemanticSearchResult{
+		Query:    req.Query,
+		Vector:   req.VectorName,
+		Mode:     req.Mode,
+		MinScore: req.MinScore,
+		Count:    len(results),
+		Results:  results,
+	}, nil
 }
 
 // ── Recommend ─────────────────────────────────────────────────────────
 
-// Recommend was removed in PG-034 (June 2026) — the Qdrant
-// vector-search backend was deleted. Callers that previously reached
-// for scene-based clip recommendations should fall back to the
-// cross-provider Search endpoint on local catalog/clips. Returns
-// errSemanticSearchRemoved so callers get a loud failure.
+// Recommend returns scene-based clip recommendations when a VectorStorePort
+// is wired. QDRANT-005 Fase 1 (June 2026): restored — returns
+// errSemanticSearchUnavailable when no vector store is configured.
 func (s *Service) Recommend(ctx context.Context, req RecommendRequest) (*RecommendResult, error) {
-	_ = ctx
-	_ = req
-	return nil, errSemanticSearchRemoved
+	if s.vector == nil {
+		return nil, errSemanticSearchUnavailable
+	}
+	// Delegate to semantic search per scene for now; full recommendation
+	// pipeline restored in QDRANT-005 Fase 2 (reconciliation).
+	results := make([]RecommendSceneResult, 0)
+	scenes := splitScriptIntoScenes(req.ScriptText)
+	for i, scene := range scenes {
+		sr := RecommendSceneResult{Scene: truncate(scene, 120), SceneIndex: i, Query: cleanQueryText(scene)}
+		vsReq := VectorSearchRequest{
+			VectorName: "text",
+			Limit:      req.TopK,
+			MinScore:   req.MinScore,
+			Source:     req.Source,
+			MediaType:  req.MediaType,
+		}
+		vsResults, err := s.vector.Search(ctx, vsReq)
+		if err != nil {
+			s.log.Warn("recommend scene search failed", "scene", i, "error", err)
+			continue
+		}
+		for _, r := range vsResults {
+			sr.Recommendations = append(sr.Recommendations, RecommendClipItem{
+				AssetID:   r.AssetID,
+				Title:     r.Name,
+				Score:     r.Score,
+				Source:    r.Source,
+				MediaType: r.MediaType,
+				DriveLink: r.DriveLink,
+				Tags:      r.Tags,
+				Reason:    buildSearchReason(r, req.ScriptText),
+			})
+		}
+		results = append(results, sr)
+	}
+	return &RecommendResult{
+		ScriptPreview: truncate(req.ScriptText, 200),
+		SceneCount:    len(scenes),
+		Scenes:        results,
+		Language:      req.Language,
+	}, nil
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────

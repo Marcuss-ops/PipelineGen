@@ -14,7 +14,7 @@ import (
 //
 // This test does NOT depend on the migration runner (no WireServices call),
 // so it stays regression-safe even when other tests trip pre-existing
-// migration issues (see docs/followups/2026-06-migration-053-test-failure.md).
+// migration issues.
 func TestBuildJobsBundle_FieldsAreNonNil(t *testing.T) {
 	// PG-011 typed-handle migration (June 2026): *storage.SQLiteDB
 	// fixture; BuildJobsBundle receives sqliteDB.DB (the embedded
