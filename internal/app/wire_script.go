@@ -61,7 +61,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	var clipSourceBuilder *scripts.ClipSourceBuilder
 	if ollamaClient := gen.GetClient(); ollamaClient != nil {
 		clipSourceBuilder = scripts.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
-		// PG-034 (June 2026): SetVectorStore removed — Qdrant capability deleted.
+		// SetVectorStore removed from this workflow.
 		if cfg.Reranker.Enabled {
 			clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
 				Enabled:   cfg.Reranker.Enabled,

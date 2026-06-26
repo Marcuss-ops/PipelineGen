@@ -228,7 +228,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// serverLifecycle.Start actually USES ctx and fail-closes if any
 	// dependency is unreachable. Probes are nil when the corresponding
 	// capability is opted out at composition time (no DB / no Drive);
-	// PG-034 (June 2026): the vector probe was removed along with Qdrant.
+	// The vector probe was removed during earlier cleanup.
 	// The Group skips nil probes automatically.
 	var dbProbe func(ctx context.Context) error
 	if root.DB != nil && root.DB.DB != nil {

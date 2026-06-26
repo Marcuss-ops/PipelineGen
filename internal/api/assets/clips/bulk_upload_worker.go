@@ -368,7 +368,7 @@ func (h *Handler) processOneClip(
 	log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
 
 	// Step 5: embeddings via existing IndexClip pipeline.
-	// PG-034 (June 2026): Qdrant capability deleted, so the SkipQdrant
+	// SkipQdrant
 	// gating and the direct-vector-store fallback (HasVectorStore /
 	// UpsertToVectorStore) are gone. The indexer is now the canonical
 	// semantic-search backend and is the only post-DB-side leg.

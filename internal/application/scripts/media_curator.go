@@ -24,7 +24,7 @@ import (
 // NewMediaCurator constructs a real MediaCurator backed by the
 // clips repository, ClipSourceBuilder, and Engine. All concrete typed args.
 //
-// PG-034 (June 2026): vectorStore parameter removed — the Qdrant
+// vectorStore parameter was removed from this constructor and the
 // capability was deleted. Semantic clip discovery now flows solely
 // through the clips repository + ClipSourceBuilder; the engine leg
 // is unchanged.
@@ -50,7 +50,7 @@ func NewMediaCurator(
 // Curate searches for clips matching the query, builds context, and
 // generates a script. The flow:
 //
-//  1. PG-034 (June 2026): semantic-search leg removed (Qdrant deleted).
+//  1. semantic-search leg removed from this flow.
 //     The clip IDs are derived from req.HintClipIDs or from a text-only
 //     fallback if the caller supplied none.
 //  2. Build clip context via ClipSourceBuilder
@@ -197,4 +197,3 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 		},
 	}, nil
 }
-

@@ -33,7 +33,7 @@ import (
 // Deps is the constructor bag for Handler. Keeping deps in a struct
 // rather than 14 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
-// PG-034 (June 2026): VectorStore field removed — Qdrant capability deleted.
+// VectorStore field removed from handler deps.
 type Deps struct {
 	SourceResolver *artifacts.SourceResolver
 	AssetRepo      asset.Repository

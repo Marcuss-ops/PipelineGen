@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 )
@@ -66,7 +66,7 @@ type Service struct {
 
 	// NEW: Intelligence & Search
 	llmGen *ollama.Generator
-	// PG-034 (June 2026): vectorSvc removed — Qdrant capability deleted.
+	// vectorSvc removed from this service.
 	// Callers index embeddings through the Python embedding server only
 	// (s.repo.UpdateEmbeddingData persists them in SQLite so they survive
 	// even without a vector-store backend).
@@ -80,13 +80,13 @@ type Service struct {
 }
 
 type DiagnosticsReport struct {
-	OK               bool                              `json:"ok"`
-	Services         []string                          `json:"services"`
-	RepoConfigured   bool                              `json:"repo_configured"`
-	DriveConfigured  bool                              `json:"drive_configured"`
-	NvidiaConfigured bool                              `json:"nvidia_configured"`
-	IngestConfigured bool                              `json:"ingest_configured"`
-	WikidataWorks    bool                              `json:"wikidata_works"`
+	OK               bool     `json:"ok"`
+	Services         []string `json:"services"`
+	RepoConfigured   bool     `json:"repo_configured"`
+	DriveConfigured  bool     `json:"drive_configured"`
+	NvidiaConfigured bool     `json:"nvidia_configured"`
+	IngestConfigured bool     `json:"ingest_configured"`
+	WikidataWorks    bool     `json:"wikidata_works"`
 	// Capabilities is the truthful per-capability availability map
 	// surfaced for /api/images/diagnostics. Single source of truth:
 	// each entry is derived from Service.CapabilityResolution; HTTP

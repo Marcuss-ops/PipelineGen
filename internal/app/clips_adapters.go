@@ -701,7 +701,7 @@ func (r *sourceResolverAdapter) ResolveRepo(source string) clips.ClipRepositoryP
 
 // ── Vector store adapter ─────────────────────────────────────────
 //
-// PG-034 (June 2026): clipsVectorAdapter removed — the Qdrant
+// clipsVectorAdapter removed — the vector
 // capability was deleted.
 
 // ── Asset tree adapter ───────────────────────────────────────────
@@ -799,7 +799,7 @@ type clipsAdapterBundle struct {
 }
 
 // newClipsAdapterBundle wires the 11 concrete deps into typed ports.
-// PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
+// vectorSvc arg removed from this constructor.
 //
 // The configuration/log parameters are only retained for future
 // adapters that need them; today's 11 adapters are bootstrap-pure.

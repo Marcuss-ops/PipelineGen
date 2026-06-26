@@ -13,7 +13,7 @@ import (
 )
 
 // EnrichUseCase handles semantic enrichment for clips.
-// PG-034 (June 2026): vectorStore removed — Qdrant capability deleted.
+// vectorStore was removed from this flow.
 // The clip indexer is the canonical semantic-search backend now.
 type EnrichUseCase struct {
 	assetRepo   asset.Repository
@@ -117,7 +117,7 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 // The clip indexer is now the canonical semantic-search backend.
 
 // EnrichMediaRequest contains the input for the EnrichMedia endpoint.
-// PG-034 (June 2026): SkipQdrant removed — Qdrant capability deleted.
+// SkipQdrant was removed from this flow.
 // SkipEmbedGen is preserved for callers that want to skip the embedding
 //-generation leg altogether (the indexer now handles the whole pipeline).
 type EnrichMediaRequest struct {

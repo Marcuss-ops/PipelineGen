@@ -65,11 +65,16 @@ type SemanticSearchResult struct {
 	Results  []VectorSearchResult `json:"results"`
 }
 
-// PG-034 (June 2026): VectorSearchPort + VectorStorePort removed —
-// Qdrant capability deleted. Cross-provider search remains the canonical
-// search path; the application-layer types VectorSearchRequest /
-// HybridSearchRequest / VectorSearchResult are preserved for future
-// re-introduction if a vector-store backend comes back.
+// VectorSearchPort combines embedding generation with vector-store access.
+// The service owns query construction and delegates embedding + retrieval
+// through this narrow port.
+type VectorSearchPort interface {
+	EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error)
+	VectorStore() VectorStorePort
+}
+
+// VectorStorePort performs vector and hybrid retrieval against the
+// configured backend.
 type VectorStorePort interface {
 	Search(ctx context.Context, req VectorSearchRequest) ([]VectorSearchResult, error)
 	HybridSearch(ctx context.Context, req HybridSearchRequest) ([]VectorSearchResult, error)

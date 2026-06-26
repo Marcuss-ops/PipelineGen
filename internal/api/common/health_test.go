@@ -15,7 +15,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 )
 
-// PG-034 (June 2026): Qdrant removed — blockingChecker / healthyMock /
+// blockingChecker / healthyMock /
 // failingMock no longer implement CheckQdrant. Three capability checks
 // (db, drive, jobs) replace the previous four.
 
@@ -29,8 +29,12 @@ func (b *blockingChecker) CheckDB(ctx context.Context) systemhealth.CheckResult 
 	<-ctx.Done()
 	return systemhealth.CheckResult{"ok": false, "error": "context done", "duration_ms": int64(0)}
 }
-func (b *blockingChecker) CheckDrive(ctx context.Context) systemhealth.CheckResult { return b.CheckDB(ctx) }
-func (b *blockingChecker) CheckJobs(ctx context.Context) systemhealth.CheckResult { return b.CheckDB(ctx) }
+func (b *blockingChecker) CheckDrive(ctx context.Context) systemhealth.CheckResult {
+	return b.CheckDB(ctx)
+}
+func (b *blockingChecker) CheckJobs(ctx context.Context) systemhealth.CheckResult {
+	return b.CheckDB(ctx)
+}
 
 // healthyService returns a Service where all checks report ok=true.
 func healthyService() *systemhealth.Service {

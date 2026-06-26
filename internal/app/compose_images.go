@@ -43,7 +43,7 @@ func initImageService(
 	voMetaWriter *semantic.MetadataWriter,
 	ingestSvc *ingest.Service,
 ) (*imgservice.Service, *semantic.MetadataWriter) {
-	// PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
+	// vectorSvc arg removed from the image service constructor.
 
 	imageService := imgservice.NewService(
 		cfg,

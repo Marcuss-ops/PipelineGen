@@ -45,7 +45,7 @@ type ArtlistWiring struct {
 // Returns ArtlistWiring with Resolver populated so caller can use the
 // clipresolver for ScriptFlow late-binding without round-tripping.
 func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
-	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
+	// vectorStore arg removed from this service constructor.
 	artlistLifecycle := wireArtlistLifecycle(bundle, log)
 	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
 	assetDestResolver := wireAssetDestinationResolver(cfg, bundle, log)

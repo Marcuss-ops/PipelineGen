@@ -62,7 +62,7 @@ func (a *pythonEmbeddingAdapter) EmbedPassage(ctx context.Context, text string) 
 // indexAssetInVectorStore persists the clip/image embedding into a
 // vector store after a clip/image has been semantically enriched.
 //
-// PG-034 (June 2026): Qdrant removed. The function is preserved as a
+// The function is preserved as a
 // no-op so callers in ingest_direct.go (et al.) compile unchanged.
 // The DB-side embedding JSON is still persisted via
 // s.repo.UpdateEmbeddingData in the earlier semantic-enrichment leg
@@ -72,7 +72,7 @@ func (s *Service) indexAssetInVectorStore(ctx context.Context, assetID, source, 
 		return
 	}
 	if s.log != nil {
-		s.log.Debug("indexAssetInVectorStore noop (Qdrant removed PG-034)",
+		s.log.Debug("indexAssetInVectorStore noop",
 			zap.String("asset_id", assetID),
 			zap.String("media_type", mediaType))
 	}
