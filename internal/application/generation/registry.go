@@ -71,9 +71,13 @@ func (r *Registry) MustResolve(t domaingeneration.Type) (Definition, error) {
 }
 
 // BookSource describes the accepted book input contract.
+// Internal-only fields (OllamaURL, OutputPath) are hidden from the public
+// API via json:"-" — the server resolves them from its own configuration.
+// FilePath is resolved internally from the source asset and passed through
+// to the worker; the client can also supply it directly for non-asset flows.
 type BookSource struct {
 	SourceAssetID string `json:"source_asset_id,omitempty"`
-	FilePath      string `json:"file_path,omitempty"`
+	FilePath      string `json:"file_path,omitempty"` // resolved from source asset or direct client path
 	GoogleDocURL  string `json:"google_doc_url,omitempty"`
 	Language      string `json:"language,omitempty"`
 	Instruction   string `json:"instruction,omitempty"`
@@ -82,15 +86,18 @@ type BookSource struct {
 	ChunkSize     int    `json:"chunk_size,omitempty"`
 	OverlapSize   int    `json:"overlap_size,omitempty"`
 	MaxChunks     int    `json:"max_chunks,omitempty"`
-	OllamaURL     string `json:"ollama_url,omitempty"`
+	OllamaURL     string `json:"-"` // resolved from server config, not accepted from client
 	DriveFolderID string `json:"drive_folder_id,omitempty"`
-	OutputPath    string `json:"output_path,omitempty"`
+	OutputPath    string `json:"-"` // resolved from server config, not accepted from client
 	TranslateOnly bool   `json:"translate_only,omitempty"`
 	GeneratePDF   bool   `json:"generate_pdf,omitempty"`
 	PDFStyle      string `json:"pdf_style,omitempty"`
 }
 
 // LessonSource is the accepted lesson input contract.
+// Internal fields (OllamaURL, Async) are hidden from the public API —
+// the server resolves them from its own configuration. All generation is
+// async by default.
 type LessonSource struct {
 	Title          string `json:"title,omitempty"`
 	Topic          string `json:"topic,omitempty"`
@@ -105,8 +112,8 @@ type LessonSource struct {
 	ImageWidth     int    `json:"image_width,omitempty"`
 	ImageHeight    int    `json:"image_height,omitempty"`
 	GeneratePDF    bool   `json:"generate_pdf,omitempty"`
-	OllamaURL      string `json:"ollama_url,omitempty"`
-	Async          bool   `json:"async,omitempty"`
+	OllamaURL      string `json:"-"` // resolved from server config, not accepted from client
+	Async          bool   `json:"-"` // all generation is async; not a client choice
 }
 
 // ScriptSource is the accepted script input contract.
@@ -145,7 +152,7 @@ type BatchSource struct {
 	RequestTimeout      int    `json:"request_timeout,omitempty"`
 	SaveToDB            bool   `json:"save_to_db,omitempty"`
 	NoChapters          bool   `json:"no_chapters,omitempty"`
-	Async               bool   `json:"async,omitempty"`
+	Async               bool   `json:"-"` // all batch generation is async; not a client choice
 	Items               []struct {
 		Topic      string `json:"topic,omitempty"`
 		SourceText string `json:"source_text,omitempty"`
