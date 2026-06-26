@@ -83,7 +83,6 @@
 # (Line-number citations deliberately omitted: the gate tokenizes on
 # file paths only, while comment-side line numbers drift on edit.)
 # Remaining PR2 grandfathered entries: 6.
-internal/api/assets/clips/bulk_upload_helpers.go
 internal/api/assets/clips/bulk_upload_worker.go
 internal/api/assets/clips/clip_action.go
 internal/api/assets/clips/clip_ops.go
@@ -123,10 +122,9 @@ internal/api/assets/clips/upload_helpers.go
 # internal/api/middleware/middleware_middleware.go   ← removed from allowlist
 # internal/api/middleware/middleware_ratelimit.go    ← removed from allowlist
 
-# ── Wave 14 grandfathered: api root files (PR5) ─────────────────────────────
-internal/api/module_core_modules.go
-internal/api/routes.go
-internal/api/server.go
+# ── Wave 14 grandfathered: api root files (PR5 — CLEANED, June 2026) ────
+# Internal cleanup wave, June 26 2026: module_core_modules.go, routes.go,
+# server.go no longer import internal/infrastructure — removed from allowlist.
 
 # ── Wave 14 grandfathered: api/script orchestrator (PR3 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/script/{flow.go, handler_flow.go,

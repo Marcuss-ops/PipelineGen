@@ -20,6 +20,7 @@ import (
 	idemsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/idempotency"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // BuildRepoBundle constructs the canonical Repositories.
@@ -130,13 +131,26 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 		driveChecker = infrahealth.NewDriveChecker(credsPath, tokenPath)
 	}
 
-	// QDRANT-005 (June 2026): QdrantChecker wired back. When qdrant.enabled=true,
-	// /health?check=qdrant probes the Qdrant /collections endpoint. When disabled,
-	// the checker returns {ok:true, applicable:false} so the health endpoint
-	// correctly reports "not applicable" rather than "unknown check".
+	// QDRANT-005 Blocker 3 (June 2026): consolidated health+readiness.
+	// HealthProbe satisfies BOTH the /health QdrantChecker contract AND the
+	// /ready lifecycle Probe contract — no more duplicated HTTP client, timeout,
+	// auth wiring, or semantic drift between the two code paths.
+	// When qdrant.enabled=false, the checker is nil (ServiceDeps handles nil
+	// checkers gracefully — returns "not applicable").
+	//
+	// APIKey propagation: the qdrant.Client carries cfg.Qdrant.APIKey and
+	// the probe sends X-Api-Key on every request via client.APIKey() — the
+	// previous infrahealth.NewQdrantChecker(cfg.Qdrant.BaseURL, "", true)
+	// hardcoded an empty API key (Phase 1 Blocker 1, now closed).
 	var qdrantChecker systemhealth.QdrantChecker
 	if cfg.Qdrant.Enabled {
-		qdrantChecker = infrahealth.NewQdrantChecker(cfg.Qdrant.BaseURL, "", true)
+		qdrantCfg := &qdrant.Config{
+			BaseURL: cfg.Qdrant.BaseURL,
+			APIKey:  cfg.Qdrant.APIKey,
+			Timeout: cfg.Qdrant.Timeout,
+		}
+		probe := qdrant.NewHealthProbe(qdrant.NewClient(qdrantCfg, zap.NewNop()))
+		qdrantChecker = probe
 	}
 
 	return systemhealth.NewService(systemhealth.ServiceDeps{
