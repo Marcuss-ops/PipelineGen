@@ -295,16 +295,16 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 // AssetData is the canonical asset representation used by PayloadMapper.
 // It mirrors the media_assets table columns needed for Qdrant points.
 type AssetData struct {
-	ID             string                 `json:"id"`
-	Name           string                 `json:"name"`
-	Source         string                 `json:"source"`
-	MediaType      string                 `json:"media_type"`
-	Status         string                 `json:"status"`
-	Language       string                 `json:"language,omitempty"`
-	Category       string                 `json:"category,omitempty"`
-	Style          string                 `json:"style,omitempty"`
-	Tags           []string               `json:"tags,omitempty"`
-	SearchText     string                 `json:"search_text,omitempty"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Source     string   `json:"source"`
+	MediaType  string   `json:"media_type"`
+	Status     string   `json:"status"`
+	Language   string   `json:"language,omitempty"`
+	Category   string   `json:"category,omitempty"`
+	Style      string   `json:"style,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	SearchText string   `json:"search_text,omitempty"`
 	// DriveLink is the Drive web-view link for non-Qdrant legacy
 	// callers. QDRANT-001 (June 2026): intentionally NOT emitted by
 	// payload_mapper.BuildPayload — clients obtain a short-TTL
@@ -312,7 +312,7 @@ type AssetData struct {
 	// Populated by asset_store.go from media_assets.drive_link for
 	// ingest-path tracking / reconstruct-from-SQL flows; never
 	// shipped to the vector index.
-	DriveLink      string                 `json:"drive_link,omitempty"`
+	DriveLink string `json:"drive_link,omitempty"`
 	// LocalPath is the absolute filesystem path for non-Qdrant
 	// legacy callers. QDRANT-001 (June 2026): intentionally NOT
 	// emitted by payload_mapper.BuildPayload — the canonical search

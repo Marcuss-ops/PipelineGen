@@ -233,10 +233,10 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 //
 // Vocabulary mapping (PR1 does NOT rename directories — would invalidate
 // the active Wave 14-18 ratchet):
-//   * capabilities = internal/application/<cap>
-//   * platform     = internal/infrastructure/<sub>
-//   * kernel       = internal/domain/<x>
-//   * app          = internal/app
+//   - capabilities = internal/application/<cap>
+//   - platform     = internal/infrastructure/<sub>
+//   - kernel       = internal/domain/<x>
+//   - app          = internal/app
 //
 // Target after Wave 15-18 hardening: 0. For the FIRST PR the function
 // reports COUNTS in the `Checks` map and emits NO violations, so the
@@ -365,34 +365,35 @@ func checkCrossCapabilityImport() (map[string]int, []string) {
 //     keys (single source of truth, requires ownership.yaml to have
 //     one entry per capability — see ownership.yaml::application_assets
 //     as the canonical shape).
+//
 // PR1 remains safe for now because the in_progress Wave 14-18 waves
 // are the only ones adding/removing capabilities and we re-roll the
 // list in lockstep with each wave.
 func applicationCapabilities() map[string]bool {
 	return map[string]bool{
-		"assets":             true,
-		"artlist":            true,
-		"association":        true,
-		"books":              true,
-		"catalog":            true,
-		"channels":           true,
-		"clips":              true,
-		"content":            true,
-		"generation":         true,
-		"images":             true,
-		"ingest":             true,
-		"jobs":               true,
-		"lessons":            true,
-		"mediasearch":        true,
-		"middleware":         true,
-		"monitor":            true,
-		"realtime":           true,
-		"scriptassets":       true,
-		"scripts":            true,
-		"searchqueries":      true,
-		"system":             true,
-		"voiceover":          true,
-		"youtube":            true,
+		"assets":        true,
+		"artlist":       true,
+		"association":   true,
+		"books":         true,
+		"catalog":       true,
+		"channels":      true,
+		"clips":         true,
+		"content":       true,
+		"generation":    true,
+		"images":        true,
+		"ingest":        true,
+		"jobs":          true,
+		"lessons":       true,
+		"mediasearch":   true,
+		"middleware":    true,
+		"monitor":       true,
+		"realtime":      true,
+		"scriptassets":  true,
+		"scripts":       true,
+		"searchqueries": true,
+		"system":        true,
+		"voiceover":     true,
+		"youtube":       true,
 	}
 }
 
@@ -1162,4 +1163,3 @@ func checkPythonLegacyWriterGate() (int, []string) {
 	sort.Strings(violations)
 	return len(violations), violations
 }
-

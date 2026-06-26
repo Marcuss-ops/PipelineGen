@@ -18,9 +18,10 @@
 // policy file, not the parser.
 //
 // Exit codes:
-//   0 — report printed (default; --strict off). Phase 0 mode.
-//   1 — violations present while --strict (Phase N mode).
-//   2 — load/walk/marshal error.
+//
+//	0 — report printed (default; --strict off). Phase 0 mode.
+//	1 — violations present while --strict (Phase N mode).
+//	2 — load/walk/marshal error.
 package main
 
 import (
@@ -114,15 +115,15 @@ type Summary struct {
 
 // Report is the JSON document printed on stdout.
 type Report struct {
-	Passed         bool     `json:"passed"`
-	Mode           string   `json:"mode"`
-	PolicyPath     string   `json:"policy_path"`
-	Root           string   `json:"scan_root"`
-	Phase          string   `json:"phase"`
-	Policy         *Policy  `json:"policy_snapshot"`
-	Summary        Summary  `json:"summary"`
-	Violations     []Violation `json:"violations"`
-	Grandfathered  []string `json:"grandfathered_known"`
+	Passed        bool        `json:"passed"`
+	Mode          string      `json:"mode"`
+	PolicyPath    string      `json:"policy_path"`
+	Root          string      `json:"scan_root"`
+	Phase         string      `json:"phase"`
+	Policy        *Policy     `json:"policy_snapshot"`
+	Summary       Summary     `json:"summary"`
+	Violations    []Violation `json:"violations"`
+	Grandfathered []string    `json:"grandfathered_known"`
 }
 
 func main() {
@@ -647,7 +648,7 @@ func scanStaleProsePaths(root string, pol *Policy, r *Report) {
 	}
 	type stemRe struct {
 		stem string
-		re    *regexp.Regexp
+		re   *regexp.Regexp
 	}
 	compiled := make([]stemRe, 0, len(pol.StaleProseStems))
 	for _, s := range pol.StaleProseStems {
@@ -711,7 +712,7 @@ func scanStaleProsePaths(root string, pol *Policy, r *Report) {
 						Rule:        fmt.Sprintf("stale_prose_paths_%s", sr.stem),
 						Severity:    "warn",
 						// Note: file names are lowercase snake_case (`build_bundles_<lowercase_x>.go`); function names are CamelCase (`build<X>Service`). E.g. <X>=Voiceover maps to build_bundles_voiceover.go::buildVoiceoverService. Inherited from compose_media.go (deleted in W15 helper-split) where the original placeholder pattern used CamelCase <X>; the new segment adds `<lowercase_x>` to disambiguate file vs function casing without breaking the inline-template visual.
-					Note:        fmt.Sprintf("line contains a bare prose reference to pre-Wave-16 path stem %q (not followed by a literal dot); rewrite the comment to the post-Wave-16 ground truth: composition.go::Build<X>Bundle / module_sources.go::Wire<X> / internal/app/build_bundles_<lowercase_x>.go::build<X>Service", sr.stem),
+						Note: fmt.Sprintf("line contains a bare prose reference to pre-Wave-16 path stem %q (not followed by a literal dot); rewrite the comment to the post-Wave-16 ground truth: composition.go::Build<X>Bundle / module_sources.go::Wire<X> / internal/app/build_bundles_<lowercase_x>.go::build<X>Service", sr.stem),
 					})
 				}
 			}

@@ -4,10 +4,10 @@
 //
 // AGENT-3 (June 2026): the previous stub returned an empty response.
 // The real implementation:
-//   1. Iterates over req.Items and req.BatchTopics
-//   2. Calls engine.WriteScript for each item
-//   3. Concatenates results into a Google Doc via docClient
-//   4. Persists the batch script via ScriptRepository
+//  1. Iterates over req.Items and req.BatchTopics
+//  2. Calls engine.WriteScript for each item
+//  3. Concatenates results into a Google Doc via docClient
+//  4. Persists the batch script via ScriptRepository
 //
 // PG-029 (June 2026): batch-related types + methods consolidated here
 // from the now-deleted types.go.
@@ -20,8 +20,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )

@@ -2,21 +2,21 @@
 //
 // Pipeline (single-tenant, single-workspace, hybrid-vector):
 //
-//	1. Authorisation: workspace context must be present and non-default.
-//	2. Embedding:      generate dense vector for the query text.
-//	3. Hybrid search:  call the existing assets/search.VectorStorePort
-//	                   (real dense + sparse fusion via fuseSearchResults
-//	                   in internal/infrastructure/qdrant/service.go).
-//	4. Score filter:   drop hits below MinScore pre-hydration so the
-//	                   SQL read sequence is shorter (N+1 paranoia).
-//	5. Hydration:      batched SQLite read via MediaReadRepository.
-//	6. Joins:         the hydrated rows win on metadata; the Qdrant
-//	                  payload's score is canonical.
-//	7. Delivery URL:  each surviving asset is granted a short-TTL
-//	                  signed URL via AssetDeliveryService.
-//	8. Response:    hits are returned in the same order as the vector
-//	                  order — search relevance is the contract, not
-//	                  "stable sort by name".
+//  1. Authorisation: workspace context must be present and non-default.
+//  2. Embedding:      generate dense vector for the query text.
+//  3. Hybrid search:  call the existing assets/search.VectorStorePort
+//     (real dense + sparse fusion via fuseSearchResults
+//     in internal/infrastructure/qdrant/service.go).
+//  4. Score filter:   drop hits below MinScore pre-hydration so the
+//     SQL read sequence is shorter (N+1 paranoia).
+//  5. Hydration:      batched SQLite read via MediaReadRepository.
+//  6. Joins:         the hydrated rows win on metadata; the Qdrant
+//     payload's score is canonical.
+//  7. Delivery URL:  each surviving asset is granted a short-TTL
+//     signed URL via AssetDeliveryService.
+//  8. Response:    hits are returned in the same order as the vector
+//     order — search relevance is the contract, not
+//     "stable sort by name".
 //
 // QDRANT-004 BLOCKER NOTE: cross-tenant isolation at the SQL level
 // requires QDRANT-001 (media_assets.workspace_id column not yet

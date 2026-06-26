@@ -98,16 +98,16 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 //  3. Dry-run: list all asset IDs via mapper.ListAllAssetIDs, print count
 //  4. Apply: ensure schema → reindex → verify (QDRANT-003 gates) → switch alias
 //     - CollectionManager.EnsureSchema guarantees the target collection exists
-//       with matching vector config and payload indexes
+//     with matching vector config and payload indexes
 //     - IndexWriter.ReindexAll writes all assets into the target collection
 //     - ReindexVerifier.VerifyReindex runs the full validation suite:
-//         * Point count parity (hard gate)
-//         * Missing/orphan ID detection (scroll + SQLite compare)
-//         * Payload minimum validation (asset_id, name, source)
-//         * Embedding version check
-//         * Dead-letter count (optional, when wired)
+//     * Point count parity (hard gate)
+//     * Missing/orphan ID detection (scroll + SQLite compare)
+//     * Payload minimum validation (asset_id, name, source)
+//     * Embedding version check
+//     * Dead-letter count (optional, when wired)
 //     - Only when SwitchReport.Ready==true: CollectionManager.SwitchAlias
-//       atomically promotes the new collection
+//     atomically promotes the new collection
 //
 // QDRANT-003 closed (June 2026): count mismatch is now a HARD error
 // (detected by the verifier, blocks Ready). The previous implementation

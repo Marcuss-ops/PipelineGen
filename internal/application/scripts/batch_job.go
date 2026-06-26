@@ -55,8 +55,9 @@ import (
 // BatchJobHandler is the application-layer job-system handler for
 // `script.generate_batch` jobs. Registered via the jobs broker in
 // wire_script.go:
-//   root.Jobs.Service.RegisterHandler(job.TypeBatchScriptGenerate,
-//       batchJobHandler.Handle)
+//
+//	root.Jobs.Service.RegisterHandler(job.TypeBatchScriptGenerate,
+//	    batchJobHandler.Handle)
 //
 // Type-aliasing against job.TypeBatchScriptGenerate (instead of a
 // string literal) closes one of the SSOT violations the Wave 19

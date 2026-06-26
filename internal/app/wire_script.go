@@ -22,12 +22,12 @@ import (
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )
@@ -337,12 +337,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
-		Engine:                engine,
-		Section:               sectionRegen,
-		CacheEviction:         cacheEvictionUC,
-		GenBatchUC:            genBatchUC,
-		PipelineUseCase:       pipelineUC,
-		Image:                 root.Domains.ImageService,
+		Engine:          engine,
+		Section:         sectionRegen,
+		CacheEviction:   cacheEvictionUC,
+		GenBatchUC:      genBatchUC,
+		PipelineUseCase: pipelineUC,
+		Image:           root.Domains.ImageService,
 		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
 		// typed ports — `scripts.RealtimeSearchService` and
 		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +

@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -44,7 +44,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -55,6 +54,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -149,7 +149,7 @@ type DomainBundle struct {
 	IngestService      *ingest.Service
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
-	MetaWriter    *semantic.MetadataWriter
+	MetaWriter         *semantic.MetadataWriter
 	// Wave 15 (June 2026): RealtimeService split into two typed ports (the
 	// realtime package was removed in commit d61068b3). Both slots stay
 	// typed-nil at composition. Asset-side consumer

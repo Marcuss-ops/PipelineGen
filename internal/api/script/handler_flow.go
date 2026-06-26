@@ -45,8 +45,8 @@ type DocumentCreator interface {
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 type ScriptFlowHandler struct {
-	engine            *scripts.Engine
-	imgService        *images.Service
+	engine     *scripts.Engine
+	imgService *images.Service
 	// Wave 16 (June 2026): typed ports — `realtimeSvc` is
 	// `scripts.RealtimeSearchService`, `associationSvc` is
 	// `scripts.AssocSearchService`. Packages removed in commit
@@ -59,9 +59,9 @@ type ScriptFlowHandler struct {
 	groupsResolver    *voiceover.GroupsResolver
 	clipSourceBuilder *scripts.ClipSourceBuilder
 	mediaCurator      *scripts.MediaCurator
-	sectionRegen   *scripts.SectionRegenerator
-	cacheEviction  *scripts.CacheEvictionUseCase
-	genBatchUC       *scripts.GenerateBatchUseCase
+	sectionRegen      *scripts.SectionRegenerator
+	cacheEviction     *scripts.CacheEvictionUseCase
+	genBatchUC        *scripts.GenerateBatchUseCase
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      scripts.ClipServices
 	driveFolderClient DriveFolderClient
@@ -85,13 +85,13 @@ type AutoHarvestService interface {
 
 // ScriptFlowDeps groups all constructor inputs.
 type ScriptFlowDeps struct {
-	Engine         *scripts.Engine
-	Section        *scripts.SectionRegenerator
-	CacheEviction  *scripts.CacheEvictionUseCase
-	GenBatchUC       *scripts.GenerateBatchUseCase
+	Engine          *scripts.Engine
+	Section         *scripts.SectionRegenerator
+	CacheEviction   *scripts.CacheEvictionUseCase
+	GenBatchUC      *scripts.GenerateBatchUseCase
 	PipelineUseCase *scripts.PipelineUseCase
 
-	Image       *images.Service
+	Image *images.Service
 	// Wave 16 (June 2026): typed ports — replace the `interface{}`
 	// carrier for the script-side realtime + association consumers
 	// (packages removed in commit d61068b3; fields stay typed-nil).
@@ -146,9 +146,9 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		groupsResolver:    groupsResolver,
 		clipSourceBuilder: deps.ClipSourceBuilder,
 		mediaCurator:      deps.MediaCurator,
-		sectionRegen:   deps.Section,
-		cacheEviction:  deps.CacheEviction,
-		genBatchUC:       deps.GenBatchUC,
+		sectionRegen:      deps.Section,
+		cacheEviction:     deps.CacheEviction,
+		genBatchUC:        deps.GenBatchUC,
 		driveFolderClient: deps.DriveFolderClient,
 		documentCreator:   deps.DocumentCreator,
 		jobsSvc:           deps.Jobs,

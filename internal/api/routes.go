@@ -62,9 +62,9 @@ type Router struct {
 	// enforces the split. Typed ports isolate each handler's contract.
 	outboxHandler      InternalOutboxRouter
 	mediasearchHandler InternalMediaSearchRouter
-	ctx                  context.Context
-	healthSvc            interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
-	readyChecker         *systemhealth.ReadyChecker
+	ctx                context.Context
+	healthSvc          interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
+	readyChecker       *systemhealth.ReadyChecker
 }
 
 // MediaInternalRouter is the narrow port for /internal/v1/media/*

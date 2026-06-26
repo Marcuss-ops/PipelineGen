@@ -6,12 +6,12 @@
 // the new tryRegisterModule behaviour.
 //
 // Coverage:
-//   1. TestTryRegisterModule_DuplicateFails — same name → error.
-//   2. TestTryRegisterModule_FreezeFails    — frozen registry → error.
-//   3. TestTryRegisterModule_DistinctOK     — distinct names → no error.
-//   4. TestTryRegisterModule_ErrorContainsSpecMarker — error text
-//      references the spec §"Uniqueness" rule so a future log-msg-only
-//      regression still fails the gate.
+//  1. TestTryRegisterModule_DuplicateFails — same name → error.
+//  2. TestTryRegisterModule_FreezeFails    — frozen registry → error.
+//  3. TestTryRegisterModule_DistinctOK     — distinct names → no error.
+//  4. TestTryRegisterModule_ErrorContainsSpecMarker — error text
+//     references the spec §"Uniqueness" rule so a future log-msg-only
+//     regression still fails the gate.
 package app
 
 import (
@@ -30,8 +30,8 @@ import (
 // interface so we can drive the registry bounds.
 type fakeModule struct{ name string }
 
-func (f *fakeModule) Name() string             { return f.name }
-func (f *fakeModule) Enabled() bool            { return true }
+func (f *fakeModule) Name() string                    { return f.name }
+func (f *fakeModule) Enabled() bool                   { return true }
 func (f *fakeModule) RegisterRoutes(*gin.RouterGroup) {}
 
 func TestTryRegisterModule_DuplicateFails(t *testing.T) {

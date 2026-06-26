@@ -15,16 +15,16 @@
 //   - fill in items[].source_text and batch_topics[].source_text from
 //     their topics when empty
 //   - resolve the effective Drive folder with a 3-level fallback:
-//        request > cfg.Drive.BooksFolder() > u.DefaultScriptsGenFolder
+//     request > cfg.Drive.BooksFolder() > u.DefaultScriptsGenFolder
 //     (the third leg is the per-deployment scripts-gen root, which the
 //     previous handler read from h.driveFolderID)
 //   - call scripts.ValidateGenerateBatchRequest and bubble up the
 //     structured details via a typed error (GenerateBatchValidationErrors)
 //   - dispatch:
-//        - async path: jobsSvc.Enqueue ("script.generate_batch") with
-//          optional Idempotency-Key → AsyncJobRef
-//        - sync path:  batchService.Execute with a per-request timeout
-//          derived from cfg.Scripts.BatchTimeoutSeconds → BatchGenerateResponse
+//   - async path: jobsSvc.Enqueue ("script.generate_batch") with
+//     optional Idempotency-Key → AsyncJobRef
+//   - sync path:  batchService.Execute with a per-request timeout
+//     derived from cfg.Scripts.BatchTimeoutSeconds → BatchGenerateResponse
 //   - shape the typed output: exactly one of Async or Response is non-nil,
 //     plus the resolved DocTitle (handy for async response + log fields)
 //

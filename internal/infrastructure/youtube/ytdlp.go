@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/zap"
 
-	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // VideoInfo is the result of GetVideoInfo. Mirrors the existing

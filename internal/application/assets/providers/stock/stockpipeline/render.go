@@ -33,9 +33,9 @@ import (
 // into a generic stock.RenderRequest and delegates execution to s.renderer.
 //
 // Behavioural equivalence with pre-PR6:
-//   * noTransitions && noEffects → renderer picks concat-demuxer fast path
-//   * noTransitions only OR noEffects only → filter_complex with one branch
-//   * full policy → filter_complex with Nth-clip transitions + Nth-clip overlays
+//   - noTransitions && noEffects → renderer picks concat-demuxer fast path
+//   - noTransitions only OR noEffects only → filter_complex with one branch
+//   - full policy → filter_complex with Nth-clip transitions + Nth-clip overlays
 //
 // Titles are currently unused by the FFmpeg impl (kept in the signature
 // for downstream API compatibility — the future subtitle overlay path will

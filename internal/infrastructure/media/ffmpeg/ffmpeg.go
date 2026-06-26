@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Processor ───────────────────────────────────────────────────────────
