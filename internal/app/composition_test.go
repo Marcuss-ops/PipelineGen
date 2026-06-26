@@ -83,10 +83,6 @@ func minimalConfig(dataDir string) *config.Config {
 		},
 		VLM:         config.VLMConfig{Enabled: false},
 		ClipIndexer: config.ClipIndexerConfig{Enabled: false},
-		VectorSearch: config.VectorSearchConfig{
-			Enabled:         false,
-			RealtimeEnabled: false,
-		},
 		Reranker: config.RerankerConfig{Enabled: false},
 		Drive:    config.DriveConfig{},
 		Jobs: config.JobsConfig{
