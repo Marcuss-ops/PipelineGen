@@ -78,11 +78,3 @@ func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *appjobs.Jo
 		"generated_at":  result.GeneratedAt,
 	}, nil
 }
-
-// RegisterJobHandler registers the handler for lesson processing jobs.
-func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(job.TypeLessonsProcess, s.HandleJob)
-		s.log.Info("registered lessons.process job handler")
-	}
-}

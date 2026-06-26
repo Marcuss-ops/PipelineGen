@@ -112,11 +112,3 @@ func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result 
 		}
 	}
 }
-
-// RegisterJobHandler registers the handler for book processing jobs
-func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(job.TypeBooksProcess, s.HandleJob)
-		s.log.Info("registered book.process job handler")
-	}
-}
