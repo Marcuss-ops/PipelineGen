@@ -117,7 +117,18 @@ type AssetsWiring struct {
 // (see internal/app/assets_adapters.go: diagIndexHealthAdapter.realtime
 // + searchVectorAdapter.realtimeSvc), so this change re-aligns the
 // caller signature with the adapter field types.
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc interface{}, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
+// WireAssets creates the unified Assets handler and module.
+//
+// PR4d-chunk2 (June 2026): takes *AssetsBundle + 8 narrow direct args
+// (VectorStore, JobsBundle, voiceoverSvc, voiceoverSync, realtimeSvc,
+// catalogRepo, maintenanceSvc). ClipIndexer is in the bundle now.
+// PR3 (June 2026): providerRegistry added for constructor injection
+// (replaces post-construction SetProviderRegistry).
+// Wave 16 (June 2026): realtimeSvc typed to `assetsapi.RealtimeMatcher`
+// per AGENTS.md Pattern 0 (typed-port abstraction). The realtime
+// package was removed in commit d61068b3; the typed parameter stays
+// nil-safe (typed-nil of an interface equals nil interface).
+func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
