@@ -46,6 +46,7 @@ type PipelineResult struct {
 	DocID         string
 	Scenes        []SceneImage
 	Voiceovers    []SceneVoiceover
+	ScriptID      int64
 }
 
 // SceneImage represents a scene with an image.

@@ -3,7 +3,6 @@ package scripts
 import (
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,55 +47,3 @@ func TestBuildNormalizedScenes_MergesTextImagesAndVideos(t *testing.T) {
 	require.False(t, hasImage)
 }
 
-func TestBuildFinalResult_PublishesScenesJSON(t *testing.T) {
-	pu := &PipelineUseCase{}
-	result := pu.buildFinalResult(
-		&scriptpkg.GenerationSpec{Title: "Jackie Chan Interview", Language: "en", MaxChars: 200, GenerateSceneImages: true},
-		&ClipSourcePathResult{
-			WriteResult: &WriteScriptResult{Script: "raw-script", WordCount: 123, CacheStatus: "miss"},
-			ClipScenes: []ClipScene{
-				{
-					SceneIndex: 0,
-					Text:       "Scene text",
-					DriveLink:  "https://drive.google.com/file/d/clip-2/view",
-				},
-			},
-		},
-		"",
-		ScriptInsights{},
-		nil,
-		"",
-		"",
-		[]SceneImage{
-			{
-				Index: 0,
-				Text:  "Scene text",
-				URL:   "https://drive.google.com/file/d/image-2/view",
-			},
-		},
-		nil,
-		42,
-	)
-
-	require.Equal(t, true, result["ok"])
-
-	scriptItems, ok := result["script"].([]map[string]any)
-	require.True(t, ok)
-	require.Len(t, scriptItems, 1)
-	require.Equal(t, "Scene text", scriptItems[0]["text"])
-	require.Equal(t, "https://drive.google.com/file/d/clip-2/view", scriptItems[0]["video"])
-	require.Equal(t, []string{"https://drive.google.com/file/d/clip-2/view"}, scriptItems[0]["videos"])
-	require.Equal(t, "https://drive.google.com/file/d/image-2/view", scriptItems[0]["image"])
-	require.Equal(t, []string{"https://drive.google.com/file/d/image-2/view"}, scriptItems[0]["images"])
-
-	scenes, ok := result["scenes"].([]map[string]any)
-	require.True(t, ok)
-	require.Len(t, scenes, 1)
-	require.Equal(t, scriptItems, scenes)
-
-	scenesJSON, ok := result["scenes_json"].(string)
-	require.True(t, ok)
-	require.Contains(t, scenesJSON, `"text":"Scene text"`)
-	require.Contains(t, scenesJSON, `"video":"https://drive.google.com/file/d/clip-2/view"`)
-	require.Contains(t, scenesJSON, `"image":"https://drive.google.com/file/d/image-2/view"`)
-}

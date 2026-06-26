@@ -1,6 +1,6 @@
 // Package script (api/script) — handler_flow_ops.go holds the small
 // "ops-style" HTTP endpoints that aren't tied to the generation pipeline:
-// section regeneration and LLM cache eviction.
+// section regeneration, LLM cache eviction, and media curation.
 //
 // PR4.F (June 2026) collapses the previous 120-line RegenerateSection
 // into a thin transport. The prompt construction, Ollama invocation,
@@ -13,6 +13,9 @@
 // application/scripts/cache_eviction_usecase.go::CacheEvictionUseCase.
 // This file only parses path/body, calls the use cases, and maps
 // domain errors to HTTP status codes.
+//
+// PR7 (June 2026): removed GenerateFromCatalog — superseded by
+// POST /api/script/generate (unified endpoint, PR6).
 package script
 
 import (
@@ -120,70 +123,6 @@ func (h *ScriptFlowHandler) mapRegenError(c *gin.Context, scriptID, sectionID in
 // EvictCacheRequest is the JSON body for POST /api/script/cache/evict.
 type EvictCacheRequest struct {
 	Titles []string `json:"titles,omitempty"`
-}
-
-// GenerateFromCatalog handles POST /api/script/generate-from-catalog.
-func (h *ScriptFlowHandler) GenerateFromCatalog(c *gin.Context) {
-	if h.jobsSvc == nil {
-		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
-		return
-	}
-
-	var req scripts.JobPayloadCatalogScript
-	if err := c.ShouldBindJSON(&req); err != nil {
-		api.Error(c, http.StatusBadRequest, "invalid payload")
-		return
-	}
-
-	req.Topic = strings.TrimSpace(req.Topic)
-	req.Title = strings.TrimSpace(req.Title)
-	req.OutputName = strings.TrimSpace(req.OutputName)
-	if req.Topic == "" {
-		req.Topic = req.Title
-	}
-	if req.Title == "" {
-		req.Title = req.Topic
-	}
-	if req.Title == "" {
-		req.Title = "catalog script"
-	}
-	if req.OutputName == "" {
-		req.OutputName = req.Title
-	}
-	if req.Topic == "" && len(req.ClipIDs) == 0 {
-		api.Error(c, http.StatusBadRequest, "topic or clip_ids are required")
-		return
-	}
-	if req.MaxClips <= 0 {
-		req.MaxClips = 10
-	}
-	if req.MinCoverage < 0 {
-		req.MinCoverage = 0
-	}
-	if req.MinCoverage > 1 {
-		req.MinCoverage = 1
-	}
-	req.Language = "en"
-	if req.Model == "" {
-		req.Model = "fallback"
-	}
-	if req.Tone == "" {
-		req.Tone = "clear"
-	}
-	if req.TargetWords <= 0 {
-		req.TargetWords = 1800
-	}
-	req.Languages = scripts.NormalizeLanguages(req.Languages)
-	if len(req.Languages) == 0 {
-		req.Languages = []string{"en"}
-	}
-
-	api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
-		Type:       job.TypeCatalogScriptGenerate,
-		Payload:    req,
-		Priority:   5,
-		MaxRetries: 2,
-	}, "Catalog script generation queued.")
 }
 
 // Curate handles POST /api/script/curate.
