@@ -17,6 +17,7 @@ import (
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -183,6 +184,19 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	cacheEvictionUC := scripts.NewCacheEvictionUseCase(
 		gen, memorySvc, log,
 	)
+	// PR-A (June 2026): canonical GenerateBatchUseCase — SSOT for
+	// /api/script/generate-batch orchestration. Pre-PR-A, the inline
+	// handler in api/script/handler_flow.go::GenerateBatch ran the
+	// async/sync dispatch itself (duplicated against the async job
+	// handler in api/script/handler_jobs.go). Now both call sites go
+	// through this use case; default-coercion, drive-folder resolution,
+	// idempotency-key probing, and the BatchService sync/async split
+	// live in one place. The GenerationSpec/GenerationService sync path
+	// is unaffected (it lives behind /generate-from-clips).
+	genBatchUC := scripts.NewGenerateBatchUseCase(
+		cfg, log, root.Jobs.Facade, batchSvc,
+		cfg.Drive.ScriptsGenFolder(),
+	)
 
 	// ── Pipeline use case ──────────────────────────────────────────────
 	var pipelineUC *scripts.PipelineUseCase
@@ -320,9 +334,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:                engine,
-		Batch:                 batchSvc,
 		Section:               sectionRegen,
 		CacheEviction:         cacheEvictionUC,
+		GenBatchUC:            genBatchUC,
 		PipelineUseCase:       pipelineUC,
 		Image:                 root.Domains.ImageService,
 		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
@@ -352,9 +366,16 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Register job handlers at composition time ──────────────────────
 	if root.Jobs.Service != nil {
-		if batchSvc != nil {
-			root.Jobs.Service.RegisterHandler("script.generate_batch", handler.HandleBatchScriptGenerateJob)
-			log.Info("registered script.generate_batch job handler (wire_script.go)")
+		if genBatchUC != nil {
+			// PR-A (June 2026): the canonical app-layer handler now
+			// lives in internal/application/scripts/batch_job.go. The
+			// wiring site here MUST type-reference the canonical
+			// constant (jobdomain.TypeBatchScriptGenerate) rather
+			// than the string literal — this closes one of the SSOT
+			// violations the Wave 19 audit documented.
+			batchJobH := scripts.NewBatchJobHandler(genBatchUC, log)
+			root.Jobs.Service.RegisterHandler(jobdomain.TypeBatchScriptGenerate, batchJobH.Handle)
+			log.Info("registered script.generate_batch job handler (PR-A: BatchJobHandler in internal/application/scripts)")
 		}
 		if curationJobSvc != nil {
 			root.Jobs.Service.RegisterHandler("media.curate", curationJobSvc.HandleCurateJob)

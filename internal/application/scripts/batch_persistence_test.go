@@ -1,3 +1,21 @@
+// Package scripts (test) — batch_persistence_test.go
+//
+// PR-A (June 2026): the BatchService instance under test is now
+// framed as the *private dep* of the canonical
+// scripts.GenerateBatchUseCase. The PR refactored the
+// /generate-batch orchestration out of api/script/handler_flow.go
+// and api/script/handler_jobs.go and into the use case; the
+// underlying persistence path (BatchService.saveBatchScript →
+// repo.SaveScript → scripts + script_sections + outline_sections +
+// generation_logs + research_sources) is unchanged but is now
+// reached through the use case at composition time (wire_script.go).
+//
+// Each test below constructs the BatchService literal AND wraps it
+// inside a GenerateBatchUseCase so the assertion chain documents the
+// new wiring explicitly. The internal-method assertions
+// (saveBatchScript directly) remain identical to pre-PR-A — these
+// are unit tests for BatchService, not integration tests through
+// the use case.
 package scripts
 
 import (
@@ -123,6 +141,11 @@ func TestSaveBatchScript_SaveToDB_SavesAllTables(t *testing.T) {
 		scriptsRepo: repo,
 		log:         zap.NewNop(),
 	}
+	// PR-A: wire BatchService into the canonical use case so the
+	// test surface reflects the post-PR-A production wiring.
+	uc := NewGenerateBatchUseCase(nil, zap.NewNop(), nil, svc, "")
+	require.NotNil(t, uc, "GenerateBatchUseCase wrapping must succeed")
+	require.Same(t, svc, uc.Batch, "use case must hold the same BatchService instance")
 
 	req := &GenerateBatchRequest{
 		DocTitle:   "Test Book",
@@ -201,6 +224,9 @@ func TestSaveBatchScript_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 		scriptsRepo: repo,
 		log:         zap.NewNop(),
 	}
+	// PR-A: use case wiring (see TestSaveBatchScript_SaveToDB_SavesAllTables).
+	uc := NewGenerateBatchUseCase(nil, zap.NewNop(), nil, svc, "")
+	require.NotNil(t, uc)
 
 	req := &GenerateBatchRequest{
 		DocTitle: "Skipped Book",
@@ -238,6 +264,9 @@ func TestSaveBatchScript_NoChapters_DoesNotFail(t *testing.T) {
 		scriptsRepo: repo,
 		log:         zap.NewNop(),
 	}
+	// PR-A: use case wiring (see TestSaveBatchScript_SaveToDB_SavesAllTables).
+	uc := NewGenerateBatchUseCase(nil, zap.NewNop(), nil, svc, "")
+	require.NotNil(t, uc)
 
 	req := &GenerateBatchRequest{
 		DocTitle:   "No Chapters Book",
@@ -294,6 +323,9 @@ func TestSaveBatchScript_ScriptsRepoNil_SkipsPersistence(t *testing.T) {
 		scriptsRepo: nil,
 		log:         zap.NewNop(),
 	}
+	// PR-A: use case wiring (see TestSaveBatchScript_SaveToDB_SavesAllTables).
+	uc := NewGenerateBatchUseCase(nil, zap.NewNop(), nil, svc, "")
+	require.NotNil(t, uc)
 
 	req := &GenerateBatchRequest{
 		DocTitle: "Nil Repo Book",
@@ -318,6 +350,9 @@ func TestSaveBatchScript_SavesResearchSources(t *testing.T) {
 		scriptsRepo: repo,
 		log:         zap.NewNop(),
 	}
+	// PR-A: use case wiring (see TestSaveBatchScript_SaveToDB_SavesAllTables).
+	uc := NewGenerateBatchUseCase(nil, zap.NewNop(), nil, svc, "")
+	require.NotNil(t, uc)
 
 	req := &GenerateBatchRequest{
 		DocTitle: "Research Book",

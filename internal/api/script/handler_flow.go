@@ -12,6 +12,7 @@ package script
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -45,7 +46,6 @@ type DocumentCreator interface {
 
 type ScriptFlowHandler struct {
 	engine            *scripts.Engine
-	batchService      *scripts.BatchService
 	imgService        *images.Service
 	// Wave 16 (June 2026): typed ports — `realtimeSvc` is
 	// `scripts.RealtimeSearchService`, `associationSvc` is
@@ -59,8 +59,9 @@ type ScriptFlowHandler struct {
 	groupsResolver    *voiceover.GroupsResolver
 	clipSourceBuilder *scripts.ClipSourceBuilder
 	mediaCurator      *scripts.MediaCurator
-	sectionRegen      *scripts.SectionRegenerator
-	cacheEviction     *scripts.CacheEvictionUseCase
+	sectionRegen   *scripts.SectionRegenerator
+	cacheEviction  *scripts.CacheEvictionUseCase
+	genBatchUC       *scripts.GenerateBatchUseCase
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      scripts.ClipServices
 	driveFolderClient DriveFolderClient
@@ -84,10 +85,10 @@ type AutoHarvestService interface {
 
 // ScriptFlowDeps groups all constructor inputs.
 type ScriptFlowDeps struct {
-	Engine          *scripts.Engine
-	Batch           *scripts.BatchService
-	Section         *scripts.SectionRegenerator
-	CacheEviction   *scripts.CacheEvictionUseCase
+	Engine         *scripts.Engine
+	Section        *scripts.SectionRegenerator
+	CacheEviction  *scripts.CacheEvictionUseCase
+	GenBatchUC       *scripts.GenerateBatchUseCase
 	PipelineUseCase *scripts.PipelineUseCase
 
 	Image       *images.Service
@@ -137,7 +138,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 
 	h := &ScriptFlowHandler{
 		engine:            deps.Engine,
-		batchService:      deps.Batch,
 		imgService:        deps.Image,
 		realtimeSvc:       deps.Realtime,
 		associationSvc:    deps.Association,
@@ -146,8 +146,9 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		groupsResolver:    groupsResolver,
 		clipSourceBuilder: deps.ClipSourceBuilder,
 		mediaCurator:      deps.MediaCurator,
-		sectionRegen:      deps.Section,
-		cacheEviction:     deps.CacheEviction,
+		sectionRegen:   deps.Section,
+		cacheEviction:  deps.CacheEviction,
+		genBatchUC:       deps.GenBatchUC,
 		driveFolderClient: deps.DriveFolderClient,
 		documentCreator:   deps.DocumentCreator,
 		jobsSvc:           deps.Jobs,
@@ -367,7 +368,19 @@ func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 }
 
 // GenerateBatch handles POST /generate-batch.
-// Uses batchService for sync execution; delegates async to jobsSvc.
+//
+// PR-A (June 2026): thin transport — the canonical orchestrator now
+// lives in scripts.GenerateBatchUseCase (Run takes a typed input and
+// returns a typed output: Async or Response, plus DocTitle). The
+// handler is responsible only for:
+//   - parsing the JSON body
+//   - extracting the Idempotency-Key header (transport-only concern)
+//   - calling the use case
+//   - translating typed domain errors into HTTP status codes
+//   - serialising the typed output (Async vs Response) to JSON
+//
+// Adding logic here is a code smell — extend
+// scripts.GenerateBatchUseCase instead.
 func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 	var req scripts.GenerateBatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -375,40 +388,39 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 		return
 	}
 
-	if h.batchService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "batch service not initialized"})
+	if h.genBatchUC == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "batch use case not initialized"})
 		return
 	}
 
-	// Async path: enqueue the batch as a job.
-	if req.Async {
-		if h.jobsSvc == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "jobs service not initialized"})
-			return
-		}
-		enq, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    "script.generate_batch",
-			Payload: req,
-		})
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"ok":     true,
-			"async":  true,
-			"job_id": enq.ID,
-			"status": enq.Status,
-		})
-		return
-	}
+	idemKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
 
-	// Sync path: execute batch directly.
-	resp, err := h.batchService.Execute(c.Request.Context(), &req, nil)
+	out, err := h.genBatchUC.Run(c.Request.Context(), scripts.GenerateBatchInput{
+		Request:        &req,
+		IdempotencyKey: idemKey,
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		h.mapBatchError(c, err)
 		return
 	}
+	if out == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "use case returned nil output"})
+		return
+	}
+
+	if out.Async != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":         true,
+			"async":      true,
+			"job_id":     out.Async.JobID,
+			"status":     out.Async.Status,
+			"status_url": out.Async.StatusURL,
+			"doc_title":  out.DocTitle,
+		})
+		return
+	}
+
+	resp := out.Response
 	c.JSON(http.StatusOK, gin.H{
 		"ok":        true,
 		"async":     false,
@@ -417,6 +429,26 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 		"doc_link":  resp.DocLink,
 		"scripts":   resp.Scripts,
 	})
+}
+
+// mapBatchError translates a use-case error into an HTTP response.
+// Domain typed errors map to specific codes; everything else falls
+// through to a 500 Internal Server Error. Mirrors the regen/error
+// mappers in handler_flow_ops.go.
+func (h *ScriptFlowHandler) mapBatchError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, scripts.ErrGenerateBatchInvalid):
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+	case errors.Is(err, scripts.ErrGenerateBatchMissing):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": err.Error()})
+	case errors.Is(err, scripts.ErrGenerateBatchAsyncFailed), errors.Is(err, scripts.ErrGenerateBatchSyncFailed):
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+	default:
+		if h.log != nil {
+			h.log.Error("generate-batch use case failed", zap.Error(err))
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+	}
 }
 
 // GetBatchProgress handles GET /generate-batch/progress.

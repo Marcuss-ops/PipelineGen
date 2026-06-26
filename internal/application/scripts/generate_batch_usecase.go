@@ -60,9 +60,18 @@ import (
 // `Idempotency-Key` header that the HTTP layer has already extracted.
 // (Both responsibilities belong to the HTTP transport; the use case
 // only consumes the result.)
+//
+// PR-A (June 2026): ProgressFn added as an optional worker-side
+// progress callback. The HTTP sync path leaves it nil (regression-free
+// — matches the pre-PR-A behaviour where the handler passed nil to
+// BatchService.Execute); the worker path (internal/application/
+// scripts/batch_job.go) pipes tools.Progress through so section-level
+// updates still reach the job-status UI. Both behaviours live inside
+// the same use case; the optional field avoids a fork.
 type GenerateBatchInput struct {
 	Request        *GenerateBatchRequest
 	IdempotencyKey string
+	ProgressFn     func(int, string) // optional; passed through to BatchService.Execute on the sync path
 }
 
 // GenerateBatchOutput is the use case output. Exactly one of Async /
@@ -306,7 +315,7 @@ func (u *GenerateBatchUseCase) Run(ctx context.Context, in GenerateBatchInput) (
 	execCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	result, err := u.Batch.Execute(execCtx, req, nil)
+	result, err := u.Batch.Execute(execCtx, req, in.ProgressFn)
 	if err != nil {
 		// Multi-arg %w (see async branch above): the synchronous
 		// dispatch's underlying error stays reachable via errors.Is AND
