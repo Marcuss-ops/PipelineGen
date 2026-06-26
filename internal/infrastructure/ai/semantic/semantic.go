@@ -13,7 +13,7 @@ import (
 // ── NewMetadataWriter (compatibility layer) ─────────────────────────────
 
 // NewMetadataWriter is the canonical constructor for *MetadataWriter.
-// Pre-fix callers (module_artlist.go + module_stock.go inside the
+// Pre-fix callers (module_sources.go::WireArtlist + module_sources.go::WireStockPipeline inside the
 // BuildDomainBundle composition root) called semantic.NewMetadataWriter(...)
 // with these five args; the earlier compatibility layer did not expose a constructor.
 // The constructor consumes the args (for future wiring parity) and returns

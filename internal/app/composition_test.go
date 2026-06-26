@@ -357,7 +357,7 @@ var (
 // TestComposition_NoGoroutinesSpawned_FrozenSiteCount asserts the freeze
 // semantics described above by scanning ALL non-test .go files in
 // internal/app/ via buildFuncRegex. This way the test is robust to
-// future file moves (e.g. BuildJobsBundle lives in module_jobs.go, not
+// future file moves (e.g. BuildJobsBundle lives in module_media.go, not
 // composition.go) without re-listing source paths.
 func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 	chdirToProjectRoot(t)

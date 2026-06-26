@@ -85,7 +85,7 @@ type Service struct {
 // PR6: NewService no longer constructs the ffmpeg.Processor. The Cutter and
 // Renderer ports MUST be injected via SetCutter/SetRenderer before
 // processSingleVideo / renderChunk are called. Production wire-up lives in
-// WireStockPipeline (internal/app/module_stock.go).
+// WireStockPipeline (internal/app/module_sources.go::WireStockPipeline).
 func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *Service {
 	v := cfg.Video.WithDefaults()
 	return &Service{

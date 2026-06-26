@@ -22,7 +22,7 @@ type DestinationInfo struct {
 // *drive.Uploader{Service: svc.driveClient, Log: svc.log} inline and
 // delegated to drive.EnsureFolderPath. PR2.7 closes the loop: DestinationService
 // receives the same port instance NewService wires via ServiceDeps
-// (built once in module_artlist.go::WireArtlist from bundle.DriveClient),
+// (built once in module_sources.go::WireArtlist from bundle.DriveClient),
 // and calls EnsureFolder directly.
 //
 // Folding this service onto the port completes the directive
@@ -38,7 +38,7 @@ type DestinationService struct {
 //
 // PR2.7: reads s.driveFolderManager (port) instead of constructing a
 // *drive.Uploader concrete from s.driveClient. The port is wired at the
-// composition root (module_artlist.go::WireArtlist builds the adapter
+// composition root (module_sources.go::WireArtlist builds the adapter
 // from bundle.DriveClient once) and threaded into ServiceDeps.
 // ServicePorts.DriveFolderManager. When the port is nil (test fixtures
 // without Drive), ResolveDestination returns the requested folder path

@@ -29,7 +29,7 @@ var enrichMetaMu sync.Mutex
 //
 // PR2.5: dispatcher is now a constructor argument (was SetDispatcher
 // setter previously — removed). The composition root in
-// module_artlist.go wires the canonical outbox.Dispatcher at
+// module_sources.go::WireArtlist wires the canonical outbox.Dispatcher at
 // construction time so Enrich() can atomically combine UpsertClip +
 // indexed-Qdrant in a single transaction. Indexer is the canonical
 // port (was *clipindexer.Service concrete); nil-fallback path remains.
@@ -64,7 +64,7 @@ type SemanticEnricher struct {
 // IsEnabled matching the port).
 // PR2.7: driveUploader param replaced by driveManager
 // (DriveFolderManager port). Pass nil for tests; production wiring
-// always passes the adapter constructed in module_artlist.go.
+// always passes the adapter constructed in module_sources.go::WireArtlist.
 func NewSemanticEnricher(
 	repo AssetStore,
 	indexer Indexer,
