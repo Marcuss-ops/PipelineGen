@@ -357,6 +357,84 @@ func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 	})
 }
 
+// GenerateBatch handles POST /generate-batch.
+// Uses batchService for sync execution; delegates async to jobsSvc.
+func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
+	var req scripts.GenerateBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
+		return
+	}
+
+	if h.batchService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "batch service not initialized"})
+		return
+	}
+
+	// Async path: enqueue the batch as a job.
+	if req.Async {
+		if h.jobsSvc == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "jobs service not initialized"})
+			return
+		}
+		enq, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+			Type:    "script.generate_batch",
+			Payload: req,
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"ok":    true,
+			"async": true,
+			"job_id": enq.ID,
+			"status": enq.Status,
+		})
+		return
+	}
+
+	// Sync path: execute batch directly.
+	resp, err := h.batchService.Execute(c.Request.Context(), &req, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":        true,
+		"async":     false,
+		"doc_title": resp.DocTitle,
+		"doc_id":    resp.DocID,
+		"doc_link":  resp.DocLink,
+		"scripts":   resp.Scripts,
+	})
+}
+
+// GetBatchProgress handles GET /generate-batch/progress.
+func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
+	if h.jobsSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "jobs service not initialized"})
+		return
+	}
+	jobID := strings.TrimSpace(c.Query("job_id"))
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "job_id is required"})
+		return
+	}
+	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": fmt.Sprintf("job not found: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":       true,
+		"job_id":   job.ID,
+		"status":   job.Status,
+		"progress": job.Progress,
+		"error":    job.Error,
+	})
+}
+
 func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
 		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
