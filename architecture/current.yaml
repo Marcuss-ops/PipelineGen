@@ -315,6 +315,100 @@
       - scripts/archcheck/main.go (add checkApplicationToInfrastructure + checkCrossCapabilityImport + wire into runFocusedChecks/runRatchetChecks)
       - architecture/current.yaml (this Wave 19 block)
 
+  # PR2 setup (this setup commit ONLY records acceptance criteria — no
+  # ratchet promotion, no implementation). Each PR2 item ships as its
+  # own follow-up commit on main. Ratchet enforcement (allowlist files,
+  # flipping target_metrics) is intentionally deferred until operators
+  # agree on baseline with PR1 counts as starting reference.
+  pr2_setup:
+    description: |
+      Records the three PR1 deferred items as concrete PR2 acceptance
+      criteria. This setup commit is a no-op for the ratchet — the
+      implementation of PR2-1, PR2-2, and PR2-3 ships as separate
+      commits on main. Each item mirror's PR1's "observation-only"
+      pattern: PR2 ships the per-file edge graph (PR2-1), the
+      AnalyzeImports wire-or-delete decision (PR2-2), and the
+      filesystem-driven capability discovery (PR2-3) before promotion
+      to ratchet enforcement.
+    items:
+      - id: PR2-1
+        title: "Full edge graph emission (per-file edge list per cross-edge family)"
+        target: "scripts/archcheck/main.go::checkApplicationToInfrastructure + checkCrossCapabilityImport"
+        description: |
+          Replace the int counters with structured lists: each entry
+          contains file path, import string, edge class (platform or
+          cross_capability), plus a flag for whether the import is a
+          structural port (in ports.go) or a concrete adapter (in
+          service.go / provider). The graph is reported under
+          `Checks["application_to_infrastructure_edges"]` and
+          `Checks["cross_capability_import_edges"]` (each a []map
+          with stable JSON shape).
+        acceptance:
+          - "`go run ./scripts/archcheck` returns ≥1 edge in the new keys when count > 0."
+          - "Graph entries share JSON shape `{src_file, import, type, in_ports}` regardless of edge class."
+          - "PR2 ratchet subtracts from the allowlist files to derive violation count (mirrors PR3_API_COMPACTION pattern)."
+        files_touched:
+          - "scripts/archcheck/main.go (counters + new keys + MakeReport shape)"
+          - "scripts/archcheck/imports.go (potentially re-purposed as the canonical AST pass that feeds PR2-1 — see PR2-2 decision)"
+        risk: |
+          First time a structured edge feeds the ratchet. Lock the JSON shape
+          contract now; change it later only via EXPAND/BACKFILL/CUTOVER
+          per AGENTS.md Migration policy.
+      - id: PR2-2
+        title: "Wire or delete scripts/archcheck/imports.go::AnalyzeImports (dead code)"
+        target: "scripts/archcheck/imports.go"
+        description: |
+          imports.go defines `AnalyzeImports()` but `main.go` never calls
+          it (PR1 review flagged it as dead code). PR2 makes the call:
+          either wire it as the canonical AST pass feeding PR2-1's edge
+          graph, or delete the file outright if redundant with the rg
+          pattern in `scripts/archcheck/main.go`.
+        acceptance:
+          - "`rg AnalyzeImports scripts/archcheck` returns zero (after wire OR delete)."
+          - "If wired: `runFocusedChecks` MakeReport has its result under `Checks` or a new top-level key."
+          - "Whatever survives has a package doc explaining responsibility (no orphan half-implementations)."
+        files_touched: "scripts/archcheck/imports.go (delete) OR scripts/archcheck/main.go (wire callsite) OR both (delete imports.go + let main.go checks stay rg-based)."
+        decision_criterion: |
+          Reuse beats innovation. Recommended path: delete imports.go.
+          Reason: the rg pattern in main.go is already proven (PR1
+          counters land cleanly), hand-rolled AST parsing for cross-
+          capability imports adds little value over rg + SplitN, and
+          dead code in a foundation file is a real risk per the prior
+          review. Wire AnalyzeImports ONLY if a future PR requires
+          per-edge AST classification that rg cannot provide.
+      - id: PR2-3
+        title: "Migrate applicationCapabilities from hardcoded list to filesystem-driven discovery"
+        target: "scripts/archcheck/main.go::applicationCapabilities"
+        description: |
+          Replace the hardcoded 22-capability list with one of:
+          (a) `os.ReadDir("internal/application")` at startup, filtering
+              non-cap directories (testdata, mocks, helpers);
+          (b) read `architecture/ownership.yaml` entries with
+              `application_*` prefix and derive the list.
+        acceptance:
+          - "Adding a new capability dir under internal/application/ is picked up automatically."
+          - "Removing a capability dir causes the captured set to shrink without list edits."
+          - "Hardcoded list deleted; PR2-hook comment removed."
+          - "Both focused and ratchet mode discover the same set (no drift)."
+        files_touched: "scripts/archcheck/main.go"
+        choice: |
+          (a) `os.ReadDir` is the cheapest and matches Wave 15's
+          `register capabilities via filesystem` rule. (b) introduces
+          a YAML dependency in the checker, more authoritative but
+          slower to evolve.
+        recommended: "(a) os.ReadDir"
+    deferred_impact:
+      - "Until PR2-1 ships, the PR2 graph emission cannot be enforced — operators rely on PR1 counts as a smoke signal only."
+      - "Until PR2-2 ships, scripts/archcheck/imports.go stays dead; future code reviewers will keep flagging it."
+      - "Until PR2-3 ships, adding a new application/<capN>/ requires a manual entry in applicationCapabilities() — silent under-detect if forgotten."
+    exit_gate_PR2: |
+      PR2-1 + PR2-2 + PR2-3 all green AND the ratchet subtracts from
+      `docs/migrations/application-infrastructure-imports-allowlist.txt`
+      and `docs/migrations/cross-capability-imports-allowlist.txt`
+      (initial content TBD by operators with PR1 counts as starting
+      reference baseline) AND CI strict-mode exit code stays 0.
+
+
 # ── Post-cascade operational followups (June 2026) ─────────────────────────
 
 post_cascade_followups:
