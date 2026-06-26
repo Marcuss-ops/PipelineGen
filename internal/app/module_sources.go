@@ -66,7 +66,7 @@ type ArtlistWiring struct {
 func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
 	// vectorStore arg removed from this service constructor.
 	artlistLifecycle := wireArtlistLifecycle(bundle, log)
-	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
+	_, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
 	assetDestResolver := wireAssetDestinationResolver(cfg, bundle, log)
 	presetsConfig, _ := artlistPkg.LoadPresets("config/artlist_presets.yaml")
 	if presetsConfig == nil {
@@ -125,8 +125,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err
 	}
-	clipResolver := wireClipResolver(cfg, bundle, clipCatalogRepo, presetsConfig, log)
-	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
+	handler := wireArtlistHandler(cfg, artlistSvc, bundle, log)
 	var mod api.Module
 	if artlistSvc != nil && handler != nil {
 		mod = api.NewRouteModule(
@@ -142,17 +141,9 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	return &ArtlistWiring{Handler: handler, Module: mod, Service: artlistSvc}, nil
 }
 
-func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bundle *ArtlistBundle, clipResolver interface{}, log *zap.Logger) *artsources.ArtlistHandler {
+func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bundle *ArtlistBundle, log *zap.Logger) *artsources.ArtlistHandler {
 	if artlistSvc == nil {
 		return nil
-	}
-	// The clipresolver package was removed from remote (commit
-	// d61068b3). wireClipResolver returns nil typed as interface{}. The ArtlistHandler constructor expects a typed
-	// ClipResolverPort; perform a safe type assertion so the typed nil
-	// is forwarded (handler stays nil-tolerant and short-circuits).
-	var resolver artsources.ClipResolverPort
-	if val, ok := clipResolver.(artsources.ClipResolverPort); ok {
-		resolver = val
 	}
 	// Wrap `*config.Config` in the typed `ArtlistConfigPort` (defined in
 	// internal/application/assets/providers/artlist/ports.go) so the api
@@ -161,7 +152,7 @@ func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bund
 	// the handler's `if h.cfg != nil` discipline if any caller adds a
 	// short-circuit path.
 	cfgPort := newArtlistConfigAdapter(cfg)
-	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, resolver, "node-scraper", log, cfgPort)
+	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, "node-scraper", log, cfgPort)
 }
 
 func wireArtlistLifecycle(bundle *ArtlistBundle, log *zap.Logger) *lifecycle.Service {
@@ -176,15 +167,6 @@ func wireAssetDestinationResolver(cfg *config.Config, bundle *ArtlistBundle, log
 		return drive.NewDestinationResolver(mediaStore)
 	}
 	return nil
-}
-
-func wireClipResolver(cfg *config.Config, bundle *ArtlistBundle, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, log *zap.Logger) interface{} {
-	_ = cfg
-	_ = bundle
-	_ = clipCatalogRepo
-	_ = presetsConfig
-	_ = log
-	return nil // clipresolver package removed from remote
 }
 
 // wireArtlistService composes the artlist service via ServiceDeps (PR2.5+PR2.7).
