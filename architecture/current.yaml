@@ -271,7 +271,7 @@
 # violations → CI stays green). PR2+ promote selected edges to hard gates
 # via the existing ratchet mechanism (subtractSet vs allowlist per edge family).
 - id: 19
-  title: Dependency Direction & consumer-owned ports (Vocabulary: capabilities/kernel/platform)
+  title: "Dependency Direction & consumer-owned ports (Vocabulary: capabilities/kernel/platform)"
   status: in_progress
   verified_zero: false
   description: |
