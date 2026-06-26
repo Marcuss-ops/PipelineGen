@@ -200,7 +200,7 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 		if opts.Limit > 0 && result.PointsScanned >= opts.Limit {
 			break
 		}
-		page, err := r.client.ScrollPoints(ctx, opts.Collection, offset, batch)
+		page, err := r.client.ScrollPoints(ctx, opts.Collection, offset, batch, nil)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("scroll: %v", err))
 			break

@@ -344,6 +344,8 @@ type AssetData struct {
 	TranscriptVector []float32 `json:"-"`
 	VisualVector     []float32 `json:"-"`
 	AudioVector      []float32 `json:"-"`
+	LifecycleState string                 `json:"lifecycle_state,omitempty"`
+	ContentHash     string                 `json:"content_hash,omitempty"`
 }
 
 // AssetStore is the interface the PayloadMapper needs to fetch asset data.

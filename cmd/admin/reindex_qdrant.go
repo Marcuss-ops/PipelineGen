@@ -251,7 +251,7 @@ func runReindexQdrant(args []string) error {
 	// closure the admin CLI passed `nil`, so the dead-letter gate was
 	// trivially satisfied (any count === 0 → Ready=true).
 	deadLetter := qdrant.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB.DB))
-	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, log)
+	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, nil, log)
 	report, verifyErr := verifier.VerifyReindex(ctx, targetCollection, reindexResult.IndexedAssets)
 	if verifyErr != nil {
 		// The verifier returns an error when critical infrastructure

@@ -176,7 +176,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	const maxScrolls = 400
 	scrolled := 0
 	for i := 0; i < maxScrolls; i++ {
-		pageResult, scrollErr := r.client.ScrollPoints(ctx, target, offset, page)
+		pageResult, scrollErr := r.client.ScrollPoints(ctx, target, offset, page, nil)
 		if scrollErr != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("scroll page %d: %v", i, scrollErr))
 			break

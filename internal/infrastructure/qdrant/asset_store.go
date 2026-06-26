@@ -207,3 +207,15 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 	}
 	return ids, rows.Err()
 }
+
+
+// ListAssetsForReconcile returns the minimum asset payload needed by the admin-side
+// `cmd/admin/reconcile_qdrant.go` reconcile dry-run. Originally stubbed at QDRANT-005
+// closure with (nil, nil) — this made the caller silently produce empty reconcile
+// output. Replaced here (June 2026) with an explicit not-implemented error so a
+// misconfigured reconciler fails LOUDLY rather than pretending to reconcile 0
+// assets. Wire a real SELECT against media_assets (filtered by includeLifecycleStates)
+// BEFORE enabling production reconcile jobs.
+func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLifecycleStates []string) ([]AssetData, error) {
+	return nil, fmt.Errorf("ListAssetsForReconcile: wired as build-time placeholder only (QDRANT-005); reconcile jobs must implement the SQL scan before being enabled — requested lifecycleStates=%v", includeLifecycleStates)
+}

@@ -625,3 +625,78 @@ func (c *Client) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("qdrant HTTP %d: %s", resp.StatusCode, string(body))
 }
+
+// OverwritePayload merges key/value pairs into existing point payloads WITHOUT altering their vectors.
+// Uses Qdrant REST PUT /collections/{name}/points/payload?wait=true.
+func (c *Client) OverwritePayload(ctx context.Context, collection string, points []PointPayload) error {
+	if len(points) == 0 {
+		return nil
+	}
+	body := map[string]interface{}{"points": points}
+	url := fmt.Sprintf("%s/collections/%s/points/payload?wait=true", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPut, url, body)
+	if err != nil {
+		return fmt.Errorf("overwrite payload on %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return c.parseError(resp)
+	}
+	return nil
+}
+
+// CreateSnapshot creates a snapshot of the named collection (Qdrant REST POST /collections/{name}/snapshots).
+// Returns the canonical SnapshotDescription parsed from Qdrant's {"result": {...}} envelope.
+func (c *Client) CreateSnapshot(ctx context.Context, collection string) (*SnapshotDescription, error) {
+	url := fmt.Sprintf("%s/collections/%s/snapshots", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create snapshot for %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, c.parseError(resp)
+	}
+	var out struct {
+		Result SnapshotDescription `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode snapshot for %q: %w", collection, err)
+	}
+	return &out.Result, nil
+}
+
+// ListSnapshots enumerates snapshots of the named collection (Qdrant REST GET /collections/{name}/snapshots).
+func (c *Client) ListSnapshots(ctx context.Context, collection string) ([]SnapshotDescription, error) {
+	url := fmt.Sprintf("%s/collections/%s/snapshots", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("list snapshots for %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(resp)
+	}
+	var out struct {
+		Result []SnapshotDescription `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode snapshots for %q: %w", collection, err)
+	}
+	return out.Result, nil
+}
+
+// RestoreSnapshot restores the collection from a snapshot URL (Qdrant REST PUT /collections/{name}/snapshots/restore).
+func (c *Client) RestoreSnapshot(ctx context.Context, collection string, snapshotURL string) error {
+	body := map[string]interface{}{"location": snapshotURL}
+	url := fmt.Sprintf("%s/collections/%s/snapshots/restore", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPut, url, body)
+	if err != nil {
+		return fmt.Errorf("restore snapshot for %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return c.parseError(resp)
+	}
+	return nil
+}
