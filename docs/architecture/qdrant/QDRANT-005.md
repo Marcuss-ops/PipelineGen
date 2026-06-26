@@ -1,242 +1,211 @@
 # QDRANT-005 — health truth, reconciler, observability e disaster recovery
 
 > **Stato:** `BLOCKED / PHASE 1 PARZIALE`  
-> **Audit baseline:** `main@c72949a362656f05222f333adf67b1b0eee973ae` — 26 giugno 2026  
-> **Owner suggerito:** Qdrant operations + health/readiness + outbox reconciliation  
-> **Branch suggeriti:**
-> - `codex/qdrant-005a-health-readiness`
-> - `codex/qdrant-005b-reconciler`
-> - `codex/qdrant-005c-observability-dr`
+> **Audit baseline:** `main@e20d5e7fc4afd9f446d9d9e92703db639008b37f` — 26 giugno 2026  
+> **Tipo verifica:** audit statico; nessuna esecuzione CI associata all'HEAD.
 
 ## OBIETTIVO
 
-Rendere SQLite, outbox e Qdrant verificabili e riparabili senza affidarsi a confronti numerici superficiali o procedure manuali.
+Rendere SQLite, outbox e Qdrant verificabili, osservabili, riparabili e recuperabili senza confronti numerici superficiali o procedure manuali non testate.
 
 Il ticket completo comprende:
 
 1. health e readiness veritiere;
-2. reconciler batch ID/version/payload;
-3. repair attraverso il percorso canonico outbox;
-4. metriche e alert operativi;
-5. snapshot, restore e rollback verificati;
-6. pulizia dei payload/point legacy;
-7. smoke golden-query e filter matrix usati dal reindex gate.
+2. reconciler ID/version/payload/lifecycle;
+3. repair tramite outbox canonico;
+4. metriche e alert;
+5. cleanup legacy;
+6. snapshot, restore e rollback verificati;
+7. golden query e filter matrix usati dal gate reindex.
 
-## STATO REALE
+## COMPLETATO NELLA PHASE 1
 
-### Completato nella Phase 1
+- esistono `health.QdrantChecker` e `qdrant.HealthProbe`;
+- il lifecycle può ricevere un probe Qdrant;
+- il probe supporta `X-Api-Key` quando il client contiene la chiave;
+- `/health` e `/ready` hanno integrazioni dedicate;
+- la diagnostica espone count SQLite, Qdrant e outbox.
 
-- esiste `internal/infrastructure/health/QdrantChecker` per `/health?check=qdrant`;
-- esiste `internal/infrastructure/qdrant/HealthProbe` per la readiness barrier;
-- `LifecycleManager` espone `AddProbe` come metodo tipizzato;
-- `cmd/server/main.go` registra il probe Qdrant quando presente;
-- i probe usano client HTTP dedicati con timeout;
-- `HealthProbe` supporta `X-Api-Key` quando il client Qdrant contiene una chiave;
-- la diagnostica index-health espone alcuni count SQLite/outbox/Qdrant.
+## BLOCKER PHASE 1
 
-### Blocker Phase 1
+### 1. API key non propagata
 
-1. **API key non propagata al health checker.** `buildHealthService` costruisce `NewQdrantChecker(cfg.Qdrant.BaseURL, "", true)`.
-2. **API key non propagata al client readiness.** `BuildProcessBundle` costruisce `qdrant.Config` con BaseURL e Timeout, ma non copia `cfg.Qdrant.APIKey`.
-3. **Probe dipendente dal ClipIndexer.** Qdrant client e probe vengono creati soltanto con `cfg.Qdrant.Enabled && clipIndexerService.IsEnabled()`. Se Qdrant è abilitato ma ClipIndexer no, la readiness può non controllarlo.
-4. **Health e readiness duplicano client/probe.** Esistono due implementazioni HTTP separate; il rischio di drift su auth, timeout e semantica è già visibile.
-5. **Nessuna prova CI remota verde sull'HEAD auditato.** I gate operativi restano da rendere obbligatori.
+- `buildHealthService` costruisce il checker con API key vuota;
+- `BuildProcessBundle` costruisce `qdrant.Config` senza `cfg.Qdrant.APIKey`;
+- `cmd/admin reindex-qdrant` omette la stessa API key.
 
-### Funzionalità ancora assenti
+Il supporto header esiste nei client, ma il composition root non gli consegna il valore.
 
-- reconciler che confronta set reali di asset/point;
-- confronto `asset_id`, canonical point ID, `source_version`, `index_version`, embedding versions e lifecycle;
-- repair attraverso dispatcher/outbox;
-- dead-letter integration nel reindex verifier;
+### 2. Readiness accoppiata al ClipIndexer
+
+Client, searcher, collection manager e health probe Qdrant vengono creati soltanto quando:
+
+```go
+cfg.Qdrant.Enabled && clipIndexerService.IsEnabled()
+```
+
+Qdrant può quindi essere abilitato ma non controllato da readiness quando ClipIndexer è disabilitato.
+
+### 3. Due implementazioni health divergenti
+
+`internal/infrastructure/health/QdrantChecker` e `internal/infrastructure/qdrant/HealthProbe` duplicano HTTP client, timeout, auth e semantica. Il drift sulla API key dimostra che la duplicazione è già pericolosa.
+
+### 4. Diagnostica count-only
+
+`diagIndexHealthAdapter` deduce missing/orphan dalla differenza tra count SQLite e Qdrant. Due set con lo stesso numero di elementi ma ID diversi risultano erroneamente sani.
+
+## FUNZIONALITÀ ANCORA ASSENTI
+
+- reconciler che confronta gli insiemi reali di asset e point;
+- verifica canonical point ID;
+- confronto workspace, lifecycle, source/index version e versioni embedding per canale;
+- rilevazione `status`/`lifecycle_state` drift;
+- repair tramite dispatcher/outbox;
+- cleanup payload `drive_link`/`local_path`;
+- cleanup point orphan o di asset cancellati;
+- dead-letter checker obbligatorio nel reindex;
 - golden query runner;
 - filter matrix runner;
-- cleanup dei payload legacy `drive_link`/`local_path`;
-- stale-link/deleted-point cleaner completo;
 - metriche complete e alert;
-- backup/snapshot, restore e test di rollback;
-- retention automatica e verificabile delle collection precedenti.
+- snapshot Qdrant, restore su collection separata e rollback testato;
+- retention automatica delle collection precedenti;
+- gate QDRANT specifici nella CI.
 
-## SCOMPOSIZIONE CONSIGLIATA
-
-## QDRANT-005A — Health e readiness veritiere
-
-### Task
-
-- propagare `cfg.Qdrant.APIKey` a health checker e `qdrant.Client`;
-- costruire il probe quando `Qdrant.Enabled=true`, indipendentemente dal ClipIndexer;
-- avere una sola implementazione canonica del probe HTTP o un adapter condiviso;
-- distinguere chiaramente:
-  - capability disabilitata -> `applicable=false`;
-  - capability abilitata ma non configurata -> unhealthy;
-  - API key errata -> unhealthy con errore osservabile;
-  - Qdrant irraggiungibile -> readiness 503;
-- aggiungere test con Qdrant fake per 200, 401, 500, timeout e base URL mancante.
-
-### Definition of Done 005A
-
-- `qdrant.enabled=true` implica sempre un probe readiness reale;
-- l'API key configurata viene inviata da health e readiness;
-- `/health?check=qdrant` e `/ready` concordano sullo stato;
-- nessun probe è silently skipped per dipendenze non correlate.
-
-## QDRANT-005B — Reconciler e repair canonico
+## QDRANT-005A — HEALTH E READINESS
 
 ### Task
 
-Creare un use case batch che legga SQLite come authority e scorra Qdrant per confrontare:
+- propagare `cfg.Qdrant.APIKey` a checker, client runtime e client admin;
+- costruire il client/probe quando `Qdrant.Enabled=true`, indipendentemente dal ClipIndexer;
+- consolidare health e readiness su un client/probe comune;
+- distinguere capability disabled, misconfigured, unauthorized, unreachable e healthy;
+- testare 200, 401, 500, timeout e base URL mancante.
+
+### DoD 005A
+
+- Qdrant abilitato implica sempre un probe reale;
+- health e readiness concordano;
+- API key viene inviata;
+- nessun controllo viene silently skipped.
+
+## QDRANT-005B — RECONCILER E REPAIR
+
+### Confronto minimo
 
 ```text
-SQLite asset ID
+SQLite asset_id
+Qdrant payload.asset_id
 canonical Qdrant point ID
 workspace_id
-lifecycle_state / deleted_at
+lifecycle_state/status
+deleted_at
 source_version
 index_version
 embedding_version_<channel>
 payload minimum
+locator legacy
 ```
 
-Classificazioni minime:
+### Classificazioni
 
-- missing in Qdrant;
-- orphan in Qdrant;
+- missing;
+- orphan;
 - point ID non canonico;
 - payload incompleto;
-- versione stale;
 - workspace mismatch;
 - lifecycle mismatch;
-- locator legacy presente.
+- versione stale;
+- locator legacy;
+- chiave lifecycle legacy.
 
-Repair richiesto:
+### Repair
 
-- missing/stale -> evento outbox canonico di reindex;
-- deleted/orphan -> evento outbox canonico di delete o cleanup controllato;
-- nessuna scrittura diretta che bypassa dispatcher/outbox;
-- dry-run obbligatorio di default;
-- batch size, cursor/checkpoint, retry e idempotenza;
+- dry-run di default;
+- missing/stale -> evento outbox di reindex;
+- orphan/deleted -> evento outbox di delete o cleanup controllato;
+- nessuna mutazione Qdrant diretta fuori dai port autorizzati;
+- cursor/checkpoint, retry, batch size e idempotenza;
 - report JSON machine-readable.
 
-### Definition of Done 005B
+### DoD 005B
 
-- due insiemi con lo stesso count ma ID differenti risultano degraded;
-- repair è idempotente;
+- stesso count con ID diversi produce degraded;
 - una seconda esecuzione dopo repair produce zero drift;
-- workspace e versioni fanno parte del confronto;
-- il reconciler non modifica Qdrant direttamente fuori dai port autorizzati.
+- repair è idempotente e passa da outbox;
+- scan parziale non può cancellare dati.
 
-## QDRANT-005C — Observability, cleanup e disaster recovery
+## QDRANT-005C — OBSERVABILITY E DISASTER RECOVERY
 
 ### Metriche minime
 
 - outbox pending/processing/dead-letter/superseded;
 - oldest pending age;
-- indexing latency e failure rate;
-- Qdrant points per collection/alias;
-- missing/orphan/version mismatch/payload issue;
-- last successful reconcile timestamp;
-- reconcile duration e repaired count;
+- indexing latency/failure;
+- points per collection e alias;
+- missing/orphan/version/payload/lifecycle mismatch;
+- last reconcile, duration e repaired count;
 - health/readiness failures per causa;
-- alias switch success/failure;
-- stale locator cleanup count.
+- alias switch e rollback;
+- payload legacy ripuliti.
 
-### Backup e restore
+### Snapshot e restore
 
-- creare snapshot della collection fisica prima di promozione o cleanup distruttivo;
-- registrare alias target, schema version e snapshot ID;
-- documentare e automatizzare restore su collection separata;
-- validare restore con lo stesso verifier del reindex;
-- switch alias soltanto dopo verifica;
-- testare rollback verso collection precedente.
-
-### Cleanup
-
-- eliminare payload legacy `drive_link`/`local_path`;
-- rimuovere point per asset soft-deleted/trashed;
-- non cancellare point non verificati quando lo scroll è parziale;
-- produrre audit log e metriche.
+- snapshot prima di promozione o cleanup distruttivo;
+- registrazione alias target, schema version e snapshot ID;
+- restore su collection separata;
+- verifica restore con lo stesso verifier del reindex;
+- switch soltanto dopo gate verdi;
+- rollback automatico/testato verso il target precedente.
 
 ## LEGACY DA ELIMINARE
 
-| Legacy | Dove | Azione richiesta |
+| Legacy | Dove | Azione |
 |---|---|---|
-| health checker con API key vuota | `internal/app/build_bundles_core.go` | propagare config reale |
-| client Qdrant readiness senza API key | `internal/app/build_bundles_process.go` | propagare `cfg.Qdrant.APIKey` |
-| probe creato solo se ClipIndexer è enabled | process bundle | separare capability Qdrant da ClipIndexer |
-| due probe HTTP che possono divergere | `internal/infrastructure/health` e `internal/infrastructure/qdrant` | consolidare o condividere client/contract |
-| diagnostica basata principalmente sui count | index health adapter/report | confrontare ID, versioni e payload |
-| dead-letter checker `nil` nel reindex | `cmd/admin/reindex_qdrant.go` | iniettare port reale |
-| golden/filter flag placeholder | `internal/infrastructure/qdrant/verifier.go` | runner reali |
-| payload legacy con locator | collection storiche | reconciler/cleanup |
-| retention collection soltanto advisory | config/runbook | stato persistito e job verificabile |
-| snapshot/restore manuali o assenti | operations | automazione e test restore |
-| gate descritti ma non richiesti dalla CI | CI | promuovere a required checks |
+| checker con API key vuota | core bundle | propagare config |
+| runtime/admin client senza API key | process/admin | propagare config |
+| probe dipendente dal ClipIndexer | process bundle | separare capability |
+| doppio probe HTTP | health + qdrant | consolidare |
+| diagnostica count-only | assets adapters | confrontare set reali |
+| dead-letter opzionale | verifier/admin | renderla obbligatoria |
+| golden/filter placeholder | verifier | runner reali |
+| assenza reconciler | application/infra | implementare use case |
+| payload locator e chiave lifecycle legacy | collection storiche | cleanup idempotente |
+| retention advisory | config/operations | job e stato verificabili |
+| snapshot/restore assenti | operations | automazione e test |
+| gate solo Markdown | CI | required checks |
 
 ## DEFINITION OF DONE COMPLETA
 
-QDRANT-005 può essere marcato `CLOSED` soltanto quando **005A, 005B e 005C sono tutte chiuse** e:
+QDRANT-005 può essere marcato `CLOSED` soltanto quando 005A, 005B e 005C sono tutte chiuse e:
 
-- health/readiness usano configurazione e autenticazione reali;
-- Qdrant abilitato non può essere dichiarato ready senza probe;
+- health/readiness usano auth e config reali;
+- Qdrant abilitato non può risultare ready senza probe;
 - reconciler confronta set, identità, workspace, lifecycle e versioni;
-- repair passa dal percorso outbox canonico;
+- repair usa il percorso outbox canonico;
 - dead-letter, golden query e filter matrix bloccano alias switch;
 - metriche e alert coprono drift e backlog;
-- cleanup dei locator legacy è operativo;
-- snapshot, restore e rollback sono stati eseguiti in test;
-- una procedura automatizzata dimostra recupero completo da collection corrotta o alias errato;
-- i gate sono eseguiti dalla CI e non soltanto documentati.
+- cleanup legacy è operativo e idempotente;
+- snapshot, restore e rollback sono stati realmente testati;
+- la CI esegue tutti i gate.
 
-## GATE ANTI-REGRESSIONE
+## GATE MINIMO
 
 ```bash
 set -euo pipefail
 
-# La API key deve essere propagata ai due percorsi.
-rg -n 'APIKey:\s*cfg\.Qdrant\.APIKey|NewQdrantChecker\([^\n]*cfg\.Qdrant\.APIKey' \
-  internal/app
-
-# Il probe non deve dipendere dall'abilitazione del ClipIndexer.
-! rg -n 'cfg\.Qdrant\.Enabled\s*&&\s*clipIndexerService\.IsEnabled\(\)' \
-  internal/app/build_bundles_process.go
-
-# Nessun placeholder positivo nel verifier.
-! rg -n 'GoldenQueriesOK:\s*true|FiltersOK:\s*true' \
-  internal/infrastructure/qdrant/verifier.go
-
-# Reconciler e report devono esistere e avere test.
+rg -n 'APIKey:\s*cfg\.Qdrant\.APIKey|NewQdrantChecker\([^\n]*cfg\.Qdrant\.APIKey' internal/app cmd/admin
+! rg -n 'cfg\.Qdrant\.Enabled\s*&&\s*clipIndexerService\.IsEnabled\(\)' internal/app/build_bundles_process.go
+! rg -n 'GoldenQueriesOK:\s*true|FiltersOK:\s*true' internal/infrastructure/qdrant/verifier.go
 rg -n 'type .*Reconciler|func .*Reconcile' internal/application internal/infrastructure/qdrant
-rg -n 'MissingCount|OrphanCount|VersionMismatch|PayloadIssues' \
-  internal/application internal/infrastructure/qdrant
-
-# Test health/readiness/reconcile/restore.
-go test ./internal/application/system/health/... \
-  ./internal/infrastructure/health/... \
-  ./internal/infrastructure/qdrant/... \
-  ./internal/app/... \
-  -count=1
+go test ./internal/application/system/health/... ./internal/infrastructure/health/... ./internal/infrastructure/qdrant/... ./internal/app/... -count=1
 ```
-
-## TEST MINIMI DA AGGIUNGERE
-
-- health/readiness con API key corretta e errata;
-- Qdrant enabled + ClipIndexer disabled;
-- timeout e HTTP non-200;
-- stesso count ma ID set differenti;
-- point ID non canonico;
-- workspace/lifecycle/version mismatch;
-- dry-run reconciler senza mutazioni;
-- repair idempotente tramite outbox;
-- dead-letter > 0 blocca reindex;
-- golden query e filter smoke falliti;
-- payload locator legacy rilevato e rimosso;
-- snapshot creato, restore verificato e alias rollback riuscito.
 
 ## NON CHIUDERE SE
 
-- viene dichiarata chiusa soltanto la Phase 1;
-- health funziona senza API key mentre il Qdrant reale la richiede;
-- il reconciler confronta solo i count;
-- il repair scrive direttamente in Qdrant bypassando outbox;
-- golden query, filter smoke o dead-letter sono placeholder;
-- restore e rollback esistono solo come runbook non testato;
-- i gate non sono required checks della CI.
+- è completa soltanto la Phase 1;
+- Qdrant protetto da API key appare unhealthy per wiring incompleto;
+- il reconciler confronta soltanto count;
+- repair scrive direttamente in Qdrant;
+- golden/filter/dead-letter sono opzionali o placeholder;
+- restore e rollback esistono soltanto come runbook;
+- i gate non sono required checks.
