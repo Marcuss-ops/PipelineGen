@@ -26,16 +26,32 @@ import (
 type ReindexVerifier struct {
 	client     *Client
 	assetStore AssetStore
-	deadLetter DeadLetterChecker // nil = skip dead‑letter check
+	deadLetter DeadLetterChecker        // nil = skip dead-letter check
+	schema     *IndexSchema             // canonically the schema under reindex; nil = skip per-channel version check
 	log        *zap.Logger
 }
 
-// NewReindexVerifier creates a verifier. deadLetter may be nil.
-func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLetterChecker, log *zap.Logger) *ReindexVerifier {
+// NewReindexVerifier creates a verifier. deadLetter may be nil (legacy
+// admin CLIs). schema MAY be nil only for tests that exercise gates
+// unrelated to per-channel embedding versioning; production wire paths
+// (cmd/admin/reindex_qdrant.go, BuildOutboxBundle) MUST supply non-nil
+// schema so the per-channel version check fires.
+//
+// QDRANT-003 (June 2026) closure — second-pass extension: per-channel
+// embedding version check. The schema's EmbeddingSpec.ModelVersion is
+// the canonical per-channel target; the verifier surfaces mismatches in
+// report.VersionMismatchPerChannel so operators can see which channel's
+// model output drifted from the manifest.
+//
+// Breaking signature change: the production caller is
+// internal/cmd/admin/reindex_qdrant.go (single callsite as of June
+// 2026). Test fixtures do not construct ReindexVerifier directly.
+func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLetterChecker, schema *IndexSchema, log *zap.Logger) *ReindexVerifier {
 	return &ReindexVerifier{
 		client:     client,
 		assetStore: assetStore,
 		deadLetter: deadLetter,
+		schema:     schema,
 		log:        log,
 	}
 }
@@ -54,6 +70,7 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		ExpectedPoints:   expectedPoints,
 		GoldenQueriesOK:  true, // TODO QDRANT-005: wire golden‑query smoke runner
 		FiltersOK:        true, // TODO QDRANT-005: wire filter smoke runner
+		VersionMismatchPerChannel: make(map[string]int),
 	}
 
 	// ── Gate 1: Point count parity ────────────────────────────────
@@ -129,8 +146,61 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 			// Gate 4: Embedding version check (sample-based: first 1000 points).
 			// Full-scan would be O(n) per field; the first two pages (1000 pts)
 			// give a representative sample for fast feedback.
+			//
+			// QDRANT-003 (June 2026) per-channel closure: the global
+			// embedding_version check (legacy schema-version emission) AND
+			// the per-channel embedding_version_<channel> check
+			// (payload_mapper.go writes from EmbeddingSpec.ModelVersion)
+			// share a single pointMismatched latch — a single point that
+			// fails either check bumps VersionMismatch EXACTLY once.
+			// Per-channel counter increments per channel normally; the
+			// global gate stays a per-point count semantics.
 			if iteration < 2 {
-				if ver, ok := pt.Payload["embedding_version"].(string); !ok || ver != CurrentEmbeddingVersion {
+				pointMismatched := false
+
+				// (a) Legacy global check: if the point carries a
+				// global embedding_version and it disagrees with
+				// CurrentEmbeddingVersion, the point is mismatched.
+				// Absence here is neutral — the per-channel loop below
+				// owns legacy-fallback semantics.
+				if gv, ok := pt.Payload["embedding_version"].(string); ok && gv != "" && gv != CurrentEmbeddingVersion {
+					pointMismatched = true
+				}
+
+				// (b) Per-channel check: each channel's payload
+				// ["embedding_version_<channel>"] must equal the
+				// schema's EmbeddingSpec.ModelVersion. Channels
+				// without a per-channel key on the point fall back to
+				// the legacy global embedding_version — accept the
+				// point if the global matches CurrentEmbeddingVersion,
+				// otherwise mark the channel-mismatch.
+				if v.schema != nil {
+					for _, spec := range v.schema.DenseVectors {
+						if spec.ModelVersion == "" {
+							// Channel has no canonical model version in
+							// the schema; cannot compare. Skip.
+							continue
+						}
+						key := fmt.Sprintf("embedding_version_%s", spec.Channel)
+						actual, present := pt.Payload[key].(string)
+						if !present {
+							// Legacy fallback: the global embedding_version
+							// must match CurrentEmbeddingVersion when a
+							// channel is missing its per-channel key.
+							if gv, ok := pt.Payload["embedding_version"].(string); !ok || gv != CurrentEmbeddingVersion {
+								report.VersionMismatchPerChannel[spec.Channel]++
+								pointMismatched = true
+							}
+							continue
+						}
+						if actual != spec.ModelVersion {
+							report.VersionMismatchPerChannel[spec.Channel]++
+							pointMismatched = true
+						}
+					}
+				}
+
+				if pointMismatched {
 					report.VersionMismatch++
 				}
 			}

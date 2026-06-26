@@ -406,11 +406,21 @@ type SwitchReport struct {
 	OrphanIDs        []string `json:"orphan_ids,omitempty"`
 	PayloadIssues    int      `json:"payload_issues"`
 	VersionMismatch  int      `json:"version_mismatch"`
-	GoldenQueriesOK  bool     `json:"golden_queries_ok"`
-	FiltersOK        bool     `json:"filters_ok"`
-	DeadLetterOpen   int      `json:"dead_letter_open"`
-	Ready            bool     `json:"ready"`
-	Errors           []string `json:"errors,omitempty"`
+	// VersionMismatchPerChannel (QDRANT-003, June 2026, "versioni embedding
+	// per canale") breaks the global VersionMismatch counter down by
+	// vector channel. Key is the channel name (e.g. "text", "visual",
+	// "audio", "transcript"); value is the count of sampled points whose
+	// payload["embedding_version_<channel>"] does NOT match the schema's
+	// EmbeddingSpec.ModelVersion AND were not rescued by the
+	// legacy-global-fallback (see verifier.go). Empty map means: every
+	// point carried the expected per-channel model version (or the legacy
+	// global fallback honoured the global schema version).
+	VersionMismatchPerChannel map[string]int `json:"version_mismatch_per_channel,omitempty"`
+	GoldenQueriesOK           bool           `json:"golden_queries_ok"`
+	FiltersOK                 bool           `json:"filters_ok"`
+	DeadLetterOpen            int            `json:"dead_letter_open"`
+	Ready                     bool           `json:"ready"`
+	Errors                    []string       `json:"errors,omitempty"`
 }
 
 // ScrollResult holds a page of scrolled points and the next offset.
