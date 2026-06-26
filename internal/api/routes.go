@@ -17,7 +17,6 @@ import (
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
 	"go.uber.org/zap"
 )
 
@@ -287,7 +286,14 @@ func (r *Router) Setup() *gin.Engine {
 		}
 	}
 
-	internalGroup := engine.Group(remoteshared.InternalPathPrefix)
+		// QDRANT-002 + QDRANT-004 (June 2026): the internal-worker-broker
+	// prefix is "/internal/v1" — historically `remoteshared.InternalPathPrefix`.
+	// The Wave 14 PR5 cleanup hardcodes it here so internal/api stops
+	// importing internal/infrastructure/remote/shared (a transport concern,
+	// not a capability concern). Anti-regression test
+	// internal/api/routes_test.go::TestRoutes_NoApiInternalV1Prefix enforces
+	// no /api/internal/v1/* route should ever leak.
+	internalGroup := engine.Group("/internal/v1")
 	internalGroup.Use(middleware.WorkerAuth(r.cfg.Auth, r.cfg.Log))
 	{
 		if r.workerHandler != nil {
