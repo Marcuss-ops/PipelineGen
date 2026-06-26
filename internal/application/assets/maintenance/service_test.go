@@ -109,11 +109,20 @@ func TestMaintenancePruning(t *testing.T) {
 	idxRepo := assetindex.NewRepository(db)
 	idxSvc := assetindex.NewService(idxRepo)
 
-	// Set up deletion service
+	// Set up deletion service.
+	//
+	// QDRANT-002 PR7 producer-migration compliance (June 2026):
+	// NewDeletionService now takes 10 args — the canonical outbox.
+	// Dispatcher is the 9th positional arg (immediately before the logger).
+	// The cleanup-only test exercises DataPruning + the registry walk
+	// paths via Service.RunCleanup; both are repo-only and never reach
+	// the DeleteClip dispatch branch, so a nil Dispatcher is safe
+	// (defense-in-depth check at deletion.DeleteClip remains nil-safe).
 	deletionSvc := deletion.NewDeletionService(
 		nil, nil, nil, nil, nil, nil,
 		treeSvc,
 		idxSvc,
+		nil, // dispatcher (QDRANT-002 PR7)
 		logger,
 	)
 

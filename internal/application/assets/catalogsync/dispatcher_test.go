@@ -62,8 +62,14 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	// Direct single-repo dispatcher for the test — production wiring uses
 	// MultiClipsUpserter; single-repo is the simpler primitive that proves
-	// atomic upsert+enqueue without the routing layer in the way.
-	dispatcher := outbox.NewDispatcher(repo, outboxEventsRepo, txmgr, zap.NewNop())
+	// atomic upsert+enqueue without the routing layer in the way. The
+	// same *assets.ClipsRepository that implements ClipsUpserter also
+	// implements ClipsStateWriter (the two-method split is a Go-type
+	// partition, not a runtime one), so the production adapter idiom
+	// `outbox.ClipsStateWriter(repo)` works unchanged in test fixtures
+	// (closure of PR7 producer migration ticket item D).
+	stateWriter := outbox.ClipsStateWriter(repo)
+	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop())
 
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)
@@ -112,7 +118,11 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	repo := assets.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
-	dispatcher := outbox.NewDispatcher(repo, outboxEventsRepo, txmgr, zap.NewNop())
+	// Same dual-role adapter pattern as the dispatcher_path test:
+	// ClipsStateWriter + ClipsUpserter split is a Go-type partition,
+	// the same concrete *assets.ClipsRepository implements both.
+	stateWriter := outbox.ClipsStateWriter(repo)
+	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop())
 
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)

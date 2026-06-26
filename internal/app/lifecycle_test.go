@@ -71,6 +71,15 @@ func (r *recorder) stepCallsOnly() []string {
 // newLifecycleForTest wires a serverLifecycle whose probes + startup steps
 // record invocations into rec. The plan is built from stepNames in order;
 // steps fire their Start closures synchronously (no goroutines).
+//
+// QDRANT-005 (June 2026) closure (lifecycle-runtime-ownership):
+// serverLifecycle no longer exposes fixed dbProbe/vectorProbe/driveProbe
+// fields — the readiness barrier is unified into a `probes []*probeEntry`
+// slice and probes are registered through `AddProbe(name, fn)`. The test
+// helper therefore routes each entry through AddProbe instead of direct
+// field assignment. The probe NAMES recorded by the test (dbProbe /
+// vectorProbe / driveProbe) are unchanged — they're just strings logged
+// into rec.calls, not field accesses.
 func newLifecycleForTest(plan []StartupStep, probes map[string]func(context.Context) error, cleanup func()) *serverLifecycle {
 	sl := &serverLifecycle{
 		startupPlan: plan,
@@ -78,9 +87,15 @@ func newLifecycleForTest(plan []StartupStep, probes map[string]func(context.Cont
 		log:         zap.NewNop(),
 	}
 	if probes != nil {
-		sl.dbProbe = probes["db"]
-		sl.vectorProbe = probes["vector"]
-		sl.driveProbe = probes["drive"]
+		if p := probes["db"]; p != nil {
+			sl.AddProbe("db", p)
+		}
+		if p := probes["vector"]; p != nil {
+			sl.AddProbe("vector", p)
+		}
+		if p := probes["drive"]; p != nil {
+			sl.AddProbe("drive", p)
+		}
 	}
 	return sl
 }
