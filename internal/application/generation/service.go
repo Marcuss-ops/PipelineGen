@@ -185,6 +185,29 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 	reg := NewRegistry()
 
 	_ = reg.Register(Definition{
+		Type:    domaingeneration.TypeScriptGenerate,
+		JobType: string(jobdomain.TypeClipScriptGenerate),
+		Enabled: scriptEnabled,
+		Validate: func(raw json.RawMessage) error {
+			var input ScriptSource
+			if err := json.Unmarshal(raw, &input); err != nil {
+				return err
+			}
+			if len(input.ClipIDs) == 0 && strings.TrimSpace(input.Topic) == "" && strings.TrimSpace(input.SourceText) == "" {
+				return fmt.Errorf("clip_ids, topic or source_text is required")
+			}
+			return nil
+		},
+		BuildJob: func(ctx context.Context, raw json.RawMessage, _ *Service) (any, error) {
+			var input ScriptSource
+			if err := json.Unmarshal(raw, &input); err != nil {
+				return nil, err
+			}
+			return input, nil
+		},
+	})
+
+	_ = reg.Register(Definition{
 		Type:    domaingeneration.TypeScriptFromClips,
 		JobType: string(jobdomain.TypeClipScriptGenerate),
 		Enabled: scriptEnabled,

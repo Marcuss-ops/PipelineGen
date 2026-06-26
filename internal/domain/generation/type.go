@@ -4,6 +4,7 @@ package generation
 type Type string
 
 const (
+	TypeScriptGenerate    Type = "script.generate"
 	TypeScriptFromClips   Type = "script.from_clips"
 	TypeScriptWithImages  Type = "script.with_images"
 	TypeScriptBatch       Type = "script.batch"
