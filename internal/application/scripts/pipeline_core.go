@@ -174,6 +174,15 @@ func NewPipelineUseCase(
 	}, nil
 }
 
+// defaultsString is a tiny inline default-coalesce that mirrors
+// pkg/defaults.String without taking the import in this file's path.
+func defaultsString(val, fallback string) string {
+	if val == "" {
+		return fallback
+	}
+	return val
+}
+
 // Run executes the full clip-source job. The caller (HandleJob or a
 // test) has already acquired a semaphore slot via SemaphoreUseCase
 // and started prewarm via PrewarmUseCase; this method owns phase 1

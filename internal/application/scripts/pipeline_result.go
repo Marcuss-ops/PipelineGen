@@ -91,11 +91,3 @@ func (pu *PipelineUseCase) buildFinalResult(
 	return out
 }
 
-// defaultsString is a tiny inline default-coalesce that mirrors
-// pkg/defaults.String without taking the import in this file's path.
-func defaultsString(val, fallback string) string {
-	if val == "" {
-		return fallback
-	}
-	return val
-}

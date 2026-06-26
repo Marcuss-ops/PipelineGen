@@ -1,0 +1,53 @@
+# PipelineGen — Target Tree Policy (Phase 0)
+# -----------------------------------------------------------------------------
+# Machine-readable rules governing the target structure documented in
+# ARCHITECTURE.md §11.5. Read by `go run ./cmd/archcheck` (stdlib parser, no
+# external dependencies). Hand-comments above each key are stripped at parse
+# time; the parser treats lines starting with `#` as comments and skips them.
+#
+# Phase 0 report-only (exits 0 even when violations exist). Phase N will
+# promote specific rules to hard gates via the `--strict` flag.
+
+# File size and population caps (per the proposal §"Package size limits").
+max_files_per_package: 40
+max_lines_per_file: 500
+cmd_main_max_lines: 200
+
+# Generic dumping-ground dirs forbidden as top-level package names
+# (per the proposal §"internal/capabilities").
+forbidden_top_level_dirs: service, repository, models, utils, helpers, common
+
+# Allowed kernel subzones (target: internal/kernel/<x>).
+# Types belong in kernel only when ≥2 real capabilities need the same
+# semantic contract (per proposal §"internal/kernel").
+kernel_subzones: asset, job, script, event, identity, errors
+
+# Expected capability slices (target: internal/capabilities/<x>).
+# Each owns module.go, contract.go, service.go, http.go, jobs.go,
+# events.go, repository.go, adapters.go per proposal §"internal/capabilities".
+capabilities: assets, artlist, youtube, scripts, images, voiceover, content, channels, jobs, system
+
+# Expected platform adapters (target: internal/platform/<x>). platform/sqlite
+# only owns connection/transactions/migration/pragma mechanics — capability
+# repositories own SQL for their tables (per proposal §"platform/sqlite").
+platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, observability, httpserver, ollama, nvidia, youtube
+
+# Internal roots that are valid today (current/legacy layout, per
+# scripts/archcheck/directories.go). cmd/archcheck treats unknown first-
+# level internal/ dirs as a warn violation (`unknown_internal_root` rule).
+legacy_internal_roots: api, app, application, domain, infrastructure
+
+# Target layout (Phase 6). cmd/archcheck treats the absence of any of
+# these as info-level in Phase 0 (the rule id appears in the report and
+# disappears once all are populated).
+target_internal_roots: app, kernel, capabilities, platform
+
+# Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each
+# entry is a free-form comment consumed by the human reviewer; the binary
+# only checks the structural rules above.
+known_grandfathered:
+  - "internal/application/scripts (32 files) — in_progress to capability/scripts split"
+  - "internal/application/images (20 files) — in_progress to capability/images split"
+  - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
+  - "internal/api (24 files in flat root + subdirs) — Wave 14 transport consolidation in_progress"
+  - "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
