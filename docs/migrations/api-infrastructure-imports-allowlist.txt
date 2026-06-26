@@ -136,10 +136,15 @@
 # ── Wave 14 grandfathered: api root files (PR5) ─────────────────────────────
 # W14-slice-1 (June 2026): module_core_modules.go and routes.go removed —
 # neither imports internal/infrastructure/ anymore (verified via grep).
-# Only server.go still imports internal/infrastructure/logging.
+# W14-slice-2 (June 2026): server.go removed — the `internal/infrastructure/
+# logging` import was replaced with `zap.L().Named("server")` calls, matching
+# the existing convention in routes.go (logger package-level aliases were a
+# pre-typed-port-cascade footprint that middleware PG-006 also removed).
+# All `internal/api/<root>.go` files now have zero in-tree infrastructure
+# imports; Check 19 hard-fail gate enforces the invariant going forward.
 # internal/api/module_core_modules.go     ← removed (stale — zero infra imports)
 # internal/api/routes.go                  ← removed (stale — zero infra imports)
-internal/api/server.go
+# internal/api/server.go                  ← removed (stale — zero infra imports after zap.L() cascade)
 
 # ── Wave 14 grandfathered: api/script orchestrator (PR3 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/script/{flow.go, handler_flow.go,
