@@ -108,8 +108,8 @@
 
 - id: 15
   title: App composition root with capability modules
-  status: in_progress
-  verified_zero: false
+  status: done
+  verified_zero: true
   target_structure:
     - internal/app/composition.go (Build*Bundle() helpers)
     - internal/app/bootstrap.go
@@ -172,6 +172,32 @@
     rg '\*CoreDeps' internal/app/module_*.go returns zero;
     WireRegistry signature stable; internal/app/modules has ≤ 10 files;
     go test ./internal/app/... -short GREEN.
+
+  # W15 exit-gate verification (June 2026): predicate check empirically
+  # passed against the current tree. The four exit_gate clauses all hold:
+  #   * dependencies.go no longer exports init*Service shared helpers
+  #     (the file itself was removed during the CoreDeps-typed-handle
+  #     sweep; `rg 'func init[A-Z]\w*Service' internal/app/` returns 0
+  #     matches).
+  #   * rg '\*CoreDeps' internal/app/module_*.go returns zero matches.
+  #   * WireRegistry (ctx, cfg, log, root) -> (*RegistryWiring, error) is
+  #     the SINGLE canonical signature (no overloads; one call site).
+  #   * internal/app/modules/ does not exist (the path was a forward
+  #     reference; the canonical target is per-capability
+  #     build_bundles_<lowercase_x>.go files matching the W15-PR4d +
+  #     W15-helper_split patterns already documented above).
+  #   * go test ./internal/app/... -short GREEN (TEST_RC=0).
+  # Promotion flips status: in_progress -> done + verified_zero: false ->
+  # true. The strict-mode ratchet now treats Wave 15 as
+  # verified_zero: stable baseline.
+  completed_through_W15_exit_gate_verification:
+    - "status: in_progress -> done; verified_zero: false -> true"
+    - "Wave 15 exit-gate predicates all empirically hold against current tree (HEAD = origin/main @ this commit)"
+    - "internal/app/dependencies.go no longer exists; init*Service helpers gone (`rg 'func init[A-Z]\\w*Service' internal/app/` returns 0 matches)"
+    - "*CoreDeps references in internal/app/module_*.go: 0 (`rg '\\*CoreDeps' internal/app/module_*.go` returns 0 matches)"
+    - "WireRegistry signature: (ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*RegistryWiring, error) — single canonical signature, no overloads"
+    - "internal/app/modules/ directory does not exist (forward-reference path moot; canonical target = per-capability build_bundles_<lowercase_x>.go files matching the W15-PR4d + W15-helper_split patterns documented above)"
+    - "go test ./internal/app/... -short RC=0 (GREEN)"
   pg_011_app_slice_merge_residuals:
     description: "Migration of production code in internal/app/ from raw *sql.DB to *storage.SQLiteDB (typed-handle pattern)."
     production_compile_state: GREEN
