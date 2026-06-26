@@ -1,56 +1,59 @@
 # QDRANT-002 — outbox atomico, writer unificati e route internal reali
 
-> **Stato:** `BLOCKED / DA RIAPRIRE`  
-> **Audit baseline:** `main@c72949a362656f05222f333adf67b1b0eee973ae` — 26 giugno 2026  
-> **Owner suggerito:** composition root + API routing + asset ingestion  
-> **Branch suggerito:** `codex/qdrant-002-outbox-cutover`
+> **Stato:** `BLOCKED / NON CHIUDIBILE`  
+> **Audit baseline:** `main@e20d5e7fc4afd9f446d9d9e92703db639008b37f` — 26 giugno 2026  
+> **Tipo verifica:** audit statico; nessuna prova CI verde associata all'HEAD.
 
 ## OBIETTIVO
 
-Garantire che ogni mutazione indicizzabile di `media_assets` avvenga nello stesso confine transazionale che crea l'evento outbox, e che gli endpoint operativi outbox siano montati esclusivamente su `/internal/v1/*` dietro `WorkerAuth`.
+Ogni mutazione indicizzabile di `media_assets` deve creare l'evento outbox nella stessa transazione. Gli endpoint outbox e mediasearch devono essere realmente montati su `/internal/v1/*` prima di `Router.Setup()` e protetti da `WorkerAuth`.
 
-Il ticket non è chiuso quando il dispatcher esiste: è chiuso quando nessun writer legacy è più eseguibile e il percorso HTTP production è realmente raggiungibile.
+## COMPLETATO
 
-## STATO REALE
+- esiste un `outbox.Dispatcher` canonico per UPSERT/DELETE atomici;
+- `UpdateClip` fallisce quando il dispatcher manca;
+- catalog sync e stock pipeline sono fail-closed sul dispatcher;
+- `/api/internal/v1/*` non viene registrato dal module registry;
+- retry, lease e dead-letter hanno infrastruttura dedicata.
 
-### Completato
+## BLOCKER ATTUALI
 
-- esiste un `outbox.Dispatcher` canonico per UPSERT/DELETE + evento outbox;
-- `UpdateClip` rifiuta la richiesta quando il dispatcher non è cablato, invece di scrivere direttamente;
-- outbox e mediasearch non vengono più registrati nel module registry pubblico `/api`;
-- `RegistryWiring` e `AppDeps` trasportano handler tipizzati per outbox e mediasearch;
-- esiste un test che vieta route con prefisso `/api/internal/*`.
+### 1. Route production montate dopo `Setup()`
 
-### Blocker attuali
+`NewServerWithHealth` costruisce il router e chiama `Setup()`. Solo dopo, `cmd/server/main.go` chiama `SetOutboxHandler` e `SetMediasearchHandler`. I setter modificano campi del `Router`, ma non registrano route nel `gin.Engine` già costruito.
 
-1. **Mount production eseguito troppo tardi.** `NewServerWithHealth` chiama `Router.Setup()` durante la costruzione; `cmd/server/main.go` invoca `SetOutboxHandler` e `SetMediasearchHandler` soltanto dopo. I setter modificano il `Router`, ma il motore Gin è già stato costruito: le route canoniche possono restare 404.
-2. **Il test non percorre il wiring production.** Il test corrente imposta gli handler prima di `Setup()`, quindi non intercetta l'ordine reale usato da `cmd/server`.
-3. **Writer diretti ancora eseguibili.** Restano fallback raw almeno in:
-   - `internal/application/assets/providers/artlist/search_core.go`
-   - `internal/application/images/google_vids_assets.go::RegisterVideoAsset`
-   - `internal/application/images/google_vids_assets.go::registerAudioClip`
-4. **Gate globale incompleto.** Non esiste ancora una scansione CI che dimostri l'assenza di tutti i writer `media_assets` fuori dal dispatcher/transaction manager autorizzato.
-5. **Runbook legacy.** Documentazione e smoke script possono ancora riferirsi a `/api/internal/v1/*`.
+Il test esistente non riproduce production: imposta gli handler prima di `Setup()`.
 
-## TASK DI HANDOFF
+### 2. Writer raw ancora raggiungibili
 
-### A. Correggere il wiring delle route prima di `Setup()`
+Restano fallback eseguibili senza outbox:
 
-Scegliere una sola soluzione canonica:
+- Artlist `SearchLiveAndSave` -> `assetStore.Upsert`;
+- immagini `RegisterVideoAsset` -> `stockRepo.Upsert`;
+- immagini `registerAudioClip` -> `stockRepo.UpsertClip`;
+- sourcing `RegisterFromYouTube` -> `clips.UpsertClip`, dichiarato esplicitamente “backward compatibility”.
 
-- estendere `NewServerWithHealth` con `OutboxHandler` e `MediasearchHandler`; oppure
-- costruire/configurare il `Router` nel composition root, impostare tutti gli handler, poi chiamare `Setup()` una volta sola.
+### 3. Lifecycle mutation senza evento Qdrant
 
-Vincoli:
+- `ClipsRepository.Restore` cambia direttamente `lifecycle_state='ready'` senza evento di reindex;
+- `ClipsRepository.HardDelete` elimina direttamente `media_assets` senza evento Qdrant delete;
+- i metodi low-level `Upsert`/`UpsertClip` restano pubblici e protetti soltanto da commenti.
 
-- vietati setter post-`Setup()` per route;
-- `/internal/v1/outbox/status`, `/internal/v1/outbox/events` e `/internal/v1/media/search` devono comparire in `server.GetRouter().Routes()` nel percorso production;
-- `/api/internal/v1/*` deve restare assente;
-- le route devono ereditare `WorkerAuth`.
+### 4. Gate writer-ownership assente
 
-### B. Aggiungere un test sul percorso production
+La CI non dimostra che ogni writer applicativo indicizzabile passi dal dispatcher. Un grep nel Markdown non è un gate sufficiente: serve controllo AST/ownership nel checker architetturale.
 
-Il test deve costruire il server tramite lo stesso costruttore usato da `cmd/server/main.go`, iniettare stub tipizzati e verificare:
+## TASK RESIDUI
+
+### A. Wiring route pre-Setup
+
+Passare `OutboxHandler` e `MediasearchHandler` al costruttore del server, o tramite un unico bundle tipizzato, e impostarli sul `Router` prima dell'unica chiamata a `Setup()`.
+
+Rimuovere o rendere non utilizzabili i setter post-Setup.
+
+### B. Test del percorso production
+
+Costruire il server tramite `NewServerWithHealth` e verificare:
 
 ```text
 GET  /internal/v1/outbox/status
@@ -58,95 +61,59 @@ GET  /internal/v1/outbox/events
 POST /internal/v1/media/search
 ```
 
-Il test deve fallire con l'ordine attuale post-`Setup()` e passare soltanto dopo il cutover.
+Verificare anche assenza di `/api/internal/*`, worker token accettato e token admin/mancante rifiutato.
 
-### C. Eliminare tutti i writer senza outbox
+### C. Cutover completo dei writer
 
-Rimuovere ogni forma:
+Eliminare ogni fallback raw. Dispatcher assente deve produrre errore di startup o errore dell'operazione prima di qualsiasi scrittura.
 
-```go
-if dispatcher != nil {
-    dispatcher.EnqueueAndIndex(...)
-} else {
-    repo.Upsert(...)
-}
-```
+Aggiungere operazioni canoniche per restore e hard delete, entrambe atomiche con il relativo evento outbox.
 
-Comportamento richiesto quando il dispatcher è obbligatorio ma assente:
+### D. Restringere le API low-level
 
-- errore di startup nel composition root, preferito; oppure
-- errore esplicito della capability senza alcuna mutazione DB.
-
-Copertura minima:
-
-- aggiornamento clip;
-- Artlist live save;
-- registrazione video generato;
-- registrazione audio derivato;
-- sourcing/import;
-- delete e lifecycle transitions che richiedono sincronizzazione Qdrant.
-
-### D. Introdurre un gate writer-ownership
-
-Il gate deve distinguere:
-
-- repository SQL autorizzati che implementano il dispatcher;
-- use case/handler vietati che chiamano direttamente `Upsert`, `UpsertClip`, `SetIndexState` o DELETE indicizzabili.
-
-Preferire un controllo Go/AST in `cmd/archcheck` rispetto a un grep fragile.
+Portare `Upsert`, `UpsertClip`, `Restore` e `HardDelete` dietro porte/repository autorizzati, oppure introdurre un gate AST che vieti chiamate fuori dall'allowlist del dispatcher e degli strumenti offline espliciti.
 
 ## LEGACY DA ELIMINARE
 
-| Legacy | Dove | Azione richiesta |
+| Legacy | Dove | Azione |
 |---|---|---|
-| setter route chiamati dopo `Router.Setup()` | `cmd/server/main.go`, `internal/api/server.go` | spostare gli handler nel costruttore/configurazione pre-Setup |
-| fallback `assetStore.Upsert` senza outbox | `internal/application/assets/providers/artlist/search_core.go` | fail-closed e dispatcher obbligatorio |
-| fallback `stockRepo.Upsert` / `UpsertClip` | `internal/application/images/google_vids_assets.go` | fail-closed e dispatcher obbligatorio |
-| test che configura direttamente `Router` ma non il server production | `internal/api/routes_test.go` | aggiungere integration test del costruttore reale |
-| URL `/api/internal/v1/*` | smoke test e runbook operativi | aggiornare o eliminare |
-| gate documentato ma non obbligatorio | CI | promuovere a check richiesto |
+| setter route post-Setup | `cmd/server/main.go`, `internal/api/server.go` | injection pre-Setup |
+| test Router manuale | `internal/api/routes_test.go` | test production constructor |
+| Artlist raw fallback | provider Artlist | dispatcher obbligatorio |
+| video/audio raw fallback | images service | dispatcher obbligatorio |
+| sourcing raw fallback | sourcing service | dispatcher obbligatorio |
+| restore senza outbox | clips repository | `EnqueueAndRestore` o equivalente |
+| hard delete senza outbox | clips repository | delete atomico + evento |
+| writer low-level pubblici | repository surface | restringere ownership |
+| gate solo documentato | CI/archcheck | gate AST obbligatorio |
 
 ## DEFINITION OF DONE
 
 Il ticket può essere marcato `CLOSED` soltanto quando:
 
-- le tre route internal sono presenti nel router costruito dal percorso production;
-- nessuna route `/api/internal/*` è registrata;
-- tutte le route internal sono protette da worker token;
-- nessun writer applicativo indicizzabile può mutare `media_assets` senza evento outbox nella stessa transazione;
-- dispatcher mancante blocca startup o operazione senza scrittura parziale;
-- retry, lease reclaim, supersede, dead-letter, idempotenza e delete restano coperti;
-- il gate automatico impedisce di reintrodurre writer raw o route pubbliche.
+- le route internal sono presenti nel server costruito dal percorso production;
+- nessuna route `/api/internal/*` esiste;
+- worker auth è verificata comportamentalmente;
+- nessun writer applicativo può mutare un asset indicizzabile senza evento outbox atomico;
+- restore e delete sincronizzano Qdrant tramite il percorso canonico;
+- dispatcher mancante blocca prima della mutazione;
+- un gate automatico impedisce la reintroduzione di writer raw e setter post-Setup.
 
-## GATE ANTI-REGRESSIONE
+## GATE MINIMO
 
 ```bash
 set -euo pipefail
 
-# Routing: test sul percorso production, non soltanto Router.Setup manuale.
-go test ./internal/api/... ./internal/app/... \
-  -run 'Test.*Production.*InternalRoutes|TestRoutes_NoApiInternalV1Prefix' \
-  -count=1
-
-# Nessun riferimento operativo al vecchio URL.
-! rg -n --glob '!docs/architecture/qdrant/QDRANT-002.md' \
-  '/api/internal/v1/(outbox|media)' \
-  internal cmd scripts tests docs/operations
-
-# Nessun fallback raw nei writer già identificati.
-! rg -n -U 'dispatcher\s*!=\s*nil[\s\S]{0,500}else[^\n]*\{?[\s\S]{0,300}(Upsert|UpsertClip)\(' \
-  internal/application internal/api
-
-# Suite outbox e asset ingestion.
-go test ./internal/infrastructure/database/sqlite/outbox/... \
-  ./internal/infrastructure/database/sqlite/outboxevents/... \
-  ./internal/application/assets/... \
-  ./internal/api/assets/...
+go test ./internal/api/... -run 'Test.*Production.*InternalRoutes|TestRoutes_NoApiInternalV1Prefix' -count=1
+! rg -n 'Falls back to raw|Legacy path: raw|backward compatibility when dispatcher' internal/application
+! rg -n 'SetOutboxHandler|SetMediasearchHandler' cmd/server/main.go
+go test ./internal/infrastructure/database/sqlite/outbox/... ./internal/application/assets/...
 ```
 
 ## NON CHIUDERE SE
 
-- le route esistono soltanto nel test che chiama `Set*Handler` prima di `Setup()`;
-- anche un solo writer mantiene il fallback raw;
-- il dispatcher viene creato ma non è obbligatorio nel composition root;
-- il gate è soltanto un comando copiato nel Markdown e non viene eseguito dalla CI.
+- le route esistono soltanto in un test che configura il Router prima di `Setup()`;
+- un solo fallback raw resta raggiungibile;
+- restore o hard delete bypassano outbox;
+- l'ownership è affidata soltanto ai commenti;
+- il gate non è required in CI.
