@@ -317,9 +317,13 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 // scroll API. Returns the batch of points and the next offset (empty string
 // when iteration is complete).
 //
+// filter is an optional Qdrant filter (nil = no filter). When non-nil, only
+// points matching the filter are returned. This is used by the QDRANT-005
+// filter smoke runner to validate that payload indexes work correctly.
+//
 // QDRANT-003 (June 2026): used by VerifyReindex to compare Qdrant point
 // IDs against SQLite assets for missing/orphan detection.
-func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int) (*ScrollResult, error) {
+func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int, filter map[string]interface{}) (*ScrollResult, error) {
 	body := map[string]interface{}{
 		"limit":        limit,
 		"with_payload": true,
@@ -327,6 +331,9 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 	}
 	if offset != "" {
 		body["offset"] = offset
+	}
+	if filter != nil {
+		body["filter"] = filter
 	}
 
 	url := fmt.Sprintf("%s/collections/%s/points/scroll", c.baseURL, collection)

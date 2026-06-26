@@ -166,7 +166,7 @@ func (s *Service) scrollAll(ctx context.Context, collection string, batchSize in
 	offset := ""
 	const maxPages = 400 // safety cap (~200k points at batch=500)
 	for i := 0; i < maxPages; i++ {
-		page, err := s.qdrant.ScrollPoints(ctx, collection, offset, batchSize)
+			page, err := s.qdrant.ScrollPoints(ctx, collection, offset, batchSize)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("scroll page %d: %v", i, err))
 			// Hard stop on cursor failure; what we have may be
@@ -275,15 +275,6 @@ func (s *Service) applyRepair(ctx context.Context, collection string, pairs []Cl
 	}
 
 	return summary, errs
-}
-
-// lookupContentHash deprecated (QDRANT-005B review cleanup): the inline
-// outbox adapter in cmd/admin builds its own uuid-suffixed event_key,
-// so threading a contentHash through the port is now redundant. Kept
-// here as a no-op for callers that still implement the older two-arg
-// EnqueueReindex signature — production wire-up uses the one-arg form.
-func (s *Service) lookupContentHash(assetID string) string {
-	return ""
 }
 
 // truncateList caps the entries written into the report's full list.
