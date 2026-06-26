@@ -70,14 +70,51 @@ type RegistryWiring struct {
 	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 }
 
-// tryRegisterModule is the SSOT fail-fast variant for Registries-and-SSOT
-// (June 2026, §"Uniqueness"). On duplicate-name or frozen-registry error,
-// returns the wrapped error to the caller — propagation is the caller's
-// responsibility. The "compose:" prefix is pinned by
+// tryRegisterModule is the coalescing composition-time variant used by
+// WireRegistry (June 2026, Registries-and-SSOT §Uniqueness + PR17 slot
+// cross-publishing).
+//
+// Behavior: if a module with the same Name() is already registered, this
+// function silently skips + Debug-logs and returns nil. Otherwise it
+// delegates to tryRegisterModuleStrict (the strict path that surfaces
+// ErrAlreadyRegistered and post-freeze ErrFrozen). The pre-registry Has
+// check makes the cross-slot publication path idempotent so that
+// DescriptorJobs and DescriptorProviders publishing the same capability
+// name through a shared Descriptor do not hard-fail at composition time.
+//
+// IMPORTANT — SCOPE OF COALESCE: because Has is a name-match (not an
+// identity check), this primitive cannot distinguish "same instance
+// re-published through a different slot" from "distinct capability
+// instance, same name". The latter case is silently swallowed here; the
+// composition-time invariant is that capability names are unique, and
+// drift is detected via registry.go's pre-flight deduplication audit +
+// Reviewer Q8 fail-fast path, NOT in this primitive. See Has() in
+// internal/api/module_base.go for the full scope-of-coalesce contract.
+//
+// Compare with tryRegisterModuleStrict (used by
+// registry_failfast_test.go): that variant skips the Has check and
+// always surfaces ErrAlreadyRegistered, pinning the Registries-and-SSOT
+// §Uniqueness contract for fail-fast regression coverage.
+//
+// The "compose:" prefix is pinned by
 // TestTryRegisterModule_ErrorContainsSpecMarker in
 // internal/app/registry_failfast_test.go; do not change without updating
 // the test marker.
 func tryRegisterModule(registry *module.Registry, log *zap.Logger, mod module.Module) error {
+	if registry.Has(mod.Name()) {
+		log.Debug("module already registered — coalescing duplicate slot publication",
+			zap.String("module", mod.Name()))
+		return nil
+	}
+	return tryRegisterModuleStrict(registry, log, mod)
+}
+
+// tryRegisterModuleStrict is the strict-fail variant. Skips the
+// pre-Registry Has check and always surfaces ErrAlreadyRegistered,
+// pinning the Registries-and-SSOT §Uniqueness contract for fail-fast
+// regression tests (registry_failfast_test.go). Production code
+// uses the coalescing tryRegisterModule above.
+func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod module.Module) error {
 	if err := registry.Register(mod); err != nil {
 		log.Warn("failed to register module", zap.String("module", mod.Name()), zap.Error(err))
 		return fmt.Errorf("compose: module=%q already registered: %w", mod.Name(), err)
@@ -308,6 +345,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		}); err != nil {
 			log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
 		} else {
+			// PR17 (June 2026): tryRegisterModule is universally coalescing
+			// on duplicate names (see registry.go::tryRegisterModule). The
+			// cross-slot publication path for `generation` is therefore
+			// idempotent here without an inline Has check.
 			if err := tryRegisterModule(registry, log, genDesc); err != nil {
 				return nil, fmt.Errorf("wire registry: generation: %w", err)
 			}
