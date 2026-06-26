@@ -91,6 +91,49 @@ func (m *mockModuleWithGroup) Enabled() bool {
 // method + path. Gin itself panics when a duplicate route is registered, so
 // this test verifies that distinct prefixes do NOT panic (correct behavior)
 // and that colliding prefixes DO panic (gin guards against silent overwrites).
+// TestNoAPIPrefixedInternalRoutes uses a real Router.Setup() with module
+// registry and mock handlers to verify that no route leaks under
+// /api/internal/v1/. Internal routes (mediasearch, outbox, etc.) must be
+// mounted on the WorkerAuth-protected /internal/v1/ group, not under /api.
+//
+// QDRANT-002 / QDRANT-004 closure gate: if this test fails, an internal
+// route has been registered through the module system (under /api) that
+// should only be on the internal WorkerAuth group.
+func TestNoAPIPrefixedInternalRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registry := NewRegistry()
+	// Register a known module to verify the registry is working.
+	medMod := &mockModuleWithGroup{name: "media", prefix: "/media", enabled: true}
+	registry.Register(medMod)
+	registry.Freeze()
+
+	router := NewRouter(&RouterConfig{
+		ServerGinMode: gin.TestMode,
+	})
+	router.SetRegistry(registry)
+
+	engine := router.Setup()
+	for _, route := range engine.Routes() {
+		if strings.HasPrefix(route.Path, "/api/internal/v1/") {
+			t.Errorf("internal route leaked under /api: %s %s — internal handlers must be wired via SetMediasearchHandler / SetOutboxHandler, not through the module registry", route.Method, route.Path)
+		}
+	}
+
+	// Sanity check: a known /api/media/search route should exist via the
+	// module registry (proves the engine actually has api-group routes).
+	found := false
+	for _, route := range engine.Routes() {
+		if route.Path == "/api/media/search" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected /api/media/search to be registered via the module registry")
+	}
+}
+
 func TestRouteCollisionDetection(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
