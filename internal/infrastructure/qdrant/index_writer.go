@@ -229,7 +229,26 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 	if point.ID == "" {
 		return fmt.Errorf("point ID must not be empty")
 	}
-	assetID := PointIDToAssetID(point.ID)
+	// AssetID is used purely to enrich error messages with a
+	// human-readable identifier. Prefer `payload["asset_id"]` when
+	// present (the canonical write path always populates it via
+	// BuildPayload). Fall back to `point.ID` (the UUID v5 hash) when
+	// the payload is missing or empty — this preserves backwards
+	// compatibility with legacy code paths and unit-test fixtures
+	// that construct bare Points without populating the payload.
+	// QDRANT-001's silent-failure concern was about the IDENTITY
+	// reverse-mapping (PointIDToAssetID on a UUID point), NOT about
+	// the bare point.ID itself: the latter is a valid (if
+	// operator-unfriendly) identifier, not a security bypass.
+	var assetID string
+	if point.Payload != nil {
+		if id, ok := point.Payload["asset_id"].(string); ok && id != "" {
+			assetID = id
+		}
+	}
+	if assetID == "" {
+		assetID = point.ID
+	}
 
 	vectors := point.Vectors
 	if len(vectors) == 0 {
