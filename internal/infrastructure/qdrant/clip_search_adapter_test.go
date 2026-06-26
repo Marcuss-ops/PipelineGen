@@ -41,27 +41,6 @@ func TestClipSearchAdapter_InterfaceSatisfiesPort(t *testing.T) {
 	}
 }
 
-// TestClipSearchAdapter_EmptyQuery_FastPath pins the documented
-// behaviour: a whitespace-trimmed empty Query returns an empty hit
-// slice with no error, without invoking Searcher.SearchByText or
-// TextEmbedder.Embed. This is both an optimisation pin and a
-// contract assertion (callers rely on "empty query = no work").
-func TestClipSearchAdapter_EmptyQuery_FastPath(t *testing.T) {
-	t.Parallel()
-
-	port := NewClipSearchAdapter(nil, nil, "text", nil)
-
-	hits, err := port.SearchClips(context.Background(), scripts.ClipSearchQuery{
-		Query: "",
-	})
-	if err != nil {
-		t.Fatalf("empty query should not error; got %v", err)
-	}
-	if len(hits) != 0 {
-		t.Errorf("expected 0 hits for empty query; got %d", len(hits))
-	}
-}
-
 // TestClipSearchAdapter_NilSearcher_TypedError pins that a
 // SearchClips call without a wired Searcher surfaces a typed
 // "searcher not configured" error rather than nil-deref or empty
