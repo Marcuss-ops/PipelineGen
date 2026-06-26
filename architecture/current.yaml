@@ -188,8 +188,14 @@
     Strict-mode `--strict` flag exposed on scripts/archcheck/main.go
     (June 2026). Current strict-mode gate rejects 601 alias hits +
     61 rule violations vs. zero target. Framework frozen; the ratchet
-    holds (no NEW alias hits / violation counts). Full zero-redundancy
-    alignment remains a multi-PR migration backlog documented in
+    holds (no NEW alias hits / violation counts). Strict-mode
+    zero-redundancy is being worked on incrementally: each Wave 16
+    sub-step gets its own `completed_through_W16_*` block under this
+    wave's body (type-aliases sub-step recorded immediately below;
+    setter / interface-braces sub-steps to follow), so future
+    maintainers see slide-by-slide progress rather than a single
+    mega-PR. Full zero-redundancy alignment remains a multi-PR
+    migration backlog documented in
     docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits".
   target_metrics:
     legacy_imports: 0
@@ -243,6 +249,23 @@
     - "all 5 phase0_*_regressions = 0 immediately post-reseed (the resync gate)"
     - "strict-mode --ratchet --future-ratchet: passed=false only on the 5 database_sql regressions (out of Phase 0 scope; tracked separately under the Wave 14 typed-handle sweep)"
     - "focused gate: passed=true (api_infrastructure_imports=0; allowlist drift resolved by upstream commits)"
+
+  # W16 type-aliases sub-step (June 2026, 2026-06-26): the 4 cross-package
+  # type aliases in checkTypeAliasCrossPkg's actual set were mechanically
+  # removed from 2 source files. The deletion shape is the canonical
+  # "alias == underlying type at the ABI layer" path: the alias lines
+  # vanish and every in-package use is rewritten to the underlying
+  # pkg.Y name directly — zero type-behavior changes.
+  completed_through_W16_type_aliases_reduction:
+    - "phase0_type_aliases_cross_pkg_actual: 21 → 17 (4 cross-package type aliases mechanically removed; 2026-06-26)"
+    - "internal/application/generation/contract.go:118 — removed `type HandlerFunc = appjobs.HandlerFunc`; in-package uses rewritten to `appjobs.HandlerFunc`"
+    - "internal/infrastructure/database/sqlite/assets/clips_repository_queries.go:209 — removed `type AdvancedSearchRequest = asset.AdvancedSearchRequest`; in-package uses rewritten to `asset.AdvancedSearchRequest`"
+    - "internal/infrastructure/database/sqlite/assets/clips_repository_queries.go:210 — removed `type AdvancedSearchResult = asset.AdvancedSearchResult`; in-package uses rewritten to `asset.AdvancedSearchResult`"
+    - "internal/infrastructure/database/sqlite/assets/clips_repository_queries.go:211 — removed `type SegmentEmbeddingRecord = asset.SegmentEmbeddingRecord`; in-package uses rewritten to `asset.SegmentEmbeddingRecord`"
+    - "structural shape: 2 source files / 4 mechanical line removals; zero type-behavior changes (alias == underlying type at the ABI layer)"
+    - "strict-mode gate (--ratchet --future-ratchet): phase0_type_aliases_cross_pkg_regressions = 0 immediately post-merge (zero tolerance on the ratchet)"
+    - "PyYAML hard gate (architecture/current.yaml): safe_load_all still returns 3 docs with ids [0,14,15,16,17,18,19]"
+    - "next planned W16 sub-step (TBD): the setter-audit / proactive actuals-reduction slide; each slide gets its own completed_through_W16_* block (see Wave 16 status_note above for the incremental roadmap)"
 
 # ── Wave 17 — Final verification + tag (in_progress) ────────────────────────
 
