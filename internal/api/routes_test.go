@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
@@ -239,7 +239,7 @@ func TestRoutes_NoApiInternalV1Prefix(t *testing.T) {
 	// Auth is disabled so the WorkerAuth middleware lets /internal/v1
 	// requests through (the test never issues a request, but Setup()
 	// still constructs the middleware chain).
-	authAdapter := &pkgmw.TokenSecurityAdapter{
+	authAdapter := &middleware.TokenSecurityAdapter{
 		Enable: false,
 	}
 	rateAdapter := testRateLimitAdapter{}

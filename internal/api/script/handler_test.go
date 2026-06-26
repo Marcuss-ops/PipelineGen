@@ -13,8 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/pkg/middleware"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 func init() { gin.SetMode(gin.TestMode) }

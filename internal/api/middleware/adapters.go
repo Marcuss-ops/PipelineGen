@@ -1,4 +1,4 @@
-// Package middleware (pkg/middleware) — leaf-only canonical concrete
+// Package middleware — internal-canonical HTTP middleware concrete
 // adapters that satisfy the application-layer SecurityAdapter ports.
 //
 // PG-006.1 (June 2026): the typed SecurityAdapter struct was previously
@@ -16,19 +16,24 @@
 // boundaries; the composition root at internal/app/ wires the
 // structured value from cfg.Security fields at construction time.
 //
-// Pattern 0 (PG-006, June 2026): a concrete adapter that satisfies
-// application-layer auth ports lives in pkg/middleware, not in
-// internal/app/. The compile-time assertion that asserts
-// *pkg/middleware.TokenSecurityAdapter satisfies AuthSecurityPort
-// lives in internal/application/middleware/ports.go next to the port.
+// Pattern 0 (PG-006.1 round-2, June 2026): a concrete HTTP-middleware
+// adapter that satisfies application-layer auth ports lives in
+// internal/api/middleware, not in internal/app/ (the composition
+// root) and not in pkg/<utility>/ (reserved for leaf-only stdlib
+// utilities). The compile-time assertion that asserts
+// *TokenSecurityAdapter satisfies application/middleware.AuthSecurityPort lives
+// on the implementor side in adapters_assertions.go next to the
+// struct — placed round-2 there to keep ports.go cycle-free after
+// the pkg/middleware → internal/api/middleware relocation.
 //
-// Note: pkg/ is leaf-only (AGENTS.md Pattern 4). *config.Config is
-// typed in internal/platform/config and is therefore NOT exposed
-// here. Call-sites construct TokenSecurityAdapter directly from
-// cfg.Security field reads. This snapshot-immutability pattern means
-// the adapter does NOT live-update on cfg reload (intentional — auth
-// state is server-mutable only via explicit re-wire); the trade-off
-// matches test fixture ergonomics (`&TokenSecurityAdapter{Admin: "x"}`).
+// Note: this package is NOT leaf-only — it consumes typed *config.Config
+// from internal/platform/config via snapshot-literal composition at
+// server/admin/CLI startup time. Call-sites construct TokenSecurityAdapter
+// directly from cfg.Security field reads. This snapshot-immutability
+// pattern means the adapter does NOT live-update on cfg reload
+// (intentional — auth state is server-mutable only via explicit
+// re-wire); the trade-off matches test fixture ergonomics
+// (`&TokenSecurityAdapter{Admin: "x"}`).
 package middleware
 
 // TokenSecurityAdapter is the canonical SecurityAdapter concrete

@@ -15,7 +15,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"go.uber.org/zap"
 )
 
@@ -67,7 +67,7 @@ func TestRoutes_DoNotPassNilReadyChecker(t *testing.T) {
 	require.NotNil(t, ready)
 
 	router := module.NewRouter(&module.RouterConfig{
-		Auth: &pkgmw.TokenSecurityAdapter{
+		Auth: &middleware.TokenSecurityAdapter{
 			Enable: cfg.Security.EnableAuth,
 			Admin:  cfg.Security.AdminToken,
 			Worker: cfg.Security.WorkerToken,
@@ -122,7 +122,7 @@ func TestRoutes_WithoutReadyChecker_ReturnsNotInitialized(t *testing.T) {
 	svc := systemhealth.NewService(systemhealth.ServiceDeps{})
 
 	router := module.NewRouter(&module.RouterConfig{
-		Auth: &pkgmw.TokenSecurityAdapter{
+		Auth: &middleware.TokenSecurityAdapter{
 			Enable: cfg.Security.EnableAuth,
 			Admin:  cfg.Security.AdminToken,
 			Worker: cfg.Security.WorkerToken,

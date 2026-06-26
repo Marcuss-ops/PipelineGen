@@ -3,7 +3,7 @@ package script
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/archcheck/gate"
+	"github.com/Marcuss-ops/PipelineGen/scripts/archcheck/gate"
 )
 
 // prohibitedPatterns is the per-area prohibition list owned by this
@@ -29,7 +29,7 @@ var prohibitedPatterns = []gate.Prohibition{
 
 // TestStaticGate_NoConcreteInfrastructureInTransport enforces the
 // script-package architectural contract via the shared
-// pkg/archcheck/gate machinery. Per-violation failures surface in
+// scripts/archcheck/gate machinery. Per-violation failures surface in
 // the test report (gate.Walk calls t.Errorf per match); the test
 // halts via t.Fatalf when the total is non-zero (real-fail, not
 // log-only). This is the SHIP-BLOCKER fix —
