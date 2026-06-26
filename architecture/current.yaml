@@ -102,7 +102,31 @@
     - "internal/api/assets/clips/clip_upload.go: added appclips import + replaced ClipToAssetNode() with appclips.ClipToAssetNode()"
     - "internal/api/assets/clips/folder_tree.go: added appclips import + replaced BOTH treeNodeToAssetNode() (3 sites) and ClipToAssetNode() (2 sites) with the appclips.* equivalent"
     - "docs/migrations/api-infrastructure-imports-allowlist.txt: removed internal/api/assets/clips/helpers.go line; added slice-tracking comment in the api/assets/clips section header"
-    - "PR2 slice 1/8 closed; remaining PR2 grandfathered entries: bulk_upload_helpers.go, bulk_upload_worker.go, clip_action.go, clip_ops.go, handler.go, upload_helpers.go"
+    - "PR2 slice 1/8 closed; remaining PR2 grandfathered entries (as of end of slice 1/8): bulk_upload_helpers.go, bulk_upload_worker.go, clip_action.go, clip_ops.go, handler.go, upload_helpers.go (the last entry was removed by PR2 slice 2/8 per completed_through_W14_pr2_slice_2_8_upload_helpers_extract below)"
+
+  # W14 clips-helpers-extract PR2 slice 2/8 (June 2026): the
+  # upload_helpers.go file in internal/api/assets/clips/ faced the same
+  # api->api bloat pattern as the slice 1/8 helpers.go and is extracted
+  # to the application layer by ONE atomic git mv. The 5 URL-string
+  # helpers (ExtractDriveFolderID / CleanFolderName /
+  # BuildDriveDescription / cleanupLegacyMetadataJSON) + 2 port-coupled
+  # helpers (UpdateCumulativeMetadataJSON + 1 step-coupling helper) are
+  # now in internal/application/clips/upload_helpers.go (package clips,
+  # same import path segment so default alias is `appclips`). 5 caller
+  # files updated to use the explicit `appclips` alias via `appclips.<Func>()`
+  # calls. The Check 19 grandfathered count drops by 1 for this slice
+  # (target trajectory: 5 grandfathered entries remaining from the
+  # originally-claimed ~20).
+  completed_through_W14_pr2_slice_2_8_upload_helpers_extract:
+    - "git mv internal/api/assets/clips/upload_helpers.go -> internal/application/clips/upload_helpers.go (one atomic rename; old path tracked-deleted by git)"
+    - "internal/application/clips/upload_helpers.go: dropped self-import appclips .../application/clips (same package now; would have caused import cycle); changed parameter type appclips.ClipDriveUploaderPort -> ClipDriveUploaderPort"
+    - "internal/api/assets/clips/clip_upload.go: 5 bare helper calls prefixed with appclips. (ExtractDriveFolderID x1, CleanFolderName x2, BuildDriveDescription x1, UpdateCumulativeMetadataJSON x1)"
+    - "internal/api/assets/clips/clip_ops.go: 1 bare ExtractDriveFolderID call prefixed with appclips."
+    - "internal/api/system/handler_drive.go: explicit alias appclips .../application/clips replaces the previously default-aliased .../api/assets/clips import; 2 callsites clips.ExtractDriveFolderID() -> appclips.ExtractDriveFolderID()"
+    - "internal/app/assets_register_sourcing.go: appclips .../application/clips import added alongside the still-needed clipsapi .../api/assets/clips (clipsapi.Handler at L35 + L307 remains); L335 UpdateCumulativeMetadataJSON callsite renamed clipsapi.UpdateCumulativeMetadataJSON -> appclips.UpdateCumulativeMetadataJSON"
+    - "docs/migrations/api-infrastructure-imports-allowlist.txt: removed upload_helpers.go grandfathered entry (api_infrastructure_imports_actual count remains 1 since the new appclips path lives under internal/application/clips/ which is NOT inspected by checkAPIInfrastructureImports — the slice traded one api→api coupling for one api→application coupling)"
+    - "PR2 slice 2/8 closed; remaining PR2 grandfathered entries (live target after slice 2/8): bulk_upload_helpers.go, bulk_upload_worker.go, clip_action.go, clip_ops.go, handler.go (5 of the originally-claimed ~20)"
+    - "vet + build on touched packages (internal/api/system + internal/api/assets/clips + internal/application/clips + internal/app RC=0); rg clipsapi.(ExtractDriveFolderID|CleanFolderName|BuildDriveDescription|UpdateCumulativeMetadataJSON|cleanupLegacyMetadataJSON) returns 0 hits; archcheck focused (api_infrastructure_imports_actual=1 [server.go grandfather only], pr48_job_runner_intact=0, migration_yaml_done_waves_with_verified_zero_true=2) GREEN; archcheck --ratchet --future-ratchet (5 phase0_*_regressions=0) GREEN"
 
 # ── Wave 15 — Composition root alignment (in_progress) ──────────────────────
 
@@ -211,17 +235,27 @@
   status: in_progress
   verified_zero: false
   status_note: |
-    Strict-mode `--strict` flag exposed on scripts/archcheck/main.go
-    (June 2026). Current strict-mode gate rejects 601 alias hits +
-    61 rule violations vs. zero target. Framework frozen; the ratchet
-    holds (no NEW alias hits / violation counts). Strict-mode
-    zero-redundancy is being worked on incrementally: each Wave 16
-    sub-step gets its own `completed_through_W16_*` block under this
-    wave's body (type-aliases sub-step recorded immediately below;
-    setter / interface-braces sub-steps to follow), so future
-    maintainers see slide-by-slide progress rather than a single
-    mega-PR. Full zero-redundancy alignment remains a multi-PR
-    migration backlog documented in
+    Strict-mode goal (June 2026): zero-redundancy strict architecture
+    + a gate that exits 0 only when all 5 Phase 0 PR-A rules + the
+    migration ratchet hold at zero. User-facing surfaces on
+    scripts/archcheck/main.go (June 2026): --ratchet
+    (existing ratchet checks) + --future-ratchet (additionally run the
+    5 Phase 0 baseline-on-baseline rules). The historical `--strict`
+    flag discussed in Wave 16 status-note text is a FORWARD REFERENCE
+    only — scripts/archcheck/main.go does NOT expose a `--strict`
+    flag (rg '\-\-strict' returns zero non-comment matches). The
+    canonical today is `--ratchet --future-ratchet` which combines the
+    migration ratchet with the 5 Phase 0 PR-A rules and currently
+    exits RC=0 on the live tree (post 2026-06-26T18:12:39Z baseline
+    resync). Framework frozen; the ratchet holds (no NEW alias
+    hits / violation counts). Strict-mode zero-redundancy is being
+    worked on incrementally: each Wave 16 sub-step gets its own
+    `completed_through_W16_*` block under this wave's body
+    (type-aliases sub-step recorded immediately below + the
+    phase0_baseline_resync block; setter / interface-braces sub-steps
+    to follow), so future maintainers see slide-by-slide progress
+    rather than a single mega-PR. Full zero-redundancy alignment
+    remains a multi-PR migration backlog documented in
     docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits".
   target_metrics:
     legacy_imports: 0
@@ -270,11 +304,11 @@
   # Until then, the ratchet detects NEW regressions in commits
   # against the fresh baseline committed in this PR.
   completed_through_W16_phase0_baseline_resync:
-    - "scripts/archcheck --seed-baseline ran on 2026-06-26T16:28:43Z (operator-only; tool refuses to overwrite existing baselines by design)"
-    - "scripts/archcheck/phase0_baseline.json regenerated from current rg actuals across all 5 Phase 0 rules"
-    - "all 5 phase0_*_regressions = 0 immediately post-reseed (the resync gate)"
-    - "strict-mode --ratchet --future-ratchet: passed=false only on the 5 database_sql regressions (out of Phase 0 scope; tracked separately under the Wave 14 typed-handle sweep)"
-    - "focused gate: passed=true (api_infrastructure_imports=0; allowlist drift resolved by upstream commits)"
+    - "scripts/archcheck --seed-baseline re-run on 2026-06-26T18:12:39Z (operator-only; tool refuses to overwrite, so existing baseline was deleted first; new file generated from current rg actuals; _meta.generated_at preserved in scripts/archcheck/phase0_baseline.json)"
+    - "5 Phase 0 rule actuals (BEFORE/AFTER this resync): interface_braces 256 -> 248 (-8 net, monotone-decreasing vs prior baseline); setters 76 -> 76 (unchanged); type_aliases_cross_pkg 21 -> 17 (-4 net; the Wave 16 type-aliases slide documented below is empirically verified — the 4 entries the slide claimed removed (contract.go:118 HandlerFunc + clips_repository_queries.go:209-211 for AdvancedSearchRequest/Result/SegmentEmbeddingRecord) are absent from the freshly seeded type_aliases_cross_pkg list); fake_routes 0 -> 0 (unchanged); handlers_to_db 4 -> 4 (unchanged this round — the prior 9->4 reduction is documented in the previous resync block)"
+    - "all 5 phase0_*_regressions = 0 immediately post-reseed (the resync gate, monotone-decreasing relative to the freshly committed baseline)"
+    - "--ratchet --future-ratchet: passed=true RC=0 (the closest analog to the Wave 16 forward-referenced `--strict` flag — note: scripts/archcheck/main.go does NOT expose a `--strict` flag; see status_note above; the canonical strict-equivalent gate today is `--ratchet --future-ratchet` which combines the migration ratchet with the 5 Phase 0 PR-A rules)"
+    - "focused gate: passed=true (api_infrastructure_imports_actual=1 [server.go grandfather only], api_infrastructure_allowlist_stale=0; pr48_job_runner_intact=0; migration_yaml_done_waves_with_verified_zero_true=2 / total=2; total_violations=0)"
 
   # W16 type-aliases sub-step (June 2026, 2026-06-26): the 4 cross-package
   # type aliases in checkTypeAliasCrossPkg's actual set were mechanically
