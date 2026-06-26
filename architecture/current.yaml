@@ -1,0 +1,247 @@
+# PipelineGen — Active Migration Plan
+# -----------------------------------------------------------------------------
+# Current waves only (14-18 in flight) + Wave 0 meta-snapshot. Historical
+# waves 1-13 (all status: done) live in docs/archive/migration-history.md.
+#
+# Owner-of-record cross-reference: architecture/ownership.yaml.
+# Archcheck ratchet: scripts/archcheck/main.go (reads this file via migPath).
+#
+# Status decreases monotonically: pending → in_progress → done.
+# Each in-flight wave carries an exit_gate the ratchet checker can verify.
+# -----------------------------------------------------------------------------
+
+# ── Wave 0 — Baseline snapshot (meta) ────────────────────────────────────────
+
+- id: 0
+  title: Baseline snapshot
+  status: in_progress
+  artifacts:
+    - architecture/ownership.yaml
+    - architecture/current.yaml
+    - docs/migrations/api-infrastructure-imports-allowlist.txt
+  exit_gate: "All artifacts present; archcheck focused gate passes."
+
+# ── Wave 14 — API compaction (in_progress) ───────────────────────────────────
+
+- id: 14
+  title: API transport modules consolidation
+  # ci/archcheck-hard-fail (June 2026) PROMOTED Check 19 to hard-fail.
+  # Wave 14's rule forbids internal/infrastructure imports in internal/api/,
+  # but ~20 imports remain grandfathered in
+  # docs/migrations/api-infrastructure-imports-allowlist.txt while the
+  # API compaction migrates per docs/roadmap/PR3_API_COMPACTION.md.
+  status: in_progress
+  verified_zero: false
+  description: |
+    Consolidamento dei moduli API completato (June 2026 snapshot).
+    Stato attuale: api/ root = 9 file; api/script/ = 8 produzione + test
+    (sotto i limiti hard di 40). Wave 14 resta in_progress finché i ~20
+    import grandfathered non sono estratti.
+  target_subdirs:
+    - api/assets
+    - api/channels
+    - api/content
+    - api/images
+    - api/jobs
+    - api/middleware
+    - api/script
+    - api/system
+    - api/transport
+    - api/routes.go
+    - api/server.go
+  rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
+  exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files; zero grandfathered imports remain in docs/migrations/api-infrastructure-imports-allowlist.txt."
+  grandfathered_imports_ref: docs/migrations/api-infrastructure-imports-allowlist.txt
+  grandfathered_imports_migration: docs/roadmap/PR3_API_COMPACTION.md
+
+# ── Wave 15 — Composition root alignment (in_progress) ──────────────────────
+
+- id: 15
+  title: App composition root with capability modules
+  status: in_progress
+  verified_zero: false
+  target_structure:
+    - internal/app/composition.go (Build*Bundle() helpers)
+    - internal/app/bootstrap.go
+    - internal/app/lifecycle.go
+    - internal/app/shutdown.go
+    - internal/app/registry.go (freezes ProviderRegistry at end)
+  rule: |
+    - max 8-10 dependencies per module
+    - no single mega-Struct Dependencies with 40 fields
+    - no NewService inside API packages
+    - app is the ONLY place where concrete adapters are built
+  blocked_by: ["14"]
+  completed_through_PR4d_final:
+    - "CoreDeps + projectRootToCoreDeps + initCoreMinimalWithContext deleted."
+    - "type services struct deleted from internal/app/dependencies.go (was 40+ field mega-struct)."
+    - "WireRegistry signature uniform: WireRegistry(ctx, cfg, log, root *ComposeRoot)."
+    - "11 capability bundles (Drive / Repo / Search / Process / AI / Domain / Jobs / Outbox / Sync / Maint / Utility), each ≤10 fields."
+    - "WireJobs narrow-bundle migration template applied; 5 other Wire<Module>() migrated."
+    - "go vet + go build + go test ./internal/app/... -short all GREEN."
+    - "BREAKING: InitComposition return tuple extended to (*ComposeRoot, *backgroundJobs, CleanupFunc, error)."
+  pending:
+    - "Migrate the 3 shared helpers (initVoiceoverService, initBooksService, initImageService from internal/app/dependencies.go) into modules/voiceover.go, modules/content.go, modules/images.go."
+    - "Split the jobRunner closure out of lifecycle.go into a typed lifecycle (per PR4.8)."
+  exit_gate: >-
+    internal/app/dependencies.go no longer exports `init*Service` shared helpers;
+    rg '\*CoreDeps' internal/app/module_*.go returns zero;
+    WireRegistry signature stable; internal/app/modules has ≤ 10 files;
+    go test ./internal/app/... -short GREEN.
+  pg_011_app_slice_merge_residuals:
+    description: "Migration of production code in internal/app/ from raw *sql.DB to *storage.SQLiteDB (typed-handle pattern)."
+    production_compile_state: GREEN
+    test_compile_state: GREEN (resolved 2026-06-24)
+    follow_up_ticket: PG-011-residual-cleanup
+
+# ── Wave 16 — Zero-redundancy strict mode (in_progress) ─────────────────────
+
+- id: 16
+  title: Zero-redundancy strict architecture
+  status: in_progress
+  verified_zero: false
+  status_note: |
+    Strict-mode `--strict` flag exposed on scripts/archcheck/main.go
+    (June 2026). Current strict-mode gate rejects 601 alias hits +
+    61 rule violations vs. zero target. Framework frozen; the ratchet
+    holds (no NEW alias hits / violation counts). Full zero-redundancy
+    alignment remains a multi-PR migration backlog documented in
+    docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits".
+  target_metrics:
+    legacy_imports: 0
+    type_aliases: 0
+    compatibility_wrappers: 0
+    pass_through_services: 0
+    sql_outside_infrastructure_database: 0
+    gin_outside_api: 0
+    os_getenv_outside_config_app: 0
+    os_exec_outside_infrastructure_process: 0
+    map_string_any_in_domain_application: 0
+    provider_switch_outside_registry: 0
+    duplicate_blocks_above_threshold: 0
+    architecture_exceptions: 0
+  exit_gate: "All target_metrics are zero. archcheck exits 0 in strict mode (no ratchet)."
+  blocked_by: ["15"]
+  pg_016_api_test_residuals:
+    description: "Completion of PG-016 typed-handle sweep through internal/api/ test fixtures from raw *sql.DB to *storage.SQLiteDB."
+    test_compile_state: GREEN (resolved 2026-06-24)
+    production_state: GREEN (Check 19 already enforced)
+    follow_up_ticket: PG-016-api-test-residuals
+
+# ── Wave 17 — Final verification + tag (in_progress) ────────────────────────
+
+- id: 17
+  title: Final verification + canonical tag
+  status: in_progress
+  verified_zero: false
+  status_note: |
+    Historic tag `architecture-clean-v1` was stamped 2026-06-22 via
+    operator override. Framework + Check 17 git gate + observability
+    retention + db subsystem admin are stable. Wave 17 reopens only if
+    any future commit invalidates one of those four stability points.
+  gate:
+    - gofmt -w .
+    - go mod tidy
+    - go list ./...
+    - go build ./...
+    - go vet ./...
+    - go test ./...
+    - go test -race ./...
+    - go run ./scripts/archcheck
+    - dupl -t 100 ./internal/... ./pkg/...
+  blocked_by: ["16"]
+  tag: architecture-clean-v1
+  component_checks:
+    go_vet: exit 0
+    go_test_internal_app: exit 0
+    dupl_t_100: exit 0
+    archcheck_default: exit 0 (focused gate)
+    archcheck_strict: exit 1 (-strict flag exposed; 601 alias hits + 61 rule violations remain; Wave 16 target)
+
+# ── Wave 18 — Heyavatar cross-project reference (informational) ─────────────
+
+- id: 18
+  title: Heyavatar legacy cleanup (cross-project reference)
+  kind: cross_project_reference
+  status: done
+  verified_zero: true
+  no_pipelinegen_files_changed: true
+  description: |
+    Cross-project reference: Heyavatar repo (C:/Users/pater/Pyt/Heyavatar)
+    received two-pass legacy cleanup on 2026-06-24. Canonical owner of
+    Heyavatar code lives in that repo (TODO.md), NOT in PipelineGen.
+    Pipelinegen: zero files changed.
+  cross_ref:
+    heyavatar_repo: C:/Users/pater/Pyt/Heyavatar
+    heyavatar_todo: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
+
+# ── Post-cascade operational followups (June 2026) ─────────────────────────
+
+post_cascade_followups:
+  ref_doc: docs/POST_CASCADE_OPERATIONAL_READINESS.md
+  cascade_ship_commit: 62ae9cd62a8770e95f6e33b00318dc3ed203c685
+  theme: PR1.7 youtube port cascade + PR2 canonical DownloaderMetadata DTO cleanup
+  blocking_items:
+    - id: CPR-LR-1
+      title: Thumbnails:nil data loss
+      severity: BLOCKING
+      status: resolved
+      resolved_in: 2026-06-24 cleanup
+    - id: CPR-LR-2
+      title: searchRunnerStub silent-empty
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR2 (June 2026)
+    - id: CPR-LR-3
+      title: Typed-nil composition panic
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR5 (June 2026)
+    - id: CPR-CI-4
+      title: Verify gate expansion (api + worker)
+      severity: BLOCKING
+      status: resolved
+      resolved_in: PR1 (June 2026)
+  medium_items:
+    - id: CPR-CC-6
+      title: Split internal/application/youtube mega-package (43 files)
+      severity: MEDIUM
+      suggested_PR: pr/split-youtube-megapackage-2026-06-21
+    - id: CPR-CC-7
+      title: Relocate YouTubeCacheEntry DTO
+      severity: MEDIUM
+      status: done
+      merged_in_commit: pr/post-cascade-cleanup-2026-06-21
+    - id: CPR-TC-8
+      title: MetadataFetcherAdapter preserves Thumbnails array
+      severity: MEDIUM
+    - id: CPR-TC-9
+      title: searchRunnerStub empty-state + ctx.Err() coverage
+      severity: MEDIUM
+    - id: CPR-CC-10
+      title: archcheck --strict flag exposure
+      severity: MEDIUM
+      status: done
+      wave_precondition: Wave 16
+
+# ── Legacy Fallback Cleanup (June 2026) ─────────────────────────────────────
+
+legacy_fallback_cleanup:
+  date: 2026-06-23
+  description: |
+    Eliminates all remaining legacy fallback patterns that maintained
+    dual code paths (canonical + legacy). After this cleanup every
+    service uses the canonical outbox dispatcher exclusively.
+  summary:
+    - "Every service requires the outbox dispatcher (no nil tolerance)"
+    - "Legacy UpsertClip + SafeGoFunc(IndexClip) paths removed"
+    - "SetDispatcher methods removed from stockpipeline and catalogsync"
+    - "dispatch_bridge.go EnqueueOrFallback → Dispatch (error-returning)"
+    - "realtime.NewService panics if clips or outbox are nil"
+    - "assets module Dependencies no longer aggregates legacy handlers"
+  exit_gate: |
+    rg 'dispatcher != nil' internal/application/assets/providers/stock/ returns zero.
+    rg 'EnqueueOrFallback' internal/application/assets/providers/artlist/ returns zero.
+    rg 'legacy fallback' internal/application/assets/ returns zero (comments only).
+    rg 'SetDispatcher' internal/application/assets/providers/stock/ returns zero.
+    rg 'MediaIngest.*Handler|Scraper.*Handler' internal/api/assets/module.go returns zero.

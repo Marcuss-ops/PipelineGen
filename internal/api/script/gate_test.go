@@ -33,7 +33,7 @@ var prohibitedPatterns = []gate.Prohibition{
 	// type in handler_flow.go:44,81 and a comment ref in handler_jobs.go:23
 	// (plumbing, not construction). Narrow to the constructor so a future
 	// refactor reintroducing direct API-layer construction still fails.
-	// TODO(wave14-pr3): re-add per architecture/migration.yaml when
+	// TODO(wave14-pr3): re-add per architecture/current.yaml when
 	// ScriptFlowDeps drops the field.
 	{Name: "NewBatchService constructor in API", Pattern: "NewBatchService"},
 	{Name: "NewScenesService in API", Pattern: "NewScenesService"},

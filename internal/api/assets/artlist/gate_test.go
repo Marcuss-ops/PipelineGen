@@ -11,7 +11,7 @@ import (
 // imports against `docs/migrations/api-infrastructure-imports-allowlist.txt`)
 // + the grep-verified `artlistadapter.NewAdapter` + `artlist.NewService`
 // orchestrators (added 2026-06-24 followup). See
-// architecture/migration.yaml::Wave 14 + arch check Check 19.
+// architecture/current.yaml::Wave 14 + arch check Check 19.
 var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
 	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},

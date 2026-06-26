@@ -14,7 +14,7 @@ import (
 // were classified RISKY by grep-verification (13 + 30 hits in api/*
 // production code respectively) and would immediately fail the gate.
 // Drain target: Wave 14-PR5 middleware-config-drain (see
-// architecture/migration.yaml#wave-14), at which point the patterns
+// architecture/current.yaml#wave-14), at which point the patterns
 // can return to this list without re-breaking the gate. Cross-ref:
 // docs/migrations/api-infrastructure-imports-allowlist.txt (28
 // grandfathered-import entries as of Wave 14-PR3).
@@ -27,7 +27,7 @@ var prohibitedPatterns = []gate.Prohibition{
 	// respectively — would fail the gate immediately). Migration target:
 	// drain those references to the composition root in Wave 14, then
 	// re-introduce the patterns after the gate's own files no longer
-	// declare or use them. See architecture/migration.yaml::Wave 14
+	// declare or use them. See architecture/current.yaml::Wave 14
 	// grandfathered-imports.
 }
 
