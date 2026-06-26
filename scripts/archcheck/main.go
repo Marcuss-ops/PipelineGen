@@ -69,13 +69,65 @@ func main() {
 
 // Report is the JSON contract for scripts/archcheck consumers.
 type Report struct {
-	Passed            bool           `json:"passed"`
-	FocusedGatePassed bool           `json:"focused_gate_passed,omitempty"`
-	Mode              string         `json:"mode"`
-	Commit            string         `json:"commit"`
-	LegacyBudget      int            `json:"legacy_budget,omitempty"`
-	Checks            map[string]int `json:"checks"`
-	Violations        []string       `json:"violations"`
+	Passed            bool              `json:"passed"`
+	FocusedGatePassed bool              `json:"focused_gate_passed,omitempty"`
+	Mode              string            `json:"mode"`
+	Commit            string            `json:"commit"`
+	LegacyBudget      int               `json:"legacy_budget,omitempty"`
+	Checks            map[string]int    `json:"checks"`
+	Edges             map[string][]Edge `json:"edges,omitempty"`
+	Violations        []string          `json:"violations"`
+}
+
+// Edge is the canonical JSON shape for Wave 19 PR2-1 per-file edge
+// emission. Shared by both edge families (application_to_infrastructure
+// and cross_capability_import) per the Wave 19 pr2_setup block in
+// architecture/current.yaml.
+//
+// Field semantics:
+//   SrcFile : path of the file inside internal/application/<cap>/...
+//             that emits the import. Repo-relative forward-slash.
+//   Import  : full Go import path (without surrounding quotes).
+//   Type    : "platform" for application->infrastructure edges;
+//             "cross_capability" for application/<capA>/ -> <capB>.
+//   InPorts : true if the importing file's basename is `ports.go`,
+//             the canonical structural-port declaration location per
+//             AGENTS.md Pattern 0. Operators use this flag to drive
+//             the "lift concrete, keep port" follow-up phase.
+type Edge struct {
+	SrcFile string `json:"src_file"`
+	Import  string `json:"import"`
+	Type    string `json:"type"`
+	InPorts bool   `json:"in_ports"`
+}
+
+// buildEdges assembles the per-edge-graph report payload from the
+// platform-edge and cross-capability-edge sets. Each edge family is
+// emitted under its own key so wave-19 PR2 operators can diff the
+// graph slot directly without parsing a combined stream.
+//
+// The keys are exactly the two strings documented in
+// architecture/current.yaml::Wave 19 pr2_setup deferred_impact:
+//   * "application_to_infrastructure" — every direct application ->
+//     internal/infrastructure import (one Edge per import line).
+//   * "cross_capability_import" — every direct application/<capA>/ ->
+//     application/<capB>/ import where capA != capB.
+//
+// Edge slices within each key are pre-sorted by parsePlatformEdges /
+// the cross-cap check itself (via sortEdges) so the JSON output is
+// stable across runs and operators can diff reports line-by-line.
+func buildEdges(platformEdges, crossCapEdges []Edge) map[string][]Edge {
+	if len(platformEdges) == 0 && len(crossCapEdges) == 0 {
+		return nil
+	}
+	out := make(map[string][]Edge, 2)
+	if len(platformEdges) > 0 {
+		out["application_to_infrastructure"] = platformEdges
+	}
+	if len(crossCapEdges) > 0 {
+		out["cross_capability_import"] = crossCapEdges
+	}
+	return out
 }
 
 func runFocusedChecks() Report {
@@ -106,13 +158,21 @@ func runFocusedChecks() Report {
 	// edge counts. NO violations emitted (would break the active
 	// Wave 14-18 ratchet until the baseline is agreed). PR2+ will
 	// promote the counts to hard gates via allowlist-based subtraction.
-	atiStats, atiViolations := checkApplicationToInfrastructure()
+	//
+	// PR2-1 (June 2026, Wave 19 commit): consume the 3-tuple return
+	// (stats, edges, violations) and feed Report.Edges. We use a
+	// shared buildEdges helper so runFocusedChecks and
+	// runRatchetChecks emit an identical shape — operators diffing
+	// reports across modes see only the violations differences.
+	atiStats, atiEdges, atiViolations := checkApplicationToInfrastructure()
 	checks["application_to_infrastructure_files"] = atiStats["actual"]
 	violations = append(violations, atiViolations...)
 
-	cciStats, cciViolations := checkCrossCapabilityImport()
+	cciStats, cciEdges, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_import_pairs"] = cciStats["actual"]
 	violations = append(violations, cciViolations...)
+
+	edges := buildEdges(atiEdges, cciEdges)
 
 	return Report{
 		Passed:            len(violations) == 0,
@@ -120,6 +180,7 @@ func runFocusedChecks() Report {
 		Mode:              "focused",
 		Commit:            "ci/archcheck-hard-fail",
 		Checks:            checks,
+		Edges:             edges,
 		Violations:        violations,
 	}
 }
@@ -155,13 +216,15 @@ func runRatchetChecks() Report {
 	violations = append(violations, pythonWriterFindings...)
 
 	// Wave 19 (PR1 — observation only). See runFocusedChecks for rationale.
-	atiStats, atiViolations := checkApplicationToInfrastructure()
+	atiStats, atiEdges, atiViolations := checkApplicationToInfrastructure()
 	checks["application_to_infrastructure_files"] = atiStats["actual"]
 	violations = append(violations, atiViolations...)
 
-	cciStats, cciViolations := checkCrossCapabilityImport()
+	cciStats, cciEdges, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_import_pairs"] = cciStats["actual"]
 	violations = append(violations, cciViolations...)
+
+	edges := buildEdges(atiEdges, cciEdges)
 
 	return Report{
 		Passed:            len(violations) == 0,
@@ -170,6 +233,7 @@ func runRatchetChecks() Report {
 		Commit:            "ci/archcheck-hard-fail",
 		LegacyBudget:      0,
 		Checks:            checks,
+		Edges:             edges,
 		Violations:        violations,
 	}
 }
@@ -229,7 +293,7 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 }
 
 // checkApplicationToInfrastructure is the Wave 19 (June 2026) Portland
-// import-edge counter for the operator-pasted "Dependency Rules" spec.
+// import-edge emitter for the operator-pasted "Dependency Rules" spec.
 //
 // Vocabulary mapping (PR1 does NOT rename directories — would invalidate
 // the active Wave 14-18 ratchet):
@@ -238,23 +302,31 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 //   - kernel       = internal/domain/<x>
 //   - app          = internal/app
 //
-// Target after Wave 15-18 hardening: 0. For the FIRST PR the function
-// reports COUNTS in the `Checks` map and emits NO violations, so the
-// CI stays GREEN while operators see the surface area before any
-// hard-gate promotion (PR2+: violations fail ratchet unless the edge
-// is allowlisted in docs/migrations/application-infrastructure-imports-allowlist.txt).
+// PR1 emitted only an int counter (Checks["application_to_infrastructure_files"]).
+// PR2-1 (this commit) replaces the counter with a per-file edge list
+// `Edges["application_to_infrastructure"]` (each entry typed via the
+// shared Edge struct). The Checks counter is preserved as distinct-FILE
+// count so existing dashboards do not break.
+//
+// Target after Wave 15-18 hardening: 0. PR2-1 is observation-only — it
+// reports the FULL graph but emits NO violations. Promotion to hard
+// ratchet gate waits on operator baseline agreement (see Wave 19
+// pr2_setup deferred_impact / exit_gate_PR2 in architecture/current.yaml).
 //
 // The reverse direction (infrastructure -> application) is allowed
 // (composition-only bridge — Wave 15 PR4d). The `cmd -> app ->
 // capabilities -> kernel` direction is enforced by the existing
 // rules (pkg_to_internal, domain_to_application, domain_to_infrastructure,
 // application_to_api, application_to_database_sql).
-func checkApplicationToInfrastructure() (map[string]int, []string) {
+func checkApplicationToInfrastructure() (map[string]int, []Edge, []string) {
 	stats := map[string]int{
 		"actual":     0,
 		"violations": 0,
 	}
-	out, err := exec.Command("rg", "-l",
+	// Switch from rg `-l` (file list) to rg `-n` (file:line:line_text) so
+	// we can capture each import-line and emit one Edge per import. The
+	// `-l` form is insufficient for PR2-1's per-edge graph emission.
+	out, err := exec.Command("rg", "-n",
 		`"github\.com/Marcuss-ops/PipelineGen/internal/infrastructure/`,
 		"internal/application",
 		"--glob", "*.go",
@@ -262,18 +334,14 @@ func checkApplicationToInfrastructure() (map[string]int, []string) {
 	).Output()
 	if err != nil && !execErrIsNoMatch(err) {
 		stats["violations"] = -1
-		return stats, []string{fmt.Sprintf("checkApplicationToInfrastructure: rg failed: %v", err)}
+		return stats, nil, []string{fmt.Sprintf("checkApplicationToInfrastructure: rg failed: %v", err)}
 	}
-	actual := normalizePaths(splitNonEmpty(string(out)))
-	stats["actual"] = len(actual)
-	// PR1 observation-only: no violations emitted (would break active
-	// Wave 14-18 ratchet). PR2 promotes the edge to hard-gate via
-	// subtractSet(actual, allowlist) — see Wave 19 description in
-	// architecture/current.yaml.
-	return stats, nil
+	edges := parsePlatformEdges(string(out))
+	stats["actual"] = distinctSrcFiles(edges)
+	return stats, edges, nil
 }
 
-// checkCrossCapabilityImport is the Wave 19 (June 2026) edge counter
+// checkCrossCapabilityImport is the Wave 19 (June 2026) edge emitter
 // for `internal/application/<capA>/` -> `internal/application/<capB>/`.
 //
 // Per the operator-pasted Dependency Rules spec, Section "Cross-capability
@@ -283,16 +351,20 @@ func checkApplicationToInfrastructure() (map[string]int, []string) {
 // direct cross-capability import is reserved for composition adapters.
 //
 // Target after Wave 19 hardening: 0 — except for a documented per-edge
-// allowlist. PR1 reports COUNTS in the `Checks` map; no violations
-// are emitted.
+// allowlist. PR2 (this commit) reports the FULL per-import edge list
+// via `Edges["cross_capability_import"]` (one Edge per cross-capability
+// import line, in addition to the existing `Checks["cross_capability_import_pairs"]`
+// distinct-pair counter). Same-package references are excluded from
+// both metrics (they are legal under any layout).
 //
-// Distinguish same-package from cross-package imports: a file at
-// `internal/application/<capA>/x.go` importing
-// `internal/application/<capA>/y` is a SAME-package reference (legal
-// under any layout) and DOES NOT count. Only when the source file's
-// capability differs from the imported capability does the edge
-// contribute to the counter.
-func checkCrossCapabilityImport() (map[string]int, []string) {
+// PR2-3 detail: the capability set is now filesystem-driven via
+// `discoverApplicationCapabilities()` rather than the prior hardcoded
+// 22-name snapshot. The 8 stale entries the snapshot had (artlist /
+// association / catalog / content / ingest / monitor / realtime /
+// searchqueries — all removed from disk by Wave 14-18 collapses) are
+// gone, and adding a new capability dir under internal/application/
+// is now auto-picked up.
+func checkCrossCapabilityImport() (map[string]int, []Edge, []string) {
 	stats := map[string]int{
 		"actual":     0,
 		"violations": 0,
@@ -305,10 +377,13 @@ func checkCrossCapabilityImport() (map[string]int, []string) {
 	).Output()
 	if err != nil && !execErrIsNoMatch(err) {
 		stats["violations"] = -1
-		return stats, []string{fmt.Sprintf("checkCrossCapabilityImport: rg failed: %v", err)}
+		return stats, nil, []string{fmt.Sprintf("checkCrossCapabilityImport: rg failed: %v", err)}
 	}
 
-	capabilities := applicationCapabilities()
+	capabilities, capViolations := discoverApplicationCapabilities()
+	allViolations := capViolations
+
+	var edges []Edge
 	pairCount := 0
 	seenPairs := make(map[string]bool)
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
@@ -320,7 +395,7 @@ func checkCrossCapabilityImport() (map[string]int, []string) {
 		// strings that could in theory contain additional colons
 		// (and a safer shape than strings.IndexByte for any future
 		// rg output-format change). The "content" slice contains the
-		// matched substring (the import string itself for our pattern).
+		// full source line for our pattern.
 		parts := strings.SplitN(line, ":", 3)
 		if len(parts) < 3 {
 			continue
@@ -335,66 +410,182 @@ func checkCrossCapabilityImport() (map[string]int, []string) {
 		if srcCap == importCap {
 			continue
 		}
+		edges = append(edges, Edge{
+			SrcFile: src,
+			Import:  extractImportPath(content),
+			Type:    "cross_capability",
+			InPorts: isPortsFile(src),
+		})
 		pairKey := srcCap + "->" + importCap
-		if seenPairs[pairKey] {
-			continue
+		if !seenPairs[pairKey] {
+			seenPairs[pairKey] = true
+			pairCount++
 		}
-		seenPairs[pairKey] = true
-		pairCount++
 	}
+	sortEdges(edges)
 	stats["actual"] = pairCount
-	// PR1 observation-only (no violations). Operators can read the
-	// pair count as a summary statistic; the full edge list (file-
-	// level) is intentionally deferred to PR2 alongside the ratchet
-	// baseline — see Wave 19 exit_gate in architecture/current.yaml.
-	return stats, nil
+	return stats, edges, allViolations
 }
 
-// applicationCapabilities returns the set of well-known capability
-// sub-package names under internal/application/. Used by
-// checkCrossCapabilityImport to classify source files and imports.
+// discoverApplicationCapabilities returns the set of capability
+// sub-package names under internal/application/ derived from the
+// directory listing at startup. PR3 (June 2026) replaces the prior
+// hardcoded 22-name snapshot (see git history of scripts/archcheck).
 //
-// PR2 HOOK (do not forget when promoting this rule to hard gate):
-// the current list is a HARDCODED SNAPSHOT of known capability
-// directories. New capability directories added after this snapshot
-// will be SILENTLY IGNORED (no error, no warning) until the list is
-// re-rolled. PR2 must replace this map with one of:
-//  1. os.ReadDir("internal/application") at archcheck startup (auto-
-//     discover, immune to new capability dirs), OR
-//  2. Compute the list from architecture/ownership.yaml::application_*
-//     keys (single source of truth, requires ownership.yaml to have
-//     one entry per capability — see ownership.yaml::application_assets
-//     as the canonical shape).
+// Filesystem-driven discovery means:
+//   * adding a new capability dir is auto-picked up (no list edit);
+//   * removing a capability dir shrinks the captured set without
+//     list edits;
+//   * hidden / underscore-prefixed dirs are excluded (so test mocks,
+//     scratch dirs like `_*` and `.*` do not silently count as
+//     capabilities).
 //
-// PR1 remains safe for now because the in_progress Wave 14-18 waves
-// are the only ones adding/removing capabilities and we re-roll the
-// list in lockstep with each wave.
-func applicationCapabilities() map[string]bool {
-	return map[string]bool{
-		"assets":        true,
-		"artlist":       true,
-		"association":   true,
-		"books":         true,
-		"catalog":       true,
-		"channels":      true,
-		"clips":         true,
-		"content":       true,
-		"generation":    true,
-		"images":        true,
-		"ingest":        true,
-		"jobs":          true,
-		"lessons":       true,
-		"mediasearch":   true,
-		"middleware":    true,
-		"monitor":       true,
-		"realtime":      true,
-		"scriptassets":  true,
-		"scripts":       true,
-		"searchqueries": true,
-		"system":        true,
-		"voiceover":     true,
-		"youtube":       true,
+// Filter rules (intentionally minimal — no package-doc classification
+// because that would re-introduce a hardcoded list of "is this a
+// capability dir or not" which is the very thing this PR replaces):
+//   - Must be a directory entry (skip stray files in the dir).
+//   - Must not start with `.` or `_`.
+//
+// On failure (e.g. internal/application missing) the function
+// returns the empty set and emits a diagnostic violation so the
+// operator notices the misclassification rather than silently
+// under-detecting every edge to an empty `struct{}` (the prior
+// failure mode of stale hardcoded lists).
+//
+// PR3 history: the pre-PR3 hardcoded snapshot had 8 stale entries
+// (artlist / association / catalog / content / ingest / monitor /
+// realtime / searchqueries) — those dirs were collapsed into other
+// packages in Wave 14-18 commits and not synchronously removed from
+// the snapshot. Filesystem discovery picks up only the 15 live
+// capability dirs at the time of this commit. Operators adding a
+// new capability dir will see it auto-included without touching this
+// file.
+func discoverApplicationCapabilities() (map[string]bool, []string) {
+	const root = "internal/application"
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return map[string]bool{}, []string{
+			fmt.Sprintf("discoverApplicationCapabilities: os.ReadDir %s: %v", root, err),
+		}
 	}
+	out := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+			continue
+		}
+		out[name] = true
+	}
+	return out, nil
+}
+
+// ── Wave 19 PR2-1 helpers ──────────────────────────────────────────────────
+//
+// Shared edge-emission utilities for `checkApplicationToInfrastructure`
+// and `checkCrossCapabilityImport`. The Edge struct (defined above)
+// carries `{src_file, import, type, in_ports}` per the Wave 19 pr2_setup
+// JSON shape contract; these helpers parse rg -n output into a
+// []Edge, sort deterministically, and derive stat counters from
+// the edge set rather than from a parallel raw-text scan.
+
+// parsePlatformEdges converts rg -n output (one match per line in the
+// shape `path:linenum:line_text`) into per-import Edge rows with
+// Type="platform". Each input line produces at most one Edge —
+// extractImportPath picks the first quoted PipelineGen import on the
+// line. The leading `"` in the rg pattern means only quoted-import
+// occurrences match (comments and prose are filtered out at the rg
+// layer); the helper still guards on a non-empty extracted path as
+// defense-in-depth against edge-case rg formatting changes.
+func parsePlatformEdges(rgOut string) []Edge {
+	var edges []Edge
+	for _, line := range strings.Split(strings.TrimRight(rgOut, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		src := parts[0]
+		content := parts[2]
+		imp := extractImportPath(content)
+		if imp == "" {
+			continue
+		}
+		edges = append(edges, Edge{
+			SrcFile: src,
+			Import:  imp,
+			Type:    "platform",
+			InPorts: isPortsFile(src),
+		})
+	}
+	sortEdges(edges)
+	return edges
+}
+
+// distinctSrcFiles returns the count of distinct source-file paths
+// in the edge set. Used by checkApplicationToInfrastructure to keep
+// the `Checks["application_to_infrastructure_files"]` counter
+// stable (distinct FILE count, not distinct import-line count).
+func distinctSrcFiles(edges []Edge) int {
+	seen := make(map[string]bool, len(edges))
+	for _, e := range edges {
+		seen[e.SrcFile] = true
+	}
+	return len(seen)
+}
+
+// sortEdges orders edges by (SrcFile, Import, Type) so JSON output is
+// stable across runs (operators can diff consecutive reports line-
+// for-line without false churn from map-iteration order).
+func sortEdges(edges []Edge) {
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].SrcFile != edges[j].SrcFile {
+			return edges[i].SrcFile < edges[j].SrcFile
+		}
+		if edges[i].Import != edges[j].Import {
+			return edges[i].Import < edges[j].Import
+		}
+		return edges[i].Type < edges[j].Type
+	})
+}
+
+// isPortsFile returns true if src's basename is exactly `ports.go`,
+// the canonical location for structural-port declarations per
+// AGENTS.md Pattern 0. Operators use the `in_ports` flag derived
+// here to drive the "lift concrete, keep port" follow-up phase
+// (see architecture/current.yaml::Wave 19 pr2_setup items).
+func isPortsFile(src string) bool {
+	return filepath.Base(src) == "ports.go"
+}
+
+// extractImportPath returns the first PipelineGen import path
+// extracted from a Go source line. The line is expected to be an
+// rg -n line_text element (a full source line, possibly indented).
+// The helper locates the leading `"github.com/Marcuss-ops/PipelineGen/`
+// marker (skipping the quote), then finds the matching closing
+// quote. Returns "" when no such import string is on the line.
+//
+// The function is intentionally permissive: if a line has multiple
+// PipelineGen imports (rare; Go imports are usually one-per-line),
+// only the first is extracted. Future PRs that need per-import
+// disambiguation can extend this helper without touching the rule
+// logic.
+func extractImportPath(line string) string {
+	const openQ = `"github.com/Marcuss-ops/PipelineGen/`
+	idx := strings.Index(line, openQ)
+	if idx < 0 {
+		return ""
+	}
+	start := idx + 1 // skip leading `"`
+	end := strings.IndexByte(line[start:], '"')
+	if end < 0 {
+		return ""
+	}
+	return line[start : start+end]
 }
 
 // capabilityOfFile returns the capability name for a Go file under
