@@ -1,13 +1,9 @@
 """Pydantic request schemas for the embedding endpoints.
 
 QDRANT-001 (June 2026) closure: this sidecar no longer reads from or
-writes to media.db.sqlite. Go is the canonical reader + writer. The
-old `db_path` fields are KEPT (optional, ignored) only to surface a
-clear schema error to legacy callers instead of a silent 500.
-
-QDRANT-001 review-fix (June 2026): IndexTextRequest now exposes `name`
-and `search_text` directly so the Go caller (clipindexer/indexing_api.go)
-can pass them in the JSON body — no sidecar JSON pointer file required.
+writes to media.db.sqlite. Go is the canonical reader + writer, so the
+indexing endpoints accept only compute inputs and return only embedding
+metadata to the Go caller.
 """
 
 from pydantic import BaseModel, field_validator

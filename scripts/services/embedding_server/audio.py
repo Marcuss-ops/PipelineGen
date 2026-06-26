@@ -5,7 +5,12 @@ Uses APIRouter; __init__.py mounts this via `app.include_router(audio.router)`.
 
 from fastapi import APIRouter, HTTPException
 
-from . import _inference_sem, clap_model
+from . import (
+    CLAP_MODEL_NAME,
+    CLAP_MODEL_VERSION,
+    _inference_sem,
+    clap_model,
+)
 from .models import AudioFileEmbedRequest, EmbedRequest, IndexAudioRequest
 
 router = APIRouter()
@@ -56,10 +61,10 @@ async def index_audio(req: IndexAudioRequest):
         try:
             embedding = clap_model.encode(req.audio_path).tolist()
             return {
-                "status": "success",
-                "clip_id": req.clip_id,
                 "embedding": embedding,
                 "dimensions": len(embedding),
+                "model": CLAP_MODEL_NAME,
+                "model_version": CLAP_MODEL_VERSION,
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

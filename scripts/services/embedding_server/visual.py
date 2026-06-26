@@ -9,7 +9,12 @@ import subprocess
 
 from fastapi import APIRouter, HTTPException
 
-from . import _inference_sem, siglip_model
+from . import (
+    VISUAL_MODEL_NAME,
+    VISUAL_MODEL_VERSION,
+    _inference_sem,
+    siglip_model,
+)
 from .models import (
     ImageEmbedRequest,
     IndexVisualMultiRequest,
@@ -28,17 +33,14 @@ async def index_visual(req: IndexVisualRequest):
     async with _inference_sem:
         try:
             from PIL import Image
-            import imagehash
 
             img = Image.open(req.frame_path)
             embedding = siglip_model.encode(img).tolist()
-            h = str(imagehash.phash(img))
             return {
-                "status": "success",
-                "clip_id": req.clip_id,
                 "embedding": embedding,
-                "phash": h,
                 "dimensions": len(embedding),
+                "model": VISUAL_MODEL_NAME,
+                "model_version": VISUAL_MODEL_VERSION,
             }
         except Exception as e:
             import traceback
@@ -137,13 +139,10 @@ async def index_visual_multi(req: IndexVisualMultiRequest):
             avg_embedding = np.mean(frame_embeddings, axis=0).tolist()
 
             return {
-                "status": "success",
-                "clip_id": req.clip_id,
-                "frame_count": len(frame_embeddings),
-                "frame_positions": req.frame_positions[:len(frame_embeddings)],
-                "frame_embeddings": frame_embeddings,
-                "averaged_embedding": avg_embedding,
+                "embedding": avg_embedding,
                 "dimensions": len(avg_embedding),
+                "model": VISUAL_MODEL_NAME,
+                "model_version": VISUAL_MODEL_VERSION,
             }
         except HTTPException:
             raise

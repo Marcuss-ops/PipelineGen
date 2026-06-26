@@ -1,12 +1,3 @@
-# ANNULLATO — SUPERATO DA PG-034 (June 2026)
-
-# PG-034 (commit cb01c131) È la riconciliazione/cleanup finale: la capability
-# Qdrant è stata rimossa invece di essere riconciliata/cleanup. La traccia
-# documentale dei ticket originali è preservata in questo file come sola
-# audit trace; il "deletion" come atto operativo di chiusura è distribuito
-# attraverso i commit di PG-034 stesso + i tombstone QDRANT-00X (questa
-# commit series).
-
 # QDRANT-005 — Reconciliation, cleanup sicuro, health reale, osservabilità e chiusura finale
 
 ## Stato
