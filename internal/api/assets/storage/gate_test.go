@@ -10,7 +10,7 @@ import (
 // (handler.go + sync_drive_folder.go + local_to_drive.go). Baseline (no
 // goroutines; bash Check 19 enforces no infrastructure imports) + the
 // grep-verified `storage.SyncFolder` orchestrator (added 2026-06-24
-// followup). See architecture/migration.yaml::Wave 14 grandfathered-
+// followup). See architecture/current.yaml::Wave 14 grandfathered-
 // imports + scripts/ci-architectural-checks.sh::Check 19 for the
 // cross-cutting enforcement map. Cross-ref: docs/migrations/
 // api-infrastructure-imports-allowlist.txt (28 grandfathered-import

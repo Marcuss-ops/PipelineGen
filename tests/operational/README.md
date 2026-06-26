@@ -128,7 +128,7 @@ its Wave-4A followup (`*youtube.Service.Extract`). The transition matrix is:
 Assertions stay strict on every run until the worker fully passes — no
 shortcuts, no `--soft` mode. The exit code is the only honest signal.
 
-See `architecture/migration.yaml` (Wave 4A pending list) for the canonical
+See `architecture/current.yaml` (Wave 4A pending list) for the canonical
 ownership of the `Extract` followup.
 
 ---
