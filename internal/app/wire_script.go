@@ -4,6 +4,12 @@
 // Agente 4 — H (June 2026): extracted from registry.go. ClipServices is
 // pre-built here (access to concrete infrastructure) and passed to the
 // handler. Job registration happens at composition time.
+//
+// Registries-and-SSOT (June 2026): function now returns error so the
+// module registration at the bottom propagates duplicate-name /
+// frozen-registry failures up to WireRegistry. Every early-return
+// returns nil; only the final Register call returns tryRegisterModule's
+// possible error.
 
 package app
 
@@ -27,7 +33,10 @@ import (
 )
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) {
+// Returns an error if module registration fails on duplicate-name or
+// frozen-registry (Registries-and-SSOT §"Uniqueness" — composition
+// fails closed on duplicate module names, propagated up to WireRegistry).
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
 	// Phase 2 activation (June 2026) — ImageService is now OPTIONAL:
 	// text-only script generation no longer requires ImageService to be
 	// wired. The gate that previously aborted whole ScriptFlow when
@@ -43,7 +52,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// generator, and AI bundle are present (the minimum required for
 	// any script generation path).
 	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil {
-		return
+		return nil
 	}
 
 	memorySvc := root.AI.MemoryService
@@ -52,7 +61,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	if memorySvc == nil || engine == nil {
 		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
-		return
+		return nil
 	}
 
 	scriptsRepoAdapter := scripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
@@ -92,15 +101,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// imports alive without depending on the removed clipresolver
 	// package; if they become unused after removing clipresolver else-
 	// where, the import hygiene fix is mechanical (delete the import).
+	var _ = artlistpkg.LoadPresets
+	var _ = cfg.Drive.ArtlistFolder()
 	var harvestSvc scriptapi.AutoHarvestService
-	if root.Jobs.Service != nil {
-		// Intentionally NOT calling artlistpkg.LoadPresets: the
-		// package may be removed in a future wave. The discard
-		// ensures the package import stays "used".
-		var _ = artlistpkg.LoadPresets
-		var _ = cfg.Drive.ArtlistFolder()
-		harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
-	}
+	harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
 
 	// ── Pre-built ClipServices (avoids infrastructure imports in api/script) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
@@ -365,6 +369,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	})
 
 	// ── Register job handlers at composition time ──────────────────────
+	// Registries-and-SSOT (June 2026): these are *job-type*
+	// registrations (script.generate_batch, media.curate, etc).
+	// scriptflow.Register continues to log-Warn-and-continue for
+	// legacy handler composition (cross-package surface); however
+	// the module registration at the bottom of this function MUST
+	// propagate so a `script-flow` module-name duplicate fails
+	// composition, matching the spec §"Uniqueness" requirement.
 	if root.Jobs.Service != nil {
 		if genBatchUC != nil {
 			// PR-A (June 2026): the canonical app-layer handler now
@@ -409,7 +420,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		handler,
 		log,
 	)
-	registerModule(registry, log, mod)
+	return tryRegisterModule(registry, log, mod)
 }
 
 // ── Adapters ────────────────────────────────────────────────────────────────

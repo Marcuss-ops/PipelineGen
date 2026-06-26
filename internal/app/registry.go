@@ -70,10 +70,19 @@ type RegistryWiring struct {
 	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 }
 
-func registerModule(registry *module.Registry, log *zap.Logger, mod module.Module) {
+// tryRegisterModule is the SSOT fail-fast variant for Registries-and-SSOT
+// (June 2026, §"Uniqueness"). On duplicate-name or frozen-registry error,
+// returns the wrapped error to the caller — propagation is the caller's
+// responsibility. The "compose:" prefix is pinned by
+// TestTryRegisterModule_ErrorContainsSpecMarker in
+// internal/app/registry_failfast_test.go; do not change without updating
+// the test marker.
+func tryRegisterModule(registry *module.Registry, log *zap.Logger, mod module.Module) error {
 	if err := registry.Register(mod); err != nil {
 		log.Warn("failed to register module", zap.String("module", mod.Name()), zap.Error(err))
+		return fmt.Errorf("compose: module=%q already registered: %w", mod.Name(), err)
 	}
+	return nil
 }
 
 // WireRegistry creates and populates the module registry with all modules.
@@ -99,13 +108,15 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		driveUploaderAdapter = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
 	}
 	reconcileSvcAdapter := drivecleanup.NewService()
-	registerModule(registry, log, systemapi.NewModule(
+	if err := tryRegisterModule(registry, log, systemapi.NewModule(
 		doctorConfigFrom(cfg),
 		log,
 		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
 		newDriveAdminAdapter(driveUploaderAdapter, log),
 		newReconcilerAdapter(reconcileSvcAdapter, log),
-	))
+	)); err != nil {
+		return nil, fmt.Errorf("wire registry: system module: %w", err)
+	}
 
 	// Artlist (PR4d-chunk2): takes *ArtlistBundle + vectorStore.
 	artlistBundle := &ArtlistBundle{
@@ -123,14 +134,18 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
 	} else {
-		registerModule(registry, log, aw.Module)
+		if err := tryRegisterModule(registry, log, aw.Module); err != nil {
+			return nil, fmt.Errorf("wire registry: artlist: %w", err)
+		}
 		wiring.ArtlistSvc = aw
 	}
 
 	// ScriptFlow — sources from root.<bundle>.<field>. Extracted into
 	// wireScriptFlow (PR7 cleanup, June 2026) to shrink WireRegistry and
 	// reuse the canonical engine + memorySvc from AIBundle.
-	wireScriptFlow(ctx, cfg, log, root, registry)
+	if err := wireScriptFlow(ctx, cfg, log, root, registry); err != nil {
+		return nil, fmt.Errorf("wire registry: script-flow: %w", err)
+	}
 
 	// YouTubeClip (PR4d-chunk2): 4 direct narrow args + ProviderRegistry.
 	// ProviderRegistry is not yet populated when WireYouTubeClip runs —
@@ -146,7 +161,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry, toolCheckerAdapter, idemHandler); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
-		registerModule(registry, log, yw.Module)
+		if err := tryRegisterModule(registry, log, yw.Module); err != nil {
+			return nil, fmt.Errorf("wire registry: youtube: %w", err)
+		}
 		wiring.YouTubeClip = yw
 	}
 
@@ -232,9 +249,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		mod, err := m.fn()
 		if err != nil {
 			log.Warn("failed to wire module", zap.String("module", m.name), zap.Error(err))
-		} else if mod != nil {
-			registerModule(registry, log, mod)
+	} else if mod != nil {
+		if err := tryRegisterModule(registry, log, mod); err != nil {
+			return nil, fmt.Errorf("wire registry: %s: %w", m.name, err)
 		}
+	}
 	}
 
 	if root.Domains != nil && root.Domains.RealtimeMatcher != nil {
@@ -246,13 +265,15 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// stays typed-nil (unassigned = nil interface); the handler is
 		// itself nil-tolerant.
 		matcher := root.Domains.RealtimeMatcher
-		registerModule(registry, log, module.NewRouteModule(
+		if err := tryRegisterModule(registry, log, module.NewRouteModule(
 			"realtime",
 			func() bool { return root.Domains.RealtimeMatcher != nil && realtimeEnabled },
 			"",
 			assetsapi.NewRealtimeMatchHandler(matcher, log),
 			log,
-		))
+		)); err != nil {
+			return nil, fmt.Errorf("wire registry: realtime module: %w", err)
+		}
 	}
 	// ── Unified generation API (replaces /api/books + /api/lessons) ──
 	// Books and Lessons are now served through the unified generation endpoint
@@ -262,25 +283,29 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	{
 		genReg := generation.BuildDefaultRegistry(cfg.Books.Enabled, cfg.Lessons.Enabled, anyScriptFeatureEnabled(cfg))
 		genSvc := generation.NewService(root.Jobs.Service, root.Repos.Assets, genReg)
-		registerModule(registry, log, module.NewRouteModule(
+		if err := tryRegisterModule(registry, log, module.NewRouteModule(
 			"generation",
 			func() bool { return true },
 			"/generations",
 			generationapi.NewHandler(genSvc, log),
 			log,
-		))
+		)); err != nil {
+			return nil, fmt.Errorf("wire registry: generation module: %w", err)
+		}
 		log.Info("generation API wired at /api/generations",
 			zap.Bool("books", cfg.Books.Enabled),
 			zap.Bool("lessons", cfg.Lessons.Enabled))
 	}
 	if root.DB != nil && root.DB.DB != nil {
-		registerModule(registry, log, module.NewRouteModule(
+		if err := tryRegisterModule(registry, log, module.NewRouteModule(
 			"channels",
 			func() bool { return true },
 			"/channels",
 			channelsapi.NewChannelsHandler(newChannelRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)), log),
 			log,
-		))
+		)); err != nil {
+			return nil, fmt.Errorf("wire registry: channels module: %w", err)
+		}
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
 		// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
 		//
@@ -288,13 +313,15 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// owns the *assets.SearchQueriesRepository. Composition builds
 		// the *searchqueriesuc.UseCase from the concrete repo and injects
 		// it into the handler — keeping handler = thin transport.
-		registerModule(registry, log, module.NewRouteModule(
+		if err := tryRegisterModule(registry, log, module.NewRouteModule(
 			"search_queries",
 			func() bool { return true },
 			"/search-queries",
 			assetsapi.NewSearchQueriesHandler(searchqueriesuc.NewUseCase(assets.NewSearchQueriesRepository(root.DB.DB)), log),
 			log,
-		))
+		)); err != nil {
+			return nil, fmt.Errorf("wire registry: search_queries module: %w", err)
+		}
 	}
 
 	if wiring.MediaIngest != nil {
@@ -308,14 +335,18 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// all script entrypoints, so we keep it alive whenever any script
 		// feature is enabled.
 		scriptHistoryEnabled := anyScriptFeatureEnabled(cfg)
-		registerModule(registry, log, scriptapi.NewScriptHistoryModule(
+		if err := tryRegisterModule(registry, log, scriptapi.NewScriptHistoryModule(
 			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 			log,
 			middleware.FeatureFlagChecker("Script", scriptHistoryEnabled),
 			scriptHistoryEnabled,
-		))
+		)); err != nil {
+			return nil, fmt.Errorf("wire registry: script-history module: %w", err)
+		}
 	}
-	registerModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility))
+	if err := tryRegisterModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility)); err != nil {
+		return nil, fmt.Errorf("wire registry: utility module: %w", err)
+	}
 
 	// PR4d-chunk2: maintenanceSvc constructed locally (no longer assigned to CoreDeps);
 	// voiceoverSvc selected from root.Domains; assets bundle built from root.
@@ -348,7 +379,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// (typed-to-typed, no auto-bridge required).
 		if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
-		registerModule(registry, log, aw.Module)
+		if err := tryRegisterModule(registry, log, aw.Module); err != nil {
+			return nil, fmt.Errorf("wire registry: assets module: %w", err)
+		}
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
 			maintenanceSvc.SetDeletionService(aw.DeletionSvc)
 			log.Info("injected DeletionService into MaintenanceService")
