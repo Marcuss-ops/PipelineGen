@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -77,6 +78,15 @@ type Policy struct {
 	RemovalDoc       string
 	// KnownGrandfathered is exposed in the report header for traceability.
 	KnownGrandfathered []string
+	// StaleProseStems is the list of pre-Wave-16 path stems that must
+	// not appear as bare prose references in *.go source files (a
+	// "bare" reference is one whose stem is NOT followed by a literal
+	// '.', e.g. `module_jobs_test.go` or `compose_images bundle` —
+	// distinct from `compose_images.go` which is already covered by
+	// the user-regex gate). Enforced by scanStaleProsePaths. Empty
+	// list opts out (Phase 0 only). See architecture/policy.yaml::
+	// stale_prose_paths for the comment block + severity ladder.
+	StaleProseStems []string
 }
 
 // Violation is the JSON shape emitted per rule violation.
@@ -84,6 +94,7 @@ type Violation struct {
 	Package      string `json:"package,omitempty"`
 	Directory    string `json:"directory,omitempty"`
 	File         string `json:"file,omitempty"`
+	Line         int    `json:"line,omitempty"`
 	ActualCount  int    `json:"actual_count,omitempty"`
 	AllowedCount int    `json:"allowed_count,omitempty"`
 	ActualLines  int    `json:"actual_lines,omitempty"`
@@ -150,6 +161,7 @@ func main() {
 	scanCIGatesDoc(*root, pol, &report)
 	scanAgentPlaybookDoc(*root, pol, &report)
 	scanRemovalDoc(*root, pol, &report)
+	scanStaleProsePaths(*root, pol, &report)
 	fileLines := map[string]int{}
 	scanPackages(*root, pol, &report, fileLines)
 	scanCommandBinaries(*root, pol, &report, fileLines)
@@ -186,6 +198,7 @@ func loadPolicy(path string) (*Policy, error) {
 	p := &Policy{}
 	sc := bufio.NewScanner(f)
 	inGrandfathered := false
+	inStaleProse := false
 	for sc.Scan() {
 		line := sc.Text()
 		if idx := strings.Index(line, "#"); idx >= 0 {
@@ -197,19 +210,26 @@ func loadPolicy(path string) (*Policy, error) {
 		}
 
 		if inGrandfathered {
-			// collect indented bullets until top-level key or EOF
-			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-				inGrandfathered = false
-			} else {
-				// Strip leading indent + dash, surrounding whitespace, and
-				// surrounding ASCII quotes (YAML inline scalar syntax). Plain
-				// bullet strings without quotes work too.
-				b := strings.Trim(strings.TrimSpace(strings.TrimLeft(line, " \t-")), "\"'")
-				if b != "" {
-					p.KnownGrandfathered = append(p.KnownGrandfathered, b)
-				}
+			// collect indented bullets via the shared collectBullet
+			// helper (centralizes the indent + ASCII-quote trim; the
+			// inStaleProse path below uses the same helper).
+			if b, isBullet := collectBullet(line); isBullet {
+				p.KnownGrandfathered = append(p.KnownGrandfathered, b)
 				continue
 			}
+			inGrandfathered = false
+		}
+
+		if inStaleProse {
+			// collect indented bullets via the shared collectBullet()
+			// helper (handles the indent + ASCII-quote trim; see the
+			// helper doc for semantics). Mirrors the inGrandfathered
+			// path style.
+			if b, isBullet := collectBullet(line); isBullet {
+				p.StaleProseStems = append(p.StaleProseStems, b)
+				continue
+			}
+			inStaleProse = false
 		}
 
 		parts := strings.SplitN(trimmed, ":", 2)
@@ -251,6 +271,10 @@ func loadPolicy(path string) (*Policy, error) {
 			if val == "" {
 				inGrandfathered = true
 			}
+		case "stale_prose_paths":
+			if val == "" {
+				inStaleProse = true
+			}
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -276,6 +300,21 @@ func splitTrim(s string) []string {
 		}
 	}
 	return out
+}
+
+// collectBullet parses one YAML indented-bullet line into a clean
+// scalar, returning (bullet, true) when line is a bullet to append,
+// or ("", false) when line has returned to top-level (calling code
+// resets its in-list flag). Handles mixed quoted + unquoted YAML
+// inline scalars; mirrors the original inGrandfathered block's
+// semantics. Helper exists so two list-style keys don't duplicate
+// the indent + dash + quote trim logic.
+func collectBullet(line string) (string, bool) {
+	if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+		return "", false
+	}
+	b := strings.Trim(strings.TrimSpace(strings.TrimLeft(line, " \t-")), "\"'")
+	return b, b != ""
 }
 
 // scanForbiddenDirs reports internal/<x> first-level dirs whose name
@@ -570,6 +609,114 @@ func scanDocSections(f *os.File, required []string, docRel, rulePrefix string, r
 			Note:        fmt.Sprintf("canonical doc is missing required section: %s", sec),
 		})
 	}
+}
+
+// scanStaleProsePaths walks internal/**/*.go and emits one warn-severity
+// violation per (file, line, stem) triple where a stem from
+// pol.StaleProseStems appears as a bare prose reference — i.e. matched
+// with the regex `(?<![\w])<stem>(?!\.)`. The lookbehind-for-non-word
+// guards against substring matches inside larger identifiers (e.g.
+// `mymodule_jobs`); the negative lookahead-for-dot excludes `<stem>.go`
+// references that the user-regex gate already covers (e.g.
+// `compose_images.go`). Together they catch the `module_jobs_test.go`
+// / `compose_images bundle` family without false positives on existing
+// comment prose.
+//
+// (Above paragraph describes the original `(?<!\\w)<stem>(?!\\.)`
+// regex design that Go's RE2 engine does NOT support. The runtime
+// implementation is now the alternation `\\b<stem>(?:\\w+|[^.])` --
+// see the inline comment at the regex compile site below for the
+// RE2-pivot rationale.)
+//
+// Per-stem rule naming `stale_prose_paths_<stem>` keeps the
+// `--strict` summary group filterable from the user-regex family.
+// Day-1 expected violations: 4 in internal/app/composition_test.go
+// referring to the surviving `module_jobs_test.go` (real test file;
+// addressed in a doc-only follow-up that rewrites the references to
+// `module_media.go::BuildJobsBundle (see module_jobs_test.go)`).
+//
+// Skipped dirs (Phase 0 hardcoded — moved to policy.go in Phase 1):
+//
+//	.git, vendor, node_modules, node-scraper, examples, scripts
+//
+// Severity is `warn` so `--strict` promotes a stray reference to
+// os.Exit(1) — mirroring the user-contract on the doc-pointer family.
+func scanStaleProsePaths(root string, pol *Policy, r *Report) {
+	if len(pol.StaleProseStems) == 0 {
+		return
+	}
+	type stemRe struct {
+		stem string
+		re    *regexp.Regexp
+	}
+	compiled := make([]stemRe, 0, len(pol.StaleProseStems))
+	for _, s := range pol.StaleProseStems {
+		// RE2 (Go's regexp engine) does NOT support lookbehind /
+		// lookahead, so the design pivots to alternation:
+		//
+		//   \b<stem>            — word-boundary at start (excludes
+		//                         `mymodule_jobs` substrings).
+		//   (?:\w+|[^.])       — either one-or-more word chars
+		//                         (matches `module_jobs_test.go`, where
+		//                         the stem continues into `_<word>`),
+		//                         OR a single non-`.` char
+		//                         (matches bare prose `module_jobs
+		//                         bundle`, end-of-line mentions,
+		//                         etc.). The `.` exclusion is what
+		//                         prevents matching `compose_images.go`,
+		//                         which the user-regex gate already
+		//                         covers.
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(s) + `(?:\w+|[^.])`)
+		compiled = append(compiled, stemRe{stem: s, re: re})
+	}
+	skipDirs := map[string]bool{
+		".git": true, "vendor": true, "node_modules": true,
+		"node-scraper": true, "examples": true, "scripts": true,
+	}
+	internalDir := filepath.Join(root, "internal")
+	_ = filepath.WalkDir(internalDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if skipDirs[filepath.Base(path)] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// Include _test.go files — the day-1 violations live in
+		// composition_test.go (referring to module_jobs_test.go). Skipping
+		// tests would silently drop the family.
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+		rel, _ := filepath.Rel(root, path)
+		relPath := filepath.ToSlash(rel)
+		sc := bufio.NewScanner(f)
+		lineNum := 0
+		for sc.Scan() {
+			lineNum++
+			line := sc.Text()
+			for _, sr := range compiled {
+				if sr.re.MatchString(line) {
+					r.Violations = append(r.Violations, Violation{
+						File:        relPath,
+						Line:        lineNum,
+						MatchedRule: "stale_prose_paths",
+						Rule:        fmt.Sprintf("stale_prose_paths_%s", sr.stem),
+						Severity:    "warn",
+						Note:        fmt.Sprintf("line contains a bare prose reference to pre-Wave-16 path stem %q (not followed by a literal dot); rewrite the comment to the post-Wave-16 ground truth: composition.go::Build<X>Bundle / module_sources.go::Wire<X> / compose_media.go::init<X>Service", sr.stem),
+					})
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // scanCommandBinaries checks that each cmd/<name>/main.go is below
