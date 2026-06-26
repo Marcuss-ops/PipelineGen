@@ -22,6 +22,49 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers, common
 # semantic contract (per proposal §"internal/kernel").
 kernel_subzones: asset, job, script, event, identity, errors
 
+# Canonical data/config ownership doc (path relative to project root) — the
+# single source of truth for the data+config ownership axis (DB rules,
+# Qdrant projection sequence, Drive authority, configuration boot pipeline,
+# EXPAND/BACKFILL/CUTOVER/CONTRACT). Enforced by cmd/archcheck via the
+# rule family `data_ownership_doc` (`data_ownership_doc_missing` for an
+# absent file, `data_ownership_doc_incomplete` for a missing required H2
+# section header — both warn, so --strict promotes either failure to a
+# hard CI gate). Promotion from godlike/ design-state: June 2026.
+#
+# Scope (Phase 0): existence + required-section presence. Cross-package
+# contradiction detection (Per-package `// owns:` comments vs. the 8-domain
+# ownership table in §"One owner per fact") is deferred to Phase 1+.
+# Leave empty to opt out (Phase 0 only).
+data_ownership_doc: docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
+
+# Canonical zero-legacy-policy doc (path relative to project root) — the
+# single source of truth for deprecation-record requirements and the
+# EXPAND/BACKFILL/CUTOVER/CONTRACT migration sequence. Enforced by
+# cmd/archcheck via the rule family `legacy_policy_doc`
+# (`legacy_policy_doc_missing` warn + `legacy_policy_doc_incomplete`
+# warn). Promotion: June 2026. Leave empty to opt out (Phase 0 only).
+legacy_policy_doc: docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
+
+# Canonical CI-gates manifest (path relative to project root) — the
+# single source of truth for executable architecture rules and CI gate
+# definitions. The on-disk enforcement lives in scripts/ci-architectural-
+# checks.sh (legacy ratchets) and cmd/archcheck/main.go::scanCIGatesDoc
+# (this doc). Promotion: June 2026. Leave empty to opt out.
+ci_gates_doc: docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+
+# Canonical agent execution playbook (path relative to project root) —
+# the single source of truth for AI-agent code-modification boundaries
+# and the EXPAND/BACKFILL/CUTOVER/CONTRACT migration method. Working
+# with AGENTS.md Git-Lessons and ARCHITECTURE.md structural diagram.
+# Promotion: June 2026.
+agent_playbook_doc: docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md
+
+# Canonical feature-removal checklist (path relative to project root) —
+# the single source of truth for the 7-phase teardown sequence of a
+# superseded feature. Working with godlike/07 zero-legacy policy.
+# Promotion: June 2026.
+removal_doc: docs/architecture/godlike/13_FEATURE_REMOVAL_CHECKLIST.md
+
 # Expected capability slices (target: internal/capabilities/<x>).
 # Each owns module.go, contract.go, service.go, http.go, jobs.go,
 # events.go, repository.go, adapters.go per proposal §"internal/capabilities".

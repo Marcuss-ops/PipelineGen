@@ -3,9 +3,21 @@
 > **Status**: canonical; replaces the scattered map previously in
 > `AGENTS.md` (old sections) and the README.
 >
-> **Authority carve-out**: this doc covers structure and data flow. For
-> **rules** (DB driver, FTS5 ban, schema boundaries, AI generation policy,
-> admin token, agent instructions) `AGENTS.md` wins. If they disagree, fix the code.
+> **Authority carve-out**: this doc covers structure and data flow.
+>
+> - For **agent-facing rules** (AI generation policy, admin token, agent
+>   instructions) `AGENTS.md` wins.
+> - For **data and configuration ownership** (DB driver lock, FTS5 ban,
+>   schema boundaries, table capability ownership, Qdrant projection
+>   sequence, Drive authority, configuration boot pipeline,
+>   EXPAND/BACKFILL/CUTOVER/CONTRACT) the canonical source is
+>   [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md).
+> - For the **target-tree axis** (Phase 0 governance, package-size caps,
+>   per-capability directory rules) see `architecture/policy.yaml` and
+>   §11.5 below.
+>
+> If sources disagree, fix the code; the loader will tell you which
+> rule was violated.
 
 ## 1. What it is
 
@@ -106,13 +118,13 @@ Reading from other modules' DB tables is OK; importing another module's
 | Module | Registry file | Mounts | Verdict |
 |--------|-------------|--------|---------|
 | `ScriptFlow` | `module_scripts.go` → `WireScriptFlow` | `/api/script/*` | active (post PR4d-final) |
-| `Assets` | `module_assets.go` → `WireAssets` | `/api/media/*`, `/api/assets/*` | active |
-| `Artlist` | `module_artlist.go` → `WireArtlist` | `/api/artlist/*` | active |
-| `Images` | `module_fullimages.go` → `WireImages` | `/api/images/*`, `/api/fullimages/*` | active |
-| `Jobs` | `module_jobs.go` → `WireJobs` | `/api/jobs/*`, `/api/internal/*` | active |
-| `YouTube` | `module_youtube.go` → `WireYouTubeClip` | `/api/clips/*` | active |
-| `Channels` | `module_ingest.go` | `/api/channels/*` | active |
-| `Stock` | `module_stock.go` → `WireStockPipeline` | stock pipeline routes | active |
+| `Assets` | `module_media.go` → `WireAssets` | `/api/media/*`, `/api/assets/*` | active |
+| `Artlist` | `module_sources.go` → `WireArtlist` | `/api/artlist/*` | active |
+| `Images` | `composition.go` (consolidated; `WireImages`) | `/api/images/*`, `/api/fullimages/*` | active |
+| `Jobs` | `composition.go::BuildJobsBundle` | `/api/jobs/*`, `/api/internal/*` | active |
+| `YouTube` | `composition.go::BuildDomainBundle` | `/api/clips/*` | active |
+| `Channels` | `composition.go` (consolidated; `WireChannels`) | `/api/channels/*` | active |
+| `Stock` | `composition.go` (consolidated; `WireStockPipeline`) | stock pipeline routes | active |
 | `Content` | books + lessons merged → `internal/api/content/` | `/api/books/*`, `/api/lessons/*` | active |
 
 System routes (always present): `/health`, `/ready`, `/metrics`, `/assets/*`, `/media/google-accounting/*`.
@@ -174,6 +186,15 @@ Ticker (cfg.Jobs.CatalogSyncInterval, default 6h)
 ```
 
 ## 6. Persistence
+
+> **Authority**: Database ownership, migrations discipline (one ledger
+> + one runner; capability-owned tables; no `sql.Open` outside
+> `internal/infrastructure/database/**`; canonical PRAGMAs
+> `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`), the
+> Qdrant projection carve-out, and future storage-engine migration
+> (EXPAND/BACKFILL/CUTOVER/CONTRACT) live canonically in
+> [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md).
+> The physical layout below is the operational view.
 
 **Pattern (codex/db-set-and-paths, June 2026)**: every sqlite database is
 opened through `internal/infrastructure/database.DatabaseSet` (`OpenSet`,
@@ -315,9 +336,21 @@ scraper). Everything else is external.
 
 ## 9. Configuration
 
-`config.yaml` at the project root is loaded once by `internal/config.Get()`.
-Order: struct defaults → YAML → env vars. The 19 sub-structs of `Config`
-live in `internal/config/*.go` (one per file; `types.go` is the index).
+> **Authority**: Configuration boot pipeline
+> (`input → load → defaults → validate → immutable`), single-points-of
+> -defaults and -validation, the "business services receive narrow
+> capability configuration" rule, and the ban on runtime mutation /
+> duplicated fallbacks live canonically in
+> [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#configuration`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#configuration).
+
+The current loader lives at `internal/platform/config/config.go::Get()`
+(target-tree Phase 2, June 2026). The 19 sub-structs of `Config` live
+in `internal/platform/config/*.go` (one per file; `types.go` is the
+index). The composition root must invoke `(*Config).Validate()`
+**explicitly** before any capability boots — `Validate` is **not**
+called inside `Get()`. After `Validate()` returns `nil`, the
+configuration is treated as read-only; runtime mutation trips the
+godlike/06 rule.
 
 Security-sensitive: `VELOX_ADMIN_TOKEN` must be supplied at runtime;
 production token MUST NOT be checked in.

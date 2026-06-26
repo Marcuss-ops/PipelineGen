@@ -1,5 +1,14 @@
 # Zero Legacy Policy
 
+> **Status**: **canonical** (promoted June 2026 from godlike/ design-state).
+> This document is the single source of truth for legacy deprecation
+> constraints and the EXPAND / BACKFILL / CUTOVER / CONTRACT migration
+> sequence. Supersedes overlapping rules previously restated in
+> `AGENTS.md` (Compatibility/Help-utils/Drift-style comments) and
+> `ARCHITECTURE.md` (architectural-drift commentary). Phase 1+ rules
+> may add a `legacy_policy_doc:` enforcement to `cmd/archcheck` (see
+> the 06 promotion for the C1 pattern).
+
 ## Goal
 
 PipelineGen does not preserve superseded paths indefinitely. Compatibility is temporary, explicit, observable, and scheduled for removal.

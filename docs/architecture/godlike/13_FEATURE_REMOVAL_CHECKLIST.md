@@ -1,5 +1,15 @@
 # Feature Removal Checklist
 
+> **Status**: **canonical** (promoted June 2026 from godlike/ design-state).
+> This document is the single source of truth for the complete teardown
+> sequence of a superseded feature. Working with `godlike/07`'s zero-
+> legacy policy and `godlike/09`'s migration method, it covers
+> Discovery → Runtime cut → Data handling → Code removal →
+> Configuration and operations → Verification → Completion as
+> distinct phases, with the removal property answerable via a single
+> delegation: "The feature is removed when there are zero active
+> references and no compatibility path can reactivate it."
+
 ## Purpose
 
 Removing a package is not enough. A feature is gone only when its runtime surface, durable state, configuration, operational tooling, and documentation are gone or intentionally migrated.

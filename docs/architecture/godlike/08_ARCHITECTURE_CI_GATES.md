@@ -1,5 +1,12 @@
 # Architecture CI Gates
 
+> **Status**: **canonical** (promoted June 2026 from godlike/ design-state).
+> This document is the single source of truth for executable
+> architecture rules and CI gate definitions. The on-disk enforcement
+> lives in `scripts/ci-architectural-checks.sh` (legacy ratchets) and
+> `cmd/archcheck/main.go` (target-tree ratchets); both binaries cite
+> this document as their policy manifest.
+
 ## Purpose
 
 Architecture rules must be executable. Reviews reinforce the rules, while CI prevents drift automatically.
