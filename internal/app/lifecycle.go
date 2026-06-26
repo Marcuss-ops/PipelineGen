@@ -87,12 +87,14 @@ type backgroundJobs struct {
 //  7. Gemma memory sweeper (optional)
 //  8. Clip dedup sweeper (optional)
 //  9. VLM auto-tag sweeper (optional)
+//
 // 10. Job runner (REQUIRED, always last)
 //
 // PG-034 (June 2026): three Qdrant-driven background steps were removed:
 //   - qdrant-stale-cleaner
 //   - qdrant-ghost-sweeper
 //   - qdrant-health-monitor
+//
 // Qdrant is gone; its embeddings are now stored solely in SQLite
 // (media_assets.embedding_json / transcript_embedding).
 //

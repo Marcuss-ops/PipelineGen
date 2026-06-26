@@ -32,9 +32,16 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		repos.ClipsRepo,
 		log,
 	)
+	// QDRANT-002 PR7: wire *assets.ClipsRepository as the
+	// ClipsStateWriter (same concrete that already implements
+	// ClipsUpserter — methods are partitioned by go-type, not by
+	// runtime class). Per-state dispatching is unnecessary post
+	// PR2.6 media_assets consolidation because every per-source
+	// shim funnels into the same SQLite table.
+	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
 	outboxTxMgr := outbox.NewManager(dbs.main.DB, log)
-	dispatcher := outbox.NewDispatcher(multiClipsUp, outboxEventsRepo, outboxTxMgr, log)
-	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path")
+	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log)
+	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
 	eventsRegistry := outboxevents.NewHandlerRegistry()
 

@@ -137,7 +137,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// the handler's constructor resolves providers lazily so it's fine
 	// to pass the empty registry here; it will be populated by the time
 	// HTTP requests arrive.
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry, toolCheckerAdapter); err != nil {
+	// PR8 (June 2026): IdempPlus constructs the canonical reusable Gin
+	// idempotency middleware instance from RepoBundle.IdempotencyStore;
+	// shared across YouTubeClip, MediaIngest, and (via AssetsBundle)
+	// clips + register handlers.
+	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
+	idemHandler := idemPlus.Handler()
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry, toolCheckerAdapter, idemHandler); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		registerModule(registry, log, yw.Module)
@@ -170,6 +176,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		{"MediaIngest", func() (module.Module, error) {
 			// PR4d-chunk2: WireMediaIngest takes *MediaIngestBundle. PG-011:
 			// bundle.DB is now *storage.SQLiteDB (no raw *sql.DB in this layer).
+			// PR8: idemHandler installed on POST /api/media/ingest.
 			ingestBundle := &MediaIngestBundle{
 				DB:                root.DB,
 				Assets:            root.Repos.Assets,
@@ -180,7 +187,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				AssetIndexService: root.Search.AssetIndexService,
 				PrebuiltService:   root.Domains.IngestService,
 			}
-			w, e := WireMediaIngest(cfg, log, ingestBundle)
+			w, e := WireMediaIngest(cfg, log, ingestBundle, idemHandler)
 			wiring.MediaIngest = w
 			if w != nil {
 				return w.Module, e
@@ -324,17 +331,20 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if root.Domains.VoiceoverService != nil {
 		voiceoverService = root.Domains.VoiceoverService
 	}
+
 	assetsBundle := &AssetsBundle{
-		ClipsRepo:          root.Repos.ClipsRepo,
-		VoiceoverRepo:      root.Repos.VoiceoverRepo,
-		ImageRepo:          root.Repos.ImageRepo,
-		Assets:             root.Repos.Assets,
-		DriveClient:        root.Drive.DriveClient,
-		AssetTreeService:   root.Search.AssetTreeService,
-		AssetIndexService:  root.Search.AssetIndexService,
-		MediaProcessor:     root.Process.MediaProcessor,
-		CatalogSyncService: root.Sync.CatalogSync,
-		ClipIndexerService: root.Process.ClipIndexerService,
+		ClipsRepo:               root.Repos.ClipsRepo,
+		VoiceoverRepo:           root.Repos.VoiceoverRepo,
+		ImageRepo:               root.Repos.ImageRepo,
+		Assets:                  root.Repos.Assets,
+		DriveClient:             root.Drive.DriveClient,
+		AssetTreeService:        root.Search.AssetTreeService,
+		AssetIndexService:       root.Search.AssetIndexService,
+		MediaProcessor:          root.Process.MediaProcessor,
+		CatalogSyncService:      root.Sync.CatalogSync,
+		ClipIndexerService:      root.Process.ClipIndexerService,
+		IdempotencyStore:        root.Repos.IdempotencyStore,
+		IdempotencyStoreHandler: idemHandler,
 	}
 	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeService, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry); err == nil && aw != nil {
 		wiring.Assets = aw

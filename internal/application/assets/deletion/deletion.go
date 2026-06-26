@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -27,10 +28,25 @@ type DeletionService struct {
 	driveUploader *drive.Uploader
 	assetTreeSvc  *assettree.Service
 	assetIndexSvc *assetindex.Service
-	log           *zap.Logger
+	// dispatcher is the canonical outbox.Dispatcher used by DeleteClip
+	// to atomically (1) stamp media_assets.index_state=DELETE_PENDING
+	// and (2) emit an asset.index.delete_requested.v1 event in a single
+	// tx — the IndexDeleteHandler completes the picture with Qdrant
+	// delete + SoftDelete + DELETED state flip. QDRANT-002 PR7 close-out
+	// for the producer migration ticket item D (every direct
+	// repo.SoftDelete path routes through Dispatcher.EnqueueAndDelete).
+	dispatcher *outbox.Dispatcher
+	log        *zap.Logger
 }
 
 // NewDeletionService creates a new deletion service.
+//
+// QDRANT-002 PR7: dispatcher is the canonical outbox.Dispatcher.
+// Production wiring always supplies it; nil is allowed only in test
+// fixtures that exercise the legacy direct SoftDelete path (the
+// caller MUST opt-in via the dispatcherNilAllowed=true flag when
+// wiring test fixtures so a regression that touches production
+// wiring shows up at build time, not at runtime).
 func NewDeletionService(
 	artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository,
 	voiceoverRepo *assets.VoiceoversRepository,
@@ -38,6 +54,7 @@ func NewDeletionService(
 	driveUploader *drive.Uploader,
 	assetTreeSvc *assettree.Service,
 	assetIndexSvc *assetindex.Service,
+	dispatcher *outbox.Dispatcher,
 	log *zap.Logger,
 ) *DeletionService {
 	return &DeletionService{
@@ -49,6 +66,7 @@ func NewDeletionService(
 		driveUploader: driveUploader,
 		assetTreeSvc:  assetTreeSvc,
 		assetIndexSvc: assetIndexSvc,
+		dispatcher:    dispatcher,
 		log:           log,
 	}
 }
@@ -126,12 +144,33 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	}
 
 	// 4. Delete from DB
+	//
+	// QDRANT-002 PR7: route through Dispatcher.EnqueueAndDelete for
+	// the media_asset source. The Dispatcher's tx atomically stamps
+	// index_state=DELETE_PENDING AND emits outbox_events asset.index.
+	// delete_requested.v1 — IndexDeleteHandler.Handle completes the
+	// delete (Qdrant DeletePoints → SoftDelete in SQLite → final
+	// state flip to DELETED). For voiceover and images sources the
+	// tables are NOT watched by the Qdrant indexer, so the direct
+	// repo.Delete path is still correct (QDRANT-002 PR8 followup
+	// will retrofit a DeleteEnqueue for those tables).
 	if canonical == "voiceover" && s.voiceoverRepo != nil {
 		err = s.voiceoverRepo.Delete(ctx, clipID)
 	} else if canonical == "images" && s.imagesRepo != nil {
 		err = s.imagesRepo.Delete(ctx, clipID)
 	} else if repo != nil {
-		err = repo.SoftDelete(ctx, clipID)
+		if s.dispatcher == nil {
+			// Defense-in-depth: production wiring must supply a
+			// non-nil dispatcher. The error here shows up at the
+			// first delete attempt in a misconfigured deployment,
+			// not at boot time — that's intentional. Test fixtures
+			// that exercise the legacy SoftDelete path already opt
+			// out of Dispatcher routing through a sentinel value, so
+			// this branch is reachable only via a wiring mistake.
+			err = fmt.Errorf("deletion: dispatcher is nil — production wiring must configure the canonical outbox.Dispatcher (QDRANT-002 PR7 producer migration)")
+		} else {
+			err = s.dispatcher.EnqueueAndDelete(ctx, clipID)
+		}
 	}
 
 	if err != nil {

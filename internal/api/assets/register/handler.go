@@ -35,31 +35,53 @@ type BatchRegisterRequest struct {
 
 // BatchRegisterResponse is the response for batch registration.
 type BatchRegisterResponse struct {
-	OK        bool                        `json:"ok"`
-	Total     int                         `json:"total"`
-	Succeeded int                         `json:"succeeded"`
-	Failed    int                         `json:"failed"`
-	Results   []sourcing.BatchClipResult  `json:"results"`
+	OK        bool                       `json:"ok"`
+	Total     int                        `json:"total"`
+	Succeeded int                        `json:"succeeded"`
+	Failed    int                        `json:"failed"`
+	Results   []sourcing.BatchClipResult `json:"results"`
 }
 
 // Handler manages YouTube clip registration. All business orchestration
 // lives in sourcing.Service — the handler is pure transport.
+//
+// PR8 (June 2026): added Idempotency field — the reusable Gin
+// idempotency middleware instance installed on POST /register-from-youtube
+// (write route). BatchRegisterFromYouTube is intentionally NOT gated
+// because it processes a list with potentially many distinct clip
+// registrations — replay semantics per clip are preserved by the
+// underlying dedup logic (FindByExternalRef), but the response is
+// the per-call batch summary. nil disables idempotency for tests.
 type Handler struct {
-	svc *sourcing.Service
-	log *zap.Logger
+	svc         *sourcing.Service
+	log         *zap.Logger
+	Idempotency gin.HandlerFunc
 }
 
 // NewHandler creates a YouTube registration handler.
-func NewHandler(svc *sourcing.Service, log *zap.Logger) *Handler {
+//
+// PR8 (June 2026): idempotencyMiddleware is the reusable Gin
+// idempotency middleware instance from middleware.NewIdempotency
+// (constructed in WireAssets). nil disables idempotency for tests.
+func NewHandler(svc *sourcing.Service, log *zap.Logger, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &Handler{svc: svc, log: log}
+	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
+	if idempotencyMiddleware != nil {
+		idem = idempotencyMiddleware
+	}
+	return &Handler{svc: svc, log: log, Idempotency: idem}
 }
 
 // RegisterRoutes registers the registration endpoints.
+//
+// PR8 (June 2026): POST /register-from-youtube installs h.Idempotency
+// before the handler — same Stripe-style replay semantics as the
+// other write endpoints. /register-batch falls through (its
+// semantics are inherently batch-shaped).
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/register-from-youtube", h.RegisterFromYouTube)
+	r.POST("/register-from-youtube", h.Idempotency, h.RegisterFromYouTube)
 	r.POST("/register-batch", h.BatchRegisterFromYouTube)
 }
 

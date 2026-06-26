@@ -1,6 +1,8 @@
 package app
 
 import (
+	"github.com/gin-gonic/gin"
+
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -32,8 +34,10 @@ type YouTubeClipWiring struct {
 // handler depends on the typed youtubeports.ClipStorePort only; the
 // helper itself preserves `if h.clipsRepo != nil` semantics in the
 // handler because newClipStoreAdapter(nil) returns a nil interface.
-func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, providerRegistry *providers.Registry, toolChecker appassets.ToolChecker) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry, newClipStoreAdapter(clipsRepo), toolChecker)
+// PR8 (June 2026): added idempotencyMiddleware arg — installed by
+// YouTubeClipHandler on POST /clips/process.
+func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, providerRegistry *providers.Registry, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc) (*YouTubeClipWiring, error) {
+	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry, newClipStoreAdapter(clipsRepo), toolChecker, idempotencyMiddleware)
 	var mod api.Module
 	if ytSvc != nil {
 		mod = api.NewRouteModule(

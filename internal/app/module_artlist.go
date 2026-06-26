@@ -73,19 +73,31 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	// afterwards — the enricher is passed via ServiceDeps.MetadataWriter.
 	// PR2.7: the enricher now takes the DriveFolderManager port
 	// (driveManager) instead of the narrow *drive.Uploader concrete.
+	// PR2.5: build the SemanticEnricher BEFORE NewService so its
+	// Dispatcher constructor argument captures the canonical
+	// outbox.Dispatcher at composition time. No setter is called
+	// afterwards — the enricher is passed via ServiceDeps.MetadataWriter.
+	// PR2.7: the enricher now takes the DriveFolderManager port
+	// (driveManager) instead of the narrow *drive.Uploader concrete.
 	// Dispatcher is the canonical media_index_outbox dispatcher from
 	// root.Outbox (already built by BuildOutboxBundle before WireRegistry
-	// runs). When dispatcher is nil (e.g. test fixtures), the dispatchBridge
-	// falls back to the legacy UpsertClip + IndexClip path.
+	// runs).
+	//
+	// QDRANT-002 PR7: dispatcher is now an unconditional requirement.
+	// The legacy "UpsertClip + IndexClip fallback when dispatcher is
+	// nil" was wrong-by-design: a nil dispatcher at runtime means the
+	// canonical ingest atomically lost any half-state between the two
+	// ops (PR1 retain window). Treat a nil dispatcher at composition
+	// time as a code defect — explicit error beats silent fallback
+	// that surfaces only at first ingest.
 	var enricher artlistPkg.MetadataWriter
 	if bundle.ClipsRepo != nil {
+		if dispatcher == nil {
+			return nil, fmt.Errorf("WireArtlist: dispatcher is required at composition time — QDRANT-002 PR7 removed the legacy UpsertClip+IndexClip fallback; production must wire root.Outbox.Dispatcher")
+		}
 		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, driveManager, dispatcher, log)
-		if dispatcher != nil {
-			log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active")
-		} else {
-			log.Warn("wired semantic enricher with nil dispatcher — legacy UpsertClip + IndexClip fallback will be used at runtime")
-		}
+		log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active (QDRANT-002 PR7)")
 	}
 
 	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, enricher, driveManager, dispatcher, log)

@@ -37,11 +37,18 @@ func (m *mockQdrantDeleter) DeletePoints(ctx context.Context, ids []string) erro
 
 func (m *mockQdrantDeleter) callCount() int { return len(m.deleteCalls) }
 
+type indexStateCall struct {
+	ID    string
+	State asset.IndexState
+}
+
 type mockAssetDeleter struct {
-	getResult     *asset.Asset
-	getErr        error
-	softDeleteIDs []string
-	softErr       error
+	getResult       *asset.Asset
+	getErr          error
+	softDeleteIDs   []string
+	softErr         error
+	indexStateCalls []indexStateCall
+	setStateErr     error
 }
 
 func (m *mockAssetDeleter) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
@@ -59,6 +66,22 @@ func (m *mockAssetDeleter) SoftDelete(ctx context.Context, id string) error {
 }
 
 func (m *mockAssetDeleter) softDeleteCount() int { return len(m.softDeleteIDs) }
+
+// SetIndexState records the (id, state) pair so tests can assert the
+// canonical DELETE_PENDING → DELETED transitions. Mirrors the same
+// "always record, optionally error" pattern as SoftDelete so a call
+// is observable even when setStateErr is non-nil.
+func (m *mockAssetDeleter) SetIndexState(ctx context.Context, id string, state asset.IndexState) error {
+	m.indexStateCalls = append(m.indexStateCalls, indexStateCall{ID: id, State: state})
+	if m.setStateErr != nil {
+		return m.setStateErr
+	}
+	return nil
+}
+
+func (m *mockAssetDeleter) indexStateTransitions() []indexStateCall {
+	return m.indexStateCalls
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────
 

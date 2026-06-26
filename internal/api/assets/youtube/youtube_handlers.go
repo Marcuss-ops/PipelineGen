@@ -30,6 +30,10 @@ import (
 // download, info, advanced search, diagnostics, and stats. Construction
 // mirrors the legacy api/sources package, but lives here (in package
 // youtube) so sub-handlers can be tested in isolation.
+//
+// PR8 (June 2026): added Idempotency field — the reusable Gin
+// idempotency middleware instance installed on POST /clips/process
+// (the only Write route in this handler). Read routes fall through.
 type YouTubeClipHandler struct {
 	service         *youtube.Service
 	log             *zap.Logger
@@ -39,6 +43,7 @@ type YouTubeClipHandler struct {
 	providerReg     *providers.Registry
 	providerResolve sync.Once
 	toolChecker     appassets.ToolChecker
+	Idempotency     gin.HandlerFunc
 }
 
 // NewYouTubeClipHandler builds the YouTubeClipHandler.
@@ -49,7 +54,16 @@ type YouTubeClipHandler struct {
 //	providerRegistry - providers.Registry for search dispatch (nil = legacy path).
 //	                    Resolved lazily on first SearchTopics call so providers
 //	                    registered after construction are still discovered.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, providerRegistry *providers.Registry, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker) *YouTubeClipHandler {
+//
+// PR8 (June 2026): added idempotencyMiddleware to wrap POST /clips/process
+// (the only Write route in the handler). Read routes (info, search,
+// diagnostics, stats) are unchanged. nil disables idempotency for
+// test fixtures.
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, providerRegistry *providers.Registry, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc) *YouTubeClipHandler {
+	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
+	if idempotencyMiddleware != nil {
+		idem = idempotencyMiddleware
+	}
 	return &YouTubeClipHandler{
 		service:     service,
 		log:         log,
@@ -57,6 +71,7 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jo
 		clipsRepo:   clipsRepo,
 		providerReg: providerRegistry,
 		toolChecker: toolChecker,
+		Idempotency: idem,
 	}
 }
 
@@ -81,8 +96,13 @@ func (h *YouTubeClipHandler) resolveProvider() {
 
 // RegisterRoutes wires the YouTube clip endpoints onto the supplied
 // gin router group. Mounts on /api/media/clips/* in production.
+//
+// PR8 (June 2026): POST /process (the YouTube clip extraction job
+// enqueue endpoint) installs h.Idempotency so Idempotency-Key replay
+// works across retry storms. Read routes (info, search, diagnostics,
+// stats) fall through unchanged.
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/process", h.Extract)
+	r.POST("/process", h.Idempotency, h.Extract)
 	r.GET("/info", h.GetVideoInfo)
 	r.GET("/search", h.SearchAdvanced)
 	r.POST("/search", h.SearchAdvanced)

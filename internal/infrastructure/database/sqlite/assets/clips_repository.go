@@ -117,6 +117,94 @@ func (r *ClipsRepository) SoftDelete(ctx context.Context, id string) error {
 	return r.AssetStoreSQLite.Delete(ctx, id)
 }
 
+// SetIndexState writes the canonical media_assets.index_state column
+// (QDRANT-002 PR6 / migration 094). Called by IndexDeleteHandler for
+// the DELETE_PENDING and DELETED transitions; the Delete path is the
+// only consumer in production today, but the method is exposed as
+// public because future worker bootstrap or operator tooling may
+// need to flip state directly (QDRANT-005 alerting followup).
+//
+// No lifecycle_state filter — the caller is responsible for picking
+// the right state at the right time. SoftDeleteFilter() is applied
+// by callers that need to exclude tombstoned rows (e.g. live
+// re-index tooling); IndexDeleteHandler does NOT need it because the
+// pre-flight already short-circuits to success on lifecycle_state in
+// {deleted, DELETED}.
+//
+// Idempotent: the column flip on an already-target-state row is a
+// no-op write; the lease-fence on the outbox handler prevents the
+// same worker from racing itself.
+func (r *ClipsRepository) SetIndexState(ctx context.Context, id string, state asset.IndexState) error {
+	if id == "" {
+		return fmt.Errorf("clips.SetIndexState: id is required")
+	}
+	if state == "" {
+		return fmt.Errorf("clips.SetIndexState: state is required (got empty string; use the canonical 7-state enum)")
+	}
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets SET index_state = ?, index_state_updated_at = ? WHERE id = ?`,
+		string(state), nowStr, id)
+	if err != nil {
+		return fmt.Errorf("clips.SetIndexState(%s, %s): %w", id, state, err)
+	}
+	return nil
+}
+
+// SetIndexStateTx is the tx-scoped mirror of SetIndexState added in
+// QDRANT-002 PR7. Called by Dispatcher.EnqueueAndDelete to stamp
+// index_state=DELETE_PENDING atomically inside the same tx as the
+// outbox_events INSERT. The tx parameter MUST be non-nil — callers
+// passing nil get an explicit error rather than a silent fall-back
+// so a misuse shows up immediately, not in a downstream idempotency
+// short-circuit.
+//
+// Idempotency: same as SetIndexState (column flip on already-target
+// state is a no-op write). Yet each retry increments the updated_at
+// stamp — that's intentional so dashboards see the retry traffic on
+// tail-end log analysis without requiring a separate retry metric.
+//
+// Caller responsibilities (NOT enforced here because the tx is in
+// flight — caller has the context too):
+//  1. Validate state against the 7-state alphabet via state.Valid()
+//     before invoking. SetIndexStateTx returns an error on empty +
+//     any non-Valid() state for caller convenience; if PR7 callers
+//     skip the check, this method's error is the last line of
+//     defense.
+//  2. Do NOT also call SetIndexState (non-tx) on the same id inside
+//     this same logical operation. The two writes race on the tx
+//     boundary — a non-tx write before commit is invisible to
+//     readers after the tx rolls back, while a non-tx write after
+//     commit clobbers the new state silently.
+//
+// SoftDeleteFilter is NOT applied here — the producer's stamp
+// observes the actual id even if the row was previously handled,
+// so a re-emitted delete event re-stamps DELETE_PENDING on a
+// tombstoned row (the worker's pre-flight still catches the
+// already-DELETED case and short-circuits).
+func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id string, state asset.IndexState) error {
+	if tx == nil {
+		return fmt.Errorf("clips.SetIndexStateTx: tx is required (callers in production MUST supply the Dispatcher's tx; tests may build a tx via db.BeginTx)")
+	}
+	if id == "" {
+		return fmt.Errorf("clips.SetIndexStateTx: id is required")
+	}
+	if state == "" {
+		return fmt.Errorf("clips.SetIndexStateTx: state is required (got empty string; use the canonical 7-state enum)")
+	}
+	if !state.Valid() {
+		return fmt.Errorf("clips.SetIndexStateTx: state %q is not a canonical IndexState — call sites in production must validate", state)
+	}
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	_, err := tx.ExecContext(ctx,
+		`UPDATE media_assets SET index_state = ?, index_state_updated_at = ? WHERE id = ?`,
+		string(state), nowStr, id)
+	if err != nil {
+		return fmt.Errorf("clips.SetIndexStateTx(%s, %s): %w", id, state, err)
+	}
+	return nil
+}
+
 func (r *ClipsRepository) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
