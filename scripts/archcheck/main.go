@@ -583,6 +583,18 @@ var databaseSQLLegacyBaseline = []string{
 
 // checkMigrationYAML validates that every `status: done` wave in
 // architecture/current.yaml carries `verified_zero: true`.
+//
+// architecture/current.yaml is a YAML 1.2 multi-document stream
+// (June 2026 PR —YAML-SEP): doc #1 = wave sequence
+// (- id: 0, 14, 15, 16, 17, 18), doc #2 = post_cascade_followups,
+// doc #3 = legacy_fallback_cleanup. Documents are separated by
+// `---` markers at column 0. The text scanner below intentionally
+// ignores `---` (topLevelWaveBlocks only matches lines that start
+// with `- id:`, which only doc #1 carries; doc #2/#3 are mappings
+// without sequence-item markers). Future YAML-library consumers must
+// use yaml.NewDecoder(...).Decode() in a loop to read all 3 docs —
+// yaml.Unmarshal only returns doc #1 (PyYAML safe_load_all returns
+// all 3).
 func checkMigrationYAML() (verifiedOK int, total int, violations []string) {
 	const migPath = "architecture/current.yaml"
 	text, err := os.ReadFile(migPath)
