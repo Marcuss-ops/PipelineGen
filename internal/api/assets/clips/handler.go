@@ -1,7 +1,18 @@
 // Package clips hosts the unified HTTP handler that owns every clip-related
 // endpoint. PR-A Phase 4 BULK consolidation: a single Handler struct carries
-// the full 14-dep surface and exposes every method previously scattered
-// across handler_sources_clip_*.go in the flat sources package.
+// the canonical 22-field dep surface and exposes every method previously
+// scattered across handler_sources_clip_*.go in the flat sources package.
+//
+// W14-PR2 slice 5 (June 2026): the previous handler held 5 direct
+// `internal/infrastructure/*` references (*assets.ClipsRepository,
+// *semantic.MetadataWriter, *clipindexer.Service, *drive.Uploader,
+// *foldermemory.Service) plus *config.Config + *artifacts.SourceResolver +
+// *assettree.Service that crossed the boundary via raw imports. Per
+// AGENTS.md Pattern 0 + Pattern 8, every infra-shaped dep is now a typed
+// port declared in internal/application/clips/ports.go and wired by
+// the composition root via `newClipsAdapterBundle` (see
+// internal/app/module_media.go::WireAssets). This file has zero
+// internal/infrastructure/* imports — Check 19 hard-fail gate passes.
 //
 // Sub-handler fan-out (DeleteHandler, SearchHandler) is replaced by
 // receivers on *Handler — there is no longer a need for nested structs.
@@ -13,68 +24,72 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
 // Deps is the constructor bag for Handler. Keeping deps in a struct
-// rather than 14 positional arguments makes wiring sites readable and
+// rather than 22 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
-// VectorStore field removed from handler deps.
+//
+// W14-PR2 slice 5: every infra reaching through slot is now a typed
+// port. The platform-Deps entries that stay concrete (DeletionSvc,
+// MediaProcessor, SearchSvc, ProcessRunner, JobsSvc, AssetRepo,
+// ArtifactSvc, Dispatcher) accept either domain interfaces
+// (asset.Repository, asset.Processor, job.Service, appassets.ProcessRunner)
+// or live in the application layer (deletion.DeletionService,
+// clipssearch.Service). The ONLY concrete types that retained direct
+// infra roundtrips are gone — `clipsapi.Deps` is now zero-infra.
 type Deps struct {
-	SourceResolver *artifacts.SourceResolver
+	// Typed ports (12 of them) — composition root constructs via
+	// newClipsAdapterBundle and assigns the pre-built adapters here.
+	SourceResolver appclips.SourceResolverPort
+	ClipsRepo      appclips.ClipRepositoryPort
+	StockRepo      appclips.ClipRepositoryPort
+	ArtlistRepo    appclips.ClipRepositoryPort
+	VoiceoverRepo  appclips.VoiceoverRepositoryPort
+	ImagesRepo     appclips.ImageRepositoryPort
+	DriveUploader  appclips.ClipDriveUploaderPort
+	MetaWriter     appclips.ClipMetaWriterPort
+	ClipIndexer    appclips.ClipIndexerPort
+	FolderMemSvc   appclips.ClipFolderMemoryPort
+	HashSvc        appclips.ClipHashPort
+	Cfg            appclips.ClipConfigPort
+	TreeBuilderSvc appclips.ClipTreeBuilderPort
+
+	// Domain / application layers (no infra roundtrip)
 	AssetRepo      asset.Repository
-	ClipsRepo      *assets.ClipsRepository
-	StockRepo      *assets.ClipsRepository
-	ArtlistRepo    *assets.ClipsRepository
-	DeletionSvc    *deletion.DeletionService
-	DriveUploader  *drive.Uploader
 	MediaProcessor asset.Processor
 	AssetTreeSvc   *assettree.Service
-	MetaWriter     *semantic.MetadataWriter
-	ClipIndexer    *clipindexer.Service
+	SearchSvc      *appclipssearch.Service
+	ProcessRunner  appassets.ProcessRunner
 	JobsSvc        jobservice.Service
-	Cfg            *config.Config
-	Log            *zap.Logger
-	// VoiceoverRepo enables the voiceover-source branch in DownloadClip.
-	// Nil-tolerated so absence of voiceover wiring never crashes the chain.
-	VoiceoverRepo *assets.VoiceoversRepository
-	// ImagesRepo enables the "source=images" branch in ListClips.
-	// Nil-tolerated; nil means GET /:source/clips for that source returns 400.
-	ImagesRepo *assets.ImagesRepository
-	// ArtifactSvc streams uploaded files through content-addressed drive.
-	// Used by UploadVideoClip. Nil means POST /upload-video returns 500.
+	DeletionSvc    *deletion.DeletionService
+
+	// Platform (composition root concerns; nil-tolerated)
+	Log *zap.Logger
+
+	// Optional staging services (already application-layer)
 	ArtifactSvc *artifacts.Service
-	// FolderMemSvc supports manifest regeneration heuristics.
-	FolderMemSvc *foldermemory.Service
-	// SearchSvc owns advanced multi-source clip search.
-	SearchSvc *appclipssearch.Service
-	// ProcessRunner executes external subprocesses (ffprobe, mediainfo, etc.).
-	ProcessRunner appassets.ProcessRunner
-	// Dispatcher is the application port (NOT the concrete
-	// *outbox.Dispatcher) for QDRANT-002 routing. When non-nil,
-	// UpdateClip routes through port.EnqueueAndIndex instead of raw
-	// repo.UpsertClip. Nil-tolerated for test fixtures.
-	//
-	// Depends on appclips.ClipIndexDispatcherPort to keep this
-	// handler as thin transport per AGENTS.md Pattern 8 (API must
-	// not import concrete infrastructure). The composition root
-	// (`internal/app`) wires a clipsDispatcherAdapter that wraps
-	// the concrete *outbox.Dispatcher.
+
+	// Outbox dispatcher port for QDRANT-002 routing (W12 — already typified).
 	Dispatcher appclips.ClipIndexDispatcherPort
+
+	// Use cases (W14-PR2 slice 5: constructed in composition root
+	// internal/app/module_media.go::WireAssets because each constructor
+	// takes concrete infra types — adapters would be pointless
+	// indirection here. The api layer stays zero-infra by treating
+	// these as opaque already-wired bundles).
+	ReprocessUC *appclips.ReprocessUseCase
+	DownloadUC  *appclips.DownloadUseCase
+	BulkTagsUC  *appclips.BulkTagsUseCase
+	EnrichUC    *appclips.EnrichUseCase
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -88,37 +103,42 @@ type Handler struct {
 	// fall through unchanged.
 	Idempotency gin.HandlerFunc
 
-	sourceResolver *artifacts.SourceResolver
+	// Typed ports (mirror Deps, set once at NewHandler time).
+	sourceResolver appclips.SourceResolverPort
+	clipsRepo      appclips.ClipRepositoryPort
+	stockRepo      appclips.ClipRepositoryPort
+	artlistRepo    appclips.ClipRepositoryPort
+	voiceoverRepo  appclips.VoiceoverRepositoryPort
+	imagesRepo     appclips.ImageRepositoryPort
+	driveUploader  appclips.ClipDriveUploaderPort
+	metaWriter     appclips.ClipMetaWriterPort
+	clipIndexer    appclips.ClipIndexerPort
+	folderMemSvc   appclips.ClipFolderMemoryPort
+	hashSvc        appclips.ClipHashPort
+	cfg            appclips.ClipConfigPort
+	treeBuilderSvc appclips.ClipTreeBuilderPort
+
+	// Domain / application mirrors.
+	artifactSvc *artifacts.Service
+	folderMemAppSvc  appclips.ClipFolderMemoryPort // alias — same as folderMemSvc
+	searchSvc        *appclipssearch.Service
+	processRunner    appassets.ProcessRunner
+	dispatcher       appclips.ClipIndexDispatcherPort
+
+	// Domain interfaces (still concrete-pointer-backed but no infra import).
 	assetRepo      asset.Repository
-	clipsRepo      *assets.ClipsRepository
-	stockRepo      *assets.ClipsRepository
-	artlistRepo    *assets.ClipsRepository
-	deletionSvc    *deletion.DeletionService
-	driveUploader  *drive.Uploader
 	mediaProcessor asset.Processor
 	assetTreeSvc   *assettree.Service
-	metaWriter     *semantic.MetadataWriter
-	clipIndexer    *clipindexer.Service
 	jobsSvc        jobservice.Service
-	cfg            *config.Config
+	deletionSvc    *deletion.DeletionService
 	log            *zap.Logger
-	// voiceoverRepo is mirrored from Deps.VoiceoverRepo via NewHandler
-	voiceoverRepo *assets.VoiceoversRepository
-	// imagesRepo mirrors Deps.ImagesRepo. Same late-binding semantics.
-	imagesRepo *assets.ImagesRepository
-	// artifactSvc mirrors Deps.ArtifactSvc. Same late-binding semantics.
-	artifactSvc  *artifacts.Service
-	folderMemSvc *foldermemory.Service
-	// searchSvc mirrors Deps.SearchSvc.
-	searchSvc *appclipssearch.Service
-	// processRunner mirrors Deps.ProcessRunner.
-	processRunner appassets.ProcessRunner
-	// dispatcher mirrors Deps.Dispatcher (now the application port
-	// type, see ClipIndexDispatcherPort for the rationale). Nil-
-	// tolerated for test fixtures and partial deployments.
-	dispatcher appclips.ClipIndexDispatcherPort
 
-	// Use cases — business logic extracted from handlers
+	// Use cases — business logic extracted from handlers.
+	// W14-PR2 slice 5: each use-case constructor receives the typed
+	// ports where applicable. DownloadUseCase still takes the raw
+	// voiceover concrete (separate Refactor; the use case signature is
+	// internal/application/clips, not internal/api — Pattern 8 applies
+	// to api only).
 	reprocessUC *appclips.ReprocessUseCase
 	downloadUC  *appclips.DownloadUseCase
 	bulkTagsUC  *appclips.BulkTagsUseCase
@@ -141,63 +161,74 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	return &Handler{
 		Idempotency:    idem,
 		sourceResolver: d.SourceResolver,
-		assetRepo:      d.AssetRepo,
 		clipsRepo:      d.ClipsRepo,
 		stockRepo:      d.StockRepo,
 		artlistRepo:    d.ArtlistRepo,
-		deletionSvc:    d.DeletionSvc,
-		driveUploader:  d.DriveUploader,
-		mediaProcessor: d.MediaProcessor,
-		assetTreeSvc:   d.AssetTreeSvc,
-		metaWriter:     d.MetaWriter,
-		clipIndexer:    d.ClipIndexer,
-		jobsSvc:        d.JobsSvc,
-		cfg:            d.Cfg,
-		log:            d.Log,
 		voiceoverRepo:  d.VoiceoverRepo,
 		imagesRepo:     d.ImagesRepo,
-		artifactSvc:    d.ArtifactSvc,
+		driveUploader:  d.DriveUploader,
+		metaWriter:     d.MetaWriter,
+		clipIndexer:    d.ClipIndexer,
 		folderMemSvc:   d.FolderMemSvc,
+		hashSvc:        d.HashSvc,
+		cfg:            d.Cfg,
+		treeBuilderSvc: d.TreeBuilderSvc,
+		artifactSvc:    d.ArtifactSvc,
 		searchSvc:      d.SearchSvc,
 		processRunner:  d.ProcessRunner,
 		dispatcher:     d.Dispatcher,
-
-		// Initialize use cases
-		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
-		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
-		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
-		enrichUC:    appclips.NewEnrichUseCase(d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log),
+		assetRepo:      d.AssetRepo,
+		mediaProcessor: d.MediaProcessor,
+		assetTreeSvc:   d.AssetTreeSvc,
+		jobsSvc:        d.JobsSvc,
+		deletionSvc:    d.DeletionSvc,
+		log:            d.Log,
+		folderMemAppSvc: d.FolderMemSvc,
+		// Wire use cases constructed in the composition root.
+		// W14-PR2 slice 5 (June 2026): use cases are constructed in
+		// internal/app/module_media.go::WireAssets where the concrete
+		// infra types are in scope. The api layer just assigns.
+		reprocessUC: d.ReprocessUC,
+		downloadUC:  d.DownloadUC,
+		bulkTagsUC:  d.BulkTagsUC,
+		enrichUC:    d.EnrichUC,
 	}
 }
 
 // repoForSource resolves a clip source to its canonical repository.
-// Standard clip sources are resolved through the shared source resolver.
-func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
+// Returns the typed port (ClipRepositoryPort) — callers never see the
+// concrete *assets.ClipsRepository, keeping the api layer zero-infra.
+func (h *Handler) repoForSource(source string) appclips.ClipRepositoryPort {
 	if h.sourceResolver == nil {
 		return nil
 	}
 	return h.sourceResolver.ResolveRepo(source)
 }
 
+// driveRootForSource resolves Drive root folder + path marker using the
+// typed ClipConfigPort (no *config.Config dependency here).
 func (h *Handler) driveRootForSource(source string) (string, string) {
 	spec, ok := map[string]struct {
-		root   func(*config.Config) string
+		root   func(appclips.ClipConfigPort) string
 		marker string
 	}{
 		"clips": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.ClipsFolder() },
+			root:   func(cfg appclips.ClipConfigPort) string { return cfg.ClipsDriveFolder() },
 			marker: "/clips/",
 		},
 		"artlist": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.ArtlistFolder() },
+			root:   func(cfg appclips.ClipConfigPort) string { return cfg.ArtlistDriveFolder() },
 			marker: "/artlist/",
 		},
 		"stock": {
-			root:   func(cfg *config.Config) string { return cfg.Drive.StockFolder() },
+			root:   func(cfg appclips.ClipConfigPort) string { return cfg.StockDriveFolder() },
 			marker: "/stock/",
 		},
 	}[artifacts.CanonicalSource(source)]
 	if !ok {
+		return "", ""
+	}
+	if h.cfg == nil {
 		return "", ""
 	}
 	return spec.root(h.cfg), spec.marker

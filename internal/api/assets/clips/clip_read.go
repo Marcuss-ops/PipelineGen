@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -23,7 +24,7 @@ func (h *Handler) GetClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := artifacts.VoiceoverRecordToClip(rec)
+		clip := appclips.VoiceoverDTOToClip(rec)
 		apiutil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
 		return
 	}
@@ -120,7 +121,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, rec := range records {
-			allClips = append(allClips, artifacts.VoiceoverRecordToClip(rec))
+			allClips = append(allClips, appclips.VoiceoverDTOToClip(rec))
 		}
 	} else if sourceLower == "images" {
 		if h.imagesRepo == nil {

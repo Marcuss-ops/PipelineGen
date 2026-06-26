@@ -150,7 +150,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	targetFolderID := ExtractDriveFolderID(folderID)
 	if targetFolderID == "" {
 		// Use the MediaRootFolder as default root
-		targetFolderID = h.cfg.Drive.RootFolder()
+		targetFolderID = h.cfg.RootFolder()
 		if group != "" && targetFolderID != "" {
 			dirID, err := h.driveUploader.GetOrCreateFolder(ctx, group, targetFolderID)
 			if err != nil {
@@ -213,7 +213,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 			clipEntry["drive_file_id"] = uploadResult.FileID
 			clipEntry["drive_link"] = uploadResult.WebViewLink
 		}
-		UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
+		UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.TempPath(), targetFolderID, clipID, clipEntry, log)
 	}
 
 	// 8. Build the MediaAsset record

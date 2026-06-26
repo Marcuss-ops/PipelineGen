@@ -332,7 +332,7 @@ func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 	if a.uploader == nil || a.cfg == nil {
 		return nil
 	}
-	clipsapi.UpdateCumulativeMetadataJSON(ctx, a.uploader, a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
+	clipsapi.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.uploader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
 	return nil
 }
 

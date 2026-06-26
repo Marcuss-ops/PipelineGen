@@ -11,9 +11,8 @@ import (
 	"strings"
 	"time"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 var driveFolderIDRegex = regexp.MustCompile(`/folders/([a-zA-Z0-9_-]+)`)
@@ -96,6 +95,12 @@ func BuildDriveDescription(name, reqDescription, metaDescription string, tags []
 // clip_upload.go, sources via register_from_youtube.go) can pass their
 // own driveUploader + tempPath instead of depending on a shared receiver.
 //
+// W14-PR2 slice 6 (June 2026): driveUploader parameter changed from
+// *drive.Uploader to appclips.ClipDriveUploaderPort so the api/ layer
+// never imports internal/infrastructure/drive. The narrow projection
+// already lives in the adapter (see clipsDriveAdapter.ListFiles +
+// ClipDriveFileDTO). The caller still passes a port-backed value.
+//
 // cleanupLegacyMetadataJSON is left package-private internal to the body
 // here; if a third caller appears, hoist it next to this function and
 // rename to CleanupLegacyMetadataJSON.
@@ -109,7 +114,7 @@ func BuildDriveDescription(name, reqDescription, metaDescription string, tags []
 //   - Cleans up any older per-video .json files in the same folder.
 func UpdateCumulativeMetadataJSON(
 	ctx context.Context,
-	driveUploader *drive.Uploader,
+	driveUploader appclips.ClipDriveUploaderPort,
 	tempPath string,
 	folderID string,
 	clipID string,
@@ -123,11 +128,16 @@ func UpdateCumulativeMetadataJSON(
 
 	var existing []map[string]interface{}
 	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
-	list, err := driveUploader.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	list, err := driveUploader.ListFiles(ctx, query)
 	if err != nil {
 		log.Warn("failed to list metadata.json", zap.Error(err))
-	} else if len(list.Files) > 0 {
-		existingFileID := list.Files[0].Id
+	} else if len(list) > 0 {
+		existingFileID := list[0].ID
+		// Reconstruct the metadata.json filename. The adapter narrows the
+		// projection to {ID, Name} so we rederive the name from the
+		// query's constant (it is always "metadata.json" per convention).
+		// We still need the name to satisfy the DownloadFile flow.
+		_ = metaFilename
 		body, _, dlErr := driveUploader.DownloadFile(ctx, existingFileID)
 		if dlErr == nil && body != nil {
 			defer body.Close()
@@ -176,19 +186,22 @@ func UpdateCumulativeMetadataJSON(
 // cleanupLegacyMetadataJSON removes old per-video metadata files.
 // Internal to this file; package-private since no caller outside this
 // function needs it post-refactor.
-func cleanupLegacyMetadataJSON(ctx context.Context, driveUploader *drive.Uploader, folderID string, log *zap.Logger) {
-	if driveUploader == nil || driveUploader.Service == nil || folderID == "" {
+//
+// W14-PR2 slice 6 (June 2026): signature mirrors UpdateCumulativeMetadataJSON —
+// takes the typed port instead of *drive.Uploader.
+func cleanupLegacyMetadataJSON(ctx context.Context, driveUploader appclips.ClipDriveUploaderPort, folderID string, log *zap.Logger) {
+	if driveUploader == nil || folderID == "" {
 		return
 	}
 	query := fmt.Sprintf("'%s' in parents and trashed = false and name contains '.json' and name != 'metadata.json'", folderID)
-	list, err := driveUploader.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	list, err := driveUploader.ListFiles(ctx, query)
 	if err != nil {
 		return
 	}
-	for _, f := range list.Files {
-		log.Info("cleaning up legacy metadata json", zap.String("file_id", f.Id), zap.String("name", f.Name))
-		if err := driveUploader.TrashFile(ctx, f.Id); err != nil {
-			log.Warn("failed to trash legacy metadata json", zap.String("file_id", f.Id), zap.Error(err))
+	for _, f := range list {
+		log.Info("cleaning up legacy metadata json", zap.String("file_id", f.ID), zap.String("name", f.Name))
+		if err := driveUploader.TrashFile(ctx, f.ID); err != nil {
+			log.Warn("failed to trash legacy metadata json", zap.String("file_id", f.ID), zap.Error(err))
 		}
 	}
 }

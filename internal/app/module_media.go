@@ -163,24 +163,56 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if dispatcher != nil {
 		clipsDispatcherPort = &clipsDispatcherAdapter{disp: dispatcher}
 	}
+
+	// W14-PR2 slice 5 (June 2026): use case construction moves from
+	// api/assets/clips/handler.go::NewHandler to the composition root.
+	// Each constructor takes a concrete infra type
+	// (*artifacts.SourceResolver, *clipindexer.Service, *semantic.MetadataWriter,
+	// *assets.VoiceoversRepository, *assettree.Service, asset.Processor)
+	// — they belong to the application layer where infra imports are
+	// permitted. Wiring them here means the api layer just receives
+	// opaque already-wired use cases via Deps — zero infra leak.
+	// The typed ports (Deps.SourceResolver / DriveUploader / ClipIndexer
+	// / MetaWriter / Cfg / VoiceoverRepo / etc.) come from the
+	// pre-existing clipsAdapterBundle (PG-005, June 2026) so we never
+	// re-inline the adapter construction.
+	clipsPortBundle := newClipsAdapterBundle(
+		cfg, log,
+		bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo,
+		bundle.VoiceoverRepo, bundle.ImageRepo,
+		driveUploader, metaWriter, bundle.ClipIndexerService,
+		folderMemSvc, bundle.AssetTreeService,
+		nil /* vectorSvc removed PG-034 */,
+	)
+	reprocessUC := appclips.NewReprocessUseCase(assetRepo, bundle.MediaProcessor)
+	downloadUC := appclips.NewDownloadUseCase(assetRepo, bundle.VoiceoverRepo)
+	bulkTagsUC := appclips.NewBulkTagsUseCase(artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo), bundle.AssetTreeService)
+	enrichUC := appclips.NewEnrichUseCase(assetRepo, bundle.ClipIndexerService, metaWriter, log)
+
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
+		SourceResolver: clipsPortBundle.SourceResolver,
+		ClipsRepo:      clipsPortBundle.ClipsRepo,
+		StockRepo:      clipsPortBundle.StockRepo,
+		ArtlistRepo:    clipsPortBundle.ArtlistRepo,
+		VoiceoverRepo:  clipsPortBundle.VoiceoverRepo,
+		ImagesRepo:     clipsPortBundle.ImagesRepo,
+		DriveUploader:  clipsPortBundle.DriveUploader,
+		MetaWriter:     clipsPortBundle.MetaWriter,
+		ClipIndexer:    clipsPortBundle.ClipIndexer,
+		FolderMemSvc:   clipsPortBundle.FolderMemSvc,
+		HashSvc:        clipsPortBundle.HashSvc,
+		TreeBuilderSvc: clipsPortBundle.TreeBuilderSvc,
+		Cfg:            clipsPortBundle.Cfg,
+		ReprocessUC:    reprocessUC,
+		DownloadUC:     downloadUC,
+		BulkTagsUC:     bulkTagsUC,
+		EnrichUC:       enrichUC,
 		AssetRepo:      assetRepo,
-		ClipsRepo:      bundle.ClipsRepo,
-		StockRepo:      bundle.ClipsRepo,
-		ArtlistRepo:    bundle.ClipsRepo,
 		DeletionSvc:    deletionSvc,
-		DriveUploader:  driveUploader,
 		MediaProcessor: bundle.MediaProcessor,
 		AssetTreeSvc:   bundle.AssetTreeService,
-		MetaWriter:     metaWriter,
-		ClipIndexer:    bundle.ClipIndexerService,
 		JobsSvc:        jobs.Facade,
-		Cfg:            cfg,
 		Log:            log,
-		VoiceoverRepo:  bundle.VoiceoverRepo,
-		ImagesRepo:     bundle.ImageRepo,
-		FolderMemSvc:   folderMemSvc,
 		SearchSvc: assetclipssearch.NewService(log, map[string]assetclipssearch.AdvancedSearchRepo{
 			"youtube": bundle.ClipsRepo,
 			"artlist": bundle.ClipsRepo,
