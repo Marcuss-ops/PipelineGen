@@ -44,8 +44,9 @@ func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 
 	// Build the qdrant-level filter from application filter fields.
 	var filter map[string]interface{}
-	if req.Source != "" || req.Category != "" || req.MediaType != "" || req.Language != "" {
-		must := make([]map[string]interface{}, 0, 4)
+	hasFilter := req.Source != "" || req.Category != "" || req.MediaType != "" || req.Language != "" || req.WorkspaceID != ""
+	if hasFilter {
+		must := make([]map[string]interface{}, 0, 6)
 		if req.Source != "" {
 			must = append(must, map[string]interface{}{
 				"key": "source", "match": map[string]interface{}{"value": req.Source},
@@ -66,6 +67,23 @@ func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 				"key": "language", "match": map[string]interface{}{"value": req.Language},
 			})
 		}
+		// QDRANT-004: workspace_id isolation — vector search must only
+		// return points belonging to the caller's workspace.
+		if req.WorkspaceID != "" {
+			must = append(must, map[string]interface{}{
+				"key": "workspace_id", "match": map[string]interface{}{"value": req.WorkspaceID},
+			})
+		}
+		// QDRANT-004: status filter — only return points whose
+		// lifecycle_state is searchable or active. Non-searchable
+		// states (deleted, archived, pending, error) are excluded
+		// at the vector-store level so they never reach hydration.
+		must = append(must, map[string]interface{}{
+			"key": "lifecycle_state",
+			"match": map[string]interface{}{
+				"any": []string{"active", "searchable"},
+			},
+		})
 		filter = map[string]interface{}{"must": must}
 	}
 
@@ -94,8 +112,9 @@ func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 
 	// Build filter.
 	var filter map[string]interface{}
-	if req.Source != "" || req.Category != "" || req.MediaType != "" || req.Language != "" {
-		must := make([]map[string]interface{}, 0, 4)
+	hasFilter := req.Source != "" || req.Category != "" || req.MediaType != "" || req.Language != "" || req.WorkspaceID != ""
+	if hasFilter {
+		must := make([]map[string]interface{}, 0, 6)
 		if req.Source != "" {
 			must = append(must, map[string]interface{}{
 				"key": "source", "match": map[string]interface{}{"value": req.Source},
@@ -116,6 +135,21 @@ func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 				"key": "language", "match": map[string]interface{}{"value": req.Language},
 			})
 		}
+		// QDRANT-004: workspace_id isolation — hybrid search must only
+		// return points belonging to the caller's workspace.
+		if req.WorkspaceID != "" {
+			must = append(must, map[string]interface{}{
+				"key": "workspace_id", "match": map[string]interface{}{"value": req.WorkspaceID},
+			})
+		}
+		// QDRANT-004: status filter — only return points whose
+		// lifecycle_state is searchable or active (shared with Search).
+		must = append(must, map[string]interface{}{
+			"key": "lifecycle_state",
+			"match": map[string]interface{}{
+				"any": []string{"active", "searchable"},
+			},
+		})
 		filter = map[string]interface{}{"must": must}
 	}
 
@@ -162,6 +196,13 @@ func convertSearchResults(results []SearchResult) []appsearch.VectorSearchResult
 
 // searchResultToVectorSearchResult converts a single Qdrant search result
 // to the application-level DTO, extracting known payload fields.
+//
+// QDRANT-004 (June 2026): LocalPath and DriveLink were removed from
+// appsearch.VectorSearchResult — they were dead fields populated but never
+// consumed by any search pipeline (neither buildSearchReason nor the legacy
+// /api/media/search handler accessed them on VectorSearchResult). The
+// infra-level qdrant.SearchResult retains them for asset_store, index_writer,
+// and stale-link cleaner until those are migrated.
 func searchResultToVectorSearchResult(r SearchResult) appsearch.VectorSearchResult {
 	sr := appsearch.VectorSearchResult{
 		QdrantPointID: r.ID,
@@ -175,8 +216,7 @@ func searchResultToVectorSearchResult(r SearchResult) appsearch.VectorSearchResu
 	sr.AssetID = payloadString(r.Payload, "asset_id")
 	sr.Source = payloadString(r.Payload, "source")
 	sr.Name = payloadString(r.Payload, "name")
-	sr.LocalPath = payloadString(r.Payload, "local_path")
-	sr.DriveLink = payloadString(r.Payload, "drive_link")
+
 	sr.Category = payloadString(r.Payload, "category")
 	sr.MediaType = payloadString(r.Payload, "media_type")
 	sr.Style = payloadString(r.Payload, "style")

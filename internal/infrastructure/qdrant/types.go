@@ -259,6 +259,11 @@ type SearchResult struct {
 	QdrantPointID  string   `json:"qdrant_point_id,omitempty"`
 	Source         string   `json:"source,omitempty"`
 	Name           string   `json:"name,omitempty"`
+	// Deprecated (QDRANT-004): LocalPath and DriveLink are server-internal
+	// locators. The application search DTO (appsearch.VectorSearchResult)
+	// no longer populates them from the Qdrant payload. These fields remain
+	// on the infrastructure-level SearchResult for the asset store, index
+	// writer, and stale-link cleaner until those are migrated.
 	LocalPath      string   `json:"local_path,omitempty"`
 	DriveLink      string   `json:"drive_link,omitempty"`
 	Category       string   `json:"category,omitempty"`

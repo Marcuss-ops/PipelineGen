@@ -17,7 +17,6 @@ import (
 )
 
 // mockSearchService wraps appsearch.Service-like behavior for handler tests.
-// We create a real appsearch.Service with mock ports.
 type mockSearchProvider struct {
 	nameFn         func() string
 	capabilitiesFn func() []string

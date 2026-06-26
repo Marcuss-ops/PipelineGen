@@ -56,7 +56,7 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.Diagnostics.RegisterRoutes(r)
 	}
 
-	// Search operations (cross-provider search, semantic-search, recommend)
+	// Search operations (cross-provider keyword search)
 	if m.deps.Search != nil {
 		m.deps.Search.RegisterRoutes(r)
 	}

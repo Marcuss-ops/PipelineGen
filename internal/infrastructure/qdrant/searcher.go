@@ -60,13 +60,29 @@ func (s *Searcher) Search(ctx context.Context, req SearchRequest) ([]SearchResul
 	return results, nil
 }
 
-// HybridSearch performs a hybrid dense + sparse search.
+// HybridSearch performs a hybrid dense + sparse search via the Qdrant Query API
+// with RRF fusion. When SparseQueryVector is nil, the method explicitly falls
+// back to ANN (dense-only Search) — the caller must not label the result as
+// "hybrid".
 func (s *Searcher) HybridSearch(ctx context.Context, req HybridSearchRequest) ([]SearchResult, error) {
 	if req.DenseVector == nil {
 		return nil, fmt.Errorf("dense vector must not be nil for hybrid search")
 	}
 	if req.Limit <= 0 {
 		req.Limit = 20
+	}
+
+	// When sparse is not available, explicitly fall back to ANN.
+	// Dense-only results must never be labelled as hybrid.
+	if req.SparseQueryVector == nil {
+		s.log.Warn("HybridSearch: sparse vector not provided, falling back to ANN (use Search for explicit ANN)")
+		return s.Search(ctx, SearchRequest{
+			QueryVector: req.DenseVector,
+			VectorName:  req.DenseVectorName,
+			Limit:       req.Limit,
+			MinScore:    req.MinScore,
+			Filter:      req.Filter,
+		})
 	}
 
 	// Validate dense vector dimensions.
