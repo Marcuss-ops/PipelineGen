@@ -80,8 +80,28 @@
     - "WireJobs narrow-bundle migration template applied; 5 other Wire<Module>() migrated."
     - "go vet + go build + go test ./internal/app/... -short all GREEN."
     - "BREAKING: InitComposition return tuple extended to (*ComposeRoot, *backgroundJobs, CleanupFunc, error)."
-  pending:
-    - "Split the jobRunner closure out of lifecycle.go into a typed lifecycle (per PR4.8)."
+  pending: []  # W15 pending #2 (PR4.8 jobRunner typed-lifecycle) was closed in commit 100f837b (June 2026) and is now in completed_through_W15_job_runner_split below.
+
+  # W15 job-runner typed-lifecycle migration (June 2026, PR4.8):
+  # the inline jobRunner construction + StartupStep closure that lived at
+  # the bottom of internal/app/lifecycle.go::startBackgroundJobs is fully
+  # extracted into two typed helpers under internal/app/lifecycle_job_runner.go.
+  # StartBackgroundJobs is now orchestrator-only: zero local Runner state,
+  # zero inline StartupStep literals, zero closure capture of cfg/dispatcher.
+  # The plan's "job-runner" StartupStep is appended LAST via a typed helper,
+  # preserving the structural invariant asserted by TestLifecycle_JobRunnerLast
+  # (internal/app/lifecycle_test.go).
+  completed_through_W15_job_runner_split:
+    - buildJobRunner extracted to internal/app/lifecycle_job_runner.go (typed, no error return — *appjobs.Runner)
+    - buildJobRunnerStep extracted to internal/app/lifecycle_job_runner.go (returns *StartupStep, nil when buildJobRunner returns nil)
+    - jobRunnerDeps struct lives in internal/app/lifecycle_job_runner.go (root *ComposeRoot, cfg *config.Config, log *zap.Logger)
+    - internal/app/lifecycle.go: removed the inline RunnerConfig + appjobs.NewRunner block (16 lines) inside the runWorker branch
+    - internal/app/lifecycle.go: removed the end-of-function inline "job-runner" StartupStep literal; replaced with buildJobRunnerStep helper call
+    - internal/app/lifecycle.go: removed the var jobRunner *appjobs.Runner declaration
+    - internal/app/bootstrap.go file map updated to include lifecycle_job_runner.go
+    - internal/app/wire_services.go stale "startJobRunner closure" / "jobs.startJobRunner()" doc reverted to refer to jobs.startupPlan + lifecycle_job_runner.go
+    - architecture/ownership.yaml canonical_services gained a JobRunner entry pointing at lifecycle_job_runner.go::buildJobRunner + buildJobRunnerStep
+    - go vet + go test ./internal/app/... -short GREEN (runWorker path + TestLifecycle_JobRunnerLast + TestLifecycle_Integration)
 
   # W15 helper-split migration (June 2026): the 3 init*Service helpers
   # in the previously-shared compose_media.go file were extracted into

@@ -1,0 +1,146 @@
+// Package app — typed job-runner lifecycle (PR4.8, June 2026).
+//
+// W15 pending #2 (architecture/current.yaml): the jobRunner construction
+// + inline StartupStep closure that previously lived at the bottom of
+// lifecycle.go::startBackgroundJobs is fully extracted here into two
+// typed helpers. The pre-PR4.8 surface inlined:
+//
+//   - configuration defaults (cfg.Jobs.MaxParallelPerProject → workers,
+//     with 0 → 1 fallback; cfg.Jobs.LeaseTTLSeconds → leaseTTL with
+//     0 → 5 minute fallback);
+//   - the canonical appjobs.NewRunner(...) call (returns *appjobs.Runner);
+//   - a StartupStep{Name: "job-runner", Required: true} literal that
+//     froze the dispatcher synchronously and goroutine-launched the
+//     runner via concurrent.SafeGo, appended at the END of the plan.
+//
+// After PR4.8:
+//
+//   - buildJobRunner(deps) constructs the canonical *appjobs.Runner and
+//     returns nil when the jobs bundle lacks Service / Dispatcher / Repo.
+//   - buildJobRunnerStep(deps) returns a *StartupStep (nil when the
+//     runner cannot be built). The Start closure freezes the dispatcher
+//     and goroutine-launches the runner; the Stop closure is a no-op
+//     because the runner exits via context cancellation in
+//     serverLifecycle.Stop (the LIFO stop reverses earlier steps and
+//     cancels the parent ctx, which the runner poll-loop observes).
+//
+// The step must be appended LAST in backgroundJobs.startupPlan to satisfy
+// the structural invariant asserted by TestLifecycle_JobRunnerLast
+// (internal/app/lifecycle_test.go). lifecycle.go::startBackgroundJobs is
+// the only caller and appends buildJobRunnerStep(...) at the very end of
+// the function body — see the comment in that function.
+//
+// Why "typed":
+//
+//   - The "typed" qualifier follows the W15 helper-split convention: a
+//     typed deps struct (jobRunnerDeps) feeds typed helpers that produce
+//     the canonical concrete types (*appjobs.Runner, StartupStep). No
+//     `interface{}` carriers, no anonymous-only construction site.
+//   - The runner is the canonical *appjobs.Runner (no struct shadow or
+//     adapter), and the step is the canonical StartupStep (no lifecycle
+//     abstraction drift).
+//   - The deps struct has three typed fields (root *ComposeRoot,
+//     cfg *config.Config, log *zap.Logger); no `any` carrier, no option
+//     struct over-engineering.
+package app
+
+import (
+	"context"
+	"time"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+)
+
+// jobRunnerDeps holds the composition-root dependencies required to
+// build the job runner and its lifecycle step. Typed, not interface{}:
+// every field is a concrete pointer that callers must provide.
+type jobRunnerDeps struct {
+	root *ComposeRoot
+	cfg  *config.Config
+	log  *zap.Logger
+}
+
+// workerDefault returns the configured worker count with a 0-safe
+// fallback. 0 or negative cfg values map to 1 worker — the pre-PR4.8
+// inline behaviour.
+func workerDefault(cfg *config.Config) int {
+	if cfg == nil || cfg.Jobs.MaxParallelPerProject <= 0 {
+		return 1
+	}
+	return cfg.Jobs.MaxParallelPerProject
+}
+
+// leaseTTLDefault returns the configured lease TTL with a 0-safe
+// fallback. 0 or negative cfg values map to 5 minutes — the pre-PR4.8
+// inline behaviour.
+func leaseTTLDefault(cfg *config.Config) time.Duration {
+	if cfg == nil || cfg.Jobs.LeaseTTLSeconds <= 0 {
+		return 5 * time.Minute
+	}
+	return time.Duration(cfg.Jobs.LeaseTTLSeconds) * time.Second
+}
+
+// buildJobRunner constructs the canonical *appjobs.Runner from the typed
+// deps. PollEvery is fixed at 2 * time.Second (the previous inline
+// default). JobTypes is nil so the runner accepts any job type, matching
+// the pre-PR4.8 surface.
+//
+// Returns nil when the jobs bundle's Service / Dispatcher / Repo is
+// missing — the caller (lifecycle.go) gates the StartupStep append on
+// the returned pointer to preserve the partial-deploy safety net.
+func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
+	if deps.root == nil ||
+		deps.root.Jobs.Service == nil ||
+		deps.root.Jobs.Dispatcher == nil ||
+		deps.root.Jobs.Repo == nil {
+		return nil
+	}
+
+	cfg := appjobs.RunnerConfig{
+		Workers:   workerDefault(deps.cfg),
+		PollEvery: 2 * time.Second,
+		LeaseTTL:  leaseTTLDefault(deps.cfg),
+		JobTypes:  nil,
+	}
+	deps.log.Info("Job runner created", zap.Int("workers", cfg.Workers))
+	return appjobs.NewRunner(
+		deps.root.Jobs.Repo,
+		deps.root.Jobs.Dispatcher,
+		deps.log,
+		cfg,
+	)
+}
+
+// buildJobRunnerStep returns the typed StartupStep that launches the
+// job runner AFTER every prerequisite service. The dispatcher's Freeze()
+// runs synchronously inside Start so no further handlers can register
+// once the runner begins claiming jobs. The Stop closure is a no-op
+// because the runner exits when serverLifecycle cancels the parent ctx.
+//
+// Returns nil when the runner cannot be constructed; the caller MUST
+// skip the append in that case (preserves the partial-deploy safety
+// net: a JobRunner-less mode means no job processing, no startup error).
+func buildJobRunnerStep(deps jobRunnerDeps) *StartupStep {
+	runner := buildJobRunner(deps)
+	if runner == nil {
+		return nil
+	}
+	disp := deps.root.Jobs.Dispatcher
+	workers := workerDefault(deps.cfg)
+	return &StartupStep{
+		Name: "job-runner", Required: true,
+		Start: func(startCtx context.Context) error {
+			disp.Freeze()
+			concurrent.SafeGo("job-runner", func() { runner.Start(startCtx) })
+			deps.log.Info("Job runner started after full wiring",
+				zap.Int("workers", workers))
+			return nil
+		},
+		Stop: func(_ context.Context) error { return nil },
+	}
+}
