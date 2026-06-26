@@ -131,6 +131,9 @@ func (s *stubAssetRepo) Count(ctx context.Context, filter asset.Filter) (int64, 
 func (s *stubAssetRepo) SoftDelete(ctx context.Context, id string) error               { return nil }
 func (s *stubAssetRepo) Restore(ctx context.Context, id string) error                  { return nil }
 func (s *stubAssetRepo) HardDelete(ctx context.Context, id string) error               { return nil }
+func (s *stubAssetRepo) FindByExternalRef(ctx context.Context, provider, externalID string) (*asset.Asset, error) {
+	return nil, nil
+}
 
 type stubVideoPipeline struct{}
 
@@ -143,3 +146,14 @@ type stubMediaProcessor struct{}
 func (s *stubMediaProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	return &asset.ProcessResult{Status: "ok"}, nil
 }
+
+// Compile-time assertion (Wave 16 follow-up, June 2026): *stubAssetRepo
+// statically satisfies asset.Repository. AGENTS.md Pattern 0 doctrine
+// applied at the test-stub home: if asset.Repository evolves in a future
+// wave (e.g. a new method), this assertion will fail at test compile
+// time, forcing the stub to grow BEFORE the next vet run unblocks —
+// preventing the rot that the FindByExternalRef addition above fixes
+// from recurring. Mirrors the production-side precedents at
+// internal/infrastructure/qdrant/search_adapter.go and
+// internal/infrastructure/database/sqlite/assets/clips_repository.go.
+var _ asset.Repository = (*stubAssetRepo)(nil)
