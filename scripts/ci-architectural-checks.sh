@@ -74,6 +74,54 @@ if [ -n "$literals" ]; then
 fi
 echo "OK: no literal job-type strings outside canonical domain/job/job.go"
 
+# ── Check 1: forbid direct IndexWriter callers outside composition root (QDRANT-002) ─────
+# The canonical IndexWriter MUST live behind outbox.Dispatcher (production) or the
+# admin reindex CLI (one-shot operator tool). Both sites are explicitly allowlisted:
+#
+#   - cmd/admin/reindex_qdrant.go          : operator-driven reindex, bypasses outbox by design.
+#   - internal/app/build_bundles_process.go: the SSOT composition root that owns the wiring.
+#
+# Every other Go file that constructs (or takes the address of) an IndexWriter is
+# either (a) a forgotten legacy call site that bypassed the outbox dispatcher, or
+# (b) a leak of the canonical writer into a downstream handler. Either is a
+# QDRANT-002 regression: the canonical write path is outbox.Dispatcher →
+# IndexingHandler → IndexWriter. Anything else risks stale data racing the
+# source_version supersede gate (the indexer reads via the dispatcher).
+#
+# Pattern anchors:
+#   qdrant.NewIndexWriter(...)                — function call, 99% of constructions
+#   = &qdrant.IndexWriter{...}                — rare direct literal; reserved for tests
+#   := qdrant.IndexWriter{...}                — same as above
+#
+# Comment-only lines are excluded via awk so descriptive prose ("calls
+# qdrant.NewIndexWriter from inside the dispatcher") doesn't trigger false
+# positives. Tests are excluded so *_test.go can construct fakes freely.
+echo "=== Check 1: forbid direct IndexWriter callers (QDRANT-002, Wave 14 §3) ==="
+literals=$(rg -n --type go \
+    -e 'qdrant\.NewIndexWriter\(' \
+    -e '(&?qdrant\.IndexWriter)\{' \
+    --glob '!**/cmd/admin/**' \
+    --glob '!**/build_bundles_process.go' \
+    --glob '!**/*_test.go' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$literals" ]; then
+    echo "FAIL: direct IndexWriter constructor outside canonical composition root:"
+    echo "$literals"
+    echo ""
+    echo "Fix: route writes through outbox.Dispatcher (production) or the admin"
+    echo "reindex CLI (operator tooling). The allowlist (cmd/admin/, internal/app/"
+    echo "build_bundles_process.go) is the ONLY legitimate construction site."
+    exit 1
+fi
+echo "OK: no direct IndexWriter constructors outside the canonical allowlist"
+
 # ── Main gate ────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
 # 5 Phase 0 rules in grace-cycle regression-detection mode.

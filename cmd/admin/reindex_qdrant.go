@@ -38,6 +38,7 @@ import (
 	"go.uber.org/zap"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
@@ -241,7 +242,16 @@ func runReindexQdrant(args []string) error {
 	// buildSwitchReport placeholder. The count mismatch — previously a
 	// logged warning — is now a HARD gate: Ready stays false and the
 	// report captures the specific error.
-	verifier := qdrant.NewReindexVerifier(client, assetStore, nil /* deadLetter: not wired in admin CLI */, log)
+	//
+	// QDRANT-026 (June 2026) closure: NewReindexVerifier gained a 5th
+	// `schema` argument so the per-channel embedding version check
+	// (`report.VersionMismatchPerChannel`) fires against the manifest. The
+	// dead-letter adapter (qdrant.NewOutboxEventsDeadLetterAdapter) is
+	// the production wiring for `report.DeadLetterOpen` — until this
+	// closure the admin CLI passed `nil`, so the dead-letter gate was
+	// trivially satisfied (any count === 0 → Ready=true).
+	deadLetter := qdrant.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB.DB))
+	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, log)
 	report, verifyErr := verifier.VerifyReindex(ctx, targetCollection, reindexResult.IndexedAssets)
 	if verifyErr != nil {
 		// The verifier returns an error when critical infrastructure
