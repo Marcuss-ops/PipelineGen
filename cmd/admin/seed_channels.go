@@ -1,14 +1,26 @@
 package main
 
+// runSeedChannels — Capability Standard migration (June 2026):
+//
+// Capability Standard routes the admin CLI through the canonical use
+// case layer rather than the concrete repository. Domain object
+// construction, JSON marshalling of keyword arrays, and default
+// policy application all moved into channels.Service
+// (internal/application/channels). The CLI sends typed
+// UpsertChannelCommand values to channels.NewService + UpsertBulk.
+//
+// This file keeps the parser (config file → typed commands) and the
+// no-build dry-run summary; the actual persistence goes through the
+// same path the HTTP bulk handler uses, so admin and HTTP can no
+// longer drift on defaults.
+
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -17,7 +29,6 @@ import (
 )
 
 func runSeedChannels(args []string) error {
-	// Parse optional flags
 	configPath := "config/channel_monitor_config.json"
 	dryRun := false
 	for i, arg := range args {
@@ -32,12 +43,9 @@ func runSeedChannels(args []string) error {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
-	// Load config
 	cfg := config.Get()
 
-	// Open the main database (media.db.sqlite)
 	dbPath := cfg.Storage.FullPath("media/media.db.sqlite")
-
 	log.Info("opening database", zap.String("path", dbPath))
 	sqliteDB, err := storage.OpenSQLiteDB(dbPath, log)
 	if err != nil {
@@ -45,13 +53,11 @@ func runSeedChannels(args []string) error {
 	}
 	defer sqliteDB.Close()
 
-	// Run migrations to ensure category_channels table exists
 	if err := sqliteDB.RunMigrations(log, "migrations/sqlite"); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	log.Info("migrations applied")
 
-	// Read the monitor config file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("read config file %s: %w", configPath, err)
@@ -75,87 +81,60 @@ func runSeedChannels(args []string) error {
 		return fmt.Errorf("parse config file: %w", err)
 	}
 
-	repo := assets.NewChannelsRepository(sqliteDB.DB)
+	// Build the channels capability through the canonical
+	// constructor. Admin is a one-shot CLI — no registry path, but
+	// still goes through Service so HTTP bulk and admin stay in sync
+	// on defaults.
+	svc := channels.NewService(
+		channels.NewRepositoryAdapter(assets.NewChannelsRepository(sqliteDB.DB)),
+		log,
+	)
 
-	imported := 0
+	cmds := make([]channels.UpsertChannelCommand, 0, len(monitorCfg.Channels))
+	importedURL := 0
 	skipped := 0
-
 	for _, ch := range monitorCfg.Channels {
 		if ch.URL == "" || ch.Category == "" {
 			skipped++
 			continue
 		}
-
-		// Generate deterministic ID from category + URL
-		hash := sha256.Sum256([]byte(ch.Category + ":" + ch.URL))
-		id := fmt.Sprintf("%s_%x", ch.Category, hash[:8])
-
-		// Marshal keywords to JSON
-		keywordsJSON := "[]"
-		if len(ch.Keywords) > 0 {
-			b, _ := json.Marshal(ch.Keywords)
-			keywordsJSON = string(b)
-		}
-
-		// Marshal semantic keywords to JSON
-		semanticKeywordsJSON := "[]"
-		if len(ch.SemanticKeywords) > 0 {
-			b, _ := json.Marshal(ch.SemanticKeywords)
-			semanticKeywordsJSON = string(b)
-		}
-
-		channel := &asset.CategoryChannel{
-			ID:               id,
+		cmds = append(cmds, channels.UpsertChannelCommand{
 			Category:         ch.Category,
 			ChannelURL:       ch.URL,
-			ChannelName:      extractChannelName(ch.URL),
-			Keywords:         keywordsJSON,
+			Keywords:         ch.Keywords,
 			MinViews:         ch.MinViews,
 			MaxClipDuration:  ch.MaxClipDuration,
 			DriveFolderID:    ch.DriveFolderID,
-			SemanticKeywords: semanticKeywordsJSON,
+			SemanticKeywords: ch.SemanticKeywords,
 			MinSemanticScore: ch.MinSemanticScore,
 			PlaylistEnd:      ch.PlaylistEnd,
-		}
-
-		// Action
-		if dryRun {
-			fmt.Printf("[DRY RUN] would %s channel: %s (category: %s, id: %s)\n",
-				map[bool]string{true: "create", false: "update"}[true], ch.URL, ch.Category, id)
-			fmt.Printf("          keywords: %s\n", keywordsJSON)
-			if semanticKeywordsJSON != "[]" {
-				fmt.Printf("          semantic_keywords: %s\n", semanticKeywordsJSON)
-			}
-			if ch.PlaylistEnd > 0 {
-				fmt.Printf("          playlist_end: %d\n", ch.PlaylistEnd)
-			}
-			imported++
-			continue
-		}
-
-		if err := repo.Upsert(context.Background(), channel); err != nil {
-			log.Warn("failed to upsert channel", zap.String("url", ch.URL), zap.Error(err))
-			skipped++
-			continue
-		}
-		imported++
-		fmt.Printf("✅ %s → %s\n", ch.Category, ch.URL)
+			CheckInterval:    ch.CheckInterval,
+		})
+		importedURL++
 	}
 
-	fmt.Printf("\n📊 Summary: %d imported, %d skipped\n", imported, skipped)
+	if dryRun {
+		fmt.Println("[DRY RUN] the following channels WOULD be upserted via channels.UpsertBulk:")
+		for _, cmd := range cmds {
+			id := svc.IDFor(cmd.Category, cmd.ChannelURL)
+			fmt.Printf("  - %s/%s → id=%s (max_clip_duration=%d, priority=%d, check_interval=%q)\n",
+				cmd.Category, cmd.ChannelURL, id,
+				channels.Default.MaxClipDuration, channels.Default.Priority, channels.Default.CheckInterval)
+		}
+		fmt.Printf("\n📊 Dry-run summary: %d would import, %d skipped (empty url/category)\n", importedURL, skipped)
+		return nil
+	}
+
+	res, err := svc.UpsertBulk(context.Background(), channels.BulkUpsertChannelsCommand{
+		Channels: cmds,
+	})
+	if err != nil {
+		return fmt.Errorf("bulk upsert: %w", err)
+	}
+	created, updated, errs := len(res.Created), len(res.Updated), len(res.Errors)
+	fmt.Printf("📊 Summary: %d created, %d updated, %d errors (skipped before upsert: %d)\n", created, updated, errs, skipped)
+	for _, e := range res.Errors {
+		fmt.Printf("  ❌ %s\n", e)
+	}
 	return nil
-}
-
-func extractChannelName(url string) string {
-	// Extract @handle from YouTube URL
-	url = strings.TrimSuffix(url, "/videos")
-	url = strings.TrimSuffix(url, "/")
-	if idx := strings.LastIndex(url, "/"); idx >= 0 {
-		name := url[idx+1:]
-		if strings.HasPrefix(name, "@") {
-			return name
-		}
-		return name
-	}
-	return url
 }

@@ -313,15 +313,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if domains.VoiceoverService != nil && jobs.Service != nil {
 		domains.VoiceoverService.RegisterHandler(jobs.Service)
 	}
-	if domains.BooksService != nil && jobs.Service != nil {
-		domains.BooksService.RegisterJobHandler(jobs.Service)
-	}
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		process.ClipIndexerService.RegisterJobHandler(jobs.Service)
 	}
-	if domains.LessonsService != nil && jobs.Service != nil {
-		domains.LessonsService.RegisterJobHandler(jobs.Service)
-	}
+	// Capability Standard migration (June 2026): BooksService and
+	// LessonsService worker handlers are NOT registered here.
+	// The Generation capability owns the books.process and
+	// lessons.process job types and publishes the handlers via
+	// its Descriptor (api.DescriptorJobs), wired in registry.go
+	// after generation.Build returns. Single source of truth.
 
 	root := &ComposeRoot{
 		DB:      dbs.main,

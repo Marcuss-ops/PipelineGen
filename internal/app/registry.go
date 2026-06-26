@@ -17,8 +17,6 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
-	generationapi "github.com/Marcuss-ops/PipelineGen/internal/api/generation"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
@@ -31,6 +29,7 @@ import (
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
@@ -276,35 +275,74 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		}
 	}
 	// ── Unified generation API (replaces /api/books + /api/lessons) ──
-	// Books and Lessons are now served through the unified generation endpoint
-	// at /api/generations. TypeBookGenerate and TypeLessonGenerate dispatch to
-	// the same job types (TypeBooksProcess, TypeLessonsProcess) the legacy
-	// handlers enqueued, so worker handlers are unaffected.
-	{
-		genReg := generation.BuildDefaultRegistry(cfg.Books.Enabled, cfg.Lessons.Enabled, anyScriptFeatureEnabled(cfg))
-		genSvc := generation.NewService(root.Jobs.Service, root.Repos.Assets, genReg)
-		if err := tryRegisterModule(registry, log, module.NewRouteModule(
-			"generation",
-			func() bool { return true },
-			"/generations",
-			generationapi.NewHandler(genSvc, log),
-			log,
-		)); err != nil {
-			return nil, fmt.Errorf("wire registry: generation module: %w", err)
-		}
-		log.Info("generation API wired at /api/generations",
-			zap.Bool("books", cfg.Books.Enabled),
-			zap.Bool("lessons", cfg.Lessons.Enabled))
+	// Capability Standard migration (June 2026): the unified generation
+	// endpoint at /api/generations is wired via generation.Build(deps).
+	// Build returns a single Descriptor that carries:
+	//   - the api.Module for /api/generations routes, AND
+	//   - the api.DescriptorJobs slot which the composition root uses to
+	//     publish the books.process and lessons.process worker handlers
+	//     into the canonical jobs.Service — single source of truth replaces
+	//     the late-binding calls that previously lived in composition.go.
+	//
+	// Worker-side handler-function values are passed via nil-guarded
+	// method-value extraction: root.Domains.BooksService.HandleJob /
+	// root.Domains.LessonsService.HandleJob. nil service → nil handler
+	// → JobHandlers.RegisterJobHandlers silently skips that job type.
+	var booksHandler generation.HandlerFunc
+	if root.Domains != nil && root.Domains.BooksService != nil {
+		booksHandler = root.Domains.BooksService.HandleJob
 	}
+	var lessonsHandler generation.HandlerFunc
+	if root.Domains != nil && root.Domains.LessonsService != nil {
+		lessonsHandler = root.Domains.LessonsService.HandleJob
+	}
+	if genDesc, err := generation.Build(generation.Dependencies{
+		Jobs:           root.Jobs.Service,
+		Assets:         root.Repos.Assets,
+		Books:          booksHandler,
+		Lessons:        lessonsHandler,
+		BooksEnabled:   cfg.Books.Enabled,
+		LessonsEnabled: cfg.Lessons.Enabled,
+		ScriptEnabled:  anyScriptFeatureEnabled(cfg),
+		Logger:         log,
+	}); err != nil {
+		log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
+	} else {
+		if err := tryRegisterModule(registry, log, genDesc); err != nil {
+			return nil, fmt.Errorf("wire registry: generation: %w", err)
+		}
+		// *GenerationDescriptor satisfies api.Descriptor via the
+		// three explicit delegation methods (Name/Enabled/RegisterRoutes),
+		// and api.DescriptorJobs via RegisterJobHandlers. So:
+		//   - no AsDescriptor adapter round-trip is needed,
+		//   - the cast goes directly against the concrete pointer.
+		// Same package alias as the rest of the composition layer
+		// (`module "github.com/Marcuss-ops/PipelineGen/internal/api"`).
+		if dj, ok := genDesc.(module.DescriptorJobs); ok {
+			if err := dj.RegisterJobHandlers(root.Jobs.Service); err != nil {
+				log.Warn("failed to register generation job handlers", zap.Error(err))
+			}
+		}
+	}
+
 	if root.DB != nil && root.DB.DB != nil {
-		if err := tryRegisterModule(registry, log, module.NewRouteModule(
-			"channels",
-			func() bool { return true },
-			"/channels",
-			channelsapi.NewChannelsHandler(newChannelRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)), log),
-			log,
-		)); err != nil {
-			return nil, fmt.Errorf("wire registry: channels module: %w", err)
+		// channels capability (Capability Standard migration, June 2026):
+		// the composition root only knows the persistable form of the
+		// repository; the canonical Build(deps) wraps it with the
+		// application-level adapter and constructs the descriptor that
+		// exposes both the api.Module (for route registration) and the
+		// underlying *channels.Service (for non-HTTP callers such as
+		// cmd/admin).
+		if d, err := channels.Build(channels.Dependencies{
+			Repository: channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
+			Logger:     log,
+		}); err != nil {
+			log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
+		} else {
+			if err := tryRegisterModule(registry, log, d); err != nil {
+				return nil, fmt.Errorf("wire registry: channels: %w", err)
+			}
+		}
 		}
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
 		// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.

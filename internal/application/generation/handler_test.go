@@ -1,3 +1,7 @@
+// Package generation — handler_test.go: thin-transport handler tests
+// for the Generation capability. Sits in package "generation" so
+// the test can see unexported helpers (handlerService,
+// toCreateResult, fromJobStatus) of the capability package.
 package generation
 
 import (
@@ -13,26 +17,27 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	appgeneration "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	domaingeneration "github.com/Marcuss-ops/PipelineGen/internal/domain/generation"
 )
 
+// fakeService is a minimal in-memory stand-in for the canonical
+// Generation service. The handler depends only on the three
+// unexported methods (Create/Status/Cancel) declared via the
+// handlerService interface in handler.go.
 type fakeService struct {
-	createResp *appgeneration.CreateResponse
-	statusResp *appgeneration.StatusResponse
+	createResp *CreateResponse
+	statusResp *StatusResponse
 	createErr  error
 	statusErr  error
 	cancelErr  error
 }
 
-func (f *fakeService) Create(ctx context.Context, req domaingeneration.Request) (*appgeneration.CreateResponse, error) {
+func (f *fakeService) Create(ctx context.Context, req domaingeneration.Request) (*CreateResponse, error) {
 	return f.createResp, f.createErr
 }
-
-func (f *fakeService) Status(ctx context.Context, id string) (*appgeneration.StatusResponse, error) {
+func (f *fakeService) Status(ctx context.Context, id string) (*StatusResponse, error) {
 	return f.statusResp, f.statusErr
 }
-
 func (f *fakeService) Cancel(ctx context.Context, id string) error {
 	return f.cancelErr
 }
@@ -40,7 +45,7 @@ func (f *fakeService) Cancel(ctx context.Context, id string) error {
 func TestHandler_Create_Accepts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeService{
-		createResp: &appgeneration.CreateResponse{},
+		createResp: &CreateResponse{},
 	}
 	svc.createResp.OK = true
 	svc.createResp.Job.ID = "job-123"
@@ -55,7 +60,6 @@ func TestHandler_Create_Accepts(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/generations", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusAccepted, rec.Code)
@@ -66,7 +70,7 @@ func TestHandler_Create_Accepts(t *testing.T) {
 
 func TestHandler_Status_NotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	svc := &fakeService{statusErr: appgeneration.ErrJobNotFound}
+	svc := &fakeService{statusErr: ErrJobNotFound}
 	h := NewHandler(svc, zap.NewNop())
 	router := gin.New()
 	router.GET("/generations/:id", h.Get)
@@ -80,7 +84,7 @@ func TestHandler_Status_NotFound(t *testing.T) {
 
 func TestHandler_Create_UnsupportedType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	svc := &fakeService{createErr: errors.Join(appgeneration.ErrUnsupportedType, errors.New("bad.type"))}
+	svc := &fakeService{createErr: errors.Join(ErrUnsupportedType, errors.New("bad.type"))}
 	h := NewHandler(svc, zap.NewNop())
 	router := gin.New()
 	router.POST("/generations", h.Create)

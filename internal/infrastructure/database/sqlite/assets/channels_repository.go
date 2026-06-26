@@ -9,7 +9,7 @@ import (
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// ChannelsRepository handles persistence for categoryâ†”channel associations.
+// ChannelsRepository handles persistence for category↔channel associations.
 type ChannelsRepository struct {
 	db *sql.DB
 }
@@ -19,12 +19,7 @@ func NewChannelsRepository(db *sql.DB) *ChannelsRepository {
 	return &ChannelsRepository{db: db}
 }
 
-// DB returns the underlying database connection.
-func (r *ChannelsRepository) DB() *sql.DB {
-	return r.db
-}
-
-// Upsert creates or updates a categoryâ†”channel association.
+// Upsert creates or updates a category↔channel association.
 func (r *ChannelsRepository) Upsert(ctx context.Context, ch *asset.CategoryChannel) error {
 	now := timeutil.FormatRFC3339(time.Now())
 	if ch.CreatedAt == "" {
@@ -32,35 +27,11 @@ func (r *ChannelsRepository) Upsert(ctx context.Context, ch *asset.CategoryChann
 	}
 	ch.UpdatedAt = now
 
-	keywordsJSON := ch.Keywords
-	if keywordsJSON == "" {
-		keywordsJSON = "[]"
-	}
-	semanticKeywordsJSON := ch.SemanticKeywords
-	if semanticKeywordsJSON == "" {
-		semanticKeywordsJSON = "[]"
-	}
-	playlistEnd := ch.PlaylistEnd
-	if playlistEnd == 0 {
-		playlistEnd = -1 // default: use global config
-	}
-	minSemanticScore := ch.MinSemanticScore
-	if minSemanticScore <= 0 {
-		minSemanticScore = 60
-	}
-	checkInterval := ch.CheckInterval
-	if checkInterval == "" {
-		checkInterval = "7d"
-	}
-	priority := ch.Priority
-	if priority == 0 {
-		priority = 2
-	}
-	maxSegments := ch.MaxSegments
-	if maxSegments <= 0 {
-		maxSegments = 2
-	}
-
+	// Capability Standard (June 2026): default application lives in
+	// channels.Service.Default, not here. This function is mechanical;
+	// it writes the row and trusts that every field is the canonical
+	// value the application layer chose. Service.toDomain is the single
+	// source of defaults (see internal/application/channels/service.go).
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO category_channels (id, category, channel_url, channel_name, keywords, min_views, max_clip_duration, drive_folder_id,
 			semantic_keywords, min_semantic_score, playlist_end, check_interval, max_videos_per_run, priority, lookback_days, max_segments, segment_prompt,
@@ -84,10 +55,10 @@ func (r *ChannelsRepository) Upsert(ctx context.Context, ch *asset.CategoryChann
 			max_segments = EXCLUDED.max_segments,
 			segment_prompt = EXCLUDED.segment_prompt,
 			updated_at = EXCLUDED.updated_at
-	`, ch.ID, ch.Category, ch.ChannelURL, ch.ChannelName, keywordsJSON,
-		ch.MinViews, ch.MaxClipDuration, ch.DriveFolderID, semanticKeywordsJSON,
-		minSemanticScore, playlistEnd, checkInterval, ch.MaxVideosPerRun, priority,
-		ch.LookbackDays, maxSegments, ch.SegmentPrompt, ch.CreatedAt, ch.UpdatedAt)
+	`, ch.ID, ch.Category, ch.ChannelURL, ch.ChannelName, ch.Keywords,
+		ch.MinViews, ch.MaxClipDuration, ch.DriveFolderID, ch.SemanticKeywords,
+		ch.MinSemanticScore, ch.PlaylistEnd, ch.CheckInterval, ch.MaxVideosPerRun, ch.Priority,
+		ch.LookbackDays, ch.MaxSegments, ch.SegmentPrompt, ch.CreatedAt, ch.UpdatedAt)
 	return err
 }
 
