@@ -18,7 +18,7 @@ var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
 	// Per-area orchestrator pattern (added 2026-06-24 followup, code-review
 	// NIT-B): `imgservice.NewService` is the canonical direct-orchestrator
-	// constructor (used in internal/app/compose_media.go::initImageService); the API layer
+	// constructor (used in internal/app/build_bundles_images.go::buildImagesService); the API layer
 	// must reach images via DomainBundle, not via direct construction
 	// here. Grep-verified: zero hits in internal/api/* production code
 	// at HEAD, safe to enforce as hard-fail pattern.

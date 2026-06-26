@@ -215,14 +215,14 @@ canonical_services:
     constructor: NewSectionRegenerator
     location: internal/app/wire_script.go
   - service: ImageService
-    constructor: initImageService
-    location: internal/app/composition.go
+    constructor: buildImagesService
+    location: internal/app/build_bundles_images.go
   - service: VoiceoverService
-    constructor: initVoiceoverService
-    location: internal/app/compose_media.go
+    constructor: buildVoiceoverService
+    location: internal/app/build_bundles_voiceover.go
   - service: BooksService
-    constructor: initBooksService
-    location: internal/app/composition.go
+    constructor: buildBooksService
+    location: internal/app/build_bundles_books.go
   - service: ArtlistService
     constructor: NewService
     location: internal/app/module_sources.go
