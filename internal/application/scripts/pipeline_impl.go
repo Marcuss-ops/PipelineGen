@@ -14,6 +14,7 @@ package scripts
 
 import (
 	"context"
+	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -140,10 +141,20 @@ func (p *Pipeline) Run(
 
 	// Voiceover generation: deferred similarly.
 
-	// Doc creation: deferred similarly.
-	// The caller (PipelineUseCase) already has access to docsSvc
-	// independently; this pipeline result carries empty DocLink/DocID
-	// which the caller can fill in post hoc.
+	// Doc creation: always create a Google Doc for the script.
+	if p.docsSvc != nil {
+		genSpec, _ := spec.(*scriptpkg.GenerationSpec)
+		if genSpec != nil {
+			docTitle := strings.TrimSpace(genSpec.Title)
+			if docTitle == "" {
+				docTitle = "Script"
+			}
+			htmlContent := BuildSectionDocHTML(docTitle, []string{""}, []string{script}, true, genSpec.Language)
+			link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, genSpec.DriveFolderID)
+			result.DocLink = link
+			result.DocID = id
+		}
+	}
 
 	if p.log != nil {
 		p.log.Info("pipeline: post-generation completed",

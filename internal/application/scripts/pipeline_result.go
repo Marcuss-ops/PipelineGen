@@ -22,11 +22,27 @@ func (pu *PipelineUseCase) buildFinalResult(
 	}
 	out := map[string]any{
 		"ok":           true,
-		"script":       pathResult.WriteResult.Script,
 		"word_count":   pathResult.WriteResult.WordCount,
 		"title":        payload.Title,
 		"language":     payload.Language,
 		"cache_status": pathResult.WriteResult.CacheStatus,
+	}
+	if payload.MaxChars > 0 && len(pathResult.ClipScenes) > 0 {
+		scriptItems := make([]map[string]any, 0, len(pathResult.ClipScenes))
+		for _, cs := range pathResult.ClipScenes {
+			item := map[string]any{
+				"text": cs.Text,
+			}
+			if cs.DriveLink != "" {
+				item["video"] = cs.DriveLink
+				item["videos"] = []string{cs.DriveLink}
+			}
+			scriptItems = append(scriptItems, item)
+		}
+		out["script"] = scriptItems
+		out["script_raw"] = pathResult.WriteResult.Script
+	} else {
+		out["script"] = pathResult.WriteResult.Script
 	}
 	if payload.ExtractEntities {
 		out["entities_json"] = entitiesJSON

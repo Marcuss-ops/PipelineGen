@@ -4,12 +4,14 @@ type TextGenerationRequest struct {
 	Language        string
 	Duration        int // Duration in seconds (kept for backward compat)
 	DurationMinutes int // Preferred: explicit duration in minutes
-	MinWords        int // Optional: override the duration-derived word count target
+	MinWords        int    // Optional: override the duration-derived word count target
+	MaxChars        int    // Optional: hard character limit per response; 0 = unlimited
 	Tone            string
 	Model           string
 	Prompt          string
 	SourceText      string
 	Title           string
+	ClipIDs         []string // For structured output: the expected clip_id values
 	Options         map[string]any
 	WebContext      string // Optional: pre-fetched web search results injected into the prompt
 

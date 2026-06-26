@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -68,6 +69,7 @@ func (pu *PipelineUseCase) handleClipPathExplicit(ctx context.Context, payload *
 		Mode:        gemmamemory.ModeClipToScript,
 		SourceText:  sourceText,
 		MinWords:    opts.TargetWords,
+		MaxChars:    payload.MaxChars,
 		Prompt:      sourceFingerprint,
 		UseMemory:   !payload.ForceRefresh,
 		SaveToDB:    payload.SaveToDB,
@@ -76,10 +78,21 @@ func (pu *PipelineUseCase) handleClipPathExplicit(ctx context.Context, payload *
 	if err != nil {
 		return nil, fmt.Errorf("clip-script generation failed: %w", err)
 	}
-	// PG-033 phase 2 (June 2026): match the canonical signature.
-	// BuildScenesWithMarkers now takes both the script and the source
-	// clip pack so scene-kind labels can be anchored to clip IDs.
-	clipScenes := BuildScenesWithMarkers(writeResult.Script, pack)
+	clipScenes := parseStructuredOutput(writeResult.Script, payload.ClipIDs, payload.MaxChars)
+	packMap, packOK := pack.(map[string]any)
+	var driveLinks map[string]string
+	if packOK {
+		if dl, ok := packMap["clip_drive_links"].(map[string]string); ok {
+			driveLinks = dl
+		}
+	}
+	if driveLinks != nil {
+		for i := range clipScenes {
+			if link, ok := driveLinks[clipScenes[i].ClipID]; ok {
+				clipScenes[i].DriveLink = link
+			}
+		}
+	}
 	if pu.log != nil {
 		pu.log.Info("clip-script generated",
 			zap.Int("scenes", len(clipScenes)),
@@ -209,6 +222,36 @@ func (pu *PipelineUseCase) handleClipPathTextOnly(ctx context.Context, payload *
 		WriteResult:       writeResult,
 		SourceFingerprint: writeResult.Prompt,
 	}, nil
+}
+
+// parseStructuredOutput parses the LLM response as structured JSON when
+// MaxChars > 0. Falls back to BuildScenesWithMarkers for prose output.
+func parseStructuredOutput(script string, clipIDs []string, maxChars int) []ClipScene {
+	if maxChars <= 0 {
+		return BuildScenesWithMarkers(script, nil)
+	}
+	clean := strings.TrimSpace(script)
+	clean = strings.TrimPrefix(clean, "```json")
+	clean = strings.TrimPrefix(clean, "```")
+	clean = strings.TrimSuffix(clean, "```")
+	clean = strings.TrimSpace(clean)
+	var pairs []struct {
+		ClipID string `json:"clip_id"`
+		Text   string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(clean), &pairs); err != nil || len(pairs) == 0 {
+		return nil
+	}
+	clipScenes := make([]ClipScene, 0, len(pairs))
+	for i, p := range pairs {
+		clipScenes = append(clipScenes, ClipScene{
+			SceneIndex: i,
+			ClipID:     p.ClipID,
+			Text:       p.Text,
+			Kind:       "clip",
+		})
+	}
+	return clipScenes
 }
 
 // buildFinalResult — moved inline 1:1 from the previous handler.

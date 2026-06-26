@@ -42,6 +42,7 @@ type Config struct {
 
 	ScriptGeneration struct {
 		User                   string `yaml:"user"`
+		Structured             string `yaml:"structured"`
 		OverridingInstructions string `yaml:"overriding_instructions"`
 	} `yaml:"script_generation"`
 

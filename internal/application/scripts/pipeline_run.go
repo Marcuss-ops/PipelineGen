@@ -3,6 +3,7 @@ package scripts
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -85,7 +86,21 @@ func (pu *PipelineUseCase) Run(
 			zap.Int64("path_ms", time.Since(pathStart).Milliseconds()))
 	}
 
-	pipelineResult, pipeErr := pu.pipeline.Run(ctx, spec, pathResult.WriteResult.Script, tools)
+	// Build human-readable doc content from clip scenes when available,
+	// otherwise use the raw script text.
+	docContent := pathResult.WriteResult.Script
+	if len(pathResult.ClipScenes) > 0 {
+		var sceneTexts []string
+		for _, cs := range pathResult.ClipScenes {
+			if cs.Text != "" {
+				sceneTexts = append(sceneTexts, cs.Text)
+			}
+		}
+		if joined := strings.Join(sceneTexts, "\n\n"); joined != "" {
+			docContent = joined
+		}
+	}
+	pipelineResult, pipeErr := pu.pipeline.Run(ctx, spec, docContent, tools)
 	if pipeErr != nil {
 		return nil, fmt.Errorf("%w: pipeline: %w", ErrPipelineGenerationFailed, pipeErr)
 	}

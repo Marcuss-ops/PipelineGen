@@ -35,7 +35,7 @@ type BatchService struct {
 	log         *zap.Logger
 	gen         interface{} // *ollama.Generator
 	engine      *Engine
-	docClient   interface{} // drive.DocClient
+	docsSvc     *DocumentsService
 	voSvc       interface{} // *voiceover.Service
 	scriptsRepo interface{} // ScriptRepository
 }
@@ -131,12 +131,16 @@ func NewBatchService(
 	vo *voiceover.Service,
 	repo ScriptRepository,
 ) *BatchService {
+	var docsSvc *DocumentsService
+	if doc != nil {
+		docsSvc = NewDocumentsService(doc, log, "")
+	}
 	return &BatchService{
 		cfg:         cfg,
 		log:         log,
 		gen:         gen,
 		engine:      engine,
-		docClient:   doc,
+		docsSvc:     docsSvc,
 		voSvc:       vo,
 		scriptsRepo: repo,
 	}
@@ -259,7 +263,7 @@ func (b *BatchService) Execute(
 
 	// Create Google Doc.
 	var docLink, docID string
-	if docClient, ok := b.docClient.(drive.DocClient); ok && docClient != nil {
+	if b.docsSvc != nil {
 		sectionTitles := make([]string, len(allSections))
 		sectionContents := make([]string, len(allSections))
 		for i, sec := range allSections {
@@ -267,15 +271,9 @@ func (b *BatchService) Execute(
 			sectionContents[i] = sec.Content
 		}
 		htmlContent := BuildSectionDocHTML(docTitle, sectionTitles, sectionContents, req.NoChapters, req.Language)
-		doc, err := docClient.CreateDoc(ctx, docTitle, htmlContent, req.DriveFolderID)
-		if err != nil {
-			if b.log != nil {
-				b.log.Warn("batch service: failed to create Google Doc", zap.Error(err))
-			}
-		} else if doc != nil {
-			docLink = doc.URL
-			docID = doc.ID
-		}
+		link, id := b.docsSvc.CreateDoc(ctx, docTitle, htmlContent, nil, req.DriveFolderID)
+		docLink = link
+		docID = id
 	}
 
 	// Persist to DB.
@@ -312,11 +310,7 @@ func (b *BatchService) ExecuteBatchGeneration(
 
 // createBatchDoc creates a Google Doc from batch parts.
 func (b *BatchService) createBatchDoc(ctx context.Context, title string, parts []GeneratedPart, noChapters bool, language, folderID string) (string, string) {
-	if b == nil || b.docClient == nil {
-		return "", ""
-	}
-	client, ok := b.docClient.(drive.DocClient)
-	if !ok || client == nil {
+	if b == nil || b.docsSvc == nil {
 		return "", ""
 	}
 	sectionTitles := make([]string, 0, len(parts))
@@ -326,11 +320,7 @@ func (b *BatchService) createBatchDoc(ctx context.Context, title string, parts [
 		sectionContents = append(sectionContents, part.content)
 	}
 	content := BuildSectionDocHTML(title, sectionTitles, sectionContents, noChapters, language)
-	doc, err := client.CreateDoc(ctx, title, content, folderID)
-	if err != nil || doc == nil || doc.URL == "" || doc.ID == "" {
-		return "", ""
-	}
-	return doc.URL, doc.ID
+	return b.docsSvc.CreateDoc(ctx, title, content, nil, folderID)
 }
 
 // saveBatchScript persists a batch script.
