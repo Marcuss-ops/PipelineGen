@@ -54,6 +54,25 @@
   grandfathered_imports_ref: docs/migrations/api-infrastructure-imports-allowlist.txt
   grandfathered_imports_migration: docs/roadmap/PR3_API_COMPACTION.md
 
+  # W14 clips-helpers-extract (June 2026, PR2 slice 1/8):
+  # api/assets/clips/helpers.go was lifted to application-layer
+  # conversion helpers (ClipToAssetNode + TreeNodeToAssetNode, both
+  # now exported CamelCase) under internal/application/clips/conversions.go.
+  # The four api/callers (clip_update.go:107, clip_create.go:62,
+  # clip_upload.go:269, folder_tree.go:38/48/91/100) now invoke
+  # appclips.<Func>(...) without importing infra. The Check 19
+  # grandfathered count drops by 1 for this slice (target trajectory:
+  # 7 → 0 across PR2 slices 2..7 still pending).
+  completed_through_W14_clips_helpers_extract:
+    - "internal/application/clips/conversions.go created (CamelCase exports: ClipToAssetNode + TreeNodeToAssetNode)"
+    - "internal/api/assets/clips/helpers.go REMOVED (git rm)"
+    - "internal/api/assets/clips/clip_update.go: added appclips import + replaced ClipToAssetNode() with appclips.ClipToAssetNode()"
+    - "internal/api/assets/clips/clip_create.go: added appclips import + replaced ClipToAssetNode() with appclips.ClipToAssetNode()"
+    - "internal/api/assets/clips/clip_upload.go: added appclips import + replaced ClipToAssetNode() with appclips.ClipToAssetNode()"
+    - "internal/api/assets/clips/folder_tree.go: added appclips import + replaced BOTH treeNodeToAssetNode() (3 sites) and ClipToAssetNode() (2 sites) with the appclips.* equivalent"
+    - "docs/migrations/api-infrastructure-imports-allowlist.txt: removed internal/api/assets/clips/helpers.go line; added slice-tracking comment in the api/assets/clips section header"
+    - "PR2 slice 1/8 closed; remaining PR2 grandfathered entries: bulk_upload_helpers.go, bulk_upload_worker.go, clip_action.go, clip_ops.go, handler.go, upload_helpers.go"
+
 # ── Wave 15 — Composition root alignment (in_progress) ──────────────────────
 
 - id: 15

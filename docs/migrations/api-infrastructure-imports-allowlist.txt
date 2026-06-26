@@ -71,12 +71,23 @@
 # internal/api/assets/artlist/artlist_handlers.go     ← removed from allowlist
 
 # ── Wave 14 grandfathered: api/assets/clips handlers (PR2) ─────────────────
+# helpers.go removed at W14-clips-helpers-extract (June 2026): the
+# conversion helpers ClipToAssetNode + TreeNodeToAssetNode (previously
+# internal/local `treeNodeToAssetNode`) were lifted to
+# internal/application/clips/conversions.go (canonical seam above
+# infra). Four api callers now route through appclips.<Func>:
+#   clip_update.go    :: Handler.UpdateClip
+#   clip_create.go    :: Handler.CreateClip
+#   clip_upload.go    :: Handler.UploadVideoClip
+#   folder_tree.go    :: Handler.GetFolderChildren + Handler.GetTree
+# (Line-number citations deliberately omitted: the gate tokenizes on
+# file paths only, while comment-side line numbers drift on edit.)
+# Remaining PR2 grandfathered entries: 6.
 internal/api/assets/clips/bulk_upload_helpers.go
 internal/api/assets/clips/bulk_upload_worker.go
 internal/api/assets/clips/clip_action.go
 internal/api/assets/clips/clip_ops.go
 internal/api/assets/clips/handler.go
-internal/api/assets/clips/helpers.go
 internal/api/assets/clips/upload_helpers.go
 
 # ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2 — CLEANED, June 2026) ─
