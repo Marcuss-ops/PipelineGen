@@ -1,6 +1,6 @@
 # PipelineGen — Active Migration Plan
 # -----------------------------------------------------------------------------
-# Current waves only (14-18 in flight) + Wave 0 meta-snapshot. Historical
+# Current waves only (14-19 in flight) + Wave 0 meta-snapshot. Historical
 # waves 1-13 (all status: done) live in docs/archive/migration-history.md.
 #
 # Owner-of-record cross-reference: architecture/ownership.yaml.
@@ -8,6 +8,37 @@
 #
 # Status decreases monotonically: pending → in_progress → done.
 # Each in-flight wave carries an exit_gate the ratchet checker can verify.
+#
+# MULTI-DOCUMENT STREAM (PHASE-PR, June 2026)
+# ----------------------------------------------------------------------------
+# This file is a YAML 1.2 multi-document stream (3 docs separated by `---`
+# markers at column 0). The schema was previously a single-document file
+# mixing a top-level sequence (`- id: N` wave blocks) with top-level
+# mappings (`post_cascade_followups:`, `legacy_fallback_cleanup:`) without
+# separators, which PyYAML strict-mode rejected with
+# `expected <block end>, but found '?'`. Adding `---` between the
+# three sections makes the file parse-clean for any YAML 1.2 consumer
+# while preserving the line-based scanner used by
+# scripts/archcheck/main.go::scanYAML (it only inspects lines starting
+# with `- id:` and ignores `---`).
+#
+# Document order (kept identical to the previous single-file ordering):
+#   1. Wave sequence (`- id:` items 0, 14, 15, 16, 17, 18, 19).
+#      Status transitions: pending → in_progress → done. Each carries
+#      verified_zero. This is the ratcheted input to archcheck.
+#   2. post_cascade_followups: post-cascade-merge operational tickets
+#      (informational only; not part of the ratchet).
+#   3. legacy_fallback_cleanup: legacy dual-path removal tracker
+#      (completed June 2026).
+#
+# Consumer guidance:
+#   - scripts/archcheck/main.go::scanYAML (custom line-based scanner;
+#     text-only, walks wave blocks via strings.HasPrefix(line, "- id:"),
+#     silently tolerates `---` markers and indented `- id:` lines).
+#   - Optional future Go yaml.v3 consumers MUST use
+#     yaml.NewDecoder(input).Decode() in a loop to read ALL documents
+#     (yaml.Unmarshal only reads doc[0] and silently drops mappings).
+#   - PyYAML / ruamel.yaml consumers should use safe_load_all / load_all.
 # -----------------------------------------------------------------------------
 
 # ── Wave 0 — Baseline snapshot (meta) ────────────────────────────────────────
@@ -409,8 +440,8 @@
       reference baseline) AND CI strict-mode exit code stays 0.
 
 
-# ── Post-cascade operational followups (June 2026) ─────────────────────────
-
+---
+# ── Document #2/3: Post-cascade operational followups (June 2026) ─────────
 post_cascade_followups:
   ref_doc: docs/POST_CASCADE_OPERATIONAL_READINESS.md
   cascade_ship_commit: 62ae9cd62a8770e95f6e33b00318dc3ed203c685
@@ -458,8 +489,8 @@ post_cascade_followups:
       status: done
       wave_precondition: Wave 16
 
-# ── Legacy Fallback Cleanup (June 2026) ─────────────────────────────────────
-
+---
+# ── Document #3/3: Legacy Fallback Cleanup (June 2026) ──────────────────────
 legacy_fallback_cleanup:
   date: 2026-06-23
   description: |
