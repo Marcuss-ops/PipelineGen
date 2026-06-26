@@ -118,3 +118,31 @@ Enable zero-tolerance CI:
 ## Phase 10 — Optional storage evolution
 
 Only after strict mode, evaluate PostgreSQL for proven multi-writer, high-availability, or concurrency needs. Reuse canonical repository ports and avoid application-level dual-write architecture.
+
+## Actions to execute
+
+- Create one tracked work item per phase and per bounded capability migration, with owner, dependencies, file scope, tests, rollback, and evidence links.
+- Capture a current-state baseline before each phase and define exact numeric or zero-reference exit criteria.
+- Execute phases in order unless a written dependency analysis proves a safe reordering.
+- Keep each implementation change limited to one phase outcome and rebase it frequently on current `main`.
+- Record EXPAND, BACKFILL, CUTOVER, and CONTRACT evidence for every stateful migration.
+- Prevent the next overlapping phase from starting until the previous exit gate is verified.
+- Update this roadmap after every completed block with commit IDs, test evidence, generated reports, and remaining gaps.
+- Re-run repository-wide architecture searches after each CONTRACT step to detect leftovers.
+- Treat Phase 10 as an explicit architecture decision, not an automatic continuation.
+
+## Final DONE check
+
+The roadmap is DONE only when:
+
+- [ ] Phase 0 prevents all listed debt categories from increasing.
+- [ ] Phase 1 leaves no dead or misleading route, job, handler, field, or service shell.
+- [ ] Phase 2 provides one validated, frozen capability registry.
+- [ ] Phase 3 generates manifests that match runtime routes, jobs, providers, dependencies, health checks, and ownership.
+- [ ] Artlist, Assets, Scripts, and every Phase 7 capability have completed their vertical migration and CONTRACT cleanup.
+- [ ] Every durable fact and table has one owner and one writer.
+- [ ] Strict mode reports zero accepted architecture violations, baselines, and allowlists.
+- [ ] Every phase has owner, commit evidence, tests, generated evidence, and a verified exit gate.
+- [ ] Old package paths and registrations have zero repository references.
+- [ ] Phase 10 has either an approved evidence-based ADR or an explicit decision to remain on the current storage model.
+- [ ] `main` passes the full test, architecture, and generation suite after all mandatory phases.
