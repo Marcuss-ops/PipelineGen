@@ -1,9 +1,18 @@
-// Package app — books/content service construction (PR4.3, June 2026).
+// Package app — voiceover service bundle construction (Wave 15 PR4d-final).
 //
-// Extracted from dependencies.go so composition helpers are split per
-// capability (AGENTS.md Pattern 5). Called from BuildDomainBundle in
-// composition.go.
-
+// Extracted from compose_media.go per architecture/current.yaml::Wave 15
+// pending #1 ("Migrate the 3 shared helpers... into modules/voiceover.go,
+// modules/content.go, modules/images.go"). The "modules/" path in the
+// pending item is a forward reference; the canonical current target for
+// per-capability helpers is `internal/app/build_bundles_<capability>.go`,
+// matching the buildIngestService / buildHealthService / buildSyncTargets
+// pattern already established by build_bundles_core.go / build_bundles_process.go
+// / build_bundles_domain.go.
+//
+// Private-helper convention (lowercase `build*`) — these helpers are NOT
+// standalone composable bundles; they are internal to BuildDomainBundle
+// (build_bundles_domain.go) which aggregates their output into
+// ComposeRoot.Domains.
 package app
 
 import (
@@ -13,102 +22,18 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// initBooksService creates the books processing service.
-//
-// PR4-H (June 2026): the SetDriveUploader setter was removed; driveUploader
-// is now wired via the books.NewService constructor.
-func initBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driveUploader *drive.Uploader, voiceoverSvc *voiceover.Service) *books.Service {
-	booksSvc := books.NewService(
-		&books.Config{
-			Enabled:       cfg.Books.Enabled,
-			ScriptPath:    cfg.Books.ScriptPath,
-			PythonBin:     cfg.Books.PythonBin,
-			DriveFolderID: cfg.Drive.BooksFolder(),
-		},
-		dbs.main.DB, cfg.Drive.BooksFolder(), log,
-		voiceoverSvc, driveUploader,
-	)
-	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
-	return booksSvc
-}
-
-// initImageService creates the image generation service.
-//
-// PR4-H (June 2026): the 8 post-construction setters (SetNvidiaConfig,
-// SetRemoteImageEndpointURL, SetVeloxBaseURL, SetGoogleAccountingConfig,
-// SetMediaStore, SetLLMGenerator, SetVectorStore, SetMetadataWriter) were
-// removed in Commit 3; their values are now passed as constructor args.
-// The MetadataWriter is borrowed from BuildDomainBundle (voMetaWriter) to
-// keep a single canonical instance shared with the voiceover service —
-// Commit 1 introduced the dual-instance temporary state, Commit 3 collapses
-// it via this single shared local in composition.go::BuildDomainBundle.
-//
-// Note: SetIngestService is NOT removed — it is the documented exception
-// (called from registry.go::WireRegistry after MediaIngest is constructed).
-func initImageService(
-	ctx context.Context, cfg *config.Config, log *zap.Logger,
-	driveClient *gdrive.Service, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository,
-	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
-	mediaStore *drive.Store, imageRepo *assets.ImagesRepository,
-	voMetaWriter *semantic.MetadataWriter,
-	ingestSvc *ingest.Service,
-	dispatcher *outbox.Dispatcher,
-) (*imgservice.Service, *semantic.MetadataWriter) {
-	// PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
-
-	imageService := imgservice.NewService(
-		cfg,
-		imageRepo, clipsRepo,
-		driveClient,
-		styleRegistry,
-		imgservice.NvidiaConfig{APIKey: cfg.External.NvidiaAPIKey, Model: cfg.External.NvidiaModel},
-		cfg.External.RemoteImageEndpointURL,
-		cfg.External.VeloxBaseURL,
-		imgservice.GoogleAccountingConfig{
-			ServerURL:     cfg.GoogleAccounting.ServerURL,
-			DownloadDir:   cfg.GoogleAccounting.DownloadDir,
-			VidsProjectID: cfg.GoogleAccounting.VidsProjectID,
-		},
-		mediaStore,
-		scriptGen,
-		voMetaWriter,
-		ingestSvc,
-		dispatcher,
-		log,
-	)
-
-	if cfg.External.RemoteImageEndpointURL != "" {
-		log.Info("Remote image endpoint configured", zap.String("url", cfg.External.RemoteImageEndpointURL))
-	}
-	if cfg.External.VeloxBaseURL != "" {
-		log.Info("Velox base URL for webhook push configured", zap.String("url", cfg.External.VeloxBaseURL))
-	}
-
-	_ = ctx // reserved for future customizer context flag
-
-	// voMetaWriter is the canonical *semantic.MetadataWriter (single instance
-	// shared with the voiceover service); returned here for continuity with
-	// DomainBundle.MetaWriter.
-	return imageService, voMetaWriter
-}
-
-// initVoiceoverService sets up the voiceover service and its repository.
+// buildVoiceoverService sets up the voiceover service and its repository.
 //
 // PR4-H (June 2026): SetSemanticTagger / SetTranslator / SetClipIndexer
 // setters have been removed from voiceover.NewService — the three callbacks
@@ -116,7 +41,7 @@ func initImageService(
 // are now passed as constructor arguments (semanticTagger, translator,
 // clipIndexer). This helper builds them from the canonical dependencies
 // (metaWriter + scriptGen) declared in the composition root.
-func initVoiceoverService(
+func buildVoiceoverService(
 	ctx context.Context,
 	cfg *config.Config,
 	dbs *databases,

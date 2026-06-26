@@ -113,18 +113,18 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	youtubeClipService := youtube.NewService(youtubeDeps)
 
-	voiceoverSvc, voiceoverRepo := initVoiceoverService(ctx, cfg, dbs, log,
+	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.DriveClient, drive.DriveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
 		voMetaWriter, ai.ScriptGen,
 	)
 
-	booksSvc := initBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
+	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
 
 	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveClient, repos, search)
 
-	imageSvc, metaWriter := initImageService(ctx, cfg, log,
+	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
 		drive.DriveClient, repos.ClipsRepo, repos.ClipsRepo,
 		drive.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, repos.ImageRepo,

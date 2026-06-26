@@ -81,8 +81,22 @@
     - "go vet + go build + go test ./internal/app/... -short all GREEN."
     - "BREAKING: InitComposition return tuple extended to (*ComposeRoot, *backgroundJobs, CleanupFunc, error)."
   pending:
-    - "Migrate the 3 shared helpers (initVoiceoverService, initBooksService, initImageService from internal/app/dependencies.go) into modules/voiceover.go, modules/content.go, modules/images.go."
     - "Split the jobRunner closure out of lifecycle.go into a typed lifecycle (per PR4.8)."
+
+  # W15 helper-split migration (June 2026): the 3 init*Service helpers
+  # in the previously-shared compose_media.go file were extracted into
+  # per-capability typed files. The "modules/<x>.go" path in the
+  # historical pending text was a forward reference; the canonical
+  # current target is "build_bundles_<lowercase_x>.go", matching the
+  # existing buildIngestService / buildHealthService / buildSyncTargets
+  # pattern (lowercase snake_case file name; CamelCase function name).
+  completed_through_W15_helper_split:
+    - buildVoiceoverService extracted to internal/app/build_bundles_voiceover.go
+    - buildBooksService extracted to internal/app/build_bundles_books.go
+    - buildImagesService extracted to internal/app/build_bundles_images.go
+    - compose_media.go removed (was empty after the 3 extracts)
+    - architecture/ownership.yaml canonical_services entries updated (constructor + location)
+    - cmd/archcheck stale_prose_paths tip message aligned with post-Wave-16 ground truth
   exit_gate: >-
     internal/app/dependencies.go no longer exports `init*Service` shared helpers;
     rg '\*CoreDeps' internal/app/module_*.go returns zero;

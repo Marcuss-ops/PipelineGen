@@ -710,7 +710,8 @@ func scanStaleProsePaths(root string, pol *Policy, r *Report) {
 						MatchedRule: "stale_prose_paths",
 						Rule:        fmt.Sprintf("stale_prose_paths_%s", sr.stem),
 						Severity:    "warn",
-						Note:        fmt.Sprintf("line contains a bare prose reference to pre-Wave-16 path stem %q (not followed by a literal dot); rewrite the comment to the post-Wave-16 ground truth: composition.go::Build<X>Bundle / module_sources.go::Wire<X> / compose_media.go::init<X>Service", sr.stem),
+						// Note: file names are lowercase snake_case (`build_bundles_<lowercase_x>.go`); function names are CamelCase (`build<X>Service`). E.g. <X>=Voiceover maps to build_bundles_voiceover.go::buildVoiceoverService. Inherited from compose_media.go (deleted in W15 helper-split) where the original placeholder pattern used CamelCase <X>; the new segment adds `<lowercase_x>` to disambiguate file vs function casing without breaking the inline-template visual.
+					Note:        fmt.Sprintf("line contains a bare prose reference to pre-Wave-16 path stem %q (not followed by a literal dot); rewrite the comment to the post-Wave-16 ground truth: composition.go::Build<X>Bundle / module_sources.go::Wire<X> / internal/app/build_bundles_<lowercase_x>.go::build<X>Service", sr.stem),
 					})
 				}
 			}
