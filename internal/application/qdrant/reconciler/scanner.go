@@ -155,17 +155,29 @@ func classifyPair(assetID string, snap AssetSnapshot, p pointWithID, schema Sche
 			Details: "payload uses legacy \"status\" key; canonical key is \"lifecycle_state\"",
 		}
 	}
+	// LocatorLegacy: capture EVERY present legacy locator key into
+	// LocatorKeys so the service-layer metric accounting can bump the
+	// canonical payload_legacy_cleaned_total{legacy_key=...} series
+	// per-key based on what the payload actually carries (rather than
+	// a blanket bump per locator point regardless of which keys it
+	// had). Pre-fix this loop returned at the first hit, which lost
+	// the second-key presence signal.
+	keys := make([]string, 0, 2)
 	for _, legacy := range []string{"drive_link", "local_path"} {
 		v, ok := p.Payload[legacy]
 		if !ok || v == nil {
 			continue
 		}
 		if s, _ := v.(string); s != "" {
-			return &Classification{
-				Kind:    KindLocatorLegacy,
-				AssetID: assetID,
-				Details: fmt.Sprintf("payload carries legacy locator key %q", legacy),
-			}
+			keys = append(keys, legacy)
+		}
+	}
+	if len(keys) > 0 {
+		return &Classification{
+			Kind:        KindLocatorLegacy,
+			AssetID:     assetID,
+			Details:     fmt.Sprintf("payload carries legacy locator keys %v", keys),
+			LocatorKeys: keys,
 		}
 	}
 	return nil

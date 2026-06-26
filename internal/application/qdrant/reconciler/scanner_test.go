@@ -47,6 +47,24 @@ func versionCheckSchema() SchemaVersions {
 	}
 }
 
+// multiChannelSchema returns a SchemaVersions that enables the
+// per-channel version-stale check for BOTH text AND transcript
+// channels. Used by TestReconcile_VersionMismatchPerChannel_Emitted
+// to verify per-channel tracking of stale mismatches across more
+// than one embedding channel.
+func multiChannelSchema() SchemaVersions {
+	return SchemaVersions{
+		Version:      "v3",
+		PhysicalName: "media_assets_v3_e5_768_siglip_768",
+		RuntimeAlias: "media_assets_current",
+		PerChannelVersion: map[string]string{
+			"text":       "2026-06-16-v1",
+			"transcript": "2026-06-16-v1",
+		},
+		RequiredKeys: []string{"asset_id", "name", "source", "lifecycle_state"},
+	}
+}
+
 // equalClassifications compares two slices ignoring order.
 func equalClassifications(a, b []Classification) bool {
 	if len(a) != len(b) {

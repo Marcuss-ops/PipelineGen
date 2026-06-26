@@ -206,17 +206,20 @@ func runReconcileQdrant(args []string) error {
 		RequiredKeys:      []string{"asset_id", "name", "source", "lifecycle_state"},
 	}
 
-	// 6. Build the service.
-	svc := reconciler.NewService(
-		scannerSchema,
-		qdrantAdapter,
-		sqliteAdapter,
-		outboxAdapter,
-		payloadAdapter,
-		pointIDFor,
-		nil, // default filesystem report writer
-		log,
-	)
+	// 6. Build the service via ServiceDeps (PR2 refactor — eliminated
+	// positional-arg footgun). Metrics port wired to PromMetricsAdapter
+	// so reconcile-qdrant emits QDRANT-005C observability on every run.
+	svc := reconciler.NewServiceFromDeps(reconciler.ServiceDeps{
+		Schema:       scannerSchema,
+		Qdrant:       qdrantAdapter,
+		SQLite:       sqliteAdapter,
+		Outbox:       outboxAdapter,
+		Payload:      payloadAdapter,
+		PointIDFor:   pointIDFor,
+		ReportWriter: nil, // default filesystem report writer
+		Metrics:      qdrant.PromMetricsAdapter{},
+		Log:          log,
+	})
 
 	// 7. Run.
 	report, err := svc.Reconcile(ctx, reconciler.ReconcileOptions{
