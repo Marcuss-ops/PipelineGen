@@ -43,9 +43,6 @@ package scripts
 
 import (
 	"errors"
-	"fmt"
-
-	"go.uber.org/zap"
 )
 
 // ErrInvalidPayload is the sentinel for "the JSON payload the worker
@@ -86,107 +83,4 @@ var ErrPipelineGenerationFailed = errors.New("pipeline: generation failed")
 // empty scenes.
 var ErrSceneImagesUnavailable = errors.New("pipeline: scene image generation unavailable (image service not wired)")
 
-// PipelineUseCase orchestrates the unified clip-source job. The
-// *Pipeline it holds is pre-built by composition (it already carries
-// scenes-svc, docs-svc, postGen callback, and resolve-folder — so
-// Reuse the existing application-layer infrastructure unchanged).
-//
-// Phase 2 activation (June 2026): added `scenesReady bool` flag so
-// the use case can reject jobs asking for scene image generation
-// when ImageService was not wired at composition time. Composition
-// passes scenesReady = (scenesSvc != nil) which is true iff both
-// scenesUC.Build() succeeded and docsSvc was non-nil (the existing
-// outer gate). When false, Run returns ErrSceneImagesUnavailable
-// before doing any work.
-type PipelineUseCase struct {
-	log          *zap.Logger
-	engine       *Engine
-	cfg          *configShim
-	clipBuilder  *ClipSourceBuilder
-	mediaCurator *MediaCurator
-	semUC        *SemaphoreUseCase
-	prewarmUC    *PrewarmUseCase
-	pipeline     *Pipeline
-	scenesReady  bool
-}
 
-// configShim wraps *config.Config so a nil cfg doesn't break the
-// text-only path's defaults (previous handler's `if h.cfg != nil`
-// guard). Avoids an `internal/platform/config` import in the
-// use-case struct field while still letting the ctor receive a cfg.
-type configShim struct {
-	minWordFloor int
-	ollamaModel  string
-}
-
-func newConfigShim(minWordFloor int, ollamaModel string) *configShim {
-	return &configShim{minWordFloor: minWordFloor, ollamaModel: ollamaModel}
-}
-
-// NewPipelineUseCase wires the orchestrator. The constructor refuses
-// to build if engine or pipeline is nil — those are the canonical
-// components for the happy path. Other args (semUC, prewarmUC,
-// clipBuilder, mediaCurator) may be nil; their absence is surfaced
-// as a typed error at the dispatch step or as a no-op for prewarm.
-//
-// Composition root builds:
-//
-//	the *Pipeline via NewPipeline(... scenesUC.Build(...) ...
-//	   documentsUC.DocumentsService() ... postGenClosure ...).
-//
-// This use-case receives that pre-built pointer.
-//
-// Phase 2 activation (June 2026): added scenesReady bool param. When
-// false, the use case rejects any job that sets spec.GenerateSceneImages=true
-// with typed ErrSceneImagesUnavailable — surfaces missing image wiring
-// at first integration rather than silently producing empty scene
-// arrays in the final result. Composition passes scenesReady = true
-// iff scenesSvc was successfully built at composition time (i.e.
-// ImageService was wired AND scenesUC.Build() succeeded).
-func NewPipelineUseCase(
-	log *zap.Logger,
-	engine *Engine,
-	minWordFloor int,
-	ollamaModel string,
-	clipBuilder *ClipSourceBuilder,
-	mediaCurator *MediaCurator,
-	semUC *SemaphoreUseCase,
-	prewarmUC *PrewarmUseCase,
-	pipeline *Pipeline,
-	scenesReady bool,
-) (*PipelineUseCase, error) {
-	if engine == nil {
-		return nil, fmt.Errorf("%w: engine is required", ErrPipelineGenerationFailed)
-	}
-	if pipeline == nil {
-		return nil, fmt.Errorf("%w: pipeline is required", ErrPipelineGenerationFailed)
-	}
-	return &PipelineUseCase{
-		log:          log,
-		engine:       engine,
-		cfg:          newConfigShim(minWordFloor, ollamaModel),
-		clipBuilder:  clipBuilder,
-		mediaCurator: mediaCurator,
-		semUC:        semUC,
-		prewarmUC:    prewarmUC,
-		pipeline:     pipeline,
-		scenesReady:  scenesReady,
-	}, nil
-}
-
-// defaultsString is a tiny inline default-coalesce that mirrors
-// pkg/defaults.String without taking the import in this file's path.
-func defaultsString(val, fallback string) string {
-	if val == "" {
-		return fallback
-	}
-	return val
-}
-
-// Run executes the full clip-source job. The caller (HandleJob or a
-// test) has already acquired a semaphore slot via SemaphoreUseCase
-// and started prewarm via PrewarmUseCase; this method owns phase 1
-// (path dispatch) + phase 2-4 (pipelines) + result shaping.
-//
-// Returns the result map (same shape as the old buildFinalResult
-// output) on success, or a typed error otherwise.

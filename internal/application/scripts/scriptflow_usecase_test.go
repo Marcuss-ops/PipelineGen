@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -162,109 +161,6 @@ func TestSceneBuilderUseCase_BuildWhenDepsNil(t *testing.T) {
 // TestDocumentsUseCase_NilUseCase is now in documents_usecase_test.go
 
 // TestDocumentsUseCase_NilDocClient is now in documents_usecase_test.go
-
-// ── PipelineUseCase (dispatch) ────────────────────────────────────────────
-//
-// PipelineUseCase.Run requires a *Pipeline to compile; we exercise
-// only the public-typed-error behaviour (so tests can pin "given
-// nil use case → returns ErrPipelineGenerationFailed") and the
-// constructor validation.
-
-func TestNewPipelineUseCase_RejectsNilEngine(t *testing.T) {
-	t.Parallel()
-	// Phase 2 activation (June 2026): NewPipelineUseCase signature
-	// gained a scenesReady bool parameter (compositional gate for
-	// spec.GenerateSceneImages). Tests pass `false` because the
-	// constructor's nil-engine check fires before the gate matters.
-	_, err := NewPipelineUseCase(zap.NewNop(), nil, 100, "", nil, nil, nil, nil, &Pipeline{}, false)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
-}
-
-func TestNewPipelineUseCase_RejectsNilPipeline(t *testing.T) {
-	t.Parallel()
-	// Phase 2 activation (June 2026): see note in
-	// TestNewPipelineUseCase_RejectsNilEngine — scenesReady=false.
-	_, err := NewPipelineUseCase(zap.NewNop(), &Engine{}, 100, "", nil, nil, nil, nil, nil, false)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
-}
-
-func TestPipelineUseCase_RunNilSafe(t *testing.T) {
-	t.Parallel()
-	var pu *PipelineUseCase
-	_, err := pu.Run(context.Background(), nil, nil)
-	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
-}
-
-// PG-042: typed-Broker port + nil broker → panic at RegisterHandler;
-// this nil short-circuit prevents the runtime dereference.
-func TestPipelineUseCase_RegisterJobs_NilSvcNoOp(t *testing.T) {
-	t.Parallel()
-	pu := &PipelineUseCase{log: zap.NewNop()} // intentionally under-populated
-	err := pu.RegisterJobs(nil)
-	require.NoError(t, err)
-}
-
-// fakeBroker is a test double that implements the Broker port.
-type fakeBroker struct {
-	registered bool
-	jobType    string
-}
-
-func (b *fakeBroker) RegisterHandler(jobType string, handler any) error {
-	b.registered = true
-	b.jobType = jobType
-	return nil
-}
-
-// TestPipelineUseCase_RegisterJobs_AcceptsBrokerPort verifies
-// that a struct implementing the Broker interface is accepted.
-// PG-042 (June 2026): RegisterJobs now accepts the typed Broker
-// port — wrong-shape inputs are caught at compile time, not at
-// runtime, so the old runtime type-assertion test is replaced
-// by a positive-path test.
-func TestPipelineUseCase_RegisterJobs_AcceptsBrokerPort(t *testing.T) {
-	t.Parallel()
-	pu := &PipelineUseCase{log: zap.NewNop()}
-	broker := &fakeBroker{}
-	err := pu.RegisterJobs(broker)
-	require.NoError(t, err)
-	require.True(t, broker.registered, "RegisterHandler should have been called")
-	require.Equal(t, job.TypeClipScriptGenerate, broker.jobType)
-}
-
-// rejectingBroker is the negative-path companion to fakeBroker: it
-// implements the Broker port but returns a sentinel error from
-// RegisterHandler. Preserved across the 2026-06-25 stash-pop merge
-// that collided with PG-042's typed-Broker positive-path test.
-//
-// Pointer receiver matches fakeBroker's pointer receiver for style
-// consistency across the Broker port fakes in this file.
-type rejectingBroker struct{}
-
-func (b *rejectingBroker) RegisterHandler(string, any) error {
-	return errors.New("register rejected")
-}
-
-// TestPipelineUseCase_RegisterJobs_PropagatesBrokerErrors verifies
-// that a broker returning an error from RegisterHandler surfaces in
-// the caller's RegisterJobs return value — not silently swallowed.
-func TestPipelineUseCase_RegisterJobs_PropagatesBrokerErrors(t *testing.T) {
-	t.Parallel()
-	pu := &PipelineUseCase{log: zap.NewNop()} // intentionally under-populated
-	err := pu.RegisterJobs(&rejectingBroker{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "register handler")
-	require.Contains(t, err.Error(), "register rejected")
-}
-
-func TestPipelineUseCase_HandleJob_NilUseCaseErrors(t *testing.T) {
-	t.Parallel()
-	var pu *PipelineUseCase
-	_, err := pu.HandleJob(context.Background(), nil, nil)
-	require.ErrorIs(t, err, ErrPipelineGenerationFailed)
-}
 
 // ── PostGenUseCase (Wave 14 problem #4 fixup) ──────────────────────────────
 
