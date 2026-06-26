@@ -1,5 +1,9 @@
 // Package search provides application-layer use cases for media asset search:
-// cross-provider search, semantic (Qdrant) search, and scene-based clip recommendation.
+// cross-provider search across registered providers, local catalog, and local clips.
+//
+// Semantic search (vector/hybrid) has been consolidated into
+// internal/application/mediasearch. This package retains the vector-store
+// port types used by mediasearch (VectorStorePort, VectorSearchRequest, etc.).
 package search
 
 import "context"
@@ -42,78 +46,80 @@ type SearchProviderRegistry interface {
 	SearchProviders() []SearchProviderPort
 }
 
-// ── Semantic search ports ─────────────────────────────────────────────
+// ── Typed cross-provider response ─────────────────────────────────────
 
-// SemanticSearchRequest is the input for a vector search.
-type SemanticSearchRequest struct {
-	Query      string
-	VectorName string // "text", "visual", "audio"
-	Mode       string // "ann" or "hybrid"
-	Limit      int
-	MinScore   float64
-	Source     string
-	MediaType  string
+// CrossSearchResponse is the typed result of a cross-provider search.
+type CrossSearchResponse struct {
+	Query   string                    `json:"query"`
+	Type    string                    `json:"type"`
+	Results map[string]ProviderResult `json:"results"`
 }
 
-// SemanticSearchResult is the output of a vector search.
-type SemanticSearchResult struct {
-	Query    string               `json:"query"`
-	Vector   string               `json:"vector"`
-	Mode     string               `json:"mode"`
-	MinScore float64              `json:"min_score"`
-	Count    int                  `json:"count"`
-	Results  []VectorSearchResult `json:"results"`
+// ProviderResult holds results from a single provider or local source.
+type ProviderResult struct {
+	Count   int               `json:"count"`
+	Results []SearchCandidate `json:"results"`
+	Source  string            `json:"source,omitempty"`
+	Error   string            `json:"error,omitempty"`
 }
 
-// PG-034 (June 2026): VectorSearchPort + VectorStorePort removed —
-// Qdrant capability deleted. Cross-provider search remains the canonical
-// search path; the application-layer types VectorSearchRequest /
-// HybridSearchRequest / VectorSearchResult are preserved for future
-// re-introduction if a vector-store backend comes back.
+// ── Vector store ports (used by mediasearch) ──────────────────────────
+
+// VectorStorePort is the canonical vector store interface consumed by
+// mediasearch. Implementations live in infrastructure/qdrant.
 type VectorStorePort interface {
 	Search(ctx context.Context, req VectorSearchRequest) ([]VectorSearchResult, error)
 	HybridSearch(ctx context.Context, req HybridSearchRequest) ([]VectorSearchResult, error)
 }
 
-// ── Recommendation ports ──────────────────────────────────────────────
-
-// RecommendRequest is the input for scene-based clip recommendation.
-type RecommendRequest struct {
-	ScriptText string
-	Language   string
-	Source     string
-	MediaType  string
-	TopK       int
-	MinScore   float64
+// VectorSearchRequest is the input for an ANN vector search.
+type VectorSearchRequest struct {
+	QueryVector []float32
+	VectorName  string
+	Limit       int
+	MinScore    float64
+	Source      string
+	Category    string
+	MediaType   string
+	Language    string
 }
 
-// RecommendClipItem is a single recommended clip.
-type RecommendClipItem struct {
-	AssetID   string
-	Title     string
-	Score     float64
-	Source    string
-	MediaType string
-	DriveLink string
-	Tags      []string
-	Reason    string
+// VectorSearchResult is a single match from a vector search.
+type VectorSearchResult struct {
+	AssetID        string   `json:"asset_id"`
+	QdrantPointID  string   `json:"qdrant_point_id,omitempty"`
+	Score          float64  `json:"score"`
+	Reason         string   `json:"reason,omitempty"`
+	Source         string   `json:"source"`
+	Name           string   `json:"name"`
+	LocalPath      string   `json:"local_path,omitempty"`
+	DriveLink      string   `json:"drive_link,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	MediaType      string   `json:"media_type,omitempty"`
+	Style          string   `json:"style,omitempty"`
+	Language       string   `json:"language,omitempty"`
+	YouTubeVideoID string   `json:"youtube_video_id,omitempty"`
+	YouTubeURL     string   `json:"youtube_url,omitempty"`
+	StartTime      string   `json:"start_time,omitempty"`
+	EndTime        string   `json:"end_time,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	SearchText     string   `json:"search_text,omitempty"`
 }
 
-// RecommendSceneResult is the result for one scene.
-type RecommendSceneResult struct {
-	Scene           string
-	SceneIndex      int
-	Query           string
-	Recommendations []RecommendClipItem
-}
-
-// RecommendResult is the full recommendation output.
-type RecommendResult struct {
-	ScriptPreview string
-	SceneCount    int
-	Scenes        []RecommendSceneResult
-	TotalClips    int
-	Language      string
+// HybridSearchRequest combines dense and sparse vectors for hybrid search.
+type HybridSearchRequest struct {
+	QueryText            string
+	DenseVector          []float32
+	DenseVectorName      string
+	TranscriptVector     []float32
+	TranscriptVectorName string
+	SparseVectorName     string
+	Limit                int
+	MinScore             float64
+	Source               string
+	Category             string
+	MediaType            string
+	Language             string
 }
 
 // ── Local search ports ────────────────────────────────────────────────
@@ -164,59 +170,4 @@ type Logger interface {
 	Warn(msg string, keysAndValues ...any)
 	Error(msg string, keysAndValues ...any)
 	Debug(msg string, keysAndValues ...any)
-}
-
-// ── Vector search domain types (application-level, no infrastructure deps) ──
-
-// VectorSearchRequest is the input for an ANN vector search.
-// Mirrors qdrant.SearchRequest without the infrastructure import.
-type VectorSearchRequest struct {
-	QueryVector []float32
-	VectorName  string
-	Limit       int
-	MinScore    float64
-	Source      string
-	Category    string
-	MediaType   string
-	Language    string
-}
-
-// VectorSearchResult is a single match from a vector search.
-// Mirrors qdrant.SearchResult without the infrastructure import.
-type VectorSearchResult struct {
-	AssetID        string   `json:"asset_id"`
-	QdrantPointID  string   `json:"qdrant_point_id,omitempty"`
-	Score          float64  `json:"score"`
-	Reason         string   `json:"reason,omitempty"`
-	Source         string   `json:"source"`
-	Name           string   `json:"name"`
-	LocalPath      string   `json:"local_path,omitempty"`
-	DriveLink      string   `json:"drive_link,omitempty"`
-	Category       string   `json:"category,omitempty"`
-	MediaType      string   `json:"media_type,omitempty"`
-	Style          string   `json:"style,omitempty"`
-	Language       string   `json:"language,omitempty"`
-	YouTubeVideoID string   `json:"youtube_video_id,omitempty"`
-	YouTubeURL     string   `json:"youtube_url,omitempty"`
-	StartTime      string   `json:"start_time,omitempty"`
-	EndTime        string   `json:"end_time,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
-	SearchText     string   `json:"search_text,omitempty"`
-}
-
-// HybridSearchRequest combines dense and sparse vectors for hybrid search.
-// Mirrors qdrant.HybridSearchRequest without the infrastructure import.
-type HybridSearchRequest struct {
-	QueryText            string
-	DenseVector          []float32
-	DenseVectorName      string
-	TranscriptVector     []float32
-	TranscriptVectorName string
-	SparseVectorName     string
-	Limit                int
-	MinScore             float64
-	Source               string
-	Category             string
-	MediaType            string
-	Language             string
 }

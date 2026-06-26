@@ -15,10 +15,10 @@ import (
 	"context"
 	"fmt"
 
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	module	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
-	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
+	generationapi "github.com/Marcuss-ops/PipelineGen/internal/api/generation"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
@@ -37,6 +37,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
+	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -245,23 +246,24 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			log,
 		))
 	}
-	if root.Domains != nil && root.Domains.BooksService != nil {
+	// ── Unified generation API (replaces /api/books + /api/lessons) ──
+	// Books and Lessons are now served through the unified generation endpoint
+	// at /api/generations. TypeBookGenerate and TypeLessonGenerate dispatch to
+	// the same job types (TypeBooksProcess, TypeLessonsProcess) the legacy
+	// handlers enqueued, so worker handlers are unaffected.
+	{
+		genReg := generation.BuildDefaultRegistry(cfg.Books.Enabled, cfg.Lessons.Enabled, anyScriptFeatureEnabled(cfg))
+		genSvc := generation.NewService(root.Jobs.Service, root.Repos.Assets, genReg)
 		registerModule(registry, log, module.NewRouteModule(
-			"books",
-			func() bool { return cfg.Books.Enabled },
-			"/books",
-			contentapi.NewBooksHandler(root.Domains.BooksService, root.Jobs.Facade, log),
+			"generation",
+			func() bool { return true },
+			"/generations",
+			generationapi.NewHandler(genSvc, log),
 			log,
 		))
-	}
-	if root.Domains != nil && root.Domains.LessonsService != nil {
-		registerModule(registry, log, module.NewRouteModule(
-			"lessons",
-			func() bool { return cfg.Lessons.Enabled },
-			"/lessons",
-			contentapi.NewLessonsHandler(root.Domains.LessonsService, root.Jobs.Facade, log),
-			log,
-		))
+		log.Info("generation API wired at /api/generations",
+			zap.Bool("books", cfg.Books.Enabled),
+			zap.Bool("lessons", cfg.Lessons.Enabled))
 	}
 	if root.DB != nil && root.DB.DB != nil {
 		registerModule(registry, log, module.NewRouteModule(

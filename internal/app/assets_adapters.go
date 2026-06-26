@@ -188,7 +188,7 @@ func (a *searchProviderAdapter) Search(ctx context.Context, req appsearch.Search
 	}, nil
 }
 
-// searchVectorAdapter was removed in PG-034 (June 2026) — Qdrant capability deleted.
+// searchVectorAdapter was removed — Qdrant capability consolidated into mediasearch.
 
 // searchCatalogAdapter adapts *catalog.Repository to search.LocalCatalogPort.
 type searchCatalogAdapter struct {

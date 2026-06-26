@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -49,33 +48,6 @@ func (m *mockProviderRegistry) SearchProviders() []appsearch.SearchProviderPort 
 	return m.providers
 }
 
-type mockVectorSearch struct {
-	embedFn func(ctx context.Context, text, vectorName string) ([]float32, error)
-	vsFn    func() appsearch.VectorStorePort
-}
-
-func (m *mockVectorSearch) EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error) {
-	return m.embedFn(ctx, text, vectorName)
-}
-func (m *mockVectorSearch) VectorStore() appsearch.VectorStorePort {
-	if m.vsFn != nil {
-		return m.vsFn()
-	}
-	return nil
-}
-
-type mockVectorStore struct {
-	searchFn       func(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error)
-	hybridSearchFn func(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error)
-}
-
-func (m *mockVectorStore) Search(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
-	return m.searchFn(ctx, req)
-}
-func (m *mockVectorStore) HybridSearch(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
-	return m.hybridSearchFn(ctx, req)
-}
-
 type mockCatalogPort struct {
 	searchAllFn func(ctx context.Context, query string) ([]appsearch.CatalogSearchResult, error)
 }
@@ -105,12 +77,11 @@ func (l *testLogger) Debug(msg string, kv ...any) {}
 
 func newTestSearchService(
 	reg appsearch.SearchProviderRegistry,
-	vec appsearch.VectorSearchPort,
 	cat appsearch.LocalCatalogPort,
 	clips appsearch.LocalClipPort,
 	cfg appsearch.ConfigPort,
 ) *appsearch.Service {
-	return appsearch.NewService(reg, vec, cat, clips, cfg, &testLogger{zap: zap.NewNop()})
+	return appsearch.NewService(reg, cat, clips, cfg, &testLogger{zap: zap.NewNop()})
 }
 
 func setupSearchRouter(h *Handler) *gin.Engine {
@@ -138,7 +109,7 @@ func TestSearch_HappyPath(t *testing.T) {
 			},
 		},
 	}
-	svc := newTestSearchService(reg, nil, nil, nil, &mockConfigPort{
+	svc := newTestSearchService(reg, nil, nil, &mockConfigPort{
 		vc: appsearch.VectorConfig{TextVectorName: "text"},
 	})
 	handler := NewHandler(svc, zap.NewNop())
@@ -155,7 +126,7 @@ func TestSearch_HappyPath(t *testing.T) {
 }
 
 func TestSearch_MissingQuery(t *testing.T) {
-	svc := newTestSearchService(&mockProviderRegistry{}, nil, nil, nil, &mockConfigPort{})
+	svc := newTestSearchService(&mockProviderRegistry{}, nil, nil, &mockConfigPort{})
 	handler := NewHandler(svc, zap.NewNop())
 	r := setupSearchRouter(handler)
 
@@ -187,7 +158,7 @@ func TestSearch_ServiceError(t *testing.T) {
 			},
 		},
 	}
-	svc := newTestSearchService(reg, nil, nil, nil, &mockConfigPort{})
+	svc := newTestSearchService(reg, nil, nil, &mockConfigPort{})
 	handler := NewHandler(svc, zap.NewNop())
 	r := setupSearchRouter(handler)
 
@@ -198,141 +169,4 @@ func TestSearch_ServiceError(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code) // provider errors are logged, not surfaced
 }
 
-// ── SemanticSearch (GET /semantic-search) ────────────────────────────
 
-func TestSemanticSearch_HappyPath(t *testing.T) {
-	vs := &mockVectorStore{
-		searchFn: func(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
-			return []appsearch.VectorSearchResult{
-				{AssetID: "clip1", Name: "Space clip", Score: 0.88},
-			}, nil
-		},
-	}
-	vec := &mockVectorSearch{
-		embedFn: func(ctx context.Context, text, vectorName string) ([]float32, error) {
-			return []float32{0.1, 0.2, 0.3}, nil
-		},
-		vsFn: func() appsearch.VectorStorePort { return vs },
-	}
-	svc := newTestSearchService(nil, vec, nil, nil, &mockConfigPort{
-		vc: appsearch.VectorConfig{
-			TextVectorName:  "text",
-			MinInstantScore: 0.5,
-		},
-	})
-	handler := NewHandler(svc, zap.NewNop())
-	r := setupSearchRouter(handler)
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/media/semantic-search?q=space&vector=text", nil)
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, float64(1), resp["count"])
-	results := resp["results"].([]any)
-	assert.Equal(t, "clip1", results[0].(map[string]any)["asset_id"])
-}
-
-func TestSemanticSearch_MissingQuery(t *testing.T) {
-	svc := newTestSearchService(nil, nil, nil, nil, &mockConfigPort{})
-	handler := NewHandler(svc, zap.NewNop())
-	r := setupSearchRouter(handler)
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/media/semantic-search", nil)
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestSemanticSearch_NilService(t *testing.T) {
-	handler := NewHandler(nil, zap.NewNop())
-	r := setupSearchRouter(handler)
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/media/semantic-search?q=test", nil)
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-}
-
-// ── Recommend (POST /recommend) ──────────────────────────────────────
-
-func TestRecommend_HappyPath(t *testing.T) {
-	vs := &mockVectorStore{
-		hybridSearchFn: func(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
-			return []appsearch.VectorSearchResult{
-				{AssetID: "clip_x", Name: "action shot", Score: 0.92, Source: "stock", MediaType: "video"},
-			}, nil
-		},
-	}
-	vec := &mockVectorSearch{
-		embedFn: func(ctx context.Context, text, vectorName string) ([]float32, error) {
-			return []float32{0.1, 0.2}, nil
-		},
-		vsFn: func() appsearch.VectorStorePort { return vs },
-	}
-	svc := newTestSearchService(nil, vec, nil, nil, &mockConfigPort{
-		vc: appsearch.VectorConfig{
-			TextVectorName:       "text",
-			TranscriptVectorName: "transcript",
-			MinInstantScore:      0.5,
-		},
-	})
-	handler := NewHandler(svc, zap.NewNop())
-	r := setupSearchRouter(handler)
-
-	body := map[string]any{
-		"script_text": "Scene one. Action sequence.",
-	}
-	raw, _ := json.Marshal(body)
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/media/recommend", strings.NewReader(string(raw)))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.True(t, resp["ok"].(bool))
-	assert.Equal(t, float64(1), resp["total_clips"])
-}
-
-func TestRecommend_MissingScriptText(t *testing.T) {
-	svc := newTestSearchService(nil, nil, nil, nil, &mockConfigPort{})
-	handler := NewHandler(svc, zap.NewNop())
-	r := setupSearchRouter(handler)
-
-	w := doSearchJSON(t, r, "POST", "/media/recommend", map[string]any{
-		"script_text": "",
-	})
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestRecommend_NilService(t *testing.T) {
-	handler := NewHandler(nil, zap.NewNop())
-	r := setupSearchRouter(handler)
-
-	w := doSearchJSON(t, r, "POST", "/media/recommend", map[string]any{
-		"script_text": "test",
-	})
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-}
-
-func doSearchJSON(t *testing.T, r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
-	t.Helper()
-	w := httptest.NewRecorder()
-	var req *http.Request
-	if body != nil {
-		raw, err := json.Marshal(body)
-		require.NoError(t, err)
-		req = httptest.NewRequest(method, path, strings.NewReader(string(raw)))
-		req.Header.Set("Content-Type", "application/json")
-	} else {
-		req = httptest.NewRequest(method, path, nil)
-	}
-	r.ServeHTTP(w, req)
-	return w
-}
