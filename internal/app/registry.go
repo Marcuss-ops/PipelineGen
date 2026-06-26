@@ -437,12 +437,21 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				store:    vectorStore,
 			}
 			readRepo := &mediasearchReadAdapter{clips: root.Repos.ClipsRepo}
-			deliverySvc := buildMediasearchDeliverySvc(
+			deliverySvc, err := buildMediasearchDeliverySvc(
 				cfg.Security.DeliveryHMACSecret,
 				cfg.External.VeloxBaseURL,
 				cfg.Security.DeliveryReplayWindowSec,
 				log,
 			)
+			if err != nil {
+				log.Warn("QDRANT-004: mediasearch delivery signer unavailable, skipping mediasearch handler", zap.Error(err))
+				// QDRANT-004 closed (June 2026): when the delivery signer
+				// can't be built, mediasearch is disabled rather than
+				// serving results without authorized download URLs.
+				// The handler is not wired; /internal/v1/media/search
+				// will 404 (no route registered).
+				return wiring, fmt.Errorf("mediasearch delivery signer: %w", err)
+			}
 
 			searchSvc := mediasearch.NewService(
 				vectorPort,

@@ -313,6 +313,69 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 	return count, nil
 }
 
+// ScrollPoints iterates over all points in a collection using the Qdrant
+// scroll API. Returns the batch of points and the next offset (empty string
+// when iteration is complete).
+//
+// QDRANT-003 (June 2026): used by VerifyReindex to compare Qdrant point
+// IDs against SQLite assets for missing/orphan detection.
+func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int) (*ScrollResult, error) {
+	body := map[string]interface{}{
+		"limit":        limit,
+		"with_payload": true,
+		"with_vector":  false,
+	}
+	if offset != "" {
+		body["offset"] = offset
+	}
+
+	url := fmt.Sprintf("%s/collections/%s/points/scroll", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("scroll %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &ErrCollectionNotFound{Name: collection}
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(resp)
+	}
+
+	type scrollPoint struct {
+		ID      string                 `json:"id"`
+		Payload map[string]interface{} `json:"payload,omitempty"`
+	}
+	var result struct {
+		Result struct {
+			Points          []scrollPoint `json:"points"`
+			NextPageOffset  *string       `json:"next_page_offset"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode scroll result: %w", err)
+	}
+
+	points := make([]ScrollPoint, len(result.Result.Points))
+	for i, p := range result.Result.Points {
+		points[i] = ScrollPoint{
+			ID:      p.ID,
+			Payload: p.Payload,
+		}
+	}
+
+	nextOffset := ""
+	if result.Result.NextPageOffset != nil {
+		nextOffset = *result.Result.NextPageOffset
+	}
+
+	return &ScrollResult{
+		Points:     points,
+		NextOffset: nextOffset,
+	}, nil
+}
+
 // ── Search API ───────────────────────────────────────────────────────
 
 // SearchPoints performs an ANN search.
