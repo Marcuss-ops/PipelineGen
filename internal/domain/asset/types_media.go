@@ -46,12 +46,18 @@ const (
 	MediaTypeImageVideo MediaType = "image_video"
 	// MediaTypeSoundEffect is for extracted sound effect audio clips.
 	MediaTypeSoundEffect MediaType = "sound_effect"
+	// MediaTypeScript identifies script-to-asset catalog entries emitted
+	// by script_assets-family providers. Distinct from video/audio/image
+	// because script output is a textual artifact (not a media asset on
+	// disk); downstream composition fetches the resolved assets
+	// separately through MediaTypeClip / Image / Audio handlers.
+	MediaTypeScript MediaType = "script"
 )
 
 // IsValid reports whether the MediaType matches a known constant.
 func (m MediaType) IsValid() bool {
 	switch m {
-	case MediaTypeStock, MediaTypeClip, MediaTypeImage, MediaTypeAudio, MediaTypeDocument, MediaTypeImageVideo, MediaTypeSoundEffect:
+	case MediaTypeStock, MediaTypeClip, MediaTypeImage, MediaTypeAudio, MediaTypeDocument, MediaTypeImageVideo, MediaTypeSoundEffect, MediaTypeScript:
 		return true
 	}
 	return false
