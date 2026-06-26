@@ -30,7 +30,7 @@ pkg/                    leaf utilities
    canonical structure definition of done (§1–§13).
 2. `architecture/ownership.yaml` — mappa canonica
    "qual è il proprietario di X?" (single source of truth per capability).
-3. `architecture/migration.yaml` — tracker ratchet delle wave di
+3. `architecture/current.yaml` — tracker ratchet delle wave di
    consolidamento (status monotone-decreasing, exit gate per wave).
 4. `AGENTS.md` — regole critiche del sistema + pattern canonici + Git Lessons.
 5. `docs/cleanup/README.md` — roadmap operativa delle attività ancora aperte,
