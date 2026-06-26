@@ -38,9 +38,9 @@ func TestTryRegisterModule_DuplicateFails(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zaptest.NewLogger(t)
 
-	require.NoError(t, tryRegisterModule(reg, log, &fakeModule{name: "fixture-dup"}),
+	require.NoError(t, tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-dup"}),
 		"first register must succeed")
-	err := tryRegisterModule(reg, log, &fakeModule{name: "fixture-dup"})
+	err := tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-dup"})
 	require.Error(t, err, "second register with same name must fail")
 	require.Contains(t, err.Error(), "already registered",
 		"error text must mention the duplicate-detection sentinel")
@@ -50,10 +50,10 @@ func TestTryRegisterModule_FreezeFails(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zaptest.NewLogger(t)
 
-	require.NoError(t, tryRegisterModule(reg, log, &fakeModule{name: "fixture-pre-freeze"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-pre-freeze"}))
 	reg.Freeze()
 
-	err := tryRegisterModule(reg, log, &fakeModule{name: "fixture-post-freeze"})
+	err := tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-post-freeze"})
 	require.Error(t, err, "register after Freeze must fail")
 }
 
@@ -61,9 +61,9 @@ func TestTryRegisterModule_DistinctOK(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zaptest.NewLogger(t)
 
-	require.NoError(t, tryRegisterModule(reg, log, &fakeModule{name: "fixture-a"}))
-	require.NoError(t, tryRegisterModule(reg, log, &fakeModule{name: "fixture-b"}))
-	require.NoError(t, tryRegisterModule(reg, log, &fakeModule{name: "fixture-c"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-a"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-b"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-c"}))
 }
 
 func TestTryRegisterModule_ErrorContainsSpecMarker(t *testing.T) {
@@ -74,8 +74,8 @@ func TestTryRegisterModule_ErrorContainsSpecMarker(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zaptest.NewLogger(t)
 
-	_ = tryRegisterModule(reg, log, &fakeModule{name: "fixture-marker"})
-	err := tryRegisterModule(reg, log, &fakeModule{name: "fixture-marker"})
+	_ = tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-marker"})
+	err := tryRegisterModuleStrict(reg, log, &fakeModule{name: "fixture-marker"})
 	require.Error(t, err)
 	require.True(t, strings.HasPrefix(err.Error(), "compose:"),
 		"wrapped error must start with compose: prefix (got %q)", err.Error())
