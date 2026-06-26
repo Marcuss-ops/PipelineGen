@@ -185,9 +185,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		nil /* vectorSvc removed PG-034 */,
 	)
 	reprocessUC := appclips.NewReprocessUseCase(assetRepo, bundle.MediaProcessor)
-	downloadUC := appclips.NewDownloadUseCase(assetRepo, bundle.VoiceoverRepo)
-	bulkTagsUC := appclips.NewBulkTagsUseCase(artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo), bundle.AssetTreeService)
-	enrichUC := appclips.NewEnrichUseCase(assetRepo, bundle.ClipIndexerService, metaWriter, log)
+	downloadUC := appclips.NewDownloadUseCase(assetRepo, clipsPortBundle.VoiceoverRepo)
+	bulkTagsUC := appclips.NewBulkTagsUseCase(clipsPortBundle.SourceResolver, bundle.AssetTreeService)
+	enrichUC := appclips.NewEnrichUseCase(assetRepo, clipsPortBundle.ClipIndexer, clipsPortBundle.MetaWriter, log)
 
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
 		SourceResolver: clipsPortBundle.SourceResolver,
