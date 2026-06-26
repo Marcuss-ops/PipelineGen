@@ -110,13 +110,24 @@ func (g *GenerationService) EnqueueFromClips(ctx context.Context, spec scriptpkg
 	}, nil
 }
 
-// EnqueueWithImages wraps EnqueueFromClips with a forced
-// generate_scene_images=true pre-set. The /generate-with-images handler
-// is the legacy "scenes are mandatory" entry point — the worker
-// distinguishes the paths via the payload data (clip_ids empty,
-// num_clips zero, generate_scene_images true); the job type stays
-// canonical (job.TypeClipScriptGenerate). Same port, same JobEnqueuer
-// contract as EnqueueFromClips.
+// EnqueueWithImages wraps EnqueueFromClips with the canonical
+// PresetWithImages semantics followed by an envelope encode through
+// scriptpkg.NewGeneratePayload.
+//
+// PJ-WITH-IMAGES (June 2026): the previous implementation only
+// forced spec.GenerateSceneImages = true and forwarded the flat
+// GenerationSpec as the worker payload. The audit verdict flagged
+// this as incomplete — the documented PresetWithImages means
+// scene_images=ON, voiceover=ON, extract_entities=OFF, metadata=OFF.
+// The new path applies ALL four checks AND encodes the payload in
+// the versioned envelope (scriptpkg.NewGeneratePayload) with
+// preset="with_images" so the worker's DecodeGeneratePayload
+// recognises the request as preset-driven rather than flag-driven.
+//
+// Job type stays canonical (job.TypeClipScriptGenerate). The
+// preset is part of the typed payload, not the job type, so the
+// JobService registry continues to expose a single entry for
+// both /generate-from-clips and /generate-with-images.
 func (g *GenerationService) EnqueueWithImages(ctx context.Context, spec scriptpkg.GenerationSpec) (*FromClipsResult, error) {
 	if g == nil {
 		return nil, fmt.Errorf("generation service not constructed")
@@ -125,10 +136,47 @@ func (g *GenerationService) EnqueueWithImages(ctx context.Context, spec scriptpk
 		return nil, fmt.Errorf("generation service not initialized (composition root must wire JobEnqueuer)")
 	}
 
-	// Force scene image generation on this path.
+	// Force canonical PresetWithImages semantics on the spec. The
+	// order matters: scene_images + voiceover force ON; entity
+	// extraction + metadata generate force OFF. We do NOT trust
+	// caller-supplied overrides here — the preset semantics are
+	// non-negotiable per the documented contract.
 	spec.GenerateSceneImages = true
+	spec.GenerateVoiceover = true
+	spec.ExtractEntities = false
+	spec.GenerateMetadata = false
 
-	return g.EnqueueFromClips(ctx, spec)
+	// Versioned envelope with the preset stamp. ScriptResult stays
+	// identical to EnqueueFromClips' wire shape because the worker
+	// reads both formats via DecodeGeneratePayload.
+	envelope := scriptpkg.NewGeneratePayload(scriptpkg.PresetWithImages, spec)
+	payload, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, fmt.Errorf("marshal versioned with_images payload: %w", err)
+	}
+
+	req := &job.EnqueueRequest{
+		Type:    job.TypeClipScriptGenerate,
+		Payload: payload,
+	}
+
+	enqueuedJob, err := g.enq.Enqueue(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("enqueue script.generate_from_clips (preset=with_images): %w", err)
+	}
+
+	if g.log != nil {
+		g.log.Info("enqueued script.generate_from_clips job (preset=with_images)",
+			zap.String("job_id", enqueuedJob.ID),
+			zap.String("topic", spec.Topic),
+			zap.String("preset", string(scriptpkg.PresetWithImages)))
+	}
+
+	return &FromClipsResult{
+		OK:        true,
+		JobID:     enqueuedJob.ID,
+		JobStatus: string(enqueuedJob.Status),
+	}, nil
 }
 
 // encodeGenerationSpec marshals a GenerationSpec to JSON for the job
