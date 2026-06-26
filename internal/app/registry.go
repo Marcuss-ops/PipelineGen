@@ -27,7 +27,6 @@ import (
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
@@ -44,6 +43,8 @@ import (
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
 // RegistryWiring holds the registry and all wired modules.
@@ -226,22 +227,18 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		}
 	}
 
-	if root.Domains != nil && root.Domains.RealtimeService != nil {
-		realtimeEnabled := false // RealtimeService package removed (commit d61068b3)
+	if root.Domains != nil && root.Domains.RealtimeMatcher != nil {
+		realtimeEnabled := false // Realtime package removed (commit d61068b3)
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
 		// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
-		// Realtime package removed (commit d61068b3).
-		// The DomainBundle.RealtimeService field is interface{}; the
-		// RealtimeMatchHandler constructor wants the explicit
-		// RealtimeMatcher port. Safe type-assertion preserves the
-		// pragma (handler stays nil-tolerant when typed nil).
-		var matcher assetsapi.RealtimeMatcher
-		if m, ok := root.Domains.RealtimeService.(assetsapi.RealtimeMatcher); ok {
-			matcher = m
-		}
+		// Wave 15 (June 2026): DomainBundle.RealtimeMatcher is the typed
+		// assetsapi.RealtimeMatcher — drop the runtime cast. The field
+		// stays typed-nil (unassigned = nil interface); the handler is
+		// itself nil-tolerant.
+		matcher := root.Domains.RealtimeMatcher
 		registerModule(registry, log, module.NewRouteModule(
 			"realtime",
-			func() bool { return root.Domains.RealtimeService != nil && realtimeEnabled },
+			func() bool { return root.Domains.RealtimeMatcher != nil && realtimeEnabled },
 			"",
 			assetsapi.NewRealtimeMatchHandler(matcher, log),
 			log,
@@ -335,8 +332,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		ClipIndexerService:      root.Process.ClipIndexerService,
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
-	}
-	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeService, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
+	}		// Wave 15 (June 2026): WireAssets accepts a generic `interface{}`
+		// carrier for backward compatibility (signature untouched). The
+		// typed DomainBundle.RealtimeMatcher is auto-bridged into it.
+		if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
@@ -365,14 +364,24 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// Wires the unified media search API at POST /internal/v1/media/search
 	// when Qdrant is enabled and the vector store adapter is available.
 	if root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
-		vectorStore, _ := root.Process.VectorSvc.(assetsearch.VectorStorePort)
-		if vectorStore != nil {
-			// Build the VectorSearchPort adapter: OllamaClient for embedding +
-			// Qdrant search adapter for vector store operations.
-			vectorPort := &mediasearchVectorAdapter{
-				embedder: root.AI.OllamaClient,
-				store:    vectorStore,
-			}
+		// Wave 15 (June 2026): ProcessBundle.VectorSvc is the typed
+		// assetsearch.VectorStorePort — no runtime cast needed.
+		// portutil.IsNilPort is the typed-nil safety net (catches the
+		// `(*searchAdapter)(nil)` case if a future refactor accidentally
+		// injects a typed-nil concrete; the field type guard above is
+		// the front line).
+		vectorStore := root.Process.VectorSvc
+		if vectorStore != nil && !portutil.IsNilPort(vectorStore) {
+		// Build the VectorSearchPort adapter: OllamaClient for embedding +
+		// Qdrant search adapter for vector store operations.
+		// Wave 15 (June 2026): ProcessBundle.VectorSvc is the typed
+		// assetsearch.VectorStorePort — `vectorStore` above is direct read.
+		// Compile-time assertion at internal/infrastructure/qdrant/search_adapter.go
+		// guarantees the qdrant adapter satisfies the port.
+		vectorPort := &mediasearchVectorAdapter{
+			embedder: root.AI.OllamaClient,
+			store:    vectorStore,
+		}
 			// MediaReadRepository reads canonical metadata from SQLite.
 			readRepo := &mediasearchReadAdapter{clips: root.Repos.ClipsRepo}
 			// AssetDeliveryService: use HMAC-signed URLs when secrets are

@@ -27,6 +27,7 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
@@ -231,7 +232,12 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 	// Only when Qdrant is enabled AND the clip indexer is enabled.
 	var collectionMgr *qdrant.CollectionManager
 	var indexDeleter qdrant.QdrantDeleter
-	var vectorSvc interface{}
+	// Wave 15 (June 2026): typed-nil setter for the canonical
+	// assetsearch.VectorStorePort. NewSearchAdapter returns the typed
+	// port directly (compile-time assertion at
+	// internal/infrastructure/qdrant/search_adapter.go confirms the
+	// concrete satisfies the port).
+	var vectorSvc assetsearch.VectorStorePort
 	var qdrantClient *qdrant.Client
 
 	if cfg.Qdrant.Enabled && clipIndexerService.IsEnabled() {
