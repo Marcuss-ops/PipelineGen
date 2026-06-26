@@ -293,7 +293,7 @@ type qdrantListerAdapter struct {
 }
 
 func (a *qdrantListerAdapter) ScrollPoints(ctx context.Context, collection string, offset string, limit int) (reconciler.Points, error) {
-	res, err := a.client.ScrollPoints(ctx, collection, offset, limit)
+	res, err := a.client.ScrollPoints(ctx, collection, offset, limit, nil)
 	if err != nil {
 		return reconciler.Points{}, err
 	}

@@ -68,8 +68,8 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	report := &SwitchReport{
 		TargetCollection: targetCollection,
 		ExpectedPoints:   expectedPoints,
-		GoldenQueriesOK:  true, // TODO QDRANT-005: wire golden‑query smoke runner
-		FiltersOK:        true, // TODO QDRANT-005: wire filter smoke runner
+		GoldenQueriesOK:  false,
+		FiltersOK:        false,
 		VersionMismatchPerChannel: make(map[string]int),
 	}
 
@@ -115,7 +115,7 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	pointsScrolled := 0
 
 	for iteration := 0; iteration < maxScrolls; iteration++ {
-		result, err := v.client.ScrollPoints(ctx, targetCollection, offset, scrollPage)
+		result, err := v.client.ScrollPoints(ctx, targetCollection, offset, scrollPage, nil)
 		if err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("scroll page %d: %v", iteration, err))
 			break // partial data is better than nothing
@@ -244,6 +244,21 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		}
 	}
 
+	// ── Gate 6: Golden‑query smoke ─────────────────────────────
+	// QDRANT-005 (June 2026): replaces the hardcoded-true placeholder.
+	// Scrolls a small sample and verifies the collection is queryable
+	// with well-formed payloads. A failing collection (scroll error,
+	// zero points, or all malformed payloads) sets GoldenQueriesOK=false
+	// and blocks the Ready gate.
+	report.GoldenQueriesOK = v.runGoldenQuerySmoke(ctx, targetCollection)
+
+	// ── Gate 7: Filter smoke ───────────────────────────────────
+	// QDRANT-005 (June 2026): validates that Qdrant payload indexes
+	// work correctly. Discovers a source value from an unfiltered
+	// scroll, then scrolls with a source filter and verifies every
+	// returned point matches. Filter failure blocks the Ready gate.
+	report.FiltersOK = v.runFilterSmoke(ctx, targetCollection)
+
 	// ── Gate 5: Dead‑letter check (optional) ─────────────────────
 	if v.deadLetter != nil {
 		if dl, err := v.deadLetter.CountOpen(ctx); err != nil {
@@ -299,4 +314,134 @@ func validatePayloadMinimum(payload map[string]interface{}, pointID string) stri
 		}
 	}
 	return ""
+}
+
+// ── QDRANT-005 smoke runners ────────────────────────────────────────
+
+// runGoldenQuerySmoke verifies the target collection is queryable by
+// scrolling a small sample and checking that at least one returned point
+// has a well-formed payload (asset_id, name, source all present).
+//
+// QDRANT-005 (June 2026): replaces the hardcoded GoldenQueriesOK=true
+// placeholder. A failing smoke test (scroll error, empty collection,
+// or zero points with valid payload) sets GoldenQueriesOK=false and
+// blocks the Ready gate.
+func (v *ReindexVerifier) runGoldenQuerySmoke(ctx context.Context, collection string) bool {
+	result, err := v.client.ScrollPoints(ctx, collection, "", 10, nil)
+	if err != nil {
+		v.log.Warn("QDRANT-005 golden query smoke: scroll failed",
+			zap.String("collection", collection),
+			zap.Error(err))
+		return false
+	}
+	if len(result.Points) == 0 {
+		v.log.Warn("QDRANT-005 golden query smoke: collection is empty",
+			zap.String("collection", collection))
+		// An empty collection is unusual for a reindex but not
+		// necessarily a failure — it means there are no assets.
+		// Allow Ready to proceed; the count gates will catch
+		// the mismatch if assets were expected.
+		return true
+	}
+
+	// Verify at least one point has the minimum required payload.
+	for _, pt := range result.Points {
+		if validatePayloadMinimum(pt.Payload, pt.ID) == "" {
+			return true
+		}
+	}
+
+	v.log.Warn("QDRANT-005 golden query smoke: no point with valid payload in sample",
+		zap.String("collection", collection),
+		zap.Int("sample_size", len(result.Points)))
+	return false
+}
+
+// runFilterSmoke validates that Qdrant payload indexes work correctly by
+// running a filtered scroll and checking that every returned point matches
+// the filter criteria.
+//
+// Algorithm:
+//  1. Scroll a small unfiltered sample to discover a filterable field value.
+//  2. Build a Qdrant filter on "source" matching that value.
+//  3. Scroll with the filter and verify ALL results have the expected source.
+//
+// QDRANT-005 (June 2026): replaces the hardcoded FiltersOK=true placeholder.
+// Filter failure blocks the Ready gate.
+func (v *ReindexVerifier) runFilterSmoke(ctx context.Context, collection string) bool {
+	// Phase 1: discover a source value from an unfiltered scroll.
+	sample, err := v.client.ScrollPoints(ctx, collection, "", 20, nil)
+	if err != nil {
+		v.log.Warn("QDRANT-005 filter smoke: cannot scroll for filter discovery",
+			zap.String("collection", collection),
+			zap.Error(err))
+		return false
+	}
+	if len(sample.Points) == 0 {
+		// Empty collection — no filter to test.
+		v.log.Info("QDRANT-005 filter smoke: collection empty, skipping filter test")
+		return true
+	}
+
+	// Find the first point with a non-empty "source" field.
+	var sourceValue string
+	for _, pt := range sample.Points {
+		if s, ok := pt.Payload["source"].(string); ok && s != "" {
+			sourceValue = s
+			break
+		}
+	}
+	if sourceValue == "" {
+		v.log.Warn("QDRANT-005 filter smoke: no source field found in sample points",
+			zap.String("collection", collection),
+			zap.Int("sample_size", len(sample.Points)))
+		return false
+	}
+
+	// Phase 2: scroll with a source filter.
+	filter := map[string]interface{}{
+		"must": []map[string]interface{}{
+			{
+				"key":   "source",
+				"match": map[string]interface{}{"value": sourceValue},
+			},
+		},
+	}
+	filtered, err := v.client.ScrollPoints(ctx, collection, "", 50, filter)
+	if err != nil {
+		v.log.Warn("QDRANT-005 filter smoke: filtered scroll failed",
+			zap.String("collection", collection),
+			zap.String("source", sourceValue),
+			zap.Error(err))
+		return false
+	}
+	if len(filtered.Points) == 0 {
+		v.log.Warn("QDRANT-005 filter smoke: filtered scroll returned zero points",
+			zap.String("collection", collection),
+			zap.String("source", sourceValue))
+		return false
+	}
+
+	// Verify ALL returned points have the matching source.
+	for _, pt := range filtered.Points {
+		s, ok := pt.Payload["source"].(string)
+		if !ok {
+			v.log.Warn("QDRANT-005 filter smoke: point missing source field",
+				zap.String("point_id", pt.ID))
+			return false
+		}
+		if s != sourceValue {
+			v.log.Warn("QDRANT-005 filter smoke: source mismatch",
+				zap.String("point_id", pt.ID),
+				zap.String("expected", sourceValue),
+				zap.String("got", s))
+			return false
+		}
+	}
+
+	v.log.Info("QDRANT-005 filter smoke: PASSED",
+		zap.String("collection", collection),
+		zap.String("source", sourceValue),
+		zap.Int("matched", len(filtered.Points)))
+	return true
 }

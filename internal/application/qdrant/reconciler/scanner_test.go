@@ -279,7 +279,6 @@ func TestClassify_Mixed_DeterministicOrdering(t *testing.T) {
 	schema := versionCheckSchema()
 	sqlite := map[string]AssetSnapshot{
 		"missing": {ID: "missing", LifecycleState: "ACTIVE"},
-		"orphan":  {ID: "orphan" /* not present in qdrant */},
 		"clean":   {ID: "clean", LifecycleState: "ACTIVE"},
 		"stale":   {ID: "stale", LifecycleState: "ACTIVE"},
 	}

@@ -85,7 +85,7 @@ func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*Locato
 	var affectedIDs []string
 	offset := ""
 	for {
-		page, err := c.client.ScrollPoints(ctx, collection, offset, scrollBatchSize)
+		page, err := c.client.ScrollPoints(ctx, collection, offset, scrollBatchSize, nil)
 		if err != nil {
 			return report, fmt.Errorf("scroll %q at offset %q (scrolled %d points so far): %w",
 				collection, offset, report.TotalPointsScrolled, err)
