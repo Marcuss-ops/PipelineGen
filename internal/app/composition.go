@@ -127,6 +127,11 @@ type ProcessBundle struct {
 	// wire_services.go can type-assert without forcing every composition
 	// path to import qdrant (see PR for layering).
 	QdrantHealthProbe any
+	// QDRANT-005 Fase 3 (June 2026): canonical LocatorCleaner for
+	// scrubbing legacy drive_link / local_path payload keys from
+	// historical Qdrant points. Constructed alongside the client
+	// when Qdrant is enabled; nil-safe when Qdrant is disabled.
+	LocatorCleaner *qdrant.LocatorCleaner
 }
 
 // AIBundle owns script generation, engine, and memory.

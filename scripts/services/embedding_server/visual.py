@@ -31,7 +31,12 @@ async def embed_visual(req: VisualEmbedRequest):
     async with _inference_sem:
         try:
             embedding = siglip_model.encode(req.text).tolist()
-            return {"embedding": embedding, "dimensions": len(embedding)}
+            return {
+                "embedding": embedding,
+                "dimensions": len(embedding),
+                "model": VISUAL_MODEL_NAME,
+                "model_version": VISUAL_MODEL_VERSION,
+            }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -47,7 +52,12 @@ async def embed_visual_from_image(req: ImageEmbedRequest):
             from PIL import Image
             img = Image.open(req.image_path).convert("RGB")
             embedding = siglip_model.encode(img).tolist()
-            return {"embedding": embedding, "dimensions": len(embedding)}
+            return {
+                "embedding": embedding,
+                "dimensions": len(embedding),
+                "model": VISUAL_MODEL_NAME,
+                "model_version": VISUAL_MODEL_VERSION,
+            }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -68,6 +78,8 @@ async def visual_analyze(req: VisualAnalyzeRequest):
                 "embedding": embedding,
                 "phash": h,
                 "dimensions": len(embedding),
+                "model": VISUAL_MODEL_NAME,
+                "model_version": VISUAL_MODEL_VERSION,
                 "width": width,
                 "height": height,
             }

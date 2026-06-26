@@ -494,6 +494,37 @@ func (c *Client) executeSearch(ctx context.Context, collection string, body map[
 	return c.decodeSearchResults(resp)
 }
 
+// ── Payload API ─────────────────────────────────────────────────────
+
+// DeletePayloadKeys removes specific payload keys from points in a collection.
+// pointIDs must be non-empty. This wraps the Qdrant POST /points/payload/delete
+// endpoint, which is the canonical way to strip legacy keys (e.g. drive_link,
+// local_path) without mutating vectors or other payload fields.
+//
+// QDRANT-005 (June 2026): used by LocatorCleaner to scrub legacy locator
+// keys from historical points that were upserted before the QDRANT-001
+// payload cleanup.
+func (c *Client) DeletePayloadKeys(ctx context.Context, collection string, keys []string, pointIDs []string) error {
+	if len(keys) == 0 || len(pointIDs) == 0 {
+		return nil
+	}
+	body := map[string]interface{}{
+		"keys":   keys,
+		"points": pointIDs,
+	}
+	url := fmt.Sprintf("%s/collections/%s/points/payload/delete?wait=true", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
+	if err != nil {
+		return fmt.Errorf("delete payload keys from %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.parseError(resp)
+	}
+	return nil
+}
+
 // ── Payload index API ────────────────────────────────────────────────
 
 // CreatePayloadIndex creates a payload field index.

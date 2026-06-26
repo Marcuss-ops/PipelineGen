@@ -124,7 +124,7 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		pointsScrolled += len(result.Points)
 		for _, pt := range result.Points {
 			// Read canonical asset_id directly from point payload
-			// (UUID v5 hashes are one-way; PointIDToAssetID was removed).
+			// (UUID v5 hashes are one-way).
 			// Comma-ok is required: a missing or non-string asset_id must NOT
 			// pollute qdrantIDs with an empty key, which would silently mask a
 			// SQLite row whose own asset_id is the empty string (MissingIDs).

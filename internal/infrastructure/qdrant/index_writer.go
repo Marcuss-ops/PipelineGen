@@ -237,7 +237,7 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 	// compatibility with legacy code paths and unit-test fixtures
 	// that construct bare Points without populating the payload.
 	// QDRANT-001's silent-failure concern was about the IDENTITY
-	// reverse-mapping (PointIDToAssetID on a UUID point), NOT about
+	// reverse-mapping from the UUID point, NOT about
 	// the bare point.ID itself: the latter is a valid (if
 	// operator-unfriendly) identifier, not a security bypass.
 	var assetID string
