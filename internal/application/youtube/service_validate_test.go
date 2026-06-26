@@ -38,6 +38,9 @@ func (f *fakeAssetRepo) Count(ctx context.Context, filter asset.Filter) (int64, 
 func (f *fakeAssetRepo) SoftDelete(ctx context.Context, id string) error { return nil }
 func (f *fakeAssetRepo) Restore(ctx context.Context, id string) error    { return nil }
 func (f *fakeAssetRepo) HardDelete(ctx context.Context, id string) error { return nil }
+func (f *fakeAssetRepo) FindByExternalRef(ctx context.Context, provider, externalID string) (*asset.Asset, error) {
+	return nil, nil
+}
 
 // validDeps returns a ServiceDeps with all required ports wired (non-nil).
 func validDeps() ServiceDeps {

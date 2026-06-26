@@ -1,3 +1,4 @@
+// Package youtube — leaf forwarding wrappers to tagutil (CPR-CC-6 split, June 2026).
 package youtube
 
 import (
