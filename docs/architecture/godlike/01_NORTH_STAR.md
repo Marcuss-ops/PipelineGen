@@ -87,3 +87,26 @@ The program is complete when:
 - deleting a capability requires removing one vertical package plus its registry entry and migrations;
 - the architecture checker has no grandfathered baseline or allowlist;
 - main remains green without hidden runtime fallbacks.
+
+## Actions to execute
+
+- Build an inventory of every durable fact, route, job type, provider, resolver, sampler, config section, service constructor, and writer.
+- Assign one canonical owner and one canonical execution path to every inventory item.
+- Identify all competing paths and classify each as keep, migrate, or remove.
+- Make mandatory dependencies fail during composition instead of mounting degraded handlers.
+- Convert every invariant in this document into an architecture check, generated manifest, test, or package boundary.
+- Complete CONTRACT for every migrated path by deleting aliases, wrappers, fields, config, tests, documentation, metrics, and allowlists.
+- Update the inventory after every migration until no item has multiple owners or runtime paths.
+
+## Final DONE check
+
+The North Star is DONE only when:
+
+- [ ] Every durable fact has one writer and one canonical owner.
+- [ ] Every operation has one entrypoint, one normalizer, and one execution path.
+- [ ] Missing mandatory dependencies fail composition or prevent capability registration.
+- [ ] Generated manifests list all active routes, jobs, providers, dependencies, and owners.
+- [ ] Architecture checks report zero accepted aliases, setters, fake routes, hidden fallbacks, duplicate registrations, and cross-boundary violations.
+- [ ] Qdrant, Drive metadata, local files, and generated documents can be rebuilt from canonical state.
+- [ ] Removing a capability requires deleting one vertical package, one registry contribution, and its owned migrations/configuration.
+- [ ] `main` is green with no architecture baseline or allowlist masking existing debt.
