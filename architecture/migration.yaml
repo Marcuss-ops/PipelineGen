@@ -141,10 +141,10 @@
   verified_zero: true
   exit_gate: "rg 'internal/media/(fullimages|generation|books|lessons|voiceoversync)' --type go returns zero."
 
-# ── Wave 10 — Storage + Drive + Qdrant adapters ──────────────────────────────
+# ── Wave 10 — Storage + Drive adapters (Qdrant removed by PG-034) ─────────────
 
 - id: 10
-  title: Media storage, Drive, Qdrant adapter consolidation
+  title: Media storage + Drive consolidation (Qdrant removed by PG-034)
   status: done
   verified_zero: true
   exit_gate: "rg 'internal/(media/(mediaasset|vectorstore|storage)|upload)' --type go returns zero."

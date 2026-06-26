@@ -1,3 +1,12 @@
+# ANNULLATO — SUPERATO DA PG-034 (June 2026)
+
+# Surrogate per la search ibrida soppressa: il backend di ricerca canonico
+# non-Qdrant è `internal/application/assets/search/service.go::Search` (ricerca
+# cross-provider SQLite-only). Le chiamate legacy dirette alle route Qdrant
+# (POST /recommend, GET ?mode=semantic) ricevono `errSemanticSearchRemoved`
+# come sentinella "fail loud" — PG-034 ha rimosso integralmente la capability,
+# quindi non esiste alcuna delega ibrida reale da implementare.
+
 # QDRANT-004 — Search API, hybrid retrieval, filtri e delivery sicura
 
 ## Stato

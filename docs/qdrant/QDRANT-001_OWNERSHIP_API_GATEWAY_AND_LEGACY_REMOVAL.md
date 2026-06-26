@@ -1,3 +1,11 @@
+# ANNULLATO — SUPERATO DA PG-034 (June 2026)
+
+PG-034 ha rimosso integralmente la capability Qdrant. I ticket QDRANT-001..005
+sono tombstonati (vedi commit series di questa chiusura). L'audit trail di
+ciò che la capability doveva essere è preservato qui sotto come sola
+traccia documentale; nessuna implementazione sarà mai prodotta perché
+l'obiettivo del ticket è già risolto dall'assenza della capability.
+
 # QDRANT-001 — Ownership, API Gateway e rimozione della legacy diretta
 
 ## Stato

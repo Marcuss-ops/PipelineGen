@@ -223,9 +223,6 @@ canonical_services:
   - service: BooksService
     constructor: initBooksService
     location: internal/app/compose_content.go
-  - service: VectorStore (Qdrant)
-    constructor: NewService
-    location: internal/app/composition.go::BuildProcessBundle
   - service: ArtlistService
     constructor: NewService
     location: internal/app/module_artlist.go
@@ -445,9 +442,6 @@ infrastructure_ai:
   owner: internal/infrastructure/ai
   sub_dirs: [ai/ollama, ai/reranker, ai/vlm, ai/images]
 
-infrastructure_qdrant:
-  owner: internal/infrastructure/qdrant
-  migrated_from: internal/media/vectorstore
 
 infrastructure_media:
   owner: internal/infrastructure/media/processor
