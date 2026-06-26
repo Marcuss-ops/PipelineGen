@@ -341,6 +341,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
 		ClipServices:          clipServices,
 		Log:                   log,
+		GenService:            genSvc,
+		Gates:                 gates,
 	})
 
 	// ── Register job handlers at composition time ──────────────────────

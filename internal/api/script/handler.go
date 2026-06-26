@@ -19,6 +19,8 @@ package script
 
 import (
 	"context"
+	"errors"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
@@ -59,5 +61,21 @@ func NewHandler(inner *ScriptFlowHandler) *Handler {
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	if h.inner != nil {
 		h.inner.RegisterRoutes(r)
+	}
+}
+
+// mapErrorToHTTP maps domain-level script errors to HTTP status codes.
+func mapErrorToHTTP(err error) int {
+	switch {
+	case errors.Is(err, scriptpkg.ErrInvalidPayload):
+		return http.StatusBadRequest
+	case errors.Is(err, scriptpkg.ErrValidation):
+		return http.StatusBadRequest
+	case errors.Is(err, scriptpkg.ErrUnavailable):
+		return http.StatusServiceUnavailable
+	case errors.Is(err, scriptpkg.ErrConflict):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
 	}
 }
