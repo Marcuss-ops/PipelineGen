@@ -38,6 +38,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
@@ -325,11 +326,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// method-value extraction: root.Domains.BooksService.HandleJob /
 		// root.Domains.LessonsService.HandleJob. nil service → nil handler
 		// → JobHandlers.RegisterJobHandlers silently skips that job type.
-		var booksHandler generation.HandlerFunc
+		var booksHandler appjobs.HandlerFunc
 		if root.Domains != nil && root.Domains.BooksService != nil {
 			booksHandler = root.Domains.BooksService.HandleJob
 		}
-		var lessonsHandler generation.HandlerFunc
+		var lessonsHandler appjobs.HandlerFunc
 		if root.Domains != nil && root.Domains.LessonsService != nil {
 			lessonsHandler = root.Domains.LessonsService.HandleJob
 		}
