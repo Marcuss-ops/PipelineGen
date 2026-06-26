@@ -70,3 +70,28 @@ Architecture generation produces capability, route, job, provider, dependency, h
 ## Zero-baseline rule
 
 The final acceptable count is zero. Transitional baselines require an owner and deadline. A baseline that only prevents new violations is not completion.
+
+## Actions to execute
+
+- Map every architecture rule to an `archcheck` rule, a generated-manifest parity test, or a standard Go check.
+- Add small valid and invalid fixtures for every architecture rule.
+- Run formatting, static analysis, module tidiness, tests, architecture checks, and generation checks in CI.
+- Add automated checks for boundaries, registries, contracts, legacy patterns, data ownership, and complexity budgets.
+- Make registry keys and service construction sites unique by validation.
+- Run `archgen` in CI and fail when regenerated files differ from tracked files.
+- Give every temporary baseline an owner, expiry, current count, and reduction plan.
+- Move each rule from no-growth mode to zero-tolerance when its count reaches zero.
+- Produce actionable failures containing rule name, file, remediation, and governing document.
+
+## Final DONE check
+
+- [ ] Every architecture rule is executable and has valid/invalid fixtures.
+- [ ] CI runs the required checks for all relevant repository changes.
+- [ ] Formatting, static analysis, module tidiness, tests, architecture checks, and generation checks pass on `main`.
+- [ ] Duplicate routes, jobs, providers, resolvers, samplers, health checks, table owners, and service constructors fail automatically.
+- [ ] Forbidden imports, broad contracts, setters, aliases, wrappers, fake routes, and handler infrastructure access fail automatically.
+- [ ] Migration ownership and generated table ownership are verified.
+- [ ] Generated manifests are reproducible and leave a clean working tree.
+- [ ] Complexity exceptions are owned and expire.
+- [ ] All architecture baselines and allowlists have reached zero and are removed.
+- [ ] A clean checkout reproduces the same green result.
