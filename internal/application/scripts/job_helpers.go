@@ -16,9 +16,7 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ── Pipeline stage logger ───────────────────────────────────────────────────
-
-// StageLog wraps a pipeline phase with structured start/complete logs.
+// ── Pipeline stage logger
 func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 	t := time.Now()
 	log.Info("pipeline_stage_started",
@@ -32,31 +30,6 @@ func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 		}, extra...)
 		log.Info("pipeline_stage_completed", fields...)
 	}
-}
-
-// ── Scene counting helper ───────────────────────────────────────────────────
-
-// SceneCountWithKind counts how many ClipScenes have a matching Kind value.
-func SceneCountWithKind(scenes []ClipScene, kind string) int {
-	n := 0
-	for _, s := range scenes {
-		if s.Kind == kind {
-			n++
-		}
-	}
-	return n
-}
-
-// ── ClipSourcePathResult ────────────────────────────────────────────────────
-
-// ClipSourcePathResult is the result produced by a single script generation path.
-type ClipSourcePathResult struct {
-	WriteResult       *WriteScriptResult
-	ClipScenes        []ClipScene
-	SourceFingerprint string
-	SearchResults     []SearchResultInfo
-	NarrativePlan     *NarrativePlan
-	CurateTimings     CurateTimings
 }
 
 // ── buildVoiceoverDestination ────────────────────────────────────────────────
