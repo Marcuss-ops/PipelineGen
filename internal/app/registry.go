@@ -30,10 +30,11 @@ import (
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
@@ -248,101 +249,100 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		mod, err := m.fn()
 		if err != nil {
 			log.Warn("failed to wire module", zap.String("module", m.name), zap.Error(err))
-	} else if mod != nil {
-		if err := tryRegisterModule(registry, log, mod); err != nil {
-			return nil, fmt.Errorf("wire registry: %s: %w", m.name, err)
-		}
-	}
-	}
-
-	if root.Domains != nil && root.Domains.RealtimeMatcher != nil {
-		realtimeEnabled := false // Realtime package removed (commit d61068b3)
-		// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
-		// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
-		// Wave 15 (June 2026): DomainBundle.RealtimeMatcher is the typed
-		// assetsapi.RealtimeMatcher — drop the runtime cast. The field
-		// stays typed-nil (unassigned = nil interface); the handler is
-		// itself nil-tolerant.
-		matcher := root.Domains.RealtimeMatcher
-		if err := tryRegisterModule(registry, log, module.NewRouteModule(
-			"realtime",
-			func() bool { return root.Domains.RealtimeMatcher != nil && realtimeEnabled },
-			"",
-			assetsapi.NewRealtimeMatchHandler(matcher, log),
-			log,
-		)); err != nil {
-			return nil, fmt.Errorf("wire registry: realtime module: %w", err)
-		}
-	}
-	// ── Unified generation API (replaces /api/books + /api/lessons) ──
-	// Capability Standard migration (June 2026): the unified generation
-	// endpoint at /api/generations is wired via generation.Build(deps).
-	// Build returns a single Descriptor that carries:
-	//   - the api.Module for /api/generations routes, AND
-	//   - the api.DescriptorJobs slot which the composition root uses to
-	//     publish the books.process and lessons.process worker handlers
-	//     into the canonical jobs.Service — single source of truth replaces
-	//     the late-binding calls that previously lived in composition.go.
-	//
-	// Worker-side handler-function values are passed via nil-guarded
-	// method-value extraction: root.Domains.BooksService.HandleJob /
-	// root.Domains.LessonsService.HandleJob. nil service → nil handler
-	// → JobHandlers.RegisterJobHandlers silently skips that job type.
-	var booksHandler generation.HandlerFunc
-	if root.Domains != nil && root.Domains.BooksService != nil {
-		booksHandler = root.Domains.BooksService.HandleJob
-	}
-	var lessonsHandler generation.HandlerFunc
-	if root.Domains != nil && root.Domains.LessonsService != nil {
-		lessonsHandler = root.Domains.LessonsService.HandleJob
-	}
-	if genDesc, err := generation.Build(generation.Dependencies{
-		Jobs:           root.Jobs.Service,
-		Assets:         root.Repos.Assets,
-		Books:          booksHandler,
-		Lessons:        lessonsHandler,
-		BooksEnabled:   cfg.Books.Enabled,
-		LessonsEnabled: cfg.Lessons.Enabled,
-		ScriptEnabled:  anyScriptFeatureEnabled(cfg),
-		Logger:         log,
-	}); err != nil {
-		log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
-	} else {
-		if err := tryRegisterModule(registry, log, genDesc); err != nil {
-			return nil, fmt.Errorf("wire registry: generation: %w", err)
-		}
-		// *GenerationDescriptor satisfies api.Descriptor via the
-		// three explicit delegation methods (Name/Enabled/RegisterRoutes),
-		// and api.DescriptorJobs via RegisterJobHandlers. So:
-		//   - no AsDescriptor adapter round-trip is needed,
-		//   - the cast goes directly against the concrete pointer.
-		// Same package alias as the rest of the composition layer
-		// (`module "github.com/Marcuss-ops/PipelineGen/internal/api"`).
-		if dj, ok := genDesc.(module.DescriptorJobs); ok {
-			if err := dj.RegisterJobHandlers(root.Jobs.Service); err != nil {
-				log.Warn("failed to register generation job handlers", zap.Error(err))
+		} else if mod != nil {
+			if err := tryRegisterModule(registry, log, mod); err != nil {
+				return nil, fmt.Errorf("wire registry: %s: %w", m.name, err)
 			}
 		}
-	}
 
-	if root.DB != nil && root.DB.DB != nil {
-		// channels capability (Capability Standard migration, June 2026):
-		// the composition root only knows the persistable form of the
-		// repository; the canonical Build(deps) wraps it with the
-		// application-level adapter and constructs the descriptor that
-		// exposes both the api.Module (for route registration) and the
-		// underlying *channels.Service (for non-HTTP callers such as
-		// cmd/admin).
-		if d, err := channels.Build(channels.Dependencies{
-			Repository: channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
-			Logger:     log,
+		if root.Domains != nil && root.Domains.RealtimeMatcher != nil {
+			realtimeEnabled := false // Realtime package removed (commit d61068b3)
+			// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
+			// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
+			// Wave 15 (June 2026): DomainBundle.RealtimeMatcher is the typed
+			// assetsapi.RealtimeMatcher — drop the runtime cast. The field
+			// stays typed-nil (unassigned = nil interface); the handler is
+			// itself nil-tolerant.
+			matcher := root.Domains.RealtimeMatcher
+			if err := tryRegisterModule(registry, log, module.NewRouteModule(
+				"realtime",
+				func() bool { return root.Domains.RealtimeMatcher != nil && realtimeEnabled },
+				"",
+				assetsapi.NewRealtimeMatchHandler(matcher, log),
+				log,
+			)); err != nil {
+				return nil, fmt.Errorf("wire registry: realtime module: %w", err)
+			}
+		}
+		// ── Unified generation API (replaces /api/books + /api/lessons) ──
+		// Capability Standard migration (June 2026): the unified generation
+		// endpoint at /api/generations is wired via generation.Build(deps).
+		// Build returns a single Descriptor that carries:
+		//   - the api.Module for /api/generations routes, AND
+		//   - the api.DescriptorJobs slot which the composition root uses to
+		//     publish the books.process and lessons.process worker handlers
+		//     into the canonical jobs.Service — single source of truth replaces
+		//     the late-binding calls that previously lived in composition.go.
+		//
+		// Worker-side handler-function values are passed via nil-guarded
+		// method-value extraction: root.Domains.BooksService.HandleJob /
+		// root.Domains.LessonsService.HandleJob. nil service → nil handler
+		// → JobHandlers.RegisterJobHandlers silently skips that job type.
+		var booksHandler generation.HandlerFunc
+		if root.Domains != nil && root.Domains.BooksService != nil {
+			booksHandler = root.Domains.BooksService.HandleJob
+		}
+		var lessonsHandler generation.HandlerFunc
+		if root.Domains != nil && root.Domains.LessonsService != nil {
+			lessonsHandler = root.Domains.LessonsService.HandleJob
+		}
+		if genDesc, err := generation.Build(generation.Dependencies{
+			Jobs:           root.Jobs.Service,
+			Assets:         root.Repos.Assets,
+			Books:          booksHandler,
+			Lessons:        lessonsHandler,
+			BooksEnabled:   cfg.Books.Enabled,
+			LessonsEnabled: cfg.Lessons.Enabled,
+			ScriptEnabled:  anyScriptFeatureEnabled(cfg),
+			Logger:         log,
 		}); err != nil {
-			log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
+			log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
 		} else {
-			if err := tryRegisterModule(registry, log, d); err != nil {
-				return nil, fmt.Errorf("wire registry: channels: %w", err)
+			if err := tryRegisterModule(registry, log, genDesc); err != nil {
+				return nil, fmt.Errorf("wire registry: generation: %w", err)
+			}
+			// *GenerationDescriptor satisfies api.Descriptor via the
+			// three explicit delegation methods (Name/Enabled/RegisterRoutes),
+			// and api.DescriptorJobs via RegisterJobHandlers. So:
+			//   - no AsDescriptor adapter round-trip is needed,
+			//   - the cast goes directly against the concrete pointer.
+			// Same package alias as the rest of the composition layer
+			// (`module "github.com/Marcuss-ops/PipelineGen/internal/api"`).
+			if dj, ok := genDesc.(module.DescriptorJobs); ok {
+				if err := dj.RegisterJobHandlers(root.Jobs.Service); err != nil {
+					log.Warn("failed to register generation job handlers", zap.Error(err))
+				}
 			}
 		}
+
+		if root.DB != nil && root.DB.DB != nil {
+			// channels capability (Capability Standard migration, June 2026):
+			// the composition root only knows the persistable form of the
+			// repository; the canonical Build(deps) wraps it with the
+			// application-level adapter and constructs the descriptor that
+			// exposes both the api.Module (for route registration) and the
+			// underlying *channels.Service (for non-HTTP callers such as
+			// cmd/admin).
+			if d, err := channels.Build(channels.Dependencies{
+				Repository: channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
+				Logger:     log,
+			}); err != nil {
+				log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
+			} else {
+				if err := tryRegisterModule(registry, log, d); err != nil {
+					return nil, fmt.Errorf("wire registry: channels: %w", err)
+				}
+			}
 		}
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
 		// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
@@ -411,11 +411,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		ClipIndexerService:      root.Process.ClipIndexerService,
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
-	}		// Wave 16 (June 2026): WireAssets realtimeSvc is typed
-		// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
-		// Pass-through is direct: DomainBundle.RealtimeMatcher → WireAssets
-		// (typed-to-typed, no auto-bridge required).
-		if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
+	}
+	// Wave 16 (June 2026): WireAssets realtimeSvc is typed
+	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
+	// Pass-through is direct: DomainBundle.RealtimeMatcher → WireAssets
+	// (typed-to-typed, no auto-bridge required).
+	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
 		if err := tryRegisterModule(registry, log, aw.Module); err != nil {
 			return nil, fmt.Errorf("wire registry: assets module: %w", err)
@@ -535,6 +536,47 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			}
 		} else {
 			log.Info("stock pipeline service unavailable — skipping fetch provider registration")
+		}
+		// ── ScriptAssets capability (Capability Standard DescriptorProviders
+		// slot migration, June 2026): the script_assets capability is wired
+		// via scriptassets.Build(deps). Build returns a single Descriptor that
+		// carries:
+		//   - the api.Module for /script-assets routes, AND
+		//   - the api.DescriptorProviders slot which the composition root uses
+		//     to publish the script_assets catalog entry (provider identity +
+		//     capabilities) into the canonical providers.Registry.
+		//
+		// This is the "richer" capability migration demonstrating the slot
+		// pattern's RANGE beyond DescriptorJobs: DescriptorProviders is a
+		// one-shot composition-time publication of catalog identity (not per-
+		// job runtime registration like DescriptorJobs). Both slots coexist
+		// on the same Descriptor mechanism; the composition root type-asserts
+		// for each independently.
+		//
+		// RegisterProviders must run BEFORE pr.Freeze() below; the registry
+		// must be mutable when the descriptor publishes into it. Frozen
+		// registries return ErrFrozen from Register, so ordering matters.
+		scDesc, scErr := scriptassets.Build(scriptassets.Dependencies{
+			Logger: log,
+		})
+		if scErr != nil {
+			log.Warn("failed to wire module", zap.String("module", "script-assets"), zap.Error(scErr))
+		} else {
+			if err := tryRegisterModule(registry, log, scDesc); err != nil {
+				return nil, fmt.Errorf("wire registry: script-assets: %w", err)
+			}
+			// *ScriptAssetsDescriptor satisfies api.Descriptor via the three
+			// explicit delegation methods (Name/Enabled/RegisterRoutes), and
+			// api.DescriptorProviders via RegisterProviders. Same concrete
+			// pointer cast as the generation block above.
+			if dp, ok := scDesc.(*scriptassets.ScriptAssetsDescriptor); ok {
+				if err := dp.RegisterProviders(pr); err != nil {
+					return nil, fmt.Errorf("wire registry: script-assets providers: %w", err)
+				}
+				log.Info("registered script_assets catalog entry in providers.Registry",
+					zap.String("name", "script_assets"),
+					zap.Strings("capabilities", []string{"search", "script"}))
+			}
 		}
 		// FREEZE here, after all registrations. (Reviewer Q8 fix.)
 		pr.Freeze()
