@@ -45,6 +45,7 @@ type Router struct {
 	registry             *Registry
 	workerHandler        interface{ RegisterRoutes(*gin.RouterGroup) }
 	internalMediaHandler MediaInternalRouter
+	mediasearchHandler   interface{ RegisterRoutes(*gin.RouterGroup) } // QDRANT-004: /internal/v1/media/search with WorkerAuth
 	ctx                  context.Context
 	healthSvc            interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
 	readyChecker         *systemhealth.ReadyChecker
@@ -106,6 +107,14 @@ func (r *Router) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 // won't register. Wire-up is performed by the composition root.
 func (r *Router) SetInternalMediaHandler(h MediaInternalRouter) {
 	r.internalMediaHandler = h
+}
+
+// SetMediasearchHandler wires the QDRANT-004 mediasearch handler
+// (POST /internal/v1/media/search) into the router. nil-safe — if
+// no handler has been wired, the route simply won't register. The
+// handler mounts on the WorkerAuth-protected internalGroup, NOT on /api.
+func (r *Router) SetMediasearchHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
+	r.mediasearchHandler = h
 }
 
 // SetContext sets the context for module lifecycle management
@@ -251,6 +260,16 @@ func (r *Router) Setup() *gin.Engine {
 		// see middleware_worker_auth_test.go). nil-tolerant if not wired.
 		if r.internalMediaHandler != nil {
 			r.internalMediaHandler.RegisterInternalMediaRoutes(internalGroup)
+		}
+		// QDRANT-004 /internal/v1/media/search — mediasearch with WorkerAuth.
+		// Mounted under /internal/v1/media so the full path is
+		// POST /internal/v1/media/search. nil-tolerant if not wired.
+		//
+		// NOT under /api — WorkerAuth gate prevents /api consumers
+		// from calling the private search surface.
+		if r.mediasearchHandler != nil {
+			mediaGroup := internalGroup.Group("/media")
+			r.mediasearchHandler.RegisterRoutes(mediaGroup)
 		}
 	}
 

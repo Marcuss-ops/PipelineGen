@@ -180,6 +180,7 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 	// embedder is the right fix; that belongs to a follow-up (likely
 	// QDRANT-003+ aliasing work). Until then, hybrid = dense + sparse.
 	var rawHits []search.VectorSearchResult
+	wsID := req.Workspace.WorkspaceID
 	if mode == SearchModeHybrid {
 		rawHits, err = s.vector.VectorStore().HybridSearch(ctx, search.HybridSearchRequest{
 			QueryText:       q,
@@ -191,6 +192,7 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 			Category:        req.Filters.Category,
 			MediaType:       req.Filters.MediaType,
 			Language:        req.Filters.Language,
+			WorkspaceID:     wsID,
 		})
 	} else {
 		rawHits, err = s.vector.VectorStore().Search(ctx, search.VectorSearchRequest{
@@ -202,6 +204,7 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 			Category:    req.Filters.Category,
 			MediaType:   req.Filters.MediaType,
 			Language:    req.Filters.Language,
+			WorkspaceID: wsID,
 		})
 	}
 	if err != nil {

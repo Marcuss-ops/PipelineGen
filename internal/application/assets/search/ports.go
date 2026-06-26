@@ -82,6 +82,7 @@ type VectorSearchRequest struct {
 	Category    string
 	MediaType   string
 	Language    string
+	WorkspaceID string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
 }
 
 // VectorSearchResult is a single match from a vector search.
@@ -120,6 +121,7 @@ type HybridSearchRequest struct {
 	Category             string
 	MediaType            string
 	Language             string
+	WorkspaceID          string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
 }
 
 // ── Local search ports ────────────────────────────────────────────────

@@ -322,11 +322,61 @@ func (c *Client) SearchPoints(ctx context.Context, collection string, req Search
 	return c.executeSearch(ctx, collection, body)
 }
 
-// HybridSearchPoints performs a hybrid (dense + sparse) search.
+// HybridSearchPoints performs a real hybrid (dense + sparse) search via the
+// Qdrant Query API with prefetch blocks and Reciprocal Rank Fusion (RRF).
+//
+// Unlike the legacy /points/search endpoint which silently falls back to
+// dense-only when sparse is omitted, this method REQUIRES a non-nil
+// SparseQueryVector and a non-empty SparseVectorName. Callers that cannot
+// provide a sparse vector must use SearchPoints (ANN) instead — dense-only
+// retrieval must never be labelled as "hybrid".
 func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req HybridSearchRequest) ([]SearchResult, error) {
+	if req.DenseVector == nil {
+		return nil, fmt.Errorf("hybrid search: dense vector must not be nil")
+	}
+	if req.SparseQueryVector == nil {
+		return nil, fmt.Errorf("hybrid search: sparse query vector must not be nil — use SearchPoints for ANN-only retrieval")
+	}
+	if req.SparseVectorName == "" {
+		return nil, fmt.Errorf("hybrid search: sparse vector name must be set (e.g. \"bm25_text\")")
+	}
+
+	// Build prefetch blocks for the Qdrant Query API.
+	// Each prefetch runs independently; results are fused via RRF.
+	overfetch := req.Limit * 3
+	if overfetch < 50 {
+		overfetch = 50 // floor so RRF has enough candidates to rank
+	}
+
+	prefetch := []map[string]interface{}{
+		{
+			"query": req.DenseVector,
+			"using": req.DenseVectorName,
+			"limit": overfetch,
+		},
+		{
+			"query": map[string]interface{}{
+				"indices": req.SparseQueryVector.Indices,
+				"values":  req.SparseQueryVector.Values,
+			},
+			"using": req.SparseVectorName,
+			"limit": overfetch,
+		},
+	}
+
+	// Optional transcript channel — only included when a dedicated transcript
+	// vector is available (QDRANT-005 follow-up territory).
+	if req.TranscriptVector != nil && req.TranscriptVectorName != "" {
+		prefetch = append(prefetch, map[string]interface{}{
+			"query": req.TranscriptVector,
+			"using": req.TranscriptVectorName,
+			"limit": overfetch,
+		})
+	}
+
 	body := map[string]interface{}{
-		"vector":       req.DenseVector,
-		"using":        req.DenseVectorName,
+		"prefetch":     prefetch,
+		"query":        map[string]interface{}{"fusion": "rrf"},
 		"limit":        req.Limit,
 		"with_payload": true,
 	}
@@ -337,7 +387,7 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 		body["filter"] = req.Filter
 	}
 
-	return c.executeSearch(ctx, collection, body)
+	return c.executeQuery(ctx, collection, body)
 }
 
 func (c *Client) executeSearch(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
@@ -347,33 +397,7 @@ func (c *Client) executeSearch(ctx context.Context, collection string, body map[
 		return nil, fmt.Errorf("search %q: %w", collection, err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, c.parseError(resp)
-	}
-
-	var result struct {
-		Result []struct {
-			ID      string                 `json:"id"`
-			Score   float64                `json:"score"`
-			Payload map[string]interface{} `json:"payload,omitempty"`
-			Version int64                  `json:"version,omitempty"`
-		} `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode search results: %w", err)
-	}
-
-	results := make([]SearchResult, len(result.Result))
-	for i, r := range result.Result {
-		results[i] = SearchResult{
-			ID:      r.ID,
-			Score:   r.Score,
-			Payload: r.Payload,
-			Version: r.Version,
-		}
-	}
-	return results, nil
+	return c.decodeSearchResults(resp)
 }
 
 // ── Payload index API ────────────────────────────────────────────────
@@ -416,6 +440,53 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 		req.Header.Set("Content-Type", "application/json")
 	}
 	return c.httpClient.Do(req)
+}
+
+// decodeSearchResults is the shared result decoder for both the legacy
+// Search API (/points/search) and the Query API (/points/query). Both
+// Qdrant endpoints return the same JSON shape.
+func (c *Client) decodeSearchResults(resp *http.Response) ([]SearchResult, error) {
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(resp)
+	}
+
+	type pointEntry struct {
+		ID      string                 `json:"id"`
+		Score   float64                `json:"score"`
+		Payload map[string]interface{} `json:"payload,omitempty"`
+		Version int64                  `json:"version,omitempty"`
+	}
+	var result struct {
+		Result []pointEntry `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode search results: %w", err)
+	}
+
+	results := make([]SearchResult, len(result.Result))
+	for i, r := range result.Result {
+		results[i] = SearchResult{
+			ID:      r.ID,
+			Score:   r.Score,
+			Payload: r.Payload,
+			Version: r.Version,
+		}
+	}
+	return results, nil
+}
+
+// executeQuery sends a request to the Qdrant Query API (/points/query) and
+// decodes the results. Used by HybridSearchPoints for real RRF fusion;
+// executeSearch (POST /points/search) remains available for ANN-only
+// queries. Both share decodeSearchResults for response parsing.
+func (c *Client) executeQuery(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
+	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("query %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+	return c.decodeSearchResults(resp)
 }
 
 func (c *Client) parseError(resp *http.Response) error {

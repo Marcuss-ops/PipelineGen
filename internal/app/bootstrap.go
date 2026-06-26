@@ -72,9 +72,8 @@ import (
 //   - Cleanup: REMOVED in PG-020 (June 2026). All teardown now goes
 //     through Lifecycle.Stop. Callers that previously referenced
 //     deps.Cleanup() now call deps.Lifecycle.Stop(ctx).
-type AppDeps struct {
-	Registry      *module.Registry
-	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+type AppDeps struct {	Registry             *module.Registry
+	WorkerHandler        interface{ RegisterRoutes(*gin.RouterGroup) }
 	// InternalMediaHandler is the QDRANT-001 server-to-server surface
 	// for /internal/v1/media/* (currently just /sync-drive-folder).
 	// Same shape as WorkerHandler — narrow interface, no infra imports
@@ -83,6 +82,11 @@ type AppDeps struct {
 	// /internal/v1/media/sync-drive-folder route registers on the
 	// WorkerAuth-protected group.
 	InternalMediaHandler interface{ RegisterInternalMediaRoutes(*gin.RouterGroup) }
+	// MediasearchHandler is the QDRANT-004 mediasearch handler for
+	// POST /internal/v1/media/search. Same shape as WorkerHandler —
+	// narrow interface. Registered on the WorkerAuth-protected
+	// internalGroup (NOT on /api).
+	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 	Lifecycle            module.LifecycleManager
 	HealthService        interface{}
 	ReadyChecker         *systemhealth.ReadyChecker

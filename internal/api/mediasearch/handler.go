@@ -13,25 +13,14 @@
 // client, os/exec, or any other infra import — AGENTS.md Pattern
 // 8 ("API package: thin transport only") applies.
 //
-// ── WIRING TODO ──────────────────────────────────────────────────────
-// The Handler is not yet registered in internal/app/registry.go.
-// The wire-up recipe is:
+// Wired at internal/app/registry.go → wiring.MediasearchHandler →
+// internal/api/routes.go::Setup() → internalGroup (/internal/v1)
+// with WorkerAuth middleware. The route is:
 //
-//	mediasearchSvc := mediasearch.NewService(
-//	    vectorPort,    // existing search.VectorSearchPort instance
-//	    readRepo,      // new mediaread.NewSQLiteRepository(root.DB)
-//	    deliverySvc,   // delivery.NewSigner(...) once secret is loaded
-//	    mediasearch.Config{},
-//	    logger,
-//	)
-//	mediasearchH := mediasearch.NewHandler(mediasearchSvc, logger)
-//	mediasearchH.RegisterRoutes(r.Group("/internal/v1/media"))
+//	POST /internal/v1/media/search
 //
-// ComposeRoot must carry a `MediaSearch *MediaSearchBundle` field
-// (Service, Logger) for this to slot into WireRegistry; that
-// addition belongs in a follow-up PR — touching ComposeRoot now
-// risks regressing unrelated wire paths. The handler + service +
-// ports on their own are the foundation QDRANT-004 needed.
+// NOT mounted under /api. The handler receives an *gin.RouterGroup
+// already scoped to /internal/v1/media via routes.go::Setup().
 package mediasearch
 
 import (
