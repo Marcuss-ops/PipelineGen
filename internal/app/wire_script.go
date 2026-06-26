@@ -14,9 +14,11 @@
 // PR7 (June 2026): removed legacy job registrations (BatchJobHandler,
 // CatalogJobServiceImpl, PipelineUseCase.RegisterJobs), GenerationService,
 // GenerateBatchUseCase, FeatureGates, PipelineUseCase construction.
-// Unified generation wired via the canonical POST /api/script/generate
-// endpoint (PR6) — job registration for script.generate lives in a
-// future wiring PR.
+//
+// PR8 (June 2026): wired unified generation pipeline — SourceRegistry
+// (4 resolvers), Pipeline (post-generation), GenerateOneUseCase,
+// GenerateManyUseCase, GenerateJobHandler registered for
+// script.generate. Replaces the deleted PipelineUseCase block.
 
 package app
 
@@ -29,6 +31,8 @@ import (
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -193,6 +197,72 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		if curationJobSvc != nil {
 			root.Jobs.Service.RegisterHandler("media.curate", curationJobSvc.HandleCurateJob)
 			log.Info("registered media.curate job handler (wire_script.go)")
+		}
+	}
+
+	// ── Unified generation pipeline (PR8, June 2026) ───────────────────
+	// Constructs the canonical generation stack:
+	//   SourceRegistry (4 resolvers) → Pipeline (post-gen) →
+	//   GenerateOneUseCase → GenerateManyUseCase → GenerateJobHandler
+	// Registered for script.generate — replaces the deleted
+	// PipelineUseCase.RegisterJobs block removed in PR7.
+
+	// Normalization config: extracted from the platform config so the
+	// normalizer has zero import on internal/platform/config.
+	normCfg := scripts.NormalizationConfig{
+		DefaultLanguage:          cfg.Scripts.DefaultLanguage,
+		DefaultTone:              cfg.Scripts.DefaultTone,
+		DefaultDurationSeconds:   cfg.Scripts.DefaultDurationSeconds,
+		OllamaModel:              cfg.External.OllamaModel,
+		ChannelID:                cfg.Scripts.ChannelID,
+		MinWordFloor:             cfg.Scripts.MinWordFloor,
+		PromptVersion:            "v1",
+		EditorPromptVersion:      "v1",
+		QAPromptVersion:          "v1",
+		DefaultSentencesPerImage: 10,
+		DefaultImagesPerScene:    2,
+	}
+
+	// Source registry: one resolver per source type.
+	sourceReg := scripts.NewSourceRegistry(log)
+	sourceReg.Register(scriptpkg.SourceText, scripts.NewTextSourceResolver())
+
+	if clipSourceBuilder != nil {
+		sourceReg.Register(scriptpkg.SourceClips, scripts.NewClipsSourceResolver(clipSourceBuilder, log))
+	}
+
+	// Catalog resolver: reuse searchCatalogAdapter (assets_adapters.go)
+	// to bridge *catalog.Repository → appsearch.LocalCatalogPort.
+	if root.Repos.CatalogRepo != nil && clipSourceBuilder != nil {
+		catAdapter := &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}
+		sourceReg.Register(scriptpkg.SourceCatalog, scripts.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
+	}
+
+	// Search resolver: deferred — requires qdrant.Searcher +
+	// qdrant.TextEmbedder which are not yet accessible from
+	// ProcessBundle. SourceSearch gracefully falls back to
+	// SourceResolutionError at runtime.
+
+	// Pipeline: post-generation phases (entities, metadata, doc).
+	// PostGenFunc is nil — entity extraction + metadata deferred
+	// to future postprocessor implementations.
+	// ScenesService is nil — scene image generation deferred.
+	var genDocsSvc *scripts.DocumentsService
+	if root.Drive.DocClient != nil {
+		genDocsSvc = scripts.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
+	}
+	pipeline := scripts.NewPipeline(log, "unified", nil, genDocsSvc, nil, nil)
+
+	// Use cases: one → many → job handler.
+	oneUC := scripts.NewGenerateOneUseCase(normCfg, sourceReg, engine, pipeline, log)
+	manyUC := scripts.NewGenerateManyUseCase(oneUC, log)
+
+	genJobHandler := scripts.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
+	if root.Jobs.Service != nil {
+		if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
+			log.Warn("wireScriptFlow: failed to register script.generate job handler", zap.Error(err))
+		} else {
+			log.Info("registered script.generate job handler (unified pipeline, PR8)")
 		}
 	}
 
