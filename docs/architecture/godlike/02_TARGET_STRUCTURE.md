@@ -164,3 +164,28 @@ Targets, enforced progressively:
 - no package may be split only to hide a god object.
 
 When a package grows, split by use case or owned concept, not by arbitrary technical suffix.
+
+## Actions to execute
+
+- Generate a current package/import map and mark every package as `cmd`, `app`, `kernel`, `capability`, `platform`, migration, generated, or obsolete.
+- Create the target directory skeleton without moving behavior until ownership and tests are identified.
+- Migrate one capability at a time, beginning with its contracts and composition entry, then transport, jobs, repositories, adapters, and tests.
+- Move reusable technical clients into `internal/platform` while keeping business decisions inside the owning capability.
+- Reduce `cmd` packages to startup/shutdown delegation and reduce `internal/app` to construction, validation, registration, and lifecycle.
+- Move only truly shared stable value types into `internal/kernel`; reject convenience moves that create a new dumping ground.
+- Delete old package roots only after imports, runtime registrations, tests, scripts, and generated manifests show zero references.
+- Add architecture checks for allowed roots, forbidden import directions, file-size budgets, constructor dependency budgets, and one descriptor per capability.
+
+## Final DONE check
+
+The target structure is DONE only when:
+
+- [ ] All production packages fit one declared category and ownership is obvious from their path.
+- [ ] `cmd/*` contains no repository construction, route registration, SQL, domain normalization, or feature orchestration.
+- [ ] `internal/app` contains composition and lifecycle only, with no business rules or provider-specific branching.
+- [ ] `internal/kernel` imports no transport, config, logging, database, Drive, Qdrant, FFmpeg, AI, or process packages.
+- [ ] Every active business feature lives in one vertical capability with one descriptor.
+- [ ] Reusable technical implementations live under `internal/platform` and contain no capability policy.
+- [ ] Old horizontal/legacy package paths have zero production, test, script, and generated references.
+- [ ] Architecture checks enforce package roots, import direction, file size, constructor budgets, and descriptor uniqueness.
+- [ ] `go test ./...` and architecture checks pass from the final target layout.
