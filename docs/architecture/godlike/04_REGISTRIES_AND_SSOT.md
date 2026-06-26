@@ -71,3 +71,30 @@ Generated files are audit artifacts. They are never edited by hand.
 ## Anti-duplication rule
 
 A capability must use the canonical registry instead of adding a second dispatch map. Human documentation explains policy and decisions; it does not manually repeat the live route, job, provider, or service inventory.
+
+## Actions to execute
+
+- Implement one typed registry API with unique-key validation, deterministic ordering, lookup, enumeration, freeze, and post-freeze mutation rejection.
+- Make capability descriptors the only writable input for route, job, provider, resolver, sampler, codec, health, and lifecycle registration.
+- Adapt existing registration code incrementally to the canonical registry without leaving a permanent synchronization layer.
+- Add composition-time validation for duplicate keys, missing handlers, missing owners, invalid dependencies, and conflicting route method/path pairs.
+- Replace provider/source/job/resolver switch dispatch and private global maps with canonical registry lookup.
+- Build `archgen` from the frozen registry and emit capability, route, job, provider, dependency, health, and ownership manifests.
+- Add parity tests comparing generated manifests, mounted Gin routes, registered job handlers, and runtime registry enumeration.
+- Remove manually maintained live inventories and old registration loops after generated parity reaches 100 percent.
+- Add CI checks that reject registration outside approved descriptor/registry files and mutation after freeze.
+
+## Final DONE check
+
+The registry and SSOT model is DONE only when:
+
+- [ ] Every active capability contributes exactly one descriptor to one canonical registry.
+- [ ] Duplicate capability, route, job, provider, resolver, sampler, codec, and health keys fail composition.
+- [ ] Registries freeze before HTTP serving, workers, or background hooks start.
+- [ ] Tests prove lookup works and mutation after freeze fails.
+- [ ] Gin routes, worker job routing, providers, resolvers, samplers, health checks, and lifecycle hooks are derived from registry data.
+- [ ] Generated manifests match the runtime registry and mounted routes exactly.
+- [ ] No independent dispatch switch, private global registration map, or duplicate registration loop remains.
+- [ ] Human-maintained documents no longer duplicate live route, job, provider, service, or ownership inventories.
+- [ ] Architecture CI rejects any new registration outside the canonical path.
+- [ ] `go test ./...`, registry parity tests, generation checks, and architecture checks pass on `main`.
