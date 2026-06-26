@@ -11,7 +11,7 @@ from . import (
     _inference_sem,
     clap_model,
 )
-from .models import AudioFileEmbedRequest, EmbedRequest, IndexAudioRequest
+from .models import AudioFileEmbedRequest, EmbedRequest
 
 router = APIRouter()
 
@@ -51,20 +51,3 @@ async def embed_audio_from_file(req: AudioFileEmbedRequest):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.post("/index_audio")
-async def index_audio(req: IndexAudioRequest):
-    """Generate CLAP embedding from audio file and return it to Go."""
-    if clap_model is None:
-        raise HTTPException(status_code=501, detail="CLAP model not loaded")
-    async with _inference_sem:
-        try:
-            embedding = clap_model.encode(req.audio_path).tolist()
-            return {
-                "embedding": embedding,
-                "dimensions": len(embedding),
-                "model": CLAP_MODEL_NAME,
-                "model_version": CLAP_MODEL_VERSION,
-            }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))

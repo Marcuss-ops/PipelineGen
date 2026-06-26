@@ -152,8 +152,12 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 
 	// QDRANT-003: EnsureSchema step — creates/validates the versioned Qdrant collection
-	// and sets the runtime alias. Only when Qdrant is enabled.
-	if cfg.Qdrant.Enabled && root.Process != nil && root.Process.CollectionManager != nil {
+	// and sets the runtime alias. Required when Qdrant is enabled.
+	// Fails startup if Qdrant is enabled but CollectionManager is nil.
+	if cfg.Qdrant.Enabled {
+		if root.Process == nil || root.Process.CollectionManager == nil {
+			return nil, fmt.Errorf("qdrant is enabled but CollectionManager is nil — QDRANT-003 requires Client + CollectionManager + IndexWriter + Searcher when qdrant.enabled=true")
+		}
 		cm := root.Process.CollectionManager
 		startupPlan = append(startupPlan, StartupStep{
 			Name: "qdrant-collection", Required: true,

@@ -18,18 +18,9 @@ class PhashRequest(BaseModel):
     image_path: str
 
 
-# ── DEPRECATED: serve 410 Gone. Kept for schema discovery only. ─────────
-class IndexVisualRequest(BaseModel):
-    clip_id: str = ""
-    frame_path: str = ""
-
-
-class IndexAudioRequest(BaseModel):
-    clip_id: str = ""
-    audio_path: str = ""
-
-
-# ── QDRANT-001: caller-supplied text, no DB access. ──────────────────────
+# ── QDRANT-003: Go is the canonical writer of SQLite + Qdrant. ──────────
+# Python sidecars are compute-only — embedding endpoints accept data
+# and return vectors without touching any database.
 class IndexTextRequest(BaseModel):
     clip_id: str = ""
 
@@ -72,9 +63,3 @@ class AudioFileEmbedRequest(BaseModel):
 
 class VisualAnalyzeRequest(BaseModel):
     image_path: str
-
-
-class IndexVisualMultiRequest(BaseModel):
-    clip_id: str = ""
-    video_path: str
-    frame_positions: list[float] = [0.2, 0.5, 0.8]  # percentage of duration
