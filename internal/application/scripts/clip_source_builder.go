@@ -199,15 +199,24 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		Style:      tone,
 	}
 
+	// Build drive links map.
+	clipDriveLinks := make(map[string]string, len(clips))
+	for _, clip := range clips {
+		if link := clip.DriveLink(); link != "" {
+			clipDriveLinks[clip.ID] = link
+		}
+	}
+
 	// Build pack with clip data.
 	pack := map[string]any{
-		"clip_ids":   uniqueIDs,
-		"clip_names": clipNames,
-		"title":      title,
-		"language":   language,
-		"tone":       tone,
-		"model":      model,
-		"clip_count": len(clips),
+		"clip_ids":         uniqueIDs,
+		"clip_names":       clipNames,
+		"clip_drive_links": clipDriveLinks,
+		"title":            title,
+		"language":         language,
+		"tone":             tone,
+		"model":            model,
+		"clip_count":       len(clips),
 	}
 
 	if c.log != nil {

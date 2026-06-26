@@ -45,8 +45,8 @@ func (m *mockDocClient) UpdateDoc(ctx context.Context, docID, title, content str
 
 func TestCreateBatchDoc_NilDocClient_ReturnsEmptyStrings(t *testing.T) {
 	svc := &BatchService{
-		docClient: nil,
-		log:       zap.NewNop(),
+		docsSvc: nil,
+		log:     zap.NewNop(),
 	}
 	// PR-A: wire BatchService into the canonical use case so the
 	// test surface reflects the post-PR-A production wiring.
@@ -70,8 +70,8 @@ func TestCreateBatchDoc_DocClientError_ReturnsEmptyStrings(t *testing.T) {
 		},
 	}
 	svc := &BatchService{
-		docClient: mock,
-		log:       zap.NewNop(),
+		docsSvc: NewDocumentsService(mock, zap.NewNop(), ""),
+		log:     zap.NewNop(),
 	}
 
 	parts := []GeneratedPart{
@@ -90,8 +90,8 @@ func TestCreateBatchDoc_Success_ReturnsURLAndID(t *testing.T) {
 		},
 	}
 	svc := &BatchService{
-		docClient: mock,
-		log:       zap.NewNop(),
+		docsSvc: NewDocumentsService(mock, zap.NewNop(), ""),
+		log:     zap.NewNop(),
 	}
 
 	parts := []GeneratedPart{
@@ -113,8 +113,8 @@ func TestCreateBatchDoc_PassesCorrectTitleAndFolder(t *testing.T) {
 		},
 	}
 	svc := &BatchService{
-		docClient: mock,
-		log:       zap.NewNop(),
+		docsSvc: NewDocumentsService(mock, zap.NewNop(), ""),
+		log:     zap.NewNop(),
 	}
 
 	parts := []GeneratedPart{
@@ -135,8 +135,8 @@ func TestCreateBatchDoc_GeneratesHTMLWithChapterHeadings(t *testing.T) {
 		},
 	}
 	svc := &BatchService{
-		docClient: mock,
-		log:       zap.NewNop(),
+		docsSvc: NewDocumentsService(mock, zap.NewNop(), ""),
+		log:     zap.NewNop(),
 	}
 
 	parts := []GeneratedPart{
@@ -160,8 +160,8 @@ func TestCreateBatchDoc_NoChapters_OmitsChapterHeadings(t *testing.T) {
 		},
 	}
 	svc := &BatchService{
-		docClient: mock,
-		log:       zap.NewNop(),
+		docsSvc: NewDocumentsService(mock, zap.NewNop(), ""),
+		log:     zap.NewNop(),
 	}
 
 	parts := []GeneratedPart{
@@ -197,8 +197,8 @@ func TestCreateBatchDoc_LocalisedChapterLabel(t *testing.T) {
 				},
 			}
 			svc := &BatchService{
-				docClient: mock,
-				log:       zap.NewNop(),
+				docsSvc: NewDocumentsService(mock, zap.NewNop(), ""),
+				log:     zap.NewNop(),
 			}
 
 			parts := []GeneratedPart{

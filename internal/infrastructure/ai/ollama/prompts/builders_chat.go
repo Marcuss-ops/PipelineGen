@@ -10,6 +10,12 @@ import (
 // BuildChatMessages builds the message list for the chat API.
 // If req.WebContext is non-empty, it is prepended as RAG context.
 func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
+	maxChars := req.MaxChars
+	if maxChars <= 0 {
+		maxChars = 0 // unlimited
+	}
+	isStructured := maxChars > 0
+
 	durationMinutes := req.DurationMinutes
 	if durationMinutes == 0 && req.Duration > 0 {
 		durationMinutes = req.Duration / 60
@@ -28,15 +34,25 @@ func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
 
 	var userContent string
 	if cfg := Get(); cfg != nil {
-		rendered, err := cfg.RenderScriptGeneration(
-			req.Duration, durationMinutes, sanitizedTitle, req.Tone,
-			sanitizedSource, targetWords,
-		)
-		if err == nil {
-			userContent = rendered
+		if isStructured {
+			rendered, err := cfg.RenderStructuredScriptGeneration(
+				req.Duration, durationMinutes, sanitizedTitle, req.Tone,
+				sanitizedSource, maxChars,
+			)
+			if err == nil {
+				userContent = rendered
+			}
+		} else {
+			rendered, err := cfg.RenderScriptGeneration(
+				req.Duration, durationMinutes, sanitizedTitle, req.Tone,
+				sanitizedSource, targetWords,
+			)
+			if err == nil {
+				userContent = rendered
+			}
 		}
 	}
-	if userContent == "" {
+	if userContent == "" && !isStructured {
 		userContent = fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
 
 VIDEO TITLE: %s
@@ -55,6 +71,34 @@ STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
 7. NO STAGE DIRECTIONS: Do not include descriptions of shots, music, or tone in brackets.
 
 SCRIPT:`, req.Duration, durationMinutes, sanitizedTitle, req.Tone, sanitizedSource, durationMinutes, targetWords)
+	}
+	if userContent == "" && isStructured {
+		// Build per-clip JSON prompt with actual clip IDs
+		clipIDsList := "clip_ids: " + strings.Join(req.ClipIDs, ", ")
+		if req.ClipIDs == nil {
+			clipIDsList = ""
+		}
+		userContent = fmt.Sprintf(`For each clip below, write a VERY CONCISE %d-character description.
+
+Reference input:
+"%s"
+
+Title: %s
+Style: %s
+%s
+
+You MUST respond ONLY with a raw JSON array — no markdown, no code fences, no explanation.
+Use this exact structure:
+[
+  {"clip_id": "CLIP_ID_HERE", "text": "max %d chars of concise description"}
+]
+
+Rules:
+- Each "clip_id" must be one of the clip_ids listed above.
+- Each "text" value must be at most %d characters.
+- Be factual and concise. No intros, no conclusions, no meta-commentary.
+- Return ONLY the JSON array, no other text.`,
+			maxChars, sanitizedSource, sanitizedTitle, req.Tone, clipIDsList, maxChars, maxChars)
 	}
 
 	if req.Prompt != "" && req.Prompt != req.SourceText {

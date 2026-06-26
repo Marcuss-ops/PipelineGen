@@ -54,6 +54,7 @@ type WriteScriptRequest struct {
 	Mode        string
 	SourceText  string
 	MinWords    int
+	MaxChars    int
 	Prompt      string
 	UseMemory   bool
 	SaveToDB    bool
@@ -203,6 +204,7 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 	}
 
 	// Build ollama request.
+	clipIDs := extractClipIDs(req.ClipPack)
 	ollamaReq := ollamatypes.TextGenerationRequest{
 		Language:   language,
 		Tone:       tone,
@@ -211,6 +213,8 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 		SourceText: sourceText,
 		Title:      title,
 		MinWords:   minWords,
+		MaxChars:   req.MaxChars,
+		ClipIDs:    clipIDs,
 	}
 
 	genResult, err := ollamaGen.GenerateScript(ctx, ollamaReq)
@@ -265,4 +269,18 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 		EstDuration: genResult.EstDuration,
 		ScriptID:    scriptID,
 	}, nil
+}
+
+// extractClipIDs pulls the clip_ids slice from the ClipPack map.
+func extractClipIDs(pack interface{}) []string {
+	m, ok := pack.(map[string]any)
+	if !ok || m == nil {
+		return nil
+	}
+	raw, ok := m["clip_ids"]
+	if !ok {
+		return nil
+	}
+	ids, _ := raw.([]string)
+	return ids
 }

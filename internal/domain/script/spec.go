@@ -72,6 +72,10 @@ type GenerationSpec struct {
 	MinQualityScore    *float64 `json:"min_quality_score,omitempty"`
 	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
 
+	// ── Output formatting ────────────────────────────────────────────
+	MaxChars  int    `json:"max_chars,omitempty"`
+	OutputFmt string `json:"output_fmt,omitempty"` // "prose" (default) or "json"
+
 	// ── Prompt versioning ────────────────────────────────────────────
 	PromptVersion       string `json:"prompt_version,omitempty"`
 	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`

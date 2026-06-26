@@ -169,7 +169,13 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	if options == nil {
 		options = make(map[string]any)
 	}
-	if _, ok := options["num_predict"]; !ok {
+	if req.MaxChars > 0 {
+		// Gemma4 needs a generous token budget: the model "thinks" first,
+		// consuming tokens before the actual response. Budget = JSON structure
+		// overhead (256) + per-clip thinking overhead (512) + char limit ÷ 4.
+		perClipOverhead := 512 * max(1, len(req.ClipIDs))
+		options["num_predict"] = 256 + perClipOverhead + (req.MaxChars / 4)
+	} else if _, ok := options["num_predict"]; !ok {
 		options["num_predict"] = types.DefaultNumPredict
 	}
 	if _, ok := options["temperature"]; !ok {
