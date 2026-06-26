@@ -22,18 +22,18 @@ type IndexHealthReport struct {
 	QdrantPoints int `json:"qdrant_points"`
 
 	// Drift detected (negative = missing in Qdrant, positive = orphan).
-	MissingInQdrant     int `json:"missing_in_qdrant"`
-	OrphanInQdrant      int `json:"orphan_in_qdrant"`
-	StaleIndexVersion   int `json:"stale_index_version"`
+	MissingInQdrant   int `json:"missing_in_qdrant"`
+	OrphanInQdrant    int `json:"orphan_in_qdrant"`
+	StaleIndexVersion int `json:"stale_index_version"`
 
 	// Outbox pipeline health.
 	PendingOutbox int `json:"pending_outbox"`
 	DeadLetter    int `json:"dead_letter"`
 
 	// Operational metadata.
-	IndexVersion  string   `json:"index_version"`
+	IndexVersion    string   `json:"index_version"`
 	DegradedSources []string `json:"degraded_sources,omitempty"`
-	CheckedAt     string   `json:"checked_at"`
+	CheckedAt       string   `json:"checked_at"`
 }
 
 // IndexHealthPort is the narrow interface for index-health checks.

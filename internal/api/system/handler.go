@@ -30,14 +30,14 @@ import (
 // pre-resolved strings, not method receivers) so the handler is a
 // pure data consumer and easy to test.
 type DoctorConfig struct {
-	DataDir                  string
-	AssetsPath               string
-	ImagesPath               string
-	TempPath                 string
-	AnimationsPath           string
-	YoutubeClipsPath         string
-	PythonScriptsDir         string
-	GoogleAccountingEnabled  bool
+	DataDir                   string
+	AssetsPath                string
+	ImagesPath                string
+	TempPath                  string
+	AnimationsPath            string
+	YoutubeClipsPath          string
+	PythonScriptsDir          string
+	GoogleAccountingEnabled   bool
 	GoogleAccountingServerURL string
 }
 

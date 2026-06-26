@@ -20,9 +20,20 @@ import (
 // LifecycleManager is the minimal lifecycle contract the server needs.
 // The composition root (internal/app) implements this to manage background
 // services (job runner, dispatchers, channel monitors, etc.).
+//
+// QDRANT-005 (June 2026) closure: the interface now exposes AddProbe so
+// the readiness barrier can be EXTENDED at runtime by callers that
+// wire dependencies after the lifecycle is constructed (e.g. the
+// Qdrant probe in cmd/server/main.go: now done via AddProbe instead of
+// silently failing through a type-assertion interface{} downsizing).
+// Implementations MUST accept AddProbe calls BEFORE Start runs.
 type LifecycleManager interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
+	// AddProbe registers an additional readiness probe. name is used
+	// for logging only; duplicate-name semantics are implementation
+	// defined (current impl: append, no dedup).
+	AddProbe(name string, probe func(ctx context.Context) error)
 }
 
 // Server represents the HTTP server.
@@ -264,6 +275,20 @@ func (s *Server) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 // holds the assets module after WireRegistry runs.
 func (s *Server) SetInternalMediaHandler(h MediaInternalRouter) {
 	s.appRouter.SetInternalMediaHandler(h)
+}
+
+// SetOutboxHandler wires the QDRANT-002 outbox monitoring handler onto
+// the WorkerAuth-protected /internal/v1/outbox/* group.
+// Delegates to Router.SetOutboxHandler.
+func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
+	s.appRouter.SetOutboxHandler(h)
+}
+
+// SetMediasearchHandler wires the QDRANT-004 mediasearch handler onto
+// the WorkerAuth-protected /internal/v1/media/search route.
+// Delegates to Router.SetMediasearchHandler.
+func (s *Server) SetMediasearchHandler(h InternalMediaSearchRouter) {
+	s.appRouter.SetMediasearchHandler(h)
 }
 
 // GetRouter returns the gin router (for testing)

@@ -108,8 +108,8 @@ type ProcessBundle struct {
 	ClipIndexerService *clipindexer.Service
 	VLMClient          *vlm.Client
 	// QDRANT-003 (June 2026): canonical Qdrant adapters.
-	CollectionManager  *qdrant.CollectionManager
-	QdrantDeleter      qdrant.QdrantDeleter
+	CollectionManager *qdrant.CollectionManager
+	QdrantDeleter     qdrant.QdrantDeleter
 	// QDRANT-004 (June 2026): search.VectorStorePort for the mediasearch API.
 	// Populated by BuildProcessBundle when Qdrant is enabled.
 	// Wave 15 (June 2026): typed port per AGENTS.md Pattern 0 — replaces
@@ -119,6 +119,14 @@ type ProcessBundle struct {
 	// QDRANT-005 Fase 1 (June 2026): direct *qdrant.Client for diagnostics
 	// (CountPoints). Populated by BuildProcessBundle when Qdrant is enabled.
 	QdrantClient *qdrant.Client
+	// QDRANT-005 Fase 2 (June 2026): optional QdrantHealthProbe interface{}
+	// that satisfies the lifecycle readiness probe contract
+	// (`Probe(context.Context) error`). The concrete runtime binding is
+	// constructed by BuildProcessBundle from the same *qdrant.Client
+	// when Qdrant is enabled; exposed as `any` here so the wire step in
+	// wire_services.go can type-assert without forcing every composition
+	// path to import qdrant (see PR for layering).
+	QdrantHealthProbe any
 }
 
 // AIBundle owns script generation, engine, and memory.

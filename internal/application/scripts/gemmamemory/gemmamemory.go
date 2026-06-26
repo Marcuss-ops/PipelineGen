@@ -83,8 +83,8 @@ type MemoryGateRequest struct {
 
 // GateResult is the result of a memory gate check.
 type GateResult struct {
-	Hit      bool   `json:"hit"`
-	Output   string `json:"output"`
+	Hit       bool   `json:"hit"`
+	Output    string `json:"output"`
 	WordCount int    `json:"word_count"`
 	Model     string `json:"model"`
 }

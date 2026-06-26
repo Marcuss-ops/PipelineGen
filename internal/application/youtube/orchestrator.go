@@ -15,8 +15,8 @@ import (
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/jobs"
-	ytsearch "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/search"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	ytsearch "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/search"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"

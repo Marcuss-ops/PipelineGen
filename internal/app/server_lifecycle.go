@@ -35,12 +35,20 @@ var _ module.LifecycleManager = (*serverLifecycle)(nil)
 // scanners, monitors, sweepers, and the job runner are listed as
 // StartupStep entries. Prerequisite services (Drive, Qdrant, outbox)
 // are also included as required steps.
+//
+// QDRANT-005 (June 2026) closure: probes were promoted from three
+// fixed fields (db/vector/drive) to a unified slice. NewServerLifecycle-
+// WithProbes still wires the canonical trio via AddProbe(name=...) — the
+// constructor's signature is unchanged so cmd/server's existing args
+// keep working. cmd/server/main.go additionally plugs the Qdrant probe
+// via AddProbe(name="qdrant", fn=...). Previously this silently type-
+// asserted to a non-existent interface and never ran in prod.
 type serverLifecycle struct {
-	// Capability probes for the readiness barrier.
-	// Each returns nil on success; nil probes are skipped.
-	dbProbe     func(ctx context.Context) error
-	vectorProbe func(ctx context.Context) error
-	driveProbe  func(ctx context.Context) error
+	// probes is the unified readiness-barrier probe list, consulted in
+	// declaration order. Probes are registered via AddProbe (or
+	// automatically by NewServerLifecycleWithProbes for the canonical
+	// DB/Vector/Drive trio).
+	probes []*probeEntry
 
 	// startupPlan is the ordered list of services to start.
 	// Required steps that fail abort the entire Start sequence.
@@ -59,6 +67,14 @@ type serverLifecycle struct {
 
 	// log is used for reporting optional step failures.
 	log *zap.Logger
+}
+
+// probeEntry pairs a human-readable probe name with the probe fn.
+// name appears in barrier-failure logs so operators know which
+// dependency failed the readiness check.
+type probeEntry struct {
+	name string
+	fn   func(ctx context.Context) error
 }
 
 // probeTimeout caps each per-probe wall-clock so a slow dependency cannot
@@ -93,26 +109,19 @@ func (l *serverLifecycle) Start(ctx context.Context) error {
 
 	// Readiness barrier: pkg/concurrent.Group runs the probes in
 	// parallel under a derived context. First error wins.
+	// QDRANT-005 (June 2026): unified AddProbe-driven probe list;
+	// the three fixed fields were collapsed into this slice.
 	g, gctx := concurrent.WithContext(ctx)
-	if l.dbProbe != nil {
-		g.Go("lifecycle-db-ping", func() error {
+	for _, p := range l.probes {
+		if p == nil || p.fn == nil {
+			continue
+		}
+		probeFn := p.fn
+		probeName := "lifecycle-" + p.name + "-ping"
+		g.Go(probeName, func() error {
 			pCtx, cancel := context.WithTimeout(gctx, probeTimeout)
 			defer cancel()
-			return l.dbProbe(pCtx)
-		})
-	}
-	if l.vectorProbe != nil {
-		g.Go("lifecycle-vector-ping", func() error {
-			pCtx, cancel := context.WithTimeout(gctx, probeTimeout)
-			defer cancel()
-			return l.vectorProbe(pCtx)
-		})
-	}
-	if l.driveProbe != nil {
-		g.Go("lifecycle-drive-ping", func() error {
-			pCtx, cancel := context.WithTimeout(gctx, probeTimeout)
-			defer cancel()
-			return l.driveProbe(pCtx)
+			return probeFn(pCtx)
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -186,11 +195,32 @@ func SafeCall(name string, fn func()) (err error) {
 	return nil
 }
 
+// AddProbe registers an additional readiness probe that runs during the
+// parallel barrier in Start. It is safe to call AFTER construction; the
+// runtime callers (cmd/server/main.go: Qdrant probe, future probes for
+// Embedding/APIs/etc.) use this to extend the readiness contract without
+// touching the canonical constructor.
+//
+// AddProbe must be called BEFORE Start. Calling AddProbe after Start has
+// begun has no effect on the current barrier — the probe list is read
+// once at the top of Start.
+func (l *serverLifecycle) AddProbe(name string, probe func(ctx context.Context) error) {
+	if l == nil || probe == nil {
+		return
+	}
+	l.probes = append(l.probes, &probeEntry{name: name, fn: probe})
+}
+
 // NewServerLifecycleWithProbes is the canonical constructor that wires
 // the readiness-barrier probes and the startup plan. Probes may be nil
 // (capability opted out at composition time). The startup plan may be
 // empty (background jobs disabled). Returns nil if every argument is nil
 // so callers can default to a no-op lifecycle.
+//
+// QDRANT-005 (June 2026): the three constructor probes are now
+// registered through AddProbe so the constructor's signature stays
+// unchanged for callers while the lifecycle exposes a generic extension
+// surface for runtime-injected probes (e.g. Qdrant from cmd/server).
 func NewServerLifecycleWithProbes(
 	startupPlan []StartupStep,
 	cleanup func(),
@@ -203,12 +233,19 @@ func NewServerLifecycleWithProbes(
 		dbProbe == nil && vectorProbe == nil && driveProbe == nil {
 		return nil
 	}
-	return &serverLifecycle{
-		dbProbe:     dbProbe,
-		vectorProbe: vectorProbe,
-		driveProbe:  driveProbe,
+	sl := &serverLifecycle{
 		startupPlan: startupPlan,
 		cleanup:     cleanup,
 		log:         log,
 	}
+	if dbProbe != nil {
+		sl.AddProbe("db", dbProbe)
+	}
+	if vectorProbe != nil {
+		sl.AddProbe("vector", vectorProbe)
+	}
+	if driveProbe != nil {
+		sl.AddProbe("drive", driveProbe)
+	}
+	return sl
 }

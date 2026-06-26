@@ -5,21 +5,21 @@ package config
 // stage uses the same codec, resolution, and preset so that ffmpeg can perform
 // fast stream-copy concatenation without re-encoding.
 type VideoConfig struct {
-	Width             int      `yaml:"width" default:"1920"`
-	Height            int      `yaml:"height" default:"1080"`
-	FPS               int      `yaml:"fps" default:"30"`
-	Codec             string   `yaml:"codec" default:"h264_nvenc"`
-	Preset            string   `yaml:"preset" default:"p1"`
-	CRF               int      `yaml:"crf" default:"23"`
-	Duration          int      `yaml:"duration" default:"7"`
-	KeyframeInterval  int      `yaml:"keyframe_interval" default:"60"`
-	AudioCodec        string   `yaml:"audio_codec" default:"aac"`
-	AudioBitrate      string   `yaml:"audio_bitrate" default:"128k"`
-	ClipDuration      int      `yaml:"clip_duration" default:"5"`
-	ChunkDuration     int      `yaml:"chunk_duration" default:"25"`
-	MaxClipsPerSource int      `yaml:"max_clips_per_source" default:"30"`
-	SearchCount       int      `yaml:"search_count" default:"25"`
-	OverlayOpacity    float64  `yaml:"overlay_opacity" default:"0.25"`
+	Width              int      `yaml:"width" default:"1920"`
+	Height             int      `yaml:"height" default:"1080"`
+	FPS                int      `yaml:"fps" default:"30"`
+	Codec              string   `yaml:"codec" default:"h264_nvenc"`
+	Preset             string   `yaml:"preset" default:"p1"`
+	CRF                int      `yaml:"crf" default:"23"`
+	Duration           int      `yaml:"duration" default:"7"`
+	KeyframeInterval   int      `yaml:"keyframe_interval" default:"60"`
+	AudioCodec         string   `yaml:"audio_codec" default:"aac"`
+	AudioBitrate       string   `yaml:"audio_bitrate" default:"128k"`
+	ClipDuration       int      `yaml:"clip_duration" default:"5"`
+	ChunkDuration      int      `yaml:"chunk_duration" default:"25"`
+	MaxClipsPerSource  int      `yaml:"max_clips_per_source" default:"30"`
+	SearchCount        int      `yaml:"search_count" default:"25"`
+	OverlayOpacity     float64  `yaml:"overlay_opacity" default:"0.25"`
 	EffectInterval     int      `yaml:"effect_interval" default:"4"`
 	TransitionInterval int      `yaml:"transition_interval" default:"4"`
 	TransitionPresets  []string `yaml:"transition_presets"`

@@ -16,6 +16,7 @@ import (
 // All Qdrant communication flows through this client.
 type Client struct {
 	baseURL    string
+	apiKey     string // API key sent as X-Api-Key on every request (QDRANT-005 health probe relies on this)
 	httpClient *http.Client
 	log        *zap.Logger
 }
@@ -31,6 +32,7 @@ func NewClient(cfg *Config, log *zap.Logger) *Client {
 	}
 	return &Client{
 		baseURL: cfg.BaseURL,
+		apiKey:  cfg.APIKey,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -40,6 +42,17 @@ func NewClient(cfg *Config, log *zap.Logger) *Client {
 
 // BaseURL returns the configured Qdrant base URL.
 func (c *Client) BaseURL() string { return c.baseURL }
+
+// APIKey returns the configured Qdrant API key (empty string if
+// none). Exposed so the HealthProbe (QDRANT-005) and any future
+// authenticated diagnostic endpoint can send X-Api-Key without
+// round-tripping through private state.
+func (c *Client) APIKey() string {
+	if c == nil {
+		return ""
+	}
+	return c.apiKey
+}
 
 // ── Collection API ───────────────────────────────────────────────────
 
@@ -330,7 +343,17 @@ func (c *Client) SearchPoints(ctx context.Context, collection string, req Search
 // SparseQueryVector and a non-empty SparseVectorName. Callers that cannot
 // provide a sparse vector must use SearchPoints (ANN) instead — dense-only
 // retrieval must never be labelled as "hybrid".
+//
+// QDRANT-006 (June 2026): the ErrSparseRequired short-circuit kicks in
+// when `req.SparseVectorName != ""` but `req.SparseQueryVector == nil`.
+// This is a defensive dual of the imperative checks below — if the
+// imperative paths are ever refactored away, the typed-error short-circuit
+// remains as a safety net so dense-only can never be silently labelled as
+// hybrid again.
 func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req HybridSearchRequest) ([]SearchResult, error) {
+	if req.SparseVectorName != "" && req.SparseQueryVector == nil {
+		return nil, &ErrSparseRequired{Channel: req.SparseVectorName}
+	}
 	if req.DenseVector == nil {
 		return nil, fmt.Errorf("hybrid search: dense vector must not be nil")
 	}
@@ -383,8 +406,16 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 	if req.MinScore > 0 {
 		body["score_threshold"] = req.MinScore
 	}
-	if req.Filter != nil {
-		body["filter"] = req.Filter
+
+	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("hybrid query %q: %w", collection, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(resp)
 	}
 
 	return c.executeQuery(ctx, collection, body)

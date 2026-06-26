@@ -42,21 +42,21 @@ type BatchService struct {
 
 // GenerateBatchRequest is the input for a batch generation request.
 type GenerateBatchRequest struct {
-	Async               bool                `json:"async"`
-	DocTitle            string              `json:"doc_title"`
-	DriveFolderID       string              `json:"drive_folder_id"`
-	Language            string              `json:"language"`
-	Tone                string              `json:"tone"`
-	Duration            int                 `json:"duration"`
-	Model               string              `json:"model"`
-	PromptVersion       string              `json:"prompt_version"`
-	EditorPromptVersion string              `json:"editor_prompt_version"`
-	QAPromptVersion     string              `json:"qa_prompt_version"`
-	ChannelID           string              `json:"channel_id"`
-	RequestTimeout      int                 `json:"request_timeout"`
-	SaveToDB            bool                `json:"save_to_db"`
-	NoChapters          bool                `json:"no_chapters"`
-	Items               []GenerateBatchItem `json:"items"`
+	Async               bool                 `json:"async"`
+	DocTitle            string               `json:"doc_title"`
+	DriveFolderID       string               `json:"drive_folder_id"`
+	Language            string               `json:"language"`
+	Tone                string               `json:"tone"`
+	Duration            int                  `json:"duration"`
+	Model               string               `json:"model"`
+	PromptVersion       string               `json:"prompt_version"`
+	EditorPromptVersion string               `json:"editor_prompt_version"`
+	QAPromptVersion     string               `json:"qa_prompt_version"`
+	ChannelID           string               `json:"channel_id"`
+	RequestTimeout      int                  `json:"request_timeout"`
+	SaveToDB            bool                 `json:"save_to_db"`
+	NoChapters          bool                 `json:"no_chapters"`
+	Items               []GenerateBatchItem  `json:"items"`
 	BatchTopics         []GenerateBatchTopic `json:"batch_topics"`
 }
 

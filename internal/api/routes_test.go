@@ -1,10 +1,15 @@
 package api
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+
+	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
@@ -158,3 +163,137 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 		group.GET("/search", func(c *gin.Context) {})
 	}
 }
+
+// ── QDRANT-002 + QDRANT-004 anti-regression test ────────────────────────
+// TestRoutes_NoApiInternalV1Prefix locks in the routing split between
+// the public /api registry and the WorkerAuth-protected /internal/v1
+// internalGroup.
+//
+// Regression target: the outbox endpoint ("/internal/v1/outbox/*")
+// and the mediasearch endpoint ("/internal/v1/media/search") MUST
+// register on the internalGroup, NOT on the /api registry. The pre-fix
+// code used module.NewRouteModule(..., "/internal/v1/outbox", ...)
+// which mounted those handlers under /api/internal/v1/outbox/* since
+// the registry was attached to engine.Group("/api"). The current
+// canonical path requires that:
+//
+//   1. NO route appears under any /api/internal/v1/* prefix.
+//   2. The outbox handlers DO register at /internal/v1/outbox/{status,events}.
+//   3. The mediasearch handler DOES register at /internal/v1/media/search.
+//
+// If you change the wiring in routes.go (Setup), cmd/server/main.go,
+// or registry.go, this test will fail and force you to update the
+// expected surface in this test file rather than silently re-introduce
+// the regression.
+//
+// The test deliberately uses minimal stubs (no DB, no config.yaml,
+// no token resolution) because the assertion is structural, not
+// behavioral.
+func TestRoutes_NoApiInternalV1Prefix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// Minimal typed-port adapters so Router.Setup() can compose.
+	// Auth is disabled so the WorkerAuth middleware lets /internal/v1
+	// requests through (the test never issues a request, but Setup()
+	// still constructs the middleware chain).
+	authAdapter := &pkgmw.TokenSecurityAdapter{
+		Enable: false,
+	}
+	rateAdapter := testRateLimitAdapter{}
+	featuresAdapter := testFeatureFlagsAdapter{}
+
+	router := NewRouter(&RouterConfig{
+		Auth:          authAdapter,
+		Rate:          rateAdapter,
+		Features:      featuresAdapter,
+		Log:           zap.NewNop(),
+		ServerGinMode: gin.TestMode,
+	})
+	// Wire the handlers the closure registers onto the WorkerAuth-
+	// protected internalGroup (per QDRANT-002 + QDRANT-004 split).
+	router.SetInternalMediaHandler(fakeInternalMediaHandlerStub{}) // already wired in router_test.go
+	router.SetOutboxHandler(&fakeOutboxHandlerStub{})
+	router.SetMediasearchHandler(&fakeMediaSearchHandlerStub{})
+
+	engine := router.Setup()
+
+	// (1) Hard recheck: NO /api/internal/v1/* routes are allowed.
+	for _, route := range engine.Routes() {
+		if strings.HasPrefix(route.Path, "/api/internal/") {
+			t.Errorf(
+				"QDRANT-002/004 routing regression: route %s %q lives under /api/internal/* — "+
+					"server-to-server routes MUST be mounted on the /internal/v1 WorkerAuth-protected group, not the /api registry",
+				route.Method, route.Path,
+			)
+		}
+	}
+
+	// (2) Positive recheck: the canonical outbox + mediasearch paths
+	// are reachable. Use a presence map so missing routes are reported
+	// with the canonical expectation rather than silently passing.
+	have := make(map[string]bool, len(engine.Routes()))
+	for _, route := range engine.Routes() {
+		have[route.Method+" "+route.Path] = true
+	}
+	want := []string{
+		"GET /internal/v1/outbox/status",
+		"GET /internal/v1/outbox/events",
+		"POST /internal/v1/media/search",
+	}
+	for _, w := range want {
+		if !have[w] {
+			t.Errorf("expected route %q to be registered under /internal/v1/* but it is missing", w)
+		}
+	}
+}
+
+// fakeInternalMediaHandlerStub is a minimal sync-drive-folder stub for
+// the antiregression test. Mirrors the production fake used elsewhere
+// in the package. The handler returns no routes — the assertion is on
+// the OUTBOX + MEDIASEARCH surface, not on the internal-media surface.
+type fakeInternalMediaHandlerStub struct{}
+
+func (fakeInternalMediaHandlerStub) RegisterInternalMediaRoutes(_ *gin.RouterGroup) {}
+
+// fakeOutboxHandlerStub mounts GET /status and /events on the supplied
+// group — mirrors production internal/api/outbox/handler.go::Handler.
+type fakeOutboxHandlerStub struct{}
+
+func (fakeOutboxHandlerStub) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/status", func(c *gin.Context) {})
+	rg.GET("/events", func(c *gin.Context) {})
+}
+
+// fakeMediaSearchHandlerStub mounts POST /search on the supplied group
+// — mirrors production internal/api/mediasearch/handler.go.
+type fakeMediaSearchHandlerStub struct{}
+
+func (fakeMediaSearchHandlerStub) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.POST("/search", func(c *gin.Context) {})
+}
+
+// testRateLimitAdapter is a no-op RateLimitPort for the antiregression
+// test. Construction of Router.Setup() requires a non-nil Rate port;
+// the value here disables the limiter so the test does not touch
+// background goroutines.
+type testRateLimitAdapter struct{}
+
+func (testRateLimitAdapter) RateLimitEnabled() bool { return false }
+func (testRateLimitAdapter) RateLimitRequests() int { return 0 }
+
+// testFeatureFlagsAdapter is a no-op FeatureFlagsPort for the
+// antiregression test. Mirrors serverFeatureFlagsAdapter without
+// requiring a *config.Config pointer.
+type testFeatureFlagsAdapter struct{}
+
+func (testFeatureFlagsAdapter) ArtlistEnabled() bool     { return false }
+func (testFeatureFlagsAdapter) ScriptDocsEnabled() bool  { return false }
+func (testFeatureFlagsAdapter) ScriptClipsEnabled() bool { return false }
+
+// Compile-time assertion: test adapters satisfy the typed-port interfaces
+// expected by internal/api::RouterConfig. Drift is caught at compile, not
+// at runtime when Router.Setup() is invoked.
+var (
+	_ mwidem.RateLimitPort    = testRateLimitAdapter{}
+	_ mwidem.FeatureFlagsPort = testFeatureFlagsAdapter{}
+)

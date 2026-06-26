@@ -62,9 +62,9 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		KeyframeInterval: videoCfg.KeyframeInterval,
 		KeepAudio:        !noAudio,
 
-		NoTransitions:    noTransitions,
-		TransitionEvery:  videoCfg.TransitionInterval,
-		ClipDurationSec:  videoCfg.ClipDuration,
+		NoTransitions:   noTransitions,
+		TransitionEvery: videoCfg.TransitionInterval,
+		ClipDurationSec: videoCfg.ClipDuration,
 
 		NoEffects:       noEffects,
 		EffectsDir:      s.pcfg.EffectsDir,

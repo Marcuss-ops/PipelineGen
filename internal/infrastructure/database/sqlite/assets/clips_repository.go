@@ -391,3 +391,19 @@ func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink s
 		now, driveLink, driveLink)
 	return err
 }
+
+// Wave 15 (June 2026) split-file ownership reminder:
+//   - count helpers (CountAll, CountIndexed, CountIndexable,
+//     CountPendingOutbox, CountDeadLetter, ListIndexedIDs) and
+//     List live in clips_repository_queries.go
+//   - folder helpers (UpsertFolder, GetFolder, GetFolderByVideoID,
+//     GetFolderByPath, ListFolders, DriveFolderAttrs,
+//     LookupDriveFolderIDBySourcePath, UpsertDriveFolder) live in
+//     clips_repository_folders.go
+//   - low-level helpers (StreamAssetIDs, inClause) and the
+//     AdvancedSearch type aliases live in clips_repository_queries.go
+//
+// This file's QDRANT-001 contribution is documented in the comments
+// above (DeleteClipByDriveLink, Restore, SetIndexState,
+// SetIndexStateTx); it does NOT re-declare any methods moved by the
+// Wave 15 split.

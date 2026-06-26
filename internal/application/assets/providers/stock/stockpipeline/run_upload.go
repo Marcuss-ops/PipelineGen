@@ -11,9 +11,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

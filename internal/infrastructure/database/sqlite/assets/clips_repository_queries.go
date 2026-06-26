@@ -111,6 +111,16 @@ func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*ass
 		}
 		args = append(args, isFolderInt)
 	}
+	// QDRANT-001 (June 2026) — workspace_id SQL isolation. The
+	// teardown mirrors the documented Filter contract: empty
+	// WorkspaceID = no filter (legacy / internal admin tooling),
+	// IsAdmin=true = bypass, otherwise enforce `workspace_id = ?`.
+	// The Go-level guard keeps the query plan simple and lets us log
+	// which branch was taken without an `OR` in the WHERE clause.
+	if filter.WorkspaceID != "" && !filter.IsAdmin {
+		conds = append(conds, "workspace_id = ?")
+		args = append(args, filter.WorkspaceID)
+	}
 
 	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE " +
 		strings.Join(conds, " AND ") + " ORDER BY created_at DESC"

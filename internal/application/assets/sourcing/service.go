@@ -575,4 +575,3 @@ func (s *Service) LocalToDrive(ctx context.Context, cmd LocalToDriveCommand) (*L
 		LocalFound: len(files), Groups: groupNames,
 	}, nil
 }
-

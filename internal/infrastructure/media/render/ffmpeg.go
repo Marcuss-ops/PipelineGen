@@ -364,7 +364,7 @@ var appliedListPool = &appliedListPoolImpl{}
 
 type appliedListPoolImpl struct{}
 
-func (p *appliedListPoolImpl) Get() any  { return p.get() }
+func (p *appliedListPoolImpl) Get() any { return p.get() }
 func (p *appliedListPoolImpl) Put(v any) {
 	if s, ok := v.(*[]string); ok {
 		*p.get() = (*s)[:0]

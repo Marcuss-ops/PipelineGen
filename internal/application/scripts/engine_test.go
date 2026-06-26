@@ -20,8 +20,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // ── Fakes ──────────────────────────────────────────────────────────────────
@@ -77,12 +77,18 @@ func (f *fakeScriptRepo) SaveScript(_ context.Context, rec *ScriptRecord, _ []Sc
 func (f *fakeScriptRepo) UpdateScriptFinalContent(context.Context, int64, string, int, string, string, string, string, int) error {
 	return nil
 }
-func (f *fakeScriptRepo) SaveGenerationLog(_ context.Context, _ ScriptGenerationLog) error { return nil }
+func (f *fakeScriptRepo) SaveGenerationLog(_ context.Context, _ ScriptGenerationLog) error {
+	return nil
+}
 func (f *fakeScriptRepo) SaveOutlineSections(_ context.Context, _ int64, _ []ScriptOutlineSectionRecord) error {
 	return nil
 }
-func (f *fakeScriptRepo) SaveResearchSources(_ context.Context, _ int64, _ []ScriptResearchSource) error { return nil }
-func (f *fakeScriptRepo) NextVersionForTopic(_ context.Context, _, _, _ string) (int, error)  { return 1, nil }
+func (f *fakeScriptRepo) SaveResearchSources(_ context.Context, _ int64, _ []ScriptResearchSource) error {
+	return nil
+}
+func (f *fakeScriptRepo) NextVersionForTopic(_ context.Context, _, _, _ string) (int, error) {
+	return 1, nil
+}
 func (f *fakeScriptRepo) GetSectionByID(_ context.Context, _ int64) (*ScriptSectionRecord, error) {
 	return nil, nil
 }
@@ -191,11 +197,11 @@ func TestEngineWriteScript_CallsOllamaWithExpectedFields(t *testing.T) {
 	e := buildTestEngine(gen, nil, nil)
 
 	_, _ = e.WriteScript(context.Background(), WriteScriptRequest{
-		Topic:     "Space Exploration",
-		Language:  "fr",
-		Tone:      "documentary",
-		Model:     "mistral",
-		MinWords:  300,
+		Topic:      "Space Exploration",
+		Language:   "fr",
+		Tone:       "documentary",
+		Model:      "mistral",
+		MinWords:   300,
 		SourceText: "Mars mission summary.",
 	})
 

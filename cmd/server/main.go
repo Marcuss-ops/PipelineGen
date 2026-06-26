@@ -97,6 +97,28 @@ func main() {
 	// manager (background job runner + cleanup), and the health-service
 	// (DB+Drive+Qdrant+Jobs checks wired from the composition root).
 	server := api.NewServerWithHealth(cfg, deps.Registry, deps.WorkerHandler, deps.InternalMediaHandler, deps.Lifecycle, deps.HealthService, deps.ReadyChecker)
+	// QDRANT-002 + QDRANT-004 separation-of-routes fix (June 2026):
+	// the outbox monitor and the mediasearch endpoint live on the
+	// /internal/v1 WorkerAuth-protected internalGroup — NOT on /api.
+	// Without these two wires the underlying Server fields default to
+	// nil and the routes silently 404 (which the previous WRG_DESIGN
+	// accepted as "acceptable for non-prod"). In production these
+	// calls are unconditional.
+	if deps.OutboxHandler != nil {
+		server.SetOutboxHandler(deps.OutboxHandler)
+	}
+	if deps.MediasearchHandler != nil {
+		server.SetMediasearchHandler(deps.MediasearchHandler)
+	}
+	// QDRANT-005: plug the Qdrant probe into the lifecycle readiness
+	// barrier so /ready actually checks Qdrant reachability. nil-safe.
+	// QDRANT-005 v2: api.LifecycleManager now exposes AddProbe directly,
+	// so the previous runtime type-assertion is unnecessary — a direct
+	// call works for every production LifecycleManager (minimalLifecycle
+	// wires a no-op AddProbe so WireMinimal callers stay type-safe).
+	if deps.QdrantProbe != nil && deps.Lifecycle != nil {
+		deps.Lifecycle.AddProbe("qdrant", deps.QdrantProbe.Probe)
+	}
 	if err := server.Start(); err != nil {
 		log.Fatal("server failed", zap.Error(err))
 	}

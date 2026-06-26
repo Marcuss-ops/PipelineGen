@@ -39,13 +39,30 @@ import (
 // the production binding is *internal/api/assets/storage.Handler
 // (RegisterInternalMediaRoutes method). Keeping it behind an
 // interface prevents this router from importing api/assets/storage.
+//
+// QDRANT-002 (June 2026) closure: outboxHandler is wired on the SAME
+// internalGroup at /internal/v1/outbox/* (outbox monitoring endpoints
+// are server-to-server, not user-facing).
+//
+// QDRANT-004 (June 2026) closure: mediasearchHandler is wired on the
+// SAME internalGroup at /internal/v1/media/search (mediasearch is
+// server-to-server). Previously it was registered through the regular
+// Registry with a path rooted at /api, which collided with the
+// WorkerAuth boundary. Now both routes share the WorkerAuth guard.
 type Router struct {
 	cfg                  *RouterConfig
 	rateLimitMiddleware  *middleware.RateLimitMiddleware
 	registry             *Registry
 	workerHandler        interface{ RegisterRoutes(*gin.RouterGroup) }
 	internalMediaHandler MediaInternalRouter
-	mediasearchHandler   interface{ RegisterRoutes(*gin.RouterGroup) } // QDRANT-004: /internal/v1/media/search with WorkerAuth
+	// QDRANT-002 + QDRANT-004 closure (June 2026):
+	//   - outboxHandler: /internal/v1/outbox/{status,events} (WorkerAuth).
+	//   - mediasearchHandler: /internal/v1/media/search (WorkerAuth).
+	// Both are server-to-server surfaces mounted on the SAME internalGroup
+	// (see Setup below) — anti-regression test internal/api/routes_test.go
+	// enforces the split. Typed ports isolate each handler's contract.
+	outboxHandler      InternalOutboxRouter
+	mediasearchHandler InternalMediaSearchRouter
 	ctx                  context.Context
 	healthSvc            interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
 	readyChecker         *systemhealth.ReadyChecker
@@ -55,6 +72,20 @@ type Router struct {
 // routes. Production bind: *internal/api/assets/storage.Handler.
 type MediaInternalRouter interface {
 	RegisterInternalMediaRoutes(*gin.RouterGroup)
+}
+
+// InternalOutboxRouter is the narrow port for /internal/v1/outbox/*
+// monitoring routes (QDRANT-002). Production bind:
+// *internal/api/outbox.Handler.
+type InternalOutboxRouter interface {
+	RegisterRoutes(*gin.RouterGroup)
+}
+
+// InternalMediaSearchRouter is the narrow port for
+// /internal/v1/media/search (QDRANT-004). Production bind:
+// *internal/api/mediasearch.Handler.
+type InternalMediaSearchRouter interface {
+	RegisterRoutes(*gin.RouterGroup)
 }
 
 // RouterConfig is the typed-port + primitive bundle the api.Router
@@ -109,11 +140,18 @@ func (r *Router) SetInternalMediaHandler(h MediaInternalRouter) {
 	r.internalMediaHandler = h
 }
 
-// SetMediasearchHandler wires the QDRANT-004 mediasearch handler
-// (POST /internal/v1/media/search) into the router. nil-safe — if
-// no handler has been wired, the route simply won't register. The
-// handler mounts on the WorkerAuth-protected internalGroup, NOT on /api.
-func (r *Router) SetMediasearchHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
+// SetOutboxHandler wires the QDRANT-002 server-to-server outbox
+// monitoring endpoints (GET /internal/v1/outbox/status,
+// GET /internal/v1/outbox/events) onto the WorkerAuth-protected
+// internalGroup. nil-safe.
+func (r *Router) SetOutboxHandler(h InternalOutboxRouter) {
+	r.outboxHandler = h
+}
+
+// SetMediasearchHandler wires the QDRANT-004 server-to-server
+// media search endpoint (POST /internal/v1/media/search) onto the
+// WorkerAuth-protected internalGroup. nil-safe.
+func (r *Router) SetMediasearchHandler(h InternalMediaSearchRouter) {
 	r.mediasearchHandler = h
 }
 
@@ -261,15 +299,20 @@ func (r *Router) Setup() *gin.Engine {
 		if r.internalMediaHandler != nil {
 			r.internalMediaHandler.RegisterInternalMediaRoutes(internalGroup)
 		}
-		// QDRANT-004 /internal/v1/media/search — mediasearch with WorkerAuth.
-		// Mounted under /internal/v1/media so the full path is
-		// POST /internal/v1/media/search. nil-tolerant if not wired.
-		//
-		// NOT under /api — WorkerAuth gate prevents /api consumers
-		// from calling the private search surface.
+		// QDRANT-002 /internal/v1/outbox/* surface — server-to-server
+		// outbox monitoring (GET /status, GET /events). Mounted on the
+		// SAME WorkerAuth internalGroup as worker routes; anti-regression
+		// test TestRoutes_NoApiInternalV1Prefix forbids ever moving this
+		// under /api.
+		if r.outboxHandler != nil {
+			outboxGroup := internalGroup.Group("/outbox")
+			r.outboxHandler.RegisterRoutes(outboxGroup)
+		}
+		// QDRANT-004 /internal/v1/media/search — server-to-server
+		// semantic search. Mounted on the SAME WorkerAuth internalGroup.
 		if r.mediasearchHandler != nil {
-			mediaGroup := internalGroup.Group("/media")
-			r.mediasearchHandler.RegisterRoutes(mediaGroup)
+			mediaSearchGroup := internalGroup.Group("/media")
+			r.mediasearchHandler.RegisterRoutes(mediaSearchGroup)
 		}
 	}
 

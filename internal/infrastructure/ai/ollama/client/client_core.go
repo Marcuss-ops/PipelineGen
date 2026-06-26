@@ -172,11 +172,11 @@ func (c *Client) vllmChatRequest(ctx context.Context, model string, messages []t
 		Content string `json:"content"`
 	}
 	type openAIChatPayload struct {
-		Model       string           `json:"model"`
-		Messages    []openAIMessage  `json:"messages"`
-		Temperature float64          `json:"temperature,omitempty"`
-		MaxTokens   int              `json:"max_tokens,omitempty"`
-		Stream      bool             `json:"stream"`
+		Model       string          `json:"model"`
+		Messages    []openAIMessage `json:"messages"`
+		Temperature float64         `json:"temperature,omitempty"`
+		MaxTokens   int             `json:"max_tokens,omitempty"`
+		Stream      bool            `json:"stream"`
 	}
 
 	oaMsgs := make([]openAIMessage, len(messages))
@@ -252,11 +252,11 @@ func (c *Client) nvidiaChatRequest(ctx context.Context, messages []types.Message
 		Content string `json:"content"`
 	}
 	type nvidiaChatPayload struct {
-		Model       string           `json:"model"`
-		Messages    []nvidiaMessage  `json:"messages"`
-		Temperature float64          `json:"temperature,omitempty"`
-		MaxTokens   int              `json:"max_tokens,omitempty"`
-		Stream      bool             `json:"stream"`
+		Model       string          `json:"model"`
+		Messages    []nvidiaMessage `json:"messages"`
+		Temperature float64         `json:"temperature,omitempty"`
+		MaxTokens   int             `json:"max_tokens,omitempty"`
+		Stream      bool            `json:"stream"`
 	}
 
 	nvMsgs := make([]nvidiaMessage, len(messages))

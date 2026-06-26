@@ -85,11 +85,11 @@ type ScriptAssetSuggestion struct {
 
 // ScriptArtlistClipSuggestion pairs an artlist phrase with matching clips.
 type ScriptArtlistClipSuggestion struct {
-	Phrase     string                   `json:"phrase"`
-	Clips      []ScriptAssetSuggestion  `json:"clips"`
-	FolderLink string                   `json:"folder_link"`
-	FolderName string                   `json:"folder_name"`
-	FolderID   string                   `json:"folder_id"`
+	Phrase     string                  `json:"phrase"`
+	Clips      []ScriptAssetSuggestion `json:"clips"`
+	FolderLink string                  `json:"folder_link"`
+	FolderName string                  `json:"folder_name"`
+	FolderID   string                  `json:"folder_id"`
 }
 
 // ScriptPhraseClipSuggestion pairs a key phrase with matching clips.

@@ -105,8 +105,31 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 
 // DeletePoints deletes points from the active collection by asset ID.
 // Implements outbox.QdrantDeleter.
+//
+// QDRANT-001 closure (June 2026): each asset ID is canonicalised via
+// AssetIDToQdrantPointID before being sent to the Qdrant client. The
+// `Client.DeletePoints` is intentionally linear (it does NOT translate
+// the IDs) — that contract is split here so the Client layer stays
+// Qdrant-native and free of asset-domain knowledge. Mirrors the
+// PayloadMapper.AssetToPoint write path so any asset ID passed in
+// produces a 1-to-1 delete against the prefix-namespaced Point ID
+// that the mapper originally wrote.
 func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
+		return nil
+	}
+
+	// Canonicalise ids → Qdrant point IDs. Empty inputs become empty
+	// strings; we pass them through unchanged so the Qdrant API
+	// (which treats an empty point-id as a no-op) keeps its current
+	// semantics in legacy callers that haven't yet trimmed.
+	pointIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if pid := AssetIDToQdrantPointID(id); pid != "" {
+			pointIDs = append(pointIDs, pid)
+		}
+	}
+	if len(pointIDs) == 0 {
 		return nil
 	}
 
@@ -118,12 +141,12 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 		return fmt.Errorf("runtime alias %q has no target", w.schema.RuntimeAlias)
 	}
 
-	if err := w.client.DeletePoints(ctx, collection, ids); err != nil {
+	if err := w.client.DeletePoints(ctx, collection, pointIDs); err != nil {
 		return fmt.Errorf("delete points from %q: %w", collection, err)
 	}
 
 	w.log.Info("deleted points from qdrant",
-		zap.Int("count", len(ids)),
+		zap.Int("count", len(pointIDs)),
 		zap.String("collection", collection))
 	return nil
 }
@@ -192,6 +215,13 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 }
 
 // ValidatePoint checks a point against the schema before upsert.
+//
+// QDRANT-001 closure (June 2026): error messages report the canonical
+// asset ID (without the AssetIDPrefix namespace marker) so operators
+// reading the dashboards see the same identifier they would on SQLite
+// / Drive / Qdrant REST. Internal callers (PayloadMapper, IndexWriter)
+// receive the prefixed form via point.ID and we strip it here at the
+// public validation boundary.
 func ValidatePoint(point *Point, schema *IndexSchema) error {
 	if point == nil {
 		return fmt.Errorf("point is nil")
@@ -199,6 +229,7 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 	if point.ID == "" {
 		return fmt.Errorf("point ID must not be empty")
 	}
+	assetID := PointIDToAssetID(point.ID)
 
 	vectors := point.Vectors
 	if len(vectors) == 0 {
@@ -216,23 +247,23 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 				Channel:  spec.Channel,
 				Expected: spec.Dimensions,
 				Actual:   0,
-				AssetID:  point.ID,
+				AssetID:  assetID,
 			}
 		}
 		if len(vec) == 0 {
-			return &ErrEmptyVector{Channel: spec.Channel, AssetID: point.ID}
+			return &ErrEmptyVector{Channel: spec.Channel, AssetID: assetID}
 		}
 		if len(vec) != spec.Dimensions {
 			return &ErrVectorDimensionMismatch{
 				Channel:  spec.Channel,
 				Expected: spec.Dimensions,
 				Actual:   len(vec),
-				AssetID:  point.ID,
+				AssetID:  assetID,
 			}
 		}
 		for _, v := range vec {
 			if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
-				return &ErrNaNOrInf{Channel: spec.Channel, AssetID: point.ID}
+				return &ErrNaNOrInf{Channel: spec.Channel, AssetID: assetID}
 			}
 		}
 	}
@@ -255,7 +286,24 @@ type AssetData struct {
 	Style          string                 `json:"style,omitempty"`
 	Tags           []string               `json:"tags,omitempty"`
 	SearchText     string                 `json:"search_text,omitempty"`
+	// DriveLink is the Drive web-view link for non-Qdrant legacy
+	// callers. QDRANT-001 (June 2026): intentionally NOT emitted by
+	// payload_mapper.BuildPayload — clients obtain a short-TTL
+	// signed URL via delivery.Signer.BuildAuthorizedURL per asset.
+	// Populated by asset_store.go from media_assets.drive_link for
+	// ingest-path tracking / reconstruct-from-SQL flows; never
+	// shipped to the vector index.
 	DriveLink      string                 `json:"drive_link,omitempty"`
+	// LocalPath is the absolute filesystem path for non-Qdrant
+	// legacy callers. QDRANT-001 (June 2026): intentionally NOT
+	// emitted by payload_mapper.BuildPayload — the canonical search
+	// index is locator-free. Populated by asset_store.go from
+	// media_assets.local_path for ingest-time tracking only; never
+	// shipped to the vector index. NOTE: future readers, please do
+	// NOT remove this field on a cleanup pass; it is required by
+	// `internal/application/{assets|clips}/ingest/*.go` flow
+	// diagnostics, and removing it would silently break ingest
+	// crash-trace logs.
 	LocalPath      string                 `json:"local_path,omitempty"`
 	YouTubeVideoID string                 `json:"youtube_video_id,omitempty"`
 	YouTubeURL     string                 `json:"youtube_url,omitempty"`
