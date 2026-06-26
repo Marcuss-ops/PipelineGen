@@ -333,7 +333,7 @@
     19 PR1 does NOT emit any violations — the ratchet-promotion
     baseline MUST be agreed with operators before flipping any
     metric to enforcement (see `exit_gate` below, deferred to PR2).
-  exit_gate: >-
+  exit_gate: |-
     Both edge counters report 0 in the focused/ratchet report
     AND the allowlist files exist (or are explicitly empty)
     AND CI strict-mode exit code is 0 with `verified_zero: true`
