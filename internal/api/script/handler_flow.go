@@ -139,7 +139,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	h := &ScriptFlowHandler{
 		engine:            deps.Engine,
 		imgService:        deps.Image,
-		realtimeSvc:       deps.Realtime,
 		associationSvc:    deps.Association,
 		voService:         deps.Voiceover,
 		assetTreeSvc:      deps.AssetTree,

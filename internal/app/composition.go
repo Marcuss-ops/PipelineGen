@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -44,6 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -54,7 +55,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -149,13 +149,16 @@ type DomainBundle struct {
 	IngestService      *ingest.Service
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
-	MetaWriter         *semantic.MetadataWriter
-	// Wave 15 (June 2026): RealtimeService split into two typed ports (the
-	// realtime package was removed in commit d61068b3). Both slots stay
-	// typed-nil at composition. Asset-side consumer
-	// (assetsapi.NewRealtimeMatchHandler) reads RealtimeMatcher; script-side
-	// consumer (ScriptFlowDeps.Realtime) reads RealtimeSearch.
-	RealtimeMatcher assetsapi.RealtimeMatcher
+	MetaWriter    *semantic.MetadataWriter
+	// Wave 15 (June 2026): RealtimeSearch is the typed-nil port for the
+	// script-side feature (the realtime package was removed in commit
+	// d61068b3). The companion asset-side `assetsapi.RealtimeMatcher`
+	// slot was dropped because handler_realtime.go (defining that type)
+	// was deleted by origin's commit 0c3089d; the corresponding
+	// /api/realtime route registration in WireRegistry was also removed
+	// to keep the surface consistent with the type's death. Script-side
+	// consumers (ScriptFlowDeps.Realtime) still read RealtimeSearch
+	// typed-nil at composition.
 	RealtimeSearch  scriptcore.RealtimeSearchService
 	AutotagService  *autotag.Service
 	// Wave 15 (June 2026): typed port — replaces `interface{}` carrier.
@@ -313,15 +316,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if domains.VoiceoverService != nil && jobs.Service != nil {
 		domains.VoiceoverService.RegisterHandler(jobs.Service)
 	}
+	if domains.BooksService != nil && jobs.Service != nil {
+		domains.BooksService.RegisterJobHandler(jobs.Service)
+	}
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		process.ClipIndexerService.RegisterJobHandler(jobs.Service)
 	}
-	// Capability Standard migration (June 2026): BooksService and
-	// LessonsService worker handlers are NOT registered here.
-	// The Generation capability owns the books.process and
-	// lessons.process job types and publishes the handlers via
-	// its Descriptor (api.DescriptorJobs), wired in registry.go
-	// after generation.Build returns. Single source of truth.
+	if domains.LessonsService != nil && jobs.Service != nil {
+		domains.LessonsService.RegisterJobHandler(jobs.Service)
+	}
 
 	root := &ComposeRoot{
 		DB:      dbs.main,

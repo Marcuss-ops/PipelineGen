@@ -4,12 +4,6 @@
 // Agente 4 — H (June 2026): extracted from registry.go. ClipServices is
 // pre-built here (access to concrete infrastructure) and passed to the
 // handler. Job registration happens at composition time.
-//
-// Registries-and-SSOT (June 2026): function now returns error so the
-// module registration at the bottom propagates duplicate-name /
-// frozen-registry failures up to WireRegistry. Every early-return
-// returns nil; only the final Register call returns tryRegisterModule's
-// possible error.
 
 package app
 
@@ -22,21 +16,18 @@ import (
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
 )
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
-// Returns an error if module registration fails on duplicate-name or
-// frozen-registry (Registries-and-SSOT §"Uniqueness" — composition
-// fails closed on duplicate module names, propagated up to WireRegistry).
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) {
 	// Phase 2 activation (June 2026) — ImageService is now OPTIONAL:
 	// text-only script generation no longer requires ImageService to be
 	// wired. The gate that previously aborted whole ScriptFlow when
@@ -52,7 +43,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// generator, and AI bundle are present (the minimum required for
 	// any script generation path).
 	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil {
-		return nil
+		return
 	}
 
 	memorySvc := root.AI.MemoryService
@@ -61,7 +52,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	if memorySvc == nil || engine == nil {
 		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
-		return nil
+		return
 	}
 
 	scriptsRepoAdapter := scripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
@@ -101,10 +92,15 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// imports alive without depending on the removed clipresolver
 	// package; if they become unused after removing clipresolver else-
 	// where, the import hygiene fix is mechanical (delete the import).
-	var _ = artlistpkg.LoadPresets
-	var _ = cfg.Drive.ArtlistFolder()
 	var harvestSvc scriptapi.AutoHarvestService
-	harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
+	if root.Jobs.Service != nil {
+		// Intentionally NOT calling artlistpkg.LoadPresets: the
+		// package may be removed in a future wave. The discard
+		// ensures the package import stays "used".
+		var _ = artlistpkg.LoadPresets
+		var _ = cfg.Drive.ArtlistFolder()
+		harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
+	}
 
 	// ── Pre-built ClipServices (avoids infrastructure imports in api/script) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
@@ -337,17 +333,18 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
-		Engine:          engine,
-		Section:         sectionRegen,
-		CacheEviction:   cacheEvictionUC,
-		GenBatchUC:      genBatchUC,
-		PipelineUseCase: pipelineUC,
-		Image:           root.Domains.ImageService,
-		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
-		// typed ports — `scripts.RealtimeSearchService` and
-		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +
-		// AssocService fields (typed in Wave 15 Onda 3) feed them
-		// directly — typed-to-typed assignment, no auto-bridge.
+		Engine:                engine,
+		Section:               sectionRegen,
+		CacheEviction:         cacheEvictionUC,
+		GenBatchUC:            genBatchUC,
+		PipelineUseCase:       pipelineUC,
+		Image:                 root.Domains.ImageService,
+		// Wave 16 (June 2026, post-0c3089d rebase closeout): ScriptFlowDeps.Realtime
+		// + Association are typed ports — `scripts.RealtimeSearchService` and
+		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch (added in
+		// composition.go after the HandlerRealtime type died) + AssocService
+		// (typed in Wave 15 Onda 3) feed them directly — typed-to-typed
+		// assignment, no auto-bridge.
 		Realtime:              root.Domains.RealtimeSearch,
 		Association:           root.Domains.AssocService,
 		Voiceover:             root.Domains.VoiceoverService,
@@ -369,13 +366,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	})
 
 	// ── Register job handlers at composition time ──────────────────────
-	// Registries-and-SSOT (June 2026): these are *job-type*
-	// registrations (script.generate_batch, media.curate, etc).
-	// scriptflow.Register continues to log-Warn-and-continue for
-	// legacy handler composition (cross-package surface); however
-	// the module registration at the bottom of this function MUST
-	// propagate so a `script-flow` module-name duplicate fails
-	// composition, matching the spec §"Uniqueness" requirement.
 	if root.Jobs.Service != nil {
 		if genBatchUC != nil {
 			// PR-A (June 2026): the canonical app-layer handler now
@@ -420,7 +410,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		handler,
 		log,
 	)
-	return tryRegisterModule(registry, log, mod)
+	registerModule(registry, log, mod)
 }
 
 // ── Adapters ────────────────────────────────────────────────────────────────
