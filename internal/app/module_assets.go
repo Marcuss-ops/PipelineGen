@@ -37,7 +37,6 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -168,23 +167,22 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 
 	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
 	// Diagnostics: IndexHealth via realtime.Service + AssetStats via ClipsRepository.
-	// PG-034 (June 2026): vectorSvc field removed from diagIndexHealthAdapter
-	// — Qdrant capability deleted. When realtimeSvc is nil, the handler
-	// falls back to 503.
+	// QDRANT-005 Fase 1 (June 2026): diagIndexHealthAdapter rewired with
+	// real SQLite + Qdrant deps. Nil-tolerant — when bundle.ClipsRepo is
+	// nil the handler falls back to 503.
 	var diagSvc *appdiag.Service
-	if realtimeSvc != nil {
+	if bundle.ClipsRepo != nil {
 		diagSvc = appdiag.NewService(
-			&diagIndexHealthAdapter{realtime: realtimeSvc},
+			&diagIndexHealthAdapter{clips: bundle.ClipsRepo, qdrant: nil, collectionName: ""},
 			&diagAssetStatsAdapter{clips: bundle.ClipsRepo},
 			&zapDiagLogAdapter{log: log},
 		)
 	}
 	diagHandler := assetsdiag.NewHandler(diagSvc, log)
 
-	// PG-034 (June 2026): searchVectorAdapter removed (Qdrant capability deleted).
-	// Search service now requires realtimeSvc + provider registry + local catalog only.
+	// Search service: cross-provider search only (semantic consolidated into mediasearch).
 	var searchSvc *appsearchsvc.Service
-	if realtimeSvc != nil {
+	if providerRegistry != nil {
 		searchSvc = appsearchsvc.NewService(
 			&searchRegistryAdapter{registry: providerRegistry},
 			&searchCatalogAdapter{catalog: catalogRepo},
