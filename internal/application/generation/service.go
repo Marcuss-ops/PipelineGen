@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assetdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domaingeneration "github.com/Marcuss-ops/PipelineGen/internal/domain/generation"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -234,7 +233,7 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 
 	_ = reg.Register(Definition{
 		Type:    domaingeneration.TypeScriptBatch,
-		JobType: string(appjobs.TypeBatchScriptGenerate),
+		JobType: string(jobdomain.TypeBatchScriptGenerate),
 		Enabled: scriptEnabled,
 		Validate: func(raw json.RawMessage) error {
 			var input BatchSource

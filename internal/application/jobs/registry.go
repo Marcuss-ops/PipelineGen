@@ -131,15 +131,15 @@ const (
 	TypeLessonsProcess      = "lessons.process"
 	TypeMediaReindex        = "media.reindex"
 	TypeYouTubeRebuildST    = "youtube.rebuild_search_text"
-	TypeBatchScriptGenerate = "script.generate_batch"
+	TypeBatchScriptGenerate = job.TypeBatchScriptGenerate
 	// NOTE (Wave 5 PR3 second pass, June 2026): the previously-declared
 	// local constant for script.generate_from_clips has been deleted.
 	// Canonical owner is internal/domain/job/job.go::TypeClipScriptGenerate.
 	// All registration below uses the domain constant directly.
-	TypeCatalogScriptGenerate = "script.generate_from_catalog"
+	TypeCatalogScriptGenerate = job.TypeCatalogScriptGenerate
 	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync       = "drive.folder.sync"
-	TypeMediaCurate           = "media.curate"
+	TypeMediaCurate           = job.TypeMediaCurate
 )
 
 // Compose builds the standard registry with all known job types.
