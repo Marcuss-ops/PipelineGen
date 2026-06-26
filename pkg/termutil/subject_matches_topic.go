@@ -1,10 +1,6 @@
 package termutil
 
-import (
-	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-)
+import "strings"
 
 // SubjectMatchesTopic checks if a subject matches any of the topic tokens.
 func SubjectMatchesTopic(subject string, topicTokens []string) bool {
@@ -23,20 +19,6 @@ func SubjectMatchesTopic(subject string, topicTokens []string) bool {
 		}
 	}
 	return false
-}
-
-// TopicTokens extracts tokens from text using the standard tokenizer.
-func TopicTokens(text string) []string {
-	tokens := textutil.Tokenize(text)
-	out := make([]string, 0, len(tokens))
-	for _, tok := range tokens {
-		tok = strings.TrimSpace(tok)
-		if tok == "" {
-			continue
-		}
-		out = append(out, tok)
-	}
-	return out
 }
 
 // ConciseSubject creates a concise subject from text (max 5 words).
