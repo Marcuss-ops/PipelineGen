@@ -241,9 +241,14 @@ type searchConfigAdapter struct {
 }
 
 func (a *searchConfigAdapter) VectorConfig() appsearch.VectorConfig {
-	// PG-034 (June 2026): VectorSearch config removed — Qdrant capability deleted.
-	// Return zero-value VectorConfig so callers can still iterate the field set
-	// without nil-pointer dereferences; semantic-search legs are no-ops now.
+	// QDRANT-004 PR1 (June 2026): the previous comment claimed the
+	// VectorSearch config was removed (PG-034). It was NOT — the
+	// Qdrant capability was consolidated into mediasearch but
+	// VectorConfig remains the canonical channel-name surface that
+	// the orchestrator reads. SSOT for channel names is
+	// qdrant.DefaultV3Schema(); this adapter intentionally
+	// returns zero-value so mediasearch.Service can fall back to
+	// its canonical constants without coupling the two layers.
 	return appsearch.VectorConfig{}
 }
 

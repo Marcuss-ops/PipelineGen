@@ -32,7 +32,16 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
 )
+
+// canonicalSparseVectorName is the BM25 channel name declared by
+// qdrant.DefaultV3Schema()'s SparseVectors (qdrant/schema.go).
+// The orchestrator uses this as a defensive default when the
+// configured VectorConfig.SparseVectorName is empty so a mis-wired
+// ConfigPort cannot deadlock the hybrid path against a typo'd
+// channel name; the SSOT remains qdrant.DefaultV3Schema.
+const canonicalSparseVectorName = "bm25_text"
 
 // Logger is a minimal logging port the service uses for debug +
 // audit-friendly observability. Mirrors application/assets/search
@@ -173,7 +182,8 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 
 	// ── 3. Hybrid search ────────────────────────────────────────────
 	vectorCfg := search.VectorConfig{
-		TextVectorName: "text",
+		TextVectorName:   "text",
+		SparseVectorName: canonicalSparseVectorName,
 	}
 	// ConfigPort is optional: some vector backends expose named
 	// vector dimensions; if the concrete doesn't implement it we
@@ -187,6 +197,13 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 	if vectorCfg.TextVectorName == "" {
 		vectorCfg.TextVectorName = "text"
 	}
+	// QDRANT-004 PR1 (June 2026): defensive default for the sparse
+	// channel. The VectorConfig SSOT lives in qdrant.DefaultV3Schema;
+	// this constant is a fall-back so a mis-wired ConfigPort cannot
+	// deadlock the hybrid path against an empty channel.
+	if vectorCfg.SparseVectorName == "" {
+		vectorCfg.SparseVectorName = canonicalSparseVectorName
+	}
 
 	// QDRANT-004 §hybrid: "dense+sparse realmente implementati".
 	//
@@ -199,17 +216,37 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 	var rawHits []search.VectorSearchResult
 	wsID := req.Workspace.WorkspaceID
 	if mode == SearchModeHybrid {
+		// QDRANT-004 PR1 fail-closed contract (June 2026): the
+		// orchestrator owns BM25 tokenization so the DenseVectorName
+		// and SparseVectorName pair reach the vector store together
+		// (programmatic invariant). When bm25.Tokenize returns nil
+		// — typical causes: query shorter than 2 alphanum tokens
+		// after punctuation stripping, OR only digits/whitespace —
+		// we refuse to silently degrade to ANN and instead return
+		// ErrHybridRequiresSparse. Callers retry with mode=ann.
+		sparseVec := bm25.Tokenize(q)
+		if sparseVec == nil {
+			s.log.Warn("mediasearch.Search: hybrid mode requires BM25-tokenizable query; refusing to degrade silently",
+				"workspace", wsID,
+				"query_len", len(q),
+				"sparse_channel", vectorCfg.SparseVectorName,
+			)
+			return nil, fmt.Errorf("mediasearch: %w (query %q has no BM25 tokens >=2 chars after normalization)",
+				ErrHybridRequiresSparse, q)
+		}
 		rawHits, err = s.vector.VectorStore().HybridSearch(ctx, search.HybridSearchRequest{
-			QueryText:       q,
-			DenseVector:     denseVector,
-			DenseVectorName: vectorCfg.TextVectorName,
-			Limit:           limit * 2, // over-fetch: hydration may drop a few rows
-			MinScore:        minScore,
-			Source:          req.Filters.Source,
-			Category:        req.Filters.Category,
-			MediaType:       req.Filters.MediaType,
-			Language:        req.Filters.Language,
-			WorkspaceID:     wsID,
+			QueryText:        q,
+			DenseVector:      denseVector,
+			DenseVectorName:  vectorCfg.TextVectorName,
+			SparseVectorName: vectorCfg.SparseVectorName,
+			SparseVector:     sparseVec,
+			Limit:            limit * 2, // over-fetch: hydration may drop a few rows
+			MinScore:         minScore,
+			Source:           req.Filters.Source,
+			Category:         req.Filters.Category,
+			MediaType:        req.Filters.MediaType,
+			Language:         req.Filters.Language,
+			WorkspaceID:      wsID,
 		})
 	} else {
 		rawHits, err = s.vector.VectorStore().Search(ctx, search.VectorSearchRequest{

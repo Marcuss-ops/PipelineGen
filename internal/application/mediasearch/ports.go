@@ -46,6 +46,25 @@ type WorkspaceContext struct {
 // a workspace context. Handler maps this to HTTP 403.
 var ErrMissingWorkspace = errors.New("mediasearch: workspace context required")
 
+// ErrHybridRequiresSparse is returned when mode=hybrid is requested but
+// the pipeline cannot produce a real dense+sparse retrieval (sparse
+// channel missing from VectorConfig, OR the BM25 tokenizer returns nil
+// for the query — e.g. all tokens <2 chars after punctuation stripping).
+//
+// QDRANT-004 PR1 (June 2026): the orchestrator must NEVER silently
+// degrade a hybrid request to ANN. Callers either retry with mode=ann
+// explicitly OR fix the configuration. The handler maps this to
+// HTTP 422 (semantic error, not a transient failure) so clients can
+// distinguish from generic 500s.
+//
+// Sentinel pairing: this is the application-level "fail-closed for the
+// use case" error. The infrastructure-level sibling is qdrant.ErrSparseRequired,
+// which fires deeper in the stack when the orchestrator accidentally
+// sends a malformed hybrid request. Both errors communicate the same
+// invariant — a hybrid request must carry both a sparse channel and a
+// populated sparse vector — at different layers of the call stack.
+var ErrHybridRequiresSparse = errors.New("mediasearch: hybrid mode requires a configured sparse vector channel and a BM25-tokenizable query")
+
 // MediaReadRepository fetches canonical asset metadata from SQLite.
 //
 // The implementation MUST:
