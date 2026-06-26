@@ -55,7 +55,7 @@ func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 	}
 }
 
-// PG-034 (June 2026): startQdrantHealthMonitor was removed — Qdrant
+// startQdrantHealthMonitor was removed during earlier cleanup. The
 // capability deleted.
 
 func startClipDedupSweeper(ctx context.Context, clipsRepo *assets.ClipsRepository, log *zap.Logger) {
@@ -148,7 +148,7 @@ func runDedupSweep(ctx context.Context, clipsRepo *assets.ClipsRepository, log *
 	return swept, nil
 }
 
-// PG-034 (June 2026): startQdrantCleaner was removed — Qdrant capability
+// startQdrantCleaner was removed during earlier cleanup; the
 // deleted. Dead-link drift is now caught by the SQLite metadata layer
 // (media_assets.drive_file_id_clean += json_extract checks) and the
 // existing clip-dedup sweeper already enumerates sqliteIDs.
@@ -228,7 +228,7 @@ func startVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, lo
 	}
 }
 
-// PG-034 (June 2026): ghostSweepable, startQdrantGhostSweeper, and
+// ghostSweepable, startQdrantGhostSweeper, and
 // runGhostSweep were removed — Qdrant capability deleted. Ghost-point
 // cleanup is now exclusively a SQLite concern (handled by the
 // clip-dedup sweeper plus future drift checks on

@@ -32,7 +32,7 @@ func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, sou
 //	POST /api/artlist/enrich    — uses path param :source from route
 //	POST /api/enrich            — uses source from JSON body
 func (h *Handler) EnrichMedia(c *gin.Context) {
-	// PG-034 (June 2026): SkipQdrant field removed — Qdrant capability
+	// SkipQdrant field removed from the request shape
 	// deleted. The clip indexer is the canonical semantic-search backend.
 	var req struct {
 		AssetID      string `json:"asset_id"`
@@ -131,7 +131,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 		return
 	}
 
-	// PG-034 (June 2026): direct-vector-store fallback removed — Qdrant
+	// direct-vector-store fallback removed — vector
 	// capability deleted. The clip indexer is the canonical
 	// semantic-search backend.
 

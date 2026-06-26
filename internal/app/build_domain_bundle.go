@@ -116,7 +116,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	var realtimeSvc interface{} = nil
 
-	// PG-034 (June 2026): autotagVectorStore removed — Qdrant capability
+	// autotagVectorStore removed during the bundle simplification
 	// deleted. The autotag service no longer takes a vector-store indexer;
 	// its semantic-tagging pipeline can still consume clip embeddings from
 	// the DB but no longer propagates them to a vector store backend.

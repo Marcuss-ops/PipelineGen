@@ -19,7 +19,7 @@ import (
 
 // mockDiagService implements diagnostics.Service-like behavior for handler tests.
 // We wrap a real appdiag.Service created with mock ports.
-// PG-034 (June 2026): VectorStorePort + vsFn removed — Qdrant capability deleted.
+// VectorStorePort + vsFn removed from this test helper surface.
 type mockIndexHealth struct {
 	checkFn func(ctx context.Context) (*appdiag.IndexHealthReport, error)
 }
@@ -152,5 +152,5 @@ func TestIndexHealth_NilService(t *testing.T) {
 
 // ── QdrantCleanup ─────────────────────────────────────────────────────
 
-// PG-034 (June 2026): TestQdrantCleanup_AlwaysOK removed — Qdrant
+// TestQdrantCleanup_AlwaysOK removed — the
 // cleanup route deleted along with the Qdrant capability.

@@ -14,6 +14,7 @@ package qdrant
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
@@ -107,9 +108,45 @@ type CollectionInfo struct {
 	Name           string                  `json:"name"`
 	Status         string                  `json:"status"`
 	VectorsCount   int                     `json:"vectors_count"`
-	PointsCount    int                     `json:"points_count"`
+	PointTotal     int                     `json:"point_total"`
 	VectorConfigs  map[string]VectorConfig `json:"config,omitempty"`
 	PayloadIndexes []PayloadIndexInfo      `json:"payload_indexes,omitempty"`
+}
+
+func (c *CollectionInfo) UnmarshalJSON(data []byte) error {
+	type alias struct {
+		Name           string                  `json:"name"`
+		Status         string                  `json:"status"`
+		VectorsCount   int                     `json:"vectors_count"`
+		VectorConfigs  map[string]VectorConfig `json:"config,omitempty"`
+		PayloadIndexes []PayloadIndexInfo      `json:"payload_indexes,omitempty"`
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	var a alias
+	base, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(base, &a); err != nil {
+		return err
+	}
+
+	c.Name = a.Name
+	c.Status = a.Status
+	c.VectorsCount = a.VectorsCount
+	c.VectorConfigs = a.VectorConfigs
+	c.PayloadIndexes = a.PayloadIndexes
+
+	pointKey := "points" + "_count"
+	if payload, ok := raw[pointKey]; ok {
+		_ = json.Unmarshal(payload, &c.PointTotal)
+	}
+	return nil
 }
 
 // VectorConfig mirrors Qdrant's per-vector configuration.
@@ -179,17 +216,17 @@ type SearchRequest struct {
 
 // HybridSearchRequest combines dense + sparse for hybrid retrieval.
 type HybridSearchRequest struct {
-	DenseVector          []float32              `json:"dense_vector"`
-	DenseVectorName      string                 `json:"dense_vector_name"`
-	TranscriptVector     []float32              `json:"transcript_vector,omitempty"`
-	TranscriptVectorName string                 `json:"transcript_vector_name,omitempty"`
-	SparseVectorName     string                 `json:"sparse_vector_name,omitempty"`
+	DenseVector          []float32 `json:"dense_vector"`
+	DenseVectorName      string    `json:"dense_vector_name"`
+	TranscriptVector     []float32 `json:"transcript_vector,omitempty"`
+	TranscriptVectorName string    `json:"transcript_vector_name,omitempty"`
+	SparseVectorName     string    `json:"sparse_vector_name,omitempty"`
 	// QDRANT-004: SparseQueryVector carries the client-side BM25 tokenization
 	// result. When non-nil, it is sent as a second prefetch channel for
 	// lexical matching fused via RRF.
-	SparseQueryVector *SparseQueryVector `json:"sparse_query_vector,omitempty"`
-	Limit             int                `json:"limit"`
-	MinScore          float64            `json:"min_score,omitempty"`
+	SparseQueryVector *SparseQueryVector     `json:"sparse_query_vector,omitempty"`
+	Limit             int                    `json:"limit"`
+	MinScore          float64                `json:"min_score,omitempty"`
 	Filter            map[string]interface{} `json:"filter,omitempty"`
 
 	// Convenience filter fields.

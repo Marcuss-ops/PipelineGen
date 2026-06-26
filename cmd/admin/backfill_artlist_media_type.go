@@ -6,9 +6,8 @@
 //  1. UPDATE media_assets.metadata_json to pin `media_type: "video"`,
 //     guarded by a `--apply` flag (default: dry-run).
 //
-// The optional `--qdrant` flag (formerly a Qdrant upsert) is a no-op
-// since PG-034 (June 2026); after `--apply`, the canonical record is
-// the SQLite `media_assets.metadata_json` row.
+// The optional `--qdrant` flag is retained for CLI compatibility only.
+// This command updates SQLite metadata and does not perform vector sync.
 package main
 
 import (
@@ -101,7 +100,7 @@ func runBackfillArtlistMediaType(args []string) error {
 		zap.Int("count", len(clips)))
 
 	if !apply {
-		log.Info("DRY-RUN: pass --apply to update, --apply --qdrant to also upsert to Qdrant")
+		log.Info("DRY-RUN: pass --apply to update metadata; --qdrant is accepted for CLI compatibility only")
 		return nil
 	}
 
@@ -132,41 +131,37 @@ func runBackfillArtlistMediaType(args []string) error {
 		zap.Int("total_found", len(clips)))
 
 	if !toQdrant {
-		log.Info("pass --qdrant to also upsert to Qdrant")
+		log.Info("metadata backfill complete; --qdrant remains a compatibility no-op for this command")
 		return nil
 	}
 
-	// Step 3: Upsert to Qdrant via canonical ClipIndexerAdapter
-	log.Info("starting Qdrant upsert for updated clips")
+	// Step 3: Preserve the legacy flag as a no-op so old invocations keep working.
+	log.Info("ignoring --qdrant compatibility flag for metadata backfill")
 	clipIDs := make([]string, 0, len(clips))
 	for _, clip := range clips {
 		clipIDs = append(clipIDs, clip.id)
 	}
 
 	if err := upsertArtlistClipsToQdrant(ctx, db, cfg, log, clipIDs); err != nil {
-		return fmt.Errorf("Qdrant upsert failed: %w", err)
+		return fmt.Errorf("compatibility flag handling failed: %w", err)
 	}
 
 	log.Info("backfill complete",
 		zap.Int("total_updated", updated),
-		zap.Int("qdrant_upserted", len(clipIDs)))
+		zap.Int("compatibility_flag_count", len(clipIDs)))
 
 	return nil
 }
 
-// upsertArtlistClipsToQdrant was removed in PG-034 (June 2026).
-// Qdrant capability deleted; the SQLite metadata backfill remains
-// canonical. Callers that pass --qdrant now log a warning and exit
-// without an error so the existing CLI surface is preserved.
-//
-// For legacy/SQLite-only parity, the call site treats --qdrant as a
-// no-op: the DB write has already happened by the time we reach this
-// function, so the SQL row reflects `media_type: "video"` regardless.
+// upsertArtlistClipsToQdrant keeps the legacy flag surface stable without
+// performing vector synchronization. The DB write has already happened by
+// the time we reach this function, so the canonical metadata row is
+// already updated regardless of this compatibility path.
 func upsertArtlistClipsToQdrant(ctx context.Context, db *sql.DB, cfg *config.Config, log *zap.Logger, clipIDs []string) error {
 	_, _ = ctx, cfg
 	_ = db
 	if log != nil {
-		log.Warn("--qdrant flag ignored: Qdrant capability removed (PG-034). SQLite metadata backfill is the canonical record.",
+		log.Warn("--qdrant flag ignored by this admin command; metadata backfill is already complete",
 			zap.Int("clip_count", len(clipIDs)))
 	}
 	return nil

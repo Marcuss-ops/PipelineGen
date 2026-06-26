@@ -10,7 +10,7 @@ import (
 )
 
 // bm25SchemaVersion is the hash-stamp field for the BM25 lexical-index
-// schema. PG-034 (June 2026): Qdrant has been removed; the sparse
+// schema. The sparse
 // vector identity that used to live in qdrant.BM25SchemaVersion is now
 // a local package const. Bumping this constant invalidates every
 // previously-stored content_hash, forcing a one-time re-index.

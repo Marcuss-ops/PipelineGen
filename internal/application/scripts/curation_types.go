@@ -8,7 +8,7 @@ import "go.uber.org/zap"
 // MediaCurator orchestrates semantic clip search + script generation.
 // All fields are concrete typed.
 type MediaCurator struct {
-	// PG-034 (June 2026): vectorStore field removed — Qdrant capability
+	// vectorStore field removed from this flow
 	// deleted. Callers seed Curate with HintClipIDs instead.
 	serverURL   string
 	clipsRepo   interface{} // *assets.ClipsRepository (avoid import cycle)

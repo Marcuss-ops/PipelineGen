@@ -44,14 +44,18 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 		driveChecker = infrahealth.NewDriveChecker(credsPath, tokenPath)
 	}
 
-	// PG-034 (June 2026): QdrantChecker removed — Qdrant capability deleted.
-	// `?check=qdrant` health-check probes return "unknown check" so
-	// callers asking for the vector-search capability get a defensive
-	// surface instead of silently passing on the typo.
+	qcfg := &qdrant.Config{
+		BaseURL: cfg.Qdrant.BaseURL,
+		Timeout: cfg.Qdrant.Timeout,
+		Enabled: cfg.Qdrant.Enabled,
+	}
+	schema := qdrant.DefaultV3Schema()
+	qdrantChecker := infrahealth.NewQdrantChecker(qcfg, schema)
 
 	return systemhealth.NewService(systemhealth.ServiceDeps{
-		DB:    infrahealth.NewSQLiteChecker(db),
-		Drive: driveChecker,
-		Jobs:  infrahealth.NewJobsChecker(db),
+		DB:     infrahealth.NewSQLiteChecker(db),
+		Drive:  driveChecker,
+		Qdrant: qdrantChecker,
+		Jobs:   infrahealth.NewJobsChecker(db),
 	})
 }

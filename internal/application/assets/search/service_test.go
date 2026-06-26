@@ -750,7 +750,8 @@ func TestSemanticSearch_EmptyResults(t *testing.T) {
 
 func TestSemanticSearch_NilVectorStoreFromPort(t *testing.T) {
 	ctx := context.Background()
-	// VectorSearchPort is non-nil but VectorStore() returns nil — this path panics.
+	// VectorSearchPort is non-nil but VectorStore() returns nil — this
+	// should fail loudly with a regular error instead of panicking.
 	vec := &mockVectorSearch{
 		vsFn: func() VectorStorePort { return nil },
 	}
@@ -758,13 +759,13 @@ func TestSemanticSearch_NilVectorStoreFromPort(t *testing.T) {
 		vc: VectorConfig{TextVectorName: "text"},
 	}, &testLogger{})
 
-	// Document the panic: calling Search on nil VectorStorePort panics
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic when VectorStore() returns nil")
-		}
-	}()
-	svc.SemanticSearch(ctx, SemanticSearchRequest{Query: "test", VectorName: "text"})
+	_, err := svc.SemanticSearch(ctx, SemanticSearchRequest{Query: "test", VectorName: "text"})
+	if err == nil {
+		t.Fatal("expected error when VectorStore() returns nil")
+	}
+	if err.Error() != "vector search not configured" {
+		t.Errorf("got %q, want %q", err.Error(), "vector search not configured")
+	}
 }
 
 func TestRecommend_MinScoreFallback(t *testing.T) {

@@ -84,7 +84,7 @@ type backgroundJobs struct {
 //
 // 10. Job runner (REQUIRED, always last)
 //
-// PG-034 (June 2026): three Qdrant-driven background steps were removed:
+// Three Qdrant-driven background steps were removed:
 //   - qdrant-stale-cleaner
 //   - qdrant-ghost-sweeper
 //   - qdrant-health-monitor
@@ -327,7 +327,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			})
 		}
 
-		// PG-034 (June 2026): Qdrant-cleaner step removed — Qdrant capability deleted.
+		// Qdrant-cleaner step removed.
 
 		if root.Repos.ClipsRepo != nil {
 			cr := root.Repos.ClipsRepo
@@ -359,7 +359,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			})
 		}
 
-		// PG-034 (June 2026): Qdrant-ghost-sweeper step removed — Qdrant capability deleted.
+		// Qdrant-ghost-sweeper step removed.
 	}
 
 	// Job runner: REQUIRED, always LAST in the plan.

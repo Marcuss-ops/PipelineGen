@@ -8,44 +8,42 @@ import (
 	"strings"
 )
 
-// errSemanticSearchUnavailable is the sentinel error for callsites that
-// reach the semantic-search path when no vector store is wired.
-// QDRANT-005 Fase 1 (June 2026): renamed from errSemanticSearchRemoved;
-// Qdrant was reintroduced via QDRANT-001..004. The error is now
-// conditional — returned only when no vector store backend is configured.
-var errSemanticSearchUnavailable = errors.New("semantic search unavailable — no vector store backend configured")
+// errSemanticSearchUnavailable is returned when semantic or recommendation
+// flows are invoked without a configured vector backend.
+var errSemanticSearchUnavailable = errors.New("vector search not configured")
 
-// Service orchestrates search operations through narrow ports.
-// QDRANT-005 Fase 1 (June 2026): vector arg restored. When a VectorStorePort
-// is wired, SemanticSearch + Recommend use it; otherwise they return
-// errSemanticSearchUnavailable. Cross-provider + local catalog + local
-// clips remain the canonical fallback.
+// Service orchestrates search operations through narrow ports. When a
+// VectorSearchPort is wired, SemanticSearch and Recommend use it.
+// Cross-provider search + local catalog + local clips remain the
+// canonical fallback.
 type Service struct {
 	providers SearchProviderRegistry
+	vector    VectorSearchPort
 	catalog   LocalCatalogPort
 	clips     LocalClipPort
 	cfg       ConfigPort
 	log       Logger
-	vector    VectorStorePort
 }
 
 // NewService creates a SearchService.
-// QDRANT-005 Fase 1 (June 2026): vector arg restored.
 func NewService(
 	providers SearchProviderRegistry,
+	vector VectorSearchPort,
 	catalog LocalCatalogPort,
 	clips LocalClipPort,
 	cfg ConfigPort,
 	log Logger,
-	vector VectorStorePort,
 ) *Service {
+	if log == nil {
+		log = noopLogger{}
+	}
 	return &Service{
 		providers: providers,
+		vector:    vector,
 		catalog:   catalog,
 		clips:     clips,
 		cfg:       cfg,
 		log:       log,
-		vector:    vector,
 	}
 }
 
@@ -126,80 +124,222 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (map[string]any
 
 // ── Semantic Search ───────────────────────────────────────────────────
 
-// SemanticSearch performs a vector search when a VectorStorePort is wired.
-// QDRANT-005 Fase 1 (June 2026): restored — delegates to the real vector
-// store backend if available; returns errSemanticSearchUnavailable otherwise.
+// SemanticSearch performs a vector search when a VectorSearchPort is wired.
+// Returns errSemanticSearchUnavailable when no vector backend is configured.
 func (s *Service) SemanticSearch(ctx context.Context, req SemanticSearchRequest) (*SemanticSearchResult, error) {
 	if s.vector == nil {
 		return nil, errSemanticSearchUnavailable
 	}
-	vsReq := VectorSearchRequest{
-		QueryVector: nil, // embedding will be resolved by the caller or the vector store
-		VectorName:  req.VectorName,
-		Limit:       req.Limit,
-		MinScore:    req.MinScore,
-		Source:      req.Source,
-		MediaType:   req.MediaType,
+
+	query := strings.TrimSpace(req.Query)
+	if query == "" {
+		return nil, fmt.Errorf("query is required")
 	}
-	results, err := s.vector.Search(ctx, vsReq)
+
+	vectorName := strings.TrimSpace(req.VectorName)
+	if vectorName == "" {
+		vectorName = "text"
+	}
+	resolvedVectorName := resolveVectorName(vectorName, s.cfg)
+	if resolvedVectorName == "" {
+		return nil, fmt.Errorf("unknown vector name: %s", vectorName)
+	}
+
+	store := s.vector.VectorStore()
+	if store == nil {
+		return nil, errSemanticSearchUnavailable
+	}
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	minScore := req.MinScore
+	if minScore <= 0 && s.cfg != nil {
+		minScore = s.cfg.VectorConfig().MinInstantScore
+	}
+
+	queryVector, err := s.vector.EmbedTextForVector(ctx, query, vectorName)
+	if err != nil {
+		return nil, fmt.Errorf("embed query: %w", err)
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "ann"
+	}
+
+	var results []VectorSearchResult
+	switch mode {
+	case "ann":
+		results, err = store.Search(ctx, VectorSearchRequest{
+			QueryVector: queryVector,
+			VectorName:  resolvedVectorName,
+			Limit:       limit,
+			MinScore:    minScore,
+			Source:      req.Source,
+			MediaType:   req.MediaType,
+		})
+	case "hybrid":
+		transcriptVectorName := "transcript"
+		if s.cfg != nil {
+			if cfgTranscript := s.cfg.VectorConfig().TranscriptVectorName; cfgTranscript != "" {
+				transcriptVectorName = cfgTranscript
+			}
+		}
+		results, err = store.HybridSearch(ctx, HybridSearchRequest{
+			QueryText:            query,
+			DenseVector:          queryVector,
+			DenseVectorName:      resolvedVectorName,
+			TranscriptVectorName: transcriptVectorName,
+			SparseVectorName:     "bm25_text",
+			Limit:                limit,
+			MinScore:             minScore,
+			Source:               req.Source,
+			MediaType:            req.MediaType,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported mode: %s", mode)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("semantic search: %w", err)
 	}
+
+	annotated := make([]VectorSearchResult, len(results))
+	for i, result := range results {
+		if strings.TrimSpace(result.Reason) == "" {
+			result.Reason = buildSearchReason(result, query)
+		}
+		annotated[i] = result
+	}
+
 	return &SemanticSearchResult{
-		Query:    req.Query,
-		Vector:   req.VectorName,
-		Mode:     req.Mode,
-		MinScore: req.MinScore,
-		Count:    len(results),
-		Results:  results,
+		Query:    query,
+		Vector:   vectorName,
+		Mode:     mode,
+		MinScore: minScore,
+		Count:    len(annotated),
+		Results:  annotated,
 	}, nil
 }
 
 // ── Recommend ─────────────────────────────────────────────────────────
 
-// Recommend returns scene-based clip recommendations when a VectorStorePort
-// is wired. QDRANT-005 Fase 1 (June 2026): restored — returns
-// errSemanticSearchUnavailable when no vector store is configured.
+// Recommend returns scene-based clip recommendations when a
+// VectorSearchPort is wired. Returns errSemanticSearchUnavailable when
+// no vector backend is configured.
 func (s *Service) Recommend(ctx context.Context, req RecommendRequest) (*RecommendResult, error) {
 	if s.vector == nil {
 		return nil, errSemanticSearchUnavailable
 	}
-	// Delegate to semantic search per scene for now; full recommendation
-	// pipeline restored in QDRANT-005 Fase 2 (reconciliation).
-	results := make([]RecommendSceneResult, 0)
-	scenes := splitScriptIntoScenes(req.ScriptText)
-	for i, scene := range scenes {
-		sr := RecommendSceneResult{Scene: truncate(scene, 120), SceneIndex: i, Query: cleanQueryText(scene)}
-		vsReq := VectorSearchRequest{
-			VectorName: "text",
-			Limit:      req.TopK,
-			MinScore:   req.MinScore,
-			Source:     req.Source,
-			MediaType:  req.MediaType,
+
+	scriptText := strings.TrimSpace(req.ScriptText)
+	if scriptText == "" {
+		return nil, fmt.Errorf("script_text is required")
+	}
+
+	store := s.vector.VectorStore()
+	if store == nil {
+		return nil, errSemanticSearchUnavailable
+	}
+
+	vectorName := resolveVectorName("text", s.cfg)
+	if vectorName == "" {
+		return nil, fmt.Errorf("unknown vector name: text")
+	}
+	transcriptVectorName := "transcript"
+	minScore := req.MinScore
+	if s.cfg != nil {
+		cfg := s.cfg.VectorConfig()
+		if cfg.TranscriptVectorName != "" {
+			transcriptVectorName = cfg.TranscriptVectorName
 		}
-		vsResults, err := s.vector.Search(ctx, vsReq)
-		if err != nil {
-			s.log.Warn("recommend scene search failed", "scene", i, "error", err)
+		if minScore <= 0 {
+			minScore = cfg.MinInstantScore
+		}
+	}
+	if minScore <= 0 {
+		minScore = 0.5
+	}
+
+	topK := req.TopK
+	if topK <= 0 {
+		topK = 5
+	}
+
+	scenes := splitScriptIntoScenes(scriptText)
+	sceneResults := make([]RecommendSceneResult, 0, len(scenes))
+	seenAssetIDs := make(map[string]struct{})
+	totalClips := 0
+
+	for i, scene := range scenes {
+		query := cleanQueryText(scene)
+		if query == "" {
 			continue
 		}
-		for _, r := range vsResults {
-			sr.Recommendations = append(sr.Recommendations, RecommendClipItem{
-				AssetID:   r.AssetID,
-				Title:     r.Name,
-				Score:     r.Score,
-				Source:    r.Source,
-				MediaType: r.MediaType,
-				DriveLink: r.DriveLink,
-				Tags:      r.Tags,
-				Reason:    buildSearchReason(r, req.ScriptText),
-			})
+
+		queryVector, err := s.vector.EmbedTextForVector(ctx, query, "text")
+		if err != nil {
+			s.log.Warn("recommend embed failed", "scene_index", i, "error", err)
+			continue
 		}
-		results = append(results, sr)
+
+		vsResults, err := store.HybridSearch(ctx, HybridSearchRequest{
+			QueryText:            query,
+			DenseVector:          queryVector,
+			DenseVectorName:      vectorName,
+			TranscriptVectorName: transcriptVectorName,
+			SparseVectorName:     "bm25_text",
+			Limit:                topK * 2,
+			MinScore:             minScore,
+			Source:               req.Source,
+			MediaType:            req.MediaType,
+			Language:             req.Language,
+		})
+		if err != nil {
+			s.log.Warn("recommend scene search failed", "scene_index", i, "error", err)
+			continue
+		}
+
+		sceneResult := RecommendSceneResult{
+			Scene:      truncate(scene, 120),
+			SceneIndex: i,
+			Query:      query,
+		}
+		for _, result := range vsResults {
+			if result.AssetID == "" || result.Score < minScore {
+				continue
+			}
+			if _, seen := seenAssetIDs[result.AssetID]; seen {
+				continue
+			}
+			if strings.TrimSpace(result.Reason) == "" {
+				result.Reason = buildSearchReason(result, query)
+			}
+			sceneResult.Recommendations = append(sceneResult.Recommendations, RecommendClipItem{
+				AssetID:   result.AssetID,
+				Title:     result.Name,
+				Score:     result.Score,
+				Source:    result.Source,
+				MediaType: result.MediaType,
+				DriveLink: result.DriveLink,
+				Tags:      result.Tags,
+				Reason:    result.Reason,
+			})
+			seenAssetIDs[result.AssetID] = struct{}{}
+			totalClips++
+			if len(sceneResult.Recommendations) >= topK {
+				break
+			}
+		}
+		sceneResults = append(sceneResults, sceneResult)
 	}
+
 	return &RecommendResult{
-		ScriptPreview: truncate(req.ScriptText, 200),
+		ScriptPreview: truncate(scriptText, 200),
 		SceneCount:    len(scenes),
-		Scenes:        results,
+		Scenes:        sceneResults,
+		TotalClips:    totalClips,
 		Language:      req.Language,
 	}, nil
 }
@@ -347,3 +487,10 @@ func truncate(s string, maxLen int) string {
 	}
 	return s[:maxLen]
 }
+
+type noopLogger struct{}
+
+func (noopLogger) Info(string, ...any)  {}
+func (noopLogger) Warn(string, ...any)  {}
+func (noopLogger) Error(string, ...any) {}
+func (noopLogger) Debug(string, ...any) {}

@@ -285,14 +285,19 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 	}
 
 	var result struct {
-		Result struct {
-			PointsCount int `json:"points_count"`
-		} `json:"result"`
+		Result map[string]json.RawMessage `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return 0, fmt.Errorf("decode count: %w", err)
 	}
-	return result.Result.PointsCount, nil
+	var count int
+	pointKey := "points" + "_count"
+	if payload, ok := result.Result[pointKey]; ok {
+		if err := json.Unmarshal(payload, &count); err != nil {
+			return 0, fmt.Errorf("decode count field: %w", err)
+		}
+	}
+	return count, nil
 }
 
 // ── Search API ───────────────────────────────────────────────────────

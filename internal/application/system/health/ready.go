@@ -41,12 +41,12 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 			OK:     false,
 			Status: "unhealthy",
 			Checks: map[string]CheckResult{
-				"db":    {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
-				"drive": {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"db":     {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"drive":  {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
 				"qdrant": {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
-				"jobs":  {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"jobs":   {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
 			},
 		}
 	}
-	return r.svc.Check(ctx, []string{"db", "drive", "jobs"})
+	return r.svc.Check(ctx, []string{"db", "drive", "qdrant", "jobs"})
 }

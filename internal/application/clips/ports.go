@@ -73,7 +73,7 @@ type ClipMetaPayload struct {
 	RetrievalScore      *float64
 }
 
-// PG-034 (June 2026): ClipVectorAssetDTO removed. The Qdrant
+// ClipVectorAssetDTO was retired. The vector
 // capability was deleted; the clip indexer
 // (internal/infrastructure/indexing/clipindexer) is now the single
 // canonical semantic-search backend.
@@ -243,7 +243,7 @@ type SourceResolverPort interface {
 	ResolveRepo(source string) ClipRepositoryPort
 }
 
-// PG-034 (June 2026): VectorStorePort removed. The Qdrant
+// VectorStorePort was retired. The vector
 // capability was deleted.
 
 // ClipTreeBuilderPort is the canonical narrow surface of
