@@ -9,20 +9,76 @@ import (
 	"go.uber.org/zap"
 )
 
+// BM25Params holds the configurable BM25 scoring parameters.
+// k1 controls term frequency saturation (default 1.2).
+// b controls document length normalization (default 0.75).
+// AvgDocLength is the average document length in tokens across the corpus.
+// IDFTable maps tokens → inverse document frequency; nil means IDF=1.0 fallback.
+type BM25Params struct {
+	K1           float64            `json:"k1"`
+	B            float64            `json:"b"`
+	AvgDocLength float64            `json:"avg_doc_length"`
+	IDFTable     map[string]float64 `json:"-"`
+}
+
+// DefaultBM25Params returns standard BM25 parameters.
+func DefaultBM25Params() *BM25Params {
+	return &BM25Params{
+		K1:           1.2,
+		B:            0.75,
+		AvgDocLength: 50.0, // reasonable default for short media descriptions
+	}
+}
+
 // PayloadMapper converts internal AssetData to Qdrant Point representations.
 // It is the SINGLE place where vector names, payload fields, and embedding
 // channel mapping are configured — no hardcoded names anywhere else.
 type PayloadMapper struct {
-	store AssetStore
-	log   *zap.Logger
+	store      AssetStore
+	bm25Params *BM25Params
+	log        *zap.Logger
 }
 
 // NewPayloadMapper creates a PayloadMapper.
 func NewPayloadMapper(store AssetStore, log *zap.Logger) *PayloadMapper {
 	return &PayloadMapper{
-		store: store,
-		log:   log,
+		store:      store,
+		bm25Params: DefaultBM25Params(),
+		log:        log,
 	}
+}
+
+// SetBM25Params overrides the default BM25 parameters. Call before reindex.
+func (m *PayloadMapper) SetBM25Params(p *BM25Params) {
+	if p != nil {
+		m.bm25Params = p
+	}
+}
+
+// BuildIDFTable computes IDF values from a corpus of tokenized documents.
+// n_t = number of documents containing term t; N = total documents.
+// IDF(t) = log((N - n_t + 0.5) / (n_t + 0.5) + 1)
+func BuildIDFTable(docs [][]string) map[string]float64 {
+	if len(docs) == 0 {
+		return nil
+	}
+	N := float64(len(docs))
+	df := make(map[string]int) // document frequency
+	for _, doc := range docs {
+		seen := make(map[string]bool)
+		for _, t := range doc {
+			if !seen[t] {
+				df[t]++
+				seen[t] = true
+			}
+		}
+	}
+	idf := make(map[string]float64, len(df))
+	for t, nt := range df {
+		ntf := float64(nt)
+		idf[t] = math.Log((N-ntf+0.5)/(ntf+0.5) + 1.0)
+	}
+	return idf
 }
 
 // FetchAsset delegates to the AssetStore.
@@ -63,8 +119,21 @@ func (m *PayloadMapper) AssetToPoint(asset *AssetData, schema *IndexSchema) (*Po
 			if spec.Channel == "audio" {
 				continue
 			}
-			// Text and transcript are required for indexed assets.
-			if spec.Channel == "text" || spec.Channel == "transcript" {
+			// Text is required for indexed assets.
+			// Transcript falls back to text vector when absent.
+			if spec.Channel == "text" {
+				return nil, &ErrEmptyVector{
+					Channel: spec.Channel,
+					AssetID: asset.ID,
+				}
+			}
+			if spec.Channel == "transcript" {
+				// Fall back to text vector when transcript is unavailable.
+				// Mirrors sync_drive_qdrant.py behaviour.
+				if asset.TextVector != nil {
+					vectors[spec.Channel] = asset.TextVector
+					continue
+				}
 				return nil, &ErrEmptyVector{
 					Channel: spec.Channel,
 					AssetID: asset.ID,
@@ -97,7 +166,7 @@ func (m *PayloadMapper) AssetToPoint(asset *AssetData, schema *IndexSchema) (*Po
 		switch spec.Channel {
 		case "bm25_text":
 			if asset.SearchText != "" {
-				vectors[spec.Channel] = buildBM25Sparse(asset)
+				vectors[spec.Channel] = m.buildBM25Sparse(asset)
 			}
 		}
 	}
@@ -230,31 +299,53 @@ func isNaNOrInf(v float32) bool {
 	return math.IsNaN(float64(v)) || math.IsInf(float64(v), 0)
 }
 
-func buildBM25Sparse(asset *AssetData) map[string]float32 {
+func (m *PayloadMapper) buildBM25Sparse(asset *AssetData) map[string]float32 {
 	if asset.SearchText == "" {
 		return nil
 	}
-	// Simplified BM25: tokenize and assign term frequency.
-	// A full BM25 implementation would use index-level statistics.
 	tokens := tokenize(asset.SearchText)
 	if len(tokens) == 0 {
 		return nil
 	}
-	sparse := make(map[string]float32, len(tokens))
+
+	// Compute term frequencies.
+	tf := make(map[string]int, len(tokens))
 	for _, t := range tokens {
-		sparse[t] += 1.0
+		tf[t]++
 	}
-	// Normalize.
-	var norm float32
-	for _, v := range sparse {
-		norm += v * v
+
+	docLen := float64(len(tokens))
+	params := m.bm25Params
+	if params == nil {
+		params = DefaultBM25Params()
 	}
-	if norm > 0 {
-		norm = float32(1.0) / norm
-		for k := range sparse {
-			sparse[k] *= norm
+
+	k1 := params.K1
+	b := params.B
+	avgdl := params.AvgDocLength
+	if avgdl <= 0 {
+		avgdl = 50.0
+	}
+
+	// BM25(t, d) = IDF(t) * (f(t,d) * (k1 + 1)) / (f(t,d) + k1 * (1 - b + b * |d|/avgdl))
+	sparse := make(map[string]float32, len(tf))
+	for term, freq := range tf {
+		f := float64(freq)
+		numerator := f * (k1 + 1.0)
+		denominator := f + k1*(1.0-b+b*(docLen/avgdl))
+		bm25 := numerator / denominator
+
+		// Multiply by IDF when available.
+		if params.IDFTable != nil {
+			if idf, ok := params.IDFTable[term]; ok {
+				bm25 *= idf
+			}
+			// Terms not in IDF table (OOV) get IDF=1.0 — no multiplication.
 		}
+
+		sparse[term] = float32(bm25)
 	}
+
 	return sparse
 }
 

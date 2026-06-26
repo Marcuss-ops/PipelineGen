@@ -51,6 +51,7 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -95,7 +96,7 @@ type SearchBundle struct {
 }
 
 // ProcessBundle holds the heavy media-processing adapters.
-// QDRANT-003 (June 2026): IndexWriter and QdrantClient re-added for schema-versioned
+// QDRANT-003 (June 2026): IndexWriter and CollectionManager re-added for schema-versioned
 // vector store with real embeddings (no synthetic vectors).
 // QDRANT-004 (June 2026): VectorSvc added — search.VectorStorePort adapter for
 // the mediasearch unified search API.
@@ -104,10 +105,8 @@ type ProcessBundle struct {
 	ClipIndexerService *clipindexer.Service
 	VLMClient          *vlm.Client
 	// QDRANT-003 (June 2026): canonical Qdrant adapters.
-	QdrantClient  interface{}
-	QdrantDeleter interface {
-		DeletePoints(ctx context.Context, ids []string) error
-	}
+	CollectionManager  *qdrant.CollectionManager
+	QdrantDeleter      qdrant.QdrantDeleter
 	// QDRANT-004 (June 2026): search.VectorStorePort for the mediasearch API.
 	// Populated by BuildProcessBundle when Qdrant is enabled.
 	VectorSvc interface{}

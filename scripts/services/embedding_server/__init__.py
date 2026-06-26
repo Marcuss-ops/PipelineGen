@@ -65,8 +65,9 @@ except Exception as e:
 
 print("Loading SentenceTransformer model (intfloat/multilingual-e5-base)...")
 model = SentenceTransformer("intfloat/multilingual-e5-base")
-print("Loading CLIP model (clip-ViT-B-32)...")
-clip_model = SentenceTransformer("clip-ViT-B-32")
+print("Loading SigLIP model (google/siglip-so400m-patch14-384, 768d)...")
+siglip_model = SentenceTransformer("google/siglip-so400m-patch14-384")
+print(f"SigLIP model loaded, embedding dimension: {siglip_model.get_sentence_embedding_dimension()}")
 
 clap_model = None
 try:

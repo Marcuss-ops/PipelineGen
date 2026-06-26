@@ -70,7 +70,15 @@ class IndexBulkRequest(BaseModel):
 
 
 class VisualEmbedRequest(BaseModel):
-    text: str  # For CLIP text-to-visual embedding
+    text: str  # For text-to-visual embedding (SigLIP text encoder)
+
+
+class ImageEmbedRequest(BaseModel):
+    image_path: str  # For image-to-visual embedding (SigLIP image encoder)
+
+
+class AudioFileEmbedRequest(BaseModel):
+    audio_path: str  # For audio-file-to-audio embedding (CLAP audio encoder)
 
 
 class VisualAnalyzeRequest(BaseModel):

@@ -52,7 +52,6 @@ var availableCommands = []string{
 	"gen-api-docs",
 	"list-drive-folder",
 	"list-styles",
-	"reindex",
 	"reindex-qdrant",
 	"reset-video-ai",
 	"seed-channels",
@@ -90,8 +89,6 @@ func main() {
 		err = runDeleteSpecificFolders(args)
 	case "list-drive-folder":
 		err = runListDriveFolder(args)
-	case "reindex":
-		err = runReindex(args)
 	case "reindex-qdrant":
 		err = runReindexQdrant(args)
 	case "reset-video-ai":

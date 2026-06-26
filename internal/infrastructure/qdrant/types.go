@@ -327,35 +327,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// ── Legacy asset types ───────────────────────────────────────────────
-
-// VectorAsset is the canonical domain type for a Qdrant-upsertable asset.
-type VectorAsset struct {
-	AssetID             string    `json:"asset_id"`
-	Name                string    `json:"name"`
-	Source              string    `json:"source"`
-	Category            string    `json:"category,omitempty"`
-	Style               string    `json:"style,omitempty"`
-	MediaType           string    `json:"media_type"`
-	SearchText          string    `json:"search_text,omitempty"`
-	DriveLink           string    `json:"drive_link,omitempty"`
-	LocalPath           string    `json:"local_path,omitempty"`
-	Tags                []string  `json:"tags,omitempty"`
-	DurationMs          int64     `json:"duration_ms,omitempty"`
-	Language            string    `json:"language,omitempty"`
-	YouTubeVideoID      string    `json:"youtube_video_id,omitempty"`
-	YouTubeURL          string    `json:"youtube_url,omitempty"`
-	StartTime           string    `json:"start_time,omitempty"`
-	EndTime             string    `json:"end_time,omitempty"`
-	TextEmbedding       []float32 `json:"text_embedding,omitempty"`
-	VisualEmbedding     []float32 `json:"visual_embedding,omitempty"`
-	TranscriptEmbedding []float32 `json:"transcript_embedding,omitempty"`
-	EmbeddingVersion    string    `json:"embedding_version,omitempty"`
-	SearchTextVersion   string    `json:"search_text_version,omitempty"`
-	CreatedAt           string    `json:"created_at,omitempty"`
-}
-
-// IndexHealthReport is the result of an index health check.
+// ── Health / diagnostics types ──────────────────────────────────────
 type IndexHealthReport struct {
 	OK              bool `json:"ok"`
 	Degraded        bool `json:"degraded,omitempty"`
