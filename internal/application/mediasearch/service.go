@@ -111,7 +111,24 @@ func NewService(
 // header. Errors are returned as sentinel values where it makes
 // sense for the handler to map them to status codes.
 func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSearchResponse, error) {
-	if strings.TrimSpace(req.Workspace.WorkspaceID) == "" || req.Workspace.WorkspaceID == "default" {
+	// Auth/tenant guard (QDRANT-004 §workspace enforcement).
+	//
+	// req.Workspace is a value type (struct), so a nil-check at this
+	// level is not possible; we instead detect the zero-value via
+	// WorkspaceID - the same field the rejection below checks. The
+	// Debug log makes the silent filter-disable path (qdrant layer
+	// drops the must-filter when WorkspaceID is empty) auditable
+	// even though the request is rejected afterwards.
+	//
+	// Returning ErrMissingWorkspace makes the rejection loud; the
+	// accompanying debug log makes it traceable for the
+	// workspace_id_empty dashboard metric.
+	if strings.TrimSpace(req.Workspace.WorkspaceID) == "" {
+		s.log.Debug("mediasearch.Search: WorkspaceID empty would silently disable qdrant-layer tenant filter; rejecting via ErrMissingWorkspace")
+		return nil, ErrMissingWorkspace
+	}
+	if req.Workspace.WorkspaceID == "default" {
+		s.log.Debug("mediasearch.Search: WorkspaceID is the reserved sentinel \"default\"; refusing to fan out across tenant spaces")
 		return nil, ErrMissingWorkspace
 	}
 	q := strings.TrimSpace(req.Query)
