@@ -14,8 +14,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
@@ -26,7 +24,6 @@ import (
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
@@ -35,24 +32,14 @@ import (
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
 
 	"go.uber.org/zap"
 )
@@ -371,22 +358,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			readRepo := &mediasearchReadAdapter{clips: root.Repos.ClipsRepo}
 			// AssetDeliveryService: use HMAC-signed URLs when secrets are
 			// configured, fall back to noop for dev/test.
-			var deliverySvc mediasearch.AssetDeliveryService = &mediasearchDeliveryAdapter{}
-			if secret := strings.TrimSpace(cfg.Security.DeliveryHMACSecret); len(secret) >= 32 {
-				deliveryBaseURL := strings.TrimSpace(cfg.External.VeloxBaseURL)
-				signer, err := delivery.NewSigner(
-					[]byte(secret),
-					time.Duration(cfg.Security.DeliveryReplayWindowSec)*time.Second,
-					deliveryBaseURL,
-					"/api/internal/v1/deliver",
-				)
-				if err != nil {
-					log.Warn("QDRANT-004: delivery signer init failed, falling back to noop", zap.Error(err))
-				} else {
-					deliverySvc = signer
-					log.Info("QDRANT-004: delivery signer wired with HMAC secret")
-				}
-			}
+			deliverySvc := buildMediasearchDeliverySvc(
+				cfg.Security.DeliveryHMACSecret,
+				cfg.External.VeloxBaseURL,
+				cfg.Security.DeliveryReplayWindowSec,
+				log,
+			)
 
 			searchSvc := mediasearch.NewService(
 				vectorPort,
@@ -455,146 +432,4 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	return wiring, nil
 }
 
-func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
-	assetIndexRepo := assetindex.NewRepository(dbs.main.DB)
-	assetIndexService := assetindex.NewService(assetIndexRepo)
-	assetTreeRepo, err := assets.NewAssetTreeRepository(dbs.main.DB, log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize asset tree repository: %w", err)
-	}
-	assetTreeService := assettree.NewService(assetTreeRepo, log)
-	return assetIndexService, assetTreeService, nil
-}
-
-type DriveDestinations struct {
-	MediaRoot, SoundEffectsRoot, imagesFolder string
-}
-
-func (d *DriveDestinations) RootFolder() string   { return d.MediaRoot }
-func (d *DriveDestinations) ImagesFolder() string { return d.imagesFolder }
-
-// initMediaProcessor wires the media processor. PG-011: db is now
-// *storage.SQLiteDB (the typed canonical handle) instead of raw *sql.DB;
-// the artifacts.NewClipsRegistry constructor still takes *sql.DB so we
-// deref via db.DB at the call site — this keeps the upstream contract
-// unchanged while letting the composition layer stop holding a raw
-// sqlite handle in signatures.
-func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
-	ytDLPDownloader := downloader.NewYTDLP(cfg)
-	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
-	ffmpegProc := ffmpeg.NewFromConfig(cfg)
-	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing)
-	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
-}
-
-func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository) []catalogsync.Target {
-	targets := []catalogsync.Target{
-		{Name: "stock", RootFolderID: cfg.Drive.StockFolder(), Source: "stock", MediaType: "stock", Repo: clipsRepo},
-		{Name: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Source: "youtube", MediaType: "clip", Repo: clipsOnlyRepo},
-		{Name: "artlist", RootFolderID: cfg.Drive.ArtlistFolder(), Source: "artlist", MediaType: "artlist", Repo: artlistRepo},
-	}
-
-	return targets
-}
-
 // wireScriptFlow is defined in wire_script.go.
-
-// ── QDRANT-004 adapters ────────────────────────────────────────────────────
-
-// mediasearchVectorAdapter implements mediasearch.VectorSearchPort by
-// combining an OllamaClient for embedding with a search.VectorStorePort
-// for vector-store operations.
-type mediasearchVectorAdapter struct {
-	embedder interface {
-		Embed(ctx context.Context, text string) ([]float32, error)
-	}
-	store assetsearch.VectorStorePort
-}
-
-func (a *mediasearchVectorAdapter) EmbedTextForVector(ctx context.Context, text, _ string) ([]float32, error) {
-	return a.embedder.Embed(ctx, text)
-}
-
-func (a *mediasearchVectorAdapter) VectorStore() assetsearch.VectorStorePort {
-	return a.store
-}
-
-// mediasearchReadAdapter implements mediasearch.MediaReadRepository using
-// the existing ClipsRepository for batched SQLite reads.
-type mediasearchReadAdapter struct {
-	clips *assets.ClipsRepository
-}
-
-func (a *mediasearchReadAdapter) GetMany(ctx context.Context, _ mediasearch.WorkspaceContext, assetIDs []string) ([]mediasearch.MediaAsset, error) {
-	if a.clips == nil || len(assetIDs) == 0 {
-		return nil, nil
-	}
-	// Batch query via ClipsRepository.List with filter.IDs — single
-	// SQL statement with WHERE id IN (?, ?, ...).
-	// TODO QDRANT-001: filter by workspace_id when the column lands.
-	clips, err := a.clips.List(ctx, asset.Filter{IDs: assetIDs})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]mediasearch.MediaAsset, 0, len(clips))
-	for _, clip := range clips {
-		if clip == nil {
-			continue
-		}
-		// Exclude soft-deleted rows per MediaReadRepository contract.
-		ls := strings.ToLower(string(clip.LifecycleState))
-		if ls == "deleted" {
-			continue
-		}
-		lang, _ := clip.Metadata["language"].(string)
-		width, _ := clip.Metadata["width"].(float64)
-		height, _ := clip.Metadata["height"].(float64)
-		out = append(out, mediasearch.MediaAsset{
-			ID:         clip.ID,
-			Name:       clip.Name,
-			Source:     string(clip.Source),
-			MediaType:  string(clip.MediaType),
-			Category:   clip.Category,
-			Tags:       clip.Tags,
-			Language:   lang,
-			DurationMs: int(clip.Duration.Milliseconds()),
-			Width:      int(width),
-			Height:     int(height),
-			SearchText: clip.SearchText,
-		})
-	}
-	return out, nil
-}
-
-// mediasearchDeliveryAdapter implements mediasearch.AssetDeliveryService
-// as a noop until HMAC delivery URL signing is wired (QDRANT-005).
-type mediasearchDeliveryAdapter struct{}
-
-func (a *mediasearchDeliveryAdapter) BuildAuthorizedURL(_ context.Context, _ mediasearch.WorkspaceContext, _ string) (string, error) {
-	// QDRANT-005: implement HMAC-signed delivery URLs.
-	return "", nil
-}
-
-// mediasearchLogger adapts zap.Logger to mediasearch.Logger.
-type mediasearchLogger struct {
-	sugar *zap.SugaredLogger
-}
-
-func (l mediasearchLogger) Info(msg string, kv ...any)  { l.sugar.Infow(msg, kv...) }
-func (l mediasearchLogger) Warn(msg string, kv ...any)  { l.sugar.Warnw(msg, kv...) }
-func (l mediasearchLogger) Debug(msg string, kv ...any) { l.sugar.Debugw(msg, kv...) }
-
-func ensureStyleDriveFolders(ctx context.Context, uploader *driveup.Uploader, rootID string, styleRegistry *generation.StyleRegistry, log *zap.Logger) {
-	if uploader == nil || strings.TrimSpace(rootID) == "" || styleRegistry == nil {
-		return
-	}
-	for _, st := range styleRegistry.List() {
-		name := strings.TrimSpace(st.Name)
-		if name == "" {
-			continue
-		}
-		if _, err := uploader.GetOrCreateFolder(ctx, name, rootID); err != nil && log != nil {
-			log.Warn("failed to pre-create style folder", zap.String("style", name), zap.String("root_id", rootID), zap.Error(err))
-		}
-	}
-}
