@@ -18,6 +18,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
