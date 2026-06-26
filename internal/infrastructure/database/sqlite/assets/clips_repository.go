@@ -8,10 +8,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
+
+// Compile-time assertion (Wave 16, June 2026): *ClipsRepository
+// statically implements jobsoutbox.AssetSourceChecker (pre-flight
+// idempotency surface for the source_version supersede gate in
+// IndexingHandler). Per AGENTS.md Pattern 0, the assertion lives
+// at the adapter (infrastructure) home so port-drift bugs surface
+// at compile time, not at the first index.requested replay.
+//
+// Two-method-or-more port: AssetSourceChecker currently exposes
+// only GetClip; adding a second method to the upstream port will
+// trip this assertion and force the concrete to implement the new
+// method. The same pattern as qdrant/search_adapter.go::var _
+// appsearch.VectorStorePort = ...
+var _ jobsoutbox.AssetSourceChecker = (*ClipsRepository)(nil)
 
 const mediaAssetColumns = `
 	id,
