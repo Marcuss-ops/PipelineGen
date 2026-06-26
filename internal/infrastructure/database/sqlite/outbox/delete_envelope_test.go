@@ -12,7 +12,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"sync"
 	"testing"
 
 	"go.uber.org/zap"
