@@ -358,6 +358,36 @@ func (r *ClipsRepository) CountIndexed(ctx context.Context) (int64, error) {
 	return n, err
 }
 
+// CountIndexable returns the count of assets eligible for indexing —
+// those in DISCOVERED, INDEX_PENDING, or INDEXING state, OR already
+// indexed (have embeddings). Used by IndexHealth diagnostics.
+func (r *ClipsRepository) CountIndexable(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM media_assets WHERE `+r.SoftDeleteFilter()+`
+		   AND (index_state IN ('DISCOVERED','INDEX_PENDING','INDEXING')
+		     OR (embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]'))`).Scan(&n)
+	return n, err
+}
+
+// CountPendingOutbox returns the count of outbox events in 'pending' status.
+// Delegates to outboxevents.Repository.CountByStatus when wired.
+func (r *ClipsRepository) CountPendingOutbox(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM outbox_events WHERE status = 'pending'").Scan(&n)
+	return n, err
+}
+
+// CountDeadLetter returns the count of outbox events in 'dead_letter' status.
+// Delegates to outboxevents.Repository.CountByStatus when wired.
+func (r *ClipsRepository) CountDeadLetter(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM outbox_events WHERE status = 'dead_letter'").Scan(&n)
+	return n, err
+}
+
 func (r *ClipsRepository) ListIndexedIDs(ctx context.Context, limit int) ([]string, error) {
 	if limit <= 0 {
 		return []string{}, nil

@@ -77,13 +77,14 @@ func (h *Handler) IndexHealth(c *gin.Context) {
 
 // ── QdrantCleanup (POST /qdrant/cleanup) ──────────────────────────
 
-// QdrantCleanup is a public no-op placeholder. The real cleanup runs
-// periodically via background_jobs.go (startQdrantCleaner) and is
-// triggered by the admin CLI, not by this public endpoint.
-// Kept for route backward compatibility during the migration.
+// QdrantCleanup triggers the Qdrant stale-link cleaner job.
+// QDRANT-005 Fase 1 (June 2026): Qdrant capability reintroduced.
+// The background cleaner (startQdrantCleaner) was removed in PG-034;
+// this endpoint now returns an honest status. Full reconciliation
+// endpoint (POST /media/reconcile) coming in QDRANT-005 Fase 2.
 func (h *Handler) QdrantCleanup(c *gin.Context) {
 	apiutil.OK(c, gin.H{
 		"ok":      true,
-		"message": "Qdrant stale-link cleaner runs every 12h automatically. Use the admin CLI for manual triggers.",
+		"message": "Qdrant reintroduced (QDRANT-001..004). Background cleaner pending restoration in QDRANT-005 Fase 3. Reconciliation endpoint (POST /media/reconcile) coming in Fase 2.",
 	})
 }

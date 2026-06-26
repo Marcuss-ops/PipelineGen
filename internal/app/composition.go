@@ -111,6 +111,9 @@ type ProcessBundle struct {
 	// QDRANT-004 (June 2026): search.VectorStorePort for the mediasearch API.
 	// Populated by BuildProcessBundle when Qdrant is enabled.
 	VectorSvc interface{}
+	// QDRANT-005 Fase 1 (June 2026): direct *qdrant.Client for diagnostics
+	// (CountPoints). Populated by BuildProcessBundle when Qdrant is enabled.
+	QdrantClient *qdrant.Client
 }
 
 // AIBundle owns script generation, engine, and memory.
