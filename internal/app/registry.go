@@ -17,6 +17,7 @@ import (
 
 	module	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	generationapi "github.com/Marcuss-ops/PipelineGen/internal/api/generation"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
@@ -342,6 +343,22 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			maintenanceSvc.SetDeletionService(aw.DeletionSvc)
 			log.Info("injected DeletionService into MaintenanceService")
 		}
+	}
+
+	// ── QDRANT-002: wire canonical internal outbox endpoint ──────────
+	// Exposes GET /internal/v1/outbox/status and /events for operator
+	// dashboard visibility into the outbox events pipeline (pending,
+	// processing, dead_letter, completed, superseded counts + event list).
+	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		outboxHandler := outboxapi.NewHandler(root.Outbox.EventsRepo, log)
+		registerModule(registry, log, module.NewRouteModule(
+			"outbox",
+			func() bool { return true },
+			"/internal/v1/outbox",
+			outboxHandler,
+			log,
+		))
+		log.Info("QDRANT-002: outbox events endpoint mounted at /internal/v1/outbox")
 	}
 
 	// ── QDRANT-004: wire mediasearch handler ─────────────────────────
