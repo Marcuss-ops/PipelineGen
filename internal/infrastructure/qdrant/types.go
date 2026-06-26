@@ -25,7 +25,7 @@ type EmbeddingSpec struct {
 	// Channel is the vector name in Qdrant (e.g. "text", "transcript", "visual", "audio").
 	Channel string `json:"channel"`
 
-	// Model identifies the embedding model (e.g. "multilingual-e5-base", "clip-ViT-B-32").
+	// Model identifies the embedding model (e.g. "multilingual-e5-base", "siglip-so400m-patch14-384").
 	Model string `json:"model"`
 
 	// ModelVersion is the model release or fine-tune version (e.g. "2026-06-16-v1").
@@ -76,7 +76,7 @@ type IndexSchema struct {
 	// Version is the schema version string (e.g. "v3").
 	Version string `json:"version"`
 
-	// PhysicalName is the deterministic collection name (e.g. "media_assets_v3_e5_768_clip_512").
+	// PhysicalName is the deterministic collection name (e.g. "media_assets_v3_e5_768_siglip_768").
 	PhysicalName string `json:"physical_name"`
 
 	// RuntimeAlias is the alias used by all read/write operations (e.g. "media_assets_current").

@@ -7,11 +7,11 @@
 //
 // QDRANT-003 compliance:
 //   - Every embedding is produced by a real model, never synthesized.
-//   - Visual: SigLIP so400m (768d) via /embed_visual_from_image.
+//   - Visual: SigLIP so400m patch14-384 (768d) via /embed_visual_from_image.
 //   - Audio: CLAP HTSAT (512d) via /embed_audio_from_file.
 //   - Model identity and version are declared in the IndexSchema manifest.
 //   - Audio is optional — returns ErrChannelUnavailable when the sidecar
-//     reports CLAP model not loaded (HTTP 501).
+//     reports the model not loaded (HTTP 501).
 package qdrant
 
 import (
@@ -62,8 +62,8 @@ type ImageEmbedderConfig struct {
 	Timeout time.Duration
 }
 
-// imageEmbedderAdapter calls the Python sidecar's /embed_visual endpoint
-// to generate real CLIP/SigLIP embeddings. Returns typed errors on HTTP
+// imageEmbedderAdapter calls the Python sidecar's /embed_visual_from_image endpoint
+// to generate real SigLIP (768d) embeddings from image files. Returns typed errors on HTTP
 // failures or dimension mismatches.
 type imageEmbedderAdapter struct {
 	serverURL  string
