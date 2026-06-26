@@ -207,7 +207,7 @@ func TestReconcile_DryRun_DoesNotDispatch(t *testing.T) {
 		mtr,
 		withOutbox(outbox),
 		withPayload(payload),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	report, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: true})
@@ -291,7 +291,7 @@ func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 		mtr,
 		withOutbox(outbox),
 		withPayload(payload),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	report, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
@@ -379,7 +379,7 @@ func TestReconcile_DispatchFailureCapturedInReport(t *testing.T) {
 		mtr,
 		withOutbox(outbox),
 		withPayload(&stubPayload{}),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	report, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
@@ -451,7 +451,7 @@ func TestReconcile_IdempotentSecondRunProducesZeroDrift(t *testing.T) {
 		mtr,
 		withOutbox(&stubOutbox{}),
 		withPayload(&stubPayload{}),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	r1, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: true})
@@ -476,7 +476,7 @@ func TestReconcile_IdempotentSecondRunProducesZeroDrift(t *testing.T) {
 		mtr,
 		withOutbox(&stubOutbox{}),
 		withPayload(&stubPayload{}),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	r2, err := svc2.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: true})
@@ -507,7 +507,7 @@ func TestReconcile_ReportPersistedToFile(t *testing.T) {
 		mtr,
 		withOutbox(&stubOutbox{}),
 		withPayload(&stubPayload{}),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	_, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: true, ReportPath: path})
@@ -599,7 +599,7 @@ func TestReconcile_VersionMismatchPerChannel_Emitted(t *testing.T) {
 		mtr,
 		withOutbox(&stubOutbox{}),
 		withPayload(&stubPayload{}),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	_, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: true})
@@ -641,7 +641,7 @@ func TestReconcile_DryRunSuppressesDispatchAndLegacyMetrics(t *testing.T) {
 		mtr,
 		withOutbox(outbox),
 		withPayload(payload),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	// DryRun mode (default per QDRANT-005B DoD).
@@ -683,7 +683,7 @@ func TestReconcile_ReportWriteFailureEmitsErrorMetric(t *testing.T) {
 		mtr,
 		withOutbox(&stubOutbox{}),
 		withPayload(&stubPayload{}),
-		withPointIDFor(func(s string) string { return "pt-" + s }),
+		withPointIDFor(canonicalPointID),
 		withLog(zap.NewNop()),
 	)
 	_, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: true, ReportPath: "/tmp/forbidden.json"})
@@ -783,7 +783,7 @@ func TestReconcile_LocatorLegacy_AsymmetricKeyCounters(t *testing.T) {
 			svc := fixtureService(t,
 				versionCheckSchema(),
 				&stubQdrant{pointsByID: map[string]pointWithID{
-					tc.assetID: {ID: "pt-" + tc.assetID, Payload: payload},
+					tc.assetID: {ID: canonicalPointID(tc.assetID), Payload: payload},
 				}},
 				&stubSQLite{rows: []AssetSnapshot{
 					{ID: tc.assetID, LifecycleState: "ACTIVE"},
@@ -791,7 +791,7 @@ func TestReconcile_LocatorLegacy_AsymmetricKeyCounters(t *testing.T) {
 				mtr,
 				withOutbox(&stubOutbox{}),
 				withPayload(payloadStub),
-				withPointIDFor(func(s string) string { return "pt-" + s }),
+				withPointIDFor(canonicalPointID),
 				withLog(zap.NewNop()),
 			)
 			_, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
