@@ -6,6 +6,14 @@
 // pattern as before, but reads from root.Domains, root.Repos, root.Process,
 // root.Outbox, root.Jobs, root.Domains.RealtimeService, etc.
 //
+// PR4.8 (June 2026): the typed job-runner lifecycle (construction +
+// START/STOP closure) was extracted to internal/app/lifecycle_job_runner.go
+// (buildJobRunner + buildJobRunnerStep). startBackgroundJobs is now
+// orchestrator-only — the "var jobRunner := appjobs.NewRunner(...) +
+// inline StartupStep literal" pattern is replaced by a single typed
+// append at the end of the plan. See Wave 15 pending #2 in
+// architecture/current.yaml for the canonical record.
+//
 // The returned *backgroundJobs handle is consumed by shutdown.go for
 // graceful teardown (channel-monitor.Stop, drive-sync-scheduler.Stop).
 package app
@@ -56,9 +64,13 @@ type StartupStep struct {
 // After lifecycle-runtime-ownership (June 2026), only channelMonitor needs
 // explicit Stop (via buildCleanup in shutdown.go). All other services
 // (job runner, scanner, sweepers) stop via context cancellation.
-// The startupPlan field replaces the previous startJobRunner closure —
-// ALL background workers, scanners, monitors, sweepers, and the job runner
-// now flow through the plan so zero goroutines start during composition.
+//
+// The startupPlan field encodes every background worker, scanner, monitor,
+// sweeper, and the job runner as a StartupStep so zero goroutines start
+// during composition. The job-runner StartupStep is built by
+// internal/app/lifecycle_job_runner.go::buildJobRunnerStep (PR4.8) and
+// is appended LAST in the plan (asserted by TestLifecycle_JobRunnerLast
+// in internal/app/lifecycle_test.go).
 type backgroundJobs struct {
 	channelMonitor *monitor.ChannelMonitor
 	// startupPlan is the ordered list of services to start during
@@ -118,34 +130,21 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		zap.Bool("scheduler", runScheduler),
 		zap.Bool("maintenance", runMaintenance))
 
-	var jobRunner *appjobs.Runner
 	var jobScanner *sqlitejobs.Scanner
 	var channelMon *monitor.ChannelMonitor
 	var steps []StartupStep
 
 	if runWorker {
 		// Jobs system - Runner and Scanner. Reads from root.Jobs (PR4a).
-		jobsSvc := root.Jobs.Service
-		jobsDispatcher := root.Jobs.Dispatcher
+		// PR4.8 (June 2026): the jobRunner construction was extracted
+		// to internal/app/lifecycle_job_runner.go::buildJobRunner, and
+		// the "job-runner" StartupStep is appended at the end of
+		// startBackgroundJobs via buildJobRunnerStep. The scanner +
+		// metrics refresher stay here as before — they only need the
+		// jobs.Store (*sqljobs.SQLiteStore), so the gate collapses to
+		// `jobsRepo != nil`.
 		jobsRepo := root.Jobs.Repo
-		if jobsSvc != nil && jobsDispatcher != nil && jobsRepo != nil {
-			workers := cfg.Jobs.MaxParallelPerProject
-			if workers <= 0 {
-				workers = 1
-			}
-			leaseTTL := time.Duration(cfg.Jobs.LeaseTTLSeconds) * time.Second
-			if leaseTTL <= 0 {
-				leaseTTL = 5 * time.Minute
-			}
-			runnerConfig := appjobs.RunnerConfig{
-				Workers:   workers,
-				PollEvery: 2 * time.Second,
-				LeaseTTL:  leaseTTL,
-				JobTypes:  nil,
-			}
-			jobRunner = appjobs.NewRunner(jobsRepo, jobsDispatcher, log, runnerConfig)
-			log.Info("Job runner created", zap.Int("workers", runnerConfig.Workers))
-
+		if jobsRepo != nil {
 			jobScanner = sqlitejobs.NewScanner(jobsRepo, log)
 
 			// Job scanner: optional background service.
@@ -363,23 +362,14 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	}
 
 	// Job runner: REQUIRED, always LAST in the plan.
-	// The closure freezes the Dispatcher so no further handlers can
-	// register once the runner starts claiming jobs. It is invoked
-	// AFTER all other services are up and WireRegistry has completed.
-	if jobRunner != nil && root.Jobs.Dispatcher != nil {
-		jr := jobRunner
-		disp := root.Jobs.Dispatcher
-		steps = append(steps, StartupStep{
-			Name: "job-runner", Required: true,
-			Start: func(startCtx context.Context) error {
-				disp.Freeze()
-				concurrent.SafeGo("job-runner", func() { jr.Start(startCtx) })
-				log.Info("Job runner started after full wiring",
-					zap.Int("workers", cfg.Jobs.MaxParallelPerProject))
-				return nil
-			},
-			Stop: func(_ context.Context) error { return nil },
-		})
+	// Construction + step closure extracted to buildJobRunnerStep
+	// (internal/app/lifecycle_job_runner.go, PR4.8). The frozen dispatcher
+	// guarantees no further handlers can register once Start is invoked;
+	// the runner exits via context cancellation in serverLifecycle.Stop.
+	// Returns nil when the jobs bundle lacks Service / Dispatcher / Repo
+	// (partial-deploy safety net): the runner is then skipped, not failed.
+	if step := buildJobRunnerStep(jobRunnerDeps{root: root, cfg: cfg, log: log}); step != nil {
+		steps = append(steps, *step)
 	}
 
 	return &backgroundJobs{

@@ -12,7 +12,8 @@
 // PR4d-final (June 2026): entry-point summary:
 //  1. NewComposition(ctx, cfg, dbs, log) → *ComposeRoot (12 bundles).
 //  2. startBackgroundJobs(ctx, cfg, dbs, root, log, mode) → *backgroundJobs.
-//     The returned handle exposes the StartupStep list (job runner last).
+//     The returned handle exposes the StartupStep list (job runner last,
+//     built via buildJobRunnerStep in internal/app/lifecycle_job_runner.go).
 //  3. buildCleanup(dbs, root, jobs, cancel, log) → CleanupFunc (LIFO).
 //  4. WireRegistry(ctx, cfg, log, root) mounts all modules + freezes
 //     ProviderRegistry.
@@ -94,12 +95,14 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 // WireServices initializes the full server composition root.
 //
 // PR4d-final flow (June 2026): initCompositionMinimal builds the *ComposeRoot
-// via NewComposition, starts background jobs (including the
-// startJobRunner closure stored on jobs), builds cleanup. WireRegistry takes
-// ONLY root + ctx — there is no *CoreDeps projection. JobRunner starts via
-// jobs.startJobRunner() AFTER registry freeze (WireRegistry) so all
-// handlers registered during NewComposition are accepted before the
-// dispatcher freezes.
+// via NewComposition, starts background jobs (the StartupStep plan —
+// including the job runner — is captured in jobs.startupPlan), builds
+// cleanup. WireRegistry takes ONLY root + ctx — there is no *CoreDeps
+// projection. The job-runner StartupStep (built by
+// lifecycle_job_runner.go::buildJobRunnerStep, PR4.8) freezes the
+// dispatcher during Start so all handlers registered in
+// NewComposition + WireRegistry are accepted before any new handler
+// can register.
 func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
 	root, jobs, coreClean, err := initCompositionMinimal(cfg, log, mode)
 	if err != nil {

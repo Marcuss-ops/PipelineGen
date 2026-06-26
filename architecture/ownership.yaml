@@ -259,6 +259,13 @@ canonical_services:
   - service: JobService (jobs.Service)
     constructor: NewService
     location: internal/app/composition.go::BuildJobsBundle
+  - service: AppJobRunner (jobs.Runner)
+    constructor: buildJobRunner
+    location: internal/app/lifecycle_job_runner.go
+    step_constructor: buildJobRunnerStep  # typed-lifecycle helper, PR4.8
+    step_name: job-runner
+    step_required: true
+    step_appended_last: true  # TestLifecycle_JobRunnerLast invariant
   - service: JobFacade (jobs.Facade)
     constructor: NewFacade
     location: internal/app/composition.go::BuildJobsBundle

@@ -18,6 +18,7 @@
 //	InitComposition + initCompositionMinimal* + WireServices + WireMinimal → wire_services.go
 //	Build*Bundle / NewComposition → composition.go + build_*_bundle.go
 //	startBackgroundJobs + lifecycle.NewServerLifecycleWithProbes → lifecycle.go
+//	buildJobRunner + buildJobRunnerStep (PR4.8 job-runner typed lifecycle) → lifecycle_job_runner.go
 //	buildCleanup (LIFO teardown) → shutdown.go
 //	InitWorkerComposition → worker_composition.go (cmd/worker entry-point)
 //
