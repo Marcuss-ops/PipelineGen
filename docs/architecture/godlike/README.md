@@ -49,9 +49,32 @@ PipelineGen must converge on:
 11. [`11_AGENT_EXECUTION_PLAYBOOK.md`](11_AGENT_EXECUTION_PLAYBOOK.md) — instructions for humans and coding agents.
 12. [`12_REVIEW_CHECKLIST.md`](12_REVIEW_CHECKLIST.md) — strict review checklist.
 13. [`13_FEATURE_REMOVAL_CHECKLIST.md`](13_FEATURE_REMOVAL_CHECKLIST.md) — complete removal procedure.
+14. [`14_INITIAL_BACKLOG.md`](14_INITIAL_BACKLOG.md) — initial bounded implementation blocks.
 
 ## How to use this program
 
 Every implementation task must reference the relevant document and change one bounded responsibility. Migration work follows EXPAND, BACKFILL, CUTOVER, CONTRACT when data or runtime continuity requires it. Pure dead-code removal may go directly to CONTRACT after proving there are no callers, routes, jobs, data owners, configuration keys, metrics, or operational dependencies.
 
 The destination is not a larger framework. The destination is a smaller, explicit, compiler-enforced system.
+
+## Actions to execute
+
+- Assign one accountable owner to every document and every active migration block.
+- Convert each document's action list into bounded implementation tasks with an issue ID, affected files, dependencies, tests, and evidence path.
+- Execute the phases in `09_MIGRATION_ROADMAP.md`; do not start overlapping cutovers before the previous CONTRACT gate is complete.
+- Implement the registries, architecture checker, and generator before deleting manually maintained live inventories.
+- Record completion evidence in commits, generated manifests, test output, and the relevant document rather than in untracked chat or temporary notes.
+- Revalidate every document against current `main` after a structural migration and remove instructions that no longer describe the target.
+
+## Final DONE check
+
+This architecture program is DONE only when all of the following are true:
+
+- [ ] Every numbered document has completed its own `Actions to execute` and `Final DONE check`.
+- [ ] Routes, jobs, providers, health checks, dependencies, services, and table ownership are generated from canonical code or migration metadata.
+- [ ] `go test ./...`, architecture checks, generation checks, and the required CI workflow are green on `main`.
+- [ ] Architecture baselines and allowlists have reached zero and have been removed.
+- [ ] No fake route, parallel writer, compatibility alias, pass-through wrapper, dependency setter, or hidden fallback remains.
+- [ ] Every durable fact, route, job type, provider key, config key, and table has exactly one canonical owner.
+- [ ] The old package and registration paths have zero references after each cutover.
+- [ ] The generated architecture manifests match the runtime surface with no manual live inventory competing with them.

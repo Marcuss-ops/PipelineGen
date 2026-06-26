@@ -59,3 +59,31 @@ Required dependencies are passed to constructors. After construction there are n
 ## Removal property
 
 A well-formed capability can be retired by removing its vertical package, its single registry entry, its active config section, owned future migrations, and regenerated manifests. No copied DTOs or hidden route registrations may remain elsewhere.
+
+## Actions to execute
+
+- Inventory every current feature and assign it to exactly one capability owner.
+- Introduce the shared `module.Descriptor` contract, validation rules, and one `Build` entrypoint per migrated capability.
+- Define typed capability commands, queries, results, events, job payloads, and consumer-owned ports.
+- Move HTTP behavior to thin transport that invokes one use case and contains no infrastructure access or provider dispatch.
+- Consolidate defaults and normalization into one typed function shared by HTTP, jobs, CLI, and internal callers.
+- Consolidate each job type to one constant, codec, handler, owner, and registry binding.
+- Replace broad repositories and raw database exposure with narrow owned repository methods and typed transaction boundaries.
+- Replace dependency setters and late binding with complete constructor dependency structs validated during `Build`.
+- Add focused unit, integration, route, job-codec, idempotency, failure, and removal tests.
+- Delete the superseded package layout after the migrated capability has zero callers outside its canonical contracts.
+
+## Final DONE check
+
+A capability is DONE under this standard only when:
+
+- [ ] It has one owner directory, one `Build` function, and one validated descriptor.
+- [ ] All mandatory dependencies are typed and non-nil before the descriptor is registered.
+- [ ] HTTP, job, CLI, and internal execution use the same normalized command/query.
+- [ ] Every job type has one codec, one handler, and one registry binding.
+- [ ] Transport contains no SQL, Drive, Qdrant, FFmpeg, process, retry, or job-state logic.
+- [ ] Ports are narrow and consumer-owned; no raw database handle or generic update map crosses the boundary.
+- [ ] No dependency setter, runtime type assertion, copied DTO, compatibility alias, or pass-through wrapper is required.
+- [ ] Routes, jobs, providers, lifecycle hooks, and health checks appear in generated manifests from the descriptor.
+- [ ] Focused tests and affected integration tests pass.
+- [ ] Removing the capability would require deleting only its vertical package, registry contribution, config, and owned migrations, with no hidden registration elsewhere.

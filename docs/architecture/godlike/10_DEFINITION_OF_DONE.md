@@ -73,3 +73,30 @@ Regardless of delivery method, the change must:
 ## Completion statement
 
 A task is not done because the new path works. It is done when the new path is the only path.
+
+## Actions to execute
+
+- Add this Definition of Done to the repository contribution workflow, agent instructions, task templates, review checklist, and release process.
+- Require every implementation task to identify which DoD categories apply before work starts.
+- Require evidence for every checked item: test command, generated report, repository search, migration result, runtime metric, or commit reference.
+- Add automated checks for all criteria that can be enforced mechanically.
+- Require an explicit reviewer or owner sign-off for criteria that need architectural judgment.
+- Block completion when any applicable item is marked not applicable without a written reason.
+- Add a post-publication verification step confirming the expected commit is on the intended branch and the latest CI result is green.
+- Audit completed migrations periodically and reopen any task whose old path, config, data access, or registration remains.
+
+## Final DONE check
+
+This Definition of Done is itself DONE only when:
+
+- [ ] It is referenced by `AGENTS.md`, implementation task templates, and review guidance.
+- [ ] Every new capability, migration, registry change, removal, and direct-main change records applicable DoD evidence.
+- [ ] Mechanical criteria are enforced by tests, `archcheck`, generation checks, or CI.
+- [ ] Non-mechanical criteria have a named reviewer or owner sign-off.
+- [ ] No task is closed with an active old route, job, writer, reader, type, config key, test, metric, or documentation path.
+- [ ] Every data migration includes EXPAND, BACKFILL, CUTOVER, CONTRACT, integrity evidence, and recovery notes when applicable.
+- [ ] Every registry migration proves uniqueness, freeze behavior, parity, and removal of old registration paths.
+- [ ] Documentation-only changes prove link integrity and consistency with current code.
+- [ ] The final diff and recent commit history are inspected after publication.
+- [ ] The target branch is green and generated files are current.
+- [ ] A task can be declared DONE only when the canonical path is the only active path.

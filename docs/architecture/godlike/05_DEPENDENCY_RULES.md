@@ -55,7 +55,7 @@ Every event family has one schema owner, explicit version, idempotency key, prod
 - API packages importing infrastructure packages;
 - application logic importing Gin;
 - kernel/domain importing config or loggers;
-- raw `*sql.DB` crossing capability boundaries;
+- raw database handles crossing capability boundaries;
 - capability packages importing other capability transport packages;
 - shared mega-interfaces used only to avoid adapters;
 - runtime type assertions replacing real contracts;
@@ -78,3 +78,29 @@ A constructor or capability build function should not require more than eight di
 ## Nil policy
 
 Required ports cannot be nil after composition. Optional ports must have documented product semantics. A nil value may not represent removed code, a deferred migration, or a hidden fallback.
+
+## Actions to execute
+
+- Generate the current package import graph and classify every edge.
+- Add automated checks for the allowed dependency direction.
+- Move interfaces to the capability that consumes them and keep each interface narrow.
+- Add explicit adapters for valid cross-capability communication.
+- Replace concrete cross-capability imports with ports, events, or owned read models.
+- Remove transport and infrastructure types from domain and application contracts.
+- Replace late binding and dependency setters with complete construction.
+- Split services whose constructors exceed the dependency budget.
+- Define owner, version, producer, consumers, and idempotency for every event.
+- Remove transitional dependency exceptions after each cutover.
+
+## Final DONE check
+
+- [ ] The package graph contains no forbidden dependency edge.
+- [ ] Kernel and domain packages depend only on approved stable types.
+- [ ] HTTP transport contains no infrastructure implementation dependency.
+- [ ] No capability imports another capability's transport or repository implementation.
+- [ ] Cross-capability calls use narrow consumer-owned ports or typed events.
+- [ ] Contracts expose no raw storage or transport framework types.
+- [ ] No late-binding setter or mutable service locator remains.
+- [ ] Required ports are complete after composition.
+- [ ] Constructor dependency budgets are respected.
+- [ ] Architecture checks pass with zero dependency exceptions.
