@@ -205,6 +205,12 @@ func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id st
 	return nil
 }
 
+// Restore flips lifecycle_state back to 'ready'.
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Restoring an asset
+// should trigger a re-index via the dispatcher so Qdrant gets the
+// point back. Today this is a diagnostic/operator operation; a future
+// PR should add a Dispatcher.EnqueueAndRestore counterpart.
 func (r *ClipsRepository) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
@@ -243,6 +249,19 @@ func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sq
 	return r.db.BeginTx(ctx, opts)
 }
 
+// UpsertClip upserts a clip through the low-level Save() path.
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Callers that need vector
+// indexing MUST use outbox.Dispatcher.EnqueueAndIndex instead, which
+// performs the UPSERT and outbox_events INSERT in a single atomic tx.
+//
+// Acceptable callers:
+//   - clip_ops.go::verifyClip — hash recovery from Drive (diagnostic,
+//     the asset is already known and indexed; only file_hash is patched)
+//   - Admin/backfill scripts in cmd/admin/ — offline tooling that runs
+//     without the outbox pool active
+//
+// New production code MUST route through the dispatcher.
 func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	return r.Upsert(ctx, clip)
 }
@@ -255,6 +274,10 @@ func (r *ClipsRepository) GetClipFolderByVideoID(ctx context.Context, videoID st
 	return r.GetFolderByVideoID(ctx, videoID)
 }
 
+// UpsertClipTx is the tx-scoped UPSERT used by outbox.Dispatcher.
+// This method IS the outbox-compliant path — it executes inside the
+// dispatcher's tx alongside the outbox_events INSERT. Callers outside
+// the dispatcher MUST supply their own outbox event in the same tx.
 func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	tagsJSON, _ := json.Marshal(clip.Tags)
@@ -324,6 +347,7 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 	return r.SoftDelete(ctx, id)
 }
 
+// RestoreClip is the legacy alias for Restore. See Restore's QDRANT-002 doc.
 func (r *ClipsRepository) RestoreClip(ctx context.Context, id string) error {
 	return r.Restore(ctx, id)
 }
@@ -332,6 +356,15 @@ func (r *ClipsRepository) HardDeleteClip(ctx context.Context, id string) error {
 	return r.HardDelete(ctx, id)
 }
 
+// DeleteClipByDriveLink soft-deletes by drive/download link.
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. It flips lifecycle_state
+// to 'deleted' without emitting an asset.index.delete_requested event,
+// which means the Qdrant point is never cleaned up.
+//
+// Callers should use deletion.DeletionService.DeleteClip (which routes
+// through outbox.Dispatcher.EnqueueAndDelete) or call the dispatcher
+// directly.
 func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
 	driveLink = strings.TrimSpace(driveLink)
 	if driveLink == "" {

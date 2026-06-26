@@ -19,6 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -64,6 +65,10 @@ type Deps struct {
 	SearchSvc *appclipssearch.Service
 	// ProcessRunner executes external subprocesses (ffprobe, mediainfo, etc.).
 	ProcessRunner appassets.ProcessRunner
+	// Dispatcher is the canonical outbox.Dispatcher for QDRANT-002.
+	// When non-nil, UpdateClip routes through dispatcher.EnqueueAndIndex
+	// instead of raw repo.UpsertClip. Nil-tolerated for test fixtures.
+	Dispatcher *outbox.Dispatcher
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -102,6 +107,8 @@ type Handler struct {
 	searchSvc *appclipssearch.Service
 	// processRunner mirrors Deps.ProcessRunner.
 	processRunner appassets.ProcessRunner
+	// dispatcher mirrors Deps.Dispatcher. Nil-tolerated for test fixtures.
+	dispatcher *outbox.Dispatcher
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -145,6 +152,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		folderMemSvc:   d.FolderMemSvc,
 		searchSvc:      d.SearchSvc,
 		processRunner:  d.ProcessRunner,
+		dispatcher:     d.Dispatcher,
 
 		// Initialize use cases
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),

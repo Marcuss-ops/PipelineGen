@@ -181,7 +181,23 @@ func scanSummary(scanner interface{ Scan(dest ...any) error }) (*Summary, error)
 }
 
 // Save upserts an asset and its nested locations. It always overwrites
-// on conflict (INSERT … ON CONFLICT DO UPDATE).
+// on conflict (INSERT ... ON CONFLICT DO UPDATE).
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Every INSERT/UPDATE on
+// media_assets MUST be accompanied by an outbox_events INSERT in the
+// same transaction so the vector index stays in sync. This low-level
+// write does NOT emit an outbox event.
+//
+// Callers producing assets that need indexing MUST route through
+// outbox.Dispatcher.EnqueueAndIndex (which calls UpsertClipTx inside
+// an atomic tx together with the outbox event). Direct callers of
+// Save() are responsible for ensuring their own outbox event or
+// accepting the indexing gap.
+//
+// Exempt callers (diagnostic-only, no indexing needed):
+//   - clip_ops.go::verifyClip (hash recovery from Drive)
+//   - deep_cleanup.go (orphan detection markers in metadata_json)
+//   - MarkUsed (reuse_count counter, purely analytical)
 func (s *AssetStoreSQLite) Save(ctx context.Context, details *Details) error {
 	if details == nil || details.Asset == nil {
 		return fmt.Errorf("assets.Save: nil details or asset")

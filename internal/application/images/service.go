@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -77,6 +78,20 @@ type Service struct {
 	// Unified metadata writer for ALL media types
 	// Replaces separate callSemanticTagger + fallback + upload logic per file
 	metaWriter *semantic.MetadataWriter
+
+	// QDRANT-002: canonical ingestion dispatcher — nil until late-bound
+	// via SetDispatcher after BuildOutboxBundle in NewComposition.
+	// When non-nil, RegisterVideoAsset and registerAudioClip route through
+	// dispatcher.EnqueueAndIndex instead of raw stockRepo.Upsert.
+	dispatcher *outbox.Dispatcher
+}
+
+// SetDispatcher late-binds the canonical outbox.Dispatcher after
+// BuildOutboxBundle (composition.go::NewComposition). Nil-tolerant —
+// when the dispatcher is not wired (tests, partial deployments), the
+// write methods fall back to raw stockRepo.Upsert with a debug log.
+func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
+	s.dispatcher = d
 }
 
 type DiagnosticsReport struct {

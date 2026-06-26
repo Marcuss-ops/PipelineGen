@@ -109,7 +109,7 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 	clip.SetDriveLink("https://drive.google.com/file/d/pr12b-artlist-001")
 
 	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo}
-	ss := NewSearchService(svc)
+	ss := NewSearchService(svc, nil)
 	ss.SetAssetRepo(assetRepo)
 
 	ctx := context.Background()
@@ -188,7 +188,7 @@ func TestArtlistPR12b_UpsertClipWithoutAssetRepoFallsBack(t *testing.T) {
 	_, clipsRepo, _ := setupArtlistPR12b(t)
 
 	svc := &Service{log: zap.NewNop(), assetStore: clipsRepo}
-	ss := NewSearchService(svc)
+	ss := NewSearchService(svc, nil)
 	// (No SetAssetRepo call)
 
 	clip := &asset.Asset{

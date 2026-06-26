@@ -165,6 +165,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 			"stock":   bundle.ClipsRepo,
 		}),
 		ProcessRunner: processRunnerAdapter,
+		Dispatcher:    dispatcher,
 	}, idemHandler)
 
 	// ── PR 3 (June 2026): storage thin-transport handler ─────
@@ -239,7 +240,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
-	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler)
+	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher)
 	// PR8: register receives the same shared idempotency handler as clips.
 	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
 

@@ -173,6 +173,14 @@ type EnrichmentPort interface {
 	EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error
 }
 
+// IndexDispatcherPort is the narrow surface of outbox.Dispatcher needed by
+// sourcing. EnqueueAndIndex atomically upserts the asset and enqueues an
+// outbox event in a single tx — the canonical QDRANT-002 pattern.
+// contentHash is the ingest-time file hash used for supersede-gate dedup.
+type IndexDispatcherPort interface {
+	EnqueueAndIndex(ctx context.Context, clip *ExistingClip, contentHash string) error
+}
+
 // ── Metadata upload ports ─────────────────────────────────────────────
 
 // MetadataUploadPort uploads aggregate clip metadata JSON to Drive.
