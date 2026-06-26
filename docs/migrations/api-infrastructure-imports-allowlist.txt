@@ -134,9 +134,11 @@
 # internal/api/middleware/middleware_ratelimit.go    ← removed from allowlist
 
 # ── Wave 14 grandfathered: api root files (PR5) ─────────────────────────────
-internal/api/module_core_modules.go
-internal/api/module_core_modules.go
-internal/api/routes.go
+# W14-slice-1 (June 2026): module_core_modules.go and routes.go removed —
+# neither imports internal/infrastructure/ anymore (verified via grep).
+# Only server.go still imports internal/infrastructure/logging.
+# internal/api/module_core_modules.go     ← removed (stale — zero infra imports)
+# internal/api/routes.go                  ← removed (stale — zero infra imports)
 internal/api/server.go
 
 # ── Wave 14 grandfathered: api/script orchestrator (PR3 — CLEANED, June 2026) ─
