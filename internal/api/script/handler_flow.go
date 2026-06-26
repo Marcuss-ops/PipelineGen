@@ -69,7 +69,6 @@ type ScriptFlowHandler struct {
 	jobsSvc           jobservice.Service
 	scriptsRepo       scripts.ScriptRepository
 	memorySvc         *gemmamemory.Service
-	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
 	log               *zap.Logger
@@ -77,10 +76,6 @@ type ScriptFlowHandler struct {
 	gates             FeatureGates      // per-route feature flags (clips / images / docs)
 
 	pipelineUC *scripts.PipelineUseCase
-}
-
-type AutoHarvestService interface {
-	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
 // ScriptFlowDeps groups all constructor inputs.
@@ -103,7 +98,6 @@ type ScriptFlowDeps struct {
 
 	ClipSourceBuilder *scripts.ClipSourceBuilder
 	MediaCurator      *scripts.MediaCurator
-	Harvest           AutoHarvestService
 
 	ScriptsRepo scripts.ScriptRepository
 	Memory      *gemmamemory.Service
@@ -153,7 +147,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		jobsSvc:           deps.Jobs,
 		scriptsRepo:       deps.ScriptsRepo,
 		memorySvc:         deps.Memory,
-		harvestSvc:        deps.Harvest,
 		driveFolderID:     deps.DriveScriptsGenFolder,
 		adminToken:        deps.AdminToken,
 		log:               log,

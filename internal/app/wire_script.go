@@ -14,7 +14,6 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -83,24 +82,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	var curationJobSvc *scripts.CurationJobServiceImpl
 	var catalogJobSvc *scripts.CatalogJobServiceImpl
-
-	// ── Harvest service ────────────────────────────────────────────────
-	// AGENT-2 (June 2026): clipresolver package removed from remote
-	// (commit d61068b3). The harvestSvc is now typed nil—script-api
-	// consumers already short-circuit on nil AutoHarvestService. The
-	// artlistpkg + root.Jobs.Facade references below keep those
-	// imports alive without depending on the removed clipresolver
-	// package; if they become unused after removing clipresolver else-
-	// where, the import hygiene fix is mechanical (delete the import).
-	var harvestSvc scriptapi.AutoHarvestService
-	if root.Jobs.Service != nil {
-		// Intentionally NOT calling artlistpkg.LoadPresets: the
-		// package may be removed in a future wave. The discard
-		// ensures the package import stays "used".
-		var _ = artlistpkg.LoadPresets
-		var _ = cfg.Drive.ArtlistFolder()
-		harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
-	}
 
 	// ── Pre-built ClipServices (avoids infrastructure imports in api/script) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
@@ -351,7 +332,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		AssetTree:             root.Search.AssetTreeService,
 		ClipSourceBuilder:     clipSourceBuilder,
 		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
 		ScriptsRepo:           scriptsRepoAdapter,
 		Memory:                memorySvc,
 		Jobs:                  root.Jobs.Facade,
