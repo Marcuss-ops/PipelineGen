@@ -64,3 +64,28 @@ A route is either operational or absent. Commands that perform no work must not 
 ## Historical information
 
 Historical decisions belong in Git history, issues, and ADRs. Production files should explain current invariants, not narrate every prior migration.
+
+## Actions to execute
+
+- Create and validate `architecture/deprecations.yaml` with ID, owner, exact symbol, replacement, introduction date, removal deadline, tracking issue, test, and metric fields.
+- Inventory aliases, forwarding wrappers, duplicate routes/jobs, dormant fields, compatibility reads/writes, fallback branches, stale config, tests, docs, metrics, and allowlists.
+- Classify every item as immediate removal or temporary deprecation with a hard deadline.
+- Add CI checks for expired deprecations, untracked legacy comments, compatibility files, aliases, wrappers, fake routes, and new allowlist entries.
+- Add usage metrics for runtime compatibility paths and define the zero-usage observation window required before removal.
+- Execute EXPAND, BACKFILL, CUTOVER, CONTRACT for every migration and track evidence for each phase.
+- Remove old readers and writers immediately after verified cutover; never keep both active as insurance.
+- Delete obsolete config, tests, docs, metrics, comments, scripts, fields, constructors, and generated inventory entries during CONTRACT.
+- Move historical explanations into ADRs or Git history and rewrite production comments around current invariants.
+
+## Final DONE check
+
+- [ ] Every temporary compatibility item exists in the deprecation manifest with an owner and future removal deadline.
+- [ ] CI fails on expired or untracked deprecations.
+- [ ] No cross-package alias, pass-through wrapper, fake route, hidden fallback, removed-service field, or duplicate entrypoint remains.
+- [ ] No old and new writer are active after cutover.
+- [ ] Every completed migration has executed CONTRACT and removed obsolete code, data access, configuration, tests, docs, metrics, and allowlists.
+- [ ] Runtime compatibility metrics show zero use for the required observation period before removal.
+- [ ] Architecture baselines are monotone decreasing and ultimately deleted at zero.
+- [ ] Repository searches find no untracked `legacy`, `compat`, `temporary`, or deprecated-symbol references in production code.
+- [ ] Active routes perform real work and capabilities with missing mandatory dependencies are absent or fail composition.
+- [ ] Architecture checks and the full affected test suite pass with zero accepted legacy violations.
