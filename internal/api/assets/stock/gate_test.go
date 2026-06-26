@@ -10,7 +10,7 @@ import (
 // (handler.go). Baseline (no goroutines; bash Check 19 enforces no
 // infrastructure imports) + the grep-verified `stockpipeline.NewService`
 // + `stock.NewHandler` orchestrators (added 2026-06-24 followup). See
-// architecture/migration.yaml::Wave 14 + arch check Check 19.
+// architecture/current.yaml::Wave 14 + arch check Check 19.
 // Cross-ref: docs/migrations/api-infrastructure-imports-allowlist.txt
 // (28 grandfathered-import entries as of Wave 14-PR3).
 var prohibitedPatterns = []gate.Prohibition{

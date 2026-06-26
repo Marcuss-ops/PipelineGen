@@ -9,7 +9,7 @@ import (
 // prohibitedPatterns is the per-area list for internal/api/images.
 // Baseline (no goroutines; bash Check 19 enforces no infrastructure
 // imports) + the grep-verified `imgservice.NewService` orchestrator
-// (added 2026-06-24 followup). See architecture/migration.yaml::Wave 14
+// (added 2026-06-24 followup). See architecture/current.yaml::Wave 14
 // + arch check Check 19. Cross-ref: docs/migrations/api-infrastructure-
 // imports-allowlist.txt (28 grandfathered-import entries as of Wave
 // 14-PR3).

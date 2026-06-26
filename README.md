@@ -99,7 +99,7 @@ di migrazione) + `AGENTS.md` (regole per agenti AI e pattern canonici).
 - [ARCHITECTURE.md](./ARCHITECTURE.md): **Canonical** — architettura di sistema,
   data flow, registry dei moduli, comandi day-1, ownership dei layer
   (`api → application → domain → infrastructure → pkg`). Include anche
-  il piano di migrazione attivo (`architecture/migration.yaml`) e la
+  il piano di migrazione attivo (`architecture/current.yaml`) e la
   mappa di ownership canonica (`architecture/ownership.yaml`).
 - [AGENTS.md](./AGENTS.md): **Canonical** — regole critiche del sistema
   (driver SQLite, ban FTS5, schema boundaries, policy generazione AI,
@@ -111,7 +111,7 @@ di migrazione) + `AGENTS.md` (regole per agenti AI e pattern canonici).
 
 Per approfondimenti storici sulle migrazioni Wave X → Wave 17 (es.
 perché certe directory sono state rimosse, mapping prima→dopo)
-vedi `architecture/migration.yaml` (ratchet tracker verificabile
+vedi `architecture/current.yaml` (ratchet tracker verificabile
 via `bash scripts/ci-architectural-checks.sh`).
 
 ---

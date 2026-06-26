@@ -24,7 +24,7 @@ The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER
   data flow, database schemas, day-1 commands — **canonical** doc for
   structure. It supersedes every older `docs/architecture/*.md` file
   (the `docs/` folder has been completely removed in June 2026).
-- **architecture/migration.yaml**: ratchet tracker verificabile delle
+- **architecture/current.yaml**: ratchet tracker verificabile delle
   wave di consolidamento (status monotone-decreasing, ogni wave ha
   `exit_gate` zero-based). È il single source of truth per
   "abbiamo finito la wave X?".
@@ -459,38 +459,54 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 ### Still Pending
 - Completion of the remaining `internal/api/sources/` consolidation to `internal/api/assets/` (e.g. artlist, stock, local-to-drive)
 
-### Current wave status (June 2026 snapshot — source of truth: `architecture/migration.yaml`)
+### Current wave status (June 2026 snapshot — fonte canonica: `architecture/current.yaml`)
 
-Le wave dell'ordinamento operativo sono qui sotto riportate in
-formato leggibile. Per il ratchet canonico, le exit-gate e l'elenco dei
-`residuals:`, consultare direttamente `architecture/migration.yaml`.
-
-| Wave | Oggetto | Status al commit corrente | Avanzamento |
-|------|---------|--------------------------|-------------|
-| 4A   | Canonical asset model + ports | done | 7 residui solo in commenti Go (vedi `residuals:` in migration.yaml). Nessun import attivo. |
-| 4B   | Job/Worker/Outbox contracts into domain/job | done | 0 riferimenti residui all'uscita della exit-gate. |
-| 4C   | Remove internal/core + internal/domain/media | done | 10 commenti Go superstiti (zero import attivi), alcuni appartengono ad altre wave — cleanup in PR documentale complessiva. |
-| 5    | Full jobs consolidation | in_progress | sotto-onda 5_PR3 ancora aperta (alias zero-copy da collassare). |
-| 6    | Scripts consolidation | done | `internal/application/scriptflow/` e `internal/scripts/` rimossi. 1 solo commento residuo in `gemmamemory/stub.go`. |
-| 7    | Assets + Artifacts + Registry unification | done | 2 residui in commenti test (`artifacts/types_test.go`). |
-| 8    | Association + Realtime consolidation | in_progress | 21 call site da redirigere verso `internal/application/assets/{association,realtime}`. |
-| 10   | Storage + Drive + Qdrant adapters | in_progress | `mediaasset/` → `infrastructure/media/processor/` e `upload/drive/` → `infrastructure/drive/` già landed; rimangono `vectorstore/` e `storage/`. 33 file attivi. |
-| 11   | Catalog + Intelligence | in_progress | 2 sub-directory migrate (`ingest` Wave 11, `monitor` Wave 10); `mediaasset` è Wave 10 (vedi sopra). 44 file attivi. |
-| 12   | Provider registry + source consolidation | in_progress | registry tipizzato e adapter Artlist/YouTube/Stock landed; da completare l'estrazione infrastrutturale (yt-dlp, FFmpeg, Node scraper, downloader). |
-| 13   | Eliminate internal/media namespace | pending | 89 file in 19 sub-directory ancora attivi. Bloccata da 10 + 11. |
+Vista `Wave 14-18 + 0` come tracker attivo; `Wave 1-13` come storico
+completato in `docs/archive/migration-history.md`. La tabella sotto è uno
+**snapshot di giugno 2026** mantenuto per audit storico; per lo stato
+operativo corrente (incluso pending_in, blocked_by, e residuals attivi) usa
+direttamente `architecture/current.yaml`.
 
 **Regola di lettura**: "done" = migrazione fisicamente completata. I
-`residuals:` elencati sotto le wave 4A, 6, 7 sono commenti `//` puri, non
-import — non bloccanti, ripulibili in PR documentale separata.
-"in_progress" = contatore `active_files_remaining:` esposto nella
-sezione corrispondente di migration.yaml per audit di avanzamento.
+`residuals:` delle wave 4A, 6, 7 sono commenti `//` puri, non import —
+non bloccanti, ripulibili in PR documentale separata. **Le `residuals:`
+delle wave archiviate vivono in `docs/archive/migration-history.md`,
+non nel tracker attivo**. Per il `active_files_remaining:` delle wave
+in flight (8, 10, 11, 12), consultare la sezione corrispondente in
+`architecture/current.yaml`.
+
+### Snapshot tabellare (June 2026)
+
+| Wave | Oggetto | Status snapshot | Avanzamento (snapshot) |
+|------|---------|----------------|------------------------|
+| 4A   | Canonical asset model + ports | done | 7 residui solo in commenti Go (archiviate in `docs/archive/migration-history.md`). Nessun import attivo. |
+| 4B   | Job/Worker/Outbox contracts into domain/job | done | 0 riferimenti residui all'uscita della exit-gate. Wave archiviata. |
+| 4C   | Remove internal/core + internal/domain/media | done | 10 commenti Go superstiti (zero import attivi). Wave archiviata. |
+| 5    | Full jobs consolidation | done (snapshot) | sotto-onda 5_PR3 chiusa; alias zero-copy collassati. Wave archiviata. |
+| 6    | Scripts consolidation | done | `internal/application/scriptflow/` e `internal/scripts/` rimossi. Wave archiviata. |
+| 7    | Assets + Artifacts + Registry unification | done | 2 residui in commenti test. Wave archiviata. |
+| 8    | Association + Realtime consolidation | done (snapshot time: in_progress) | Wave archiviata — consultare sezione Wave 8 in `docs/archive/migration-history.md`. |
+| 10   | Storage + Drive + Qdrant adapters | done (snapshot time: in_progress) | Wave archiviata — consultare sezione Wave 10 in `docs/archive/migration-history.md`. |
+| 11   | Catalog + Intelligence | done (snapshot time: in_progress) | Wave archiviata — consultare sezione Wave 11 in `docs/archive/migration-history.md`. |
+| 12   | Provider registry + source consolidation | done (snapshot time: in_progress) | Wave archiviata — consultare sezione Wave 12 in `docs/archive/migration-history.md`. |
+| 13   | Eliminate internal/media namespace | done → Wave archiviata | (snapshot) completata in giugno 2026. Consultare la sezione Wave 13 in `docs/archive/migration-history.md`. |
 
 **Truth sources** (in ordine di autorità):
-1. `architecture/migration.yaml` — stato canonico per wave + exit-gate.
+1. `architecture/current.yaml` — stato canonico per wave + exit-gate
+   (Wave 14-18 + Wave 0 attive; Wave 1-13 archiviate).
 2. `architecture/ownership.yaml` — chi possiede ogni package canonico.
-3. `scripts/archcheck/grandfathered_allowlist.json` — ratchet canonico
-   monotone-decreasing per le violazioni grand-parented; `go run
-   ./scripts/archcheck` espone il focused gate corrente.
+3. `docs/migrations/api-infrastructure-imports-allowlist.txt` — ratchet
+   canonico monotone-decreasing per le violazioni `internal/api` →
+   `internal/infrastructure` grand-parented; `go run ./scripts/archcheck`
+   espone il focused gate corrente (legge il file via `const migPath`).
+
+> **Nota (aggiornata giugno 2026)**: il path canonico dell'allowlist è
+> `docs/migrations/api-infrastructure-imports-allowlist.txt`. Il path
+> precedente `scripts/archcheck/grandfathered_allowlist.json` citato in
+> vecchie versioni di AGENTS.md è **drift documentale** — l'allowlist
+> canonico è quello sopra, dove `scripts/archcheck/main.go` lo legge a
+> runtime. Le occorrenze residue del vecchio path in testa a vecchi file
+> vanno corrette per audit consistency (PR documentale separata).
 
 Se i tre layer sopra raccontano versioni diverse della stessa realtà,
 vince (1) ma è necessario aprire una PR di sincronizzazione come

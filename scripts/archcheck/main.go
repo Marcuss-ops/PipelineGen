@@ -320,9 +320,9 @@ var databaseSQLLegacyBaseline = []string{
 }
 
 // checkMigrationYAML validates that every `status: done` wave in
-// architecture/migration.yaml carries `verified_zero: true`.
+// architecture/current.yaml carries `verified_zero: true`.
 func checkMigrationYAML() (verifiedOK int, total int, violations []string) {
-	const migPath = "architecture/migration.yaml"
+	const migPath = "architecture/current.yaml"
 	text, err := os.ReadFile(migPath)
 	if err != nil {
 		return -1, 0, []string{fmt.Sprintf("checkMigrationYAML: read %s: %v", migPath, err)}

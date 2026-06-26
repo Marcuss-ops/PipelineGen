@@ -188,7 +188,7 @@ func (a *searchProviderAdapter) Search(ctx context.Context, req appsearch.Search
 	}, nil
 }
 
-// searchVectorAdapter was removed during the search-service simplification.
+// searchVectorAdapter was removed — Qdrant capability consolidated into mediasearch.
 
 // searchCatalogAdapter adapts *catalog.Repository to search.LocalCatalogPort.
 type searchCatalogAdapter struct {
@@ -241,8 +241,9 @@ type searchConfigAdapter struct {
 }
 
 func (a *searchConfigAdapter) VectorConfig() appsearch.VectorConfig {
+	// PG-034 (June 2026): VectorSearch config removed — Qdrant capability deleted.
 	// Return zero-value VectorConfig so callers can still iterate the field set
-	// without nil-pointer dereferences when vector search is not wired here.
+	// without nil-pointer dereferences; semantic-search legs are no-ops now.
 	return appsearch.VectorConfig{}
 }
 
