@@ -383,7 +383,7 @@ and follow the OAuth flow. CI: `.github/workflows/`.
 | Add a background job | `internal/application/jobs/` (register handler) + job handler in `internal/application/<feature>/` |
 | Add a DB table | `migrations/sqlite/0xx_*.sql` + repository in `internal/infrastructure/database/sqlite/` |
 | Add a CLI admin command | `cmd/admin/<command>.go` (shim) |
-| Change a Drive folder | `internal/infrastructure/config/drive.go` (struct + resolver methods) |
+| Change a Drive folder | `internal/platform/config/drive.go` (struct + resolver methods) |
 | Tune concurrency | `cfg.Concurrency.*`, `cfg.Jobs.MaxParallelPerProject`, `cfg.Jobs.LeaseTTLSeconds` |
 | Debug a stuck job | `GET /api/jobs/:id` + `journalctl -u pipelinegen -f` |
 | Add a LLM prompt version | bump in `internal/infrastructure/ai/ollama/prompts/`, record in `cfg.Scripts.PromptVersion` |
@@ -441,7 +441,7 @@ The tool is **independent** from `scripts/archcheck`:
 | --- | --- | --- |
 | 0 (this PR) | `architecture/policy.yaml` + `cmd/archcheck` (report-only) + ARCHITECTURE.md §11.5 + AGENTS.md pointer | current |
 | 1 | Phase-by-phase promotion of each rule to a hard gate via `--strict` in CI | planning |
-| 2 | `internal/infrastructure/config` → `internal/platform/config` (~17 file rename) | planning |
+| 2 | `internal/infrastructure/config` → `internal/platform/config` (~17 file rename) | **done (June 2026)** |
 | 3 | `internal/application/<X>` orchestration files reorganised into per-capability `module.go/contract.go/service.go/...` skeleton (file content unchanged; rename only) | planning |
 | 4 | SQL redistribution: `internal/infrastructure/database/sqlite/{jobs,outbox,assets,catalog,scripts,outboxevents,idempotency}` → `internal/capabilities/<X>/repository.go`. `platform/sqlite` retains only `set.go`, `migrations.go`, `rotation.go`, `backup.go` | planning |
 | 5 | Kernel split: `internal/domain/*` → `internal/kernel/{asset,job,script,event,identity,errors}/`. Information-only hints already emitted by `cmd/archcheck` (#rule `kernel_split_hint`) | planning |
@@ -505,7 +505,7 @@ HTTP request telemetry replayability for post-incident forensics.
 - `internal/infrastructure/database/rotation.go::RotateObservability` —
   the ATTACH + INSERT + DELETE + VACUUM sequence.
 - `cmd/admin/db_rotate.go` — the admin CLI subcommand.
-- `internal/infrastructure/config/types.go::StorageConfig` —
+- `internal/platform/config/types.go::StorageConfig` —
   ObservabilityMaxAgeDays (default 7), ObservabilityMaxSizeMB
   (default 1024).
 

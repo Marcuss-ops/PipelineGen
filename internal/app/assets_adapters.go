@@ -11,7 +11,7 @@ import (
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 )

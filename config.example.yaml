@@ -2,8 +2,8 @@ server:
   host: "127.0.0.1"
   # Canonical port is 8000 (chosen in the Operational Readiness PR — June 2026
   # Canonical port 8000 (Operational Readiness PR, June 2026).
-  # Override at runtime via VELOX_PORT; see `internal/infrastructure/config/types.go::ServerConfig` for single source of truth.). Override at runtime via
-  # VELOX_PORT; SeeServerConfig in internal/infrastructure/config/types.go
+  # Override at runtime via VELOX_PORT; see `internal/platform/config/types.go::ServerConfig` for single source of truth.). Override at runtime via
+  # VELOX_PORT; SeeServerConfig in internal/platform/config/types.go
   # is the single source of truth. Makefile `doctor`/`artlist` targets and
   # scripts/velox_client.py read $VELOX_PORT with a 8000 fallback so the
   # whole stack stays consistent without editing every recipe.
@@ -23,7 +23,7 @@ security:
   # PipelineGen refuses to start when admin_token or worker_token equal
   # the literals below. Set via env vars (VELOX_ADMIN_TOKEN /
   # VELOX_WORKER_TOKEN) or edit this file before booting. See
-  # internal/infrastructure/config/config.go::Config.Validate() for
+  # internal/platform/config/config.go::Config.Validate() for
   # the exact check.
   enable_auth: true
   admin_token: "YOUR_SECURE_TOKEN_HERE"  # REPLACE before boot or set VELOX_ADMIN_TOKEN env var
@@ -152,7 +152,7 @@ features:
 
 # NOTE (June 2026 drft-fix): the previous config.example.yaml featured
 # `google_accounting_enabled` and `workflow_enabled` under `features:`.
-# These are NOT part of internal/infrastructure/config/types.go
+# These are NOT part of internal/platform/config/types.go
 # FeaturesConfig: google_accounting has its own top-level GoogleAccountingConfig
 # section below, and `workflow_enabled` is no longer a feature flag (the
 # workflow module was retired). The replacement flags

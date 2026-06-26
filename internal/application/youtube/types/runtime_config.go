@@ -2,7 +2,7 @@
 // application layer from infrastructure/config. All config values consumed
 // by the YouTube package tree are resolved at composition time
 // (internal/app/composition.go) and injected via ServiceDeps so the
-// application layer has zero dependency on `internal/infrastructure/config`.
+// application layer has zero dependency on `internal/platform/config`.
 package types
 
 // RuntimeConfig holds all configuration values consumed by the YouTube

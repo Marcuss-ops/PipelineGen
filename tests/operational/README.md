@@ -69,7 +69,7 @@ sandboxed Linux runners that lack `/proc`.
 | Variable                        | Default                           | Notes                                                                                  |
 |---------------------------------|-----------------------------------|----------------------------------------------------------------------------------------|
 | `API_BASE`                      | `127.0.0.1:${VELOX_PORT:-8080}`   | `host:port` shape; the script prepends `http://` itself.                               |
-| `VELOX_PORT`                    | `8080`                            | Honoured by `API_BASE` resolution; matches the canonical default in `internal/infrastructure/config/types.go`. |
+| `VELOX_PORT`                    | `8080`                            | Honoured by `API_BASE` resolution; matches the canonical default in `internal/platform/config/types.go`. |
 | `VELOX_ADMIN_TOKEN`             | (mandatory if `TOKEN_FILE` unset) | Bearer token. **Never echo the env var directly** — every output path runs through `smoke_echo_safe`. |
 | `TOKEN_FILE`                    | (unset)                           | Path to a file containing `VELOX_ADMIN_TOKEN=…`; used as a fallback when the env var is not set (compatible with the existing `scripts/diagnostics/marker_audit.sh` convention). |
 | `SMOKE_TIMEOUT_SECONDS`         | `180`                             | Per-script overall wall clock. Exceeding this exits 124.                              |

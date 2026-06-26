@@ -1,6 +1,6 @@
 package app
 
-import "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 func anyScriptFeatureEnabled(cfg *config.Config) bool {
 	if cfg == nil {

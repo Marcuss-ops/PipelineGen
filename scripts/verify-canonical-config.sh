@@ -3,7 +3,7 @@
 #
 # Fails when any of the runtime configuration surfaces drifts away from the
 # canonical port 8000. Mirrors the Go test in
-#   internal/infrastructure/config/canonical_defaults_test.go
+#   internal/platform/config/canonical_defaults_test.go
 # so CI shells and developers without a Go toolchain still get a fast
 # read-only check.
 #

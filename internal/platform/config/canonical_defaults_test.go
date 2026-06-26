@@ -86,7 +86,7 @@ func TestConfig_CanonicalPort_Is8000AcrossRuntimeSurfaces(t *testing.T) {
 }
 
 // TestConfig_FeatureFlags_AlignWithTypesGo asserts the feature block in
-// config.example.yaml matches internal/infrastructure/config/types.go
+// config.example.yaml matches internal/platform/config/types.go
 // FeaturesConfig exactly. Drift between the example yaml and the in-tree
 // flags causes silent drops at load time (yaml unmarshal ignores unknown
 // fields while missing fields silently default to false).

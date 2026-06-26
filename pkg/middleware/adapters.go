@@ -23,7 +23,7 @@
 // lives in internal/application/middleware/ports.go next to the port.
 //
 // Note: pkg/ is leaf-only (AGENTS.md Pattern 4). *config.Config is
-// typed in internal/infrastructure/config and is therefore NOT exposed
+// typed in internal/platform/config and is therefore NOT exposed
 // here. Call-sites construct TokenSecurityAdapter directly from
 // cfg.Security field reads. This snapshot-immutability pattern means
 // the adapter does NOT live-update on cfg reload (intentional — auth

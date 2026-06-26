@@ -40,7 +40,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // SearchRunnerAdapter is the application-layer bridge that satisfies

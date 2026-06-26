@@ -7,7 +7,7 @@ package main
 import (
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // appLogger loads the production config and a zap production logger;
@@ -25,7 +25,7 @@ import (
 // velox/go-master/internal/config is a stdlib-shaped path that Go
 // resolves to $GOROOT/src/velox/go-master/internal/config, not to any
 // repo package. The canonical local config lives at
-// internal/infrastructure/config, which provides `func Get() *Config`
+// internal/platform/config, which provides `func Get() *Config`
 // — the right replacement.
 func appLogger() (*config.Config, *zap.Logger, func(), error) {
 	cfg := config.Get()

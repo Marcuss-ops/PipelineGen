@@ -1,7 +1,7 @@
 # AGENTS.md - PipelineGen System Documentation
 
 ## Overview
-PipelineGen is a Go-based backend service that manages media processing pipelines for YouTube clips and Artlist assets. It runs as a systemd service on **port 8080** by default. Override at runtime via `VELOX_PORT`; the in-tree default is set by `internal/infrastructure/config/types.go::Server.Port` and mirrored by every client (`pkg/veloxclient`, worker fallback, scripts) so a single env var changes both sides.
+PipelineGen is a Go-based backend service that manages media processing pipelines for YouTube clips and Artlist assets. It runs as a systemd service on **port 8080** by default. Override at runtime via `VELOX_PORT`; the in-tree default is set by `internal/platform/config/types.go::Server.Port` and mirrored by every client (`pkg/veloxclient`, worker fallback, scripts) so a single env var changes both sides.
 
 ### Port policy (Operational Readiness PR, June 2026)
 

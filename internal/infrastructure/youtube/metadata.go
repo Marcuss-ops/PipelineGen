@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ytDLPJSON is the shape of a single yt-dlp --dump-json payload. Private to

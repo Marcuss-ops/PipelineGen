@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )

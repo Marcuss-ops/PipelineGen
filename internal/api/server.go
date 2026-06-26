@@ -10,7 +10,7 @@ import (
 	"time"
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 	"github.com/gin-gonic/gin"

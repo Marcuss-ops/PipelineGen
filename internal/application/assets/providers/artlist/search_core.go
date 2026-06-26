@@ -7,7 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
 )

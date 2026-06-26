@@ -112,7 +112,7 @@ type PipelineUseCase struct {
 
 // configShim wraps *config.Config so a nil cfg doesn't break the
 // text-only path's defaults (previous handler's `if h.cfg != nil`
-// guard). Avoids an `internal/infrastructure/config` import in the
+// guard). Avoids an `internal/platform/config` import in the
 // use-case struct field while still letting the ctor receive a cfg.
 type configShim struct {
 	minWordFloor int

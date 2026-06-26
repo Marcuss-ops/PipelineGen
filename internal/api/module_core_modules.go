@@ -2,7 +2,7 @@ package api
 
 import (
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

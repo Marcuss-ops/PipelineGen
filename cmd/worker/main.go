@@ -45,7 +45,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	assettransferclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"

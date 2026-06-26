@@ -155,7 +155,7 @@ rebuild: clean build
 
 # Run the server (HTTP + scheduler + maintenance in-process via --mode all).
 # Port is read from $VELOX_PORT (canonical default 8000); see
-# internal/infrastructure/config/types.go `Server.Port` for the in-tree
+# internal/platform/config/types.go `Server.Port` for the in-tree
 # default. Tokens are read from $VELOX_ADMIN_TOKEN / $VELOX_WORKER_TOKEN
 # (mandatory — the binary refuses to boot with placeholder tokens).
 run: build
