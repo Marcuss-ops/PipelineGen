@@ -215,6 +215,10 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 			"total_ms":         result.Timings.TotalMs,
 		},
 	}
+	if scenes, scenesJSON, ok := marshalNormalizedScenes(result.ClipScenes, nil); ok {
+		response["scenes"] = scenes
+		response["scenes_json"] = scenesJSON
+	}
 
 	if docLink != "" {
 		response["doc_url"] = docLink
