@@ -388,6 +388,70 @@ and follow the OAuth flow. CI: `.github/workflows/`.
 | Debug a stuck job | `GET /api/jobs/:id` + `journalctl -u pipelinegen -f` |
 | Add a LLM prompt version | bump in `internal/infrastructure/ai/ollama/prompts/`, record in `cfg.Scripts.PromptVersion` |
 
+## 11.5 Target Tree (Phase 0 governance)
+
+The repository is converging from the current two-zone
+(`internal/{app,application,domain,infrastructure}`) layout toward the
+**target tree** documented in
+[`architecture/policy.yaml`](architecture/policy.yaml). The migration is
+multi-phase; this section captures the rules and the tracking tool so
+each phase can be checked objectively.
+
+### Target zones
+
+| Zone | Current path | Target path | Purpose |
+| --- | --- | --- | --- |
+| Entry points | `cmd/{server,worker,admin}/` | `cmd/{server,worker,admin,archgen,archcheck}/` | Binary main.go only. Each entry point must be a thin shell: root context, config load, `app.Compose` call, mode select, shutdown wait — **no** repo instantiation, route registration, domain parsing, raw DB open, or feature service construction. |
+| Composition | `internal/app/` | `internal/app/` (kept) | Only composition root. May import all internal packages. Forbidden: business rules, SQL, DTO normalization, provider selection, ranking logic, feature-specific fallback. |
+| Kernel | `internal/domain/` | `internal/kernel/{asset,job,script,event,identity,errors}/` | Shared stable concepts only. Imports **stdlib only** (plus narrow value-only libs). Forbidden: Gin types, SQL/repository impl, external clients (Drive/Qdrant/FFmpeg/Ollama/HTTP), config structs, loggers, feature flags, application services. A type belongs here only when ≥2 real capabilities need the same semantic contract. |
+| Capabilities | `internal/application/{scripts,images,assets,...}` (flat) | `internal/capabilities/{assets,artlist,youtube,scripts,images,voiceover,content,channels,jobs,system}/` | One vertical slice per business capability. Each owns `{module.go, contract.go, service.go, http.go, jobs.go, events.go, repository.go, adapters.go}`. Forbidden top-level dumping-ground dirs: `service/`, `repository/`, `models/`, `utils/`, `helpers/`, `common/`. |
+| Platform | `internal/infrastructure/{database,drive,qdrant,...}` | `internal/platform/{config,sqlite,drive,qdrant,ffmpeg,process,filesystem,observability,httpserver,ollama,nvidia,youtube}/` | Technical adapters only, **no** business semantics. `platform/sqlite` owns connection/transactions/migration/pragma mechanics — **capability repositories own SQL for their tables**. |
+| Leaf utilities | `pkg/` | `pkg/` (kept) | `pkg/*` is leaf-only: zero imports from `internal/`. Holds retry, hashutil, concurrent, sliceutil, textutil, fileutil, urlutil, timeutil, pathutil, defaults, ptrutil, corid, apiutil, handlerutil, sqlutil, termutil, similarity, matchingconfig, testutil, veloxclient, executil. |
+
+### Package-size caps
+
+Caps from [`architecture/policy.yaml`](architecture/policy.yaml) — enforced by `go run ./cmd/archcheck` (Phase 0 report-only).
+
+| Rule | Default | Trigger |
+| --- | --- | --- |
+| `max_files_per_package` | 40 | Hard limit; packages beyond this trigger a warn violation. Phase N (post split) promotes to gate via `--strict`. |
+| `max_lines_per_file` | 500 | Production `.go` file cap. |
+| `cmd_main_max_lines` | 200 | Entry-point main.go cap. Today `cmd/admin/cleanup.go` and others are above 200 → reported, not blocked. |
+| Constructor direct deps | 8 (future) | Phase N will scan `func New<X>(...)` signatures with a naive arg-count check; currently a future-work note. |
+| `forbidden_top_level_dirs` | `service, repository, models, utils, helpers, common` | Generic dumping-ground patterns forbidden. |
+
+### Tracking tool
+
+`go run ./cmd/archcheck` (Phase 0, **stdlib only**, no external deps)
+reads `architecture/policy.yaml`, walks the project tree, and emits a
+JSON violation report on stdout. Default mode exits 0 even when
+violations exist (compat with existing CI). `--strict` promotes to a
+hard gate.
+
+The tool is **independent** from `scripts/archcheck`:
+
+- `scripts/archcheck` — legacy ratchets (`allowedInternalRoots`,
+  import-pattern drift, CI gate via `scripts/ci-architectural-checks.sh`).
+- `cmd/archcheck` — target-tree governance (this section). Phase 1+ may
+  consolidate the two.
+
+### Phase ordering (how to read the migration)
+
+| Phase | Scope | Status |
+| --- | --- | --- |
+| 0 (this PR) | `architecture/policy.yaml` + `cmd/archcheck` (report-only) + ARCHITECTURE.md §11.5 + AGENTS.md pointer | current |
+| 1 | Phase-by-phase promotion of each rule to a hard gate via `--strict` in CI | planning |
+| 2 | `internal/infrastructure/config` → `internal/platform/config` (~17 file rename) | planning |
+| 3 | `internal/application/<X>` orchestration files reorganised into per-capability `module.go/contract.go/service.go/...` skeleton (file content unchanged; rename only) | planning |
+| 4 | SQL redistribution: `internal/infrastructure/database/sqlite/{jobs,outbox,assets,catalog,scripts,outboxevents,idempotency}` → `internal/capabilities/<X>/repository.go`. `platform/sqlite` retains only `set.go`, `migrations.go`, `rotation.go`, `backup.go` | planning |
+| 5 | Kernel split: `internal/domain/*` → `internal/kernel/{asset,job,script,event,identity,errors}/`. Information-only hints already emitted by `cmd/archcheck` (#rule `kernel_split_hint`) | planning |
+| 6 | `internal/api/` → per-capability `http.go` + a thinner `api/{server,routes,middleware,transport}` shell | planning |
+
+Each phase produces a before/after `cmd/archcheck` JSON report as the
+objective success metric.
+
+---
+
 ## 12. Pointers to deeper docs
 
 All detailed documentation previously under `docs/` has been consolidated and removed.

@@ -19,10 +19,9 @@ The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER
   (driver SQLite, ban FTS5, schema boundaries, AI generation policy,
   admin token, agent instructions, Git Lessons).
 - **README.md**: Project structure and architecture overview (entry point).
-- **PROJECT_GUIDE.md**: Italian language getting started guide.
-- **ARCHITECTURE.md**: Full system architecture, module ownership,
-  data flow, database schemas, day-1 commands — **canonical** doc for
-  structure. It supersedes every older `docs/architecture/*.md` file
+- **PROJECT_GUIDE.md**: Italian language getting started guide.- **ARCHITECTURE.md**: Full system architecture, module ownership, data flow, database schemas, day-1 commands — **canonical** doc for structure.
+- **architecture/policy.yaml**: target-tree governance rules (Phase 0, June 2026) — command fields, package-size caps, top-level dir restrictions, expected kernel/capability/platform subzones. Read by `go run ./cmd/archcheck` (stdlib parser). Doc-side pointer: see [ARCHITECTURE.md §11.5](ARCHITECTURE.md#115-target-tree-phase-0-governance).
+- **cmd/archcheck/main.go**: target-tree validator binary, report-only in Phase 0 (exits 0 even with violations). Promoted to gate via `--strict` in later phases. It supersedes every older `docs/architecture/*.md` file
   (the `docs/` folder has been completely removed in June 2026).
 - **architecture/current.yaml**: ratchet tracker verificabile delle
   wave di consolidamento (status monotone-decreasing, ogni wave ha
