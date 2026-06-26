@@ -129,7 +129,7 @@ type AssetsWiring struct {
 // per AGENTS.md Pattern 0 (typed-port abstraction). The realtime
 // package was removed in commit d61068b3; the typed parameter stays
 // nil-safe (typed-nil of an interface equals nil interface).
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {

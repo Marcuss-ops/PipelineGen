@@ -337,10 +337,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		IdempotencyStoreHandler: idemHandler,
 	}
 	// Wave 16 (June 2026, post-0c3089d rebase closeout): WireAssets's
-	// realtimeSvc slot no longer accepts assetsapi.RealtimeMatcher
-	// because that type died with handler_realtime.go. Pass nil
-	// (origin's settlement) — the asset-side slot is unfulfilled.
-	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, nil, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
+	// realtimeSvc parameter was dropped entirely (its
+	// assetsapi.RealtimeMatcher type died with handler_realtime.go in
+	// commit 0c3089d and the body never used the slot anyway).
+	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
