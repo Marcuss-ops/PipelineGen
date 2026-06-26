@@ -65,6 +65,31 @@ agent_playbook_doc: docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md
 # Promotion: June 2026.
 removal_doc: docs/architecture/godlike/13_FEATURE_REMOVAL_CHECKLIST.md
 
+# Stems that must not appear as bare prose references in *.go source files
+# (catches `module_jobs_test.go`-style mentions: stem references NOT
+# followed by a literal `.`). Such references typically indicate an
+# obsolete pre-Wave-16 path the user-regex cleanup pass missed — the
+# user-regex `compose_voiceover\.` / `module_jobs\.` etc. only catches
+# `.go`-suffix mentions, leaving `module_jobs_test.go` and prose-style
+# `compose_images bundle` mentions through. Day-1 expected violations:
+# 4 in `internal/app/composition_test.go` pointing at the surviving
+# `module_jobs_test.go` (real test file; addressed in a doc-only
+# follow-up). Each match emits one warn-severity
+# `stale_prose_paths_<stem>` violation per (file, line) in any *.go file
+# under `internal/`. --strict promotes the family to os.Exit(1).
+# Promotion from godlike/ design-state: June 2026. Leave empty to opt
+# out (Phase 0 only).
+stale_prose_paths:
+  - compose_voiceover
+  - module_artlist
+  - module_fullimages
+  - compose_content
+  - compose_images
+  - module_ingest
+  - module_jobs
+  - module_stock
+  - module_youtube
+
 # Expected capability slices (target: internal/capabilities/<x>).
 # Each owns module.go, contract.go, service.go, http.go, jobs.go,
 # events.go, repository.go, adapters.go per proposal §"internal/capabilities".
