@@ -1,182 +1,134 @@
 # QDRANT-004 — media-search privato, hybrid reale e delivery firmata
 
-> **Stato:** `BLOCKED / DA RIAPRIRE`  
-> **Audit baseline:** `main@c72949a362656f05222f333adf67b1b0eee973ae` — 26 giugno 2026  
-> **Owner suggerito:** mediasearch application + Qdrant search adapter + API internal routing  
-> **Branch suggerito:** `codex/qdrant-004-hybrid-e2e`
+> **Stato:** `BLOCKED / NON CHIUDIBILE`  
+> **Audit baseline:** `main@e20d5e7fc4afd9f446d9d9e92703db639008b37f` — 26 giugno 2026  
+> **Tipo verifica:** audit statico; nessuna esecuzione CI associata all'HEAD.
 
 ## OBIETTIVO
 
-Esporre una sola API privata di ricerca media che garantisca:
+Una sola API privata deve garantire worker auth, isolamento workspace, hybrid dense+sparse reale, hydration SQLite sicura e delivery URL firmata. Una richiesta `mode=hybrid` non può mai degradare silenziosamente ad ANN.
 
-- autenticazione worker;
-- workspace isolation in Qdrant e SQLite;
-- modalità `hybrid` realmente dense + sparse con RRF;
-- nessun fallback ANN etichettato come hybrid;
-- hydration esclusivamente da SQLite;
-- delivery URL firmata, non vuota e temporanea;
-- nessun locator server-internal nella risposta.
+## COMPLETATO
 
-## STATO REALE
+- il client Qdrant supporta `/points/query` con prefetch e RRF;
+- workspace ID viene propagato al filtro Qdrant e alla query SQLite;
+- il service rifiuta workspace vuoto e `default`;
+- il signer richiede secret di almeno 32 byte e il builder usa `/internal/v1/deliver`;
+- la mancata configurazione del signer produce errore, non URL vuota silenziosa;
+- il module registry non monta mediasearch sotto `/api/internal`.
 
-### Completato
+## BLOCKER ATTUALI
 
-- `Client.HybridSearchPoints` usa Qdrant `/points/query` con prefetch dense/sparse e fusione RRF;
-- il client rifiuta sparse vector o sparse channel mancanti;
-- il filtro Qdrant include `workspace_id` e lifecycle consentiti;
-- l'hydration SQLite applica `workspace_id` per utenti non admin;
-- il service rifiuta workspace vuoto e il sentinel `default`;
-- `qdrant.SearchResult` non espone `LocalPath` o `DriveLink`;
-- il delivery signer fallisce su secret mancante/corto e usa `/internal/v1/deliver`;
-- il module registry pubblico non registra più mediasearch.
+### 1. Route production ancora montata dopo `Setup()`
 
-### Blocker attuali
+`cmd/server/main.go` chiama `SetMediasearchHandler` dopo che `NewServerWithHealth` ha già costruito il `gin.Engine`. Il test corrente configura invece il Router prima di `Setup()` e non intercetta il difetto production.
 
-1. **Route production non montata.** Il server chiama `Router.Setup()` prima di `SetMediasearchHandler`; il setter successivo non registra route nel motore Gin già costruito.
-2. **Richiesta hybrid senza sparse channel.** `mediasearch.Service` costruisce `search.HybridSearchRequest` senza impostare `SparseVectorName`.
-3. **Fallback ANN nel livello Searcher.** `Searcher.HybridSearch` esegue `Search()` quando `SparseQueryVector` è nil; il chiamante può continuare a presentare il risultato come hybrid.
-4. **Test E2E insufficiente.** Non esiste una prova production che attraversi HTTP -> auth -> embed -> sparse tokenize -> `/points/query` -> hydration workspace -> signed URL.
-5. **DTO applicativo con locator legacy.** `search.VectorSearchResult` mantiene ancora `LocalPath` e `DriveLink`, anche se l'adapter Qdrant non li popola.
-6. **Delivery endpoint da provare end-to-end.** Il signer genera il path canonico, ma la chiusura richiede una prova che URL, firma, workspace, expiry e tamper rejection funzionino insieme al route wiring reale.
+### 2. Hybrid request senza sparse channel
 
-## TASK DI HANDOFF
+`mediasearch.Service` costruisce `search.VectorConfig` con il solo `TextVectorName`. `search.VectorConfig` non espone alcun `SparseVectorName`, quindi la richiesta hybrid non passa il canale `bm25_text` al vector store.
 
-### A. Rendere il percorso hybrid fail-closed
+### 3. Fallback ANN silenzioso
 
-Il nome sparse deve provenire dal manifest/config adapter canonico, non da una stringa duplicata nel service.
+Il search adapter crea il vettore sparse soltanto quando `SparseVectorName` è valorizzato. Con la richiesta corrente resta nil; `Searcher.HybridSearch` esegue quindi `Search()` dense-only. Il service continua però a trattare la richiesta come hybrid.
 
-Aggiornare il contratto `VectorConfig`/`ConfigPort` affinché esponga il canale sparse attivo, quindi valorizzare:
+### 4. Drift `status` vs `lifecycle_state`
 
-```go
-search.HybridSearchRequest{
-    SparseVectorName: vectorCfg.SparseVectorName,
-}
-```
+- `BuildPayload` scrive `status`;
+- `DefaultV3Schema` indicizza `status`;
+- il search adapter filtra `lifecycle_state`.
 
-Regole:
+Il filtro lifecycle non usa quindi la stessa chiave posseduta dal manifest/payload. Questo può produrre zero risultati o una protezione inefficace, a seconda dei punti storici.
 
-- `mode=hybrid` + sparse channel assente -> errore tipizzato `ErrSparseRequired` o capability unavailable;
-- nessun fallback a `Search()` dentro `Searcher.HybridSearch`;
-- ANN deve essere selezionata soltanto con `mode=ann`;
-- la risposta deve riportare il mode realmente eseguito.
+### 5. Hydration lifecycle incompleta
 
-### B. Correggere il route wiring production
+La query SQLite applica workspace, ma non imposta `filter.States`. Dopo la lettura scarta soltanto lo stato esattamente `deleted`; archived, pending, error e altri stati non-searchable possono attraversare l'hydration.
 
-Dipendenza condivisa con QDRANT-002:
+### 6. Locator nel DTO applicativo
 
-- passare `MediasearchHandler` al router prima di `Setup()`;
-- rimuovere il setter post-Setup o renderlo impossibile da usare per il mount;
-- aggiungere test tramite il costruttore production del server;
-- verificare presenza di `POST /internal/v1/media/search` e assenza di `/api/internal/v1/media/search`.
+`VectorSearchResult` conserva `LocalPath` e `DriveLink`, anche se il mapper non li popola più.
 
-### C. Testare la query Qdrant reale
+### 7. Commenti delivery con URL legacy
 
-Con un server Qdrant fake/httptest, verificare il body inviato a `/points/query`:
+`delivery/signer.go` continua a descrivere esempi e un futuro handler su `/api/internal/v1/deliver`, mentre il percorso canonico costruito dal composition root è `/internal/v1/deliver`.
 
-- almeno un prefetch dense;
-- un prefetch sparse;
-- `fusion: rrf`;
-- stesso filtro workspace/lifecycle su entrambi;
-- vector names provenienti dal manifest;
-- nessuna chiamata legacy `/points/search` in modalità hybrid.
+### 8. E2E assente
 
-### D. Testare workspace e hydration
+Non esiste una prova completa HTTP -> WorkerAuth -> embed -> tokenize sparse -> Qdrant Query API -> workspace hydration -> signed delivery URL.
 
-A parità di asset ID:
+## TASK RESIDUI
 
-- un workspace non deve poter idratare righe di un altro workspace;
-- admin bypass deve essere esplicito e testato;
-- deleted/archived/non-searchable devono essere esclusi;
-- hydration gap non deve far apparire un record di tenant diverso.
+### A. Rendere hybrid fail-closed
 
-### E. Testare delivery firmata
+Aggiungere il canale sparse a un resolver/config port canonico derivato da `IndexSchema`. Il service deve passarlo esplicitamente.
 
-Verificare:
+`mode=hybrid` senza sparse deve restituire un errore tipizzato, non chiamare ANN. ANN deve essere eseguita soltanto con `mode=ann`.
 
-- URL non vuota per ogni hit restituito;
-- firma include workspace e asset ID;
-- firma alterata -> rifiuto;
-- workspace alterato -> rifiuto;
-- asset ID alterato -> rifiuto;
-- URL scaduta -> rifiuto;
-- secret mancante -> startup error o capability non montata, mai risposta parziale.
+### B. Unificare le chiavi lifecycle
 
-### F. Eliminare locator dal DTO applicativo
+Scegliere una sola chiave canonica (`lifecycle_state` oppure `status`) nel manifest, mapper, query filter e migrazione dei punti storici. Vietare stringhe duplicate fuori dal resolver/schema comune.
 
-Rimuovere `LocalPath` e `DriveLink` da `internal/application/assets/search/ports.go::VectorSearchResult` e aggiornare mock/consumer. Questa attività può essere eseguita insieme a QDRANT-001, ma QDRANT-004 non è chiudibile finché il contratto media-search li conserva.
+### C. Rendere sicura l'hydration
+
+Applicare in SQL gli stati ricercabili, oltre al workspace. Il filtro post-query deve essere difesa aggiuntiva e coprire tutti gli stati non-searchable.
+
+### D. Correggere il route wiring
+
+Passare il mediasearch handler prima di `Router.Setup()` e testare il costruttore production.
+
+### E. Test E2E delivery
+
+Verificare URL non vuota, firma, expiry, tamper di asset/workspace, secret mancante e route receiver reale.
+
+### F. Ripulire DTO e documentazione
+
+Rimuovere i locator applicativi e ogni riferimento a `/api/internal/v1/deliver`.
 
 ## LEGACY DA ELIMINARE
 
-| Legacy | Dove | Azione richiesta |
+| Legacy | Dove | Azione |
 |---|---|---|
-| `SetMediasearchHandler` dopo `Router.Setup()` | `cmd/server/main.go`, `internal/api/server.go` | wiring pre-Setup |
-| fallback ANN da `HybridSearch` | `internal/infrastructure/qdrant/searcher.go` | restituire errore tipizzato |
-| hybrid request senza `SparseVectorName` | `internal/application/mediasearch/service.go` | propagare SSOT dal manifest |
-| locator nel DTO applicativo | `internal/application/assets/search/ports.go` | eliminare campi e consumer |
-| test Router manuale che non copre server production | `internal/api/routes_test.go` | aggiungere E2E production constructor |
-| smoke delivery non automatizzato | test API/delivery | introdurre roundtrip completo |
-| gate QDRANT soltanto nel Markdown | CI | promuovere a check obbligatorio |
+| setter mediasearch post-Setup | server composition | injection pre-Setup |
+| `VectorConfig` senza sparse | application search port | aggiungere resolver canonico |
+| fallback ANN da HybridSearch | qdrant searcher | errore fail-closed |
+| `status` / `lifecycle_state` drift | schema, mapper, adapter | una sola chiave SSOT |
+| hydration che scarta solo deleted | read adapter/repository | SQL states allowlist |
+| locator nel DTO | application search | eliminare campi |
+| `/api/internal/v1/deliver` nei commenti | delivery signer | correggere documentazione |
+| test Router non-production | routes test | E2E constructor test |
+| gate soltanto Markdown | CI | required check |
 
 ## DEFINITION OF DONE
 
 Il ticket può essere marcato `CLOSED` soltanto quando:
 
-- `POST /internal/v1/media/search` è realmente registrato nel server production prima dell'avvio;
-- la route richiede worker auth;
-- `mode=hybrid` produce sempre dense+sparse+RRF oppure fallisce esplicitamente;
-- nessun codice effettua fallback ANN mantenendo l'etichetta hybrid;
-- workspace e lifecycle sono applicati in Qdrant e SQLite;
-- la risposta non contiene path locali o Drive link grezzi;
-- ogni hit restituito ha una delivery URL firmata valida;
-- test tamper/expiry/workspace mismatch sono verdi;
-- un test verifica il body `/points/query` e vieta `/points/search` in hybrid;
-- il gate automatico previene regressioni di route, fallback e locator.
+- la route è realmente presente nel server production e protetta da WorkerAuth;
+- `mode=hybrid` produce dense+sparse+RRF oppure fallisce esplicitamente;
+- ANN è selezionabile soltanto come mode distinta;
+- manifest, payload e filtri usano la stessa chiave lifecycle;
+- workspace e stati ricercabili sono applicati in Qdrant e SQL;
+- nessun locator è presente nel DTO;
+- ogni hit restituito ha una delivery URL valida;
+- E2E tamper/expiry/auth è verde;
+- CI impedisce la reintroduzione di fallback e drift di chiavi.
 
-## GATE ANTI-REGRESSIONE
+## GATE MINIMO
 
 ```bash
 set -euo pipefail
 
-# Nessun fallback ANN nel metodo hybrid.
-! rg -n -U 'func \(s \*Searcher\) HybridSearch[\s\S]{0,1200}return s\.Search\(' \
-  internal/infrastructure/qdrant/searcher.go
-
-# Il service deve propagare il canale sparse.
 rg -n 'SparseVectorName:' internal/application/mediasearch/service.go
-
-# Il client hybrid usa Query API + RRF.
-rg -n 'points/query' internal/infrastructure/qdrant/client.go
-rg -n 'fusion.*rrf|"rrf"' internal/infrastructure/qdrant/client.go
-
-# Nessun locator nel DTO applicativo.
-! rg -n '^\s*(LocalPath|DriveLink)\s+string' \
-  internal/application/assets/search/ports.go
-
-# Route production e test API.
-go test ./internal/api/... ./internal/app/... \
-  ./internal/application/mediasearch/... \
-  ./internal/infrastructure/qdrant/... \
-  ./internal/infrastructure/delivery/... \
-  -count=1
+! rg -n -U 'func \(s \*Searcher\) HybridSearch[\s\S]{0,1200}return s\.Search\(' internal/infrastructure/qdrant/searcher.go
+! rg -n '^\s*(LocalPath|DriveLink)\s+string' internal/application/assets/search/ports.go
+! rg -n '/api/internal/v1/deliver' internal/infrastructure/delivery
+# Aggiungere un gate SSOT che impedisca la convivenza status/lifecycle_state.
+go test ./internal/api/... ./internal/application/mediasearch/... ./internal/infrastructure/qdrant/... ./internal/infrastructure/delivery/... -count=1
 ```
-
-## TEST MINIMI DA AGGIUNGERE
-
-- `mode=hybrid` con sparse disponibile -> `/points/query` RRF;
-- `mode=hybrid` senza sparse -> errore, zero query ANN;
-- `mode=ann` -> ANN esplicita;
-- worker token mancante/errato;
-- workspace mancante, `default` e cross-tenant;
-- lifecycle deleted/archived;
-- signer secret mancante/corto;
-- URL firmata roundtrip, tamper ed expiry;
-- route presente nel server production;
-- `/api/internal/v1/media/search` assente.
 
 ## NON CHIUDERE SE
 
-- il client Qdrant supporta RRF ma il service non gli passa il canale sparse;
-- un fallback dense-only è ancora raggiungibile in modalità hybrid;
-- la route esiste soltanto in un test che configura direttamente `Router`;
-- una hit può essere restituita senza delivery URL autorizzata;
-- `LocalPath` o `DriveLink` restano nel contratto di search.
+- il client supporta RRF ma il service non gli passa il canale sparse;
+- HybridSearch può ancora chiamare ANN;
+- payload e filtro lifecycle usano chiavi diverse;
+- SQL filtra soltanto workspace ma non gli stati ricercabili;
+- la route è provata soltanto con Router configurato manualmente;
+- il receiver delivery è ancora “futuro” o solo documentato.
