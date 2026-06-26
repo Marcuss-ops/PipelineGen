@@ -63,6 +63,70 @@ type AssociationCandidatesResponse struct {
 	Candidates []AssociationCandidate `json:"candidates"`
 }
 
+// ── Stub types for packages removed during consolidation ────────────────────
+// These types were previously defined in packages that have been removed
+// (realtime, association, clipresolver). They are defined here as local stubs
+// to preserve compilation until the real types are restored.
+
+// AssetSearchTarget narrows a search query to a specific source and media type.
+type AssetSearchTarget struct {
+	Source    string
+	MediaType string
+}
+
+// ScriptAssetSuggestion represents a single clip recommendation for a script.
+type ScriptAssetSuggestion struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Source    string  `json:"source"`
+	Score     float64 `json:"score"`
+	DriveLink string  `json:"drive_link"`
+}
+
+// ScriptArtlistClipSuggestion pairs an artlist phrase with matching clips.
+type ScriptArtlistClipSuggestion struct {
+	Phrase     string                   `json:"phrase"`
+	Clips      []ScriptAssetSuggestion  `json:"clips"`
+	FolderLink string                   `json:"folder_link"`
+	FolderName string                   `json:"folder_name"`
+	FolderID   string                   `json:"folder_id"`
+}
+
+// ScriptPhraseClipSuggestion pairs a key phrase with matching clips.
+type ScriptPhraseClipSuggestion struct {
+	Phrase string                  `json:"phrase"`
+	Clips  []ScriptAssetSuggestion `json:"clips"`
+}
+
+// ScriptEntityImage represents an image found or generated for a named entity.
+type ScriptEntityImage struct {
+	EntityName  string `json:"entity_name"`
+	ImageHash   string `json:"image_hash"`
+	ImageURL    string `json:"image_url"`
+	PathRel     string `json:"path_rel"`
+	Description string `json:"description"`
+	Source      string `json:"source"`
+	DriveLink   string `json:"drive_link"`
+	Error       string `json:"error,omitempty"`
+}
+
+// ScriptDriveFolderSuggestion recommends a Drive folder for a script.
+type ScriptDriveFolderSuggestion struct {
+	Database string `json:"database"`
+	Source   string `json:"source"`
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Link     string `json:"link"`
+	FolderID string `json:"folder_id"`
+	Score    int    `json:"score"`
+	Reason   string `json:"reason"`
+}
+
+// EntityScriptExtractor is the interface for extracting entities from script text.
+type EntityScriptExtractor interface {
+	ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, maxEntities int, model string) (*asset.FullEntityAnalysis, error)
+}
+
 // ── SearchScriptAssets ──────────────────────────────────────────────────────
 
 // SearchScriptAssets searches for assets across multiple query-target pairs
