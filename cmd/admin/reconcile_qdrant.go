@@ -352,6 +352,9 @@ type outboxRepairAdapter struct {
 	schemaVersion string
 }
 
+// EnqueueReindex inserts an asset.index.requested.v1 outbox event for
+// the supplied assetID. Idempotency is uuid-suffixed (fresh event_key
+// per call) — see outboxevents.BuildReindexEnvelopeV1 for the seam.
 func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string) error {
 	if assetID == "" {
 		return errors.New("outboxRepairAdapter.EnqueueReindex: assetID must not be empty")
@@ -373,31 +376,15 @@ func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string
 		return fmt.Errorf("update updated_at %s: %w", assetID, err)
 	}
 
-	// v1 envelope, schema_version literal mirrors outbox.Dispatcher.
-	// source_version carries an event-unique marker so ON CONFLICT
-	// (event_key) DO NOTHING never swallows a fresh reconcile-repair.
-	eventID := uuid.NewString()
-	eventKey := "reconcile:reindex:" + assetID + ":" + eventID
-	payload := map[string]any{
-		"schema_version":       "asset.index.requested.v1",
-		"event_id":             eventID,
-		"asset_id":             assetID,
-		"operation":            "UPSERT",
-		"source_version":       eventID,
-		"target_index_version": a.schemaVersion,
-		"requested_vectors":    []string{"text", "transcript"},
-		"requested_at":         nowStr,
-		"idempotency_key":      eventKey,
-	}
-	payloadJSON, err := json.Marshal(payload)
+	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(assetID, a.schemaVersion, time.Now())
 	if err != nil {
-		return fmt.Errorf("marshal v1 reindex payload: %w", err)
+		return fmt.Errorf("build reindex envelope: %w", err)
 	}
 	if err := a.outboxRepo.Enqueue(
 		ctx, tx,
 		outboxevents.EventAssetIndexRequested,
 		assetID, "media_asset",
-		string(payloadJSON), eventKey,
+		payloadJSON, eventKey,
 	); err != nil {
 		return fmt.Errorf("enqueue outbox reindex event: %w", err)
 	}
