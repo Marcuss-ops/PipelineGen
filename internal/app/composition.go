@@ -294,6 +294,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		domains.LessonsService.RegisterJobHandler(jobs.Service)
 	}
 
+	// QDRANT-002: late-bind the canonical outbox.Dispatcher to the image
+	// service after BuildOutboxBundle. The dispatcher is built after
+	// BuildDomainBundle, so SetDispatcher bridges the composition order gap.
+	// When nil (tests, partial deployments), the write methods fall back to
+	// raw stockRepo.Upsert.
+	if domains.ImageService != nil && outbox.Dispatcher != nil {
+		domains.ImageService.SetDispatcher(outbox.Dispatcher)
+	}
+
 	root := &ComposeRoot{
 		DB:      dbs.main,
 		Drive:   driveBundle,

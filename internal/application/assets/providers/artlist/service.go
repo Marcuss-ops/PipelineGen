@@ -200,7 +200,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	}
 
 	// Inizializza i componenti delegati
-	s.searchService = NewSearchService(s)
+	s.searchService = NewSearchService(s, deps.Dispatcher)
 	s.runOrchestrator = NewRunOrchestratorService(s)
 	s.destinationService = NewDestinationService(s)
 	s.jobAdapter = NewJobAdapter(s)

@@ -9,6 +9,15 @@ import (
 )
 
 // BulkAddTags adds a set of tags to multiple clips efficiently.
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Tag mutations affect
+// search indexing (tags are part of the vector embedding input).
+// Callers should route through the outbox.Dispatcher with a re-index
+// event instead of mutating tags in isolation.
+//
+// Today this is called from the BulkTagsUseCase (API handler path); a
+// future PR should replace it with a dispatcher.EnqueueAndIndex call
+// that re-indexes the affected assets after the tag change.
 func (s *AssetStoreSQLite) BulkAddTags(ctx context.Context, ids []string, tags []string) error {
 	if len(ids) == 0 || len(tags) == 0 {
 		return nil
@@ -59,6 +68,7 @@ func (s *AssetStoreSQLite) BulkAddTags(ctx context.Context, ids []string, tags [
 }
 
 // BulkRemoveTags removes a set of tags from multiple clips.
+// See BulkAddTags for the QDRANT-002 outbox bypass warning.
 func (s *AssetStoreSQLite) BulkRemoveTags(ctx context.Context, ids []string, tags []string) error {
 	if len(ids) == 0 || len(tags) == 0 {
 		return nil
@@ -186,6 +196,10 @@ func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*Asset,
 }
 
 // UpdateDriveFileID updates the drive_file_id for a clip (canonical column).
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. drive_file_id changes
+// may affect indexing (the dispatcher uses it for event_key construction).
+// Callers should route through the outbox.Dispatcher.
 func (s *AssetStoreSQLite) UpdateDriveFileID(ctx context.Context, clipID, fileID string) error {
 	clipID = strings.TrimSpace(clipID)
 	fileID = strings.TrimSpace(fileID)
@@ -198,6 +212,10 @@ func (s *AssetStoreSQLite) UpdateDriveFileID(ctx context.Context, clipID, fileID
 }
 
 // UpdateFileHash updates the file_hash for a clip (canonical column).
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. file_hash changes affect
+// the dispatcher's supersede gate (event_key includes the content hash).
+// Callers should route through the outbox.Dispatcher.
 func (s *AssetStoreSQLite) UpdateFileHash(ctx context.Context, clipID, hash string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
 	return err

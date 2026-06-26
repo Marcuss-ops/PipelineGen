@@ -24,6 +24,7 @@ type Service struct {
 	config      ConfigPort
 	enrichment  EnrichmentPort
 	metadataUp  MetadataUploadPort
+	indexDisp   IndexDispatcherPort
 	log         Logger
 }
 
@@ -42,6 +43,7 @@ func NewService(
 	config ConfigPort,
 	enrichment EnrichmentPort,
 	metadataUp MetadataUploadPort,
+	indexDisp IndexDispatcherPort,
 	log Logger,
 ) *Service {
 	return &Service{
@@ -57,6 +59,7 @@ func NewService(
 		config:      config,
 		enrichment:  enrichment,
 		metadataUp:  metadataUp,
+		indexDisp:   indexDisp,
 		log:         log,
 	}
 }
@@ -290,26 +293,40 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 	}
 
 	// ── 11. Save to database ────────────────────────────────────────
-	if s.clips != nil {
-		clip := &ExistingClip{
-			ID:        clipID,
-			Name:      name,
-			Filename:  driveFilename,
-			Source:    source,
-			Category:  cmd.Category,
-			Tags:      cmd.Tags,
-			Duration:  time.Duration(duration) * time.Second,
-			LocalPath: fetched.LocalPath,
-			FileHash:  fileHash,
+	clip := &ExistingClip{
+		ID:        clipID,
+		Name:      name,
+		Filename:  driveFilename,
+		Source:    source,
+		Category:  cmd.Category,
+		Tags:      cmd.Tags,
+		Duration:  time.Duration(duration) * time.Second,
+		LocalPath: fetched.LocalPath,
+		FileHash:  fileHash,
+	}
+	if uploadResult != nil {
+		clip.DriveLink = uploadResult.WebViewLink
+		clip.DriveFileID = uploadResult.FileID
+	}
+
+	viaDispatcher := false
+	if s.indexDisp != nil {
+		// QDRANT-002 canonical path: atomic UPSERT + outbox event via dispatcher.
+		// The dispatcher writes media_assets and outbox_events in a single tx,
+		// then the outbox pool picks up the event and runs IndexClip async.
+		if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
+			return nil, fmt.Errorf("save clip via dispatcher: %w", err)
 		}
-		if uploadResult != nil {
-			clip.DriveLink = uploadResult.WebViewLink
-			clip.DriveFileID = uploadResult.FileID
-		}
+		viaDispatcher = true
+	} else if s.clips != nil {
+		// Legacy path: raw UpsertClip without outbox event.
+		// QDRANT-002: kept for backward compatibility when dispatcher is not wired.
 		if err := s.clips.UpsertClip(ctx, clip); err != nil {
 			return nil, fmt.Errorf("save clip: %w", err)
 		}
-		s.log.Info("saved clip to DB", "clip_id", clipID)
+	}
+	if viaDispatcher || s.clips != nil {
+		s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", viaDispatcher)
 	}
 
 	// ── 12. Update Asset Tree ───────────────────────────────────────

@@ -7,6 +7,10 @@ import (
 )
 
 // UpdateClip updates an existing clip.
+//
+// QDRANT-002: Routes through dispatcher.EnqueueAndIndex when wired for
+// atomic UPSERT + outbox event. Falls back to raw repo.UpsertClip when
+// dispatcher is nil (tests, partial deployments).
 func (h *Handler) UpdateClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
@@ -77,7 +81,17 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 		clip.ThumbnailURL = val
 	}
 
-	if err := repo.UpsertClip(ctx, clip); err != nil {
+	// QDRANT-002: canonical path through dispatcher when wired.
+	if h.dispatcher != nil {
+		contentHash := clip.FileHash()
+		if contentHash == "" {
+			contentHash = clipID
+		}
+		if err := h.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+	} else if err := repo.UpsertClip(ctx, clip); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}

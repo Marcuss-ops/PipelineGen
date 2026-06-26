@@ -49,7 +49,12 @@ func (r *ImagesRepository) CreateSubject(ctx context.Context, s *asset.Subject) 
 	return 0, err
 }
 
-// AddImage aggiunge un record immagine nella tabella media_assets
+// AddImage aggiunge un record immagine nella tabella media_assets.
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Image INSERT/UPDATE on
+// media_assets must be accompanied by an outbox_events INSERT so the
+// vector index stays in sync. Callers should route through
+// outbox.Dispatcher.EnqueueAndIndex or a future ImageDispatcher.
 func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) (int64, error) {
 	id := img.Hash
 	if id == "" {
@@ -321,6 +326,12 @@ func (r *ImagesRepository) UpdateImageMetadata(ctx context.Context, hash, metada
 	return err
 }
 
+// UpdateEmbeddingStatus writes an embedding status marker to metadata_json.
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. It uses json_set on
+// metadata_json which is un-indexable and invisible to the canonical
+// index_state machine. Callers should use clipindexer.setIndexState
+// which writes the first-class index_state column.
 func (r *ImagesRepository) UpdateEmbeddingStatus(ctx context.Context, hash, status string) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_assets
@@ -334,6 +345,17 @@ func (r *ImagesRepository) UpdateEmbeddingStatus(ctx context.Context, hash, stat
 // If embeddingJSON is empty, only the status is updated.
 // This is the unified method for persisting embedding data to survive Qdrant wipes.
 // Works for ALL media types (image, artlist, youtube, stock, voiceover) â€” not just images.
+// UpdateEmbeddingData updates the embedding_json column AND embedding_status in metadata_json.
+// If embeddingJSON is empty, only the status is updated.
+// This is the unified method for persisting embedding data to survive Qdrant wipes.
+// Works for ALL media types (image, artlist, youtube, stock, voiceover) — not just images.
+//
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. It writes embedding_json
+// directly without an outbox event. The canonical path is through
+// clipindexer.setIndexedAt which writes the column AND the sidecar
+// metadata_json in a single atomic UPDATE alongside the index_state
+// transition. Callers using this method are responsible for ensuring
+// the outbox event is emitted separately.
 func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, embeddingJSON, status string) error {
 	if embeddingJSON != "" {
 		_, err := r.db.ExecContext(ctx, `

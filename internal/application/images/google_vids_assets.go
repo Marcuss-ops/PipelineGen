@@ -19,6 +19,9 @@ import (
 // RegisterVideoAsset uploada su Drive e crea un record in media_assets per un video generato.
 // Se driveFileID e driveLink sono già noti (es. da fullimages), li usa senza ri-uploadare.
 // Sul Drive crea la struttura: <videoRoot>/<style>/<subject>/<hash>.mp4 + metadata.json
+//
+// QDRANT-002: Routes through dispatcher.EnqueueAndIndex when wired.
+// Falls back to raw stockRepo.Upsert when dispatcher is nil.
 func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description, source, style string, durationSec int, existingDriveFileID, existingDriveLink string) error {
 	if s.stockRepo == nil {
 		return fmt.Errorf("stock repo not configured")
@@ -98,7 +101,14 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		clip.Group = style
 	}
 
-	if err := s.stockRepo.Upsert(ctx, clip); err != nil {
+	if s.dispatcher != nil {
+		// QDRANT-002 canonical path: atomic UPSERT + outbox event.
+		contentHash := sha256Hash(filePath + id)
+		if err := s.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
+			return fmt.Errorf("dispatcher.EnqueueAndIndex video %s: %w", id, err)
+		}
+		s.log.Debug("RegisterVideoAsset: saved via dispatcher", zap.String("id", id))
+	} else if err := s.stockRepo.Upsert(ctx, clip); err != nil {
 		return err
 	}
 
@@ -247,7 +257,15 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 		clip.Group = style
 	}
 
-	if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
+	if s.dispatcher != nil {
+		// QDRANT-002 canonical path: atomic UPSERT + outbox event.
+		contentHash := sha256Hash(audioPath)
+		if err := s.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
+			s.log.Warn("registerAudioClip: dispatcher upsert failed", zap.Error(err))
+			return
+		}
+		s.log.Debug("registerAudioClip: saved via dispatcher", zap.String("id", clip.ID))
+	} else if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
 		s.log.Warn("registerAudioClip: DB upsert failed", zap.Error(err))
 		return
 	}

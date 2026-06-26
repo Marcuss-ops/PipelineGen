@@ -21,6 +21,8 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
 func newAssetRegisterService(
@@ -31,7 +33,12 @@ func newAssetRegisterService(
 	assetTreeSvc *assettree.Service,
 	providerRegistry *providers.Registry,
 	clipsHandler *clipsapi.Handler,
+	dispatcher *outbox.Dispatcher,
 ) *sourcing.Service {
+	var indexDisp sourcing.IndexDispatcherPort
+	if dispatcher != nil {
+		indexDisp = &sourcingDispatcherAdapter{disp: dispatcher}
+	}
 	return sourcing.NewService(
 		&sourcingFetchAdapter{registry: providerRegistry},
 		&sourcingDriveAdapter{uploader: driveUploader},
@@ -45,6 +52,7 @@ func newAssetRegisterService(
 		&sourcingConfigAdapter{cfg: cfg},
 		&sourcingEnrichmentAdapter{handler: clipsHandler},
 		&sourcingMetadataAdapter{cfg: cfg, uploader: driveUploader, log: log},
+		indexDisp,
 		&zapSourcingLogger{log: log},
 	)
 }
@@ -363,6 +371,26 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	out.SetDriveFileID(c.DriveFileID)
 	out.SetFileHash(c.FileHash)
 	return out
+}
+
+// sourcingDispatcherAdapter adapts outbox.Dispatcher to sourcing.IndexDispatcherPort.
+// Converts sourcing.ExistingClip → asset.Asset before delegating to the dispatcher.
+type sourcingDispatcherAdapter struct {
+	disp *outbox.Dispatcher
+}
+
+// Compile-time assertion: sourcingDispatcherAdapter satisfies sourcing.IndexDispatcherPort.
+var _ sourcing.IndexDispatcherPort = (*sourcingDispatcherAdapter)(nil)
+
+func (a *sourcingDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *sourcing.ExistingClip, contentHash string) error {
+	if a.disp == nil {
+		return nil
+	}
+	if clip == nil {
+		return fmt.Errorf("sourcingDispatcherAdapter: clip is nil")
+	}
+	domainAsset := fromExistingClip(clip)
+	return a.disp.EnqueueAndIndex(ctx, domainAsset, contentHash)
 }
 
 func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {

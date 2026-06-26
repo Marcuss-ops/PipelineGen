@@ -17,6 +17,10 @@ type SearchService struct {
 	service *Service
 	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
 	assetRepo asset.Repository
+	// dispatcher is the canonical outbox dispatcher port (QDRANT-002).
+	// When non-nil, SearchLiveAndSave routes through EnqueueAndIndex
+	// instead of raw assetStore.Upsert. Wired from Service.dispatcher.
+	dispatcher Dispatcher
 	// PR2: injected Searcher implementations from infrastructure.
 	// nil means that level is skipped in the fallback chain.
 	scraperSearcher Searcher
@@ -32,8 +36,9 @@ func (ss *SearchService) SetAssetRepo(r asset.Repository) {
 }
 
 // NewSearchService creates a new SearchService wired to the Service.
-func NewSearchService(s *Service) *SearchService {
-	return &SearchService{service: s}
+// dispatcher is the canonical outbox port; nil means legacy Upsert path.
+func NewSearchService(s *Service, dispatcher Dispatcher) *SearchService {
+	return &SearchService{service: s, dispatcher: dispatcher}
 }
 
 // Search esegue una ricerca di clip nel database Artlist.
@@ -78,6 +83,9 @@ func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int)
 }
 
 // SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.
+//
+// QDRANT-002: Routes through dispatcher.EnqueueAndIndex when wired.
+// Falls back to raw assetStore.Upsert when dispatcher is nil.
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm string, limit int) (*SearchResponse, error) {
 	s := ss.service
 	normalizedTerm := normalizeSearchTerm(originalTerm)
@@ -132,7 +140,19 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			}
 		}
 
-		if err := s.assetStore.Upsert(ctx, clip); err == nil {
+		// QDRANT-002: canonical path through dispatcher when wired.
+		contentHash := clip.FileHash()
+		if contentHash == "" {
+			contentHash = clip.ID
+		}
+		var upsertErr error
+		if ss.dispatcher != nil {
+			upsertErr = ss.dispatcher.EnqueueAndIndex(ctx, clip, contentHash)
+		} else {
+			upsertErr = s.assetStore.Upsert(ctx, clip)
+		}
+
+		if upsertErr == nil {
 			if a := toDomain(clip); a != nil {
 				resp.Clips = append(resp.Clips, *a)
 			}
