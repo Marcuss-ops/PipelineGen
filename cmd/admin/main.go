@@ -44,6 +44,7 @@ var availableCommands = []string{
 	"backfill-artlist-media-type",
 	"backfill-missing",
 	"benchmark",
+	"clean-qdrant-locators",
 	"cleanup-all-orphans",
 	"cleanup-artlist-empty-folders",
 	"cleanup-orphans",
@@ -83,6 +84,8 @@ func main() {
 		err = runBackfillArtlistMediaType(args)
 	case "benchmark":
 		err = runBenchmark(args)
+	case "clean-qdrant-locators":
+		err = runCleanLocators(args)
 	case "cleanup-all-orphans":
 		err = runCleanupAllOrphans(args)
 	case "cleanup-artlist-empty-folders":

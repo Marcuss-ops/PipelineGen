@@ -240,10 +240,12 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 	var vectorSvc assetsearch.VectorStorePort
 	var qdrantClient *qdrant.Client
 	var qdrantHealthProbe any // qdrant.HealthProbe or nil — typed `any` so this layer doesn't force every composition path to import health.go
+	var locatorCleaner *qdrant.LocatorCleaner // QDRANT-005: legacy payload scrubber
 
 	if cfg.Qdrant.Enabled && clipIndexerService.IsEnabled() {
 		qdrantCfg := &qdrant.Config{
 			BaseURL: cfg.Qdrant.BaseURL,
+			APIKey:  cfg.Qdrant.APIKey,
 			Timeout: cfg.Qdrant.Timeout,
 		}
 		schema := qdrant.DefaultV3Schema()
@@ -274,7 +276,9 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 			zap.String("schema_version", schema.Version),
 			zap.String("runtime_alias", schema.RuntimeAlias))
 		log.Info("QDRANT-004: Searcher + SearchAdapter wired for mediasearch API")
+		locatorCleaner = qdrant.NewLocatorCleaner(qdrantClient, schema, log)
 		log.Info("QDRANT-005: HealthProbe wired for /ready readiness barrier")
+		log.Info("QDRANT-005: LocatorCleaner wired for legacy payload cleanup")
 	} else {
 		log.Info("QDRANT-003: Qdrant disabled — vector store upserts will be skipped")
 	}
@@ -287,6 +291,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		QdrantDeleter:      indexDeleter,
 		VectorSvc:          vectorSvc,
 		QdrantHealthProbe:  qdrantHealthProbe,
+		LocatorCleaner:     locatorCleaner,
 	}, nil
 }
 

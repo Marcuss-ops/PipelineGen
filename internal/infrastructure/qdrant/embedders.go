@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -69,12 +70,14 @@ type imageEmbedderAdapter struct {
 	serverURL  string
 	httpClient *http.Client
 	log        *zap.Logger
+	schema     *IndexSchema // canonical model identity for the "visual" channel
 }
 
 // NewImageEmbedderAdapter creates an ImageEmbedder pointing at a sidecar.
 // Pass serverURL="" to signal that visual embeddings are unavailable
-// (EmbedImages will return ErrChannelUnavailable).
-func NewImageEmbedderAdapter(cfg ImageEmbedderConfig, log *zap.Logger) ImageEmbedder {
+// (EmbedImages will return ErrChannelUnavailable). schema may be nil in
+// tests where IndexSchema validation is not needed.
+func NewImageEmbedderAdapter(cfg ImageEmbedderConfig, schema *IndexSchema, log *zap.Logger) ImageEmbedder {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -83,6 +86,7 @@ func NewImageEmbedderAdapter(cfg ImageEmbedderConfig, log *zap.Logger) ImageEmbe
 		serverURL:  cfg.ServerURL,
 		httpClient: &http.Client{Timeout: timeout},
 		log:        log,
+		schema:     schema,
 	}
 }
 
@@ -111,6 +115,8 @@ func (a *imageEmbedderAdapter) EmbedImages(ctx context.Context, imagePaths []str
 func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string) ([]float32, error) {
 	// QDRANT-003: call /embed_visual_from_image which accepts {"image_path": "..."}
 	// and uses SigLIP image encoder (768d).
+	// QDRANT-001: validate canonical sidecar envelope (model, model_version,
+	// dimensions) — reject incomplete or inconsistent responses.
 	payload, err := json.Marshal(map[string]string{"image_path": imagePath})
 	if err != nil {
 		return nil, fmt.Errorf("marshal visual embed request: %w", err)
@@ -139,10 +145,42 @@ func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string
 	}
 
 	var parsed struct {
-		Embedding []float64 `json:"embedding"`
+		Embedding    []float64 `json:"embedding"`
+		Dimensions   int       `json:"dimensions"`
+		Model        string    `json:"model"`
+		ModelVersion string    `json:"model_version"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("decode visual embed response: %w", err)
+	}
+
+	// QDRANT-001: validate canonical sidecar envelope.
+	if parsed.Model == "" {
+		return nil, fmt.Errorf("visual embed: missing 'model' in sidecar response")
+	}
+	if parsed.ModelVersion == "" {
+		return nil, fmt.Errorf("visual embed: missing 'model_version' in sidecar response")
+	}
+	if parsed.Dimensions <= 0 {
+		return nil, fmt.Errorf("visual embed: missing or invalid 'dimensions' in sidecar response")
+	}
+	if parsed.Dimensions != len(parsed.Embedding) {
+		return nil, fmt.Errorf("visual embed: dimensions=%d but embedding length=%d", parsed.Dimensions, len(parsed.Embedding))
+	}
+
+	// QDRANT-001: validate model identity against the IndexSchema manifest.
+	// Skip when schema is nil (test-only path).
+	if a.schema != nil {
+		if spec := a.schema.GetDense("visual"); spec != nil {
+			if !modelNameMatches(parsed.Model, spec.Model) {
+				return nil, fmt.Errorf("visual embed: model identity mismatch: sidecar returned %q, schema expects %q",
+					parsed.Model, spec.Model)
+			}
+			if parsed.Dimensions != spec.Dimensions {
+				return nil, fmt.Errorf("visual embed: dimension mismatch: sidecar returned %d, schema expects %d",
+					parsed.Dimensions, spec.Dimensions)
+			}
+		}
 	}
 
 	out := make([]float32, len(parsed.Embedding))
@@ -171,11 +209,13 @@ type audioEmbedderAdapter struct {
 	serverURL  string
 	httpClient *http.Client
 	log        *zap.Logger
+	schema     *IndexSchema // canonical model identity for the "audio" channel
 }
 
 // NewAudioEmbedderAdapter creates an AudioEmbedder pointing at a sidecar.
 // Pass serverURL="" to signal that audio embeddings are unavailable.
-func NewAudioEmbedderAdapter(cfg AudioEmbedderConfig, log *zap.Logger) AudioEmbedder {
+// schema may be nil in tests where IndexSchema validation is not needed.
+func NewAudioEmbedderAdapter(cfg AudioEmbedderConfig, schema *IndexSchema, log *zap.Logger) AudioEmbedder {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -184,6 +224,7 @@ func NewAudioEmbedderAdapter(cfg AudioEmbedderConfig, log *zap.Logger) AudioEmbe
 		serverURL:  cfg.ServerURL,
 		httpClient: &http.Client{Timeout: timeout},
 		log:        log,
+		schema:     schema,
 	}
 }
 
@@ -209,9 +250,33 @@ func (a *audioEmbedderAdapter) EmbedAudio(ctx context.Context, audioPaths []stri
 	return out, nil
 }
 
+// ── Model name matching ──────────────────────────────────────────────
+
+// modelNameMatches compares a sidecar-returned model name (which may include
+// a vendor prefix like "google/siglip-..." or "laion/clap-...") against the
+// shorter canonical form stored in IndexSchema (e.g. "siglip-...").
+//
+// The comparison is:
+//   1. Exact match (sidecar model == schema model).
+//   2. Last-component match: everything after the final "/" is compared
+//      against the schema model name. This handles the common case where
+//      the Python sidecar uses "google/siglip-so400m-patch14-384" while
+//      IndexSchema stores "siglip-so400m-patch14-384".
+func modelNameMatches(sidecarModel, schemaModel string) bool {
+	if sidecarModel == schemaModel {
+		return true
+	}
+	if idx := strings.LastIndex(sidecarModel, "/"); idx >= 0 {
+		return sidecarModel[idx+1:] == schemaModel
+	}
+	return false
+}
+
 func (a *audioEmbedderAdapter) embedSingle(ctx context.Context, audioPath string) ([]float32, error) {
 	// QDRANT-003: call /embed_audio_from_file which accepts {"audio_path": "..."}
 	// and uses CLAP audio encoder (512d).
+	// QDRANT-001: validate canonical sidecar envelope (model, model_version,
+	// dimensions) — reject incomplete or inconsistent responses.
 	payload, err := json.Marshal(map[string]string{"audio_path": audioPath})
 	if err != nil {
 		return nil, fmt.Errorf("marshal audio embed request: %w", err)
@@ -240,10 +305,42 @@ func (a *audioEmbedderAdapter) embedSingle(ctx context.Context, audioPath string
 	}
 
 	var parsed struct {
-		Embedding []float64 `json:"embedding"`
+		Embedding    []float64 `json:"embedding"`
+		Dimensions   int       `json:"dimensions"`
+		Model        string    `json:"model"`
+		ModelVersion string    `json:"model_version"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("decode audio embed response: %w", err)
+	}
+
+	// QDRANT-001: validate canonical sidecar envelope.
+	if parsed.Model == "" {
+		return nil, fmt.Errorf("audio embed: missing 'model' in sidecar response")
+	}
+	if parsed.ModelVersion == "" {
+		return nil, fmt.Errorf("audio embed: missing 'model_version' in sidecar response")
+	}
+	if parsed.Dimensions <= 0 {
+		return nil, fmt.Errorf("audio embed: missing or invalid 'dimensions' in sidecar response")
+	}
+	if parsed.Dimensions != len(parsed.Embedding) {
+		return nil, fmt.Errorf("audio embed: dimensions=%d but embedding length=%d", parsed.Dimensions, len(parsed.Embedding))
+	}
+
+	// QDRANT-001: validate model identity against the IndexSchema manifest.
+	// Skip when schema is nil (test-only path).
+	if a.schema != nil {
+		if spec := a.schema.GetDense("audio"); spec != nil {
+			if !modelNameMatches(parsed.Model, spec.Model) {
+				return nil, fmt.Errorf("audio embed: model identity mismatch: sidecar returned %q, schema expects %q",
+					parsed.Model, spec.Model)
+			}
+			if parsed.Dimensions != spec.Dimensions {
+				return nil, fmt.Errorf("audio embed: dimension mismatch: sidecar returned %d, schema expects %d",
+					parsed.Dimensions, spec.Dimensions)
+			}
+		}
 	}
 
 	out := make([]float32, len(parsed.Embedding))

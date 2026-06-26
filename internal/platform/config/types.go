@@ -140,6 +140,7 @@ type GoogleAccountingConfig struct {
 
 // QdrantConfig holds Qdrant vector-database connection parameters.
 // QDRANT-003 (June 2026): canonical Qdrant configuration.
+// QDRANT-005 (June 2026): APIKey added for authenticated Qdrant deployments.
 type QdrantConfig struct {
 	// BaseURL is the Qdrant REST API base URL (e.g. "http://127.0.0.1:6333").
 	BaseURL string `yaml:"base_url" env:"VELOX_QDRANT_URL" default:"http://127.0.0.1:6333"`
@@ -148,6 +149,11 @@ type QdrantConfig struct {
 	// Enabled controls whether Qdrant capability is active.
 	// Default false: operators must explicitly opt in.
 	Enabled bool `yaml:"enabled" env:"VELOX_QDRANT_ENABLED" default:"false"`
+	// APIKey is an optional Qdrant API key for authenticated deployments.
+	// When set, the Client sends X-Api-Key on every request.
+	// QDRANT-005 Phase 1 (June 2026): propagated to both the
+	// composition-root client and the admin reindex/clean-locators commands.
+	APIKey string `yaml:"api_key" env:"VELOX_QDRANT_API_KEY" default:""`
 }
 
 // OutboxConfig tunes the outbox_events worker pool. Defaults follow the

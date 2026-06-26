@@ -248,22 +248,14 @@ type SparseQueryVector struct {
 // Derived fields (AssetID, Name, …) are populated from Payload by convenience
 // helpers (searchResultFromPoint, etc.).
 //
-// QDRANT-001 (June 2026) closure: LocalPath and DriveLink were
-// removed from this struct. They were server-internal locators
-// (filesystem path + Drive web-view link) that have no place in the
-// canonical search index payload — the contract now is
+// QDRANT-001 (June 2026): LocalPath and DriveLink have been
+// removed from this struct AND from appsearch.VectorSearchResult.
+// Server-internal locators (filesystem path + Drive web-view link)
+// have no place in the canonical search contract — the rule is
 // "SearchResult carries IDs + metadata for hydration, never a
-// server-internal locator". BuildPayload (payload_mapper.go) no
-// longer writes them; search_adapter.go stops reading them from
-// payload. Clients that need the bytes go through
-// delivery.Signer.BuildAuthorizedURL per asset.
-//
-// This shape is the canonical "what the search service returns
-// back to the orchestrator" boundary; the application-level
-// `search.VectorSearchResult` still exposes LocalPath/DriveLink
-// (legacy fields, omitted-valued). Future calls may deprecate
-// those fields in `appsearch` separately — they are NOT part of
-// QDRANT-001's scope.
+// server-internal locator". BuildPayload no longer writes them;
+// search_adapter.go no longer reads them. Clients that need bytes
+// go through delivery.Signer.BuildAuthorizedURL per asset.
 type SearchResult struct {
 	// Raw Qdrant fields.
 	ID      string                 `json:"id"`
@@ -439,4 +431,43 @@ type ScrollPoint struct {
 // Implementations count open dead-letter events from the outbox.
 type DeadLetterChecker interface {
 	CountOpen(ctx context.Context) (int, error)
+}
+
+// ── Locator cleanup (QDRANT-005) ────────────────────────────────────
+
+// LocatorCleanupReport is the machine-readable result of a locator
+// payload cleanup scan (dry-run or apply). It is the canonical artefact
+// produced by LocatorCleaner.CleanLocators.
+type LocatorCleanupReport struct {
+	// DryRun is true when no mutations were performed.
+	DryRun bool `json:"dry_run"`
+
+	// Collection is the Qdrant collection that was scanned.
+	Collection string `json:"collection"`
+
+	// TotalPointsScrolled is the total number of points examined.
+	TotalPointsScrolled int `json:"total_points_scrolled"`
+
+	// PointsWithDriveLink is the count of points whose payload still
+	// contained the legacy "drive_link" key.
+	PointsWithDriveLink int `json:"points_with_drive_link"`
+
+	// PointsWithLocalPath is the count of points whose payload still
+	// contained the legacy "local_path" key.
+	PointsWithLocalPath int `json:"points_with_local_path"`
+
+	// PointsAffected is the number of distinct points with at least
+	// one legacy key (drive_link OR local_path).
+	PointsAffected int `json:"points_affected"`
+
+	// KeysRemoved is the total number of payload key deletions sent
+	// to the Qdrant API. In dry-run mode this is zero.
+	KeysRemoved int `json:"keys_removed"`
+
+	// BatchCount is the number of batch payload/delete calls made.
+	BatchCount int `json:"batch_count"`
+
+	// Errors contains any non-fatal errors encountered during scroll
+	// or delete phases.
+	Errors []string `json:"errors,omitempty"`
 }
