@@ -129,7 +129,12 @@ func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*Reconc
 	for _, c := range pairs {
 		report.Counts[c.Kind]++
 	}
-	report.Classifications = truncateList(pairs, MaxClassifications)
+	report.Classifications, report.Truncated = truncateList(pairs, MaxClassifications)
+	if report.Truncated {
+		report.DisplayedCount = MaxClassifications
+	} else {
+		report.DisplayedCount = len(pairs)
+	}
 
 	// Phase 4: repair.
 	if !opts.DryRun {
@@ -192,6 +197,7 @@ func (s *Service) scrollAll(ctx context.Context, collection string, batchSize in
 		offset = page.NextOffset
 		if i == maxPages-1 {
 			errs = append(errs, fmt.Sprintf("scroll iteration cap %d reached; remaining points unsampled", maxPages))
+			_ = maxPages // keep for clarity; the cap may be raised later via Service field
 		}
 	}
 	return out, errs, nil
@@ -229,11 +235,7 @@ func (s *Service) applyRepair(ctx context.Context, collection string, pairs []Cl
 			KindLifecycleMismatch,
 			KindWorkspaceMismatch,
 			KindNonCanonicalPointID:
-			contentHash := s.lookupContentHash(c.AssetID)
-			if contentHash == "" {
-				contentHash = "reconcile-repair:" + c.Kind + ":" + c.AssetID
-			}
-			if err := s.outbox.EnqueueReindex(ctx, c.AssetID, contentHash); err != nil {
+			if err := s.outbox.EnqueueReindex(ctx, c.AssetID); err != nil {
 				errs = append(errs, fmt.Sprintf("enqueue reindex %s: %v", c.AssetID, err))
 				continue
 			}
@@ -275,30 +277,30 @@ func (s *Service) applyRepair(ctx context.Context, collection string, pairs []Cl
 	return summary, errs
 }
 
-// lookupContentHash returns the most-recent content hash for an
-// asset_id, if available. Production wire-up pulls this from the
-// SQLite snapshot side-table or from the asset store. The default
-// impl here returns "" and forces the dispatcher to use the
-// reconcile-shaped fallback hash, which the outbox ON CONFLICT
-// still treats as idempotent because the asset_id is a stable
-// half of the event_key.
-//
-// Subclasses (e.g. production wire-up in cmd/admin) may override by
-// wrapping the OutboxRepairEnqueuer to inject ContentHash.
+// lookupContentHash deprecated (QDRANT-005B review cleanup): the inline
+// outbox adapter in cmd/admin builds its own uuid-suffixed event_key,
+// so threading a contentHash through the port is now redundant. Kept
+// here as a no-op for callers that still implement the older two-arg
+// EnqueueReindex signature — production wire-up uses the one-arg form.
 func (s *Service) lookupContentHash(assetID string) string {
 	return ""
 }
 
 // truncateList caps the entries written into the report's full list.
-// The counts map remains untouched.
-func truncateList(in []Classification, max int) []Classification {
-	if max <= 0 || len(in) <= max {
-		if in == nil {
-			return []Classification{}
-		}
-		return in
+// The counts map remains untouched. The returned tuple (entries,
+// truncatedFlag) lets the caller (Service.Reconcile) record the
+// truncation in the report JSON shape itself — see ReconcileReport.
+//Truncated / DisplayedCount.
+func truncateList(in []Classification, max int) (out []Classification, truncated bool) {
+	out = in
+	if in == nil {
+		out = []Classification{}
 	}
-	return in[:max]
+	if max > 0 && len(in) > max {
+		out = in[:max]
+		truncated = true
+	}
+	return out, truncated
 }
 
 // CompletedAtToMs returns the elapsed milliseconds between startedAt

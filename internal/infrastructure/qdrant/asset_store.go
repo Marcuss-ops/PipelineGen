@@ -192,3 +192,71 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 	}
 	return ids, rows.Err()
 }
+
+// ReconcileSnapshot is the minimal fields the QDRANT-005B reconciler
+// needs from media_assets. Defined here (not in the application
+// reconciler package) so the SQL query can live next to its columns.
+// The cmd/admin wire-up adapts []ReconcileSnapshot to
+// reconciler.AssetSnapshot.
+type ReconcileSnapshot struct {
+	ID             string
+	WorkspaceID    string
+	LifecycleState string
+	ContentHash    string
+}
+
+// ListAssetsForReconcile returns the snapshots the QDRANT-005B
+// reconciler needs to scan. includeLifecycleStates restricts by
+// media_assets.status when non-empty; empty means "do not restrict"
+// (so DELETED rows are visible — important for verifying Qdrant
+// points were cleaned up via DeleteEnqueued).
+//
+// Folders are always excluded: vector indexing of folders is
+// meaningless and the previous ListAllAssetIDs pattern applies.
+//
+// Source_version is the canonical per-row content fingerprint the
+// dispatcher uses as part of the event_key tuple (see
+// outbox/repository.go::EnqueueAndIndex). For reconcile-repair
+// events a stable, deterministic value is enough — the reconciler
+// uses media_assets.source_version when available and falls back to
+// a built-in reconcile-shaped string otherwise (see
+// reconciler/service.go::applyRepair::lookupContentHash).
+func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLifecycleStates []string) ([]ReconcileSnapshot, error) {
+	query := `
+		SELECT id,
+		       COALESCE(workspace_id, ''),
+		       COALESCE(status, ''),
+		       COALESCE(source_version, '')
+		FROM media_assets
+		WHERE media_type != 'folder'
+	`
+	var args []interface{}
+	if len(includeLifecycleStates) > 0 {
+		qmarks := make([]byte, 0, len(includeLifecycleStates)*2)
+		for i, s := range includeLifecycleStates {
+			if i > 0 {
+				qmarks = append(qmarks, ',')
+			}
+			qmarks = append(qmarks, '?')
+			args = append(args, s)
+		}
+		query += " AND status IN (" + string(qmarks) + ")"
+	}
+	query += " ORDER BY id"
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list assets for reconcile: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ReconcileSnapshot
+	for rows.Next() {
+		var snap ReconcileSnapshot
+		if err := rows.Scan(&snap.ID, &snap.WorkspaceID, &snap.LifecycleState, &snap.ContentHash); err != nil {
+			return nil, fmt.Errorf("scan reconcile snapshot: %w", err)
+		}
+		out = append(out, snap)
+	}
+	return out, rows.Err()
+}

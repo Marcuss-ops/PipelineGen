@@ -55,19 +55,7 @@ type (
 	WatermarkOptions       = types.WatermarkOptions
 )
 
-// DefaultNormalizeOptions returns defaults from config.
-//
-// Deprecated: use types.DefaultNormalizeOptions directly.
-func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
-	return types.DefaultNormalizeOptions(cfg)
-}
 
-// DefaultWatermarkOptions returns sensible defaults for watermark overlay.
-//
-// Deprecated: use types.DefaultWatermarkOptions directly.
-func DefaultWatermarkOptions(imagePath string) WatermarkOptions {
-	return types.DefaultWatermarkOptions(imagePath)
-}
 
 // FormatSec formats a float64 seconds value as "SSS.mmm" for ffmpeg timestamps.
 func FormatSec(sec float64) string {

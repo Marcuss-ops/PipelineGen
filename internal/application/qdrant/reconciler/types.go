@@ -110,12 +110,23 @@ type ReconcileReport struct {
 	Applied       bool                   `json:"applied"`
 
 	// Counts mirrors len(Classifications[*]); the map is the
-	// machine-friendly rollup.
+	// machine-friendly rollup and is authoritative even when the
+	// Classifications list is truncated.
 	Counts map[ClassificationKind]int `json:"counts"`
 
-	// Classifications is the full list, capped to MaxClassifications.
-	// Counts is authoritative even when the list is truncated.
+	// Classifications is the full list, capped at MaxClassifications.
+	// Inspect Truncated + DisplayedCount to know whether the list is
+	// complete; Counts is always authoritative.
 	Classifications []Classification `json:"classifications,omitempty"`
+
+	// Truncated is true when the Classifications list was capped at
+	// MaxClassifications. Operators reading the JSON MUST check this
+	// flag before assuming the list is complete.
+	Truncated bool `json:"truncated"`
+
+	// DisplayedCount is len(Classifications); equals len(pairs) when
+	// not truncated, MaxClassifications when truncated.
+	DisplayedCount int `json:"displayed_count"`
 
 	// RepairSummary records per-action dispatch counts. Zeros when
 	// DryRun.
@@ -135,6 +146,13 @@ type ScannedTotals struct {
 	SQLiteAssets int `json:"sqlite_assets"`
 	QdrantPoints int `json:"qdrant_points"`
 	Pairs        int `json:"pairs"`
+	// ScrollTruncated is true when the scroll iteration safety cap was
+	// hit (maxPages=400 inside service.scrollAll). When true,
+	// Classification results may under-count Missing (sqlite rows
+	// whose Qdrant counterpart lives past the safety cap) and
+	// Counts should NOT be trusted operationally — alerts SHOULD be
+	// ignored until a clean re-run is performed.
+	ScrollTruncated bool `json:"scroll_truncated"`
 }
 
 // RepairSummary records the repair dispatch counts.
@@ -168,3 +186,20 @@ type SchemaVersions struct {
 // bounded on large drifts (100k+ orphans). The Counts map remains
 // authoritative.
 const MaxClassifications = 10000
+
+// AllClassificationKinds is the canonical, deterministic enumeration of
+// every ClassificationKind value, in priority order top-to-bottom.
+// Used by dashboards and the cmd/admin reconcile command to render all
+// 9 categories (including zero-count entries) so operators see exactly
+// which categories the scan covered.
+var AllClassificationKinds = []ClassificationKind{
+	KindMissing,
+	KindOrphan,
+	KindNonCanonicalPointID,
+	KindPayloadIncomplete,
+	KindVersionStale,
+	KindLifecycleMismatch,
+	KindWorkspaceMismatch,
+	KindLifecycleKeyLegacy,
+	KindLocatorLegacy,
+}

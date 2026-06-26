@@ -48,16 +48,22 @@ type SQLiteReconcileReader interface {
 type AssetPointIDFunc func(assetID string) string
 
 // OutboxRepairEnqueuer is the dispatch port for reindex/delete
-// repairs. Implementations MUST go through the canonical outbox.
-// Dispatcher (the in-tree concrete is in
-// internal/infrastructure/database/sqlite/outbox); the reconciler
-// MUST NOT mutate Qdrant directly via this port.
+// repairs. Implementations MUST go through the canonical outbox
+// (outbox_events table) — the reconciler MUST NOT mutate Qdrant
+// directly via this port.
 //
-// EnqueueReindex is idempotent: repeated calls with the same
-// (assetID, contentHash) collapse via outbox_events ON CONFLICT
-// DO NOTHING. EnqueueDelete is idempotent on the same assetID.
+// EnqueueReindex emits one asset.index.requested.v1 outbox event per
+// call. Implementations are responsible for any event_key shaping
+// (e.g. uuid-suffixed keys so consecutive reconcile --apply runs
+// produce distinct events). EnqueueDelete emits one
+// asset.index.delete_requested.v1 outbox event per call.
+//
+// Idempotency: consecutive calls produce distinct outbox rows so the
+// worker fires each repair; the worker's supersede gate (in
+// IndexingHandler) collapses repeating fix-up jobs when the
+// metadata content_hash is unchanged between calls.
 type OutboxRepairEnqueuer interface {
-	EnqueueReindex(ctx context.Context, assetID, contentHash string) error
+	EnqueueReindex(ctx context.Context, assetID string) error
 	EnqueueDelete(ctx context.Context, assetID string) error
 }
 
