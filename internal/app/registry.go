@@ -32,7 +32,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -144,13 +143,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if root.Drive != nil && root.Drive.DriveClient != nil {
 		driveUploaderAdapter = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
 	}
-	reconcileSvcAdapter := drivecleanup.NewService()
 	if err := tryRegisterModule(registry, log, systemapi.NewModule(
 		doctorConfigFrom(cfg),
 		log,
 		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
 		newDriveAdminAdapter(driveUploaderAdapter, log),
-		newReconcilerAdapter(reconcileSvcAdapter, log),
+		&noopReconciler{},
 	)); err != nil {
 		return nil, fmt.Errorf("wire registry: system module: %w", err)
 	}

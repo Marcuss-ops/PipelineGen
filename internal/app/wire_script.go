@@ -32,6 +32,7 @@ import (
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
@@ -195,7 +196,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Register job handlers at composition time ──────────────────────
 	if root.Jobs.Service != nil {
 		if curationJobSvc != nil {
-			root.Jobs.Service.RegisterHandler("media.curate", curationJobSvc.HandleCurateJob)
+			root.Jobs.Service.RegisterHandler(job.TypeMediaCurate, curationJobSvc.HandleCurateJob)
 			log.Info("registered media.curate job handler (wire_script.go)")
 		}
 	}

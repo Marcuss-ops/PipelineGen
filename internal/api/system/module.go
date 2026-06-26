@@ -18,11 +18,10 @@
 //
 // PR4-cleanup delta (June 24, 2026): NewModule signature dropped
 // the three concrete infrastructure deps (`*config.Config`,
-// `*drive.Uploader`, `*drivecleanup.Service`) and now relies on
+// `*drive.Uploader`, `Reconciler`) and now relies on
 // the typed port surface (DoctorConfig + Reconciler + DriveAdminOps)
-// wired at the composition root by `internal/app/system_adapters.go`.
-// No more `internal/infrastructure/*` imports in the api/system
-// subtree (AGENTS.md Pattern 8).
+// wired at the composition root. No more `internal/infrastructure/*`
+// imports in the api/system subtree (AGENTS.md Pattern 8).
 package system
 
 import (

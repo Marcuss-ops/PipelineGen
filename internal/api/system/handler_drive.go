@@ -11,8 +11,8 @@
 // DriveHandler (admin/Drive ops).
 //
 // PR4-cleanup delta (June 24, 2026): the previous concrete deps
-// (*drivecleanup.Service, *drive.Uploader) were replaced with
-// `Reconciler` + `DriveAdminOps` port interfaces declared right here.
+// (*drive.Uploader) were replaced with `Reconciler` +
+// `DriveAdminOps` port interfaces declared right here.
 // The concrete adapters live in `internal/app/system_adapters.go`
 // (composition root). This keeps the api layer free of
 // `internal/infrastructure/*` imports per AGENTS.md Pattern 8.
@@ -34,17 +34,15 @@ import (
 // ── Port interfaces (AGENTS.md Pattern 0 / Wiki §14) ─────────────────────────
 
 // ReconcileResult is the JSON-shaped summary returned by Reconciler.Reconcile.
-// Mirrors the canonical `drivecleanup.Result` struct (Deleted + Kept); having
-// the mirror in the api package keeps the port contract stable across
-// infrastructure refactors.
+// Defined here to keep the api package free of infrastructure imports
+// (AGENTS.md Pattern 8).
 type ReconcileResult struct {
 	Deleted int `json:"deleted"`
 	Kept    int `json:"kept"`
 }
 
-// Reconciler is the port for Drive → SQLite reconciliation flows. It is
-// satisfied at composition time by the adapter wrapping
-// `*drivecleanup.Service`.
+// Reconciler is the port for Drive → SQLite reconciliation flows.
+// Wired at composition time in internal/app.
 type Reconciler interface {
 	Reconcile(ctx context.Context, source, rootFolderID string, dryRun bool) (*ReconcileResult, error)
 }
