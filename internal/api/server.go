@@ -10,7 +10,6 @@ import (
 	"time"
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 	"github.com/gin-gonic/gin"
@@ -187,7 +186,8 @@ func (s *Server) SetLifecycle(lc LifecycleManager) {
 // Start starts the HTTP server. Background services are managed by the
 // LifecycleManager — this method only handles the HTTP lifecycle.
 func (s *Server) Start() error {
-	logger.Info("Starting HTTP server",
+	log := zap.L().Named("server")
+	log.Info("Starting HTTP server",
 		zap.String("addr", s.httpServer.Addr),
 	)
 
@@ -209,7 +209,7 @@ func (s *Server) Start() error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logger.Error("panic in server listen goroutine", zap.Any("recover", r))
+				log.Error("panic in server listen goroutine", zap.Any("recover", r))
 			}
 			close(srvErr)
 		}()
@@ -224,7 +224,7 @@ func (s *Server) Start() error {
 		lcCancel()
 		return fmt.Errorf("server listen error: %w", err)
 	case <-rootCtx.Done():
-		logger.Info("Shutting down server...")
+		log.Info("Shutting down server...")
 	}
 
 	// Cancel lifecycle context (signals background goroutines to stop)
@@ -243,7 +243,7 @@ func (s *Server) Start() error {
 	defer shutdownCancel()
 
 	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("Server forced to shutdown", zap.Error(err))
+		log.Error("Server forced to shutdown", zap.Error(err))
 		return fmt.Errorf("server shutdown error: %w", err)
 	}
 
@@ -252,11 +252,11 @@ func (s *Server) Start() error {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stopCancel()
 		if err := s.lifecycle.Stop(stopCtx); err != nil {
-			logger.Error("lifecycle shutdown error", zap.Error(err))
+			log.Error("lifecycle shutdown error", zap.Error(err))
 		}
 	}
 
-	logger.Info("Server exited gracefully")
+	log.Info("Server exited gracefully")
 	return nil
 }
 
