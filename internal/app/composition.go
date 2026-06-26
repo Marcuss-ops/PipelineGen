@@ -15,6 +15,7 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -23,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
@@ -110,7 +112,10 @@ type ProcessBundle struct {
 	QdrantDeleter      qdrant.QdrantDeleter
 	// QDRANT-004 (June 2026): search.VectorStorePort for the mediasearch API.
 	// Populated by BuildProcessBundle when Qdrant is enabled.
-	VectorSvc interface{}
+	// Wave 15 (June 2026): typed port per AGENTS.md Pattern 0 — replaces
+	// `interface{}` carrier. Compile-time assertion at
+	// internal/infrastructure/qdrant/search_adapter.go catches drift.
+	VectorSvc assetsearch.VectorStorePort
 	// QDRANT-005 Fase 1 (June 2026): direct *qdrant.Client for diagnostics
 	// (CountPoints). Populated by BuildProcessBundle when Qdrant is enabled.
 	QdrantClient *qdrant.Client
@@ -136,10 +141,19 @@ type DomainBundle struct {
 	IngestService      *ingest.Service
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
-	MetaWriter         *semantic.MetadataWriter
-	RealtimeService    interface{} `yaml:"-" json:"-"`
-	AutotagService     *autotag.Service
-	AssocService       interface{}
+	MetaWriter    *semantic.MetadataWriter
+	// Wave 15 (June 2026): RealtimeService split into two typed ports (the
+	// realtime package was removed in commit d61068b3). Both slots stay
+	// typed-nil at composition. Asset-side consumer
+	// (assetsapi.NewRealtimeMatchHandler) reads RealtimeMatcher; script-side
+	// consumer (ScriptFlowDeps.Realtime) reads RealtimeSearch.
+	RealtimeMatcher assetsapi.RealtimeMatcher
+	RealtimeSearch  scriptcore.RealtimeSearchService
+	AutotagService  *autotag.Service
+	// Wave 15 (June 2026): typed port — replaces `interface{}` carrier.
+	// Compile-time enforcement replaces the runtime safety net that
+	// build_bundles_domain.go used to need.
+	AssocService scriptcore.AssocSearchService
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and

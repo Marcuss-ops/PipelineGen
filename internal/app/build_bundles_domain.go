@@ -17,6 +17,8 @@ import (
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
@@ -123,7 +125,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		voMetaWriter, ingestSvc,
 	)
 
-	var realtimeSvc interface{} = nil
+	// Wave 15 (June 2026): RealtimeService split into two typed ports —
+	// see composition.go DomainBundle for rationale. Both stay typed-nil
+	// (package removed in commit d61068b3).
+	var realtimeMatcher assetsapi.RealtimeMatcher
+	var realtimeSearch scriptcore.RealtimeSearchService
 
 	// autotagVectorStore removed during the bundle simplification
 	// deleted. The autotag service no longer takes a vector-store indexer;
@@ -131,7 +137,9 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// the DB but no longer propagates them to a vector store backend.
 	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, nil, log)
 
-	var assocService interface{} = nil
+	// Wave 15 (June 2026): typed-nil for scriptcore.AssocSearchService —
+	// replaces the preceding `interface{}` carrier.
+	var assocService scriptcore.AssocSearchService
 	log.Info("association service unavailable — package removed from remote")
 
 	lessonsS := lessonsSvc.NewService(
@@ -162,10 +170,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		IngestService:      ingestSvc,
 		BooksService:       booksSvc,
 		LessonsService:     lessonsS,
-		MetaWriter:         metaWriter,
-		RealtimeService:    realtimeSvc,
-		AutotagService:     autotagSvc,
-		AssocService:       assocService,
+		MetaWriter:      metaWriter,
+		RealtimeMatcher: realtimeMatcher,
+		RealtimeSearch:  realtimeSearch,
+		AutotagService:  autotagSvc,
+		AssocService:    assocService,
 	}, nil
 }
 
