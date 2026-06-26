@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"

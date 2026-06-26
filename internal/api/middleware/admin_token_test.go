@@ -17,7 +17,7 @@
 // every request through.
 //
 // PG-006 (June 2026): the previous fakes used `&config.Config{...}`
-// literals — those required an `internal/infrastructure/config` import
+// literals — those required an `internal/platform/config` import
 // that the package no longer carries. Replaced with the testSecurity
 // stub from port_fakes_test.go (3-method AuthSecurityPort fake).
 

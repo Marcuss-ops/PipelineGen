@@ -32,7 +32,7 @@ import (
 // these ports. Runtime fields the router NEEDS at request time are
 // exposed as primitive typed fields (ServerGinMode, DataDir,
 // DownloadDir, CORSOrigins) so the API layer stays free of
-// internal/infrastructure/config imports.
+// internal/platform/config imports.
 //
 // QDRANT-001 (June 2026) closure: internalMediaHandler is the narrow
 // port for /internal/v1/media/* routes (server-to-server surface) —

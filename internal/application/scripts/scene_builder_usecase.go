@@ -52,7 +52,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ErrSceneBuilderUnconfigured is the sentinel for "the use case was

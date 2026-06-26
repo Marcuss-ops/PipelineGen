@@ -19,7 +19,7 @@
 //	worker      → HTTP + in-process job runner, no scheduler
 //
 // Port: read from `cfg.Server.Port` (env VELOX_PORT). See
-// `internal/infrastructure/config` and AGENTS.md §"Port policy".
+// `internal/platform/config` and AGENTS.md §"Port policy".
 package main
 
 import (
@@ -31,7 +31,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 )
 

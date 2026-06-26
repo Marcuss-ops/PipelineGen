@@ -13,7 +13,7 @@ import (
 // X-Velox-Admin-Token check on each request.
 //
 // PG-006 (June 2026): the previous signature took *config.Config
-// (`internal/infrastructure/config`) and called the package-level
+// (`internal/platform/config`) and called the package-level
 // logger.Error/Info/Warn from `internal/infrastructure/logging`. The
 // middleware is now strictly transport — security settings flow
 // through middleware.AuthSecurityPort (defined in

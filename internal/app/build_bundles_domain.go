@@ -29,7 +29,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
@@ -213,7 +213,7 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 // buildYouTubeRuntimeConfig resolves the flat RuntimeConfig consumed by the
 // YouTube application layer from the infrastructure *config.Config. All
 // nested config paths are flattened here so the application layer has zero
-// dependency on `internal/infrastructure/config`.
+// dependency on `internal/platform/config`.
 func buildYouTubeRuntimeConfig(cfg *config.Config) youtubetypes.RuntimeConfig {
 	if cfg == nil {
 		return youtubetypes.RuntimeConfig{}

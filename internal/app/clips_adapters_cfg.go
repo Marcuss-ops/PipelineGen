@@ -2,7 +2,7 @@ package app
 
 import (
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // clipsCfgAdapter wraps *config.Config to satisfy clips.ClipConfigPort.

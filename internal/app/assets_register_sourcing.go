@@ -16,7 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"

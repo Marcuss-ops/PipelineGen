@@ -62,7 +62,7 @@ type DatabaseSet struct {
 
 // StorageConfig is the resolved storage layout passed to OpenSet. It
 // mirrors `config.StorageConfig` but is package-local to avoid an
-// `internal/infrastructure/database` → `internal/infrastructure/config`
+// `internal/infrastructure/database` → `internal/platform/config`
 // import cycle when this package is consumed by `config`.
 type StorageConfig struct {
 	DataDir             string

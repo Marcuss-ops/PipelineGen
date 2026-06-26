@@ -56,7 +56,7 @@ func WithRetryOptions(opts retry.Options) Option {
 func New(baseURL, token string, opts ...Option) *Client {
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" {
-		// Canonical default aligns with internal/infrastructure/config/types.go
+		// Canonical default aligns with internal/platform/config/types.go
 		// `Server.Port` default (8000, established by the Operational
 		// Readiness PR — June 2026 — to free up port 8080 for unrelated
 		// services and align with the cross-worker-compose patterns).

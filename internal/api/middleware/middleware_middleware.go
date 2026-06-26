@@ -17,7 +17,7 @@ import (
 // Auth returns a gin middleware for authentication.
 //
 // PG-006 (June 2026): the previous signature took *config.Config
-// (`internal/infrastructure/config`) and used the package-level
+// (`internal/platform/config`) and used the package-level
 // logger aliases from `internal/infrastructure/logging`. The middleware
 // is now strictly domain-shaped — AuthSecurityPort (defined in
 // internal/application/middleware/ports.go) carries the bool + token

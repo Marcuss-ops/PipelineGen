@@ -30,7 +30,7 @@ HELPER="$WORK_DIR/helper.py"
 
 # ── Config (overridable via env) ───────────────────────────────────────
 # Default API base host:port. 8080 matches the canonical server
-# default (`internal/infrastructure/config/types.go` `Server.Port`).
+# default (`internal/platform/config/types.go` `Server.Port`).
 # Override via `API_BASE=127.0.0.1:NNNN ./marker_audit.sh` — keep the
 # `host:port` (NOT `http://host:port`) shape since the script appends
 # the rest of the URL itself.

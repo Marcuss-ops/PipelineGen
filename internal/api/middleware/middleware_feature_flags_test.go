@@ -3,7 +3,7 @@
 // Previously these tests constructed `&config.Config{Features:
 // config.FeaturesConfig{...}}` literals to drive the ArtlistEnabled
 // per-feature gate. With the typed-port cascade, the package no longer
-// imports `internal/infrastructure/config` — the testFlags stub from
+// imports `internal/platform/config` — the testFlags stub from
 // port_fakes_test.go (a 3-method FeatureFlagsPort fake) replaces the
 // config literal.
 package middleware

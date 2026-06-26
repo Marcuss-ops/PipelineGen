@@ -6,7 +6,7 @@
 package types
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Option types ────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"golang.org/x/oauth2"
 )
 

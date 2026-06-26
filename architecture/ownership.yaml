@@ -466,7 +466,7 @@ infrastructure_observability:
   rationale: metrics, tracing, health checks.
 
 infrastructure_config:
-  owner: internal/infrastructure/config
+  owner: internal/platform/config
   rationale: Resolved configuration + folder IDs.
   rule: ONLY place where os.Getenv (env-driven config) is allowed (alongside cmd/* binaries).
 

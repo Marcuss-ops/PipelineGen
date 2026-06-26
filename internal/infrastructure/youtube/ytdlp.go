@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 )
 

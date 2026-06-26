@@ -14,7 +14,7 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 	"go.uber.org/zap"
 )

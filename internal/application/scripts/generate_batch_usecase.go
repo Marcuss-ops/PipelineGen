@@ -45,7 +45,7 @@ import (
 	"time"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"

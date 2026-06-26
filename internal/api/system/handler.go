@@ -1,6 +1,6 @@
 // Package system (api/system) — SystemHandler handles the `/system/doctor`
 // diagnostic endpoint. Wave 14 PR4 cleanup (June 24, 2026): the handler
-// no longer imports `internal/infrastructure/config`. The previous `*config.Config`
+// no longer imports `internal/platform/config`. The previous `*config.Config`
 // dependency was replaced with a typed `DoctorConfig` struct populated at the
 // composition root by `internal/app/system_adapters.go::doctorConfigFrom(*config.Config)`,
 // keeping api/system a thin transport per AGENTS.md Pattern 8.

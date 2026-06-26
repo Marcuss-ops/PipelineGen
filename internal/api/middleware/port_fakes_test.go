@@ -1,6 +1,6 @@
 // Test-port stubs (PG-006, June 2026).
 //
-// The PG-006 typed-port sweep removed `internal/infrastructure/config`
+// The PG-006 typed-port sweep removed `internal/platform/config`
 // from every middleware file. Tests that previously constructed a
 // `&config.Config{Security: config.SecurityConfig{...}}` literal to
 // drive the auth/ratelimit/featureflag middlewares now build a small

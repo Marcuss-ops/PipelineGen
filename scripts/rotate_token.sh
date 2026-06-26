@@ -52,7 +52,7 @@ ALSO_WORKER=0
 ENV_FILE_OVERRIDE=""
 UNIT_NAME="${PIPELINEGEN_UNIT:-pipelinegen}"
 PORT_OVERRIDE="${VELOX_PORT:-}"
-# Canonical default: 8080 (see internal/infrastructure/config/types.go
+# Canonical default: 8080 (see internal/platform/config/types.go
 # `Server.Port`). Operators that run the server on a non-default port
 # pass --port or set VELOX_PORT in the env file; both are honoured
 # above. Keeping the `-${VELOX_PORT:-8080}` fallback inline ensures the

@@ -151,7 +151,7 @@ func AnalyzeImports(root string) ([]FileViolation, error) {
 				}
 				if sel.Sel.Name == "Getenv" || sel.Sel.Name == "LookupEnv" {
 					// Check if path is in allowed paths for Getenv
-					isAllowed := strings.HasPrefix(relPath, "internal/infrastructure/config/") ||
+					isAllowed := strings.HasPrefix(relPath, "internal/platform/config/") ||
 						strings.HasPrefix(relPath, "internal/app/") ||
 						strings.HasPrefix(relPath, "config/") ||
 						relPath == "internal/api/routes.go" ||

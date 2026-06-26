@@ -31,7 +31,7 @@ import (
 // FeatureGates is the typed snapshot of the script-feature flags that
 // the composition root hands to NewScriptFlowHandler via ScriptFlowDeps.
 // The shape mirrors the canonical `cfg.Features` booleans in
-// `internal/infrastructure/config` but is decoupled from the config
+// `internal/platform/config` but is decoupled from the config
 // import so the API package remains transport-only (AGENTS.md Pattern 8).
 type FeatureGates struct {
 	ScriptClipsEnabled  bool

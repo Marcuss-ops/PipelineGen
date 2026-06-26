@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"

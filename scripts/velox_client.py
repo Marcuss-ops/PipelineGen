@@ -73,7 +73,7 @@ __all__ = [
 
 
 # Default base URL mirrors the canonical server default defined in
-# ``internal/infrastructure/config/types.go`` (``Server.Port``: 8000,
+# ``internal/platform/config/types.go`` (``Server.Port``: 8000,
 # established by the Operational Readiness PR — June 2026). Override
 # via the ``base_url`` argument to ``VeloxClient(base_url=...)`` or via
 # the standard env vars in your operator scripts (PIPELINEGEN_URL /

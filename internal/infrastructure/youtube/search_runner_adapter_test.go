@@ -11,7 +11,7 @@ import (
 
 	// SearchRunnerPort + sentinel errors live in ports/.
 	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // TestNewSearchRunnerAdapter_NilConfigReturnsNil verifies the constructor

@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 const (
@@ -262,7 +262,7 @@ func pollRunStatus(runID string) (*statusResponse, error) {
 func verifyJobInDB(runID string, cfg *config.Config) error {
 	// Canonical primary DB path is exposed by cfg.Storage.PrimaryDBFullPath()
 	// cfg.Storage.PrimaryDBFullPath() (single source of truth — see
-	// internal/infrastructure/config.StorageConfig). The historical
+	// internal/platform/config.StorageConfig). The historical
 	// <DataDir>/media/media.db.sqlite fallback is preserved so that
 	// existing operators who kept the legacy path still get a usable
 	// "job status" check (see internal/infrastructure/database/set.go
