@@ -8,9 +8,10 @@ import (
 
 // UpdateClip updates an existing clip.
 //
-// QDRANT-002: Routes through dispatcher.EnqueueAndIndex when wired for
-// atomic UPSERT + outbox event. Falls back to raw repo.UpsertClip when
-// dispatcher is nil (tests, partial deployments).
+// QDRANT-002 (June 2026): Routes through dispatcher.EnqueueAndIndex for
+// atomic UPSERT + outbox event. The raw repo.UpsertClip fallback is
+// prohibited — a nil dispatcher is a wiring error and returns 503.
+// Tests must inject a dispatcher stub.
 func (h *Handler) UpdateClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
@@ -81,17 +82,20 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 		clip.ThumbnailURL = val
 	}
 
-	// QDRANT-002: canonical path through dispatcher when wired.
-	if h.dispatcher != nil {
-		contentHash := clip.FileHash()
-		if contentHash == "" {
-			contentHash = clipID
-		}
-		if err := h.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-	} else if err := repo.UpsertClip(ctx, clip); err != nil {
+	// QDRANT-002 closed (June 2026): dispatcher is mandatory.
+	// Raw repo writes without outbox are prohibited — a nil
+	// dispatcher is a wiring error, not a runtime fallback.
+	if h.dispatcher == nil {
+		h.log.Error("QDRANT-002: clip update rejected — dispatcher not wired (raw write without outbox is prohibited)",
+			zap.String("clip_id", clipID))
+		apiutil.Error(c, 503, "clip update unavailable: dispatcher not wired")
+		return
+	}
+	contentHash := clip.FileHash()
+	if contentHash == "" {
+		contentHash = clipID
+	}
+	if err := h.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}

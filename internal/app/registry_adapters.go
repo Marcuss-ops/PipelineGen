@@ -8,6 +8,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -133,27 +134,29 @@ func (l mediasearchLogger) Debug(msg string, kv ...any) { l.sugar.Debugw(msg, kv
 // ── QDRANT-004 delivery signer helper ───────────────────────────────────────
 
 // buildMediasearchDeliverySvc returns a delivery.Signer when the HMAC secret
-// is configured (≥32 chars), or a noop mediasearchDeliveryAdapter otherwise.
-// Extracted to keep WireRegistry clean of inline signer construction.
-func buildMediasearchDeliverySvc(cfgDeliveryHMACSecret, veloxBaseURL string, deliveryReplayWindowSec int, log *zap.Logger) mediasearch.AssetDeliveryService {
-	if secret := strings.TrimSpace(cfgDeliveryHMACSecret); len(secret) >= 32 {
-		deliveryBaseURL := strings.TrimSpace(veloxBaseURL)
-		replayWindow := time.Duration(deliveryReplayWindowSec) * time.Second
-		if replayWindow <= 0 {
-			replayWindow = 5 * time.Minute
-		}
-		signer, err := delivery.NewSigner(
-			[]byte(secret),
-			replayWindow,
-			deliveryBaseURL,
-			"/api/internal/v1/deliver",
-		)
-		if err != nil {
-			log.Warn("QDRANT-004: delivery signer init failed, falling back to noop", zap.Error(err))
-			return &mediasearchDeliveryAdapter{}
-		}
-		log.Info("QDRANT-004: delivery signer wired with HMAC secret")
-		return signer
+// is configured (≥32 chars). Returns an error when the secret is missing or
+// too short — QDRANT-004 closed: the server must fail startup rather than
+// silently accept a no-op delivery (which would return results without
+// authorized download URLs).
+func buildMediasearchDeliverySvc(cfgDeliveryHMACSecret, veloxBaseURL string, deliveryReplayWindowSec int, log *zap.Logger) (mediasearch.AssetDeliveryService, error) {
+	secret := strings.TrimSpace(cfgDeliveryHMACSecret)
+	if len(secret) < 32 {
+		return nil, fmt.Errorf("QDRANT-004: delivery_hmac_secret must be ≥32 bytes (got %d); set in config.yaml or VELOX_DELIVERY_HMAC_SECRET env var. Mediasearch requires signed delivery URLs.", len(secret))
 	}
-	return &mediasearchDeliveryAdapter{}
+	deliveryBaseURL := strings.TrimSpace(veloxBaseURL)
+	replayWindow := time.Duration(deliveryReplayWindowSec) * time.Second
+	if replayWindow <= 0 {
+		replayWindow = 5 * time.Minute
+	}
+	signer, err := delivery.NewSigner(
+		[]byte(secret),
+		replayWindow,
+		deliveryBaseURL,
+		"/internal/v1/deliver",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("QDRANT-004: delivery signer init failed: %w", err)
+	}
+	log.Info("QDRANT-004: delivery signer wired with HMAC secret")
+	return signer, nil
 }

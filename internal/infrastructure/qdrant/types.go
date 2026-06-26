@@ -402,9 +402,31 @@ type SwitchReport struct {
 	ActualPoints     int      `json:"actual_points"`
 	MissingCount     int      `json:"missing_count"`
 	OrphanCount      int      `json:"orphan_count"`
+	MissingIDs       []string `json:"missing_ids,omitempty"`
+	OrphanIDs        []string `json:"orphan_ids,omitempty"`
+	PayloadIssues    int      `json:"payload_issues"`
+	VersionMismatch  int      `json:"version_mismatch"`
 	GoldenQueriesOK  bool     `json:"golden_queries_ok"`
 	FiltersOK        bool     `json:"filters_ok"`
 	DeadLetterOpen   int      `json:"dead_letter_open"`
 	Ready            bool     `json:"ready"`
 	Errors           []string `json:"errors,omitempty"`
+}
+
+// ScrollResult holds a page of scrolled points and the next offset.
+type ScrollResult struct {
+	Points     []ScrollPoint `json:"points"`
+	NextOffset string        `json:"next_offset"`
+}
+
+// ScrollPoint is a single Qdrant point returned by the scroll API.
+type ScrollPoint struct {
+	ID      string                 `json:"id"`
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// DeadLetterChecker is an optional dependency for the reindex verifier.
+// Implementations count open dead-letter events from the outbox.
+type DeadLetterChecker interface {
+	CountOpen(ctx context.Context) (int, error)
 }

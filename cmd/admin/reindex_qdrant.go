@@ -29,7 +29,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -90,79 +89,29 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 	return deps, nil
 }
 
-// buildSwitchReport aggregates Qdrant + reindex signals into the
-// pre-switch SwitchReport. Ready==true means "safe to swap the alias".
-//
-// QDRANT-004 (June 2026) closure contract:
-//
-//	Ready = (ActualPoints >= ExpectedPoints > 0) && SchemaOK
-//	       && GoldenQueriesOK && FiltersOK && DeadLetterOpen == 0
-//
-// SchemaOK is enforced upstream by EnsureSchema (it returns
-// ErrSchemaIncompatible if the schema doesn't match); we therefore
-// do not re-check it here. GoldenQueriesOK and FiltersOK are
-// placeholder trues until QDRANT-005 wires the smoke-runners
-// (ExpectedQueries, FilterMatrix) into process construct; opening
-// dead-letter rows are also placeholder zeros until
-// `outbox.Dispatcher` exposes a count method.
-//
-// The function is intentionally pure: it does not mutate the alias
-// itself. Reindex return path (runReindexQdrant) inspects `Ready`
-// and either promotes the alias or returns
-// `*qdrant.ErrAliasSwitchNotReady` with the report attached.
-func buildSwitchReport(ctx context.Context, client *qdrant.Client, targetCollection string, expectedPoints int) *qdrant.SwitchReport {
-	report := &qdrant.SwitchReport{
-		TargetCollection: targetCollection,
-		ExpectedPoints:   expectedPoints,
-		// TODO QDRANT-005: scroll the target collection and match
-		// against SQLite `media_assets.id` to compute MissingCount
-		// (rows in SQLite but absent in Qdrant) and OrphanCount
-		// (rows in Qdrant but absent or soft-deleted in SQLite).
-		MissingCount: 0,
-		OrphanCount:  0,
-		// TODO QDRANT-005: read dead-letter count from outbox
-		// dispatcher (close-out dependency when outbox.HTTP lands
-		// its /dead_letter endpoint). Zero here is a safe default —
-		// the gate flag stays Ready=true if no open dead_letters
-		// are observed.
-		DeadLetterOpen: 0,
-		// TODO QDRANT-005: golden-set smoke phase — port the
-		// `pkg/eval/golden.go` runner into the reindex pipeline
-		// and assert each expected query returns ≥1 hit.
-		GoldenQueriesOK: true,
-		// TODO QDRANT-005: filter smoke phase — assert at least
-		// one of each filter axis (source/category/media_type/
-		// language) returns ≥1 point with the predicate applied.
-		FiltersOK: true,
-	}
-	if client != nil {
-		if actual, err := client.CountPoints(ctx, targetCollection); err == nil {
-			report.ActualPoints = actual
-		} else {
-			report.Errors = append(report.Errors, fmt.Sprintf("count points: %v", err))
-		}
-	} else {
-		report.Errors = append(report.Errors, "qdrant client nil — count not verified")
-	}
-	report.Ready = report.ActualPoints >= report.ExpectedPoints &&
-		report.ExpectedPoints > 0 &&
-		report.GoldenQueriesOK && report.FiltersOK &&
-		report.DeadLetterOpen == 0
-	return report
-}
-
 // runReindexQdrant is the entry point registered in cmd/admin/main.go.
 //
-// Pipeline (QDRANT-003 PR fix, June 2026):
+// Pipeline (QDRANT-003, June 2026):
 //  1. Load config and open the media DB
-//  2. Build the canonical Qdrant stack: SQLiteAssetStore → PayloadMapper → Client → IndexWriter
+//  2. Build the canonical Qdrant stack: SQLiteAssetStore → PayloadMapper → Client → IndexWriter → ReindexVerifier
 //  3. Dry-run: list all asset IDs via mapper.ListAllAssetIDs, print count
-//  4. Apply: ensure schema → reindex → verify → switch alias
+//  4. Apply: ensure schema → reindex → verify (QDRANT-003 gates) → switch alias
 //     - CollectionManager.EnsureSchema guarantees the target collection exists
 //       with matching vector config and payload indexes
 //     - IndexWriter.ReindexAll writes all assets into the target collection
-//     - Point-count verification compares indexed vs expected
-//     - CollectionManager.SwitchAlias atomically promotes the new collection
+//     - ReindexVerifier.VerifyReindex runs the full validation suite:
+//         * Point count parity (hard gate)
+//         * Missing/orphan ID detection (scroll + SQLite compare)
+//         * Payload minimum validation (asset_id, name, source)
+//         * Embedding version check
+//         * Dead-letter count (optional, when wired)
+//     - Only when SwitchReport.Ready==true: CollectionManager.SwitchAlias
+//       atomically promotes the new collection
+//
+// QDRANT-003 closed (June 2026): count mismatch is now a HARD error
+// (detected by the verifier, blocks Ready). The previous implementation
+// logged a warning and continued; the new flow aborts the alias switch
+// and returns *qdrant.ErrAliasSwitchNotReady.
 func runReindexQdrant(args []string) error {
 	cfg, log, cleanup, err := appLogger()
 	if err != nil {
@@ -283,33 +232,23 @@ func runReindexQdrant(args []string) error {
 		return fmt.Errorf("reindex failed after %d indexed / %d failed: %w", indexed, failed, err)
 	}
 
-	// Phase 3: Post-reindex point-count verification.
-	actualPoints, err := client.CountPoints(ctx, targetCollection)
-	if err != nil {
-		log.Warn("post-reindex count failed (alias NOT switched)",
-			zap.Error(err))
-	} else if actualPoints < reindexResult.IndexedAssets {
-		log.Warn("post-reindex count mismatch",
-			zap.Int("expected", reindexResult.IndexedAssets),
-			zap.Int("actual", actualPoints))
+	// Phase 3: Post-reindex verification (QDRANT-003 gates).
+	// The verifier runs the full suite: point count parity, missing/orphan
+	// ID detection, payload minimum, embedding version, and dead-letter
+	// check. Ready==true only when all gates pass.
+	//
+	// QDRANT-003 closed (June 2026): the verifier replaced the
+	// buildSwitchReport placeholder. The count mismatch — previously a
+	// logged warning — is now a HARD gate: Ready stays false and the
+	// report captures the specific error.
+	verifier := qdrant.NewReindexVerifier(client, assetStore, nil /* deadLetter: not wired in admin CLI */, log)
+	report, verifyErr := verifier.VerifyReindex(ctx, targetCollection, reindexResult.IndexedAssets)
+	if verifyErr != nil {
+		// The verifier returns an error when critical infrastructure
+		// (count / scroll / SQLite) fails entirely. In that case the
+		// report is still populated with whatever was gathered.
+		log.Error("QDRANT-003: verification infrastructure failure", zap.Error(verifyErr))
 	}
-
-	// Phase 4 (QDRANT-004 + QDRANT-006 closure): Hard gate.
-	// Build the SwitchReport and check Ready before any alias swap.
-	// The previous implementation promoted the new collection
-	// unconditionally — a partial write, schema mismatch, or a
-	// dead-letter spike would silently flip production onto a
-	// broken alias. The gate fixes this by:
-	//   1. Point-count parity (ActualPoints ≥ ExpectedPoints).
-	//   2. Schema parity (delegated upstream in EnsureSchema).
-	//   3. No open dead_letter events (placeholder 0; outbox wiring
-	//      is a QDRANT-005 follow-up).
-	//   4. Golden + filter smoke placeholders (true, until the
-	//      pipelines in QDRANT-005 wire them).
-	// Ready==false → ErrAliasSwitchNotReady is returned; alias is
-	// unaffected. Operators get a JSON dump on --json for off-CI
-	// inspection.
-	report := buildSwitchReport(ctx, client, targetCollection, reindexResult.IndexedAssets)
 	if deps.JSON {
 		b, _ := json.Marshal(report)
 		fmt.Println(string(b))
