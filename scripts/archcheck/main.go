@@ -84,6 +84,32 @@ type Report struct {
 // and cross_capability_import) per the Wave 19 pr2_setup block in
 // architecture/current.yaml.
 //
+// Operator-pasted spec (DUP VERBATIM from architecture/current.yaml —
+// DO NOT EDIT in isolation; any drift from the operator-pasted
+// "Dependency Rules" must be preceded by an EXPAND/BACKFILL/CUTOVER
+// sequence per AGENTS.md zero-legacy policy):
+//
+//	"Graph entries share JSON shape `{src_file, import, type, in_ports}`
+//	 regardless of edge class."
+//	  — architecture/current.yaml :: Wave 19 :: pr2_setup.items[PR2-1]
+//	    .acceptance[1]  (2026-06-26 operator paste)
+//
+//	"Replace the int counters with structured lists: each entry contains
+//	 file path, import string, edge class (platform or cross_capability),
+//	 plus a flag for whether the import is a structural port (in
+//	 ports.go) or a concrete adapter (in service.go / provider)."
+//	  — architecture/current.yaml :: Wave 19 :: pr2_setup.items[PR2-1]
+//	    .description  (2026-06-26 operator paste)
+//
+// The four operational fields below (`SrcFile`, `Import`, `Type`,
+// `InPorts`) implement that contract 1:1 — verifiable by reading the
+// `json:` struct tags against `{src_file, import, type, in_ports}`.
+// The {src_file, import, type, in_ports} tuple matches the
+// operator-pasted spec exactly; any change MUST be preceded by an
+// EXPAND/BACKFILL/CUTOVER migration per docs/architecture/godlike/
+// 07_ZERO_LEGACY_POLICY.md so PR2-1.acceptance[1]'s "regardless of
+// edge class" guarantee survives the refactor.
+//
 // Field semantics:
 //
 //	SrcFile : path of the file inside internal/application/<cap>/...
@@ -187,7 +213,8 @@ func runFocusedChecks() Report {
 	// NOTE (PR5): distinct-file count only — see Edges["application_to_infrastructure"]
 	// for the full per-import graph (one Edge per import-line).
 	checks["application_to_infrastructure_files"] = atiStats["actual"]
-	violations = append(violations, atiViolations...)	cciStats, cciEdges, cciViolations := checkCrossCapabilityImport()
+	violations = append(violations, atiViolations...)
+	cciStats, cciEdges, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_imports"] = cciStats["violations"]
 	checks["cross_capability_imports_actual"] = cciStats["actual"]
 	checks["cross_capability_imports_allowed"] = cciStats["allowed"]
@@ -272,7 +299,8 @@ func runRatchetChecks() Report {
 	// NOTE (PR5): distinct-file count only — see Edges["application_to_infrastructure"]
 	// for the full per-import graph (one Edge per import-line).
 	checks["application_to_infrastructure_files"] = atiStats["actual"]
-	violations = append(violations, atiViolations...)	cciStats, cciEdges, cciViolations := checkCrossCapabilityImport()
+	violations = append(violations, atiViolations...)
+	cciStats, cciEdges, cciViolations := checkCrossCapabilityImport()
 	checks["cross_capability_imports"] = cciStats["violations"]
 	checks["cross_capability_imports_actual"] = cciStats["actual"]
 	checks["cross_capability_imports_allowed"] = cciStats["allowed"]
