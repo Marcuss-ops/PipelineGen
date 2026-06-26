@@ -151,6 +151,18 @@ func runFocusedChecks() Report {
 	checks["ownership_yaml_missing_paths"] = ownershipMissing
 	violations = append(violations, ownershipViolations...)
 
+	// PR4.8 typed-lifecycle job-runner structural invariant (file +
+	// exports + no inline anti-pattern + ownership YAML entry). Wired
+	// into both runFocusedChecks AND runRatchetChecks so the canonical
+	// CI gate and the migration ratchet gate both surface any PR4.x
+	// regression as an explicit `Checks["pr48_job_runner_intact"]`
+	// counter + zero-or-more `pr48 structural break: ...` violations,
+	// replacing the previous ad-hoc "filter violations list for
+	// job-runner keywords" practice.
+	pr48JobRunnerViolations := checkJobRunnerIntact()
+	checks["pr48_job_runner_intact"] = len(pr48JobRunnerViolations)
+	violations = append(violations, pr48JobRunnerViolations...)
+
 	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
 	checks["python_legacy_writer_violations"] = pythonWriterViolations
 	violations = append(violations, pythonWriterFindings...)
@@ -211,6 +223,18 @@ func runRatchetChecks() Report {
 	ownershipMissing, ownershipViolations := checkOwnershipYAML()
 	checks["ownership_yaml_missing_paths"] = ownershipMissing
 	violations = append(violations, ownershipViolations...)
+
+	// PR4.8 typed-lifecycle job-runner structural invariant (file +
+	// exports + no inline anti-pattern + ownership YAML entry). Wired
+	// into both runFocusedChecks AND runRatchetChecks so the canonical
+	// CI gate and the migration ratchet gate both surface any PR4.x
+	// regression as an explicit `Checks["pr48_job_runner_intact"]`
+	// counter + zero-or-more `pr48 structural break: ...` violations,
+	// replacing the previous ad-hoc "filter violations list for
+	// job-runner keywords" practice.
+	pr48JobRunnerViolations := checkJobRunnerIntact()
+	checks["pr48_job_runner_intact"] = len(pr48JobRunnerViolations)
+	violations = append(violations, pr48JobRunnerViolations...)
 
 	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
 	checks["python_legacy_writer_violations"] = pythonWriterViolations
@@ -935,6 +959,17 @@ func topLevelWaveBlocks(raw string) []string {
 
 var ownershipPathPattern = regexp.MustCompile(`(?m)^\s+(?:owner|location):\s+([^#\n]+)`)
 
+// PR4.8 anti-pattern detector helpers (used by checkJobRunnerIntact
+// predicate (c) so documentation comments mentioning appjobs.NewRunner
+// do not false-positive against the inline expression check). The block
+// + line comment regexp pair matches Go's `/* ... */` block comments
+// (non-greedy) and `// ...` single-line comments respectively; both run
+// before the substring contains-check against real code.
+var (
+	goBlockCommentRE = regexp.MustCompile(`/\*[\s\S]*?\*/`)
+	goLineCommentRE  = regexp.MustCompile(`(?m)//.*$`)
+)
+
 func checkOwnershipYAML() (int, []string) {
 	const path = "architecture/ownership.yaml"
 	text, err := os.ReadFile(path)
@@ -1368,6 +1403,83 @@ func checkOwnershipRef(ref string, violations *[]string) {
 type pythonLegacyRule struct {
 	Path     string
 	Patterns []string
+}
+
+// checkJobRunnerIntact verifies the PR4.8 typed-lifecycle job-runner
+// migration is intact. Returns a slice of per-predicate violations
+// (length >= 1 indicates a structural break). The corresponding
+// `Checks["pr48_job_runner_intact"]` counter is set to len(violations)
+// in runFocusedChecks + runRatchetChecks (both, so the canonical CI gate
+// and the migration ratchet gate equally surface any PR4.x regression).
+//
+// Four predicates verified:
+//   (a) internal/app/lifecycle_job_runner.go exists on disk.
+//   (b) It exports BOTH buildJobRunner AND buildJobRunnerStep (PR4.8
+//       typed helpers; tolerates both `func buildJobRunner(...)` and
+//       `func (w *T) buildJobRunner(...)` method-receiver shapes).
+//   (c) internal/app/lifecycle.go does NOT contain appjobs.NewRunner
+//       as live code. Line + block comments are stripped first via
+//       goLineCommentRE and goBlockCommentRE so explanatory prose like
+//       `// orchestrator-only \u2014 the "var jobRunner := appjobs.NewRunner(...) +`
+//       on lifecycle.go line 12 does NOT false-positive against
+//       strings.Contains.
+//   (d) architecture/ownership.yaml carries the canonical AppJobRunner
+//       services entry that points at internal/app/lifecycle_job_runner.go
+//       with step_constructor: buildJobRunnerStep.
+//
+// Wired into both runFocusedChecks and runRatchetChecks (per AGENTS.md
+// Pattern 0 / migration-policy practice: a structural invariant belongs
+// in the canonical CI gate so a focused-mode and ratchet-mode pass both
+// equally hold; promotes the previous "filter violations list for
+// PR4.8-related keywords" practice into an explicit check).
+func checkJobRunnerIntact() []string {
+	var violations []string
+
+	// (a) + (b): File existence + exported typed helpers, fused into
+	// one ReadFile so we don't stat-then-reload for two checks.
+	textRunnerFile, err := os.ReadFile("internal/app/lifecycle_job_runner.go")
+	if err != nil {
+		violations = append(violations, "pr48 structural break: internal/app/lifecycle_job_runner.go is missing or unreadable: "+err.Error())
+	} else {
+		// Tolerates both `func buildJobRunner(...)` (free function) and
+		// `func (w *T) buildJobRunner(...)` (method receiver). The
+		// non-capturing optional receiver group absorbs `(w *Type)`.
+		if !regexp.MustCompile(`func\s+(?:\([^)]+\)\s+)?buildJobRunner\b`).MatchString(string(textRunnerFile)) {
+			violations = append(violations, "pr48 structural break: buildJobRunner missing in internal/app/lifecycle_job_runner.go")
+		}
+		if !regexp.MustCompile(`func\s+(?:\([^)]+\)\s+)?buildJobRunnerStep\b`).MatchString(string(textRunnerFile)) {
+			violations = append(violations, "pr48 structural break: buildJobRunnerStep missing in internal/app/lifecycle_job_runner.go")
+		}
+	}
+
+	// (c): No inline anti-pattern in lifecycle.go. Strip Go line and
+	// block comments first so documentation prose mentioning
+	// appjobs.NewRunner does NOT false-positive against strings.Contains.
+	if lc, err := os.ReadFile("internal/app/lifecycle.go"); err == nil {
+		stripped := goLineCommentRE.ReplaceAllString(string(lc), "")
+		stripped = goBlockCommentRE.ReplaceAllString(stripped, "")
+		if strings.Contains(stripped, "appjobs.NewRunner") {
+			violations = append(violations, "pr48 structural break: lifecycle.go contains appjobs.NewRunner inline as live code (post-PR4.8 anti-pattern regression)")
+		}
+	}
+
+	// (d): Ownership file substring check (cheaper than yaml.Unmarshal
+	// since main.go does not currently depend on gopkg.in/yaml; the
+	// checkOwnershipYAML sibling check uses a regex pass over the same
+	// file, so a substring marker is consistent with that style).
+	own, err := os.ReadFile("architecture/ownership.yaml")
+	if err != nil {
+		violations = append(violations, "pr48 structural break: read architecture/ownership.yaml: "+err.Error())
+	} else {
+		ownStr := string(own)
+		hasLocation := strings.Contains(ownStr, "location: internal/app/lifecycle_job_runner.go")
+		hasStep := strings.Contains(ownStr, "step_constructor: buildJobRunnerStep")
+		if !hasLocation || !hasStep {
+			violations = append(violations, "pr48 structural break: ownership.yaml AppJobRunner canonical_services entry is missing or mis-pointed (expected `location: internal/app/lifecycle_job_runner.go` + `step_constructor: buildJobRunnerStep`)")
+		}
+	}
+
+	return violations
 }
 
 func checkPythonLegacyWriterGate() (int, []string) {
