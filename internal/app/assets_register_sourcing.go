@@ -43,7 +43,7 @@ func newAssetRegisterService(
 	return sourcing.NewService(
 		&sourcingFetchAdapter{registry: providerRegistry},
 		&sourcingDriveAdapter{uploader: driveUploader},
-		&sourcingClipStoreAdapter{repo: clipsRepo},
+		&sourcingClipStoreAdapter{repo: clipsRepo, dispatcher: indexDisp},
 		nil,
 		nil,
 		&sourcingHashAdapter{},
@@ -139,7 +139,8 @@ func (a *sourcingDriveAdapter) GetFolderName(ctx context.Context, folderID strin
 }
 
 type sourcingClipStoreAdapter struct {
-	repo *assetsrepo.ClipsRepository
+	repo       *assetsrepo.ClipsRepository
+	dispatcher sourcing.IndexDispatcherPort
 }
 
 func (a *sourcingClipStoreAdapter) FindByName(ctx context.Context, name string) (string, error) {
@@ -182,11 +183,21 @@ func (a *sourcingClipStoreAdapter) GetClip(ctx context.Context, id string) (*sou
 	return toExistingClip(clip), nil
 }
 
+// UpsertClip is QDRANT-002 close-out (June 2026): the raw
+// repo.UpsertClip path was the canonical write-bypass the close-out
+// tickets eliminated. This adapter now delegates to the dispatcher
+// (via the canonical EnqueueAndIndex route) so every write from the
+// sourcing flow emits an outbox event and keeps the Qdrant vector in
+// sync with SQLite. The adapter holds an IndexDispatcherPort (the
+// same one already wired into sourcing.NewService) — if it is nil,
+// the write is treated as a no-op so the caller can backfill
+// dispatcher wiring (composition root should be panic-on-nil in
+// production).
 func (a *sourcingClipStoreAdapter) UpsertClip(ctx context.Context, clip *sourcing.ExistingClip) error {
-	if a.repo == nil || clip == nil {
+	if a.dispatcher == nil || clip == nil {
 		return nil
 	}
-	return a.repo.UpsertClip(ctx, fromExistingClip(clip))
+	return a.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash)
 }
 
 type sourcingHashAdapter struct{}

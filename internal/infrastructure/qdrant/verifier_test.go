@@ -80,10 +80,16 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
 	assert.True(t, report.Ready)
 }
 
-// TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallback asserts
-// a point WITHOUT the per-channel key but WITH the correct global
-// embedding_version. The legacy fallback path accepts the point.
-func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallback(t *testing.T) {
+// TestReindexVerifier_PerChannelVersionMismatch_AbsentPerChannelFails asserts
+// that a point WITHOUT the per-channel key but WITH the global
+// embedding_version IS REJECTED under the QDRANT-003 close-out
+// contract — the legacy global-key fallback has been removed.
+//
+// (Renamed from 'AbsentLegacyFallback' — the old test documented
+// acceptance of legacy points, which the close-out ticket
+// explicitly retired. The payload is identical; the assertions
+// flipped from ExpectAccept to ExpectReject.)
+func TestReindexVerifier_PerChannelVersionMismatch_AbsentPerChannelFails(t *testing.T) {
 	t.Parallel()
 
 	const payload = `{
@@ -104,9 +110,9 @@ func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallback(t *testi
 
 	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
 	require.NoError(t, err)
-	assert.Equal(t, 0, report.VersionMismatch, "global key matches CurrentEmbeddingVersion — legacy fallback accepts the point")
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["text"])
-	assert.True(t, report.Ready)
+	assert.Equal(t, 1, report.VersionMismatch, "absent per-channel key + global key — legacy fallback REMOVED, per-channel mismatch bumps BOTH counters")
+	assert.Equal(t, 1, report.VersionMismatchPerChannel["text"], "absent per-channel key — channel-level counter bumps")
+	assert.False(t, report.Ready)
 }
 
 // TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail

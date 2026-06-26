@@ -220,12 +220,22 @@ func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id st
 	return nil
 }
 
-// Restore flips lifecycle_state back to 'ready'.
+// QDRANT-002 close-out (June 2026): the canonical write path is
+// outbox.Dispatcher. The raw non-tx write methods on *ClipsRepository
+// (Restore, HardDelete, UpsertClip, RestoreClip, HardDeleteClip,
+// DeleteClipByDriveLink) are RESTRICTED — they remain as documented
+// escape hatches ONLY for admin/operator tooling; production callers
+// MUST route through Dispatcher.EnqueueAndIndex / EnqueueAndDelete /
+// EnqueueAndRestore / EnqueueAndHardDelete.
 //
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Restoring an asset
-// should trigger a re-index via the dispatcher so Qdrant gets the
-// point back. Production callers MUST use Dispatcher.EnqueueAndRestore
-// instead. This method remains for diagnostic/operator use only.
+// The CI gate scripts/ci-architectural-checks.sh::Check 2 catches any
+// NEW production caller of these methods, so the surface cannot grow
+// silently. Existing admin callers (cmd/admin/*) remain in the
+// allowlist. See internal/application/assets/deletion/service.go and
+// internal/application/assets/restore/service.go for the canonical
+// application-level wrappers an admin handler should call.
+
+// Restore flips lifecycle_state back to 'ready'.
 func (r *ClipsRepository) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
@@ -407,15 +417,15 @@ func (r *ClipsRepository) HardDeleteClip(ctx context.Context, id string) error {
 	return r.HardDelete(ctx, id)
 }
 
-// DeleteClipByDriveLink soft-deletes by drive/download link.
+// DeleteClipByDriveLink soft-deletes by drive/download link via the
+// raw media_assets UPDATE path.
 //
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. It flips lifecycle_state
-// to 'deleted' without emitting an asset.index.delete_requested event,
-// which means the Qdrant point is never cleaned up.
-//
-// Callers should use deletion.DeletionService.DeleteClip (which routes
-// through outbox.Dispatcher.EnqueueAndDelete) or call the dispatcher
-// directly.
+// QDRANT-002 close-out: this method is RESTRICTED to admin/operator
+// tooling (cmd/admin/*). Production callers MUST use outbox.Dispatcher.
+// EnqueueAndDelete which emits the canonical asset.index.delete_requested.v1
+// event the IndexDeleteHandler relies on (Qdrant cleanup + SoftDelete in
+// the handler, NOT here). The CI gate Check 2 catches any new caller
+// outside admin allowlist.
 func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
 	driveLink = strings.TrimSpace(driveLink)
 	if driveLink == "" {

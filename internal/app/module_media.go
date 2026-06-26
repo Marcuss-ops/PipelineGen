@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/restore"
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
@@ -143,6 +144,27 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, dispatcher, log)
 
+	// QDRANT-002 close-out (June 2026): wire the two new
+	// application-level wrappers that route hard-delete + restore
+	// through the canonical outbox.Dispatcher path. The wrappers
+	// themselves enforce dispatcher-at-construction (fail-closed)
+	// so production wiring with a nil dispatcher is caught
+	// immediately rather than silently falling back to raw writes.
+	var hardDeleteSvc *deletion.Service
+	var restoreSvc *restore.Service
+	if dispatcher != nil {
+		if hs, herr := deletion.NewService(dispatcher, log); herr == nil {
+			hardDeleteSvc = hs
+		} else {
+			return nil, fmt.Errorf("WireAssets: hardDeleteSvc init: %w", herr)
+		}
+		if rs, rerr := restore.NewService(dispatcher, log); rerr == nil {
+			restoreSvc = rs
+		} else {
+			return nil, fmt.Errorf("WireAssets: restoreSvc init: %w", rerr)
+		}
+	}
+
 	// PR8 (June 2026): idemHandler is passed in from WireRegistry (see
 	// registry.go). WireAssets does NOT construct its own Idempotency
 	// instance — the cleanup goroutine lives once at the registry level
@@ -220,6 +242,10 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		}),
 		ProcessRunner: processRunnerAdapter,
 		Dispatcher:    clipsDispatcherPort,
+
+		// QDRANT-002 close-out (June 2026): the new admin handlers.
+		HardDeleteSvc: hardDeleteSvc,
+		RestoreSvc:    restoreSvc,
 	}, idemHandler)
 	var drivePort appstorage.DrivePort
 	if driveUploader != nil {

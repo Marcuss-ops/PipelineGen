@@ -25,6 +25,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/testutil"
 )
 
+// fakeDispatcher is a no-op Dispatcher used by tests that don't exercise
+// the Qdrant indexing path (QDRANT-002 close-out, June 2026).
+// NewService / NewSearchService panic-or-error on a nil dispatcher at
+// production-wiring time; tests need a typed zero-value that satisfies
+// the port so they can build a Service without spinning up a real
+// dispatcher.
+type fakeDispatcher struct{}
+
+func (fakeDispatcher) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ string) error {
+	return nil
+}
+
+func (fakeDispatcher) EnqueueAndDelete(_ context.Context, _ string) error   { return nil }
+func (fakeDispatcher) EnqueueAndRestore(_ context.Context, _, _ string) error { return nil }
+func (fakeDispatcher) EnqueueAndHardDelete(_ context.Context, _ string) error {
+	return nil
+}
+
 // artlistTestSchema composes the full canonical media_assets CREATE TABLE
 // (see internal/storage/canonical.go::CanonicalMediaAssetsSchema) plus
 // the companion clip_search_terms table used by artlist Search indexing.
@@ -57,7 +75,12 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *asset.Asset) {
 	}
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())
-	if err := repo.UpsertClip(context.Background(), clip); err != nil {
+	// QDRANT-002 close-out (June 2026): raw repo.UpsertClip was
+	// removed from the public surface of *ClipsRepository (the
+	// canonical write path is now outbox.Dispatcher.EnqueueAndIndex).
+	// Test fixtures use the canonical writer via Upsert (no outbox
+	// emission expected; tests stitch up outbox_events directly).
+	if err := repo.Upsert(context.Background(), clip); err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
 	}
 }
@@ -122,7 +145,8 @@ func TestArtlistServiceCreation(t *testing.T) {
 		ServiceDependencies: ServiceDependencies{
 			Cfg:    cfg,
 			MainDB: db,
-			Log:    logger,
+			Log:        logger,
+			Dispatcher: fakeDispatcher{},
 		},
 	})
 	if err != nil {
@@ -151,7 +175,8 @@ func TestArtlistSearchRequest(t *testing.T) {
 		ServiceDependencies: ServiceDependencies{
 			Cfg:    cfg,
 			MainDB: db,
-			Log:    logger,
+			Log:        logger,
+			Dispatcher: fakeDispatcher{},
 		},
 	})
 
@@ -400,6 +425,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 			MainDB:         db,
 			Log:            logger,
 			MediaProcessor: processor,
+			Dispatcher:     fakeDispatcher{},
 		},
 	})
 	require.NoError(t, err)
@@ -481,6 +507,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 			MainDB:         db,
 			Log:            logger,
 			MediaProcessor: processor,
+			Dispatcher:     fakeDispatcher{},
 		},
 	})
 	require.NoError(t, err)
@@ -568,6 +595,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 			MainDB:         db,
 			Log:            logger,
 			MediaProcessor: processor,
+			Dispatcher:     fakeDispatcher{},
 		},
 	})
 	require.NoError(t, err)

@@ -15,11 +15,15 @@ import (
 // SearchService gestisce tutte le operazioni di ricerca Artlist.
 type SearchService struct {
 	service *Service
-	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
+	// assetRepo is retained for read-only paths (Search, SearchClips).
+	// QDRANT-002 close-out: write paths NO LONGER call assetRepo.Upsert
+	// directly — they MUST route through dispatcher.EnqueueAndIndex so
+	// media_assets and outbox_events commit atomically.
 	assetRepo asset.Repository
-	// dispatcher is the canonical outbox dispatcher port (QDRANT-002).
-	// When non-nil, SearchLiveAndSave routes through EnqueueAndIndex
-	// instead of raw assetStore.Upsert. Wired from Service.dispatcher.
+	// dispatcher is the canonical outbox dispatcher port (QDRANT-002
+	// close-out). REQUIRED for every write path (SearchLiveAndSave +
+	// UpsertClip). nil at construction time is a fatal config bug —
+	// NewSearchService enforces non-nil with a clear error.
 	dispatcher Dispatcher
 	// PR2: injected Searcher implementations from infrastructure.
 	// nil means that level is skipped in the fallback chain.
@@ -30,15 +34,22 @@ type SearchService struct {
 	log             *zap.Logger
 }
 
-// SetAssetRepo injects the canonical assetRepo.
+// SetAssetRepo injects the canonical assetRepo (read-only paths).
 func (ss *SearchService) SetAssetRepo(r asset.Repository) {
 	ss.assetRepo = r
 }
 
 // NewSearchService creates a new SearchService wired to the Service.
-// dispatcher is the canonical outbox port; nil means legacy Upsert path.
-func NewSearchService(s *Service, dispatcher Dispatcher) *SearchService {
-	return &SearchService{service: s, dispatcher: dispatcher}
+//
+// QDRANT-002 close-out (June 2026): dispatcher is REQUIRED. The legacy
+// nil-dispatcher-equals-legacy-Upsert fallback has been REMOVED. Every
+// caller must wire the canonical outbox dispatcher; production wiring
+// lives in BuildProcessBundle → BuildOutboxBundle → artlist.NewService.
+func NewSearchService(s *Service, dispatcher Dispatcher) (*SearchService, error) {
+	if dispatcher == nil {
+		return nil, fmt.Errorf("artlist.NewSearchService: dispatcher is required (QDRANT-002 close-out — every write must route through outbox.Dispatcher.EnqueueAndIndex)")
+	}
+	return &SearchService{service: s, dispatcher: dispatcher}, nil
 }
 
 // Search esegue una ricerca di clip nel database Artlist.
@@ -84,9 +95,19 @@ func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int)
 
 // SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.
 //
-// QDRANT-002: Routes through dispatcher.EnqueueAndIndex when wired.
-// Falls back to raw assetStore.Upsert when dispatcher is nil.
+// QDRANT-002 close-out: dispatcher is REQUIRED. Saved candidates are
+// persisted via dispatcher.EnqueueAndIndex so the media_assets UPSERT
+// and the outbox_events INSERT commit in a single atomic tx. The
+// previous `if ss.dispatcher != nil { EnqueueAndIndex } else { raw
+// assetStore.Upsert }` dual-path has been eliminated — there is no
+// canonical way to ingest a clip without the outbox event, so any
+// caller that somehow shows up with a nil dispatcher is a wiring bug
+// caught at construction time (NewSearchService returns an error
+// instead of producing a zero-dispatcher instance).
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm string, limit int) (*SearchResponse, error) {
+	if ss.dispatcher == nil {
+		return nil, fmt.Errorf("artlist.SearchLiveAndSave: dispatcher is nil — invariant broken (NewSearchService must reject nil at construction; this is defensive only)")
+	}
 	s := ss.service
 	normalizedTerm := normalizeSearchTerm(originalTerm)
 	candidates, err := ss.SearchLive(ctx, normalizedTerm, limit)
@@ -140,17 +161,15 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			}
 		}
 
-		// QDRANT-002: canonical path through dispatcher when wired.
+		// QDRANT-002 close-out: dispatcher is the canonical write path.
+		// No legacy fallback to s.assetStore.Upsert — every ingest
+		// MUST emit an asset.index.requested.v1 outbox event so
+		// IndexClip runs via the outbox pool (atomic + retry-safe).
 		contentHash := clip.FileHash()
 		if contentHash == "" {
 			contentHash = clip.ID
 		}
-		var upsertErr error
-		if ss.dispatcher != nil {
-			upsertErr = ss.dispatcher.EnqueueAndIndex(ctx, clip, contentHash)
-		} else {
-			upsertErr = s.assetStore.Upsert(ctx, clip)
-		}
+		upsertErr := ss.dispatcher.EnqueueAndIndex(ctx, clip, contentHash)
 
 		if upsertErr == nil {
 			if a := toDomain(clip); a != nil {
@@ -240,15 +259,29 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 }
 
 // UpsertClip inserts or updates a clip in the database.
+//
+// QDRANT-002 close-out (June 2026): ALWAYS routes through the canonical
+// dispatcher.EnqueueAndIndex. The previous dual-path (assetRepo.Upsert
+// when wired, assetStore.Upsert as silent fallback) has been REMOVED
+// — a clip without an outbox event leaves the Qdrant vector index
+// permanently out of sync and is forbidden by the canonical ingest
+// contract (see internal/infrastructure/database/sqlite/outbox/repository.go).
+//
+// callers MUST supply clip.FileHash() != "" for the idempotency_key
+// dedup column. When FileHash is empty we fall back to clip.ID so the
+// event_key column is never empty (event_key has UNIQUE constraint).
 func (ss *SearchService) UpsertClip(ctx context.Context, clip *asset.Asset) error {
-	if ss.assetRepo != nil {
-		return ss.assetRepo.Upsert(ctx, clip)
+	if ss.dispatcher == nil {
+		return fmt.Errorf("artlist.UpsertClip: dispatcher is nil — invariant broken (NewSearchService must reject nil at construction)")
 	}
-	s := ss.service
-	if s.assetStore != nil {
-		return s.assetStore.Upsert(ctx, clip)
+	if clip == nil {
+		return fmt.Errorf("artlist.UpsertClip: clip is nil")
 	}
-	return nil
+	contentHash := clip.FileHash()
+	if contentHash == "" {
+		contentHash = clip.ID
+	}
+	return ss.dispatcher.EnqueueAndIndex(ctx, clip, contentHash)
 }
 
 // searchLiveWithFallbacks orchestrates the fallback chain using the

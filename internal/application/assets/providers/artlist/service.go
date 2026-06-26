@@ -3,6 +3,7 @@ package artlist
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -200,7 +201,11 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	}
 
 	// Inizializza i componenti delegati
-	s.searchService = NewSearchService(s, deps.Dispatcher)
+	searchService, err := NewSearchService(s, deps.Dispatcher)
+	if err != nil {
+		return nil, fmt.Errorf("artlist.NewService: %w", err)
+	}
+	s.searchService = searchService
 	s.runOrchestrator = NewRunOrchestratorService(s)
 	s.destinationService = NewDestinationService(s)
 	s.jobAdapter = NewJobAdapter(s)

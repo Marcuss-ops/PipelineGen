@@ -11,7 +11,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/restore"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -188,6 +190,84 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	})
 }
 
+// HardDeleteClip + RestoreClip (QDRANT-002 close-out, June 2026).
+//
+// HardDeleteClip is the operator-driven hard-delete entry point. It
+// routes through deletion.Service which calls
+// Dispatcher.EnqueueAndHardDelete — the canonical write path that
+// physically removes the media_assets row + dependent rows AND
+// emits asset.index.delete_requested.v1 in a single atomic tx.
+//
+// RestoreClip is the operator-driven restore entry point. It routes
+// through restore.Service which calls
+// Dispatcher.EnqueueAndRestore — the canonical write path that flips
+// lifecycle_state back to 'ready' AND emits asset.index.requested.v1
+// in a single atomic tx so the Qdrant point is rebuilt by the worker.
+//
+// Both paths fail-closed when the service is nil (admin gating signal:
+// the route must NOT be exposed without a wired application service).
+func (h *Handler) HardDeleteClip(c *gin.Context) {
+	source := c.Param("source")
+	clipID := c.Param("id")
+	if h.hardDeleteSvc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable,
+			"hard-delete service not configured (QDRANT-002 close-out: route requires Deps.HardDeleteSvc)")
+		return
+	}
+	if clipID == "" {
+		apiutil.BadRequest(c, "clip id is required")
+		return
+	}
+	var req struct {
+		Reason      string `json:"reason"`
+		RequestedBy string `json:"requested_by"`
+	}
+	_ = c.ShouldBindJSON(&req) // body optional
+	res, err := h.hardDeleteSvc.HardDelete(c.Request.Context(), deletion.DeleteRequest{
+		AssetID:     clipID,
+		Source:      asset.Source(source),
+		Reason:      req.Reason,
+		RequestedBy: req.RequestedBy,
+	})
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"ok": true, "result": res})
+}
+
+func (h *Handler) RestoreClip(c *gin.Context) {
+	source := c.Param("source")
+	clipID := c.Param("id")
+	if h.restoreSvc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable,
+			"restore service not configured (QDRANT-002 close-out: route requires Deps.RestoreSvc)")
+		return
+	}
+	if clipID == "" {
+		apiutil.BadRequest(c, "clip id is required")
+		return
+	}
+	var req struct {
+		ContentHash string `json:"content_hash"`
+		Reason      string `json:"reason"`
+		RequestedBy string `json:"requested_by"`
+	}
+	_ = c.ShouldBindJSON(&req) // body optional
+	res, err := h.restoreSvc.Restore(c.Request.Context(), restore.RestoreRequest{
+		AssetID:     clipID,
+		Source:      asset.Source(source),
+		ContentHash: req.ContentHash,
+		Reason:      req.Reason,
+		RequestedBy: req.RequestedBy,
+	})
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"ok": true, "result": res})
+}
+
 // VerifyClip verifies DB, local file, and Drive coherence.
 func (h *Handler) VerifyClip(c *gin.Context) {
 	source := c.Param("source")
@@ -301,11 +381,16 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo appclips.C
 				result["hash"] = md5
 				result["has_hash"] = true
 				result["hash_recovered"] = true
-				if repo != nil {
-					if err := repo.UpsertClip(ctx, clip); err != nil {
+				if repo != nil && h.dispatcher != nil {
+					// QDRANT-002 close-out (June 2026): recovered-hash
+					// write routes through the outbox dispatcher so the
+					// Qdrant point stays in sync. raw repo.UpsertClip
+					// would leave the vector stale on the next indexer
+					// sweep.
+					if err := h.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
 						h.log.Warn("failed to save recovered hash", zap.String("clip_id", clip.ID), zap.Error(err))
 					} else {
-						h.log.Info("recovered and saved missing hash from drive", zap.String("clip_id", clip.ID), zap.String("hash", md5))
+						h.log.Info("recovered and saved missing hash from drive (via outbox dispatcher)", zap.String("clip_id", clip.ID), zap.String("hash", md5))
 					}
 				} else if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 					rec, err := h.voiceoverRepo.GetByID(ctx, clip.ID)

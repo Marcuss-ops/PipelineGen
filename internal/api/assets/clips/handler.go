@@ -30,6 +30,7 @@ import (
 	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/restore"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
@@ -71,6 +72,13 @@ type Deps struct {
 	ProcessRunner  appassets.ProcessRunner
 	JobsSvc        jobservice.Service
 	DeletionSvc    *deletion.DeletionService
+
+	// QDRANT-002 close-out (June 2026): two new application-level
+	// wrappers around outbox.Dispatcher for explicit operator-driven
+	// hard-delete + restore flows. Both are nil-tolerated (admin
+	// tools + composition root SHOULD pass non-nil; tests use nil).
+	HardDeleteSvc *deletion.Service
+	RestoreSvc    *restore.Service
 
 	// Platform (composition root concerns; nil-tolerated)
 	Log *zap.Logger
@@ -133,6 +141,10 @@ type Handler struct {
 	deletionSvc    *deletion.DeletionService
 	log            *zap.Logger
 
+	// QDRANT-002 close-out (June 2026): see Deps comments.
+	hardDeleteSvc *deletion.Service
+	restoreSvc    *restore.Service
+
 	// Use cases — business logic extracted from handlers.
 	// W14-PR2 slice 5: each use-case constructor receives the typed
 	// ports where applicable. DownloadUseCase still takes the raw
@@ -182,6 +194,8 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		assetTreeSvc:    d.AssetTreeSvc,
 		jobsSvc:         d.JobsSvc,
 		deletionSvc:     d.DeletionSvc,
+		hardDeleteSvc:   d.HardDeleteSvc,
+		restoreSvc:      d.RestoreSvc,
 		log:             d.Log,
 		folderMemAppSvc: d.FolderMemSvc,
 		// Wire use cases constructed in the composition root.
@@ -298,6 +312,16 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	// Cross-cutting actions on existing clip contexts
 	r.POST("/enrich", idem, h.EnrichMedia)
 	r.POST("/enrich/batch", idem, h.BatchReindex)
+
+	// QDRANT-002 close-out (June 2026): explicit operator-driven
+	// hard-delete + restore (canonical write paths behind
+	// outbox.Dispatcher.EnqueueAndHardDelete / EnqueueAndRestore).
+	// Both routes are mounted under /:source so the source-aware
+	// asset_id-resolve path matches unified-handler expectations;
+	// the handlers themselves call into the new application-layer
+	// services provided by Deps.HardDeleteSvc / Deps.RestoreSvc.
+	r.POST("/:source/clips/:id/hard-delete", idem, h.HardDeleteClip)
+	r.POST("/:source/clips/:id/restore", idem, h.RestoreClip)
 
 	// Upload endpoints (multipart body bypasses body-hash; idempotency still
 	// observes in-flight 409 + completed replay).

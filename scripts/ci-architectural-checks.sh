@@ -122,6 +122,57 @@ if [ -n "$literals" ]; then
 fi
 echo "OK: no direct IndexWriter constructors outside the canonical allowlist"
 
+# ── Check 2: forbid raw outbox-bypass surfaces on *ClipsRepository (QDRANT-002 close-out) ─────
+# The raw non-tx write methods on *ClipsRepository (UpsertClip, Restore,
+# HardDelete, RestoreClip, HardDeleteClip, DeleteClipByDriveLink) bypass
+# the outbox dispatcher silently — the asset lands in media_assets without
+# an outbox_index_requested event, so the Qdrant vector stays stale. The
+# canonical write path is outbox.Dispatcher → IndexingHandler → IndexWriter.
+#
+# These methods are PERMITTED only in:
+#   - cmd/admin/**                  : one-shot operator tooling
+#   - internal/infrastructure/database/sqlite/assets/clips_repository.go : the canonical impl itself
+#
+# Any NEW caller anywhere else is a QDRANT-002 regression. The suffix `\.UpsertClip\(`
+# catches the method call; `clipsRepo\.UpsertClip\b` would also catch, but
+# the bare method-name form is what we want to flag in production code.
+#
+# Note: `service_test.go::insertTestClip` calls `repo.UpsertClip(ctx, clip)`
+# in test fixtures only — excluded via `--glob '!**/*_test.go'`.
+echo "=== Check 2: forbid raw outbox-bypass surfaces (QDRANT-002 close-out) ==="
+bypasses=$(rg -n --type go \
+    -e 'clips\.UpsertClip\b' \
+    -e 'clipsRepo\.UpsertClip\b' \
+    -e 'clips\.Restore\b' \
+    -e 'clipsRepo\.Restore\b' \
+    -e 'clips\.HardDelete\b' \
+    -e 'clipsRepo\.HardDelete\b' \
+    -e '\.RestoreClip\b' \
+    -e '\.HardDeleteClip\b' \
+    -e '\.DeleteClipByDriveLink\b' \
+    --glob '!**/cmd/admin/**' \
+    --glob '!**/internal/infrastructure/database/sqlite/assets/clips_repository.go' \
+    --glob '!**/*_test.go' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$bypasses" ]; then
+    echo "FAIL: raw outbox-bypass method call outside canonical allowlist:"
+    echo "$bypasses"
+    echo ""
+    echo "Fix: route writes through outbox.Dispatcher.EnqueueAndIndex (production)"
+    echo "or outbox.Dispatcher.EnqueueAndDelete/Restore/HardDelete (lifecycle). The"
+    echo "allowlist (cmd/admin/, internal/infrastructure/database/sqlite/assets/) is"
+    echo "the ONLY legitimate bypass surface."
+    exit 1
+fi
+echo "OK: no raw outbox-bypass method calls outside the canonical allowlist"
+
 # ── Main gate ────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
 # 5 Phase 0 rules in grace-cycle regression-detection mode.

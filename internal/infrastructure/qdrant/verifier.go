@@ -38,6 +38,7 @@ type ReindexVerifier struct {
 	deadLetter   DeadLetterChecker // nil = skip dead-letter check
 	schema       *IndexSchema      // canonically the schema under reindex; nil = skip per-channel version check
 	goldenQueries GoldenQueryRunner // nil = skip golden-query gate (QDRANT-003)
+	filters      FilterMatrix      // nil = skip filter-matrix gate (QDRANT-003 close-out)
 	log          *zap.Logger
 }
 
@@ -59,12 +60,25 @@ type ReindexVerifier struct {
 // NewReindexVerifier creates a verifier. deadLetter and goldenQueries
 // may be nil (skip those gates). schema MAY be nil only for tests.
 func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLetterChecker, schema *IndexSchema, goldenQueries GoldenQueryRunner, log *zap.Logger) *ReindexVerifier {
+	return NewReindexVerifierFull(client, assetStore, deadLetter, schema, goldenQueries, nil, log)
+}
+
+// NewReindexVerifierFull is the canonical constructor used by production
+// wire paths (cmd/admin/reindex_qdrant.go, BuildOutboxBundle). Every
+// gate can be enabled here; nil in any slot disables that gate.
+//
+// QDRANT-003 close-out (June 2026): adds the FilterMatrix slot. The
+// production wiring in internal/app/build_bundles_process.go MUST
+// supply a non-nil filters matrix when the target collection is the
+// production media_assets_v3_e5_768_siglip_768 alias.
+func NewReindexVerifierFull(client *Client, assetStore AssetStore, deadLetter DeadLetterChecker, schema *IndexSchema, goldenQueries GoldenQueryRunner, filters FilterMatrix, log *zap.Logger) *ReindexVerifier {
 	return &ReindexVerifier{
 		client:        client,
 		assetStore:    assetStore,
 		deadLetter:    deadLetter,
 		schema:        schema,
 		goldenQueries: goldenQueries,
+		filters:       filters,
 		log:           log,
 	}
 }
@@ -86,8 +100,8 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	// QDRANT-003 closure (June 2026): golden queries are no longer
 	// hard-coded to true. When the runner is not wired, the gate
 	// defaults to false — a nil runner means the operator chose to
-	// skip smoke validation, and the Ready gate reflects that.
-	goldenQueriesWired := v.goldenQueries != nil
+	// skip smoke validation, and the Ready gate reflects that.			goldenQueriesWired := v.goldenQueries != nil
+			filtersWired := v.filters != nil
 
 	// ── Gate 1: Point count parity ────────────────────────────────
 	actualPoints, err := v.client.CountPoints(ctx, targetCollection)
@@ -193,10 +207,15 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 						key := fmt.Sprintf("embedding_version_%s", spec.Channel)
 						actual, present := pt.Payload[key].(string)
 						if !present {
-							if gv, ok := pt.Payload["embedding_version"].(string); !ok || gv != CurrentEmbeddingVersion {
-								report.VersionMismatchPerChannel[spec.Channel]++
-								pointMismatched = true
-							}
+							// QDRANT-003 close-out: legacy global
+							// embedding_version fallback has been
+							// removed. Every point MUST carry the
+							// per-channel payload key — bumping the
+							// per-channel counter is the canonical
+							// signal that a reindex wrote the
+							// pre-per-channel schema.
+							report.VersionMismatchPerChannel[spec.Channel]++
+							pointMismatched = true
 							continue
 						}
 						if actual != spec.ModelVersion {
@@ -211,27 +230,38 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 				}
 			}
 
-			// Gate 5: Point UUID verification (QDRANT-003 closed,
-			// June 2026). The previous implementation only read
-			// payload.asset_id and never verified that pt.ID (the
-			// Qdrant point UUID) equals AssetIDToQdrantPointID(assetID).
-			// A mismatch means the point was written with a wrong
-			// UUID, which would cause a future delete-by-ID to miss.
-			//
-			// The check is skipped when pt.ID is not recognisably a
-			// UUID (test fixtures, legacy points without UUIDs). A
-			// UUID v5 string is exactly 36 chars with 4 hyphens.
-			if assetIDOK && assetID != "" && isUUIDForm(pt.ID) {
-				expectedID := AssetIDToQdrantPointID(assetID)
-				if pt.ID != expectedID {
-					report.PayloadIssues++
-					if len(report.Errors) < 20 {
-						report.Errors = append(report.Errors,
-							fmt.Sprintf("point UUID mismatch: payload asset_id=%q but pt.ID=%q (expected %q)",
-								assetID, pt.ID, expectedID))
-					}
+		// Gate 5: Point UUID verification (QDRANT-003 close-out).
+		// ZERO-LEGACY: every point MUST carry a UUID v5-form pt.ID
+		// AND that pt.ID must equal AssetIDToQdrantPointID(assetID).
+		// Non-UUID points bump report.NonUUIDPointIDs (which blocks
+		// the Ready gate) AND insert an explicit error so operators
+		// see the rogue point's identifier. The previous "skip when
+		// not recognisably a UUID" semantics is REMOVED — a legacy
+		// non-UUID point is a zero-legacy invariant violation.
+		//
+		// PointID malformation is checked UNCONDITIONALLY (independent
+		// of whether pt.Payload carries asset_id). A non-UUID pt.ID is a
+		// zero-legacy violation whether or not the payload is valid —
+		// the old "skip-when-no-asset-id" semantics masked dozens of
+		// malformed points downstream of broken indexer writes.
+		if !isUUIDForm(pt.ID) {
+			report.NonUUIDPointIDs++
+			if len(report.Errors) < 20 {
+				report.Errors = append(report.Errors,
+					fmt.Sprintf("point ID %q is not in UUID v5 form (asset_id=%q) — zero-legacy verification REQUIRES the canonical uuid5(assetID) point ID",
+						pt.ID, assetID))
+			}
+		} else if assetIDOK && assetID != "" {
+			expectedID := AssetIDToQdrantPointID(assetID)
+			if pt.ID != expectedID {
+				report.PayloadIssues++
+				if len(report.Errors) < 20 {
+					report.Errors = append(report.Errors,
+						fmt.Sprintf("point UUID mismatch: payload asset_id=%q but pt.ID=%q (expected %q)",
+							assetID, pt.ID, expectedID))
 				}
 			}
+		}
 		}
 
 		if result.NextOffset == "" {
@@ -317,6 +347,31 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		report.GoldenQueriesOK = true
 	}
 
+	// ── Gate 7: Filter matrix smoke (QDRANT-003 close-out) ─────────────
+	// FiltersOK gate runs requested payload filters against the collection
+	// to confirm indexer writes hit the per-field payload indexes.
+	// nil runner = gate trivially satisfied (legacy tests / CLIs w/o
+	// full wiring). Production-admin CLIs MUST supply a non-nil matrix
+	// so a missing payload index (e.g. dropped `source` index) blocks
+	// the alias switch.
+	if filtersWired {
+		passed, failures, checksRun, err := v.filters.RunMatrix(ctx, targetCollection)
+		if err != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("filter matrix: %v", err))
+		} else {
+			report.FiltersOK = passed
+			report.FilterFailures = failures
+			report.FilterChecksRun = checksRun
+			if !passed {
+				report.Errors = append(report.Errors,
+					fmt.Sprintf("filter matrix: %d filter failures out of %d checks", failures, checksRun))
+			}
+		}
+	} else {
+		// No matrix wired — filter gate is trivially satisfied.
+		report.FiltersOK = true
+	}
+
 	// ── Ready gate: ALL conditions must pass ─────────────────────
 	report.Ready = report.ActualPoints == report.ExpectedPoints &&
 		report.ExpectedPoints > 0 &&
@@ -324,8 +379,10 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		report.OrphanCount == 0 &&
 		report.PayloadIssues == 0 &&
 		report.VersionMismatch == 0 &&
+		report.NonUUIDPointIDs == 0 &&
 		report.DeadLetterOpen == 0 &&
 		report.GoldenQueriesOK &&
+		report.FiltersOK &&
 		len(report.Errors) == 0
 
 	if !report.Ready {

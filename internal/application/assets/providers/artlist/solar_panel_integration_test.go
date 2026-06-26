@@ -151,7 +151,7 @@ func TestSolarPanelSearch(t *testing.T) {
 	// so flat construction via field promotion works for terse test fixtures.
 	svc, err := NewService(ServiceDeps{
 		ServicePorts:        ServicePorts{AssetStore: repo},
-		ServiceDependencies: ServiceDependencies{Cfg: cfg, MainDB: db, Log: logger},
+		ServiceDependencies: ServiceDependencies{Cfg: cfg, MainDB: db, Log: logger, Dispatcher: fakeDispatcher{}},
 	})
 	require.NoError(t, err)
 	defer svc.Close()

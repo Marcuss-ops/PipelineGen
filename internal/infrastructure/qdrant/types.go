@@ -411,16 +411,29 @@ type SwitchReport struct {
 	// vector channel. Key is the channel name (e.g. "text", "visual",
 	// "audio", "transcript"); value is the count of sampled points whose
 	// payload["embedding_version_<channel>"] does NOT match the schema's
-	// EmbeddingSpec.ModelVersion AND were not rescued by the
-	// legacy-global-fallback (see verifier.go). Empty map means: every
-	// point carried the expected per-channel model version (or the legacy
-	// global fallback honoured the global schema version).
+	// EmbeddingSpec.ModelVersion. QDRANT-003 close-out: legacy global
+	// fallback was REMOVED — every point must carry the per-channel key.
 	VersionMismatchPerChannel map[string]int `json:"version_mismatch_per_channel,omitempty"`
+	// NonUUIDPointIDs (QDRANT-003 close-out): zero-legacy verification
+	// counts the number of scrolled points whose pt.ID is NOT in UUID
+	// v5 form (36 chars + hyphens at positions 8/13/18/23). Zero is the
+	// only acceptable value for a production-ready collection; non-zero
+	// blocks the alias switch via the Ready gate.
+	NonUUIDPointIDs int `json:"non_uuid_point_ids,omitempty"`
 	GoldenQueriesOK      bool           `json:"golden_queries_ok"`
 	GoldenQueryFailures   int            `json:"golden_query_failures,omitempty"`
-	DeadLetterOpen        int            `json:"dead_letter_open"`
-	Ready                 bool           `json:"ready"`
-	Errors                []string       `json:"errors,omitempty"`
+	// FiltersOK (QDRANT-003 close-out): true when the wired FilterMatrix
+	// runner returned passed=true (all filter combinations tested
+	// returned non-empty result sets against the target collection).
+	// false when nil runner is wired (production-admin semantics:
+	// nil runner + ExpectedPoints>0 means Ready=false) OR when any
+	// single filter in the matrix returned empty/mismatched.
+	FiltersOK       bool `json:"filters_ok"`
+	FilterFailures  int  `json:"filter_failures,omitempty"`
+	FilterChecksRun int  `json:"filter_checks_run,omitempty"`
+	DeadLetterOpen   int  `json:"dead_letter_open"`
+	Ready            bool `json:"ready"`
+	Errors           []string `json:"errors,omitempty"`
 }
 
 // ScrollResult holds a page of scrolled points and the next offset.
@@ -439,4 +452,23 @@ type ScrollPoint struct {
 // Implementations count open dead-letter events from the outbox.
 type DeadLetterChecker interface {
 	CountOpen(ctx context.Context) (int, error)
+}
+
+// FilterMatrix runs a real payload-filter smoke matrix against the
+// target collection and asserts that every named filter returns a
+// non-empty result set. This complements GoldenQueryRunner (which
+// proves the collection is queryable) with a per-payload-field
+// assertion that the streaming indexer actually wrote the fields the
+// production search route expects.
+//
+// QDRANT-003 close-out (June 2026): implements the FiltersOK gate.
+// nil = gate is trivially satisfied (FiltersOK=true). Production wiring
+// MUST supply a non-nil matrix so the alias switch is blocked when
+// any single filter combination is broken.
+//
+// Failure semantics: each filter combination runs independently;
+// one failure bumps FilterFailures but does NOT abort the remaining
+// checks (operators want the full report, not first-error).
+type FilterMatrix interface {
+	RunMatrix(ctx context.Context, collection string) (passed bool, failures int, checksRun int, err error)
 }
