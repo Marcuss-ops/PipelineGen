@@ -3,7 +3,7 @@ package assets
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/archcheck/gate"
+	"github.com/Marcuss-ops/PipelineGen/scripts/archcheck/gate"
 )
 
 // prohibitedPatterns is the per-area list for the top-level internal/api/assets/

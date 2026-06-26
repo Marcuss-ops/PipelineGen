@@ -4,8 +4,12 @@
 // `Walk`. The shared package owns the buffer-scan, per-violation `t.Errorf`,
 // and t.Fatalf-on-total machinery so callers stay declarative.
 //
-// Leaf-only (stdlib imports only) per AGENTS.md Pattern 4: pkg/<utility>
-// is the canonical home for reusable test helpers.
+// Lives under scripts/archcheck/ (not pkg/<utility>/) because the
+// gate framework is consumed exclusively by per-package *_test.go
+// files colocated with the internal/api/* gates it serves — it is a
+// toolchain helper, not a leaf utility. Stdlib imports only (no
+// internal/ or cmd/ imports), keeping it portable across test
+// packages without crossing layering boundaries.
 package gate
 
 import (

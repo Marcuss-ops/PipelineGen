@@ -162,9 +162,9 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 // ── Local AdminTokenProvider port ──────────────────────────────────────────
 //
 // Two-method interface consumed by RequireAdminToken. The canonical
-// concrete is pkg/middleware.TokenSecurityAdapter; ScriptFlowHandler
-// itself satisfies the port structurally so it can be passed in without
-// an intermediate adapter struct.
+// concrete is internal/api/middleware.TokenSecurityAdapter;
+// ScriptFlowHandler itself satisfies the port structurally so it can
+// be passed in without an intermediate adapter struct.
 type AdminTokenProvider interface {
 	EnableAuth() bool
 	AdminToken() string

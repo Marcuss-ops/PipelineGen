@@ -11,7 +11,7 @@ import (
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -91,14 +91,15 @@ func NewServerWithHealth(
 ) *Server {
 	if cfg != nil {
 		// PG-006.1 (June 2026): the inline serverSecurityAdapter was deleted
-		// — the canonical concrete is pkg/middleware.TokenSecurityAdapter
-		// (a leaf struct reachable from internal/api, cmd/admin, and
-		// internal/app without crossing layering boundaries). cfg.Security
+		// — the canonical concrete is
+		// internal/api/middleware.TokenSecurityAdapter (re-located from
+		// pkg/middleware round-2; pkg/ is leaf-only and HTTP-middleware
+		// concrete adapters cannot legitimately live there). cfg.Security
 		// is snapshotted into the canonical adapter literal here; the
 		// adapter is immutable per-token-string once constructed. Enable
 		// is the cfg.Security.EnableAuth passthrough (preserves the
 		// pre-PG-006.1 serverSecurityAdapter.EnableAuth() semantics).
-		authAdapter := &pkgmw.TokenSecurityAdapter{
+		authAdapter := &middleware.TokenSecurityAdapter{
 			Enable: cfg.Security.EnableAuth,
 			Admin:  cfg.Security.AdminToken,
 			Worker: cfg.Security.WorkerToken,
@@ -298,15 +299,15 @@ func (s *Server) GetRouter() *gin.Engine {
 // ── PG-006 typed-port bridges (server-scoped) ────────────────────────────
 //
 // PG-006.1 (June 2026): the previous serverSecurityAdapter inline struct
-// was deleted. The canonical concrete is pkg/middleware.TokenSecurityAdapter
-// (a leaf struct reachable from internal/api, cmd/admin, and internal/app
-// without crossing layering boundaries); the cfg-wrapping trio that
-// lived in api/server.go + cmd/admin/gen_api_docs.go +
+// was deleted. The canonical concrete is
+// internal/api/middleware.TokenSecurityAdapter (re-located from
+// pkg/middleware round-2). The cfg-wrapping trio that lived in
+// api/server.go + cmd/admin/gen_api_docs.go +
 // internal/app/middleware_security_adapter.go is now collapsed into
 // construction-site snapshots. Only the rate-limit and feature-flags
 // inline adapters remain below (their canonical equivalents are NOT
-// yet tracked under pkg/middleware; a separate consolidation would
-// promote them — out of scope for PG-006.1).
+// yet tracked under internal/api/middleware; a separate consolidation
+// would promote them — out of scope for PG-006.1).
 
 // serverRateLimitAdapter mirrors internal/app/middleware_security_adapter.go's
 // middlewareRateLimitAdapter for the RateLimitPort surface (same nil-check
