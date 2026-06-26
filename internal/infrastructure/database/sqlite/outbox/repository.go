@@ -36,7 +36,8 @@ type ClipsUpserter interface {
 }
 
 // Dispatcher is the ingestion entry point for the canonical
-// UPSERT + INSERT-IN-OUTBOX pattern.
+// UPSERT + INSERT-IN-OUTBOX pattern AND the canonical DEL +
+// INSERT-IN-OUTBOX pattern (QDRANT-002 PR7 EnqueueAndDelete).
 //
 // Every ingestion path (catalogsync, YouTube clip registration, Artlist
 // clip processing, stock pipeline, manual upload, transcript updates, …)
@@ -46,23 +47,62 @@ type ClipsUpserter interface {
 // but no embedding; if the goroutine started before the upsert committed,
 // a concurrent reader saw a half-state.
 //
-// By colocating the upsert and the outbox_events insert in a single
-// transaction we either commit both or neither; the outboxevents Pool
-// then picks up the event and runs IndexClip via the
-// IndexingHandler.
+// Every deletion path (DeletionService, admin delete endpoints, future
+// archival pipelines) MUST funnel through Dispatcher.EnqueueAndDelete.
+// The producer tx writes the canonical DELETE_PENDING marker on the
+// media_assets.index_state column BEFORE the outbox event row, so even
+// if the worker crashes mid-process an operator dashboard sees the
+// delete-intent without waiting for the lease acquire. The handler
+// (IndexDeleteHandler) completes the picture with Qdrant delete +
+// SQLite SoftDelete + DELETED state flip — keeping the two side of
+// the operation out of the producer tx avoids the orphan-vector bug
+// (if SoftDelete ran in the producer tx, the handler's idempotency
+// pre-flight would short-circuit on lifecycle_state='deleted' and
+// skip Qdrant delete — QDRANT-002 PR5 ticket analysis 2026-06-25).
+//
+// By colocating the metadata write and the outbox_events insert in a
+// single transaction we either commit both or neither; the outboxevents
+// Pool then picks up the event and runs IndexClip (or IndexDelete) via
+// the corresponding Handler.
 type Dispatcher struct {
 	clips            ClipsUpserter
+	stateWriter      ClipsStateWriter
 	outboxEventsRepo *outboxevents.Repository
 	txmgr            TxManager
 	log              *zap.Logger
 }
 
+// DeleteRequestSchemaVersion is the canonical, EXACT string the
+// handler on the consumer side accepts. Producers MUST send
+// "asset.index.delete_requested.v1" literally. This is duplicated
+// here (vs importing it from the consumer side) so the outbox
+// package — a leaf infra dependency that the application layer is
+// allowed to import — does not introduce an import cycle. Mismatch
+// is treated as TERMINAL by the handler (QDRANT-002 PR4 invariant I).
+const DeleteRequestSchemaVersion = "asset.index.delete_requested.v1"
+
 // NewDispatcher wires a Dispatcher against the canonical dependencies.
 // clips is typically *assets.ClipsRepository (which implements ClipsUpserter).
+// stateWriter is typically the same *assets.ClipsRepository (which
+// implements ClipsStateWriter from PR7); the two-method split makes
+// production wiring explicit and lets tests substitute fakes for one
+// half without spelling out the other.
 // outboxEventsRepo is the canonical outbox_events repository for
-// asset.index.requested event enqueue.
-func NewDispatcher(clips ClipsUpserter, outboxEventsRepo *outboxevents.Repository, txmgr TxManager, log *zap.Logger) *Dispatcher {
-	return &Dispatcher{clips: clips, outboxEventsRepo: outboxEventsRepo, txmgr: txmgr, log: log}
+// asset.index.requested + asset.index.delete_requested event enqueue.
+func NewDispatcher(
+	clips ClipsUpserter,
+	stateWriter ClipsStateWriter,
+	outboxEventsRepo *outboxevents.Repository,
+	txmgr TxManager,
+	log *zap.Logger,
+) *Dispatcher {
+	return &Dispatcher{
+		clips:            clips,
+		stateWriter:      stateWriter,
+		outboxEventsRepo: outboxEventsRepo,
+		txmgr:            txmgr,
+		log:              log,
+	}
 }
 
 // indexRequestV1 is the canonical envelope Dispatcher emits on
@@ -282,6 +322,125 @@ func shortHashPrefix(s string) string {
 		return s
 	}
 	return s[:12]
+}
+
+// EnqueueAndDelete performs the canonical DISPATCH step of an
+// asset.delete flow (QDRANT-002 PR7):
+//
+//	tx body:
+//	  1. SET index_state=DELETE_PENDING on media_assets (the
+//	     visibility marker operators see on dashboards while the
+//	     Qdrant delete is in flight; survives a worker crash)
+//	  2. INSERT outbox_events (event_type='asset.index.delete_requested',
+//	     idempotency_key/event_key via ON CONFLICT DO NOTHING)
+//
+// Both writes commit atomically. After commit, the outboxevents
+// Pool picks up the event and runs IndexDeleteHandler.Handle which
+// finishes the delete (Qdrant DeletePoints + SQLite SoftDelete +
+// index_state=DELETED).
+//
+// IMPORTANT: this function does NOT call repo.SoftDelete. QDRANT-002
+// PR5 analysis confirmed that doing SoftDelete here would break the
+// IndexDeleteHandler idempotency pre-flight (which short-circuits on
+// lifecycle_state in {deleted, DELETED}, leaving orphan Qdrant vectors).
+// See application/jobs/outbox/index_delete.go::Handle for the matching
+// pre-flight you must keep in sync if you tune this contract.
+//
+// Required wiring:
+//   - d.stateWriter: any ClipsStateWriter (production: *assets.ClipsRepository).
+//     nil → error returned (defense in depth — production wiring should
+//     supply a non-nil writer; NewDispatcher also accepts nil for test
+//     fixtures that exercise only EnqueueAndIndex).
+//   - d.outboxEventsRepo: not nil.
+//   - d.txmgr: not nil.
+//
+// Required inputs:
+//   - assetID: non-empty string; the canonical media_assets.id. The
+//     function does NOT verify existence in the assets table — a
+//     missing row is a benign no-op (the worker's pre-flight catches
+//     it and short-circuits the Qdrant + soft-delete phase to
+//     success, idempotent). This is intentional: callers do NOT
+//     need to pre-fetch the row before enqueuing.
+//
+// Idempotency:
+//   - Many producers can call EnqueueAndDelete in rapid succession
+//     for the same assetID. event_key shape `delete:<asset_id>` (see
+//     deleteEventKey) collapses all but the first into the
+//     outbox_events ON CONFLICT DO NOTHING. The repeated calls are
+//     safe — only one event row is created and one Qdrant delete
+//     fires.
+//   - The deadline mid-flight retry is also safe: column flip from
+//     DELETE_PENDING → DELETED is idempotent (no-op on already-DELETED),
+//     Qdrant DeletePoints is natively idempotent at the API layer
+//     (200 + deleted_count:0 on missing point), and the SQLite
+//     SoftDelete is itself idempotent through the lifecycle_state
+//     guard in ClipsRepository.AssetStoreSQLite.Delete.
+//
+// Returns: nil on commit; wrapped error if any tx step fails (the
+// tx is rolled back — neither the index_state flip NOR the outbox
+// row are observable to readers). Empty assetID returns an error
+// without opening a tx.
+func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.txmgr == nil {
+		return errors.New("outbox.Dispatcher: txmgr not configured")
+	}
+	if d.stateWriter == nil {
+		return errors.New("outbox.Dispatcher: state writer not configured (required for EnqueueAndDelete — wire *assets.ClipsRepository)")
+	}
+	if d.outboxEventsRepo == nil {
+		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+	}
+	if assetID == "" {
+		return errors.New("outbox.Dispatcher.EnqueueAndDelete: assetID is required")
+	}
+
+	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		// Step 1: stamp index_state=DELETE_PENDING before any external
+		// side-effect. This is the visibility marker operators observe
+		// from dashboards while the IndexDeleteHandler is mid-process.
+		// StateWriter.SetIndexStateTx stamps both index_state AND
+		// index_state_updated_at in one UPDATE. The change is
+		// observable to a concurrent reader AFTER commit; a worker
+		// crash before commit rolls back the marker (clean retry).
+		if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDeletePending); err != nil {
+			return fmt.Errorf("dispatcher delete: set index_state=DELETE_PENDING %s: %w", assetID, err)
+		}
+
+		// Step 2: emit the v1 envelope. v1 conflation invariant as
+		// in EnqueueAndIndex (see repository.go::EnqueueAndIndex for
+		// the full rationale — applies verbatim here).
+		payload := buildDeleteRequestV1(assetID)
+		eventKey := deleteEventKey(assetID)
+		if payload.IdempotencyKey != eventKey {
+			return fmt.Errorf("dispatcher: delete payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("dispatcher marshal v1 delete payload %s: %w", assetID, err)
+		}
+
+		if err := d.outboxEventsRepo.Enqueue(
+			ctx, tx,
+			outboxevents.EventAssetIndexDeleteRequested,
+			assetID,
+			"media_asset",
+			string(payloadJSON),
+			eventKey,
+		); err != nil {
+			return fmt.Errorf("dispatcher enqueue outbox delete event %s: %w", assetID, err)
+		}
+
+		if d.log != nil {
+			d.log.Debug("dispatcher enqueued asset for outbox_events deletion (v1 envelope)",
+				zap.String("asset_id", assetID),
+				zap.String("outbox_event_id", payload.EventID),
+			)
+		}
+		return nil
+	})
 }
 
 // MultiClipsUpserter routes UpsertClipTx calls to one of several underlying

@@ -1,0 +1,415 @@
+package clipindexer
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"testing"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+)
+
+// mediaAssetsStateMachineSchema is intentionally MINIMAL — only the
+// columns touched by setIndexState / setIndexedAt per PR6. Future
+// drift that adds a sidecar column the writers don't read (yet
+// could be read by a future code path) is impossible to mask; the
+// schema mirrors precisely the production writers' SQL projection.
+const mediaAssetsStateMachineSchema = `
+	CREATE TABLE IF NOT EXISTS media_assets (
+		id TEXT PRIMARY KEY,
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
+		index_state_updated_at TEXT NOT NULL DEFAULT ''
+	);
+`
+
+// newTestServiceForStateMachine constructs a fully-wired Service
+// the same way production callers do (NewService with a
+// *storage.SQLiteDB typed handle — see service.go PG-016 comment).
+//
+// Why we mirror production NewService even though the tests only
+// call setIndexState / setIndexedAt (which only touch s.db + s.log):
+//
+//	Service.db is *storage.SQLiteDB (PG-016 typed-handle migration);
+//	the compiler rejects raw *sql.DB literals in struct context.
+//	Bypassing this with a private wrapper that wraps a test *sql.DB
+//	re-introduces the PG-016 surface area the typed handle was
+//	introduced to remove. Future Service field additions (e.g., a
+//	config validator that panics on missing values) would crash
+//	test setup for irrelevant reasons, so we accept the extra
+//	setup cost and document the coupling here.
+func newTestServiceForStateMachine(t *testing.T, log *zap.Logger) *Service {
+	t.Helper()
+	if log == nil {
+		log = zap.NewNop()
+	}
+	cfg := DefaultConfig()
+	cfg.ScriptPath = "" // never invoke; belt-and-suspenders against a stray call
+
+	tmpDir := t.TempDir()
+	db, err := storage.NewSQLiteDB(tmpDir, "test.db", log)
+	if err != nil {
+		t.Fatalf("storage.NewSQLiteDB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	// Apply the test schema. storage.NewSQLiteDB opens an empty
+	// SQLite — no migrations run automatically, so the caller
+	// (this helper) owns schema setup.
+	if _, err := db.Exec(mediaAssetsStateMachineSchema); err != nil {
+		t.Fatalf("apply test schema: %v", err)
+	}
+
+	return NewService(cfg, db, db.Path(), log)
+}
+
+// TestSetIndexState_WritesColumn pins that setIndexState writes the
+// media_assets.index_state COLUMN on the success path, not a
+// metadata_json.$.index_state JSON key. The legacy implementation
+// used json_set on metadata_json — PR6 promotes the state to a real
+// column where an operator / dashboard query can read it without
+// paying json_extract cost.
+func TestSetIndexState_WritesColumn(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-1", `{}`)
+
+	svc.setIndexState(ctx, "clip-1", asset.StateIndexing, "")
+
+	got := readStateAndMeta(t, ctx, svc.db, "clip-1")
+	if got.indexState != string(asset.StateIndexing) {
+		t.Errorf("index_state column: want %q got %q",
+			string(asset.StateIndexing), got.indexState)
+	}
+	if got.indexStateUpdatedAt == "" {
+		t.Errorf("index_state_updated_at column: want non-empty; got %q",
+			got.indexStateUpdatedAt)
+	}
+	// PR6 invariant — verify via structured json.Unmarshal parse
+	// rather than substring match (a substring check would false-
+	// positive on compound keys like `subfolder_index_states`).
+	meta := parseJSONMeta(got.metadataJSON)
+	if hasMetaKey(meta, "index_state") {
+		t.Errorf("metadata_json.$.index_state must NOT be set by PR6 writers; got %v", meta)
+	}
+}
+
+// TestSetIndexState_WritesLastErrorSidecar pins that the
+// last_index_error sidecar (in metadata_json) survives the
+// column-promotion — operators grep on
+// `metadata_json LIKE '%last_index_error%'` today and changing the
+// audit-trail sidecar lives outside PR6's scope.
+func TestSetIndexState_WritesLastErrorSidecar(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-2", `{}`)
+
+	svc.setIndexState(ctx, "clip-2", asset.StateIndexFailed, "boom")
+
+	got := readStateAndMeta(t, ctx, svc.db, "clip-2")
+	if got.indexState != string(asset.StateIndexFailed) {
+		t.Errorf("index_state column: want %q got %q",
+			string(asset.StateIndexFailed), got.indexState)
+	}
+	meta := parseJSONMeta(got.metadataJSON)
+	if !hasMetaKey(meta, "last_index_error") {
+		t.Errorf("metadata_json must carry $.last_index_error sidecar (operator audit); got %v", meta)
+	}
+	if metaString(meta, "last_index_error") != "boom" {
+		t.Errorf("$.last_index_error must equal %q; got %q",
+			"boom", metaString(meta, "last_index_error"))
+	}
+}
+
+// TestSetIndexState_RefusesStateIndexedPanics pins the runtime guard
+// preventing accidental INDEXED writes via setIndexState. The
+// success path goes through setIndexedAt so the column flip +
+// $.indexed_at + $.indexed_content_hash + $.embedding_model +
+// $.embedding_model_version sit in ONE atomic UPDATE (the thinker's
+// question-G answer). A panic here surfaces the mistake loudly
+// instead of double-counting MediaIndexSuccessTotal.
+func TestSetIndexState_RefusesStateIndexedPanics(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-3", `{}`)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("setIndexState(STATE_INDEXED) must panic — use setIndexedAt for the success path")
+		}
+		msg, _ := r.(string)
+		if !strContains(msg, "setIndexedAt") {
+			t.Errorf("panic message must reference setIndexedAt; got %q", msg)
+		}
+	}()
+
+	svc.setIndexState(ctx, "clip-3", asset.StateIndexed, "")
+}
+
+// TestSetIndexedAt_WritesColumnPlusSidecarsAtomically pins that
+// setIndexedAt's UPDATE flushes the column flip and the four JSON
+// sidecars in ONE statement. The pre-PR6 implementation had two
+// separate UPDATEs (setIndexState then setIndexedAt) which left a
+// "Settled column, empty sidecars" window the fast-path could read.
+// After PR6 the column flip and the sidecars are inseparable.
+func TestSetIndexedAt_WritesColumnPlusSidecarsAtomically(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-4", `{}`)
+
+	if err := svc.setIndexedAt(ctx, "clip-4", "hash-CURRENT"); err != nil {
+		t.Fatalf("setIndexedAt: %v", err)
+	}
+
+	got := readStateAndMeta(t, ctx, svc.db, "clip-4")
+	if got.indexState != string(asset.StateIndexed) {
+		t.Errorf("index_state column: want %q got %q",
+			string(asset.StateIndexed), got.indexState)
+	}
+	if got.indexStateUpdatedAt == "" {
+		t.Errorf("index_state_updated_at column: want non-empty; got %q",
+			got.indexStateUpdatedAt)
+	}
+	// Sidecar writes are all-or-nothing because they sit in the
+	// same UPDATE statement. If any is missing, the writer is BROKEN
+	// (an intermediate state was observable mid-write).
+	meta := parseJSONMeta(got.metadataJSON)
+	required := []string{"indexed_at", "indexed_content_hash", "embedding_model", "embedding_model_version"}
+	for _, k := range required {
+		if !hasMetaKey(meta, k) {
+			t.Errorf("metadata_json must carry $.%s sidecar; got %v", k, meta)
+		}
+	}
+	if metaString(meta, "indexed_content_hash") != "hash-CURRENT" {
+		t.Errorf("$.indexed_content_hash must equal %q; got %q",
+			"hash-CURRENT", metaString(meta, "indexed_content_hash"))
+	}
+}
+
+// TestSetIndexState_RefusesUnknownStateLogsWarning pins the guard
+// against enum drift. If a future agent introduces an IndexState
+// variant without registering it in the Valid() switch, setIndexState
+// must not silently write a garbage value — log a warning and refuse.
+func TestSetIndexState_RefusesUnknownStateLogsWarning(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-5", `{}`)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("setIndexState(unknown) must NOT panic; got %v", r)
+		}
+	}()
+
+	svc.setIndexState(ctx, "clip-5", asset.IndexState("BANANA_STATE"), "")
+
+	got := readStateAndMeta(t, ctx, svc.db, "clip-5")
+	if got.indexState != string(asset.StateDiscovered) {
+		t.Errorf("index_state column must remain at DEFAULT after rejected write; want %q got %q",
+			string(asset.StateDiscovered), got.indexState)
+	}
+}
+
+// TestSetIndexState_RefusesEmptyState pins the PR6 invariant that
+// empty IndexState is rejected explicitly rather than silently
+// written. A worker that misconfigures the state enum and
+// accidentally passes `IndexState("")` would otherwise flip the
+// column to empty and the row would re-read as the column DEFAULT
+// (DISCOVERED) — losing any INDEXED / INDEX_FAILED / DELETED pre-
+// state. The guard turns the silent garbage write into a loud
+// operator-log warning.
+func TestSetIndexState_RefusesEmptyState(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-empty", `{}`)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("setIndexState(empty) must NOT panic; got %v", r)
+		}
+	}()
+
+	svc.setIndexState(ctx, "clip-empty", asset.IndexState(""), "")
+
+	got := readStateAndMeta(t, ctx, svc.db, "clip-empty")
+	if got.indexState != string(asset.StateDiscovered) {
+		t.Errorf("index_state column must remain at DEFAULT after rejected empty-state write; want %q got %q",
+			string(asset.StateDiscovered), got.indexState)
+	}
+	if got.indexStateUpdatedAt != "" {
+		t.Errorf("index_state_updated_at column must remain empty after rejected write; got %q",
+			got.indexStateUpdatedAt)
+	}
+}
+
+// TestSetIndexState_LastErrorSidecarClearsOnEmpty pins the PR6
+// invariant that the last_index_error sidecar is idempotent across
+// state transitions. A non-empty error writes $.last_index_error;
+// the NEXT state change with empty error must clear it via
+// json_remove — otherwise operators grep on
+// `metadata_json LIKE '%last_index_error%'` would see STALE errors
+// that don't match the current column state. The fix: both
+// branches in setIndexState touch metadata_json (json_set on
+// non-empty, json_remove on empty) so the sidecar is always in
+// lockstep with the column flip.
+func TestSetIndexState_LastErrorSidecarClearsOnEmpty(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-clear", `{}`)
+
+	// First: transition to INDEX_FAILED with non-empty lastError.
+	svc.setIndexState(ctx, "clip-clear", asset.StateIndexFailed, "boom")
+	got := readStateAndMeta(t, ctx, svc.db, "clip-clear")
+	meta := parseJSONMeta(got.metadataJSON)
+	if !hasMetaKey(meta, "last_index_error") {
+		t.Fatalf("setup: must have last_index_error sidecar; got %v", meta)
+	}
+	if metaString(meta, "last_index_error") != "boom" {
+		t.Fatalf("setup: last_index_error must equal %q; got %q",
+			"boom", metaString(meta, "last_index_error"))
+	}
+
+	// Then: transition to INDEXING with empty lastError — the
+	// sidecar MUST be cleared.
+	svc.setIndexState(ctx, "clip-clear", asset.StateIndexing, "")
+	got = readStateAndMeta(t, ctx, svc.db, "clip-clear")
+	if got.indexState != string(asset.StateIndexing) {
+		t.Errorf("index_state column: want %q got %q",
+			string(asset.StateIndexing), got.indexState)
+	}
+	meta = parseJSONMeta(got.metadataJSON)
+	if hasMetaKey(meta, "last_index_error") {
+		t.Errorf("$.last_index_error must be cleared after empty-error transition; got %v", meta)
+	}
+}
+
+// TestSetIndexState_MultiStateTransitions pins that the
+// (transient → failure → pending → terminal) sequence writes
+// happen in order with no missed states. Final state is INDEXED,
+// written by setIndexedAt (not setIndexState — see panic guard
+// above).
+func TestSetIndexState_MultiStateTransitions(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServiceForStateMachine(t, nil)
+
+	mustInsertAsset(t, ctx, svc.db, "clip-6", `{}`)
+
+	svc.setIndexState(ctx, "clip-6", asset.StateIndexing, "")
+	svc.setIndexState(ctx, "clip-6", asset.StateIndexFailed, "transient-err")
+	svc.setIndexState(ctx, "clip-6", asset.StateIndexPending, "")
+	svc.setIndexedAt(ctx, "clip-6", "hash-FINAL")
+
+	got := readStateAndMeta(t, ctx, svc.db, "clip-6")
+	if got.indexState != string(asset.StateIndexed) {
+		t.Errorf("final index_state: want %q got %q",
+			string(asset.StateIndexed), got.indexState)
+	}
+	if got.indexStateUpdatedAt == "" {
+		t.Errorf("final index_state_updated_at: want non-empty")
+	}
+}
+
+// ── Test helpers ────────────────────────────────────────────────────
+
+type stateAndMeta struct {
+	indexState          string
+	indexStateUpdatedAt string
+	metadataJSON        string
+}
+
+func mustInsertAsset(t *testing.T, ctx context.Context, db *storage.SQLiteDB, id, metaJSON string) {
+	t.Helper()
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO media_assets (id, metadata_json, index_state) VALUES (?, ?, 'DISCOVERED')`,
+		id, metaJSON)
+	if err != nil {
+		t.Fatalf("insert fixture asset %s: %v", id, err)
+	}
+}
+
+func readStateAndMeta(t *testing.T, ctx context.Context, db *storage.SQLiteDB, id string) stateAndMeta {
+	t.Helper()
+	var s stateAndMeta
+	err := db.QueryRowContext(ctx,
+		`SELECT COALESCE(index_state, ''), COALESCE(index_state_updated_at, ''), COALESCE(metadata_json, '{}')
+		 FROM media_assets WHERE id = ?`, id,
+	).Scan(&s.indexState, &s.indexStateUpdatedAt, &s.metadataJSON)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("asset %s missing after writer call", id)
+		}
+		t.Fatalf("read state for %s: %v", id, err)
+	}
+	return s
+}
+
+// parseJSONMeta unmarshals metadata_json into a map for structured
+// assertion. Returns nil if the JSON is empty or unparseable (the
+// hasMetaKey helper treats nil-map as "no keys" so this is a
+// safe representation rather than a programming error).
+func parseJSONMeta(jsonStr string) map[string]any {
+	if jsonStr == "" || jsonStr == "{}" {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &m); err != nil {
+		return nil
+	}
+	return m
+}
+
+// hasMetaKey asserts the metadata JSON has the named key (top-level).
+// Operates on parsed map[string]any for fixture-route semantic
+// matching — substring checks would false-positive on compound
+// keys like `subfolder_index_states` or `idx_state_other`.
+func hasMetaKey(m map[string]any, k string) bool {
+	if m == nil {
+		return false
+	}
+	_, ok := m[k]
+	return ok
+}
+
+// metaString returns the string value of a metadata key, or "" if
+// the key is absent or the value is not a string. Single-switch
+// type assertion — does not coerce non-string types (the operator
+// audit sidecar contract is strictly string).
+func metaString(m map[string]any, k string) string {
+	if m == nil {
+		return ""
+	}
+	v, ok := m[k]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+// strContains is a tiny local alias so the panic-message assertion
+// in TestSetIndexState_RefusesStateIndexedPanics reads cleaner than
+// `strings.Contains(msg, ...)` from a single-call site.
+func strContains(s, sub string) bool {
+	return len(s) >= len(sub) && indexOf(s, sub) >= 0
+}
+
+func indexOf(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}

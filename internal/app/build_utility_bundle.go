@@ -1,8 +1,8 @@
 package app
 
 import (
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"

@@ -33,6 +33,8 @@ import (
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 
+	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
@@ -67,15 +69,19 @@ type DriveBundle struct {
 
 // RepoBundle owns all SQLite-backed repositories not specific to a
 // capability bundle. MemoryRepo was relocated to AIBundle (PR4.A, June 2026).
+// PR8 (June 2026): IdempotencyStore — canonical typed port (not a duck
+// interface) so the composition layer's compile-time assertions catch
+// port drift immediately.
 type RepoBundle struct {
-	ScriptsRepo   *sqlitescripts.ScriptRepository
-	ImageRepo     *assets.ImagesRepository
-	ClipsRepo     *assets.ClipsRepository
-	Assets        *asset.Service
-	MonitorsRepo  *assets.MonitorsRepository
-	VoiceoverRepo *assets.VoiceoversRepository
-	CatalogRepo   *catalog.Repository
-	SQRepo        *assets.SearchQueriesRepository
+	ScriptsRepo      *sqlitescripts.ScriptRepository
+	ImageRepo        *assets.ImagesRepository
+	ClipsRepo        *assets.ClipsRepository
+	Assets           *asset.Service
+	MonitorsRepo     *assets.MonitorsRepository
+	VoiceoverRepo    *assets.VoiceoversRepository
+	CatalogRepo      *catalog.Repository
+	SQRepo           *assets.SearchQueriesRepository
+	IdempotencyStore mwidem.IdempotencyStore
 }
 
 // SearchBundle holds the asset metadata search/index pair and resolver.
@@ -181,6 +187,12 @@ type ComposeRoot struct {
 	DriveStart IOpaqueStartFunc
 	// OutboxStart starts the outbox events pool (PR9-B).
 	OutboxStart IOpaqueStartFunc
+	// PR8 (June 2026): the single canonical idempotency middleware
+	// instance — constructed once at WireRegistry and shared across
+	// clips/MediaIngest/YouTubeClip handlers. Stop() must be called on
+	// shutdown to halt the cleanup ticker goroutine. Lifecycle owned
+	// by shutdown.go.
+	IdempotencyMiddleware *mwidem.Idempotency
 
 	Ctx context.Context
 }
@@ -251,7 +263,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose sync: %w", err)
 	}
 
-	maint, err := BuildMaintBundle(ctx, cfg, dbs, log, driveBundle, repos, search, jobs)
+	maint, err := BuildMaintBundle(ctx, cfg, dbs, log, driveBundle, repos, search, jobs, outbox)
 	if err != nil {
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
@@ -296,7 +308,12 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 
 		DriveStart:  driveStart,
 		OutboxStart: outboxStart,
-		Ctx:         ctx,
+		// PR8 (June 2026): wire construction is performed in registry.go
+		// and assigned back to root.IdempotencyMiddleware. The cleanup
+		// goroutine lives only at the registry level (per reviewer fix A).
+		// WireRegistry (after this fn returns) sets the field directly
+		// via ComposeRoot.IdempotencyMiddleware assignment.
+		Ctx: ctx,
 	}
 
 	return root, nil

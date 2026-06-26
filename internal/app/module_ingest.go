@@ -3,6 +3,8 @@ package app
 import (
 	"strings"
 
+	"github.com/gin-gonic/gin"
+
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
@@ -49,7 +51,9 @@ type MediaIngestWiring struct {
 // PR3 (June 2026): if PrebuiltService is set, reuses it instead of creating
 // a new service (avoids double construction when BuildDomainBundle already
 // built the ingest service).
-func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBundle) (*MediaIngestWiring, error) {
+// PR8 (June 2026): added idempotencyMiddleware (reusable Gin idempotency
+// middleware instance) — installed by MediaingestHandler on POST /ingest.
+func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBundle, idempotencyMiddleware gin.HandlerFunc) (*MediaIngestWiring, error) {
 	if bundle == nil || bundle.DriveClient == nil {
 		return nil, nil
 	}
@@ -73,7 +77,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 			ingest.KindStock:     {Kind: ingest.KindStock, DefaultSource: "stock", RootFolderID: cfg.Drive.StockFolder(), Lifecycle: stockLifecycle},
 		})
 	}
-	handler := assets.NewMediaingestHandler(svc)
+	handler := assets.NewMediaingestHandler(svc, idempotencyMiddleware)
 	mod := module.NewRouteModule(
 		"media-ingest",
 		func() bool { return handler != nil },

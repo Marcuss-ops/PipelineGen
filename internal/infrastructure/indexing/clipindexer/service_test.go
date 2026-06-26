@@ -29,7 +29,13 @@ func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []
 }
 
 func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
-	// 1. Create in-memory SQLite DB with schema
+	// 1. Create in-memory SQLite DB with schema.
+	//
+	// QDRANT-002 PR6: the canonical index_state column is now a
+	// first-class SQL column on media_assets (migration 094). The
+	// indexer writers read/write it directly, so the test schema
+	// MUST include the column or setIndexedAt fails with
+	// "no such column: index_state".
 	db := drive.NewTestDBWithSchema(t, `
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
@@ -37,7 +43,9 @@ func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 			source TEXT,
 			tags TEXT,
 			embedding_json TEXT,
-			metadata_json TEXT
+			metadata_json TEXT,
+			index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
+			index_state_updated_at TEXT NOT NULL DEFAULT ''
 		)
 	`)
 	defer db.Close()

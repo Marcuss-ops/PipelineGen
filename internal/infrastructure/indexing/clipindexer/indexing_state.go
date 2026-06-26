@@ -8,46 +8,129 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
-// setIndexState atomically updates index_state in metadata_json.
-// Increments Prometheus counters for terminal states and StaleAssets
-// gauges for stuck-failure transitions (failed / retrying).
-func (s *Service) setIndexState(ctx context.Context, clipID, state, lastError string) {
+// setIndexState atomically writes the canonical index_state column
+// (media_assets.index_state, QDRANT-002 PR6 / migration 094) + the
+// matching index_state_updated_at stamp. lastError is mirrored into
+// metadata_json.$.last_index_error for operator audit — keep that
+// sidecar because operators grep on
+// `metadata_json LIKE '%last_index_error%'` today and a change
+// there is out of scope for PR6.
+//
+// The previous implementation used a `json_set` chain inside
+// metadata_json.$.index_state. That worked but: (a) it was
+// un-indexable by SQLite (json_extract cost on every scan), (b) the
+// values were an ad-hoc lowercase alphabet unrelated to the
+// canonical state machine, (c) IndexedAt/databases couldn't
+// CHECK-constrain a JSON-set value. After PR6 the column is the
+// single source of truth and a CHECK constraint is the natural
+// follow-up (in a separate migration — keeping PR6 to "promote
+// without re-shaping").
+//
+// Defense in depth: setIndexState refuses to write
+// asset.StateIndexed. INDEXED is the success terminal — write it
+// via setIndexedAt, which folds the sidecar metadata (indexed_at,
+// indexed_content_hash, embedding_model, embedding_model_version)
+// into a SINGLE atomic UPDATE (the thinker's question G answer).
+// A future refactor that accidentally passes StateIndexed to
+// setIndexState panics loudly rather than silently double-counting
+// the MediaIndexSuccessTotal metric.
+func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.IndexState, lastError string) {
+	if state == asset.StateIndexed {
+		panic("clipindexer.setIndexState must NOT write INDEXED — use setIndexedAt (writes the indexed_at / indexed_content_hash sidecars in a single atomic UPDATE)")
+	}
+	// Defense in depth (PR6 invariant): refuse empty IndexState
+	// explicitly. The pre-PR6 "empty as no-op marker" pattern is
+	// retired — a worker that misconfigures the state enum and
+	// passes `IndexState("")` would otherwise flip the column to
+	// empty and the row would re-read as the column's DEFAULT
+	// (DISCOVERED), silently losing any INDEXED / INDEX_FAILED /
+	// DELETED pre-state. Today the only legitimate "did nothing"
+	// signal is "didn't call setIndexState at all"; if a future
+	// caller needs an explicit no-op, add a typed setter (e.g.
+	// setIndexStateNoop) rather than conflating empty with no-op.
+	if state == "" {
+		s.log.Warn("setIndexState refusing empty state (silent garbage write would lose pre-state)",
+			zap.String("clip_id", clipID))
+		return
+	}
+	if !state.Valid() {
+		// Defense in depth against an enum drift: refuse unknown
+		// state values instead of writing a garbage value. Catches
+		// the legacy lowercase alphabet (legacyStateEmbedding etc.)
+		// that pre-PR6 callers may still pass if their callers
+		// haven't been migrated to the canonical enum yet.
+		s.log.Warn("setIndexState refusing unknown state value",
+			zap.String("clip_id", clipID),
+			zap.String("state", string(state)))
+		return
+	}
+
 	source := sourceFromClipID(clipID)
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	// Single atomic UPDATE — index_state column + index_state_updated_at column + sidecar last_index_error in metadata_json.
+	// The CASE expression collapses the json_set when lastError == ""
+	// so we don't write a sentinel "$.last_index_error" = "" entry
+	// (which the column-vs-sidecar rationale keeps clean).
+	var err error
 	if lastError != "" {
-		_, err := s.db.ExecContext(ctx,
-			`UPDATE media_assets SET metadata_json = json_set(json_set(json_set(COALESCE(metadata_json,'{}'), '$.index_state', ?), '$.last_index_error', ?), '$.index_state_updated_at', ?) WHERE id = ?`,
-			state, lastError, now, clipID)
-		if err != nil {
-			s.log.Warn("failed to set index state", zap.String("clip_id", clipID), zap.Error(err))
-		}
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE media_assets SET
+				index_state = ?,
+				index_state_updated_at = ?,
+				metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.last_index_error', ?)
+			 WHERE id = ?`,
+			string(state), now, lastError, clipID)
 	} else {
-		_, err := s.db.ExecContext(ctx,
-			`UPDATE media_assets SET metadata_json = json_set(json_set(COALESCE(metadata_json,'{}'), '$.index_state', ?), '$.index_state_updated_at', ?) WHERE id = ?`,
-			state, now, clipID)
-		if err != nil {
-			s.log.Warn("failed to set index state", zap.String("clip_id", clipID), zap.Error(err))
-		}
+		// PR6 invariant: BOTH branches write metadata_json so the
+		// $.last_index_error sidecar is idempotent across state
+		// transitions. The empty branch uses json_remove to clear
+		// any prior non-empty error — otherwise operators grep on
+		// `metadata_json LIKE '%last_index_error%'` to find
+		// recently-failed rows would see STALE errors that don't
+		// match the current column state. The two branches run
+		// symmetrically — one UPDATE round-trip each, same shape;
+		// no per-call cost asymmetry.
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE media_assets SET
+				index_state = ?,
+				index_state_updated_at = ?,
+				metadata_json = json_remove(COALESCE(metadata_json, '{}'), '$.last_index_error')
+			 WHERE id = ?`,
+			string(state), now, clipID)
+	}
+	if err != nil {
+		s.log.Warn("failed to set index state",
+			zap.String("clip_id", clipID),
+			zap.String("state", string(state)),
+			zap.Error(err))
 	}
 
+	// Metric increments: only transient / failure states here.
+	// Terminal success (INDEXED) is incremented by setIndexedAt —
+	// the success-path writer. This split prevents a future
+	// refactor from double-counting MediaIndexSuccessTotal when it
+	// mistakenly passes StateIndexed to setIndexState.
 	switch state {
-	case "indexed":
-		metrics.MediaIndexSuccessTotal.WithLabelValues(source).Inc()
-	case "failed":
-		metrics.MediaIndexFailureTotal.WithLabelValues(source).Inc()
-		metrics.StaleAssets.WithLabelValues(source, "failed").Inc()
-	case "retrying":
+	case asset.StateIndexing:
+		// No metric: in-flight work is not directly observable.
+	case asset.StateIndexPending:
 		metrics.MediaIndexRetryTotal.WithLabelValues(source).Inc()
 		metrics.StaleAssets.WithLabelValues(source, "retrying").Inc()
+	case asset.StateIndexFailed:
+		metrics.MediaIndexFailureTotal.WithLabelValues(source).Inc()
+		metrics.StaleAssets.WithLabelValues(source, "failed").Inc()
+	case asset.StateDiscovered:
+		// Initial state; no metric. Stale-Assets gauge remains at 0.
 	}
 
 	s.log.Debug("index state transition",
 		zap.String("clip_id", clipID),
-		zap.String("state", state))
+		zap.String("state", string(state)))
 }
 
 // sourceFromClipID returns the canonical source label used by Prometheus
@@ -67,14 +150,39 @@ func sourceFromClipID(clipID string) string {
 	}
 }
 
-// setIndexedAt persists the indexed_at timestamp, content hash, and
-// embedding model identity on the asset's metadata_json. Called once a
-// clip has been fully embedded and upserted into vectorstore.
+// setIndexedAt persists the canonical INDEXED state (column flip)
+// PLUS the indexed-completion sidecars in ONE atomic UPDATE. Splitting
+// the column write and the sidecar write is incorrect — a timeout
+// between the two would leave media_assets.index_state = "INDEXED"
+// while metadata_json.$.indexed_at is empty, and the fast-path check
+// would race on whatever value the reader sees first.
+//
+// Mirrors the pre-PR6 json_set chain on metadata_json
+// ($.index_state='indexed', $.indexed_at, $.indexed_content_hash,
+// $.embedding_model, $.embedding_model_version) PLUS the
+// column-level flip (index_state = 'INDEXED', index_state_updated_at).
+// Migration 094's backfill brush-handles pre-PR6 rows: they start
+// at column 'DISCOVERED' (the sentinel) and the worker eventually
+// re-touches them via the next outbox event, normalising to INDEXED.
+//
+// The order of fields in the UPDATE statement is metadata_json LAST
+// so a reader that observes the row mid-write via SQLite's read
+// snapshot sees the column flip first; the sidecars are observable
+// "next". Both are inside the same atomic write so observers can't
+// catch a between-the-two state, but the column-first write
+// ordering is defensive in case a future refactor splits the
+// UPDATE in error.
 func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE media_assets SET metadata_json = json_set(json_set(json_set(json_set(json_set(COALESCE(metadata_json,'{}'), '$.index_state', 'indexed'), '$.indexed_at', ?), '$.indexed_content_hash', ?), '$.embedding_model', ?), '$.embedding_model_version', ?) WHERE id = ?`,
-		now, contentHash, embeddingModel, embeddingModelVersion, clipID)
+		`UPDATE media_assets SET
+			index_state = ?,
+			index_state_updated_at = ?,
+			metadata_json = json_set(json_set(json_set(json_set(COALESCE(metadata_json, '{}'), '$.indexed_at', ?), '$.indexed_content_hash', ?), '$.embedding_model', ?), '$.embedding_model_version', ?)
+		 WHERE id = ?`,
+		string(asset.StateIndexed), now,
+		now, contentHash, embeddingModel, embeddingModelVersion,
+		clipID)
 	if err != nil {
 		return fmt.Errorf("set indexed_at for %s: %w", clipID, err)
 	}

@@ -11,12 +11,14 @@ import (
 )
 
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
-func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle) (*MaintBundle, error) {
+func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle, outboxBundle *OutboxBundle) (*MaintBundle, error) {
 	_ = ctx
 	deletionSvc := deletion.NewDeletionService(
 		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo,
 		repos.VoiceoverRepo, repos.ImageRepo,
-		drive.DriveUploader, search.AssetTreeService, search.AssetIndexService, log,
+		drive.DriveUploader, search.AssetTreeService, search.AssetIndexService,
+		outboxBundle.Dispatcher,
+		log,
 	)
 	maintenanceSvc := maintenance.NewService(cfg, log,
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,

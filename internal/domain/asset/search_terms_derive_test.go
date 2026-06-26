@@ -178,8 +178,8 @@ func TestDeriveSearchTerms_OrderPreservedAcrossFields(t *testing.T) {
 	// Substring recall is order-invariant; this test only locks the
 	// JSON-array contract for human-debug readability.
 	a := &Asset{
-		Name:   "Tokyo Tower",
-		Tags:   []string{"city", "night"},
+		Name:       "Tokyo Tower",
+		Tags:       []string{"city", "night"},
 		SearchText: "TWILIGHT over Tokyo",
 	}
 	got := DeriveSearchTerms(a)
@@ -211,13 +211,13 @@ func TestDeriveSearchTerms_AbbreviationSurvivesDotComma(t *testing.T) {
 	got := DeriveSearchTerms(a)
 
 	wantSet := map[string]struct{}{
-		"mr.":       {},
-		"smith":     {},
-		"at":        {},
-		"a.i.":      {},
+		"mr.":        {},
+		"smith":      {},
+		"at":         {},
+		"a.i.":       {},
 		"conference": {},
-		"u.s.a.":    {},
-		"ph.d.":     {},
+		"u.s.a.":     {},
+		"ph.d.":      {},
 	}
 	gotSet := make(map[string]struct{}, len(got))
 	for _, s := range got {

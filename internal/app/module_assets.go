@@ -23,6 +23,7 @@ import (
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -35,6 +36,7 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -49,28 +51,35 @@ var toolCheckerAdapter = infraassets.NewToolCheckerAdapter()
 
 // dbHealthCheckerAdapter is a package-level adapter for the infrastructure DBHealthChecker port.
 // Used by system handler to check database health.
-var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
-
-// AssetsBundle is the capability bundle for the unified Assets module.
-//
+var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil) // AssetsBundle is the capability bundle for the unified Assets module.
 // PR4d-chunk2 (June 2026): wraps 10 cross-bundle reads of WireAssets.
 // ClipIndexerService moved INTO the bundle (was a direct arg in earlier
 // draft); RealtimeService moved OUT (single-use, fits clean as a 10th
 // direct arg). AssetTreeService + AssetIndexService stay inside since they
 // have multiple uses (deletion svc + handler ctor).
 //
-// Field budget: 10 fields (per AGENTS.md / arch constraint).
+// PR8 (June 2026): gain IdempotencyStore (typed port, principally for
+// the bundle's compile-time port assertion) and IdempotencyStoreHandler
+// (the gin.HandlerFunc constructed once at WireRegistry and threaded
+// through here). The cleanup goroutine is owned by
+// ComposeRoot.IdempotencyMiddleware (single instance per app), NOT
+// constructed inside WireAssets — keeps the registry-level lifecycle
+// simple and avoids double-ticker leaks.
+//
+// Field budget: 12 fields (PR8 adds two).
 type AssetsBundle struct {
-	ClipsRepo          *assets.ClipsRepository
-	VoiceoverRepo      *assets.VoiceoversRepository
-	ImageRepo          *assets.ImagesRepository
-	Assets             *asset.Service
-	DriveClient        *gdrive.Service
-	AssetTreeService   *assettree.Service
-	AssetIndexService  *assetindex.Service
-	MediaProcessor     asset.Processor
-	CatalogSyncService *catalogsync.Service
-	ClipIndexerService *clipindexer.Service
+	ClipsRepo               *assets.ClipsRepository
+	VoiceoverRepo           *assets.VoiceoversRepository
+	ImageRepo               *assets.ImagesRepository
+	Assets                  *asset.Service
+	DriveClient             *gdrive.Service
+	AssetTreeService        *assettree.Service
+	AssetIndexService       *assetindex.Service
+	MediaProcessor          asset.Processor
+	CatalogSyncService      *catalogsync.Service
+	ClipIndexerService      *clipindexer.Service
+	IdempotencyStore        middleware.IdempotencyStore
+	IdempotencyStoreHandler gin.HandlerFunc
 }
 
 // AssetsWiring holds the Assets module wiring.
@@ -109,6 +118,17 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, log)
+
+	// PR8 (June 2026): idemHandler is passed in from WireRegistry (see
+	// registry.go). WireAssets does NOT construct its own Idempotency
+	// instance — the cleanup goroutine lives once at the registry level
+	// and is owned by ComposeRoot.IdempotencyMiddleware (Stop() on
+	// shutdown). A nil idemHandler (e.g. nil-store test fixture) is
+	// tolerated; the handler wrappers fall through to pass-through.
+	var idemHandler gin.HandlerFunc = func(c *gin.Context) { c.Next() }
+	if bundle.IdempotencyStore != nil {
+		idemHandler = bundle.IdempotencyStoreHandler
+	}
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
@@ -209,7 +229,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
 	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler)
-	registerHandler := assetregister.NewHandler(registerSvc, log)
+	// PR8: register receives the same shared idempotency handler as clips.
+	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
 
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
 		Storage:     storageHandler,

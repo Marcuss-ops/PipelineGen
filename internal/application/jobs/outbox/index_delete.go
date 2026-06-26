@@ -62,12 +62,23 @@ type QdrantDeleter interface {
 }
 
 // AssetDeleter is the minimum surface for reading the current asset
-// state (pre-flight idempotency check) and writing the soft-delete
-// transition (post-Qdrant-success). The production concrete is
-// *assets.ClipsRepository from internal/infrastructure/database/sqlite/assets.
+// state (pre-flight idempotency check) and writing the soft-delete +
+// canonical index_state transition (QDRANT-002 PR6). The production
+// concrete is *assets.ClipsRepository from
+// internal/infrastructure/database/sqlite/assets.
+//
+// SetIndexState writes the canonical index_state column on
+// media_assets (the column added by migration 094). Called by
+// IndexDeleteHandler.Handle between the idempotency pre-flight and
+// the Qdrant delete (write DELETE_PENDING) and again after the SQLite
+// SoftDelete (write DELETED). The method is intentionally narrow —
+// a single column flip — so production wiring reflects an interface
+// extension without an adapter layer. Tests pass a stub that
+// records the (id, state) pairs so transitions are observable.
 type AssetDeleter interface {
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
 	SoftDelete(ctx context.Context, id string) error
+	SetIndexState(ctx context.Context, id string, state asset.IndexState) error
 }
 
 // indexDeleteRequestV1 is the canonical envelope for
@@ -239,6 +250,30 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		}
 	}
 
+	// Mark delete-intent on media_assets.index_state BEFORE any
+	// external side-effect (Qdrant delete) — QDRANT-002 PR6 column
+	// promotion. DELETE_PENDING is observable from dashboards while
+	// the SoftDelete is in flight; useful for an operator
+	// investigating a stuck DELETE flow. Survives a worker crash
+	// mid-flow: the outbox lease-fence retries the event from the
+	// start (Qdrant delete is idempotent at the API layer). The
+	// re-write of DELETE_PENDING on retry is itself idempotent
+	// (column already holds DELETE_PENDING) so no transition noise.
+	if h.assetDeleter != nil {
+		if err := h.assetDeleter.SetIndexState(ctx, req.AssetID, asset.StateDeletePending); err != nil {
+			// SetIndexState failure is retryable — same backoff path
+			// as Qdrant errors. The retry re-runs SetIndexState →
+			// Qdrant → SoftDelete → SetIndexState(DELETED). The only
+			// cost is one redundant column flip on a retry; the
+			// pre-flight's lifecycle_state=DELETED early-skip catches
+			// the AFTER-SoftDelete case.
+			log.Warn("asset.index.delete_requested: SetIndexState(DELETE_PENDING) failed (retryable)",
+				append(reqLog, zap.Error(err))...,
+			)
+			return fmt.Errorf("asset.index.delete_requested SetIndexState(DELETE_PENDING, %s): %w", req.AssetID, err)
+		}
+	}
+
 	// Qdrant delete first. DeletePoints is natively idempotent at
 	// the API layer: a missing point returns 200 + deleted_count: 0,
 	// not 404. We do NOT need a separate "is the point there?"
@@ -266,6 +301,24 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 				append(reqLog, zap.Error(err))...,
 			)
 			return fmt.Errorf("asset.index.delete_requested SoftDelete(%s): %w", req.AssetID, err)
+		}
+		// Final canonical state flip — index_state = 'DELETED' runs
+		// AFTER SoftDelete so the column-side and lifecycle-side
+		// tombstones settle in the same write batch. SQLite's per-row
+		// write is implicit so a transient state where
+		// lifecycle_state='deleted' AND index_state='DELETE_PENDING'
+		// is briefly observable to a concurrent reader; the
+		// idempotency pre-flight tolerates both (no false dead-letter
+		// risk), and an operator dashboard sees a 1-row window on a
+		// freshly-DELETED asset. The setIndexState failure here is
+		// retryable: on the next lease the pre-flight catches
+		// lifecycle_state='deleted' → early success; the wasted
+		// transition is one column flip.
+		if err := h.assetDeleter.SetIndexState(ctx, req.AssetID, asset.StateDELETED); err != nil {
+			log.Warn("asset.index.delete_requested: SetIndexState(DELETED) failed (retryable)",
+				append(reqLog, zap.Error(err))...,
+			)
+			return fmt.Errorf("asset.index.delete_requested SetIndexState(DELETED, %s): %w", req.AssetID, err)
 		}
 	}
 

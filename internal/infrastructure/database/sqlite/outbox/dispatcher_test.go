@@ -13,11 +13,24 @@ import (
 
 // fakeClips records UpsertClipTx invocations and argument order so tests
 // can assert the upsert comes BEFORE the outbox enqueue (single tx).
+// QDRANT-002 PR7: extends to also satisfy the ClipsStateWriter
+// interface so the dispatcher wired with a single fake satisfies both
+// the upserter and the state writer in test wiring.
 type fakeClips struct {
 	mu        sync.Mutex
 	upserts   []*asset.Asset
 	orderLog  []string
 	upsertErr error
+
+	statesMu sync.Mutex
+	stateLog []stateTxLog
+	stateErr error
+}
+
+type stateTxLog struct {
+	Tx    *sql.Tx
+	ID    string
+	State asset.IndexState
 }
 
 func (f *fakeClips) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
@@ -27,6 +40,16 @@ func (f *fakeClips) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.As
 	f.orderLog = append(f.orderLog, "upsert:"+clip.ID)
 	if f.upsertErr != nil {
 		return f.upsertErr
+	}
+	return nil
+}
+
+func (f *fakeClips) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id string, state asset.IndexState) error {
+	f.statesMu.Lock()
+	defer f.statesMu.Unlock()
+	f.stateLog = append(f.stateLog, stateTxLog{Tx: tx, ID: id, State: state})
+	if f.stateErr != nil {
+		return f.stateErr
 	}
 	return nil
 }
@@ -56,7 +79,7 @@ func TestDispatcher_NilPointerRejected(t *testing.T) {
 // TestDispatcher_MissingClipIDRejected confirms the empty-ID guard runs
 // before any tx is opened (txMgrNoop would catch a bug).
 func TestDispatcher_MissingClipIDRejected(t *testing.T) {
-	d := NewDispatcher(&fakeClips{}, nil, txMgrNoop{}, zap.NewNop())
+	d := NewDispatcher(&fakeClips{}, &fakeClips{}, nil, txMgrNoop{}, zap.NewNop())
 	err := d.EnqueueAndIndex(context.Background(), &asset.Asset{ID: ""}, "hash")
 	if err == nil {
 		t.Fatal("empty clip ID must return error before txmgr.InTransaction is reached")
@@ -101,6 +124,11 @@ func TestShortHashPrefix(t *testing.T) {
 
 // Compile-time guard: fakeClips must satisfy the ClipsUpserter interface.
 var _ ClipsUpserter = (*fakeClips)(nil)
+
+// Compile-time guard: fakeClips also satisfies the ClipsStateWriter interface
+// (QDRANT-002 PR7 — Dispatcher wires both upserter and state writer through
+// the same concrete in production, so the test does the same).
+var _ ClipsStateWriter = (*fakeClips)(nil)
 
 // Compile-time guard: txMgrNoop must satisfy the TxManager interface used
 // by Dispatcher and the outbox worker (defined in indexer.go).

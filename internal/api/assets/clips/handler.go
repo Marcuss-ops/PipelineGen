@@ -13,9 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -69,6 +69,14 @@ type Deps struct {
 // Handler owns every clip-related HTTP method. One receiver per method;
 // no nested struct fan-out.
 type Handler struct {
+	// PR8 (June 2026): Idempotency is the reusable Gin idempotency
+	// middleware (constructed once at server boot via NewHandler →
+	// WireAssets → BuildRepoBundle.IdempotencyStore). Nil-tolerated so
+	// test fixtures can opt out. Only WRITE routes (POST/PUT/PATCH/DELETE
+	// on /clips/* and the upload/bulk routes) install it — READ routes
+	// fall through unchanged.
+	Idempotency gin.HandlerFunc
+
 	sourceResolver *artifacts.SourceResolver
 	assetRepo      asset.Repository
 	clipsRepo      *assets.ClipsRepository
@@ -105,8 +113,18 @@ type Handler struct {
 // NewHandler constructs the unified Handler. May be called before every
 // dependency is wired — individual methods that need a missing dep will
 // internal-error handle it (preserved legacy behavior).
-func NewHandler(d Deps) *Handler {
+//
+// PR8: idempotencyMiddleware is the reusable Gin idempotency middleware
+// instance; a nil value disables idempotency (test fixtures / dry-run
+// CLI invocations). Production wiring passes the canonical *middleware.Idempotency
+// value constructed from BuildRepoBundle.IdempotencyStore.
+func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
+	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
+	if idempotencyMiddleware != nil {
+		idem = idempotencyMiddleware
+	}
 	return &Handler{
+		Idempotency:    idem,
 		sourceResolver: d.SourceResolver,
 		assetRepo:      d.AssetRepo,
 		clipsRepo:      d.ClipsRepo,
@@ -178,49 +196,66 @@ func (h *Handler) RegisterJobHandlers() error {
 	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.HandleBulkUploadYouTubeClipsJob)
 }
 
+// PR8 helper: idemWriter returns h.Idempotency if set, else a no-op
+// pass-through handler. Used only for Write routes (POST/PUT/PATCH/DELETE);
+// read routes never need idempotency.
+func (h *Handler) idemWriter() gin.HandlerFunc {
+	if h.Idempotency == nil {
+		return func(c *gin.Context) { c.Next() }
+	}
+	return h.Idempotency
+}
+
 // RegisterRoutes mounts the entire clip-route surface on the supplied
 // gin router group. SourcesHandler keeps the Voiceover, SoundEffect,
 // diagnostics, and Drive-move/fold/sync-route families and delegates
 // everything else to h.clips.
+//
+// PR8 (June 2026): write routes (POST/PUT/PATCH/DELETE) install
+// h.Idempotency BEFORE the handler — when present — so Idempotency-Key
+// replay, body-hash conflict (422), and in-flight (409) semantics
+// apply uniformly. Read routes are unchanged.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
+	idem := h.idemWriter()
 	// Clip-level endpoints
-	r.POST("/:source/clips", h.CreateClip)
+	r.POST("/:source/clips", idem, h.CreateClip)
 	r.GET("/:source/clips", h.ListClips)
 	r.GET("/:source/clips/:id", h.GetClip)
-	r.PATCH("/:source/clips/:id", h.UpdateClip)
-	r.POST("/:source/clips/:id/status", h.ClipStatus)
-	r.POST("/:source/clips/:id/verify", h.VerifyClip)
-	r.POST("/:source/clips/:id/trash", h.TrashClip)
-	r.POST("/:source/clips/:id/delete", h.DeleteClip)
-	r.POST("/:source/clips/:id/download", h.DownloadClip)
-	r.POST("/:source/clips/:id/duplicates", h.FindDuplicates)
-	r.POST("/:source/clips/:id/reupload", h.ReuploadClip)
-	r.POST("/:source/clips/:id/reprocess", h.ReprocessClip)
-	r.POST("/:source/clips/:id/reindex", h.ReindexClip)
+	r.PATCH("/:source/clips/:id", idem, h.UpdateClip)
+	r.POST("/:source/clips/:id/status", idem, h.ClipStatus)
+	r.POST("/:source/clips/:id/verify", idem, h.VerifyClip)
+	r.POST("/:source/clips/:id/trash", idem, h.TrashClip)
+	r.POST("/:source/clips/:id/delete", idem, h.DeleteClip)
+	r.POST("/:source/clips/:id/download", idem, h.DownloadClip)
+	r.POST("/:source/clips/:id/duplicates", idem, h.FindDuplicates)
+	r.POST("/:source/clips/:id/reupload", idem, h.ReuploadClip)
+	r.POST("/:source/clips/:id/reprocess", idem, h.ReprocessClip)
+	r.POST("/:source/clips/:id/reindex", idem, h.ReindexClip)
 
 	// Source-level bulk actions
-	r.POST("/:source/bulk/tags/add", h.BulkAddTags)
-	r.POST("/:source/bulk/tags/remove", h.BulkRemoveTags)
-	r.POST("/:source/reconcile", h.Reconcile)
-	r.POST("/:source/cleanup", h.Cleanup)
+	r.POST("/:source/bulk/tags/add", idem, h.BulkAddTags)
+	r.POST("/:source/bulk/tags/remove", idem, h.BulkRemoveTags)
+	r.POST("/:source/reconcile", idem, h.Reconcile)
+	r.POST("/:source/cleanup", idem, h.Cleanup)
 
-	// Folders + tree
+	// Folders + tree (writes only)
 	r.GET("/:source/folders", h.ListFolders)
 	r.GET("/:source/folders/:id", h.FolderStatus)
-	r.POST("/:source/folders/:id/manifest", h.RegenerateManifest)
-	r.POST("/:source/folders/:id/trash", h.TrashFolder)
-	r.POST("/:source/folders/:id/delete", h.DeleteFolder)
+	r.POST("/:source/folders/:id/manifest", idem, h.RegenerateManifest)
+	r.POST("/:source/folders/:id/trash", idem, h.TrashFolder)
+	r.POST("/:source/folders/:id/delete", idem, h.DeleteFolder)
 	r.GET("/:source/folders/:id/children", h.GetFolderChildren)
 	r.GET("/:source/tree", h.GetTree)
 	r.GET("/:source/breadcrumb", h.GetBreadcrumb)
 
 	// Cross-cutting actions on existing clip contexts
-	r.POST("/enrich", h.EnrichMedia)
-	r.POST("/enrich/batch", h.BatchReindex)
+	r.POST("/enrich", idem, h.EnrichMedia)
+	r.POST("/enrich/batch", idem, h.BatchReindex)
 
-	// Upload endpoints
-	r.POST("/upload-video", h.UploadVideoClip)
+	// Upload endpoints (multipart body bypasses body-hash; idempotency still
+	// observes in-flight 409 + completed replay).
+	r.POST("/upload-video", idem, h.UploadVideoClip)
 
 	// Search endpoint
-	r.POST("/search/advanced", h.AdvancedSearch)
+	r.POST("/search/advanced", idem, h.AdvancedSearch)
 }

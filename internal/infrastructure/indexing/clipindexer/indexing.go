@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 const (
@@ -37,14 +39,23 @@ func EmbeddingModelVersion() string { return embeddingModelVersion }
 func CollectionVersion() string { return collectionVersion }
 
 // IndexClip generates embeddings for a clip and upserts it into Qdrant.
-// Uses a state machine tracked in metadata_json.index_state:
+// Uses the canonical state machine in media_assets.index_state (column,
+// QDRANT-002 PR6 / migration 094) — see internal/domain/asset/index_state.go
+// for the IndexState enum:
 //
-//	pending → embedding → upserting → indexed
-//	                      ↘ failed     ↘ retrying
+//	DISCOVERED → INDEX_PENDING → INDEXING → INDEXED → INDEX_FAILED
+//	                                                → DELETE_PENDING → DELETED
 //
 // The fast path skips regeneration when BOTH embeddings exist AND the
-// content hash matches AND index_state == "indexed".
+// content hash matches AND index_state == asset.StateIndexed.
 // Clips without a transcript only require the semantic embedding to be valid.
+//
+// Writers to media_assets.index_state:
+//   - setIndexState (transient + failure states INDEXING, INDEX_PENDING,
+//     INDEX_FAILED; refuses to write INDEXED — see panic guard).
+//   - setIndexedAt (terminal INDEXED + sidecar metadata in single atomic
+//     UPDATE — folded with $.indexed_at, $.indexed_content_hash,
+//     $.embedding_model, $.embedding_model_version).
 func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if !s.cfg.Enabled {
 		s.log.Debug("clipindexer disabled, skipping", zap.String("clip_id", clipID))
@@ -75,7 +86,7 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 		}
 	}
 
-	s.setIndexState(ctx, clipID, "embedding", "")
+	s.setIndexState(ctx, clipID, asset.StateIndexing, "")
 
 	if s.cfg.ServerURL != "" {
 		err := s.indexViaAPI(ctx, clipID)
@@ -90,7 +101,7 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 
 	err = s.indexViaScript(ctx, clipID)
 	if err != nil {
-		s.setIndexState(ctx, clipID, "failed", err.Error())
+		s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error())
 		return fmt.Errorf("indexViaScript failed for %s: %w", clipID, err)
 	}
 	return s.finalizeIndex(ctx, clipID, contentHash)
@@ -108,7 +119,7 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 		(embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}'),
 		(transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}'),
 		COALESCE(json_extract(metadata_json, '$.indexed_content_hash'), ''),
-		COALESCE(json_extract(metadata_json, '$.index_state'), '')
+		COALESCE(index_state, '')
 		FROM media_assets WHERE id = ?`, clipID).Scan(&hasSemantic, &hasTranscriptEmb, &storedHash, &indexState)
 	if err != nil {
 		s.log.Warn("fast path check failed, will re-index",
@@ -117,7 +128,7 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 	}
 
 	embeddingsOK := hasSemantic && (hasTranscriptEmb || !hasTranscript)
-	if !embeddingsOK || indexState != "indexed" || storedHash != contentHash {
+	if !embeddingsOK || indexState != string(asset.StateIndexed) || storedHash != contentHash {
 		return false
 	}
 
@@ -125,7 +136,7 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 		zap.String("clip_id", clipID))
 
 	if err := s.UpsertVectorStore(ctx, clipID); err != nil {
-		s.setIndexState(ctx, clipID, "retrying", err.Error())
+		s.setIndexState(ctx, clipID, asset.StateIndexPending, err.Error())
 		s.log.Error("fast-path upsert failed", zap.String("clip_id", clipID), zap.Error(err))
 		return false
 	}
@@ -140,10 +151,10 @@ func (s *Service) tryFastPath(ctx context.Context, clipID, contentHash string, h
 
 // finalizeIndex upserts to vector store and persists the indexed state.
 func (s *Service) finalizeIndex(ctx context.Context, clipID, contentHash string) error {
-	s.setIndexState(ctx, clipID, "upserting", "")
+	s.setIndexState(ctx, clipID, asset.StateIndexing, "")
 
 	if err := s.UpsertVectorStore(ctx, clipID); err != nil {
-		s.setIndexState(ctx, clipID, "failed", err.Error())
+		s.setIndexState(ctx, clipID, asset.StateIndexFailed, err.Error())
 		return fmt.Errorf("Qdrant upsert failed for %s: %w", clipID, err)
 	}
 
