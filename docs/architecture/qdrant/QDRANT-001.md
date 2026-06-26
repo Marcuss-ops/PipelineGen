@@ -1,140 +1,105 @@
-# QDRANT-001 — sidecar envelope, canonical point ID e search contract
+# QDRANT-001 — sidecar envelope, point ID canonico e search contract
 
-> **Stato:** `PARTIAL / DA RIAPRIRE`  
-> **Audit baseline:** `main@c72949a362656f05222f333adf67b1b0eee973ae` — 26 giugno 2026  
-> **Owner suggerito:** embedding sidecar + `internal/infrastructure/qdrant/` + application search DTO  
-> **Branch suggerito:** `codex/qdrant-001-sidecar-contract`
+> **Stato:** `BLOCKED / NON CHIUDIBILE`  
+> **Audit baseline:** `main@e20d5e7fc4afd9f446d9d9e92703db639008b37f` — 26 giugno 2026  
+> **Tipo verifica:** audit statico del codice; nessuna esecuzione CI associata all'HEAD.
 
 ## OBIETTIVO
 
-Avere un solo contratto operativo per l'indicizzazione multicanale:
+Un solo contratto per embedding e ricerca:
 
-- il sidecar restituisce embedding, dimensioni, modello e versione modello;
-- `AssetID -> QdrantPointID` passa da una sola funzione canonica;
-- Qdrant contiene soltanto dati necessari a ricerca, ranking e hydration;
-- nessun path locale o link Drive attraversa il contratto di ricerca;
-- workspace e lifecycle sono applicati anche durante l'hydration SQLite.
+- sidecar con `embedding`, `dimensions`, `model`, `model_version`;
+- una sola trasformazione `AssetID -> QdrantPointID`;
+- nessun locator server-internal nei DTO o payload di ricerca;
+- workspace e lifecycle applicati anche durante l'hydration SQLite;
+- cleanup automatico dei punti creati dal contratto precedente.
 
-## STATO REALE
+## COMPLETATO
 
-### Completato
+- `AssetIDToQdrantPointID` genera UUID v5 deterministici ed è usato dal mapper.
+- `BuildPayload` non emette più `drive_link` o `local_path`.
+- `workspace_id` viene propagato nell'hydration SQLite.
+- la configurazione Qdrant non duplica più nomi e dimensioni posseduti da `IndexSchema`.
 
-- `AssetIDToQdrantPointID` esiste in un'unica implementazione e genera UUID v5 deterministici.
-- `PayloadMapper.AssetToPoint` usa la funzione canonica invece di assegnare direttamente `asset.ID`.
-- `workspace_id` viene propagato dal media-search adapter a `asset.Filter` e applicato in SQL.
-- `qdrant.SearchResult` non espone più `LocalPath` o `DriveLink`.
-- `BuildPayload` non scrive più `drive_link` o path filesystem nel payload Qdrant.
-- la configurazione Qdrant non duplica più nomi e dimensioni dei canali posseduti da `IndexSchema`.
-- i writer Python storici non scrivono direttamente nel database SQLite.
+## LEGACY ANCORA PRESENTE
 
-### Da finire
+1. `scripts/services/embedding_server/visual.py` restituisce soltanto embedding e dimensioni in `/embed_visual`, `/embed_visual_from_image` e `/visual_analyze`.
+2. `scripts/services/embedding_server/audio.py` restituisce soltanto embedding e dimensioni in `/embed_audio` e `/embed_audio_from_file`.
+3. `internal/application/assets/search/ports.go::VectorSearchResult` espone ancora `LocalPath` e `DriveLink`.
+4. Le collection già popolate possono conservare payload `drive_link` o `local_path`; non esiste ancora un cleaner/reconciler operativo.
+5. `payload_mapper.go` contiene ancora commenti che descrivono una trasformazione simmetrica `PointIDToAssetID`, nonostante UUID v5 sia one-way e il reverse helper sia stato rimosso.
+6. `search_adapter.go` conserva commenti contraddittori che dichiarano i locator rimossi dal DTO mentre i campi sono ancora presenti.
+7. Il gate QDRANT-001 è documentato ma non viene eseguito da `scripts/ci-architectural-checks.sh`.
 
-1. **Envelope sidecar incompleto.** Gli endpoint visual e audio importano già le costanti del modello, ma restituiscono ancora soltanto `embedding` e `dimensions`.
-2. **DTO applicativo legacy.** `internal/application/assets/search/ports.go::VectorSearchResult` conserva `LocalPath` e `DriveLink`.
-3. **Payload legacy già indicizzati.** Vecchi punti Qdrant possono contenere ancora `drive_link`; il decoder non lo usa più, ma il dato deve essere rimosso mediante rebuild o reconciler.
-4. **Gate CI non obbligatorio.** I controlli descritti in questo ticket non sono ancora eseguiti dal wrapper CI principale.
+## TASK RESIDUI
 
-## TASK DI HANDOFF
+### A. Envelope sidecar canonico
 
-### A. Rendere canonico l'envelope del sidecar
-
-Aggiornare almeno:
-
-- `scripts/services/embedding_server/visual.py`
-- `scripts/services/embedding_server/audio.py`
-- gli altri endpoint embedding che usano un envelope equivalente
-- DTO/client Go che deserializzano le risposte
-- test Python e Go del contratto
-
-Ogni risposta positiva deve avere questa forma minima:
+Ogni endpoint embedding positivo deve restituire:
 
 ```json
 {
   "embedding": [0.0],
   "dimensions": 768,
   "model": "siglip",
-  "model_version": "<versione-canonica>"
+  "model_version": "2026-06-16-v1"
 }
 ```
 
-Regole:
+Il consumer Go deve rifiutare envelope incompleti, dimensioni incoerenti e versioni incompatibili con `IndexSchema`.
 
-- `model` e `model_version` non possono essere vuoti;
-- `dimensions` deve coincidere con la lunghezza reale del vettore;
-- il consumer Go deve rifiutare una versione non compatibile con lo schema attivo;
-- nessun fallback deve inventare una versione mancante.
+### B. Eliminare i locator dal contratto applicativo
 
-### B. Rimuovere i locator dal DTO applicativo
-
-Eliminare `LocalPath` e `DriveLink` da:
-
-- `internal/application/assets/search/ports.go::VectorSearchResult`
-- mapper, mock, fixture e consumer associati
-
-L'accesso ai byte deve avvenire tramite `asset_id` e delivery URL firmato.
+Rimuovere `LocalPath` e `DriveLink` da `VectorSearchResult`, mapper, fixture, mock e consumer. L'accesso ai byte deve passare da `asset_id` e delivery URL firmata.
 
 ### C. Ripulire i punti legacy
 
-Integrare nel rebuild/reconciler QDRANT-005 una verifica che:
+Il reconciler QDRANT-005 deve individuare e riscrivere i punti contenenti locator legacy, con dry-run, metriche e test idempotente.
 
-- individui payload contenenti `drive_link` o `local_path`;
-- riscriva o ricrei il punto con il payload canonico;
-- produca un conteggio osservabile dei punti ripuliti.
+### D. Ripulire commenti e documentazione obsoleti
+
+Eliminare ogni riferimento a reverse mapping UUID e ogni dichiarazione di chiusura non coerente con il DTO reale.
 
 ## LEGACY DA ELIMINARE
 
-| Legacy | Dove | Azione richiesta |
+| Legacy | Dove | Azione |
 |---|---|---|
-| risposta sidecar senza `model` / `model_version` | `scripts/services/embedding_server/{visual,audio}.py` e endpoint equivalenti | introdurre envelope canonico e validazione consumer |
-| `VectorSearchResult.LocalPath` | `internal/application/assets/search/ports.go` | eliminare campo e consumer |
-| `VectorSearchResult.DriveLink` | `internal/application/assets/search/ports.go` | eliminare campo e consumer |
-| payload Qdrant storici con `drive_link` | collection precedenti | rebuild o repair tramite reconciler |
-| gate documentati ma non eseguiti in CI | `scripts/ci-architectural-checks.sh` | aggiungere gate automatici |
+| envelope senza modello/versione | embedding sidecar visual/audio | aggiungere envelope e validazione consumer |
+| `VectorSearchResult.LocalPath` | application search DTO | eliminare campo e consumer |
+| `VectorSearchResult.DriveLink` | application search DTO | eliminare campo e consumer |
+| payload storici con locator | collection Qdrant | repair/rebuild tramite reconciler |
+| commenti `PointIDToAssetID` | payload mapper | correggere documentazione |
+| commenti DTO contraddittori | search adapter | allineare commenti e codice |
+| gate solo Markdown | CI | rendere il controllo obbligatorio |
 
 ## DEFINITION OF DONE
 
 Il ticket può essere marcato `CLOSED` soltanto quando:
 
-- tutti gli endpoint embedding restituiscono modello e versione reali;
-- il consumer rifiuta envelope incompleti o incompatibili;
-- esiste una sola dichiarazione di `AssetIDToQdrantPointID`;
-- nessun DTO di ricerca espone path locali o link Drive;
-- workspace isolation è testata sia nel filtro Qdrant sia nell'hydration SQLite;
-- un test dimostra che un punto legacy viene rilevato e ripulito;
-- il gate automatico fallisce se una delle legacy viene reintrodotta.
+- tutti gli endpoint sidecar restituiscono modello e versione reali;
+- il consumer verifica il contratto rispetto al manifest;
+- nessun DTO di search espone locator;
+- nessun payload nuovo contiene locator;
+- i payload storici sono rilevati e ripuliti da un job idempotente;
+- commenti e runbook descrivono soltanto il percorso reale;
+- il gate automatico fallisce alla reintroduzione di ogni legacy.
 
-## GATE ANTI-REGRESSIONE
+## GATE MINIMO
 
 ```bash
 set -euo pipefail
 
-# Point-ID SSOT: una sola dichiarazione produttiva.
-test "$(rg -n --glob '!**/*_test.go' \
-  'func AssetIDToQdrantPointID\(' internal/infrastructure/qdrant | wc -l)" -eq 1
-
-# Vietati locator nel DTO applicativo e nel DTO Qdrant.
-! rg -n '^\s*(LocalPath|DriveLink)\s+string' \
-  internal/application/assets/search/ports.go \
-  internal/infrastructure/qdrant/types.go
-
-# Vietata emissione dei locator nel payload Qdrant.
-! rg -n 'payload\["(local_path|drive_link)"\]' \
-  internal/infrastructure/qdrant
-
-# Gli endpoint embedding devono emettere identificazione modello.
-rg -n '"model"|"model_version"' \
-  scripts/services/embedding_server/visual.py \
-  scripts/services/embedding_server/audio.py
-
-# Build e test mirati.
-go test ./internal/infrastructure/qdrant/... \
-  ./internal/application/mediasearch/... \
-  ./internal/infrastructure/database/sqlite/assets/...
+test "$(rg -n --glob '!**/*_test.go' 'func AssetIDToQdrantPointID\(' internal/infrastructure/qdrant | wc -l)" -eq 1
+! rg -n '^\s*(LocalPath|DriveLink)\s+string' internal/application/assets/search/ports.go
+! rg -n 'PointIDToAssetID' internal/infrastructure/qdrant
+rg -n '"model"' scripts/services/embedding_server/visual.py scripts/services/embedding_server/audio.py
+rg -n '"model_version"' scripts/services/embedding_server/visual.py scripts/services/embedding_server/audio.py
+go test ./internal/infrastructure/qdrant/... ./internal/application/mediasearch/...
 ```
 
 ## NON CHIUDERE SE
 
-- `model` o `model_version` sono valori hard-coded non collegati al modello realmente caricato;
-- `LocalPath` o `DriveLink` restano disponibili nel contratto di search;
-- la pulizia dei payload legacy è solo descritta ma non eseguibile;
-- il gate vive soltanto in questo Markdown e non nella CI.
+- modello/versione sono inventati o scollegati dal modello caricato;
+- anche un solo locator resta nel DTO;
+- il cleanup dei punti storici è soltanto descritto;
+- il gate non è eseguito dalla CI.
