@@ -16,7 +16,6 @@ import (
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
 )
 
 // searchAdapter adapts qdrant.Searcher to search.VectorStorePort.
@@ -153,15 +152,19 @@ func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		filter = map[string]interface{}{"must": must}
 	}
 
-	// QDRANT-004: tokenize query text into BM25 sparse vector
-	// for real hybrid (dense + sparse) retrieval via RRF fusion.
+	// QDRANT-004 PR1 (June 2026): the orchestrator now owns BM25
+	// tokenization (mediasearch.Service builds the *bm25.SparseVector
+	// and sets HybridSearchRequest.SparseVector). The adapter becomes
+	// a pure DTO → Qdrant mapper: project Fields{Indices, Values} into
+	// the infrastructure-level SparseQueryVector. Any nil vector here
+	// means the orchestrator failed to enforce fail-closed — the
+	// downstream qdrant.Searcher.HybridSearch will reject with
+	// ErrSparseRequired as defence-in-depth.
 	var sparseVec *SparseQueryVector
-	if req.SparseVectorName != "" && req.QueryText != "" {
-		if sv := bm25.Tokenize(req.QueryText); sv != nil {
-			sparseVec = &SparseQueryVector{
-				Indices: sv.Indices,
-				Values:  sv.Values,
-			}
+	if req.SparseVector != nil {
+		sparseVec = &SparseQueryVector{
+			Indices: req.SparseVector.Indices,
+			Values:  req.SparseVector.Values,
 		}
 	}
 
@@ -197,12 +200,9 @@ func convertSearchResults(results []SearchResult) []appsearch.VectorSearchResult
 // searchResultToVectorSearchResult converts a single Qdrant search result
 // to the application-level DTO, extracting known payload fields.
 //
-// QDRANT-004 (June 2026): LocalPath and DriveLink were removed from
-// appsearch.VectorSearchResult — they were dead fields populated but never
-// consumed by any search pipeline (neither buildSearchReason nor the legacy
-// /api/media/search handler accessed them on VectorSearchResult). The
-// infra-level qdrant.SearchResult retains them for asset_store, index_writer,
-// and stale-link cleaner until those are migrated.
+// QDRANT-001 (June 2026): LocalPath and DriveLink have been removed
+// from both qdrant.SearchResult (infra) and appsearch.VectorSearchResult
+// (application DTO). The search contract is now locator-free.
 func searchResultToVectorSearchResult(r SearchResult) appsearch.VectorSearchResult {
 	sr := appsearch.VectorSearchResult{
 		QdrantPointID: r.ID,
@@ -216,12 +216,6 @@ func searchResultToVectorSearchResult(r SearchResult) appsearch.VectorSearchResu
 	sr.AssetID = payloadString(r.Payload, "asset_id")
 	sr.Source = payloadString(r.Payload, "source")
 	sr.Name = payloadString(r.Payload, "name")
-	// QDRANT-001 (June 2026) closure: LocalPath and DriveLink are
-	// no longer populated on the internal SearchResult struct, and
-	// therefore are not extracted here. The legacy
-	// `appsearch.VectorSearchResult` still carries those fields
-	// (omitted-valued for new payloads); future cleanup is a
-	// `appsearch` deprecation, out of scope for QDRANT-001.
 	sr.Category = payloadString(r.Payload, "category")
 	sr.MediaType = payloadString(r.Payload, "media_type")
 	sr.Style = payloadString(r.Payload, "style")
