@@ -378,11 +378,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			log.Info("registered script.generate_batch job handler (PR-A: BatchJobHandler in internal/application/scripts)")
 		}
 		if curationJobSvc != nil {
-			root.Jobs.Service.RegisterHandler("media.curate", curationJobSvc.HandleCurateJob)
+			root.Jobs.Service.RegisterHandler(jobdomain.TypeMediaCurate, curationJobSvc.HandleCurateJob)
 			log.Info("registered media.curate job handler (wire_script.go)")
 		}
 		if catalogJobSvc != nil {
-			root.Jobs.Service.RegisterHandler("script.generate_from_catalog", catalogJobSvc.HandleCatalogScriptGenerateJob)
+			root.Jobs.Service.RegisterHandler(jobdomain.TypeCatalogScriptGenerate, catalogJobSvc.HandleCatalogScriptGenerateJob)
 			log.Info("registered script.generate_from_catalog job handler (wire_script.go)")
 		}
 		if pipelineUC != nil {

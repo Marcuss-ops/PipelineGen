@@ -279,7 +279,7 @@ func (u *GenerateBatchUseCase) Run(ctx context.Context, in GenerateBatchInput) (
 		// parameters on methods, so we cannot attach it to *Service).
 		// The *Service receiver is the first explicit argument after ctx.
 		job, err := jobservice.EnqueueTyped(ctx, u.Jobs, &jobservice.EnqueueRequest{
-			Type:          "script.generate_batch",
+			Type:          jobservice.TypeBatchScriptGenerate,
 			Priority:      5,
 			ActiveKey:     activeKey,
 			CorrelationID: corid.FromContext(ctx),
