@@ -3,6 +3,7 @@ package clips
 import (
 	"strconv"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -35,7 +36,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 		treeNodes, treeErr := h.assetTreeSvc.ListChildrenPaged(ctx, source, folderID, limit, offset)
 		if treeErr == nil {
 			for _, tn := range treeNodes {
-				children = append(children, treeNodeToAssetNode(tn))
+				children = append(children, appclips.TreeNodeToAssetNode(tn))
 			}
 		} else {
 			err = treeErr
@@ -45,7 +46,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
 		if clipErr == nil {
 			for _, clip := range clipChildren {
-				children = append(children, treeNodeToAssetNode(ClipToAssetNode(clip)))
+				children = append(children, appclips.TreeNodeToAssetNode(appclips.ClipToAssetNode(clip)))
 			}
 		} else {
 			err = clipErr
@@ -88,7 +89,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 
 	var children []*asset.AssetNode
 	for _, tn := range treeNodes {
-		children = append(children, treeNodeToAssetNode(tn))
+		children = append(children, appclips.TreeNodeToAssetNode(tn))
 	}
 
 	if len(children) == 0 {
@@ -97,7 +98,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 			clipChildren, clipErr := repo.GetFolderChildren(c.Request.Context(), parentID)
 			if clipErr == nil {
 				for _, clip := range clipChildren {
-					children = append(children, treeNodeToAssetNode(ClipToAssetNode(clip)))
+					children = append(children, appclips.TreeNodeToAssetNode(appclips.ClipToAssetNode(clip)))
 				}
 			}
 		}

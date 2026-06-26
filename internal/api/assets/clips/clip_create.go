@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -58,7 +59,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	// 2. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := ClipToAssetNode(&clip)
+		node := appclips.ClipToAssetNode(&clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}

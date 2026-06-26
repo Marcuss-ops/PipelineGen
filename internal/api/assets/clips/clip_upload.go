@@ -10,6 +10,7 @@ import (
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -258,7 +259,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 11. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := ClipToAssetNode(clip)
+		node := appclips.ClipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
