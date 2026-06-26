@@ -308,8 +308,8 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 			if err := json.Unmarshal(raw, &input); err != nil {
 				return err
 			}
-			if strings.TrimSpace(input.SourceAssetID) == "" && strings.TrimSpace(input.FilePath) == "" && strings.TrimSpace(input.GoogleDocURL) == "" {
-				return fmt.Errorf("source_asset_id, file_path or google_doc_url is required")
+			if strings.TrimSpace(input.SourceAssetID) == "" && strings.TrimSpace(input.GoogleDocURL) == "" {
+				return fmt.Errorf("source_asset_id or google_doc_url is required")
 			}
 			return nil
 		},
