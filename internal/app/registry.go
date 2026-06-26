@@ -9,7 +9,7 @@
 // Body is structurally identical to pre-PR4d: build RegistryWiring,
 // late-inject ImageService → MediaIngest Service, mutate
 // ProviderRegistry.Freeze() at the very end of WireRegistry (Reviewer Q8 fix).
-package appimport (
+package app (
 	"context"
 	"fmt"
 
