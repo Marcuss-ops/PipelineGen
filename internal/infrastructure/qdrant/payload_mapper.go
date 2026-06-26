@@ -262,9 +262,6 @@ func BuildPayload(asset *AssetData, schema *IndexSchema) map[string]interface{} 
 	if asset.Name != "" {
 		payload["name"] = asset.Name
 	}
-	if asset.DriveLink != "" {
-		payload["drive_link"] = asset.DriveLink
-	}
 	if len(asset.Tags) > 0 {
 		payload["tags"] = asset.Tags
 	}
