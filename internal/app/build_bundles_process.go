@@ -327,11 +327,18 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// nil ClipsRepo → nil AssetSourceChecker → IndexingHandler skips
 	// the supersede gate (acceptable in test dbs; production always
 	// wires non-nil).
+	//
+	// Wave 16 (June 2026): typed-port direct assignment per
+	// AGENTS.md Pattern 0. The previous `interface{}(repos.ClipsRepo)
+	// .(jobsoutbox.AssetSourceChecker)` raw cast is replaced because
+	// *assets.ClipsRepository statically implements the port
+	// (compile-time assertion at
+	// internal/infrastructure/database/sqlite/assets/clips_repository.go).
+	// Dropping the `, ok` form is safe: the assertion fails the build
+	// if port drift ever breaks the static implementation contract.
 	var assetSourceChecker jobsoutbox.AssetSourceChecker
 	if repos.ClipsRepo != nil {
-		if sc, ok := interface{}(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker); ok {
-			assetSourceChecker = sc
-		}
+		assetSourceChecker = repos.ClipsRepo
 	}
 
 	outboxDeps := &jobsoutbox.Deps{
