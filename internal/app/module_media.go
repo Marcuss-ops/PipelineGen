@@ -14,6 +14,7 @@ import (
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -152,6 +153,16 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if bundle.IdempotencyStore != nil {
 		idemHandler = bundle.IdempotencyStoreHandler
 	}
+
+	// PR12c (June 2026): wire the dispatcher's port, NOT the concrete
+	// *outbox.Dispatcher, into the unified clips handler. Adapter is
+	// constructed only when dispatcher is non-nil (partial deploy path);
+	// when dispatcher is nil the handler falls back to raw repo.UpsertClip
+	// via the `if h.dispatcher != nil` guard in UpdateClip.
+	var clipsDispatcherPort appclips.ClipIndexDispatcherPort
+	if dispatcher != nil {
+		clipsDispatcherPort = &clipsDispatcherAdapter{disp: dispatcher}
+	}
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
@@ -176,10 +187,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 			"stock":   bundle.ClipsRepo,
 		}),
 		ProcessRunner: processRunnerAdapter,
-		Dispatcher:    dispatcher,
+		Dispatcher:    clipsDispatcherPort,
 	}, idemHandler)
-
-	// ── PR 3 (June 2026): storage thin-transport handler ─────
 	var drivePort appstorage.DrivePort
 	if driveUploader != nil {
 		drivePort = &storageDriveAdapter{up: driveUploader}

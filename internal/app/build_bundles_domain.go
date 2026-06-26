@@ -40,7 +40,13 @@ import (
 )
 
 // BuildDomainBundle builds the media-domain services.
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle) (*DomainBundle, error) {
+//
+// PR-12d (June 2026): takes the OutboxBundle as the LAST positional
+// argument so the canonical outbox.Dispatcher is available for
+// constructor injection into images.Service. NewComposition must
+// call BuildOutboxBundle BEFORE BuildDomainBundle for this dep to
+// be satisfied (see composition.go::NewComposition).
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle) (*DomainBundle, error) {
 	clipsRegistry := artifacts.NewClipsRegistry(
 		dbs.main.DB,
 		repos.Assets.Repository(),
@@ -123,6 +129,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		drive.StyleRegistry, ai.ScriptGen,
 		drive.MediaStore, repos.ImageRepo,
 		voMetaWriter, ingestSvc,
+		outbox.Dispatcher,
 	)
 
 	// Wave 15 (June 2026): RealtimeService split into two typed ports —

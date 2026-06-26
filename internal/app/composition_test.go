@@ -23,8 +23,11 @@
 //  4. TestComposition_FreezeOrdering_BuildSequence — source-level
 //     assertion that NewComposition's Build*Bundle call order matches the
 //     frozen sequence (Repo → Search → Drive → Process → Jobs → AI →
-//     Domain → Outbox → Sync → Maint → Utility). The order encodes the
-//     dependency graph; any change is a refactor signal.
+//     Outbox → Domain → Sync → Maint → Utility). The order encodes the
+//     dependency graph; any change is a refactor signal. PR-12d
+//     (June 2026) swapped Domain and Outbox so the canonical outbox
+//     dispatcher is available when images.Service is constructed via
+//     constructor injection (closing the late-bind ordering hazard).
 package app
 
 import (
@@ -318,6 +321,7 @@ var frozenZeroSpawnBuilders = []string{
 	"BuildAIBundle",
 	"BuildDomainBundle",
 	"BuildJobsBundle",
+	"BuildOutboxBundle",
 	"BuildSyncBundle",
 	"BuildMaintBundle",
 	"BuildUtilityBundle",
@@ -429,6 +433,10 @@ func compositionBundleSourceFiles(t *testing.T) []string {
 // The order encodes the dependency graph; runs left-to-right produce a
 // fully-resolved ComposeRoot. Any reordering instruction that does not
 // also update this slice is a refactor regression the test will flag.
+//
+// PR-12d (June 2026): Domain and Outbox swapped so the canonical
+// outbox dispatcher is available at the moment images.Service is
+// constructed (closing the SetDispatcher late-bind ordering hazard).
 var frozenCompositionSequence = []string{
 	"BuildRepoBundle(",
 	"BuildSearchBundle(",
@@ -436,8 +444,8 @@ var frozenCompositionSequence = []string{
 	"BuildProcessBundle(",
 	"BuildJobsBundle(",
 	"BuildAIBundle(",
-	"BuildDomainBundle(",
 	"BuildOutboxBundle(",
+	"BuildDomainBundle(",
 	"BuildSyncBundle(",
 	"BuildMaintBundle(",
 	"BuildUtilityBundle(",
