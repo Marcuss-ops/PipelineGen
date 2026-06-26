@@ -1,5 +1,13 @@
 # Agent Execution Playbook
 
+> **Status**: **canonical** (promoted June 2026 from godlike/ design-state).
+> This document is the single source of truth for AI-agent code
+> modification boundaries, EXPAND/BACKFILL/CUTOVER/CONTRACT migration
+> method, and final verification steps. Working in conjunction with
+> `AGENTS.md` (rules-and-instructions fast-reference) and
+> `ARCHITECTURE.md` (structural diagram), this playbook codifies HOW
+> the agent gets from one to the other without leaving legacy residue.
+
 ## Preparation
 
 Before a change, inspect the current repository and identify the existing owner, registry entries, constructors, routes, jobs, data model, and tests. Start from current `main` and define a bounded file set.

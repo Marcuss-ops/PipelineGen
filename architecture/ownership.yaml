@@ -35,7 +35,7 @@ module_route_map:
       - GET  /jobs/:job_id/full
   - module: Assets
     prefix: /api/media + /api/assets
-    owner: internal/app/module_assets.go
+    owner: internal/app/module_media.go
     routes:
       - POST /media/search
       - POST /media/upload
@@ -56,7 +56,7 @@ module_route_map:
       - POST /ingest/bulk
   - module: Artlist
     prefix: /api/artlist
-    owner: internal/app/module_artlist.go
+    owner: internal/app/module_sources.go
     routes:
       - POST /run
       - GET  /runs/:run_id
@@ -68,7 +68,7 @@ module_route_map:
       - POST /sync-catalogs
   - module: Images
     prefix: /api/images
-    owner: internal/app/module_fullimages.go
+    owner: internal/app/composition.go (consolidated; Build*Bundle)
     routes:
       - GET  /search
       - GET  /diagnostics
@@ -80,7 +80,7 @@ module_route_map:
       - POST /video/generate
   - module: Jobs
     prefix: /api/jobs + /api/internal
-    owner: internal/app/module_jobs.go
+    owner: internal/app/composition.go::BuildJobsBundle
     routes:
       - POST /
       - GET  /
@@ -92,7 +92,7 @@ module_route_map:
       - GET  /:id/events
   - module: YouTube
     prefix: /api/clips
-    owner: internal/app/module_youtube.go
+    owner: internal/app/composition.go::BuildDomainBundle
     routes:
       - POST /search
       - POST /ingest
@@ -100,14 +100,14 @@ module_route_map:
       - POST /batch
   - module: Channels
     prefix: /api/channels
-    owner: internal/app/module_ingest.go
+    owner: internal/app/composition.go (consolidated; Build*Bundle)
     routes:
       - GET  /
       - POST /
       - POST /:id/toggle
   - module: Stock
     prefix: stock pipeline routes
-    owner: internal/app/module_stock.go
+    owner: internal/app/composition.go (consolidated; Build*Bundle)
     routes: []  # registered via separate handler
   - module: Content
     prefix: /api/books + /api/lessons
@@ -216,16 +216,16 @@ canonical_services:
     location: internal/app/wire_script.go
   - service: ImageService
     constructor: initImageService
-    location: internal/app/compose_images.go
+    location: internal/app/composition.go
   - service: VoiceoverService
     constructor: initVoiceoverService
-    location: internal/app/compose_voiceover.go
+    location: internal/app/compose_media.go
   - service: BooksService
     constructor: initBooksService
-    location: internal/app/compose_content.go
+    location: internal/app/composition.go
   - service: ArtlistService
     constructor: NewService
-    location: internal/app/module_artlist.go
+    location: internal/app/module_sources.go
   - service: YouTubeClipService
     constructor: NewYouTubeService
     location: internal/app/composition.go::BuildDomainBundle

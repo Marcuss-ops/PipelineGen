@@ -21,6 +21,11 @@ The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER
 - **README.md**: Project structure and architecture overview (entry point).
 - **PROJECT_GUIDE.md**: Italian language getting started guide.- **ARCHITECTURE.md**: Full system architecture, module ownership, data flow, database schemas, day-1 commands — **canonical** doc for structure.
 - **architecture/policy.yaml**: target-tree governance rules (Phase 0, June 2026) — command fields, package-size caps, top-level dir restrictions, expected kernel/capability/platform subzones. Read by `go run ./cmd/archcheck` (stdlib parser). Doc-side pointer: see [ARCHITECTURE.md §11.5](ARCHITECTURE.md#115-target-tree-phase-0-governance).
+- **[`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md)**: Canonical rules for **data and configuration ownership** — database (driver lock, FTS5 ban, schema boundaries, table capability), Qdrant projection sequence, file/Drive location authority, configuration boot pipeline, EXPAND/BACKFILL/CUTOVER/CONTRACT. Supersedes overlapping data/config rules previously restated in `Instructions` (below), `Qdrant Entity Associations` (below), `Pattern 2`, ARCHITECTURE.md §6 Persistence, and ARCHITECTURE.md §9 Configuration.
+- **[`docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md`](docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md)**: Canonical rules for deprecation records (`deprecation ID + owner + replacement + introduction date + removal deadline + tracking issue + compatibility test + usage metric`) and the EXPAND/BACKFILL/CUTOVER/CONTRACT migration sequence. Authoritative on "no fake availability" and the 7 forbidden compatibility techniques.
+- **[`docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md`](docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md)**: Canonical CI-gate definitions, complexity budgets (file cap, 8-dep constructor cap, capability-without-descriptor fail), and the **zero-baseline rule** ("final acceptable count is zero; transitional baselines require an owner and deadline").
+- **[`docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md`](docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md)**: Canonical workflow for human/coding agents: preparation, scope discipline, forbidden additions, targeted testing, EXPAND/BACKFILL/CUTOVER/CONTRACT migration method, and final verification (diff-intent + remote commit presence + honest limitations). Working with AGENTS.md Git-Lessons.
+- **[`docs/architecture/godlike/13_FEATURE_REMOVAL_CHECKLIST.md`](docs/architecture/godlike/13_FEATURE_REMOVAL_CHECKLIST.md)**: Canonical 7-phase teardown sequence for a superseded feature: Discovery → Runtime cut → Data handling → Code removal → Configuration and operations → Verification → Completion.
 - **cmd/archcheck/main.go**: target-tree validator binary, report-only in Phase 0 (exits 0 even with violations). Promoted to gate via `--strict` in later phases. It supersedes every older `docs/architecture/*.md` file
   (the `docs/` folder has been completely removed in June 2026).
 - **architecture/current.yaml**: ratchet tracker verificabile delle
@@ -66,6 +71,8 @@ non possono diventare production-readiness criteria.
 
 ## Instructions
 
+> **Authority**: Database rules (driver lock, FTS5 ban, single-table-per-capability ownership, no cross-DB generic migrations) live canonically in **[`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#database-rules`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#database-rules)**. The bullets below are the agent-facing fast-reference at code-edit time — when in doubt, defer to the canonical doc.
+
 - **Non cambiare driver SQLite** (rimanere su `mattn/go-sqlite3`)
 - **Non lavorare su FTS5** (il supporto dipende dal driver compilato, usare fallback LIKE)
 - **Concentrarsi solo su schema boundaries, diagnostics e test**
@@ -75,6 +82,8 @@ non possono diventare production-readiness criteria.
   - `data/media/media.db.sqlite`: **Unico database** — tutto in un solo file (scripts, jobs, asset_index, media_assets, harvester, pipeline_runs, voiceovers, etc.)
 
 ## Qdrant Entity Associations
+
+> **Authority**: Qdrant's role as a derived projection, the canonical 5-step projection sequence (commit metadata in SQLite → persist outbox record in same transaction → update Qdrant asynchronously and idempotently → track projection version and outcome → allow a complete rebuild from SQLite), and the SQLite-vs-Qdrant dual-store carve-out live canonically in **[`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#qdrant-projection`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#qdrant-projection)**. The schema/architecture tables below are agent-facing operational facts.
 
 PipelineGen uses Qdrant vector database to power semantic search across all
 media types. Here's how entity associations work:
@@ -621,6 +630,7 @@ func (h *XHandler) NewAction(c *gin.Context) {
 3. Test di round-trip: insert + select dopo migrate, deve tornare uguale.
 4. **VIETATO** applicare migration generiche cross-DB (anche se ora c'è un solo DB, il principio resta).
 5. **FTS5 bandito**: per full-text usa `pkg/sqlutil.BuildFallbackLikeConditions`.
+6. **Canonical authority**: every new table has exactly one owning capability, and the same fact must not have multiple independent writers. See [`docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md`](docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#one-owner-per-fact) for the 8-domain ownership table.
 
 ### Pattern 3 — Aggiungere una fase a una pipeline
 

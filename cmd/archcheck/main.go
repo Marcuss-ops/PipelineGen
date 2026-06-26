@@ -60,6 +60,21 @@ type Policy struct {
 	PlatformSubzones      []string
 	LegacyInternalRoots   []string
 	TargetInternalRoots   []string
+	// DataOwnershipDoc is the path (relative to root) of the canonical
+	// data/config ownership document whose authority the rule family
+	// scanOwnershipDoc enforces. Empty string opts out (Phase 0 only;
+	// Phase 1+ may treat absence as a violation). See docs/architecture/
+	// godlike/06_DATA_AND_CONFIG_OWNERSHIP.md for the contract.
+	DataOwnershipDoc string
+	// LegacyPolicyDoc, CIGatesDoc, AgentPlaybookDoc, RemovalDoc mirror
+	// the DataOwnershipDoc field for the four canonical-promoted Phase-1
+	// docs (07, 08, 11, 13 of the godlike/ program). Each is enforced by
+	// the corresponding scan<X>Doc() function below. Empty string opts
+	// out individually (Phase 0 only).
+	LegacyPolicyDoc  string
+	CIGatesDoc       string
+	AgentPlaybookDoc string
+	RemovalDoc       string
 	// KnownGrandfathered is exposed in the report header for traceability.
 	KnownGrandfathered []string
 }
@@ -130,6 +145,11 @@ func main() {
 	scanForbiddenDirs(*root, pol, &report)
 	scanKernelSubzoneHints(*root, pol, &report)
 	scanUnknownInternalRoots(*root, pol, &report)
+	scanOwnershipDoc(*root, pol, &report)
+	scanLegacyPolicyDoc(*root, pol, &report)
+	scanCIGatesDoc(*root, pol, &report)
+	scanAgentPlaybookDoc(*root, pol, &report)
+	scanRemovalDoc(*root, pol, &report)
 	fileLines := map[string]int{}
 	scanPackages(*root, pol, &report, fileLines)
 	scanCommandBinaries(*root, pol, &report, fileLines)
@@ -217,6 +237,16 @@ func loadPolicy(path string) (*Policy, error) {
 			p.LegacyInternalRoots = splitTrim(val)
 		case "target_internal_roots":
 			p.TargetInternalRoots = splitTrim(val)
+		case "data_ownership_doc":
+			p.DataOwnershipDoc = val
+		case "legacy_policy_doc":
+			p.LegacyPolicyDoc = val
+		case "ci_gates_doc":
+			p.CIGatesDoc = val
+		case "agent_playbook_doc":
+			p.AgentPlaybookDoc = val
+		case "removal_doc":
+			p.RemovalDoc = val
 		case "known_grandfathered":
 			if val == "" {
 				inGrandfathered = true
@@ -398,6 +428,146 @@ func scanUnknownInternalRoots(root string, pol *Policy, r *Report) {
 			Rule:        "unknown_internal_root",
 			Severity:    "warn",
 			Note:        "first-level internal/ dir is not declared in legacy or target roots",
+		})
+	}
+}
+
+// scanOwnershipDoc checks that the canonical data/config ownership doc
+// (policy field `data_ownership_doc`, path relative to root) exists and
+// contains the seven required section headers. Missing file → warn;
+// missing section → info.
+//
+// Rationale: the godlike/06 promotion (June 2026) makes the pointed-to
+// document the single source of truth for the data+config ownership
+// axis. Accidental deletion or structural gutting would silently
+// demote the governance. Phase 0 is report-only; --strict promotes all
+// violations to os.Exit(1) per the existing main() logic.
+//
+// Guards:
+//   - pol.DataOwnershipDoc == "" → opt out, no violations emitted.
+//   - filepath.Clean + ToSlash keep the JSON report OS-independent.
+//   - bufio.Scanner caps line length at 64K (sufficient for the doc).
+func scanOwnershipDoc(root string, pol *Policy, r *Report) {
+	if pol.DataOwnershipDoc == "" {
+		return
+	}
+	docRel := filepath.ToSlash(filepath.Clean(pol.DataOwnershipDoc))
+	docPath := filepath.Join(root, pol.DataOwnershipDoc)
+	f, err := os.Open(docPath)
+	if err != nil {
+		r.Violations = append(r.Violations, Violation{
+			File:        docRel,
+			MatchedRule: "data_ownership_doc",
+			Rule:        "data_ownership_doc_missing",
+			Severity:    "warn",
+			Note:        "canonical data/config ownership document is missing or unreadable",
+		})
+		return
+	}
+	defer f.Close()
+
+	required := []string{
+		"## Durable authority",
+		"## One owner per fact",
+		"## Database rules",
+		"## Qdrant projection",
+		"## Drive and filesystem",
+		"## Configuration",
+		"## Future storage changes",
+	}
+	scanDocSections(f, required, docRel, "data_ownership_doc", r)
+}
+
+// scanLegacyPolicyDoc / scanCIGatesDoc / scanAgentPlaybookDoc / scanRemovalDoc
+// mirror scanOwnershipDoc for the four Phase-1-canonical godlike/ docs
+// (07, 08, 11, 13). They share the C1 mechanism (file existence +
+// required H2-heading presence) via the scanDocSections helper.
+func scanLegacyPolicyDoc(root string, pol *Policy, r *Report) {
+	if pol.LegacyPolicyDoc == "" {
+		return
+	}
+	docRel := filepath.ToSlash(filepath.Clean(pol.LegacyPolicyDoc))
+	f, err := os.Open(filepath.Join(root, pol.LegacyPolicyDoc))
+	if err != nil {
+		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "legacy_policy_doc", Rule: "legacy_policy_doc_missing", Severity: "warn"})
+		return
+	}
+	defer f.Close()
+	scanDocSections(f, []string{"## Goal", "## What counts as legacy", "## Default rule", "## Temporary deprecation record", "## Forbidden compatibility techniques", "## Migration sequence", "## No fake availability", "## Historical information"}, docRel, "legacy_policy_doc", r)
+}
+
+func scanCIGatesDoc(root string, pol *Policy, r *Report) {
+	if pol.CIGatesDoc == "" {
+		return
+	}
+	docRel := filepath.ToSlash(filepath.Clean(pol.CIGatesDoc))
+	f, err := os.Open(filepath.Join(root, pol.CIGatesDoc))
+	if err != nil {
+		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "ci_gates_doc", Rule: "ci_gates_doc_missing", Severity: "warn"})
+		return
+	}
+	defer f.Close()
+	scanDocSections(f, []string{"## Purpose", "## Mandatory checks", "## Boundary checks", "## Registry checks", "## Legacy checks", "## Contract checks", "## Data checks", "## Complexity budgets", "## Generated output", "## Zero-baseline rule"}, docRel, "ci_gates_doc", r)
+}
+
+func scanAgentPlaybookDoc(root string, pol *Policy, r *Report) {
+	if pol.AgentPlaybookDoc == "" {
+		return
+	}
+	docRel := filepath.ToSlash(filepath.Clean(pol.AgentPlaybookDoc))
+	f, err := os.Open(filepath.Join(root, pol.AgentPlaybookDoc))
+	if err != nil {
+		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "agent_playbook_doc", Rule: "agent_playbook_doc_missing", Severity: "warn"})
+		return
+	}
+	defer f.Close()
+	scanDocSections(f, []string{"## Preparation", "## Scope", "## Forbidden additions", "## Testing", "## Migration method", "## Final verification", "## Documentation"}, docRel, "agent_playbook_doc", r)
+}
+
+func scanRemovalDoc(root string, pol *Policy, r *Report) {
+	if pol.RemovalDoc == "" {
+		return
+	}
+	docRel := filepath.ToSlash(filepath.Clean(pol.RemovalDoc))
+	f, err := os.Open(filepath.Join(root, pol.RemovalDoc))
+	if err != nil {
+		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "removal_doc", Rule: "removal_doc_missing", Severity: "warn"})
+		return
+	}
+	defer f.Close()
+	scanDocSections(f, []string{"## Purpose", "## Discovery", "## Runtime cut", "## Data handling", "## Code removal", "## Configuration and operations", "## Verification", "## Completion"}, docRel, "removal_doc", r)
+}
+
+// scanDocSections reads `required` H2 headings from the open file `f` and
+// emits one warn-severity violation per missing section. Shared helper
+// for the four Phase-1 canonical doc scanners above.
+//
+// Severity is `warn` (not `info`) so that --strict promotes a truncated
+// doc to a hard CI gate, matching the user-contract ("warn if any
+// package asserts ownership rules contradicting that doc"). Callers
+// MUST pass a non-empty `required` slice and keep it in sync with the
+// canonical doc's H2 headings; the helper does not validate this.
+func scanDocSections(f *os.File, required []string, docRel, rulePrefix string, r *Report) {
+	found := map[string]bool{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		for _, sec := range required {
+			if line == sec {
+				found[sec] = true
+			}
+		}
+	}
+	for _, sec := range required {
+		if found[sec] {
+			continue
+		}
+		r.Violations = append(r.Violations, Violation{
+			File:        docRel,
+			MatchedRule: rulePrefix,
+			Rule:        rulePrefix + "_incomplete",
+			Severity:    "warn",
+			Note:        fmt.Sprintf("canonical doc is missing required section: %s", sec),
 		})
 	}
 }
