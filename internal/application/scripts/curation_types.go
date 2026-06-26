@@ -1,19 +1,28 @@
 // Package scripts — curation types extracted from types.go (PG-029, June 2026).
 package scripts
 
-import "go.uber.org/zap"
+import (
+	"errors"
+	"fmt"
+
+	"go.uber.org/zap"
+)
 
 // ── MediaCurator ─────────────────────────────────────────────────────────
 
 // MediaCurator orchestrates semantic clip search + script generation.
 // All fields are concrete typed.
 type MediaCurator struct {
-	// vectorStore field removed from this flow
-	// deleted. Callers seed Curate with HintClipIDs instead.
+	// vectorStore field removed from this flow (PG-034, June 2026).
+	// PJ-CURATE-1 (June 2026): clipSearch is the typed port for
+	// the optional semantic-search leg. nil → curator consumes only
+	// req.HintClipIDs. Set via SetClipSearchPort from the composition
+	// root when Qdrant is enabled.
 	serverURL   string
 	clipsRepo   interface{} // *assets.ClipsRepository (avoid import cycle)
 	clipBuilder *ClipSourceBuilder
 	engine      *Engine
+	clipSearch  ClipSearchPort
 	log         *zap.Logger
 }
 
@@ -41,6 +50,13 @@ type CurateRequest struct {
 	// pre-resolved clip IDs from upstream sources, replacing the deleted
 	// Qdrant semantic-search leg.
 	HintClipIDs []string
+	// PJ-CURATE-1 (June 2026): Search opt-in to the ClipSearchPort.
+	Search bool
+	// PJ-CURATE-1: AllowTextOnly opts back into the legacy
+	// text-only fallback when both port and hint list are empty.
+	// Defaults to false → ErrCurateNoClips surfaces on empty
+	// resolution.
+	AllowTextOnly bool
 }
 
 // CurateResult holds the output of a curation run.
@@ -106,9 +122,29 @@ type NarrativeSection struct {
 // ── Job payloads ─────────────────────────────────────────────────────────
 
 // JobPayloadCurate holds the payload for a curation job.
+//
+// PJ-CURATE-1 (June 2026) additions vs the previous shape:
+//
+//   - title          — mirrored from CurateRequest.Title so the worker
+//     can name the generated document deterministically. Previously
+//     worker fell back to the legacy `query || voiceover_group` heuristic.
+//   - type           — mirrors CurateRequest.Type for the worker to know
+//     whether the result is meant to be exported as voiceover script.
+//   - hint_clip_ids  — caller-seeded clip IDs (parity with CurateRequest).
+//     Previously MISSING → CurateRequest.HintClipIDs was always empty
+//     on the worker side even when the client supplied a hint, causing
+//     MediaCurator to silently fall back to text-only.
+//   - search         — opt-in to the semantic-search leg via the
+//     ClipSearchPort wired into MediaCurator. Defaults to false
+//     (HintClipIDs-only legacy behaviour).
+//   - allow_text_only — explicit opt-in to the legacy text-only
+//     fallback when no clips resolve. Defaults to false; the worker
+//     MUST surface ErrCurateNoClips when both ports and hints are
+//     empty AND allow_text_only=false.
 type JobPayloadCurate struct {
 	Query             string   `json:"query"`
 	Title             string   `json:"title"`
+	Type              string   `json:"type"`
 	Languages         []string `json:"languages,omitempty"`
 	Language          string   `json:"language"`
 	Tone              string   `json:"tone"`
@@ -120,13 +156,16 @@ type JobPayloadCurate struct {
 	MinScore          float64  `json:"min_score"`
 	Source            string   `json:"source"`
 	MediaType         string   `json:"media_type"`
-	Type              string   `json:"type"`
 	Style             string   `json:"style"`
 	StyleInstructions string   `json:"style_instructions"`
 	ForceRefresh      bool     `json:"force_refresh"`
 	GenerateVoiceover bool     `json:"generate_voiceover"`
 	VoiceoverFolderID string   `json:"voiceover_folder_id"`
 	VoiceoverGroup    string   `json:"voiceover_group"`
+	// PJ-CURATE-1: clip source-control (see header above).
+	HintClipIDs   []string `json:"hint_clip_ids"`
+	Search        bool     `json:"search"`
+	AllowTextOnly bool     `json:"allow_text_only"`
 }
 
 // JobPayloadCatalogScript holds the payload for catalog-first script generation.
@@ -152,3 +191,43 @@ type JobPayloadCatalogScript struct {
 	MinQualityScore    *float64 `json:"min_quality_score,omitempty"`
 	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
 }
+
+// ── Curate error contract ────────────────────────────────────────────────
+
+// ErrCurateNoClips is the sentinel for "no clips resolved (search
+// returned nothing AND hint list was empty) and the caller did not
+// opt in to the legacy text-only fallback". Use errors.Is to detect;
+// for structured details (Query, MinScore, ResultCount) use errors.As
+// to extract *CurateNoClipsError below.
+//
+// PJ-CURATE-1 (June 2026): replaces the previous silent text-only
+// fallback that the audit verdict flagged as a semantic hijack — a
+// /curate request that asked for clips and got zero clips would
+// receive a text-only script with `accepted_clip_ids = []` and
+// `voiceover_results = []`, leaving the client unable to distinguish
+// "no clips found" from "intentional text-only mode". The new
+// contract forces the caller to pass allow_text_only=true explicitly
+// when they want the legacy behaviour, so a real failure surfaces
+// as a typed error → job FAILED → operator dashboard visibility.
+var ErrCurateNoClips = errors.New("curate: no clips found for query and text-only fallback opted out")
+
+// CurateNoClipsError carries the structured details behind
+// ErrCurateNoClips. Workers and tests call errors.As to extract and
+// surface the fields; dashboards can show ResultCount=0 vs a
+// non-zero search-with-filters case explicitly.
+type CurateNoClipsError struct {
+	Query       string
+	MinScore    float64
+	ResultCount int
+}
+
+func (e *CurateNoClipsError) Error() string {
+	if e == nil {
+		return ErrCurateNoClips.Error()
+	}
+	return fmt.Sprintf("%s: query=%q min_score=%.2f results=%d",
+		ErrCurateNoClips.Error(), e.Query, e.MinScore, e.ResultCount)
+}
+
+// Unwrap lets errors.Is(err, ErrCurateNoClips) succeed.
+func (e *CurateNoClipsError) Unwrap() error { return ErrCurateNoClips }
