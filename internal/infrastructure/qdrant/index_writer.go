@@ -300,6 +300,13 @@ type AssetData struct {
 	Source         string                 `json:"source"`
 	MediaType      string                 `json:"media_type"`
 	Status         string                 `json:"status"`
+	// LifecycleState is the canonical search-filter payload key. Asset
+	// store populates from media_assets.lifecycle_state when the column
+	// exists; legacy rows fall back to Status-derived values so the
+	// search adapter's filter key (lifecycle_state) is never empty.
+	// See payload_mapper.canonicalLifecycleState for the prefer/fall-back
+	// hierarchy used at write time.
+	LifecycleState string                 `json:"lifecycle_state,omitempty"`
 	Language       string                 `json:"language,omitempty"`
 	Category       string                 `json:"category,omitempty"`
 	Style          string                 `json:"style,omitempty"`
