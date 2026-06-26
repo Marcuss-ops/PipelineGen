@@ -1,10 +1,6 @@
 package scripts
 
-import (
-	"encoding/json"
-
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-)
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 func (pu *PipelineUseCase) buildFinalResult(
 	payload *scriptpkg.GenerationSpec,
@@ -20,6 +16,7 @@ func (pu *PipelineUseCase) buildFinalResult(
 	if pathResult == nil || pathResult.WriteResult == nil {
 		return map[string]any{"ok": false}
 	}
+	normalizedScenes, scenesJSON, hasScenes := marshalNormalizedScenes(pathResult.ClipScenes, scenes)
 	out := map[string]any{
 		"ok":           true,
 		"word_count":   pathResult.WriteResult.WordCount,
@@ -27,22 +24,15 @@ func (pu *PipelineUseCase) buildFinalResult(
 		"language":     payload.Language,
 		"cache_status": pathResult.WriteResult.CacheStatus,
 	}
-	if payload.MaxChars > 0 && len(pathResult.ClipScenes) > 0 {
-		scriptItems := make([]map[string]any, 0, len(pathResult.ClipScenes))
-		for _, cs := range pathResult.ClipScenes {
-			item := map[string]any{
-				"text": cs.Text,
-			}
-			if cs.DriveLink != "" {
-				item["video"] = cs.DriveLink
-				item["videos"] = []string{cs.DriveLink}
-			}
-			scriptItems = append(scriptItems, item)
-		}
-		out["script"] = scriptItems
+	if payload.MaxChars > 0 && hasScenes {
+		out["script"] = normalizedScenes
 		out["script_raw"] = pathResult.WriteResult.Script
 	} else {
 		out["script"] = pathResult.WriteResult.Script
+	}
+	if payload.GenerateSceneImages && hasScenes {
+		out["scenes"] = normalizedScenes
+		out["scenes_json"] = scenesJSON
 	}
 	if payload.ExtractEntities {
 		out["entities_json"] = entitiesJSON
@@ -55,12 +45,6 @@ func (pu *PipelineUseCase) buildFinalResult(
 		out["phrase_clip_suggestions"] = insights.PhraseClipSuggestions
 		out["intro_clips"] = insights.IntroClips
 		out["entity_images"] = insights.EntityImages
-	}
-	if payload.GenerateSceneImages {
-		out["scenes"] = scenes
-		if b, err := json.Marshal(scenes); err == nil {
-			out["scenes_json"] = string(b)
-		}
 	}
 	if len(voiceovers) > 0 {
 		out["voiceovers"] = voiceovers
@@ -106,4 +90,3 @@ func (pu *PipelineUseCase) buildFinalResult(
 	out["timings"] = map[string]any{"total_ms": totalDurMs}
 	return out
 }
-
