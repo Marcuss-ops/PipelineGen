@@ -1,65 +1,29 @@
-// Package qdrant — canonical.go (QDRANT-001, June 2026)
+// Package qdrant — canonical forward-mapping file pointer.
 //
-// Single source of truth for the AssetID → QdrantPointID mapping.
+// QDRANT-001 rebase-resolution (June 2026): the previous incarnation of
+// this file held the duplicate identity-form forward mapping
+// (`AssetIDPrefix + id`) and a reverse helper
+// (`PointIDToAssetID(pointID)`). Both have been deleted as part of the
+// zero-legacy cleanup:
 //
-// QDRANT-001 acceptance criterion: "Point ID non centralizzato" was
-// flagged BLOCKED in the reanalysis because the mapper previously
-// assigned IDs inline (`ID: asset.ID`). A future writer could adopt
-// a different strategy silently — namespacing by tenant, hashing for
-// collision avoidance, etc. This file pins the contract:
+//   - Forward canonical now lives in ./pointid.go and uses UUID v5 SHA-1
+//     with the project-namespacing boundary. There is exactly ONE
+//     declaration of `AssetIDToQdrantPointID` in the qdrant package,
+//     enforced by anti-regression gate #8 (see
+//     architecture/qdrant/001-sidecar-and-pointid.md).
 //
-//   - AssetIDToQdrantPointID(assetID string) string
-//     Translates the canonical media_assets.id into the Qdrant
-//     point ID. Today the mapping is the identity function
-//     (Qdrant point ID == AssetID), but having a single call site
-//     lets us introduce namespacing, hashing, or migration shims
-//     without touching every writer / reader / reindex path.
+//   - `PointIDToAssetID` and the `AssetIDPrefix` constant were removed
+//     because UUID v5 hashes are one-way and the only caller
+//     (index_writer.go::ValidatePoint) was rewired to read the
+//     canonical asset_id directly from `point.Payload["asset_id"]`.
 //
-// Implementations MUST treat this function as the only legal way to
-// derive a point ID from an asset identity; raw `asset.ID` literals
-// in the Qdrant package are an anti-pattern and a follow-up CI gate
-// (`grep -RE '\\bID:[[:space:]]*asset\\.ID\\b' internal/infrastructure/qdrant`)
-// should fail if any are reintroduced outside tests.
+// This file is kept as a doc-only pointer to `./pointid.go` so future
+// agents who grep for "AssetIDToQdrantPointID" still find a
+// single-source-of-truth package-locality signal without spelunking
+// through the entire qdrant/ tree.
+//
+// Legacy compatibility window: any in-flight Qdrant collection indexed
+// under the pre-ratchet identity scheme (`"asset:<id>"` points) is
+// NOT directly reversible; QDRANT-005 reconcile territory will handle
+// point migration to UUID v5 through a background rebuild.
 package qdrant
-
-import "strings"
-
-// AssetIDPrefix is the namespace marker Qdrant point IDs start with.
-// Doubles as a sanity check: a point ID without this prefix is
-// almost certainly a bug in the caller (e.g. using an external
-// source's identifier).
-const AssetIDPrefix = "asset:"
-
-// AssetIDToQdrantPointID returns the canonical Qdrant point ID for
-// the given media_assets.id.
-//
-// The mapping is currently the identity function (prefixed with
-// AssetIDPrefix for forward-compat with namespacing). The mapping
-// is exported so all writers (IndexWriter, PayloadMapper,
-// Reconciler) and readers (Searcher, SQLiteAssetStore) share the
-// same translation rule.
-//
-// Contract:
-//   - The empty string maps to the empty string (callers must reject
-//     empty point IDs at the validation layer).
-//   - Whitespace-only asset IDs are trimmed and rejected.
-func AssetIDToQdrantPointID(assetID string) string {
-	id := strings.TrimSpace(assetID)
-	if id == "" {
-		return ""
-	}
-	return AssetIDPrefix + id
-}
-
-// PointIDToAssetID reverses AssetIDToQdrantPointID. Returns the bare
-// assetID (no namespace prefix). Empty point IDs map to empty asset
-// IDs. Point IDs WITHOUT the AssetIDPrefix are still accepted as raw
-// IDs to keep the function tolerant to legacy writers that haven't
-// picked up the canonical naming yet.
-func PointIDToAssetID(pointID string) string {
-	id := strings.TrimSpace(pointID)
-	if id == "" {
-		return ""
-	}
-	return strings.TrimPrefix(id, AssetIDPrefix)
-}
