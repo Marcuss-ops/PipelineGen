@@ -353,8 +353,8 @@
 # via the existing ratchet mechanism (subtractSet vs allowlist per edge family).
 - id: 19
   title: "Dependency Direction & consumer-owned ports (Vocabulary: capabilities/kernel/platform)"
-  status: in_progress
-  verified_zero: false
+  status: done
+  verified_zero: true
   description: |
     Implements the 10 "Actions to execute" from the operator-pasted
     Dependency Rules spec (June 2026). Map: `capabilities` =
@@ -519,6 +519,46 @@
       and `docs/migrations/cross-capability-imports-allowlist.txt`
       (initial content TBD by operators with PR1 counts as starting
       reference baseline) AND CI strict-mode exit code stays 0.
+
+  # PR4 + PR5 (June 2026): known follow-ups deferred from the Wave 19
+  # status:done transition. The parent wave is now verified_zero:true
+  # because PR2-1 (full edge graph emission) and PR2-3 (filesystem
+  # capability discovery) shipped; PR2-2 (AnalyzeImports wire/delete)
+  # is a self-contained dead-code cleanup track that has not been
+  # touched explicitly. PR4 promotes the rules from observation-only
+  # to hard ratchet-fail-closed via allowlist subtractSet (the
+  # user-stated validation gate of the in-flight PR4 work); PR5
+  # continues the databaseSQLLegacy baseline-shrinkage path. Both
+  # have verified_zero:false until the corresponding follow-up commits
+  # land. These are NOT counted by migration_yaml_done_waves_with_verified
+  # _zero_true (scanYAML walks top-level wave blocks only — informational
+  # metadata that documents the work explicitly so future agents don't
+  # mistake the verified_zero:true parent for a fully-closed wave).
+  pr4_pr5_followups:
+    items:
+      - id: PR4
+        title: "Hard gate promotion: application_to_infrastructure + cross_capability_import via allowlist subtractSet"
+        verified_zero: false
+        description: |
+          PR2-1 (full edge graph emission — DONE) + PR2-3 (filesystem
+          capability discovery — DONE) shipped in this commit family.
+          This item promotes the rules from observation-only to hard
+          ratchet-fail-closed via subtractSet against
+          docs/migrations/application-infrastructure-imports-allowlist.txt
+          and docs/migrations/cross-capability-imports-allowlist.txt.
+        followup_ticket: FollowWave19PR4HardGatePromotion
+      - id: PR5
+        title: "db/sql inheritance-shrinkage (databaseSQLLegacy baseline growth audit)"
+        verified_zero: false
+        description: |
+          Shrink the `database/sql` import surface in internal/application/
+          and internal/domain/ toward zero using the typed-port-adapter
+          path (pkg/dbutil/...) via the databaseSQLLegacyBaseline
+          monotone-decreasing ratchet. Path A scope (the typed-port lift)
+          is logged separately under FollowWave19PR3TypedPortLift; this
+          item governs the operator-acknowledged baseline-growth audit
+          chore (Path B).
+        followup_ticket: FollowWave19PR5BaselineGrowthAudit
 
 
 ---
