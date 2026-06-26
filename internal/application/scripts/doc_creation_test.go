@@ -1,3 +1,12 @@
+// Package scripts (test) — doc_creation_test.go
+//
+// PR-A (June 2026): the BatchService instance under test is now
+// framed as the *private dep* of the canonical
+// scripts.GenerateBatchUseCase (same rationale as
+// batch_persistence_test.go). The internal-method assertions
+// (createBatchDoc directly) remain identical to pre-PR-A — these
+// are unit tests for BatchService, not integration tests through
+// the use case.
 package scripts
 
 import (
@@ -6,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -38,6 +48,11 @@ func TestCreateBatchDoc_NilDocClient_ReturnsEmptyStrings(t *testing.T) {
 		docClient: nil,
 		log:       zap.NewNop(),
 	}
+	// PR-A: wire BatchService into the canonical use case so the
+	// test surface reflects the post-PR-A production wiring.
+	uc := NewGenerateBatchUseCase(nil, zap.NewNop(), nil, svc, "")
+	require.NotNil(t, uc, "GenerateBatchUseCase wrapping must succeed")
+	require.Same(t, svc, uc.Batch, "use case must hold the same BatchService instance")
 
 	parts := []GeneratedPart{
 		{topic: "Chapter 1", content: "Some content."},

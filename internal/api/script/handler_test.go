@@ -357,18 +357,28 @@ func TestHandler_ValidRequest_Returns200(t *testing.T) {
 }
 
 // TestHandler_GenerateBatch_DirectHandler verifies that the handler
-// correctly routes to the use case when h.generateBatch is wired but
+// correctly routes to the use case when h.genBatchUC is wired but
 // downstream dependencies (batch service + ollama engine + jobs facade)
 // are nil. The use case fails with an internal error and the handler
 // maps it to 500; this test pins the routing surface so future
 // refactors cannot regress it to a silent nil-deref.
+//
+// PR-A (June 2026): ScriptFlowDeps dropped the Batch field (the
+// handler no longer talks to BatchService directly — the use case
+// does). Tests now construct the use case explicitly and pass it via
+// GenBatchUC so the routing surface reflects the post-PR-A wiring.
 func TestHandler_GenerateBatch_DirectHandler(t *testing.T) {
 	t.Parallel()
 
+	uc := scripts.NewGenerateBatchUseCase(
+		nil, zap.NewNop(), nil,
+		scripts.NewBatchService(nil, nil, nil, nil, nil, nil, nil),
+		"",
+	)
 	handler := NewScriptFlowHandler(ScriptFlowDeps{
-		Batch: scripts.NewBatchService(nil, nil, nil, nil, nil, nil, nil),
-		Gates: FeatureGates{ScriptDocsEnabled: true},
-		Log:   zap.NewNop(),
+		GenBatchUC: uc,
+		Gates:      FeatureGates{ScriptDocsEnabled: true},
+		Log:        zap.NewNop(),
 	})
 	router := gin.New()
 	router.POST("/test", handler.GenerateBatch)
@@ -382,10 +392,10 @@ func TestHandler_GenerateBatch_DirectHandler(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	// Engineer-engine-missing response: use case returns non-nil error
-	// that mapGenerateBatchError translates to 500. We assert the
-	// status class (5xx) rather than exact code because error-mapping
-	// is delegated to scripts.NewGenerateBatchUseCase + handler
-	// mapGenerateBatchError and those can refine the status code over
+	// that mapBatchError translates to 5xx. We assert the status class
+	// (5xx) rather than exact code because error-mapping is delegated
+	// to scripts.GenerateBatchUseCase.Run and the handler's
+	// mapBatchError helper, and those can refine the status code over
 	// time without breaking this regression test.
 	assert.True(t, w.Code >= 500 && w.Code < 600, "expected 5xx from nil-batch-service path, got %d body=%s", w.Code, w.Body.String())
 }

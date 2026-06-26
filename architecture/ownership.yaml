@@ -141,8 +141,8 @@ job_handler_map:
     handler: PipelineUseCase.HandleJob
     owner: internal/application/scripts
   - job_type: script.generate_batch
-    handler: ScriptFlowHandler.HandleBatchScriptGenerateJob
-    owner: internal/api/script
+    handler: BatchJobHandler.Handle
+    owner: internal/application/scripts
   - job_type: script.curate
     handler: CurationJobServiceImpl.HandleCurateJob
     owner: internal/application/scripts
