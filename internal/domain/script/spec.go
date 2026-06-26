@@ -28,11 +28,11 @@ type GenerationSpec struct {
 	SourceText string `json:"source_text,omitempty"`
 	Guidelines string `json:"guidelines,omitempty"`
 
-	// ── Clip-aware ───────────────────────────────────────────────────
+	// ── Clip-aware ──────────────────────────────────────────────────
 	ClipIDs  []string `json:"clip_ids,omitempty"`
 	NumClips int      `json:"num_clips,omitempty"`
 
-	// ── Identity ─────────────────────────────────────────────────────
+	// ── Identity ────────────────────────────────────────────────────
 	Title         string `json:"title,omitempty"`
 	OutputName    string `json:"output_name,omitempty"`
 	Language      string `json:"language,omitempty"`
@@ -41,14 +41,15 @@ type GenerationSpec struct {
 	Model         string `json:"model,omitempty"`
 	DriveFolderID string `json:"drive_folder_id,omitempty"`
 
-	// ── Sizing ───────────────────────────────────────────────────────
+	// ── Sizing ──────────────────────────────────────────────────────
 	TargetWords       int `json:"target_words,omitempty"`
 	Duration          int `json:"duration,omitempty"`
 	MinWords          int `json:"min_words,omitempty"`
 	SentencesPerImage int `json:"sentences_per_image,omitempty"`
 	ImagesPerScene    int `json:"images_per_scene,omitempty"`
 
-	// ── Feature flags ────────────────────────────────────────────────
+	// ── Feature flags ───────────────────────────────────────────────
+	CreateDoc           bool   `json:"create_doc,omitempty"`
 	ExtractEntities     bool   `json:"extract_entities,omitempty"`
 	ArtlistSearch       bool   `json:"artlist_search,omitempty"`
 	StockSearch         bool   `json:"stock_search,omitempty"`
@@ -58,10 +59,10 @@ type GenerationSpec struct {
 	VoiceoverFolderID   string `json:"voiceover_folder_id,omitempty"`
 	GenerateSceneImages bool   `json:"generate_scene_images,omitempty"`
 
-	// ── Multilingual ─────────────────────────────────────────────────
+	// ── Multilingual ────────────────────────────────────────────────
 	Languages []string `json:"languages,omitempty"`
 
-	// ── Clip pipeline options ────────────────────────────────────────
+	// ── Clip pipeline options ─────────────────────────────────────────
 	TranscriptPolicy string `json:"transcript_policy,omitempty"`
 	OrderingStrategy string `json:"ordering_strategy,omitempty"`
 	SaveToDB         bool   `json:"save_to_db,omitempty"`
@@ -72,7 +73,7 @@ type GenerationSpec struct {
 	MinQualityScore    *float64 `json:"min_quality_score,omitempty"`
 	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
 
-	// ── Prompt versioning ────────────────────────────────────────────
+	// ── Prompt versioning ───────────────────────────────────────────
 	PromptVersion       string `json:"prompt_version,omitempty"`
 	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
 	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`

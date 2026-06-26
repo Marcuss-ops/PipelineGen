@@ -1,60 +1,41 @@
-// Package scripts — pipeline_impl.go replaces the Pipeline stub with
-// a real implementation that executes the post-generation phases
-// (entity extraction, scene images, voiceovers, doc creation).
-//
-// AGENT-3 (June 2026): the previous stub returned an empty
-// PipelineResult. The real implementation calls the postGen callback
-// (which was already wired in wire_script.go via PostGenUseCase)
-// and passes through the scenes/doc services for the caller's
-// downstream use.
-//
-// PG-029 (June 2026): Pipeline types + VideoMetadata + FolderResolver
-// consolidated here from the now-deleted types.go.
 package scripts
 
 import (
 	"context"
+	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-
 	"go.uber.org/zap"
 )
 
-// ── Pipeline types ───────────────────────────────────────────────────────
-
-// Pipeline executes the post-generation phases (entity extraction,
-// scene images, voiceovers, doc creation). All fields are concrete typed.
 type Pipeline struct {
 	log           *zap.Logger
 	tag           string
 	scenesSvc     *ScenesService
 	docsSvc       *DocumentsService
-	postGen       interface{} // PostGenFunc callback
+	postGen       interface{}
 	resolveFolder FolderResolver
 }
 
-// FolderResolver resolves a folder ID from an input name and default root.
 type FolderResolver func(ctx context.Context, input, defaultRootID string) (string, error)
 
-// PipelineResult holds the output of Pipeline.Run.
 type PipelineResult struct {
 	EntitiesJSON  string
 	Insights      interface{}
 	VideoMetadata []VideoMetadata
 	DocLink       string
 	DocID         string
+	DocError      string
 	Scenes        []SceneImage
 	Voiceovers    []SceneVoiceover
 }
 
-// SceneImage represents a scene with an image.
 type SceneImage struct {
 	Index int    `json:"index"`
 	Text  string `json:"text"`
 	URL   string `json:"url"`
 }
 
-// SceneVoiceover represents a scene with a voiceover.
 type SceneVoiceover struct {
 	SceneIndex int    `json:"scene_index"`
 	Status     string `json:"status"`
@@ -62,7 +43,6 @@ type SceneVoiceover struct {
 	LocalPath  string `json:"local_path"`
 }
 
-// VideoMetadata holds YouTube metadata for a single language.
 type VideoMetadata struct {
 	Language    string   `json:"language"`
 	Title       string   `json:"title"`
@@ -70,86 +50,44 @@ type VideoMetadata struct {
 	Tags        []string `json:"tags"`
 }
 
-// PostGenFunc is the callback signature for the post-generation phase.
-// Matches the closure wired in wire_script.go:
-//
-//	func(ctx, *scriptpkg.GenerationSpec, string) (entitiesJSON string, insights any, videoMetadata []VideoMetadata)
 type PostGenFunc func(ctx context.Context, spec *scriptpkg.GenerationSpec, script string) (entitiesJSON string, insights any, videoMetadata []VideoMetadata)
 
-// NewPipeline constructs a real Pipeline that executes post-generation.
-// All args are concrete types.
-//
-// postGen: the post-generation callback (wired in wire_script.go from
-// PostGenUseCase). When nil, Run returns an empty PipelineResult.
-// scenesSvc, docsSvc: optional services for scene images and doc creation.
-// resolveFolder: optional Drive folder resolver.
-func NewPipeline(
-	log *zap.Logger,
-	tag string,
-	scenesSvc *ScenesService,
-	docsSvc *DocumentsService,
-	postGen PostGenFunc,
-	resolveFolder FolderResolver,
-) *Pipeline {
-	return &Pipeline{
-		log:           log,
-		tag:           tag,
-		scenesSvc:     scenesSvc,
-		docsSvc:       docsSvc,
-		postGen:       postGen,
-		resolveFolder: resolveFolder,
-	}
+func NewPipeline(log *zap.Logger, tag string, scenesSvc *ScenesService, docsSvc *DocumentsService, postGen PostGenFunc, resolveFolder FolderResolver) *Pipeline {
+	return &Pipeline{log: log, tag: tag, scenesSvc: scenesSvc, docsSvc: docsSvc, postGen: postGen, resolveFolder: resolveFolder}
 }
 
-// Run executes the post-generation phases. Currently delegates to the
-// postGen callback for entity extraction + video metadata, and returns
-// the scenes/doc services as nil (callers can use them downstream).
-//
-// Future: scene image generation and voiceover generation will be
-// invoked here once the ScenesService implementation is restored.
-func (p *Pipeline) Run(
-	ctx context.Context,
-	spec interface{},
-	script string,
-	tools interface{},
-) (*PipelineResult, error) {
+func (p *Pipeline) Run(ctx context.Context, spec *scriptpkg.GenerationSpec, script string, tools interface{}) (*PipelineResult, error) {
+	return p.RunWithClipScenes(ctx, spec, script, nil, tools)
+}
+
+func (p *Pipeline) RunWithClipScenes(ctx context.Context, spec *scriptpkg.GenerationSpec, script string, clipScenes []ClipScene, _ interface{}) (*PipelineResult, error) {
 	if p == nil {
 		return &PipelineResult{}, nil
 	}
-
 	result := &PipelineResult{}
-
-	// Post-generation: entities + insights + video metadata.
-	if p.postGen != nil {
-		if pg, ok := p.postGen.(PostGenFunc); ok {
-			genSpec, _ := spec.(*scriptpkg.GenerationSpec)
-			entitiesJSON, insights, videoMetadata := pg(ctx, genSpec, script)
-			result.EntitiesJSON = entitiesJSON
-			result.Insights = insights
-			result.VideoMetadata = videoMetadata
+	if pg, ok := p.postGen.(PostGenFunc); ok {
+		result.EntitiesJSON, result.Insights, result.VideoMetadata = pg(ctx, spec, script)
+	}
+	if spec != nil && spec.CreateDoc {
+		title := strings.TrimSpace(spec.Title)
+		if title == "" {
+			title = strings.TrimSpace(spec.Topic)
+		}
+		if title == "" {
+			title = "Generated Script"
+		}
+		if p.docsSvc == nil {
+			result.DocError = "documents service not configured"
+		} else {
+			content := BuildScriptDocumentContent(title, script, clipScenes, result.EntitiesJSON)
+			result.DocLink, result.DocID = p.docsSvc.CreateDoc(ctx, title, content, p.resolveFolder, spec.DriveFolderID)
+			if result.DocLink == "" || result.DocID == "" {
+				result.DocError = "google doc creation failed"
+			}
 		}
 	}
-
-	// Scene images generation: deferred to future re-implementation.
-	// The real ScenesService was removed in commit d61068b3 alongside
-	// other real implementations. When restored, the invocation will be:
-	//
-	//   if p.scenesSvc != nil && genSpec.GenerateSceneImages {
-	//       result.Scenes = p.scenesSvc.GenerateSceneImages(ctx, genSpec, script)
-	//   }
-
-	// Voiceover generation: deferred similarly.
-
-	// Doc creation: deferred similarly.
-	// The caller (PipelineUseCase) already has access to docsSvc
-	// independently; this pipeline result carries empty DocLink/DocID
-	// which the caller can fill in post hoc.
-
 	if p.log != nil {
-		p.log.Info("pipeline: post-generation completed",
-			zap.Int("entities_json_chars", len(result.EntitiesJSON)),
-			zap.Int("video_metadata_count", len(result.VideoMetadata)))
+		p.log.Info("post-generation completed", zap.Int("clip_scenes", len(clipScenes)), zap.Bool("doc_created", result.DocLink != ""), zap.String("doc_error", result.DocError))
 	}
-
 	return result, nil
 }
