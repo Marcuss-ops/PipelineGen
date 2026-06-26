@@ -152,18 +152,16 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	// QDRANT-003: EnsureSchema step — creates/validates the versioned Qdrant collection
 	// and sets the runtime alias. Only when Qdrant is enabled.
-	if cfg.Qdrant.Enabled && root.Process != nil && root.Process.QdrantClient != nil {
-		if cm, ok := root.Process.QdrantClient.(interface {
-			EnsureSchema(ctx context.Context) error
-		}); ok {
-			startupPlan = append(startupPlan, StartupStep{
-				Name: "qdrant-collection", Required: true,
-				Start: func(ctx context.Context) error {
-					return cm.EnsureSchema(ctx)
-				},
-				Stop: func(_ context.Context) error { return nil },
-			})
-		}
+	if cfg.Qdrant.Enabled && root.Process != nil && root.Process.CollectionManager != nil {
+		cm := root.Process.CollectionManager
+		startupPlan = append(startupPlan, StartupStep{
+			Name: "qdrant-collection", Required: true,
+			Start: func(ctx context.Context) error {
+				_, err := cm.EnsureSchema(ctx)
+				return err
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
 	}
 
 	if root != nil && root.OutboxStart != nil {

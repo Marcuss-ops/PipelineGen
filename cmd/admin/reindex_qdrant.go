@@ -2,8 +2,8 @@
 //
 // One-shot reindex of media_assets into Qdrant using the canonical
 // IndexWriter.ReindexAll pipeline (AssetStore → PayloadMapper → IndexWriter).
-// This command replaces the legacy reindex (reindex.go) which used raw SQL
-// + Client.UpsertVectorAssets directly without schema validation.
+// This command replaces the legacy reindex (reindex.go, removed in QDRANT-003)
+// which used raw SQL + VectorAsset directly without schema validation.
 //
 // Usage:
 //

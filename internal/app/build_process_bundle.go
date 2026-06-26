@@ -48,9 +48,8 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 
 	// QDRANT-003: wire IndexWriter as clipindexer VectorStoreIndexer.
 	// Only when Qdrant is enabled AND the clip indexer is enabled.
-	var indexDeleter interface {
-		DeletePoints(ctx context.Context, ids []string) error
-	}
+	var collectionMgr *qdrant.CollectionManager
+	var indexDeleter qdrant.QdrantDeleter
 	var vectorSvc interface{}
 	var qdrantClient *qdrant.Client
 
@@ -85,7 +84,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		MediaProcessor:     mediaProcessor,
 		ClipIndexerService: clipIndexerService,
 		VLMClient:          vlmClient,
-		QdrantClient:       qdrantClient,
+		CollectionManager:  collectionMgr,
 		QdrantDeleter:      indexDeleter,
 		VectorSvc:          vectorSvc,
 	}, nil

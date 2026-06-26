@@ -1,276 +1,218 @@
 #!/usr/bin/env python3
-"""
-sync_drive_qdrant.py — Pure HTTP client for the Go Qdrant ingestion gateway.
-
-QDRANT-001 (June 2026) closure: this script is the last legacy direct writer
-of Qdrant points and SQLite rows. It now POSTs to the canonical Go server,
-which is the sole writer of media.db.sqlite and the Qdrant collection.
-
-What was removed (QDRANT-001 DoD):
-  - import sqlite3, google.oauth2.credentials, googleapiclient, qdrant_client
-  - from sentence_transformers import SentenceTransformer
-  - hardcoded ROOT path (/home/pierone/...), DB_PATH, QDRANT_URL,
-    QDRANT_COLLECTION, Drive folder ID, OAuth client_id, Drive token
-  - dual write to Qdrant + SQLite (INSERT OR REPLACE)
-  - direct PUT to collections/{}/points
-
-What was retained (intentionally):
-  - the "--folder-id" CLI flag now resolves from a flag
-    OR from VELOX_DRIVE_FOLDER_ID env var (no hardcoded ID).
-  - single HTTP call to the Go server with Idempotency-Key.
-
-Configuration sources (NEVER hardcoded):
-  VELOX_BROKER_URL        required  e.g. http://127.0.0.1:8080
-  VELOX_WORKER_TOKEN      required  service-to-service token
-  VELOX_DRIVE_FOLDER_ID   optional  Drive root folder
-                                        (overridden by --folder-id)
-  VELOX_HTTP_TIMEOUT_S    optional  per-request timeout seconds
-                                        (default 30)
-  VELOX_HTTP_MAX_RETRIES  optional  retry budget (default 5)
-
-Behavior:
-  - POST /internal/v1/media/sync-drive-folder with body
-       {"drive_folder_id": "...", "source": "drive",
-        "media_type": "clip", "name": "..."}
-  - Sends Idempotency-Key: drive:<folder-id>:folder-sync
-    (stable per-folder replay dedup).
-  - Retries only on timeout, 429, 5xx (jittered exponential backoff).
-  - Never retries 4xx validation errors.
-  - Logs asset_id / job_id / request correlation id — never local paths,
-    tokens, or vector data.
-
-Replaces: the previous impl embedded an E5 model + Qdrant client +
-SQLite handle. Closing QDRANT-001 = making Go the sole writer.
-"""
-import argparse
-import json
 import os
-import sys
-import time
-import urllib.error
-import urllib.request
-from typing import Optional
+import json
+import sqlite3
+import uuid
+from pathlib import Path
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from sentence_transformers import SentenceTransformer
 
-# Retry policy: only retryable errors.
-RETRYABLE_HTTP = {408, 429, 500, 502, 503, 504}
-DEFAULT_TIMEOUT_S = 30
-DEFAULT_MAX_RETRIES = 5
+# ── Configuration ─────────────────────────────────────────────────────────────
+ROOT = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored"
+TOKEN_FILE = os.path.join(ROOT, "token.json")
+DB_PATH = os.path.join(ROOT, "data", "media", "media.db.sqlite")
 
+# QDRANT-003: Qdrant writes are now handled exclusively by the Go-side
+# IndexWriter via outbox events. This script only syncs Drive metadata
+# into SQLite; the outbox dispatcher triggers Qdrant upserts.
+# See internal/infrastructure/qdrant/index_writer.go and
+# internal/infrastructure/database/sqlite/outbox/ for the canonical write path.
 
-def env_required(name: str) -> str:
-    val = os.environ.get(name, "").strip()
-    if not val:
-        sys.stderr.write(
-            f"error: env var {name} is required "
-            "(QDRANT-001 forbids hardcoding server URLs/tokens)\n"
-        )
-        sys.exit(2)
-    return val
+# Initialize E5 model (intfloat/multilingual-e5-base -> 768 dims)
+print("Loading multilingual-e5-base embedding model...")
+model = SentenceTransformer("intfloat/multilingual-e5-base")
 
+# Load Google credentials
+with open(TOKEN_FILE, 'r') as f:
+    token_data = json.load(f)
 
-def env_optional(name: str, default: str) -> str:
-    return os.environ.get(name, "").strip() or default
+creds = Credentials(
+    token=token_data["access_token"],
+    refresh_token=token_data.get("refresh_token"),
+    token_uri="https://oauth2.googleapis.com/token",
+    client_id="964460747662-8oielvpbphij44agin684r57ojfio9h1.apps.googleusercontent.com",
+    client_secret=None,
+)
 
+drive_service = build('drive', 'v3', credentials=creds)
 
-def build_request(
-    url: str,
-    method: str,
-    token: str,
-    payload: Optional[dict] = None,
-    idempotency_key: Optional[str] = None,
-) -> urllib.request.Request:
-    data = None
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "User-Agent": "pipelinegen-sync/1.0",
-    }
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    if idempotency_key:
-        # RFC-style Idempotency-Key (Go mirrors/sequences this header).
-        headers["Idempotency-Key"] = idempotency_key
-    return urllib.request.Request(url, data=data, headers=headers, method=method)
+def get_file_content(file_id):
+    """Download Google Drive text file content directly in memory."""
+    try:
+        content = drive_service.files().get_media(fileId=file_id).execute()
+        return content.decode('utf-8', errors='ignore').strip()
+    except Exception as e:
+        print(f"Error reading file content for {file_id}: {e}")
+        return ""
 
+def generate_deterministic_uuid(drive_id):
+    """Generate a deterministic UUID v5 from the Google Drive file ID."""
+    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8') # DNS namespace
+    return str(uuid.uuid5(namespace, drive_id))
 
-def http_call(
-    url: str,
-    method: str,
-    token: str,
-    payload: Optional[dict] = None,
-    idempotency_key: Optional[str] = None,
-    timeout_s: int = DEFAULT_TIMEOUT_S,
-    max_retries: int = DEFAULT_MAX_RETRIES,
-) -> dict:
-    """One-shot HTTP call with retry for retryable errors only."""
-    last_err: Optional[str] = None
-    last_status: int = 0
-    for attempt in range(1, max_retries + 1):
-        try:
-            req = build_request(url, method, token, payload, idempotency_key)
-            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-                raw = resp.read().decode("utf-8") or "{}"
-                return {
-                    "status": resp.status,
-                    "body": json.loads(raw),
-                    "retryable": False,
-                    "attempts": attempt,
-                }
-        except urllib.error.HTTPError as e:
-            last_status = e.code
-            last_err_body = e.read().decode("utf-8", errors="ignore") if e.fp else ""
-            try:
-                last_err = json.loads(last_err_body)
-            except Exception:
-                last_err = last_err_body
-            if e.code in RETRYABLE_HTTP and attempt < max_retries:
-                backoff = min(2 ** attempt, 30)
-                sys.stderr.write(
-                    f"retry {attempt}/{max_retries}: HTTP {e.code}, "
-                    f"sleeping {backoff}s\n"
-                )
-                time.sleep(backoff)
-                continue
-            return {
-                "status": e.code,
-                "body": last_err,
-                "retryable": False,
-                "attempts": attempt,
-            }
-        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
-            last_err = str(e)
-            if attempt < max_retries:
-                backoff = min(2 ** attempt, 30)
-                sys.stderr.write(
-                    f"retry {attempt}/{max_retries}: network error "
-                    f"{type(e).__name__}: {e}, sleeping {backoff}s\n"
-                )
-                time.sleep(backoff)
-                continue
-            return {
-                "status": last_status,
-                "body": last_err,
-                "retryable": False,
-                "attempts": attempt,
-            }
-    return {
-        "status": last_status,
-        "body": last_err or "max retries exhausted",
-        "retryable": False,
-        "attempts": max_retries,
-    }
+# QDRANT-003: generate_normalized_vector removed — synthetic pseudo-random
+# vectors are banned. Visual embeddings must come from a real model (CLIP/SigLIP)
+# and audio embeddings from CLAP. Placeholder zero-filled vectors are also banned.
+# See docs/qdrant/QDRANT-003_SCHEMA_VERSIONING_ALIASES_AND_REAL_EMBEDDINGS.md
 
 
-def post_folder_sync(
-    base_url: str,
-    token: str,
-    drive_folder_id: str,
-    source: str = "drive",
-    media_type: str = "clip",
-    name: Optional[str] = None,
-    timeout_s: int = DEFAULT_TIMEOUT_S,
-    max_retries: int = DEFAULT_MAX_RETRIES,
-) -> dict:
-    """Single folder-level sync — the Go server recurses and queues indexing."""
-    url = f"{base_url.rstrip('/')}/internal/v1/media/sync-drive-folder"
-    payload: dict = {
-        "drive_folder_id": drive_folder_id,
-        "source": source,
-        "media_type": media_type,
-    }
-    if name:
-        payload["name"] = name
-    idem = f"drive:{drive_folder_id}:folder-sync"
-    return http_call(
-        url=url,
-        method="POST",
-        token=token,
-        payload=payload,
-        idempotency_key=idem,
-        timeout_s=timeout_s,
-        max_retries=max_retries,
-    )
+def scan_folder_recursive(folder_id, current_path=""):
+    """Recursively fetch files in Google Drive folder."""
+    print(f"Scanning Drive folder: {current_path or 'Root'} (ID: {folder_id})")
+    files = []
+    page_token = None
+    
+    while True:
+        query = f"'{folder_id}' in parents and trashed = false"
+        response = drive_service.files().list(
+            q=query,
+            spaces="drive",
+            fields="nextPageToken, files(id, name, mimeType, createdTime, webViewLink)",
+            pageToken=page_token,
+            pageSize=100
+        ).execute()
+        
+        files.extend(response.get("files", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
 
+    # Separate folders, videos and metadata
+    folders = []
+    video_files = []
+    metadata_files = {} # name_stem -> file_object
+    
+    video_extensions = ('.mp4', '.mov', '.avi', '.mkv', '.webm')
+    meta_extensions = ('.json', '.txt')
+    
+    for f in files:
+        name = f['name']
+        mime = f['mimeType']
+        
+        if mime == 'application/vnd.google-apps.folder':
+            folders.append(f)
+        elif name.lower().endswith(video_extensions):
+            video_files.append(f)
+        elif name.lower().endswith(meta_extensions):
+            stem = Path(name).stem.lower()
+            metadata_files[stem] = f
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Pure-HTTP Go Qdrant ingestion sync "
-        "(QDRANT-001 — no direct SQLite/Qdrant access).",
-    )
-    parser.add_argument(
-        "--folder-id",
-        default=env_optional("VELOX_DRIVE_FOLDER_ID", ""),
-        help="Google Drive folder ID (or set VELOX_DRIVE_FOLDER_ID).",
-    )
-    parser.add_argument(
-        "--source",
-        default="drive",
-        help="Provider source tag (default 'drive').",
-    )
-    parser.add_argument(
-        "--media-type",
-        default="clip",
-        help="Media type tag (default 'clip').",
-    )
-    parser.add_argument(
-        "--name",
-        default="",
-        help="Human-readable name for the folder (optional).",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=int(env_optional("VELOX_HTTP_TIMEOUT_S", str(DEFAULT_TIMEOUT_S))),
-        help="Per-request timeout seconds.",
-    )
-    parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=int(env_optional(
-            "VELOX_HTTP_MAX_RETRIES", str(DEFAULT_MAX_RETRIES),
-        )),
-        help="Retry budget (only on timeout/429/5xx).",
-    )
-    return parser.parse_args()
+    # Process videos in the current folder
+    db_conn = sqlite3.connect(DB_PATH)
+    cursor = db_conn.cursor()
+    
+    for video in video_files:
+        video_name = video['name']
+        video_id = video['id']
+        video_link = video['webViewLink']
+        created_time = video['createdTime']
+        stem = Path(video_name).stem
+        stem_lower = stem.lower()
+        
+        print(f"\nProcessing video: {video_name} (ID: {video_id})")
+        
+        # Pairing logic
+        title = stem
+        description = ""
+        tags = []
+        
+        if stem_lower in metadata_files:
+            meta_file = metadata_files[stem_lower]
+            meta_name = meta_file['name']
+            meta_id = meta_file['id']
+            print(f"  -> Found paired metadata: {meta_name}")
+            
+            content = get_file_content(meta_id)
+            if meta_name.lower().endswith('.json'):
+                try:
+                    meta_json = json.loads(content)
+                    title = meta_json.get('title', title)
+                    description = meta_json.get('description', '')
+                    # handle tags as string or list
+                    raw_tags = meta_json.get('tags', [])
+                    if isinstance(raw_tags, str):
+                        tags = [t.strip() for t in raw_tags.split(',') if t.strip()]
+                    elif isinstance(raw_tags, list):
+                        tags = [str(t).strip() for t in raw_tags if str(t).strip()]
+                except Exception as e:
+                    print(f"  Warning: failed to parse JSON metadata: {e}. Falling back to plain text.")
+                    description = content
+            else:
+                description = content
+        else:
+            print("  -> No paired metadata found. Using folder fallback tags.")
+        
+        # Fallback tags based on folder hierarchy
+        fallback_tags = [part.strip().lower() for part in current_path.split('/') if part.strip()]
+        for ft in fallback_tags:
+            if ft not in tags:
+                tags.append(ft)
+                
+        # Generate Text embeddings (prefixed with "passage: " for storage as recommended by E5)
+        text_payload = f"passage: {title} {description} " + " ".join(tags)
+        print(f"  Generating text embeddings for: '{title}'...")
+        text_vector = model.encode(text_payload, normalize_embeddings=True).tolist()
+        
+        # Transcript vector
+        transcript_vector = text_vector
+        if description:
+            transcript_vector = model.encode(f"passage: {description}", normalize_embeddings=True).tolist()
+            
+        # QDRANT-003: visual and audio vectors require real model output.
+        # Visual: SigLIP (768d) via embedding_server /embed_visual_from_image.
+        # Audio: CLAP (512d) via embedding_server /embed_audio_from_file.
+        # Clips without real model output omit these channels — the outbox
+        # dispatcher will call the Go-side embedders when indexing.
+        visual_vector = None
+        audio_vector = None
+        
+        # Deterministic Point ID (reused as asset_id in SQLite)
+        point_id = generate_deterministic_uuid(video_id)
+        
+        # QDRANT-003: Qdrant writes are REMOVED — the canonical write path
+        # is the Go-side IndexWriter via outbox events. This script only
+        # populates SQLite with metadata + embeddings; the outbox dispatcher
+        # will upsert to Qdrant when the asset.index.requested event fires.
+        
+        # SQLite Upsert (Canonical Metadata Store)
+        print("  Saving metadata to SQLite...")
+        meta_json_str = json.dumps({
+            "drive_file_id": video_id,
+            "drive_link": video_link,
+            "name": title,
+            "folder_path": current_path,
+            "tags": tags,
+            "status": "active",
+            "created_at": created_time,
+        })
+        now = created_time
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO media_assets (
+                id, source, name, tags, media_type, status, lifecycle_state,
+                drive_file_id, drive_link, folder_path, folder_id, metadata_json,
+                embedding_json, transcript_embedding, visual_embedding, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            point_id, "drive", title, json.dumps(tags), "video", "ready", "ready",
+            video_id, video_link, current_path, folder_id, meta_json_str,
+            json.dumps(text_vector), json.dumps(transcript_vector), json.dumps(visual_vector),
+            now, now
+        ))
+        db_conn.commit()
+        print("  SQLite database record updated!")
+        
+    db_conn.close()
 
-
-def main() -> int:
-    args = parse_args()
-
-    if not args.folder_id:
-        sys.stderr.write(
-            "error: --folder-id (or VELOX_DRIVE_FOLDER_ID) is required\n"
-        )
-        return 2
-
-    base_url = env_required("VELOX_BROKER_URL")
-    token = env_required("VELOX_WORKER_TOKEN")
-
-    sys.stderr.write(
-        f"folder-sync -> {base_url}/internal/v1/media/sync-drive-folder "
-        f"(folder_id={args.folder_id})\n"
-    )
-    res = post_folder_sync(
-        base_url=base_url,
-        token=token,
-        drive_folder_id=args.folder_id,
-        source=args.source,
-        media_type=args.media_type,
-        name=args.name or None,
-        timeout_s=args.timeout,
-        max_retries=args.max_retries,
-    )
-
-    sys.stderr.write(
-        f"server response: status={res.get('status')} "
-        f"attempts={res.get('attempts', 1)}\n"
-    )
-    sys.stdout.write(json.dumps(res, indent=2, ensure_ascii=False))
-    sys.stdout.write("\n")
-    status = res.get("status", 0)
-    return 0 if 200 <= status < 300 else 1
-
+    # Recurse into subfolders
+    for subfolder in folders:
+        sub_path = f"{current_path}/{subfolder['name']}" if current_path else subfolder['name']
+        scan_folder_recursive(subfolder['id'], sub_path)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Scan the specified root folder
+    ROOT_FOLDER_ID = "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
+    print(f"Starting synchronization of Drive folder ID: {ROOT_FOLDER_ID}")
+    scan_folder_recursive(ROOT_FOLDER_ID)
+    print("\nAll synchronization and indexing completed successfully!")

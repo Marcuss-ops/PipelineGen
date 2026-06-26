@@ -7,6 +7,8 @@
 //
 // QDRANT-003 compliance:
 //   - Every embedding is produced by a real model, never synthesized.
+//   - Visual: SigLIP so400m (768d) via /embed_visual_from_image.
+//   - Audio: CLAP HTSAT (512d) via /embed_audio_from_file.
 //   - Model identity and version are declared in the IndexSchema manifest.
 //   - Audio is optional — returns ErrChannelUnavailable when the sidecar
 //     reports CLAP model not loaded (HTTP 501).
@@ -107,13 +109,15 @@ func (a *imageEmbedderAdapter) EmbedImages(ctx context.Context, imagePaths []str
 }
 
 func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string) ([]float32, error) {
+	// QDRANT-003: call /embed_visual_from_image which accepts {"image_path": "..."}
+	// and uses SigLIP image encoder (768d).
 	payload, err := json.Marshal(map[string]string{"image_path": imagePath})
 	if err != nil {
 		return nil, fmt.Errorf("marshal visual embed request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.serverURL+"/embed_visual", bytes.NewReader(payload))
+		a.serverURL+"/embed_visual_from_image", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("create visual embed request: %w", err)
 	}
@@ -126,7 +130,7 @@ func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotImplemented {
-		// 501 = CLIP/SigLIP model not loaded — not an error, channel unavailable.
+		// 501 = SigLIP model not loaded — not an error, channel unavailable.
 		return nil, &ErrChannelUnavailable{Channel: "visual"}
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -159,8 +163,8 @@ type AudioEmbedderConfig struct {
 	Timeout time.Duration
 }
 
-// audioEmbedderAdapter calls the Python sidecar's /embed_audio endpoint
-// to generate real CLAP embeddings. Audio is optional — when the sidecar
+// audioEmbedderAdapter calls the Python sidecar's /embed_audio_from_file endpoint
+// to generate real CLAP embeddings from audio files. Audio is optional — when the sidecar
 // is unavailable (URL empty or CLAP model not loaded), EmbedAudio returns
 // ErrChannelUnavailable so the caller can proceed without audio vectors.
 type audioEmbedderAdapter struct {
@@ -206,13 +210,15 @@ func (a *audioEmbedderAdapter) EmbedAudio(ctx context.Context, audioPaths []stri
 }
 
 func (a *audioEmbedderAdapter) embedSingle(ctx context.Context, audioPath string) ([]float32, error) {
+	// QDRANT-003: call /embed_audio_from_file which accepts {"audio_path": "..."}
+	// and uses CLAP audio encoder (512d).
 	payload, err := json.Marshal(map[string]string{"audio_path": audioPath})
 	if err != nil {
 		return nil, fmt.Errorf("marshal audio embed request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.serverURL+"/embed_audio", bytes.NewReader(payload))
+		a.serverURL+"/embed_audio_from_file", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("create audio embed request: %w", err)
 	}

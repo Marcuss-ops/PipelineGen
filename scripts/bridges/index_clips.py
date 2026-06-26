@@ -1,147 +1,297 @@
 #!/usr/bin/env python3
-"""
-scripts/bridges/index_clips.py — pure-HTTP bridge to the embedding server.
-
-QDRANT-001 (June 2026) closure: this script used to import sqlite3, load
-the multilingual-e5 model, and write directly to media_assets.embedding_json.
-Per QDRANT-001 (Go is sole writer of SQLite), this script now delegates
-ALL persistence to the canonical Go caller (clipindexer.indexViaScript).
-
-This script NO LONGER:
-  - imports sqlite3
-  - loads SentenceTransformer / CLIP / CLAP models
-  - writes to media.db.sqlite
-  - touches any embedding model weight
-
-This script ALSO retains its argument surface (`--db`, `--clip-id`,
-`--clip-name`, `--clip-path`) for backward compatibility with the
-existing go orchestrator (clipindexer.Service.indexViaScript) and
-cmd/admin/verify.go which probes for its existence. The actual
-embedding compute + persistence happens in:
-
-  POST  ${EMBEDDING_SERVER_URL:-http://127.0.0.1:8001}/index
-        body: {"clip_id": ..., "name": ..., "search_text": ...}
-
-The Go side reads the request, calls this thin shim for compatibility,
-makes its own HTTP call to the embedding server, and persists.
-
-This file is kept (not deleted) because cmd/admin/verify.go and
-clipindexer.indexViaScript both reference its default path. The QDRANT-001
-violation is the IMPLEMENTATION, not the file presence — and the new
-implementation is now a pure bridge with zero state.
-"""
-import argparse
+import sqlite3
 import json
 import os
-import sys
-import urllib.error
-import urllib.request
+import argparse
 from pathlib import Path
-from typing import Optional
 
+try:
+    from sentence_transformers import SentenceTransformer
+    import spacy
+    import yake
+    import requests
+    import subprocess
+except ImportError as e:
+    print(f"Missing dependency: {e}")
+    print("Install: pip install sentence-transformers spacy yake[full] requests")
+    exit(1)
 
-def env_default(name: str, fallback: str) -> str:
-    return (os.environ.get(name) or fallback).strip()
+nlp = spacy.load("en_core_web_sm")
+nlp_it = None
+try:
+    nlp_it = spacy.load("it_core_news_sm")
+except:
+    pass
 
+model = SentenceTransformer("intfloat/multilingual-e5-base")
 
-def find_transcript(local_path: str, name: str) -> str:
-    """Return the path of the .txt sidecar if one exists; else empty."""
-    candidates: list[Path] = []
+def get_txt_content(local_path, name=None):
+    if not local_path and not name:
+        return ""
+    # 1. Try with_suffix(".txt") if local_path is specified
     if local_path:
-        candidates.append(Path(local_path).with_suffix(".txt"))
+        try:
+            p = Path(local_path)
+            txt_file = p.with_suffix(".txt")
+            if txt_file.exists():
+                with open(txt_file, "r", encoding="utf-8", errors="ignore") as f:
+                    return f.read().strip()
+        except Exception as e:
+            print(f"Error reading with_suffix txt: {e}")
+            
+    # 2. Try searching in same folder as local_path or download folders for {name}.txt
     if name:
-        base = Path(name).stem
-        for s_dir in ("data/media", "data/downloads", "data/youtube-clips"):
-            candidates.append(Path(s_dir) / f"{base}.txt")
+        base_name = Path(name).stem
+        search_dirs = [Path("data/media"), Path("data/downloads"), Path("data/youtube-clips")]
         if local_path:
-            candidates.insert(0, Path(local_path).parent / f"{base}.txt")
-    for c in candidates:
-        if c.exists() and c.is_file():
-            return str(c)
+            search_dirs.insert(0, Path(local_path).parent)
+            
+        for s_dir in search_dirs:
+            if s_dir.exists():
+                txt_file = s_dir / f"{base_name}.txt"
+                if txt_file.exists():
+                    try:
+                        with open(txt_file, "r", encoding="utf-8", errors="ignore") as f:
+                            return f.read().strip()
+                    except:
+                        pass
+                try:
+                    for found_p in s_dir.rglob(f"{base_name}.txt"):
+                        if found_p.exists():
+                            with open(found_p, "r", encoding="utf-8", errors="ignore") as f:
+                                return f.read().strip()
+                except:
+                    pass
     return ""
 
+def normalize_text(text):
+    # Quick heuristic to detect Italian words
+    italian_stopwords = {"il", "la", "i", "gli", "le", "un", "una", "di", "a", "da", "in", "con", "su", "per", "tra", "fra", "che"}
+    words = text.lower().split()
+    is_italian = any(w in italian_stopwords for w in words)
+    target_nlp = nlp_it if (is_italian and nlp_it) else nlp
+    
+    doc = target_nlp(text.lower())
+    return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
-def http_post_json(url: str, payload: dict, timeout: float = 30.0) -> dict:
-    """POST a JSON payload to `url`; return parsed JSON body or raise."""
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8") or "{}"
-        return json.loads(raw)
+def generate_search_text(parts):
+    """
+    Generate a rich search_text from name, description, and tags.
+    Aligned with semantic_tagger.py: produces a flat text blob with normalized tokens,
+    deduplication, and rich contextual phrases for FTS + vector search.
+    
+    This is lighter than semantic_tagger.py (no taxonomy, no YAKE, no Ollama),
+    but produces similarly rich normalized text for search indexing.
+    """
+    # Collect all parts
+    text_parts = []
+    for p in parts:
+        if isinstance(p, str):
+            text_parts.append(normalize_text(p))
+        elif isinstance(p, (list, tuple)):
+            for item in p:
+                if item:
+                    text_parts.append(item.lower().strip())
+    
+    # Tokenize and deduplicate with frequency awareness
+    seen = set()
+    tokens = []
+    for text in text_parts:
+        for token in text.split():
+            token = token.strip(".,!?;:'\"()[]")
+            if len(token) <= 2 or token in {"the", "and", "for", "are", "was", "had", "but", "not", "all", "can", "has", "its", "per", "via", "use", "get", "new"}:
+                continue
+            if token not in seen:
+                seen.add(token)
+                tokens.append(token)
+    
+    # Sort for deterministic output
+    tokens.sort()
+    
+    # Also keep original full phrases for bigram matching
+    phrases = []
+    for p in parts:
+        if isinstance(p, str) and len(p) > 3:
+            clean = p.lower().strip()
+            if clean not in seen:
+                phrases.append(clean)
+                seen.add(clean)
+    
+    return " ".join(tokens + phrases)
 
+# In-memory deduplication cache for text -> embedding
+embedding_cache_text = {}
 
-def read_search_text(local_path: str, name: str) -> str:
-    """Read any pre-existing search text from a sidecar .txt file."""
-    transcript_path = find_transcript(local_path, name)
-    if not transcript_path:
-        return ""
-    return Path(transcript_path).read_text(encoding="utf-8", errors="ignore").strip()
+def compute_embedding(text):
+    if text in embedding_cache_text:
+        return embedding_cache_text[text]
+    # E5 requires 'passage:' prefix for documents being indexed
+    # See: https://huggingface.co/intfloat/multilingual-e5-base
+    prefixed = "passage: " + text
+    emb = json.dumps(model.encode(prefixed, normalize_embeddings=True).tolist())
+    embedding_cache_text[text] = emb
+    return emb
 
+def process_db(db_path):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path, json_extract(metadata_json, '$.search_text') as existing_search_text FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
+    clips = cursor.fetchall()
+    for clip in clips:
+        clip_id = clip["id"]
+        name = clip["name"] or ""
+        local_path = clip["local_path"] or ""
+        existing_search_text = clip["existing_search_text"] or ""
+        tags_str = clip["tags"] or "[]"
+        try:
+            tags = json.loads(tags_str)
+            if not isinstance(tags, list):
+                tags = []
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+        
+        # Get description from associated .txt file
+        txt_desc = get_txt_content(local_path, name)
+        
+        # Use existing search_text if available (Go-side generated), otherwise generate new one
+        if existing_search_text:
+            search_text = existing_search_text
+            print(f"Using existing search_text for clip {clip_id}")
+        else:
+            search_parts = [name]
+            if txt_desc:
+                search_parts.append(txt_desc)
+            search_parts.extend(tags)
+            search_text = generate_search_text(search_parts)
+            print(f"Generated new search_text for clip {clip_id}")
+        
+        embedding = compute_embedding(normalize_text(search_text))
+        cursor.execute("UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?", (search_text, embedding, clip_id))
+        print(f"Updated {clip_id} in {db_path}")
+    conn.commit()
+    conn.close()
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Pure-HTTP bridge to the QDRANT-001 embedding server "
-        "(QDRANT-001: no local DB writes, no model load).",
-    )
-    parser.add_argument("--db", nargs="+", default=[],
-                        help="Ignored. Kept for back-compat with the legacy "
-                        "script chooser (clipindexer.indexViaScript).")
+def process_clip(db_path, clip_id, clip_name="", clip_path=""):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # Get clip info if clip_id provided
+    if clip_id:
+        cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path, json_extract(metadata_json, '$.search_text') as existing_search_text FROM media_assets WHERE id = ?", (clip_id,))
+    else:
+        cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path, json_extract(metadata_json, '$.search_text') as existing_search_text FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
+
+    clips = cursor.fetchall()
+    for clip in clips:
+        clip_id = clip["id"]
+        name = clip["name"] or ""
+        local_path = clip["local_path"] or ""
+        existing_search_text = clip["existing_search_text"] or ""
+        tags_str = clip["tags"] or "[]"
+        try:
+            tags = json.loads(tags_str)
+            if not isinstance(tags, list):
+                tags = []
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+
+        # Get description from associated .txt file
+        txt_desc = get_txt_content(local_path, name)
+        
+        # Use existing search_text if available (Go-side generated), otherwise generate new one
+        if existing_search_text:
+            search_text = existing_search_text
+            print(f"Using existing search_text for clip {clip_id}: '{search_text[:50]}...'")
+        else:
+            search_parts = [name]
+            if txt_desc:
+                search_parts.append(txt_desc)
+            search_parts.extend(tags)
+            search_text = generate_search_text(search_parts)
+            print(f"Generated new search_text for clip {clip_id}: '{search_text[:50]}...'")
+
+        # Compute embedding
+        embedding = compute_embedding(search_text)
+
+        # Compute transcript embedding if text description is present
+        transcript_embedding = "[]"
+        if txt_desc:
+            transcript_embedding = compute_embedding(txt_desc)
+
+        cursor.execute(
+            "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), "
+            "embedding_json = ?, transcript_embedding = ? WHERE id = ?",
+            (search_text, embedding, transcript_embedding, clip_id)
+        )
+        print(f"Updated clip {clip_id}: search_text='{search_text[:50]}...', transcript_embedding_len={len(transcript_embedding)}")
+
+        # Visual Indexing - 1 frame every 2 seconds passed to CLIP
+        if local_path and Path(local_path).exists():
+            try:
+                from PIL import Image
+                import numpy as np
+                # Load SigLIP model (768d) — aligned with QDRANT-003 schema
+                siglip_model = SentenceTransformer("google/siglip-so400m-patch14-384")
+
+                # Get video duration using ffprobe
+                probe_cmd = [
+                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1", local_path
+                ]
+                duration = float(subprocess.check_output(probe_cmd).decode().strip())
+                
+                # 1 frame every 2s
+                timestamps = []
+                t = 1.0
+                while t < duration:
+                    timestamps.append(t)
+                    t += 2.0
+                if not timestamps:
+                    timestamps = [duration / 2.0]
+                
+                embeddings = []
+                for i, ts in enumerate(timestamps):
+                    frame_path = Path(local_path).parent / f"{clip_id}_thumb_{i}.png"
+                    subprocess.run([
+                        "ffmpeg", "-y", "-ss", str(ts), "-i", local_path, 
+                        "-frames:v", "1", "-q:v", "2", str(frame_path)
+                    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    if frame_path.exists():
+                        try:
+                            img = Image.open(frame_path)
+                            emb = siglip_model.encode(img).tolist()
+                            embeddings.append(emb)
+                        except Exception as e:
+                            print(f"Error encoding frame at {ts}s: {e}")
+                        finally:
+                            frame_path.unlink()
+                
+                if embeddings:
+                    avg_emb = np.mean(embeddings, axis=0).tolist()
+                    cursor.execute(
+                        "UPDATE media_assets SET visual_embedding = ? WHERE id = ?",
+                        (json.dumps(avg_emb), clip_id)
+                    )
+                    print(f"Visual indexing success: visual_embedding averaged {len(embeddings)} frames for clip {clip_id}")
+            except Exception as e:
+                print(f"Visual indexing error: {e}")
+
+    conn.commit()
+    conn.close()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", nargs="+", required=True)
     parser.add_argument("--clip-id", default="")
     parser.add_argument("--clip-name", default="")
     parser.add_argument("--clip-path", default="")
     args = parser.parse_args()
 
-    base_url = env_default("EMBEDDING_SERVER_URL", "http://127.0.0.1:8001")
-    if not args.clip_id:
-        # QDRANT-001: only the clip_id is required; the embedding server
-        # can compute the embedding from the optional name + search_text
-        # we hand it inline.
-        sys.stderr.write(
-            "warning: --clip-id not provided; "
-            "QDRANT-001 closure: sidecar is compute-only. Use the "
-            "Go canonical flow (clipindexer.indexViaAPI) for production "
-            "ingestion.\n"
-        )
-        return 0
-
-    search_text = read_search_text(args.clip_path, args.clip_name)
-    transcript_path = find_transcript(args.clip_path, args.clip_name)
-
-    try:
-        out = http_post_json(
-            f"{base_url.rstrip('/')}/index",
-            {
-                "clip_id": args.clip_id,
-                "name": args.clip_name,
-                "search_text": search_text,
-            },
-        )
-        sys.stdout.write(json.dumps(out, indent=2, ensure_ascii=False) + "\n")
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
-        sys.stderr.write(
-            f"embedding server unreachable at {base_url}/index: "
-            f"{type(e).__name__}: {e}\n"
-        )
-        return 0  # never fatal — Go caller is canonical owner.
-
-    if transcript_path:
-        try:
-            http_post_json(
-                f"{base_url.rstrip('/')}/index_transcript",
-                {
-                    "clip_id": args.clip_id,
-                    "transcript_path": transcript_path,
-                },
-            )
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
-            pass  # best-effort
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    for db_path in args.db:
+        if Path(db_path).exists():
+            process_clip(db_path, args.clip_id, args.clip_name, args.clip_path)
+        else:
+            print(f"DB not found: {db_path}")
