@@ -50,6 +50,8 @@ async def embed_visual_from_image(req: ImageEmbedRequest):
             return {"embedding": embedding, "dimensions": len(embedding)}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/visual_analyze")
 async def visual_analyze(req: VisualAnalyzeRequest):
     """Generate SigLIP visual embedding + perceptual hash for a local image file."""
@@ -75,7 +77,7 @@ async def visual_analyze(req: VisualAnalyzeRequest):
 
 @router.post("/phash")
 async def compute_phash(req: PhashRequest):
-    """Compute perceptual hash of an image file (used during clip indexing)."""
+    """Compute perceptual hash of an image file (used during media asset indexing)."""
     async with _inference_sem:
         try:
             from PIL import Image
