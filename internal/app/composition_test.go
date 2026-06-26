@@ -140,8 +140,15 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.DriveStart, "root.DriveStart (PR9-A deferred side-effect closure)")
 	// PR9-B (June 2026): OutboxStart closure is always non-nil when Outbox bundle is built.
 	require.NotNil(t, root.OutboxStart, "root.OutboxStart (PR9-B deferred side-effect closure)")
-	// PR9-C (June 2026): ProcessStart closure is always non-nil when Process bundle is built.
-	require.NotNil(t, root.ProcessStart, "root.ProcessStart (PR9-C deferred side-effect closure)")
+	// PR9-C (June 2026, June 2026 Onda 5): root.ProcessStart was a
+	// planned-but-never-implemented PR9-C deferred-start closure on the
+	// Process bundle. BuildProcessBundle returns only (*ProcessBundle,
+	// error) (no IOpaqueStartFunc — Process has no async startup pool),
+	// so the field was never added to ComposeRoot. The original test
+	// assertion referenced a phantom field and broke `go vet ./internal/app/`
+	// — removed here to align with the actual ComposeRoot shape. If a
+	// future PR9-C+ wave reintroduces ProcessStart, re-add the
+	// assertion in lockstep with the new field.
 
 	// RepoBundle canaries (8 fields).
 	require.NotNil(t, root.Repos.ScriptsRepo, "root.Repos.ScriptsRepo")
