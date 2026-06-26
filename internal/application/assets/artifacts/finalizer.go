@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 

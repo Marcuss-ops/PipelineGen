@@ -70,9 +70,9 @@ type Config struct {
 // doesn't enforce them yet (QDRANT-005); storing them on Config
 // keeps the call site future-proof.
 type HybridWeights struct {
-	Dense       float64
-	Transcript  float64
-	Sparse      float64
+	Dense      float64
+	Transcript float64
+	Sparse     float64
 }
 
 // Service is the QDRANT-004 MediaSearchService. It does not own any

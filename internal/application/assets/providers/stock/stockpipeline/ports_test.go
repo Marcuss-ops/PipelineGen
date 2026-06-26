@@ -23,10 +23,10 @@ import (
 
 // mockRenderer captures the last Render call and returns a stub Result.
 type mockRenderer struct {
-	lastReq  RenderRequest
-	result   RenderResult
-	err      error
-	called   int
+	lastReq RenderRequest
+	result  RenderResult
+	err     error
+	called  int
 }
 
 func (m *mockRenderer) Render(ctx context.Context, req RenderRequest) (RenderResult, error) {
@@ -82,19 +82,19 @@ func TestNoOpAnchors(t *testing.T) {
 func TestMockRendererDelegation(t *testing.T) {
 	mock := &mockRenderer{
 		result: RenderResult{
-			UsedFastPath:         true,
-			AppliedTransitions:   []string{"fadeblack"},
-			AppliedOverlayFiles:  []string{"/effects/a.mp4"},
-			DurationMS:           1234,
+			UsedFastPath:        true,
+			AppliedTransitions:  []string{"fadeblack"},
+			AppliedOverlayFiles: []string{"/effects/a.mp4"},
+			DurationMS:          1234,
 		},
 	}
 	var r StockRenderer = mock
 	req := RenderRequest{
-		OutputPath:     "/tmp/out.mp4",
-		InputPaths:     []string{"/tmp/a.mp4", "/tmp/b.mp4"},
-		Codec:          "libx264",
-		NoTransitions:  true,
-		NoEffects:      true,
+		OutputPath:      "/tmp/out.mp4",
+		InputPaths:      []string{"/tmp/a.mp4", "/tmp/b.mp4"},
+		Codec:           "libx264",
+		NoTransitions:   true,
+		NoEffects:       true,
 		ClipDurationSec: 10,
 	}
 	res, err := r.Render(context.Background(), req)

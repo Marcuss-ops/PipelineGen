@@ -247,6 +247,23 @@ type SparseQueryVector struct {
 // Raw fields (ID, Score, Payload, Version) come directly from the Qdrant API.
 // Derived fields (AssetID, Name, …) are populated from Payload by convenience
 // helpers (searchResultFromPoint, etc.).
+//
+// QDRANT-001 (June 2026) closure: LocalPath and DriveLink were
+// removed from this struct. They were server-internal locators
+// (filesystem path + Drive web-view link) that have no place in the
+// canonical search index payload — the contract now is
+// "SearchResult carries IDs + metadata for hydration, never a
+// server-internal locator". BuildPayload (payload_mapper.go) no
+// longer writes them; search_adapter.go stops reading them from
+// payload. Clients that need the bytes go through
+// delivery.Signer.BuildAuthorizedURL per asset.
+//
+// This shape is the canonical "what the search service returns
+// back to the orchestrator" boundary; the application-level
+// `search.VectorSearchResult` still exposes LocalPath/DriveLink
+// (legacy fields, omitted-valued). Future calls may deprecate
+// those fields in `appsearch` separately — they are NOT part of
+// QDRANT-001's scope.
 type SearchResult struct {
 	// Raw Qdrant fields.
 	ID      string                 `json:"id"`
@@ -279,82 +296,53 @@ type SearchResult struct {
 // ── Config ───────────────────────────────────────────────────────────
 
 // Config holds Qdrant client configuration.
+//
+// QDRANT-001 closure (June 2026): the legacy fields below were
+// removed. Channel names and dimensions are owned by IndexSchema
+// (the Single Source Of Truth for the V3 manifest) — the Client no
+// longer carries per-channel settings. List of removed fields:
+//
+//   - URL (legacy alias for BaseURL; use BaseURL)
+//   - TimeoutMs (legacy ms variant; use Timeout in seconds)
+//   - RetryMaxAttempts (no live consumer; NewClient only sets Timeout)
+//   - Collection / CollectionAlias / DisableAlias (legacy flat-name
+//     routing; the canonicalisable physical-name + runtime-alias pair
+//     lives on IndexSchema.PhysicalName / IndexSchema.RuntimeAlias and
+//     is consumed by IndexWriter / CollectionManager)
+//   - TextVectorName/TranscriptVectorName/VisualVectorName/AudioVectorName/
+//     SparseVectorName (channel lives on IndexSchema.DenseVectors /
+//     SparseVectors)
+//   - TextDimensions/TranscriptDimensions/VisualDimensions/AudioDimensions
+//     (dimensions live on IndexSchema.DenseVectors.Dimensions)
+//   - EmbeddingServerURL (the sidecar URL is configured on
+//     cfg.ClipIndexer.ServerURL, not on the Qdrant client)
+//
+// Survivor fields below tell the runtime how to reach Qdrant + whether
+// it is enabled; everything else is encoded in IndexSchema and the
+// schema-versioning ratchet (see architecture/current.yaml).
 type Config struct {
-	// ── Connection ──
-
 	// BaseURL is the Qdrant REST API base URL (e.g. "http://127.0.0.1:6333").
 	BaseURL string `yaml:"base_url"`
-
-	// URL is a legacy alias for BaseURL.
-	URL string `yaml:"url"`
 
 	// APIKey is an optional Qdrant API key.
 	APIKey string `yaml:"api_key"`
 
-	// Timeout is the HTTP client timeout in seconds (new code).
+	// Timeout is the HTTP client timeout in seconds.
 	Timeout int `yaml:"timeout"`
-
-	// TimeoutMs is the HTTP client timeout in milliseconds (legacy code).
-	TimeoutMs int `yaml:"timeout_ms"`
-
-	// RetryMaxAttempts is the maximum number of retries for transient failures.
-	RetryMaxAttempts int `yaml:"retry_max_attempts"`
-
-	// ── Feature flags ──
 
 	// Enabled is whether Qdrant integration is active.
 	Enabled bool `yaml:"enabled"`
 
-	// ── Collection ──
-
-	// Collection is the base collection name (e.g. "media_assets").
-	Collection string `yaml:"collection"`
-
-	// CollectionVersion pins a schema version (e.g. "v3").
+	// CollectionVersion pins a schema version (e.g. "v3"). The
+	// IndexSchema that maps channels + aliases to physical collection
+	// names is selected by this tag.
 	CollectionVersion string `yaml:"collection_version"`
 
-	// CollectionAlias is the runtime alias for reads/writes.
-	CollectionAlias string `yaml:"collection_alias"`
-
-	// DisableAlias forces direct physical-collection access.
-	DisableAlias bool `yaml:"disable_alias"`
-
-	// CollectionRetentionDays is how many days to keep old collections after switch.
+	// CollectionRetentionDays is how many days to keep old collections
+	// after a reindex switch. (The OldTarget retention policy is
+	// advisory today: operator runbooks track the canonical
+	// `retention` schedule.)
 	CollectionRetentionDays int `yaml:"collection_retention_days"`
-
-	// ── Vector names and dimensions ──
-
-	// TextVectorName is the dense vector name for semantic text (e.g. "text").
-	TextVectorName string `yaml:"text_vector_name"`
-
-	// TranscriptVectorName is the dense vector name for transcripts.
-	TranscriptVectorName string `yaml:"transcript_vector_name"`
-
-	// VisualVectorName is the dense vector name for visual embeddings.
-	VisualVectorName string `yaml:"visual_vector_name"`
-
-	// AudioVectorName is the dense vector name for audio embeddings.
-	AudioVectorName string `yaml:"audio_vector_name"`
-
-	// SparseVectorName is the sparse vector name (e.g. "bm25_text").
-	SparseVectorName string `yaml:"sparse_vector_name"`
-
-	// TextDimensions is the vector size for text embeddings.
-	TextDimensions int `yaml:"text_dimensions"`
-
-	// TranscriptDimensions is the vector size for transcript embeddings.
-	TranscriptDimensions int `yaml:"transcript_dimensions"`
-
-	// VisualDimensions is the vector size for visual embeddings.
-	VisualDimensions int `yaml:"visual_dimensions"`
-
-	// AudioDimensions is the vector size for audio embeddings.
-	AudioDimensions int `yaml:"audio_dimensions"`
-
-	// ── Embedding ──
-
-	// EmbeddingServerURL is the sidecar URL for text embeddings.
-	EmbeddingServerURL string `yaml:"embedding_server_url"`
 }
 
 // DefaultConfig returns a safe default configuration.
@@ -362,7 +350,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		BaseURL:                 "http://127.0.0.1:6333",
 		Timeout:                 10,
-		RetryMaxAttempts:        3,
 		CollectionRetentionDays: 7,
 	}
 }

@@ -84,6 +84,26 @@ func (e *ErrAliasSwitchNotReady) Error() string {
 	return "qdrant alias switch not ready: pre-switch verification failed"
 }
 
+// ErrSparseRequired is returned when the schema has a sparse BM25 channel
+// configured but the caller did not supply a SparseQueryVector for the
+// hybrid search request. Per QDRANT-004 closure: hybrid search is a
+// HARD promise — when the schema has a BM25 channel, the caller must
+// send a sparse query vector. Falling back to dense-only is a regression
+// and the caller must surface this as a 4xx to the client (handler maps
+// it to 400 Bad Request).
+type ErrSparseRequired struct {
+	Channel string // sparse vector channel that should have been supplied
+}
+
+func (e *ErrSparseRequired) Error() string {
+	ch := e.Channel
+	if ch == "" {
+		ch = "bm25_text"
+	}
+	return "qdrant hybrid search: sparse query vector required for channel " + ch +
+		" — schema has sparse BM25 configured; dense-only is a regression"
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 // IsRetryable returns true for errors that should be retried (HTTP timeout, 5xx, etc.).

@@ -59,8 +59,8 @@ type ScriptFlowHandler struct {
 	groupsResolver    *voiceover.GroupsResolver
 	clipSourceBuilder *scripts.ClipSourceBuilder
 	mediaCurator      *scripts.MediaCurator
-	sectionRegen   *scripts.SectionRegenerator
-	cacheEviction  *scripts.CacheEvictionUseCase
+	sectionRegen      *scripts.SectionRegenerator
+	cacheEviction     *scripts.CacheEvictionUseCase
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      scripts.ClipServices
 	driveFolderClient DriveFolderClient
@@ -84,10 +84,10 @@ type AutoHarvestService interface {
 
 // ScriptFlowDeps groups all constructor inputs.
 type ScriptFlowDeps struct {
-	Engine         *scripts.Engine
-	Batch          *scripts.BatchService
-	Section        *scripts.SectionRegenerator
-	CacheEviction  *scripts.CacheEvictionUseCase
+	Engine          *scripts.Engine
+	Batch           *scripts.BatchService
+	Section         *scripts.SectionRegenerator
+	CacheEviction   *scripts.CacheEvictionUseCase
 	PipelineUseCase *scripts.PipelineUseCase
 
 	Image       *images.Service
@@ -146,8 +146,8 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		groupsResolver:    groupsResolver,
 		clipSourceBuilder: deps.ClipSourceBuilder,
 		mediaCurator:      deps.MediaCurator,
-		sectionRegen:   deps.Section,
-		cacheEviction:  deps.CacheEviction,
+		sectionRegen:      deps.Section,
+		cacheEviction:     deps.CacheEviction,
 		driveFolderClient: deps.DriveFolderClient,
 		documentCreator:   deps.DocumentCreator,
 		jobsSvc:           deps.Jobs,
@@ -395,8 +395,8 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"ok":    true,
-			"async": true,
+			"ok":     true,
+			"async":  true,
 			"job_id": enq.ID,
 			"status": enq.Status,
 		})
@@ -464,4 +464,3 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 		"progress": job.Progress, "error": job.Error, "result": job.Result,
 	})
 }
-

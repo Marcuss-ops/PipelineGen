@@ -35,11 +35,11 @@ type MediaSearchFilter struct {
 // direct mirror; we keep the wire shape here so callers and the
 // service agree without an additional translation pass.
 type MediaSearchResponse struct {
-	OK        bool           `json:"ok"`
-	Query     QueryEcho      `json:"query"`
-	Count     int            `json:"count"`
-	Hits      []SearchHit    `json:"hits"`
-	RequestID string         `json:"request_id,omitempty"`
+	OK           bool        `json:"ok"`
+	Query        QueryEcho   `json:"query"`
+	Count        int         `json:"count"`
+	Hits         []SearchHit `json:"hits"`
+	RequestID    string      `json:"request_id,omitempty"`
 	IndexVersion string      `json:"index_version,omitempty"`
 }
 

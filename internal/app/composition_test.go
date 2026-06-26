@@ -86,8 +86,8 @@ func minimalConfig(dataDir string) *config.Config {
 		},
 		VLM:         config.VLMConfig{Enabled: false},
 		ClipIndexer: config.ClipIndexerConfig{Enabled: false},
-		Reranker: config.RerankerConfig{Enabled: false},
-		Drive:    config.DriveConfig{},
+		Reranker:    config.RerankerConfig{Enabled: false},
+		Drive:       config.DriveConfig{},
 		Jobs: config.JobsConfig{
 			EnableBackgroundJobs: false, // suppress lifecycle spawners
 		},

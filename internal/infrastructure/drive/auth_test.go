@@ -23,15 +23,15 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 	})
 	t.Run("convenience methods use ResolveFolder and prioritize specific", func(t *testing.T) {
 		d := config.DriveConfig{
-			MediaRootFolder:        "media-root",
-			StockRootFolder:        "stock",
-			ClipsRootFolder:        "clips",
-			VoiceoverRootFolder:    "voiceover",
-			ArtlistRootFolder:      "artlist",
-			BooksRootFolder:        "books",
-			ScriptsRootFolder:      "scripts",
-			ImagesRootFolder:       "images",
-	
+			MediaRootFolder:     "media-root",
+			StockRootFolder:     "stock",
+			ClipsRootFolder:     "clips",
+			VoiceoverRootFolder: "voiceover",
+			ArtlistRootFolder:   "artlist",
+			BooksRootFolder:     "books",
+			ScriptsRootFolder:   "scripts",
+			ImagesRootFolder:    "images",
+
 			CopertineRootFolder:    "copertine",
 			SoundEffectsRootFolder: "sfx",
 		}
@@ -50,15 +50,24 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			// Strip 'Folder' from end to get key
 			expectedKey := name[:len(name)-6]
 			switch expectedKey {
-			case "Stock": expected = "stock"
-			case "Clips": expected = "clips"
-			case "Voiceover": expected = "voiceover"
-			case "Artlist": expected = "artlist"
-			case "Books": expected = "books"
-			case "Scripts": expected = "scripts"
-			case "Images": expected = "images"
-			case "Copertine": expected = "copertine"
-			case "SoundEffects": expected = "sfx"
+			case "Stock":
+				expected = "stock"
+			case "Clips":
+				expected = "clips"
+			case "Voiceover":
+				expected = "voiceover"
+			case "Artlist":
+				expected = "artlist"
+			case "Books":
+				expected = "books"
+			case "Scripts":
+				expected = "scripts"
+			case "Images":
+				expected = "images"
+			case "Copertine":
+				expected = "copertine"
+			case "SoundEffects":
+				expected = "sfx"
 			}
 			if got != expected {
 				t.Fatalf("%s expected %s, got %q", name, expected, got)

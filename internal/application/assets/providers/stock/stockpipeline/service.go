@@ -56,23 +56,23 @@ func DefaultPipelineConfig() PipelineConfig {
 // These ports are wired at composition time by WireStockPipeline via
 // SetCutter / SetRenderer match the existing setter-per-dep convention.
 type Service struct {
-	cfg         *config.Config
-	log         *zap.Logger
-	driveSvc    *gdrive.Service
-	driveUp     *driveup.Uploader
-	ytdlp       *downloader.YTDLPDownloader
+	cfg      *config.Config
+	log      *zap.Logger
+	driveSvc *gdrive.Service
+	driveUp  *driveup.Uploader
+	ytdlp    *downloader.YTDLPDownloader
 	// cutter + renderer are the PR6 ports; nil-safe guarded at each
 	// call site so missing composition wiring surfaces a clean error
 	// rather than a nil-pointer panic.
-	cutter   VideoCutter
-	renderer StockRenderer
-	pcfg             PipelineConfig
-	jobsSvc          *appjobs.Service
-	assetIndex       *assetindex.Service
-	youtubeSvc       *youtube.Service
-	clipIndexer      *clipindexer.Service
-	metaWriter       *semantic.MetadataWriter
-	clipsRepo        *assets.ClipsRepository
+	cutter      VideoCutter
+	renderer    StockRenderer
+	pcfg        PipelineConfig
+	jobsSvc     *appjobs.Service
+	assetIndex  *assetindex.Service
+	youtubeSvc  *youtube.Service
+	clipIndexer *clipindexer.Service
+	metaWriter  *semantic.MetadataWriter
+	clipsRepo   *assets.ClipsRepository
 	// dispatcher is the canonical media_index_outbox dispatcher, injected
 	// at composition time via WireStockPipeline. Required for production
 	// — upsertChunkAndDispatch returns an error when nil.

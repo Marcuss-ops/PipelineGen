@@ -123,6 +123,21 @@ type AssetExecutionResult struct {
 }
 
 // Filter defines query parameters for listing assets.
+//
+// WorkspaceID + IsAdmin (QDRANT-001 closure): the Filter carries a
+// tenant-isolation predicate. Repositories that back the multi-tenant
+// media_assets table MUST translate this into a SQL clause:
+//
+//	AND (workspace_id = ? OR ? = true)   // admin bypass in SQL is OK but discouraged
+//
+// or simpler in Go:
+//
+//	if filter.WorkspaceID != "" && !filter.IsAdmin { conds += workspace_id = ? }
+//
+// The IsAdmin bit is preferred in code over the SQL OR: it keeps the
+// query plan simple and lets repos log which path was taken. The
+// caller (composition root / use case) is the only place that knows
+// whether the current principal is admin.
 type Filter struct {
 	Source       string   `json:"source,omitempty"`
 	MediaType    string   `json:"media_type,omitempty"`
@@ -135,4 +150,17 @@ type Filter struct {
 	Group        string   `json:"group_name,omitempty"`
 	Limit        int      `json:"limit,omitempty"`
 	Offset       int      `json:"offset,omitempty"`
+
+	// WorkspaceID, when non-empty AND IsAdmin is false, restricts
+	// results to rows where workspace_id = ?. Empty means "no
+	// workspace filter" (legacy behaviour, used by internal
+	// admin/maintenance tooling that scans the whole catalog).
+	// QDRANT-001 (June 2026): added alongside the workspace_id
+	// hydration in mediasearchReadAdapter.
+	WorkspaceID string `json:"workspace_id,omitempty"`
+
+	// IsAdmin, when true, skips the workspace_id WHERE predicate.
+	// Auth context is the only place this flag is set; ordinary
+	// service-layer callers leave it false and trust the workspace.
+	IsAdmin bool `json:"is_admin,omitempty"`
 }

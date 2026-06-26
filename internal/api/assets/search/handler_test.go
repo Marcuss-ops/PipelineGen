@@ -167,5 +167,3 @@ func TestSearch_ServiceError(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code) // provider errors are logged, not surfaced
 }
-
-

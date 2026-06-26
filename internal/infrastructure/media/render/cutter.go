@@ -161,4 +161,3 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	}
 	return stockpipeline.CutResult{ProducedPaths: produced}, nil
 }
-

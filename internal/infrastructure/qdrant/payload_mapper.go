@@ -9,76 +9,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// BM25Params holds the configurable BM25 scoring parameters.
-// k1 controls term frequency saturation (default 1.2).
-// b controls document length normalization (default 0.75).
-// AvgDocLength is the average document length in tokens across the corpus.
-// IDFTable maps tokens → inverse document frequency; nil means IDF=1.0 fallback.
-type BM25Params struct {
-	K1           float64            `json:"k1"`
-	B            float64            `json:"b"`
-	AvgDocLength float64            `json:"avg_doc_length"`
-	IDFTable     map[string]float64 `json:"-"`
-}
-
-// DefaultBM25Params returns standard BM25 parameters.
-func DefaultBM25Params() *BM25Params {
-	return &BM25Params{
-		K1:           1.2,
-		B:            0.75,
-		AvgDocLength: 50.0, // reasonable default for short media descriptions
-	}
-}
-
 // PayloadMapper converts internal AssetData to Qdrant Point representations.
 // It is the SINGLE place where vector names, payload fields, and embedding
 // channel mapping are configured — no hardcoded names anywhere else.
 type PayloadMapper struct {
-	store      AssetStore
-	bm25Params *BM25Params
-	log        *zap.Logger
+	store AssetStore
+	log   *zap.Logger
 }
 
 // NewPayloadMapper creates a PayloadMapper.
 func NewPayloadMapper(store AssetStore, log *zap.Logger) *PayloadMapper {
 	return &PayloadMapper{
-		store:      store,
-		bm25Params: DefaultBM25Params(),
-		log:        log,
+		store: store,
+		log:   log,
 	}
-}
-
-// SetBM25Params overrides the default BM25 parameters. Call before reindex.
-func (m *PayloadMapper) SetBM25Params(p *BM25Params) {
-	if p != nil {
-		m.bm25Params = p
-	}
-}
-
-// BuildIDFTable computes IDF values from a corpus of tokenized documents.
-// n_t = number of documents containing term t; N = total documents.
-// IDF(t) = log((N - n_t + 0.5) / (n_t + 0.5) + 1)
-func BuildIDFTable(docs [][]string) map[string]float64 {
-	if len(docs) == 0 {
-		return nil
-	}
-	N := float64(len(docs))
-	df := make(map[string]int) // document frequency
-	for _, doc := range docs {
-		seen := make(map[string]bool)
-		for _, t := range doc {
-			if !seen[t] {
-				df[t]++
-				seen[t] = true
-			}
-		}
-	}
-	idf := make(map[string]float64, len(df))
-	for t, nt := range df {
-		ntf := float64(nt)
-		idf[t] = math.Log((N-ntf+0.5)/(ntf+0.5) + 1.0)
-	}
-	return idf
 }
 
 // FetchAsset delegates to the AssetStore.
@@ -100,6 +44,14 @@ func (m *PayloadMapper) ListAllAssetIDs(ctx context.Context) ([]string, error) {
 //   - NaN/Inf values are rejected.
 //   - Empty vectors for required channels are rejected.
 //   - Assets with invalid vectors are NOT silently skipped — errors are typed.
+//
+// QDRANT-001 closure (June 2026): the point ID is canonicalised via
+// AssetIDToQdrantPointID so all writes share a single translation rule
+// (the asset_id is wrapped with the AssetIDPrefix namespace marker).
+// Readers in client.go apply the symmetric PointIDToAssetID, so
+// downstream consumers see the bare asset ID. raw asset.ID literals
+// in the qdrant package are an anti-pattern; this is the only legal
+// site that derives a Qdrant point ID from a media_assets.id.
 func (m *PayloadMapper) AssetToPoint(asset *AssetData, schema *IndexSchema) (*Point, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset is nil")
@@ -180,7 +132,7 @@ func (m *PayloadMapper) AssetToPoint(asset *AssetData, schema *IndexSchema) (*Po
 	}
 
 	return &Point{
-		ID:      asset.ID,
+		ID:      AssetIDToQdrantPointID(asset.ID),
 		Vectors: vectors,
 		Payload: payload,
 	}, nil
@@ -262,6 +214,24 @@ func BuildPayload(asset *AssetData, schema *IndexSchema) map[string]interface{} 
 	if asset.Name != "" {
 		payload["name"] = asset.Name
 	}
+	// QDRANT-001 (June 2026) closure: drive_link is intentionally
+	// NOT written to the Qdrant payload. Drive web-view links are
+	// server-internal locators that the canonical search index
+	// must not leak. Clients that need a signed URL for an asset
+	// go through `delivery.Signer.BuildAuthorizedURL(ctx, ws,
+	// assetID)` — see mediasearch.Service for the wiring. The
+	// LocalPath / AssetData field is still populated by
+	// asset_store.go for *non-payload* uses (ingest-time path
+	// tracking) but is never shipped to Qdrant.
+	//
+	// Stale payload cleanup: legacy upserts from before this
+	// commit still contain a `drive_link` key on existing points.
+	// search_adapter.go no longer reads it (the field is gone from
+	// SearchResult), so the leakage path is closed at the
+	// application boundary even for old points. A background
+	// reconcile phase (QDRANT-005 territory) can prune the payload
+	// keys server-side via `payload_key_drop` once the gate
+	// stabilises.
 	if len(asset.Tags) > 0 {
 		payload["tags"] = asset.Tags
 	}
@@ -302,22 +272,4 @@ func parseMetadataJSON(asset *AssetData) {
 
 func isNaNOrInf(v float32) bool {
 	return math.IsNaN(float64(v)) || math.IsInf(float64(v), 0)
-}
-
-func tokenize(text string) []string {
-	var tokens []string
-	word := make([]byte, 0, 32)
-	for i := 0; i < len(text); i++ {
-		c := text[i]
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
-			word = append(word, c|0x20) // lowercase
-		} else if len(word) > 0 {
-			tokens = append(tokens, string(word))
-			word = word[:0]
-		}
-	}
-	if len(word) > 0 {
-		tokens = append(tokens, string(word))
-	}
-	return tokens
 }

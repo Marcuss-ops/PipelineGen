@@ -216,7 +216,12 @@ func searchResultToVectorSearchResult(r SearchResult) appsearch.VectorSearchResu
 	sr.AssetID = payloadString(r.Payload, "asset_id")
 	sr.Source = payloadString(r.Payload, "source")
 	sr.Name = payloadString(r.Payload, "name")
-
+	// QDRANT-001 (June 2026) closure: LocalPath and DriveLink are
+	// no longer populated on the internal SearchResult struct, and
+	// therefore are not extracted here. The legacy
+	// `appsearch.VectorSearchResult` still carries those fields
+	// (omitted-valued for new payloads); future cleanup is a
+	// `appsearch` deprecation, out of scope for QDRANT-001.
 	sr.Category = payloadString(r.Payload, "category")
 	sr.MediaType = payloadString(r.Payload, "media_type")
 	sr.Style = payloadString(r.Payload, "style")

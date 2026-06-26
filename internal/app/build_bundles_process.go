@@ -239,6 +239,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 	// concrete satisfies the port).
 	var vectorSvc assetsearch.VectorStorePort
 	var qdrantClient *qdrant.Client
+	var qdrantHealthProbe any // qdrant.HealthProbe or nil — typed `any` so this layer doesn't force every composition path to import health.go
 
 	if cfg.Qdrant.Enabled && clipIndexerService.IsEnabled() {
 		qdrantCfg := &qdrant.Config{
@@ -259,12 +260,21 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 
 		collectionMgr = qdrant.NewCollectionManager(qdrantClient, schema, log)
 
+		// QDRANT-005 (June 2026): bind the canonical health probe so
+		// /ready actually checks Qdrant reachability instead of silently
+		// reporting the Qdrant capability as "not applicable". The probe
+		// is exposed on ProcessBundle.QdrantHealthProbe (typed `any`) and
+		// picked up by wire_services.go / cmd/server/main.go via
+		// lifecycle.AddProbe.
+		qdrantHealthProbe = qdrant.NewHealthProbe(qdrantClient)
+
 		clipIndexerService.SetVectorStore(indexWriter)
 		log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
 			zap.String("qdrant_url", cfg.Qdrant.BaseURL),
 			zap.String("schema_version", schema.Version),
 			zap.String("runtime_alias", schema.RuntimeAlias))
 		log.Info("QDRANT-004: Searcher + SearchAdapter wired for mediasearch API")
+		log.Info("QDRANT-005: HealthProbe wired for /ready readiness barrier")
 	} else {
 		log.Info("QDRANT-003: Qdrant disabled — vector store upserts will be skipped")
 	}
@@ -276,6 +286,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		CollectionManager:  collectionMgr,
 		QdrantDeleter:      indexDeleter,
 		VectorSvc:          vectorSvc,
+		QdrantHealthProbe:  qdrantHealthProbe,
 	}, nil
 }
 

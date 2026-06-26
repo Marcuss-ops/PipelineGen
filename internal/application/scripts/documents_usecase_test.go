@@ -31,7 +31,9 @@ func (f *fakeDocClient) ShareDoc(ctx context.Context, docID, email, role string)
 func (f *fakeDocClient) ListRecentDocs(ctx context.Context, folderID string, limit int) ([]drive.Doc, error) {
 	return nil, nil
 }
-func (f *fakeDocClient) UpdateDoc(ctx context.Context, docID, title, content string) error { return nil }
+func (f *fakeDocClient) UpdateDoc(ctx context.Context, docID, title, content string) error {
+	return nil
+}
 
 func TestDocumentsUseCase_NilUseCase(t *testing.T) {
 	t.Parallel()

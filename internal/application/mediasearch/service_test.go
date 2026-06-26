@@ -23,9 +23,9 @@ import (
 // ── Mocks ─────────────────────────────────────────────────────────────
 
 type fakeVector struct {
-	embedFn  func(ctx context.Context, text, vn string) ([]float32, error)
-	storeFn  func() search.VectorStorePort
-	vc       search.VectorConfig
+	embedFn func(ctx context.Context, text, vn string) ([]float32, error)
+	storeFn func() search.VectorStorePort
+	vc      search.VectorConfig
 }
 
 func (f *fakeVector) EmbedTextForVector(ctx context.Context, text, vn string) ([]float32, error) {
@@ -49,8 +49,8 @@ var _ VectorSearchPort = (*fakeVector)(nil)
 var _ search.ConfigPort = (*fakeVector)(nil)
 
 type fakeStore struct {
-	searchFn   func(ctx context.Context, req search.VectorSearchRequest) ([]search.VectorSearchResult, error)
-	hybridFn   func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error)
+	searchFn func(ctx context.Context, req search.VectorSearchRequest) ([]search.VectorSearchResult, error)
+	hybridFn func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error)
 }
 
 func (s *fakeStore) Search(ctx context.Context, req search.VectorSearchRequest) ([]search.VectorSearchResult, error) {

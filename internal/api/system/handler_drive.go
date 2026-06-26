@@ -27,7 +27,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"        // api.Error, api.BadRequest, api.OK — gin response helpers
+	"github.com/Marcuss-ops/PipelineGen/internal/api"              // api.Error, api.BadRequest, api.OK — gin response helpers
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips" // clips.ExtractDriveFolderID — URL/ID parsing helper
 )
 

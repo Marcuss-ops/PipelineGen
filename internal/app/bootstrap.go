@@ -34,6 +34,8 @@
 package app
 
 import (
+	"context"
+
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 
@@ -82,12 +84,17 @@ type AppDeps struct {	Registry             *module.Registry
 	// /internal/v1/media/sync-drive-folder route registers on the
 	// WorkerAuth-protected group.
 	InternalMediaHandler interface{ RegisterInternalMediaRoutes(*gin.RouterGroup) }
-	// MediasearchHandler is the QDRANT-004 mediasearch handler for
-	// POST /internal/v1/media/search. Same shape as WorkerHandler —
-	// narrow interface. Registered on the WorkerAuth-protected
-	// internalGroup (NOT on /api).
+	// OutboxHandler is the QDRANT-002 surface for
+	// /internal/v1/outbox/status and /events (operator-only monitor).
+	OutboxHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	// MediasearchHandler is the QDRANT-004 surface for
+	// /internal/v1/media/search (server-to-server semantic search).
 	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	Lifecycle            module.LifecycleManager
-	HealthService        interface{}
-	ReadyChecker         *systemhealth.ReadyChecker
+	// QdrantProbe is the QDRANT-005 health probe used by /ready.
+	// nil-safe: when qdrant is disabled the probe is nil and the
+	// lifecycle readiness barrier auto-skips it.
+	QdrantProbe   interface{ Probe(context.Context) error }
+	Lifecycle     module.LifecycleManager
+	HealthService interface{}
+	ReadyChecker  *systemhealth.ReadyChecker
 }

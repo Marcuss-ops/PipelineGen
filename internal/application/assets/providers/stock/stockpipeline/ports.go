@@ -62,9 +62,9 @@ type RenderRequest struct {
 	KeepAudio        bool // false = strip audio output (-an)
 
 	// ── Transition policy ─────────────────────────────────────────
-	NoTransitions    bool // skip transitions entirely (fast path eligible)
-	TransitionEvery  int  // apply transition at every Nth clip boundary (1=every)
-	ClipDurationSec  int  // clip target duration (used to compute fadeStart)
+	NoTransitions   bool // skip transitions entirely (fast path eligible)
+	TransitionEvery int  // apply transition at every Nth clip boundary (1=every)
+	ClipDurationSec int  // clip target duration (used to compute fadeStart)
 
 	// ── Effects policy ─────────────────────────────────────────────
 	NoEffects       bool   // skip overlay effects
@@ -74,8 +74,8 @@ type RenderRequest struct {
 	OverlayOpacity  float64
 
 	// ── Logging / telemetry ────────────────────────────────────────
-	Logger       *zap.Logger
-	ChunkIndex   int // for log enrichment
+	Logger     *zap.Logger
+	ChunkIndex int // for log enrichment
 }
 
 // RenderResult is the neutral result returned by StockRenderer.Render.

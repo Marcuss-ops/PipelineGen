@@ -56,15 +56,15 @@ const (
 // for the canonical INSERT shape). Used purely to (de)serialise a
 // folder before issuing the SQL upsert.
 type folderRec struct {
-	ID          string
-	Source      string
-	GroupName   string
-	FolderID    string
-	FolderPath  string
-	SourceURL   string
-	SearchKey   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID         string
+	Source     string
+	GroupName  string
+	FolderID   string
+	FolderPath string
+	SourceURL  string
+	SearchKey  string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 func runListDriveFolder(args []string) error {

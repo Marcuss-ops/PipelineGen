@@ -29,7 +29,7 @@ func (s *scenarioMock) result() CheckResult {
 	return r
 }
 
-func (s *scenarioMock) CheckDB(_ context.Context) CheckResult    { return s.result() }
+func (s *scenarioMock) CheckDB(_ context.Context) CheckResult     { return s.result() }
 func (s *scenarioMock) CheckDrive(_ context.Context) CheckResult  { return s.result() }
 func (s *scenarioMock) CheckQdrant(_ context.Context) CheckResult { return s.result() }
 func (s *scenarioMock) CheckJobs(_ context.Context) CheckResult   { return s.result() }
@@ -46,60 +46,60 @@ func TestService_Check_Scenarios(t *testing.T) {
 	qdrantOptOut := &scenarioMock{name: "qdrant", mandatory: false, applicable: false}
 
 	type tc struct {
-		name    string
-		names   []string
+		name                    string
+		names                   []string
 		db, drive, qdrant, jobs interface{}
-		wantOK  bool
+		wantOK                  bool
 	}
 
 	cases := []tc{
 		{
-			name: "empty_names_returns_healthy_no_op",
+			name:  "empty_names_returns_healthy_no_op",
 			names: nil,
-			db: DBChecker(dbOK), drive: DriveChecker(driveOptOut),
+			db:    DBChecker(dbOK), drive: DriveChecker(driveOptOut),
 			qdrant: QdrantChecker(qdrantOptOut), jobs: JobsChecker(jobsOK),
 			wantOK: true,
 		},
 		{
-			name: "single_mandatory_db_ok",
+			name:  "single_mandatory_db_ok",
 			names: []string{"db"},
-			db: DBChecker(dbOK), drive: DriveChecker(driveOptOut),
+			db:    DBChecker(dbOK), drive: DriveChecker(driveOptOut),
 			qdrant: QdrantChecker(qdrantOptOut), jobs: JobsChecker(jobsOK),
 			wantOK: true,
 		},
 		{
-			name: "db_fails_aggregate_unhealthy",
+			name:  "db_fails_aggregate_unhealthy",
 			names: []string{"db"},
-			db: DBChecker(dbFail), drive: DriveChecker(driveOptOut),
+			db:    DBChecker(dbFail), drive: DriveChecker(driveOptOut),
 			qdrant: QdrantChecker(qdrantOptOut), jobs: JobsChecker(jobsOK),
 			wantOK: false,
 		},
 		{
-			name: "drive_and_qdrant_opted_out_healthy_via_db_jobs",
+			name:  "drive_and_qdrant_opted_out_healthy_via_db_jobs",
 			names: []string{"db", "drive", "qdrant", "jobs"},
-			db: DBChecker(dbOK), drive: DriveChecker(driveOptOut),
+			db:    DBChecker(dbOK), drive: DriveChecker(driveOptOut),
 			qdrant: QdrantChecker(qdrantOptOut), jobs: JobsChecker(jobsOK),
 			wantOK: true,
 		},
 		{
-			name: "drive_fails_with_db_ok_is_unhealthy",
+			name:  "drive_fails_with_db_ok_is_unhealthy",
 			names: []string{"db", "drive"},
-			db: DBChecker(dbOK), drive: DriveChecker(driveFail),
+			db:    DBChecker(dbOK), drive: DriveChecker(driveFail),
 			qdrant: QdrantChecker(qdrantOptOut), jobs: JobsChecker(jobsOK),
 			wantOK: false,
 		},
 		{
-			name: "unknown_check_is_defensively_unhealthy",
+			name:  "unknown_check_is_defensively_unhealthy",
 			names: []string{"db", "whatisthis"},
-			db: DBChecker(dbOK), drive: DriveChecker(driveOptOut),
+			db:    DBChecker(dbOK), drive: DriveChecker(driveOptOut),
 			qdrant: QdrantChecker(qdrantOptOut), jobs: JobsChecker(jobsOK),
 			wantOK: false,
 		},
 		{
-			name: "nil_jobs_checker_misconfig_is_loud_unhealthy",
+			name:  "nil_jobs_checker_misconfig_is_loud_unhealthy",
 			names: []string{"jobs"},
-			db: DBChecker(dbOK), drive: DriveChecker(driveOptOut),
-			qdrant: QdrantChecker(qdrantOptOut),			jobs: JobsChecker((*scenarioMock)(nil)),
+			db:    DBChecker(dbOK), drive: DriveChecker(driveOptOut),
+			qdrant: QdrantChecker(qdrantOptOut), jobs: JobsChecker((*scenarioMock)(nil)),
 			wantOK: false,
 		},
 	}
@@ -205,13 +205,13 @@ func TestService_Check_OptionalCapabilities(t *testing.T) {
 	qdrantFail := &scenarioMock{name: "qdrant", mandatory: false, applicable: true, ok: false}
 
 	type tc struct {
-		name    string
-		db      DBChecker
-		drive   DriveChecker
-		qdrant  QdrantChecker
-		jobs    JobsChecker
-		names   []string
-		wantOK  bool
+		name   string
+		db     DBChecker
+		drive  DriveChecker
+		qdrant QdrantChecker
+		jobs   JobsChecker
+		names  []string
+		wantOK bool
 	}
 
 	cases := []tc{
@@ -247,8 +247,8 @@ type countingMock struct {
 	called int
 }
 
-func (c *countingMock) result() CheckResult { return c.inner.result() }
-func (c *countingMock) CheckDB(ctx context.Context) CheckResult    { c.called++; return c.result() }
+func (c *countingMock) result() CheckResult                         { return c.inner.result() }
+func (c *countingMock) CheckDB(ctx context.Context) CheckResult     { c.called++; return c.result() }
 func (c *countingMock) CheckDrive(ctx context.Context) CheckResult  { c.called++; return c.result() }
 func (c *countingMock) CheckQdrant(ctx context.Context) CheckResult { c.called++; return c.result() }
 func (c *countingMock) CheckJobs(ctx context.Context) CheckResult   { c.called++; return c.result() }
@@ -293,7 +293,9 @@ func TestService_Check_DoesNotShortCircuit(t *testing.T) {
 // blockingMock blocks until ctx is done, then returns ok=false.
 type blockingMock struct{ called bool }
 
-func (b *blockingMock) result() CheckResult { return CheckResult{"ok": false, "error": "context done", "duration_ms": int64(0)} }
+func (b *blockingMock) result() CheckResult {
+	return CheckResult{"ok": false, "error": "context done", "duration_ms": int64(0)}
+}
 func (b *blockingMock) CheckDB(ctx context.Context) CheckResult {
 	b.called = true
 	<-ctx.Done()

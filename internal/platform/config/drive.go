@@ -69,7 +69,7 @@ func (d DriveConfig) ScriptsFolder() string   { return d.ResolveFolder(d.Scripts
 func (d DriveConfig) ScriptsGenFolder() string {
 	return d.resolveSubfolder(d.ScriptsRootFolder, d.ScriptsGenerateFolder)
 }
-func (d DriveConfig) ImagesFolder() string       { return d.ResolveFolder(d.ImagesRootFolder) }
+func (d DriveConfig) ImagesFolder() string { return d.ResolveFolder(d.ImagesRootFolder) }
 
 func (d DriveConfig) CopertineFolder() string    { return d.ResolveFolder(d.CopertineRootFolder) }
 func (d DriveConfig) SoundEffectsFolder() string { return d.ResolveFolder(d.SoundEffectsRootFolder) }

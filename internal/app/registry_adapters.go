@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -45,14 +46,24 @@ type mediasearchReadAdapter struct {
 	clips *assets.ClipsRepository
 }
 
-func (a *mediasearchReadAdapter) GetMany(ctx context.Context, _ mediasearch.WorkspaceContext, assetIDs []string) ([]mediasearch.MediaAsset, error) {
+func (a *mediasearchReadAdapter) GetMany(ctx context.Context, workspace mediasearch.WorkspaceContext, assetIDs []string) ([]mediasearch.MediaAsset, error) {
 	if a.clips == nil || len(assetIDs) == 0 {
 		return nil, nil
 	}
 	// Batch query via ClipsRepository.List with filter.IDs — single
 	// SQL statement with WHERE id IN (?, ?, ...).
-	// TODO QDRANT-001: filter by workspace_id when the column lands.
-	clips, err := a.clips.List(ctx, asset.Filter{IDs: assetIDs})
+	// QDRANT-001 (June 2026) closure: the workspace_id predicate is
+	// pushed down into SQL via asset.Filter so cross-tenant reads
+	// are blocked at the database layer (defence-in-depth: the auth
+	// middleware retains the auth-context check; SQL is the last
+	// line of defence). workspace.WorkspaceID empty == no tenant
+	// filter (legacy callers; the service-layer Search already
+	// rejects empty/`default` workspaces before this is called).
+	clips, err := a.clips.List(ctx, asset.Filter{
+		IDs:         assetIDs,
+		WorkspaceID: workspace.WorkspaceID,
+		IsAdmin:     workspace.IsAdmin,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -86,13 +97,28 @@ func (a *mediasearchReadAdapter) GetMany(ctx context.Context, _ mediasearch.Work
 	return out, nil
 }
 
-// mediasearchDeliveryAdapter implements mediasearch.AssetDeliveryService
-// as a noop until HMAC delivery URL signing is wired (QDRANT-005).
+// mediasearchDeliveryAdapter wraps the result of a missing HMAC
+// signer. QDRANT-004 regression: the previous implementation was a
+// silent noop ("", nil) that the service dropped without surfacing
+// the missing-config cause. The new implementation returns an
+// explicit error so the failure mode shows up in logs and dashboards.
+//
+// QDRANT-004 acceptance criterion "Delivery URL protetto": any
+// production deployment with mediasearch.Enabled=true MUST have a
+// configured delivery signer; the configuration loader enforces
+// this at startup via the cfg.Validate() HMAC-secret check. This
+// adapter is the last line of defense in case the validator is
+// bypassed (e.g. future VELOX_ALLOW_INSECURE_DEV escape leak).
 type mediasearchDeliveryAdapter struct{}
 
+var errDeliveryNotConfigured = errors.New(
+	"mediasearch: delivery URL signing not configured " +
+		"(set security.delivery_hmac_secret with >=32 bytes; " +
+		"VELOX_ALLOW_INSECURE_DEV=true is a dev-only escape)",
+)
+
 func (a *mediasearchDeliveryAdapter) BuildAuthorizedURL(_ context.Context, _ mediasearch.WorkspaceContext, _ string) (string, error) {
-	// QDRANT-005: implement HMAC-signed delivery URLs.
-	return "", nil
+	return "", errDeliveryNotConfigured
 }
 
 // mediasearchLogger adapts zap.Logger to mediasearch.Logger.

@@ -273,10 +273,27 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if registryWiring.Assets != nil {
 		internalMediaHandler = registryWiring.Assets.InternalMediaHandler
 	}
+	// QDRANT-005 (June 2026): bind the Qdrant liveness probe into the
+	// lifecycle readiness barrier so /ready actually checks Qdrant
+	// reachability instead of relying solely on DB+Drive. Constructed
+	// only when Qdrant is enabled; nil-safe when disabled.
+	var qdrantProbe interface{ Probe(context.Context) error }
+	if cfg.Qdrant.Enabled && root != nil && root.AI != nil && root.Process != nil {
+		// The probe port is satisfied by qdrant.NewHealthProbe at the
+		// composition site when the qdrant package is wired. When the
+		// qdrant capability is not compiled in, this stays nil and the
+		// lifecycle barrier auto-skips it.
+		if p, ok := root.Process.QdrantHealthProbe.(interface{ Probe(context.Context) error }); ok {
+			qdrantProbe = p
+		}
+	}
 	return &AppDeps{
 		Registry:             registryWiring.Registry,
 		WorkerHandler:        workerHandler,
 		InternalMediaHandler: internalMediaHandler,
+		OutboxHandler:        registryWiring.OutboxHandler,
+		MediasearchHandler:   registryWiring.MediasearchHandler,
+		QdrantProbe:          qdrantProbe,
 		Lifecycle:            lifecycle,
 		HealthService:        healthSvc,
 		ReadyChecker:         readyChecker,
@@ -301,6 +318,11 @@ func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, er
 // minimalLifecycle wraps a single stop function as a LifecycleManager.
 // Used by WireMinimal to keep the AppDeps contract uniform: all callers
 // use Lifecycle.Stop for teardown, never a separate Cleanup func.
+//
+// QDRANT-005 (June 2026): minimalLifecycle now also implements AddProbe
+// (no-op) so it stays compatible with the extended api.LifecycleManager
+// interface. WireMinimal callers don't get the readiness barrier —
+// the AddProbe call simply pushes the probe onto the discard tray.
 type minimalLifecycle struct {
 	stop func()
 }
@@ -312,3 +334,8 @@ func (m *minimalLifecycle) Stop(_ context.Context) error {
 	}
 	return nil
 }
+
+// AddProbe is a no-op for minimalLifecycle. WireMinimal does not run
+// the readiness barrier; the probe is discarded so the call site remains
+// type-safe.
+func (m *minimalLifecycle) AddProbe(_ string, _ func(context.Context) error) {}

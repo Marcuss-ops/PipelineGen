@@ -49,10 +49,10 @@ func (p *Processor) Path() string { return p.path }
 // for backward compatibility; they will be removed in a future wave.
 
 type (
-	NormalizeOptions      = types.NormalizeOptions
+	NormalizeOptions       = types.NormalizeOptions
 	CutAndNormalizeOptions = types.CutAndNormalizeOptions
-	CutJob                = types.CutJob
-	WatermarkOptions      = types.WatermarkOptions
+	CutJob                 = types.CutJob
+	WatermarkOptions       = types.WatermarkOptions
 )
 
 // DefaultNormalizeOptions returns defaults from config.

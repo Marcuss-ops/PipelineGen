@@ -12,10 +12,10 @@ import (
 func TestReadyChecker_RequiredSet(t *testing.T) {
 	mock := &scenarioMock{name: "all", mandatory: true, ok: true}
 	svc := NewService(ServiceDeps{
-		DB:    mock,
-		Drive: mock,
+		DB:     mock,
+		Drive:  mock,
 		Qdrant: mock,
-		Jobs:  mock,
+		Jobs:   mock,
 	})
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
@@ -52,10 +52,10 @@ func TestReadyChecker_NilServiceReturnsUnhealthy(t *testing.T) {
 func TestReadyChecker_OptionalCapabilitiesHealthy(t *testing.T) {
 	core := &scenarioMock{name: "core", mandatory: true, ok: true}
 	svc := NewService(ServiceDeps{
-		DB:    core,
-		Jobs:  core,
-		Drive: nil,   // optional, not wired
-		Qdrant: nil,  // optional, not wired
+		DB:     core,
+		Jobs:   core,
+		Drive:  nil, // optional, not wired
+		Qdrant: nil, // optional, not wired
 	})
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
@@ -69,10 +69,10 @@ func TestReadyChecker_OptionalCapabilitiesHealthy(t *testing.T) {
 func TestReadyChecker_Deterministic(t *testing.T) {
 	mock := &scenarioMock{name: "all", mandatory: true, ok: true}
 	svc := NewService(ServiceDeps{
-		DB:    mock,
-		Drive: mock,
+		DB:     mock,
+		Drive:  mock,
 		Qdrant: mock,
-		Jobs:  mock,
+		Jobs:   mock,
 	})
 	ready := NewReadyChecker(svc)
 	ctx := context.Background()
