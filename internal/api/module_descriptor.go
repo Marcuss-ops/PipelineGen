@@ -20,6 +20,7 @@ package api
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
@@ -77,6 +78,41 @@ type DescriptorJobs interface {
 	RegisterJobHandlers(svc JobRegistrar) error
 }
 
+// ProviderRegistrar is the typed port that the catalog-publishing
+// slot accepts. The real *providers.Registry satisfies this (its
+// Register method has the matching signature); test stubs satisfy
+// it too without depending on the concrete registry.
+//
+// Capabilities that publish catalog entries (asset providers like
+// script_assets) into the canonical providers.Registry implement
+// DescriptorProviders and confirm at compile time that the canonical
+// registry satisfies ProviderRegistrar (assertion at the bottom of
+// this file).
+type ProviderRegistrar interface {
+	// Register adds a provider under its Name(). Implementations MUST
+	// reject duplicate names, nil providers, and empty names —
+	// the registry sentinel errors ErrAlreadyRegistered / ErrNilProvider
+	// / ErrEmptyName document these invariants. Frozen registries MUST
+	// reject post-freeze Register calls with ErrFrozen.
+	Register(p providers.Provider) error
+}
+
+// DescriptorProviders is the optional interface a Descriptor may
+// implement to publish catalog entries (asset providers like
+// script_assets) into the canonical providers.Registry. The
+// composition root type-asserts for this interface; capabilities with
+// no catalog contribution can simply not implement it.
+//
+// Pattern parity with DescriptorJobs (worker-handler publication vs
+// provider-catalog publication) — proves the slot-extensibility claim
+// of the Capability Standard beyond the original Generation precedent.
+// DescriptorJobs is per-job runtime registration; DescriptorProviders
+// is a one-shot composition-time publication. Both slots coexist on
+// the same Descriptor if a capability owns both kinds of side-effects.
+type DescriptorProviders interface {
+	RegisterProviders(reg ProviderRegistrar) error
+}
+
 // AsDescriptor adapts any existing Module into a Descriptor
 // interface. Used when a capability pre-dates the Capability
 // Standard and still wants its route-only wiring registered through
@@ -117,3 +153,14 @@ func (descriptorAdapter) Lifecycle() LifecycleHooks { return LifecycleHooks{} }
 // §13 "pkg/ is leaf-only"; api lives at the transport layer, jobs
 // lives at the application layer).
 var _ JobRegistrar = (*appjobs.Service)(nil)
+
+// Compile-time assertion: the canonical providers.Registry
+// satisfies the ProviderRegistrar port. Drift in Register's
+// signature or package path is a build error, not a runtime
+// nil-deref.
+//
+// The api package imports providers (not the other way around):
+// api declares ProviderRegistrar; providers.Registry satisfies it.
+// No cycle because internal/application/assets/providers does not
+// import internal/api.
+var _ ProviderRegistrar = (*providers.Registry)(nil)

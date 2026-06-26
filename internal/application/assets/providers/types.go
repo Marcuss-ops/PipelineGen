@@ -37,6 +37,13 @@ const (
 	CapabilityImage  Capability = "image"
 	CapabilityMusic  Capability = "music"
 	CapabilityVoice  Capability = "voice"
+	// CapabilityScript identifies providers that publish script-to-asset
+	// catalog entries (PipelineGen's script_assets family of providers
+	// — currently one bootstrap provider, more may follow). Distinct
+	// from CapabilityVideo / CapabilityImage because script output is
+	// not a media asset but a textual artifact produced for downstream
+	// media composition.
+	CapabilityScript Capability = "script"
 )
 
 // SortMode declares the desired ordering for a Search.
