@@ -28,9 +28,18 @@ func NewSQLiteAssetStore(db *sql.DB) *SQLiteAssetStore {
 }
 
 // Compile-time assertion: SQLiteAssetStore satisfies AssetStore.
-var _ AssetStore = (*SQLiteAssetStore)(nil)
-
-// FetchAsset reads one row from media_assets and populates an AssetData.
+var _ AssetStore = (*SQLiteAssetStore)(nil)// FetchAsset reads one row from media_assets and populates an AssetData.
+//
+// QDRANT-005 closure (June 2026): AssetData gains a LifecycleState
+// field sourced from media_assets.lifecycle_state (the canonical
+// SQLite column). Status remains populated from the legacy
+// media_assets.status column (default 'ACTIVE' for rows where it is
+// NULL — column may be absent on very early dbs, where the COALESCE
+// guard prevents the query from failing). Both fields are
+// populated when the column exists; payload_mapper's
+// canonicalLifecycleState helper prefers LifecycleState and falls
+// back to Status, so the search_adapter filter key (lifecycle_state)
+// is always non-empty.
 func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*AssetData, error) {
 	a := &AssetData{}
 
@@ -40,11 +49,13 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	var language, category, style, channelID, lic sql.NullString
 	var workspaceID, youtubeVideoID, youtubeURL, startTime, endTime sql.NullString
 	var createdAt, updatedAt, deletedAt sql.NullString
+	var lifecycleState sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
 			COALESCE(status, 'ACTIVE'),
+			COALESCE(lifecycle_state, 'ready'),
 			COALESCE(tags, '[]'),
 			COALESCE(search_text, ''),
 			COALESCE(drive_link, ''),
@@ -60,12 +71,13 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 			duration_ms,
 			workspace_id, channel_id, license,
 		source_version,
-		created_at, updated_at, deleted_at
+			created_at, updated_at, deleted_at
 		FROM media_assets
 		WHERE id = ?
 	`, assetID).Scan(
 		&a.ID, &a.Name, &a.Source, &a.MediaType,
 		&a.Status,
+		&lifecycleState,
 		&tagsJSON,
 		&a.SearchText,
 		&a.DriveLink,
@@ -83,6 +95,9 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 		&sourceVersionStr,
 		&createdAt, &updatedAt, &deletedAt,
 	)
+	if lifecycleState.Valid {
+		a.LifecycleState = lifecycleState.String
+	}
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("asset %q not found in media_assets", assetID)
@@ -191,72 +206,4 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
-}
-
-// ReconcileSnapshot is the minimal fields the QDRANT-005B reconciler
-// needs from media_assets. Defined here (not in the application
-// reconciler package) so the SQL query can live next to its columns.
-// The cmd/admin wire-up adapts []ReconcileSnapshot to
-// reconciler.AssetSnapshot.
-type ReconcileSnapshot struct {
-	ID             string
-	WorkspaceID    string
-	LifecycleState string
-	ContentHash    string
-}
-
-// ListAssetsForReconcile returns the snapshots the QDRANT-005B
-// reconciler needs to scan. includeLifecycleStates restricts by
-// media_assets.status when non-empty; empty means "do not restrict"
-// (so DELETED rows are visible — important for verifying Qdrant
-// points were cleaned up via DeleteEnqueued).
-//
-// Folders are always excluded: vector indexing of folders is
-// meaningless and the previous ListAllAssetIDs pattern applies.
-//
-// Source_version is the canonical per-row content fingerprint the
-// dispatcher uses as part of the event_key tuple (see
-// outbox/repository.go::EnqueueAndIndex). For reconcile-repair
-// events a stable, deterministic value is enough — the reconciler
-// uses media_assets.source_version when available and falls back to
-// a built-in reconcile-shaped string otherwise (see
-// reconciler/service.go::applyRepair::lookupContentHash).
-func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLifecycleStates []string) ([]ReconcileSnapshot, error) {
-	query := `
-		SELECT id,
-		       COALESCE(workspace_id, ''),
-		       COALESCE(status, ''),
-		       COALESCE(source_version, '')
-		FROM media_assets
-		WHERE media_type != 'folder'
-	`
-	var args []interface{}
-	if len(includeLifecycleStates) > 0 {
-		qmarks := make([]byte, 0, len(includeLifecycleStates)*2)
-		for i, s := range includeLifecycleStates {
-			if i > 0 {
-				qmarks = append(qmarks, ',')
-			}
-			qmarks = append(qmarks, '?')
-			args = append(args, s)
-		}
-		query += " AND status IN (" + string(qmarks) + ")"
-	}
-	query += " ORDER BY id"
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list assets for reconcile: %w", err)
-	}
-	defer rows.Close()
-
-	var out []ReconcileSnapshot
-	for rows.Next() {
-		var snap ReconcileSnapshot
-		if err := rows.Scan(&snap.ID, &snap.WorkspaceID, &snap.LifecycleState, &snap.ContentHash); err != nil {
-			return nil, fmt.Errorf("scan reconcile snapshot: %w", err)
-		}
-		out = append(out, snap)
-	}
-	return out, rows.Err()
 }
