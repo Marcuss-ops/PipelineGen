@@ -471,3 +471,24 @@ type LocatorCleanupReport struct {
 	// or delete phases.
 	Errors []string `json:"errors,omitempty"`
 }
+
+type SnapshotDescription struct {
+	Name      string `json:"name"`
+	Size      int64  `json:"size"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
+// PointPayload describes a single point payload mutation (ID + key/value pairs).
+type PointPayload struct {
+	ID      string                 `json:"id"`
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// GoldenQueryRunner is the port verifier.go uses to gate the "golden queries" block in the
+// SwitchReport. It is intentionally an empty-marker interface here so callers can pass `nil`
+// when no runner is wired yet, AND so a real concrete (e.g. http-based runner) can be added
+// in a follow-up without touching verifier.go's signature again. See verifier_test.go for the
+// canonical nil-passing usage.
+type GoldenQueryRunner interface {
+	IsEmptyMarker()
+}

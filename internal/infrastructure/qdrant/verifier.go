@@ -24,11 +24,12 @@ import (
 
 // ReindexVerifier holds the dependencies for post-reindex validation.
 type ReindexVerifier struct {
-	client     *Client
-	assetStore AssetStore
-	deadLetter DeadLetterChecker        // nil = skip dead-letter check
-	schema     *IndexSchema             // canonically the schema under reindex; nil = skip per-channel version check
-	log        *zap.Logger
+	client        *Client
+	assetStore    AssetStore
+	deadLetter    DeadLetterChecker        // nil = skip dead-letter check
+	schema        *IndexSchema             // canonically the schema under reindex; nil = skip per-channel version check
+	log           *zap.Logger
+	goldenQueries GoldenQueryRunner        // nil = skip golden-query gate (QDRANT-005)
 }
 
 // NewReindexVerifier creates a verifier. deadLetter may be nil (legacy
@@ -46,13 +47,14 @@ type ReindexVerifier struct {
 // Breaking signature change: the production caller is
 // internal/cmd/admin/reindex_qdrant.go (single callsite as of June
 // 2026). Test fixtures do not construct ReindexVerifier directly.
-func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLetterChecker, schema *IndexSchema, log *zap.Logger) *ReindexVerifier {
+func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLetterChecker, schema *IndexSchema, goldenQueries GoldenQueryRunner, log *zap.Logger) *ReindexVerifier {
 	return &ReindexVerifier{
-		client:     client,
-		assetStore: assetStore,
-		deadLetter: deadLetter,
-		schema:     schema,
-		log:        log,
+		client:        client,
+		assetStore:    assetStore,
+		deadLetter:    deadLetter,
+		schema:        schema,
+		log:           log,
+		goldenQueries: goldenQueries,
 	}
 }
 
