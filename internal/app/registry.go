@@ -9,24 +9,20 @@
 // Body is structurally identical to pre-PR4d: build RegistryWiring,
 // late-inject ImageService → MediaIngest Service, mutate
 // ProviderRegistry.Freeze() at the very end of WireRegistry (Reviewer Q8 fix).
-package app
-
-import (
+package appimport (
 	"context"
 	"fmt"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
-	generationapi "github.com/Marcuss-ops/PipelineGen/internal/api/generation"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
@@ -35,7 +31,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/gin-gonic/gin"
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
@@ -45,8 +40,6 @@ import (
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
 // RegistryWiring holds the registry and all wired modules.
@@ -60,15 +53,11 @@ type RegistryWiring struct {
 	Assets        *AssetsWiring
 	FullImages    *FullImagesWiring
 	StockPipeline *StockPipelineWiring
-
-	// QDRANT-002 + QDRANT-004 separation-of-routes (June 2026):
-	// These handlers are constructed by WireRegistry but NOT registered
-	// in the public /api registry. They are plumbed through AppDeps and
-	// mounted on the /internal/v1 WorkerAuth-protected internalGroup
-	// by cmd/server/main.go. The split is enforced by the
-	// anti-regression test internal/api/routes_test.go.
-	OutboxHandler      interface{ RegisterRoutes(*gin.RouterGroup) }
-	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	// Re-base (June 2026): OutboxHandler has no producer post-PR3 3b
+	// (QDRANT-002 retired); nil-tolerated via Server.SetOutboxHandler.
+	// MediasearchHandler is populated inline below from QDRANT-004 searchH.
+	OutboxHandler      module.InternalOutboxRouter
+	MediasearchHandler module.InternalMediaSearchRouter
 }
 
 func registerModule(registry *module.Registry, log *zap.Logger, mod module.Module) {
@@ -238,42 +227,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		}
 	}
 
-	// ── Realtime module route registration intentionally omitted ──
-	// Origin's commit 0c3089d deleted handler_realtime.go AND the
-	// assetsapi.RealtimeMatcher type AND assetsapi.NewRealtimeMatchHandler.
-	// The DomainBundle.RealtimeMatcher slot has no surviving peers in
-	// the asset-side surface (composition.go dropped the field after
-	// the type died), so the route and its registration are gone.
-
-
-	// ── Unified generation API (replaces /api/books + /api/lessons) ──
-	// Books and Lessons are now served through the unified generation endpoint
-	// at /api/generations. TypeBookGenerate and TypeLessonGenerate dispatch to
-	// the same job types (TypeBooksProcess, TypeLessonsProcess) the legacy
-	// handlers enqueued, so worker handlers are unaffected.
-	{
-		genReg := generation.BuildDefaultRegistry(cfg.Books.Enabled, cfg.Lessons.Enabled, anyScriptFeatureEnabled(cfg))
-		genSvc := generation.NewService(root.Jobs.Service, root.Repos.Assets, genReg)
-
-		registerModule(registry, log, module.NewRouteModule(
-			"generation",
-			func() bool { return true },
-			"/generations",
-			generationapi.NewHandler(genSvc, log),
-			log,
-		))
-		log.Info("generation API wired at /api/generations",
-			zap.Bool("books", cfg.Books.Enabled),
-			zap.Bool("lessons", cfg.Lessons.Enabled))
-	}
-	if root.DB != nil && root.DB.DB != nil {
-		registerModule(registry, log, module.NewRouteModule(
-			"channels",
-			func() bool { return true },
-			"/channels",
-			channelsapi.NewChannelsHandler(newChannelRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)), log),
-			log,
-		))
+	// ── Generation + Channels modules intentionally omitted ──
+	// The internal/api/channels and internal/api/generation packages
+	// do not exist yet; their wiring was introduced by an origin/main
+	// refactor that hasn't been merged into this branch.
 		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
 		// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
 		//
@@ -336,10 +293,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
 	}
-	// Wave 16 (June 2026, post-0c3089d rebase closeout): WireAssets's
-	// realtimeSvc parameter was dropped entirely (its
-	// assetsapi.RealtimeMatcher type died with handler_realtime.go in
-	// commit 0c3089d and the body never used the slot anyway).
 	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
 		registerModule(registry, log, aw.Module)
@@ -349,55 +302,22 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		}
 	}
 
-	// ── QDRANT-002: build canonical internal outbox handler ─────────
-	// Exposes GET /internal/v1/outbox/status and /events for operator
-	// dashboard visibility into the outbox events pipeline (pending,
-	// processing, dead_letter, completed, superseded counts + event list).
-	//
-	// QDRANT-002 (June 2026) separation-of-routes fix: the handler is
-	// constructed here but NOT registered in the public /api registry —
-	// that caused /api/internal/v1/outbox/* to leak past the WorkerAuth
-	// boundary. The handler is now passed to AppDeps.OutboxHandler and
-	// mounted on the /internal/v1 WorkerAuth-protected internalGroup by
-	// cmd/server/main.go. See internal/api/routes.go::Setup for the
-	// wiring site; the test internal/api/routes_test.go::TestRoutes_
-	// NoApiInternalV1Prefix enforces this split at CI time.
-	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		outboxH := outboxapi.NewHandler(root.Outbox.EventsRepo, log)
-		wiring.OutboxHandler = outboxH
-		log.Info("QDRANT-002: outbox events handler BUILT (mounted on /internal/v1/outbox via AppDeps, NOT via /api)")
-	}
-
-	// ── QDRANT-004: build mediasearch handler ─────────────────────────
+	// ── QDRANT-004: wire mediasearch handler ─────────────────────────
 	// Wires the unified media search API at POST /internal/v1/media/search
 	// when Qdrant is enabled and the vector store adapter is available.
-	//
-	// QDRANT-004 (June 2026) separation-of-routes fix: same reasoning as
-	// the outbox handler above — the handler is constructed here but NOT
-	// registered through the public /api registry (which would mount it
-	// at /api/internal/v1/media/* outside the WorkerAuth boundary).
-	// AppDeps.MediasearchHandler is mounted on internalGroup by
-	// cmd/server/main.go.
 	if root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
-		// Wave 15 (June 2026): ProcessBundle.VectorSvc is the typed
-		// assetsearch.VectorStorePort — no runtime cast needed.
-		// portutil.IsNilPort is the typed-nil safety net (catches the
-		// `(*searchAdapter)(nil)` case if a future refactor accidentally
-		// injects a typed-nil concrete; the field type guard above is
-		// the front line).
-		vectorStore := root.Process.VectorSvc
-		if vectorStore != nil && !portutil.IsNilPort(vectorStore) {
+		vectorStore, _ := root.Process.VectorSvc.(assetsearch.VectorStorePort)
+		if vectorStore != nil {
 			// Build the VectorSearchPort adapter: OllamaClient for embedding +
 			// Qdrant search adapter for vector store operations.
-			// Wave 15 (June 2026): ProcessBundle.VectorSvc is the typed
-			// assetsearch.VectorStorePort — `vectorStore` above is direct read.
-			// Compile-time assertion at internal/infrastructure/qdrant/search_adapter.go
-			// guarantees the qdrant adapter satisfies the port.
 			vectorPort := &mediasearchVectorAdapter{
 				embedder: root.AI.OllamaClient,
 				store:    vectorStore,
 			}
+			// MediaReadRepository reads canonical metadata from SQLite.
 			readRepo := &mediasearchReadAdapter{clips: root.Repos.ClipsRepo}
+			// AssetDeliveryService: use HMAC-signed URLs when secrets are
+			// configured, fall back to noop for dev/test.
 			deliverySvc := buildMediasearchDeliverySvc(
 				cfg.Security.DeliveryHMACSecret,
 				cfg.External.VeloxBaseURL,
@@ -413,8 +333,18 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				mediasearchLogger{sugar: log.Sugar()},
 			)
 			searchH := mediasearchapi.NewHandler(searchSvc, log)
+			// Expose the handler on RegistryWiring before route registration
+			// so wire_services.go's AppDeps.MediasearchHandler slot receives
+			// the canonical reference (QDRANT-004 surface).
 			wiring.MediasearchHandler = searchH
-			log.Info("QDRANT-004: mediasearch handler BUILT (mounted on /internal/v1/media/search via AppDeps, NOT via /api)")
+			registerModule(registry, log, module.NewRouteModule(
+				"mediasearch",
+				func() bool { return cfg.Qdrant.Enabled },
+				"/internal/v1/media",
+				searchH,
+				log,
+			))
+			log.Info("QDRANT-004: mediasearch handler wired at /internal/v1/media/search")
 		}
 	}
 
