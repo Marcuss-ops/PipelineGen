@@ -26,8 +26,8 @@ import (
 type ReindexVerifier struct {
 	client     *Client
 	assetStore AssetStore
-	deadLetter DeadLetterChecker        // nil = skip dead-letter check
-	schema     *IndexSchema             // canonically the schema under reindex; nil = skip per-channel version check
+	deadLetter DeadLetterChecker // nil = skip dead-letter check
+	schema     *IndexSchema      // canonically the schema under reindex; nil = skip per-channel version check
 	log        *zap.Logger
 }
 
@@ -66,10 +66,10 @@ func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLe
 // calling SwitchAlias; a false Ready MUST block the alias switch.
 func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection string, expectedPoints int) (*SwitchReport, error) {
 	report := &SwitchReport{
-		TargetCollection: targetCollection,
-		ExpectedPoints:   expectedPoints,
-		GoldenQueriesOK:  true, // TODO QDRANT-005: wire golden‑query smoke runner
-		FiltersOK:        true, // TODO QDRANT-005: wire filter smoke runner
+		TargetCollection:          targetCollection,
+		ExpectedPoints:            expectedPoints,
+		GoldenQueriesOK:           true, // TODO QDRANT-005: wire golden‑query smoke runner
+		FiltersOK:                 true, // TODO QDRANT-005: wire filter smoke runner
 		VersionMismatchPerChannel: make(map[string]int),
 	}
 

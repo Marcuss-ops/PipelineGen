@@ -24,12 +24,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
@@ -119,11 +119,11 @@ type Handler struct {
 	treeBuilderSvc appclips.ClipTreeBuilderPort
 
 	// Domain / application mirrors.
-	artifactSvc *artifacts.Service
-	folderMemAppSvc  appclips.ClipFolderMemoryPort // alias — same as folderMemSvc
-	searchSvc        *appclipssearch.Service
-	processRunner    appassets.ProcessRunner
-	dispatcher       appclips.ClipIndexDispatcherPort
+	artifactSvc     *artifacts.Service
+	folderMemAppSvc appclips.ClipFolderMemoryPort // alias — same as folderMemSvc
+	searchSvc       *appclipssearch.Service
+	processRunner   appassets.ProcessRunner
+	dispatcher      appclips.ClipIndexDispatcherPort
 
 	// Domain interfaces (still concrete-pointer-backed but no infra import).
 	assetRepo      asset.Repository
@@ -159,30 +159,30 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		idem = idempotencyMiddleware
 	}
 	return &Handler{
-		Idempotency:    idem,
-		sourceResolver: d.SourceResolver,
-		clipsRepo:      d.ClipsRepo,
-		stockRepo:      d.StockRepo,
-		artlistRepo:    d.ArtlistRepo,
-		voiceoverRepo:  d.VoiceoverRepo,
-		imagesRepo:     d.ImagesRepo,
-		driveUploader:  d.DriveUploader,
-		metaWriter:     d.MetaWriter,
-		clipIndexer:    d.ClipIndexer,
-		folderMemSvc:   d.FolderMemSvc,
-		hashSvc:        d.HashSvc,
-		cfg:            d.Cfg,
-		treeBuilderSvc: d.TreeBuilderSvc,
-		artifactSvc:    d.ArtifactSvc,
-		searchSvc:      d.SearchSvc,
-		processRunner:  d.ProcessRunner,
-		dispatcher:     d.Dispatcher,
-		assetRepo:      d.AssetRepo,
-		mediaProcessor: d.MediaProcessor,
-		assetTreeSvc:   d.AssetTreeSvc,
-		jobsSvc:        d.JobsSvc,
-		deletionSvc:    d.DeletionSvc,
-		log:            d.Log,
+		Idempotency:     idem,
+		sourceResolver:  d.SourceResolver,
+		clipsRepo:       d.ClipsRepo,
+		stockRepo:       d.StockRepo,
+		artlistRepo:     d.ArtlistRepo,
+		voiceoverRepo:   d.VoiceoverRepo,
+		imagesRepo:      d.ImagesRepo,
+		driveUploader:   d.DriveUploader,
+		metaWriter:      d.MetaWriter,
+		clipIndexer:     d.ClipIndexer,
+		folderMemSvc:    d.FolderMemSvc,
+		hashSvc:         d.HashSvc,
+		cfg:             d.Cfg,
+		treeBuilderSvc:  d.TreeBuilderSvc,
+		artifactSvc:     d.ArtifactSvc,
+		searchSvc:       d.SearchSvc,
+		processRunner:   d.ProcessRunner,
+		dispatcher:      d.Dispatcher,
+		assetRepo:       d.AssetRepo,
+		mediaProcessor:  d.MediaProcessor,
+		assetTreeSvc:    d.AssetTreeSvc,
+		jobsSvc:         d.JobsSvc,
+		deletionSvc:     d.DeletionSvc,
+		log:             d.Log,
 		folderMemAppSvc: d.FolderMemSvc,
 		// Wire use cases constructed in the composition root.
 		// W14-PR2 slice 5 (June 2026): use cases are constructed in

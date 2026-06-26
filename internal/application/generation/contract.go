@@ -104,5 +104,3 @@ const JobTypeBooksProcess = "books.process"
 const JobTypeLessonsProcess = "lessons.process"
 
 // Worker-side handler signature -------------------------------------
-
-

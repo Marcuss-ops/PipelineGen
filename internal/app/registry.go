@@ -38,8 +38,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"

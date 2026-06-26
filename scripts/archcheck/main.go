@@ -85,15 +85,16 @@ type Report struct {
 // architecture/current.yaml.
 //
 // Field semantics:
-//   SrcFile : path of the file inside internal/application/<cap>/...
-//             that emits the import. Repo-relative forward-slash.
-//   Import  : full Go import path (without surrounding quotes).
-//   Type    : "platform" for application->infrastructure edges;
-//             "cross_capability" for application/<capA>/ -> <capB>.
-//   InPorts : true if the importing file's basename is `ports.go`,
-//             the canonical structural-port declaration location per
-//             AGENTS.md Pattern 0. Operators use this flag to drive
-//             the "lift concrete, keep port" follow-up phase.
+//
+//	SrcFile : path of the file inside internal/application/<cap>/...
+//	          that emits the import. Repo-relative forward-slash.
+//	Import  : full Go import path (without surrounding quotes).
+//	Type    : "platform" for application->infrastructure edges;
+//	          "cross_capability" for application/<capA>/ -> <capB>.
+//	InPorts : true if the importing file's basename is `ports.go`,
+//	          the canonical structural-port declaration location per
+//	          AGENTS.md Pattern 0. Operators use this flag to drive
+//	          the "lift concrete, keep port" follow-up phase.
 type Edge struct {
 	SrcFile string `json:"src_file"`
 	Import  string `json:"import"`
@@ -108,9 +109,9 @@ type Edge struct {
 //
 // The keys are exactly the two strings documented in
 // architecture/current.yaml::Wave 19 pr2_setup deferred_impact:
-//   * "application_to_infrastructure" — every direct application ->
+//   - "application_to_infrastructure" — every direct application ->
 //     internal/infrastructure import (one Edge per import line).
-//   * "cross_capability_import" — every direct application/<capA>/ ->
+//   - "cross_capability_import" — every direct application/<capA>/ ->
 //     application/<capB>/ import where capA != capB.
 //
 // Edge slices within each key are pre-sorted by parsePlatformEdges /
@@ -433,10 +434,10 @@ func checkCrossCapabilityImport() (map[string]int, []Edge, []string) {
 // hardcoded 22-name snapshot (see git history of scripts/archcheck).
 //
 // Filesystem-driven discovery means:
-//   * adding a new capability dir is auto-picked up (no list edit);
-//   * removing a capability dir shrinks the captured set without
+//   - adding a new capability dir is auto-picked up (no list edit);
+//   - removing a capability dir shrinks the captured set without
 //     list edits;
-//   * hidden / underscore-prefixed dirs are excluded (so test mocks,
+//   - hidden / underscore-prefixed dirs are excluded (so test mocks,
 //     scratch dirs like `_*` and `.*` do not silently count as
 //     capabilities).
 //
