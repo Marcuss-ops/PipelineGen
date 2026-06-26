@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
@@ -332,7 +333,7 @@ func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, temp
 	if a.uploader == nil || a.cfg == nil {
 		return nil
 	}
-	clipsapi.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.uploader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
+	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.uploader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
 	return nil
 }
 

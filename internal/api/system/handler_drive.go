@@ -28,7 +28,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"              // api.Error, api.BadRequest, api.OK — gin response helpers
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips" // clips.ExtractDriveFolderID — URL/ID parsing helper
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips" // appclips.ExtractDriveFolderID — URL/ID parsing helper (post Wave 14 PR2 slice 2/8; explicit alias matches the other touched files)
 )
 
 // ── Port interfaces (AGENTS.md Pattern 0 / Wiki §14) ─────────────────────────
@@ -118,7 +118,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		return
 	}
 
-	parentID := clips.ExtractDriveFolderID(strings.TrimSpace(req.ParentID))
+	parentID := appclips.ExtractDriveFolderID(strings.TrimSpace(req.ParentID))
 	if parentID == "" {
 		api.BadRequest(c, "parent_id is required")
 		return
@@ -307,7 +307,7 @@ func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
 	var wg sync.WaitGroup
 
 	for i, raw := range req.IDs {
-		id := clips.ExtractDriveFolderID(strings.TrimSpace(raw))
+		id := appclips.ExtractDriveFolderID(strings.TrimSpace(raw))
 		if id == "" {
 			errorsByIdx[i] = fmt.Sprintf("empty id in input: %q", raw)
 			continue

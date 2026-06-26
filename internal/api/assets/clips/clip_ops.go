@@ -271,7 +271,7 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo appclips.C
 		result["drive_link"] = driveLink
 
 		// Extract file ID and verify with Drive API
-		fileID = ExtractDriveFolderID(driveLink)
+		fileID = appclips.ExtractDriveFolderID(driveLink)
 		if fileID != "" {
 			result["drive_file_id"] = fileID
 			result["drive_link_valid"] = true

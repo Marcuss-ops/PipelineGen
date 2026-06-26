@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"go.uber.org/zap"
 )
 
@@ -96,7 +95,7 @@ func BuildDriveDescription(name, reqDescription, metaDescription string, tags []
 // own driveUploader + tempPath instead of depending on a shared receiver.
 //
 // W14-PR2 slice 6 (June 2026): driveUploader parameter changed from
-// *drive.Uploader to appclips.ClipDriveUploaderPort so the api/ layer
+// *drive.Uploader to ClipDriveUploaderPort so the api/ layer
 // never imports internal/infrastructure/drive. The narrow projection
 // already lives in the adapter (see clipsDriveAdapter.ListFiles +
 // ClipDriveFileDTO). The caller still passes a port-backed value.
@@ -114,7 +113,7 @@ func BuildDriveDescription(name, reqDescription, metaDescription string, tags []
 //   - Cleans up any older per-video .json files in the same folder.
 func UpdateCumulativeMetadataJSON(
 	ctx context.Context,
-	driveUploader appclips.ClipDriveUploaderPort,
+	driveUploader ClipDriveUploaderPort,
 	tempPath string,
 	folderID string,
 	clipID string,
@@ -189,7 +188,7 @@ func UpdateCumulativeMetadataJSON(
 //
 // W14-PR2 slice 6 (June 2026): signature mirrors UpdateCumulativeMetadataJSON —
 // takes the typed port instead of *drive.Uploader.
-func cleanupLegacyMetadataJSON(ctx context.Context, driveUploader appclips.ClipDriveUploaderPort, folderID string, log *zap.Logger) {
+func cleanupLegacyMetadataJSON(ctx context.Context, driveUploader ClipDriveUploaderPort, folderID string, log *zap.Logger) {
 	if driveUploader == nil || folderID == "" {
 		return
 	}
