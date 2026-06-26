@@ -33,6 +33,7 @@ import (
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 
+	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -191,7 +192,7 @@ type ComposeRoot struct {
 	// clips/MediaIngest/YouTubeClip handlers. Stop() must be called on
 	// shutdown to halt the cleanup ticker goroutine. Lifecycle owned
 	// by shutdown.go.
-	IdempotencyMiddleware *mwidem.Idempotency
+	IdempotencyMiddleware *apiMw.Idempotency
 
 	Ctx context.Context
 }

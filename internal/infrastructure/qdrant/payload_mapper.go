@@ -162,11 +162,19 @@ func (m *PayloadMapper) AssetToPoint(asset *AssetData, schema *IndexSchema) (*Po
 	}
 
 	// Map sparse vectors.
+	// QDRANT-003: the collection is configured with server-side BM25
+	// (modifier: "bm25" on createPhysicalCollection). Qdrant generates
+	// sparse vectors from the search_text payload field automatically.
+	// No client-side sparse vector computation is needed at upsert time.
+	// Query-time sparse vectors use pkg/bm25.Tokenize.
 	for _, spec := range schema.SparseVectors {
 		switch spec.Channel {
 		case "bm25_text":
-			if asset.SearchText != "" {
-				vectors[spec.Channel] = m.buildBM25Sparse(asset)
+			// Server-side BM25 — Qdrant reads search_text from payload.
+			// Ensure the payload includes search_text (BuildPayload above).
+			if asset.SearchText == "" {
+				m.log.Debug("bm25_text: no search_text for asset, BM25 will be empty",
+					zap.String("asset_id", asset.ID))
 			}
 		}
 	}
@@ -297,56 +305,6 @@ func parseMetadataJSON(asset *AssetData) {
 
 func isNaNOrInf(v float32) bool {
 	return math.IsNaN(float64(v)) || math.IsInf(float64(v), 0)
-}
-
-func (m *PayloadMapper) buildBM25Sparse(asset *AssetData) map[string]float32 {
-	if asset.SearchText == "" {
-		return nil
-	}
-	tokens := tokenize(asset.SearchText)
-	if len(tokens) == 0 {
-		return nil
-	}
-
-	// Compute term frequencies.
-	tf := make(map[string]int, len(tokens))
-	for _, t := range tokens {
-		tf[t]++
-	}
-
-	docLen := float64(len(tokens))
-	params := m.bm25Params
-	if params == nil {
-		params = DefaultBM25Params()
-	}
-
-	k1 := params.K1
-	b := params.B
-	avgdl := params.AvgDocLength
-	if avgdl <= 0 {
-		avgdl = 50.0
-	}
-
-	// BM25(t, d) = IDF(t) * (f(t,d) * (k1 + 1)) / (f(t,d) + k1 * (1 - b + b * |d|/avgdl))
-	sparse := make(map[string]float32, len(tf))
-	for term, freq := range tf {
-		f := float64(freq)
-		numerator := f * (k1 + 1.0)
-		denominator := f + k1*(1.0-b+b*(docLen/avgdl))
-		bm25 := numerator / denominator
-
-		// Multiply by IDF when available.
-		if params.IDFTable != nil {
-			if idf, ok := params.IDFTable[term]; ok {
-				bm25 *= idf
-			}
-			// Terms not in IDF table (OOV) get IDF=1.0 — no multiplication.
-		}
-
-		sparse[term] = float32(bm25)
-	}
-
-	return sparse
 }
 
 func tokenize(text string) []string {

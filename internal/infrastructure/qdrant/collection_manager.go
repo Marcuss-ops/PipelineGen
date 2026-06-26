@@ -200,7 +200,11 @@ func (cm *CollectionManager) createPhysicalCollection(ctx context.Context, name 
 		}
 	}
 	for _, v := range cm.schema.SparseVectors {
-		sparseVectors[v.Channel] = map[string]interface{}{}
+		sv := map[string]interface{}{}
+		if v.Modifier != "" {
+			sv["modifier"] = v.Modifier
+		}
+		sparseVectors[v.Channel] = sv
 	}
 
 	return cm.client.CreateCollection(ctx, name, vectors, sparseVectors)

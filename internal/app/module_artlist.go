@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"

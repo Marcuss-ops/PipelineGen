@@ -70,6 +70,8 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		searchAdapter := qdrant.NewSearchAdapter(searcher, log)
 		vectorSvc = searchAdapter
 
+		collectionMgr = qdrant.NewCollectionManager(qdrantClient, schema, log)
+
 		clipIndexerService.SetVectorStore(indexWriter)
 		log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
 			zap.String("qdrant_url", cfg.Qdrant.BaseURL),

@@ -5,10 +5,15 @@
 // This command replaces the legacy reindex (reindex.go, removed in QDRANT-003)
 // which used raw SQL + VectorAsset directly without schema validation.
 //
+// QDRANT-003 PR fix (June 2026): wired CollectionManager for schema creation,
+// post-reindex verification, and atomic alias swap. The old code wrote into
+// the target collection but never ensured the schema existed, never verified
+// the result, and never switched the alias.
+//
 // Usage:
 //
 //	go run ./cmd/admin reindex-qdrant                           # dry-run (counts only)
-//	go run ./cmd/admin reindex-qdrant --apply                    # reindex into canonical collection
+//	go run ./cmd/admin reindex-qdrant --apply                    # reindex + schema + alias swap
 //	go run ./cmd/admin reindex-qdrant --apply --target-collection=media_assets_v4  # explicit target
 //	go run ./cmd/admin reindex-qdrant --apply --limit=500        # cap rows
 //	go run ./cmd/admin reindex-qdrant --json                     # machine-readable dry-run
@@ -77,11 +82,16 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 
 // runReindexQdrant is the entry point registered in cmd/admin/main.go.
 //
-// Pipeline:
+// Pipeline (QDRANT-003 PR fix, June 2026):
 //  1. Load config and open the media DB
 //  2. Build the canonical Qdrant stack: SQLiteAssetStore → PayloadMapper → Client → IndexWriter
 //  3. Dry-run: list all asset IDs via mapper.ListAllAssetIDs, print count
-//  4. Apply: call IndexWriter.ReindexAll(ctx, targetCollection, limit)
+//  4. Apply: ensure schema → reindex → verify → switch alias
+//     - CollectionManager.EnsureSchema guarantees the target collection exists
+//       with matching vector config and payload indexes
+//     - IndexWriter.ReindexAll writes all assets into the target collection
+//     - Point-count verification compares indexed vs expected
+//     - CollectionManager.SwitchAlias atomically promotes the new collection
 func runReindexQdrant(args []string) error {
 	cfg, log, cleanup, err := appLogger()
 	if err != nil {
@@ -126,6 +136,7 @@ func runReindexQdrant(args []string) error {
 		Timeout: cfg.Qdrant.Timeout,
 	}, log)
 	writer := qdrant.NewIndexWriter(client, schema, mapper, log)
+	collectionMgr := qdrant.NewCollectionManager(client, schema, log)
 
 	targetCollection := deps.TargetCollection
 	if targetCollection == "" {
@@ -164,17 +175,71 @@ func runReindexQdrant(args []string) error {
 	}
 
 	// ── Apply ────────────────────────────────────────────────────
+	// QDRANT-003 fix: disallow --target-collection in --apply mode.
+	// EnsureSchema uses the schema's canonical physical name; passing
+	// a different target would write into an unverified collection.
+	if deps.TargetCollection != "" && deps.TargetCollection != schema.PhysicalName {
+		return fmt.Errorf(
+			"--target-collection=%q does not match schema physical name %q; "+
+				"--target-collection is only allowed in dry-run mode. "+
+				"Re-run without --target-collection to use the canonical name.",
+			deps.TargetCollection, schema.PhysicalName,
+		)
+	}
+
+	// Phase 1: Ensure the target collection exists with matching schema.
+	if _, err := collectionMgr.EnsureSchema(ctx); err != nil {
+		return fmt.Errorf("ensure schema for %q: %w", targetCollection, err)
+	}
+	log.Info("schema ensured", zap.String("collection", targetCollection))
+
+	// Phase 2: Reindex all assets into the target collection.
 	start := time.Now()
 	reindexResult, err := writer.ReindexAll(ctx, targetCollection, deps.Limit)
 	elapsed := time.Since(start)
 	if err != nil {
+		// QDRANT-003 fix: guard nil reindexResult before dereference.
+		// ReindexAll returns (nil, error) when ListAllAssetIDs fails.
+		indexed, failed := 0, 0
+		if reindexResult != nil {
+			indexed = reindexResult.IndexedAssets
+			failed = reindexResult.FailedAssets
+		}
 		log.Error("reindex failed",
-			zap.Int("indexed", reindexResult.IndexedAssets),
-			zap.Int("failed", reindexResult.FailedAssets),
+			zap.Int("indexed", indexed),
+			zap.Int("failed", failed),
 			zap.Error(err))
-		return fmt.Errorf("reindex failed after %d indexed / %d failed: %w",
-			reindexResult.IndexedAssets, reindexResult.FailedAssets, err)
+		return fmt.Errorf("reindex failed after %d indexed / %d failed: %w", indexed, failed, err)
 	}
+
+	// Phase 3: Post-reindex point-count verification.
+	actualPoints, err := client.CountPoints(ctx, targetCollection)
+	if err != nil {
+		log.Warn("post-reindex count failed (alias NOT switched)",
+			zap.Error(err))
+	} else if actualPoints < reindexResult.IndexedAssets {
+		log.Warn("post-reindex count mismatch",
+			zap.Int("expected", reindexResult.IndexedAssets),
+			zap.Int("actual", actualPoints))
+	}
+
+	// Phase 4: Atomically switch the runtime alias to the new collection.
+	oldTarget, err := collectionMgr.GetActiveCollection(ctx)
+	if err != nil {
+		log.Warn("could not read active collection before switch",
+			zap.Error(err))
+	}
+	if err := collectionMgr.SwitchAlias(ctx, oldTarget, targetCollection); err != nil {
+		log.Error("alias switch failed — rollback may be needed",
+			zap.String("from", oldTarget),
+			zap.String("to", targetCollection),
+			zap.Error(err))
+		return fmt.Errorf("switch alias from %q to %q: %w", oldTarget, targetCollection, err)
+	}
+	log.Info("alias switched",
+		zap.String("alias", schema.RuntimeAlias),
+		zap.String("old", oldTarget),
+		zap.String("new", targetCollection))
 
 	if deps.JSON {
 		b, _ := json.Marshal(reindexResult)
