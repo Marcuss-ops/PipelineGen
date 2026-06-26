@@ -28,3 +28,20 @@ func Float64(val, fallback float64) float64 {
 	}
 	return fallback
 }
+
+// Truthy parses a string as boolean. Accepts true|1|yes|on (case-insensitive).
+// Anything else (including empty string) returns false. The asymmetry is
+// intentional: a missing or typo'd query-string flag MUST NOT silently
+// activate a feature toggle. Used by `?search=`, `?allow_text_only=`,
+// future-gate-style env-parsing patterns.
+//
+// PJ-CURATE-1 (June 2026): this helper was extracted from a one-off
+// truthyQuery() in internal/api/script/handler_flow_ops.go so future
+// flag-parsing handlers reuse the same canonical interpretation.
+func Truthy(val string) bool {
+	switch strings.ToLower(strings.TrimSpace(val)) {
+	case "true", "1", "yes", "on":
+		return true
+	}
+	return false
+}
