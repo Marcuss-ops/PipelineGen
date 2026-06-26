@@ -65,11 +65,17 @@ except Exception as e:
 
 print("Loading SentenceTransformer model (intfloat/multilingual-e5-base)...")
 model = SentenceTransformer("intfloat/multilingual-e5-base")
+TEXT_MODEL_NAME = "intfloat/multilingual-e5-base"
+TEXT_MODEL_VERSION = "2026-06-26-v1"
 print("Loading SigLIP model (google/siglip-so400m-patch14-384, 768d)...")
 siglip_model = SentenceTransformer("google/siglip-so400m-patch14-384")
+VISUAL_MODEL_NAME = "google/siglip-so400m-patch14-384"
+VISUAL_MODEL_VERSION = "2026-06-26-v1"
 print(f"SigLIP model loaded, embedding dimension: {siglip_model.get_sentence_embedding_dimension()}")
 
 clap_model = None
+CLAP_MODEL_NAME = "laion/clap-htsat-fused"
+CLAP_MODEL_VERSION = "2026-06-26-v1"
 try:
     print("Loading CLAP model (laion/clap-htsat-fused)...")
     clap_model = SentenceTransformer("laion/clap-htsat-fused")

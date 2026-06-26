@@ -21,7 +21,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from . import _inference_sem, model, nlp, nlp_it
+from . import TEXT_MODEL_NAME, TEXT_MODEL_VERSION, _inference_sem, model, nlp, nlp_it
 from .models import EmbedRequest, IndexBulkRequest, IndexTextRequest
 
 router = APIRouter()
@@ -95,12 +95,10 @@ async def index_text(req: IndexTextRequest):
             embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
 
             return {
-                "status": "success",
-                "clip_id": req.clip_id,
-                "field": "embedding_json",
                 "embedding": embedding,
                 "dimensions": len(embedding),
-                "text_length": len(text),
+                "model": TEXT_MODEL_NAME,
+                "model_version": TEXT_MODEL_VERSION,
             }
         except HTTPException:
             raise
@@ -124,7 +122,6 @@ async def index_transcript(req: IndexTextRequest):
             if not transcript_text:
                 return {
                     "status": "skipped",
-                    "clip_id": req.clip_id,
                     "reason": "no transcript file provided",
                 }
 
@@ -133,12 +130,10 @@ async def index_transcript(req: IndexTextRequest):
             embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
 
             return {
-                "status": "success",
-                "clip_id": req.clip_id,
-                "field": "transcript_embedding",
                 "embedding": embedding,
                 "dimensions": len(embedding),
-                "text_length": len(transcript_text),
+                "model": TEXT_MODEL_NAME,
+                "model_version": TEXT_MODEL_VERSION,
             }
         except HTTPException:
             raise
@@ -171,12 +166,11 @@ async def index_bulk(req: IndexBulkRequest):
                 prefixed = "passage: " + normalized
                 embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
                 results.append({
-                    "status": "success",
                     "clip_id": clip.clip_id,
-                    "field": "embedding_json",
                     "embedding": embedding,
                     "dimensions": len(embedding),
-                    "text_length": len(text),
+                    "model": TEXT_MODEL_NAME,
+                    "model_version": TEXT_MODEL_VERSION,
                 })
             return {"status": "success", "count": len(results), "total": len(req.clips), "results": results}
         except Exception as e:

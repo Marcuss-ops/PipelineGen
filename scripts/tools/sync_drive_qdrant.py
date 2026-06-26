@@ -138,20 +138,11 @@ def main() -> int:
 
     idem_key = build_idempotency_key(args)
     result = dispatch_sync(args, idem_key)
-    print(
-        json.dumps(
-            {
-                "ok": bool(result.get("ok")),
-                "job_id": result.get("job_id", ""),
-                "drive_folder_id": result.get("drive_folder_id", args.folder_id.strip()),
-                "idempotency_key": idem_key,
-                "request_id": result.get("request_id", ""),
-                "http_status": result.get("http_status", 0),
-                "message": result.get("message", ""),
-            },
-            indent=2,
-        )
-    )
+    job_id = str(result.get("job_id", "")).strip()
+    if not job_id:
+        print("error: response did not include job_id", file=sys.stderr)
+        return 1
+    print(job_id)
     return 0
 
 

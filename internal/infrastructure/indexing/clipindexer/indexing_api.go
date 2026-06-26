@@ -257,6 +257,16 @@ func (s *Service) indexVisualMultiViaAPI(
 	metrics.EmbeddingServerLatency.WithLabelValues("/index_visual_multi", "ok").Observe(elapsed)
 
 	bodyMap, _ := readJSONResponse(resp, "/index_visual_multi")
+	if embedding, err := extractEmbedding(bodyMap); err == nil {
+		if err := s.persistVisualEmbedding(ctx, clipID, embedding); err != nil {
+			s.log.Warn("/index_visual_multi persist failed (non-fatal)",
+				zap.String("clip_id", clipID), zap.Error(err))
+			return
+		}
+		s.log.Info("multi-frame visual embedding generated and persisted",
+			zap.String("clip_id", clipID))
+		return
+	}
 	averaged, err := extractEmbeddingField(bodyMap, "averaged_embedding")
 	if err != nil {
 		// Fall back to averaging frame_embeddings.
