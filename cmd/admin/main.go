@@ -12,6 +12,8 @@
 //   - cleanup-artlist-empty-folders (cmd/admin/cleanup.go)
 //   - cleanup-stock-orphans       (cmd/admin/cleanup.go)
 //   - delete-specific-folders     (cmd/admin/cleanup.go)
+//   - dr-qdrant                   (cmd/admin/dr_qdrant.go) — QDRANT-005C PR3:
+//     list-snapshots / take-snapshot / restore-snapshot / apply-retention.
 //   - list-drive-folder           (cmd/admin/list_drive_folder.go)
 //   - reset-video-ai              (cmd/admin/reset_video_ai.go)
 //   - sync-all-drive              (cmd/admin/cleanup.go)
@@ -51,6 +53,7 @@ var availableCommands = []string{
 	"cleanup-stock-orphans",
 	"db",
 	"delete-specific-folders",
+	"dr-qdrant",
 	"gen-api-docs",
 	"list-drive-folder",
 	"list-styles",
@@ -133,6 +136,8 @@ func main() {
 		err = runBackfillMissing(args)
 	case "db":
 		err = runDB(args)
+	case "dr-qdrant":
+		err = runDrQdrant(args)
 	case "gen-api-docs":
 		err = runGenAPIDocs(args)
 	default:
