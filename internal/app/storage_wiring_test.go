@@ -49,9 +49,14 @@ func TestStorageWiring_NilDriveDoesNotPanic(t *testing.T) {
 	// This test verifies WireAssets can be called with a nil
 	// DriveClient without panicking.
 	//
-	// WireAssets(cfg, log, bundle, vectorStore, jobs, voiceoverSvc,
+	// WireAssets(cfg, log, bundle, jobs, voiceoverSvc,
 	//   voiceoverSync, realtimeSvc, catalogRepo, maintenanceSvc,
-	//   providerRegistry)
+	//   providerRegistry, dispatcher)
+	//
+	// Notes (June 2026):
+	//   - PG-034 removed the obsolete `vectorStore` arg (Qdrant capability removed).
+	//   - Wave 16 typed `realtimeSvc` to `assetsapi.RealtimeMatcher` per
+	//     AGENTS.md Pattern 0 (typed-port abstraction).
 	//
 	// This test requires the full ComposeRoot, so it's deferred.
 	// The invariant is checked by TestStorageWiring_DrivePortCompileCheck.
