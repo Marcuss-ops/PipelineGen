@@ -98,7 +98,7 @@ type SearchBundle struct {
 
 // ProcessBundle holds the heavy media-processing adapters.
 // QDRANT-003 (June 2026): IndexWriter and CollectionManager re-added for schema-versioned
-// vector store with real embeddings (no synthetic vectors).
+// vector store with real embeddings (Schema v3: E5 768d, SigLIP 768d, CLAP 512d).
 // QDRANT-004 (June 2026): VectorSvc added — search.VectorStorePort adapter for
 // the mediasearch unified search API.
 type ProcessBundle struct {
