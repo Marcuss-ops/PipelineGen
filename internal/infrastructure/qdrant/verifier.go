@@ -4,11 +4,11 @@
 // previous buildSwitchReport placeholder (which had TODO zero-values for
 // missing/orphan/dead-letter/golden-query/filter fields). The new verifier:
 //
-//   1. Counts points in the target collection — hard error on mismatch.
-//   2. Scrolls all points and compares IDs against SQLite (missing/orphan).
-//   3. Validates payload minimum on every point (asset_id, name, source).
-//   4. Checks embedding_version on sampled points for consistency.
-//   5. Optionally checks dead-letter count via DeadLetterChecker.
+//  1. Counts points in the target collection — hard error on mismatch.
+//  2. Scrolls all points and compares IDs against SQLite (missing/orphan).
+//  3. Validates payload minimum on every point (asset_id, name, source).
+//  4. Checks embedding_version on sampled points for consistency.
+//  5. Optionally checks dead-letter count via DeadLetterChecker.
 //
 // Ready is true ONLY when all gates pass: counts match, zero missing, zero
 // orphan, zero payload issues, zero version mismatches, zero dead letters,
@@ -106,9 +106,17 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 
 		pointsScrolled += len(result.Points)
 		for _, pt := range result.Points {
-			// Convert Qdrant point ID → asset ID for comparison.
-			assetID := PointIDToAssetID(pt.ID)
-			qdrantIDs[assetID] = true
+			// Read canonical asset_id directly from point payload
+			// (UUID v5 hashes are one-way; PointIDToAssetID was removed).
+			// Comma-ok is required: a missing or non-string asset_id must NOT
+			// pollute qdrantIDs with an empty key, which would silently mask a
+			// SQLite row whose own asset_id is the empty string (MissingIDs).
+			// validatePayloadMinimum below continues to surface the missing-field
+			// case via PayloadIssues, so the Ready gate still trips correctly.
+			assetID, assetIDOK := pt.Payload["asset_id"].(string)
+			if assetIDOK && assetID != "" {
+				qdrantIDs[assetID] = true
+			}
 
 			// Gate 3: Payload minimum validation.
 			if issue := validatePayloadMinimum(pt.Payload, assetID); issue != "" {
