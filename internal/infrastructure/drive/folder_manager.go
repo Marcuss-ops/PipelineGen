@@ -50,7 +50,7 @@ type DriveFolderManagerAdapter struct {
 }
 
 // NewDriveFolderManagerAdapter constructs the adapter from a configured
-// Drive SDK service. The composition root in internal/app/module_artlist.go
+// Drive SDK service. The composition root in internal/app/module_sources.go::WireArtlist
 // builds the SDK once and reuses it across multiple consumers (this
 // adapter + the existing Uploader), so Drive credentials are loaded
 // exactly once at composition time.

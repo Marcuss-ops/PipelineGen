@@ -17,7 +17,7 @@ import (
 // of the legacy concrete dependencies. Sized at 4 fields — well under
 // the AGENTS.md 10-per-bundle cap.
 //
-// The composition root in module_artlist.go builds the SemanticEnricher
+// The composition root in module_sources.go::WireArtlist builds the SemanticEnricher
 // first (so its dispatcher hookup is captured at creation) and wires it
 // here as MetadataWriter. AssetStore is satisfied by *assets.ClipsRepository;
 // Indexer is satisfied by *clipindexer.Service directly (the port declares
@@ -178,7 +178,7 @@ type Service struct {
 // All dependencies are reachable through ServiceDeps via field promotion
 // from ServicePorts + ServiceDependencies, so callers can construct it
 // either with terse flat construction (tests) or explicit named
-// sub-structs (production wiring in module_artlist.go).
+// sub-structs (production wiring in module_sources.go::WireArtlist).
 func NewService(deps ServiceDeps) (*Service, error) {
 	s := &Service{
 		cfg:                deps.Cfg,
