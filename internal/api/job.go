@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,70 +12,6 @@ import (
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
-
-// ── Async Response ──────────────────────────────────────────────────────
-
-// AsyncJobResponse builds the standard async job response used by all
-// handlers that support background processing.
-func AsyncJobResponse(c *gin.Context, j *job.Job, message string) {
-	OK(c, gin.H{
-		"ok":         true,
-		"async":      true,
-		"job_id":     j.ID,
-		"status":     string(j.Status),
-		"message":    message + " Poll /api/jobs/" + j.ID + "/full for status.",
-		"status_url": "/api/jobs/" + j.ID + "/full",
-	})
-}
-
-// Enqueuer is the minimal interface consumed by EnqueueAsync.
-type Enqueuer interface {
-	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
-}
-
-// EnqueueInput parameterises EnqueueAsync.
-type EnqueueInput struct {
-	Type          string
-	Payload       any
-	Priority      int
-	ActiveKey     string
-	MaxRetries    int
-	CorrelationID string
-}
-
-// EnqueueAsync enqueues a job and writes the standard async response.
-func EnqueueAsync(c *gin.Context, enqueuer Enqueuer, in *EnqueueInput, message string) bool {
-	if enqueuer == nil {
-		InternalError(c, fmt.Errorf("job system not available"))
-		return false
-	}
-
-	req := &job.EnqueueRequest{
-		Type:          in.Type,
-		Payload:       in.Payload,
-		Priority:      in.Priority,
-		MaxRetries:    in.MaxRetries,
-		CorrelationID: in.CorrelationID,
-	}
-	if in.ActiveKey != "" {
-		req.ActiveKey = in.ActiveKey
-	}
-	if in.Priority <= 0 {
-		req.Priority = 5
-	}
-
-	j, err := enqueuer.Enqueue(c.Request.Context(), req)
-	if err != nil {
-		InternalError(c, err)
-		return false
-	}
-
-	if message == "" {
-		message = "Job enqueued."
-	}
-	AsyncJobResponse(c, j, message)
-	return true
-}
 
 // ── Pagination ──────────────────────────────────────────────────────────
 

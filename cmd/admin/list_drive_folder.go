@@ -8,7 +8,7 @@
 //
 //   - app.ExportInitCoreMinimal was removed in PR4d-final; we use
 //     app.InitComposition instead.
-//   - drives internal/media/models is removed; the local
+//   - The deleted internal/media/models package; the local
 //     `folderRec` struct replaces `models.ClipFolder`. The struct
 //     mirrors the column shape from migration 011_create_characters.sql
 //     + the canonical schema in internal/infrastructure/database/canonical.go.

@@ -12,8 +12,8 @@ import (
 // driveFolderIDRegex matches the folder id in Drive folder URLs:
 // https://drive.google.com/drive/folders/<id>.
 // Mirrors the regex that had been living in
-// internal/api/sources/clips/upload_helpers.go (now an alias to this
-// function) so behaviour is unchanged post-migration.
+// the now-deleted internal/api/sources/clips/upload_helpers.go (which was
+// an alias to this function) so behaviour is unchanged post-migration.
 var driveFolderIDRegex = regexp.MustCompile(`/folders/([a-zA-Z0-9_-]+)`)
 
 // ExtractVideoID extracts the video ID from a YouTube URL.
@@ -145,7 +145,8 @@ func FileIDFromDriveLink(rawLink string) (string, error) {
 // returns "". If the input is not a URL (or is a URL whose path doesn't
 // match the folder regex), the function returns the input unchanged,
 // preserving the legacy contract of
-// internal/api/sources/clips.ExtractDriveFolderID — callers in admin
+// the legacy ExtractDriveFolderID alias in the deleted api/sources/clips
+// package — callers in admin
 // handlers (CreateFolders, ResolveByIDs) treat the return value as an
 // opaque folder-id-or-input.
 //
@@ -157,7 +158,7 @@ func FileIDFromDriveLink(rawLink string) (string, error) {
 // Returns "" only when input is empty after TrimSpace.
 //
 // This function is the canonical replacement for
-// internal/api/sources/clips.ExtractDriveFolderID, which is now an
+// the legacy ExtractDriveFolderID, which was an alias (package since deleted)
 // alias (clips/upload_helpers.go::ExtractDriveFolderID → this fn).
 func FolderIDFromDriveLink(input string) string {
 	trimmed := strings.TrimSpace(input)

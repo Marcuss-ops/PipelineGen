@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	api "github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -48,24 +48,24 @@ func (h *MediaingestHandler) RegisterRoutes(r *gin.RouterGroup) {
 // either an image, voiceover, clip, or stock ingest pipeline based
 // on the request kind.
 func (h *MediaingestHandler) Ingest(c *gin.Context) {
-	req, ok := api.BindJSON[ingest.Request](c)
+	req, ok := apiutil.BindJSON[ingest.Request](c)
 	if !ok {
 		return
 	}
 	if strings.TrimSpace(req.Kind) == "" {
-		api.BadRequest(c, "kind is required")
+		apiutil.BadRequest(c, "kind is required")
 		return
 	}
 
 	result, err := h.service.Ingest(c.Request.Context(), &req)
 	if err != nil {
 		if textutil.ContainsCI(err.Error(), "required") {
-			api.BadRequest(c, err.Error())
+			apiutil.BadRequest(c, err.Error())
 			return
 		}
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	api.OK(c, result)
+	apiutil.OK(c, result)
 }

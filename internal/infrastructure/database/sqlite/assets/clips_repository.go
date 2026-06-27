@@ -362,10 +362,8 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 	return r.SoftDelete(ctx, id)
 }
 
-// RestoreClip is the legacy alias for Restore. See Restore's QDRANT-002 doc.
-func (r *ClipsRepository) RestoreClip(ctx context.Context, id string) error {
-	return r.Restore(ctx, id)
-}
+// Wave 16 (June 2026): RestoreClip alias removed. Callers must invoke
+// Restore directly. See docs/architecture/deprecations.yaml#PR-CLIP-RESTORE.
 
 func (r *ClipsRepository) HardDeleteClip(ctx context.Context, id string) error {
 	return r.HardDelete(ctx, id)

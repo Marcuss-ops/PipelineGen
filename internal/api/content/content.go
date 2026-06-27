@@ -19,5 +19,5 @@
 // follow-up (post-consolidation). The current code path uses the
 // api.Error / api.OK / api.InternalError helpers directly, which is
 // accepted by AGENTS.md Pattern 1 (handlers delegate to services via
-// internal/media/<X>) but is not yet on the unified transport layer.
+// application-layer services) but is not yet on the unified transport layer.
 package content

@@ -19,8 +19,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Handler is the thin HTTP transport for outbox events monitoring.
@@ -46,7 +46,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 // GET /internal/v1/outbox/status
 func (h *Handler) handleStatus(c *gin.Context) {
 	if h.port == nil {
-		api.Error(c, 503, "outbox events repository not wired")
+		apiutil.Error(c, 503, "outbox events repository not wired")
 		return
 	}
 
@@ -58,13 +58,13 @@ func (h *Handler) handleStatus(c *gin.Context) {
 		if err != nil {
 			h.log.Error("failed to count outbox status",
 				zap.String("status", status), zap.Error(err))
-			api.InternalError(c, err)
+			apiutil.InternalError(c, err)
 			return
 		}
 		counts[status] = count
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"counts": counts,
 	})
@@ -74,14 +74,14 @@ func (h *Handler) handleStatus(c *gin.Context) {
 // GET /internal/v1/outbox/events
 func (h *Handler) handleEvents(c *gin.Context) {
 	if h.port == nil {
-		api.Error(c, 503, "outbox events repository not wired")
+		apiutil.Error(c, 503, "outbox events repository not wired")
 		return
 	}
 
 	events, err := h.port.ListPending(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list pending outbox events", zap.Error(err))
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *Handler) handleEvents(c *gin.Context) {
 		events = []outbox.EventDTO{}
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"events": events,
 		"count":  len(events),

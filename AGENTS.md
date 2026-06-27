@@ -437,6 +437,9 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 | `internal/api/server.go` | `signal.NotifyContext()` — canonical Go pattern |
 | `internal/api/module_base.go` (line ~105) | Rollback context for module startup failure — must survive parent cancel so Stop() can run |
 | `internal/service/translations/cache.go` | Defensive fallback when parentCtx is nil |
+| `internal/api/middleware/middleware_logger.go` (StopLogger, line ~27) | Shutdown/drain operation — calls `logSink.Stop(context.Background())` to drain pending log entries before process exit. Must survive any parent context cancellation during shutdown. |
+| `internal/api/middleware/idempotency.go` (cleanupLoop, line ~316) | Background cleanup goroutine (15-min ticker) garbage-collects expired idempotency keys from SQLite. Uses `context.WithTimeout(Background, 30s)` for bounded SQL execution; no parent request context exists. |
+| `internal/infrastructure/database/sqlite/logsink/sqlite_request_log_sink.go` (writer goroutine, lines ~161/166/179) | Background batch writer goroutine flushes request logs to SQLite via channel-buffered batching (100ms tick). No parent request context; the goroutine owns its lifecycle independently of any HTTP request. |
 | `internal/sources/artlist/search_cache.go` | Defensive fallback when parentCtx is nil |
 
 ---
@@ -510,7 +513,7 @@ in flight (8, 10, 11, 12), consultare la sezione corrispondente in
 
 > **Nota (aggiornata giugno 2026)**: il path canonico dell'allowlist è
 > `docs/migrations/api-infrastructure-imports-allowlist.txt`. Il path
-> precedente `scripts/archcheck/grandfathered_allowlist.json` citato in
+> precedente `scripts/archcheck/grandfathered_allowlist.json` (drift documentale — il path canonico è `docs/migrations/api-infrastructure-imports-allowlist.txt`) citato in
 > vecchie versioni di AGENTS.md è **drift documentale** — l'allowlist
 > canonico è quello sopra, dove `scripts/archcheck/main.go` lo legge a
 > runtime. Le occorrenze residue del vecchio path in testa a vecchi file
@@ -769,7 +772,7 @@ See `ARCHITECTURE.md` for the full diagram. Quick reference:
 │   │   ├── server.go
 │   │   ├── routes.go
 │   │   ├── middleware/
-│   │   ├── script/           # Script endpoints (32 files — target: 5-8)
+│   │   ├── script/           # Script endpoints (9 files — target: 5-8)
 │   │   ├── sources/          # Source endpoints (artlist, stock, etc. — being consolidated)
 │   │   ├── assets/           # Unified Assets module (storage, diagnostics, search, voiceover, soundeffect, register)
 │   │   ├── content/          # Merged from books + lessons

@@ -1,7 +1,7 @@
 // Package artlist hosts the HTTP handlers for the Artlist media catalog
 // endpoints: tag-pipeline runs, status, stats, search (live + DB),
 // diagnostics, clipresolver recommend, and catalog sync. Split out from
-// the legacy flat internal/api/sources/ package as part of PR-A Phase 3
+// the now-deleted internal/api/sources/ package (PR-A Phase 3 consolidation)
 // to keep the Artlist transport isolated from the rest of SourcesHandler.
 package artlist
 

@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -60,10 +60,10 @@ func (h *Handler) ListAll(c *gin.Context) {
 	out, err := h.svc.ListAll(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list channels", zap.Error(err))
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
-	api.OK(c, gin.H{"channels": out.Channels})
+	apiutil.OK(c, gin.H{"channels": out.Channels})
 }
 
 // ListCategories returns all distinct categories that have channels assigned.
@@ -71,26 +71,26 @@ func (h *Handler) ListCategories(c *gin.Context) {
 	out, err := h.svc.ListCategories(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list categories", zap.Error(err))
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
-	api.OK(c, gin.H{"categories": out.Categories})
+	apiutil.OK(c, gin.H{"categories": out.Categories})
 }
 
 // GetByID returns a single channel association by ID.
 func (h *Handler) GetByID(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		api.BadRequest(c, "id parameter is required")
+		apiutil.BadRequest(c, "id parameter is required")
 		return
 	}
 	out, err := h.svc.GetByID(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get channel", zap.String("id", id), zap.Error(err))
-		api.NotFound(c, "channel not found")
+		apiutil.NotFound(c, "channel not found")
 		return
 	}
-	api.OK(c, out)
+	apiutil.OK(c, out)
 }
 
 // UpsertRequest is the JSON body for creating or updating a channel
@@ -119,7 +119,7 @@ type UpsertRequest struct {
 func (h *Handler) Upsert(c *gin.Context) {
 	var req UpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 	keywords := splitJSONArray(req.Keywords)
@@ -139,7 +139,7 @@ func (h *Handler) Upsert(c *gin.Context) {
 	})
 	if err != nil {
 		h.log.Error("failed to upsert channel", zap.Error(err))
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -155,13 +155,13 @@ func (h *Handler) Upsert(c *gin.Context) {
 func (h *Handler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		api.BadRequest(c, "id parameter is required")
+		apiutil.BadRequest(c, "id parameter is required")
 		return
 	}
 	res, err := h.svc.Delete(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to delete channel", zap.String("id", id), zap.Error(err))
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -206,7 +206,7 @@ type BulkChannelRequest struct {
 func (h *Handler) BulkUpsert(c *gin.Context) {
 	var req BulkUpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
@@ -238,7 +238,7 @@ func (h *Handler) BulkUpsert(c *gin.Context) {
 	})
 	if err != nil {
 		h.log.Error("bulk upsert failed", zap.Error(err))
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

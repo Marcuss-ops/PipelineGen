@@ -3,12 +3,15 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -97,8 +100,14 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 // BuildUtilityBundle constructs the lightweight utility handlers
 // and the health-check Service (PR1 Health boundary, June 2026).
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB) *UtilityBundle {
-	svc := buildHealthService(cfg, db)
+//
+// codex/health-ready-contract (June 2026): driveClient is optional.
+// When non-nil (production path), the DriveChecker is wired with a
+// DriveProbe wrapping *gdrive.Service.About.Get — canonical OAuth
+// client with automatic token refresh. When nil (admin CLI path),
+// the legacy token-file approach is used as fallback.
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveClient *gdrive.Service) *UtilityBundle {
+	svc := buildHealthService(cfg, db, driveClient)
 	return &UtilityBundle{
 		Utility:       common.NewUtilityHandler(),
 		HealthService: svc,
@@ -119,16 +128,30 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB) *UtilityBundle
 // `database/sql` import from this file. The `db` arg may itself be
 // nil — infrahealth.Checker constructors accept nil and the zero
 // value remains safe.
-func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.Service {
+func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveClient *gdrive.Service) *systemhealth.Service {
 	if cfg == nil {
 		return nil
 	}
 
 	var driveChecker systemhealth.DriveChecker
-	credsPath := cfg.GetCredentialsPath()
-	tokenPath := cfg.GetTokenPath()
-	if credsPath != "" && tokenPath != "" {
-		driveChecker = infrahealth.NewDriveChecker(credsPath, tokenPath)
+
+	// codex/health-ready-contract (June 2026): prefer the canonical
+	// OAuth Drive client when available. The DriveProbe wraps
+	// gdrive.Service.About.Get().Fields("user") for a lightweight
+	// liveness check with automatic token refresh.
+	if driveClient != nil {
+		dc := infrahealth.NewDriveChecker("", "")
+		dc.DriveProbe = func(ctx context.Context) error {
+			_, err := driveClient.About.Get().Fields("user").Context(ctx).Do()
+			return err
+		}
+		driveChecker = dc
+	} else {
+		credsPath := cfg.GetCredentialsPath()
+		tokenPath := cfg.GetTokenPath()
+		if credsPath != "" && tokenPath != "" {
+			driveChecker = infrahealth.NewDriveChecker(credsPath, tokenPath)
+		}
 	}
 
 	// QDRANT-005 Blocker 3 (June 2026): consolidated health+readiness.
@@ -153,10 +176,31 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 		qdrantChecker = probe
 	}
 
+	jobsChecker := infrahealth.NewJobsChecker(db)
+
+	// codex/health-ready-contract (June 2026): wire RunnerProbe with an
+	// in-memory heartbeat tracker (BrokerLastHeartbeat atomic.Int64).
+	// The local broker's Heartbeat() updates this timestamp on every
+	// successful DB write; this closure checks that the last heartbeat
+	// is within the 60s staleness window.  A nil RunnerProbe means
+	// "DB-only check" — this adapter adds goroutine-liveness.
+	//
+	// Staleness threshold: 60s. The heartbeat ticker runs every 25s;
+	// 60s gives 2 full cycles of grace for slow DB writes.
+	const heartbeatStaleness = 60 * time.Second
+	jobsChecker.RunnerProbe = func(ctx context.Context) error {
+		age := appjobs.BrokerHeartbeatAge()
+		if age > int64(heartbeatStaleness.Seconds()) {
+			return fmt.Errorf("broker heartbeat stale: last heartbeat %d seconds ago (threshold %ds)",
+				age, int64(heartbeatStaleness.Seconds()))
+		}
+		return nil
+	}
+
 	return systemhealth.NewService(systemhealth.ServiceDeps{
 		DB:     infrahealth.NewSQLiteChecker(db),
 		Drive:  driveChecker,
 		Qdrant: qdrantChecker,
-		Jobs:   infrahealth.NewJobsChecker(db),
+		Jobs:   jobsChecker,
 	})
 }
