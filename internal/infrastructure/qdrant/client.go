@@ -12,6 +12,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// defaultVectorName is the canonical named vector channel used by
+// media_assets when the SearchRequest leaves VectorName empty. It is
+// sourced from the canonical configuration in ARCHITECTURE.md §10 and
+// architecture/qdrant/001-sidecar-and-pointid.md and centralised here
+// so later refactors (e.g. switching media_assets to a different
+// primary channel) only have one site to sweep.
+const defaultVectorName = "text"
+
 // Client is a typed HTTP client for the Qdrant REST API.
 // All Qdrant communication flows through this client.
 type Client struct {
@@ -378,15 +386,46 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 
 // ── Search API ───────────────────────────────────────────────────────
 
-// SearchPoints performs an ANN search.
+// SearchPoints performs an ANN search via the canonical Qdrant Query API
+// (POST /points/query). Docs:
+// https://qdrant.tech/documentation/concepts/search/#query-search-api
+//
+// TODO 1 close-out (June 2026): migrated from the legacy Search API
+// (POST /points/search) which used "vector" as the body key. The Query
+// API is the single canonical search surface for both dense ANN
+// (this method) and hybrid dense+sparse (HybridSearchPoints). The
+// executeSearch helper that wrapped the legacy endpoint has been
+// removed; executeQuery is the shared implementation.
+//
+// Body differs from the legacy shape in exactly ONE field:
+//
+//	legacy: { "vector": [...], "limit": N, "using": "...", ... }
+//	now:    { "query":  [...], "limit": N, "using": "...", ... }
+//
+// All other keys (limit, with_payload, score_threshold, filter, using)
+// are identical between the two endpoints, so callers don't need to
+// migrate the SearchRequest struct — only the on-wire JSON changes.
+//
+// Default channel: when req.VectorName is empty, the canonical Qdrant
+// collection primary vector is "text" (see ARCHITECTURE.md §10 and
+// architecture/qdrant/001-sidecar-and-pointid.md). We inject
+// "using":"text" client-side so the wire request is unambiguous
+// regardless of the server-side default-vector convention.
 func (c *Client) SearchPoints(ctx context.Context, collection string, req SearchRequest) ([]SearchResult, error) {
+	if req.QueryVector == nil {
+		return nil, fmt.Errorf("search points: query vector must not be nil")
+	}
 	body := map[string]interface{}{
-		"vector":       req.QueryVector,
+		"query":        req.QueryVector,
 		"limit":        req.Limit,
 		"with_payload": true,
+		"using":        req.VectorName,
 	}
-	if req.VectorName != "" {
-		body["using"] = req.VectorName
+	// Default named vector: empty VectorName → "text" (canonical
+	// primary vector for the media_assets collection, per
+	// ARCHITECTURE.md §10 and architecture/qdrant/001-sidecar-and-pointid.md).
+	if body["using"] == "" {
+		body["using"] = defaultVectorName
 	}
 	if req.MinScore > 0 {
 		body["score_threshold"] = req.MinScore
@@ -395,7 +434,7 @@ func (c *Client) SearchPoints(ctx context.Context, collection string, req Search
 		body["filter"] = req.Filter
 	}
 
-	return c.executeSearch(ctx, collection, body)
+	return c.executeQuery(ctx, collection, body)
 }
 
 // HybridSearchPoints performs a real hybrid (dense + sparse) search via the
@@ -484,16 +523,6 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 	return c.executeQuery(ctx, collection, body)
 }
 
-func (c *Client) executeSearch(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
-	url := fmt.Sprintf("%s/collections/%s/points/search", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
-	if err != nil {
-		return nil, fmt.Errorf("search %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-	return c.decodeSearchResults(resp)
-}
-
 // ── Payload index API ────────────────────────────────────────────────
 
 // CreatePayloadIndex creates a payload field index.
@@ -576,9 +605,10 @@ func (c *Client) decodeSearchResults(resp *http.Response) ([]SearchResult, error
 }
 
 // executeQuery sends a request to the Qdrant Query API (/points/query) and
-// decodes the results. Used by HybridSearchPoints for real RRF fusion;
-// executeSearch (POST /points/search) remains available for ANN-only
-// queries. Both share decodeSearchResults for response parsing.
+// decodes the results. It is the canonical search surface for both dense ANN
+// (SearchPoints) and dense+sparse RRF (HybridSearchPoints) now that the
+// legacy /points/search endpoint has been retired (TODO 1, June 2026).
+// Both callers share decodeSearchResults for response parsing.
 func (c *Client) executeQuery(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
 	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
 	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
