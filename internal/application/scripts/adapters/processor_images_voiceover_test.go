@@ -23,12 +23,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-<<<<<<< Updated upstream:internal/application/scripts/processor_images_voiceover_test.go
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-=======
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
->>>>>>> Stashed changes:internal/application/scripts/adapters/processor_images_voiceover_test.go
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 

@@ -464,15 +464,9 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, descr
 	return nil, fmt.Errorf("GenerateSmartImage not supported through ImageProcessor")
 }
 
-<<<<<<< Updated upstream
 // voiceoverSvcAdapter adapts *voiceover.Service → scripts.VoiceoverService.
 // The concrete Generate/GenerateWithDestination return *voiceover.VoiceoverResult;
 // the interface returns interface{}. We bridge the return-type conversion.
-=======
-// voiceoverSvcAdapter adapts *voiceover.Service → usecase.VoiceoverService.
-// The concrete Generate returns *voiceover.VoiceoverResult; the interface
-// returns interface{}. We bridge the return-type conversion.
->>>>>>> Stashed changes
 type voiceoverSvcAdapter struct {
 	svc interface {
 		Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error)
@@ -487,7 +481,6 @@ func (a *voiceoverSvcAdapter) Generate(ctx context.Context, text, language, file
 	return a.svc.Generate(ctx, text, language, filename)
 }
 
-<<<<<<< Updated upstream
 func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (interface{}, error) {
 	if a == nil || a.svc == nil {
 		return nil, nil
@@ -496,9 +489,6 @@ func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text,
 }
 
 // semanticSearchAdapter adapts scripts.RealtimeSearchService → scripts.SemanticSearchPort.
-=======
-// semanticSearchAdapter adapts usecase.RealtimeSearchService → scriptports.SemanticSearchPort.
->>>>>>> Stashed changes
 type semanticSearchAdapter struct {
 	realtime usecase.RealtimeSearchService
 }

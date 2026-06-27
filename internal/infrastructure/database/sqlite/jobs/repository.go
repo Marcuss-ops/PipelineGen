@@ -37,14 +37,7 @@ import (
 type SQLiteStore struct {
 	db       *sql.DB
 	log      *zap.Logger
-	notifier *queueNotifier
-<<<<<<< Updated upstream
-=======
-	// claimMu serializes ClaimNext so concurrent worker goroutines do not
-	// race on the SELECT-then-UPDATE atomic claim + start transition.
-	// Held only for the duration of ClaimNext — no contention on read
-	// paths. See repository_claims.go::ClaimNext for the only call site.
->>>>>>> Stashed changes
+	notifier *QueueNotifier
 }
 
 // jobColumns is the canonical list of column names read by Get, List and

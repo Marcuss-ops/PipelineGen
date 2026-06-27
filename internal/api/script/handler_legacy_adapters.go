@@ -75,7 +75,6 @@ type LegacyGenerateFromClipsRequest struct {
 	Model               string   `json:"model"`
 	Style               string   `json:"style"`
 	ClipIDs             []string `json:"clip_ids"`
-<<<<<<< Updated upstream
 	IntroClipIDs        []string `json:"intro_clip_ids"`
 	IntroClips          []string `json:"intro_clips"`
 	NumClips            int      `json:"num_clips"`
@@ -83,10 +82,6 @@ type LegacyGenerateFromClipsRequest struct {
 	Duration            int      `json:"duration"`
 	SegmentWords        int      `json:"segment_words"`
 	SegmentTopics       []string `json:"segment_topics"`
-=======
-	TargetWords         int      `json:"target_words"`
-	Duration            int      `json:"duration"`
->>>>>>> Stashed changes
 	SaveToDB            bool     `json:"save_to_db"`
 	ForceRefresh        bool     `json:"force_refresh"`
 	GenerateSceneImages bool     `json:"generate_scene_images"`
@@ -124,10 +119,7 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 			Guidelines:       r.StyleInstructions,
 			TranscriptPolicy: r.TranscriptPolicy,
 			ForceRefresh:     r.ForceRefresh,
-<<<<<<< Updated upstream
 			IntroClipIDs:     introIDs,
-=======
->>>>>>> Stashed changes
 		},
 		ScriptParams: domainScript.ScriptSpec{
 			TargetWords:   r.TargetWords,

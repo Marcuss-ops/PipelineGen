@@ -17,6 +17,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -185,9 +186,6 @@ func extractVoiceoverPaths(result interface{}) (link, path string) {
 	return "", ""
 }
 
-<<<<<<< Updated upstream:internal/application/scripts/processor_voiceover.go
-
-=======
 // ── Typed port (production adapter: voiceover.Service) ───────────────────
 
 // VoiceoverService is the canonical port for voiceover generation.
@@ -196,16 +194,11 @@ func extractVoiceoverPaths(result interface{}) (link, path string) {
 // test fixtures. The Generate return value is interface{} because
 // production returns *voiceover.VoiceoverResult (struct) while test
 // fakes return map[string]any — extractVoiceoverPaths handles both.
+//
+// GenerateWithDestination is needed by VoiceoverProcessor when the
+// plan carries a voiceover destination (folder_id or resolved group).
+// Both production and test fakes must satisfy it.
 type VoiceoverService interface {
 	Generate(ctx context.Context, text, lang, filename string) (interface{}, error)
+	GenerateWithDestination(ctx context.Context, text, lang, filename string, dest *voiceover.DestinationRequest) (interface{}, error)
 }
-
-// sanitizeFilename replaces characters unsafe in filenames.
-func sanitizeFilename(name string) string {
-	replacer := strings.NewReplacer(
-		"/", "_", "\\", "_", ":", "_", "*", "_", "?", "_",
-		"\"", "_", "<", "_", ">", "_", "|", "_", " ", "_",
-	)
-	return strings.ToLower(replacer.Replace(strings.TrimSpace(name)))
-}
->>>>>>> Stashed changes:internal/application/scripts/adapters/processor_voiceover.go

@@ -139,15 +139,12 @@ type AssetsWiring struct {
 	// architecture/deprecations.yaml records
 	// PR-SEARCH-LEGACY-CLIPSSEARCH + PR-SEARCH-LEGACY-CROSSPROVIDER.
 	SearchAggregator *search.Aggregator
-<<<<<<< Updated upstream
 	// PR-2 (June 2026): the canonical SearchFanOut (decorator
 	// wrapping the canonical Aggregator). Exposed via this
 	// wiring handle so other consumers (diagnostics + future
 	// Health probes) read the SHARED instance rather than
 	// constructing a parallel one. == bundle.SearchFanOut alias.
 	SearchFanOut search.SearchFanOut
-=======
->>>>>>> Stashed changes
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -301,7 +298,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// by the Aggregator's 4-key dedup + ranking pipeline.
 
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-<<<<<<< Updated upstream
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
 		ClipsRepo:      bundle.ClipsRepo,
@@ -328,29 +324,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		MutationsDispatcher: mutationsDisp,
 		EnrichUC:      enrichUC,
 		SearchSvc:      searchAggregator,
-=======
-		SourceResolver:   artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
-		AssetRepo:        assetRepo,
-		ClipsRepo:        bundle.ClipsRepo,
-		StockRepo:        bundle.ClipsRepo,
-		ArtlistRepo:      bundle.ClipsRepo,
-		DeletionSvc:      deletionSvc,
-		DriveUploader:    driveUploader,
-		MediaProcessor:   bundle.MediaProcessor,
-		AssetTreeSvc:     bundle.AssetTreeService,
-		MetaWriter:       metaWriter,
-		ClipIndexer:      bundle.ClipIndexerService,
-		JobsSvc:          jobs.Facade,
-		Cfg:              cfg,
-		Log:              log,
-		VoiceoverRepo:    bundle.VoiceoverRepo,
-		ImagesRepo:       bundle.ImageRepo,
-		FolderMemSvc:     folderMemSvc,
-		ProcessRunner:    processRunnerAdapter,
-		Dispatcher:       clipsDispatcherPort,
-		EnrichUC:         enrichUC,
-		SearchSvc:        searchAggregator,
->>>>>>> Stashed changes
 		BulkUploadWorker: bulkUploadWorker,
 		ClipOpsService:   clipOpsSvc,
 	}, idemHandler)
