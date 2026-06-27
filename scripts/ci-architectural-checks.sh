@@ -143,7 +143,7 @@ fi
 # merge-resolution artifacts that MUST NOT reach CI; a single hit
 # is a hard gate failure.
 echo "=== Check -1: forbid unresolved git conflict markers (PR 0) ==="
-CONFLICT_MARKERS=$(grep -rn '<<<<<<<\|>>>>>>>' --include='*.go' --include='*.sh' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.py' --include='*.sql' --include='*.md' "$REPO_ROOT" 2>/dev/null | grep -v '.git/' || true)
+CONFLICT_MARKERS=$(grep -rn --exclude=ci-architectural-checks.sh '<<<<<<<\|>>>>>>>' --include='*.go' --include='*.sh' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.py' --include='*.sql' --include='*.md' "$REPO_ROOT" 2>/dev/null | grep -v '.git/' || true)
 if [ -n "$CONFLICT_MARKERS" ]; then
     echo "FAIL: unresolved git conflict markers detected:"
     echo "$CONFLICT_MARKERS"
