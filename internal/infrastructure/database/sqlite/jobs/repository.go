@@ -5,6 +5,9 @@
 //
 // Implements the canonical job.Store contract from internal/domain/job directly,
 // without conversion through legacy model types (PR4: job.Job SSOT).
+//
+// queue_notifier.go holds the in-process wake-up broadcast primitive
+// (canonical per PR-Polling / ADR-0002 §D6.5, June 2026).
 package jobs
 
 import (
@@ -12,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -24,6 +28,11 @@ type SQLiteStore struct {
 	db       *sql.DB
 	log      *zap.Logger
 	notifier *queueNotifier
+	// claimMu serializes ClaimNext so concurrent worker goroutines do not
+	// race on the SELECT-then-UPDATE atomic claim + start transition.
+	// Held only for the duration of ClaimNext — no contention on read
+	// paths. See repository_claims.go::ClaimNext for the only call site.
+	claimMu sync.Mutex
 }
 
 // jobColumns is the canonical list of column names read by Get, List and
@@ -96,6 +105,14 @@ var _ job.Store = (*SQLiteStore)(nil)
 // future PR-postgres author must touch): see ADR-0002 §D2 audit notes
 // (`architecture/decisions/0002-p2-p3-roadmap.md`).
 var _ job.JobBroker = (*SQLiteStore)(nil)
+
+// Compile-time check: SQLiteStore satisfies the in-package QueueNotifier
+// port (PR-Reaper followup, June 2026). The assertion sits next to the
+// job.Store / job.JobBroker assertions so all canonical port
+// satisfactions this type promises live in one file. *SQLiteStore
+// forwards Subscribe and Broadcast to its embedded *queueNotifier
+// (queue_notifier.go).
+var _ QueueNotifier = (*SQLiteStore)(nil)
 
 func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	query := `

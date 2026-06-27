@@ -602,4 +602,58 @@ var (
 		Name: "qdrant_alias_current_collection",
 		Help: "Current physical collection bound to each runtime alias. Set to 1 for the current target, 0 otherwise (PromQL: alias != '...' filters out unbound aliases).",
 	}, []string{"alias", "collection"})
+
+	// ── Zero-Legacy §07 deprecation metrics (PR 9, June 2026) ───────────────
+	// Monotonic counters that drive the §07 removal-deadline gate for two
+	// long-standing backwards-compat surfaces. Both surfaces are owned by
+	// internal/application/scripts/.
+	//
+	// Naming note: the spec asked for `_per_day` suffix; the canonical
+	// Prometheus convention here is `_total` for monotonic counters
+	// (promtool/promlint reject `_per_day`, and Overrides/Dashboards
+	// assume `_total` for rate()). Operators derive the per-day rate
+	// via standard PromQL:
+	//
+	//   increase(curate_legacy_invocations_total[1d])
+	//   increase(legacy_array_to_output_invocations_total[1d])
+	//
+	// The §07 records reference both names; the spec's `_per_day`
+	// derivation is a PromQL `increase(x_total[1d])` away.
+	//
+	// Removal gate (per docs/architecture/godlike/14 §18):
+	//   curate_legacy_invocations_total        == 0 for 30 consecutive days
+	//   legacy_array_to_output_invocations_total == 0 for 60 consecutive days
+	//
+	// `source` label cardinality is bounded by the static set of callers —
+	// values are documented on each CounterVec below. Prefixing unknown /
+	// new sources is a v2 review (architecturally: expanding the label
+	// cardinality requires a Zero-Legacy §07 doc update FIRST).
+
+	// CurateLegacyInvocations counts every call to the deprecated
+	// MediaCurator.Curate entry point (legacy /curate HTTP route through
+	// internal/api/script/handler_legacy_adapters.go::LegacyCurate).
+	// Pre-PR-4 callers routed curate requests here; Post-PR-4 every
+	// curate source goes through SourceRegistry → GenerateOneUseCase.
+	//
+	// Source label values (bounded): "youtube" | "artlist" | "local" |
+	// "stock" | "unknown" (catch-all when req.Source is empty).
+	CurateLegacyInvocationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "curate_legacy_invocations_total",
+		Help: "Monotonic counter for the deprecated MediaCurator.Curate entry point (DL-CURATIONTYPES-001). Spec name: curate_legacy_invocations_per_day — derive via increase(...[1d]). Removal gate: 0 for 30 consecutive days. Source label: provider/source string, bounded by static caller set.",
+	}, []string{"source"})
+
+	// LegacyArrayToOutputInvocations counts every successful invocation
+	// of compat.LegacyArrayToOutput inside Engine.decodeModelPayload
+	// (the legacy array-shape fallback for pre-V1 cache rows). New cache
+	// writes MUST emit canonical V1; this counter should trend to 0
+	// once all pre-V1 cache entries are evicted.
+	//
+	// Source label values (bounded): "cache" (memory-gate cache hit
+	// path — only path where legacy is legitimately expected) |
+	// "fresh" (ollama direct decode — should ALWAYS be zero; non-zero
+	// indicates a V1 contract regression on the model side).
+	LegacyArrayToOutputInvocationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "legacy_array_to_output_invocations_total",
+		Help: "Monotonic counter for compat.LegacyArrayToOutput invocations (DL-COMPAT-LEGACYDECODER-001). Spec name: legacy_array_to_output_invocations_per_day — derive via increase(...[1d]). Removal gate: 0 for 60 consecutive days. Source label: 'cache' for memory-gate replay path (legitimate pre-V1 rows); 'fresh' for ollama-direct path (must be zero in steady state; non-zero indicates V1 contract regression).",
+	}, []string{"source"})
 )

@@ -1,4 +1,40 @@
 // Package scripts — curation types extracted from types.go (PG-029, June 2026).
+//
+// PR 9 (June 2026) — DEPRECATION HEADER (Zero-Legacy §07):
+//
+//   - Deprecation ID:          DL-CURATIONTYPES-001
+//   - Owner:                    internal/application/scripts wave owner
+//   - Replacement:              SourceCurate resolver + GenerateOneUseCase
+//                               (PR 4 + PR 5); every curate source now
+//                               routes through SourceRegistry →
+//                               GenerateOneUseCase, returning the canonical
+//                               *scriptpkg.GenerationResult. The legacy
+//                               types in this file are kept for back-compat
+//                               with MediaCurator.Curate (zero production
+//                               callers as of PR 9).
+//   - Introduction date:        2026-06-27
+//   - Removal deadline:         2026-09-27 (90-day grace; tracks metric
+//                               "media_curator_curate_calls_per_day" —
+//                               removal gate is zero for 30 consecutive
+//                               calendar days)
+//   - Tracking issue:           Wave-12 owner ticket
+//   - Compatibility test:       degrade_legacy_curate_call_returns_zero_results
+//                               (test asserts that a legacy /curate HTTP
+//                               call surfaces typed error rather than
+//                               silently producing an empty script)
+//   - Usage metric:             scripts.Curate_legacy_invocations_per_day
+//                               (zero for 30 days = safe to delete)
+//   - Forbidden compatibility:  see docs/architecture/godlike/
+//                               07_ZERO_LEGACY_POLICY.md §"7 forbidden
+//                               techniques" — no silent shims, no
+//                               re-export aliases, no double-writes.
+//
+// Once the metric is zero for 30 days, the follow-up PR deletes
+// curation_types.go in its entirety + media_curator.go + the
+// NewMediaCurator call site in wire_script.go::301 + the
+// MediaCurator field on ScriptFlowDeps. Until then, callers
+// MUST prefer the canonical SourceCurate + GenerateOneUseCase
+// pipeline; the legacy types are visible but discouraged.
 package scripts
 
 import (

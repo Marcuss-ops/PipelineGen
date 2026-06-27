@@ -6,9 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // JobsHandler exposes HTTP endpoints for job lifecycle management.
@@ -151,7 +151,11 @@ func (h *JobsHandler) Events(c *gin.Context) {
 	apiutil.OK(c, gin.H{"events": events, "count": len(events)})
 }
 
-// Stats returns aggregated job statistics for monitoring.
+// Stats returns AGGREGATE broker state (queue latency, status counters,
+// ingested counts) — NOT per-worker hardware telemetry. Per-worker
+// /proc-derived state lives in CertReportHandler.Report
+// (admin cert-report endpoint). Drift resolution: separation of
+// concerns (RW-PROD-013).
 func (h *JobsHandler) Stats(c *gin.Context) {
 	stats, err := h.service.GetStats(c.Request.Context())
 	if err != nil {

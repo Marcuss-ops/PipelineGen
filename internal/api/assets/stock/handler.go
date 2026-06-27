@@ -48,7 +48,10 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 // compile errors rather than via drift in two json-tag sets).
 
 func (h *Handler) SearchAndRun(c *gin.Context) {
-	var req stockpipeline.StockSearchAndRunRequest
+	// Default Async=true so existing clients (no "async" field in payload)
+	// preserve the canonical jobs-broker path. Operators that want
+	// in-process sync set "async": false on the wire.
+	req := stockpipeline.StockSearchAndRunRequest{Async: true}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -93,7 +96,7 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		return
 	}
 
-	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, true /* async */)
+	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, req.Async)
 	if err != nil {
 		if errors.Is(err, stockpipeline.ErrJobsServiceRequired) {
 			apiutil.Error(c, http.StatusServiceUnavailable,
@@ -115,7 +118,10 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 // ── POST /api/stock/run ────────────────────────────────────────────────
 
 func (h *Handler) RunStockPipeline(c *gin.Context) {
-	var req stockpipeline.StockRunPayload
+	// Default Async=true so existing clients (no "async" field in payload)
+	// preserve the canonical jobs-broker path. Operators that want
+	// in-process sync set "async": false on the wire.
+	req := stockpipeline.StockRunPayload{Async: true}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -159,7 +165,7 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		return
 	}
 
-	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, true /* async */)
+	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, req.Async)
 	if err != nil {
 		if errors.Is(err, stockpipeline.ErrJobsServiceRequired) {
 			apiutil.Error(c, http.StatusServiceUnavailable,
@@ -176,19 +182,4 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		"message":    "Stock pipeline job enqueued",
 		"status_url": "/api/jobs/" + jobID + "/full",
 	})
-}
-
-// StockPipelineResponse is the public response shape returned ONLY when
-// the handler is invoked synchronously (S2b no longer has an inline
-// sync fallback, but other entrypoints such as the admin `benchmark`
-// subcommand or the worker may emit a sync result body that this
-// shape matches).
-type StockPipelineResponse struct {
-	Status      string                      `json:"status"`
-	TotalClips  int                         `json:"total_clips"`
-	TotalChunks int                         `json:"total_chunks"`
-	Chunks      []stockpipeline.ChunkResult `json:"chunks"`
-	Error       string                      `json:"error,omitempty"`
-	JobID       string                      `json:"job_id,omitempty"`
-	StatusURL   string                      `json:"status_url,omitempty"`
 }

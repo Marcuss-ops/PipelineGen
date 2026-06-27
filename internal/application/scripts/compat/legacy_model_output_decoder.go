@@ -1,3 +1,13 @@
+// PR 9 (June 2026) - DEPRECATION HEADER (Zero-Legacy §07):
+//
+// Deprecation ID: DL-COMPAT-LEGACYDECODER-001. Owner: compat wave owner.
+// Replacement: canonical DecodeModelOutput (model_output_decoder.go).
+// Introduction date: 2026-06-27. Removal deadline: 2026-12-31 (180-day grace).
+// Tracking issue: Wave-12 owner ticket.
+// Usage metric: compat.LegacyArrayToOutput_invocations_per_day == 0 for 60 consecutive days.
+// Compatibility test: compat_legacy_decoder_handles_pre_v1_cache_row.
+// See docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md §18 for the canonical record.
+
 // Package compat — legacy_model_output_decoder.go converts legacy
 // array-shaped LLM output to the canonical ModelScriptOutputV1.
 //

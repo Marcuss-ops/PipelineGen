@@ -837,3 +837,38 @@ The migration is DONE only when every item below is true.
 Passing tests while old paths remain is not completion.
 
 The migration is complete only after CONTRACT removes the superseded contracts, routes, job handlers, defaults, result maps, compatibility code and architecture baselines. The final acceptable duplicate count is zero.
+
+## 18. PR 9 Zero-Legacy §07 deprecation register
+
+PR 9 (June 2026) completes the CONTRACT phase for the deprecated types
+listed below. Each remaining legacy item is recorded with the canonical
+deprecation fields required by `07_ZERO_LEGACY_POLICY.md`: id, owner,
+replacement, introduction date, removal deadline, tracking issue,
+compatibility test, and usage metric. Removal is gated by a zero-use
+observation window; the entries below are NOT eligible for deletion
+until the metric holds zero for the configured duration.
+
+| Deprecation ID | Owner | Replacement | Removal deadline | Metric |
+|---|---|---|---|---|
+| `DL-CURATIONTYPES-001` | `internal/application/scripts` wave owner | `SourceCurate` resolver + `GenerateOneUseCase` (`PR 4` + `PR 5`) | 2026-09-27 (90-day grace) | `scripts.Curate_legacy_invocations_per_day == 0` for 30 consecutive days |
+| `DL-COMPAT-LEGACYDECODER-001` | `internal/application/scripts/compat` owner | Canonical `DecodeModelOutput` (`PR 1`); legacy array decoder is read-only fallback for pre-V1 cache rows | 2026-12-31 (180-day grace) | `compat.LegacyArrayToOutput_invocations_per_day == 0` for 60 consecutive days |
+
+The deprecation records live at:
+
+- `internal/application/scripts/curation_types.go` (DL-CURATIONTYPES-001)
+- `internal/application/scripts/compat/legacy_model_output_decoder.go` (DL-COMPAT-LEGACYDECODER-001)
+
+Both deprecation records MUST be kept in lockstep with the deployment
+metrics; the deletion PR is BLOCKED until the metric gate passes. The
+metric name MUST be exposed via Prometheus so operators can read the
+countdown window at a glance (see `internal/infrastructure/observability/
+metrics.go`).
+
+The nine anti-regression CI gates (`Check 24` through `Check 32`) in
+`scripts/ci-architectural-checks.sh` enforce the invariants from
+PR 6 + PR 7 + PR 8 + PR 9. Any new code that resurrects the legacy
+WriteScript surface, writes a fingerprint into a model input, sets
+`OutputFmt = "prose"`, references the `Single *GenerationResult`
+envelope field, or constructs scenes via the legacy paragraph-
+splitter helpers will fail CI immediately. The canonical pipeline is
+enforced, not just documented.

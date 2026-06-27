@@ -29,6 +29,11 @@ type StockSearchAndRunRequest struct {
 	FolderName    string              `json:"folder_name"`
 	FolderID      string              `json:"folder_id,omitempty"`
 	Metadata      *ChunkMetadataInput `json:"metadata,omitempty"`
+	// Async: operator opt-out for sync execution. Defaults to false
+	// (zero-value); api handler flips to true before JSON binding so
+	// existing clients see no behaviour change. With "async":false on
+	// the wire, use case.Submit runs synchronously via the runner.
+	Async bool `json:"async,omitempty"`
 }
 
 // StockCommand is the canonical internal command the API layer hands to
@@ -49,6 +54,10 @@ type StockCommand struct {
 	FolderName    string
 	FolderID      string
 	Metadata      *ChunkMetadataInput
+	// Async: submitter-chosen sync vs jobs-broker dispatch decision.
+	// Mirrors the same field on StockSearchAndRunRequest + StockRunPayload
+	// for end-to-end wire-shape audit trail.
+	Async bool
 	// Progress, when non-nil, is invoked by the runner with percent +
 	// message at each pipeline stage boundary. Mirrors RunInput.Progress
 	// (post-S2a unification — see docs/operations/06 note).
@@ -76,6 +85,7 @@ func FromRunPayload(p *StockRunPayload) (*StockCommand, error) {
 		FolderName:    p.FolderName,
 		FolderID:      p.FolderID,
 		Metadata:      metadata,
+		Async:         p.Async,
 	}, nil
 }
 
@@ -120,6 +130,7 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 		FolderName:    r.FolderName,
 		FolderID:      r.FolderID,
 		Metadata:      metadata,
+		Async:         r.Async,
 	}, nil
 }
 
@@ -233,6 +244,9 @@ func (c *StockCommand) ToJobPayload() map[string]any {
 			md["extra"] = c.Metadata.Extra
 		}
 		payload["metadata"] = md
+	}
+	if c.Async {
+		payload["async"] = true
 	}
 	return payload
 }

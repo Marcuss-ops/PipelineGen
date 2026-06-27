@@ -22,6 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	tlsload "github.com/Marcuss-ops/PipelineGen/pkg/tlsload"
 )
 
@@ -59,6 +60,15 @@ type CertReport struct {
 
 	// Capabilities reported by the worker on register.
 	Capabilities []string `json:"capabilities,omitempty"`
+
+	// Hardware is the canonical WorkerHardwareStats POJO cached from
+	// the worker's most recent heartbeat. nil == no telemetry yet;
+	// typical between register and the first heartbeat, and any time a
+	// heartbeat arrives without the optional Hardware payload. Drift
+	// with impl.go::Stats is resolved by separation of concerns (this
+	// endpoint = per-worker telemetry; /jobs/stats = aggregate broker
+	// state); both consume the same Go type without cross-projecting.
+	Hardware *job.WorkerHardwareStats `json:"hardware,omitempty"`
 
 	// SchemaVersion = 1 (RW-PROD-001 v1, June 2026). Future additions
 	// bump this so downstream parsers can branch. The runbook
@@ -181,6 +191,7 @@ func FromSessionCertIdentity(s *appjobs.WorkerSession, hostname, workerVersion s
 		CertDNSNames:          s.CertDNSNames,
 		SchemaVersion:         1,
 		Capabilities:          capabilityTypes,
+		Hardware:              s.Hardware,
 	}
 	if !s.CertNotAfter.IsZero() {
 		r.CertNotAfter = s.CertNotAfter.UTC().Format("2006-01-02T15:04:05Z07:00")

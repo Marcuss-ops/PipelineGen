@@ -198,6 +198,106 @@ groups:
           description: "GC pause: {{ $value }}s"
           action: "Considera tuning GOGC"
 
+  - name: velox_deprecation
+    interval: 5m
+    rules:
+      # ── Zero-Legacy §07 deprecation counters (PR 9, June 2026) ─────────
+      # Backing metrics (Prometheus name): curate_legacy_invocations_total,
+      # legacy_array_to_output_invocations_total. Spec asked for _per_day
+      # suffix; canonical increment naming is _total (OpenMetrics); ops
+      # derive per-day via increase(...[1d]). See metrics.go.
+
+      # CRITICAL (long-term gate): MediaCurator.Curate zeroed for 30 days.
+      # Removal deadline per DL-CURATIONTYPES-001: 2026-09-27.
+      # Steady-state gate is "zero for 30 consecutive calendar days" — the
+      # for:30d below is the dashboard-level stale-detection; the actual
+      # deadline is tracked manually via the TemporalCounter rate().
+      - alert: CurateLegacyNonZeroDaily
+        expr: increase(curate_legacy_invocations_total[1d]) > 0
+        for: 1h
+        labels:
+          severity: warning
+          team: scripts
+          service: velox-go
+          deprecation: DL-CURATIONTYPES-001
+          ticket: Wave-12 owner ticket
+        annotations:
+          summary: "🟡 DL-CURATIONTYPES-001 still producing legacy /curate calls"
+          description: |
+            curate_legacy_invocations_total increased by {{ $value }} in the
+            past 24h. The deprecated MediaCurator.Curate entry point is
+            still being exercised. Removal deadline: 2026-09-27
+            (90-day grace). Migrate callers to SourceCurate +
+            GenerateOneUseCase pipeline. Triggered for source
+            label: {{ $labels.source }}.
+
+      # INFO: zero-invocation signal — celebrate migration completion. The
+      # gate is "== 0 for 30 consecutive calendar days" not "stays 0";
+      # operators periodically cross-check this alert's silence as the
+      # canonical evidence the deadlines can collapse.
+      - alert: CurateLegacyZeroInvocations
+        expr: increase(curate_legacy_invocations_total[7d]) == 0
+        for: 7d
+        labels:
+          severity: info
+          team: scripts
+          service: velox-go
+          deprecation: DL-CURATIONTYPES-001
+        annotations:
+          summary: "✅ curate_legacy_invocations_total silently zero for 7d"
+          description: |
+            No legacy /curate calls in last 7 calendar days. Continue
+            silence check for 30 consecutive calendar days before
+            removing DL-CURATIONTYPES-001 entirely.
+
+      # CRITICAL (contract regression fresh path):
+      # legacy_array_to_output_invocations_total{source="fresh"} should
+      # ALWAYS be zero — the fresh-generation decoder is DecodeModelOutput
+      # only (PR 1 enforces V1 on the wire side via Ollama JSON-mode
+      # + v1OutputInstruction suffix). Non-zero on the fresh label is a
+      # canonical V1 contract regression: the model is emitting legacy
+      # array shape and the engine is forced to fall back.
+      - alert: LegacyArrayToOutputFreshRegression
+        expr: increase(legacy_array_to_output_invocations_total{source="fresh"}[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: scripts
+          service: velox-go
+          deprecation: DL-COMPAT-LEGACYDECODER-001
+        annotations:
+          summary: "🔥 V1 contract regression — legacy decoder required on fresh-generation path"
+          description: |
+            legacy_array_to_output_invocations_total{source="fresh"}
+            incremented by {{ $value }} in the last hour. The fresh
+            ollama-output decoder is required to fall back to the legacy
+            array shape, meaning the V1 contract is being violated by the
+            model. Investigate the model / prompt side; consider rolling
+            back the model to the prior version. Removal deadline:
+            2026-12-31 (180-day grace).
+
+      # INFO (cache path tolerance): legacy cache replays of pre-V1 rows
+      # are LEGITIMATE during the migration window (PR 1 contract: new
+      # writes are V1-only, but old cache rows must still decode). This
+      # alert fires only on sustained high volume (>1000/day) — a
+      # dashboard signal that the cache eviction sweep isn't keeping
+      # pace with migration.
+      - alert: LegacyArrayToOutputCacheReplayHigh
+        expr: increase(legacy_array_to_output_invocations_total{source="cache"}[1d]) > 1000
+        for: 1h
+        labels:
+          severity: info
+          team: scripts
+          service: velox-go
+          deprecation: DL-COMPAT-LEGACYDECODER-001
+        annotations:
+          summary: "ℹ️ Legacy cache replay daily rate > 1000"
+          description: |
+            {{ $value }} legacy cache replays in the past 24h. Consider
+            shrinking the memory-cache TTL (gemmamemory.Service) or
+            proactively evicting pre-V1 rows. Removal deadline threshold:
+            0 invocations for 60 consecutive days. Source label: cache.
+
   - name: velox_canary
     interval: 15s
     rules:
