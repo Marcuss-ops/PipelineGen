@@ -36,6 +36,7 @@ type EnqueueInput struct {
 	ActiveKey     string
 	MaxRetries    int
 	CorrelationID string
+	Project       string
 }
 
 // EnqueueAsync enqueues a job and writes the standard async response.
@@ -51,6 +52,7 @@ func EnqueueAsync(c *gin.Context, enqueuer Enqueuer, in *EnqueueInput, message s
 		Priority:      in.Priority,
 		MaxRetries:    in.MaxRetries,
 		CorrelationID: in.CorrelationID,
+		Project:       in.Project,
 	}
 	if in.ActiveKey != "" {
 		req.ActiveKey = in.ActiveKey

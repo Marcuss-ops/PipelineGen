@@ -135,6 +135,7 @@ const (
 	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync       = "drive.folder.sync"
 	TypeMediaCurate           = job.TypeMediaCurate
+	TypeVoiceoverPromo        = job.TypeVoiceoverPromo
 )
 
 // Compose builds the standard registry with all known job types.
@@ -165,6 +166,7 @@ func Compose() *Registry {
 
 	// ── Voiceover / subtitles ──
 	r.Register(RegistryEntry{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(RegistryEntry{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(RegistryEntry{Type: TypeSubtitleGenerate, Description: "Subtitle generation", Timeout: 10 * time.Minute, DefaultMaxRetries: 2})
 
 	// ── Catalog / sync ──

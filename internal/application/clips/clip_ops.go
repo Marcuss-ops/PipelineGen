@@ -157,9 +157,9 @@ type CleanupReport struct {
 
 // CleanupItem is a per-clip row in the report.
 type CleanupItem struct {
-	ID     string
-	Name   string
-	Reason string
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
 }
 
 // Cleanup orchestrates orphan-record cleanup. Two paths:

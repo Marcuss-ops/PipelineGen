@@ -77,6 +77,7 @@ const (
 	TypeBulkUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync        = "drive.folder.sync"
 	TypeMediaCurate            = "media.curate"
+	TypeVoiceoverPromo         = "voiceover.promo"
 )
 
 // Job is the canonical domain entity for a job in the system.
