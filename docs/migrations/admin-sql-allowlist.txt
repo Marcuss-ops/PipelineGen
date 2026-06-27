@@ -1,0 +1,158 @@
+# docs/migrations/admin-sql-allowlist.txt
+# ─────────────────────────────────────────────────────────────────────────────
+# Baseline allowlist for the Wave 22 Asset-Mutation Bypass Audit (PR-4).
+# Enforced via `scripts/ci-bypass-audit.sh`, which re-runs the four rg queries
+# from `docs/tmp/bypass_audit_<date>.txt` and fails on any non-allowlisted
+# production hit.
+#
+# SCOPE
+# ─────
+# The `\.Upsert\(`, `UpsertClip\(`, `\.Restore\(`, `\.HardDelete\(` and
+# `ExecContext.*media_assets` rg queries intentionally cast a WIDE net because
+# the canonical `AssetMutationDispatcher` SSOT interface is the only sanctioned
+# media_assets write surface for production code paths; every other direct
+# mutation (regardless of destination table) is a regression because it
+# bypasses (1) the atomic UPSERT + outbox event transaction, (2) the
+# supersede-gate dedup, (3) the audit/projection trail.
+#
+# This file lists the LEGITIMATE non-dispatcher mutation entry points, grouped
+# by reason. The CI gate parses every non-comment line as a repo-root-relative
+# path, then `comm -13`'s the sorted rg hits against the sorted allowlist.
+# Anything left over fails the gate with `exit 1`.
+#
+# POLICY (mirrors api-infrastructure-imports-allowlist.txt)
+# ────────────────────────────────────────────────────────────
+# * Each entry must ship with a migration plan tracked under the
+#   corresponding `architecture/current.yaml` wave (or PR track for
+#   in-flight work).
+# * Adding a NEW entry REQUIRES team review (no solo adds); the entry
+#   must carry an explicit bucket-reason header comment.
+# * Removing an entry is always safe; the gate will fail if the underlying
+#   `\.Upsert\( / UpsertClip\( / \.Restore\( / \.HardDelete\(` call is still
+#   present, surfacing the regression for Wave 22 tasks 2/3/5.
+#
+# BASELINE RATCHET MODEL
+# ───────────────────────
+# Each entry below is grandfathered with its planned Wave 22 task. As tasks
+# 2/3/5 land, the corresponding file path is REMOVED from this file in
+# lockstep with the migration commit, so the gate tightens monotonically
+# across the wave. This is the same ratchet mechanic used by
+# `docs/migrations/api-infrastructure-imports-allowlist.txt` for the
+# Wave-14 API-compaction grandfathered imports — the gate's "ZERO hits
+# after allowlist exclusion" pass condition holds NOW and shrinks as the
+# migration progresses.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Bucket 1: TX primitives & dispatcher internals (tx primitive — internal only OK) ─
+# These files own the SQL primitives (Upsert / Restore / HardDelete /
+# UpsertClip) behind the canonical `mutations.AssetMutationDispatcher`
+# surface. Their rg hits are the dispatcher-context tail of the surface,
+# NOT bypass callers. They are allowlisted in perpetuity (no migration
+# planned; they are the canonical implementation).
+internal/infrastructure/database/sqlite/assets/clips_repository.go
+internal/infrastructure/database/sqlite/outbox/repository.go
+internal/infrastructure/database/sqlite/admin/purge.go
+internal/application/assets/mutations/primitives.go
+internal/infrastructure/database/assetindex/service.go
+
+# ── Bucket 1: Composition-root adapter wiring (tx primitive — internal only OK) ──
+# `internal/app/*` is the only place that constructs adapter wrappers
+# around the canonical infrastructure concretes. Every `.inner.Upsert(`
+# adapter delegates to its inner port — these are not bypass callers;
+# they are the canonical composition glue between the application SSOT
+# ports and the infrastructure concretes that fulfil them.
+# (Migration: Wave 23 — replace these delegates with direct
+# `AssetMutationDispatcher` promotion into the use cases.)
+internal/app/adapters_infra.go
+internal/app/youtube_adapters.go
+internal/app/clips_adapters_repo.go
+
+# ── Bucket 2: Admin & operator tooling (admin migration/backfill) ───────
+# Off-process operator tools; they bypass the dispatcher by design to
+# run one-shot recovery / DR / cleanup flows. Per Wave 22 PR-1 they use
+# `admin.InternalAdminPurge` (sealed surface) which deliberately never
+# embraces the outbox path — the operator chose this explicitly when
+# invoking the tool. Allowlisted in perpetuity.
+cmd/admin/db_restore.go
+cmd/admin/dr_qdrant.go
+
+# ── Bucket 3: Non-media-asset caller for a SEPARATE surface ────────────
+# These files mutate tables other than `media_assets` (channels,
+# voiceovers, search_queries, asset_locations, assetindex cache,
+# stockpipeline records, image registry). They have their own narrow
+# typed ports and dispatcher paths — they are NOT bypasses of
+# AssetMutationDispatcher because they do not touch media_assets at all.
+# Allowlisted in perpetuity; future `\.Upsert\(` from these files
+# targeting media_assets MUST migrate to
+# `AssetMutationDispatcher.EnqueueAndIndex`.
+internal/application/assets/providers/stock/stockpipeline/run_upload.go
+internal/application/assets/artifacts/finalizer.go
+internal/application/assets/catalogsync/sync_persist.go
+internal/application/assets/searchqueries/usecase.go
+internal/application/images/google_vids_assets.go
+internal/application/assets/ingest/adapter_image.go
+internal/application/assets/ingest/adapter_voiceover.go
+internal/application/channels/adapters.go
+internal/application/channels/service.go
+internal/application/channels/handler.go
+internal/application/jobs/assets/service.go
+internal/application/voiceover/sync/service.go
+internal/application/voiceover/registry_adapter.go
+internal/api/assets/handler_searchqueries.go
+
+# ── Bucket 4: Production — must use dispatcher (Wave 22 task 2/3) ──────
+# These files still write `media_assets` directly via the legacy
+# `assetRepo.Upsert` / `clips.Upsert` / `inner.Upsert` paths. They are
+# grandfathered pending Wave 22 tasks 2/3 (handlers + media-curate).
+# Each migration PR MUST remove the file from this section in the same
+# commit (atomic: code migration + allowlist removal).
+#
+# Migration plan (per architecture/current.yaml Wave 22):
+#   * task 2 (handlers): rewrite api/assets/clips/* + api/assets/soundeffect
+#     to call AssetMutationDispatcher.EnqueueAndIndex instead of
+#     assetRepo.Upsert.
+#   * task 3 (media-curate + restore): rewrite the remaining
+#     `application/{clips,youtube,images,ai}` callers to dispatcher.
+#   * task 5 (deprecate ad-hoc ports): collapse the `IndexDispatcherPort`
+#     passthrough in sourcing and YouTube metadata to a single
+#     AssetMutationDispatcher consumer.
+
+# task 2 (handlers)
+internal/api/assets/clips/bulk_upload_worker.go
+internal/api/assets/clips/clip_action.go
+internal/api/assets/clips/clip_create.go
+internal/api/assets/clips/clip_upload.go
+# MIXED: L296 clip → dispatcher, L305/L440 voiceover → voiceover narrow port
+internal/api/assets/clips/clip_ops.go
+internal/api/assets/soundeffect/handler.go
+
+# task 2 (application-layer workers)
+internal/application/clips/bulk_upload_worker.go
+internal/application/clips/clip_ops.go
+internal/application/clips/enrich.go
+internal/application/clips/reprocess.go
+# MIXED: L73/L229 clip → dispatcher; L86/L100 locations → asset_locations narrow port
+internal/application/assets/ingest/adapter_clip.go
+# MIXED: L62 clip → dispatcher; L75/L89 locations → asset_locations narrow port
+internal/application/assets/artifacts/clips_adapter.go
+
+# task 3 (media-curate + youtube + ai)
+internal/application/assets/providers/artlist/semantic_enricher.go
+internal/application/images/nvidia_animate.go
+internal/application/youtube/extraction/intelligence.go
+internal/application/youtube/metadata/service.go
+internal/application/youtube/orchestrator.go
+internal/infrastructure/ai/autotag/autotag.go
+
+# ── Bucket 4: Tests (test — no action; pre-excluded by rg glob) ────────
+# Tests are excluded from rg output by `--glob '!**/*_test.go'`; these
+# entries are kept here purely for audit completeness. They are NOT
+# allowlisted for safety reasons (test fixtures may freely call mutated
+# methods); the `<>_test.go` glob is the actual exemption.
+internal/infrastructure/database/assetindex/service_test.go
+internal/application/assets/searchqueries/usecase_test.go
+internal/application/channels/module_test.go
+internal/application/jobs/assets/service_test.go
+internal/application/assets/providers/artlist/service_test.go
+internal/application/assets/providers/artlist/dispatcher_stub_test.go
+internal/application/qdrant/dr/snapshot_test.go

@@ -451,6 +451,21 @@ if [ -n "$fails" ]; then
 fi
 echo "Check 5: 0 same-package type-redeclarations detected across internal/"
 
+# ── Check 7: Asset-Mutation Bypass Audit (Wave 22 PR-4, June 2026) ──
+# Runs the four rg queries from docs/migrations/bypass_audit_<date>.md and
+# subtracts the per-file allowlist at docs/migrations/admin-sql-allowlist.txt
+# using `comm -13`. Any non-allowlisted production hit fails the gate.
+#
+# This is the wire-up for the canonical AssetMutationDispatcher SSOT
+# (internal/application/assets/mutations/dispatcher.go) — Wave 22 tasks
+# 2/3/5 migrate the "production — must use dispatcher" files out from
+# under the allowlist, so this gate tightens with each migration PR.
+#
+# The allowlist is the SINGLE SOURCE OF TRUTH for what bypass-survives.
+# Adding/removing a row must ship in the same PR as the corresponding
+# code change. See AGENTS.md §"Agenter Workflow" for the 1-PR rule.
+bash "${REPO_ROOT}/scripts/ci-bypass-audit.sh"
+
 # ── Main gate ────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
 # 5 Phase 0 rules in grace-cycle regression-detection mode.
