@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -29,12 +29,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
@@ -45,6 +45,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -55,7 +56,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -147,42 +147,14 @@ type ProcessBundle struct {
 	ManifestService manifest.Service
 }
 
-// QdrantDeps is the tiny pre-phase bundle of canonical Qdrant adapters
-// that BuildOutboxBundle needs. Constructed by buildQdrantDeps BEFORE
-// BuildOutboxBundle in composition.go::NewComposition so the
-// OutboxBundle can be built BEFORE ProcessBundle (PR 8, June 2026).
-//
-// This split is the ring-break for the ProcessBundle ↔ OutboxBundle
-// composition graph: BuildOutboxBundle reads qd.ClipIndexerService +
-// qd.QdrantDeleter; BuildProcessBundle consumes outbox.OutboxBundle +
-// qd after that and constructs MediaProcessor inline.
-//
-// The 2-field shape is deliberate — only what BuildOutboxBundle needs
-// is exported from the pre-phase. The remaining ProcessBundle fields
-// (VLMClient, QdrantClient, CollectionManager, VectorSvc,
-// QdrantHealthProbe, LocatorCleaner, QdrantSearcher, MediaProcessor)
-// stay in BuildProcessBundle because none of them depend on
-// outbox.Dispatcher — they can be constructed inline once BuildOutboxBundle
-// returns the canonical dispatcher.
-//
-// QdrantDeleter is the canonical typed port per AGENTS.md Pattern 0.
-// Nil when Qdrant is disabled OR when ClipIndexer is disabled
-// (IndexWriter is gated on both cfg.Qdrant.Enabled AND
-// clipIndexerService.IsEnabled()). BuildOutboxBundle's
-// `if qd.QdrantDeleter != nil` guard absorbs nil safely.
-type QdrantDeps struct {
-	ClipIndexerService *clipindexer.Service
-	QdrantDeleter      qdrant.QdrantDeleter
-}
-
 // AIBundle owns script generation, engine, and memory.
 // StyleRegistry lives on DriveBundle (PR4.A). MemoryRepo is constructed
 // in BuildAIBundle. ScriptFlowHandler lives in registry.go::WireRegistry.
 type AIBundle struct {
 	OllamaClient  *client.Client
 	ScriptGen     *ollama.Generator
-	MemoryRepo    *adapters.Repository
-	MemoryService *adapters.Service
+	MemoryRepo    *gemmamemory.Repository
+	MemoryService *gemmamemory.Service
 	ScriptEngine  *scriptcore.Engine
 }
 
@@ -195,7 +167,7 @@ type DomainBundle struct {
 	IngestService      *ingest.Service
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
-	MetaWriter         *semantic.MetadataWriter
+	MetaWriter    *semantic.MetadataWriter
 	// Wave 15 (June 2026): RealtimeService split into two typed ports (the
 	// realtime package was removed in commit d61068b3). Both slots stay
 	// typed-nil at composition. Asset-side consumer
@@ -232,7 +204,7 @@ type MaintBundle struct {
 
 // UtilityBundle owns the lightweight non-domain HTTP utility handlers.
 type UtilityBundle struct {
-	Utility       *transport.UtilityHandler
+	Utility       *common.UtilityHandler
 	HealthService *systemhealth.Service
 	ReadyChecker  *systemhealth.ReadyChecker
 }
@@ -281,71 +253,6 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 
 // ── Orchestrator: NewComposition ─────────────────────────────────────────
 
-// buildQdrantDeps constructs the tiny pre-phase QdrantDeps bundle used
-// by BuildOutboxBundle (QDRANT-003 — IndexWriter as QdrantDeleter + the
-// canonical ClipIndexerService).
-//
-// The 2 fields returned here are exactly what BuildOutboxBundle reads.
-// The remaining Qdrant-derived adapters (CollectionManager, VectorSvc,
-// LocatorCleaner, QdrantHealthProbe, QdrantSearcher, QdrantClient
-// itself) stay in BuildProcessBundle — none of them depend on
-// outbox.Dispatcher, so they can be constructed inline after
-// BuildOutboxBundle returns the canonical dispatcher.
-//
-// Wire-time invariant: buildQdrantDeps MUST NOT start goroutines
-// (composition_test.go::TestComposition_NoGoroutinesSpawned_FrozenSiteCount
-// pins the no-spawn shape of every builder name matching Build\w+Bundle in
-// source). clipindexer.NewService + qdrant.NewClient + qdrant.NewIndexWriter
-// + qdrant.NewPayloadMapper all return struct values without spawning
-// goroutines, so this body is in scope.
-//
-// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): replaces the
-// PR-7 deferred-hydration strategy (hydrateMediaProcessor +
-// ProcessBundle.MediaProcessor=nil) with this strict-DAG pre-phase.
-// Composition order is now: qdrantDeps(no deps) -> outbox(reads qd) ->
-// process(reads outbox+qd) -> domains(reads process+outbox).
-func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*QdrantDeps, error) {
-	_ = ctx
-	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
-		Enabled:               cfg.ClipIndexer.Enabled,
-		ServerURL:             cfg.ClipIndexer.ServerURL,
-		ScriptPath:            cfg.ClipIndexer.ScriptPath,
-		PythonBin:             cfg.ClipIndexer.PythonBin,
-		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
-		MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing,
-		DBPath:                dbs.main.Path(),
-	}, dbs.main, dbs.main.Path(), log)
-
-	var qdrantDeleter qdrant.QdrantDeleter
-	if cfg.Qdrant.Enabled {
-		if clipIndexerService.IsEnabled() {
-			qdrantCfg := &qdrant.Config{
-				BaseURL: cfg.Qdrant.BaseURL,
-				APIKey:  cfg.Qdrant.APIKey,
-				Timeout: cfg.Qdrant.Timeout,
-			}
-			schema := qdrant.DefaultV3Schema()
-			qdrantClient := qdrant.NewClient(qdrantCfg, log)
-			assetStore := qdrant.NewSQLiteAssetStore(dbs.main.DB)
-			mapper := qdrant.NewPayloadMapper(assetStore, log)
-			indexWriter := qdrant.NewIndexWriter(qdrantClient, schema, mapper, log)
-			qdrantDeleter = indexWriter
-			clipIndexerService.SetVectorStore(indexWriter)
-			log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
-				zap.String("runtime_alias", schema.RuntimeAlias))
-		} else {
-			log.Info("QDRANT-003: ClipIndexer disabled — IndexWriter skipped (buildQdrantDeps pre-phase)")
-		}
-	} else {
-		log.Info("QDRANT-003: Qdrant disabled — no IndexWriter wired (buildQdrantDeps pre-phase)")
-	}
-
-	return &QdrantDeps{
-		ClipIndexerService: clipIndexerService,
-		QdrantDeleter:      qdrantDeleter,
-	}, nil
-}
-
 // NewComposition composes all bundles in dependency order and returns the
 // fully-assembled ComposeRoot. Cleanup is owned by shutdown.go.
 //
@@ -369,18 +276,12 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose drive: %w", err)
 	}
 
-	// PR-Queue-Split-EXPAND / ADR-0003 (June 2026): the JobsBundle's DB
-	// is the EXPAND-on jobs.db.sqlite when the gate is enabled + the DB
-	// opened successfully at initDatabases; otherwise the canonical
-	// single-DB shape on dbs.main. The BuildJobsBundle signature is
-	// unchanged; composition-root does the pick. Documented here so a
-	// future reader does not chase the dbs.main reference looking for
-	// where the EXPAND gate surfaces.
-	jobsDB := dbs.main
-	if dbs.jobs != nil {
-		jobsDB = dbs.jobs
+	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.DriveUploader)
+	if err != nil {
+		return nil, fmt.Errorf("compose process: %w", err)
 	}
-	jobs, err := BuildJobsBundle(jobsDB, log)
+
+	jobs, err := BuildJobsBundle(dbs.main, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
 	}
@@ -390,38 +291,16 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose ai: %w", err)
 	}
 
-	// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed) —
-	// ring-break reorder: the canonical Qdrant adapters that
-	// BuildOutboxBundle needs (ClipIndexerService + QdrantDeleter) are
-	// constructed in a tiny buildQdrantDeps pre-phase so BuildOutboxBundle
-	// can run BEFORE BuildProcessBundle. BuildProcessBundle then consumes
-	// both qdrantDeps + outbox.OutboxBundle and constructs MediaProcessor
-	// inline using the canonical outbox.Dispatcher SSOT (QDRANT-002
-	// atomicity invariant). The composition graph is now a strict DAG:
-	// qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd)
-	// -> domains. The previous PR-7 deferred-hydration strategy
-	// (hydrateMediaProcessor + MediaProcessor=nil) is gone.
-	qdrantDeps, err := buildQdrantDeps(ctx, cfg, dbs, log)
-	if err != nil {
-		return nil, fmt.Errorf("compose qdrant deps: %w", err)
-	}
-
-	// PR-12d (June 2026): BuildOutboxBundle runs BEFORE BuildDomainBundle.
-	// PR 8 (June 2026) takes this further and reorders BuildOutboxBundle
-	// BEFORE BuildProcessBundle too: BuildProcessBundle now reads
-	// qdrantDeps (the only Process-side deps BuildOutboxBundle needed,
-	// exposed by the pre-phase) and outbox.OutboxBundle (for the
-	// canonical mutations dispatcher used in MediaProcessor). The
-	// dispatcher is wired into images.Service via constructor injection
-	// in BuildDomainBundle.
-	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs)
+	// PR-12d (June 2026): BuildOutboxBundle now runs BEFORE
+	// BuildDomainBundle. Previously BuildDomainBundle ran first and
+	// ImageService.SetDispatcher was called AFTER BuildOutboxBundle
+	// returned; that ordering hazard meant any ImageService call
+	// between the two landed on the raw stockRepo.Upsert path. The
+	// dispatcher is now passed through BuildDomainBundle's signature
+	// and consumed by images.Service via constructor injection.
+	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, process, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
-	}
-
-	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.DriveUploader, outbox, qdrantDeps)
-	if err != nil {
-		return nil, fmt.Errorf("compose process: %w", err)
 	}
 
 	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox)
