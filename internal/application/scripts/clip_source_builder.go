@@ -39,6 +39,7 @@ type ClipSourceBuilder struct {
 type ClipGenerationOptions struct {
 	Language           string
 	Tone               string
+	Style              string
 	Title              string
 	Model              string
 	TargetWords        int
@@ -126,7 +127,17 @@ func (c *ClipSourceBuilder) BuildClipContext(
 					zap.String("clip_id", id),
 					zap.Error(err))
 			}
-			continue
+		}
+		if clip == nil {
+			clip, err = clipsRepo.GetByDriveFileID(ctx, id)
+			if err != nil {
+				if c.log != nil {
+					c.log.Warn("clip source builder: failed to fetch clip by drive file id",
+						zap.String("clip_id", id),
+						zap.Error(err))
+				}
+				continue
+			}
 		}
 		if clip == nil {
 			continue
@@ -145,6 +156,8 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		sourceTextBuilder.WriteString(fmt.Sprintf("CLIP %s: %s\n", id, name))
 		if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
 			sourceTextBuilder.WriteString(fmt.Sprintf("  Description: %s\n", searchText))
+		} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
+			sourceTextBuilder.WriteString(fmt.Sprintf("  Description: %s\n", desc))
 		}
 		transcript := clip.GetMetadataString("transcript")
 		if transcript == "" {

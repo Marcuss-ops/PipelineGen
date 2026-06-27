@@ -128,12 +128,47 @@ func (r *BackendRegistry) All() []SearchBackend {
 	return out
 }
 
-// Eligible returns the registered backends whose Capabilities
-// intersect with q.MediaTypes. If q.MediaTypes is empty, every
-// backend is eligible (caller asked for "all media types").
+// Eligible returns the registered backends matching q.Sources
+// AND q.MediaTypes. The two filters compose with AND semantics.
+//
+//   - Sources: if q.Sources is non-empty, the candidate set is
+//     reduced to backends whose Name() appears in the canonicalised
+//     source list (alias resolution via ResolveCanonicals).
+//     Empty canonical set (all aliases unknown) → empty result.
+//   - MediaTypes: applied after Sources. Backends whose
+//     Capabilities intersect with the canonicalised media-type
+//     filter win; backends with no intersection are dropped.
+//
+// Empty q.Sources AND empty q.MediaTypes → every backend is
+// eligible (the legacy "all" behaviour is preserved).
 // Sort order is Name() for determinism, same as All().
 func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 	all := r.All()
+
+	// 1. Sources filter (fail-fast on unknown aliases).
+	canonicalSources := ResolveCanonicals(q.Sources)
+	if len(q.Sources) > 0 && len(canonicalSources) == 0 {
+		// All sources supplied were unknown aliases. NO
+		// silent fallback: return empty result so callers
+		// learn the misuse instead of getting a deceptively
+		// full response from every backend.
+		return []SearchBackend{}
+	}
+	if len(canonicalSources) > 0 {
+		allow := make(map[string]struct{}, len(canonicalSources))
+		for _, s := range canonicalSources {
+			allow[s] = struct{}{}
+		}
+		filtered := make([]SearchBackend, 0, len(all))
+		for _, b := range all {
+			if _, ok := allow[b.Name()]; ok {
+				filtered = append(filtered, b)
+			}
+		}
+		all = filtered
+	}
+
+	// 2. MediaTypes filter (legacy behaviour preserved).
 	if len(q.MediaTypes) == 0 {
 		return all
 	}

@@ -163,13 +163,18 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	//    wirings are gone (CUTOVER delivered). The aggregator is
 	//    the SSOT for the Search capability; see
 	//    architecture/deprecations.yaml records PR-SEARCH-LEGACY-*.
-	searchBackends := BuildSearchBackends(SearchBackendBuildOpts{
+	//    PR-1 (June 2026): BuildSearchBackends is fail-closed;
+	//    a Register error aborts boot with a wrapped error.
+	searchBackends, backendsErr := BuildSearchBackends(SearchBackendBuildOpts{
 		Logger:         log,
 		ProviderReg:    providerRegistry,
 		ClipsRepo:      bundle.ClipsRepo,
 		MediasearchSvc: bundle.MediasearchService,
 		WorkspaceID:    bundle.SearchWorkspaceID,
 	})
+	if backendsErr != nil {
+		return nil, fmt.Errorf("WireAssets: %w", backendsErr)
+	}
 	bundle.SearchBackendRegistry = searchBackends
 	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
 	log.Info("search aggregator wired (PR 10 CUTOVER; replaces BACKFILL dual-path)",

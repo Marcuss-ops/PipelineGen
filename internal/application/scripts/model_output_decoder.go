@@ -19,6 +19,7 @@
 package scripts
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -55,6 +56,12 @@ func DecodeModelOutput(raw []byte, log *zap.Logger) (*scriptpkg.ModelScriptOutpu
 				zap.String("preview", preview),
 				zap.Error(err))
 		}
+		if strings.Contains(err.Error(), "no valid JSON object found") {
+			if output, directErr := decodeDirectJSON(raw, log); directErr == nil {
+				return output, nil
+			}
+			return fallbackTextOutput(raw, log), nil
+		}
 		return nil, fmt.Errorf("%w: %w", scriptpkg.ErrModelOutputMalformed, err)
 	}
 
@@ -78,6 +85,43 @@ func DecodeModelOutput(raw []byte, log *zap.Logger) (*scriptpkg.ModelScriptOutpu
 	}
 
 	return &output, nil
+}
+
+func decodeDirectJSON(raw []byte, log *zap.Logger) (*scriptpkg.ModelScriptOutputV1, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("empty raw JSON")
+	}
+	var output scriptpkg.ModelScriptOutputV1
+	if err := json.Unmarshal(trimmed, &output); err != nil {
+		return nil, err
+	}
+	if err := output.Validate(); err != nil {
+		return nil, err
+	}
+	if log != nil {
+		log.Debug("model output decoder: direct JSON fallback succeeded",
+			zap.Int("raw_bytes", len(raw)),
+			zap.Int("json_bytes", len(trimmed)))
+	}
+	return &output, nil
+}
+
+func fallbackTextOutput(raw []byte, log *zap.Logger) *scriptpkg.ModelScriptOutputV1 {
+	text := strings.TrimSpace(string(raw))
+	if log != nil {
+		log.Debug("model output decoder: using plain-text fallback",
+			zap.Int("raw_bytes", len(raw)),
+			zap.Int("text_bytes", len(text)))
+	}
+	return &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          text,
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes:  []scriptpkg.SpecScene{},
+		},
+	}
 }
 
 // extractJSONFromOutput attempts to find a valid JSON object in the

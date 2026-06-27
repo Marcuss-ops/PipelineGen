@@ -27,6 +27,7 @@ import (
 type SQLiteStore struct {
 	db       *sql.DB
 	log      *zap.Logger
+	claimMu  sync.Mutex
 	notifier *queueNotifier
 	// claimMu serializes ClaimNext so concurrent worker goroutines do not
 	// race on the SELECT-then-UPDATE atomic claim + start transition.

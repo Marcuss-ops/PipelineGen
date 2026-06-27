@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
 	"go.uber.org/zap"
 )
@@ -26,7 +27,7 @@ import (
 // are consumed (legacy behaviour). A nil clipBuilder means the
 // resolver can't build context and returns a typed error.
 type CurateSourceResolver struct {
-	clipSearch ClipSearchPort
+	clipSearch  ClipSearchPort
 	clipBuilder clipContextBuilder
 	log         *zap.Logger
 }

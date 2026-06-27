@@ -99,20 +99,51 @@ var (
 	ErrEmptyCandidate = errors.New("search: empty candidate")
 )
 
+// ── Actor ────────────────────────────────────────────────────────────
+//
+// Actor carries the tenant identity propagated to every backend.
+// PR-1 spec: "L'adapter deve inoltrare il contesto reale, senza
+// forzare IsAdmin". Wire shape: middleware extracts the Identity
+// (JWT, mTLS, session token), authenticates it, and sets the
+// corresponding Actor fields before invoking the handler. The
+// search package delegates authentication to upstream layers —
+// an Actor with WorkspaceID=="" is rejected by the semantic
+// backend (QDRANT-004 ErrMissingWorkspace contract) rather than
+// silently degraded to admin. Field names are public so JSON
+// encoding for cross-service calls stays simple.
+type Actor struct {
+	WorkspaceID string // tenant workspace; empty disables semantic backend
+	UserID      string // optional user-level identifier for audit
+	IsAdmin     bool   // admin principals may pick arbitrary workspaces
+}
+
+// IsZero reports whether the Actor has no identity fields set.
+// Equivalent to Actor{} but cheaper to read in hot paths; used by
+// the semantic backend to decide whether to fall back to the
+// composition-time default workspace.
+func (a Actor) IsZero() bool {
+	return a.WorkspaceID == "" && a.UserID == "" && !a.IsAdmin
+}
+
 // ── Query ───────────────────────────────────────────────────────────
 //
 // Query is the canonical orchestrator input. One type for all backends.
 // Text is trimmed by SearchAggregator before fanout (callers MAY pass
 // already-trimmed text — idempotent). Sources []string empty = "all
 // registered backends". MediaTypes []string empty = "all capabilities".
+//
+// PR-1 (June 2026): Actor carries tenant identity down to every
+// backend. Handlers MUST set it from auth middleware; backends MUST
+// forward it instead of substituting default values.
 type Query struct {
 	Text       string     // trimmed before fanout
-	Sources    []string   // empty = all from registry
+	Sources    []string   // empty = all from registry; aliases resolved via ResolveCanonicals
 	MediaTypes []string   // empty = all ("video","image","audio","music")
 	Filters    Filters
 	Limit      int        // 0 → aggregator defaults to DefaultLimit, capped MaxLimit
 	Cursor     string     // opaque base64-JSON; "" = first page
 	Mode       SearchMode // applied to the semantic backend only
+	Actor      Actor      // PR-1: tenant identity forwarded to every backend
 }
 
 // ── Candidate ──────────────────────────────────────────────────────

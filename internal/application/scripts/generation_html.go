@@ -9,8 +9,10 @@
 package scripts
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
+	"sort"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -245,4 +247,81 @@ func chapterLabel(language string) string {
 		return "Kapitel"
 	}
 	return "Chapter"
+}
+
+// BuildClipSpecSceneDocumentHTML renders the clip-aware document body
+// used by generate-from-clips. It emits the compact SpecScene JSON
+// structure documented by the legacy route: every scene gets a
+// drive_links array derived from the resolved clip evidence.
+func BuildClipSpecSceneDocumentHTML(
+	model *scriptpkg.ModelScriptOutputV1,
+	title string,
+	evidence *scriptpkg.ClipEvidence,
+) string {
+	if model == nil {
+		return ""
+	}
+
+	type sceneDoc struct {
+		ID         string   `json:"id"`
+		Index      int      `json:"index"`
+		Text       string   `json:"text"`
+		Kind       string   `json:"kind"`
+		DriveLinks []string `json:"drive_links,omitempty"`
+	}
+	type specDoc struct {
+		Version int        `json:"version"`
+		Scenes  []sceneDoc `json:"scenes"`
+	}
+
+	doc := specDoc{
+		Version: model.SpecScene.Version,
+		Scenes:  make([]sceneDoc, 0, len(model.SpecScene.Scenes)),
+	}
+
+	clipIDs := sortedClipIDs(evidence)
+	for i := range model.SpecScene.Scenes {
+		scene := model.SpecScene.Scenes[i]
+		var links []string
+		if len(clipIDs) > 0 && evidence != nil {
+			clipID := clipIDs[i%len(clipIDs)]
+			if link := strings.TrimSpace(evidence.DriveLinks[clipID]); link != "" {
+				links = append(links, link)
+			}
+		}
+		doc.Scenes = append(doc.Scenes, sceneDoc{
+			ID:         scene.ID,
+			Index:      scene.Index,
+			Text:       scene.Text,
+			Kind:       string(scene.Kind),
+			DriveLinks: links,
+		})
+	}
+
+	raw, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
+	if t := strings.TrimSpace(title); t != "" {
+		b.WriteString(fmt.Sprintf("<h1>%s</h1>", html.EscapeString(t)))
+	}
+	b.WriteString("<h2>SpecScene JSON</h2><pre>")
+	b.WriteString(html.EscapeString(string(raw)))
+	b.WriteString("</pre></body></html>")
+	return b.String()
+}
+
+func sortedClipIDs(evidence *scriptpkg.ClipEvidence) []string {
+	if evidence == nil || len(evidence.DriveLinks) == 0 {
+		return nil
+	}
+	clipIDs := make([]string, 0, len(evidence.DriveLinks))
+	for id := range evidence.DriveLinks {
+		clipIDs = append(clipIDs, id)
+	}
+	sort.Strings(clipIDs)
+	return clipIDs
 }

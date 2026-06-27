@@ -27,6 +27,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
@@ -124,9 +125,16 @@ func (b *localSearchBackend) Capabilities() []search.Capability {
 }
 
 func (b *localSearchBackend) Search(ctx context.Context, q search.Query) ([]search.Candidate, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = search.DefaultLimit
+	}
+	if limit > search.MaxLimit {
+		limit = search.MaxLimit
+	}
 	req := assetpkg.AdvancedSearchRequest{
 		Q:      q.Text,
-		Limit:  q.Limit,
+		Limit:  limit,
 		Source: sourceOrAll(q.Filters.Source),
 	}
 	res, err := b.repo.SearchClipsAdvanced(ctx, req)
@@ -135,13 +143,34 @@ func (b *localSearchBackend) Search(ctx context.Context, q search.Query) ([]sear
 	}
 	out := make([]search.Candidate, 0, len(res.Clips))
 	for _, clip := range res.Clips {
+		// PR-1: derive score from real signals (title, tags,
+		// source, duration) instead of the previous "always 1.0"
+		// hardcode. The signal mix caps at 0.95 so a
+		// semantic-backend hit with score 0.97 still wins.
+		// Asset exposes Duration as time.Duration; convert to
+		// ms here so the LocalScore mix is in canonical units.
+		// Language is NOT a field on asset.Asset today; the
+		// relevant metadata is in clip.Metadata if exposed by the
+		// caller (we leave the LocalSignal.Language zero so the
+		// language-match signal scores 0, matching the documented
+		// "missing signal = no contribution" rule).
+		durMs := int(clip.Duration.Milliseconds())
+		sig := search.LocalSignal{
+			Title:      clip.Name,
+			Tags:       clip.Tags,
+			Source:     string(clip.Source),
+			DurationMs: durMs,
+			// Wire q.Filters.DurationMsMin so the duration-fit
+			// signal can fire from a non-zero query filter.
+			MinDuration: q.Filters.DurationMsMin,
+		}
 		out = append(out, search.Candidate{
 			AssetID:   clip.ID,
 			Source:    string(clip.Source),
 			SourceRef: clip.ID,
 			Title:     clip.Name,
 			MediaType: string(clip.MediaType),
-			Score:     1.0, // local hits == exact metadata match, see comment above
+			Score:     search.LocalScore(sig, q),
 		})
 	}
 	return out, nil
@@ -183,14 +212,35 @@ func (b *semanticSearchBackend) Capabilities() []search.Capability {
 }
 
 func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]search.Candidate, error) {
+	// PR-1 tenant-safety: forward the real Actor from the
+	// request instead of forcing IsAdmin: true. The composition-
+	// default workspaceID is used ONLY when the caller did not
+	// supply one (zero-actor fall-through) — auth middleware
+	// sets q.Actor.WorkspaceID for every authenticated call.
+	workspaceID := q.Actor.WorkspaceID
+	if workspaceID == "" {
+		workspaceID = b.workspaceID
+	}
+	if workspaceID == "" {
+		return nil, fmt.Errorf("semanticSearchBackend: workspace required (set q.Actor.WorkspaceID or compose-time default)")
+	}
+	if workspaceID == "default" {
+		// Reserved sentinel — mediasearch.Service rejects this
+		// via ErrMissingWorkspace; we fail-fast to keep the
+		// error attached to the caller's identity rather than
+		// surfacing from the orbit.
+		return nil, fmt.Errorf("semanticSearchBackend: reserved workspace %q forbidden", workspaceID)
+	}
 	req := mediasearch.MediaSearchRequest{
-		Query:     q.Text,
-		Mode:      q.Mode,
-		Limit:     q.Limit,
-		Filters:   q.Filters, // alias of search.Filters
+		Query:   q.Text,
+		Mode:    q.Mode,
+		Limit:   q.Limit,
+		Filters: q.Filters, // alias of search.Filters
 		Workspace: mediasearch.WorkspaceContext{
-			WorkspaceID: b.workspaceID,
-			IsAdmin:     true, // search-aggregator user is the admin search tenant
+			WorkspaceID: workspaceID,
+			ProjectID:   q.Actor.UserID, // best-effort reuse of ProjectID for audit punch
+			PrincipalID: q.Actor.UserID,
+			IsAdmin:     q.Actor.IsAdmin, // PR-1: propagated, NOT hardcoded true
 		},
 	}
 	res, err := b.svc.Search(ctx, req)
@@ -238,14 +288,16 @@ type SearchBackendBuildOpts struct {
 // providers first (deterministic by Name() ordering), then local,
 // then semantic (the only one with prerequisites).
 //
-// Failure modes: every Register call logs and skips on error
-// instead of returning — search.BackendRegistry contracts are
-// strict (no nil, no empty Name, no duplicate); if a mis-wired
-// adapter surfaces, BuildSearchBackends reports it via the logger
-// and the production graph never breaks. The error surface is
-// logged; tests can read the returned registry's All() to inspect
-// effective population.
-func BuildSearchBackends(opts SearchBackendBuildOpts) *search.BackendRegistry {
+// PR-1 fail-closed: every Register error — ErrAlreadyRegistered,
+// ErrEmptyName, ErrNilBackend — aborts the build and returns the
+// error wrapped with the failing backend's identity. The
+// pre-PR-1 "log.Warn + continue" behaviour silently masked
+// misconfigured adapters, which is exactly what the user-spec
+// diagnosis flagged. Boot-time registration failures are now
+// fatal: a duplicated provider name or a nil adapter is a
+// composition bug that needs to be visible at startup, not
+// papered over by a partial registry.
+func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, error) {
 	log := opts.Logger
 	if log == nil {
 		log = zap.NewNop()
@@ -263,17 +315,18 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) *search.BackendRegistry {
 				caps:     translateCaps(sp.Capabilities()),
 			}
 			if err := reg.Register(backend); err != nil {
-				log.Warn("BuildSearchBackends: provider backend register failed",
+				log.Error("BuildSearchBackends: provider backend register failed (fail-closed)",
 					zap.String("provider", sp.Name()),
 					zap.Error(err))
+				return nil, fmt.Errorf("BuildSearchBackends: provider %q: %w", sp.Name(), err)
 			}
 		}
 	}
 
 	if opts.ClipsRepo != nil {
 		if err := reg.Register(&localSearchBackend{repo: opts.ClipsRepo}); err != nil {
-			log.Warn("BuildSearchBackends: local backend register failed",
-				zap.Error(err))
+			log.Error("BuildSearchBackends: local backend register failed (fail-closed)", zap.Error(err))
+			return nil, fmt.Errorf("BuildSearchBackends: local backend: %w", err)
 		}
 	}
 
@@ -282,13 +335,14 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) *search.BackendRegistry {
 			svc:         opts.MediasearchSvc,
 			workspaceID: opts.WorkspaceID,
 		}); err != nil {
-			log.Warn("BuildSearchBackends: semantic backend register failed",
-				zap.Error(err))
+			log.Error("BuildSearchBackends: semantic backend register failed (fail-closed)", zap.Error(err))
+			return nil, fmt.Errorf("BuildSearchBackends: semantic backend: %w", err)
 		}
 	}
 
 	reg.Freeze()
-	return reg
+	log.Info("BuildSearchBackends completed (fail-closed)", zap.Int("backends", len(reg.All())))
+	return reg, nil
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────

@@ -247,8 +247,19 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		probeDuration(ctx, localPath, clip, log, h.processRunner)
 	}
 
-	// 10. Save to database via canonical asset.Repository
-	if h.assetRepo != nil {
+	// 10. Save to database. PR 2 (Wave 22 PR-2 — clip thin transport):
+	//     route through appclips.ClipIndexDispatcherPort when wired;
+	//     pass fileHash as the contentHash dedup-supersede gate key.
+	//     Falls back to h.assetRepo.Upsert when nil — same documented
+	//     semantics as CreateClip.
+	if h.dispatcher != nil {
+		if err := h.dispatcher.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
+			log.Error("clip dispatcher enqueue failed (upload)", zap.Error(err))
+			apiutil.InternalError(c, fmt.Errorf("failed to dispatch clip: %w", err))
+			return
+		}
+		log.Info("dispatched clip via index dispatcher", zap.String("clip_id", clip.ID))
+	} else if h.assetRepo != nil {
 		if err := h.assetRepo.Upsert(ctx, clip); err != nil {
 			log.Error("failed to save clip to DB", zap.Error(err))
 			apiutil.InternalError(c, fmt.Errorf("failed to save clip: %w", err))

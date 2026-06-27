@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	fullimagessvc "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
