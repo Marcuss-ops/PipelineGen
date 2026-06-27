@@ -46,19 +46,22 @@ func (d *destinationResolverAdapter) Resolve(_ context.Context, req *asset.Resol
 	}
 
 	// Style/subfolder routing passthrough.
-	folderID := d.store.rootFolder
-	switch req.AssetType {
-	case "image":
-		if d.store.imagesFolder != "" {
-			folderID = d.store.imagesFolder
-		}
-	case "video":
-		if d.store.videoAIRoot != "" {
-			folderID = d.store.videoAIRoot
-		}
-	case "sound_effect", "audio":
-		if d.store.soundEffectsRoot != "" {
-			folderID = d.store.soundEffectsRoot
+	folderID := req.FolderID
+	if folderID == "" {
+		folderID = d.store.rootFolder
+		switch req.AssetType {
+		case "image":
+			if d.store.imagesFolder != "" {
+				folderID = d.store.imagesFolder
+			}
+		case "video":
+			if d.store.videoAIRoot != "" {
+				folderID = d.store.videoAIRoot
+			}
+		case "sound_effect", "audio":
+			if d.store.soundEffectsRoot != "" {
+				folderID = d.store.soundEffectsRoot
+			}
 		}
 	}
 
