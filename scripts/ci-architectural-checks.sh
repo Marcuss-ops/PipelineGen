@@ -1152,22 +1152,55 @@ echo "OK: no asset-repo Upsert calls outside the canonical allowlist"
 # are `delete:<asset_id>` (delete_envelope.go) and the index envelope in
 # outboxevents/repository.go; uuid-suffixed keys are an anti-pattern.
 #
+# ALLOWLIST RATIONALE: the multi-line patterns match within a 3-line window
+# in either direction, so any function that has a uuid.NewString call
+# within 3 lines of an eventKey assignment will be caught. The legitimate
+# patterns below fall into TWO distinct categories — a future tightening
+# (regex that requires the UUID to be in the eventKey expression itself)
+# would let us drop the first category but MUST keep the second:
+#
+# Category A — UUID is for the SEPARATE `event_id` audit field, NOT in eventKey:
+#   - cmd/admin/reconcile_qdrant.go::EnqueueDelete: eventKey is
+#     deterministic ("delete:<assetID>"), the UUID is for the `event_id`
+#     field that IndexDeleteHandler.Handle requires (line 183-188 of
+#     index_delete.go fails terminally on missing event_id).
+#
+# Category B — reindex is intentionally uuid-suffixed per canonical design:
+#   - internal/infrastructure/database/sqlite/outboxevents/envelope.go::
+#     BuildReindexEnvelopeV1: the eventKey IS uuid-suffixed by design
+#     ("reconcile:reindex:<assetID>:<eventID>"). Idempotency is enforced
+#     DOWNSTREAM by the worker's supersede gate on source_version
+#     (from media_assets.metadata_json.$.content_hash), not at the
+#     outbox-enqueue layer. Every --apply run enqueues a fresh reindex
+#     event; redundant fix-up work is collapsed at execution time.
+#   - internal/infrastructure/database/sqlite/outbox/delete_envelope.go::
+#     buildDeleteRequestV1: same shape (UUID for event_id, deterministic
+#     eventKey) — pre-existing canonical pattern.
+#
 # Allowlist:
-#   - internal/infrastructure/database/sqlite/outbox/** : canonical envelope builders.
-#   - *_test.go                  : test fixtures may use uuid.NewString for distinct keys.
-#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+#   - internal/infrastructure/database/sqlite/outbox/**       : canonical envelope builders
+#                                                              (Category B pattern).
+#   - internal/infrastructure/database/sqlite/outboxevents/** : canonical reindex envelope
+#                                                              (Category B pattern).
+#   - cmd/admin/**                                            : reconcile_qdrant.go uses
+#                                                              uuid.NewString for event_id
+#                                                              alongside deterministic
+#                                                              eventKey (Category A pattern).
+#   - *_test.go                                               : test fixtures may use
+#                                                              uuid.NewString for distinct keys.
+#   - tests/fixtures/zero_legacy/**                           : self-check fixtures.
 # Multiline pattern (rg -nU) catches the production anti-pattern at
-# cmd/admin/reconcile_qdrant.go:413-414 where `eventID := uuid.NewString()`
-# and `eventKey := "..." + eventID` are on separate lines. A single-line
-# pattern would miss this because the uuid is hidden behind an intermediate
-# var. The pattern matches within a 3-line window in either order:
+# cmd/admin/reconcile_qdrant.go (pre-fix shape) where
+# `eventID := uuid.NewString()` and `eventKey := "..." + eventID` were on
+# separate lines. A single-line pattern would miss this because the uuid
+# is hidden behind an intermediate var. The pattern matches within a 3-line
+# window in either order:
 #   - eventKey ... uuid.NewString (single line)
 #   - eventKey ... NEWLINE ... uuid.NewString (multiline, eventKey first)
 #   - uuid.NewString ... NEWLINE ... eventKey (multiline, uuid first)
-# The cmd/admin/** allowlist is required because reconcile_qdrant.go
-# deliberately bypasses idempotency for the --apply admin one-shot tool
-# (per the comment on line 326: "fresh UUID for every call so re-running
-# reconcile-qdrant --apply twice produces two distinct events").
+# After the TODO 16 follow-up fix (eventKey := "delete:" + assetID with
+# the UUID only in event_id), cmd/admin/reconcile_qdrant.go is back on
+# the allowlist because the eventKey no longer contains a UUID.
 echo "=== Check 11: forbid event_key construction with random UUID (TODO 16) ==="
 uuidEventKeys=$(rg -nU --type go \
     -e 'eventKey.*uuid\.NewString' \
@@ -1175,6 +1208,7 @@ uuidEventKeys=$(rg -nU --type go \
     -e 'eventKey[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*uuid\.NewString' \
     -e 'uuid\.NewString[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventKey' \
     --glob '!**/internal/infrastructure/database/sqlite/outbox/**' \
+    --glob '!**/internal/infrastructure/database/sqlite/outboxevents/**' \
     --glob '!**/cmd/admin/**' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \

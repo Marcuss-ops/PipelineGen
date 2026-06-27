@@ -172,7 +172,7 @@ func (m *PayloadMapper) getVectorForChannel(asset *AssetData, channel string) []
 func BuildPayload(asset *AssetData, schema *IndexSchema) map[string]interface{} {
 	payload := map[string]interface{}{
 		"asset_id":        asset.ID,
-		"lifecycle_state": asset.Status,
+		"lifecycle_state": asset.LifecycleState,
 		"source":          asset.Source,
 		"media_type":      asset.MediaType,
 	}

@@ -341,11 +341,25 @@ func (a *qdrantPayloadAdapter) DeletePayloadKeys(ctx context.Context, collection
 //     cycle (production assets.ClipsRepository is NOT visible at this
 //     admin path).
 //
-// Idempotency: the event_key shape ("reconcile:reindex:<assetID>:<uuid>")
-// guarantees ON CONFLICT(event_key) DO NOTHING only fires when an
-// identical-key event was already enqueued. We use a fresh UUID for
-// every call so re-running reconcile-qdrant --apply twice produces
-// two distinct events (and the worker honor supersede semantically).
+// Idempotency:
+//
+//   - Delete (EnqueueDelete): event_key is deterministic
+//     ("delete:<assetID>"). Re-running --apply on the same asset is
+//     collapsed at the SQLite level by ON CONFLICT(event_key)
+//     DO NOTHING — only the first run enqueues, subsequent runs
+//     are no-ops. The event_id field is a per-call UUID for audit
+//     tracing (required by IndexDeleteHandler) and is NOT used in
+//     the event_key.
+//
+//   - Reindex (EnqueueReindex): event_key is uuid-suffixed
+//     ("reconcile:reindex:<assetID>:<eventID>") via
+//     outboxevents.BuildReindexEnvelopeV1 — see the canonical
+//     envelope builder. This is intentional: every --apply run
+//     enqueues a fresh reindex event, and the worker's supersede
+//     gate (source_version from metadata_json.$.content_hash)
+//     collapses redundant fix-up work at execution time. Idempotency
+//     for reindex is enforced downstream, not at the outbox-enqueue
+//     layer.
 type outboxRepairAdapter struct {
 	db            *sql.DB
 	outboxRepo    *outboxevents.Repository
@@ -353,8 +367,11 @@ type outboxRepairAdapter struct {
 }
 
 // EnqueueReindex inserts an asset.index.requested.v1 outbox event for
-// the supplied assetID. Idempotency is uuid-suffixed (fresh event_key
-// per call) — see outboxevents.BuildReindexEnvelopeV1 for the seam.
+// the supplied assetID. The event_key is uuid-suffixed (fresh per
+// call) via outboxevents.BuildReindexEnvelopeV1 — see the canonical
+// envelope builder for the seam. Idempotency is enforced downstream
+// (worker supersede gate on source_version) rather than at the
+// outbox-enqueue layer.
 func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string) error {
 	if assetID == "" {
 		return errors.New("outboxRepairAdapter.EnqueueReindex: assetID must not be empty")
@@ -391,6 +408,12 @@ func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string
 	return tx.Commit()
 }
 
+// EnqueueDelete inserts an asset.index.delete_requested.v1 outbox event
+// for the supplied assetID. The event_key is deterministic
+// ("delete:<assetID>") so re-running --apply on the same asset is
+// collapsed at the SQLite level by ON CONFLICT(event_key) DO NOTHING.
+// The event_id field is a per-call UUID for audit tracing (required by
+// IndexDeleteHandler.Handle) and is NOT used in the event_key.
 func (a *outboxRepairAdapter) EnqueueDelete(ctx context.Context, assetID string) error {
 	if assetID == "" {
 		return errors.New("outboxRepairAdapter.EnqueueDelete: assetID must not be empty")
@@ -412,7 +435,7 @@ func (a *outboxRepairAdapter) EnqueueDelete(ctx context.Context, assetID string)
 	}
 
 	eventID := uuid.NewString()
-	eventKey := "reconcile:delete:" + assetID + ":" + eventID
+	eventKey := "delete:" + assetID
 	payload := map[string]any{
 		"schema_version":  "asset.index.delete_requested.v1",
 		"event_id":        eventID,
