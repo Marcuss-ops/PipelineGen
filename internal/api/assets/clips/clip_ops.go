@@ -1,3 +1,23 @@
+// Package clips — clip_ops.go: thin transport for the
+// Reconcile / Cleanup / VerifyClip routes, owned by
+// application/clips.ClipOpsService (Wave 14 PR2 cutover).
+//
+// All three handlers are pure delegate shells — no business
+// logic lives in this file. Per PR 3 (June 2026 — codex/clips-ops-cutover):
+//
+//   - the request body is parsed into a typed request struct
+//     (cleanupRequest) with a toCommand(source) method that
+//     translates the JSON shape into the application-side input,
+//   - application responses are projected into the legacy gin.H
+//     JSON shape via buildCleanupResponse / buildVerifyResponse
+//     helpers so the contract stays byte-compatible with the
+//     pre-PR2 clients,
+//   - error → HTTP mapping is centralized in mapClipOpsError.
+//
+// Reconcile keeps its current thin-delegate body; PR 4
+// (codex/clips-reconcile-real) replaces the stub-by-log path
+// with a durable catalog.sync job enqueue + 503 /
+// RECONCILE_QUEUE_UNAVAILABLE mapping.
 package clips
 
 import (
@@ -9,30 +29,97 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ─── PR 2 (June 2026) BULK: thin handler over ClipOpsService ───────────
-//
-// Reconcile / Cleanup / VerifyClip used to be methods on *sources.Handler
-// in handler_sources_source_handlers_ops.go, then moved here preserving
-// the original business logic. PR 2 collapses all three into thin
-// transport shells that delegate to the canonical
-// internal/application/clips.ClipOpsService:
-//
-//   - Reconcile  → ClipOpsService.Reconcile  (typed log entry, stub-OK
-//     response preserved because CatalogSync lives on SourcesHandler).
-//   - Cleanup    → ClipOpsService.Cleanup    (deep-mode → system.cleanup
-//     job enqueue path; non-deep → per-source orphan pass).
-//   - VerifyClip → ClipOpsService.VerifyClip (DB/local/Drive coherence
-//     check, voiceover branch preserved, drive-MD5 hash recovery
-//     preserved, repo writeback preserved).
-//
-// The previous logic lives only in the application service. This file
-// is responsible for request binding, CleanupReport / VerifyReport
-// marshalling into the legacy gin.H JSON shape, and Gin status codes.
+// ── Typed request shapes ─────────────────────────────────────────────────────
 
-// Reconcile reconciles database with Drive files. Pre-PR 2: the API
-// handler emitted a stub-OK response because CatalogSync lived on
-// SourcesHandler. PR 2 delegates to ClipOpsService.Reconcile which
-// preserves the same stub semantics with a typed log entry.
+// cleanupRequest is the typed request body for POST
+// /api/clips/:source/cleanup. Mirrors the JSON keys production
+// callers send (dry_run, check_drive, deep). Empty bodies are
+// accepted with zero-value defaults (preserved pre-PR2 lenient
+// behaviour via the isEmptyJSONErr sentinel).
+type cleanupRequest struct {
+	DryRun     bool `json:"dry_run"`
+	CheckDrive bool `json:"check_drive"`
+	Deep       bool `json:"deep"`
+}
+
+// toCommand translates the request body into the canonical
+// application-side CleanupInput. The "deep=true" query parameter
+// (?deep=true) is OR'd with the body's Deep field so callers have
+// both interfaces.
+func (r cleanupRequest) toCommand(source string, deepFromQuery bool) appclips.CleanupInput {
+	return appclips.CleanupInput{
+		Source:     source,
+		DryRun:     r.DryRun,
+		CheckDrive: r.CheckDrive,
+		Deep:       r.Deep || deepFromQuery,
+	}
+}
+
+// ── HTTP handlers (thin transport) ──────────────────────────────────────────
+
+// Cleanup POST + /api/clips/:source/cleanup — thin transport over
+// ClipOpsService.Cleanup.
+//
+// Request body: {"dry_run": bool, "check_drive": bool, "deep": bool} +
+// optional ?deep=true query param.
+//
+// Response shape (200): {"ok": true, "source": ..., "job_id": ...,
+// "dry_run": ..., "check_drive": ..., "checked": ..., "deleted": ...,
+// "summary": ..., "message": ..., "items": [...]}. Empty "items"
+// slice for deep-batch enqueu (job_id polls the broker for results).
+//
+// Status codes:
+//   200 — cleanup finished (sync or job enqueued).
+//   400 — invalid JSON body OR invalid source value.
+//   500 — service error.
+//   503 — clip ops service not wired (composition bug).
+func (h *Handler) Cleanup(c *gin.Context) {
+	source := c.Param("source")
+	var req cleanupRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !isEmptyJSONErr(err) {
+		apiutil.BadRequest(c, "invalid request body: "+err.Error())
+		return
+	}
+	input := req.toCommand(source, c.Query("deep") == "true")
+
+	if h.clipOpsService == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
+		return
+	}
+	report, err := h.clipOpsService.Cleanup(c.Request.Context(), input)
+	if err != nil {
+		mapClipOpsError(c, err)
+		return
+	}
+	apiutil.OK(c, buildCleanupResponse(report))
+}
+
+// VerifyClip POST + /api/clips/:source/clips/:id/verify — thin
+// transport over ClipOpsService.Verify. The application's
+// report.OK bool is independent of HTTP status — verify always
+// returns 200; the caller inspects report fields (issues,
+// coherent, has_drive_link) for the verdict.
+//
+// Status codes:
+//   200 — verify ran (see report fields).
+//   503 — clip ops service not wired.
+func (h *Handler) VerifyClip(c *gin.Context) {
+	source := c.Param("source")
+	clipID := c.Param("id")
+
+	if h.clipOpsService == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
+		return
+	}
+	report := h.clipOpsService.Verify(c.Request.Context(), source, clipID)
+	apiutil.OK(c, buildVerifyResponse(report))
+}
+
+// Reconcile POST + /api/clips/:source/reconcile — placeholder for
+// PR 4 (codex/clips-reconcile-real). The current implementation
+// delegates to ClipOpsService.Reconcile which logs a typed entry,
+// then returns stub-OK. PR 4 will replace this with a durable
+// catalog.sync job enqueue + queue-absent 503 mapping.
 func (h *Handler) Reconcile(c *gin.Context) {
 	source := c.Param("source")
 	var req struct {
@@ -43,14 +130,11 @@ func (h *Handler) Reconcile(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
-
 	if h.clipOpsService == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
 		return
 	}
-
 	h.clipOpsService.Reconcile(c.Request.Context(), source, req.FolderID)
-
 	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
@@ -58,39 +142,15 @@ func (h *Handler) Reconcile(c *gin.Context) {
 	})
 }
 
-// Cleanup removes orphan database records. Pre-PR 2: complex local
-// orchestration with a deep-mode branch that enqueued the
-// "system.cleanup" job. PR 2 delegates to ClipOpsService.Cleanup
-// which preserves the same shape and the same emission target.
-func (h *Handler) Cleanup(c *gin.Context) {
-	source := c.Param("source")
-	var req struct {
-		DryRun     bool `json:"dry_run"`
-		CheckDrive bool `json:"check_drive"`
-		Deep       bool `json:"deep"`
-	}
-	_ = c.ShouldBindJSON(&req)
+// ── Response helpers ────────────────────────────────────────────────────────
 
-	if h.clipOpsService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
-		return
+// buildCleanupResponse converts a *CleanupReport into a gin.H
+// response. Field set matches the pre-PR2 keys verbatim (the
+// historical client contract).
+func buildCleanupResponse(report *appclips.CleanupReport) gin.H {
+	if report == nil {
+		return gin.H{"ok": false, "items": []gin.H{}}
 	}
-
-	report, err := h.clipOpsService.Cleanup(c.Request.Context(), appclips.CleanupInput{
-		Source:     source,
-		DryRun:     req.DryRun,
-		CheckDrive: req.CheckDrive,
-		Deep:       req.Deep || c.Query("deep") == "true",
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "invalid source") {
-			apiutil.BadRequest(c, err.Error())
-			return
-		}
-		apiutil.InternalError(c, err)
-		return
-	}
-
 	items := make([]gin.H, 0, len(report.Items))
 	for _, item := range report.Items {
 		items = append(items, gin.H{
@@ -99,8 +159,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 			"reason": item.Reason,
 		})
 	}
-
-	apiutil.OK(c, gin.H{
+	return gin.H{
 		"ok":          report.OK,
 		"source":      report.Source,
 		"job_id":      report.JobID,
@@ -111,30 +170,24 @@ func (h *Handler) Cleanup(c *gin.Context) {
 		"summary":     report.Summary,
 		"message":     report.Message,
 		"items":       items,
-	})
+	}
 }
 
-// VerifyClip verifies DB, local file, and Drive coherence. Pre-PR 2:
-// the local verifyClip helper did the work in-line and wrote back
-// recovered hashes via raw repo.Upsert — the application-level
-// service (ClipOpsService.Verify / verifyClip) implements the same
-// shape using typed ports, so PR 2 is a pure delegate.
-func (h *Handler) VerifyClip(c *gin.Context) {
-	source := c.Param("source")
-	clipID := c.Param("id")
-
-	if h.clipOpsService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
-		return
+// buildVerifyResponse converts a *VerifyReport into a gin.H
+// response. Field set matches the pre-PR2 keys verbatim.
+func buildVerifyResponse(report *appclips.VerifyReport) gin.H {
+	if report == nil {
+		return gin.H{"ok": false, "issues": []string{"nil_verify_report"}}
 	}
-
-	report := h.clipOpsService.Verify(c.Request.Context(), source, clipID)
-
-	c.JSON(http.StatusOK, gin.H{
+	issues := report.Issues
+	if issues == nil {
+		issues = []string{}
+	}
+	return gin.H{
 		"ok":               report.OK,
 		"source":           report.Source,
 		"clip_id":          report.ClipID,
-		"issues":           report.Issues,
+		"issues":           issues,
 		"db":               report.DB,
 		"local_file":       report.LocalFile,
 		"local_path":       report.LocalPath,
@@ -152,5 +205,33 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 		"status":           report.Status,
 		"coherent":         report.Coherent,
 		"issue_count":      report.IssueCount,
-	})
+	}
+}
+
+// ── Error mapping ────────────────────────────────────────────────────────────
+
+// mapClipOpsError translates a ClipOps domain error into the
+// corresponding HTTP response. The "invalid source" sentinel is
+// promoted to 400 Bad Request; everything else is 500. PR 4 will
+// add the 503 + RECONCILE_QUEUE_UNAVAILABLE mapping when
+// ClipOpsService.Reconcile returns ErrQueueUnavailable.
+func mapClipOpsError(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	if strings.Contains(err.Error(), "invalid source") {
+		apiutil.BadRequest(c, "invalid source: "+err.Error())
+		return
+	}
+	apiutil.InternalError(c, err)
+}
+
+// isEmptyJSONErr returns true when ShouldBindJSON finds an empty
+// request body (treated as zero-value defaults). EOF covers both
+// "no body" and "all whitespace" cases.
+func isEmptyJSONErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "EOF")
 }
