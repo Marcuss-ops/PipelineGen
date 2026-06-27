@@ -437,14 +437,21 @@ func compositionBundleSourceFiles(t *testing.T) []string {
 // PR-12d (June 2026): Domain and Outbox swapped so the canonical
 // outbox dispatcher is available at the moment images.Service is
 // constructed (closing the SetDispatcher late-bind ordering hazard).
+// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): Outbox +
+// Process swapped (Outbox now BEFORE Process) and a new buildQdrantDeps
+// pre-phase introduced to feed BuildOutboxBundle's ClipIndexerService +
+// QdrantDeleter deps. Confirmed DAG:
+//   qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd) ->
+//     domains(reads process+outbox) -> sync/maint/utility.
 var frozenCompositionSequence = []string{
 	"BuildRepoBundle(",
 	"BuildSearchBundle(",
 	"BuildDriveBundle(",
-	"BuildProcessBundle(",
 	"BuildJobsBundle(",
 	"BuildAIBundle(",
+	"buildQdrantDeps(",
 	"BuildOutboxBundle(",
+	"BuildProcessBundle(",
 	"BuildDomainBundle(",
 	"BuildSyncBundle(",
 	"BuildMaintBundle(",
