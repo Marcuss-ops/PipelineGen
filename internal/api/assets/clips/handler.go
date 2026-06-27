@@ -10,6 +10,10 @@
 package clips
 
 import (
+	"context"
+	"fmt"
+	"io"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -225,6 +229,114 @@ func (h *Handler) RegisterJobHandlers() error {
 		return nil
 	}
 	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.bulkUploadWorker.HandleJob)
+}
+
+// ─── W14 PR2 slice 4 bridge: cumulative metadata adapter ──────────────────
+// cumulativeDriveAdapter wraps *drive.Uploader into appclips.ClipDriveUploaderPort
+// so updateCumulativeMetadataJSON can delegate to the canonical application-layer
+// appclips.UpdateCumulativeMetadataJSON without clip_upload.go importing infra.
+// Only the 4 methods actually called by UpdateCumulativeMetadataJSON are
+// delegated; adding new call patterns requires expanding the adapter.
+type cumulativeDriveAdapter struct {
+	up *drive.Uploader
+}
+
+func (a *cumulativeDriveAdapter) ListFiles(ctx context.Context, query string) ([]appclips.ClipDriveFileDTO, error) {
+	if a.up == nil || a.up.Service == nil {
+		return nil, fmt.Errorf("cumulativeDriveAdapter: uploader not wired")
+	}
+	list, err := a.up.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		return nil, nil
+	}
+	out := make([]appclips.ClipDriveFileDTO, len(list.Files))
+	for i, f := range list.Files {
+		out[i] = appclips.ClipDriveFileDTO{ID: f.Id, Name: f.Name}
+	}
+	return out, nil
+}
+
+func (a *cumulativeDriveAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
+	if a.up == nil {
+		return nil, "", fmt.Errorf("cumulativeDriveAdapter: uploader not wired")
+	}
+	return a.up.DownloadFile(ctx, fileID)
+}
+
+func (a *cumulativeDriveAdapter) TrashFile(ctx context.Context, fileID string) error {
+	if a.up == nil {
+		return fmt.Errorf("cumulativeDriveAdapter: uploader not wired")
+	}
+	return a.up.TrashFile(ctx, fileID)
+}
+
+func (a *cumulativeDriveAdapter) UploadFile(ctx context.Context, localPath, folderID, filename string) (*appclips.ClipUploadResultDTO, error) {
+	if a.up == nil {
+		return nil, fmt.Errorf("cumulativeDriveAdapter: uploader not wired")
+	}
+	res, err := a.up.UploadFile(ctx, localPath, folderID, filename)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return &appclips.ClipUploadResultDTO{}, nil
+	}
+	return &appclips.ClipUploadResultDTO{
+		FileID:       res.FileID,
+		WebViewLink:  res.WebViewLink,
+		DownloadLink: res.DownloadLink,
+		MD5Checksum:  res.MD5Checksum,
+	}, nil
+}
+
+// The remaining ClipDriveUploaderPort methods are not called by
+// UpdateCumulativeMetadataJSON. If a future caller exercises them,
+// expand this adapter.
+
+func (a *cumulativeDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parent string) (string, error) {
+	return "", fmt.Errorf("cumulativeDriveAdapter: GetOrCreateFolder not implemented")
+}
+func (a *cumulativeDriveAdapter) GetFolderName(ctx context.Context, id string) (string, error) {
+	return "", fmt.Errorf("cumulativeDriveAdapter: GetFolderName not implemented")
+}
+func (a *cumulativeDriveAdapter) TrashFolder(ctx context.Context, id string) error {
+	return fmt.Errorf("cumulativeDriveAdapter: TrashFolder not implemented")
+}
+func (a *cumulativeDriveAdapter) DeleteFolder(ctx context.Context, id string) error {
+	return fmt.Errorf("cumulativeDriveAdapter: DeleteFolder not implemented")
+}
+func (a *cumulativeDriveAdapter) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, desc string) (*appclips.ClipUploadResultDTO, error) {
+	return nil, fmt.Errorf("cumulativeDriveAdapter: UploadFileWithDescription not implemented")
+}
+func (a *cumulativeDriveAdapter) GetFileMD5(ctx context.Context, id string) (string, error) {
+	return "", fmt.Errorf("cumulativeDriveAdapter: GetFileMD5 not implemented")
+}
+func (a *cumulativeDriveAdapter) GetFileMeta(ctx context.Context, id string) (*appclips.ClipDriveFileMetaDTO, error) {
+	return nil, fmt.Errorf("cumulativeDriveAdapter: GetFileMeta not implemented")
+}
+
+// updateCumulativeMetadataJSON is a thin bridge that wraps the concrete
+// *drive.Uploader into a ClipDriveUploaderPort and delegates to the
+// canonical application-layer UpdateCumulativeMetadataJSON. W14 PR2
+// slice 4 (June 2026): the previous UpdateCumulativeMetadataJSON in
+// upload_helpers.go took *drive.Uploader directly; this wrapper exists
+// so clip_upload.go can use the port-based app-layer version without
+// importing internal/infrastructure/drive.
+func (h *Handler) updateCumulativeMetadataJSON(
+	ctx context.Context,
+	tempPath string,
+	folderID string,
+	clipID string,
+	newEntry map[string]interface{},
+	log *zap.Logger,
+) {
+	if h.driveUploader == nil {
+		return
+	}
+	appclips.UpdateCumulativeMetadataJSON(ctx, &cumulativeDriveAdapter{up: h.driveUploader}, tempPath, folderID, clipID, newEntry, log)
 }
 
 // PR8 helper: idemWriter returns h.Idempotency if set, else a no-op

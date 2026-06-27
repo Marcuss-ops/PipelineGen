@@ -11,10 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -215,7 +215,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 // imageAssetToClip / voiceoverRecordToClip private methods were dropped
 // in favor of the canonical artifacts.* converters.
 
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *assets.ClipsRepository, clip *asset.Asset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo appclips.ClipRepositoryPort, clip *asset.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,
@@ -255,7 +255,7 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *assets.Cl
 		result["drive_link"] = driveLink
 
 		// Extract file ID and verify with Drive API
-		fileID = ExtractDriveFolderID(driveLink)
+		fileID = appclips.ExtractDriveFolderID(driveLink)
 		if fileID != "" {
 			result["drive_file_id"] = fileID
 			result["drive_link_valid"] = true
