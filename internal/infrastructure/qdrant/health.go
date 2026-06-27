@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	healthport "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 )
 
 // HealthProbe is the canonical Qdrant readiness check used by the
@@ -95,31 +93,7 @@ func (h *HealthProbe) Probe(ctx context.Context) error {
 	return nil
 }
 
-// CheckQdrant implements healthport.QdrantChecker — the /health endpoint
-// contract. Delegates to Probe and translates the result into a
-// healthport.CheckResult map. This makes HealthProbe the SINGLE Qdrant
-// liveness check implementation, eliminating the duplicated
-// infrahealth.QdrantChecker (QDRANT-005 Blocker 3, June 2026).
-func (h *HealthProbe) CheckQdrant(ctx context.Context) healthport.CheckResult {
-	start := time.Now()
-	if err := h.Probe(ctx); err != nil {
-		return healthport.CheckResult{
-			"ok":          false,
-			"duration_ms": time.Since(start).Milliseconds(),
-			"error":       err.Error(),
-		}
-	}
-	return healthport.CheckResult{
-		"ok":          true,
-		"duration_ms": time.Since(start).Milliseconds(),
-		"configured":  true,
-	}
-}
-
-// Compile-time assertions. HealthProbe satisfies both:
-//   - the readiness-barrier Probe contract (`Probe(context.Context) error`)
-//   - the /health endpoint QdrantChecker contract (`CheckQdrant(context.Context) CheckResult`)
-var (
-	_ interface{ Probe(context.Context) error }                              = (*HealthProbe)(nil)
-	_ healthport.QdrantChecker                                                = (*HealthProbe)(nil)
-)
+// Compile-time assertion that HealthProbe satisfies the canonical
+// readiness-probe contract (`Probe(context.Context) error`). Drift is
+// caught at compile time, not on first /ready call.
+var _ interface{ Probe(context.Context) error } = (*HealthProbe)(nil)

@@ -3,7 +3,6 @@ package qdrant
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.uber.org/zap"
 )
@@ -61,24 +60,10 @@ func (s *Searcher) Search(ctx context.Context, req SearchRequest) ([]SearchResul
 	return results, nil
 }
 
-// HybridSearch performs a hybrid dense + sparse search via the Qdrant
-// Query API with RRF fusion.
-//
-// QDRANT-004 PR1 (June 2026): fail-closed contract. A hybrid request
-// MUST carry BOTH a non-empty SparseVectorName and a non-nil
-// SparseQueryVector. The orchestrator is expected to enforce this
-// upstream (ErrHybridRequiresSparse at the application layer); the
-// Searcher enforces it AGAIN here as a defence-in-depth so a future
-// caller cannot accidentally send a malformed hybrid request and
-// receive a silently-degraded ANN result. ANN is a separate mode
-// (SearchRequest); use Search for explicit dense-only retrieval.
-//
-// Errors:
-//   - ErrSparseRequired (deepest guard): the caller asked for hybrid
-//     but did not supply either the sparse channel name or the sparse
-//     query vector. Maps to HTTP 422 from the handler.
-//   - ErrVectorDimensionMismatch: dense channel dimension mismatch
-//     with the IndexSchema.
+// HybridSearch performs a hybrid dense + sparse search via the Qdrant Query API
+// with RRF fusion. When SparseQueryVector is nil, the method explicitly falls
+// back to ANN (dense-only Search) — the caller must not label the result as
+// "hybrid".
 func (s *Searcher) HybridSearch(ctx context.Context, req HybridSearchRequest) ([]SearchResult, error) {
 	if req.DenseVector == nil {
 		return nil, fmt.Errorf("dense vector must not be nil for hybrid search")
@@ -87,15 +72,17 @@ func (s *Searcher) HybridSearch(ctx context.Context, req HybridSearchRequest) ([
 		req.Limit = 20
 	}
 
-	// Fail-closed for hybrid: reject before paying for any Qdrant
-	// call. Previously this branch fell back to ANN silently; that
-	// silently mislabelled dense-only results as "hybrid" and
-	// produced inflated-but-misleading RRF scores.
-	if strings.TrimSpace(req.SparseVectorName) == "" {
-		return nil, &ErrSparseRequired{Channel: "(empty)"}
-	}
+	// When sparse is not available, explicitly fall back to ANN.
+	// Dense-only results must never be labelled as hybrid.
 	if req.SparseQueryVector == nil {
-		return nil, &ErrSparseRequired{Channel: req.SparseVectorName}
+		s.log.Warn("HybridSearch: sparse vector not provided, falling back to ANN (use Search for explicit ANN)")
+		return s.Search(ctx, SearchRequest{
+			QueryVector: req.DenseVector,
+			VectorName:  req.DenseVectorName,
+			Limit:       req.Limit,
+			MinScore:    req.MinScore,
+			Filter:      req.Filter,
+		})
 	}
 
 	// Validate dense vector dimensions.

@@ -40,7 +40,7 @@
 # middleware still legitimately need access to internal/infrastructure
 # adapters for upload, Drive binding, and DB-backed policy checks.
 #
-# Migration plan (per architecture/current.yaml Wave 14, June 2026):
+# Migration plan (per PR3 docs/roadmap/PR3_API_COMPACTION.md):
 #   * Wave 14-PR2: extract bulk_upload + handler.go + workers out of
 #     api/assets/clips/* → internal/application/assets/clips/{service,worker}.
 #     This removes 8 entries.
@@ -70,24 +70,35 @@
 # allowlist at PG-004-cleanup.
 # internal/api/assets/artlist/artlist_handlers.go     ← removed from allowlist
 
-# ── Wave 14 grandfathered: api/assets/clips handlers (PR2) ─────────────────
-# helpers.go removed at W14-clips-helpers-extract (June 2026): the
-# conversion helpers ClipToAssetNode + TreeNodeToAssetNode (previously
-# internal/local `treeNodeToAssetNode`) were lifted to
-# internal/application/clips/conversions.go (canonical seam above
-# infra). Four api callers now route through appclips.<Func>:
-#   clip_update.go    :: Handler.UpdateClip
-#   clip_create.go    :: Handler.CreateClip
-#   clip_upload.go    :: Handler.UploadVideoClip
-#   folder_tree.go    :: Handler.GetFolderChildren + Handler.GetTree
-# (Line-number citations deliberately omitted: the gate tokenizes on
-# file paths only, while comment-side line numbers drift on edit.)
-# Remaining PR2 grandfathered entries: 6.
-internal/api/assets/clips/bulk_upload_worker.go
-internal/api/assets/clips/clip_action.go
-internal/api/assets/clips/clip_ops.go
-internal/api/assets/clips/handler.go
-internal/api/assets/clips/upload_helpers.go
+# ── Wave 14 grandfathered: api/assets/clips handlers (PR2 — CLEANED, 2026-06-26) ──
+# W14-PR2 slices 2-7 (June 2026): all 5 active + 1 stale api/assets/clips entries
+# now route through the typed ports declared in
+# internal/application/clips/ports.go (12 ports total: ClipRepositoryPort,
+# VoiceoverRepositoryPort, ImageRepositoryPort, ClipDriveUploaderPort,
+# ClipMetaWriterPort, ClipIndexerPort, ClipFolderMemoryPort, ClipConfigPort,
+# ClipHashPort, SourceResolverPort, ClipTreeBuilderPort, ClipIndexDispatcherPort).
+# Concrete adapters live in internal/app/{clips_adapters_cfg.go,
+# clips_adapters_drive.go, clips_adapters_index.go, clips_adapters_repo.go,
+# clips_dispatcher_adapter.go}; newClipsAdapterBundle assembles the bundle and
+# WireAssets (internal/app/module_media.go::WireAssets) passes the port outputs
+# into clipsapi.NewHandler.Deps.
+#
+# Slice-by-slice migration record (one atomic 2026-06-26 commit):
+#   * bulk_upload_worker.go — `hashutil.MD5File` -> `h.hashSvc.MD5File`
+#     (ClipHashPort); *assets.ClipsRepository.* -> ClipRepositoryPort;
+#     *drive.Uploader.* & *clipindexer.Service.* -> ports.
+#   * clip_action.go — *assets.ClipsRepository.* -> ClipRepositoryPort;
+#     driveutil.FileURLFromID inlined (`https://drive.google.com/file/d/<id>`).
+#   * clip_ops.go — *assets.ClipsRepository.* -> ClipRepositoryPort;
+#     voiceover/images repo casts via VoiceoverRepositoryPort +
+#     ImageRepositoryPort.
+#   * handler.go — 5-way swap (assets / foldermemory / semantic / drive /
+#     clipindexer) -> 5 matching ports; clipsapi.Deps now consumes ports.
+#   * upload_helpers.go — UpdateCumulativeMetadataJSON +
+#     cleanupLegacyMetadataJSON signatures changed; free functions take
+#     ClipDriveUploaderPort instead of *drive.Uploader.
+#   * helpers.go — STALE drop (file already removed at W14-clips-helpers-extract).
+# Wave 14 PR2 grandfathered count: 6 → 0.
 
 # ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/assets/soundeffect/handler.go +
@@ -122,9 +133,18 @@ internal/api/assets/clips/upload_helpers.go
 # internal/api/middleware/middleware_middleware.go   ← removed from allowlist
 # internal/api/middleware/middleware_ratelimit.go    ← removed from allowlist
 
-# ── Wave 14 grandfathered: api root files (PR5 — CLEANED, June 2026) ────
-# Internal cleanup wave, June 26 2026: module_core_modules.go, routes.go,
-# server.go no longer import internal/infrastructure — removed from allowlist.
+# ── Wave 14 grandfathered: api root files (PR5) ─────────────────────────────
+# W14-slice-1 (June 2026): module_core_modules.go and routes.go removed —
+# neither imports internal/infrastructure/ anymore (verified via grep).
+# W14-slice-2 (June 2026): server.go removed — the `internal/infrastructure/
+# logging` import was replaced with `zap.L().Named("server")` calls, matching
+# the existing convention in routes.go (logger package-level aliases were a
+# pre-typed-port-cascade footprint that middleware PG-006 also removed).
+# All `internal/api/<root>.go` files now have zero in-tree infrastructure
+# imports; Check 19 hard-fail gate enforces the invariant going forward.
+# internal/api/module_core_modules.go     ← removed (stale — zero infra imports)
+# internal/api/routes.go                  ← removed (stale — zero infra imports)
+# internal/api/server.go                  ← removed (stale — zero infra imports after zap.L() cascade)
 
 # ── Wave 14 grandfathered: api/script orchestrator (PR3 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/script/{flow.go, handler_flow.go,

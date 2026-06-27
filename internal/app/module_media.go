@@ -14,7 +14,6 @@ import (
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -27,6 +26,7 @@ import (
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
@@ -37,7 +37,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -48,6 +47,7 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -129,7 +129,7 @@ type AssetsWiring struct {
 // per AGENTS.md Pattern 0 (typed-port abstraction). The realtime
 // package was removed in commit d61068b3; the typed parameter stays
 // nil-safe (typed-nil of an interface equals nil interface).
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
@@ -163,24 +163,56 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if dispatcher != nil {
 		clipsDispatcherPort = &clipsDispatcherAdapter{disp: dispatcher}
 	}
+
+	// W14-PR2 slice 5 (June 2026): use case construction moves from
+	// api/assets/clips/handler.go::NewHandler to the composition root.
+	// Each constructor takes a concrete infra type
+	// (*artifacts.SourceResolver, *clipindexer.Service, *semantic.MetadataWriter,
+	// *assets.VoiceoversRepository, *assettree.Service, asset.Processor)
+	// — they belong to the application layer where infra imports are
+	// permitted. Wiring them here means the api layer just receives
+	// opaque already-wired use cases via Deps — zero infra leak.
+	// The typed ports (Deps.SourceResolver / DriveUploader / ClipIndexer
+	// / MetaWriter / Cfg / VoiceoverRepo / etc.) come from the
+	// pre-existing clipsAdapterBundle (PG-005, June 2026) so we never
+	// re-inline the adapter construction.
+	clipsPortBundle := newClipsAdapterBundle(
+		cfg, log,
+		bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo,
+		bundle.VoiceoverRepo, bundle.ImageRepo,
+		driveUploader, metaWriter, bundle.ClipIndexerService,
+		folderMemSvc, bundle.AssetTreeService,
+		nil, /* vectorSvc removed PG-034 */
+	)
+	reprocessUC := appclips.NewReprocessUseCase(assetRepo, bundle.MediaProcessor)
+	downloadUC := appclips.NewDownloadUseCase(assetRepo, clipsPortBundle.VoiceoverRepo)
+	bulkTagsUC := appclips.NewBulkTagsUseCase(clipsPortBundle.SourceResolver, bundle.AssetTreeService)
+	enrichUC := appclips.NewEnrichUseCase(assetRepo, clipsPortBundle.ClipIndexer, clipsPortBundle.MetaWriter, log)
+
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
+		SourceResolver: clipsPortBundle.SourceResolver,
+		ClipsRepo:      clipsPortBundle.ClipsRepo,
+		StockRepo:      clipsPortBundle.StockRepo,
+		ArtlistRepo:    clipsPortBundle.ArtlistRepo,
+		VoiceoverRepo:  clipsPortBundle.VoiceoverRepo,
+		ImagesRepo:     clipsPortBundle.ImagesRepo,
+		DriveUploader:  clipsPortBundle.DriveUploader,
+		MetaWriter:     clipsPortBundle.MetaWriter,
+		ClipIndexer:    clipsPortBundle.ClipIndexer,
+		FolderMemSvc:   clipsPortBundle.FolderMemSvc,
+		HashSvc:        clipsPortBundle.HashSvc,
+		TreeBuilderSvc: clipsPortBundle.TreeBuilderSvc,
+		Cfg:            clipsPortBundle.Cfg,
+		ReprocessUC:    reprocessUC,
+		DownloadUC:     downloadUC,
+		BulkTagsUC:     bulkTagsUC,
+		EnrichUC:       enrichUC,
 		AssetRepo:      assetRepo,
-		ClipsRepo:      bundle.ClipsRepo,
-		StockRepo:      bundle.ClipsRepo,
-		ArtlistRepo:    bundle.ClipsRepo,
 		DeletionSvc:    deletionSvc,
-		DriveUploader:  driveUploader,
 		MediaProcessor: bundle.MediaProcessor,
 		AssetTreeSvc:   bundle.AssetTreeService,
-		MetaWriter:     metaWriter,
-		ClipIndexer:    bundle.ClipIndexerService,
 		JobsSvc:        jobs.Facade,
-		Cfg:            cfg,
 		Log:            log,
-		VoiceoverRepo:  bundle.VoiceoverRepo,
-		ImagesRepo:     bundle.ImageRepo,
-		FolderMemSvc:   folderMemSvc,
 		SearchSvc: assetclipssearch.NewService(log, map[string]assetclipssearch.AdvancedSearchRepo{
 			"youtube": bundle.ClipsRepo,
 			"artlist": bundle.ClipsRepo,

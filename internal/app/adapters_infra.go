@@ -15,13 +15,14 @@ import (
 
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	sfxports	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
@@ -202,17 +203,58 @@ func (a *driveAdminAdapter) ResolveFileInfo(ctx context.Context, fileID string) 
 	}, nil
 }
 
-// ── Reconciler (no-op placeholder) ────────────────────────────────────────────
+// ── Reconciler adapter ───────────────────────────────────────────────────────
 
-// noopReconciler satisfies systemapi.Reconciler with a zero-result response.
-// Previously this was backed by the now-removed drivecleanup.Service compatibility
-// shim; the real Drive→SQLite reconciliation logic has not been implemented yet.
-// This keeps the /drive/reconcile and /drive/cleanup endpoints functional
-// (returning {deleted:0,kept:0}) while the feature is built out.
-type noopReconciler struct{}
+// reconcilerAdapter wraps *drivecleanup.Service and satisfies
+// systemapi.Reconciler.
+//
+// DRIFT NOTE for operators/maintainers: the Reconcile result type on the
+// api side is a 2-field `ReconcileResult{Deleted,Kept}` mirror of the
+// canonical `drivecleanup.Result`. If the canonical Result struct grows
+// new fields (e.g. dry-run listing, conflict counts), this adapter will
+// silently drop them. When you add a field to drivecleanup.Result,
+// also update `systemapi.ReconcileResult` and this adapter's translation.
+type reconcilerAdapter struct {
+	svc *drivecleanup.Service
+	log *zap.Logger
+}
 
-func (noopReconciler) Reconcile(_ context.Context, _, _ string, _ bool) (*systemapi.ReconcileResult, error) {
-	return &systemapi.ReconcileResult{}, nil
+// newReconcilerAdapter constructs the Reconciler port adapter. A nil svc
+// returns a non-nil adapter — the handler's `h.reconciler == nil` check is
+// bypassed in that case but the resulting port still fires through the
+// canonical handler-level check (the wrapper compared equality to
+// interface types, not the wrapped value).
+//
+// Wait — actually for symmetry with newDriveAdminAdapter, returning nil
+// for nil svc is more honest. Update: this returns nil if svc is nil so
+// the handler-side nil check fires the 503. (June 24, 2026 — same fix as
+// driveAdminAdapter, applied symmetrically.)
+func newReconcilerAdapter(svc *drivecleanup.Service, log *zap.Logger) systemapi.Reconciler {
+	if svc == nil {
+		return nil
+	}
+	return &reconcilerAdapter{svc: svc, log: log}
+}
+
+// Reconcile delegates to *drivecleanup.Service.Reconcile and translates the
+// result struct to the api-side JSON-shaped mirror.
+func (a *reconcilerAdapter) Reconcile(ctx context.Context, source, rootFolderID string, dryRun bool) (*systemapi.ReconcileResult, error) {
+	res, err := a.svc.Reconcile(ctx, source, rootFolderID, dryRun)
+	if err != nil {
+		if a.log != nil {
+			a.log.Warn("system_adapters reconcilerAdapter.Reconcile failed",
+				zap.String("source", source),
+				zap.Error(err))
+		}
+		return nil, err
+	}
+	if res == nil {
+		return &systemapi.ReconcileResult{}, nil
+	}
+	return &systemapi.ReconcileResult{
+		Deleted: res.Deleted,
+		Kept:    res.Kept,
+	}, nil
 }
 
 // ── DoctorConfig snapshot factory ────────────────────────────────────────────
@@ -249,7 +291,7 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 // port signature drifts, the assignment `wrap → interface` fails compile.
 var (
 	_ systemapi.DriveAdminOps = (*driveAdminAdapter)(nil)
-	_ systemapi.Reconciler    = (*noopReconciler)(nil)
+	_ systemapi.Reconciler    = (*reconcilerAdapter)(nil)
 )
 
 // artlistConfigAdapter wraps *config.Config to satisfy

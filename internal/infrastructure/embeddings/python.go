@@ -5,7 +5,7 @@
 //   - PythonScriptEmbedder: subprocess invocation of a Python script.
 //   - HTTPEmbedder: HTTP client to a Python sidecar embedding server.
 //
-// Both satisfy the canonical Embedder interface in internal/domain/asset.
+// Both satisfy the canonical interface in internal/core/embedding.
 // Application layer (e.g. application/association, application/realtime)
 // depends on the interface; this package is wired in internal/app/.
 package embeddings

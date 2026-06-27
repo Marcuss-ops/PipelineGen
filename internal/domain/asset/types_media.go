@@ -17,11 +17,11 @@ import (
 //   - Phase 1: declared locally in internal/domain/asset/asset_types.go as a
 //     named string type.
 //   - Phase 3 (Wave-15 follow-up): replaced by `type MediaType = media.MediaType`
-//     alias to converge with the now-deleted internal/domain/media/media.go (where the
+//     alias to converge with internal/domain/media/media.go (where the
 //     canonical const set lived). Callers did not notice because the alias
 //     was transparent — `asset.MediaType`, `asset.MediaTypeClip`, etc. all
 //     worked either way.
-//   - Wave-14: internal/domain/media/ was deleted. This file now declares
+//   - Wave-14: internal/domain/media/ is deleted. This file now declares
 //     MediaType natively and re-hosts the const set that previously lived
 //     in media.media.go. The Phase 3 alias was the correct bridge while
 //     media co-existed; now that media is gone, the alias itself is gone.

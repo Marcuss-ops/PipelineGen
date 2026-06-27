@@ -14,7 +14,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	googleaccounting "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/googleaccounting"
-	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"go.uber.org/zap"
 )
 
@@ -251,7 +250,7 @@ func extractRemoteImageNames(job *RemoteImageJob) []string {
 	}
 
 	if names := stringsFromAny(job.Result["images"]); len(names) > 0 {
-		return sliceutil.NormalizeAndDedupe(names, strings.TrimSpace, nil)
+		return dedupeNonEmptyStrings(names)
 	}
 
 	if artifacts := job.Result["artifacts"]; artifacts != nil {
@@ -271,7 +270,7 @@ func extractRemoteImageNames(job *RemoteImageJob) []string {
 					}
 				}
 			}
-			return sliceutil.NormalizeAndDedupe(append(imageNames, otherNames...), strings.TrimSpace, nil)
+			return dedupeNonEmptyStrings(append(imageNames, otherNames...))
 		case []map[string]any:
 			var imageNames []string
 			var otherNames []string
@@ -285,7 +284,7 @@ func extractRemoteImageNames(job *RemoteImageJob) []string {
 					otherNames = append(otherNames, name)
 				}
 			}
-			return sliceutil.NormalizeAndDedupe(append(imageNames, otherNames...), strings.TrimSpace, nil)
+			return dedupeNonEmptyStrings(append(imageNames, otherNames...))
 		}
 	}
 
@@ -314,4 +313,19 @@ func stringsFromAny(v any) []string {
 	}
 }
 
-
+func dedupeNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}

@@ -276,9 +276,3 @@ func NewFingerprintContext(model, promptModel string) interface{} {
 }
 
 // maxInt returns the maximum of two ints.
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

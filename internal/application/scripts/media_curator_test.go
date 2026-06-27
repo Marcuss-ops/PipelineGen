@@ -78,8 +78,8 @@ func TestMediaCurator_Curate_HintClipIDs_PassesGate_Pins_NonCurateError(t *testi
 	}
 
 	_, err := m.Curate(context.Background(), CurateRequest{
-		Query:        "hint-list path",
-		HintClipIDs:  []string{"clip-A", "clip-B"},
+		Query:         "hint-list path",
+		HintClipIDs:   []string{"clip-A", "clip-B"},
 		AllowTextOnly: false,
 	})
 

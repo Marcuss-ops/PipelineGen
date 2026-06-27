@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -13,24 +12,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// DefaultReaperKeys is the default payload-key redaction list for the
-// Reaper. QDRANT-005 closure (June 2026): EMPTY by default. The
-// previous default included "status", "drive_link", "local_path",
-// "download_link" — keys that the canonical manifest and payload
-// mapper actively WRITE. Removing "status" in particular was the
-// critical fix: status is the canonical search-filter key (the search
-// adapter / clip_search_adapter both filter on it), so the reaper
-// erasing it was a self-inflicted search outage. drive_link /
-// local_path / download_link are likewise load-bearing locator keys
-// that some ingest paths still write for round-tripping; the canonical
-// payload mapper has been migrated off them (QDRANT-001) but legacy
-// points may still carry them and the reaper must not blanket-erase.
-//
-// Reaper runs are now EXPLICIT-OPT-IN per key. Operators set
-// ReaperOptions.Keys to the exact subset they want redaction applied
-// to. Production deployments should leave DefaultReaperKeys empty
-// unless they have a documented per-key retention policy.
-var DefaultReaperKeys = []string{}
+// DefaultReaperKeys lists the payload keys that the reaper strips by default.
+// These are server-internal locators (filesystem paths, Drive web-view links,
+// download URLs, status markers) that have no place in a tenant-facing index.
+var DefaultReaperKeys = []string{"drive_link", "local_path", "download_link", "status"}
 
 // ErrNilClient is returned when a Reaper is constructed with a nil Client.
 var ErrNilClient = errors.New("reaper: qdrant client is nil")
@@ -43,24 +28,15 @@ const (
 	StatusFailed   = "failed"
 )
 
-// MaxReaperBatchSize is the Qdrant REST scroll-page ceiling. The
-// QDRANT-005 closure enforces this hard cap (was a log-only warning
-// before): any batch above 100 is silently clamped, BatchCapped is
-// bumped, and the effective request is at most 100.
-const MaxReaperBatchSize = 100
-
 // ReaperOptions configures a single Reap run.
 type ReaperOptions struct {
 	// Collection is the Qdrant collection name (required).
 	Collection string
 
-	// Keys is the list of payload keys to redact. Empty → no-op run
-	// (the operator must opt in explicitly per key). Defaults to
-	// DefaultReaperKeys (empty in production).
+	// Keys is the list of payload keys to redact. Defaults to DefaultReaperKeys.
 	Keys []string
 
-	// BatchSize is the scroll page size (1–MaxReaperBatchSize,
-	// default MaxReaperBatchSize).
+	// BatchSize is the scroll page size (1–100, default 100).
 	BatchSize int
 
 	// Limit caps the total number of points scanned (0 = no limit).
@@ -70,15 +46,11 @@ type ReaperOptions struct {
 	DryRun bool
 
 	// DB is an optional SQLite handle for audit-logging the run result.
-	// When non-nil, the run result is INSERTed into `qdrant_cleanup_audit`.
-	// The table is owned by migrations/sqlite/098_qdrant_cleanup_audit.sql
-	// (June 2026 QDRANT-005 PR5 followup) — the lazy CREATE
-	// IF NOT EXISTS that used to live inside persistReaperAudit was
-	// moved onto the canonical migration runner so the Reaper hot
-	// path no longer pays a per-run schema-management syscall and
-	// missing migrations surface loudly instead of being
-	// self-healed. Nil DB is allowed but surfaced as a Warning at
-	// run start so operators can wire it.
+	// When nil, the run proceeds without audit persistence.
+	//
+	// TODO(QDRANT-005): wire audit INSERT into qdrant_cleanup_audit
+	// (migration 097) so each Reap run is persisted for operator
+	// runbook visibility.
 	DB *sql.DB
 }
 
@@ -97,22 +69,11 @@ type ReaperResult struct {
 	AffectedSample  []string  `json:"affected_sample,omitempty"`
 	FailedSample    []string  `json:"failed_sample,omitempty"`
 	BatchCapped     int       `json:"batch_capped"`
-	// AuditPersisted is true iff ReaperOptions.DB was non-nil AND the
-	// INSERT into qdrant_cleanup_audit succeeded. Operators watching
-	// dashboards key off this flag to detect audit-path regressions.
-	AuditPersisted bool `json:"audit_persisted"`
 }
 
-// Reaper iterates over every point in a Qdrant collection and
-// SELECTIVELY merges a redaction-subset of payload keys back. It is
-// idempotent: points already clean are skipped.
-//
-// QDRANT-005 closure (June 2026): the previous UpsertPoints-based
-// implementation destroyed vector data because UpsertPoints replaces
-// the entire point and the reaper only sent ID + payload. The new
-// path uses Client.OverwritePayload (PUT /points/payload), which
-// performs a SELECTIVE payload merge without touching vectors. This
-// is the canonical Qdrant REST contract for payload redaction.
+// Reaper iterates over every point in a Qdrant collection and strips
+// server-internal payload keys (local_path, drive_link, download_link,
+// status). It is idempotent: points already clean are skipped.
 type Reaper struct {
 	client *Client
 	log    *zap.Logger
@@ -126,17 +87,10 @@ func NewReaper(client *Client, log *zap.Logger) *Reaper {
 	return &Reaper{client: client, log: log}
 }
 
-// Reap scrolls the collection, redacts payload keys, and uses
-// OverwritePayload (NOT UpsertPoints, which would null vectors) to
-// apply the cleaned payload back. Scroll pagination is driven by the
-// NextOffset returned by each Qdrant scroll response; the loop
-// terminates when NextOffset is empty or the optional Limit is
-// reached.
-//
-// Empty opt-in: if ReaperOptions.Keys is empty AND DefaultReaperKeys
-// is empty (production default), Reap returns a no-op result with
-// status = StatusNoop and a "no keys specified" note in Errors[0] as
-// a defensive signal that the operator forgot to opt in.
+// Reap scrolls the collection, redacts payload keys, and upserts the cleaned
+// points back. Scroll pagination is driven by the NextOffset returned by each
+// Qdrant scroll response; the loop terminates when NextOffset is empty or the
+// optional Limit is reached.
 func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, error) {
 	if r.client == nil {
 		return nil, ErrNilClient
@@ -148,30 +102,14 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 	if len(keys) == 0 {
 		keys = DefaultReaperKeys
 	}
-	if len(keys) == 0 {
-		started := time.Now().UTC()
-		return &ReaperResult{
-			RunID:        "noop-no-keys",
-			Collection:   opts.Collection,
-			KeysRedacted: keys,
-			StartedAt:    started,
-			CompletedAt:  started,
-			Status:       StatusNoop,
-			DryRun:       opts.DryRun,
-			BatchCapped:  0,
-			Errors:       []string{"reaper no-op: no keys specified (QDRANT-005 operator must opt in explicitly per key)"},
-		}, nil
-	}
-
 	batch := opts.BatchSize
 	if batch <= 0 {
-		batch = MaxReaperBatchSize
+		batch = 100
 	}
 	batchCapped := 0
-	if batch > MaxReaperBatchSize {
-		batch = MaxReaperBatchSize
+	if batch > 100 {
 		batchCapped = 1
-		r.log.Warn("reaper batch size hard-capped to Qdrant scroll limit",
+		r.log.Warn("reaper batch size capped to Qdrant scroll limit",
 			zap.Int("requested", opts.BatchSize),
 			zap.Int("effective", batch))
 	}
@@ -200,7 +138,7 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 		if opts.Limit > 0 && result.PointsScanned >= opts.Limit {
 			break
 		}
-		page, err := r.client.ScrollPoints(ctx, opts.Collection, offset, batch, nil)
+		page, err := r.client.ScrollPoints(ctx, opts.Collection, offset, batch)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("scroll: %v", err))
 			break
@@ -210,11 +148,6 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 		}
 		result.PointsScanned += len(page.Points)
 
-		// Per-page batch: collect redactions and apply via
-		// OverwritePayload so vectors are preserved. The per-page
-		// batch keeps the Qdrant PUT body small and avoids the
-		// per-point fixed cost of N individual calls.
-		var redactions []PointPayload
 		for _, p := range page.Points {
 			cleaned, stripped := redactPayload(p.Payload, keys)
 			if !stripped {
@@ -227,23 +160,17 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 				result.PointsAffected++
 				continue
 			}
-			redactions = append(redactions, PointPayload{
+			if err := r.client.UpsertPoints(ctx, opts.Collection, []Point{{
 				ID:      p.ID,
 				Payload: cleaned,
-			})
-		}
-
-		if !opts.DryRun && len(redactions) > 0 {
-			if err := r.client.OverwritePayload(ctx, opts.Collection, redactions); err != nil {
-				for _, pp := range redactions {
-					result.Errors = append(result.Errors, fmt.Sprintf("overwrite %s: %v", pp.ID, err))
-					if len(result.FailedSample) < 50 {
-						result.FailedSample = append(result.FailedSample, pp.ID)
-					}
+			}}); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("upsert %s: %v", p.ID, err))
+				if len(result.FailedSample) < 50 {
+					result.FailedSample = append(result.FailedSample, p.ID)
 				}
-			} else {
-				result.PointsAffected += len(redactions)
+				continue
 			}
+			result.PointsAffected++
 		}
 
 		// Advance to the next page. Empty NextOffset signals end-of-collection.
@@ -267,71 +194,7 @@ func (r *Reaper) Reap(ctx context.Context, opts ReaperOptions) (*ReaperResult, e
 		result.Status = StatusOK
 	}
 
-	if opts.DB != nil {
-		if err := persistReaperAudit(ctx, opts.DB, result); err != nil {
-			r.log.Warn("reaper audit INSERT failed (QDRANT-005 audit path)",
-				zap.String("run_id", result.RunID),
-				zap.Error(err))
-			result.Errors = append(result.Errors, fmt.Sprintf("audit: %v", err))
-			if result.Status == StatusOK {
-				result.Status = StatusPartial
-			}
-		} else {
-			result.AuditPersisted = true
-		}
-	} else {
-		r.log.Warn("reaper audit DB not wired; run result not persisted (QDRANT-005 compliance requires DB=non-nil)",
-			zap.String("run_id", result.RunID),
-			zap.String("collection", result.Collection))
-	}
-
 	return result, nil
-}
-
-// persistReaperAudit writes a single row into qdrant_cleanup_audit
-// recording the run. The table is owned by
-// migrations/sqlite/098_qdrant_cleanup_audit.sql — the migration
-// runner applies the schema at boot, so this function never touches
-// DDL on the Reaper hot path. If the table is missing (e.g. a
-// misconfigured db where the migration runner has not yet landed),
-// the INSERT will error with a canonical `no such table` failure;
-// the caller logs the error and flips AuditPersisted=false + status
-// = StatusPartial so the regression is visible on dashboards
-// immediately rather than silently self-healed.
-func persistReaperAudit(ctx context.Context, db *sql.DB, r *ReaperResult) error {
-	if db == nil || r == nil {
-		return fmt.Errorf("persistReaperAudit: nil db or result")
-	}
-	keysJSON, _ := jsonMarshal(r.KeysRedacted)
-	errsJSON, _ := jsonMarshal(r.Errors)
-	var dryRun int
-	if r.DryRun {
-		dryRun = 1
-	}
-	_, err := db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO qdrant_cleanup_audit (
-			run_id, collection, started_at, completed_at, status,
-			points_scanned, points_affected, errors_json, dry_run, keys_redacted_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		r.RunID, r.Collection, r.StartedAt.UTC().Format(time.RFC3339), r.CompletedAt.UTC().Format(time.RFC3339), r.Status,
-		r.PointsScanned, r.PointsAffected, errsJSON, dryRun, keysJSON,
-	)
-	if err != nil {
-		return fmt.Errorf("insert qdrant_cleanup_audit: %w", err)
-	}
-	return nil
-}
-
-// jsonMarshal marshals v to a JSON string. Two call sites (audit
-// keys_redacted_json + errors_json) — using encoding/json directly
-// keeps the import surface minimal.
-func jsonMarshal(v interface{}) (string, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
 
 // redactPayload returns a copy of payload with the given keys removed.

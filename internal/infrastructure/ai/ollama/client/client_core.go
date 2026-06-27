@@ -117,6 +117,13 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 	if options == nil {
 		options = map[string]any{}
 	}
+	format := ""
+	if rawFormat, ok := options["format"]; ok {
+		if s, ok := rawFormat.(string); ok {
+			format = strings.TrimSpace(s)
+		}
+		delete(options, "format")
+	}
 	if _, hasKeepAlive := options["keep_alive"]; !hasKeepAlive {
 		options["keep_alive"] = "30m"
 	}
@@ -125,6 +132,7 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 		Model:    model,
 		Messages: messages,
 		Stream:   false,
+		Format:   format,
 		Options:  options,
 	}
 

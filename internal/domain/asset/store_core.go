@@ -372,6 +372,10 @@ func (a *assetRepositoryAdapter) SoftDelete(ctx context.Context, id string) erro
 }
 
 func (a *assetRepositoryAdapter) Restore(ctx context.Context, id string) error {
+	// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Since domain/asset
+	// cannot import infrastructure/outbox, this adapter's Restore does
+	// not emit a Qdrant reindex event. Callers at the application layer
+	// MUST route through outbox.Dispatcher.EnqueueAndRestore instead.
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := a.store.db.ExecContext(ctx,
 		"UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?",
@@ -380,6 +384,9 @@ func (a *assetRepositoryAdapter) Restore(ctx context.Context, id string) error {
 }
 
 func (a *assetRepositoryAdapter) HardDelete(ctx context.Context, id string) error {
+	// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Same layering
+	// constraint as Restore above. Callers MUST route through
+	// outbox.Dispatcher.EnqueueAndHardDelete instead.
 	tx, err := a.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

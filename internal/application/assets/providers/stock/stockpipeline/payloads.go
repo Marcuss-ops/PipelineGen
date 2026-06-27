@@ -1,7 +1,7 @@
 package stockpipeline
 
 // StockRunPayload is the job payload for media.stock jobs.
-// It was previously in the now-deleted internal/core/jobs/payloads.go (PR4).
+// It was previously in internal/core/jobs/payloads.go (deleted in PR4).
 type StockRunPayload struct {
 	SearchQueries []string                 `json:"search_queries"`
 	DirectURLs    []string                 `json:"direct_urls,omitempty"`

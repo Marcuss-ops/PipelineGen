@@ -1,10 +1,6 @@
 package api
 
-import (
-	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-)
+import "testing"
 
 func TestClampLimit(t *testing.T) {
 	tests := []struct {
@@ -23,7 +19,7 @@ func TestClampLimit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := apiutil.ClampLimit(tt.val, tt.def, tt.max)
+			got := ClampLimit(tt.val, tt.def, tt.max)
 			if got != tt.want {
 				t.Errorf("ClampLimit(%d, %d, %d) = %d, want %d", tt.val, tt.def, tt.max, got, tt.want)
 			}

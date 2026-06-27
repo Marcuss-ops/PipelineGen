@@ -148,19 +148,14 @@ func TestEngineWriteScript_NilOllamaGen(t *testing.T) {
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-func TestEngineWriteScript_WrongShapeOllamaGen(t *testing.T) {
-	t.Parallel()
-	e := &Engine{
-		ollamaGen: struct{}{},
-		log:       zap.NewNop(),
-	}
-	_, err := e.WriteScript(context.Background(), WriteScriptRequest{
-		Topic:    "test",
-		Language: "en",
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not properly configured")
-}
+// TestEngineWriteScript_WrongShapeOllamaGen was retired with the typed-
+// port refactor (June 2026): the Engine struct now exposes concrete
+// interfaces (scriptOllamaGenerator / memoryGateChecker) and the field
+// is typed at the call site. Passing a non-implementing type (e.g.
+// struct{}{}) is now a compile-time error, not a runtime assertion
+// path, so this test can no longer be expressed. Nil-handling +
+// success paths are covered by TestEngineWriteScript_NilEngine /
+// TestEngineWriteScript_NilOllamaGen + the typed fake injection tests.
 
 // ── Successful generation ──────────────────────────────────────────────────
 

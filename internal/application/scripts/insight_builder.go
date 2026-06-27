@@ -2,6 +2,14 @@
 //
 // PG-029 (June 2026): ScriptInsights struct consolidated here from the
 // now-deleted types.go.
+//
+// PR2 2b/c (June 2026): ScriptInsights loses the 5 dead media-side
+// fields (ArtlistClipSuggestions, RecommendedDriveFolder,
+// PhraseClipSuggestions, IntroClips, EntityImages) — they were
+// populated by helpers in flow_helpers.go that depended on
+// ClipServices ports whose packages were removed from origin
+// (commit d61068b3). Production wiring returns empty for every
+// one. Build() now only populates the 4 text-side lists.
 package scripts
 
 import (
@@ -16,16 +24,19 @@ import (
 )
 
 // ScriptInsights holds entity and media suggestions extracted from a script.
+// After PR2 2b/c (June 2026): media-side suggestions are gone (the
+// realtime/association packages that produced them are no longer in
+// the repo); the struct carries only the text-side lists.
 type ScriptInsights struct {
-	ImportantWords         []string
-	ImportantPhrases       []string
-	SpecialNames           []string
-	ArtlistPhrases         []string
-	ArtlistClipSuggestions interface{}
-	EntityImages           interface{}
-	RecommendedDriveFolder interface{}
-	PhraseClipSuggestions  interface{}
-	IntroClips             interface{}
+	ImportantWords           []string
+	ImportantPhrases         []string
+	SpecialNames             []string
+	ArtlistPhrases           []string
+	ArtlistClipSuggestions   []ScriptArtlistClipSuggestion
+	RecommendedDriveFolder   *ScriptDriveFolderSuggestion
+	PhraseClipSuggestions    []ScriptPhraseClipSuggestion
+	IntroClips               []ScriptAssetSuggestion
+	EntityImages             []ScriptEntityImage
 }
 
 // ScriptInsightBuilder builds structured ScriptInsights from extracted entities.
@@ -36,8 +47,11 @@ type ScriptInsightBuilder struct {
 }
 
 // Build constructs ScriptInsights from the entity analysis JSON.
-// Returns the canonical ScriptInsights (declared in documents.go) with
-// rich sub-types stored in the any-typed fields.
+// After PR2 2b/c: the 5 dead helper calls (SearchArtlistClips,
+// EnrichSpecialNamesWithImages, ResolveRecommendedDriveFolder,
+// BuildPhraseClipSuggestions, SearchIntroClips) are gone from the
+// build path — production wiring would have returned empty for each
+// of them anyway.
 func (b *ScriptInsightBuilder) Build(ctx context.Context, title, script, entitiesJSON string) ScriptInsights {
 	insights := ScriptInsights{
 		ImportantWords:   []string{},
@@ -64,33 +78,10 @@ func (b *ScriptInsightBuilder) Build(ctx context.Context, title, script, entitie
 	insights.SpecialNames = sliceutil.UniqueLimitedStrings(insights.SpecialNames, limit)
 	insights.ArtlistPhrases = sliceutil.UniqueLimitedStrings(insights.ArtlistPhrases, limit)
 
-	if len(insights.ArtlistPhrases) > 0 {
-		insights.ArtlistClipSuggestions = SearchArtlistClips(ctx, b.Services, title, insights.ArtlistPhrases)
-	}
-
-	if len(insights.SpecialNames) > 0 {
-		insights.EntityImages = EnrichSpecialNamesWithImages(ctx, b.Services, insights.SpecialNames)
-	}
-
-	if folder := ResolveRecommendedDriveFolder(ctx, b.Services, title, script, insights); folder != nil {
-		insights.RecommendedDriveFolder = folder
-	}
-
-	clipSources := []AssetSearchTarget{
-		{Source: "youtube", MediaType: "video"},
-		{Source: "clip_drive", MediaType: "video"},
-		{Source: "artlist", MediaType: "video"},
-		{Source: "stock", MediaType: "video"},
-	}
-	insights.PhraseClipSuggestions = BuildPhraseClipSuggestions(ctx, b.Services, title, insights, clipSources)
-	insights.IntroClips = SearchIntroClips(ctx, b.Services, title, script, insights, clipSources)
-
 	return insights
 }
 
-// Ensure the rich types are satisfied by ScriptInsights' any fields.
-var _ any = ScriptInsights{}.ArtlistClipSuggestions
-var _ any = ScriptInsights{}.RecommendedDriveFolder
-var _ any = ScriptInsights{}.PhraseClipSuggestions
-var _ any = ScriptInsights{}.IntroClips
-var _ any = ScriptInsights{}.EntityImages
+// ctx placeholder: keeps the original signature stable so PostGenUseCase
+// does not need to change its call site. Was used by dropped media-side
+// helpers; now a no-op parameter.
+var _ = context.Background

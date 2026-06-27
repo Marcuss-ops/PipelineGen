@@ -2,35 +2,35 @@
 //
 // Per PR2 (June 2026, YouTube fail-closed):
 //
-//   searcher.go + searcher_metadata.go call ytservice.ServiceDeps.SearchRunner
-//   (a `youtube.SearchRunnerPort` whose methods return application-layer DTOs:
-//   `[]youtubeports.SearchLiveResult` and `*youtubeports.DownloaderMetadata`).
+//	searcher.go + searcher_metadata.go call ytservice.ServiceDeps.SearchRunner
+//	(a `youtube.SearchRunnerPort` whose methods return application-layer DTOs:
+//	`[]youtubeports.SearchLiveResult` and `*youtubeports.DownloaderMetadata`).
 //
-//   The existing `YTDLPAdapter` (also in this package) wraps os/exec yt-dlp
-//   calls but returns **`infra`-layer types** (`[]LiveSearchResult`,
-//   `VideoInfo`). It therefore satisfies a DIFFERENT interface — the
-//   infra-only `SearchRunner` in `internal/infrastructure/youtube/ports.go`,
-//   which is reserved for callers that live below the application seam
-//   (e.g. service-lifecycle tooling, ECS pre-build hooks). The
-//   application-layer `SearchRunnerPort` in
-//   `internal/application/youtube/ports/ports.go` is what
-//   `composition.go::BuildDomainBundle` wires into `youtube.ServiceDeps.SearchRunner`.
+//	The existing `YTDLPAdapter` (also in this package) wraps os/exec yt-dlp
+//	calls but returns **`infra`-layer types** (`[]LiveSearchResult`,
+//	`VideoInfo`). It therefore satisfies a DIFFERENT interface — the
+//	infra-only `SearchRunner` in `internal/infrastructure/youtube/ports.go`,
+//	which is reserved for callers that live below the application seam
+//	(e.g. service-lifecycle tooling, ECS pre-build hooks). The
+//	application-layer `SearchRunnerPort` in
+//	`internal/application/youtube/ports/ports.go` is what
+//	`composition.go::BuildDomainBundle` wires into `youtube.ServiceDeps.SearchRunner`.
 //
-//   This file adds the missing adapter: `SearchRunnerAdapter` wraps
-//   `*YTDLPAdapter` and converts the infra types to the canonical app-layer
-//   DTOs (`SearchLiveResult`, `DownloaderMetadata`). Fail-closed contract:
+//	This file adds the missing adapter: `SearchRunnerAdapter` wraps
+//	`*YTDLPAdapter` and converts the infra types to the canonical app-layer
+//	DTOs (`SearchLiveResult`, `DownloaderMetadata`). Fail-closed contract:
 //
-//     - nil config           → SearchRunnerAdapter returns nil; composition
-//                              root must treat this as a fatal misconfig.
-//     - ctx already Done     → return the unwrapped ctx.Err() (no double-wrap).
-//     - subprocess impossible → wrap the underlying error with
-//                                `ports.ErrSearchRunnerUnavailable` (search)
-//                                or `ports.ErrSearchRunnerVideoInfoUnavailable`
-//                                (info) via `errors.Is` so callers can branch.
+//	  - nil config           → SearchRunnerAdapter returns nil; composition
+//	                           root must treat this as a fatal misconfig.
+//	  - ctx already Done     → return the unwrapped ctx.Err() (no double-wrap).
+//	  - subprocess impossible → wrap the underlying error with
+//	                             `ports.ErrSearchRunnerUnavailable` (search)
+//	                             or `ports.ErrSearchRunnerVideoInfoUnavailable`
+//	                             (info) via `errors.Is` so callers can branch.
 //
-//   The wrap ensures callers cannot accidentally treat "search errored out"
-//   as "search returned no results" — the previous `searchRunnerStub` did
-//   exactly that, returning `[]SearchLiveResult{}` with a nil error.
+//	The wrap ensures callers cannot accidentally treat "search errored out"
+//	as "search returned no results" — the previous `searchRunnerStub` did
+//	exactly that, returning `[]SearchLiveResult{}` with a nil error.
 package youtube
 
 import (
@@ -78,9 +78,9 @@ func NewSearchRunnerAdapter(cfg *ytcfg.Config, log *zap.Logger) *SearchRunnerAda
 //
 //   - ctx already Done → return unwrapped ctx.Err() (no double-wrap).
 //   - subprocess / parse failure → return ports.ErrSearchRunnerUnavailable
-//                                   (wrapped with the underlying error
-//                                   via %w so callers can debug with
-//                                   errors.Unwrap).
+//     (wrapped with the underlying error
+//     via %w so callers can debug with
+//     errors.Unwrap).
 //   - subprocess returned 0 hits → return (empty slice, nil) (success).
 func (a *SearchRunnerAdapter) SearchLive(ctx context.Context, query string, limit int, sort string) ([]youtubeports.SearchLiveResult, error) {
 	if a == nil || a.inner == nil {

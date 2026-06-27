@@ -15,7 +15,6 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -127,11 +126,6 @@ type ProcessBundle struct {
 	// wire_services.go can type-assert without forcing every composition
 	// path to import qdrant (see PR for layering).
 	QdrantHealthProbe any
-	// QDRANT-005 Fase 3 (June 2026): canonical LocatorCleaner for
-	// scrubbing legacy drive_link / local_path payload keys from
-	// historical Qdrant points. Constructed alongside the client
-	// when Qdrant is enabled; nil-safe when Qdrant is disabled.
-	LocatorCleaner *qdrant.LocatorCleaner
 }
 
 // AIBundle owns script generation, engine, and memory.
@@ -155,12 +149,15 @@ type DomainBundle struct {
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
 	MetaWriter    *semantic.MetadataWriter
-	// Wave 15 (June 2026): RealtimeService split into two typed ports (the
-	// realtime package was removed in commit d61068b3). Both slots stay
-	// typed-nil at composition. Asset-side consumer
-	// (assetsapi.NewRealtimeMatchHandler) reads RealtimeMatcher; script-side
-	// consumer (ScriptFlowDeps.Realtime) reads RealtimeSearch.
-	RealtimeMatcher assetsapi.RealtimeMatcher
+	// Wave 15 (June 2026): RealtimeSearch is the typed-nil port for the
+	// script-side feature (the realtime package was removed in commit
+	// d61068b3). The companion asset-side `assetsapi.RealtimeMatcher`
+	// slot was dropped because handler_realtime.go (defining that type)
+	// was deleted by origin's commit 0c3089d; the corresponding
+	// /api/realtime route registration in WireRegistry was also removed
+	// to keep the surface consistent with the type's death. Script-side
+	// consumers (ScriptFlowDeps.Realtime) still read RealtimeSearch
+	// typed-nil at composition.
 	RealtimeSearch  scriptcore.RealtimeSearchService
 	AutotagService  *autotag.Service
 	// Wave 15 (June 2026): typed port — replaces `interface{}` carrier.
@@ -305,7 +302,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.DriveClient)
+	utility := BuildUtilityBundle(cfg, dbs.main)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	if sync.CatalogSync != nil && jobs.Service != nil {
@@ -318,15 +315,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if domains.VoiceoverService != nil && jobs.Service != nil {
 		domains.VoiceoverService.RegisterHandler(jobs.Service)
 	}
+	if domains.BooksService != nil && jobs.Service != nil {
+		// RegisterJobHandler removed from Books service (commit 0c3089d)
+	}
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		process.ClipIndexerService.RegisterJobHandler(jobs.Service)
 	}
-	// Capability Standard migration (June 2026): BooksService and
-	// LessonsService worker handlers are NOT registered here.
-	// The Generation capability owns the books.process and
-	// lessons.process job types and publishes the handlers via
-	// its Descriptor (api.DescriptorJobs), wired in registry.go
-	// after generation.Build returns. Single source of truth.
+	if domains.LessonsService != nil && jobs.Service != nil {
+		// RegisterJobHandler removed from Lessons service (commit 0c3089d)
+	}
 
 	root := &ComposeRoot{
 		DB:      dbs.main,

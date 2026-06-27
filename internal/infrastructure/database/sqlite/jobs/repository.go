@@ -3,7 +3,7 @@
 //
 // States: queued → leased → running → completed / retry_wait / failed / cancelled
 //
-// Implements the canonical job.Store contract from internal/domain/job directly,
+// Implements Repository from internal/core/domain/job directly,
 // without conversion through legacy model types (PR4: job.Job SSOT).
 package jobs
 

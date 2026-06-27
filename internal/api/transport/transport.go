@@ -29,7 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // JSONBound is satisfied by request types that need structural
@@ -89,17 +89,17 @@ func JSON[In any, Out any](c *gin.Context, uc UseCase[In, Out], mapper ErrorMapp
 	}
 	if v, ok := any(req).(JSONBound); ok {
 		if err := v.Validate(); err != nil {
-			apiutil.BadRequest(c, err.Error())
+			api.BadRequest(c, err.Error())
 			return
 		}
 	}
 	resp, err := uc.Handle(c.Request.Context(), req)
 	if err != nil {
 		status, msg := mapErr(err, mapper)
-		apiutil.Error(c, status, msg)
+		api.Error(c, status, msg)
 		return
 	}
-	apiutil.OK(c, resp)
+	api.OK(c, resp)
 }
 
 // ── Request pipeline (path + query parameters) ─────────────────────────────
@@ -153,22 +153,22 @@ func Request[In any, Out any](
 ) {
 	req, err := bind(c)
 	if err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	if v, ok := any(req).(JSONBound); ok {
 		if err := v.Validate(); err != nil {
-			apiutil.BadRequest(c, err.Error())
+			api.BadRequest(c, err.Error())
 			return
 		}
 	}
 	resp, err := uc.Handle(c.Request.Context(), req)
 	if err != nil {
 		status, msg := mapErr(err, mapper)
-		apiutil.Error(c, status, msg)
+		api.Error(c, status, msg)
 		return
 	}
-	apiutil.OK(c, resp)
+	api.OK(c, resp)
 }
 
 // PageParams is the standard pagination pair returned by BindPagination.
@@ -254,7 +254,7 @@ func parseIntQuery(c *gin.Context, key string, defaultVal, min, max int) (int, e
 // same error envelope for malformed bodies.
 func bindJSON(c *gin.Context, dst any) bool {
 	if err := c.ShouldBindJSON(dst); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return false
 	}
 	return true

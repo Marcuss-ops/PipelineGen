@@ -101,16 +101,15 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		clip.Group = style
 	}
 
-	if s.dispatcher != nil {
-		// QDRANT-002 canonical path: atomic UPSERT + outbox event.
-		contentHash := sha256Hash(filePath + id)
-		if err := s.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
-			return fmt.Errorf("dispatcher.EnqueueAndIndex video %s: %w", id, err)
-		}
-		s.log.Debug("RegisterVideoAsset: saved via dispatcher", zap.String("id", id))
-	} else if err := s.stockRepo.Upsert(ctx, clip); err != nil {
-		return err
+	if s.dispatcher == nil {
+		return fmt.Errorf("RegisterVideoAsset: dispatcher is nil — production wiring must configure the canonical outbox.Dispatcher (QDRANT-002 close-out)")
 	}
+	// QDRANT-002 canonical path: atomic UPSERT + outbox event.
+	contentHash := sha256Hash(filePath + id)
+	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
+		return fmt.Errorf("dispatcher.EnqueueAndIndex video %s: %w", id, err)
+	}
+	s.log.Debug("RegisterVideoAsset: saved via dispatcher", zap.String("id", id))
 
 	// Estrai audio dal video, taglia a 3 secondi, carica su Drive e registra in DB
 	if uploaded && s.mediaStore != nil {
@@ -257,18 +256,17 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 		clip.Group = style
 	}
 
-	if s.dispatcher != nil {
-		// QDRANT-002 canonical path: atomic UPSERT + outbox event.
-		contentHash := sha256Hash(audioPath)
-		if err := s.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
-			s.log.Warn("registerAudioClip: dispatcher upsert failed", zap.Error(err))
-			return
-		}
-		s.log.Debug("registerAudioClip: saved via dispatcher", zap.String("id", clip.ID))
-	} else if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
-		s.log.Warn("registerAudioClip: DB upsert failed", zap.Error(err))
+	if s.dispatcher == nil {
+		s.log.Warn("registerAudioClip: dispatcher is nil — production wiring must configure the canonical outbox.Dispatcher (QDRANT-002 close-out)")
 		return
 	}
+	// QDRANT-002 canonical path: atomic UPSERT + outbox event.
+	contentHash := sha256Hash(audioPath)
+	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
+		s.log.Warn("registerAudioClip: dispatcher upsert failed", zap.Error(err))
+		return
+	}
+	s.log.Debug("registerAudioClip: saved via dispatcher", zap.String("id", clip.ID))
 	s.log.Info("registerAudioClip: audio extracted, uploaded, and registered",
 		zap.String("video_id", videoID),
 		zap.String("audio_id", clip.ID),

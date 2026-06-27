@@ -11,7 +11,7 @@ import (
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -59,7 +59,7 @@ func NewServer(
 	internalMediaHandler MediaInternalRouter,
 	lifecycle LifecycleManager,
 ) *Server {
-	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, lifecycle, nil, nil)
+	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, lifecycle, nil, nil, nil, nil)
 }
 
 // NewServerWithHealth creates a new HTTP server with an optional
@@ -80,6 +80,13 @@ func NewServer(
 // must be caught by a unit-test cross-comparison; a follow-up PR
 // could promote the adapters to a more shareable location, but doing
 // so would require lifting the layering rule.
+// QDRANT-002 route-production fix (June 2026): outboxHandler and
+// mediasearchHandler are now constructor parameters rather than
+// post-construction setters. The previous order in cmd/server/main.go
+// called NewServerWithHealth (which invokes router.Setup()) BEFORE
+// server.SetOutboxHandler / server.SetMediasearchHandler, so the
+// gin engine was already built with nil handlers — the outbox + media
+// search routes were never registered in production.
 func NewServerWithHealth(
 	cfg *config.Config,
 	registry *Registry,
@@ -88,18 +95,19 @@ func NewServerWithHealth(
 	lifecycle LifecycleManager,
 	healthSvc interface{},
 	readyChecker *systemhealth.ReadyChecker,
+	outboxHandler InternalOutboxRouter,
+	mediasearchHandler InternalMediaSearchRouter,
 ) *Server {
 	if cfg != nil {
 		// PG-006.1 (June 2026): the inline serverSecurityAdapter was deleted
-		// — the canonical concrete is
-		// internal/api/middleware.TokenSecurityAdapter (re-located from
-		// pkg/middleware round-2; pkg/ is leaf-only and HTTP-middleware
-		// concrete adapters cannot legitimately live there). cfg.Security
+		// — the canonical concrete is pkg/middleware.TokenSecurityAdapter
+		// (a leaf struct reachable from internal/api, cmd/admin, and
+		// internal/app without crossing layering boundaries). cfg.Security
 		// is snapshotted into the canonical adapter literal here; the
 		// adapter is immutable per-token-string once constructed. Enable
 		// is the cfg.Security.EnableAuth passthrough (preserves the
 		// pre-PG-006.1 serverSecurityAdapter.EnableAuth() semantics).
-		authAdapter := &middleware.TokenSecurityAdapter{
+		authAdapter := &pkgmw.TokenSecurityAdapter{
 			Enable: cfg.Security.EnableAuth,
 			Admin:  cfg.Security.AdminToken,
 			Worker: cfg.Security.WorkerToken,
@@ -129,6 +137,17 @@ func NewServerWithHealth(
 		if readyChecker != nil {
 			router.SetReadyChecker(readyChecker)
 		}
+		if outboxHandler != nil {
+			router.SetOutboxHandler(outboxHandler)
+		}
+		if mediasearchHandler != nil {
+			router.SetMediasearchHandler(mediasearchHandler)
+		}
+		// QDRANT-002: Setup() MUST run after all handlers (including
+		// outbox + mediasearch) are wired so the gin engine registers
+		// their routes. The previous code wired them via post-construction
+		// setters which set fields on the Router struct but never
+		// re-registered routes on an already-built engine.
 		r := router.Setup()
 
 		return &Server{
@@ -161,6 +180,12 @@ func NewServerWithHealth(
 	if readyChecker != nil {
 		router.SetReadyChecker(readyChecker)
 	}
+	if outboxHandler != nil {
+		router.SetOutboxHandler(outboxHandler)
+	}
+	if mediasearchHandler != nil {
+		router.SetMediasearchHandler(mediasearchHandler)
+	}
 	r := router.Setup()
 
 	return &Server{
@@ -187,7 +212,8 @@ func (s *Server) SetLifecycle(lc LifecycleManager) {
 // Start starts the HTTP server. Background services are managed by the
 // LifecycleManager — this method only handles the HTTP lifecycle.
 func (s *Server) Start() error {
-	zap.L().Info("Starting HTTP server",
+	log := zap.L().Named("server")
+	log.Info("Starting HTTP server",
 		zap.String("addr", s.httpServer.Addr),
 	)
 
@@ -209,7 +235,7 @@ func (s *Server) Start() error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				zap.L().Error("panic in server listen goroutine", zap.Any("recover", r))
+				log.Error("panic in server listen goroutine", zap.Any("recover", r))
 			}
 			close(srvErr)
 		}()
@@ -224,7 +250,7 @@ func (s *Server) Start() error {
 		lcCancel()
 		return fmt.Errorf("server listen error: %w", err)
 	case <-rootCtx.Done():
-		zap.L().Info("Shutting down server...")
+		log.Info("Shutting down server...")
 	}
 
 	// Cancel lifecycle context (signals background goroutines to stop)
@@ -243,7 +269,7 @@ func (s *Server) Start() error {
 	defer shutdownCancel()
 
 	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
-		zap.L().Error("Server forced to shutdown", zap.Error(err))
+		log.Error("Server forced to shutdown", zap.Error(err))
 		return fmt.Errorf("server shutdown error: %w", err)
 	}
 
@@ -252,11 +278,11 @@ func (s *Server) Start() error {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stopCancel()
 		if err := s.lifecycle.Stop(stopCtx); err != nil {
-			zap.L().Error("lifecycle shutdown error", zap.Error(err))
+			log.Error("lifecycle shutdown error", zap.Error(err))
 		}
 	}
 
-	zap.L().Info("Server exited gracefully")
+	log.Info("Server exited gracefully")
 	return nil
 }
 
@@ -280,6 +306,12 @@ func (s *Server) SetInternalMediaHandler(h MediaInternalRouter) {
 // SetOutboxHandler wires the QDRANT-002 outbox monitoring handler onto
 // the WorkerAuth-protected /internal/v1/outbox/* group.
 // Delegates to Router.SetOutboxHandler.
+//
+// Deprecated (QDRANT-002 fix, June 2026): use the NewServerWithHealth
+// constructor to wire outboxHandler BEFORE Setup() runs. This setter
+// updates the Router struct field but the gin engine was already built
+// during construction — routes are NOT re-registered. Kept for test
+// compatibility only.
 func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
 	s.appRouter.SetOutboxHandler(h)
 }
@@ -287,6 +319,12 @@ func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
 // SetMediasearchHandler wires the QDRANT-004 mediasearch handler onto
 // the WorkerAuth-protected /internal/v1/media/search route.
 // Delegates to Router.SetMediasearchHandler.
+//
+// Deprecated (QDRANT-002 fix, June 2026): use the NewServerWithHealth
+// constructor to wire mediasearchHandler BEFORE Setup() runs. This
+// setter updates the Router struct field but the gin engine was already
+// built during construction — routes are NOT re-registered. Kept for
+// test compatibility only.
 func (s *Server) SetMediasearchHandler(h InternalMediaSearchRouter) {
 	s.appRouter.SetMediasearchHandler(h)
 }
@@ -299,15 +337,15 @@ func (s *Server) GetRouter() *gin.Engine {
 // ── PG-006 typed-port bridges (server-scoped) ────────────────────────────
 //
 // PG-006.1 (June 2026): the previous serverSecurityAdapter inline struct
-// was deleted. The canonical concrete is
-// internal/api/middleware.TokenSecurityAdapter (re-located from
-// pkg/middleware round-2). The cfg-wrapping trio that lived in
-// api/server.go + cmd/admin/gen_api_docs.go +
+// was deleted. The canonical concrete is pkg/middleware.TokenSecurityAdapter
+// (a leaf struct reachable from internal/api, cmd/admin, and internal/app
+// without crossing layering boundaries); the cfg-wrapping trio that
+// lived in api/server.go + cmd/admin/gen_api_docs.go +
 // internal/app/middleware_security_adapter.go is now collapsed into
 // construction-site snapshots. Only the rate-limit and feature-flags
 // inline adapters remain below (their canonical equivalents are NOT
-// yet tracked under internal/api/middleware; a separate consolidation
-// would promote them — out of scope for PG-006.1).
+// yet tracked under pkg/middleware; a separate consolidation would
+// promote them — out of scope for PG-006.1).
 
 // serverRateLimitAdapter mirrors internal/app/middleware_security_adapter.go's
 // middlewareRateLimitAdapter for the RateLimitPort surface (same nil-check

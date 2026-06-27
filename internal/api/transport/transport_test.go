@@ -304,8 +304,8 @@ func TestJSON_ZeroValueIn_HitsUseCase(t *testing.T) {
 // query parameters via a custom Binder[In]. The fake use case and gin
 // engine setup is reused; only the route/method/binder change.
 
-// errorEnvelope mirrors apiutil.BadRequest's wire shape (see
-// pkg/apiutil/apiutil.go::BadRequest) so Request tests can assert
+// errorEnvelope mirrors api.BadRequest's wire shape (see
+// internal/api/response.go::BadRequest) so Request tests can assert
 // against the parsed `Error` field instead of substring-matching the
 // JSON-escaped wire body. This decouples the assertion from JSON
 // string-escaping (e.g. embedded quotes in `limit="abc"`) and pins

@@ -1,0 +1,123 @@
+# docs/migrations/application-infrastructure-imports-allowlist.txt
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-file allowlist for Wave 19 PR4 (application → infrastructure) hard
+# gate. Mirrors the canonical shape of
+# docs/migrations/api-infrastructure-imports-allowlist.txt (Wave 14
+# precedent).
+#
+# HOW THIS FILE WORKS
+# ────────────────────
+# scripts/archcheck/main.go::checkApplicationToInfrastructure emits a
+# per-import edge list under Edges["application_to_infrastructure"] (one
+# Edge per import line, {src_file, import, type="platform", in_ports}).
+# The distinct src_file set from that edge list is compared (subtractSet)
+# against this allowlist. Any src_file present in actual imports but NOT
+# here is a regression; any allowlist entry that no longer matches an
+# actual is a stale grandfathered entry. Both directions fail the gate
+# (the gate is symmetric, like `checkAPIInfrastructureImports`).
+#
+# FORMAT
+# ──────
+# One repo-root-relative path per active line (forward-slash). Lines that
+# start with `#` are comments and ignored by `loadAllowlist`. Entries
+# are sorted + deduped + forward-slash normalized (matches
+# `filepath.ToSlash` in scripts/archcheck/main.go).
+#
+# POLICY
+# ──────
+# Adding a NEW entry REQUIRES operator review (no solo adds). Removing
+# an entry is safe — the gate will surface the still-present actual
+# import as a `new application_to_infrastructure import not in
+# allowlist: <file>` violation for action.
+#
+# CURRENT STATE — Wave 19 PR4 seed baseline (2026-06-26)
+# ─────────────────────────────────────────────────────────────────────────────
+# Baseline seeded from the canonical Go-side scan via `go run
+# ./scripts/archcheck` and the Edges["application_to_infrastructure"]
+# per-import graph. Distinct src_file set captured at seed time: see
+# the entries below.
+#
+# Operators remove entries as files get cleaned (mirrors the Wave 14
+# api-infrastructure pattern: each cleanup PR is a removal here, never
+# a re-add). The fix path for any file in this allowlist: lift the
+# concrete adapter behind a typed port declared in `<cap>/ports.go`
+# (AGENTS.md Pattern 0), replace the direct import with the port,
+# add the composition-root wiring in `internal/app/`.
+# ─────────────────────────────────────────────────────────────────────────────
+internal/application/assets/artifacts/converters.go
+internal/application/assets/artifacts/finalizer.go
+internal/application/assets/artifacts/service.go
+internal/application/assets/artifacts/source_resolver.go
+internal/application/assets/assetop/reconcile.go
+internal/application/assets/assettree/service.go
+internal/application/assets/catalogsync/service.go
+internal/application/assets/catalogsync/sync_jobs.go
+internal/application/assets/catalogsync/sync_persist.go
+internal/application/assets/catalogsync/sync_prune.go
+internal/application/assets/catalogsync/sync_recursive.go
+internal/application/assets/catalogsync/sync_targets.go
+internal/application/assets/deletion/deletion.go
+internal/application/assets/ingest/adapter_image.go
+internal/application/assets/ingest/adapter_voiceover.go
+internal/application/assets/ingest/drive.go
+internal/application/assets/ingest/image.go
+internal/application/assets/ingest/service.go
+internal/application/assets/lifecycle/service.go
+internal/application/assets/maintenance/service.go
+internal/application/assets/monitor/channel_monitor.go
+internal/application/assets/monitor/classifier.go
+internal/application/assets/monitor/process_video.go
+internal/application/assets/monitor/segment_finder.go
+internal/application/assets/providers/artlist/ports.go
+internal/application/assets/providers/artlist/run_orchestrator_stages.go
+internal/application/assets/providers/artlist/semantic_enricher.go
+internal/application/assets/providers/stock/stockpipeline/process.go
+internal/application/assets/providers/stock/stockpipeline/run_upload.go
+internal/application/assets/providers/stock/stockpipeline/service.go
+internal/application/assets/providers/stock/stockpipeline/util.go
+internal/application/assets/videomuscles/youtube_pipeline.go
+internal/application/books/service.go
+internal/application/channels/adapters.go
+internal/application/clips/bulk_tags.go
+internal/application/clips/conversions.go
+internal/application/images/fullimages/service.go
+internal/application/images/google_drive_upload.go
+internal/application/images/google_generate.go
+internal/application/images/google_vids_assets.go
+internal/application/images/ingest.go
+internal/application/images/ingest_direct.go
+internal/application/images/ingest_metadata.go
+internal/application/images/nvidia_animate.go
+internal/application/images/nvidia_drive.go
+internal/application/images/nvidia_remote.go
+internal/application/images/registry_adapter.go
+internal/application/images/service.go
+internal/application/jobs/assets/service.go
+internal/application/jobs/outbox/delivery.go
+internal/application/jobs/outbox/index_delete.go
+internal/application/jobs/outbox/indexing.go
+internal/application/jobs/outbox/metadata_export.go
+internal/application/jobs/outbox/provider_sync.go
+internal/application/jobs/outbox/registry.go
+internal/application/jobs/outbox/workflow_step_completed.go
+internal/application/jobs/outbox/workflow_step_failed.go
+internal/application/jobs/service.go
+internal/application/jobs/worker.go
+internal/application/lessons/generator.go
+internal/application/lessons/service.go
+internal/application/scripts/batch_service.go
+internal/application/scripts/cache_eviction_usecase.go
+internal/application/scripts/clip_source_builder.go
+internal/application/scripts/documents_usecase.go
+internal/application/scripts/engine.go
+internal/application/scripts/media_curator.go
+internal/application/scripts/metadata.go
+internal/application/scripts/postgen_usecase.go
+internal/application/scripts/repository_adapter.go
+internal/application/scripts/section_regen.go
+internal/application/voiceover/filename.go
+internal/application/voiceover/process.go
+internal/application/voiceover/registry_adapter.go
+internal/application/voiceover/service.go
+internal/application/voiceover/sync/service.go
+internal/application/youtube/callbacks.go

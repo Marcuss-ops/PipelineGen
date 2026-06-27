@@ -218,7 +218,7 @@ func TestSchemaValidate_BadPayloadIndexType(t *testing.T) {
 			{Channel: "text", Dimensions: 768, Distance: "Cosine"},
 		},
 		PayloadIndexes: []PayloadIndexSpec{
-			{FieldName: "lifecycle_state", FieldType: "binary"},
+			{FieldName: "status", FieldType: "binary"},
 		},
 	}
 	err := s.Validate()
@@ -241,7 +241,7 @@ func TestCompareSchema_FullyCompatible(t *testing.T) {
 		},
 		PayloadIndexes: []PayloadIndexSpec{
 			{FieldName: "source", FieldType: "keyword"},
-			{FieldName: "lifecycle_state", FieldType: "keyword"},
+			{FieldName: "status", FieldType: "keyword"},
 		},
 	}
 
@@ -252,7 +252,7 @@ func TestCompareSchema_FullyCompatible(t *testing.T) {
 		},
 		PayloadIndexes: []PayloadIndexInfo{
 			{FieldName: "source", FieldType: "keyword"},
-			{FieldName: "lifecycle_state", FieldType: "keyword"},
+			{FieldName: "status", FieldType: "keyword"},
 		},
 	}
 
@@ -378,7 +378,7 @@ func TestCompareSchema_MissingPayloadIndex(t *testing.T) {
 		},
 		PayloadIndexes: []PayloadIndexSpec{
 			{FieldName: "source", FieldType: "keyword"},
-			{FieldName: "lifecycle_state", FieldType: "keyword"},
+			{FieldName: "status", FieldType: "keyword"},
 		},
 	}
 
@@ -393,7 +393,7 @@ func TestCompareSchema_MissingPayloadIndex(t *testing.T) {
 
 	diff := CompareSchema(expected, actual)
 	assert.False(t, diff.Compatible)
-	assert.Contains(t, diff.MissingIndexes, "lifecycle_state")
+	assert.Contains(t, diff.MissingIndexes, "status")
 }
 
 func TestCompareSchema_NoVectorConfigs(t *testing.T) {

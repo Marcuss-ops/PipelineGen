@@ -40,11 +40,6 @@ func (b *Broker) Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) er
 		return nil
 	}
 	_, err := b.workers.Heartbeat(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.SessionTTL)
-	if err == nil {
-		// Update the in-memory heartbeat tracker so the health-check
-		// RunnerProbe can verify the broker loop is alive.
-		appjobs.SetBrokerAlive()
-	}
 	return err
 }
 
