@@ -132,6 +132,11 @@ type ProcessBundle struct {
 	// historical Qdrant points. Constructed alongside the client
 	// when Qdrant is enabled; nil-safe when Qdrant is disabled.
 	LocatorCleaner *qdrant.LocatorCleaner
+
+	// QdrantSearcher is the canonical ANN searcher. Exposed so
+	// wire_script.go can construct ClipSearchPort adapters without
+	// importing qdrant infrastructure directly.
+	QdrantSearcher *qdrant.Searcher
 }
 
 // AIBundle owns script generation, engine, and memory.

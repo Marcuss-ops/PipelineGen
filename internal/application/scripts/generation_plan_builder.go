@@ -113,7 +113,7 @@ func modeForSource(st scriptpkg.SourceType) string {
 	switch st {
 	case scriptpkg.SourceText:
 		return "text"
-	case scriptpkg.SourceClips:
+	case scriptpkg.SourceClips, scriptpkg.SourceCurate:
 		return "clip_to_script"
 	case scriptpkg.SourceCatalog:
 		return "clip_to_script"

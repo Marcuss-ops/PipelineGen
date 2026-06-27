@@ -24,6 +24,11 @@ const (
 	// SourceSearch means the caller wants a full semantic search
 	// (Qdrant + reranker) for matching assets.
 	SourceSearch SourceType = "search"
+
+	// SourceCurate means the caller wants the curation pipeline:
+	// union of semantic search + HintClipIDs + ClipSourceBuilder.
+	// Produced by MediaCurator.Curate → CurateSourceResolver.
+	SourceCurate SourceType = "curate"
 )
 
 // SourceSpec declares where script-generation input comes from.
@@ -53,6 +58,17 @@ type SourceSpec struct {
 	TranscriptPolicy string `json:"transcript_policy,omitempty"`
 	OrderingStrategy string `json:"ordering_strategy,omitempty"`
 	ForceRefresh     bool   `json:"force_refresh,omitempty"`
+
+	// ── Curation source (SourceCurate) ────────────────────────────────
+	// Search enables the semantic search leg (Qdrant via ClipSearchPort).
+	Search bool `json:"search,omitempty"`
+	// AllowTextOnly permits the legacy text-only fallback when no
+	// clips resolve from either search or HintClipIDs.
+	AllowTextOnly bool `json:"allow_text_only,omitempty"`
+	// SourceFilter restricts semantic search to a specific source.
+	SourceFilter string `json:"source_filter,omitempty"`
+	// MediaTypeFilter restricts semantic search to a specific media type.
+	MediaTypeFilter string `json:"media_type_filter,omitempty"`
 }
 
 // IsText returns true when the source type is text.
@@ -66,6 +82,9 @@ func (s *SourceSpec) IsCatalog() bool { return s.Type == SourceCatalog }
 
 // IsSearch returns true when the source type is search.
 func (s *SourceSpec) IsSearch() bool { return s.Type == SourceSearch }
+
+// IsCurate returns true when the source type is curate.
+func (s *SourceSpec) IsCurate() bool { return s.Type == SourceCurate }
 
 // HasClipIDs returns true when explicit clip IDs are present,
 // regardless of source type.
