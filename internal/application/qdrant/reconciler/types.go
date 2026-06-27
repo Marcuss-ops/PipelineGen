@@ -23,19 +23,19 @@ import "time"
 // qdrantPoint) can fall into. Priority order (highest first; used by
 // classifyPair when multiple conditions apply):
 //
-//	1. Missing              — in SQLite, not in Qdrant
-//	2. Orphan               — in Qdrant, not in SQLite
-//	3. NonCanonicalPointID  — Qdrant point ID does NOT match the
-//	                           AssetIDToQdrantPointID(asset_id) contract
-//	4. PayloadIncomplete    — missing required payload key
-//	5. VersionStale         — any channel embedding_version_<ch>
-//	                           mismatches the manifest ModelVersion
-//	6. LifecycleMismatch    — sqlite lifecycle_state != payload
-//	7. WorkspaceMismatch    — sqlite workspace_id != payload
-//	8. LifecycleKeyLegacy   — payload uses retired "status" key
-//	   (instead of canonical "lifecycle_state"; QDRANT-004 SSOT)
-//	9. LocatorLegacy        — payload carries "drive_link" /
-//	                           "local_path" (retired by QDRANT-001)
+//  1. Missing              — in SQLite, not in Qdrant
+//  2. Orphan               — in Qdrant, not in SQLite
+//  3. NonCanonicalPointID  — Qdrant point ID does NOT match the
+//     AssetIDToQdrantPointID(asset_id) contract
+//  4. PayloadIncomplete    — missing required payload key
+//  5. VersionStale         — any channel embedding_version_<ch>
+//     mismatches the manifest ModelVersion
+//  6. LifecycleMismatch    — sqlite lifecycle_state != payload
+//  7. WorkspaceMismatch    — sqlite workspace_id != payload
+//  8. LifecycleKeyLegacy   — payload uses retired "status" key
+//     (instead of canonical "lifecycle_state"; QDRANT-004 SSOT)
+//  9. LocatorLegacy        — payload carries "drive_link" /
+//     "local_path" (retired by QDRANT-001)
 type ClassificationKind string
 
 const (
@@ -97,27 +97,34 @@ type ReconcileOptions struct {
 // LocatorKeys with EXACTLY the keys present in the payload —
 // service-layer metric accounting uses LocatorKeys to bump the
 // canonical payload_legacy_cleaned_total{legacy_key=...} series so
-// the counter reflects "keys actually removed" rather than "points
-// touched".
+// the counter reflects "keys actually removed" rather than "points// touched".
 type Classification struct {
-	Kind          ClassificationKind `json:"kind"`
-	AssetID       string              `json:"asset_id"`
-	QdrantPointID string              `json:"qdrant_point_id,omitempty"`
-	Channel       string              `json:"channel,omitempty"`
-	Details       string              `json:"details"`
-	LocatorKeys   []string            `json:"locator_keys,omitempty"`
+	Kind    ClassificationKind `json:"kind"`
+	AssetID string             `json:"asset_id"`
+	// ContentHash is the media_assets content_hash (extracted from
+	// metadata_json.$.content_hash by ListAssetsForReconcile) at
+	// scan time. PR 10+11: this hash is the deterministic key
+	// component for the outbox event_key, the supersede-gate
+	// fingerprint, and the operator audit trail. Empty for Orphan
+	// (no SQLite row holds the hash) and for missing-asset_id entries
+	// (no qdrant row to point at).
+	ContentHash   string   `json:"content_hash,omitempty"`
+	QdrantPointID string   `json:"qdrant_point_id,omitempty"`
+	Channel       string   `json:"channel,omitempty"`
+	Details       string   `json:"details"`
+	LocatorKeys   []string `json:"locator_keys,omitempty"`
 }
 
 // ReconcileReport is the machine-readable output of a reconcile run.
 // The JSON form is consumed by ops dashboards / alert routing.
 type ReconcileReport struct {
-	StartedAt     string                 `json:"started_at"`
-	CompletedAt   string                 `json:"completed_at"`
-	DurationMs    int64                  `json:"duration_ms"`
-	DryRun        bool                   `json:"dry_run"`
-	Collection    string                 `json:"collection"`
-	SchemaVersion string                 `json:"schema_version"`
-	Applied       bool                   `json:"applied"`
+	StartedAt     string `json:"started_at"`
+	CompletedAt   string `json:"completed_at"`
+	DurationMs    int64  `json:"duration_ms"`
+	DryRun        bool   `json:"dry_run"`
+	Collection    string `json:"collection"`
+	SchemaVersion string `json:"schema_version"`
+	Applied       bool   `json:"applied"`
 
 	// Counts mirrors len(Classifications[*]); the map is the
 	// machine-friendly rollup and is authoritative even when the
@@ -152,17 +159,40 @@ type ReconcileReport struct {
 }
 
 // ScannedTotals records scan coverage.
+//
+// PR 10 (June 2026) — fail-closed gates: complete_scan is the single
+// boolean that tells operators whether the scan produced actionable
+// data. When false, classifications + counts are unreliable and apply
+// MUST be aborted (Service.Reconcile returns a non-nil error AND sets
+// report.Applied=false in that case). The individual scroll_* flags
+// decompose the failure cause; complete_scan is the rolled-up gate.
 type ScannedTotals struct {
 	SQLiteAssets int `json:"sqlite_assets"`
 	QdrantPoints int `json:"qdrant_points"`
 	Pairs        int `json:"pairs"`
 	// ScrollTruncated is true when the scroll iteration safety cap was
-	// hit (maxPages=400 inside service.scrollAll). When true,
-	// Classification results may under-count Missing (sqlite rows
-	// whose Qdrant counterpart lives past the safety cap) and
-	// Counts should NOT be trusted operationally — alerts SHOULD be
-	// ignored until a clean re-run is performed.
+	// hit (maxPages=400 inside service.scrollAll). Set by scrollAll as
+	// a hard gate failure (PR 10).
 	ScrollTruncated bool `json:"scroll_truncated"`
+	// TrailingNextOffset is true when the scroll loop exhausted the
+	// batched pages but NextOffset was still non-empty (Qdrant indicated
+	// more pages but the cursor advance was cut). Set by scrollAll as
+	// a hard gate failure (PR 10).
+	TrailingNextOffset bool `json:"trailing_next_offset"`
+	// PointsMissingAssetID is the count of Qdrant points scrolled
+	// whose payload asset_id was empty/missing. Non-zero blocks apply
+	// when SQLite expected > 0 (PR 10).
+	PointsMissingAssetID int `json:"points_missing_asset_id"`
+	// ScrollPageErrors is the count of scroll pages that returned an
+	// error. Any non-zero value blocks apply (PR 10).
+	ScrollPageErrors int `json:"scroll_page_errors"`
+	// CompleteScan is the rolled-up gate: true ONLY when every
+	// PR-10 fail-closed gate passed (no scroll page errors, no cap
+	// hit, trailing NextOffset empty, zero missing-asset_id points
+	// when SQLite expected > 0, zero QdrantPoints when SQLite
+	// expected > 0). Operators SHOULD ignore counts / classifications
+	// when false and rerun reconcile.
+	CompleteScan bool `json:"complete_scan"`
 }
 
 // RepairSummary records the repair dispatch counts.

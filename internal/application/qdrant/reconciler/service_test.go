@@ -2,6 +2,7 @@ package reconciler
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -47,17 +48,25 @@ func (s *stubSQLite) ListForReconcile(ctx context.Context, includeLifecycleState
 }
 
 type stubOutbox struct {
-	reindex  []string
+	reindex  []stubReindexCall
 	deletes  []string
 	failNext bool
 }
 
-func (s *stubOutbox) EnqueueReindex(ctx context.Context, assetID string) error {
+// stubReindexCall captures one EnqueueReindex call so PR-10 +
+// PR-11 tests can verify the content_hash fingerprint is propagated
+// through the dispatch path.
+type stubReindexCall struct {
+	assetID     string
+	contentHash string
+}
+
+func (s *stubOutbox) EnqueueReindex(ctx context.Context, assetID, contentHash string) error {
 	if s.failNext {
 		s.failNext = false
 		return os.ErrInvalid
 	}
-	s.reindex = append(s.reindex, assetID)
+	s.reindex = append(s.reindex, stubReindexCall{assetID: assetID, contentHash: contentHash})
 	return nil
 }
 
@@ -108,7 +117,7 @@ type stubLegacyCall struct {
 }
 
 type stubRunCompleteCall struct {
-	mode           string
+	mode            string
 	durationSeconds float64
 }
 
@@ -259,23 +268,23 @@ func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 		&stubQdrant{pointsByID: map[string]pointWithID{
 			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
 				"asset_id": "a1", "name": "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE",
+				"lifecycle_state":        "ACTIVE",
 				"embedding_version_text": "2026-06-16-v1",
 			}},
 			"stale": {ID: "pt-stale", Payload: map[string]interface{}{
 				"asset_id": "stale", "name": "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE",
+				"lifecycle_state":        "ACTIVE",
 				"embedding_version_text": "v0",
 			}},
 			"orphan": {ID: "pt-orphan", Payload: map[string]interface{}{"asset_id": "orphan"}},
 			"legacy_status": {ID: "pt-legacy_status", Payload: map[string]interface{}{
 				"asset_id": "legacy_status", "name": "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE", "status": "ACTIVE",
+				"lifecycle_state": "ACTIVE", "status": "ACTIVE",
 				"embedding_version_text": "2026-06-16-v1",
 			}},
 			"legacy_drive": {ID: "pt-legacy_drive", Payload: map[string]interface{}{
 				"asset_id": "legacy_drive", "name": "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE",
+				"lifecycle_state":        "ACTIVE",
 				"drive_link":             "https://drive.example/x",
 				"local_path":             "/local/dump/x.mp4",
 				"embedding_version_text": "2026-06-16-v1",
@@ -332,8 +341,8 @@ func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 		t.Fatalf("expected 3 RecordDispatch calls (reindex, delete, payload_strip), got %d", len(mtr.dispatches))
 	}
 	wantDispatches := map[string]int{
-		"reindex":      2,
-		"delete":       1,
+		"reindex":       2,
+		"delete":        1,
 		"payload_strip": 2,
 	}
 	gotDispatches := map[string]int{}
@@ -349,9 +358,9 @@ func TestReconcile_ApplyDispatchesPerKind(t *testing.T) {
 		t.Fatalf("expected 3 RecordLegacyKeyStripped calls (status+drive_link+local_path), got %d", len(mtr.legacyStrips))
 	}
 	wantStripped := map[string]int{
-		"status":      1,
-		"drive_link":  1,
-		"local_path":  1,
+		"status":     1,
+		"drive_link": 1,
+		"local_path": 1,
 	}
 	gotStripped := map[string]int{}
 	for _, s := range mtr.legacyStrips {
@@ -386,14 +395,21 @@ func TestReconcile_DispatchFailureCapturedInReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("non-fatal dispatch failure should NOT abort reconcile; got error %v", err)
 	}
-	if !report.Applied {
-		t.Fatalf("Apply=true even on dispatch failure (partial repair is recorded)")
-	}
-	if len(report.Errors) == 0 {
-		t.Fatalf("dispatch failure must surface in report.Errors")
+	// PR 10: Applied = true ONLY when at least one repair kind
+	// executed successfully. A single failed dispatch with zero
+	// successful repairs yields Applied=false (this is the canonical
+	// "you ran apply but nothing actually got fixed" signal).
+	if report.Applied {
+		t.Fatalf("Apply mode with zero successful repairs must set Applied=false (PR 10); the only repair was the failing enqueue")
 	}
 	if report.RepairSummary.ReindexEnqueued != 0 {
 		t.Fatalf("failed enqueue should NOT count; got %d", report.RepairSummary.ReindexEnqueued)
+	}
+	if len(outbox.reindex) != 0 {
+		t.Fatalf("failed enqueue must not be appended to dispatch log; got %+v", outbox.reindex)
+	}
+	if len(report.Errors) == 0 {
+		t.Fatalf("dispatch failure must surface in report.Errors")
 	}
 	// QDRANT-005C: dispatch failure is reflected in errors metric.
 	if len(mtr.errors) != 1 || mtr.errors[0] == 0 {
@@ -533,8 +549,8 @@ func TestVersionMismatchCounts_PureHelper(t *testing.T) {
 		{Kind: KindVersionStale, Channel: "text"},
 		{Kind: KindVersionStale, Channel: "text"},
 		{Kind: KindVersionStale, Channel: "transcript"},
-		{Kind: KindMissing},                       // should be ignored
-		{Kind: KindVersionStale, Channel: ""},     // empty channel ignored
+		{Kind: KindMissing},                        // should be ignored
+		{Kind: KindVersionStale, Channel: ""},      // empty channel ignored
 		{Kind: KindLifecycleMismatch, Channel: ""}, // wrong kind ignored
 	}
 	got := versionMismatchCounts(pairs)
@@ -564,29 +580,29 @@ func TestReconcile_VersionMismatchPerChannel_Emitted(t *testing.T) {
 		&stubQdrant{pointsByID: map[string]pointWithID{
 			// Three version-stale pairs across two channels.
 			"stale_text_a": {ID: "pt-stale_text_a", Payload: map[string]interface{}{
-				"asset_id":              "stale_text_a",
-				"name":                  "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE",
+				"asset_id": "stale_text_a",
+				"name":     "x", "source": "youtube",
+				"lifecycle_state":        "ACTIVE",
 				"embedding_version_text": "v0",
 			}},
 			"stale_text_b": {ID: "pt-stale_text_b", Payload: map[string]interface{}{
-				"asset_id":              "stale_text_b",
-				"name":                  "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE",
+				"asset_id": "stale_text_b",
+				"name":     "x", "source": "youtube",
+				"lifecycle_state":        "ACTIVE",
 				"embedding_version_text": "v0",
 			}},
 			"stale_trans": {ID: "pt-stale_trans", Payload: map[string]interface{}{
-				"asset_id":                  "stale_trans",
-				"name":                      "x", "source": "youtube",
-				"lifecycle_state":           "ACTIVE",
-				"embedding_version_text":     "2026-06-16-v1",
+				"asset_id": "stale_trans",
+				"name":     "x", "source": "youtube",
+				"lifecycle_state":              "ACTIVE",
+				"embedding_version_text":       "2026-06-16-v1",
 				"embedding_version_transcript": "v0",
 			}},
 			"clean": {ID: "pt-clean", Payload: map[string]interface{}{
-				"asset_id":                  "clean",
-				"name":                      "x", "source": "youtube",
-				"lifecycle_state":           "ACTIVE",
-				"embedding_version_text":     "2026-06-16-v1",
+				"asset_id": "clean",
+				"name":     "x", "source": "youtube",
+				"lifecycle_state":              "ACTIVE",
+				"embedding_version_text":       "2026-06-16-v1",
 				"embedding_version_transcript": "2026-06-16-v1",
 			}},
 		}},
@@ -624,13 +640,13 @@ func TestReconcile_DryRunSuppressesDispatchAndLegacyMetrics(t *testing.T) {
 		&stubQdrant{pointsByID: map[string]pointWithID{
 			"stale": {ID: "pt-stale", Payload: map[string]interface{}{
 				"asset_id": "stale", "name": "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE",
+				"lifecycle_state":        "ACTIVE",
 				"embedding_version_text": "v0",
 			}},
 			"orphan": {ID: "pt-orphan", Payload: map[string]interface{}{"asset_id": "orphan"}},
 			"legacy_status": {ID: "pt-legacy_status", Payload: map[string]interface{}{
 				"asset_id": "legacy_status", "name": "x", "source": "youtube",
-				"lifecycle_state":       "ACTIVE", "status": "ACTIVE",
+				"lifecycle_state": "ACTIVE", "status": "ACTIVE",
 				"embedding_version_text": "2026-06-16-v1",
 			}},
 		}},
@@ -765,10 +781,10 @@ func TestReconcile_LocatorLegacy_AsymmetricKeyCounters(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			payload := map[string]interface{}{
-				"asset_id":              tc.assetID,
-				"name":                  "x",
-				"source":                "youtube",
-				"lifecycle_state":       "ACTIVE",
+				"asset_id":               tc.assetID,
+				"name":                   "x",
+				"source":                 "youtube",
+				"lifecycle_state":        "ACTIVE",
 				"embedding_version_text": "2026-06-16-v1",
 			}
 			if tc.driveLink != "" {
@@ -844,6 +860,280 @@ func TestNewServiceFromDeps_PanicsOnNilCore(t *testing.T) {
 				Schema: defaultSchema(),
 				Qdrant: &stubQdrant{},
 				SQLite: &stubSQLite{},
+			}
+			tc.mutator(&deps)
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected panic for %s, got none", tc.name)
+				}
+			}()
+			_ = NewServiceFromDeps(deps)
+		})
+	}
+}
+
+// ── PR 10 fail-closed scroll gates + panic guard + contentHash propagation ──
+//
+// PR 10 (June 2026) hardens the reconciler scroll loop: each gate fires
+// a non-nil error from Service.scrollAll → Reconcile returns the report
+// + a wrapped fatal error in BOTH DryRun and Apply modes. Partial data
+// is intentionally discarded so a downstream operator never sees a
+// misleading "all clear" through zero-actionable pairs.
+
+// pagingQdrant is a multi-page stub with error injection. Used by the
+// fail-closed gate tests below. When nextOffset is non-empty AND errAt=0
+// the stub keeps yielding a single offset forever (maxPages cap test).
+// When errAt > 0 the stub returns err at the (errAt-1)th 0-indexed call.
+type pagingQdrant struct {
+	assetID    string
+	payload    map[string]interface{}
+	nextOffset string
+	errAt      int
+	err        error
+	calls      int
+}
+
+func (p *pagingQdrant) ScrollPoints(ctx context.Context, _ string, _ string, _ int) (Points, error) {
+	if p.errAt > 0 && p.calls == p.errAt-1 {
+		p.calls++
+		return Points{}, p.err
+	}
+	p.calls++
+	return Points{
+		Items: []PointSnapshot{{
+			ID:      "pt-" + p.assetID,
+			Payload: p.payload,
+		}},
+		NextOffset: p.nextOffset,
+	}, nil
+}
+
+func TestReconcile_ScrollErrorOnSubsequentPage_BlocksApply(t *testing.T) {
+	// Gate (a): any scroll page error after the first MUST be fatal.
+	// PR 10 closes the QDRANT-005B regression that returned partial
+	// data with nil err after the first page failed.
+	outbox := &stubOutbox{}
+	payloadStub := &stubPayload{}
+	mtr := &stubMetrics{}
+	pg := &pagingQdrant{
+		assetID:    "a1",
+		payload:    map[string]interface{}{"asset_id": "a1", "name": "x", "source": "youtube", "lifecycle_state": "ACTIVE"},
+		nextOffset: "next-page-not-consumed",
+		errAt:      2,
+		err:        fmt.Errorf("synthetic scroll page 2 error"),
+	}
+	svc := fixtureService(t,
+		defaultSchema(),
+		pg,
+		&stubSQLite{rows: []AssetSnapshot{{ID: "a1", LifecycleState: "ACTIVE", ContentHash: "h-a1"}}},
+		mtr,
+		withOutbox(outbox),
+		withPayload(payloadStub),
+		withPointIDFor(canonicalPointID),
+		withLog(zap.NewNop()),
+	)
+	report, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
+	if err == nil {
+		t.Fatalf("scroll error on page 2 must be fatal; got nil err")
+	}
+	if report.ScannedTotals.CompleteScan {
+		t.Fatalf("CompleteScan must be false when a scroll gate fails")
+	}
+	if report.Applied {
+		t.Fatalf("Apply must NOT execute when a scroll gate fails (PR 10 blocking invariant)")
+	}
+	if len(outbox.reindex) != 0 || len(outbox.deletes) != 0 {
+		t.Fatalf("no outbox dispatch expected; got reindex=%+v deletes=%v", outbox.reindex, outbox.deletes)
+	}
+	if len(payloadStub.calls) != 0 {
+		t.Fatalf("no payload mutation expected; got %d calls", len(payloadStub.calls))
+	}
+}
+
+func TestReconcile_ScrollCap_BlocksApply(t *testing.T) {
+	// Gate (b): maxPages cap hit when NextOffset is non-empty after
+	// 400 pages. The stub stays on a single point with a non-empty
+	// NextOffset forever; the reconciler's safety cap fires.
+	outbox := &stubOutbox{}
+	payloadStub := &stubPayload{}
+	mtr := &stubMetrics{}
+	pg := &pagingQdrant{
+		assetID:    "a1",
+		payload:    map[string]interface{}{"asset_id": "a1", "name": "x", "source": "youtube", "lifecycle_state": "ACTIVE"},
+		nextOffset: "never-empty",
+	}
+	svc := fixtureService(t,
+		defaultSchema(),
+		pg,
+		&stubSQLite{rows: []AssetSnapshot{{ID: "a1", LifecycleState: "ACTIVE", ContentHash: "h-a1"}}},
+		mtr,
+		withOutbox(outbox),
+		withPayload(payloadStub),
+		withPointIDFor(canonicalPointID),
+		withLog(zap.NewNop()),
+	)
+	_, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
+	if err == nil {
+		t.Fatalf("scroll cap hit must be fatal; got nil err")
+	}
+	if pg.calls != 400 {
+		t.Fatalf("expected exactly 400 scroll calls (maxPages); got %d", pg.calls)
+	}
+	if len(outbox.reindex) != 0 {
+		t.Fatalf("cap-hit scroll error must not dispatch; got %+v", outbox.reindex)
+	}
+}
+
+func TestReconcile_MissingAssetID_BlocksApply(t *testing.T) {
+	// Gate (e): scrolled points whose payload asset_id is empty/missing
+	// are HARD gate failures when SQLite expected > 0. We can't trust
+	// the missing-asset_id count — surfacing zero Orphan IDs would
+	// falsely reassure the operator.
+	outbox := &stubOutbox{}
+	payloadStub := &stubPayload{}
+	mtr := &stubMetrics{}
+	svc := fixtureService(t,
+		defaultSchema(),
+		&stubQdrant{pointsByID: map[string]pointWithID{
+			"missing-id-point": {ID: "pt-x", Payload: map[string]interface{}{"name": "y", "source": "youtube"}}, // asset_id MISSING
+		}},
+		&stubSQLite{rows: []AssetSnapshot{{ID: "expected-1", LifecycleState: "ACTIVE", ContentHash: "h-e1"}}}, // SQLite = 1
+		mtr,
+		withOutbox(outbox),
+		withPayload(payloadStub),
+		withPointIDFor(canonicalPointID),
+		withLog(zap.NewNop()),
+	)
+	_, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
+	if err == nil {
+		t.Fatalf("missing asset_id in payload (with expected>0) must be fatal (gate e)")
+	}
+	if len(outbox.reindex) != 0 {
+		t.Fatalf("no dispatch expected on gate e; got %+v", outbox.reindex)
+	}
+}
+
+func TestReconcile_AppliedFalseOnZeroRepairsInApply(t *testing.T) {
+	// Apply-mode Blocking invariant: Applied=true ONLY when at least
+	// one repair kind executed successfully. A clean re-run with zero
+	// actionable pairs (no missing, no orphan, no patches) is a
+	// no-op for apply — report.Applied must stay false so the operator
+	// knows nothing actually got fixed.
+	outbox := &stubOutbox{}
+	payloadStub := &stubPayload{}
+	mtr := &stubMetrics{}
+	svc := fixtureService(t,
+		defaultSchema(),
+		&stubQdrant{pointsByID: map[string]pointWithID{
+			"a1": {ID: "pt-a1", Payload: map[string]interface{}{
+				"asset_id": "a1", "name": "x", "source": "youtube",
+				"lifecycle_state": "ACTIVE",
+			}},
+		}},
+		&stubSQLite{rows: []AssetSnapshot{{ID: "a1", LifecycleState: "ACTIVE", ContentHash: "h-a1"}}},
+		mtr,
+		withOutbox(outbox),
+		withPayload(payloadStub),
+		withPointIDFor(canonicalPointID),
+		withLog(zap.NewNop()),
+	)
+	report, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.Applied {
+		t.Fatalf("Apply mode with zero actionable repairs must set Applied=false (PR 10)")
+	}
+	if len(outbox.reindex) != 0 || len(outbox.deletes) != 0 {
+		t.Fatalf("no dispatch expected; got reindex=%v deletes=%v", outbox.reindex, outbox.deletes)
+	}
+	if len(payloadStub.calls) != 0 {
+		t.Fatalf("no payload mutation expected; got %d", len(payloadStub.calls))
+	}
+	if len(mtr.dispatches) != 0 {
+		t.Fatalf("no dispatch metrics expected; got %+v", mtr.dispatches)
+	}
+	if !report.ScannedTotals.CompleteScan {
+		t.Fatalf("CompleteScan must be true when scan completed cleanly")
+	}
+}
+
+func TestReconcile_Apply_PropagatesContentHashToOutbox(t *testing.T) {
+	// PR 10 + PR 11 seam: the scanner-side content_hash rides on
+	// Classification.ContentHash into applyRepair → outbox.EnqueueReindex.
+	// PR 11 then folds it into the deterministic event_key
+	// (assetID:targetSchema:contentHash). This test locks the
+	// propagation at the dispatcher boundary.
+	outbox := &stubOutbox{}
+	payloadStub := &stubPayload{}
+	mtr := &stubMetrics{}
+	svc := fixtureService(t,
+		defaultSchema(),
+		&stubQdrant{pointsByID: map[string]pointWithID{}},
+		&stubSQLite{rows: []AssetSnapshot{
+			{ID: "missing-1", LifecycleState: "ACTIVE", ContentHash: "h-missing-1"},
+			{ID: "missing-2", LifecycleState: "ACTIVE", ContentHash: "h-missing-2"},
+		}},
+		mtr,
+		withOutbox(outbox),
+		withPayload(payloadStub),
+		withPointIDFor(canonicalPointID),
+		withLog(zap.NewNop()),
+	)
+	report, err := svc.Reconcile(context.Background(), ReconcileOptions{Collection: "coll", DryRun: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(outbox.reindex) != 2 {
+		t.Fatalf("expected 2 reindex calls; got %+v", outbox.reindex)
+	}
+	want := map[string]string{
+		"missing-1": "h-missing-1",
+		"missing-2": "h-missing-2",
+	}
+	for _, call := range outbox.reindex {
+		expected, ok := want[call.assetID]
+		if !ok {
+			t.Fatalf("unexpected reindex call: %+v", call)
+		}
+		if call.contentHash != expected {
+			t.Fatalf("contentHash mismatch for %q: got=%q want=%q", call.assetID, call.contentHash, expected)
+		}
+	}
+	if !report.Applied {
+		t.Fatalf("Applied=true expected with 2 successful repairs; got false")
+	}
+}
+
+func TestReconcile_NewServiceFromDeps_PanicsOnNilOutboxOrPayload(t *testing.T) {
+	// PR 10: nil Outbox / nil Payload / BOTH nil panic. The silent
+	// noop fallback that masked production half-wiring is gone.
+	cases := []struct {
+		name    string
+		mutator func(*ServiceDeps)
+	}{
+		{
+			name:    "nil Outbox",
+			mutator: func(d *ServiceDeps) { d.Outbox = nil },
+		},
+		{
+			name:    "nil Payload",
+			mutator: func(d *ServiceDeps) { d.Payload = nil },
+		},
+		{
+			name:    "nil Outbox AND nil Payload",
+			mutator: func(d *ServiceDeps) { d.Outbox = nil; d.Payload = nil },
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			deps := ServiceDeps{
+				Schema:  defaultSchema(),
+				Qdrant:  &stubQdrant{},
+				SQLite:  &stubSQLite{},
+				Outbox:  &stubOutbox{},
+				Payload: &stubPayload{},
 			}
 			tc.mutator(&deps)
 			defer func() {
