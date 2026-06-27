@@ -85,7 +85,7 @@ Two facts anchor the decision:
    `internal/infrastructure/database/sqlite/jobs/retention.go:56`,
    `internal/infrastructure/database/sqlite/jobs/scanner.go:15`,
    `internal/application/jobs/notifier.go:7`,
-   `internal/infrastructure/database/sqlite/jobs/notifier.go:28`),
+   `internal/infrastructure/database/sqlite/jobs/queue_notifier.go:51`),
    but `*pgbroker.Store` does **not** exist on `main` HEAD as of
    2026-06-27. The composition-root seam in
    `internal/app/module_media.go:448` (`Repo *sqljobs.SQLiteStore`) is the
@@ -513,7 +513,7 @@ Files changed:
 | 3 | `internal/infrastructure/observability/metrics.go` | `JobClaimDurationSeconds` histogram registered via `promauto.NewHistogram` with HELP/TYPE + buckets `[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]` — the 0.1 bucket is the explicit 100 ms trigger-condition §1 boundary. ALWAYS-ON (NOT gated behind `SplitDBEnabled`). |
 | 4 | `internal/app/databases_helpers.go` | `databases.jobs *storage.SQLiteDB` field; `initDatabases` opens it iff `cfg.Jobs.SplitDBEnabled`; `Close()` orders jobs-before-set; `runAllMigrations` runs `migrations/sqlite_jobs/` iff jobs is non-nil; `jobsDBPathFromPrimary` derives sibling path when `JobsDBPath` empty. |
 | 5 | `internal/app/composition.go` | `NewComposition` picks `jobsDB := dbs.main` default with `if dbs.jobs != nil { jobsDB = dbs.jobs }` override. `BuildJobsBundle` signature unchanged. |
-| 6 | `internal/infrastructure/database/sqlite/jobs/repository_claims.go` | **DEFERRED**. The working tree has a pre-existing inconsistency between `repository.go` (post-PR-Polling notifier design, no `claimMu` field) and `repository_claims.go` (still references `r.claimMu` + the `StartJob` type from `repository_commands.go`, which is not present). Restoring the symbol surface is a separate PR (call it PR-PrePRPolling-Sync or treat as part of an upcoming PR-Polling follow-up). Once `repository_claims.go` is consistent with `repository.go`, the `ClaimDuration` observation edit lands as a tab-complete 2-line change. |
+| 6 | `internal/infrastructure/database/sqlite/jobs/repository_claims.go` | **DONE** — landed in PR-Queue-Split-claimMu-cleanup. Removed the duplicate `claimMu` fields from `repository.go` (both declarations were stale, copy-paste drift from a prior refactor). Removed the `r.claimMu.Lock()` / `defer Unlock()` from `ClaimNext`. The post-PR-Polling design (SQLite WAL serialisation + the `AND revision = ?` CAS gate in `Start()`) is now canonical; the loser's UPDATE returns rows-affected=0 → `ErrTransitionConflict`, surfaced to the caller as "not claimed, retry next iteration". `StartJob` is declared at `repository_commands.go:36` (the previous ADR text claiming it "is not present" was stale — it has been declared there since Wave 17.1.2). The `ClaimDuration` observation edit lands as part of a follow-up PR-QueueSplit-ClaimDuration once the symbol surface is stable. |
 
 Default behaviour at landing: `SplitDBEnabled=false` means `dbs.jobs == nil`, migration directory is never scanned, `BuildJobsBundle` receives `dbs.main` unchanged — today's production deployments are unaffected. The histogram is registered but emits ZERO samples until the observation site lands; the §Trigger conditions §1 watchpoint remains unobservable but the metric surface is in place for the bench.
 

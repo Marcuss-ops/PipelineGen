@@ -30,7 +30,19 @@ func buildVoiceoverID(textHash, language, folderID string) string {
 	return "vo_" + hashutil.SHA256Bytes([]byte(data))[:16]
 }
 
-func sanitizeFilename(outputDir, filename string) (string, error) {
+// SanitizeBasename validates and sanitizes a voiceover basename.
+// Does NOT add an extension — callers should append .mp3 themselves.
+// Rejects path separators (path traversal).
+func SanitizeBasename(name string) (string, error) {
+	if strings.ContainsAny(name, "/\\") {
+		return "", fmt.Errorf("invalid filename: path traversal detected")
+	}
+	return filepath.Base(textutil.SanitizeFilename(name)), nil
+}
+
+// SanitizeFilename validates a filename against path traversal, adds
+// .mp3 if missing, and returns a safe output path rooted at outputDir.
+func SanitizeFilename(outputDir, filename string) (string, error) {
 	if filepath.Ext(filename) == "" {
 		filename += ".mp3"
 	}

@@ -72,11 +72,13 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		QAPromptVersion:     item.ScriptParams.QAPromptVersion,
 		UseMemory:           item.ScriptParams.UseMemory,
 		ForceRefresh:        item.ScriptParams.ForceRefresh,
-		DriveFolderID:       item.Output.DriveFolderID,
-		MaxChars:            item.Output.MaxChars,
-		OutputFmt:           item.Output.OutputFmt,
-		SaveToDB:            item.Output.SaveToDB,
-		Languages:           append([]string(nil), item.Output.Languages...),
+		DriveFolderID:      item.Output.DriveFolderID,
+		VoiceoverGroup:     item.Output.VoiceoverGroup,
+		VoiceoverFolderID:  item.Output.VoiceoverFolderID,
+		MaxChars:           item.Output.MaxChars,
+		OutputFmt:          item.Output.OutputFmt,
+		SaveToDB:           item.Output.SaveToDB,
+		Languages:          append([]string(nil), item.Output.Languages...),
 	}
 
 	// Build postprocessor list from output flags.

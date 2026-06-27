@@ -275,13 +275,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		// divergence on the first dispatch and rolls back the tx
 		// loudly — both the comment and the assertion are
 		// load-bearing for the v1 contract.
-		eventKey := fmt.Sprintf("index:%s:%s:%s:%s:%s",
-			clip.ID,
-			shortHashPrefix(contentHash),
-			clipindexer.EmbeddingModel(),
-			clipindexer.EmbeddingModelVersion(),
-			clipindexer.CollectionVersion(),
-		)
+		eventKey := indexEventKey(clip.ID, contentHash)
 		// event_key deduplicates: same (asset_id, content_hash,
 		// embedding_model, embedding_version, collection_version)
 		// tuple prevents duplicate indexing jobs. Uses full content
@@ -291,6 +285,15 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		// the supersede gate then closes the older one. Matches the
 		// old media_index_outbox unique key semantics for legacy
 		// continuity.
+		//
+		// QDRANT-full-content-hash (June 2026, PR 5) closure: the
+		// previous implementation called shortHashPrefix(contentHash)
+		// here, which collided two distinct content hashes that
+		// shared the first 12 chars — same asset_id + same embedding
+		// state + same first-12-chars content hash collapsed into a
+		// single event_key and the supersede gate then closed the
+		// (correct) newer event in favour of the (stale) older one.
+		// indexEventKey below uses the FULL content hash.
 		idempotencyKey := eventKey
 		payload := indexRequestV1{
 			SchemaVersion:      "asset.index.requested.v1",
@@ -350,8 +353,45 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	})
 }
 
-// shortHashPrefix returns a short log-friendly prefix; the empty string
-// yields "" so log readers do not see a misleading "(empty)" marker.
+// indexEventKey is the canonical event_key constructor for the
+// asset.index.requested.v1 envelope. It uses the FULL content hash
+// (NOT shortHashPrefix(contentHash)) because event_key uniqueness is
+// load-bearing: the outbox_events table writes one row per event and
+// the supersede gate (worker side, application/jobs/outbox) closes
+// older outbox rows in favour of newer ones keyed by the same tuple.
+//
+// QDRANT-full-content-hash (June 2026, PR 5) closure: the previous
+// inline construction used shortHashPrefix(contentHash), which
+// collapsed two distinct content hashes that shared the first 12
+// chars into the same event_key → the supersede gate then closed the
+// (correct) newer event in favour of the (stale) older one. Tests
+// in repository_test.go (TestIndexEventKey_DistinguishesHashesSamePrefix)
+// pin the full-hash contract against two such colliding hashes.
+//
+// Shape returned: index:<assetID>:<full_content_hash>:<embedding_model>:<embedding_version>:<collection_version>.
+// Matches the legacy media_index_outbox unique-key semantics so
+// outbox_events.ON CONFLICT(event_key) DO NOTHING semantics are
+// equivalent to the fossil surface.
+func indexEventKey(assetID, contentHash string) string {
+	return fmt.Sprintf("index:%s:%s:%s:%s:%s",
+		assetID,
+		contentHash,
+		clipindexer.EmbeddingModel(),
+		clipindexer.EmbeddingModelVersion(),
+		clipindexer.CollectionVersion(),
+	)
+}
+
+// shortHashPrefix returns a short log-friendly prefix; the empty
+// string yields "" so log readers do not see a misleading
+// "(empty)" marker.
+//
+// Used ONLY for log compaction below (the debug log line that
+// surfaces the content hash for operator audit). The event_key
+// UNIQUE constraint relies on indexEventKey above, which uses the
+// FULL hash. Logging just a 12-char prefix keeps the debug line
+// short; a future operator who wants the full hash can grep for the
+// asset_id + timestamp and re-derive from media_assets.metadata_json.
 func shortHashPrefix(s string) string {
 	if len(s) <= 12 {
 		return s

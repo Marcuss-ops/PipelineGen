@@ -17,7 +17,6 @@ package scripts
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -87,11 +86,50 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		if sceneText == "" {
 			sceneText = fmt.Sprintf("Scene %d", i+1)
 		}
-		filename := fmt.Sprintf("%s_scene_%d", sanitizeFilename(plan.Title), i+1)
 
-		result, err := p.gen.Generate(ctx, sceneText, language, filename)
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d: %v", i, err))
+		// Sanitize the title for use in a filename, then build a
+		// scene-stable filename: {title}_{scene_id}_{lang}.mp3.
+		// VoiceoverProcessor used a local character-replacer (no .mp3,
+		// no path-traversal guard); now delegates to the canonical
+		// voiceover.SanitizeBasename which rejects path separators and
+		// normalises unsafe characters via textutil.SanitizeFilename.
+		sceneID := scene.ID
+		if sceneID == "" {
+			sceneID = fmt.Sprintf("%d", i+1)
+		}
+		// Sanitize sceneID too — it comes from model output and must
+		// not contain path separators or unsafe filename characters.
+		safeSceneID, serr2 := voiceover.SanitizeBasename(sceneID)
+		if serr2 != nil {
+			safeSceneID = fmt.Sprintf("s%d", i+1)
+		}
+		safeTitle, serr := voiceover.SanitizeBasename(plan.Title)
+		if serr != nil {
+			safeTitle = "scene"
+		}
+		filename := fmt.Sprintf("%s_%s_%s.mp3", safeTitle, safeSceneID, language)
+
+		// Use GenerateWithDestination when the plan carries a
+		// voiceover destination (folder_id or resolved group).
+		// Otherwise fall back to the default Generate (which
+		// honours the configured voiceover folder).
+		var result interface{}
+		var voErr error
+		if plan.VoiceoverFolderID != "" {
+			dest := &voiceover.DestinationRequest{
+				FolderID: plan.VoiceoverFolderID,
+			}
+			result, voErr = p.gen.GenerateWithDestination(ctx, sceneText, language, filename, dest)
+		} else {
+			if plan.VoiceoverGroup != "" && p.log != nil {
+				p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id — falling back to default folder",
+					zap.String("voiceover_group", plan.VoiceoverGroup))
+			}
+			result, voErr = p.gen.Generate(ctx, sceneText, language, filename)
+		}
+
+		if voErr != nil {
+			warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d: %v", i, voErr))
 			voiceovers = append(voiceovers, SceneVoiceover{SceneIndex: i, Status: "failed"})
 			continue
 		}
@@ -147,11 +185,4 @@ func extractVoiceoverPaths(result interface{}) (link, path string) {
 	return "", ""
 }
 
-// sanitizeFilename replaces characters unsafe in filenames.
-func sanitizeFilename(name string) string {
-	replacer := strings.NewReplacer(
-		"/", "_", "\\", "_", ":", "_", "*", "_", "?", "_",
-		"\"", "_", "<", "_", ">", "_", "|", "_", " ", "_",
-	)
-	return strings.ToLower(replacer.Replace(strings.TrimSpace(name)))
-}
+

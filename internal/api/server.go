@@ -52,6 +52,16 @@ type Server struct {
 // lifecycle (optional) is used for Start/Stop of background services.
 // healthSvc (optional) is the application-layer health.Service; when nil,
 // health endpoints return 503.
+//
+// QDRANT-route-constructor (June 2026, PR 3): outboxHandler and
+// mediasearchHandler are passed as nil to preserve the original 5-arg
+// signature; callers that need the /internal/v1/{outbox,media/search}
+// routes registered MUST use NewServerWithHealth directly with the
+// two new params populated. Production server passes them — see
+// cmd/server/main.go. The legacy Server.SetOutboxHandler /
+// Server.SetMediasearchHandler setters delegate to appRouter and are
+// kept for back-compat but are NOT used by the production binary
+// anymore.
 func NewServer(
 	cfg *config.Config,
 	registry *Registry,
@@ -59,13 +69,30 @@ func NewServer(
 	internalMediaHandler MediaInternalRouter,
 	lifecycle LifecycleManager,
 ) *Server {
-	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, lifecycle, nil, nil)
+	return NewServerWithHealth(cfg, registry, workerHandler, internalMediaHandler, nil, nil, lifecycle, nil, nil)
 }
 
 // NewServerWithHealth creates a new HTTP server with an optional
 // health-check service (PR1 Health boundary, June 2026).
 // codex/health-ready-contract (June 2026): added readyChecker parameter
 // so /ready receives the real ReadyChecker instead of nil.
+//
+// QDRANT-route-constructor (June 2026, PR 3 in the post-Qdrant landing
+// series): added outboxHandler + mediasearchHandler parameters. Both MUST
+// be wired before router.Setup() runs so the WorkerAuth-protected
+// /internal/v1/* routes register at construction time. The previous
+// flow (cmd/server/main.go calling SetOutboxHandler/SetMediasearchHandler
+// after NewServerWithHealth returned) silently dropped the routes
+// because Setup() had already executed and would never run again.
+//
+// 8-dep-cap note: this constructor now takes 9 parameters, exceeding
+// the canonical 8-dep cap enforced by scripts/ci-architectural-checks.sh
+// (8.4 server constructor > 8 deps). Refactor candidate: a Handlers
+// bundle struct (Worker/Media/Outbox/MediaSearch). Tracked per the
+// canonical ratchet in architecture/current.yaml. The overage is
+// accepted here because all new params are typed-port interfaces
+// (zero-value/nil-friendly) and the alternative (re-introducing
+// post-Setup setters) re-introduces the bug.
 //
 // PG-006 (June 2026): every typed-port field on RouterConfig must be
 // constructed via an adapter because the api package cannot import
@@ -85,6 +112,8 @@ func NewServerWithHealth(
 	registry *Registry,
 	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
 	internalMediaHandler MediaInternalRouter,
+	outboxHandler InternalOutboxRouter,
+	mediasearchHandler InternalMediaSearchRouter,
 	lifecycle LifecycleManager,
 	healthSvc interface{},
 	readyChecker *systemhealth.ReadyChecker,
@@ -123,6 +152,17 @@ func NewServerWithHealth(
 		if internalMediaHandler != nil {
 			router.SetInternalMediaHandler(internalMediaHandler)
 		}
+		// QDRANT-route-constructor (June 2026, PR 3): the outbox + mediasearch
+		// wiring MUST happen here, before Setup() runs. Post-Setup setters
+		// (Server.SetOutboxHandler / Server.SetMediasearchHandler) are
+		// retained for back-compat ONLY and are NOT used by the production
+		// server binary anymore — see cmd/server/main.go for the proof.
+		if outboxHandler != nil {
+			router.SetOutboxHandler(outboxHandler)
+		}
+		if mediasearchHandler != nil {
+			router.SetMediasearchHandler(mediasearchHandler)
+		}
 		if healthSvc != nil {
 			router.SetHealthService(healthSvc)
 		}
@@ -154,6 +194,18 @@ func NewServerWithHealth(
 	}
 	if internalMediaHandler != nil {
 		router.SetInternalMediaHandler(internalMediaHandler)
+	}
+	// QDRANT-route-constructor (June 2026, PR 3): same pre-Setup wiring as
+	// the cfg != nil branch above. Both branches register the routes
+	// identically — verified by internal/api/routes_test.go::
+	// TestNewServerWithHealth_ProductionShapedRoutes (uses the no-cfg
+	// fallback branch because the test does not want a real *config.Config
+	// fixture).
+	if outboxHandler != nil {
+		router.SetOutboxHandler(outboxHandler)
+	}
+	if mediasearchHandler != nil {
+		router.SetMediasearchHandler(mediasearchHandler)
 	}
 	if healthSvc != nil {
 		router.SetHealthService(healthSvc)
@@ -280,14 +332,33 @@ func (s *Server) SetInternalMediaHandler(h MediaInternalRouter) {
 // SetOutboxHandler wires the QDRANT-002 outbox monitoring handler onto
 // the WorkerAuth-protected /internal/v1/outbox/* group.
 // Delegates to Router.SetOutboxHandler.
+//
+// DEPRECATED (QDRANT-route-constructor, June 2026, PR 3):
+// post-Setup wiring is unsafe because router.Setup() has already
+// registered every route. The production binary delegates via
+// NewServerWithHealth with outboxHandler passed in the constructor;
+// callers that rely on this setter will silently 404 on
+// /internal/v1/outbox/*. Kept only for back-compat with the
+// pre-PR-3 binary that called it. Will be removed once
+// cmd/server/main.go has been promoted long enough that a sweep
+// of internal/api/** confirms no remaining caller.
 func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
+	if s.appRouter == nil {
+		return
+	}
 	s.appRouter.SetOutboxHandler(h)
 }
 
 // SetMediasearchHandler wires the QDRANT-004 mediasearch handler onto
 // the WorkerAuth-protected /internal/v1/media/search route.
 // Delegates to Router.SetMediasearchHandler.
+//
+// DEPRECATED (QDRANT-route-constructor, June 2026, PR 3): see
+// SetOutboxHandler doc for the deprecation rationale.
 func (s *Server) SetMediasearchHandler(h InternalMediaSearchRouter) {
+	if s.appRouter == nil {
+		return
+	}
 	s.appRouter.SetMediasearchHandler(h)
 }
 

@@ -59,14 +59,20 @@ async def get_voice_for_lang(lang):
 
 async def main():
     p = argparse.ArgumentParser(description='Edge TTS')
-    p.add_argument('--text', required=True)
+    p.add_argument('--text', default='')
     p.add_argument('--lang', default='it')
     p.add_argument('--out', required=True)
     p.add_argument('--voice')
     a = p.parse_args()
+    text = a.text
+    if not text:
+        text = sys.stdin.read()
+    if not text:
+        print(json.dumps({'ok': False, 'error': 'No text provided (--text empty and stdin empty)'}))
+        sys.exit(1)
     v = a.voice or await get_voice_for_lang(a.lang)
     try:
-        c = Communicate(a.text, v)
+        c = Communicate(text, v)
         await c.save(a.out)
         if not os.path.exists(a.out) or os.path.getsize(a.out) == 0:
             print(json.dumps({'ok': False, 'error': 'Empty file'}))
