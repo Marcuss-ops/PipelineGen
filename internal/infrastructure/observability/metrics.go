@@ -107,7 +107,7 @@ var (
 	//
 	// Common phase values:
 	//   total_request       — wall-clock from handler entry to response
-	//   write_script        — Engine.WriteScript (memory gate + LLM + normalize + persist)
+	//   generate            — Engine.Generate (memory gate + LLM)
 	//   validation          — post-generation ValidateScript
 	//   entity_extraction   — LLM entity extraction
 	//   insight_building    — buildGeneratedScriptInsights (image search, clip search, drive recommendations)
