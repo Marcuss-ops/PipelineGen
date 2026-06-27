@@ -11,6 +11,7 @@ import (
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -33,17 +34,23 @@ func NewClipsSourceResolver(clipBuilder *ClipSourceBuilder, log *zap.Logger) *Cl
 
 // Resolve fetches clips by explicit ID and builds a ResolvedSource
 // with ClipEvidence.
-func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, itemID string) (*scriptpkg.ResolvedSource, error) {
+//
+// PR 4 (June 2026): resolutionContext is now threaded into
+// ClipGenerationOptions.Language/Tone/Model/Style/TargetWords. The
+// resolver reads these explicitly from the resolution context (the
+// canonical source of operator-side traits) instead of hijacking
+// SourceSpec.Guidelines.
+func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil || r.clipBuilder == nil {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "clips source resolver: ClipSourceBuilder not configured",
 		}
 	}
 
 	if len(src.ClipIDs) == 0 {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "clips source requires at least one clip_id",
 		}
 	}
@@ -51,6 +58,18 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	start := time.Now()
 
 	opts := &ClipGenerationOptions{
+		// PR 4: language/tone/model/style/target words come from
+		// resolutionContext — the canonical operator-side context.
+		// src.Guidelines is intentionally NOT consumed here
+		// (curate resolver historically did this; the bug class
+		// is now centralised: any resolver reading Guidelines as
+		// a technical field is wrong).
+		Language:           resCtx.Language,
+		Title:              resCtx.Title,
+		Tone:               resCtx.Tone,
+		Model:              resCtx.Model,
+		Style:              resCtx.Style,
+		TargetWords:        resCtx.TargetWords,
 		TranscriptPolicy:   src.TranscriptPolicy,
 		OrderingStrategy:   src.OrderingStrategy,
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
@@ -62,7 +81,7 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		query:         strings.Join(src.ClipIDs, ","),
 		clipIDs:       src.ClipIDs,
 		opts:          opts,
-		titleFallback: "Clip Script",
+		titleFallback: textutil.FirstNonEmpty(resCtx.Title, "Clip Script"),
 		startTime:     start,
 	}, r.log)
 }

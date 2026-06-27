@@ -190,9 +190,23 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 		item.Title = "Untitled Script"
 	}
 
-	// Output format.
+	// Output format (P0.1, June 2026).
+	//
+	// Canonical script-generation now mandates the structured V1
+	// JSON contract (engine.go::EngineResult.Output of type
+	// ModelScriptOutputV1). The previous default of "prose" caused a
+	// silent decoder regression: when OutputFmt=="prose" the engine
+	// suppressed the V1 output instruction suffix, the model produced
+	// free-form prose, and the JSON decoder rejected the payload
+	// with ErrModelOutputMalformed.
+	//
+	// The default is now "json". Callers who explicitly opt into
+	// the legacy free-form path are rejected by the validator
+	// (see generation_validator.go::validateOutput) so the only
+	// way "prose" can reach the canonical pipeline is through a
+	// downstream migration we're not supporting.
 	if item.Output.OutputFmt == "" {
-		item.Output.OutputFmt = "prose"
+		item.Output.OutputFmt = "json"
 	}
 
 	// Source defaults.

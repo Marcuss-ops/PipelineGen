@@ -51,7 +51,7 @@ type ClipsUpserter interface {
 // Every deletion path (DeletionService, admin delete endpoints, future
 // archival pipelines) MUST funnel through Dispatcher.EnqueueAndDelete.
 // The producer tx writes the canonical DELETE_PENDING marker on the
-// media_assets.index_state column BEFORE the outbox event row, so even
+// media_assets.lifecycle_state column BEFORE the outbox event row, so even
 // if the worker crashes mid-process an operator dashboard sees the
 // delete-intent without waiting for the lease acquire. The handler
 // (IndexDeleteHandler) completes the picture with Qdrant delete +
@@ -66,12 +66,36 @@ type ClipsUpserter interface {
 // Pool then picks up the event and runs IndexClip (or IndexDelete) via
 // the corresponding Handler.
 type Dispatcher struct {
-	clips            ClipsUpserter
-	stateWriter      ClipsStateWriter
-	outboxEventsRepo *outboxevents.Repository
+	clips       ClipsUpserter
+	stateWriter ClipsStateWriter
+	// outboxEventsRepo is the canonical port (Pattern 0 — narrow
+	// single-method interface) for the producer-side outbox-write
+	// seam. The interface unlocks white-box test injection of a
+	// failing stub (test (a)) without faking the entire
+	// outboxevents.Repository surface; production wires the
+	// canonical *outboxevents.Repository, which structurally
+	// satisfies the interface per Go's interface-satisfaction
+	// rules. Compile-time assertion below catches any signature
+	// drift at build.
+	outboxEventsRepo outboxEnqueuer
 	txmgr            TxManager
 	log              *zap.Logger
 }
+
+// outboxEnqueuer is the canonical port interface for the dispatcher's
+// outbox-write seam (AGENTS.md Pattern 0 — port abstraction). The
+// dispatcher only ever calls .Enqueue inside the same SQL tx that
+// flips media_assets.lifecycle_state; the wider crash-tolerant
+// methods (MarkCompleted, MarkFailed, etc.) are owned by the outbox
+// worker pool, not the dispatcher.
+type outboxEnqueuer interface {
+	Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) error
+}
+
+// Compile-time assertion: any signature drift between the
+// canonical *outboxevents.Repository and the outboxEnqueuer port
+// surfaces at build, not at first runtime panic.
+var _ outboxEnqueuer = (*outboxevents.Repository)(nil)
 
 // DeleteRequestSchemaVersion is the canonical, EXACT string the
 // handler on the consumer side accepts. Producers MUST send
@@ -90,10 +114,20 @@ const DeleteRequestSchemaVersion = "asset.index.delete_requested.v1"
 // half without spelling out the other.
 // outboxEventsRepo is the canonical outbox_events repository for
 // asset.index.requested + asset.index.delete_requested event enqueue.
+// NewDispatcher wires a Dispatcher against the canonical dependencies.
+// clips is typically *assets.ClipsRepository (which implements ClipsUpserter).
+// stateWriter is typically the same *assets.ClipsRepository (which
+// implements ClipsStateWriter from PR7); the two-method split makes
+// production wiring explicit and lets tests substitute fakes for one
+// half without spelling out the other.
+// outboxEventsRepo satisfies the narrow outboxEnqueuer port — the
+// canonical *outboxevents.Repository type satisfies it implicitly
+// via Go's structural-typing rules, so production callers do not
+// change. White-box tests can substitute a failing stub of their own.
 func NewDispatcher(
 	clips ClipsUpserter,
 	stateWriter ClipsStateWriter,
-	outboxEventsRepo *outboxevents.Repository,
+	outboxEventsRepo outboxEnqueuer,
 	txmgr TxManager,
 	log *zap.Logger,
 ) *Dispatcher {
@@ -388,9 +422,6 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 	if d.txmgr == nil {
 		return errors.New("outbox.Dispatcher: txmgr not configured")
 	}
-	if d.stateWriter == nil {
-		return errors.New("outbox.Dispatcher: state writer not configured (required for EnqueueAndDelete — wire *assets.ClipsRepository)")
-	}
 	if d.outboxEventsRepo == nil {
 		return errors.New("outbox.Dispatcher: outbox events repo not configured")
 	}
@@ -399,15 +430,41 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		// Step 1: stamp index_state=DELETE_PENDING before any external
-		// side-effect. This is the visibility marker operators observe
-		// from dashboards while the IndexDeleteHandler is mid-process.
-		// StateWriter.SetIndexStateTx stamps both index_state AND
-		// index_state_updated_at in one UPDATE. The change is
-		// observable to a concurrent reader AFTER commit; a worker
-		// crash before commit rolls back the marker (clean retry).
-		if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDeletePending); err != nil {
-			return fmt.Errorf("dispatcher delete: set index_state=DELETE_PENDING %s: %w", assetID, err)
+		// Step 1: stamp lifecycle_state='DELETE_PENDING' strictly per
+		// the user spec — DIRECT inline SQL inside the producer tx.
+		// We deliberately do NOT route through d.stateWriter (which
+		// would call SetIndexStateTx / MarkDeletePendingTx on the
+		// production concrete *assets.ClipsRepository):
+		//   (a) the spec demands the exact WHERE-clause idempotency
+		//       guard (`lifecycle_state NOT IN ('DELETE_PENDING',
+		//       'DELETED', 'deleted')`) — inlining guarantees that
+		//       literal SQL reaches the database, AND removes any
+		//       risk of subtle drift between the spec and whatever
+		//       the production concrete accidentally executes;
+		//   (b) the dispatcher's prior contract flipped
+		//       `index_state` instead of `lifecycle_state` (a silent
+		//       spec drift in earlier QDRANT-002 PR-7 work) — the
+		//       test suite now pins against this inlined direct-SQL
+		//       UPDATE.
+		//
+		// 0-rows-affected is NOT an error here — the row was
+		// already DELETE_PENDING / DELETED / 'deleted', so the
+		// UPDATE is an idempotent no-op. Step 2's outbox event
+		// still emits unconditionally; the outbox's event_key
+		// UNIQUE constraint collapses repeated calls into a
+		// single queued event.
+		//
+		// Tx atomicity: if Step 2 errors, the tx rolls back — both
+		// the lifecycle_state flip AND the outbox row are
+		// unobservable to readers. Asserted by
+		// TestEnqueueAndDelete_RollbackPreservesAtomicity.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE media_assets
+			   SET lifecycle_state = 'DELETE_PENDING'
+			 WHERE id = ?
+			   AND lifecycle_state NOT IN ('DELETE_PENDING', 'DELETED', 'deleted')
+		`, assetID); err != nil {
+			return fmt.Errorf("dispatcher delete: stamp lifecycle_state=DELETE_PENDING %s: %w", assetID, err)
 		}
 
 		// Step 2: emit the v1 envelope. v1 conflation invariant as

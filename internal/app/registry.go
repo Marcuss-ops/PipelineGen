@@ -26,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
@@ -237,7 +238,24 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// clips + register handlers.
 	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
 	idemHandler := idemPlus.Handler()
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry, toolCheckerAdapter, idemHandler); err != nil {
+	// S3d (June 2026): construct the canonical SearchAggregator
+	// against the post-Freeze ProviderRegistry. The SearchAggregator
+	// shares the registry with the providers fan-out; construction
+	// here so by the time YouTubeClip is wired, both the
+	// ProviderRegistry and the SearchAggregator point at the same
+	// frozen state.
+	//
+	// Note: when root.Search.ProviderRegistry is nil (registry not
+	// built — e.g. test fixtures or partial deploys), we pass the
+	// aggregator as nil. WireYouTubeClip forwards nil to
+	// NewYouTubeClipHandler; the handler's SearchAdvanced + Stats
+	// then return 503 (services not wired).
+	var searchAggregator *providers.SearchAggregator
+	if root.Search != nil && root.Search.ProviderRegistry != nil {
+		searchAggregator = providers.NewSearchAggregator(root.Search.ProviderRegistry)
+		log.Info("S3d: constructed providers.SearchAggregator against root.Search.ProviderRegistry")
+	}
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchAggregator); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		if err := tryRegisterModuleStrict(registry, log, yw.Module, WithRegistrationPoint("register.YouTubeClip")); err != nil {
@@ -658,9 +676,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if wiring.Assets != nil && wiring.Assets.Module != nil {
 			log.Info("providers.Registry wired into Assets module via constructor")
 		}
-		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
-			log.Info("providers.Registry wired into YouTubeClipHandler via constructor (no late-binding needed)")
-		}
+	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
+		log.Info("YouTubeClipHandler wired transport-only (PR-CLIP-YT-REGISTRY-CLEANUP: providers.Registry dispatch published via youtubeadapter.NewAdapter above; handler no longer takes providerRegistry)")
+	}
 	}
 
 	return wiring, nil

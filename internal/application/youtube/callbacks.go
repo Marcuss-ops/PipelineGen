@@ -164,6 +164,10 @@ func (s *Service) triggerAutoIndexing(ctx context.Context, clipID string) {
 	}
 
 	concurrent.SafeGoFunc("youtube-auto-indexing", clipID, func(id string) {
+		// AGENTS.md §7 post-write save ctx — YouTube auto-indexing
+		// background callback detached from the request ctx; survives
+		// the post-callback response write so the Qdrant index emits
+		// even if the request is cancelled.
 		bgCtx := context.WithoutCancel(ctx)
 		indexCtx, cancel := context.WithTimeout(bgCtx, 3*time.Minute)
 		defer cancel()

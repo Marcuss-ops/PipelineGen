@@ -14,7 +14,6 @@ import (
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
@@ -292,27 +291,21 @@ type StockPipelineWiring struct {
 //
 // PR4d-chunk2 (June 2026): takes *StockBundle.
 // PR6 (June 2026): also constructs the canonical StockRenderer +
-// VideoCutter infra adapters and injects them via SetRenderer + SetCutter
-// so the application layer never reaches into ffmpeg/process directly.
+// VideoCutter infra adapters — PR-D (June 2026) injects them via the
+// ctor-injected Deps struct (no setters), so the application layer
+// never reaches into ffmpeg/process directly.
+//
+// PR-D (June 2026): the 9 legacy setters (SetCutter / SetRenderer /
+// SetClipsRepo / SetAssetIndex / SetDispatcher / SetJobsSvc /
+// SetYoutubeService / SetClipIndexer / SetMetadataWriter) were
+// removed. WireStockPipeline now constructs Deps{...} in one literal
+// — the late-bind ordering hazard that previously swapped the
+// canonical ingestion path between BuildDomainBundle returning and
+// the per-setter call is closed.
 func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle) (*StockPipelineWiring, error) {
 	if bundle.DriveClient == nil {
 		log.Warn("stock pipeline not wired: missing drive client")
 		return nil, nil
-	}
-	svc := stockpipeline.NewService(cfg, log, bundle.DriveClient)
-	svc.SetJobsSvc(bundle.Jobs)
-	svc.SetAssetIndex(bundle.AssetIndexService)
-	if bundle.ClipsRepo != nil {
-		svc.SetClipsRepo(bundle.ClipsRepo)
-	}
-	if bundle.YoutubeClipService != nil {
-		svc.SetYoutubeService(bundle.YoutubeClipService)
-	}
-	if bundle.ClipIndexerService != nil {
-		svc.SetClipIndexer(bundle.ClipIndexerService)
-	}
-	if bundle.Dispatcher != nil {
-		svc.SetDispatcher(bundle.Dispatcher)
 	}
 
 	// PR6 port wiring: render adapter + cutter adapter. The application
@@ -325,8 +318,6 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	transitionRegistry := render.DefaultTransitionRegistry()
 	renderer := render.NewFFmpegRenderer(ffmpegPath, transitionRegistry, log)
 	cutter := render.NewFFmpegCutter(ffmpegPath, log)
-	svc.SetRenderer(renderer)
-	svc.SetCutter(cutter)
 	log.Info("stock pipeline ports wired",
 		zap.Int("transition_catalog_size", transitionRegistry.Len()))
 
@@ -337,9 +328,53 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 		cfg.External.OllamaModel,
 		log,
 	)
-	svc.SetMetadataWriter(metaWriter)
 	log.Info("metadata writer wired into stock pipeline")
-	handler := stock.NewHandler(svc, bundle.JobFacade, log)
+
+	// PR-D: ctor injection via Deps{} literal. Composition-root
+	// pre-rejection: every required dep MUST be non-nil by the time we
+	// reach this call; a nil surfaces here as a fail-fast error so the
+	// operator sees the missing dep at startup rather than racing the
+	// late-bind setter sequence.
+	if bundle.ClipsRepo == nil {
+		return nil, fmt.Errorf("WireStockPipeline: bundle.ClipsRepo is required for production stock pipeline")
+	}
+	if bundle.AssetIndexService == nil {
+		return nil, fmt.Errorf("WireStockPipeline: bundle.AssetIndexService is required for production stock pipeline")
+	}
+	if bundle.Dispatcher == nil {
+		return nil, fmt.Errorf("WireStockPipeline: bundle.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback")
+	}
+	if bundle.ClipIndexerService == nil {
+		return nil, fmt.Errorf("WireStockPipeline: bundle.ClipIndexerService is required for production stock pipeline")
+	}
+
+	svc, err := stockpipeline.NewService(stockpipeline.Deps{
+		Cfg:   cfg,
+		Log:   log,
+		Drive: bundle.DriveClient,
+		Storage: stockpipeline.StorageDeps{
+			ClipsRepo:  bundle.ClipsRepo,
+			AssetIndex: bundle.AssetIndexService,
+			Dispatcher: bundle.Dispatcher,
+		},
+		Media: stockpipeline.MediaDeps{
+			Cutter:      cutter,
+			Renderer:    renderer,
+			ClipIndexer: bundle.ClipIndexerService,
+			MetaWriter:  metaWriter,
+		},
+		YouTube: bundle.YoutubeClipService,
+		Jobs:    bundle.Jobs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireStockPipeline: stockpipeline.NewService: %w", err)
+	}
+
+	// S2b refactor (June 2026): construct the use case first so the API
+	// handler holds only the use case + logger; the dispatch decision
+	// (async-vs-sync, jobs-required 503) lives in stockpipeline.StockUseCase.
+	useCase := stockpipeline.NewStockUseCase(svc, bundle.JobFacade, log)
+	handler := stock.NewHandler(useCase, log)
 	stockEnabled := cfg != nil && cfg.Features.StockPipelineEnabled
 	mod := api.NewRouteModule(
 		"stock-pipeline",
@@ -363,8 +398,6 @@ type YouTubeClipWiring struct {
 //
 // PR4d-chunk2 (June 2026): takes 4 direct narrow args (no bundle —
 // only 4 cross-bundle reads, no coherence warrant for a bundle).
-// PR3 (June 2026): providerRegistry added for constructor injection
-// (replaces post-construction SetProviderRegistry).
 // PG-003 (June 2026): clipsRepo (still typed *assets.ClipsRepository
 // at the wiring seam) is passed through the canonical
 // newClipStoreAdapter(...) helper defined in youtube_adapters.go. The
@@ -373,8 +406,17 @@ type YouTubeClipWiring struct {
 // handler because newClipStoreAdapter(nil) returns a nil interface.
 // PR8 (June 2026): added idempotencyMiddleware arg — installed by
 // YouTubeClipHandler on POST /clips/process.
-func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, providerRegistry *providers.Registry, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, providerRegistry, newClipStoreAdapter(clipsRepo), toolChecker, idempotencyMiddleware)
+// PR-CLIP-YT-REGISTRY-CLEANUP (June 2026, this PR): providerRegistry
+// arg removed — the handler is now transport-only against the canonical
+// clip-repo; the providers.Registry dispatch concern lives in
+// root.Search.ProviderRegistry and is published via
+// youtubeadapter.NewAdapter inside WireRegistry→pr.Freeze().
+// S3d (June 2026): searchAggregator arg appended last so SearchAdvanced
+// + Stats can route through the canonical providers.SearchAggregator.
+// The aggregator is constructed in WireRegistry via
+// providers.NewSearchAggregator(root.Search.ProviderRegistry).
+func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchAggregator *providers.SearchAggregator) (*YouTubeClipWiring, error) {
+	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, newClipStoreAdapter(clipsRepo), toolChecker, idempotencyMiddleware, searchAggregator)
 	var mod api.Module
 	if ytSvc != nil {
 		mod = api.NewRouteModule(

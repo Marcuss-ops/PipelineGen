@@ -1,14 +1,13 @@
 package clips
 
 import (
-	"context"
 	"fmt"
 	"time"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -65,14 +64,44 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		}
 	}
 
-	// 3. Trigger async enrichment + indexing (non-blocking) with 3-minute timeout.
-	// context.WithoutCancel ensures the goroutine survives the HTTP handler's return.
-	// Stack-copy clip so the background goroutine owns its mutation independently.
-	if h.metaWriter != nil || h.clipIndexer != nil || h.enrichUC != nil {
-		clipCopy := clip
-		concurrent.SafeGo("clip-create-enrich", func() {
-			h.EnrichAndIndexClip(context.WithoutCancel(ctx), &clipCopy, source)
+	// 3. Trigger async enrichment + indexing via canonical jobs system
+	// (S1a, June 2026). The previous implementation used
+	// `concurrent.SafeGo` + `context.WithoutCancel` to detach from the
+	// HTTP handler ctx — but that simulates a background job from a
+	// handler, which AGENTS.md §7 + Pattern 8 explicitly forbid.
+	// Canonical path: enqueue a `media.enrich` job whose worker runs in
+	// the local broker pool (or a remote worker via VELOX_BROKER_URL),
+	// with the same 3-minute hard cap. The clip row is already saved
+	// before this point so a failed enqueue does NOT roll back the HTTP
+	// write — we log a WARN and let the operator re-trigger via
+	// `POST /:source/clips/:id/reindex`.
+	indexed := false
+	if h.enrichUC != nil && h.jobsSvc != nil {
+		_, err := h.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+			Type: jobservice.TypeMediaEnrich,
+			Payload: map[string]any{
+				"asset_id": clip.ID,
+				"source":   source,
+			},
+			ActiveKey: "enrich_clip_" + clip.ID,
 		})
+		if err != nil {
+			h.log.Warn("failed to enqueue media.enrich job (clip is saved; reactive re-index required)",
+				zap.String("clip_id", clip.ID), zap.Error(err))
+		} else {
+			indexed = true
+		}
+	} else if h.enrichUC != nil {
+		// S1a (June 2026): jobs service NOT wired but enrichment deps
+		// are. Pre-lift behaviour claimed `indexed: true` while
+		// doing nothing — that was misleading. Truthful signal:
+		// leave `indexed: false`. Production always wires jobsSvc;
+		// a missing jobsSvc in test fixtures is the test author's
+		// responsibility (use a mock jobsSvc that no-ops
+		// Enqueue, or wire a real one). Logged at WARN so test
+		// authors see the drift in repo logs.
+		h.log.Warn("CreateClip: enrichment deps wired but jobsSvc nil — clip saved; index will lag until reactive re-index",
+			zap.String("clip_id", clip.ID), zap.String("source", source))
 	}
 
 	apiutil.OK(c, gin.H{
@@ -80,6 +109,6 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		"source":  source,
 		"clip_id": clip.ID,
 		"clip":    clip,
-		"indexed": h.clipIndexer != nil || h.enrichUC != nil,
+		"indexed": indexed,
 	})
 }

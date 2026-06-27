@@ -86,8 +86,13 @@ func validateOutput(out scriptpkg.OutputSpec, ref string) []string {
 	if out.MaxChars < 0 {
 		d = append(d, ref+": max_chars cannot be negative")
 	}
-	if out.OutputFmt != "" && out.OutputFmt != "prose" && out.OutputFmt != "json" {
-		d = append(d, ref+": output_fmt must be 'prose' or 'json', got '"+out.OutputFmt+"'")
+	// P0.1 (June 2026): the canonical script pipeline emits
+	// ModelScriptOutputV1 and never free-form prose. Reject any
+	// OutputFmt other than "json" — including the legacy "prose"
+	// value — so callers see a typed validation error instead of a
+	// silent ErrModelOutputMalformed during the ollama decode.
+	if out.OutputFmt != "" && out.OutputFmt != "json" {
+		d = append(d, ref+": output_fmt must be 'json', got '"+out.OutputFmt+"' (prose is rejected in the canonical pipeline; use the legacy adapter if you need free-form prose)")
 	}
 	if len(out.Languages) > 20 {
 		d = append(d, ref+": at most 20 translation languages allowed")

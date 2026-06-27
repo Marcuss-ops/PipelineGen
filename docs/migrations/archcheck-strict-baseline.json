@@ -1,0 +1,23 @@
+{
+  "$schema": "archcheck-strict-baseline/v1",
+  "description": "Transitional baseline for cmd/archcheck --strict gate (PR-I, June 2026). Fail-closed per godlike/08 §zero-baseline rule: any past-deadline entry produces a hard CI exit-1 at --strict evaluation. Each entry MUST carry owner + deadline + removal_trigger or it is rejected.",
+  "transitional_baselines": [
+    {
+      "rule": "max_files_per_package",
+      "failing_packages": [
+        {"package": "internal/application/scripts", "file_count": 55, "max": 40},
+        {"package": "internal/application/youtube", "file_count": 43, "max": 40}
+      ],
+      "owner": "PR-G mega-package split work stream",
+      "deadline": "2026-07-10",
+      "removal_trigger": "PR-G final commit lands; both packages ≤40 files each"
+    },
+    {
+      "rule": "duplicate-types-allowlist",
+      "failing_entries": [],
+      "owner": "qdrant-hygiene Work Stream (Wave 20 AWK→Go rewrite)",
+      "deadline": "2026-07-25",
+      "removal_trigger": "AWK→Go helper deployed + zero violations reported by Check 5"
+    }
+  ]
+}

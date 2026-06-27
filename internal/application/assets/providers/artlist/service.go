@@ -201,16 +201,16 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	}
 
 	// Inizializza i componenti delegati
+	// Surface the QDRANT-002 nil-dispatcher guard at construction
+	// time. The composition root in module_sources.go::WireArtlist
+	// already pre-rejects nil dispatcher with the same sentinel;
+	// if it bubbles up here it means the composition wiring is
+	// wrong and we must not start the service with a half-built
+	// SearchService.
 	var err error
 	s.searchService, err = NewSearchService(s, deps.Dispatcher)
 	if err != nil {
-		// Surface the QDRANT-002 nil-dispatcher guard at construction
-		// time. The composition root in module_sources.go::WireArtlist
-		// already pre-rejects nil dispatcher with the same sentinel;
-		// if it bubbles up here it means the composition wiring is
-		// wrong and we must not start the service with a half-built
-		// SearchService.
-		return nil, fmt.Errorf("NewService: NewSearchService: %w", err)
+		return nil, fmt.Errorf("NewSearchService: %w", err)
 	}
 	s.runOrchestrator = NewRunOrchestratorService(s)
 	s.destinationService = NewDestinationService(s)

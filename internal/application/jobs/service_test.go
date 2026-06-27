@@ -18,9 +18,11 @@ import (
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
+// setupTestDB builds an isolated SQLite jobs DB for the test.
+// Mirrors the canonical `jobs` + `job_events` schema (see
+// migrations/sqlite/021_jobs_correlation_id.sql and the surrounding series).
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	// Create jobs table
 	schema := `
 	CREATE TABLE IF NOT EXISTS jobs (
 		id TEXT PRIMARY KEY,
@@ -63,17 +65,27 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return drive.NewTestDBWithSchema(t, schema)
 }
 
-func setupTestService(t *testing.T) (*Service, func()) {
+// setupTestService builds a *Service backed by an isolated SQLite jobs DB.
+//
+// PR-B (Wave 22, June 2026): returns the *sqljobs.SQLiteStore alongside the
+// *Service so tests that need the bare *sql.DB or SQLite-specific helpers
+// (MarkRunningJobsOlderThanFailed, GetStats, RefreshMetrics) compose against
+// the concrete. The Service itself is now typed against job.JobBroker — the
+// canonical port — so its public surface no longer exposes DB() or those
+// helpers. Tests that don't need the store destructure with `_`.
+//
+// The third return value is the cleanup closure (kept for future
+// `drive.NewTestDBWithSchema` migrations that need explicit teardown).
+func setupTestService(t *testing.T) (*Service, *sqljobs.SQLiteStore, func()) {
 	t.Helper()
 	db := setupTestDB(t)
-	repo := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	svc := NewService(repo, nil, zap.NewNop())
-
-	return svc, func() {}
+	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
+	svc := NewService(store, nil, zap.NewNop())
+	return svc, store, func() {}
 }
 
 func TestCreateJobStoresPendingJob(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -94,7 +106,7 @@ func TestCreateJobStoresPendingJob(t *testing.T) {
 }
 
 func TestJobMovesToCompleted(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, store, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -108,7 +120,7 @@ func TestJobMovesToCompleted(t *testing.T) {
 	// Wave 5 PR1 state machine: QUEUED→RUNNING→COMPLETED.
 	// Transition to RUNNING by directly updating the DB.
 	// Service.Complete passes expectedRevision=0, so reset revision to 0.
-	if _, err := svc.repo.DB().ExecContext(ctx,
+	if _, err := store.DB().ExecContext(ctx,
 		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, submitted.ID); err != nil {
 		t.Fatalf("failed to transition job to running: %v", err)
 	}
@@ -129,7 +141,7 @@ func TestJobMovesToCompleted(t *testing.T) {
 }
 
 func TestJobMovesToFailedWithError(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, store, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -142,7 +154,7 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 
 	// Wave 5 PR1 state machine: QUEUED→RUNNING→FAILED.
 	// Service.Fail passes expectedRevision=0, so reset revision to 0.
-	if _, err := svc.repo.DB().ExecContext(ctx,
+	if _, err := store.DB().ExecContext(ctx,
 		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, submitted.ID); err != nil {
 		t.Fatalf("failed to transition job to running: %v", err)
 	}
@@ -162,7 +174,7 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 }
 
 func TestJobPayloadRoundTrip(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -186,7 +198,7 @@ func TestJobPayloadRoundTrip(t *testing.T) {
 }
 
 func TestUnknownJobTypeFailsClearly(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -203,7 +215,7 @@ func TestUnknownJobTypeFailsClearly(t *testing.T) {
 }
 
 func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -235,13 +247,22 @@ func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
 	}
 }
 
-func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
-	ctx := context.Background()
-
-	svc, cleanup := setupTestService(t)
+// TestSQLiteStore_MarkRunningJobsOlderThanFailed exercises the SQLite-specific
+// MarkRunningJobsOlderThanFailed helper directly via the setupTestService
+// concrete *sqljobs.SQLiteStore. Renamed from TestJobsMarkStaleRunningJobsFailed
+// in PR-B (Wave 22, June 2026) because the helper moved off the application-
+// layer Service onto the concrete *sqljobs.SQLiteStore.
+//
+// PR-B moves SQLite-specific helpers OUT of the application-layer Service —
+// they live on the concrete adapter only. Composition root callers (rare;
+// needed for the periodic stale-sweep pinger) hold the concrete store via
+// JobsBundle.Repo. The helper has the same semantics that the old Service
+// wrapper exposed: jobs whose lease_expiry is older than `cutoff` are
+// transitioned to FAILED with `reason` written to the error column.
+func TestSQLiteStore_MarkRunningJobsOlderThanFailed(t *testing.T) {
+	svc, store, cleanup := setupTestService(t)
 	defer cleanup()
-
-	repo := svc.repo
+	ctx := context.Background()
 
 	// Insert old running job with expired lease.
 	oldTime := time.Now().UTC().Add(-30 * time.Minute)
@@ -255,7 +276,7 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 		Payload:     []byte("{}"),
 		LeaseExpiry: &leaseExpired,
 	}
-	require.NoError(t, repo.Create(ctx, oldJob))
+	require.NoError(t, store.Create(ctx, oldJob))
 
 	// Insert fresh running job with valid (future) lease.
 	freshLease := time.Now().UTC().Add(30 * time.Minute)
@@ -268,7 +289,7 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 		Payload:     []byte("{}"),
 		LeaseExpiry: &freshLease,
 	}
-	require.NoError(t, repo.Create(ctx, freshJob))
+	require.NoError(t, store.Create(ctx, freshJob))
 
 	// Insert completed job (should not be affected)
 	completedJob := &Job{
@@ -279,10 +300,11 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 		CreatedAt: time.Now().UTC().Add(-30 * time.Minute),
 		Payload:   []byte("{}"),
 	}
-	require.NoError(t, repo.Create(ctx, completedJob))
+	require.NoError(t, store.Create(ctx, completedJob))
 
-	// Mark stale jobs
-	changed, err := svc.MarkStaleRunningJobsFailed(ctx, 15*time.Minute)
+	// Mark stale jobs (SQLite-specific helper, called via store directly).
+	cutoff := time.Now().UTC().Add(-15 * time.Minute)
+	changed, err := store.MarkRunningJobsOlderThanFailed(ctx, cutoff, "stale job timeout")
 	require.NoError(t, err)
 	assert.Equal(t, 1, changed)
 
@@ -309,7 +331,7 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 // when both correlation_ids are set explicitly and when one comes
 // from corid auto-injection.
 func TestEnqueue_Idempotence_DuplicateCorrelationID(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -343,7 +365,7 @@ func TestEnqueue_Idempotence_DuplicateCorrelationID(t *testing.T) {
 // TestEnqueueDifferentCorrelationIDIsDistinct verifies that distinct
 // correlation_ids are treated as distinct submissions.
 func TestEnqueue_Idempotence_DifferentCorrelationID(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -366,7 +388,7 @@ func TestEnqueue_Idempotence_DifferentCorrelationID(t *testing.T) {
 // long as they propagate the request context (which middleware.RequestID
 // already does via X-Request-ID).
 func TestEnqueue_Idempotence_AutoInjectsFromContext(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 
 	ctx := corid.WithCorrelationID(context.Background(), "auto-injected-key")
@@ -386,7 +408,7 @@ func TestEnqueue_Idempotence_AutoInjectsFromContext(t *testing.T) {
 // idempotency design: re-submission after a network timeout must not
 // silently re-trigger expensive work.
 func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, store, cleanup := setupTestService(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -398,7 +420,7 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 
 	// Wave 5 PR1 state machine: QUEUED→RUNNING→COMPLETED.
 	// Service.Complete passes expectedRevision=0, so reset revision to 0.
-	if _, err := svc.repo.DB().ExecContext(ctx,
+	if _, err := store.DB().ExecContext(ctx,
 		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, j1.ID); err != nil {
 		t.Fatalf("failed to transition job to running: %v", err)
 	}
@@ -418,7 +440,7 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 // with the same (type, correlation_id). Exactly one row must exist
 // after the storm and every goroutine must observe that one row's ID.
 func TestEnqueue_Idempotence_ConcurrentSameCorrelation(t *testing.T) {
-	svc, cleanup := setupTestService(t)
+	svc, _, cleanup := setupTestService(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -473,10 +495,10 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 
 	// Two Service instances over the same *sql.DB deliberately share state
 	// but NOT the in-process enqueueMu.
-	repoA := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	repoB := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	svcA := NewService(repoA, nil, zap.NewNop())
-	svcB := NewService(repoB, nil, zap.NewNop())
+	storeA := sqljobs.NewSQLiteStore(db, zap.NewNop())
+	storeB := sqljobs.NewSQLiteStore(db, zap.NewNop())
+	svcA := NewService(storeA, nil, zap.NewNop())
+	svcB := NewService(storeB, nil, zap.NewNop())
 
 	// Both contexts carry the same correlation_id so the (type, correlation_id)
 	// UNIQUE index is the gatekeeper — not the per-Service mutex.

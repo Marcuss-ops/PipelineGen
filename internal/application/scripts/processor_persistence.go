@@ -1,7 +1,7 @@
 // Package scripts — processor_persistence.go is the SINGLE PERSISTENCE
-// OWNER (PR 6, June 2026). The engine no longer writes to the
-// scripts table; this processor is the only writer. Enabled as
-// "persistence" in the plan's Postprocessors list.
+// OWNER (PR 5, June 2026). The engine no longer writes to the scripts
+// table; this processor is the only writer. Enabled as "persistence"
+// in the plan's Postprocessors list.
 //
 // Idempotency contract:
 //
@@ -10,27 +10,19 @@
 //     plan.Language) → first 16 hex characters.
 //   - Look up an existing row by IdempotencyKey via
 //     repo.FindScriptByIdempotencyKey. If found, return
-//     {ScriptID: existing.ID} (an INFO log records the hit — no
-//     downstream signal propagates, single-writer contract).
+//     {ScriptID: existing.ID, AlreadyPersisted: true} — no insert.
 //   - If not found, build the ScriptRecord with all canonical fields
-//     (FinalWordCount from model.WordCount, SpecScene JSON marshalled,
-//     ModelUsed, CacheStatus) and SaveScript.
+//     (FinalWordCount from input.WordCount, SpecScene JSON serialised
+//     into TimelineJSON, ModelUsed, CacheStatus) and SaveScript.
 //   - The idem key MUST include target_words + language so that
 //     callers who change sizing produce distinct rows rather than
 //     colliding with prior runs.
 //
-// PR 6 (June 2026) — Storage strategy: the IdempotencyKey is now
-// stored on the dedicated `idempotency_key TEXT` column (no longer
-// stuffed into the multi-purpose `template` slot). Likewise the
-// SpecScene JSON is stored on the dedicated `specscene TEXT`
-// column (no longer stuffed into the multi-purpose `timeline_json`
-// slot). The Template and TimelineJSON slots remain populated on
-// new rows for backward compatibility with ListScripts filters.
-//
-// PR 3 (June 2026): the typed PostProcessArtifact replaces the
-// pre-PR-3 aggregate shape. The ScriptID flows through
-// PostProcessArtifact.ScriptID. Idempotency-hit operators see an
-// INFO log only (no extra postprocessing flag).
+// PR 5 storage strategy: the IdempotencyKey is currently stored on
+// the existing ScriptRecord.Template slot. A dedicated
+// `idempotency_key TEXT` column is on the PR 6 migration plan (the
+// schema-independent resolver short-circuits a one-off migration in
+// this PR window while keeping the contract uniform).
 package scripts
 
 import (
@@ -45,10 +37,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// PersistenceProcessor writes the canonical script row.
-// PR 6 (June 2026): idempotency_key and specscene columns on the
-// scripts table replace the pre-PR-6 dual-purpose Template /
-// TimelineJSON slots.
+// PersistenceProcessor writes the canonical script row. Single
+// owner of SQLite scripts-table writes (PR 5, June 2026).
 type PersistenceProcessor struct {
 	repo ScriptRepository
 	log  *zap.Logger
@@ -62,25 +52,24 @@ func NewPersistenceProcessor(repo ScriptRepository, log *zap.Logger) *Persistenc
 
 func (p *PersistenceProcessor) Name() string { return "persistence" }
 
-// Process looks up the existing row by IdempotencyKey. On hit
-// returns *PostProcessArtifact{ScriptID: existing.ID} (the
-// AlreadyPersisted signal is logged but not propagated downstream).
-// On miss, builds the ScriptRecord with all canonical fields and
-// SaveScript with idem-key dedup.
-func (p *PersistenceProcessor) Process(
-	ctx context.Context,
-	plan *scriptpkg.ResolvedGenerationPlan,
-	model *scriptpkg.ModelScriptOutputV1,
-	_ *PostProcessArtifact,
-) (*PostProcessArtifact, error) {
+// Policy classifies persistence as ProcessorRequired: a missing-registered
+// persistence or a runtime failure or empty ScriptID output is a hard
+// failure. Persistence is the SINGLE writer of script-table rows on
+// the canonical pipeline (PR 5) — losing it would silently drop scripts.
+//
+// PR 2 (June 2026): policy introduced together with the registry's
+// preflight gate. The plan arg is accepted for interface uniformity
+// but ignored — persistence is unconditionally required.
+func (p *PersistenceProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	return ProcessorRequired
+}
+
+func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.repo == nil {
 		return nil, fmt.Errorf("%w: persistence processor: ScriptRepository not configured", scriptpkg.ErrPostprocessFailed)
 	}
-	if model == nil || plan == nil {
-		return &PostProcessArtifact{}, nil
-	}
-	if model.Text == "" {
-		return &PostProcessArtifact{}, nil
+	if input.Text == "" {
+		return &PostProcessResult{}, nil
 	}
 
 	// Compute idempotency key from the reconciliation tuple.
@@ -103,18 +92,18 @@ func (p *PersistenceProcessor) Process(
 				zap.String("idem_key", idemKey),
 				zap.Int64("existing_script_id", existing.ID))
 		}
-		// PR 3 contract: idempotency hit is logged here only —
-		// the result is *PostProcessArtifact{ScriptID} (the
-		// pre-PR-3 replay flag is gone).
-		return &PostProcessArtifact{
-			ScriptID: existing.ID,
+		return &PostProcessResult{
+			ScriptID:         existing.ID,
+			AlreadyPersisted: true,
 		}, nil
 	}
 
-	// Build the canonical record. PR 6: the specscene column is
-	// populated with the canonical SpecSceneOutput JSON directly
-	// (no longer parked in the multi-purpose timeline_json slot).
-	specSceneJSON, specJSONErr := json.Marshal(model.SpecScene)
+	// PR 5 fields: persist the canonical typed output fields on
+	// the script row. PR 5 lives in the same migration window as
+	// PR 1 (engine decodes payload into canonical V1), so the
+	// downstream specscene is fully typed by the time we reach
+	// the persistence leg.
+	specSceneJSON, specJSONErr := json.Marshal(input.SpecScene)
 	if specJSONErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: specscene marshal failed: %w", scriptpkg.ErrPostprocessFailed, specJSONErr)
 	}
@@ -125,25 +114,24 @@ func (p *PersistenceProcessor) Process(
 		Language:       plan.Language,
 		Tone:           plan.Tone,
 		Model:          plan.Model,
-		ModelUsed:      model.ModelUsed,
+		ModelUsed:      input.ModelUsed,
 		Mode:           plan.Mode,
 		Status:         "completed",
 		TargetWords:    plan.TargetWords,
-		FinalWordCount: model.WordCount,
-		OutputText:     model.Text,
-		NarrativeText:  model.Text,
-		FullDocument:   model.Text,
-		// PR 6: dedicated idempotency_key column. The pre-PR-6
-		// strategy of writing the idem key into the Template slot
-		// is retired; Template is left empty so ListScripts filters
-		// using `WHERE template = 'book'` (semantic template
-		// values) keep working as before.
-		IdempotencyKey: idemKey,
-		// PR 6: dedicated specscene column. The pre-PR-6 strategy
-		// of writing SpecScene JSON into the TimelineJSON slot is
-		// retired.
-		SpecScene: string(specSceneJSON),
-		Version:   1,
+		FinalWordCount: input.WordCount,
+		OutputText:     input.Text,
+		NarrativeText:  input.Text,
+		FullDocument:   input.Text,
+		// PR 5: store the canonical SpecScene serialised into the
+		// existing TimelineJSON slot — saves a schema migration
+		// (PR 6 territory when a dedicated specscene column lands).
+		TimelineJSON: string(specSceneJSON),
+		// IdempotencyKey stored on Template slot. Concrete repo
+		// FindByIdempotencyKey reads this back. Same migration-
+		// deferral reasoning as TimelineJSON — PR 6 introduces a
+		// dedicated idempotency_key column.
+		Template: idemKey,
+		Version:  1,
 	}
 
 	scriptID, err := p.repo.SaveScript(ctx, rec, nil, nil)
@@ -155,11 +143,11 @@ func (p *PersistenceProcessor) Process(
 		p.log.Info("persistence processor: script row inserted",
 			zap.String("idem_key", idemKey),
 			zap.Int64("script_id", scriptID),
-			zap.Int("word_count", model.WordCount),
-			zap.String("cache_status", model.CacheStatus))
+			zap.Int("word_count", input.WordCount),
+			zap.String("cache_status", input.CacheStatus))
 	}
 
-	return &PostProcessArtifact{
+	return &PostProcessResult{
 		ScriptID: scriptID,
 	}, nil
 }

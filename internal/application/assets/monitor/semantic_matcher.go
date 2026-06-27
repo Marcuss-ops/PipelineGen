@@ -114,6 +114,9 @@ func (m *ChannelMonitor) matchSemantically(ctx context.Context, videoURL string,
 				ID  string
 				Txt string
 			}) {
+				// AGENTS.md §7 post-write save ctx — monitor transcript
+				// save must survive the monitor tick ctx so the DB
+				// write completes even after the tick is cancelled.
 				saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				defer cancel()
 				if err := m.saveTranscriptCache(saveCtx, arg.ID, arg.Txt); err != nil {
@@ -210,6 +213,9 @@ func (m *ChannelMonitor) loadTranscriptCache(ctx context.Context, videoID string
 		if parseErr == nil && time.Since(cachedTime) > 7*24*time.Hour {
 			// Stale — delete asynchronously and return miss
 			concurrent.SafeGoFunc("monitor-transcript-cleanup", videoID, func(id string) {
+				// AGENTS.md §7 post-write save ctx — monitor transcript
+				// cleanup is a post-write operation; the DB delete must
+				// finish even after the tick ctx is cancelled.
 				delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				defer cancel()
 				if _, err := m.db.ExecContext(delCtx, "DELETE FROM transcript_cache WHERE video_id = ?", id); err != nil {

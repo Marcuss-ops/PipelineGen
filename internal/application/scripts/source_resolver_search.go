@@ -11,6 +11,7 @@ import (
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -62,10 +63,15 @@ func NewSearchSourceResolver(
 
 // Resolve performs semantic search and builds a ResolvedSource
 // with ClipEvidence and SearchResults.
-func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, itemID string) (*scriptpkg.ResolvedSource, error) {
+//
+// PR 4 (June 2026): resolutionContext is threaded into
+// ClipGenerationOptions.Language/Tone/Model/Style/TargetWords.
+// Semantic search results don't carry language context; the
+// canonical source is resolutionContext.
+func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil || r.search == nil {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "search source resolver: semantic search service not configured",
 		}
 	}
@@ -73,7 +79,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	query := strings.TrimSpace(src.Query)
 	if query == "" {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "search source requires a query",
 		}
 	}
@@ -86,8 +92,10 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 
 	start := time.Now()
 
-	// Phase 1: semantic search.
-	results, err := r.search.SearchByText(ctx, query, limit, "")
+	// Phase 1: semantic search. ResolutionContext.Language is the
+	// canonical operator target; passing it to SemanticSearchPort
+	// allows language-restricted retrieval where supported.
+	results, err := r.search.SearchByText(ctx, query, limit, resCtx.Language)
 	if err != nil {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceSearch,
@@ -149,17 +157,26 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	// Phase 2: build clip context via shared hydration helper.
 	if r.clipBuilder == nil {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "search source resolver: ClipSourceBuilder not configured",
 		}
 	}
+
+	opts := buildSearchClipOpts(src)
+	// PR 4: thread operator-side traits from resolutionContext.
+	opts.Language = resCtx.Language
+	opts.Title = resCtx.Title
+	opts.Tone = resCtx.Tone
+	opts.Model = resCtx.Model
+	opts.Style = resCtx.Style
+	opts.TargetWords = resCtx.TargetWords
 
 	resolved, err := buildResolvedClipSource(ctx, r.clipBuilder, src, resolvedClipParams{
 		sourceType:    scriptpkg.SourceSearch,
 		query:         query,
 		clipIDs:       clipIDs,
-		opts:          buildSearchClipOpts(src),
-		titleFallback: query,
+		opts:          opts,
+		titleFallback: textutil.FirstNonEmpty(resCtx.Title, query),
 		startTime:     start,
 	}, r.log)
 	if err != nil {

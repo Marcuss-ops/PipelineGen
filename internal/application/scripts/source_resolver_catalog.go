@@ -11,6 +11,7 @@ import (
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -39,10 +40,15 @@ func NewCatalogSourceResolver(
 }
 
 // Resolve searches the catalog and builds a ResolvedSource.
-func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, itemID string) (*scriptpkg.ResolvedSource, error) {
+//
+// PR 4 (June 2026): resolutionContext is threaded into
+// ClipGenerationOptions.Language/Tone/Model/Style/TargetWords.
+// Catalog hits don't carry language context so resolutionContext
+// is the canonical source of truth.
+func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil || r.catalogSearch == nil {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "catalog source resolver: catalog search service not configured",
 		}
 	}
@@ -50,7 +56,7 @@ func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.Sourc
 	query := strings.TrimSpace(src.Query)
 	if query == "" {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "catalog source requires a query",
 		}
 	}
@@ -124,17 +130,26 @@ func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.Sourc
 	// Phase 2: build clip context via shared hydration helper.
 	if r.clipBuilder == nil {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "catalog source resolver: ClipSourceBuilder not configured",
 		}
 	}
+
+	opts := buildSearchClipOpts(src)
+	// PR 4: thread operator-side traits from resolutionContext.
+	opts.Language = resCtx.Language
+	opts.Title = resCtx.Title
+	opts.Tone = resCtx.Tone
+	opts.Model = resCtx.Model
+	opts.Style = resCtx.Style
+	opts.TargetWords = resCtx.TargetWords
 
 	resolved, err := buildResolvedClipSource(ctx, r.clipBuilder, src, resolvedClipParams{
 		sourceType:    scriptpkg.SourceCatalog,
 		query:         query,
 		clipIDs:       clipIDs,
-		opts:          buildSearchClipOpts(src),
-		titleFallback: query,
+		opts:          opts,
+		titleFallback: textutil.FirstNonEmpty(resCtx.Title, query),
 		startTime:     start,
 	}, r.log)
 	if err != nil {

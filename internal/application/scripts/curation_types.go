@@ -58,7 +58,15 @@ type CurateRequest struct {
 	AllowTextOnly bool
 }
 
-// CurateResult holds the output of a curation run.
+// DEPRECATED (PR 4, June 2026): CurateResult was the legacy curate
+// output shape. The unified pipeline now routes every curate source
+// through SourceCurate + GenerateOneUseCase, returning the canonical
+// *scriptpkg.GenerationResult. CurateResult remains as a thin
+// backward-compat wrapper for callers that have not yet migrated to
+// the unified result shape; new code MUST consume GenerationResult.
+//
+// Removal tracked in follow-up PR. Wave-13 ownership:
+// internal/application/scripts (PR wave owner).
 type CurateResult struct {
 	Title             string
 	ClipScenes        []ClipScene

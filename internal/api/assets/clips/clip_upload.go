@@ -12,8 +12,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -265,13 +265,42 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		}
 	}
 
-	// 12. Trigger async enrichment + Qdrant indexing (reuses the existing pipeline)
-	hasIndexer := h.clipIndexer != nil || h.enrichUC != nil || h.metaWriter != nil
-	if hasIndexer {
-		temp := *clip // dereference for goroutine-safe struct copy
-		concurrent.SafeGo("upload-video-enrich", func() {
-			h.EnrichAndIndexClip(context.WithoutCancel(ctx), &temp, source)
+	// 12. Trigger async enrichment + Qdrant indexing via canonical jobs
+	// system (S1a, June 2026). The previous implementation spawned a
+	// goroutine via `concurrent.SafeGo` + detached the ctx via
+	// `context.WithoutCancel` to simulate a background job — forbidden
+	// by AGENTS.md §7 + Pattern 8 (handler goroutines must not
+	// orchestrate business work). Canonical path: enqueue a
+	// `media.enrich` job whose worker is registered in
+	// `internal/application/clips/media_enrich_worker.go` and runs in
+	// the local broker pool (or a remote worker via VELOX_BROKER_URL),
+	// with the same 3-minute hard cap that the registry records.
+	indexed := false
+	if hasIndexer := h.clipIndexer != nil || h.enrichUC != nil || h.metaWriter != nil; hasIndexer && h.jobsSvc != nil {
+		_, err := h.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+			Type: jobservice.TypeMediaEnrich,
+			Payload: map[string]any{
+				"asset_id": clip.ID,
+				"source":   source,
+			},
+			ActiveKey: "enrich_clip_" + clip.ID,
 		})
+		if err != nil {
+			log.Warn("failed to enqueue media.enrich job (clip is saved; reactive re-index required)",
+				zap.String("clip_id", clip.ID), zap.Error(err))
+		} else {
+			indexed = true
+		}
+	} else if h.clipIndexer != nil || h.enrichUC != nil || h.metaWriter != nil {
+		// S1a (June 2026): same misleading-fallback fix as CreateClip —
+		// jobs service not wired but enrichment deps are. Stay silent
+		// (indexed stays false). Production always wires jobsSvc;
+		// a missing jobsSvc in test fixtures is the test author's
+		// responsibility. A WARN log surfaces the drift.
+		log.Warn("UploadVideoClip: enrichment deps wired but jobsSvc nil — clip saved; index will lag until reactive re-index",
+			zap.String("clip_id", clip.ID), zap.String("source", source))
+	}
+	if indexed {
 		log.Info("triggered async enrichment + Qdrant indexing", zap.String("clip_id", clip.ID))
 	}
 
@@ -288,7 +317,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		Category:    category,
 		Tags:        tags,
 		LocalPath:   localPath,
-		Indexed:     hasIndexer,
+		Indexed:     indexed,
 		Duration:    int(clip.Duration.Milliseconds()),
 	})
 }

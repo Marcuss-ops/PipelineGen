@@ -377,6 +377,32 @@ func TestValidateItemBadOutputFmt(t *testing.T) {
 	}
 }
 
+// TestValidateItemRejectsProse (P0.1, June 2026): canonical
+// pipeline rejects the legacy "prose" OutputFmt so callers don't
+// silently produce free-form output that the JSON decoder will
+// refuse with ErrModelOutputMalformed.
+func TestValidateItemRejectsProse(t *testing.T) {
+	item := textItem()
+	item.Output.OutputFmt = "prose"
+	err := scripts.ValidateItem(item)
+	if err == nil {
+		t.Fatal("'prose' output_fmt should fail validation in canonical pipeline")
+	}
+}
+
+// TestNormalizeItemDefaultOutputFmtIsJSON (P0.1, June 2026):
+// safety default for an unset OutputFmt is "json" — the canonical
+// structured V1 contract.
+func TestNormalizeItemDefaultOutputFmtIsJSON(t *testing.T) {
+	cfg := defaultCfg()
+	item := textItem()
+	item.Output.OutputFmt = ""
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	if item.Output.OutputFmt != "json" {
+		t.Fatalf("default OutputFmt: got %q, want %q", item.Output.OutputFmt, "json")
+	}
+}
+
 func TestValidateItemDuplicateLanguages(t *testing.T) {
 	item := textItem()
 	item.Output.Languages = []string{"it", "en", "it"}

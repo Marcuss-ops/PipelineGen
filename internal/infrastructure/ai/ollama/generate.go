@@ -80,7 +80,7 @@ func (g *Generator) GenerateDescription(ctx context.Context, mediaType, prompt, 
 		{Role: "user", Content: userPrompt},
 	}
 
-	result, err := g.client.Chat(ctx, messages, nil)
+	result, err := g.client.Chat(ctx, messages, nil, nil)
 	if err != nil {
 		return "", fmt.Errorf("description generation failed: %w", err)
 	}
@@ -111,7 +111,7 @@ func (g *Generator) GenerateVisualPrompt(ctx context.Context, text, topic, style
 		{Role: "user", Content: userPrompt},
 	}
 
-	result, err := g.client.Chat(ctx, messages, nil)
+	result, err := g.client.Chat(ctx, messages, nil, nil)
 	if err != nil {
 		return "", fmt.Errorf("visual prompt generation failed: %w", err)
 	}
@@ -202,7 +202,27 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		options["top_p"] = req.TopP
 	}
 
-	result, err := g.client.Chat(ctx, messages, options)
+	// P0.2 (June 2026): when the caller requests the structured
+	// V1 script contract (OutputModeScriptV1), force Ollama into
+	// native JSON-mode so the model response is constrained to
+	// syntactically valid JSON.
+	//
+	// Format is a TOP-LEVEL body field on `/api/chat`. Putting it
+	// in `options` would be silently wrong because Ollama treats
+	// `options`-nested keys as model parameters (temperature, seed…)
+	// — a `format` there is ignored. See types.ChatRequest.Format
+	// + client_core.go::doChatRequest for the wire wiring.
+	//
+	// This is the wire-format counterpart of the v1OutputInstruction
+	// prompt suffix; the two layers cooperate to defend the V1
+	// contract. Native json-mode does NOT enforce a schema — the
+	// prompt suffix does that. We never overwrite a caller-supplied
+	// Format so test rigs / future non-script callers can opt out.
+	if req.OutputMode == types.OutputModeScriptV1 && len(req.Format) == 0 {
+		req.Format = json.RawMessage(`"json"`)
+	}
+
+	result, err := g.client.Chat(ctx, messages, options, req.Format)
 	if err != nil {
 		return nil, fmt.Errorf("script generation failed: %w", err)
 	}
@@ -263,7 +283,7 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 	}
 	types.ApplyDefaultsToRegeneration(&req)
 	messages := prompts.BuildRegenerationChatMessages(&req)
-	result, err := g.client.Chat(ctx, messages, req.Options)
+	result, err := g.client.Chat(ctx, messages, req.Options, nil)
 	if err != nil {
 		return nil, fmt.Errorf("script regeneration failed: %w", err)
 	}
@@ -373,7 +393,7 @@ func (g *Generator) TranslateTextWithModel(ctx context.Context, text, targetLang
 		options["model"] = effectiveModel
 	}
 
-	result, err := g.client.Chat(ctx, messages, options)
+	result, err := g.client.Chat(ctx, messages, options, nil)
 	if err != nil {
 		return "", fmt.Errorf("translation failed: %w", err)
 	}
@@ -445,7 +465,7 @@ You must respond ONLY with a raw JSON object matching the following structure:
 	if effectiveModel := g.resolveModel(model); effectiveModel != "" {
 		opts["model"] = effectiveModel
 	}
-	result, err := g.client.Chat(ctx, messages, opts)
+	result, err := g.client.Chat(ctx, messages, opts, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("metadata generation failed: %w", err)
 	}

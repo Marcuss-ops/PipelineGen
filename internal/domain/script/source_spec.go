@@ -92,6 +92,60 @@ func (s *SourceSpec) HasClipIDs() bool { return len(s.ClipIDs) > 0 }
 
 // ── Resolved source ────────────────────────────────────────────────────
 
+// ── SourceResolutionContext ────────────────────────────────────────────────
+
+// SourceResolutionContext is the canonical resolution-time context
+// passed alongside SourceSpec through SourceRegistry.Resolve. It
+// carries item-level traits (target language, tone, model, style,
+// target word count) that a resolver needs to produce a ResolvedSource
+// matching the operator's intent.
+//
+// Rationale (PR 4, June 2026): previously the curate resolver hijacked
+// SourceSpec.Guidelines as a stand-in for ClipGenerationOptions
+// Language — a bug because Guidelines is style instructions, not a
+// language code. SourceResolutionContext makes the boundary explicit:
+// language = real target language; style = style instructions; tone =
+// delivery tone; model = engine model; target words = script length
+// budget. The resolver receives BOTH SourceSpec (source-side
+// instructions: Query, ClipIDs, SourceFilter, ...) AND
+// SourceResolutionContext (operator-side traits) so neither field leaks
+// into the other.
+//
+// Construction: built in generate_one_usecase.go::Execute from the
+// resolved plan right before registry.Resolve. Resolvers that don't
+// need these fields (e.g. pure-text resolver) ignore them.
+type SourceResolutionContext struct {
+	// ItemID is the canonical generation item identifier. Resolvers use
+	// it for logging correlation; not propagated into ResolvedSource.
+	ItemID string `json:"item_id,omitempty"`
+
+	// Title is the resolved document/video title.
+	Title string `json:"title,omitempty"`
+
+	// Language is the canonical target output language (ISO 639-1).
+	// Resolvers map this verbatim into ClipGenerationOptions.Language.
+	// PR 4 fix: previously the curate resolver used src.Guidelines here.
+	Language string `json:"language,omitempty"`
+
+	// Tone is the voice/delivery tone (e.g. "informative", "dramatic").
+	// Mapped into ClipGenerationOptions.Tone.
+	Tone string `json:"tone,omitempty"`
+
+	// Model is the engine model identifier (e.g. "llama3:8b").
+	// Mapped into ClipGenerationOptions.Model.
+	Model string `json:"model,omitempty"`
+
+	// Style is the editorial style instructions (free-form text).
+	// Distinct from SourceSpec.Guidelines: SourceSpec.Guidelines is
+	// retained only for pure-text editorial overrides and is ignored by
+	// the curate flow per PR 4.
+	Style string `json:"style,omitempty"`
+
+	// TargetWords is the target script word count (e.g. 800 for a
+	// 5-minute voiceover). Mapped into ClipGenerationOptions.TargetWords.
+	TargetWords int `json:"target_words,omitempty"`
+}
+
 // ResolvedSource is the output of a SourceResolver. It carries the
 // canonical text + evidence that the engine consumes. Every resolver
 // (text, clips, catalog, search) produces the same shape so the

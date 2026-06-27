@@ -1,3 +1,24 @@
+// Package jobs — Service.go (Wave 22 PR-B, June 2026).
+//
+// Service is the application-layer facade over the canonical job.Store
+// port (job.JobBroker). The previous shape held *sqljobs.SQLiteStore
+// directly (a godlike/06 violation — application → infrastructure). PR-B
+// switches the field type to job.JobBroker (= job.Store in the canonical
+// embedding). The compile-time assertion `var _ job.JobBroker = (*SQLiteStore)(nil)`
+// in the infrastructure layer guarantees the seam is conformant.
+//
+// Service-internal transitions (Enqueue idempotency, FindActiveByKey /
+// FindByTypeAndCorrelation / Retry / ListEvents) are part of the canonical
+// Store surface as of PR-B. SQLite-specific helpers (GetStats,
+// RequeueExpiredLeasesNoArg, MarkRunningJobsOlderThanFailed) intentionally
+// do NOT live on this Service — the compile-time assertion
+// `var _ job.JobBroker = (*SQLiteStore)(nil)` in
+// `internal/infrastructure/database/sqlite/jobs/repository.go` is the load-bearing
+// invariant: a future PR that resurrects `RequeueExpiredLeasesNoArg` (or any
+// other SQLite-only method) on this Service would have to widen the JobBroker
+// port to expose it, which the architecture review would catch at PR-merge time.
+// Composition-root callers in `internal/app` already hold the concrete
+// *SQLiteStore via JobsBundle.Repo and call those helpers directly.
 package jobs
 
 import (
@@ -12,7 +33,6 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -21,8 +41,12 @@ import (
 const MaxPayloadSize = 1 << 20 // 1 MB
 
 // Service manages job life cycle: enqueue, query, cancel.
+//
+// PR-B: repo field is the canonical job.JobBroker port, not the concrete
+// *sqljobs.SQLiteStore. Any future broker adapter (e.g. PostgreSQL) can be
+// injected without touching this file.
 type Service struct {
-	repo       *sqljobs.SQLiteStore
+	repo       job.JobBroker
 	dispatcher *Dispatcher
 	log        *zap.Logger
 
@@ -32,7 +56,10 @@ type Service struct {
 	enqueueMu sync.Mutex
 }
 
-func NewService(repo *sqljobs.SQLiteStore, dispatcher *Dispatcher, log *zap.Logger) *Service {
+// NewService constructs the Service from the canonical job.JobBroker port.
+// Composition root injects *sqljobs.SQLiteStore today; future PR-`postgres`
+// injects *pgbroker.Store (declared via `var _ job.JobBroker = (*pgbroker.Store)(nil)`).
+func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger) *Service {
 	return &Service{
 		repo:       repo,
 		dispatcher: dispatcher,
@@ -239,22 +266,10 @@ func (s *Service) AddEvent(ctx context.Context, jobID string, eventType string, 
 	return s.repo.AddEvent(ctx, jobID, eventType, message, data)
 }
 
+// ListEvents returns the timeline events for a given job.
+// Implements job.Service interface.
 func (s *Service) ListEvents(ctx context.Context, jobID string) ([]job.Event, error) {
 	return s.repo.ListEvents(ctx, jobID)
-}
-
-func (s *Service) RequeueExpiredLeases(ctx context.Context) error {
-	return s.repo.RequeueExpiredLeasesNoArg(ctx)
-}
-
-// GetStats returns aggregated job statistics.
-func (s *Service) GetStats(ctx context.Context) (*sqljobs.JobStats, error) {
-	return s.repo.GetStats(ctx)
-}
-
-func (s *Service) MarkStaleRunningJobsFailed(ctx context.Context, olderThan time.Duration) (int, error) {
-	cutoff := time.Now().UTC().Add(-olderThan)
-	return s.repo.MarkRunningJobsOlderThanFailed(ctx, cutoff, "stale job timeout")
 }
 
 // IsTerminal reports whether the job status is a terminal state.

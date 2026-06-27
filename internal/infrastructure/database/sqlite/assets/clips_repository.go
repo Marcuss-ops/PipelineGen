@@ -233,64 +233,39 @@ func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id st
 	return nil
 }
 
-// Restore flips lifecycle_state back to 'ready'.
+// ── Dangerous-mutation removal — Wave 22 task 5 / PR-CLIP-RAW-MUTATIONS ───
 //
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Restoring an asset
-// should trigger a re-index via the dispatcher so Qdrant gets the
-// point back. Today this is a diagnostic/operator operation; a future
-// PR should add a Dispatcher.EnqueueAndRestore counterpart.
+// Restore, HardDelete, and HardDeleteClip are REMOVED from this concrete
+// repository as of PR-CLIP-RAW-MUTATIONS (June 2026). Their replacements live
+// in the restricted tx-scoped package
+// `internal/infrastructure/database/sqlite/assets/txmutation/`:
 //
-// QDRANT-asset-mutation isolation (June 2026): //nolint:production.
-// Production callers (internal/application/**, internal/api/**)
-// MUST NOT call this directly. The legitimate callers are:
-//   1. cmd/admin/* via internal/infrastructure/database/sqlite/admin/
-//      (InternalAdminPurge) for offline restoration of a row in
-//      physical-repair; the worker pool is OFFLINE so an outbox
-//      event would never be consumed.
-//   2. The dispatcher path (future PR — EnqueueAndRestore) for
-//      atomic restore + re-index.
+//   - txmutation.RestoreTx(ctx, tx, id)   — flips lifecycle_state back to
+//                                          'ready' inside a caller-owned tx.
+//   - txmutation.HardDeleteTx(ctx, tx, id) — physically removes the row
+//                                          + dependent rows inside a
+//                                          caller-owned tx.
 //
-// No production caller in this codebase calls Restore today; the
-// method stays exposed for the admin + future-dispatcher use cases.
-func (r *ClipsRepository) Restore(ctx context.Context, id string) error {
-	nowStr := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
-	return err
-}
-
-// HardDelete physically deletes a clip row + dependent rows. This
-// bypasses the outbox by design.
+// Rationale:
+//   1. Production-reachability ban. The presence of public methods on
+//      *assets.ClipsRepository made it trivial for non-canonical callers
+//      to bypass the outbox + the InternalAdminPurge safety gate. Removing
+//      them from this receiver breaks all direct-producer paths. The CI
+//      lint (`scripts/ci-architectural-checks.sh::Check 5`) bans any
+//      direct caller regardless.
+//   2. Tx-scoped only. The replacements REQUIRE the caller to hold an
+//      open *sql.Tx. The caller — `admin.PurgeService` in
+//      `internal/infrastructure/database/sqlite/admin/purge.go::HardDeleteClip`
+//      and `RestoreClip` — opens the tx, calls the tx-scoped primitive,
+//      and commits. A future caller that skips the tx boundary won't
+//      compile because *sql.Tx is a non-optional parameter.
 //
-// QDRANT-asset-mutation isolation (June 2026): //nolint:production.
-// Production callers (internal/application/**, internal/api/**)
-// MUST NOT call this directly. The legitimate callers are:
-//   1. cmd/admin/* via internal/infrastructure/database/sqlite/admin/
-//      (InternalAdminPurge) for offline physical-repair; the
-//      worker pool is OFFLINE so an outbox event would never be
-//      consumed.
-//   2. The dispatcher path lands via EnqueueAndDelete (the existing
-//      Handler already routes through dispatcher.EnqueueAndDelete
-//      which then calls SetIndexStateTx + emits outbox event).
+// The internal/application/assets/mutations/AssetMutationPrimitives
+// interface ALSO drops Restore/HardDelete (UpsertClip stays — fixtures
+// rely on it). The outbox dispatcher, which already implements
+// AssetMutationDispatcher (3-method, not Primitives), is unaffected.
 //
-// No production caller in this codebase calls HardDelete today;
-// the method stays exposed for the admin + future-dispatcher use
-// cases.
-func (r *ClipsRepository) HardDelete(ctx context.Context, id string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_locations WHERE asset_id = ?", id)
-	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_processing WHERE asset_id = ?", id)
-	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_versions WHERE asset_id = ?", id)
-	_, err = tx.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
-}
+// Reference: architecture/deprecations.yaml → PR-CLIP-RAW-MUTATIONS.
 
 func (r *ClipsRepository) Canonical() *ClipsRepository {
 	return r
@@ -418,12 +393,10 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 	return r.SoftDelete(ctx, id)
 }
 
-// Wave 16 (June 2026): RestoreClip alias removed. Callers must invoke
-// Restore directly. See docs/architecture/deprecations.yaml#PR-CLIP-RESTORE.
-
-func (r *ClipsRepository) HardDeleteClip(ctx context.Context, id string) error {
-	return r.HardDelete(ctx, id)
-}
+// Wave 22 (June 2026) PR-CLIP-RAW-MUTATIONS: HardDeleteClip REMOVED.
+// The thin wrapper that delegated to *assets.ClipsRepository.HardDelete
+// is gone. The InternalAdminPurge adapter now opens its own tx and
+// calls txmutation.HardDeleteTx directly. See architecture/deprecations.yaml.
 
 // DeleteClipByDriveLink soft-deletes by drive/download link.
 //

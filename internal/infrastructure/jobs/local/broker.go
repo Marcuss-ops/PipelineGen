@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -13,12 +15,52 @@ import (
 )
 
 type Broker struct {
-	jobs    domainjob.Store
-	workers *assets.WorkerNodesRepository
+	jobs       domainjob.Store
+	workers    *assets.WorkerNodesRepository
+	progress   ProgressSink
+	coalescer  *ProgressCoalescer
+	log        *zap.Logger
+	coalesceOn bool // true when coalescer is configured; gated via nil-check
 }
 
-func New(jobs domainjob.Store, workers *assets.WorkerNodesRepository) *Broker {
-	return &Broker{jobs: jobs, workers: workers}
+// Deps is the constructor dependency injection container (mandatory for
+// PR-D setter ban, June 2026). Visible-field-line cap ≤8 (cap is enforced
+// via Check 23 in scripts/ci-architectural-checks.sh — counted from a
+// mirror under internal/app/lifecycle_deps_smoke_test.go).
+//
+// Progress + Coalescer are TYPICAL for production (coalescer buffered
+// behind 100ms window). Pass Coalescer == nil to disable coalescing
+// (declares Window=0 semantics inside NewProgressCoalescer) — broker
+// will route Progress calls directly to the sink in that mode.
+type Deps struct {
+	Jobs      domainjob.Store
+	Workers   *assets.WorkerNodesRepository
+	Progress  ProgressSink
+	Coalescer *ProgressCoalescer
+	Log       *zap.Logger
+}
+
+// New constructs the broker via Deps (PR-D setter ban, June 2026).
+// Compiles a typed sentinel if any load-bearing field is missing —
+// mirror of PR-Retention's ctor-validation pattern.
+func New(d Deps) (*Broker, error) {
+	if d.Jobs == nil {
+		return nil, fmt.Errorf("local.New: Deps.Jobs is required")
+	}
+	if d.Progress == nil {
+		return nil, fmt.Errorf("local.New: Deps.Progress is required")
+	}
+	if d.Log == nil {
+		return nil, fmt.Errorf("local.New: Deps.Log is required")
+	}
+	return &Broker{
+		jobs:       d.Jobs,
+		workers:    d.Workers,
+		progress:   d.Progress,
+		coalescer:  d.Coalescer,
+		log:        d.Log,
+		coalesceOn: d.Coalescer != nil,
+	}, nil
 }
 
 func (b *Broker) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
@@ -102,24 +144,101 @@ func (b *Broker) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.
 	return &appjobs.Lease{Job: j, LeaseID: j.LeaseID, ExpiresAt: time.Now().UTC().Add(cmd.LeaseTTL)}, nil
 }
 
+// Progress routes through the coalescer when configured; falls back
+// to direct sink passthrough if the coalescer is disabled (Window=0) or
+// nil. The session guard is the same in either path — coalesce buffer
+// mutation is local-only and doesn't leak worker-session validity.
+//
+// Why broker-level coalescing (vs worker-side on tools.go): the
+// broker is the SINGLE funnelling point for in-process and remote
+// workers. Worker-side coalescing would require every worker process
+// (potentially 16+ per project × N projects) to maintain a separate
+// buffer — extra memory + no central observability. Broker-level
+// coalescing observes every worker's Progress call exactly once.
 func (b *Broker) Progress(ctx context.Context, cmd appjobs.ProgressCommand) error {
 	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
 		return err
 	}
-	return b.jobs.SetProgress(ctx, cmd.JobID, cmd.Progress, cmd.Message)
+	if b.coalesceOn {
+		return b.coalescer.Take(ctx, cmd.JobID, cmd.Progress, cmd.Message)
+	}
+	// Disabled coalescing: write directly to the canonical sink.
+	// (Coincidentally: b.progress == b.jobs today, since *SQLiteStore
+	//  satisfies both ProgressSink and domainjob.Store. Future
+	//  postgres adapter may diverge; the broker stays correct because
+	//  it routes through the ProgressSink port, not the path-equal
+	//  identity.)
+	return b.progress.SetProgress(ctx, cmd.JobID, cmd.Progress, cmd.Message)
 }
 
+// flushPendingProgress pops the coalescer's bucket for `jobID` (if
+// any) and writes it via the canonical sink BEFORE the caller
+// performs a terminal transition. The order — flush first, terminal
+// second — is load-bearing:
+//
+//	(1) The audit timeline ends with the most-recent progress
+//	    row + event BEFORE the terminal row + event. A reader of
+//	    job_events sees "Progress(pct=X) → JobCompleted" with no
+//	    gap.
+//
+//	(2) SetProgress does NOT bump the canonical `revision` column
+//	    today (see internal/infrastructure/database/sqlite/jobs/
+//	    repository_lifecycle.go:16-26). If a future PR adds revision-
+//	    bumping in SetProgress, the Flush-then-Terminal ordering
+//	    would FAIL because the terminal CAS would see a stale
+//	    revision snapshot. That future PR MUST re-validate the
+//	    ordering here or refactor Flush-then-Terminal into a single
+//	    SQL tx — see comment block on retention.go for the analogous
+//	    immutability invariant pattern.
+//
+//	(3) The coalescer's FlushJob is POP-FIRST (lock + delete +
+//	    release, no SQL under lock). So if the tick loop has just
+//	    popped this jobID's bucket via popBatch(), FlushJob returns
+//	    (nil, nil) and we proceed directly to the terminal SQL.
+//	    No double-write hazard.
+//
+// Errors from SetProgress during the flush are SURFACED via the
+// logger but DO NOT abort the terminal transition — the canonical
+// pattern is "terminal transition wins even if the last progress
+// flush errors; the underlying SQL error in the terminal call is
+// what the worker sees".
+func (b *Broker) flushPendingProgress(ctx context.Context, jobID string) {
+	if !b.coalesceOn {
+		return
+	}
+	p, err := b.coalescer.FlushJob(jobID)
+	if err != nil {
+		b.log.Warn("progress coalescer FlushJob returned error (non-fatal, terminal proceeds)",
+			zap.String("job_id", jobID), zap.Error(err))
+		return
+	}
+	if p == nil {
+		return // tick loop already popped it; nothing to do
+	}
+	if err := b.progress.SetProgress(ctx, jobID, p.pct, p.message); err != nil {
+		b.log.Warn("progress coalescer terminal-flush write failed (non-fatal)",
+			zap.String("job_id", jobID), zap.Int("pct", p.pct), zap.Error(err))
+		return
+	}
+}
+
+// Complete — order: flush-pending-progress FIRST, then terminal CAS.
+// See flushPendingProgress comment block for rationale (audit timeline
+// ordering + revision CAS safety invariant).
 func (b *Broker) Complete(ctx context.Context, cmd appjobs.CompleteCommand) error {
 	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
 		return err
 	}
+	b.flushPendingProgress(ctx, cmd.JobID)
 	return b.jobs.Complete(ctx, cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.ExpectedRevision, cmd.Result)
 }
 
+// Fail — same flush-pending-progress ordering as Complete.
 func (b *Broker) Fail(ctx context.Context, cmd appjobs.FailCommand) error {
 	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
 		return err
 	}
+	b.flushPendingProgress(ctx, cmd.JobID)
 	return b.jobs.Fail(ctx, cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.ExpectedRevision, cmd.Error)
 }
 
@@ -129,6 +248,24 @@ func (b *Broker) IsCancelled(ctx context.Context, jobID string, leaseID string) 
 		return false, err
 	}
 	return j.Status == domainjob.StatusCancelled, nil
+}
+
+// Coalescer returns the broker's progress coalescer for use by the
+// lifecycle StartupStep wiring (PR-Progress / ADR-0002 §D6.4). The
+// returned pointer is the same instance the broker holds in its
+// Deps - tick-loop startup calls .Start(ctx) on it; tick-loop
+// shutdown calls .Stop() on it.
+//
+// Returns nil when coalescing is disabled (Deps.Coalescer was nil at
+// construction time) — the lifecycle.go startup step gates on
+// non-nil before launching the ticker goroutine (matches the
+// "disable coalescing" escape hatch promised by ADR §D6.4).
+//
+// Cheap (O(1) field read); safe to call concurrently with Take/Flush
+// because the coalescer pointer is immutable post-construction (set
+// in New(d Deps)).
+func (b *Broker) Coalescer() *ProgressCoalescer {
+	return b.coalescer
 }
 
 func (b *Broker) ensureSession(ctx context.Context, workerID, sessionID string) error {

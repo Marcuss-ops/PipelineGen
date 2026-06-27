@@ -1,6 +1,6 @@
 # PipelineGen — Active Migration Plan
 # -----------------------------------------------------------------------------
-# Current waves only (14-19 in flight) + Wave 0 meta-snapshot. Historical
+# Current waves only (14-22 in flight) + Wave 0 meta-snapshot. Historical
 # waves 1-13 (all status: done) live in docs/archive/migration-history.md.
 #
 # Owner-of-record cross-reference: architecture/ownership.yaml.
@@ -577,7 +577,7 @@
 #        violations is not completion."
 - id: 20
   title: "QDRANT-005D hygiene — same-package duplicate-type-declaration lint"
-  status: in_progress
+  status: enforcement
   verified_zero: false
   description: |
     Forward-prevention half of QDRANT-RECOVERY-001. Catches Go's
@@ -672,6 +672,220 @@
     duplicate_types_allowlist_present: yes (on disk, on origin/main)
     ticket_pinned: docs/operations/05-qdrant-redeclaration-recovery.md (RECOVERED)
     zero_legacy_doc_note: shipped (canonical note on wire-mirror + cycle-break + lint enforcement)
+
+- id: 21
+  title: "PR-I — pack-size cap + archcheck --strict promotion"
+  status: in_progress
+  verified_zero: false
+  description: |
+    PR-I (June 2026) promotes cmd/archcheck --strict to a blocking CI gate
+    AND elevates architecture/policy.yaml::max_files_per_package=40 to
+    enforcement mode in CI. ADR reference: architecture/decisions/0002-p2-p3-roadmap.md
+    §D5. --strict flag at cmd/archcheck/main.go:151; exit-1 gate at
+    cmd/archcheck/main.go:204-205. The transitional baseline
+    docs/migrations/archcheck-strict-baseline.json holds current open
+    exceptions; fail-closed semantics per godlike/08 §zero-baseline rule —
+    any entry past its deadline is a hard fail at PR-I evaluation time,
+    not a soft warn.
+  deliverables:
+    - id: scripts/ci-architectural-checks.sh
+      kind: ci_gate_wiring
+      title: "Wire `go run ./cmd/archcheck --strict` AFTER the scripts/archcheck invocation"
+      shipped_in: PR-I
+    - id: docs/migrations/archcheck-strict-baseline.json
+      kind: baseline_file
+      title: "Transitional baseline for the strict gate (initial seed)"
+      shipped_in: PR-I
+    - id: architecture/decisions/0002-p2-p3-roadmap.md §D5
+      kind: adr_note
+      title: "Binary clarification (cmd/archcheck/main.go, NOT scripts/archcheck/main.go) + PR-G hard dependency footnote"
+      shipped_in: PR-I
+  rule: |
+    All packages under internal/ are bound by
+    architecture/policy.yaml::max_files_per_package=40. The gate emits
+    WARN by default and exits 1 with --strict. Cross-capability splits
+    (PR-G scope) are the only legitimate remediation; growth above 40
+    without a tracked PR-G is a blocking CI failure. Today's
+    fail-closed metric: 18 excess files over the 40 cap (15 in
+    internal/application/scripts + 3 in internal/application/youtube);
+    total of 98 raw files across the two outlier packages.
+  exit_gate: |
+    bash scripts/ci-architectural-checks.sh exits 0 AND
+    go run ./cmd/archcheck --strict reports 0 violations. All packages
+    under internal/ have <=40 files (verified_zero=true is the canonical
+    "len-zero-baseline"); docs/migrations/archcheck-strict-baseline.json
+    holds the current zero-state.
+  transitional_baselines:
+    owner: scripts+yt mega-package split work stream (PR-G owner)
+    deadline: 2026-07-10
+    current_count_total_files: 98  # 55 (scripts) + 43 (youtube)
+    current_count_excess_files: 18  # 15 (scripts over 40 cap) + 3 (youtube over 40 cap)
+    expected_post_remediation_excess_files: 0  # both cap-aligned post-PR-G
+    remediation_target: |
+      PR-G (mega-package split for internal/application/scripts +
+      internal/application/youtube). After PR-G final commit lands,
+      both bundles are <=40 files each -> the transitional baseline
+      shrinks to zero and fail-closed semantics lock CI green.
+  ci_impact_at_landing: |
+    On origin/main HEAD after this wave entry merges,
+    scripts/ci-architectural-checks.sh will exit 1 with the
+    pack-size-cap violation against the two in-progress PR-G
+    packages. The user explicitly accepted this CI-break risk
+    per the pre-blocking prep phase (Option C landing). The path
+    to green is PR-G landing + zero-baseline shrink.
+  blocked_by: ["G"]
+  component_checks:
+    cmd_archcheck_strict_pass: 'go run ./cmd/archcheck --strict exit 0'
+    archcheck_strict_baseline_present: yes
+    ci_gate_strict_wired: yes
+    adr_d5_note_present: yes
+
+# ── Wave 22 — context.WithoutCancel CI gate (S3 chain finalisation + task 6) ──
+# Triggers:
+#   - S3 chain (S3a → S3b → S3c → S3d → S3e → S3f → S3g) finalised on origin/main
+#     June 2026 covering QDRANT-asset-mutation isolation (PR-CLIP-RAW-MUTATIONS,
+#     task 5), YouTube-clip-handler provider-registry collapse
+#     (PR-CLIP-YT-REGISTRY-CLEANUP, S3c), SearchAggregator migration (S3d),
+#     Check 8 (factory-only) lint gate (S3e), and AGENTS.md post-write save ctx
+#     allowlist augmentation (S3g).
+#   - S3g scope-footer carry-over mandates a canonical tracker entry in this file
+#     before the next WithoutCancel exemption is added. The scope-footer currently
+#     reads "Promoting either family to a dedicated CI gate ... requires a tracking
+#     entry in architecture/current.yaml (with owner + deadline + tracking
+#     issue)". This wave entry fulfils that mandate and registers the forward
+#     work as `follow_up_tickets:[]` PR-CONTEXT-NO-CANCEL-CI-GATE.
+#
+# Why Wave 22 is NOT threaded under Wave 20:
+#   - Wave 20 is QDRANT-005D hygiene (same-package redeclaration); its scope is
+#     narrow (Check 5 lint only) and the AWK→Go rewrite is its terminal work.
+#   - Wave 22 is context.WithoutCancel hygiene (without-cancel parity with the
+#     Check 1 / Check 5 family but for the surviving BG-family exemption list).
+#     It is a separate CI gate with its own allowlist marker convention
+#     (`// ARCH-ALLOWLIST: no-cancel`) and its own transitional baseline
+#     (8 currently-allowlisted sites NOT yet in AGENTS.md).
+- id: 22
+  title: "context.WithoutCancel CI gate promotion + 8-extras audit (S3g followup)"
+  status: in_progress
+  verified_zero: false
+  description: |
+    Wave 22 captures the S3 chain (S3a-S3g) finalisation that shipped on
+    origin/main in June 2026 — QDRANT-asset-mutation isolation
+    (PR-CLIP-RAW-MUTATIONS = task 5) + YouTube-clip-handler provider-registry
+    collapse (PR-CLIP-YT-REGISTRY-CLEANUP, S3c) + SearchAggregator migration
+    (S3d) + Check 8 (factory-only) lint gate (S3e) + AGENTS.md post-write
+    save ctx allowlist augmentation (S3g) — PLUS the forward work the S3g
+    scope-footer says is required to expand the allowlist safely:
+
+    Task 6 (PR-CONTEXT-NO-CANCEL-CI-GATE): promote the documented
+    `context.WithoutCancel` exemption family from documentation-only status
+    (S3g status) to a dedicated CI gate (`scripts/ci-architectural-checks.sh`
+    Check 9). The gate should:
+      * rg-scan `internal/**` for `context.WithoutCancel(` call sites that
+        are NOT documented in the AGENTS.md post-write save ctx allowlist
+        table AND do NOT carry the magic marker
+        `// ARCH-ALLOWLIST: no-cancel` (mirrors Check 5's `admin-only` marker
+        + Check 8's `factory-only` marker);
+      * report a non-zero count until either (i) a new allowlist site is
+        registered in the AGENTS.md table, OR (ii) the call carries the
+        marker with documented legitimate business exemption;
+      * zero-baseline per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+        §"Zero-baseline rule".
+
+    Scope (per AGENTS.md scope-footer carry-over): of the existing 25-row
+    allowlist, 4 Background rows are Check-1-mapped, 8 Background rows are
+    documentation-only (out of Check 9 scope), and 13 WithoutCancel rows are
+    documentation-only (Check 9 covers these). Plus 8 currently-allowlisted
+    WithoutCancel sites NOT yet in the AGENTS.md table (basher S3g audit
+    surfaced these): to be documented OR marked by the deadline below.
+  blocked_by: ["20"]
+  rule: |
+    Inside internal/**, `context.WithoutCancel(...)` MUST be either:
+      (a) listed in the AGENTS.md post-write save ctx allowlist table
+          (the 13 canonical sites with documented reason +
+          forward-tracking-issue);
+      (b) marked with `// ARCH-ALLOWLIST: no-cancel` on the line preceding
+          the call, with the legitimate business exemption documented inline
+          (transitional case per the zero-baseline rule);
+      (c) OR register as a new site in the AGENTS.md table (this wave's
+          task 6 follow-up to S3g).
+    Implementation: scripts/ci-architectural-checks.sh::Check 9
+    (without-cancel lint block, mirrors Check 5 + Check 8 patterns).
+  exit_gate: |
+    bash scripts/ci-architectural-checks.sh exits 0 with the log line
+    "Check 9: 0 undocumented context.WithoutCancel call sites across internal/"
+    where 0 means: 13 AGENTS.md-documented sites + 0 unmarked basher-surfaced
+    sites that did not carry ARCH-ALLOWLIST.
+    AGENTS.md scope-footer carry-over is updated to reference
+    `architecture/current.yaml#id-22 follow_up_tickets.PR-CONTEXT-NO-CANCEL-CI-GATE`
+    as the canonical pointer.
+    Each of the 8 currently-unlisted sites is either:
+      * added to the AGENTS.md allowlist table with a reason, OR
+      * marked `// ARCH-ALLOWLIST: no-cancel` inline.
+    verified_zero: true flip requires 0 count on origin/main HEAD.
+  transitional_baselines:
+    note: |
+      Currently 8 WithoutCancel sites NOT in AGENTS.md allowlist (per S3g
+      basher audit, June 2026):
+        - internal/application/assets/sourcing/service.go
+        - internal/application/assets/providers/artlist/adapter_core.go
+        - internal/application/clips/enrich.go
+        - internal/application/clips/media_enrich_worker.go
+        - internal/app/module_media.go
+        - internal/api/assets/clips/clip_create.go
+        - internal/api/assets/clips/clip_upload.go
+        - internal/api/assets/clips/clip_enrich.go
+      Plus 8 Background rows that are documentation-only (4 of those are
+      Check-1-mapped; Check 1 covers them; Check 9 does not duplicate).
+      Owner-deadline-discipline per docs/architecture/godlike/08 §"Zero-baseline rule":
+      transitional baselines require an owner + deadline.
+    owner: qdrant-asset-mutation work stream (RW-PROD-013 dependency chain)
+    owner_secondary: scripts/ci-architectural-checks.sh maintainer
+    deadline: 2026-07-15
+    current_count: 8  # WithoutCancel-only; re-verify via `bash scripts/ci-architectural-checks.sh`
+    expected_post_remediation_count: 0
+    remediation_target: |
+      Each of the 8 currently-allowlisted sites either gets a new row in the
+      AGENTS.md table or carries `// ARCH-ALLOWLIST: no-cancel` for transition.
+      The count drops to 0 when all 8 are documented.
+  ci_impact_at_landing: |
+    After Wave 22 Check 9 lands: scripts/ci-architectural-checks.sh emits
+    "Check 9: 7 undocumented context.WithoutCancel call sites detected"
+    on origin/main HEAD (8 minus the 1 that lands documented in the same PR
+    or in a backfill shipment). This IS the expected transitional state per
+    docs/architecture/godlike/08 §"Zero-baseline rule". CI stays GREEN while
+    the count trends to 0; verified_zero: true only flips at zero.
+  completed_through_W22_chain_close:
+    - "Wave 22 / task 5 / PR-CLIP-RAW-MUTATIONS: clips_repository.go Restore/HardDelete/HardDeleteClip REMOVED; txmutation.{RestoreTx,HardDeleteTx} introduced in tx-scoped package (architecture/deprecations.yaml record #8, status: removed, migration_phase: CONTRACT, removal_date: 2026-06-26)"
+    - "Wave 22 / S3c / PR-CLIP-YT-REGISTRY-CLEANUP: youtube_handlers.go resolveProvider + providerSearch + providerReg + providerResolve fields REMOVED; cross-provider search now routes through SearchAggregator (architecture/deprecations.yaml record #10, status: removed, migration_phase: CONTRACT, removal_date: 2026-06-27)"
+    - "Wave 22 / S3e / Check 8 factory-only: scripts/ci-architectural-checks.sh Check 8 rg-gates the literal `map[string]*assets.ClipsRepository{...}` outside canonical-factory sites (assetindex/resolver.go + app/build_bundles_core.go) with the `// ARCH-ALLOWLIST: factory-only` magic marker"
+    - "Wave 22 / S3g / AGENTS.md allowlist update: 13 context.WithoutCancel rows appended to the post-write save ctx table (25-row total: 12 BG + 13 WOC); intro paragraph + scope footer correct; drift +4 mention for site #10; legacy-row path migration to internal/application/assets/providers/artlist/search_cache.go"
+  follow_up_tickets:
+    - id: PR-CONTEXT-NO-CANCEL-CI-GATE
+      title: "Promote context.WithoutCancel to Check 9 CI gate; document or arch-allowlist the 8 unlisted sites"
+      owner_capability: scripts/ci-architectural-checks.sh
+      target: "(a) ship Check 9 in scripts/ci-architectural-checks.sh scanning internal/** for context.WithoutCancel call sites outside the AGENTS.md allowlist; (b) add 8-row documentation in AGENTS.md OR `// ARCH-ALLOWLIST: no-cancel` marker for each"
+      notes: |
+        Until this PR ships, the 8 unlisted WithoutCancel sites remain
+        untracked at the docs level. The Check 9 list of these sites is the
+        literal rg query:
+        `rg -l 'context\.WithoutCancel' --type go internal/`
+        minus the 13 AGENTS.md-documented sites. The transitional baseline
+        count of 8 must trend to 0 by 2026-07-15.
+    - id: PR-CONTEXT-DOC-ONLY-BG-EXTRAS
+      title: "Document or mark the 8 Background documentation-only rows (composition roots, service-layer shutdown contexts, infra background goroutines)"
+      owner_capability: scripts/ci-architectural-checks.sh + AGENTS.md maintainer
+      target: "Each of the 8 Background documentation-only rows gets either (a) a 4-row justification expanded inline in the AGENTS.md scope footer (showing why the row is exempt-but-not-Check-1-mapped), OR (b) an `// ARCH-ALLOWLIST: doc-only` marker inline"
+      notes: |
+        Today these 8 are documented but not gated; a future check (Check 7 or
+        similar) could optionally gate them. Scope here is documentation-only:
+        clarify in AGENTS.md that these are NOT Check-1-mapped and present the
+        justification so future agents do not mis-classify them as Check 1
+        violations.
+  component_checks:
+    check_9_pass: 'exit 0 + log "Check 9: 0 undocumented context.WithoutCancel call sites across internal/"'
+    without_cancel_allowlist_marker: "// ARCH-ALLOWLIST: no-cancel"
+    eight_extras_documented: yes (8 unlisted sites documented in AGENTS.md OR marked)
+    s3g_scope_footer_pointer_updated: yes (AGENTS.md references this entry)
 
 
 # ── Wave 21 — Fase 4 · Unified Asset Search (in_progress, June 2026) ─────

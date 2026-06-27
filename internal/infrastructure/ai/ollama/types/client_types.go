@@ -1,5 +1,7 @@
 package types
 
+import "encoding/json"
+
 // Message rappresenta un messaggio chat
 type Message struct {
 	Role    string   `json:"role"`
@@ -13,6 +15,12 @@ type ChatRequest struct {
 	Messages []Message      `json:"messages"`
 	Stream   bool           `json:"stream"`
 	Options  map[string]any `json:"options,omitempty"`
+	// Format forces Ollama's native JSON-mode at the wire-format
+	// layer (top-level body field, NOT inside Options). P0.2
+	// (June 2026): pass through from TextGenerationRequest.Format
+	// so the script-generation adapter can drive Ollama into
+	// JSON-mode when OutputModeScriptV1 is requested.
+	Format json.RawMessage `json:"format,omitempty"`
 }
 
 // ChatResponse risposta chat

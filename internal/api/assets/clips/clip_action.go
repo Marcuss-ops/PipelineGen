@@ -9,6 +9,9 @@ import (
 	"time"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/gin-gonic/gin"
@@ -213,7 +216,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	// Update clip with new Drive link
 	driveLinkVal := result.DownloadLink
 	if driveLinkVal == "" && result.FileID != "" {
-		driveLinkVal = "https://drive.google.com/file/d/" + result.FileID + "/view"
+		driveLinkVal = driveutil.FileURLFromID(result.FileID)
 	}
 	clip.SetDriveLink(driveLinkVal)
 
@@ -270,37 +273,89 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	}
 
 	duplicates := []gin.H{}
-	repos := map[string]appclips.ClipRepositoryPort{
-		"artlist": h.artlistRepo,
-		"youtube": h.clipsRepo,
-		"stock":   h.stockRepo,
-	}
-
-	for repoSource, srcRepo := range repos {
-		if srcRepo == nil {
-			continue
+	// S3d (June 2026): FindDuplicates routes through the
+	// SearchAggregator when wired. The aggregator's HashQuery
+	// path fans out a deterministic MD5 hash-match lookup
+	// against the registered ClipHashSource adapters. Partial-
+	// results semantics: per-source errors are recorded in
+	// AggregateResult.ProviderErrors; the legacy direct-repo
+	// fallback fires when the aggregator isn't wired
+	// (composition root hasn't populated Deps.SearchAggregator
+	// OR the registry doesn't carry ClipHashSource adapters).
+	if h.searchAggregator != nil {
+		res, aggErr := h.searchAggregator.Aggregate(
+			c.Request.Context(),
+			&providers.SearchQuery{},
+			providers.AggregateOptions{
+				HashQuery: clip.FileHash(),
+				Sources:   []string{"artlist", "youtube", "stock"},
+			},
+		)
+		if aggErr != nil {
+			apiutil.InternalError(c, fmt.Errorf("aggregator.Aggregate: %w", aggErr))
+			return
 		}
-
-		found, err := srcRepo.FindClipsByHash(c.Request.Context(), clip.FileHash())
-		if err != nil {
-			h.log.Warn("Failed to search duplicates in "+repoSource, zap.Error(err))
-			continue
+		if res != nil {
+			for name, e := range res.ProviderErrors {
+				h.log.Warn("Failed to search duplicates in "+name, zap.Error(e))
+			}
+			for _, hit := range res.Hits {
+				if hit.SourceSource == source && hit.SourceID == clipID {
+					continue
+				}
+				duplicates = append(duplicates, gin.H{
+					"source":     hit.SourceSource,
+					"id":         hit.SourceID,
+					"name":       hit.Name,
+					"drive_link": hit.DriveLink,
+					"local_path": hit.LocalPath,
+					"thumb_url":  hit.ThumbnailURL,
+				})
+			}
 		}
-
-		for _, dup := range found {
-			if repoSource == source && dup.ID == clipID {
+	} else {
+		// Legacy direct-repo fallback when no aggregator is wired.
+		// Removal of this branch is gated on the composition root
+		// shipping a real SearchAggregator with the three
+		// ClipHashSource adapters wired.
+		// ARCH-ALLOWLIST: factory-only — S3e (June 2026): the legacy
+		// FindDuplicates fallback constructs the bag of repos
+		// inline because the aggregator path requires wired
+		// CompositionRoot + ClipHashSource adapters. Removal of
+		// this branch is the S3d-followup PR-CLIP-DEDUP-MIGRATION
+		// task; until then, the marker is the documented allowlist
+		// entry per scripts/ci-architectural-checks.sh::Check 8
+		// (factory-only). Per AGENTS.md §7 zero-baseline rule, this
+		// entry carries explicit owner (clips.Handler) and deadline
+		// (post-S3d migration series).
+		repos := map[string]*assets.ClipsRepository{
+			"artlist": h.artlistRepo,
+			"youtube": h.clipsRepo,
+			"stock":   h.stockRepo,
+		}
+		for repoSource, srcRepo := range repos {
+			if srcRepo == nil {
 				continue
 			}
-
-			canonDup := dup
-			duplicates = append(duplicates, gin.H{
-				"source":     repoSource,
-				"id":         canonDup.ID,
-				"name":       canonDup.Name,
-				"drive_link": canonDup.DriveLink(),
-				"local_path": canonDup.LocalPath(),
-				"thumb_url":  canonDup.ThumbnailURL,
-			})
+			found, err := srcRepo.FindClipsByHash(c.Request.Context(), clip.FileHash())
+			if err != nil {
+				h.log.Warn("Failed to search duplicates in "+repoSource, zap.Error(err))
+				continue
+			}
+			for _, dup := range found {
+				if repoSource == source && dup.ID == clipID {
+					continue
+				}
+				canonDup := dup
+				duplicates = append(duplicates, gin.H{
+					"source":     repoSource,
+					"id":         canonDup.ID,
+					"name":       canonDup.Name,
+					"drive_link": canonDup.DriveLink(),
+					"local_path": canonDup.LocalPath(),
+					"thumb_url":  canonDup.ThumbnailURL,
+				})
+			}
 		}
 	}
 

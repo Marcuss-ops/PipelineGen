@@ -15,6 +15,8 @@ import (
 
 // ── ClaimNext ───────────────────────────────────────────────────────────
 
+// ── ClaimNext ───────────────────────────────────────────────────────────
+
 // ClaimNext atomically claims the oldest queued job, transitioning it to
 // running (via Start). Returns (nil, nil) on empty queue.
 // Implements Store.ClaimNext.

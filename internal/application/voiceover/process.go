@@ -223,6 +223,10 @@ func (s *Service) processLanguage(
 	// the handler return. 2-min timeout prevents leaks.
 	if s.clipIndexer != nil && item.ID != "" {
 		concurrent.SafeGoFunc("voiceover-indexing", item.ID, func(voiceoverID string) {
+			// AGENTS.md §7 post-write save ctx — voiceover indexing
+			// background is detached from the caller ctx with a
+			// bounded 2-min timeout; the index write must complete
+			// even after the request that triggered it is cancelled.
 			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 			defer cancel()
 			if err := s.clipIndexer(indexCtx, voiceoverID); err != nil {

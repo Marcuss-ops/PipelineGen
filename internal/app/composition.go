@@ -273,7 +273,18 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
 
-	jobs, err := BuildJobsBundle(dbs.main, log)
+	// PR-Queue-Split-EXPAND / ADR-0003 (June 2026): the JobsBundle's DB
+	// is the EXPAND-on jobs.db.sqlite when the gate is enabled + the DB
+	// opened successfully at initDatabases; otherwise the canonical
+	// single-DB shape on dbs.main. The BuildJobsBundle signature is
+	// unchanged; composition-root does the pick. Documented here so a
+	// future reader does not chase the dbs.main reference looking for
+	// where the EXPAND gate surfaces.
+	jobsDB := dbs.main
+	if dbs.jobs != nil {
+		jobsDB = dbs.jobs
+	}
+	jobs, err := BuildJobsBundle(jobsDB, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
 	}

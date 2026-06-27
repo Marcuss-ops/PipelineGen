@@ -30,6 +30,9 @@ func runDB(args []string) error {
 		return fmt.Errorf("usage: admin db <subcmd> [args]\n  subcommands: status, check, migrations, backup, restore, rotate")
 	}
 
+	// AGENTS.md §7 post-write save ctx — admin `db` composition root;
+	// parent Background ctx + signal notify — the admin binary is a
+	// one-shot CLI and never has a parent request ctx to inherit.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)

@@ -200,6 +200,18 @@ func buildVerifyResponse(report *appclips.VerifyReport) gin.H {
 		"has_hash":         report.HasHash,
 		"hash_verified":    report.HashVerified,
 		"hash_recovered":   report.HashRecovered,
+		// S1d-Wave 22 PR-5 polish amend: project the typed
+		// HashInfo channel so callers see the canonical
+		// recoverable-MD5 signal without scanning
+		// heterogeneous issues. Two typed fields, no
+		// `recovered` boolean (REMOVED per code-review Finding
+		// 1; was a dead field with no producer-path). The
+		// legacy `hash_recoverable` / `hash_recoverable_value`
+		// flat fields above stay for JSON back-compat.
+		"hash_info": gin.H{
+			"recoverable":    report.HashInfo.Recoverable,
+			"candidate_hash": report.HashInfo.CandidateHash,
+		},
 		"folder_id":        report.FolderID,
 		"folder_path":      report.FolderPath,
 		"status":           report.Status,

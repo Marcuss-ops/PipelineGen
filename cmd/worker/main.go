@@ -126,6 +126,10 @@ func main() {
 		zap.Strings("capabilities", caps),
 	)
 
+	// AGENTS.md §7 post-write save ctx — composition root; signal.NotifyContext
+	// is the canonical Go entry point for a top-level deferred cancel that
+	// survives process shutdown; long-running worker goroutines use this ctx
+	// for their entire lifetime.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

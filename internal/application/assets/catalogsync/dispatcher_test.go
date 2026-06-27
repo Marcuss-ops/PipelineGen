@@ -8,11 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
 // dispatcherTestSchema composes the canonical media_assets CREATE TABLE
@@ -48,7 +51,8 @@ const dispatcherTestSchema = drive.CanonicalMediaAssetsSchema + `
 `
 
 // TestUpsertPreservingExisting_DispatcherPath verifies the canonical PR1
-// flow: when SetDispatcher is wired, upsertPreservingExisting performs an
+// flow: when Deps.Dispatcher is wired (PR-D, June 2026 — the late-bind
+// SetDispatcher setter was removed), upsertPreservingExisting performs an
 // ATOMIC upsert of media_assets and INSERT into outbox_events in a
 // single transaction. Both rows must exist after the call returns. There
 // is no goroutine: the outbox event IS the indexing trigger.
@@ -71,8 +75,32 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	stateWriter := outbox.ClipsStateWriter(repo)
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop())
 
-	svc := &Service{log: zap.NewNop()}
-	svc.SetDispatcher(dispatcher)
+	// PR-D: construct the service via Deps{} (no SetDispatcher setter
+	// exists post-2026-06). The dispatcher is captured at construction
+	// time, mirroring the production wiring in BuildSyncBundle.
+	//
+	// Required-by-ctor fields that are NOT exercised by the dispatcher
+	// path are passed as zero-valued struct pointers (Uploader,
+	// AssetTree, ClipIndexer) to satisfy NewService's nil-checks
+	// without invoking any method on them.
+	//
+	// AssetIndex is passed as nil specifically because the test
+	// deliberately bypasses writeAssetIndex — the nil-safe guard
+	// (`if s.assetIndex == nil { return }` in sync_persist.go) makes
+	// the no-op explicit. Passing a `&assetindex.Service{}` zero-struct
+	// here would invoke `assetIndex.Upsert` which panics on the
+	// uninitialised internal repository (SIGSEGV; reproduced in the
+	// prior test fix iteration). nil AssetIndex is the only safe shape.
+	svc, err := NewService(Deps{
+		Uploader:    &uploaddrive.Uploader{},
+		Targets:     nil,                 // no pre-configured targets
+		AssetIndex:  nil,                 // nil-safe per writeAssetIndex guard; bypassed
+		AssetTree:   &assettree.Service{},
+		ClipIndexer: &clipindexer.Service{},
+		Dispatcher:  dispatcher,
+		Log:         zap.NewNop(),
+	})
+	require.NoError(t, err)
 
 	clip := &asset.Asset{
 		ID:             "test_clip_001",
@@ -124,8 +152,16 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	stateWriter := outbox.ClipsStateWriter(repo)
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop())
 
-	svc := &Service{log: zap.NewNop()}
-	svc.SetDispatcher(dispatcher)
+	svc, err := NewService(Deps{
+		Uploader:    &uploaddrive.Uploader{},
+		Targets:     nil,
+		AssetIndex:  nil,                 // nil-safe per writeAssetIndex guard; bypassed
+		AssetTree:   &assettree.Service{},
+		ClipIndexer: &clipindexer.Service{},
+		Dispatcher:  dispatcher,
+		Log:         zap.NewNop(),
+	})
+	require.NoError(t, err)
 
 	folder := &asset.Asset{
 		ID:             "test_folder_001",
@@ -155,6 +191,9 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 
 // TestUpsertPreservingExisting_NilDispatcherReturnsError verifies that
 // upsertPreservingExisting returns an error when the dispatcher is not wired.
+// PR-D (June 2026): the ctor itself rejects nil dispatcher with
+// ErrCatalogSyncNilDispatcher; this test instead exercises the in-method
+// runtime defence-in-depth check that survives ctor-time wiring changes.
 func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	ctx := context.Background()
 	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
@@ -162,8 +201,12 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())
 
+	// Construct a Service via the unexported struct literal to bypass the
+	// ctor's nil-dispatcher guard — we want to exercise the runtime
+	// defence-in-depth path in upsertPreservingExisting (see
+	// sync_persist.go::upsertPreservingExisting).
 	svc := &Service{log: zap.NewNop()}
-	// Note: SetDispatcher NOT called — dispatcher is nil.
+	// Note: Deps.Dispatcher NOT passed — dispatcher is nil.
 
 	clip := &asset.Asset{
 		ID:             "legacy_clip_001",
@@ -179,3 +222,64 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dispatcher is nil")
 }
+
+// TestNewService_NilDepsRejected verifies the PR-D ctor validation surface:
+// every REQUIRED dep (Uploader / Dispatcher / Log) is rejected with its own
+// typed sentinel error so composition wiring + tests can assert the precise
+// missing dep. The 3 OPTIONAL deps (AssetIndex / AssetTree / ClipIndexer)
+// are accepted as nil at ctor time because every catalogsync call site
+// nil-safe-guards them (verified via code-searcher audit, June 2026).
+//
+// Mirrors the stockpipeline sentinel matrix in deps_struct_smoke_test.go;
+// this file holds the catalogsync half. Subtests mirror the ctor
+// validation order: Uploader first, then Dispatcher (after the Oct 2026
+// right-sizing of optional vs required), then Log.
+func TestNewService_NilDepsRejected(t *testing.T) {
+	log := zap.NewNop() // shared fixture: every subtest constructs Deps{Log: log}
+
+	t.Run("nil uploader returns ErrCatalogSyncNilUploader", func(t *testing.T) {
+		_, err := NewService(Deps{Log: log, Dispatcher: &outbox.Dispatcher{}})
+		require.ErrorIs(t, err, ErrCatalogSyncNilUploader)
+	})
+	t.Run("nil dispatcher returns ErrCatalogSyncNilDispatcher", func(t *testing.T) {
+		// AssetIndex / AssetTree / ClipIndexer are accepted as nil here:
+		// they are optional per the post-review right-sizing (nil-safe guards
+		// in sync_persist.go::writeAssetIndex + sync_prune.go::pruneMissingFolders
+		// + sync_recursive.go:79,175). Only the absence of Uploader / Dispatcher /
+		// Log triggers a sentinel.
+		_, err := NewService(Deps{Uploader: &uploaddrive.Uploader{}, Log: log})
+		require.ErrorIs(t, err, ErrCatalogSyncNilDispatcher)
+	})
+	t.Run("nil log returns ErrCatalogSyncNilLog", func(t *testing.T) {
+		_, err := NewService(Deps{
+			Uploader:   &uploaddrive.Uploader{},
+			Dispatcher: &outbox.Dispatcher{},
+		})
+		require.ErrorIs(t, err, ErrCatalogSyncNilLog)
+	})
+	t.Run("all-non-nil happy path", func(t *testing.T) {
+		_, err := NewService(Deps{
+			Uploader:    &uploaddrive.Uploader{},
+			Targets:     nil,
+			AssetIndex:  nil, // optional, nil-safe guarded
+			AssetTree:   nil, // optional, nil-safe guarded
+			ClipIndexer: nil, // optional, no usages in catalogsync package
+			Dispatcher:  &outbox.Dispatcher{},
+			Log:         log,
+		})
+		require.NoError(t, err)
+	})
+	t.Run("optional deps nil is accepted", func(t *testing.T) {
+		// AssetIndex / AssetTree / ClipIndexer all nil — ctor accepts
+		// because they're nil-safe guarded at every catalogsync call site.
+		// Documenting this explicitly so future maintainers see the
+		// optionality contract.
+		_, err := NewService(Deps{
+			Uploader:   &uploaddrive.Uploader{},
+			Dispatcher: &outbox.Dispatcher{},
+			Log:        log,
+		})
+		require.NoError(t, err, "optional deps (AssetIndex / AssetTree / ClipIndexer) must be acceptable as nil")
+	})
+}
+

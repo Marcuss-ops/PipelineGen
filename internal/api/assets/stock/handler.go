@@ -1,36 +1,34 @@
 package stock
 
 import (
-	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// stockPayloadToMap converts a StockRunPayload to map[string]any for job enqueue.
-func stockPayloadToMap(p *stockpipeline.StockRunPayload) map[string]any {
-	data, _ := json.Marshal(p)
-	var m map[string]any
-	_ = json.Unmarshal(data, &m)
-	return m
-}
-
+// Handler is the api-layer adapter for the stock pipeline endpoints.
+// After S2b it holds ONLY the use case + logger — neither the
+// stockpipeline.Service nor the jobs service are referenced directly.
+// All dispatch logic lives in stockpipeline.StockUseCase.
 type Handler struct {
-	service *stockpipeline.Service
-	jobsSvc jobservice.Service
+	useCase *stockpipeline.StockUseCase
 	log     *zap.Logger
 }
 
-func NewHandler(service *stockpipeline.Service, jobsSvc jobservice.Service, log *zap.Logger) *Handler {
+// NewHandler constructs the api handler. Production wire-up builds a
+// *stockpipeline.StockUseCase first (composition root, module_sources.go)
+// and passes it in; test fixtures may pass nil for either dependency.
+func NewHandler(useCase *stockpipeline.StockUseCase, log *zap.Logger) *Handler {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &Handler{
-		service: service,
-		jobsSvc: jobsSvc,
+		useCase: useCase,
 		log:     log,
 	}
 }
@@ -42,38 +40,15 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/search-and-run", h.SearchAndRun)
 }
 
-type SearchQuery struct {
-	Q     string `json:"q"`
-	Limit int    `json:"limit"`
-}
-
-type StockSearchAndRunRequest struct {
-	Queries       []SearchQuery                     `json:"queries"`
-	TotalMinutes  int                               `json:"total_minutes"`
-	ChunkDuration int                               `json:"chunk_duration,omitempty"`
-	ClipDuration  int                               `json:"clip_duration,omitempty"`
-	NoAudio       bool                              `json:"no_audio,omitempty"`
-	NoEffects     bool                              `json:"no_effects,omitempty"`
-	NoTransitions bool                              `json:"no_transitions,omitempty"`
-	MaxVideos     int                               `json:"max_videos,omitempty"`
-	Subfolder     string                            `json:"subfolder"`
-	FolderName    string                            `json:"folder_name"`
-	FolderID      string                            `json:"folder_id,omitempty"`
-	Metadata      *stockpipeline.ChunkMetadataInput `json:"metadata,omitempty"`
-}
-
-type StockPipelineResponse struct {
-	Status      string                      `json:"status"`
-	TotalClips  int                         `json:"total_clips"`
-	TotalChunks int                         `json:"total_chunks"`
-	Chunks      []stockpipeline.ChunkResult `json:"chunks"`
-	Error       string                      `json:"error,omitempty"`
-	JobID       string                      `json:"job_id,omitempty"`
-	StatusURL   string                      `json:"status_url,omitempty"`
-}
+// ── POST /api/stock/search-and-run ──────────────────────────────────────
+//
+// Body binds directly to the canonical stockpipeline.StockSearchAndRunRequest
+// rather than a local mirror — that way the api request type and the
+// application command type stay in lockstep (renames propagate via Go
+// compile errors rather than via drift in two json-tag sets).
 
 func (h *Handler) SearchAndRun(c *gin.Context) {
-	var req StockSearchAndRunRequest
+	var req stockpipeline.StockSearchAndRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
@@ -93,6 +68,9 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		zap.String("folder_id", req.FolderID),
 	)
 
+	// HTTP validation — must run before FromSearchAndRunRequest so the
+	// converter sees a valid shape (per the S2b design: validation in
+	// the api layer, defaulting in the api layer).
 	if len(req.Queries) == 0 {
 		apiutil.BadRequest(c, "queries required")
 		return
@@ -109,49 +87,37 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		return
 	}
 
-	// Extract query strings from the request
-	searchQueries := make([]string, len(req.Queries))
-	for i, q := range req.Queries {
-		searchQueries[i] = q.Q
-	}
-
-	payload := &stockpipeline.StockRunPayload{
-		SearchQueries: searchQueries,
-		TotalMinutes:  req.TotalMinutes,
-		ChunkDuration: req.ChunkDuration,
-		ClipDuration:  req.ClipDuration,
-		NoAudio:       req.NoAudio,
-		NoEffects:     req.NoEffects,
-		NoTransitions: req.NoTransitions,
-		MaxVideos:     req.MaxVideos,
-		Subfolder:     req.Subfolder,
-		FolderName:    req.FolderName,
-		FolderID:      req.FolderID,
-	}
-	if req.Metadata != nil {
-		payload.Metadata = &stockpipeline.StockRunPayloadMetadata{
-			Title:       req.Metadata.Title,
-			Description: req.Metadata.Description,
-			Tags:        req.Metadata.Tags,
-			Category:    req.Metadata.Category,
-			Author:      req.Metadata.Author,
-			Extra:       req.Metadata.Extra,
-		}
-	}
-
-	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
-		Type:    "media.stock",
-		Payload: stockPayloadToMap(payload),
-	}, "Stock search-and-run job enqueued."); ok {
+	cmd, err := stockpipeline.FromSearchAndRunRequest(&req)
+	if err != nil {
+		apiutil.InternalError(c, err)
 		return
 	}
-	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
+
+	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, true /* async */)
+	if err != nil {
+		if errors.Is(err, stockpipeline.ErrJobsServiceRequired) {
+			apiutil.Error(c, http.StatusServiceUnavailable,
+				"stock async submit requires jobs service (no sync fallback — use /search-and-run with async flag=false on wire jobsSvc)")
+			return
+		}
+		h.log.Error("stock search-and-run failed", zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.Accepted(c, gin.H{
+		"job_id":     jobID,
+		"message":    "Stock search-and-run job enqueued",
+		"status_url": "/api/jobs/" + jobID + "/full",
+	})
 }
+
+// ── POST /api/stock/run ────────────────────────────────────────────────
 
 func (h *Handler) RunStockPipeline(c *gin.Context) {
 	var req stockpipeline.StockRunPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
@@ -170,27 +136,59 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		zap.String("folder_id", req.FolderID),
 	)
 
+	// HTTP validation (same shape as SearchAndRun).
 	if len(req.SearchQueries) == 0 && len(req.DirectURLs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "search_queries or direct_urls required"})
+		apiutil.BadRequest(c, "search_queries or direct_urls required")
 		return
 	}
 	if req.TotalMinutes <= 0 {
 		req.TotalMinutes = 5
 	}
 	if req.ClipDuration < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "clip_duration must be >= 0"})
+		apiutil.BadRequest(c, "clip_duration must be >= 0")
 		return
 	}
 	if req.ClipDuration > 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "clip_duration must be between 3 and 30 seconds"})
+		apiutil.BadRequest(c, "clip_duration must be between 3 and 30 seconds")
 		return
 	}
 
-	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
-		Type:    "media.stock",
-		Payload: stockPayloadToMap(&req),
-	}, "Stock pipeline job enqueued."); ok {
+	cmd, err := stockpipeline.FromRunPayload(&req)
+	if err != nil {
+		apiutil.InternalError(c, err)
 		return
 	}
-	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
+
+	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, true /* async */)
+	if err != nil {
+		if errors.Is(err, stockpipeline.ErrJobsServiceRequired) {
+			apiutil.Error(c, http.StatusServiceUnavailable,
+				"stock async submit requires jobs service (no sync fallback — use /run with async flag=false or wire jobsSvc)")
+			return
+		}
+		h.log.Error("stock run failed", zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.Accepted(c, gin.H{
+		"job_id":     jobID,
+		"message":    "Stock pipeline job enqueued",
+		"status_url": "/api/jobs/" + jobID + "/full",
+	})
+}
+
+// StockPipelineResponse is the public response shape returned ONLY when
+// the handler is invoked synchronously (S2b no longer has an inline
+// sync fallback, but other entrypoints such as the admin `benchmark`
+// subcommand or the worker may emit a sync result body that this
+// shape matches).
+type StockPipelineResponse struct {
+	Status      string                      `json:"status"`
+	TotalClips  int                         `json:"total_clips"`
+	TotalChunks int                         `json:"total_chunks"`
+	Chunks      []stockpipeline.ChunkResult `json:"chunks"`
+	Error       string                      `json:"error,omitempty"`
+	JobID       string                      `json:"job_id,omitempty"`
+	StatusURL   string                      `json:"status_url,omitempty"`
 }
