@@ -17,7 +17,7 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -156,7 +156,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// see composition.go DomainBundle for rationale. Both stay typed-nil
 	// (package removed in commit d61068b3).
 	var realtimeMatcher assetsapi.RealtimeMatcher
-	var realtimeSearch usecase.RealtimeSearchService
+	var realtimeSearch scriptcore.RealtimeSearchService
 
 	// autotagVectorStore removed during the bundle simplification
 	// deleted. The autotag service no longer takes a vector-store indexer;
@@ -166,7 +166,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	// Wave 15 (June 2026): typed-nil for scriptcore.AssocSearchService —
 	// replaces the preceding `interface{}` carrier.
-	var assocService usecase.AssocSearchService
+	var assocService scriptcore.AssocSearchService
 	log.Info("association service unavailable — package removed from remote")
 
 	lessonsS := lessonsSvc.NewService(
@@ -294,7 +294,10 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
 	memoryRepo := adapters.NewRepository(dbs.main.DB)
-	memorySvc := adapters.NewService(memoryRepo, log)
+	memoryBackend := adapters.NewService(memoryRepo, log)
+	// memoryGateAdapter bridges *adapters.Service → usecase.memoryGateChecker
+	// for scriptcore.NewEngine; AIBundle.MemoryService stays as *adapters.Service.
+	memoryGate := &memoryGateAdapter{backend: memoryBackend}
 	log.Info("Gemma Memory Gate service initialized")
 
 	// PR 5 (June 2026): NewEngine no longer takes a ScriptRepository
@@ -302,13 +305,13 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// PersistenceProcessor. RepositoryAdapter is still constructed
 	// here because wireScriptFlow(BuildRepoBundle) uses it for
 	// PersistenceProcessor registration (see wire_script.go).
-	engine := usecase.NewEngine(scriptGen, memorySvc, log)
+	engine := scriptcore.NewEngine(scriptGen, memoryGate, log)
 
 	return &AIBundle{
 		OllamaClient:  ollamaClient,
 		ScriptGen:     scriptGen,
 		MemoryRepo:    memoryRepo,
-		MemoryService: memorySvc,
+		MemoryService: memoryBackend,
 		ScriptEngine:  engine,
 	}, nil
 }
@@ -395,4 +398,49 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	return &SyncBundle{
 		CatalogSync: catalogSync,
 	}, nil
+}
+
+// ── memoryGateAdapter bridges adapters.Service → usecase memoryGateChecker ──
+//
+// PR 0 build fix (June 2026): adapters.Service.CheckGate uses exported types
+// (adapters.MemoryGateRequest / adapters.GateResult) while usecase.memoryGateChecker
+// uses the locally-defined (now exported) MemoryGateRequest / MemoryGateResult.
+// The two type pairs are structurally identical; this thin adapter converts between
+// them at the composition boundary so build_bundles_domain.go can pass memorySvc
+// to scriptcore.NewEngine without creating an import cycle between usecase↔adapters.
+type memoryGateAdapter struct {
+	backend *adapters.Service
+}
+
+func (a *memoryGateAdapter) CheckGate(ctx context.Context, req scriptcore.MemoryGateRequest) (*scriptcore.MemoryGateResult, error) {
+	if a == nil || a.backend == nil {
+		return nil, nil
+	}
+	adaptReq := adapters.MemoryGateRequest{
+		ChannelID:    req.ChannelID,
+		Title:        req.Title,
+		Prompt:       req.Prompt,
+		Language:     req.Language,
+		Mode:         req.Mode,
+		CacheKey:     req.CacheKey,
+		UseMemory:    req.UseMemory,
+		ForceRefresh: req.ForceRefresh,
+	}
+	adaptRes, err := a.backend.CheckGate(ctx, adaptReq)
+	if err != nil || adaptRes == nil {
+		return nil, err
+	}
+	return &scriptcore.MemoryGateResult{
+		Hit:       adaptRes.Hit,
+		Output:    adaptRes.Output,
+		WordCount: adaptRes.WordCount,
+		Model:     adaptRes.Model,
+	}, nil
+}
+
+func (a *memoryGateAdapter) EvictExactOutputs(ctx context.Context, titles []string) (int, error) {
+	if a == nil || a.backend == nil {
+		return 0, nil
+	}
+	return a.backend.EvictExactOutputs(ctx, titles)
 }

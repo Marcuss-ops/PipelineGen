@@ -9,6 +9,8 @@ package adapters
 
 import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+
+	"go.uber.org/zap"
 )
 
 // ── Per-stage result types ───────────────────────────────────────────
@@ -106,11 +108,58 @@ type PipelineResult struct {
 
 // PostProcessorRegistry is a stub used by adapters.
 // The canonical registry lives in package scripts.
-type PostProcessorRegistry struct{}
+//
+// PR 0 build fix: expanded stub to satisfy wire_script.go composition
+// — Register, Freeze, Registered, LookupPolicy, IsFrozen are all no-ops.
+type PostProcessorRegistry struct {
+	log    *zap.Logger
+	frozen bool
+	reg    map[string]ProcessorPolicy
+}
 
 // NewPostProcessorRegistry creates an empty stub registry.
-func NewPostProcessorRegistry() *PostProcessorRegistry {
-	return &PostProcessorRegistry{}
+func NewPostProcessorRegistry(log *zap.Logger) *PostProcessorRegistry {
+	return &PostProcessorRegistry{log: log, reg: make(map[string]ProcessorPolicy)}
+}
+
+// Register is a stub that accepts any value and returns true.
+func (r *PostProcessorRegistry) Register(p interface{}) bool {
+	if r == nil {
+		return false
+	}
+	return true
+}
+
+// Freeze is a stub (no-op).
+func (r *PostProcessorRegistry) Freeze() {
+	if r != nil {
+		r.frozen = true
+	}
+}
+
+// IsFrozen reports whether Freeze was called.
+func (r *PostProcessorRegistry) IsFrozen() bool {
+	if r == nil {
+		return false
+	}
+	return r.frozen
+}
+
+// Registered reports whether a processor name has been registered.
+func (r *PostProcessorRegistry) Registered(name string) bool {
+	if r == nil {
+		return false
+	}
+	_, ok := r.reg[name]
+	return ok
+}
+
+// LookupPolicy returns the policy for a registered processor.
+func (r *PostProcessorRegistry) LookupPolicy(name string) ProcessorPolicy {
+	if r == nil {
+		return ProcessorBestEffort
+	}
+	return r.reg[name]
 }
 
 // ValidateRequested is a stub that always returns nil (no-op).

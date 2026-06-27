@@ -40,7 +40,7 @@ import (
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -265,6 +265,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// wired) without panicking on a nil decorator.
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
+	_ = searchFanOut
+	_ = searchBackends
 	var searchAgg *providers.SearchAggregator
 	if root.Search != nil && root.Search.ProviderRegistry != nil {
 		searchFanOut, searchBackends, _ = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
@@ -486,7 +488,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// feature is enabled.
 		scriptHistoryEnabled := anyScriptFeatureEnabled(cfg)
 		if err := tryRegisterModuleStrict(registry, log, scriptapi.NewScriptHistoryModule(
-			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
+			scriptapi.NewScriptHistoryHandler(adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 			log,
 			middleware.FeatureFlagChecker("Script", scriptHistoryEnabled),
 			scriptHistoryEnabled,
@@ -598,7 +600,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			// every Search call (fail-closed) per godlike/07.
 			var searchAgg mediasearchapi.AggregatorSearcher
 			if wiring.Assets != nil && wiring.Assets.SearchAggregator != nil {
-				searchAgg = wiring.Assets.SearchAggregator
+				if agg, ok := wiring.Assets.SearchAggregator.(mediasearchapi.AggregatorSearcher); ok {
+					searchAgg = agg
+				}
 			}
 			searchH := mediasearchapi.NewHandler(mediasearchapi.WireParams{Aggregator: searchAgg, Log: log})
 			wiring.MediasearchHandler = searchH

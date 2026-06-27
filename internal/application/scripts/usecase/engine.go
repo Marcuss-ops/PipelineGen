@@ -86,12 +86,12 @@ type scriptOllamaGenerator interface {
 // these types into scripts/contracts/ so both packages share one
 // canonical definition.
 type memoryGateChecker interface {
-	CheckGate(ctx context.Context, req memoryGateRequest) (*memoryGateResult, error)
+	CheckGate(ctx context.Context, req MemoryGateRequest) (*MemoryGateResult, error)
 }
 
-// memoryGateRequest is a local copy of adapters.MemoryGateRequest.
-// See Phase 1c TODO on memoryGateChecker.
-type memoryGateRequest struct {
+// MemoryGateRequest is a local copy of adapters.MemoryGateRequest.
+// Exported for use by composition-layer adapters (see build_bundles_domain.go).
+type MemoryGateRequest struct {
 	ChannelID    string
 	Title        string
 	Prompt       string
@@ -102,9 +102,9 @@ type memoryGateRequest struct {
 	ForceRefresh bool
 }
 
-// memoryGateResult is a local copy of adapters.GateResult.
-// See Phase 1c TODO on memoryGateChecker.
-type memoryGateResult struct {
+// MemoryGateResult is a local copy of adapters.GateResult.
+// Exported for use by composition-layer adapters (see build_bundles_domain.go).
+type MemoryGateResult struct {
 	Hit       bool
 	Output    string
 	WordCount int
@@ -256,7 +256,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// ForceRefresh bypasses the cache read even when UseMemory is true.
 	if useMemory && !skipMemory && e.memorySvc != nil {
 		if memSvc, ok := e.memorySvc.(memoryGateChecker); ok {
-			memoryReq := memoryGateRequest{
+			memoryReq := MemoryGateRequest{
 				Title:    title,
 				Language: language,
 				Mode:     mode,

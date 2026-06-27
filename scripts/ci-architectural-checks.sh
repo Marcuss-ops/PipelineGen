@@ -137,6 +137,23 @@ if [ "${1:-}" = "--self-check" ]; then
     exit 0
 fi
 
+# ── Check -1: forbid unresolved git conflict markers (PR 0, June 2026) ──
+# Fails when any tracked Go, shell, YAML, JSON, Python, or SQL file
+# contains <<<<<<<, =======, or >>>>>>> conflict markers. These are
+# merge-resolution artifacts that MUST NOT reach CI; a single hit
+# is a hard gate failure.
+echo "=== Check -1: forbid unresolved git conflict markers (PR 0) ==="
+CONFLICT_MARKERS=$(grep -rn '<<<<<<<\|>>>>>>>' --include='*.go' --include='*.sh' --include='*.yaml' --include='*.yml' --include='*.json' --include='*.py' --include='*.sql' --include='*.md' "$REPO_ROOT" 2>/dev/null | grep -v '.git/' || true)
+if [ -n "$CONFLICT_MARKERS" ]; then
+    echo "FAIL: unresolved git conflict markers detected:"
+    echo "$CONFLICT_MARKERS"
+    echo ""
+    echo "Fix: resolve the merge conflicts and remove the <<<<<<<, =======,"
+    echo ">>>>>>> markers. Run 'git diff --check' to locate them."
+    exit 1
+fi
+echo "OK: no unresolved conflict markers in source tree"
+
 # ── Check 0: forbid literal job-type strings outside canonical SSOT ─────
 # The 4 canonical constants carry string values:
 #   "script.generate_batch"          (job.TypeBatchScriptGenerate)

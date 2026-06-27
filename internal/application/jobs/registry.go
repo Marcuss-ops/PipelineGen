@@ -124,6 +124,19 @@ func (r *Registry) TimeoutMap() TimeoutMap {
 	return m
 }
 
+// ── HC-1 typed timeout port ───────────────────────────────────────
+
+// TimeoutResolver is the typed config-port for per-job-type execution
+// timeouts. The canonical implementation is *Registry (via TimeoutMap()).
+type TimeoutResolver interface {
+	JobTimeout(jobType string) time.Duration
+}
+
+// JobTimeout implements TimeoutResolver so *Registry can be passed as a port.
+func (r *Registry) JobTimeout(jobType string) time.Duration {
+	return r.Timeout(jobType)
+}
+
 // ── Standard job.Job Types ──────────────────────────────────────────────────
 
 // Each constant is the canonical string identifier. These are the SSOT; no

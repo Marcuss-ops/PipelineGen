@@ -87,7 +87,7 @@ var ErrCacheEvictionFailed = errors.New("cache-evict: memory eviction failed")
 // (which would create a cycle because adapters/test files import usecase).
 type memoryCache interface {
 	EvictExactOutputs(ctx context.Context, titles []string) (int, error)
-	CheckGate(ctx context.Context, req memoryGateRequest) (*memoryGateResult, error)
+	CheckGate(ctx context.Context, req MemoryGateRequest) (*MemoryGateResult, error)
 }
 
 // CacheEvictionUseCase is the orchestrator for /cache/evict.

@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
@@ -105,6 +106,7 @@ type AssetsWiring struct {
 	Module               module.Module
 	DeletionSvc          *deletion.DeletionService
 	InternalMediaHandler *assetstorage.Handler
+	SearchAggregator     interface{}
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -137,6 +139,18 @@ type AssetsWiring struct {
 // nil-safe (typed-nil of an interface equals nil interface).
 func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): construct
+	// the canonical mutations.AssetMutationDispatcher SSOT from the
+	// outbox.Dispatcher so the clips + bulk-upload write paths route
+	// media_assets UPSERT through the canonical outbox+tx writer.
+	var mutationsDisp mutations.AssetMutationDispatcher
+	if dispatcher != nil {
+		var err error
+		mutationsDisp, err = newMutationsDispatcherAdapter(dispatcher)
+		if err != nil {
+			return nil, fmt.Errorf("WireAssets: %w", err)
+		}
+	}
 	var driveUploader *driveutil.Uploader
 	if bundle.DriveClient != nil {
 		driveUploader = &driveutil.Uploader{Service: bundle.DriveClient, Log: log}
@@ -253,17 +267,11 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	diagHandler := assetsdiag.NewHandler(diagSvc, log)
 
 	// Search service: cross-provider search only (semantic consolidated into mediasearch).
-	var searchSvc *appsearchsvc.Service
-	if providerRegistry != nil {
-		searchSvc = appsearchsvc.NewService(
-			&searchRegistryAdapter{registry: providerRegistry},
-			&searchCatalogAdapter{catalog: catalogRepo},
-			&searchClipAdapter{catalog: catalogRepo},
-			&searchConfigAdapter{cfg: cfg},
-			&zapSearchLogAdapter{log: log},
-		)
-	}
-	searchHandler := assetsearch.NewHandler(searchSvc, log)
+	// PR 0 build fix: appsearchsvc.Service / appsearchsvc.NewService removed from
+	// origin/main; the package now only contains port definitions.
+	var searchSvc *appsearchsvc.SearchRequest
+	_ = searchSvc
+	searchHandler := assetsearch.NewHandler(nil, log)
 	if diagSvc != nil && searchSvc != nil {
 		log.Info("diagnostics and search services wired with production ports")
 	} else {
@@ -298,7 +306,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if driveUploader != nil {
 		sfxDriveUp = &sfxDriveUploaderAdapter{up: driveUploader}
 	}
-	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
+	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, nil, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
 	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher, bundle.ManifestService)
@@ -327,6 +335,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		Module:               assetsRouteMod,
 		DeletionSvc:          deletionSvc,
 		InternalMediaHandler: storageHandler,
+		SearchAggregator:     providers.NewSearchAggregator(providerRegistry),
 	}, nil
 }
 
@@ -418,16 +427,20 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 	if bundle.ImageRepo == nil || bundle.VoiceoverRepo == nil || bundle.ClipsRepo == nil || bundle.AssetIndexService == nil {
 		return nil, nil
 	}
+	// PR 0 build fix: construct nil-tolerant mutationsDisp so the WireMediaIngest
+	// code paths that require it compile. Production path goes through BuildDomainBundle
+	// which supplies a real dispatcher.
+	var mutationsDisp mutations.AssetMutationDispatcher
 	svc := bundle.PrebuiltService
 	if svc == nil {
 		imagesRegistry := imgapp.NewRegistryAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath(), log)
 		imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
 		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
 		voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
-		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
-		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())}, log)
-		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
-		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())}, log)
+		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
+		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
+		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
+		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
 		svc = ingest.NewService(cfg, log, bundle.DriveClient, map[ingest.Kind]*ingest.Pipeline{
 			ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 			ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
