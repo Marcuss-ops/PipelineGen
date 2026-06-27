@@ -35,6 +35,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ── Fake DriveAdapter ─────────────────────────────────────────────────────
@@ -566,5 +568,239 @@ func (f *fakeDriveAdapter) getOrFatal(t *testing.T, folderID string) []byte {
 		t.Fatalf("fakeDriveAdapter: no metadata.json for folder %s", folderID)
 	}
 	return data
+}
+
+// ── PR 8 (codex/asset-manifest-service, June 2026) end-to-end
+// integration tests. Pin invariants the rebase landed into the
+// codebase; complement (rather than duplicate) the 14 surface
+// subtests above.
+
+// ── 8. Concurrent SAME-path UpsertLocal writers (per-path serialisation) ─
+//
+// Pinned invariant: when N concurrent writers target the SAME temp
+// directory, the pathLockRegistry must serialise them so the final
+// metadata.json contains ALL N entries with no temp-file collisions
+// or writes lost to the atomic-rename dance. Unlike UpsertRemote
+// (per-folder), UpsertLocal uses per-path locks; this test pins the
+// local-side contract that complement's #4b's remote-side invariant.
+func TestService_UpsertLocal_Concurrent_SamePath(t *testing.T) {
+	dir := t.TempDir()
+	svc := New(nil, zap.NewNop()) // nil drive is fine — UpsertLocal doesn't touch it
+	ctx := context.Background()
+
+	const goroutines = 20
+	const assetIDPrefix = "L1-local"
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			entry := newTestEntry(
+				fmt.Sprintf("%s-%03d", assetIDPrefix, i),
+				fmt.Sprintf("local-writer-%03d", i),
+			)
+			entry.LocalPath = filepath.Join(dir, fmt.Sprintf("clip-%03d.mp4", i))
+			if err := svc.UpsertLocal(ctx, dir, entry); err != nil {
+				errCh <- fmt.Errorf("writer %d: %w", i, err)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatalf("concurrent same-path UpsertLocal failed: %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "metadata.json"))
+	if err != nil {
+		t.Fatalf("read final metadata.json: %v", err)
+	}
+	entries := decodeEntries(t, raw)
+	if len(entries) != goroutines {
+		t.Fatalf("expected exactly %d entries after %d concurrent same-path writes, got %d",
+			goroutines, goroutines, len(entries))
+	}
+	seen := make(map[string]bool, goroutines)
+	for _, e := range entries {
+		if !strings.HasPrefix(e.AssetID, assetIDPrefix+"-") {
+			t.Fatalf("unexpected AssetID prefix: %s", e.AssetID)
+		}
+		if seen[e.AssetID] {
+			t.Fatalf("duplicate AssetID after concurrent writes: %s", e.AssetID)
+		}
+		seen[e.AssetID] = true
+	}
+	// Verify the file is parseable as JSON one more time (no half-write).
+	if !json.Valid(raw) {
+		t.Fatalf("final metadata.json is not valid JSON after concurrent writes: %s", string(raw))
+	}
+}
+
+// ── 9. Hard Download failure aborts UpsertRemote (no silent overwrite) ────
+//
+// Pinned invariant: a hard failure to DownloadManifest (vs. a
+// cleanly missing remote returning (nil, nil)) must immediately
+// abort the upsert. The pre-PR7 helper-method + shared-mutex
+// pattern could accidentally erase existing Drive entries via a
+// blind upload when the download failed; PR 7's typed
+// ErrRemoteWrite wrap prevents that and leaves the pre-existing
+// remote bytes unchanged.
+func TestService_UpsertRemote_DownloadError_Aborts(t *testing.T) {
+	adapter := newFakeDriveAdapter()
+	// Pre-seed: a real entry already exists in the adapter. If the
+	// service were to erroneously upload blindly after a download
+	// failure, this entry would be wiped.
+	adapter.mu.Lock()
+	adapter.files[adapter.key("folder-1", "metadata.json")] =
+		[]byte(`[{"asset_id":"PRE-EXISTING","name":"keep-me"}]`)
+	adapter.mu.Unlock()
+
+	forcedErr := errors.New("drive download forced failure")
+	adapter.downloadErr = forcedErr
+
+	svc := New(adapter, zap.NewNop())
+	ctx := context.Background()
+
+	err := svc.UpsertRemote(ctx, "folder-1", newTestEntry("A1", "new"))
+	if err == nil {
+		t.Fatal("UpsertRemote must return error when DownloadManifest fails")
+	}
+	if !errors.Is(err, ErrRemoteWrite) {
+		t.Fatalf("expected error to wrap ErrRemoteWrite, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), forcedErr.Error()) {
+		t.Fatalf("expected wrapped error to include cause %q, got: %v", forcedErr.Error(), err)
+	}
+	// Critical: replaceCount must be 0 (no blind upload).
+	if adapter.replaceCount != 0 {
+		t.Fatalf("adapter.replaceCount must be 0 when download fails (no blind upload): got %d",
+			adapter.replaceCount)
+	}
+	// Critical: pre-existing bytes unchanged on disk.
+	data, ok := adapter.get("folder-1", "metadata.json")
+	if !ok {
+		t.Fatal("pre-existing metadata.json went missing after aborted upsert")
+	}
+	if !strings.Contains(string(data), "PRE-EXISTING") {
+		t.Fatalf("pre-existing entry was overwritten despite abort: %s", string(data))
+	}
+}
+
+// ── 10. AssetToEntry Mapper — Metadata flattening invariants ─────────────
+//
+// Pinned invariant: AssetToEntry flattens the asset's SearchText +
+// Metadata + the term arg + extras at the top level of the
+// resulting Entry.Metadata, with FIRST-WRITE-WINS semantics per
+// key. Concretely: asset.Metadata is applied first (so its keys
+// are preserved even if extras carries the same name), then
+// term, then extras. A regression that broke the "flattens"
+// contract — e.g. merging extras into a nested "extras" subtree
+// instead of the top-level Metadata — would break both the
+// clip_upload pre-enrichment call shape and the semantic_enricher
+// post-enrichment call shape (they share this projection).
+func TestMapper_AssetToEntry_MetadataFlattening(t *testing.T) {
+	a := &asset.Asset{
+		ID:         "M1-mapper",
+		Name:       "mapper-clip",
+		Tags:       []string{"alpha", "beta"},
+		SearchText: "alpha pre-enrichment",
+		Metadata: map[string]any{
+			"lang":    "en",
+			"channel": "wave-21",
+		},
+	}
+	extras := map[string]any{
+		"clip_page_url": "https://example.com/M1",
+		// "lang" is repeated in extras to pin the first-write-wins
+		// semantic — asset.Metadata["lang"] = "en" must win because
+		// asset.Metadata is applied BEFORE extras in the mapper.
+		"lang": "it",
+	}
+	entry := AssetToEntry(a, "manual", "the-term", extras)
+
+	if entry.AssetID != "M1-mapper" || entry.Source != "manual" || entry.Name != "mapper-clip" {
+		t.Fatalf("entry basic fields not propagated: %+v", entry)
+	}
+	if len(entry.Tags) != 2 || entry.Tags[0] != "alpha" || entry.Tags[1] != "beta" {
+		t.Fatalf("entry.Tags not propagated: %v", entry.Tags)
+	}
+	want := map[string]any{
+		"search_text":   "alpha pre-enrichment",
+		"channel":       "wave-21",
+		"term":          "the-term",
+		"clip_page_url": "https://example.com/M1",
+		"lang":          "en", // FIRST-WRITE-WINS: asset.Metadata beats extras
+	}
+	if len(entry.Metadata) != len(want) {
+		t.Fatalf("entry.Metadata key count mismatch: want %d got %d (%v)",
+			len(want), len(entry.Metadata), entry.Metadata)
+	}
+	for k, v := range want {
+		got, ok := entry.Metadata[k]
+		if !ok {
+			t.Fatalf("entry.Metadata missing key %q (got: %v)", k, entry.Metadata)
+		}
+		if got != v {
+			t.Fatalf("entry.Metadata[%q]: want %v got %v", k, v, got)
+		}
+	}
+
+	// AssetToEntry with nil asset returns an empty Entry (UpdatedAt-only).
+	nilEntry := AssetToEntry(nil, "manual", "t", nil)
+	if nilEntry.AssetID != "" || nilEntry.Source != "" || nilEntry.Metadata != nil {
+		t.Fatalf("nil asset must yield empty Entry: %+v", nilEntry)
+	}
+	if nilEntry.UpdatedAt.IsZero() {
+		t.Fatal("nil asset's empty Entry must still carry UpdatedAt")
+	}
+
+	// AssetToEntry with empty term + empty extras + nil asset.Metadata:
+	// the resulting Metadata must be nil (no "term" key, no search_text).
+	simpleEntry := AssetToEntry(&asset.Asset{ID: "S1"}, "stock", "", nil)
+	if simpleEntry.Metadata != nil {
+		t.Fatalf("AssetToEntry with no metadata sources must yield nil Metadata (got: %v)",
+			simpleEntry.Metadata)
+	}
+}
+
+// ── 11. Corrupted local JSON recovers via overwrite (mirror of remote) ────
+//
+// Pinned invariant: UpsertLocal must apply the same recovery path
+// as UpsertRemote (corrupted file → warn + overwrite, never panic),
+// so the local-side metadata.json stays consistent with the
+// Drive-side semantics. Real callers hit this when an external
+// process truncates the metadata file (e.g. crash recovery, manual
+// editor).
+func TestService_UpsertLocal_CorruptedJSON_Recovery(t *testing.T) {
+	dir := t.TempDir()
+	// Seed corrupted metadata.json (not valid JSON).
+	corrupted := []byte("{this is not valid json")
+	if err := os.WriteFile(filepath.Join(dir, "metadata.json"), corrupted, 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	svc := New(nil, zap.NewNop())
+	ctx := context.Background()
+
+	entry := newTestEntry("L1-corrupt", "recovered")
+	entry.LocalPath = filepath.Join(dir, "recovered.mp4")
+
+	if err := svc.UpsertLocal(ctx, dir, entry); err != nil {
+		t.Fatalf("UpsertLocal must succeed on corrupted file (overwrite), got: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "metadata.json"))
+	if err != nil {
+		t.Fatalf("read final metadata: %v", err)
+	}
+	if !json.Valid(raw) {
+		t.Fatalf("final metadata.json is not valid JSON after recovery: %s", string(raw))
+	}
+	entries := decodeEntries(t, raw)
+	if len(entries) != 1 || entries[0].AssetID != "L1-corrupt" {
+		t.Fatalf("expected exactly [L1-corrupt] after corruption recovery, got: %v", entries)
+	}
 }
 
