@@ -8,6 +8,19 @@
 // list order, which matches buildPostprocessorList ordering:
 // entities → metadata → voiceover → images → document → persistence.
 //
+// PR 8 (June 2026):
+//   - `scripts.VideoMetadata` is gone. The domain shape
+//     `scriptpkg.VideoMetadata` (defined in
+//     internal/domain/script/generation_result.go) is the
+//     single canonical VideoMetadata. PostProcessArtifact.Metadata,
+//     PostGenFunc's return type, PostGenResult.VideoMetadata,
+//     and BuildGenerationDocumentHTML all reference the scriptpkg
+//     type directly. The pre-PR-3 in-package alias + the
+//     structural-copy bridge in processor_document.go are
+//     retired.
+//   - `pipeline_impl.go` (pre-PR-3 stub) deleted via `git rm`.
+//   - Updated package comment block to reflect single source-of-truth.
+//
 // PR 7 (June 2026): added Freeze/IsFrozen so composition-time
 // registration is rejected after wiring is complete.
 //
@@ -25,9 +38,10 @@
 //   - PostGenFunc hoisted to a single canonical location here
 //     (was previously duplicated in processor_entities.go and
 //     processor_metadata.go).
-//   - VideoMetadata + FolderResolver carried over from the
-//     pre-PR-3 pipeline_impl.go stub (required by
-//     processor_document.go / processor_metadata.go).
+//   - FolderResolver carried over from the pre-PR-3
+//     pipeline_impl.go stub (required by processor_document.go
+//   - DocumentsService); VideoMetadata is owned canonically
+//     by internal/domain/script.
 package scripts
 
 import (
@@ -41,28 +55,13 @@ import (
 )
 
 // ── Shared types carried over from the pre-PR-3 pipeline_impl.go
-// stub. These types were originally defined in pipeline_impl.go,
-// which is now an empty stub awaiting `git rm` in the PR 3 commit.
-// PostProcessArtifact and PostProcessorRegistry live here
-// permanently; VideoMetadata + FolderResolver are kept here as
-// their canonical home to avoid scattering.
-
-// VideoMetadata holds YouTube-style metadata for a single
-// language. Used internally by processor_metadata.go and the
-// PostProcessArtifact aggregate. The domain/script package
-// mirrors this shape under scriptpkg.VideoMetadata — both stay
-// because the canonical domain shape is consumed by the
-// generation_result.go serialiser, while scripts.VideoMetadata
-// is the in-memory shape that flows through the processor
-// pipeline. They're structurally identical and the existing
-// buildGenerationResult conversion in generate_one_usecase.go
-// carries fields across the boundary.
-type VideoMetadata struct {
-	Language    string   `json:"language"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-}
+// stub. VideoMetadata, PostProcessArtifact, and PostProcessorRegistry
+// live here permanently; FolderResolver is kept on this file as its
+// canonical home to avoid scattering (only DocumentProcessor +
+// DocumentsService consume it, both in the scripts package).
+//
+// PR 8: the local VideoMetadata struct was retired. The canonical
+// shape is scriptpkg.VideoMetadata (internal/domain/script).
 
 // FolderResolver resolves a folder ID from an input name and a
 // default root. Used by processor_document.go + DocumentsService.
@@ -92,8 +91,9 @@ type PostProcessArtifact struct {
 
 	// Metadata holds YouTube-style metadata (title, description,
 	// tags per language), populated by MetadataProcessor when
-	// "metadata" runs.
-	Metadata []VideoMetadata
+	// "metadata" runs. PR 8: scriptpkg.VideoMetadata is the
+	// canonical shape — no in-package alias.
+	Metadata []scriptpkg.VideoMetadata
 
 	// Entities holds the typed entity-extraction output, populated
 	// by EntitiesProcessor when "entities" runs.
@@ -375,4 +375,6 @@ func mergePostProcessArtifact(dst, src *PostProcessArtifact) {
 // Deprecated-name kept for backward compat with existing
 // wire-up names; a follow-up rename to entitiesAndMetadataFn
 // is on the post-PR-3 cleanup list.
-type PostGenFunc func(ctx context.Context, spec *scriptpkg.GenerationSpec, script string) (entitiesJSON string, videoMetadata []VideoMetadata, err error)
+// PR 8: the return type uses scriptpkg.VideoMetadata directly.
+// The pre-PR-8 in-package scripts.VideoMetadata alias is gone.
+type PostGenFunc func(ctx context.Context, spec *scriptpkg.GenerationSpec, script string) (entitiesJSON string, videoMetadata []scriptpkg.VideoMetadata, err error)

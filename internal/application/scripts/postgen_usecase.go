@@ -32,10 +32,13 @@ import (
 // ── Result type ─────────────────────────────────────────────────────────────
 
 // PostGenResult encapsulates the outputs of the post-generation phase.
+// PR 8 (June 2026): the in-package VideoMetadata alias is gone —
+// the canonical shape is scriptpkg.VideoMetadata
+// (internal/domain/script/generation_result.go).
 type PostGenResult struct {
 	EntitiesJSON  string
 	Insights      ScriptInsights
-	VideoMetadata []VideoMetadata
+	VideoMetadata []scriptpkg.VideoMetadata
 }
 
 // InsightBuilder is the narrow port the use case consumes to convert

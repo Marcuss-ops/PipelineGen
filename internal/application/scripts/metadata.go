@@ -7,12 +7,17 @@
 // function-port deps from the API layer. The call site in
 // app/wire_script.go imports this package and passes the functions
 // directly (no import cycle).
+//
+// PR 8 (June 2026): GenerateVideoMetadata returns
+// scriptpkg.VideoMetadata (internal/domain/script) directly —
+// the pre-PR-8 in-package VideoMetadata alias is gone.
 package scripts
 
 import (
 	"context"
 	"sync"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -37,9 +42,14 @@ func BuildMetadataLanguages(languages []string) []string {
 // ONCE via LLM, then translates for all other languages.
 // If model is non-empty, it's passed to the Generator for the metadata +
 // translation calls.
-func GenerateVideoMetadata(ctx context.Context, generator *ollama.Generator, title string, languages []string, model string) []VideoMetadata {
+//
+// PR 8 (June 2026): returns scriptpkg.VideoMetadata (the canonical
+// structured shape in internal/domain/script). Pre-PR-8 callers
+// using the in-package VideoMetadata alias continue to compile
+// without changes — now they reference the scriptpkg type directly.
+func GenerateVideoMetadata(ctx context.Context, generator *ollama.Generator, title string, languages []string, model string) []scriptpkg.VideoMetadata {
 	var mu sync.Mutex
-	metadata := make([]VideoMetadata, 0, len(languages))
+	metadata := make([]scriptpkg.VideoMetadata, 0, len(languages))
 	var wg sync.WaitGroup
 
 	// Generate English metadata FIRST — single LLM call shared across all languages
@@ -56,7 +66,7 @@ func GenerateVideoMetadata(ctx context.Context, generator *ollama.Generator, tit
 		concurrent.SafeGoFunc("video-metadata-"+lang, lang, func(lang string) {
 			defer wg.Done()
 
-			meta := VideoMetadata{Language: lang}
+			meta := scriptpkg.VideoMetadata{Language: lang}
 
 			// Translate title to target language
 			titleTranslated, _ := generator.TranslateTextWithModel(ctx, title, lang, model)

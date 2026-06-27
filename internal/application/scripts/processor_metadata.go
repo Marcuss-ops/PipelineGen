@@ -3,6 +3,12 @@
 // Delegates to the canonical PostGenUseCase (via PostGenFunc
 // callback). Enabled as "metadata" in the plan's Postprocessors list.
 //
+// PR 8 (June 2026): the typed VideoMetadata slice referenced here
+// is now scriptpkg.VideoMetadata (single canonical shape in
+// internal/domain/script/generation_result.go). Pre-PR-8 in-package
+// VideoMetadata alias is gone; the value flows straight from the
+// PostGenFunc callback return into PostProcessArtifact.Metadata.
+//
 // PR 3 (June 2026): the typed VideoMetadata slice flows directly
 // into PostProcessArtifact.Metadata. PostGenFunc is now declared
 // in postprocessor_registry.go (single canonical location).
