@@ -16,6 +16,17 @@ import (
 const (
 	EventAssetIndexRequested          = "asset.index.requested"
 	EventAssetIndexDeleteRequested    = "asset.index.delete_requested"
+	// EventAssetIndexRestoreRequested is the canonical event-type
+	// emitted by mutations.AssetMutationDispatcher.EnqueueAndRestore.
+	// Handler (deferred to task 3 of 5, currently
+	// mutations.AssetMutationDispatcher is foundation-only) consumes
+	// this event and completes the picture with Qdrant re-upsert +
+	// lifecycle_state flip back to 'ready'.
+	//
+	// Naming follows the established asset.index.* family so a single
+	// substring search finds the producer + consumer + tests on the
+	// same grep pass.
+	EventAssetIndexRestoreRequested   = "asset.index.restore_requested"
 	EventDeliveryRequested            = "delivery.requested"
 	EventAssetMetadataExportRequested = "asset.metadata_export.requested"
 	EventProviderSyncRequested        = "provider.sync.requested"

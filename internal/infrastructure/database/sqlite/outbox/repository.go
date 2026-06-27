@@ -21,6 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
@@ -443,6 +444,118 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 	})
 }
 
+// EnqueueAndRestore performs the canonical DISPATCH step of an
+// asset.restore flow (Wave 22, June 2026 — task 1 of 5 foundation;
+// the restore HANDLER ships in task 3):
+//
+//	tx body:
+//	  1. SET index_state=PENDING on media_assets (visibility
+//	     marker operators observe while the restore handler is
+//	     mid-process; survives a worker crash)
+//	  2. INSERT outbox_events (event_type='asset.index.restore_requested',
+//	     idempotency_key/event_key via ON CONFLICT DO NOTHING)
+//
+// Both writes commit atomically. The outboxevents Pool then picks
+// up the event and runs the future restore handler which finishes
+// the picture (Qdrant re-upsert + lifecycle_state flip to 'ready'
+// + media_assets.deleted_at NULL).
+//
+// Symmetric mirror of EnqueueAndDelete (QDRANT-002 PR7) — empty
+// assetID rejected before opening any tx; idempotency_key equals
+// event_key to satisfy the v1 conflation invariant (see the
+// EnqueueAndIndex comment block for the full rationale).
+//
+// Required wiring:
+//   - d.stateWriter: any ClipsStateWriter (production: *assets.ClipsRepository).
+//     nil → error returned (defense in depth).
+//   - d.outboxEventsRepo: not nil.
+//   - d.txmgr: not nil.
+func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.txmgr == nil {
+		return errors.New("outbox.Dispatcher: txmgr not configured")
+	}
+	if d.stateWriter == nil {
+		return errors.New("outbox.Dispatcher: state writer not configured (required for EnqueueAndRestore — wire *assets.ClipsRepository)")
+	}
+	if d.outboxEventsRepo == nil {
+		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+	}
+	if assetID == "" {
+		return errors.New("outbox.Dispatcher.EnqueueAndRestore: assetID is required")
+	}
+
+	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		// Step 1: stamp index_state=PENDING before any external
+		// side-effect. The worker pre-flight short-circuits if
+		// the row is already in PENDING (no-op write); instant
+		// retry-safe. The producer tx is the visibility layer —
+		// the await for the actual lifecycle_state flip lives in
+		// the future restore handler.
+		if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateIndexPending); err != nil {
+			return fmt.Errorf("dispatcher restore: set index_state=PENDING %s: %w", assetID, err)
+		}
+
+		// Step 2: emit the v1 envelope. Idempotency_key equals
+		// event_key (v1 conflation invariant; see EnqueueAndIndex).
+		// event_key shape `restore:<asset_id>` collapses any repeat
+		// callers into a single outbox_events row via ON CONFLICT.
+		eventID := uuid.NewString()
+		eventKey := fmt.Sprintf("restore:%s", assetID)
+		payload := restoreRequestV1{
+			SchemaVersion:  "asset.index.restore_requested.v1",
+			EventID:        eventID,
+			AssetID:        assetID,
+			Operation:      "RESTORE",
+			IdempotencyKey: eventKey,
+			RequestedAt:    timeutil.FormatRFC3339(time.Now()),
+		}
+		if payload.IdempotencyKey != eventKey {
+			return fmt.Errorf("dispatcher: restore payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("dispatcher marshal v1 restore payload %s: %w", assetID, err)
+		}
+
+		if err := d.outboxEventsRepo.Enqueue(
+			ctx, tx,
+			outboxevents.EventAssetIndexRestoreRequested,
+			assetID,
+			"media_asset",
+			string(payloadJSON),
+			eventKey,
+		); err != nil {
+			return fmt.Errorf("dispatcher enqueue outbox restore event %s: %w", assetID, err)
+		}
+
+		if d.log != nil {
+			d.log.Debug("dispatcher enqueued asset for outbox_events restoration (v1 envelope)",
+				zap.String("asset_id", assetID),
+				zap.String("outbox_event_id", eventID),
+			)
+		}
+		return nil
+	})
+}
+
+// restoreRequestV1 is the canonical envelope Dispatcher emits on
+// the asset.index.restore_requested event type (Wave 22, task 1
+// of 5 foundation; handler lands in task 3 of 5). Schema mirrors
+// indexRequestV1 + deleteRequestV1 from sibling method blocks so
+// the consumer-side decoder (future RestoreHandler) can re-use
+// the v1 conflation invariant + event_key canonicalisation.
+type restoreRequestV1 struct {
+	SchemaVersion  string `json:"schema_version"`
+	EventID        string `json:"event_id"`
+	AssetID        string `json:"asset_id"`
+	Operation      string `json:"operation"`
+	IdempotencyKey string `json:"idempotency_key"`
+	RequestedAt    string `json:"requested_at"`
+}
+
 // MultiClipsUpserter routes UpsertClipTx calls to one of several underlying
 // repositories based on `clip.Source`. Useful when a single outbox.Dispatcher
 // must ingest across many per-source assets.ClipsRepository instances (e.g.
@@ -521,3 +634,30 @@ func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip 
 	}
 	return repo.UpsertClipTx(ctx, tx, clip)
 }
+
+// Compile-time assertion (Wave 22 task 1 of 5, June 2026):
+// *outbox.Dispatcher statically satisfies the canonical
+// mutations.AssetMutationDispatcher SSOT interface declared in
+// internal/application/assets/mutations/dispatcher.go.
+//
+// The standard AGENTS.md Pattern 0 layering rule forbids
+// `internal/infrastructure/...` from importing
+// `internal/application/...`. The placement of the interface in
+// `internal/application/assets/mutations/` is a deliberate layering
+// INVERSION: the canonical asset-mutation dispatcher port lives
+// alongside its consumer (the application layer), and the dispatcher
+// assertion here grants the dispatcher its explicit SSOT membership.
+//
+// A second assertion on the composition-root adapter
+// `*mutationsDispatcherAdapter` (in internal/app/registry_adapters.go)
+// covers the thin delegate. BOTH assertions are necessary because
+// the adapter carries no inherent type information about the
+// dispatcher's signatures — drift on *outbox.Dispatcher alone would
+// not trip the adapter assertion.
+//
+// If a future PR changes any of the 3 method signatures
+// (contentHash type, assetID naming, error contract), this line
+// fails the build — the user-specified verification gate
+// ("at least one compile-time assertion fires if a method signature
+// drifts") is satisfied twice.
+var _ mutations.AssetMutationDispatcher = (*Dispatcher)(nil)
