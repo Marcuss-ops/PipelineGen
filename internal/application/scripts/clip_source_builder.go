@@ -43,6 +43,9 @@ type ClipGenerationOptions struct {
 	Title              string
 	Model              string
 	TargetWords        int
+	NumClips           int
+	SegmentWords       int
+	SegmentTopics      []string
 	SourceText         string
 	TranscriptPolicy   string
 	OrderingStrategy   string
@@ -196,12 +199,26 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		model = strings.TrimSpace(opts.Model)
 	}
 
-	sections := make([]NarrativeSection, 0, len(clipNames))
-	for i, name := range clipNames {
+	sectionCount := len(clipNames)
+	if opts != nil {
+		if opts.NumClips > 0 && opts.NumClips < sectionCount {
+			sectionCount = opts.NumClips
+		}
+		if sectionCount == 0 && len(opts.SegmentTopics) > 0 {
+			sectionCount = len(opts.SegmentTopics)
+		}
+	}
+	sections := make([]NarrativeSection, 0, sectionCount)
+	for i := 0; i < sectionCount; i++ {
+		name := clipNames[i]
+		purpose := fmt.Sprintf("Cover content from clip: %s", name)
+		if opts != nil && i < len(opts.SegmentTopics) && strings.TrimSpace(opts.SegmentTopics[i]) != "" {
+			purpose = fmt.Sprintf("Cover segment topic: %s", strings.TrimSpace(opts.SegmentTopics[i]))
+		}
 		sections = append(sections, NarrativeSection{
 			Role:       fmt.Sprintf("section_%d", i+1),
-			Purpose:    fmt.Sprintf("Cover content from clip: %s", name),
-			WordBudget: targetWords / maxInt(len(clipNames), 1),
+			Purpose:    purpose,
+			WordBudget: targetWords / maxInt(sectionCount, 1),
 		})
 	}
 
@@ -220,16 +237,51 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		}
 	}
 
+	if opts != nil && opts.NumClips > 0 {
+		sourceTextBuilder.WriteString(fmt.Sprintf("Requested clip count: %d\n", opts.NumClips))
+	}
+	if opts != nil && opts.SegmentWords > 0 {
+		sourceTextBuilder.WriteString(fmt.Sprintf("Segment words: %d\n", opts.SegmentWords))
+	}
+	if opts != nil && len(opts.SegmentTopics) > 0 {
+		sourceTextBuilder.WriteString("Segment topics:\n")
+		for i, topic := range opts.SegmentTopics {
+			topic = strings.TrimSpace(topic)
+			if topic == "" {
+				continue
+			}
+			sourceTextBuilder.WriteString(fmt.Sprintf("  %d. %s\n", i+1, topic))
+		}
+	}
+
 	// Build pack with clip data.
 	pack := map[string]any{
 		"clip_ids":         uniqueIDs,
 		"clip_names":       clipNames,
 		"clip_drive_links": clipDriveLinks,
-		"title":            title,
-		"language":         language,
-		"tone":             tone,
-		"model":            model,
-		"clip_count":       len(clips),
+		"num_clips": func() int {
+			if opts != nil && opts.NumClips > 0 {
+				return opts.NumClips
+			}
+			return 0
+		}(),
+		"segment_words": func() int {
+			if opts != nil {
+				return opts.SegmentWords
+			}
+			return 0
+		}(),
+		"segment_topics": func() []string {
+			if opts != nil {
+				return append([]string(nil), opts.SegmentTopics...)
+			}
+			return nil
+		}(),
+		"title":      title,
+		"language":   language,
+		"tone":       tone,
+		"model":      model,
+		"clip_count": len(clips),
 	}
 
 	if c.log != nil {

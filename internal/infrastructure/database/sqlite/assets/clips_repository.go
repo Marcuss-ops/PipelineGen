@@ -57,7 +57,7 @@ const mediaAssetColumns = `
 	COALESCE(updated_at, '') AS updated_at,
 	COALESCE(width, 0) AS width,
 	COALESCE(height, 0) AS height,
-	COALESCE(lifecycle_state, 'ready') AS lifecycle_state,
+	COALESCE(lifecycle_state, 'ACTIVE') AS lifecycle_state,
 	COALESCE(deleted_at, '') AS deleted_at,
 	COALESCE(error, '') AS error,
 	COALESCE(thumb_url, '') AS thumb_url,
@@ -272,7 +272,13 @@ func (r *ClipsRepository) Canonical() *ClipsRepository {
 }
 
 func (r *ClipsRepository) SoftDeleteFilter() string {
-	return "lifecycle_state != 'deleted' AND lifecycle_state != 'DELETED'"
+	// PR 1 (June 2026, Lifecycle state SSOT): historical rows are
+	// rewritten to canonical UPPERCASE by migration 101; writers no
+	// longer emit lowercase 'deleted'. SoftDeleteFilter reduces to a
+	// single equality check so future writers that re-introduce a
+	// legacy stray casing surface immediately as a migration 101
+	// failure rather than as a silent filter bypass.
+	return "lifecycle_state != 'DELETED'"
 }
 
 func (r *ClipsRepository) Log() *zap.Logger { return r.log }
@@ -414,7 +420,7 @@ func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink s
 	}
 	now := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'deleted', deleted_at = ? WHERE drive_link = ? OR download_link = ?`,
+		`UPDATE media_assets SET lifecycle_state = 'DELETED', deleted_at = ? WHERE drive_link = ? OR download_link = ?`,
 		now, driveLink, driveLink)
 	return err
 }

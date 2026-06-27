@@ -66,30 +66,34 @@ var ErrMissingWorkspace = errors.New("mediasearch: workspace context required")
 var ErrHybridRequiresSparse = errors.New("mediasearch: hybrid mode requires a configured sparse vector channel and a BM25-tokenizable query")
 
 // SearchableLifecycleStates is the canonical allowlist of
-// lifecycle_state values that survive the hydration phase
-// (QDRANT-004 PR3, June 2026). Anything outside this set — deleted,
-// archived, pending_index, error, drive_missing, etc. — MUST be
-// filtered both in SQL (primary) and in the post-query guard
+// lifecycle_state values that survive the hydration phase (PR 1 —
+// Lifecycle state SSOT, June 2026). The single value is ACTIVE;
+// pre-PR1 the list was {"active", "searchable"} (both legacy
+// lowercase values pruned by migration 101). Anything outside this
+// set — STAGING, PROCESSING, DELETE_PENDING, DELETED, ERROR — MUST
+// be filtered both in SQL (primary) and in the post-query guard
 // (defence-in-depth). The orchestrator (mediasearch.Service) sends
 // this list to MediaReadRepository.GetMany as the default
 // allowStates argument unless an explicit caller override is
 // supplied via MediaSearchFilter.States.
-var SearchableLifecycleStates = []string{"active", "searchable"}
+var SearchableLifecycleStates = []string{"ACTIVE"}
 
 // AllNonSearchableLifecycleStates is the explicit deny-list used
 // for the post-query defence layer. If the SQL filter ever drifts
 // to allow one of these (a real risk after migrations), the
 // post-query guard catches it before the row exits the seam.
+//
+// PR 1 (June 2026) rewrite: every value is the canonical UPPERCASE
+// shape from asset.LifecycleState (no lowercase counterparts —
+// production no longer emits them post-101). The pre-PR1 list
+// carried legacy mixed-case values; post-101 those values cannot
+// appear in the column, so they cannot leak through the seam.
 var AllNonSearchableLifecycleStates = []string{
-	"deleted",
-	"DELETED",
-	"archived",
-	"pending",
-	"pending_index",
-	"error",
-	"drive_missing",
-	"INDEX_FAILED",
+	"STAGING",
+	"PROCESSING",
 	"DELETE_PENDING",
+	"DELETED",
+	"ERROR",
 }
 
 // MediaReadRepository fetches canonical asset metadata from SQLite.

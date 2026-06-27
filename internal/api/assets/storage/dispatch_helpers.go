@@ -46,7 +46,7 @@ type SyncPayloadInput struct {
 // construction path used by both /api/media/sync-drive-folder (admin)
 // and /internal/v1/media/sync-drive-folder (server-to-server).
 //
-// Callers pass the returned map as Payload to common.EnqueueAsync.
+// Callers pass the returned map as Payload to transport.EnqueueAsync.
 func buildSyncPayload(in *SyncPayloadInput) (map[string]any, string) {
 	payload := jobs.DriveFolderSyncPayload{
 		DriveFolderID:  in.FolderID,

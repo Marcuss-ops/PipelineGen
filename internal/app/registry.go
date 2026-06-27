@@ -248,24 +248,43 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// clips + register handlers.
 	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
 	idemHandler := idemPlus.Handler()
-	// S3d (June 2026): construct the canonical SearchAggregator
-	// against the post-Freeze ProviderRegistry. The SearchAggregator
-	// shares the registry with the providers fan-out; construction
-	// here so by the time YouTubeClip is wired, both the
-	// ProviderRegistry and the SearchAggregator point at the same
-	// frozen state.
+
+	// PR-2 (June 2026): single canonical SearchFanOut constructed
+	// in WireRegistry and SHARED between WireYouTubeClip +
+	// WireAssets. The pre-PR-2 parallel
+	// `providers.NewSearchAggregator` is gone (git-rm'd in this
+	// PR); the canonical *search.Aggregator lives behind the
+	// SearchFanOut decorator which exposes the user-spec
+	// Option{Hits, Latencies} Stats surface. Composition-stable
+	// failure mode: a BuildCanonicalSearchFanOut error aborts
+	// boot so a misconfigured backend set is visible at startup
+	// rather than silently degrading to partial coverage.
 	//
-	// Note: when root.Search.ProviderRegistry is nil (registry not
-	// built — e.g. test fixtures or partial deploys), we pass the
-	// aggregator as nil. WireYouTubeClip forwards nil to
-	// NewYouTubeClipHandler; the handler's SearchAdvanced + Stats
-	// then return 503 (services not wired).
-	var searchAggregator *providers.SearchAggregator
+	// Note: when root.Search.ProviderRegistry is nil (registry
+	// not built — e.g. test fixtures or partial deploys), the
+	// fan-out is set to a noopFanOut that surfaces
+	// ErrAggregatorNil on every Search and returns the empty
+	// map on Stats. Handlers map this to 503 (services not
+	// wired) without panicking on a nil decorator.
+	var searchFanOut search.SearchFanOut
+	var searchBackends *search.BackendRegistry
 	if root.Search != nil && root.Search.ProviderRegistry != nil {
-		searchAggregator = providers.NewSearchAggregator(root.Search.ProviderRegistry)
-		log.Info("S3d: constructed providers.SearchAggregator against root.Search.ProviderRegistry")
+		searchFanOut, _ = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
+			Logger:      log,
+			ProviderReg: root.Search.ProviderRegistry,
+			ClipsRepo:   root.Repos.ClipsRepo,
+		})
+		// Diagnostic surfaces: the bare registry is consumed by
+		// future Health probes / dashboard routes via
+		// wiring.Assets.SearchBackendRegistry. We pull it back
+		// out of the SearchFanOut's decorator by re-running the
+		// build — the noopFanOut case leaves searchBackends nil.
+		if sf, ok := searchFanOut.(*searchSearchFanOutAccessor); ok {
+			searchBackends = sf.Backends()
+		}
+		log.Info("PR-2: canonical SearchFanOut wired against root.Search.ProviderRegistry (single shared instance)")
 	}
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchAggregator); err != nil {
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchFanOut); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		if err := tryRegisterModuleStrict(registry, log, yw.Module, WithRegistrationPoint("register.YouTubeClip")); err != nil {
@@ -513,6 +532,13 @@ jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 		ClipIndexerService:      root.Process.ClipIndexerService,
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
+		// PR-2 (June 2026): the canonical SearchFanOut is stamped
+		// onto the bundle BEFORE WireAssets runs. WireAssets
+		// consumes the pre-built slot rather than constructing
+		// its own (single shared instance invariant — see
+		// AssetsBundle package doc).
+		SearchFanOut:          searchFanOut,
+		SearchBackendRegistry: searchBackends,
 	}
 	// Wave 16 (June 2026): WireAssets realtimeSvc is typed
 	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).

@@ -47,6 +47,9 @@ func (p *ClipBindingsProcessor) Process(
 	}
 	sort.Strings(clipIDs)
 
+	if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
+		clipIDs = clipIDs[:plan.NumClips]
+	}
 	if len(clipIDs) > len(scenes) {
 		clipIDs = clipIDs[:len(scenes)]
 	}

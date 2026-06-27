@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -180,7 +180,7 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		return
 	}
 
-	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type:    "youtube_clip.extract",
 		Payload: payloadMap,
 	}, "YouTube clip extraction job enqueued."); ok {

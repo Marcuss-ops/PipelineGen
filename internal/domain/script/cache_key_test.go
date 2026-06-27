@@ -123,6 +123,19 @@ func TestBuildCacheKey_DifferentTargetWordsChanges(t *testing.T) {
 	assert.NotEqual(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2))
 }
 
+func TestBuildCacheKey_DifferentSegmentFieldsChange(t *testing.T) {
+	t.Parallel()
+	p1 := basePlan()
+	p2 := basePlan()
+	p1.NumClips = 2
+	p1.SegmentWords = 120
+	p1.SegmentTopics = []string{"A", "B"}
+	p2.NumClips = 3
+	p2.SegmentWords = 180
+	p2.SegmentTopics = []string{"A", "C"}
+	assert.NotEqual(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2))
+}
+
 // ── Excludes (control flags / postprocessors must not change key) ────
 
 func TestBuildCacheKey_ForceRefreshExcluded(t *testing.T) {

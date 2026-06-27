@@ -247,21 +247,24 @@ func (uc *GenerateOneUseCase) Execute(
 //   - ItemID    — item.ID
 //   - Title     — item.Title (canonical document title)
 //   - Language  — item.Language (real target language; the curate
-//                 resolver previously hijacked Guidelines here —
-//                 the bug class)
+//     resolver previously hijacked Guidelines here —
+//     the bug class)
 //   - Tone      — item.Tone
 //   - Model     — item.Model
 //   - Style     — item.Style
 //   - TargetWords — item.ScriptParams.TargetWords
 func buildResolutionContext(item scriptpkg.GenerationItemV2) scriptpkg.SourceResolutionContext {
 	return scriptpkg.SourceResolutionContext{
-		ItemID:      item.ID,
-		Title:       item.Title,
-		Language:    item.Language,
-		Tone:        item.Tone,
-		Model:       item.Model,
-		Style:       item.Style,
-		TargetWords: item.ScriptParams.TargetWords,
+		ItemID:        item.ID,
+		Title:         item.Title,
+		Language:      item.Language,
+		Tone:          item.Tone,
+		Model:         item.Model,
+		Style:         item.Style,
+		TargetWords:   item.ScriptParams.TargetWords,
+		NumClips:      item.Source.NumClips,
+		SegmentWords:  item.ScriptParams.SegmentWords,
+		SegmentTopics: append([]string(nil), item.ScriptParams.SegmentTopics...),
 	}
 }
 
@@ -315,10 +318,14 @@ func buildGenerationResult(
 	// still carry the empty struct so consumers see a consistent
 	// SpecSceneOutput shape across all generation flows.
 	if engineResult.ClipEvidence != nil {
-		sourceTrace.AcceptedClipIDs = engineResult.ClipEvidence.ClipIDs
+		clipIDs := engineResult.ClipEvidence.ClipIDs
+		if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
+			clipIDs = clipIDs[:plan.NumClips]
+		}
+		sourceTrace.AcceptedClipIDs = append([]string(nil), clipIDs...)
 
 		scenes := result.Output.SpecScene.Scenes
-		for i, id := range engineResult.ClipEvidence.ClipIDs {
+		for i, id := range clipIDs {
 			if i >= len(scenes) {
 				break
 			}

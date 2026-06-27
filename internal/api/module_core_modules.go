@@ -1,7 +1,7 @@
 package api
 
 import (
-	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -12,14 +12,14 @@ type UtilityModule struct {
 	name    string
 	cfg     *config.Config
 	log     *zap.Logger
-	handler *common.UtilityHandler
+	handler *transport.UtilityHandler
 }
 
 // NewUtilityModule creates a new Utility module.
 func NewUtilityModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *common.UtilityHandler,
+	handler *transport.UtilityHandler,
 ) *UtilityModule {
 	return &UtilityModule{
 		name:    "utility",

@@ -75,7 +75,7 @@ func BuildItemIdentity(item scriptpkg.GenerationItemV2) string {
 
 	// Script sizing.
 	sp := item.ScriptParams
-	if sp.TargetWords > 0 || sp.Duration > 0 || sp.MinWords > 0 {
+	if sp.TargetWords > 0 || sp.Duration > 0 || sp.MinWords > 0 || sp.SegmentWords > 0 || len(sp.SegmentTopics) > 0 {
 		parts = append(parts, "size="+scriptSizeKey(sp))
 	}
 	add("prompt_v", sp.PromptVersion)
@@ -120,6 +120,17 @@ func scriptSizeKey(sp scriptpkg.ScriptSpec) string {
 	}
 	if sp.MinWords > 0 {
 		parts = append(parts, "min="+itoa(sp.MinWords))
+	}
+	if sp.SegmentWords > 0 {
+		parts = append(parts, "segment_words="+itoa(sp.SegmentWords))
+	}
+	if len(sp.SegmentTopics) > 0 {
+		topics := make([]string, len(sp.SegmentTopics))
+		copy(topics, sp.SegmentTopics)
+		for i := range topics {
+			topics[i] = strings.TrimSpace(topics[i])
+		}
+		parts = append(parts, "segment_topics="+strings.Join(topics, ","))
 	}
 	return strings.Join(parts, ",")
 }

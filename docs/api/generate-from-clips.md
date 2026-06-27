@@ -16,8 +16,11 @@ Content-Type: application/json
 |---|---|---|---|---|
 | `topic` | string | — | sì | Argomento dello script |
 | `clips` | array of objects | `[]` | sì | Clip da associare alle scene (vedi sotto) |
+| `num_clips` | int | `0` | no | Numero di clip/scene da usare davvero nel risultato finale |
 | `language` | string | `"en"` | no | Lingua dello script |
 | `style` | string | `"documentary"` | no | Stile narrativo |
+| `segment_words` | int | `0` | no | Lunghezza target di ogni segmento, in parole |
+| `segment_topics` | array of strings | `[]` | no | Lista ordinata di argomenti per i segmenti |
 | `generate_document` | bool | `false` | no | Crea Google Doc |
 | `generate_doc` | bool | `false` | no | Alias di `generate_document` |
 | `sentences_per_image` | int | `6` | no | Lunghezza media scena |

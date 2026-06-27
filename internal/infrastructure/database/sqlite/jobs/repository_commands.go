@@ -103,25 +103,6 @@ type RequeueResult struct {
 	Error     string
 }
 
-// QueueNotifier is the typed port satisfied by *queueNotifier (defined
-// in queue_notifier.go) and by *SQLiteStore via its Subscribe/Broadcast
-// forwarding methods (repository.go). The application-tier worker pool
-// depends on this interface so the future postgres LISTEN/NOTIFY adapter
-// can slot in without recompiling internal/application/**.
-//
-// Per PR-Polling / ADR-0002 §D6.5 (June 2026): the notifier is in-process
-// scope only. The postgres adapter ships its own QueueNotifier backed
-// by a LISTEN channel; cross-process wake-up is a separate concern.
-//
-// Error sentinels (ErrTransitionConflict / ErrLeaseLost) live in store.go
-// as the canonical home per Wave 17.1.2 — this file only declares the
-// typed command/result/port surface; sentinel errors are package-private
-// at the store level.
-type QueueNotifier interface {
-	Subscribe() <-chan struct{}
-	Broadcast()
-}
-
 // ── Transition Validation ────────────────────────────────────────────────
 
 // ValidateTransition checks if the state transition is allowed per the

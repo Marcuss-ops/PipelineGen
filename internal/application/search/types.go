@@ -137,6 +137,7 @@ func (a Actor) IsZero() bool {
 // forward it instead of substituting default values.
 type Query struct {
 	Text       string     // trimmed before fanout
+	Hash       string     // PR-2 (June 2026): when non-empty, hash-match backends answer; text-match backends ignore
 	Sources    []string   // empty = all from registry; aliases resolved via ResolveCanonicals
 	MediaTypes []string   // empty = all ("video","image","audio","music")
 	Filters    Filters
@@ -156,14 +157,18 @@ type Query struct {
 // Score is normalised [0,1] across backends. Hash is a content hash
 // when known (used by dedup policy rank-order 4).
 type Candidate struct {
-	AssetID    string  `json:"asset_id"`
-	Source     string  `json:"source"`               // "youtube","artlist","local","semantic"
-	SourceRef  string  `json:"source_ref,omitempty"` // provider-native ID (YouTube VideoID, artlist ID)
-	MediaType  string  `json:"media_type,omitempty"`
-	Title      string  `json:"title,omitempty"`
-	PreviewURL string  `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
-	Score      float64 `json:"score"`
-	Hash       string  `json:"hash,omitempty"`
+	AssetID      string  `json:"asset_id"`
+	Source       string  `json:"source"`                 // "youtube","artlist","local","semantic"
+	SourceRef    string  `json:"source_ref,omitempty"`   // provider-native ID (YouTube VideoID, artlist ID)
+	MediaType    string  `json:"media_type,omitempty"`
+	Title        string  `json:"title,omitempty"`
+	Name         string  `json:"name,omitempty"`         // canonical asset name; may differ from Title when localizations differ
+	LocalPath    string  `json:"local_path,omitempty"`  // for hash-source + duplicate-list display
+	DriveLink    string  `json:"drive_link,omitempty"`  // for hash-source + duplicate-list display
+	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
+	PreviewURL   string  `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
+	Score        float64 `json:"score"`
+	Hash         string  `json:"hash,omitempty"`
 }
 
 // ── Result ──────────────────────────────────────────────────────────

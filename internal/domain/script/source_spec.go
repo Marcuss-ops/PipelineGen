@@ -48,11 +48,11 @@ type SourceSpec struct {
 	NumClips int      `json:"num_clips,omitempty"`
 
 	// ── Catalog / Search source ───────────────────────────────────────
-	Query            string  `json:"query,omitempty"`
-	MaxClips         int     `json:"max_clips,omitempty"`
-	MinCoverage      float64 `json:"min_coverage,omitempty"`
-	MinQualityScore  *float64 `json:"min_quality_score,omitempty"`
-	MinTranscriptWords *int   `json:"min_transcript_words,omitempty"`
+	Query              string   `json:"query,omitempty"`
+	MaxClips           int      `json:"max_clips,omitempty"`
+	MinCoverage        float64  `json:"min_coverage,omitempty"`
+	MinQualityScore    *float64 `json:"min_quality_score,omitempty"`
+	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
 
 	// ── Clip pipeline options ─────────────────────────────────────────
 	TranscriptPolicy string `json:"transcript_policy,omitempty"`
@@ -144,6 +144,16 @@ type SourceResolutionContext struct {
 	// TargetWords is the target script word count (e.g. 800 for a
 	// 5-minute voiceover). Mapped into ClipGenerationOptions.TargetWords.
 	TargetWords int `json:"target_words,omitempty"`
+
+	// NumClips is the requested number of clips/scenes for clip-based
+	// generation. When zero, the resolver may use all available clips.
+	NumClips int `json:"num_clips,omitempty"`
+
+	// SegmentWords is the desired approximate word budget per segment.
+	SegmentWords int `json:"segment_words,omitempty"`
+
+	// SegmentTopics is an ordered list of topics to cover per segment.
+	SegmentTopics []string `json:"segment_topics,omitempty"`
 }
 
 // ResolvedSource is the output of a SourceResolver. It carries the

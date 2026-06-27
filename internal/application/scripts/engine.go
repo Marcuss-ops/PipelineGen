@@ -407,8 +407,33 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	}
 
 	clipIDs := strings.Join(plan.ClipEvidence.ClipIDs, ", ")
+	requestedClips := len(plan.ClipEvidence.ClipIDs)
+	if plan.NumClips > 0 && plan.NumClips < requestedClips {
+		requestedClips = plan.NumClips
+	}
 
-	return strings.Join([]string{
+	var extra []string
+	if plan.NumClips > 0 {
+		extra = append(extra, fmt.Sprintf("Use exactly %d clip-driven scenes.", requestedClips))
+	}
+	if plan.SegmentWords > 0 {
+		extra = append(extra, fmt.Sprintf("Aim for about %d words per segment.", plan.SegmentWords))
+	}
+	if len(plan.SegmentTopics) > 0 {
+		topics := make([]string, 0, len(plan.SegmentTopics))
+		for i, topic := range plan.SegmentTopics {
+			topic = strings.TrimSpace(topic)
+			if topic == "" {
+				continue
+			}
+			topics = append(topics, fmt.Sprintf("%d. %s", i+1, topic))
+		}
+		if len(topics) > 0 {
+			extra = append(extra, "Segment topics:\n"+strings.Join(topics, "\n"))
+		}
+	}
+
+	lines := []string{
 		"CLIP-GROUNDED WRITING RULES:",
 		"1. Treat the supplied clip evidence as the primary source.",
 		"2. Every scene must describe what is happening in the clips: action, movement, setting, objects, reactions, and immediate consequences.",
@@ -416,7 +441,9 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		"4. If a clip contains multiple beats, narrate those beats in order instead of abstracting them away.",
 		"5. Do not invent events, dialogue, or transitions that are not supported by the clip evidence.",
 		"6. Keep drive links out of the spoken script; they are reference metadata only.",
-	}, "\n")
+	}
+	lines = append(lines, extra...)
+	return strings.Join(lines, "\n")
 }
 
 // decodeModelPayload parses a raw model payload into the canonical

@@ -44,7 +44,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		SourceURL:      rec.ExternalURL,
 		Duration:       time.Duration(rec.Duration) * time.Millisecond,
 		Tags:           append([]string(nil), rec.Tags...),
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
@@ -55,7 +55,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	m.SetVisualEmbeddingJSON(rec.VisualEmbeddingJSON)
 	m.SetMetadataJSON(rec.Metadata)
 
-	if rec.Status == "deleted" {
+	if rec.Status == "DELETED" {
 		m.LifecycleState = asset.StateDeleted
 	}
 
@@ -100,10 +100,10 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		if rec.Status == "failed" {
 			_ = r.processing.Start(ctx, rec.ID, step)
 			_ = r.processing.Fail(ctx, rec.ID, step, rec.Error)
-		} else if rec.Status == "ready" || rec.Status == "completed" {
-			_ = r.processing.Start(ctx, rec.ID, step)
-			_ = r.processing.Complete(ctx, rec.ID, step)
-		} else {
+	} else if rec.Status == "ACTIVE" || rec.Status == "completed" {
+		_ = r.processing.Start(ctx, rec.ID, step)
+		_ = r.processing.Complete(ctx, rec.ID, step)
+	} else {
 			_ = r.processing.Start(ctx, rec.ID, step)
 		}
 	}
@@ -130,7 +130,7 @@ func (r *ClipsRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaReco
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id FROM media_assets 
 		WHERE drive_file_id IS NOT NULL AND drive_file_id != '' 
-		  AND lifecycle_state != 'deleted'
+		  AND lifecycle_state != 'DELETED'
 	`)
 	if err != nil {
 		return nil, err
@@ -218,13 +218,13 @@ func detailsToMediaRecord(details *asset.Details) *MediaRecord {
 				break
 			} else if proc.Status == asset.StatusRunning {
 				rec.Status = "processing"
-			} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
-				rec.Status = "ready"
-			}
+		} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
+			rec.Status = "ACTIVE"
+		}
 		}
 	}
 	if rec.Status == "" {
-		rec.Status = "ready"
+		rec.Status = "ACTIVE"
 	}
 
 	return rec

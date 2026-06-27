@@ -7,13 +7,18 @@
 //   - SetLogger(log *zap.Logger) — package-level logger hook.
 //   - HardDeleteTx(ctx, tx, id) — physically deletes media_assets +
 //     dependent rows in caller-owned tx.
-//   - RestoreTx(ctx, tx, id) — flips lifecycle_state to 'ready' in
-//     caller-owned tx.
+//   - RestoreTx(ctx, tx, id) — flips lifecycle_state to canonical
+//     'ACTIVE' in caller-owned tx.
 //
 // No additional helpers, no public state, no internal caches. The
 // primitives are physics-only; the safety gate (lifecycle_state +
 // qdrant_point_state) lives in the caller (admin.PurgeService), not
 // here, by design (see doc.go §"Caller contracts" §2).
+//
+// Lifecycle state SSOT (PR 1, June 2026): all writers emit canonical
+// UPPERCASE enum values from asset.LifecycleState. RestoreTx writes
+// 'ACTIVE'; pre-PR1 lowercase 'ready' is no longer accepted by any
+// code path that consumed this primitive.
 package txmutation
 
 import (
@@ -174,18 +179,18 @@ var hardDeleteChildTables = []string{
 
 // ── RestoreTx ──────────────────────────────────────────────────────────────
 
-// RestoreTx flips `lifecycle_state` back to 'ready' and clears
-// `deleted_at` inside the caller-owned *sql.Tx. Idempotent: a row
-// whose lifecycle_state is already 'ready' (or that has been hard-
-// deleted already) is a no-op write.
+// RestoreTx flips `lifecycle_state` back to canonical 'ACTIVE' and
+// clears `deleted_at` inside the caller-owned *sql.Tx. Idempotent: a
+// row whose lifecycle_state is already 'ACTIVE' (or that has been
+// hard-deleted already) is a no-op write.
 //
-// Canonical case convention: `lifecycle_state` values use LOWERCASE
-// for soft-delete transitions ('ready', 'deleted') and UPPERCASE for
-// terminal states ('DELETED') once Qdrant has drained. See
-// clips_repository.go::SoftDeleteFilter for the lowercase convention
-// reference (`lifecycle_state != 'deleted' AND lifecycle_state != 'DELETED'`).
-// This primitive writes lowercase 'ready' to match the SoftDeleteFilter
-// contract.
+// Canonical case convention (PR 1 — Lifecycle state SSOT, June 2026):
+// every lifecycle_state value is UPPERCASE. See asset.LifecycleState
+// for the closed set { STAGING, PROCESSING, ACTIVE, DELETE_PENDING,
+// DELETED, ERROR }. Pre-PR1 writers used lowercase 'ready'/'deleted';
+// migration 101 rewrites historical rows to the canonical set. This
+// primitive writes UPPERCASE 'ACTIVE' so production rows never expose
+// the legacy lowercase pattern again.
 //
 // Caller contract (see doc.go):
 //   - `tx` MUST be non-nil and open.
@@ -204,12 +209,12 @@ func RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
 	}
 
 	res, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL WHERE id = ?`, id)
+		`UPDATE media_assets SET lifecycle_state = 'ACTIVE', deleted_at = NULL WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("txmutation.RestoreTx %s: update: %w", id, err)
 	}
 	affected, _ := res.RowsAffected()
-	logger.Load().Info("txmutation.RestoreTx: lifecycle_state -> ready",
+	logger.Load().Info("txmutation.RestoreTx: lifecycle_state -> ACTIVE",
 		zap.String("id", id),
 		zap.Int64("rows_affected", affected))
 	return nil

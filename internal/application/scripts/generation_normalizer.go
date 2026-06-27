@@ -2,7 +2,7 @@
 // normalization layer for the unified script-generation pipeline.
 // It applies the single precedence chain to every GenerationItemV2:
 //
-//   caller explicit > preset > config > safety default
+//	caller explicit > preset > config > safety default
 //
 // Normalization is idempotent: calling NormalizeItem twice with the
 // same inputs produces the same output. The normalizer never mutates
@@ -151,6 +151,15 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 	// Source defaults: NumClips derives from MaxClips.
 	if item.Source.NumClips <= 0 && item.Source.MaxClips > 0 {
 		item.Source.NumClips = item.Source.MaxClips
+	}
+	if item.Source.NumClips <= 0 && len(item.ScriptParams.SegmentTopics) > 0 {
+		item.Source.NumClips = len(item.ScriptParams.SegmentTopics)
+	}
+	if item.ScriptParams.SegmentWords <= 0 && item.ScriptParams.TargetWords > 0 && item.Source.NumClips > 0 {
+		item.ScriptParams.SegmentWords = item.ScriptParams.TargetWords / item.Source.NumClips
+	}
+	if item.ScriptParams.TargetWords <= 0 && item.ScriptParams.SegmentWords > 0 && item.Source.NumClips > 0 {
+		item.ScriptParams.TargetWords = item.ScriptParams.SegmentWords * item.Source.NumClips
 	}
 
 	// Source text defaults to topic when empty.

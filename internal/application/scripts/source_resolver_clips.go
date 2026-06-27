@@ -70,6 +70,9 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		Model:              resCtx.Model,
 		Style:              resCtx.Style,
 		TargetWords:        resCtx.TargetWords,
+		NumClips:           resCtx.NumClips,
+		SegmentWords:       resCtx.SegmentWords,
+		SegmentTopics:      append([]string(nil), resCtx.SegmentTopics...),
 		TranscriptPolicy:   src.TranscriptPolicy,
 		OrderingStrategy:   src.OrderingStrategy,
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
@@ -93,5 +96,3 @@ func computeSourceFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEviden
 		Source: src,
 	})
 }
-
-

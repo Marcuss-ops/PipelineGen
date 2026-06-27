@@ -18,14 +18,22 @@ import (
 )
 
 // TestBuildPayload_LifecycleKeyIsCanonical asserts that BuildPayload
-// writes asset.Status under the canonical key "lifecycle_state" and
-// does NOT silently emit a legacy "status" key (which a Qdrant
-// payload index in DefaultV3Schema would not be able to filter on).
+// writes asset.LifecycleState under the canonical key "lifecycle_state"
+// (PR 1 / QDRANT-004 §(b)) and does NOT silently emit a legacy
+// "status" key (which a Qdrant payload index in DefaultV3Schema would
+// not be able to filter on).
+//
+// PR 1 — Lifecycle state SSOT (June 2026): AssetData.Status was
+// removed (the parallel lowercase enum is canonical-only now);
+// the payload key is sourced from AssetData.LifecycleState. The
+// canonical word lives in the new uppercase enum — the test
+// seeds LifecycleState="ACTIVE" and asserts the payload key
+// matches without any case-mangling.
 func TestBuildPayload_LifecycleKeyIsCanonical(t *testing.T) {
 	asset := &AssetData{
-		ID:     "asset-1",
-		Status: "ready",
-		Source: "stock",
+		ID:             "asset-1",
+		LifecycleState: "ACTIVE",
+		Source:         "stock",
 	}
 	schema := DefaultV3Schema()
 
@@ -35,8 +43,8 @@ func TestBuildPayload_LifecycleKeyIsCanonical(t *testing.T) {
 	if !ok {
 		t.Fatalf("BuildPayload must write canonical payload key %q; got keys %v", "lifecycle_state", mapKeys(payload))
 	}
-	if got != "ready" {
-		t.Errorf("lifecycle_state => %v, want %q", got, "ready")
+	if got != "ACTIVE" {
+		t.Errorf("lifecycle_state => %v, want %q (PR 1 canonical SSOT)", got, "ACTIVE")
 	}
 
 	if _, leaked := payload["status"]; leaked {
@@ -50,7 +58,7 @@ func TestBuildPayload_LifecycleKeyIsCanonical(t *testing.T) {
 // located for the SSOT suite). Without this the reindex verifier's
 // per-channel counters could regress.
 func TestBuildPayload_EmbeddingVersionsByChannel(t *testing.T) {
-	asset := &AssetData{ID: "asset-2", Status: "ready"}
+	asset := &AssetData{ID: "asset-2", LifecycleState: "ACTIVE"}
 	schema := DefaultV3Schema()
 
 	payload := BuildPayload(asset, schema)

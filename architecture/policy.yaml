@@ -21,7 +21,7 @@ max_constructor_deps: 8
 
 # Generic dumping-ground dirs forbidden as top-level package names
 # (per the proposal §"internal/capabilities").
-forbidden_top_level_dirs: service, repository, models, utils, helpers, common
+forbidden_top_level_dirs: service, repository, models, utils, helpers
 
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
@@ -123,5 +123,5 @@ known_grandfathered:
   - "internal/application/scripts (55 files) — in_progress to capability/scripts split"
   - "internal/application/images (25 files) — in_progress to capability/images split"
   - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
-  - "internal/api (24 files in flat root + subdirs) — Wave 14 transport consolidation in_progress"
+  - "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)"
   - "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"

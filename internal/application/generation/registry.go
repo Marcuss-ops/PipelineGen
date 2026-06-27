@@ -123,6 +123,8 @@ type ScriptSource struct {
 	Guidelines          string   `json:"guidelines,omitempty"`
 	ClipIDs             []string `json:"clip_ids,omitempty"`
 	NumClips            int      `json:"num_clips,omitempty"`
+	SegmentWords        int      `json:"segment_words,omitempty"`
+	SegmentTopics       []string `json:"segment_topics,omitempty"`
 	Title               string   `json:"title,omitempty"`
 	OutputName          string   `json:"output_name,omitempty"`
 	Language            string   `json:"language,omitempty"`
