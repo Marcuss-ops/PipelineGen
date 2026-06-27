@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
@@ -101,4 +102,25 @@ func sameFile(a, b string) bool {
 		return false
 	}
 	return os.SameFile(aInfo, bInfo)
+}
+
+// shouldRejectAssetInput returns true when a file name or path clearly points
+// to a non-media sidecar, temp artifact, or JSON metadata blob that must never
+// enter the ingest pipeline as an indexable asset.
+func shouldRejectAssetInput(pathOrName string) bool {
+	base := strings.ToLower(strings.TrimSpace(filepath.Base(pathOrName)))
+	if base == "" || base == "." || base == ".." {
+		return false
+	}
+	if base == "metadata.json" {
+		return true
+	}
+	if strings.HasSuffix(base, ".json") {
+		return true
+	}
+	switch filepath.Ext(base) {
+	case ".tmp", ".temp", ".part", ".bak", ".swp", ".swo":
+		return true
+	}
+	return strings.HasPrefix(base, ".")
 }
