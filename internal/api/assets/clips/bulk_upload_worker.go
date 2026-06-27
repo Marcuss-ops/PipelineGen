@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -221,7 +222,7 @@ func (h *Handler) processOneClip(
 		return fmt.Errorf("hash: %w", err)
 	}
 
-	clipID := buildBulkClipID(cand, fileHash)
+	clipID := appclips.BuildBulkClipID(cand.DisplayName(), cand.Name, fileHash)
 	log = log.With(zap.String("clip_id", clipID), zap.String("path", cand.LocalPath))
 
 	// Step 2: Drive target folder (with subdir if requested)
@@ -244,17 +245,17 @@ func (h *Handler) processOneClip(
 		// Build Drive filename: use subdir (actor name) if available, else clip name
 		driveName := ""
 		if cand.Subdir != "" && cand.Subdir != "." {
-			driveName = sanitiseDriveName(filepath.Base(cand.Subdir))
+			driveName = appclips.SanitiseDriveName(filepath.Base(cand.Subdir))
 		}
 		if driveName == "" {
-			driveName = sanitiseDriveName(cand.DisplayName())
+			driveName = appclips.SanitiseDriveName(cand.DisplayName())
 		}
 		if driveName == "" {
 			driveName = cand.Name
 		}
 		driveFilename := driveName + ".mp4"
 
-		driveDesc := buildBulkDriveDescription(cand, fileHash, *payload)
+		driveDesc := appclips.BuildBulkDriveDescription(cand.DisplayName(), cand.Subdir, fileHash, cand.Manifest, *payload)
 		upRes, err := h.driveUploader.UploadFileWithDescription(ctx, cand.LocalPath, targetFolderID, driveFilename, driveDesc)
 		if err != nil {
 			failed.Add(1)
@@ -310,9 +311,9 @@ func (h *Handler) processOneClip(
 		Source:         asset.Source(source),
 		Category:       category,
 		MediaType:      asset.MediaType("video"),
-		SearchText:     deriveSearchText(cand),
+		SearchText:     appclips.DeriveSearchText(cand.DisplayName(), cand.Name, cand.Subdir, cand.Manifest),
 		LifecycleState: asset.StateReady,
-		Duration:       time.Duration(extractIntFromManifest(cand.Manifest, "duration_sec")) * time.Second,
+		Duration:       time.Duration(appclips.ExtractIntFromManifest(cand.Manifest, "duration_sec")) * time.Second,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
