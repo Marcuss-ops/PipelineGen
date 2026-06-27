@@ -19,6 +19,12 @@
 #   6. PR-YT-SEARCHTOPICS       — youtube_handlers.go SearchTopics unrouted method
 #   7. PR-YT-TYPES-TOPIC        — youtube/types/types.go TopicSearchRequest canonical relocation
 #
+# Records added in this PR (Wave 22 task 5 / PR-CLIP-RAW-MUTATIONS, June 2026):
+#   8. PR-CLIP-RAW-MUTATIONS    — clips_repository.go Restore / HardDelete /
+#                                   HardDeleteClip removed; replaced by
+#                                   txmutation.{RestoreTx,HardDeleteTx} in
+#                                   the restricted tx-scoped package.
+#
 # Each record below cites the Phase 1..4 migration status per godlike/07 §"Migration sequence":
 #   EXPAND (introduce new canonical structure)
 #   BACKFILL (migrate durable state)
@@ -287,18 +293,228 @@ deprecations:
       no separate "shim file" to remove. The archive-row
       below documents the historical commit for audit.
 
+  # ────────────────────────────────────────────────────────────────────────
+  # 8. PR-CLIP-RAW-MUTATIONS — clips_repository.go Restore / HardDelete / HardDeleteClip removed
+  #   Replaced by txmutation.{RestoreTx,HardDeleteTx} in the restricted
+  #   tx-scoped package (QDRANT-asset-mutation isolation, Wave 22 task 5).
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-CLIP-RAW-MUTATIONS
+    owner_capability: internal/infrastructure/database/sqlite/assets
+    exact_symbol: "*ClipsRepository.Restore, *ClipsRepository.HardDelete, *ClipsRepository.HardDeleteClip"
+    file: internal/infrastructure/database/sqlite/assets/clips_repository.go
+    # file_line anchors in the canonical repository receiver:
+    #   line 236 : "Wave 22 / PR-CLIP-RAW-MUTATIONS" package-level
+    #              removal-of-three block (Restore + HardDelete fossils).
+    #   line 396 : "HardDeleteClip REMOVED" specific-method fossil.
+    file_line: 236, 396
+    replacement: |
+      txmutation.RestoreTx(ctx, tx, id) and
+      txmutation.HardDeleteTx(ctx, tx, id) in
+      internal/infrastructure/database/sqlite/assets/txmutation/primitives.go
+      Both call sites MUST hold an open *sql.Tx. The admin InternalAdminPurge
+      adapter (internal/infrastructure/database/sqlite/admin/purge.go) opens the
+      tx, delegates, and commits — the safety gate
+      (lifecycle_state='DELETED' AND qdrant_point_state='absent') lives in the
+      adapter, not in the primitive, by design (layered responsibility).
+    introduction_date: 2026-04
+    removal_date: 2026-06-26  # this PR
+    tracking_issue: "QDRANT-asset-mutation isolation (Wave 22 task 5 / PR-CLIP-RAW-MUTATIONS, June 2026)"
+    compatibility_test: |
+      Three layers of defence are simultaneously enforced:
+        (a) `rg 'Restore\(|HardDelete\(|HardDeleteClip\(' internal/application internal/api`
+            returns zero hits — the methods were removed from the canonical
+            *assets.ClipsRepository receiver, so any direct caller that lands
+            here is a go test build failure.
+        (b) `internal/application/assets/mutations/primitives.go`
+            `AssetMutationPrimitives` interface carries only UpsertClip;
+            Restore and HardDelete were dropped from the interface so any
+            assertion against the 3-method supertype (a signature drift
+            scenario) fails to compile.
+        (c) `scripts/ci-architectural-checks.sh` Check 5 rg-gates the
+            production caller patterns (`\bUpsertClip\(`,
+            `(^|[\s.(])r\.Restore\(`, `(^|[\s.(])r\.HardDelete\(`,
+            alias-attribute forms `\br\.repo\.UpsertClip\(`,
+            `\br\.clips\.UpsertClip\(`).
+    usage_metric: |
+      Legacy callers pre-removal (audit point in time, June 2026):
+        - `repo.Restore(`           — 0 production callers
+                                       (admin path was routed through
+                                        InternalAdminPurge already).
+        - `repo.HardDelete(`        — 0 production callers.
+        - `repo.HardDeleteClip(`    — 0 production callers
+                                       (admin internal alias only).
+      Post-removal audit commands (mandatory before this PR merges):
+        - `rg 'Restore\(|HardDelete\(|HardDeleteClip\(' internal/application internal/api` → 0
+        - `rg '^func \(r \*ClipsRepository\) (Restore|HardDelete|HardDeleteClip)' internal/infrastructure/database/sqlite/assets/clips_repository.go` → 0
+        - `rg '^[^/]*\.HardDeleteClip\(|^[^/]*\.RestoreClip\(' internal/` → 0
+                                  (admin's Public API surface remains).
+    migration_phase: CONTRACT  # no callers in production; direct CONTRACT per godlike/07 §"Migration sequence"
+    status: removed
+    notes: |
+      This is the only method-removal entry in the manifest whose
+      replacement lives in a NEW PACKAGE (the tx-scoped unexported
+      restriction). The package doc
+      (`internal/infrastructure/database/sqlite/assets/txmutation/primitives.go`)
+      is the canonical record for the contract: callers MUST hold an
+      open *sql.Tx; production callers will compile-fail on the new
+      surface because they don't own a *sql.Tx (the dispatcher owns the
+      canonical *sql.Tx and goes through UpsertClipTx, not through the
+      raw primitives).
+
+      The internal/application/assets/mutations/AssetMutationPrimitives
+      surface was also pruned (now 1 method: UpsertClip only). The
+      outbox dispatcher's separate compile-time assertion
+      `var _ mutations.AssetMutationDispatcher = (*Dispatcher)(nil)`
+      references the 3-method AssetMutationDispatcher (EnqueueAndIndex,
+      EnqueueAndDelete, EnqueueAndRestore) — the Primitives shrink and
+      the Dispatcher's surface are independent interfaces. No regression
+      in dispatcher behaviour is possible.
+
+      ARCH-ALLOWLIST (`scripts/ci-architectural-checks.sh` Check 5):
+      admin migration / backfill files that legitimately need to bypass
+      the gate MUST include the comment marker `// ARCH-ALLOWLIST: admin-only`
+      on the line preceding each bypass. The current production tree
+      requires zero allowlist markers — if a future PR needs to bypass,
+      the marker is the opt-in.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 9. PR-QDRANT-WIRE-MIRROR — wire-mirror pattern in
+  #   `internal/infrastructure/qdrant` ↔ `internal/application/qdrant/dr/`
+  #   (4 type pairs + dr_adapter.go bridges). Targeted for collapse
+  #   to a single canonical types package by Q4 2026. This is the
+  #   audit registration (EXPAND phase); CONTRACT lands in 3+ subsequent
+  #   PRs through Q4 2026.
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-QDRANT-WIRE-MIRROR
+    owner_capability: internal/infrastructure/qdrant + internal/application/qdrant/dr
+    exact_symbol: |
+      * Wire copy: `qdrant.SnapshotDescription` declared at
+        `internal/infrastructure/qdrant/types_dr.go:45`.
+      * Canonical mirror: `dr.SnapshotDescription` declared at
+        `internal/application/qdrant/dr/types.go:38`.
+      * Mirrors not yet declared (dr-only): `dr.RetentionConfig`
+        (`dr/types.go:50`), `dr.RetentionResult` (`dr/types.go:60`),
+        `dr.VerifyReport` (`dr/ports.go:62`). These will land in
+        the canonical types package at EXPAND.
+      * Bridge: `dr_adapter.go` 6 adapter types + 6 compile-time
+        assertions + manual field-copy in `VerifierAdapter.VerifyReindex`
+        (line ~145) and `RetentionExecutorAdapter.CleanupWithConfig`
+        (line ~186) + `translateSnapshot` / `translateSnapshotSlice`
+        helpers.
+    file: internal/infrastructure/qdrant/types_dr.go + internal/application/qdrant/dr/types.go + internal/infrastructure/qdrant/dr_adapter.go
+    file_line: 45, 38, ~46+84+104+152+194+222
+    replacement: |
+      Single canonical pure-types package at
+      `internal/application/qdrant/types/` (or under
+      `internal/application/qdrant/dr/types/` if scoped preference).
+      Pure-data leaf: imports nothing. Both `internal/infrastructure/qdrant`
+      and `internal/application/qdrant/dr` may import it without forming
+      an import cycle. `dr_adapter.go` becomes passthrough or is
+      deleted; compile-time assertions in `dr_adapter.go` become
+      redundant (Go's native type system protects the single struct).
+    introduction_date: 2026-06  # QDRANT-005C PR3 (June 2026)
+    removal_date: 2026-Q4  # target collapse window; EXPAND starts this PR
+    tracking_issue: "docs/operations/06-qdrant-wire-mirror-review.md (QDRANT-REVIEW-001); future PRs tagged `QDRANT-WIRE-MIRROR-COLLAPSE`"
+    compatibility_test: |
+      Phase-by-phase evidence per `docs/operations/06` §"Test obbligatori":
+        EXPAND: pure-types package compiles when imported by both
+        `internal/infrastructure/qdrant` and `internal/application/qdrant/dr`.
+        BACKFILL: `dr.SnapshotService.ListSnapshots` returns
+        `[]types.SnapshotDescription` without call-site changes
+        (bridge absorbs the rename).
+        CUTOVER: `qdrant.Client.CreateSnapshot` decoder writes
+        directly to `types.SnapshotDescription`; no bridge needed.
+        CONTRACT: `grep -rn 'type SnapshotDescription\|type RetentionConfig\|type RetentionResult\|type VerifyReport' internal/`
+        returns exactly 1 hit each; zero method declarations
+        `func translateSnapshot(|func translate<` in dr_adapter.go;
+        zero `var _ dr.<Port> = (*<Adapter>)(nil)` lines left.
+      See `docs/operations/06` §"Criteri di accettazione" for the
+      full canonical-evidence list.
+    usage_metric: |
+      Today (audit baseline, 2026-06-27): zero direct callers of the
+      canonical `dr.<Mirror>` struct outside the dr package itself —
+      all consumers go through the bridge. After BACKFILL the bridge
+      becomes thin; after CUTOVER the bridge becomes single-line
+      (passthrough); after CONTRACT the bridge is deleted and the
+      metric becomes "zero hand-written bridge code touching the 4
+      canonical structs".
+      No runtime metric exists today, by design: the wire-mirror is
+      a compile-time decision, not a runtime choice. The collapse
+      audit itself is the canonical evidence (no new metric needed).
+    migration_phase: EXPAND  # this PR registers the audit; Q3-Q4 2026 PRs do BACKFILL/CUTOVER/CONTRACT
+    status: in_progress
+    notes: |
+      Per `docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md` §"Cross-file
+      redeclaration within one Go package", the wire-mirror pattern is an
+      "EXPAND acknowledgement, not a CONTRACT shortcut". The collapse to a
+      single types package is a "structural simplification without a
+      simultaneous re-design" — no business-logic changes, no migration of
+      durable state, no new tests beyond the bridge-passthrough smoke. The
+      4-phase sequence (audit EXPAND + BACKFILL + CUTOVER + CONTRACT) is
+      the canonical zero-legacy template per the policy doc.
+
+      This entry ratchets the COLLAPSE operation as a whole (the audit is
+      the EXPAND phase). Per-type breakdowns with their preconditions are
+      documented in `docs/operations/06-qdrant-wire-mirror-review.md`
+      §"JSON-tag leakage trade-off" + §"Target removal":
+        - SnapshotDescription: mechanical; preconditions met today.
+        - RetentionConfig/RetentionResult: blocked on SQLite-backed aging
+          registry migration (`dr/types.go::NO fields that the application
+          layer does not consume` doc-comment).
+        - VerifyReport: blocked on reconciler/PR2 wiring
+          (`VerifierAdapter.NewVerifierAdapter`'s deadLetter + goldenQuery
+          parameters, per the deadLetter-omission doc-comment).
+      Future maintainers may split this entry into per-type entries if
+      per-type ratchets become necessary; the audit flag is the SSOT
+      today.
+
+      Drift detector today (compile-time assertions in dr_adapter.go) is
+      fragile: it catches signature drift but NOT field-copy drift in the
+      manual `VerifierAdapter.VerifyReindex` field-by-field copy. A future
+      maintainer who adds a field to one struct without updating the
+      other will get a silent zero at runtime. The collapse resolves this
+      fragility by reducing the bridge to either a passthrough or zero
+      statements — there is no field copy to maintain.
+
+      Recommended collapse target: Option B (per-shape WireShape + CanonicalShape siblings
+      in ONE types package) per the JSON-tag leakage analysis in
+      `docs/operations/06-qdrant-wire-mirror-review.md` §"JSON-tag leakage" — Option A
+      (single struct) violates godlike/07 §"No fake availability" by inheriting wire-shape
+      concerns into the application domain. Option B preserves separation of concerns while
+      breaking the cycle. Option C (status quo wire-mirror) remains the fallback if the
+      EXPAND + BACKFILL + CUTOVER + CONTRACT smoke test signals JSON-tag leakage as a
+      real-world concern; the contingent Q4 2026 → Q1 2027 fallback deadline in the ticket
+      kicks in only if the smoke test fails to pass by end of Q3 2026.
+
+      The user's audit request explicitly cited "AGENTS.md §7" as the
+      policy reference; the canonical location for the
+      ExperimentalDeprecation policy is `docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md`
+      (which is the source-of-truth for `§`-style references in
+      architecture prose). Wiki page numbers match the filename `07`
+      by convention.
+
+      Out of scope for this entry (handled separately): the
+      same-package duplicate-type-declaration lint
+      (`scripts/ci-architectural-checks.sh::Check 5`) is owned by
+      Wave 20 (QDRANT-005D hygiene) per `architecture/current.yaml#id-20`
+      — that lint catches the WRONG shape (two declarations in the
+      same directory_path + package). The wire-mirror pattern is the
+      RIGHT shape (two declarations in different directory_paths +
+      same package_name but allowed by Go); Check 5 does not gate it.
+
 # Audit summary (read-only; not part of the ratchet) -------------------------
 audit:
-  manifest_version: "Wave 16 PR1 (June 2026)"
-  total_records: 7
+  manifest_version: "QDRANT-REVIEW-001 / PR-QDRANT-WIRE-MIRROR EXPAND registration (June 2026)"
+  total_records: 9
   by_status:
-    removed: 5
-    in_progress: 1
+    removed: 6
+    in_progress: 2
     keep: 1
   by_migration_phase:
-    CONTRACT: 4
+    CONTRACT: 5
     CUTOVER: 1
     BACKFILL: 1
+    EXPAND: 1
     'not applicable': 1
   ci_gate_impact: |
     PR-CLIP-RESTORE      (removed 2026-06-26): audit-only, no gate.
@@ -318,3 +534,19 @@ audit:
         (PR-JOB-STATUS-DEFENSIVE) until it ships.
     PR-YT-TYPES-TOPIC        (removed 2026-06-26, historical):
         audit-only.
+    PR-CLIP-RAW-MUTATIONS    (removed 2026-06-26, this PR):
+        Triple-defence: (a) methods removed from
+        *assets.ClipsRepository, (b) AssetMutationPrimitives
+        interface pruned, (c) scripts/ci-architectural-checks.sh
+        Check 5 now bans the production caller patterns
+        UpsertClip / Restore / HardDelete outside the canonical
+        allowlist. ARCH-ALLOWLIST comment marker is the explicit
+        opt-in mechanism for admin migration / backfill files
+        that legitimately need to bypass the gate.
+    PR-QDRANT-WIRE-MIRROR (in_progress until Q4 2026):
+        EXPAND phase (this audit PR) registered. The collapse to a
+        single canonical types package executes across 3 follow-up
+        PRs (BACKFILL/CUTOVER/CONTRACT) per the migration plan in
+        docs/operations/06-qdrant-wire-mirror-review.md. CI gate
+        does NOT fail on this entry today; the entry is a tracking
+        reference + ratchet. Removal is the ratchet trigger.
