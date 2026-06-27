@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -145,6 +146,22 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 				}
 			}
 
+			// Gate 3b: QDRANT-005 UUID point ID validation.
+			// A point whose pt.ID is not a canonical UUID string
+			// (and carries a non-empty payload.asset_id) is
+			// BLOCKING — the canonical AssetIDToQdrantPointID
+			// function always produces UUID v5 hashes; a
+			// non-UUID ID means the point was written by a
+			// legacy code path that used raw asset IDs.
+			if _, uuidErr := uuid.Parse(pt.ID); uuidErr != nil && assetID != "" {
+				report.PayloadIssues++
+				if len(report.Errors) < 20 {
+					report.Errors = append(report.Errors,
+						fmt.Sprintf("point %s: UUID missing/mismatch — pt.ID %q is not a canonical UUID v5 (payload asset_id=%q)",
+							pt.ID, pt.ID, assetID))
+				}
+			}
+
 			// Gate 4: Embedding version check (sample-based: first 1000 points).
 			// Full-scan would be O(n) per field; the first two pages (1000 pts)
 			// give a representative sample for fast feedback.
@@ -185,16 +202,16 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 						}
 						key := fmt.Sprintf("embedding_version_%s", spec.Channel)
 						actual, present := pt.Payload[key].(string)
-						if !present {
-							// Legacy fallback: the global embedding_version
-							// must match CurrentEmbeddingVersion when a
-							// channel is missing its per-channel key.
-							if gv, ok := pt.Payload["embedding_version"].(string); !ok || gv != CurrentEmbeddingVersion {
-								report.VersionMismatchPerChannel[spec.Channel]++
-								pointMismatched = true
-							}
-							continue
-						}
+				if !present {
+					// QDRANT-005 closure: the global embedding_version
+					// rescue path was DELETED. A point missing its
+					// per-channel key always bumps the per-channel
+					// mismatch counter, regardless of whether the
+					// global embedding_version matches.
+					report.VersionMismatchPerChannel[spec.Channel]++
+					pointMismatched = true
+					continue
+				}
 						if actual != spec.ModelVersion {
 							report.VersionMismatchPerChannel[spec.Channel]++
 							pointMismatched = true
