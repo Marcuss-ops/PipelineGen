@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 

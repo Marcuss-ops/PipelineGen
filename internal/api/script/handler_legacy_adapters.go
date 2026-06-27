@@ -64,38 +64,62 @@ func addDeprecationHeader(c *gin.Context) {
 // API consumers don't need to change their payloads. Each type has
 // only the fields necessary for translation to GenerationEnvelopeV2.
 
+// LegacyClipInput is one entry of the documented `clips` array of
+// objects on the legacy /api/script/generate-from-clips request.
+//
+// Only ClipID is required to drive SourceClips selection. Title and
+// URL are accepted (omitempty) to keep the wire shape aligned with
+// the public documentation; the generation pipeline does not
+// consume them in PR 1 (no reader wired yet — reserved for a
+// future diagnostics / audit-log pass).
+//
+// PR 1 (June 2026): the documented `clips` array was previously
+// silently dropped because the legacy request type did not declare
+// it, which caused clients sending the documented payload shape
+// to fall through to SourceText. This type is the canonical
+// representation of one entry on that array.
+type LegacyClipInput struct {
+	ClipID string `json:"clip_id"`
+	Title  string `json:"title,omitempty"`
+	URL    string `json:"url,omitempty"`
+}
+
 // LegacyGenerateFromClipsRequest is the deprecated request for
 // POST /api/script/generate-from-clips.
 type LegacyGenerateFromClipsRequest struct {
-	Topic               string   `json:"topic"`
-	SourceText          string   `json:"source_text"`
-	Title               string   `json:"title"`
-	Language            string   `json:"language"`
-	Tone                string   `json:"tone"`
-	Model               string   `json:"model"`
-	Style               string   `json:"style"`
-	ClipIDs             []string `json:"clip_ids"`
-	IntroClipIDs        []string `json:"intro_clip_ids"`
-	IntroClips          []string `json:"intro_clips"`
-	NumClips            int      `json:"num_clips"`
-	TargetWords         int      `json:"target_words"`
-	Duration            int      `json:"duration"`
-	SegmentWords        int      `json:"segment_words"`
-	SegmentTopics       []string `json:"segment_topics"`
-	SaveToDB            bool     `json:"save_to_db"`
-	ForceRefresh        bool     `json:"force_refresh"`
-	GenerateSceneImages bool     `json:"generate_scene_images"`
-	GenerateVoiceover   bool     `json:"generate_voiceover"`
-	GenerateDocument    bool     `json:"generate_document"`
-	GenerateDoc         bool     `json:"generate_doc"`
-	ExtractEntities     bool     `json:"extract_entities"`
-	GenerateMetadata    bool     `json:"generate_metadata"`
-	DriveFolderID       string   `json:"drive_folder_id"`
-	StyleInstructions   string   `json:"style_instructions"`
-	VoiceoverGroup      string   `json:"voiceover_group"`
-	VoiceoverFolderID   string   `json:"voiceover_folder_id"`
-	TranscriptPolicy    string   `json:"transcript_policy"`
-	PromptVersion       string   `json:"prompt_version"`
+	Topic               string            `json:"topic"`
+	SourceText          string            `json:"source_text"`
+	Title               string            `json:"title"`
+	Language            string            `json:"language"`
+	Tone                string            `json:"tone"`
+	Model               string            `json:"model"`
+	Style               string            `json:"style"`
+	ClipIDs             []string          `json:"clip_ids"`
+	Clips               []LegacyClipInput `json:"clips"`
+	IntroClipIDs        []string          `json:"intro_clip_ids"`
+	IntroClips          []string          `json:"intro_clips"`
+	NumClips            int               `json:"num_clips"`
+	TargetWords         int               `json:"target_words"`
+	Duration            int               `json:"duration"`
+	SegmentWords        int               `json:"segment_words"`
+	SegmentTopics       []string          `json:"segment_topics"`
+	SaveToDB            bool              `json:"save_to_db"`
+	ForceRefresh        bool              `json:"force_refresh"`
+	GenerateSceneImages bool              `json:"generate_scene_images"`
+	GenerateVoiceover   bool              `json:"generate_voiceover"`
+	GenerateDocument    bool              `json:"generate_document"`
+	GenerateDoc         bool              `json:"generate_doc"`
+	ExtractEntities     bool              `json:"extract_entities"`
+	GenerateMetadata    bool              `json:"generate_metadata"`
+	DriveFolderID       string            `json:"drive_folder_id"`
+	StyleInstructions   string            `json:"style_instructions"`
+	Guidelines          string            `json:"guidelines"`
+	CustomPrompt        string            `json:"custom_prompt"`
+	SystemPrompt        string            `json:"system_prompt"`
+	VoiceoverGroup      string            `json:"voiceover_group"`
+	VoiceoverFolderID   string            `json:"voiceover_folder_id"`
+	TranscriptPolicy    string            `json:"transcript_policy"`
+	PromptVersion       string            `json:"prompt_version"`
 }
 
 // toEnvelope translates a legacy generate-from-clips request into a
@@ -104,6 +128,17 @@ type LegacyGenerateFromClipsRequest struct {
 func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
 	introIDs := append([]string(nil), r.IntroClipIDs...)
 	introIDs = append(introIDs, r.IntroClips...)
+
+	guidelines := r.StyleInstructions
+	if guidelines == "" {
+		guidelines = r.Guidelines
+	}
+	if guidelines == "" {
+		guidelines = r.CustomPrompt
+	}
+	if guidelines == "" {
+		guidelines = r.SystemPrompt
+	}
 
 	item := domainScript.GenerationItemV2{
 		ID:       r.Title,
@@ -116,7 +151,7 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 			Type:             domainScript.SourceText,
 			Topic:            r.Topic,
 			SourceText:       r.SourceText,
-			Guidelines:       r.StyleInstructions,
+			Guidelines:       guidelines,
 			TranscriptPolicy: r.TranscriptPolicy,
 			ForceRefresh:     r.ForceRefresh,
 			IntroClipIDs:     introIDs,
@@ -141,9 +176,30 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 			DriveFolderID:       r.DriveFolderID,
 		},
 	}
-	if len(r.ClipIDs) > 0 {
+	// PR 1 (June 2026): clip-source precedence chain.
+	//
+	//   1. Explicit `clip_ids []string` wins if non-empty.
+	//   2. Otherwise, IDs are extracted from the documented
+	//      `clips: [{clip_id,...}]` array, in arrival order,
+	//      skipping entries whose ClipID is empty.
+	//   3. Otherwise, no clip selection → SourceText fallback
+	//      (PR 3 turns this into HTTP 400 on the
+	//      `generate-from-clips` semantic).
+	//
+	// Mixed / merged / deduplicated behaviour is intentionally
+	// out of scope for PR 1 — see PR 2 for the union logic.
+	clipIDs := r.ClipIDs
+	if len(clipIDs) == 0 {
+		clipIDs = make([]string, 0, len(r.Clips))
+		for _, c := range r.Clips {
+			if c.ClipID != "" {
+				clipIDs = append(clipIDs, c.ClipID)
+			}
+		}
+	}
+	if len(clipIDs) > 0 {
 		item.Source.Type = domainScript.SourceClips
-		item.Source.ClipIDs = r.ClipIDs
+		item.Source.ClipIDs = clipIDs
 	}
 	item.Source.NumClips = r.NumClips
 	return domainScript.GenerationEnvelopeV2{

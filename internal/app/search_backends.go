@@ -171,7 +171,7 @@ func (b *localSearchBackend) searchByHash(ctx context.Context, q search.Query) (
 			Name:         clip.Name,
 			LocalPath:    clip.LocalPath(),
 			DriveLink:    clip.DriveLink(),
-			ThumbnailURL: clip.ThumbnailURL(),
+			ThumbnailURL: clip.ThumbnailURL,
 			Score:        1.0,
 			Hash:         q.Hash,
 		})
@@ -231,7 +231,7 @@ func (b *localSearchBackend) searchByText(ctx context.Context, q search.Query) (
 			MediaType:    string(clip.MediaType),
 			LocalPath:    clip.LocalPath(),
 			DriveLink:    clip.DriveLink(),
-			ThumbnailURL: clip.ThumbnailURL(),
+			ThumbnailURL: clip.ThumbnailURL,
 			Score:        search.LocalScore(sig, q),
 		})
 	}

@@ -45,11 +45,20 @@ func BuildClipEvidence(pack interface{}, sourceText string) *scriptpkg.ClipEvide
 		return nil
 	}
 
+	clipNames := stringSlice(m["clip_names"])
+	clipNameMap := make(map[string]string, len(clipIDs))
+	for i, id := range clipIDs {
+		if i < len(clipNames) && clipNames[i] != "" {
+			clipNameMap[id] = clipNames[i]
+		}
+	}
+
 	ev := &scriptpkg.ClipEvidence{
 		ClipIDs:       clipIDs,
 		ClipCount:     len(clipIDs),
 		AssembledText: strings.TrimSpace(sourceText),
 		DriveLinks:    stringMap(m["clip_drive_links"]),
+		ClipNames:     clipNameMap,
 	}
 
 	// Build excluded clips from any clips in the pack that failed

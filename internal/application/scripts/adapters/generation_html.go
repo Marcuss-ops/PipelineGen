@@ -263,11 +263,12 @@ func BuildClipSpecSceneDocumentHTML(
 	}
 
 	type sceneDoc struct {
-		ID         string   `json:"id"`
-		Index      int      `json:"index"`
-		Text       string   `json:"text"`
-		Kind       string   `json:"kind"`
-		DriveLinks []string `json:"drive_links,omitempty"`
+		ID          string   `json:"id"`
+		Index       int      `json:"index"`
+		Text        string   `json:"text"`
+		Kind        string   `json:"kind"`
+		Description string   `json:"description,omitempty"`
+		DriveLinks  []string `json:"drive_links,omitempty"`
 	}
 	type specDoc struct {
 		Version int        `json:"version"`
@@ -283,18 +284,27 @@ func BuildClipSpecSceneDocumentHTML(
 	for i := range model.SpecScene.Scenes {
 		scene := model.SpecScene.Scenes[i]
 		var links []string
+		var desc string
 		if len(clipIDs) > 0 && evidence != nil {
 			clipID := clipIDs[i%len(clipIDs)]
 			if link := strings.TrimSpace(evidence.DriveLinks[clipID]); link != "" {
 				links = append(links, link)
 			}
+			if name := strings.TrimSpace(evidence.ClipNames[clipID]); name != "" {
+				desc = name
+			}
+		}
+		kind := string(scene.Kind)
+		if i == 0 && (kind == "" || kind == "clip" || kind == "narration") {
+			kind = "intro"
 		}
 		doc.Scenes = append(doc.Scenes, sceneDoc{
-			ID:         scene.ID,
-			Index:      scene.Index,
-			Text:       scene.Text,
-			Kind:       string(scene.Kind),
-			DriveLinks: links,
+			ID:          scene.ID,
+			Index:       scene.Index,
+			Text:        scene.Text,
+			Kind:        kind,
+			Description: desc,
+			DriveLinks:  links,
 		})
 	}
 
