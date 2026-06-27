@@ -1,9 +1,16 @@
 package config
 
+import "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+
 // VideoConfig holds all video processing parameters shared across the clip, stock,
 // and video rendering pipelines. Centralizing these values ensures that every
 // stage uses the same codec, resolution, and preset so that ffmpeg can perform
 // fast stream-copy concatenation without re-encoding.
+//
+// HC-7 (June 2026): ChunkDuration consumes defaults.DefaultVideoConfig() instead
+// of a hard-coded literal 25. The pkg/defaults/video.go SSOT is the sole owner
+// of the canonical value; re-introduction is gated by Check 39 in
+// scripts/ci-architectural-checks.sh.
 type VideoConfig struct {
 	Width              int      `yaml:"width" default:"1920"`
 	Height             int      `yaml:"height" default:"1080"`
@@ -61,7 +68,7 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 		v.ClipDuration = 5
 	}
 	if v.ChunkDuration <= 0 {
-		v.ChunkDuration = 25
+		v.ChunkDuration = defaults.DefaultVideoConfig().ChunkDuration
 	}
 	if v.MaxClipsPerSource <= 0 {
 		v.MaxClipsPerSource = 30
