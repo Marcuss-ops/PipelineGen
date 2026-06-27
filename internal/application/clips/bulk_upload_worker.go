@@ -40,41 +40,62 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 )
 
 // BulkUploadWorker owns the heavy business logic for the
 // "bulk_upload_youtube_clips" job. Construction takes the typed ports
 // only; no concrete infrastructure types appear in this file.
+//
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): the
+// `dispatcher` field is the canonical mutations.AssetMutationDispatcher
+// SSOT. Required so the worker's media_assets UPSERT step routes
+// through the canonical outbox+tx writer (QDRANT-002 atomicity
+// invariant). Strict fail-closed on nil dispatcher — the worker
+// surfaces an explicit error instead of writing a half-state asset
+// row. See internal/app/registry_adapters.go::newMutationsDispatcherAdapter
+// for the error sentinel.
 type BulkUploadWorker struct {
-	uploader ClipDriveUploaderPort
-	repo     ClipRepositoryPort
-	indexer  ClipIndexerPort
-	hasher   ClipHashPort
-	cfg      ClipConfigPort
-	log      *zap.Logger
+	uploader   ClipDriveUploaderPort
+	repo       ClipRepositoryPort
+	indexer    ClipIndexerPort
+	hasher     ClipHashPort
+	cfg        ClipConfigPort
+	dispatcher mutations.AssetMutationDispatcher
+	log        *zap.Logger
 }
 
 // NewBulkUploadWorker constructs the canonical worker. All port
 // arguments are required. Returns a *BulkUploadWorker (never nil);
 // callers should treat it as production code (no panic on nil deps).
+//
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): added
+// `dispatcher` as the 7th positional arg (between cfg and log) so the
+// worker's media_assets write enforces the canonical outbox path.
+// Composition root pre-rejection lives in the wiring site (see
+// internal/app/module_media.go::WireAssets) which surfaces a
+// configure-time error if dispatcher is nil.
 func NewBulkUploadWorker(
 	uploader ClipDriveUploaderPort,
 	repo ClipRepositoryPort,
 	indexer ClipIndexerPort,
 	hasher ClipHashPort,
 	cfg ClipConfigPort,
+	dispatcher mutations.AssetMutationDispatcher,
 	log *zap.Logger,
 ) *BulkUploadWorker {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &BulkUploadWorker{
-		uploader: uploader,
-		repo:     repo,
-		indexer:  indexer,
-		hasher:   hasher,
-		cfg:      cfg,
-		log:      log,
+		uploader:   uploader,
+		repo:       repo,
+		indexer:    indexer,
+		hasher:     hasher,
+		cfg:        cfg,
+		dispatcher: dispatcher,
+		log:        log,
 	}
 }
 
@@ -414,9 +435,25 @@ func (w *BulkUploadWorker) processOneClip(
 		}
 	}
 
-	if err := w.repo.Upsert(ctx, clip); err != nil {
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
+	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
+	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
+	// INSERT in one tx) applies uniformly to bulk-upload workers.
+	//
+	// Strict fail-closed: a nil dispatcher returns
+	// mutations.ErrDispatcherUnavailable wrapped with context so the
+	// work's failure is operator-visible via the job outcome, NOT as a
+	// half-written asset row that would orphan a Qdrant upsert.
+	// contentHash is the MD5 already computed in Step 1; mirrors the v1
+	// supersede-gate semantics (QDRANT-002 item F: source_version on
+	// index.requested.v1).
+	if w.dispatcher == nil {
 		failed.Add(1)
-		return fmt.Errorf("upsert clip: %w", err)
+		return fmt.Errorf("bulk upload dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+	}
+	if err := w.dispatcher.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
+		failed.Add(1)
+		return fmt.Errorf("dispatcher enqueue: %w", err)
 	}
 	log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
 

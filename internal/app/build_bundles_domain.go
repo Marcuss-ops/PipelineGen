@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
@@ -47,12 +48,31 @@ import (
 // call BuildOutboxBundle BEFORE BuildDomainBundle for this dep to
 // be satisfied (see composition.go::NewComposition).
 func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle) (*DomainBundle, error) {
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): construct
+	// the canonical mutations.AssetMutationDispatcher SSOT once here so
+	// the buildDomainBundle-level NewClipsRegistry call routes media_assets
+	// UPSERT through the same outbox+tx writer (QDRANT-002 atomicity
+	// invariant). The same SSOT flows into buildIngestService (1 caller
+	// below) and into the rest of the composition graph via outbox.
+	// Fail-closed: a nil outbox.Dispatcher is surfaced as a BundleError so
+	// WireRegistry aborts before any half-built bundle is cached.
+	var mutationsDisp mutations.AssetMutationDispatcher
+	if outbox != nil && outbox.Dispatcher != nil {
+		var err error
+		mutationsDisp, err = newMutationsDispatcherAdapter(outbox.Dispatcher)
+		if err != nil {
+			return nil, fmt.Errorf("compose domains: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
+	}
 	clipsRegistry := artifacts.NewClipsRegistry(
 		dbs.main.DB,
 		repos.Assets.Repository(),
 		repos.Assets,
 		repos.Assets.LocationRepository(),
 		repos.Assets.ProcessingRepository(),
+		mutationsDisp,
 	)
 	youtubeLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
@@ -122,7 +142,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
 
-	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveClient, repos, search)
+	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveClient, repos, search, mutationsDisp)
 
 	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
 		drive.DriveClient, repos.ClipsRepo, repos.ClipsRepo,
@@ -187,21 +207,45 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 // buildIngestService constructs the ingest.Service from the same deps
 // that WireMediaIngest uses.
-func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveClient *gdrive.Service, repos *RepoBundle, search *SearchBundle) *ingest.Service {
+//
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): outbox and
+// mutationsDisp are the 7th and 8th positional args so the four
+// artifacts.NewClipsRegistry + ingest.NewClipStoreAdapter ctor calls
+// inside this function route their media_assets UPSERT through the
+// canonical outbox+tx writer. mutationsDisp is constructed once in
+// BuildDomainBundle and reused so the same SSOT instance flows into
+// every caller without raising the boot-time cost of repeated
+// newMutationsDispatcherAdapter wraps.
+//
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
+// is the 7th positional arg so the four
+// artifacts.NewClipsRegistry + ingest.NewClipStoreAdapter ctor calls
+// inside this function route their media_assets UPSERT through the
+// canonical outbox+tx writer. mutationsDisp is constructed once in
+// BuildDomainBundle and reused so the same SSOT instance flows into
+// every caller without raising the boot-time cost of repeated
+// newMutationsDispatcherAdapter wraps. The buildIngestService signature
+// drops the previously-threaded *OutboxBundle arg (it was never read
+// inside the function body) — the caller still constructs mutationsDisp
+// from outbox.Dispatcher, so the Site-1 wiring is unchanged.
+func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveClient *gdrive.Service, repos *RepoBundle, search *SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
 	if driveClient == nil {
 		return nil
 	}
 	if repos.ImageRepo == nil || repos.VoiceoverRepo == nil || repos.ClipsRepo == nil || search.AssetIndexService == nil {
 		return nil
 	}
+	if mutationsDisp == nil {
+		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
+	}
 	imagesRegistry := imgservice.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
 	imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
 	voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
-	clipRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())
-	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())}, log)
-	stockRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())
-	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository())}, log)
+	clipRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
+	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	stockRegistry := artifacts.NewClipsRegistry(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
+	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: driveClient, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.main.DB, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	return ingest.NewService(cfg, log, driveClient, map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},

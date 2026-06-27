@@ -64,8 +64,32 @@ type ArtlistWiring struct {
 // Returns ArtlistWiring with Resolver populated so caller can use the
 // clipresolver for ScriptFlow late-binding without round-tripping.
 func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
+	// QDRANT-002 PR7: dispatcher is now an unconditional requirement.
+	// The legacy "UpsertClip + IndexClip fallback when dispatcher is
+	// nil" was wrong-by-design: a nil dispatcher at runtime means the
+	// canonical ingest atomically lost any half-state between the two
+	// ops (PR1 retain window). Treat a nil dispatcher at composition
+	// time as a code defect — explicit error beats silent fallback
+	// that surfaces only at first ingest.
+	if dispatcher == nil {
+		return nil, fmt.Errorf("WireArtlist: dispatcher is required at composition time — QDRANT-002 PR7 removed the legacy UpsertClip+IndexClip fallback; production must wire root.Outbox.Dispatcher")
+	}
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): construct
+	// the canonical mutations.AssetMutationDispatcher SSOT once here so
+	// both wireArtlistLifecycle (below) and the SemanticEnricher
+	// (further down) route media_assets UPSERT through the same
+	// outbox+tx writer. The var is declared BEFORE its first use at the
+	// wireArtlistLifecycle call (Go's declaration-before-use rule).
+	mutationsDisp, err := newMutationsDispatcherAdapter(dispatcher)
+	if err != nil {
+		return nil, fmt.Errorf("WireArtlist: %w", err)
+	}
 	// vectorStore arg removed from this service constructor.
-	artlistLifecycle := wireArtlistLifecycle(bundle, log)
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
+	// threaded into wireArtlistLifecycle so the Artlist lifecycle's
+	// embedded artifacts.NewClipsRegistry routes media_assets UPSERT
+	// through the canonical outbox+tx writer.
+	artlistLifecycle := wireArtlistLifecycle(bundle, mutationsDisp, log)
 	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, bundle, log)
 	assetDestResolver := wireAssetDestinationResolver(cfg, bundle, log)
 	presetsConfig, _ := artlistPkg.LoadPresets("config/artlist_presets.yaml")
@@ -110,11 +134,12 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	// ops (PR1 retain window). Treat a nil dispatcher at composition
 	// time as a code defect — explicit error beats silent fallback
 	// that surfaces only at first ingest.
+	//
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
+	// constructed at top of WireArtlist (declared before its first use);
+	// this block retains the dispatcher's role for the SemanticEnricher.
 	var enricher artlistPkg.MetadataWriter
 	if bundle.ClipsRepo != nil {
-		if dispatcher == nil {
-			return nil, fmt.Errorf("WireArtlist: dispatcher is required at composition time — QDRANT-002 PR7 removed the legacy UpsertClip+IndexClip fallback; production must wire root.Outbox.Dispatcher")
-		}
 		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, driveManager, dispatcher, log)
 		log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active (QDRANT-002 PR7)")
@@ -164,8 +189,14 @@ func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bund
 	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, resolver, "node-scraper", log, cfgPort)
 }
 
-func wireArtlistLifecycle(bundle *ArtlistBundle, log *zap.Logger) *lifecycle.Service {
-	clipsRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
+// wireArtlistLifecycle builds the Artlist capability's lifecycle
+// service with the canonical mutations SSOT.
+//
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
+// is the 2nd positional arg so artifacts.NewClipsRegistry's media_assets
+// UPSERT routes through the dispatcher (QDRANT-002 atomicity invariant).
+func wireArtlistLifecycle(bundle *ArtlistBundle, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger) *lifecycle.Service {
+	clipsRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
 	return NewLifecycleFromDeps(&LifecycleDeps{Registry: clipsRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService}, log)
 }
 

@@ -227,6 +227,19 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if dispatcher != nil {
 		clipsDispatcherPort = &clipsDispatcherAdapter{disp: dispatcher}
 	}
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): wire the
+	// canonical mutations.AssetMutationDispatcher SSOT for the wider
+	// application-layer producers (BulkUploadWorker + ReprocessUseCase
+	// constructed inside NewHandler). Both adapters wrap the same
+	// *outbox.Dispatcher; the SSOT one is the canonical surface per
+	// mutations/dispatcher.go ("application producers MUST depend on the
+	// SSOT shape"). Strict fail-closed — composition errors when
+	// dispatcher is nil, mirroring WireArtlist's strict composition-time
+	// check (QDRANT-002 PR7 invariant).
+	mutationsDisp, err := newMutationsDispatcherAdapter(dispatcher)
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: %w", err)
+	}
 	// S1a (June 2026): construct the shared EnrichUseCase ONCE at
 	// composition time. The clipsHandler receives it via Deps.EnrichUC
 	// so the same instance is used by:
@@ -240,12 +253,17 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// from typed ports so the handler never imports infra for the
 	// bulk-upload job path. The concrete adapters already exist in
 	// clips_adapters_index.go.
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): the
+	// mutations.AssetMutationDispatcher SSOT is the 7th positional arg
+	// so the worker routes media_assets UPSERT through the canonical
+	// outbox+tx writer (QDRANT-002 atomicity invariant).
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		newClipsDriveAdapter(driveUploader),
 		newClipsRepoAdapter(bundle.ClipsRepo),
 		newClipsIndexerAdapter(bundle.ClipIndexerService),
 		newClipsHashAdapter(),
 		newClipsCfgAdapter(cfg),
+		mutationsDisp,
 		log,
 	)
 	// PR 2 (June 2026): construct the application-layer ClipOpsService so
@@ -299,6 +317,11 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		FolderMemSvc:   folderMemSvc,
 		ProcessRunner: processRunnerAdapter,
 		Dispatcher:    clipsDispatcherPort,
+		// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): pass
+		// the SSOT mutations dispatcher to the unified clips handler so
+		// the ReprocessUseCase (constructed inside NewHandler) routes
+		// its media_assets UPSERT through the canonical outbox+tx path.
+		MutationsDispatcher: mutationsDisp,
 		EnrichUC:      enrichUC,
 		SearchSvc:      searchAggregator,
 		BulkUploadWorker: bulkUploadWorker,
@@ -471,6 +494,10 @@ func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) {
 // BuildDomainBundle can pre-build the service and pass it via the bundle.
 // PG-011 (June 2026): DB typed as *storage.SQLiteDB instead of *sql.DB so
 // the composition layer never holds raw sqlite handles.
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): Dispatcher
+// added so WireMediaIngest can construct the canonical mutations SSOT
+// for NewClipStoreAdapter / NewClipsRegistry (the 4 ctor calls in
+// buildIngestService clone paths).
 type MediaIngestBundle struct {
 	DB                *storage.SQLiteDB
 	Assets            *asset.Service
@@ -480,6 +507,7 @@ type MediaIngestBundle struct {
 	ClipsRepo         *sqassets.ClipsRepository
 	AssetIndexService *assetindex.Service
 	PrebuiltService   *ingest.Service
+	Dispatcher        *outbox.Dispatcher
 }
 
 // MediaIngestWiring holds the Mediaingest module wiring.
@@ -497,6 +525,10 @@ type MediaIngestWiring struct {
 // built the ingest service).
 // PR8 (June 2026): added idempotencyMiddleware (reusable Gin idempotency
 // middleware instance) — installed by MediaingestHandler on POST /ingest.
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): construct the
+// canonical mutations.AssetMutationDispatcher SSOT once here so both the
+// clip + stock registries (and their ingest lifecycle stores) route
+// media_assets UPSERT through the same outbox+tx writer.
 func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBundle, idempotencyMiddleware gin.HandlerFunc) (*MediaIngestWiring, error) {
 	if bundle == nil || bundle.DriveClient == nil {
 		return nil, nil
@@ -504,16 +536,20 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 	if bundle.ImageRepo == nil || bundle.VoiceoverRepo == nil || bundle.ClipsRepo == nil || bundle.AssetIndexService == nil {
 		return nil, nil
 	}
+	mutationsDisp, err := newMutationsDispatcherAdapter(bundle.Dispatcher)
+	if err != nil {
+		return nil, fmt.Errorf("WireMediaIngest: %w", err)
+	}
 	svc := bundle.PrebuiltService
 	if svc == nil {
 		imagesRegistry := imgapp.NewRegistryAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath(), log)
 		imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
 		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
 		voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
-		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
-		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())}, log)
-		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
-		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())}, log)
+		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
+		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
+		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
+		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
 		svc = ingest.NewService(cfg, log, bundle.DriveClient, map[ingest.Kind]*ingest.Pipeline{
 			ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 			ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
