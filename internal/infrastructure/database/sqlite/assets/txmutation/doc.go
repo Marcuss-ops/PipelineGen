@@ -10,7 +10,7 @@
 // mutation methods that any production caller could invoke:
 //
 //   - UpsertClip(ctx, clip)        — remains public (//nolint:production
-//                                    mark flags dispatcher-only path)
+//     mark flags dispatcher-only path)
 //   - Restore(ctx, id)             — REMOVED from *assets.ClipsRepository
 //   - HardDelete(ctx, id)          — REMOVED from *assets.ClipsRepository
 //   - HardDeleteClip(ctx, id)      — REMOVED from *assets.ClipsRepository
@@ -27,29 +27,39 @@
 // replacement surface:
 //
 //   - HardDeleteTx(ctx, tx, id) — physically removes the media_assets
-//                                 row + dependent rows
-//                                 (asset_locations, asset_processing,
-//                                 asset_versions, asset_dedupe) inside
-//                                 a caller-owned *sql.Tx. The admin
-//                                 adapter (`internal/infrastructure/
-//                                 database/sqlite/admin/purge.go`)
-//                                 opens the tx, gate-checks
-//                                 lifecycle_state='DELETED' AND
-//                                 qdrant_point_state='absent', then
-//                                 delegates here, then commits.
+//     row + dependent rows
+//     (asset_locations, asset_processing,
+//     asset_versions, asset_dedupe) inside
+//     a caller-owned *sql.Tx. The admin
+//     adapter (`internal/infrastructure/
+//     database/sqlite/admin/purge.go`)
+//     opens the tx, gate-checks
+//     lifecycle_state='DELETED' AND
+//     qdrant_point_state='absent', then
+//     delegates here, then commits.
 //
 //   - RestoreTx(ctx, tx, id)   — flips lifecycle_state back to
-//                                 'ready' inside a caller-owned *sql.Tx.
-//                                 Idempotent. Caller-controlled rollback.
+//     'ready' inside a caller-owned *sql.Tx.
+//     Idempotent. Caller-controlled rollback.
 //
-//   - SetLogger(log)            — package-level logger hook so the
-//                                 orphan-row WARN log line is bound
-//                                 to a real *zap.Logger at the choice
-//                                 of the composition root
-//                                 (`admin.NewPurgeService` wires
-//                                 log.Named("txmutation")). Default
-//                                 before SetLogger invocation is
-//                                 zap.NewNop() (silent under no-config).
+// //   - SetLogger(log)            — package-level logger hook so the
+//
+//	HardDeleteTx cascade DEBUG/INFO
+//	log lines (probe no-op, per-table
+//	child delete, parent delete) are
+//	bound to a real *zap.Logger at the
+//	choice of the composition root
+//	(`admin.NewPurgeService` wires
+//	log.Named("txmutation")). Default
+//	before SetLogger invocation is
+//	zap.NewNop() (silent under no-config).
+//	Today the primitive emits no WARN:
+//	the orphan-row detection contract is
+//	owned by the caller
+//	(`admin.PurgeService`), not the
+//	primitive, by design (layered
+//	responsibility, see §"Caller
+//	contracts" §2).
 //
 // Caller contracts (MUST follow):
 //

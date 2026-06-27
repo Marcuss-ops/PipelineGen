@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sync"
 	"sync/atomic"
 
 	"go.uber.org/zap"
@@ -29,31 +28,28 @@ import (
 // ── Package-level logger ───────────────────────────────────────────────────
 //
 // SetLogger wires a *zap.Logger into the package-level logger so the
-// orphan-row WARN log line (and the delete-count INFO lines) surface
-// on the operator console. Default before SetLogger: zap.NewNop() —
-// silent under no-config, but never panic.
+// per-table child-delete INFO lines surface on the operator console.
+// Default before SetLogger: zap.NewNop() — silent under no-config, but
+// never panic.
 //
 // Process-global, not per-instance. The composition root
 // (`admin.NewPurgeService`) is the canonical binding moment per the
 // package doc; multiple SetLogger calls are safe (the most-recent
-// binding wins — admin composition is the only legitimate caller,
-// so racing compositions are not a concern in practice, but the
+// binding wins — admin composition is the only legitimate caller, so
+// racing compositions are not a concern in practice, but the
 // atomic.Pointer swap is cheap and avoids a race-detector trip).
 //
 // Why atomic.Pointer instead of a mutex: a *zap.Logger is a fat
 // pointer; atomic.Pointer.Load is a single 8-byte atomic read on
-// amd64; a mutex would serialise every log call. Atomic.Pointer
-// gives lock-free reads at the cost of one extra allocation when
-// SetLogger is called.
-var (
-	logger atomic.Pointer[zap.Logger]
-)
+// amd64; a mutex would serialise every log call. Atomic.Pointer gives
+// lock-free reads at the cost of one extra allocation when SetLogger
+// is called.
+var logger atomic.Pointer[zap.Logger]
 
-// initLogger nop-defaults to zap.NewNop() so the very first log call
-// does not panic if SetLogger was never invoked (the canonical admin
-// composition root is normally reached, but a future caller — e.g. a
-// test fixture — may bypass admin and still want the package to be
-// safe to log from).
+// init nop-defaults the package-level logger to zap.NewNop() so the
+// very first log call does not panic if SetLogger was never invoked.
+// A future caller (e.g. a test fixture) that bypasses admin still gets
+// a safe logger.
 func init() {
 	logger.Store(zap.NewNop())
 }
@@ -61,12 +57,11 @@ func init() {
 // SetLogger atomically replaces the package-level *zap.Logger. Safe to
 // call concurrently with ongoing log emissions from HardDeleteTx /
 // RestoreTx. The composition-root admin.NewPurgeService invokes this
-// with log.Named("txmutation") so an operator can filter the orphan-
-// row WARN line.
-// SetLogger is the canonical hook — the package doc tells callers
-// (admin composition) to invoke it once at startup. Illegal to call
-// with nil (a nil logger would NPE at first log, so we round-trip
-// through zap.NewNop() instead).
+// with log.Named("txmutation") so an operator can filter the delete
+// cascade INFO lines.
+//
+// Illegal to pass nil: a nil logger would NPE at first log call, so
+// we round-trip through zap.NewNop() instead.
 func SetLogger(log *zap.Logger) {
 	if log == nil {
 		log = zap.NewNop()
@@ -95,15 +90,14 @@ func SetLogger(log *zap.Logger) {
 // successful no-op is the contract.
 //
 // Order of deletes: child → parent. Each delete returns rows-affected;
-// the aggregate is logged at WARN level ("orphan-row" anomalad) when
-// the parent row was found but a child table reported zero rows where
-// the package's recorded schema would expect > 0. Today this WARN fires
-// only for soft-deleted-and-now-purged rows whose child rows were
-// already cascade-cleaned by an earlier in-tx delete; it surfaces
-// drift to operators without aborting the operation.
+// the aggregate is logged at DEBUG level so an operator running the
+// audit-drill script can corroborate the cascade. No WARN is emitted
+// today because the orphan-row detection contract is owned by the
+// caller (admin.PurgeService) — the primitive is physics-only.
 //
 // Errors return a wrapped typed error per `fmt.Errorf("%w", err)`
-// convention so callers can `errors.Is` the underlying SQLite error.
+// convention so callers can `errors.Is` against the underlying SQLite
+// error.
 func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 	if tx == nil {
 		return fmt.Errorf("txmutation.HardDeleteTx: tx is required (caller MUST supply the open *sql.Tx)")
@@ -114,16 +108,17 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 
 	log := logger.Load()
 
-	// Step 1: read the parent row's lifecycle_state + id presence so
-	// we can decide whether the WARN orphan-row log line at step 2 is
-	// warranted (parent present + child missing == orphan condition).
+	// Step 1: probe parent presence so the happy-path idempotency
+	// contract (already-deleted row ⇒ nil, not an error) is honoured.
+	// The probe runs inside the caller's tx so the row read is
+	// tx-scoped and concurrent writers see consistent state.
 	var present int
 	err := tx.QueryRowContext(ctx, `SELECT 1 FROM media_assets WHERE id = ?`, id).Scan(&present)
 	switch {
 	case err == sql.ErrNoRows:
-		// Idempotency: row already gone. Debug-level log so an
-		// operator re-running the admin path sees the no-op; INFO
-		// only when the parent was actually found.
+		// Idempotent no-op: the row was already hard-deleted (or
+		// never existed). Debug-level so a re-running admin path
+		// sees the no-op without alerting.
 		log.Debug("txmutation.HardDeleteTx: parent row missing (idempotent no-op)", zap.String("id", id))
 		return nil
 	case err != nil:
@@ -132,29 +127,18 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 
 	// Step 2: delete child rows. Order matches the legacy fossil
 	// (asset_locations → asset_processing → asset_versions →
-	// asset_dedupe → media_assets). Each ExecContext returns
-	// (Result, error); rows-affected is logged for operator
-	// observability. A zero-affected child delete on a present
-	// parent IS the orphan condition the WARN log line surfaces.
-	childTables := []struct {
-		table    string
-		expected bool // schema records (parent present ⇒ > 0 expected on first-ever purge; later runs ⇒ 0)
-	}{
-		{table: "asset_locations", expected: false},
-		{table: "asset_processing", expected: false},
-		{table: "asset_versions", expected: false},
-		{table: "asset_dedupe", expected: false},
-	}
-	for _, ct := range childTables {
-		res, derr := tx.ExecContext(ctx,
-			fmt.Sprintf(`DELETE FROM %s WHERE id = ?`, ct.table), id)
+	// asset_dedupe → media_assets). The list is a flat const slice —
+	// no fmt.Sprintf runtime cost.
+	for _, table := range hardDeleteChildTables {
+		stmt := "DELETE FROM " + table + " WHERE id = ?"
+		res, derr := tx.ExecContext(ctx, stmt, id)
 		if derr != nil {
-			return fmt.Errorf("txmutation.HardDeleteTx %s: delete %s: %w", id, ct.table, derr)
+			return fmt.Errorf("txmutation.HardDeleteTx %s: delete %s: %w", id, table, derr)
 		}
 		affected, _ := res.RowsAffected()
-		log.Debug("txmutation.HardDeleteTx: child row deletion",
+		log.Debug("txmutation.HardDeleteTx: child deletion",
 			zap.String("id", id),
-			zap.String("table", ct.table),
+			zap.String("table", table),
 			zap.Int64("rows_affected", affected))
 	}
 
@@ -168,34 +152,46 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 		return fmt.Errorf("txmutation.HardDeleteTx %s: parent delete: %w", id, err)
 	}
 	affected, _ := res.RowsAffected()
-	log.Info("txmutation.HardDeleteTx: parent delete",
+	log.Info("txmutation.HardDeleteTx: parent deleted",
 		zap.String("id", id),
 		zap.Int64("rows_affected", affected))
-
-	// Orphan-row WARN contract (per package doc): emit one WARN per
-	// HardDeleteTx invocation so the operator can corroborate the
-	// admin-tool go-ahead against a downstream-anomalad marker. The
-	// log includes the id + every child table's affected-row count
-	// for the operator to compare against the audit drill.
-	log.Warn("txmutation.HardDeleteTx: orphan-row audit log (admin tool gate opened; downstream children cleaned; parent row removed)",
-		zap.String("id", id),
-		zap.Int64("parent_rows_affected", affected))
 
 	return nil
 }
 
+// hardDeleteChildTables is the canonical ordered list of dependent
+// media_assets child tables purged by HardDeleteTx. Order matters:
+// child tables MUST be deleted before parent (media_assets) so FK
+// chains do not block the parent delete. The list mirrors the legacy
+// HardDeleteClip fossil surface (clips_repository.go:240 fossil,
+// per deprecation manifest PR-CLIP-RAW-MUTATIONS).
+var hardDeleteChildTables = []string{
+	"asset_locations",
+	"asset_processing",
+	"asset_versions",
+	"asset_dedupe",
+}
+
 // ── RestoreTx ──────────────────────────────────────────────────────────────
 
-// RestoreTx flips lifecycle_state back to 'ready' inside the
-// caller-owned *sql.Tx and clears `deleted_at`. Idempotent: a row
+// RestoreTx flips `lifecycle_state` back to 'ready' and clears
+// `deleted_at` inside the caller-owned *sql.Tx. Idempotent: a row
 // whose lifecycle_state is already 'ready' (or that has been hard-
 // deleted already) is a no-op write.
+//
+// Canonical case convention: `lifecycle_state` values use LOWERCASE
+// for soft-delete transitions ('ready', 'deleted') and UPPERCASE for
+// terminal states ('DELETED') once Qdrant has drained. See
+// clips_repository.go::SoftDeleteFilter for the lowercase convention
+// reference (`lifecycle_state != 'deleted' AND lifecycle_state != 'DELETED'`).
+// This primitive writes lowercase 'ready' to match the SoftDeleteFilter
+// contract.
 //
 // Caller contract (see doc.go):
 //   - `tx` MUST be non-nil and open.
 //   - The caller decides whether to flip lifecycle_state without
 //     a Qdrant re-index (legacy admin behaviour: today the admin
-//     tooling Bypasses the outbox deliberately — see the gate
+//     tooling bypasses the outbox deliberately — see the gate
 //     reference at admin.PurgeService.RestoreClip pkg-doc). This
 //     primitive does NOT emit a Qdrant re-index event; the caller
 //     can route a fresh outbox event if it wants vector rebuild.
@@ -218,11 +214,3 @@ func RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
 		zap.Int64("rows_affected", affected))
 	return nil
 }
-
-// ── unused imports ─────────────────────────────────────────────────────────
-// `sync` may appear unused if all sync types are stripped from the
-// compile unit; the import block is reserved for the future
-// concurrency-affordance (per-id fan-out delete) that will land with
-// PR-QDRANT-005D. The blank import keeps the package gofmt-clean.
-//nolint:unused
-var _ = sync.Mutex{}

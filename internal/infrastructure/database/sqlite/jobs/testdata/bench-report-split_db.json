@@ -1,0 +1,13 @@
+{
+  "shape": "split_db",
+  "iterations": 2000,
+  "elapsed_seconds": 0.730387124,
+  "throughput_ops_per_sec": 2738.273901991733,
+  "p50_micros": 2538,
+  "p95_micros": 6192,
+  "p99_micros": 10633,
+  "wal_growth_bytes": 27801792,
+  "wal_before_bytes": 0,
+  "wal_after_bytes": 27801792,
+  "empty_queue_hits": 0
+}

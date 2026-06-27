@@ -1,0 +1,13 @@
+{
+  "shape": "single_db",
+  "iterations": 2000,
+  "elapsed_seconds": 0.947384124,
+  "throughput_ops_per_sec": 2111.0761193207413,
+  "p50_micros": 3270,
+  "p95_micros": 8393,
+  "p99_micros": 13558,
+  "wal_growth_bytes": 22425192,
+  "wal_before_bytes": 0,
+  "wal_after_bytes": 22425192,
+  "empty_queue_hits": 0
+}
