@@ -20,12 +20,8 @@ import (
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-<<<<<<< Updated upstream
-	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-=======
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
->>>>>>> Stashed changes
+	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

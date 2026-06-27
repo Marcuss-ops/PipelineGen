@@ -37,8 +37,8 @@ func makeItem(id string) scriptpkg.GenerationItemV2 {
 
 func TestGenerateManyEmptyEnvelope(t *testing.T) {
 	t.Parallel()
-	uc := scripts.NewGenerateManyUseCase(nil, zap.NewNop())
-	result, err := uc.Execute(context.Background(), makeManyEnv(), scripts.NormalizationConfig{}, nil)
+	uc := usecase.NewGenerateManyUseCase(nil, zap.NewNop())
+	result, err := uc.Execute(context.Background(), makeManyEnv(), NormalizationConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -52,8 +52,8 @@ func TestGenerateManyEmptyEnvelope(t *testing.T) {
 
 func TestGenerateManyNilEnvelope(t *testing.T) {
 	t.Parallel()
-	uc := scripts.NewGenerateManyUseCase(nil, zap.NewNop())
-	result, err := uc.Execute(context.Background(), nil, scripts.NormalizationConfig{}, nil)
+	uc := usecase.NewGenerateManyUseCase(nil, zap.NewNop())
+	result, err := uc.Execute(context.Background(), nil, NormalizationConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -64,9 +64,9 @@ func TestGenerateManyNilEnvelope(t *testing.T) {
 
 func TestGenerateManyNilUseCase(t *testing.T) {
 	t.Parallel()
-	var uc *scripts.GenerateManyUseCase
+	var uc *GenerateManyUseCase
 	env := makeManyEnv(makeItem("a"))
-	_, err := uc.Execute(context.Background(), env, scripts.NormalizationConfig{}, nil)
+	_, err := uc.Execute(context.Background(), env, NormalizationConfig{}, nil)
 	if err == nil {
 		t.Fatal("expected error for nil use case")
 	}
@@ -80,19 +80,19 @@ func TestGenerateManySequentialParity(t *testing.T) {
 	// Create a real GenerateOneUseCase with nil engine — Execute
 	// will error, but we verify that the many use case correctly
 	// delegates and collects errors.
-	reg := scripts.NewSourceRegistry(zap.NewNop())
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil, // engine nil → will fail
 		nil, // no postprocessors
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := makeItem("a")
 	env := makeManyEnv(items)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 1, // sequential
 	}
@@ -124,15 +124,15 @@ func TestGenerateManySequentialParity(t *testing.T) {
 // stops launching new items and records cancelled items with errors.
 func TestGenerateManyCancellation(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil,
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	// Three items, cancel immediately.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -140,7 +140,7 @@ func TestGenerateManyCancellation(t *testing.T) {
 
 	items := []scriptpkg.GenerationItemV2{makeItem("a"), makeItem("b"), makeItem("c")}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 4,
 	}
@@ -166,22 +166,22 @@ func TestGenerateManyCancellation(t *testing.T) {
 // falls back to the default of 4.
 func TestGenerateManyWorkersDefault(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil, // engine nil → will fail
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		makeItem("a"), makeItem("b"), makeItem("c"),
 		makeItem("d"), makeItem("e"),
 	}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 0, // should default to 4
 	}
@@ -199,22 +199,22 @@ func TestGenerateManyWorkersDefault(t *testing.T) {
 // input order, not completion order.
 func TestGenerateManyItemOrder(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil,
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	// Items with IDs that would sort differently from input order.
 	items := []scriptpkg.GenerationItemV2{
 		makeItem("z"), makeItem("a"), makeItem("m"),
 	}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 2,
 	}
@@ -242,15 +242,15 @@ func TestGenerateManyItemOrder(t *testing.T) {
 // failures is correctly reported with aggregate counts.
 func TestGenerateManyMixedResults(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil, // all items will fail with engine=nil
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		{ID: "ok-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "t1"}},
@@ -258,7 +258,7 @@ func TestGenerateManyMixedResults(t *testing.T) {
 		{ID: "ok-2", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "t3"}},
 	}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 2,
 	}
@@ -289,12 +289,12 @@ func TestGenerateManyMixedResults(t *testing.T) {
 
 // TestGenerateManyResultTypes verifies type assertions on result structs.
 func TestGenerateManyResultTypes(t *testing.T) {
-	r := &scripts.GenerateManyResult{
-		Items: []scripts.GenerateManyItemResult{
+	r := &GenerateManyResult{
+		Items: []GenerateManyItemResult{
 			{ItemID: "a", Result: &scriptpkg.GenerationResult{ItemID: "a", Title: "Test"}},
 			{ItemID: "b", Error: "something went wrong"},
 		},
-		Summary:  scripts.GenerateManySummary{Total: 2, Succeeded: 1, Failed: 1},
+		Summary:  GenerateManySummary{Total: 2, Succeeded: 1, Failed: 1},
 		Warnings: []string{"1 of 2 items failed"},
 	}
 	if r.Summary.Total != 2 {
@@ -318,27 +318,27 @@ func TestGenerateManyResultTypes(t *testing.T) {
 // resolution go through the full pipeline even when resolvers fail.
 func TestGenerateManyWithSourceRegistry(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
+	reg := NewSourceRegistry(zap.NewNop())
 	// Register a text resolver (will work) and leave catalog
 	// unregistered.
-	reg.Register(scriptpkg.SourceText, scripts.NewTextSourceResolver())
+	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil, // engine nil → will fail after source resolution
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		{ID: "text-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic 1"}},
 		{ID: "text-2", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic 2"}},
 	}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 2,
 	}
@@ -362,23 +362,23 @@ func TestGenerateManyWithSourceRegistry(t *testing.T) {
 // an unregistered source type fail at source resolution.
 func TestGenerateManyUnregisteredSourceType(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
+	reg := NewSourceRegistry(zap.NewNop())
 	reg.Freeze() // no resolvers registered
 
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil,
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		{ID: "cat-1", Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceCatalog, Query: "test"}},
 	}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 1,
 	}
@@ -400,15 +400,15 @@ func TestGenerateManyUnregisteredSourceType(t *testing.T) {
 // engine, progress is emitted at each phase; integration tests cover that path.
 func TestGenerateManyProgressCallback(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil,
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	var calls atomic.Int32
 	progressFn := func(percent int, message string) {
@@ -417,7 +417,7 @@ func TestGenerateManyProgressCallback(t *testing.T) {
 
 	items := []scriptpkg.GenerationItemV2{makeItem("a"), makeItem("b")}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 2,
 	}
@@ -437,18 +437,18 @@ func TestGenerateManyProgressCallback(t *testing.T) {
 // same code path as multi-item and reports correctly.
 func TestGenerateManySingleItem(t *testing.T) {
 	t.Parallel()
-	reg := scripts.NewSourceRegistry(zap.NewNop())
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	reg := NewSourceRegistry(zap.NewNop())
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil,
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	env := makeManyEnv(makeItem("solo"))
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 4,
 	}
@@ -469,28 +469,28 @@ func TestGenerateManySingleItem(t *testing.T) {
 // — with workers=2 and 5 items, at most 2 run concurrently.
 func TestGenerateManyConcurrencyLimit(t *testing.T) {
 	// Not parallel — uses shared state via a counter.
-	reg := scripts.NewSourceRegistry(zap.NewNop())
+	reg := NewSourceRegistry(zap.NewNop())
 
 	// We can't easily inject a fake engine, so we test the shape
 	// with a real GenerateOneUseCase that fails fast (nil engine)
 	// and verify the summary is correct. True concurrency is tested
 	// in the worker pool integration test.
 
-	one := scripts.NewGenerateOneUseCase(
-		scripts.NormalizationConfig{DefaultLanguage: "en"},
+	one := NewGenerateOneUseCase(
+		NormalizationConfig{DefaultLanguage: "en"},
 		reg,
 		nil,
 		nil,
 		zap.NewNop(),
 	)
-	uc := scripts.NewGenerateManyUseCase(one, zap.NewNop())
+	uc := usecase.NewGenerateManyUseCase(one, zap.NewNop())
 
 	items := []scriptpkg.GenerationItemV2{
 		makeItem("a"), makeItem("b"), makeItem("c"),
 		makeItem("d"), makeItem("e"),
 	}
 	env := makeManyEnv(items...)
-	cfg := scripts.NormalizationConfig{
+	cfg := NormalizationConfig{
 		DefaultLanguage: "en",
 		MaxBatchWorkers: 2,
 	}

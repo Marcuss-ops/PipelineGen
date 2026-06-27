@@ -224,27 +224,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		}
 	}
 
-<<<<<<< Updated upstream:internal/application/scripts/clip_source_builder.go
-	if opts != nil && opts.NumClips > 0 {
-		sourceTextBuilder.WriteString(fmt.Sprintf("Requested clip count: %d\n", opts.NumClips))
-	}
-	if opts != nil && opts.SegmentWords > 0 {
-		sourceTextBuilder.WriteString(fmt.Sprintf("Segment words: %d\n", opts.SegmentWords))
-	}
-	if opts != nil && len(opts.SegmentTopics) > 0 {
-		sourceTextBuilder.WriteString("Segment topics:\n")
-		for i, topic := range opts.SegmentTopics {
-			topic = strings.TrimSpace(topic)
-			if topic == "" {
-				continue
-			}
-			sourceTextBuilder.WriteString(fmt.Sprintf("  %d. %s\n", i+1, topic))
-		}
-	}
-
 	// Build pack with clip data.
-=======
->>>>>>> Stashed changes:internal/application/scripts/usecase/clip_source_builder.go
 	pack := map[string]any{
 		"clip_ids":         uniqueIDs,
 		"clip_names":       clipNames,

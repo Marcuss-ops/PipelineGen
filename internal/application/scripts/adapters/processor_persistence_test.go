@@ -232,7 +232,7 @@ func TestPersistence_FreshInsert(t *testing.T) {
 	repo := &idemFakeRepo{}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
-	result, err := proc.Process(context.Background(), basePlanForIdem(), baseProcessInput()
+	result, err := proc.Process(context.Background(), basePlanForIdem(), baseProcessInput())
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, int64(1234), result.ScriptID)
@@ -267,7 +267,7 @@ func TestPersistence_ReplayNoInsert(t *testing.T) {
 	}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
-	result, err := proc.Process(context.Background(), plan, baseProcessInput()
+	result, err := proc.Process(context.Background(), plan, baseProcessInput())
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, int64(99), result.ScriptID, "replay must return the existing row's ID")
@@ -284,7 +284,7 @@ func TestPersistence_EmptyScriptNoOp(t *testing.T) {
 
 	m := baseModelForIdem()
 	m.Text = ""
-	result, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput()
+	result, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput())
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, int64(0), result.ScriptID)
@@ -296,7 +296,7 @@ func TestPersistence_EmptyScriptNoOp(t *testing.T) {
 func TestPersistence_NilRepoRejected(t *testing.T) {
 	t.Parallel()
 	proc := NewPersistenceProcessor(nil, zap.NewNop())
-	_, err := proc.Process(context.Background(), basePlanForIdem(), baseProcessInput()
+	_, err := proc.Process(context.Background(), basePlanForIdem(), baseProcessInput())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ScriptRepository not configured")
 }
@@ -319,7 +319,7 @@ func TestPersistence_PersistsSpecSceneJSON(t *testing.T) {
 		},
 	}
 
-	_, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput()
+	_, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput())
 	require.NoError(t, err)
 	require.NotNil(t, repo.lastRec)
 	// SpecSceneOutput uses lowercase json tags ("version", "scenes")
@@ -345,7 +345,7 @@ func TestPersistence_PropagatesWordCountAndModelUsed(t *testing.T) {
 	m.ModelUsed = "qwen2.5:14b"
 	m.CacheStatus = "exact_hit"
 
-	_, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput()
+	_, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput())
 	require.NoError(t, err)
 	require.NotNil(t, repo.lastRec)
 	assert.Equal(t, 555, repo.lastRec.FinalWordCount)

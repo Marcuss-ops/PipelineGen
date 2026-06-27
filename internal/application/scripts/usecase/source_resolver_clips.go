@@ -96,12 +96,3 @@ func computeSourceFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEviden
 		Source: src,
 	})
 }
-<<<<<<< Updated upstream:internal/application/scripts/source_resolver_clips.go
-=======
-
-// BuildItemIdentity constructs an identity string for a generation item.
-// Phase 1b stub.
-func BuildItemIdentity(item scriptpkg.GenerationItemV2) string {
-	return ""
-}
->>>>>>> Stashed changes:internal/application/scripts/usecase/source_resolver_clips.go
