@@ -284,7 +284,13 @@ func TestPersistence_EmptyScriptNoOp(t *testing.T) {
 
 	m := baseModelForIdem()
 	m.Text = ""
-	result, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput())
+	input := baseProcessInput()
+	input.Text = m.Text
+	input.WordCount = m.WordCount
+	input.SpecScene = m.SpecScene
+	input.ModelUsed = m.ModelUsed
+	input.CacheStatus = m.CacheStatus
+	result, err := proc.Process(context.Background(), basePlanForIdem(), input)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, int64(0), result.ScriptID)
@@ -319,7 +325,13 @@ func TestPersistence_PersistsSpecSceneJSON(t *testing.T) {
 		},
 	}
 
-	_, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput())
+	input2 := baseProcessInput()
+	input2.Text = m.Text
+	input2.WordCount = m.WordCount
+	input2.SpecScene = m.SpecScene
+	input2.ModelUsed = m.ModelUsed
+	input2.CacheStatus = m.CacheStatus
+	_, err := proc.Process(context.Background(), basePlanForIdem(), input2)
 	require.NoError(t, err)
 	require.NotNil(t, repo.lastRec)
 	// SpecSceneOutput uses lowercase json tags ("version", "scenes")
@@ -345,7 +357,13 @@ func TestPersistence_PropagatesWordCountAndModelUsed(t *testing.T) {
 	m.ModelUsed = "qwen2.5:14b"
 	m.CacheStatus = "exact_hit"
 
-	_, err := proc.Process(context.Background(), basePlanForIdem(), m, baseProcessInput())
+	input3 := baseProcessInput()
+	input3.Text = m.Text
+	input3.WordCount = m.WordCount
+	input3.SpecScene = m.SpecScene
+	input3.ModelUsed = m.ModelUsed
+	input3.CacheStatus = m.CacheStatus
+	_, err := proc.Process(context.Background(), basePlanForIdem(), input3)
 	require.NoError(t, err)
 	require.NotNil(t, repo.lastRec)
 	assert.Equal(t, 555, repo.lastRec.FinalWordCount)

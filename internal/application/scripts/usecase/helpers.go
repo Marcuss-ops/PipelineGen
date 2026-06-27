@@ -1,10 +1,12 @@
 package usecase
 
+import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+)
+
 // ScriptListFilter is the canonical filter for listing scripts.
-type ScriptListFilter struct {
-	ChannelID string `json:"channel_id"`
-	Status    string `json:"status"`
-	Language  string `json:"language"`
-	Limit     int    `json:"limit"`
-	Offset    int    `json:"offset"`
-}
+// Aliased to the canonical adapters type so consumers in api/script
+// (which use the usecase alias as a public type) can pass it
+// directly to ScriptRepository.ListScripts (which expects
+// adapters.ScriptListFilter — the same underlying type).
+type ScriptListFilter = adapters.ScriptListFilter

@@ -22,7 +22,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )

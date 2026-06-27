@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync/atomic"
 
 	dto "github.com/prometheus/client_model/go"
 	"go.uber.org/zap"
@@ -34,7 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -612,8 +611,8 @@ func (h *ScriptFlowHandler) enqueueDeprecated(c *gin.Context, env domainScript.G
 		return
 	}
 
-	req := usecase.NewGenerateEnqueueRequest(env)
-	enqueuedJob, err := usecase.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
+	req := jobs.NewGenerateEnqueueRequest(env)
+	enqueuedJob, err := jobs.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return

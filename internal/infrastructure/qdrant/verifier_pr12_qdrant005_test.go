@@ -27,7 +27,6 @@ package qdrant
 import (
 	"context"
 	"fmt"
-	"net/http/httptest"
 	"strings"
 	"testing"
 

@@ -63,6 +63,10 @@ func (f *fakeJobsService) ListEvents(ctx context.Context, jobID string) ([]job.E
 	return nil, errors.New("fakeJobsService: ListEvents not implemented")
 }
 
+func (f *fakeJobsService) Retry(ctx context.Context, id string) (*job.Job, error) {
+	return nil, errors.New("fakeJobsService: Retry not implemented")
+}
+
 // newTestJobsService returns the same struct value as both job.Service
 // (the iface placeholder for ScriptFlowDeps.Jobs) and *fakeJobsService
 // (for tests that need to introspect the captured lastReq after Enqueue).
