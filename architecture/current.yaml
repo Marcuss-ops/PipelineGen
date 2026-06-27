@@ -557,6 +557,123 @@
       dead-code drift this PR targeted.
 
 
+# ── Wave 20 — QDRANT-005D hygiene + Check 5 lint (in_progress, June 2026) ──
+# Triggers:
+#   - Ticket QDRANT-RECOVERY-001 (docs/operations/05, RECOVERED) closed the
+#     qdrant package redeclaration break via the recovery commits
+#     2b67d701 + 38187ded.
+#   - Forward-prevention blockers from that ticket's OPEN items were rolled
+#     into this wave (allowlist file, canonical note, owner registration).
+#
+# Why this wave is separate (NOT threaded under Wave 16):
+#   - Wave 16 is the zero-redundancy strict-mode gate (601 alias hits + 61
+#     rule violations). Wave 20 is a strictly-scoped hygiene gate focused
+#     on same-package redeclaration only — small enough to clear in <2 PRs,
+#     large enough to deserve its own exit_gate + transitional baseline
+#     per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+#     §"Zero-baseline rule":
+#       "The final acceptable count is zero. Transitional baselines
+#        require an owner and deadline. A baseline that only prevents new
+#        violations is not completion."
+- id: 20
+  title: "QDRANT-005D hygiene — same-package duplicate-type-declaration lint"
+  status: in_progress
+  verified_zero: false
+  description: |
+    Forward-prevention half of QDRANT-RECOVERY-001. Catches Go's
+    same-package redeclaration error class (`<X> redeclared in this
+    block`) at pre-CI time so a new type declaration cannot land with
+    a colliding same-package symbol. Scope: internal/**/*.go only
+    (per AGENTS.md "scope discipline" rule). Excludes test fixtures
+    (legitimate redeclarations in tests). Implementation:
+    scripts/ci-architectural-checks.sh::Check 5
+    (same-package duplicate-type-declaration lint block).
+  deliverables:
+    - id: docs/operations/05-qdrant-redeclaration-recovery.md
+      kind: ticket
+      title: "QDRANT-RECOVERY-001"
+      status: RECOVERED (June 2026)
+      delivered_via_commits: [2b67d701, 38187ded]
+    - id: scripts/ci-architectural-checks.sh::Check 5
+      kind: ci_gate
+      title: "Same-package duplicate-type-declaration lint"
+      allowlist_ref: docs/architecture/godlike/duplicate-types-allowlist.txt
+      log_line_on_pass: "Check 5: 0 same-package type-redeclarations detected across internal/"
+    - id: docs/architecture/godlike/duplicate-types-allowlist.txt
+      kind: allowlist_file
+      title: "Initial empty allowlist (populated ONLY for transitional cases per zero-baseline rule)"
+      shipped_in: Wave 20 first commit on origin/main
+    - id: docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
+      kind: doc_note
+      title: "Canonical note: Go cannot distinguish file-level type from package-level type; wire-mirror + canonical-in-application cycle-break requires lint enforcement"
+      status: pending
+  rule: |
+    Within any Go package under internal/**, an exported type X may be
+    declared at most once (test files *_test.go are EXEMPT — legitimate
+    redeclarations in tests are not a SSOT invariant). Implementation:
+    scripts/ci-architectural-checks.sh::Check 5. The lint groups by
+    <package_name>:<type_name> tuple; cross-directory same-package-NAME
+    pairs that Go treats as DIFFERENT packages are inside-scope of the
+    ratchet (final expected count = 0 once the AWK lens is replaced
+    with a directory+name tuple grouping; see transitional_baselines).
+  exit_gate: |
+    bash scripts/ci-architectural-checks.sh exits 0 with the log line
+    "Check 5: X same-package type-redeclarations detected across internal/"
+    where X = 0 — the FINAL zero-baseline, per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+    §"Zero-baseline rule".
+    docs/architecture/godlike/duplicate-types-allowlist.txt exists on
+    disk and on origin/main (initial content: empty-by-design per the
+    zero-baseline rule — transitional baselines default-block the lint
+    rather than silently pass).
+    docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md carries the
+    canonical note explaining the wire-mirror + canonical-in-application
+    cycle-break and the lint enforcement rationale.
+    verified_zero: true flip requires X = 0 on origin/main HEAD; until
+    then transitional_baselines below allows the owner to ship
+    remaining remediation.
+  transitional_baselines:
+    note: |
+      Per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+      §"Zero-baseline rule" the lint reports a non-zero count (~14) as
+      of origin/main HEAD due to a CROSS-DIRECTORY SAME-PACKAGE-NAME
+      false-positive pattern: two unrelated directories both declaring
+      `package scripts;` (e.g. internal/application/scripts +
+      internal/infrastructure/database/sqlite/scripts). Go treats them
+      as DIFFERENT packages — but the AWK lens groups by NAME only
+      instead of the canonical Go-package identity tuple
+      (directory_path, package_name).
+    owner: qdrant-hygiene work stream (RW-PROD-013 dependency chain)
+    owner_secondary: scripts/ci-architectural-checks.sh maintainer
+    deadline: 2026-07-25
+    current_count: 14  # approx; re-verify via `bash scripts/ci-architectural-checks.sh`
+    expected_post_remediation_count: 0
+    remediation_target: |
+      Replace the AWK lens with a directory+name tuple-grouping via a
+      Go helper under scripts/archcheck/check5types/ (per Wave 16's
+      per-file split discipline) wired into MakeReport. The script
+      already invokes `go run ./scripts/archcheck` for the main gate,
+      so a Go-side Check 5 is idiomatic; the AWK impl stays as a
+      short-lived fallback while the Go-side helper matures.
+  ci_impact_at_landing: |
+    On origin/main HEAD after this wave entry merges, scripts/ci-architectural-checks.sh
+    emits FAIL with ~14 same-package type-redeclarations detected
+    (all cross-directory same-package-NAME false-positives, e.g.
+    internal/application/scripts/repository.go ×
+    internal/infrastructure/database/sqlite/scripts/repository_types.go).
+    This IS the EXPECTED transitional state — see description §"Why
+    this wave is separate" and exit_gate above for the canonical
+    zero-baseline rationale. CI is RED on origin/main HEAD until
+    the AWK→Go rewrite lands (deadline 2026-07-25). Future agents
+    auditing RED CI should treat this wave as the documented
+    source, NOT an unrelated regression.
+  blocked_by: ["16"]  # shares the zero-redundancy surface (duplicate types = redundancy)
+  component_checks:
+    check_5_pass: 'exit 0 + log "Check 5: 0 same-package type-redeclarations detected across internal/"'
+    duplicate_types_allowlist_present: yes (on disk, on origin/main)
+    ticket_pinned: docs/operations/05-qdrant-redeclaration-recovery.md (RECOVERED)
+    zero_legacy_doc_note: shipped (canonical note on wire-mirror + cycle-break + lint enforcement)
+
+
 ---
 # ── Document #2/3: Post-cascade operational followups (June 2026) ─────────
 post_cascade_followups:
