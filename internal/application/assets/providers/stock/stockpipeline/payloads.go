@@ -16,6 +16,15 @@ type StockRunPayload struct {
 	FolderName    string                   `json:"folder_name"`
 	FolderID      string                   `json:"folder_id,omitempty"`
 	Metadata      *StockRunPayloadMetadata `json:"metadata,omitempty"`
+	// Async is the submitter's wire-shape audit trail: true means the
+	// operator asked for the jobs-broker path (canonical production);
+	// false means the operator asked for in-process sync. The
+	// HandleJob worker is reached via jobs.Enqueue on either path so
+	// this field is informational for downstream telemetry, NOT a
+	// worker reroute. Defaults to false (zero-value); the api handler
+	// forces Async=true before JSON binding so existing clients
+	// preserve the async-by-default production behaviour.
+	Async bool `json:"async,omitempty"`
 }
 
 // StockRunPayloadMetadata mirrors ChunkMetadataInput for JSON compatibility.

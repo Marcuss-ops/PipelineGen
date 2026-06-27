@@ -15,9 +15,37 @@ var (
 	ErrAlreadyClaimed = errors.New("job already claimed by another worker")
 	ErrJobNotFound    = errors.New("job not found")
 	ErrInvalidState   = errors.New("invalid state transition")
+	// ErrTransitionConflict and ErrLeaseLost live in store.go (Wave 17.1.2
+	// canonical home) — they are package-scope vars any file in
+	// `jobs` can reference without re-declaring or aliasing.
 )
 
 // ── Typed Command Structs ────────────────────────────────────────────────
+
+// StartJob transitions a queued or leased job to running. Used by
+// ClaimNext internally and by tests for direct transition assertions.
+//
+// The LeaseTTL is mandatory: the SQL update writes the lease_expiry
+// column to now + cmd.LeaseTTL, so a zero value would expire the lease
+// instantly. Callers constructed from ClaimNext always carry the
+// runner's leaseTTL; manual callers must use real values.
+//
+// Order in the struct matches the SQL UPDATE column order
+// (started_at, lease_expiry, lease_id, worker_id, updated_at) so the
+// field-name ordering is easy to correlate with the codebase.
+type StartJob struct {
+	JobID    string
+	WorkerID string
+	LeaseID  string
+
+	// LeaseTTL is required (non-zero). Zero would expire the lease
+	// immediately on transition.
+	LeaseTTL time.Duration
+	// Revision is the CAS revision read at SELECT-time. The UPDATE
+	// is gated by `AND revision = ?` so a stale Revision produces
+	// rows-affected=0 → ErrTransitionConflict.
+	Revision int64
+}
 
 // RenewLease extends an active lease.
 type RenewLease struct {
@@ -74,6 +102,25 @@ type RequeueResult struct {
 	JobID     string
 	NewStatus job.Status
 	Error     string
+}
+
+// QueueNotifier is the typed port satisfied by *queueNotifier (defined
+// in queue_notifier.go) and by *SQLiteStore via its Subscribe/Broadcast
+// forwarding methods (repository.go). The application-tier worker pool
+// depends on this interface so the future postgres LISTEN/NOTIFY adapter
+// can slot in without recompiling internal/application/**.
+//
+// Per PR-Polling / ADR-0002 §D6.5 (June 2026): the notifier is in-process
+// scope only. The postgres adapter ships its own QueueNotifier backed
+// by a LISTEN channel; cross-process wake-up is a separate concern.
+//
+// Error sentinels (ErrTransitionConflict / ErrLeaseLost) live in store.go
+// as the canonical home per Wave 17.1.2 — this file only declares the
+// typed command/result/port surface; sentinel errors are package-private
+// at the store level.
+type QueueNotifier interface {
+	Subscribe() <-chan struct{}
+	Broadcast()
 }
 
 // ── Transition Validation ────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	observability "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 
 	"go.uber.org/zap"
 )
@@ -67,6 +68,18 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 	if m == nil {
 		return nil, fmt.Errorf("media curator: not constructed")
 	}
+
+	// ── Zero-Legacy §07 deprecation metric (PR 9, June 2026; DL-CURATIONTYPES-001) ──
+	// Every invocation of the deprecated MediaCurator.Curate entry point
+	// increments the counter, regardless of success/failure. The Source
+	// label is bounded by the static caller set ("youtube"|"artlist"|
+	// "local"|"stock"|"unknown"). Empty req.Source is bucketed as
+	// "unknown" to avoid exploding cardinality from misconfigured callers.
+	source := req.Source
+	if source == "" {
+		source = "unknown"
+	}
+	observability.CurateLegacyInvocationsTotal.WithLabelValues(source).Inc()
 
 	startAll := time.Now()
 

@@ -57,6 +57,11 @@ func NewGenerateJobHandler(
 // dispatches to single or batch generation, builds a typed
 // GenerationEnvelopeResult, and serialises it to the job-system
 // map at the boundary.
+//
+// PR 7 (June 2026): single-item and multi-item paths emit the
+// same canonical envelope shape (Version + OK + Items + Summary).
+// The legacy `Single` field is gone; the boundary `toMap` is a
+// straight marshal/unmarshal cycle on the typed envelope.
 func (h *GenerateJobHandler) Handle(
 	ctx context.Context,
 	j *scriptpkg.Job,
@@ -85,15 +90,10 @@ func (h *GenerateJobHandler) Handle(
 		progressFn = tools.Progress
 	}
 
-	var result domainScript.GenerationEnvelopeResult
-
 	if len(env.Items) == 1 {
-		// Single-item path (PR 7, June 2026).
-		// PR 7 contract: a single-item run still emits the canonical
-		// envelope shape (Items + Summary + Version=2). The previous
-		// code routed single-item runs through the `Single` field
-		// exclusively, requiring callers to special-case the JSON
-		// shape. The unified envelope removes that branch.
+		// Single-item path (PR 7): even single-item runs emit the
+		// canonical envelope shape (Version=2, Items=[1], Summary
+		// counts). No special `Single` flattening.
 		tracker := NewProgressTracker(progressFn, env.Items[0].ID)
 		single, err := h.one.Execute(ctx, env.Items[0], env.Preset, tracker)
 		if err != nil {
@@ -102,45 +102,27 @@ func (h *GenerateJobHandler) Handle(
 					zap.String("job_id", j.ID),
 					zap.Error(err))
 			}
-			// PR 7: emit a single-item envelope with the failure
-			// captured per-item so callers see a consistent shape.
-			result = domainScript.GenerationEnvelopeResult{
-				Version: domainScript.EnvelopeVersion,
-				OK:      false,
-				Items: []domainScript.GenerationEnvelopeItem{{
-					ItemID: env.Items[0].ID,
-					Error:  err.Error(),
-				}},
-				Summary: domainScript.GenerationEnvelopeSummary{
-					Total:     1,
-					Succeeded: 0,
-					Failed:    1,
-				},
-			}
-			return toMap(result)
+			return toMap(buildSingleFailureEnvelope(env.Items[0].ID, err.Error()))
 		}
-		result = singleEnvelopeResult(env.Items[0].ID, single)
-	} else {
-		// Multi-item path.
-		manyResult, err := h.many.Execute(ctx, env, h.cfg, progressFn)
-		if err != nil {
-			if h.log != nil {
-				h.log.Error("script.generate: multi-item failed",
-					zap.String("job_id", j.ID),
-					zap.Error(err))
-			}
-			// Return partial results even on error (some items may
-			// have succeeded before the failure).
-			if manyResult != nil {
-				r := buildEnvelopeResult(manyResult)
-				return toMap(r)
-			}
-			return nil, err
-		}
-		result = buildEnvelopeResult(manyResult)
+		return toMap(buildSingleSuccessEnvelope(env.Items[0].ID, single))
 	}
 
-	return toMap(result)
+	// Multi-item path.
+	manyResult, err := h.many.Execute(ctx, env, h.cfg, progressFn)
+	if err != nil {
+		if h.log != nil {
+			h.log.Error("script.generate: multi-item failed",
+				zap.String("job_id", j.ID),
+				zap.Error(err))
+		}
+		// Return partial results even on error (some items may
+		// have succeeded before the aggregate failure).
+		if manyResult != nil {
+			return toMap(buildEnvelopeResult(manyResult))
+		}
+		return nil, err
+	}
+	return toMap(buildEnvelopeResult(manyResult))
 }
 
 // RegisterJobs registers the handler for TypeScriptGenerate with
@@ -161,15 +143,61 @@ func (h *GenerateJobHandler) RegisterJobs(jobsSvc Broker) error {
 	return nil
 }
 
-// ── Typed result construction ──────────────────────────────────────
+// Typed result construction
+
+// buildSingleSuccessEnvelope wraps a successful single-item result
+// in the canonical envelope shape (Version=2, Items=[1], Summary
+// counts). The previous implementation used a `Single *GenerationResult`
+// field that required a special toMap flattening path; PR 7 removes
+// that asymmetry.
+func buildSingleSuccessEnvelope(itemID string, single *domainScript.GenerationResult) domainScript.GenerationEnvelopeResult {
+	if single == nil {
+		return buildSingleFailureEnvelope(itemID, "nil generation result")
+	}
+	return domainScript.GenerationEnvelopeResult{
+		Version: domainScript.EnvelopeVersion,
+		OK:      true,
+		Items: []domainScript.GenerationEnvelopeItem{{
+			ItemID: itemID,
+			Result: single,
+		}},
+		Summary: domainScript.GenerationEnvelopeSummary{
+			Total:     1,
+			Succeeded: 1,
+			Failed:    0,
+		},
+	}
+}
+
+// buildSingleFailureEnvelope captures a per-item failure in the
+// canonical envelope shape. Same schema-version, same summary
+// counts, same per-item Error field.
+func buildSingleFailureEnvelope(itemID string, errMsg string) domainScript.GenerationEnvelopeResult {
+	return domainScript.GenerationEnvelopeResult{
+		Version: domainScript.EnvelopeVersion,
+		OK:      false,
+		Items: []domainScript.GenerationEnvelopeItem{{
+			ItemID: itemID,
+			Error:  errMsg,
+		}},
+		Summary: domainScript.GenerationEnvelopeSummary{
+			Total:     1,
+			Succeeded: 0,
+			Failed:    1,
+		},
+	}
+}
 
 // buildEnvelopeResult converts a GenerateManyResult into a typed
-// GenerationEnvelopeResult. This replaces the old mapManyResult
-// function — the typed struct owns its shape; the map boundary is
-// handled by toMap.
+// GenerationEnvelopeResult. PR 7 contract: Summary is a value
+// type, Version is always EnvelopeVersion, no Single field.
 func buildEnvelopeResult(r *GenerateManyResult) domainScript.GenerationEnvelopeResult {
 	if r == nil {
-		return domainScript.GenerationEnvelopeResult{OK: false}
+		return domainScript.GenerationEnvelopeResult{
+			Version: domainScript.EnvelopeVersion,
+			OK:      false,
+			Summary: domainScript.GenerationEnvelopeSummary{},
+		}
 	}
 	items := make([]domainScript.GenerationEnvelopeItem, len(r.Items))
 	for i, item := range r.Items {
@@ -187,9 +215,10 @@ func buildEnvelopeResult(r *GenerateManyResult) domainScript.GenerationEnvelopeR
 		}
 	}
 	return domainScript.GenerationEnvelopeResult{
-		OK:    r.Summary.Failed == 0,
-		Items: items,
-		Summary: &domainScript.GenerationEnvelopeSummary{
+		Version: domainScript.EnvelopeVersion,
+		OK:      r.Summary.Failed == 0,
+		Items:   items,
+		Summary: domainScript.GenerationEnvelopeSummary{
 			Total:     r.Summary.Total,
 			Succeeded: r.Summary.Succeeded,
 			Failed:    r.Summary.Failed,
@@ -199,38 +228,20 @@ func buildEnvelopeResult(r *GenerateManyResult) domainScript.GenerationEnvelopeR
 }
 
 // toMap serialises a GenerationEnvelopeResult to map[string]any
-// via a JSON marshal/unmarshal cycle. This is the boundary between
-// typed domain results and the job-system map contract.
-//
-// Single-item path: the GenerationResult is marshalled flat and
-// "ok" + "warnings" are injected — no nested "single" key.
-// Multi-item path: the full envelope (items + summary) is marshalled.
+// via a JSON marshal/unmarshal cycle. This is the LEGAL boundary
+// between typed domain results and the job-system map contract
+// (the only place map[string]any appears in the application
+// layer). Every envelope variant — success, single-item, multi-item,
+// failure, partial — flows through this single path now that the
+// Single field has been removed (PR 7).
 func toMap(r domainScript.GenerationEnvelopeResult) (map[string]any, error) {
-	var out map[string]any
-
-	if r.Single != nil {
-		// Single-item: flatten GenerationResult and inject envelope fields.
-		b, err := json.Marshal(r.Single)
-		if err != nil {
-			return nil, fmt.Errorf("generate job handler: marshal single: %w", err)
-		}
-		if err := json.Unmarshal(b, &out); err != nil {
-			return nil, fmt.Errorf("generate job handler: unmarshal single: %w", err)
-		}
-		out["ok"] = r.OK
-		if len(r.Warnings) > 0 {
-			out["warnings"] = r.Warnings
-		}
-		return out, nil
-	}
-
-	// Multi-item: marshal whole envelope.
 	b, err := json.Marshal(r)
 	if err != nil {
-		return nil, fmt.Errorf("generate job handler: marshal result: %w", err)
+		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", err)
 	}
+	var out map[string]any
 	if err := json.Unmarshal(b, &out); err != nil {
-		return nil, fmt.Errorf("generate job handler: unmarshal result: %w", err)
+		return nil, fmt.Errorf("generate job handler: unmarshal envelope: %w", err)
 	}
 	return out, nil
 }

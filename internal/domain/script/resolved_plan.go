@@ -115,7 +115,7 @@ type ResolvedGenerationPlan struct {
 	// ── Output ────────────────────────────────────────────────────────
 	DriveFolderID string `json:"drive_folder_id,omitempty"`
 	MaxChars      int    `json:"max_chars,omitempty"`
-	OutputFmt     string `json:"output_fmt,omitempty"` // "prose" or "json"
+	OutputFmt     string `json:"output_fmt,omitempty"` // PR 9: "json" only; "prose" REJECTED by the PR 6 validator
 	SaveToDB      bool   `json:"save_to_db,omitempty"`
 
 	// ── Translations ──────────────────────────────────────────────────

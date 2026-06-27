@@ -190,16 +190,24 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 			ForceRefresh:  r.ForceRefresh,
 		},
 		Output: domainScript.OutputSpec{
-			// Preset overrides: images + voiceover forced ON.
-			GenerateSceneImages: true,
-			GenerateVoiceover:   true,
-			ExtractEntities:     false,
-			GenerateMetadata:    false,
-			GenerateDocument:    true,
-			SaveToDB:            r.SaveToDB,
-			VoiceoverGroup:      r.VoiceoverGroup,
-			VoiceoverFolderID:   r.VoiceoverFolderID,
-			DriveFolderID:       r.DriveFolderID,
+			// PR 8 (June 2026): with_images preset enables ONLY
+			// scene_images (set explicitly below). Voiceover,
+			// document, entities, and metadata are caller-controlled
+			// — the canonical precedence chain caller > preset >
+			// config > safety resolves them via ApplyPreset +
+			// applyConfigDefaults + applySafetyDefaults when the
+			// use case executes.
+			//
+			// The pre-PR-8 adapter hardcoded these to a fixed
+			// "with_images = always voiceover+document, never
+			// entities+metadata" recipe. That fight-callers fix
+			// made the preset a no-op for any caller that wanted
+			// the opposite shape. PR 8 removes the hardcoding.
+			SaveToDB:          r.SaveToDB,
+			GenerateSceneImages: true, // sole preset responsibility
+			VoiceoverGroup:    r.VoiceoverGroup,
+			VoiceoverFolderID: r.VoiceoverFolderID,
+			DriveFolderID:     r.DriveFolderID,
 		},
 	}
 	if len(r.ClipIDs) > 0 {
@@ -249,6 +257,22 @@ type LegacyGenerateBatchRequest struct {
 // toEnvelope translates a legacy batch request into a multi-item
 // GenerationEnvelopeV2. Each item/topic becomes a text-source
 // generation item.
+//
+// PR 8 (June 2026): the previous adapter passed `r.Duration` as
+// both TargetWords AND Duration, conflating time and word count.
+// That was the historical legacy contract: callers sent a duration
+// in seconds and the adapter treated it as a target_word count
+// (which then leaked into the LLM prompt). PR 8 calls for clean
+// separation:
+//
+//	- TargetWords left at 0 (the normalizer derives it from
+//	  Duration via the canonical ~150 wpm formula in
+//	  generation_normalizer.go::applyConfigDefaults)
+//	- Duration carries r.Duration as-is
+//
+// The handler adapter no longer applies defaults (PR 8: non
+// applicare default dentro l'handler); the normalizer owns the
+// precedence chain caller > preset > config > safety.
 func (r *LegacyGenerateBatchRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
 	topics := r.Items
 	if len(topics) == 0 {
@@ -279,7 +303,10 @@ func (r *LegacyGenerateBatchRequest) toEnvelope() domainScript.GenerationEnvelop
 				SourceText: t.SourceText,
 			},
 			ScriptParams: domainScript.ScriptSpec{
-				TargetWords:   r.Duration,
+				// PR 8: TargetWords is 0; normalizer derives it from
+				// Duration via ~150 wpm. The handler does NOT apply
+				// defaults — that contract belongs to the normalizer.
+				TargetWords:   0,
 				Duration:      r.Duration,
 				PromptVersion: r.PromptVersion,
 				ForceRefresh:  r.ForceRefresh,

@@ -1,13 +1,17 @@
 // Package scripts — processor_voiceover.go generates voiceovers for
 // each scene. Enabled as "voiceover" in the plan's Postprocessors list.
 //
-// The processor iterates over the plan's ClipEvidence to derive scene
-// count and context, generates a voiceover for each scene via
-// VoiceoverService, and returns SceneVoiceover results with preserved
-// indexes. Partial failures are collected — the processor does NOT
-// abort on first error.
+// PR 9 (June 2026): the legacy scene-splitters
+// (splitScriptIntoSegments / sceneCountFromPlan) were REMOVED.
+// The processor now reads scenes directly from
+// engineResult.Output.SpecScene.Scenes — the canonical structured
+// output from PR 1, validated by PR 6's ValidateAndEnrichSpecScene.
+// Each generated voiceover maps to a model-defined scene with
+// stable indexes.
 //
-// No-op when plan has no ClipEvidence (text-only generation).
+// Partial failures are collected — the processor does NOT abort on
+// first error. No-op when plan has no ClipEvidence or when the model
+// output has zero scenes.
 package scripts
 
 import (
@@ -22,7 +26,8 @@ import (
 )
 
 // VoiceoverProcessor generates scene voiceovers via VoiceoverService.
-// Uses plan.ClipEvidence to derive scene count and context.
+// Uses engineResult.Output.SpecScene.Scenes to drive per-scene
+// voiceover generation (PR 9 contract).
 type VoiceoverProcessor struct {
 	gen VoiceoverService
 	log *zap.Logger
@@ -38,28 +43,28 @@ func (p *VoiceoverProcessor) Name() string { return "voiceover" }
 
 // Policy classifies voiceover as ProcessorBestEffort: a missing
 // voiceover service (typed adapter nil at composition time) or a
-// runtime TTS failure (Edge TTS down, etc.) degrades into a Warning,
-// not a hard failure. Voiceover is an auxiliary deliverable; per
-// PR 2 spec: "voiceover = configurabile" (best-effort is the safe
-// default — operators gain hardening via a future PR).
-//
-// PR 2 (June 2026): policy introduced together with the registry's
-// preflight gate. The plan arg is accepted for interface uniformity
-// but ignored — voiceover is unconditionally best-effort for now.
+// runtime TTS failure degrades into a Warning, not a hard failure.
+// Voiceover is an auxiliary deliverable; per PR 2 spec: "voiceover =
+// configurabile" (best-effort is the safe default). The plan arg is
+// accepted for interface uniformity but ignored.
 func (p *VoiceoverProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorBestEffort
 }
 
-// PR 5 (June 2026): signature now takes ProcessInput envelope.
+// Process generates per-scene voiceovers. PR 9 contract: scenes come
+// directly from engineResult.Output.SpecScene.Scenes (validated by
+// ValidateAndEnrichSpecScene); no paragraph-splitting helper is
+// used.
 func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
 		return nil, fmt.Errorf("%w: voiceover processor: VoiceoverService not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
-	sceneCount := sceneCountFromPlan(plan)
-	if sceneCount == 0 {
+	// PR 9: scenes sourced from canonical typed MSOV1.
+	scenes := specScenesFromInput(input)
+	if len(scenes) == 0 {
 		if p.log != nil {
-			p.log.Debug("voiceover processor: no scenes (no clip evidence)",
+			p.log.Debug("voiceover processor: no scenes to render (no specscene scenes)",
 				zap.String("item_id", plan.ID))
 		}
 		return &PostProcessResult{}, nil
@@ -69,24 +74,20 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return &PostProcessResult{}, nil
 	}
 
-	segments := splitScriptIntoSegments(input.Text, sceneCount)
 	language := plan.Language
 	if language == "" {
 		language = "en"
 	}
 
-	voiceovers := make([]SceneVoiceover, 0, sceneCount)
+	voiceovers := make([]SceneVoiceover, 0, len(scenes))
 	var warnings []string
 
-	for i := 0; i < sceneCount; i++ {
-		sceneText := ""
-		filename := fmt.Sprintf("%s_scene_%d", sanitizeFilename(plan.Title), i+1)
-		if i < len(segments) {
-			sceneText = segments[i]
-		}
+	for i, scene := range scenes {
+		sceneText := scene.Text
 		if sceneText == "" {
 			sceneText = fmt.Sprintf("Scene %d", i+1)
 		}
+		filename := fmt.Sprintf("%s_scene_%d", sanitizeFilename(plan.Title), i+1)
 
 		result, err := p.gen.Generate(ctx, sceneText, language, filename)
 		if err != nil {
@@ -113,7 +114,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 	if len(warnings) > 0 && p.log != nil {
 		p.log.Warn("voiceover processor: partial failures",
-			zap.Int("total", sceneCount),
+			zap.Int("total", len(scenes)),
 			zap.Int("failed", len(warnings)),
 			zap.Int("succeeded", len(voiceovers)-len(warnings)),
 			zap.Strings("warnings", warnings))

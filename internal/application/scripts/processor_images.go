@@ -1,19 +1,22 @@
 // Package scripts — processor_images.go generates AI images for
 // each scene. Enabled as "images" in the plan's Postprocessors list.
 //
-// The processor iterates over the plan's ClipEvidence to derive scene
-// count and context, generates an image for each scene via
-// ImageGenService, and returns SceneImage results with preserved
-// indexes. Partial failures (one scene fails) are collected — the
-// processor does NOT abort on first error.
+// PR 9 (June 2026): the legacy scene-splitters
+// (splitScriptIntoSegments / sceneCountFromPlan) were REMOVED.
+// The processor now reads scenes directly from
+// engineResult.Output.SpecScene.Scenes — the canonical structured
+// output from PR 1, validated by PR 6's ValidateAndEnrichSpecScene.
+// This eliminates the pre-V1 paragraph-splitting anti-pattern and
+// ensures each generated image maps to a model-defined scene.
 //
-// No-op when plan has no ClipEvidence (text-only generation).
+// Partial failures (one scene fails) are collected — the processor
+// does NOT abort on first error. No-op when plan has no ClipEvidence
+// or when the model output has zero scenes.
 package scripts
 
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -21,7 +24,8 @@ import (
 )
 
 // ImageProcessor generates scene images via ImageGenService.
-// Uses plan.ClipEvidence to derive scene count and context.
+// Uses engineResult.Output.SpecScene.Scenes to drive per-scene
+// image generation (PR 9 contract).
 type ImageProcessor struct {
 	gen ImageGenService
 	log *zap.Logger
@@ -38,28 +42,29 @@ func (p *ImageProcessor) Name() string { return "images" }
 // Policy classifies images as ProcessorBestEffort: a missing image
 // service (typed adapter nil at composition time) or a runtime failure
 // degrades gracefully into a Warning + empty result, not a hard
-// failure. Text-only runs without clip evidence do NOT request images
-// at all (plan.Postprocessors empty for this entry). Operators who
-// need hard-failure semantics can flip the registered policy via a
-// future PR (per PR 2 spec: "images = configurabile").
-//
-// PR 2 (June 2026): policy introduced together with the registry's
-// preflight gate. The plan arg is accepted for interface uniformity
+// failure. Operators who need hard-failure semantics can flip the
+// registered policy via a future PR (per PR 2 spec: "images =
+// configurabile"). The plan arg is accepted for interface uniformity
 // but ignored — images are unconditionally best-effort for now.
 func (p *ImageProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorBestEffort
 }
 
-// PR 5 (June 2026): signature now takes ProcessInput envelope.
+// Process generates per-scene images. PR 9 contract: scenes come
+// directly from engineResult.Output.SpecScene.Scenes (validated by
+// ValidateAndEnrichSpecScene); no paragraph-splitting helper is
+// used.
 func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
 		return nil, fmt.Errorf("%w: image processor: ImageGenService not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
-	sceneCount := sceneCountFromPlan(plan)
-	if sceneCount == 0 {
+	// PR 9: scenes are now sourced from the canonical typed MSOV1
+	// output (PR 1 + PR 6), not from scratch-built segment lists.
+	scenes := specScenesFromInput(input)
+	if len(scenes) == 0 {
 		if p.log != nil {
-			p.log.Debug("image processor: no scenes (no clip evidence)",
+			p.log.Debug("image processor: no scenes to render (no specscene scenes)",
 				zap.String("item_id", plan.ID))
 		}
 		return &PostProcessResult{}, nil
@@ -69,23 +74,22 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 		return &PostProcessResult{}, nil
 	}
 
-	segments := splitScriptIntoSegments(input.Text, sceneCount)
 	language := plan.Language
 	if language == "" {
 		language = "en"
 	}
 
-	images := make([]SceneImage, 0, sceneCount)
+	images := make([]SceneImage, 0, len(scenes))
 	var warnings []string
 
-	for i := 0; i < sceneCount; i++ {
-		sceneText := ""
-		sceneName := fmt.Sprintf("scene-%d", i)
-		if i < len(segments) {
-			sceneText = segments[i]
-		}
+	for i, scene := range scenes {
+		sceneText := scene.Text
 		if sceneText == "" {
 			sceneText = fmt.Sprintf("Scene %d", i+1)
+		}
+		sceneName := fmt.Sprintf("scene-%d", i)
+		if scene.ID != "" {
+			sceneName = scene.ID
 		}
 
 		asset, err := p.gen.SearchAndDownload(ctx, sceneName, sceneText, sceneText, language, nil)
@@ -109,7 +113,7 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 
 	if len(warnings) > 0 && p.log != nil {
 		p.log.Warn("image processor: partial failures",
-			zap.Int("total", sceneCount),
+			zap.Int("total", len(scenes)),
 			zap.Int("failed", len(warnings)),
 			zap.Int("succeeded", len(images)-len(warnings)),
 			zap.Strings("warnings", warnings))
@@ -118,47 +122,14 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 	return &PostProcessResult{SceneImages: images}, nil
 }
 
-// sceneCountFromPlan returns the number of scenes derived from clip evidence.
-func sceneCountFromPlan(plan *scriptpkg.ResolvedGenerationPlan) int {
-	if plan == nil || plan.ClipEvidence == nil {
-		return 0
-	}
-	return plan.ClipEvidence.ClipCount
-}
-
-// splitScriptIntoSegments divides script text into roughly equal segments.
-func splitScriptIntoSegments(script string, count int) []string {
-	if count <= 0 {
+// specScenesFromInput returns the canonical scene list from the
+// ProcessInput envelope (typed MSOV1 output). PR 9 contract: post-
+// processors consume scenes through this lens; any attempt to
+// re-derive scenes via text-splitting is a regression caught by
+// ci-architectural-checks Check 15.
+func specScenesFromInput(input ProcessInput) []scriptpkg.SpecScene {
+	if input.SpecScene == nil {
 		return nil
 	}
-	script = strings.TrimSpace(script)
-	if count == 1 || script == "" {
-		seg := make([]string, count)
-		seg[0] = script
-		return seg
-	}
-	paragraphs := strings.Split(script, "\n\n")
-	segments := make([]string, count)
-	if len(paragraphs) <= count {
-		for i, p := range paragraphs {
-			segments[i] = p
-		}
-		return segments
-	}
-	perSegment := len(paragraphs) / count
-	remainder := len(paragraphs) % count
-	idx := 0
-	for i := 0; i < count && idx < len(paragraphs); i++ {
-		n := perSegment
-		if i < remainder {
-			n++
-		}
-		end := idx + n
-		if end > len(paragraphs) {
-			end = len(paragraphs)
-		}
-		segments[i] = strings.Join(paragraphs[idx:end], "\n\n")
-		idx = end
-	}
-	return segments
+	return input.SpecScene.Scenes
 }

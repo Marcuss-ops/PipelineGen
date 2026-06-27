@@ -74,7 +74,7 @@ type GenerationSpec struct {
 
 	// ── Output formatting ────────────────────────────────────────────
 	MaxChars  int    `json:"max_chars,omitempty"`
-	OutputFmt string `json:"output_fmt,omitempty"` // "prose" (default) or "json"
+	OutputFmt string `json:"output_fmt,omitempty"` // PR 9: "json" (canonical default); "prose" is REJECTED by the validator (PR 6)
 
 	// ── Prompt versioning ────────────────────────────────────────────
 	PromptVersion       string `json:"prompt_version,omitempty"`

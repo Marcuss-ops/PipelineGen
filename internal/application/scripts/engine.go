@@ -2,44 +2,40 @@
 // engine backed by ollama.Generator, gemmamemory.Service, and
 // ScriptRepository.
 //
-// AGENT-3 (June 2026): the previous Engine stub accepted all deps as
-// interface{} and returned hardcoded placeholder text. The real
-// implementation stores typed fields and calls ollama.Generator
-// .GenerateScript.
-//
 // PG-029 (June 2026): Engine struct consolidated here from the
 // now-deleted types.go.
 //
 // PR 6 (June 2026): canonical Generate(ctx, plan) method — the ONLY
 // engine entry point. Accepts a ResolvedGenerationPlan and returns
-// a typed EngineResult. The deprecated WriteScript(path) was removed
-// in PR 13 (June 2026) after media_curator.go migrated to
-// GenerateOneUseCase.
+// a typed EngineResult.
+//
+// PR 9 (June 2026): stale "future PR" cleanup. The WriteScript removal
+// is historical, no longer referenced. The Engine struct body is the
+// canonical single source of truth for script generation.
 //
 // The Engine owns:
 //   - ollama script generation (delegates to *ollama.Generator)
 //   - memory gate check via gemmamemory (UseMemory path)
+//   - payload decoding via DecodeModelOutput (PR 1)
 //
 // PR 5 (June 2026): persistence moved out of the engine.
 // ScriptRepository is no longer a dependency of Engine — the
 // single writer is PersistenceProcessor (registered in the plan's
 // Postprocessors list). EngineResult.ScriptID is dropped; consumers
 // source the canonical ScriptID from postResult.ScriptID (set by
-// PersistenceProcessor). The engine no longer participates in
-// scripts-table persistence (the call has been removed; see
-// processor_persistence.go for the single-writer contract).
+// PersistenceProcessor). The engine does NOT participate in
+// scripts-table persistence (see processor_persistence.go for the
+// single-writer contract).
 //
 // PR 1 (June 2026): payload decoding is owned by the engine via
-// internal/application/scripts/model_output_decoder.go, with
-// internal/application/scripts/compat/legacy_model_output_decoder.go
-// as the cache-fallback path. EngineResult now carries the typed
-// script.ModelScriptOutputV1 directly; the deprecated flat
-// EngineResult.Script string has been removed.
+// internal/application/scripts/model_output_decoder.go. EngineResult
+// carries the typed script.ModelScriptOutputV1 directly.
 //
 // The Engine does NOT own:
 //   - clip context building (ClipSourceBuilder responsibility)
-//   - entity extraction / scene images / voiceovers (Pipeline / postprocessor responsibility)
+//   - entity extraction / scene images / voiceovers (postprocessor responsibility)
 //   - prompt/fingerprint/cache-key derivation (PR 2 responsibility)
+//   - script-table persistence (PersistenceProcessor responsibility)
 package scripts
 
 import (
@@ -51,6 +47,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	observability "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 
 	"go.uber.org/zap"
 )
@@ -249,7 +246,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 				// to legacy, and returns ErrModelOutputMalformed on
 				// both-fail so callers see a typed poison-cache
 				// failure rather than a silent downgrade.
-				output, decodeErr := decodeModelPayload([]byte(result.Output), e.log)
+				output, decodeErr := decodeModelPayload([]byte(result.Output), "cache", e.log)
 				if decodeErr != nil {
 					return nil, decodeErr
 				}
@@ -340,6 +337,14 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// so callers can surface the failure uniformly with legacy-poison
 	// cache hits (see decodeModelPayload below).
 	output, decodeErr := DecodeModelOutput([]byte(genResult.Script), e.log)
+	// NOTE: the fresh-generation path bypasses decodeModelPayload by design
+	// (PR 1: DecodeModelOutput is the canonical-only decoder; legacy
+	// fallback is cache-replay only since the model wire side enforces V1).
+	// If a fresh-generation payload ever falls back to legacy, the
+	// canonical decoder sets ErrModelOutputMalformed and the engine
+	// returns the error to the caller — no LegacyArrayToOutput path is
+	// reachable here. Therefore no fresh-path source label is emitted.
+	_ = decodeModelPayload // referenced only at the cache-replay site
 	if decodeErr != nil {
 		return nil, fmt.Errorf("engine: model output decode failed: %w", decodeErr)
 	}
@@ -395,16 +400,23 @@ func extractPlanClipIDs(plan *scriptpkg.ResolvedGenerationPlan) []string {
 // PR 1 contract: new cache writes MUST emit canonical V1. The legacy
 // decoder only handles reads of pre-existing cache entries from
 // before the V1 rollout.
-func decodeModelPayload(raw []byte, log *zap.Logger) (*scriptpkg.ModelScriptOutputV1, error) {
+func decodeModelPayload(raw []byte, source string, log *zap.Logger) (*scriptpkg.ModelScriptOutputV1, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("%w: decodeModelPayload — empty payload", scriptpkg.ErrModelOutputMalformed)
 	}
 	if output, err := DecodeModelOutput(raw, log); err == nil {
 		return output, nil
 	} else if legacy, legacyErr := compat.LegacyArrayToOutput(raw); legacyErr == nil {
-		// Canonical decoder failed but the legacy array decoder
+		// ── Zero-Legacy §07 deprecation metric (DL-COMPAT-LEGACYDECODER-001) ──
+		// The canonical decoder failed but the legacy array decoder
 		// succeeded — promote the legacy shape to the canonical V1
-		// struct so downstream consumers see V1 exclusively.
+		// struct so downstream consumers see V1 exclusively, AND
+		// record the invocation against the deprecation counter.
+		// source label is bounded: "cache" | "fresh" (caller-supplied).
+		if source == "" {
+			source = "unknown"
+		}
+		observability.LegacyArrayToOutputInvocationsTotal.WithLabelValues(source).Inc()
 		return legacy, nil
 	} else {
 		if log != nil {
