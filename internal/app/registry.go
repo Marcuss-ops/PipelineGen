@@ -315,9 +315,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// helper (tryRegisterModuleStrict).
 	// ─────────────────────────────────────────────────────────────────
 
-	// realtime (clip-search lateral capability; Wave 14 close).
-	// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
-	// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
+	// realtime (clip-search lateral capability; Wave 14 close). Kept
+	// inline because (a) it is a single guarded NewRouteModule call and
+	// (b) the codex/registry-loop-fix branch scope extracts only the
+	// three capabilities the spec names (registerGenerationCapability,
+	// registerChannelsCapability, registerSearchQueriesCapability).
 	// Wave 15 (June 2026): DomainBundle.RealtimeMatcher is the typed
 	// assetsapi.RealtimeMatcher — drop the runtime cast.
 	if root.Domains != nil && root.Domains.RealtimeMatcher != nil {
@@ -334,71 +336,29 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		}
 	}
 
-	// ── Unified generation API (replaces /api/books + /api/lessons) ──
-	// Capability Standard migration (June 2026). Worker-side handler-function
-	// values are passed via nil-guarded method-value extraction. The strict
-	// path is mandatory now (PR 1) — duplicate names surface as errors.
-	var booksHandler generation.HandlerFunc
-	if root.Domains != nil && root.Domains.BooksService != nil {
-		booksHandler = root.Domains.BooksService.HandleJob
+	// ── Hoisted capability extractions (PR 1, June 2026 — branch
+	// codex/registry-loop-fix). The 3 named functions below replace
+	// inline blocks that the previous `for _, m := range []struct{...}`
+	// loop body executed N× per WireRegistry call. PR 1 closes that
+	// loop and moves each block here as a small named function. Each
+	// function:
+	//   - calls the canonical Build factory exactly once,
+	//   - registers the resulting Descriptor via tryRegisterModuleStrict
+	//     exactly once,
+	//   - publishes any DescriptorJobs/DescriptorProviders slots WITHOUT
+	//     re-registering the module (clear Register vs PublishSlots
+	//     separation — see codex/registry-strict-uniqueness branch for
+	//     the dedicated enforcement).
+	// Build/registration/freeze-order invariants are pinned by
+	// internal/app/registry_loop_test.go (this branch's Definition of Done).
+	if err := registerGenerationCapability(registry, log, cfg, root); err != nil {
+		return nil, fmt.Errorf("wire registry: generation: %w", err)
 	}
-	var lessonsHandler generation.HandlerFunc
-	if root.Domains != nil && root.Domains.LessonsService != nil {
-		lessonsHandler = root.Domains.LessonsService.HandleJob
+	if err := registerChannelsCapability(registry, log, root); err != nil {
+		return nil, fmt.Errorf("wire registry: channels: %w", err)
 	}
-	if genDesc, genErr := generation.Build(generation.Dependencies{
-		Jobs:           root.Jobs.Service,
-		Assets:         root.Repos.Assets,
-		Books:          booksHandler,
-		Lessons:        lessonsHandler,
-		BooksEnabled:   cfg.Books.Enabled,
-		LessonsEnabled: cfg.Lessons.Enabled,
-		ScriptEnabled:  anyScriptFeatureEnabled(cfg),
-		Logger:         log,
-	}); genErr != nil {
-		log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(genErr))
-	} else {
-		if err := tryRegisterModuleStrict(registry, log, genDesc); err != nil {
-			return nil, fmt.Errorf("wire registry: generation: %w", err)
-		}
-		// *GenerationDescriptor satisfies api.Descriptor via the three
-		// explicit delegation methods (Name/Enabled/RegisterRoutes), and
-		// api.DescriptorJobs via RegisterJobHandlers. The cast goes
-		// directly against the concrete pointer.
-		if dj, ok := genDesc.(module.DescriptorJobs); ok {
-			if err := dj.RegisterJobHandlers(root.Jobs.Service); err != nil {
-				log.Warn("failed to register generation job handlers", zap.Error(err))
-			}
-		}
-	}
-
-	// channels (Capability Standard migration, June 2026).
-	if root.DB != nil && root.DB.DB != nil {
-		if d, err := channels.Build(channels.Dependencies{
-			Repository: channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
-			Logger:     log,
-		}); err != nil {
-			log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
-		} else {
-			if err := tryRegisterModuleStrict(registry, log, d); err != nil {
-				return nil, fmt.Errorf("wire registry: channels: %w", err)
-			}
-		}
-	}
-
-	// search_queries (Wave 14 PR5, typed-use-case injection).
-	// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
-	// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
-	// Composition builds the *searchqueriesuc.UseCase from the concrete
-	// repo and injects it into the handler — keeping handler = thin transport.
-	if err := tryRegisterModuleStrict(registry, log, module.NewRouteModule(
-		"search_queries",
-		func() bool { return true },
-		"/search-queries",
-		assetsapi.NewSearchQueriesHandler(searchqueriesuc.NewUseCase(assets.NewSearchQueriesRepository(root.DB.DB)), log),
-		log,
-	)); err != nil {
-		return nil, fmt.Errorf("wire registry: search_queries module: %w", err)
+	if err := registerSearchQueriesCapability(registry, log, root); err != nil {
+		return nil, fmt.Errorf("wire registry: search_queries: %w", err)
 	}
 
 	if wiring.MediaIngest != nil {
@@ -637,6 +597,109 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	return wiring, nil
+}
+
+// ── loop-kill named functions (PR 1, June 2026 — branch
+// codex/registry-loop-fix). Each function is called exactly once per
+// WireRegistry invocation from the hoisted block directly above; the
+// previous loop shape trapped these blocks in a `for` body where they
+// ran once per loop iteration. PR 1 closes the loop and extracts each
+// block as a small named function so the Build + Register + slot
+// publication counts are trivially auditable from the call sites.
+
+// registerGenerationCapability wires the Capability-Standard unified
+// generation endpoint at /api/generations via generation.Build(deps).
+// Build runs at most once per call. The returned Descriptor is
+// registered via tryRegisterModuleStrict exactly once. The
+// api.DescriptorJobs slot publishes books.process + lessons.process
+// worker handlers to Jobs.Service WITHOUT re-registering the module —
+// the slot-publication path is a separate Register/PublishSlots path
+// per the codex/registry-strict-uniqueness branch.
+//
+// Returning nil on Build failure keeps the registry mutable so
+// WireRegistry's later phases are not poisoned. The strict path will
+// surface a hard error on any subsequent register-generation attempt
+// (pin per TestRegisterGenerationCapability_RepeatedCallsFailFast).
+func registerGenerationCapability(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+	if root.Domains == nil {
+		return nil
+	}
+	var booksHandler generation.HandlerFunc
+	if root.Domains.BooksService != nil {
+		booksHandler = root.Domains.BooksService.HandleJob
+	}
+	var lessonsHandler generation.HandlerFunc
+	if root.Domains.LessonsService != nil {
+		lessonsHandler = root.Domains.LessonsService.HandleJob
+	}
+	genDesc, err := generation.Build(generation.Dependencies{
+		Jobs:           root.Jobs.Service,
+		Assets:         root.Repos.Assets,
+		Books:          booksHandler,
+		Lessons:        lessonsHandler,
+		BooksEnabled:   cfg.Books.Enabled,
+		LessonsEnabled: cfg.Lessons.Enabled,
+		ScriptEnabled:  anyScriptFeatureEnabled(cfg),
+		Logger:         log,
+	})
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
+		return nil
+	}
+	if err := tryRegisterModuleStrict(registry, log, genDesc); err != nil {
+		return fmt.Errorf("wire registry: generation: %w", err)
+	}
+	// PublishSlots (api.DescriptorJobs). RegisterJobHandlers is the
+	// slot-publication method; it does NOT re-register the module.
+	// The strict-path Register call above already placed the Descriptor
+	// in the module registry; this call only publishes worker handlers.
+	if dj, ok := genDesc.(module.DescriptorJobs); ok {
+		if err := dj.RegisterJobHandlers(root.Jobs.Service); err != nil {
+			log.Warn("failed to register generation job handlers", zap.Error(err))
+		}
+	}
+	return nil
+}
+
+// registerChannelsCapability wires the channels capability via
+// channels.Build(deps). Build runs at most once per call; the resulting
+// Descriptor is registered via tryRegisterModuleStrict exactly once.
+func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
+	if root.DB == nil || root.DB.DB == nil {
+		return nil
+	}
+	d, err := channels.Build(channels.Dependencies{
+		Repository: channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
+		Logger:     log,
+	})
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
+		return nil
+	}
+	if err := tryRegisterModuleStrict(registry, log, d); err != nil {
+		return fmt.Errorf("wire registry: channels: %w", err)
+	}
+	return nil
+}
+
+// registerSearchQueriesCapability wires the typed search_queries use case.
+// The handler is thin transport; this function owns the
+// *searchqueriesuc.UseCase construction (Wave 14 problem #3 close-out,
+// June 2026) and registers the route module via tryRegisterModuleStrict.
+func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
+	if root.DB == nil || root.DB.DB == nil {
+		return nil
+	}
+	if err := tryRegisterModuleStrict(registry, log, module.NewRouteModule(
+		"search_queries",
+		func() bool { return true },
+		"/search-queries",
+		assetsapi.NewSearchQueriesHandler(searchqueriesuc.NewUseCase(assets.NewSearchQueriesRepository(root.DB.DB)), log),
+		log,
+	)); err != nil {
+		return fmt.Errorf("wire registry: search_queries module: %w", err)
+	}
+	return nil
 }
 
 // wireScriptFlow is defined in wire_script.go.
