@@ -84,11 +84,11 @@ func TestClassify_NoDrift(t *testing.T) {
 	}
 	qdrant := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":              "a1",
-			"name":                  "x",
-			"source":                "youtube",
-			"lifecycle_state":       "ACTIVE",
-			"workspace_id":          "ws1",
+			"asset_id":               "a1",
+			"name":                   "x",
+			"source":                 "youtube",
+			"lifecycle_state":        "ACTIVE",
+			"workspace_id":           "ws1",
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
@@ -135,11 +135,11 @@ func TestClassify_NonCanonicalPointID_PriorityWins(t *testing.T) {
 	// Point UUID mismatches the canonical AssetIDToQdrantPointID(a1).
 	qdrant := map[string]pointWithID{
 		"a1": {ID: "wrong-uuid", Payload: map[string]interface{}{
-			"asset_id":              "a1",
-			"name":                  "x",
-			"source":                "youtube",
-			"lifecycle_state":       "ACTIVE",
-			"workspace_id":          "ws1",
+			"asset_id":               "a1",
+			"name":                   "x",
+			"source":                 "youtube",
+			"lifecycle_state":        "ACTIVE",
+			"workspace_id":           "ws1",
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
@@ -158,9 +158,9 @@ func TestClassify_PayloadIncomplete_PriorityOverVersionStale(t *testing.T) {
 	// Missing "name" required → PayloadIncomplete should be first.
 	qdrant := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":              "a1",
-			"source":                "youtube",
-			"lifecycle_state":       "ACTIVE",
+			"asset_id":               "a1",
+			"source":                 "youtube",
+			"lifecycle_state":        "ACTIVE",
 			"embedding_version_text": "v0", // would also fire VersionStale
 		}},
 	}
@@ -180,11 +180,11 @@ func TestClassify_VersionStale_LegacyGlobalFallback(t *testing.T) {
 	// matching legacy global → NO mismatch.
 	qdrantMatchLegacy := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":           "a1",
-			"name":               "x",
-			"source":             "youtube",
-			"lifecycle_state":    "ACTIVE",
-			"embedding_version":  "2026-06-16-v1",
+			"asset_id":          "a1",
+			"name":              "x",
+			"source":            "youtube",
+			"lifecycle_state":   "ACTIVE",
+			"embedding_version": "2026-06-16-v1",
 		}},
 	}
 	got := classify(sqlite, qdrantMatchLegacy, schema, canonicalPointID)
@@ -196,11 +196,11 @@ func TestClassify_VersionStale_LegacyGlobalFallback(t *testing.T) {
 	// "embedding_version"="v0" → VersionStale on text channel.
 	qdrantMismatchLegacy := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":           "a1",
-			"name":               "x",
-			"source":             "youtube",
-			"lifecycle_state":    "ACTIVE",
-			"embedding_version":  "v0",
+			"asset_id":          "a1",
+			"name":              "x",
+			"source":            "youtube",
+			"lifecycle_state":   "ACTIVE",
+			"embedding_version": "v0",
 		}},
 	}
 	got = classify(sqlite, qdrantMismatchLegacy, schema, canonicalPointID)
@@ -217,10 +217,10 @@ func TestClassify_LifecycleMismatch_CaseInsensitive(t *testing.T) {
 	sqlite := map[string]AssetSnapshot{"a1": {ID: "a1", LifecycleState: "ACTIVE"}}
 	qdrant := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":              "a1",
-			"name":                  "x",
-			"source":                "youtube",
-			"lifecycle_state":       "active", // lowercase; should still match
+			"asset_id":               "a1",
+			"name":                   "x",
+			"source":                 "youtube",
+			"lifecycle_state":        "active", // lowercase; should still match
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
@@ -242,11 +242,11 @@ func TestClassify_WorkspaceMismatch(t *testing.T) {
 	sqlite := map[string]AssetSnapshot{"a1": {ID: "a1", WorkspaceID: "ws1", LifecycleState: "ACTIVE"}}
 	qdrant := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":              "a1",
-			"name":                  "x",
-			"source":                "youtube",
-			"lifecycle_state":       "ACTIVE",
-			"workspace_id":          "ws2",
+			"asset_id":               "a1",
+			"name":                   "x",
+			"source":                 "youtube",
+			"lifecycle_state":        "ACTIVE",
+			"workspace_id":           "ws2",
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
@@ -263,11 +263,11 @@ func TestClassify_LegacyKeys(t *testing.T) {
 	// legacy "status" present
 	qdrantStatus := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":              "a1",
-			"name":                  "x",
-			"source":                "youtube",
-			"lifecycle_state":       "ACTIVE",
-			"status":                "ACTIVE",
+			"asset_id":               "a1",
+			"name":                   "x",
+			"source":                 "youtube",
+			"lifecycle_state":        "ACTIVE",
+			"status":                 "ACTIVE",
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
@@ -279,11 +279,11 @@ func TestClassify_LegacyKeys(t *testing.T) {
 	// legacy "drive_link" present
 	qdrantDriveLink := map[string]pointWithID{
 		"a1": {ID: canonicalPointID("a1"), Payload: map[string]interface{}{
-			"asset_id":              "a1",
-			"name":                  "x",
-			"source":                "youtube",
-			"lifecycle_state":       "ACTIVE",
-			"drive_link":            "https://drive.example/x",
+			"asset_id":               "a1",
+			"name":                   "x",
+			"source":                 "youtube",
+			"lifecycle_state":        "ACTIVE",
+			"drive_link":             "https://drive.example/x",
 			"embedding_version_text": "2026-06-16-v1",
 		}},
 	}
@@ -311,7 +311,7 @@ func TestClassify_Mixed_DeterministicOrdering(t *testing.T) {
 		"stale": {
 			ID: canonicalPointID("stale"), Payload: map[string]interface{}{
 				"asset_id": "stale", "name": "x", "source": "youtube",
-				"lifecycle_state": "ACTIVE",
+				"lifecycle_state":        "ACTIVE",
 				"embedding_version_text": "v0",
 			},
 		},

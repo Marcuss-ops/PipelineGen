@@ -52,18 +52,25 @@ type AssetPointIDFunc func(assetID string) string
 // (outbox_events table) — the reconciler MUST NOT mutate Qdrant
 // directly via this port.
 //
-// EnqueueReindex emits one asset.index.requested.v1 outbox event per
-// call. Implementations are responsible for any event_key shaping
-// (e.g. uuid-suffixed keys so consecutive reconcile --apply runs
-// produce distinct events). EnqueueDelete emits one
-// asset.index.delete_requested.v1 outbox event per call.
+// EnqueueReindex emits ONE asset.index.requested.v1 outbox event
+// per call. Implementations are responsible for event_key shaping:
+// a DETERMINISTIC key (assetID, targetSchema, contentHash) so two
+// reconcile --apply runs with no SQLite change collapse to a single
+// outbox row via ON CONFLICT DO NOTHING. PR 11 unified the format
+// across the dispatch (ingest) path and the reconcile-repair path;
+// before PR 11 each --apply produced a fresh UUID-suffixed event
+// which made the outbox layer non-idempotent at the dedupe layer.
 //
-// Idempotency: consecutive calls produce distinct outbox rows so the
-// worker fires each repair; the worker's supersede gate (in
-// IndexingHandler) collapses repeating fix-up jobs when the
-// metadata content_hash is unchanged between calls.
+// contentHash MUST match media_assets.metadata_json.$.content_hash
+// at scan time (see SQLiteAssetStore.ListAssetsForReconcile). Empty
+// contentHash is rejected by the canonical envelope builder because
+// the worker supersede gate (IndexingHandler) requires it.
+//
+// EnqueueDelete emits ONE asset.index.delete_requested.v1 outbox
+// event per call; the deterministic delete key ("delete:<assetID>")
+// was already correct pre-PR-11.
 type OutboxRepairEnqueuer interface {
-	EnqueueReindex(ctx context.Context, assetID string) error
+	EnqueueReindex(ctx context.Context, assetID, contentHash string) error
 	EnqueueDelete(ctx context.Context, assetID string) error
 }
 
@@ -163,21 +170,23 @@ type Metrics interface {
 // callers don't have to construct a recorder.
 type noopMetrics struct{}
 
-func (noopMetrics) RecordFindings(map[ClassificationKind]int)              {}
-func (noopMetrics) RecordVersionMismatchPerChannel(map[string]int)          {}
-func (noopMetrics) RecordDispatch(string, int)                              {}
-func (noopMetrics) RecordLegacyKeyStripped(string, int)                     {}
-func (noopMetrics) RecordErrors(int)                                        {}
-func (noopMetrics) RecordRunComplete(string, float64)                        {}
+func (noopMetrics) RecordFindings(map[ClassificationKind]int)      {}
+func (noopMetrics) RecordVersionMismatchPerChannel(map[string]int) {}
+func (noopMetrics) RecordDispatch(string, int)                     {}
+func (noopMetrics) RecordLegacyKeyStripped(string, int)            {}
+func (noopMetrics) RecordErrors(int)                               {}
+func (noopMetrics) RecordRunComplete(string, float64)              {}
 
-// noopOutboxEnqueuer is the default OutboxRepairEnqueuer when
-// Deps.Outbox is nil. Enables DryRun without crashing applyRepair's
-// nil dereference — production callers MUST pass a real adapter;
-// passing nil in Apply mode silently no-ops the repairs.
+// noopOutboxEnqueuer is an explicit opt-in no-op OutboxRepairEnqueuer.
+// Tests that want to suppress dispatch without panicking via
+// NewServiceFromDeps can pass this directly. PR 10 removed the
+// SILENT fallback from NewServiceFromDeps's nil-replacement path
+// so production half-built wiring trips the panic — a silent noop
+// in Apply mode would have hidden every repair-dispatch regression.
 type noopOutboxEnqueuer struct{}
 
-func (noopOutboxEnqueuer) EnqueueReindex(context.Context, string) error { return nil }
-func (noopOutboxEnqueuer) EnqueueDelete(context.Context, string) error  { return nil }
+func (noopOutboxEnqueuer) EnqueueReindex(context.Context, string, string) error { return nil }
+func (noopOutboxEnqueuer) EnqueueDelete(context.Context, string) error          { return nil }
 
 // noopPayloadMutator is the default QdrantPayloadMutator when
 // Deps.Payload is nil. Same caveat as noopOutboxEnqueuer.

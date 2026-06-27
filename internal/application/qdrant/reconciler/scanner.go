@@ -24,10 +24,16 @@ func classify(sqliteSet map[string]AssetSnapshot, qdrantSet map[string]pointWith
 	var missing []Classification
 	for id := range sqliteSet {
 		if _, ok := qdrantSet[id]; !ok {
+			// PR 10+11: surface content_hash so repair dispatch can
+			// compute the deterministic outbox dedupe key without an
+			// extra sqlite lookup. Empty when ListAssetsForReconcile
+			// returned "" for this row (e.g. row without metadata_json
+			// or pre-hash ingest path).
 			missing = append(missing, Classification{
-				Kind:    KindMissing,
-				AssetID: id,
-				Details: "asset exists in media_assets but no matching Qdrant point found via payload.asset_id",
+				Kind:        KindMissing,
+				AssetID:     id,
+				ContentHash: sqliteSet[id].ContentHash,
+				Details:     "asset exists in media_assets but no matching Qdrant point found via payload.asset_id",
 			})
 		}
 	}
@@ -85,17 +91,19 @@ func classifyPair(assetID string, snap AssetSnapshot, p pointWithID, schema Sche
 	expected := pointIDFor(assetID)
 	if expected != "" && p.ID != "" && expected != p.ID {
 		return &Classification{
-			Kind:    KindNonCanonicalPointID,
-			AssetID: assetID,
-			Details: fmt.Sprintf("expected %q, got %q", expected, p.ID),
+			Kind:        KindNonCanonicalPointID,
+			AssetID:     assetID,
+			ContentHash: snap.ContentHash,
+			Details:     fmt.Sprintf("expected %q, got %q", expected, p.ID),
 		}
 	}
 	for _, k := range schema.RequiredKeys {
 		if _, ok := p.Payload[k]; !ok {
 			return &Classification{
-				Kind:    KindPayloadIncomplete,
-				AssetID: assetID,
-				Details: fmt.Sprintf("missing required payload key %q", k),
+				Kind:        KindPayloadIncomplete,
+				AssetID:     assetID,
+				ContentHash: snap.ContentHash,
+				Details:     fmt.Sprintf("missing required payload key %q", k),
 			}
 		}
 	}
@@ -109,20 +117,22 @@ func classifyPair(assetID string, snap AssetSnapshot, p pointWithID, schema Sche
 			legacy, hasLegacy := stringFromPayload(p.Payload, "embedding_version")
 			if !hasLegacy || legacy != want {
 				return &Classification{
-					Kind:    KindVersionStale,
-					AssetID: assetID,
-					Channel: channel,
-					Details: fmt.Sprintf("channel %q: payload missing %q and legacy global not equal to %q", channel, key, want),
+					Kind:        KindVersionStale,
+					AssetID:     assetID,
+					ContentHash: snap.ContentHash,
+					Channel:     channel,
+					Details:     fmt.Sprintf("channel %q: payload missing %q and legacy global not equal to %q", channel, key, want),
 				}
 			}
 			continue
 		}
 		if actual != want {
 			return &Classification{
-				Kind:    KindVersionStale,
-				AssetID: assetID,
-				Channel: channel,
-				Details: fmt.Sprintf("channel %q: payload %q=%q, schema wants %q", channel, key, actual, want),
+				Kind:        KindVersionStale,
+				AssetID:     assetID,
+				ContentHash: snap.ContentHash,
+				Channel:     channel,
+				Details:     fmt.Sprintf("channel %q: payload %q=%q, schema wants %q", channel, key, actual, want),
 			}
 		}
 	}
@@ -131,9 +141,10 @@ func classifyPair(assetID string, snap AssetSnapshot, p pointWithID, schema Sche
 		gotState := strings.ToLower(strings.TrimSpace(stringFromPayloadOrEmpty(p.Payload, "lifecycle_state")))
 		if gotState != "" && wantStateWantVerify != gotState {
 			return &Classification{
-				Kind:    KindLifecycleMismatch,
-				AssetID: assetID,
-				Details: fmt.Sprintf("sqlite=%q, payload=%q", wantStateWantVerify, gotState),
+				Kind:        KindLifecycleMismatch,
+				AssetID:     assetID,
+				ContentHash: snap.ContentHash,
+				Details:     fmt.Sprintf("sqlite=%q, payload=%q", wantStateWantVerify, gotState),
 			}
 		}
 	}
@@ -141,18 +152,20 @@ func classifyPair(assetID string, snap AssetSnapshot, p pointWithID, schema Sche
 		gotWS := strings.TrimSpace(stringFromPayloadOrEmpty(p.Payload, "workspace_id"))
 		if gotWS != "" && snap.WorkspaceID != gotWS {
 			return &Classification{
-				Kind:    KindWorkspaceMismatch,
-				AssetID: assetID,
-				Channel: "",
-				Details: fmt.Sprintf("sqlite=%q, payload=%q", snap.WorkspaceID, gotWS),
+				Kind:        KindWorkspaceMismatch,
+				AssetID:     assetID,
+				ContentHash: snap.ContentHash,
+				Channel:     "",
+				Details:     fmt.Sprintf("sqlite=%q, payload=%q", snap.WorkspaceID, gotWS),
 			}
 		}
 	}
 	if _, ok := p.Payload["status"]; ok {
 		return &Classification{
-			Kind:    KindLifecycleKeyLegacy,
-			AssetID: assetID,
-			Details: "payload uses legacy \"status\" key; canonical key is \"lifecycle_state\"",
+			Kind:        KindLifecycleKeyLegacy,
+			AssetID:     assetID,
+			ContentHash: snap.ContentHash,
+			Details:     "payload uses legacy \"status\" key; canonical key is \"lifecycle_state\"",
 		}
 	}
 	// LocatorLegacy: capture EVERY present legacy locator key into
@@ -176,6 +189,7 @@ func classifyPair(assetID string, snap AssetSnapshot, p pointWithID, schema Sche
 		return &Classification{
 			Kind:        KindLocatorLegacy,
 			AssetID:     assetID,
+			ContentHash: snap.ContentHash,
 			Details:     fmt.Sprintf("payload carries legacy locator keys %v", keys),
 			LocatorKeys: keys,
 		}
