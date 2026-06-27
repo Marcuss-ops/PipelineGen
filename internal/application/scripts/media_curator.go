@@ -4,10 +4,10 @@
 //
 // AGENT-3 (June 2026): the previous stub returned the query string as
 // the script text. The real implementation:
-//   1. Searches for clips semantically via the vector store
-//   2. Converts results to clip IDs
-//   3. Builds clip context via ClipSourceBuilder
-//   4. Generates the script via GenerateOneUseCase.Execute
+//  1. Searches for clips semantically via the vector store
+//  2. Converts results to clip IDs
+//  3. Builds clip context via ClipSourceBuilder
+//  4. Generates the script via GenerateOneUseCase.Execute
 //
 // PR 13 (June 2026): migrated from engine.WriteScript to
 // GenerateOneUseCase.Execute — canonical unified pipeline.
@@ -152,10 +152,10 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 				seen[h.AssetID] = struct{}{}
 				clipIDs = append(clipIDs, h.AssetID)
 				searchResults = append(searchResults, SearchResultInfo{
-					ClipID:    h.AssetID,
-					Name:      h.Name,
-					Score:     h.Score,
-					Source:    h.Source,
+					ClipID: h.AssetID,
+					Name:   h.Name,
+					Score:  h.Score,
+					Source: h.Source,
 				})
 			}
 		}
@@ -254,8 +254,12 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 			Type:       scriptpkg.SourceText,
 			Topic:      query,
 			SourceText: sourceText,
-			// Guidelines carries the sourceFingerprint as prompt context.
-			Guidelines: sourceFingerprint,
+			// PR 2: guidelines carry REAL editorial style
+			// (req.StyleInstructions from the curator request),
+			// not the source fingerprint. The fingerprint now
+			// lives on plan.SourceFingerprint (cache-key input,
+			// never seen by the model).
+			Guidelines: req.StyleInstructions,
 		},
 		ScriptParams: scriptpkg.ScriptSpec{
 			TargetWords:  req.TargetWords,

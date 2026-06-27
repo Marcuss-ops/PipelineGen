@@ -71,12 +71,19 @@ func (s *Service) EvictExactOutputs(ctx context.Context, titles []string) (int, 
 // ── Request/Response types ─────────────────────────────────────────────
 
 // MemoryGateRequest carries the inputs for a gate check.
+//
+// PR 2: CacheKey is the canonical cache address computed by
+// scriptpkg.BuildCacheKey(plan). Title/Language/Mode remain for
+// backwards compat with the legacy Title-keyed lookup; production
+// wiring is expected to prefer CacheKey once the real Service
+// implementation lands.
 type MemoryGateRequest struct {
 	ChannelID    string `json:"channel_id"`
 	Title        string `json:"title"`
 	Prompt       string `json:"prompt"`
 	Language     string `json:"language"`
 	Mode         string `json:"mode"`
+	CacheKey     string `json:"cache_key,omitempty"`
 	UseMemory    bool   `json:"use_memory"`
 	ForceRefresh bool   `json:"force_refresh"`
 }

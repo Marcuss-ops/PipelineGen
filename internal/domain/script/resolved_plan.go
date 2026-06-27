@@ -16,7 +16,8 @@ package script
 //   - output options (drive folder, formatting)
 //
 // Every field has been normalized through the precedence chain:
-//   caller explicit > preset > configuration > safety default
+//
+//	caller explicit > preset > configuration > safety default
 type ResolvedGenerationPlan struct {
 	// ID echoes GenerationItemV2.ID for result correlation.
 	ID string `json:"id,omitempty"`
@@ -53,11 +54,47 @@ type ResolvedGenerationPlan struct {
 	// ── Style ─────────────────────────────────────────────────────────
 	Style string `json:"style,omitempty"`
 
-	// ── Prompt ────────────────────────────────────────────────────────
-	// Prompt is the resolved base prompt. For clip sources this is
-	// the source fingerprint; for text sources it's the assembled
-	// instruction text.
-	Prompt string `json:"prompt,omitempty"`
+	// ── Prompt (PR 2: split into typed roles) ─────────────────────────
+	// The legacy single `Prompt string` field was removed because it
+	// conflated three distinct concepts: model-input editorial prompt,
+	// source-content fingerprint, and memory-gate cache key. That
+	// created anti-patterns in callers ("plan.Prompt = resolved.Fingerprint"
+	// wrote a hex hash into a model input; "Guidelines: sourceFingerprint"
+	// wrote the same hash as editorial style). The roles are now strict
+	// and explicitly typed:
+
+	// RenderedPrompt is the editorial instructions sent to the LLM.
+	// Contains style/sizing/source-text assembly but NEVER a fingerprint
+	// hash. The engine reads this field alone when constructing the
+	// ollama request. Use plan.RenderedPrompt as the only model input.
+	RenderedPrompt string `json:"rendered_prompt,omitempty"`
+
+	// SourceFingerprint identifies the resolved source aggregates
+	// (clip set, resolved source text, resolved catalog digest).
+	// Captures what the model writes but not the editorial prompt.
+	// Used as a cache-key input but never sent to the model.
+	SourceFingerprint string `json:"source_fingerprint,omitempty"`
+
+	// CacheKey is the canonical memory-gate cache key, computed by
+	// BuildCacheKey(plan). Hashes source fingerprint + language +
+	// tone + style + model + sizing + prompt version + prompt
+	// profile + source kind + real guidelines. Excludes output flags
+	// (document/image/voiceover/entities/metadata/Drive folder),
+	// OutputFmt, Languages, and ForceRefresh. The engine feeds this
+	// to the memory gate; never sent to the model.
+	CacheKey string `json:"cache_key,omitempty"`
+
+	// PromptProfile records the prompt-engine profile/version used
+	// to build RenderedPrompt (e.g. "default-v1"). Useful for A/B
+	// testing variants without invalidating the cache per language
+	// change.
+	PromptProfile string `json:"prompt_profile,omitempty"`
+
+	// SourceKind mirrors the source type at time of plan build
+	// ("text", "clip", "catalog", "search"). Cache-key input —
+	// same content from different sources should hit a single cache
+	// row only when the model output is structurally identical.
+	SourceKind string `json:"source_kind,omitempty"`
 
 	// ── Prompt versioning ─────────────────────────────────────────────
 	PromptVersion       string `json:"prompt_version,omitempty"`

@@ -10,6 +10,10 @@
 //
 // PR 13 (June 2026): removed deprecated WriteScript tests — all tests
 // now exercise Engine.Generate directly.
+//
+// PR 2 (June 2026): fakeMemoryGate extended with onCheck callback.
+// Engine reads plan.RenderedPrompt (not the legacy plan.Prompt);
+// fakeMemoryGate captures the request shape to verify CacheKey flows.
 package scripts
 
 import (
@@ -47,12 +51,28 @@ func (f *fakeOllamaGen) GenerateScript(_ context.Context, _ ollamatypes.TextGene
 }
 
 // fakeMemoryGate is a memoryGateChecker injected into Engine for tests.
+//
+// PR 2: extended with optional diagnostics:
+//   - capturedReq (pointer to slot) — tests asserting on the request
+//     shape (CacheKey propagation, etc.) set this so CheckGate copies
+//     the request in.
+//   - onCheck (callable) — fires unconditionally before any return,
+//     so tests can observe call counts (used by ForceRefresh-bypass
+//     verification).
 type fakeMemoryGate struct {
-	result    *gemmamemory.GateResult
-	returnErr error
+	result      *gemmamemory.GateResult
+	returnErr   error
+	capturedReq *gemmamemory.MemoryGateRequest
+	onCheck     func()
 }
 
-func (f *fakeMemoryGate) CheckGate(_ context.Context, _ gemmamemory.MemoryGateRequest) (*gemmamemory.GateResult, error) {
+func (f *fakeMemoryGate) CheckGate(_ context.Context, req gemmamemory.MemoryGateRequest) (*gemmamemory.GateResult, error) {
+	if f.onCheck != nil {
+		f.onCheck()
+	}
+	if f.capturedReq != nil {
+		*f.capturedReq = req
+	}
 	if f.returnErr != nil {
 		return nil, f.returnErr
 	}
@@ -186,16 +206,19 @@ func TestEngineGenerate_Success(t *testing.T) {
 	gen := &fakeOllamaGen{}
 	e := buildTestEngine(gen, nil, nil)
 
+	// PR 2: model-facing prompt is plan.RenderedPrompt. The legacy
+	// plan.Prompt field was removed because it conflated fingerprint
+	// with model input.
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:          "item-1",
-		Title:       "Generate Test",
-		Topic:       "Generate API",
-		Language:    "it",
-		Tone:        "documentary",
-		Model:       "llama3:8b",
-		Mode:        "text",
-		TargetWords: 500,
-		Prompt:      "Write about testing.",
+		ID:             "item-1",
+		Title:          "Generate Test",
+		Topic:          "Generate API",
+		Language:       "it",
+		Tone:           "documentary",
+		Model:          "llama3:8b",
+		Mode:           "text",
+		TargetWords:    500,
+		RenderedPrompt: "Write about testing.",
 	}
 
 	result, err := e.Generate(context.Background(), plan)
@@ -404,9 +427,7 @@ func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 	assert.Equal(t, 1, result.Output.SchemaVersion)
 	require.Len(t, result.Output.SpecScene.Scenes, 1)
 	// compat.LegacyArrayToOutput prefixes promoted IDs with "legacy-"
-	// to flag rows promoted from the pre-V1 cache. The engine surfaces
-	// these IDs unchanged — only the decoder-level concern is the
-	// promotion. Future PRs may strip the prefix on migration.
+	// to flag rows promoted from the pre-V1 cache.
 	assert.Equal(t, "legacy-scene-0", result.Output.SpecScene.Scenes[0].ID)
 	assert.Equal(t, "Legacy cached scene.", result.Output.SpecScene.Scenes[0].Text)
 	assert.Equal(t, scriptpkg.SceneNarration, result.Output.SpecScene.Scenes[0].Kind)
@@ -478,8 +499,114 @@ func TestEngineGenerate_ModelScenesPreserved(t *testing.T) {
 	}
 }
 
+// ── PR 2: prompt / fingerprint / cache-key separation ──────────────────
+
+// TestBuildEditorialPrompt_DoesNotIncludeFingerprint asserts that the
+// editorial prompt never contains the item identity fingerprint hash.
+// Pre-PR 2, buildPrompt returned BuildItemIdentity(item) — a SHA-256
+// digest sent to the model as the prompt, which is wrong on every
+// front (no editorial content, hides intent, leaks identity).
+func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
+	t.Parallel()
+	item := scriptpkg.GenerationItemV2{
+		ID:    "fp-test",
+		Title: "FP Test",
+		Source: scriptpkg.SourceSpec{
+			Type:       scriptpkg.SourceText,
+			Topic:      "Deterministic assembly test",
+			SourceText: "alpha beta gamma",
+			Guidelines: "Documentary tone.",
+		},
+		ScriptParams: scriptpkg.ScriptSpec{
+			TargetWords: 250,
+		},
+		Style:    "cinematic",
+		Language: "en",
+		Tone:     "neutral",
+	}
+	editorial := buildEditorialPrompt(item)
+	fp := BuildItemIdentity(item)
+	assert.NotContains(t, editorial, fp, "RenderedPrompt must NOT contain the item fingerprint hash")
+	assert.Contains(t, editorial, "Documentary tone.", "editorial prompt should include source guidelines")
+	assert.Contains(t, editorial, "250", "editorial prompt should include target words")
+}
+
+// TestEngineGenerate_FeedsCacheKeyToMemoryGate asserts that the
+// canonical CacheKey (computed by script.BuildCacheKey in the use
+// case) propagates through to MemoryGateRequest.CacheKey when the
+// engine reads the plan. PR 2 keeps the legacy Title/Language/Mode
+// fields for backwards compat alongside the new CacheKey field.
+func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	var captured gemmamemory.MemoryGateRequest
+	mem := &fakeMemoryGate{
+		result:      nil, // cache miss path: nil result, but we still see the request
+		capturedReq: &captured,
+	}
+	e := buildTestEngine(gen, mem, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:     "CacheKey Wiring",
+		Language:  "en",
+		Mode:      "text",
+		UseMemory: true,
+		// PR 2: the use case computes plan.CacheKey, but engine
+		// must still respect whatever CacheKey is on the plan that
+		// gets here. We set it explicitly to verify wiring.
+		CacheKey: "deadbeefcafef00d",
+	}
+
+	// Cache miss (nil result, nil err): engine proceeds to fresh
+	// generation path. The capture still happens at the request
+	// build above. The fresh path requires DecodeModelOutput to
+	// succeed — use a default V1 canonical result so the test
+	// succeeds end-to-end (and so we don't incidentally regress
+	// PR 1).
+	_, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, "deadbeefcafef00d", captured.CacheKey, "CacheKey from plan must propagate to MemoryGateRequest")
+	assert.Equal(t, "CacheKey Wiring", captured.Title)
+	assert.Equal(t, "en", captured.Language)
+	assert.Equal(t, "text", captured.Mode)
+}
+
+// TestEngineGenerate_ForceRefreshBypassesMemoryWithCacheKey is a
+// PR 2-mandated test: even when plan.CacheKey is set, ForceRefresh
+// must bypass the memory gate so callers can escape a poisoned
+// row. Pre-existing TestEngineGenerate_ForceRefreshBypassesMemory
+// already covers the no-CacheKey case.
+func TestEngineGenerate_ForceRefreshBypassesMemoryWithCacheKey(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	var called atomic.Int32
+	mem := &fakeMemoryGate{
+		onCheck: func() { called.Add(1) },
+		// Canonical cache hit payload — but ForceRefresh means the
+		// engine never even asks.
+		result: &gemmamemory.GateResult{
+			Output:    "Should not be returned.",
+			WordCount: 10,
+		},
+	}
+	e := buildTestEngine(gen, mem, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:        "Force Refresh With CacheKey",
+		Language:     "en",
+		Mode:         "text",
+		UseMemory:    true,
+		ForceRefresh: true,
+		CacheKey:     "beef0001beef0001",
+	}
+
+	_, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, int32(0), called.Load(), "memory gate must NOT be called when ForceRefresh=true")
+}
+
 // itoaSimple is a tiny strconv-free helper to avoid an extra import
-// for the assertion above; only used in engine tests.
+// for engine tests that want to format int scene indexes.
 func itoaSimple(i int) string {
 	if i == 0 {
 		return "0"

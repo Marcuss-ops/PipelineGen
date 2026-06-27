@@ -117,10 +117,19 @@ func (uc *GenerateOneUseCase) Execute(
 		if resolved.ClipEvidence != nil {
 			plan.ClipEvidence = resolved.ClipEvidence
 		}
+		// PR 2: fingerprint goes to SourceFingerprint (cache-key
+		// input), not Prompt (model input). Editorial guidelines
+		// already came from item.Source.Guidelines via BuildPlan.
 		if resolved.Fingerprint != "" {
-			plan.Prompt = resolved.Fingerprint
+			plan.SourceFingerprint = resolved.Fingerprint
+		}
+		if resolved.Type != "" {
+			plan.SourceKind = string(resolved.Type)
 		}
 	}
+	// PR 2: compute the canonical cache key once the plan is fully
+	// resolved — the engine feeds it to the memory gate.
+	plan.CacheKey = scriptpkg.BuildCacheKey(&plan)
 	timings.PlanBuildMs = time.Since(planStart).Milliseconds()
 
 	// ── Phase 5: Generate script ────────────────────────────────────
