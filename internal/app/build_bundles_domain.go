@@ -312,16 +312,49 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 
 // BuildSyncBundle constructs ONLY the catalog→Drive sync. ProviderRegistry
 // moved to BuildSearchBundle (PR4 review).
+//
+// PR-D (June 2026): catalogsync.NewService now takes Deps{} + returns
+// (*Service, error). The legacy late-bind SetDispatcher call is gone;
+// the dispatcher is captured at construction time. Composition-root
+// pre-rejection lives here so a nil outbox dispatcher fails the bundle
+// build with an explicit error instead of racing the late-bind sequence.
 func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle, outbox *OutboxBundle) (*SyncBundle, error) {
 	_ = ctx
 	_ = cfg
 	_ = dbs
 	_ = repos
 	syncTargets := buildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
-	catalogSync := catalogsync.NewService(drive.DriveUploader, syncTargets,
-		search.AssetIndexService, search.AssetTreeService, process.ClipIndexerService, log)
-	if outbox != nil && outbox.Dispatcher != nil {
-		catalogSync.SetDispatcher(outbox.Dispatcher)
+
+	// PR-D composition-root pre-rejection: every required dep MUST be
+	// non-nil by the time we reach NewService. A nil here fails the
+	// bundle build before any service is constructed, so the operator
+	// sees the missing dep at startup rather than racing the late-bind
+	// sequence (which used to live between BuildOutboxBundle returning
+	// and catalogSync.SetDispatcher being called).
+	if drive.DriveUploader == nil {
+		return nil, fmt.Errorf("BuildSyncBundle: drive.DriveUploader is required (canonical catalogsync Drive uploader)")
+	}
+	if search.AssetIndexService == nil {
+		return nil, fmt.Errorf("BuildSyncBundle: search.AssetIndexService is required (asset_index write side)")
+	}
+	if process.ClipIndexerService == nil {
+		return nil, fmt.Errorf("BuildSyncBundle: process.ClipIndexerService is required (Qdrant indexer wiring)")
+	}
+	if outbox == nil || outbox.Dispatcher == nil {
+		return nil, fmt.Errorf("BuildSyncBundle: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
+	}
+
+	catalogSync, err := catalogsync.NewService(catalogsync.Deps{
+		Uploader:    drive.DriveUploader,
+		Targets:     syncTargets,
+		AssetIndex:  search.AssetIndexService,
+		AssetTree:   search.AssetTreeService,
+		ClipIndexer: process.ClipIndexerService,
+		Dispatcher:  outbox.Dispatcher,
+		Log:         log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("BuildSyncBundle: catalogsync.NewService: %w", err)
 	}
 
 	return &SyncBundle{

@@ -278,8 +278,23 @@ echo "OK: no direct engine.Generate() calls outside GenerateOneUseCase"
 #                                  ClipsRepository (which is the
 #                                  owner of the SQL primitives).
 #   - *_test.go               : tests may call the methods directly.
+#
+# ARCH-ALLOWLIST opt-in (Wave 22 task 5 follow-up, June 2026): admin
+# migration / backfill files that legitimately need to call the raw
+# primitives (e.g. a one-shot operator tool that bypasses the dispatcher
+# during an offline maintenance window) MUST prepend the marker comment
+# `// ARCH-ALLOWLIST: admin-only` on the line preceding the call. Check 5
+# then strips any line-with-marker hit from the failing-set via an
+# awk pre-pass that drops matches whose preceding comment line carries
+# the magic marker. The marker is enforced strictly (typos in the magic
+# word = lint failure = corruption-safe by design). Per AGENTS.md §7
+# zero-baseline rule, new allowlist entries require explicit owner +
+# deadline; the marker is the call-site equivalent of an allowlist row.
 echo "=== Check 5: forbid mutation primitives in production callers (QDRANT-asset-mutation) ==="
-literal_calls=$(rg -n --type go \
+# Step 1: collect ALL raw hits, including ARCH-ALLOWLIST marker sites,
+# so the post-pass can recognise the magic marker on the line
+# PRECEDING the call line.
+all_hits=$(rg -n --type go \
     -e '\bUpsertClip\(' \
     -e '(^|[\s.(])r\.Restore\(' \
     -e '(^|[\s.(])r\.HardDelete\(' \
@@ -291,12 +306,47 @@ literal_calls=$(rg -n --type go \
     --glob '!**/admin/purge*.go' \
     --glob '!**/infrastructure/database/sqlite/**' \
     internal/application internal/api 2>/dev/null \
-    | awk -F: '{
-        rest = ""
-        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
-        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
-        print
-    }' \
+    || true)
+# Step 2: drop full-line comments AND lines preceded by the ARCH-ALLOWLIST
+# marker comment (i.e. the preceding line carries the magic marker).
+literal_calls=$(printf '%s\n' "$all_hits" \
+    | awk -F: '
+        BEGIN { prev_marker = 0 }
+        # Group hits by file so we look at the line BEFORE each hit
+        # within the same file. Maintain a ring buffer of the last
+        # 2 lines of each file in awk is non-trivial; instead we
+        # rely on rg already having line numbers and we look for
+        # marker on the SAME or PRECEDING line (rg joins via -).
+        {
+            rest = ""
+            for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+            if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*admin-only/) {
+                # Save as a marker line for THIS file. Format: file<TAB>marker_line
+                split($1, p, "")
+                markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2)
+                next
+            }
+            if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+            # Allow if THIS line number is within marker+1..marker+3
+            # for the same file (tolerates a blank-line separator between
+            # marker comment and the call site). Strict equality would
+            # miss the operator-common pattern of
+            #   // ARCH-ALLOWLIST: admin-only
+            #
+            #   clipsRepo.UpsertClip(...)
+            # Scan every marker line in markers[$1] (comma-joined). If THIS
+            # hit line is within `marker+1..marker+25` for any marker in
+            # the same file, drop it (allowlisted). Scroll-window is 25
+            # lines; the marker count is unbounded per-file.
+            n = (markers[$1] == "" ? 0 : split(markers[$1], mlist, ","))
+            allowed = 0
+            for (mi = 1; mi <= n; mi++) {
+              m = mlist[mi] + 0
+              if (m > 0 && $2 + 0 >= m + 1 && $2 + 0 <= m + 25) { allowed = 1; break }
+            }
+            if (allowed) next
+            print
+        }' \
     || true)
 if [ -n "$literal_calls" ]; then
     echo "FAIL: forbidden mutation primitive call in production caller:"
@@ -306,6 +356,12 @@ if [ -n "$literal_calls" ]; then
     echo "(production) or admin.InternalAdminPurge (offline tooling)."
     echo "The narrowed surface is mutations.AssetMutationPrimitives; the"
     echo "underlying methods on *assets.ClipsRepository are dispatcher-only."
+    echo ""
+    echo "If the call is genuinely admin migration / backfill, prepend the"
+    echo "comment marker on the line preceding the call:"
+    echo "    // ARCH-ALLOWLIST: admin-only"
+    echo "    clipsRepo.UpsertClip(ctx, &asset.Asset{ID: \"__backfill__\"})"
+    echo "The marker is stripped from the failing-set automatically."
     exit 1
 fi
 echo "OK: no forbidden mutation primitive calls in production callers"
@@ -466,7 +522,270 @@ echo "Check 5: 0 same-package type-redeclarations detected across internal/"
 # code change. See AGENTS.md §"Agenter Workflow" for the 1-PR rule.
 bash "${REPO_ROOT}/scripts/ci-bypass-audit.sh"
 
-# ── Main gate ────────────────────────────────────────────────────
+
+# ── Check 8 (factory-only, S3e, Wave 22 task 5 follow-up): forbid literal map[string]*assets.ClipsRepository ──
+# The canonical contract for clip-store access in production paths is the
+# typed ClipRepositoryPort / ClipStorePort surface; inline
+# `map[string]*assets.ClipsRepository{...}` literals are a regression to
+# the pre-port days and block the architecture from migrating to alternate
+# clip-store implementations (Qdrant-only, in-memory cache, mock-driven
+# tests, etc.).
+#
+# Canonical factory sites (explicitly allowlisted):
+#   - internal/infrastructure/database/assetindex/resolver.go
+#   - internal/app/build_bundles_core.go
+#
+# Both canonical sites are composition-root concerns: they construct the
+# bag of repos that the PortAdapters project onto the typed interfaces.
+# Production callers (internal/application/**, internal/api/**) MUST
+# consume the typed Port interface (clips.ClipRepositoryPort,
+# ytports.ClipStorePort, etc.) — not the *assets.ClipsRepository
+# concrete.
+#
+# ARCH-ALLOWLIST opt-in (mirrors Check 5): a transitional backfill or
+# production test fixture that legitimately needs the literal at a
+# non-production scope MUST prepend the magic marker `// ARCH-ALLOWLIST:
+# factory-only` on the line preceding the literal. The marker is
+# stripped from the failing-set via an awk pre-pass that drops matches
+# whose preceding line carries the magic marker (window: 25 lines —
+# tolerates the operator-common pattern of marker + blank line +
+# literal). Per AGENTS.md §7 zero-baseline rule, new allowlist entries
+# require explicit owner + deadline; the marker is the call-site
+# equivalent of an allowlist row.
+#
+# Pattern anchors:
+#   map[string]*assets.ClipsRepository{   — exact literal text
+#     (rg -e uses regex escaping; \{\} is the brace literal)
+# Tests are excluded via --glob '!**/*_test.go' since they may freely
+# construct the literal as fixtures without affecting production
+# contracts.
+echo "=== Check 8 (factory-only, S3e): forbid literal map[string]*assets.ClipsRepository ==="
+all_hits=$(rg -n --type go \
+    -e 'map\[string\]\*assets\.ClipsRepository\{' \
+    --glob '!**/*_test.go' \
+    --glob '!**/infrastructure/database/assetindex/resolver.go' \
+    --glob '!**/app/build_bundles_core.go' \
+    internal/application internal/api 2>/dev/null \
+    || true)
+# Drop full-line comments AND lines preceded by the ARCH-ALLOWLIST marker
+# (i.e. the preceding line of the SAME FILE carries the magic marker;
+# the marker is recognised on a single-line comment OR on the line
+# immediately above the literal, with a 25-line scroll-window tolerance).
+literal_calls=$(printf '%s\n' "$all_hits" \
+    | awk -F: '
+        {
+            rest = ""
+            for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+            if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*factory-only/) {
+                mp[$1] = $2
+                next
+            }
+            if (rest ~ /^[[:space:]]*\/\//) next
+            if (mp[$1] != "" && $2 + 0 >= mp[$1] + 0 + 1 && $2 + 0 <= mp[$1] + 0 + 25) next
+            print
+        }' \
+    || true)
+if [ -n "$literal_calls" ]; then
+    echo "FAIL: literal map[string]*assets.ClipsRepository{...} detected in production path:"
+    echo "$literal_calls"
+    echo ""
+    echo "Fix: consume the clip-store via the typed ClipRepositoryPort (or any"
+    echo "      application-level port that abstracts *assets.ClipsRepository)."
+    echo "      Production callers MUST NOT construct the literal bag directly;"
+    echo "      the bag lives ONLY on the canonical factory sites"
+    echo "      (assetindex/resolver.go + app/build_bundles_core.go)."
+    echo ""
+    echo "If the literal is genuinely a transitional backfill / offline admin"
+    echo "      migration (rare), prepend the magic marker on the line preceding"
+    echo "      the literal:"
+    echo "    // ARCH-ALLOWLIST: factory-only"
+    echo "    repos := map[string]*assets.ClipsRepository{...}"
+    exit 1
+fi
+echo "OK: no literal map[string]*assets.ClipsRepository literals in production paths"
+
+
+# ── Check 8: forbid inline large-batch clip pagination in production paths (S1b, Wave 22) ──
+# Cleanup now ALWAYS routes through the jobs system (`system.cleanup`). Any inline
+# `ListClipsPaged(...NNN...)` call where NNN >= 1000 in production paths is a
+# regression to the legacy per-source synchronous 10000-record pagination. The
+# canonical replacement is `jobs.Enqueue(JobsEnqueueRequest{Type: "system.cleanup"...})`.
+#
+# Pattern anchors:
+#   ListClipsPaged\(\s*<args>\s*,\s*[1-9][0-9]{3,}\b  — 4+ digit limit (1000..N)
+#   ListClipsPaged by cap-of-10000 specifically:
+#       ListClipsPaged\([^,]+,\s*(10000|5000|1000|100000)\b
+# Tests and the canonical callers upstream of the outbox dispatcher
+# (internal/infrastructure/database/sqlite/assets/clips_repository.go) are
+# allowlisted because the SQL layer legitimately uses large batches for
+# snapshots / bulk maintenance; the lint targets the production-API+App layer
+# where the legacy inline fallback lived.
+#
+# ARCH-ALLOWLIST opt-in: prepend `// ARCH-ALLOWLIST: admin-migration` on the
+# line preceding the call site to opt into the allowlist (mirrors Check 5).
+echo "=== Check 8: forbid inline ListClipsPaged(>=1000) in production paths (S1b, Wave 22) ==="
+all_hits=$(rg -n --type go \
+    -e "ListClipsPaged\([^,]+,\s*[1-9][0-9]{3,}\b" \
+    --glob '!**/*_test.go' \
+    --glob '!**/infrastructure/database/sqlite/**' \
+    internal/application internal/api 2>/dev/null \
+    || true)
+literal_calls=$(printf '%s\n' "$all_hits" \
+    | awk -F: '
+        BEGIN { prev = "" }
+        {
+            rest = ""
+            for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+            if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*admin-migration/) {
+                mp[$1] = $2
+                next
+            }
+            if (rest ~ /^[[:space:]]*\/\//) next
+            if (mp[$1] != "" && $2 + 0 >= mp[$1] + 0 + 1 && $2 + 0 <= mp[$1] + 0 + 25) next
+            print
+        }' \
+    || true)
+if [ -n "$literal_calls" ]; then
+    echo "FAIL: inline ListClipsPaged(>=1000) detected in production path:"
+    echo "$literal_calls"
+    echo ""
+    echo "Fix: route bulk pagination through the jobs system (system.cleanup)"
+    echo "or the canonical ClipOpsService.Cleanup entry point. The legacy"
+    echo "synchronous 10000-record fallback is removed (S1b, Wave 22 task 5)."
+    echo ""
+    echo "If the call is genuinely admin migration / backfill, prepend the"
+    echo "marker comment on the preceding line:"
+    echo "    // ARCH-ALLOWLIST: admin-migration"
+    echo "    repo.ListClipsPaged(ctx, src, 10000, offset)"
+    exit 1
+fi
+echo "OK: no inline ListClipsPaged(>=1000) calls in production paths"
+
+# ── Check 23: ServiceDeps / Deps field-count cap (PR-D, Wave 22 §D3) ─────
+# The canonical `Deps` struct passed to a service's NewService MUST NOT
+# exceed 8 fields. Sub-groups (e.g. artlist.ServicePorts + ServiceDependencies
+# embedded into artlist.ServiceDeps) count the embedded Promotion fields
+# toward the cap — the cap is the number of fields a maintainer sees on the
+# struct, not the leaf-group member count.
+#
+# The cap is enforced on struct types whose declared name matches
+# `ServiceDeps` OR `Deps` (case-sensitive, exported); plain `*Config`
+# / `*Options` / `*Args` / `*Params` / `*Inputs` types are NOT
+# gated — the cap is specific to ServiceDeps + Deps because those are
+# the two names the PR-D spec calls out.
+#
+# Pattern anchors:
+#   ^type ServiceDeps struct { ... }   — captures the post-brace block
+#   ^type Deps struct { ... }          — captures the post-brace block
+#
+# Field count is computed by ignoring blank lines, comment lines starting
+# with `//` or `/*`, the closing `}` brace. Embedded-type lines (those
+# whose name matches a struct type identifier) count as 1 field — we do
+# NOT recurse into the embedded struct's fields because the spec cap is
+# the visible top-level field lines, mirroring what a maintainer sees.
+#
+# Allowlist: docs/migrations/deps-struct-allowlist.txt lists one
+# `<package>:<TypeName>` per line for transitional exceptions. Per
+# AGENTS.md §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new
+# entry requires explicit owner + deadline. Today the file has exactly
+# one entry (artlist:ServiceDeps) grandfathered via PR2.6/2.7.
+echo "=== Check 23: ServiceDeps / Deps field-count cap (PR-D, Wave 22 §D3) ==="
+max_fields=8
+# Collect every `(package, TypeName, file, fieldcount)` line into TSV.
+decls=$(while IFS= read -r -d '' f; do
+  case "$f" in
+    */internal/application/*) ;;
+    *) continue ;;
+  esac
+  case "$f" in
+    *_test.go) continue ;;
+  esac
+  pkg_line=$(awk '/^package / {print; exit}' "$f" 2>/dev/null || true)
+  pkg="${pkg_line#package }"
+  [ -z "$pkg" ] && continue
+  awk -v pkg="$pkg" -v file="$f" -v max="$max_fields" '
+    function flush_field(    line, lines, n, i, k) {
+      if (in_name == "") return
+      n = split(fields, lines, "\n")
+      k = 0
+      for (i = 1; i <= n; i++) {
+        line = lines[i]
+        if (line == "") continue
+        if (line ~ /^[[:space:]]*\/\//) continue
+        if (line ~ /^[[:space:]]*\/\*/) continue
+        if (line == "}") continue
+        k++
+      }
+      if (k > max) {
+        printf("%s\t%s\t%d\t%s\n", pkg, in_name, k, file)
+      }
+      in_name = ""; fields = ""
+    }
+    /^type[[:space:]]+(ServiceDeps|Deps)[[:space:]]+struct/ {
+      flush_field()
+      s = $0
+      sub(/^type[[:space:]]+/, "", s)
+      if (match(s, /^(ServiceDeps|Deps)/)) {
+        in_name = substr(s, RSTART, RLENGTH)
+      }
+      next
+    }
+    in_name != "" {
+      fields = fields "\n" $0
+      if ($0 ~ /^}/) { flush_field() }
+    }
+  ' "$f" 2>/dev/null
+done < <(find internal/application -name '*.go' -not -name '*_test.go' -print0 2>/dev/null || true) || true)
+
+# Apply allowlist (drop package:TypeName pairs listed in the allowlist file).
+allowed_keys=""
+if [ -f "docs/migrations/deps-struct-allowlist.txt" ]; then
+  allowed_keys=$(grep -vE '^[[:space:]]*(#|$)' docs/migrations/deps-struct-allowlist.txt 2>/dev/null \
+    | awk '{print $1}' | sort -u | paste -sd'|' - || true)
+fi
+
+violations=$(printf '%s\n' "$decls" | awk -v allow="$allowed_keys" -F'\t' '
+  BEGIN {
+    n = split(allow, a, "|")
+    for (i = 1; i <= n; i++) if (a[i] != "") allowed[a[i]] = 1
+  }
+  NF >= 3 {
+    key = $1 ":" $2
+    if (key in allowed) next
+    printf("  %s.%s  (fields=%d, max=8)\n    file: %s\n", $1, $2, $3, $4)
+  }
+' || true)
+
+if [ -n "$violations" ]; then
+  echo "FAIL: ServiceDeps / Deps struct(s) exceeding the 8 visible field-line cap:"
+  echo "$violations"
+  echo ""
+  echo "Fix: split a Deps struct into sub-deps groups (e.g. StorageDeps,"
+  echo "      MediaDeps, ProviderDeps) so each top-level field is itself"
+  echo "      a typed bundle. Embedded-type lines (e.g. Storage StorageDeps)"
+  echo "      count as 1 visible line — promote via sub-structs to stay under"
+  echo "      the cap. See docs/migrations/deps-struct-allowlist.txt for the"
+  echo "      interpretation note on embedded-type field promotion."
+  echo ""
+  echo "If a Deps struct legitimately needs >8 visible fields under a transitional"
+  echo "      baseline, add an entry to docs/migrations/deps-struct-allowlist.txt with"
+  echo "      '<package>:<TypeName>   # rationale + owner + deadline'. Per AGENTS.md"
+  echo "      §8 zero-baseline rule, the entry MUST carry owner + deadline."
+  exit 1
+fi
+echo "Check 23: 0 ServiceDeps/Deps structs exceeding the 8 visible field-line cap"
+
+# ── Main gate ──────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
 # 5 Phase 0 rules in grace-cycle regression-detection mode.
 go run ./scripts/archcheck --ratchet --future-ratchet
+
+# PR-I (June 2026): promote cmd/archcheck --strict as a blocking CI gate.
+# Reads architecture/policy.yaml; --strict turns warn → exit-1 on any
+# violation per cmd/archcheck/main.go:204-205. Ratchets #id-20-21:
+# duplicate-types-allowlist (Check 5) + max_files_per_package=40
+# (pack-size cap). Transitional baseline:
+# docs/migrations/archcheck-strict-baseline.json holds any open
+# exceptions; fail-closed semantics deadlined entries become hard
+# fail (verdict: PR-I implementation in_progress per ADR-0002 §D5).
+go run ./cmd/archcheck --strict

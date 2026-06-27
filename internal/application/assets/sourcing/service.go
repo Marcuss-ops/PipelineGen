@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -338,12 +337,37 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 		_ = s.assetTree.UpsertNode(ctx, node)
 	}
 
-	// ── 13. Trigger async enrichment + indexing ─────────────────────
+	// ── 13. Trigger async enrichment + indexing via canonical jobs
+	// system (S1a, June 2026). The previous implementation used
+	// `concurrent.SafeGo` + `context.WithoutCancel` to detach the ctx
+	// from the caller's lifetime, simulating a background job inside
+	// RegisterFromYouTube — forbidden by AGENTS.md §7 + Pattern 8.
+	// Canonical path: enqueue a `media.enrich` job; the worker
+	// registered in internal/application/clips/media_enrich_worker.go
+	// runs the EnrichAndIndex pipeline in the broker pool / remote
+	// worker with the registry's 3-minute hard cap. For backwards
+	// compatibility the legacy EnrichmentPort.EnrichAndIndex call is
+	// preserved as a no-op fallback when the jobs port is not wired
+	// (test fixtures / partial deployments).
 	indexed := s.enrichment != nil
-	if indexed {
-		concurrent.SafeGo("sourcing-enrich", func() {
-			_ = s.enrichment.EnrichAndIndex(context.WithoutCancel(ctx), clipID, fetched.LocalPath, source)
-		})
+	if indexed && s.jobs != nil {
+		if _, err := s.jobs.Enqueue(ctx, EnqueueRequest{
+			Type:       "media.enrich",
+			MaxRetries: 1,
+			Payload: JobPayload{
+				"asset_id":   clipID,
+				"source":     source,
+				"local_path": fetched.LocalPath,
+			},
+		}); err != nil {
+			s.log.Warn("failed to enqueue media.enrich job; clip is saved (operator can reindex via POST /api/media/clips/:id/reindex)",
+				"clip_id", clipID, "error", err)
+		}
+	} else if indexed {
+		// jobs port not wired (test fixture): leave indexStatus signalling
+		// but skip the legacy direct call — the goroutine path is gone.
+		s.log.Debug("jobs port not wired; skipping enrichment dispatch (test fixture path)",
+			"clip_id", clipID)
 	}
 
 	// ── 14. Related clips via search providers ──────────────────────

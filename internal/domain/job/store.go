@@ -31,6 +31,26 @@ type Store interface {
 	// List returns jobs matching the given filter.
 	List(ctx context.Context, filter Filter) ([]Job, error)
 
+	// FindActiveByKey returns the most recent job matching the given
+	// active_key with a non-terminal status, or nil if none. The
+	// canonical pre-INSERT dedup primitive for active-key idempotency.
+	FindActiveByKey(ctx context.Context, activeKey string) (*Job, error)
+
+	// FindByTypeAndCorrelation returns the most recent job matching the
+	// (type, correlation_id) pair regardless of status, or nil if none.
+	// The canonical pre-INSERT dedup primitive for correlation-id
+	// idempotency (companion to UNIQUE-constraint rescue on INSERT).
+	FindByTypeAndCorrelation(ctx context.Context, jobType string, correlationID string) (*Job, error)
+
+	// ListEvents returns all events on a job's timeline in created_at
+	// ascending order. Used by the timeline view in the operator UI.
+	ListEvents(ctx context.Context, jobID string) ([]Event, error)
+
+	// Retry re-enqueues a job whose current status is RETRY_WAIT or
+	// FAILED — used for operator-triggered manual retries or for the
+	// (type, correlation_id) post-completion resubmit path.
+	Retry(ctx context.Context, id string) (*Job, error)
+
 	// ClaimNext claims the oldest queued job for the given worker,
 	// setting status=LEASED and the lease expiry.
 	ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*Job, error)
@@ -59,4 +79,34 @@ type Store interface {
 
 	// DeadLetter archives a job that exhausted retries into the dead_letter_jobs table.
 	DeadLetter(ctx context.Context, id string, errMsg string) error
+}
+
+// JobBroker is the canonical port under which any persistence
+// implementation declares conformance (compile-time assertion in
+// the adapter's package: `var _ job.JobBroker = (*Adapter)(nil)`).
+//
+// Today the in-tree adapter is *SQLiteStore
+// (internal/infrastructure/database/sqlite/jobs/repository.go).
+// A future PostgreSQL adapter (post-godlike/06 multi-node) declares
+// the same assertion in its own repository file; the assertion + the
+// shared Store interface are the seam that lets the application
+// layer depend on a portable port instead of the concrete implementation.
+//
+// Shape (B) — PR-B, Wave 22, June 2026: embed Store so the port's
+// total surface equals Store's surface today. Future broker-specific
+// primitives (e.g. a cross-node reservation API) extend this interface
+// here without modifying the canonical Store contract; adapters that
+// cannot implement them stay out of the port (per godlike/07 "no
+// fake availability"). Embedding over a type alias (`type JobBroker
+// = Store`) is the cheaper-than-alias surface convention: a future
+// type-alias would force consumers to spell the alias against every
+// port reference, and a struct-equality test (`_ = JobBroker(nil)`)
+// would lose the ability to extend.
+//
+// Why embedding-not-alias (rationale): see ADR-0002 §D2
+// (`architecture/decisions/0002-p2-p3-roadmap.md`). A future PR-postgres
+// that proposes collapsing JobBroker to `type JobBroker = Store` MUST
+// first re-ratify §D2 — otherwise the rationale is silently lost.
+type JobBroker interface {
+	Store
 }

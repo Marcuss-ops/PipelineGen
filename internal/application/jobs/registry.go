@@ -130,6 +130,7 @@ const (
 	TypeBooksProcess        = "books.process"
 	TypeLessonsProcess      = "lessons.process"
 	TypeMediaReindex        = "media.reindex"
+	TypeMediaEnrich         = job.TypeMediaEnrich
 	TypeYouTubeRebuildST    = "youtube.rebuild_search_text"
 	TypeScriptGenerate        = job.TypeScriptGenerate
 	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
@@ -153,6 +154,7 @@ func Compose() *Registry {
 	r.Register(RegistryEntry{Type: TypeMediaStock, Description: "Stock media pipeline", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
 	r.Register(RegistryEntry{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(RegistryEntry{Type: TypeMediaReindex, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(RegistryEntry{Type: TypeMediaEnrich, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(RegistryEntry{Type: TypeBulUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── Video ──

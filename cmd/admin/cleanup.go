@@ -544,6 +544,10 @@ func runTestYouTube(args []string) error {
 	fmt.Printf("Registry: %v\n", deps.Registry != nil)
 
 	if deps.Lifecycle != nil {
+		// AGENTS.md §7 post-write save ctx — admin one-shot composition
+		// root; deferred lifecycle.Stop drains pending work and must
+		// survive the deferred caller-cancel scope so all teardown
+		// work runs to completion.
 		defer deps.Lifecycle.Stop(context.Background())
 	}
 	return nil

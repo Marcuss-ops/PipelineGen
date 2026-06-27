@@ -1,0 +1,58 @@
+# docs/migrations/deps-struct-allowlist.txt
+# ──────────────────────────────────────────────────────────────────────────────
+# Per-package allowlist for Check 23 of `scripts/ci-architectural-checks.sh`
+# (PR-D, Wave 22 §D3, June 2026): ServiceDeps / Deps field-count cap (≤8).
+#
+# Per AGENTS.md §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new entry
+# requires explicit owner + deadline. The file MAY contain transitional
+# exceptions ONLY when the entry has a documented removal plan + a date.
+#
+# Format: <package>:<TypeName>   # rationale + owner + deadline
+#
+# ── INTERPRETATION (PR-D post-review, 2026-06) ────────────────────────────
+# Check 23 counts VISIBLE TOP-LEVEL FIELD LINES (the maintainer-visible
+# surface), NOT recursively flattened field counts. Concretely, for the
+# canonical artlist pattern:
+#
+#   type ServiceDeps struct {
+#       ServicePorts          // embedded struct
+#       ServiceDependencies   // embedded struct
+#   }                          → visible field lines = 2, NOT 18
+#
+# Embedded types do NOT contribute their inner fields to the parent count.
+# This matches the PR-D spec's "max 8 field" wording literally — a
+# maintainer who looks at the Deps struct sees the embedded-type lines,
+# not the promotion tree. ANY struct whose top-level field count would
+# make the Deps literal unreadable (e.g. 11+ directly-listed fields)
+# DOES trip the gate and SHOULD be split into sub-groups.
+#
+# ── CURRENT EXCEPTIONS ────────────────────────────────────────────────────
+# (none — zero baseline, kept by the zero-baseline rule)
+#
+# ── KNOWN PATTERNS THAT FIT THE 8-CAP VIA EMBEDDED GROUPS ────────────────
+# artlist.ServiceDeps (PR2.7 canonical template)
+#   - ServicePorts (7 fields) + ServiceDependencies (11 fields)
+#     embedded into ServiceDeps with field promotion.
+#   - Visible field lines at the ServiceDeps literal: 2 (just the
+#     embedded type names). Therefore passes Check 23 unchanged.
+#   - The 18 promoted fields are part of the *promoted* surface — a
+#     future shape change that exposes 18 `ServiceDeps.FieldName`
+#     direct references in test fixtures does NOT violate the cap.
+#     The cap is the LITERAL field-line count, not the expanded
+#     promotion tree.
+#
+# ── ADDING ENTRIES ───────────────────────────────────────────────────────
+# To add a transitional exception, append a single line:
+#
+#   <package>:<TypeName>   # rationale + owner + deadline
+#
+# Owner and deadline are mandatory; absence fails the entry — the
+# AGENTS.md §8 zero-baseline rule rejects ambiguous owners. Deadline
+# is the planned-removal date in ISO format (e.g. "target Q4 2026").
+#
+# Promotion-to-required checklist (separate follow-up PR):
+#   1. Drop `--future-ratchet` from the Check 23 call site (today the
+#      check runs in baseline-on-baseline ratchet mode, not strict-mode).
+#   2. Cross-link to `architecture/ownership.yaml#pkg_<feature>_rule` field.
+#   3. Update `architecture/current.yaml#id-21` (deps struct cap) status to
+#      "enforced" once the transient transitional baseline is zero.

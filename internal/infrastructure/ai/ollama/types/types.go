@@ -1,5 +1,7 @@
 package types
 
+import "encoding/json"
+
 // OutputMode declares the contractual shape the model must emit for
 // a given request. Empty value means the caller does not require a
 // structured contract (legacy prose behaviour — PR 1 deprecates this
@@ -45,6 +47,21 @@ type TextGenerationRequest struct {
 	// See OutputModeScriptV1. When empty, the engine treats the
 	// request as legacy prose (PR 1: deprecated path).
 	OutputMode OutputMode
+
+	// Format is the Ollama native output-format constraint
+	// (P0.2, June 2026). When set, Ollama forces the model response
+	// to be syntactically valid JSON matching the supplied shape
+	// (a string such as `"json"` for unconstrained JSON, or a
+	// JSON-Schema object). This is a TOP-LEVEL body field on
+	// Ollama's `/api/chat` endpoint — it is NOT inside `options`.
+	//
+	// Concretely: when OutputMode == OutputModeScriptV1 the
+	// Generator.GenerateScript path sets Format to `"json"` so the
+	// script-engine contract is defended at both the prompt-suffix
+	// layer (engine.go::v1OutputInstruction) and the wire-format
+	// layer. Native json-mode does NOT enforce a schema — the
+	// suffix does that.
+	Format json.RawMessage `json:"format,omitempty"`
 
 	// Diversity knobs (all optional). When zero, GenerateScript fills in safe
 	// defaults — including a per-call random seed so two runs on the same

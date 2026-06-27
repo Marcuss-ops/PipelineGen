@@ -424,23 +424,70 @@ provenance that PR descriptions used to summarise.
 
 
 The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
-`context.Background()` in `internal/api/` handlers. The following sites are
-**intentionally exempt** per ARCHITECTURE.md §7:
+`context.Background()` in `internal/api/` handlers. Per ARCHITECTURE.md §7,
+a small number of sites legitimately detach from the parent-context lifetime
+via either `context.Background()` (composition roots, signal-init, shutdown
+drain, background goroutines with no parent request context) or
+`context.WithoutCancel(ctx)` (handler-routed paths that must finish
+post-write work — audit logs, cache bumps, outbox deliveries — after the
+original client has disconnected and the request context has been cancelled).
+The following sites are **intentionally exempt** with the documented reason
+for their detachment. **Gate scope** (read before adding new rows): of the 12
+`context.Background()` rows below, only the **4 that literally invoke
+`context.Background()` inside `internal/api/` handler or middleware code**
+are the direct allowlist matched by `Check 1` in
+`scripts/ci-architectural-checks.sh`:
+
+  - `internal/api/handlers/script/handlers/postwrite.go` (PostWrite save context)
+  - `internal/api/module_base.go` (rollback context for module startup failure)
+  - `internal/api/middleware/middleware_logger.go` (logSink shutdown drain)
+  - `internal/api/middleware/idempotency.go` (cleanupLoop background goroutine)
+
+The remaining **8 `context.Background()` rows** (composition roots,
+service-layer shutdown contexts, infra-layer background goroutines, and the
+`internal/api/server.go` row which uses `signal.NotifyContext()` — a different
+Go-canonical signal-init API, exempt for an entirely different reason than
+`Check 1`'s `context.Background()` ban) AND all **13 `context.WithoutCancel`
+rows** are **documentation-only** — there is currently no dedicated CI gate
+covering either group. Promoting either family to a dedicated CI gate
+(e.g. `Check 9` in the same listing-pattern style as `Check 1`) requires
+the canonical tracking entry
+`architecture/current.yaml#id-22 follow_up_tickets.PR-CONTEXT-NO-CANCEL-CI-GATE`
+(with owner + deadline + status; transitional baseline for the 8 currently-
+unlisted WithoutCancel sites documented with deadline 2026-07-15) before
+adding any new exempt site that does not fit the 4 Check-1-mapped rows
+above. Two families are present in the table below;
+the `Reason` column names the helper and the lifetime concern for each row
+so a future agent can verify the exemption is still appropriate before
+adding similar sites:
 
 | Site | Reason |
 |------|--------|
-| `internal/api/handlers/script/handlers/postwrite.go` | Post-write save context (30s timeout) — must survive client disconnect |
-| `internal/service/gemmamemory/service.go` | Post-write save context (30s timeout) |
-| `internal/service/scriptcore/write_script.go` | Post-write save context (30s timeout) |
-| `internal/jobs/worker.go` (finalizationCtx, lines ~142-146) | Finalization context for job outcome persistence (30s timeout) — must survive handler timeout so the worker can still mark the job as failed/completed/dead-lettered in the DB. Detached from `jobCtx` by design; detaching from `ctx` (worker lifecycle) would lose the outcome if the worker is shut down mid-job. |
-| `internal/app/init_core.go` | Top-level composition root (no parent context exists) |
-| `internal/api/server.go` | `signal.NotifyContext()` — canonical Go pattern |
-| `internal/api/module_base.go` (line ~105) | Rollback context for module startup failure — must survive parent cancel so Stop() can run |
-| `internal/service/translations/cache.go` | Defensive fallback when parentCtx is nil |
-| `internal/api/middleware/middleware_logger.go` (StopLogger, line ~27) | Shutdown/drain operation — calls `logSink.Stop(context.Background())` to drain pending log entries before process exit. Must survive any parent context cancellation during shutdown. |
-| `internal/api/middleware/idempotency.go` (cleanupLoop, line ~316) | Background cleanup goroutine (15-min ticker) garbage-collects expired idempotency keys from SQLite. Uses `context.WithTimeout(Background, 30s)` for bounded SQL execution; no parent request context exists. |
-| `internal/infrastructure/database/sqlite/logsink/sqlite_request_log_sink.go` (writer goroutine, lines ~161/166/179) | Background batch writer goroutine flushes request logs to SQLite via channel-buffered batching (100ms tick). No parent request context; the goroutine owns its lifecycle independently of any HTTP request. |
-| `internal/sources/artlist/search_cache.go` | Defensive fallback when parentCtx is nil |
+| `internal/api/handlers/script/handlers/postwrite.go` | `context.Background()` Post-write save context (30s timeout) — must survive client disconnect |
+| `internal/service/gemmamemory/service.go` | `context.Background()` Post-write save context (30s timeout) |
+| `internal/service/scriptcore/write_script.go` | `context.Background()` Post-write save context (30s timeout) |
+| `internal/jobs/worker.go` (finalizationCtx, lines ~142-146) | `context.Background()` Finalization context for job outcome persistence (30s timeout) — must survive handler timeout so the worker can still mark the job as failed/completed/dead-lettered in the DB. Detached from `jobCtx` by design; detaching from `ctx` (worker lifecycle) would lose the outcome if the worker is shut down mid-job. |
+| `internal/app/init_core.go` | `context.Background()` Top-level composition root (no parent context exists) |
+| `internal/api/server.go` | `context.Background()` `signal.NotifyContext()` — canonical Go pattern |
+| `internal/api/module_base.go` (line ~105) | `context.Background()` Rollback context for module startup failure — must survive parent cancel so Stop() can run |
+| `internal/service/translations/cache.go` | `context.Background()` Defensive fallback when parentCtx is nil |
+| `internal/api/middleware/middleware_logger.go` (StopLogger, line ~27) | `context.Background()` Shutdown/drain operation — calls `logSink.Stop(context.Background())` to drain pending log entries before process exit. Must survive any parent context cancellation during shutdown. |
+| `internal/api/middleware/idempotency.go` (cleanupLoop, line ~316) | `context.Background()` Background cleanup goroutine (15-min ticker) garbage-collects expired idempotency keys from SQLite. Uses `context.WithTimeout(Background, 30s)` for bounded SQL execution; no parent request context exists. |
+| `internal/infrastructure/database/sqlite/logsink/sqlite_request_log_sink.go` (writer goroutine, lines ~161/166/179) | `context.Background()` Background batch writer goroutine flushes request logs to SQLite via channel-buffered batching (100ms tick). No parent request context; the goroutine owns its lifecycle independently of any HTTP request. |
+| `internal/application/assets/providers/artlist/search_cache.go` (formerly `internal/sources/artlist/search_cache.go` — migrated June 2026 during `internal/sources/` → `internal/api/assets/` + `internal/application/` consolidation; this row documents the **Background** defensive call, the WithoutCancel post-write save site in the same file is documented in the next row) | `context.Background()` Defensive fallback when parentCtx is nil |
+| `internal/api/assets/voiceover/handler.go` (line ~225) | `context.WithoutCancel` Promo code-delivery finalisation — must survive client cancel so the user receives the Promo link after the request disconnects (10-min timeout) |
+| `internal/application/images/ingest.go` (line ~44) | `context.WithoutCancel` Image-ingest post-write save — must survive client disconnect for in-flight upload finalisation (60s timeout) |
+| `internal/application/images/ingest_direct.go` (line ~189) | `context.WithoutCancel` Image-ingest direct post-write save — same detachment for the direct (non-augmented) ingest path (30s timeout) |
+| `internal/application/voiceover/process.go` (lines ~221-226) | `context.WithoutCancel` Voiceover indexer post-write save — must survive request cancel after submit (2-min timeout) |
+| `internal/application/assets/providers/artlist/semantic_enricher.go` (line ~95) | `context.WithoutCancel` Artlist semantic-enricher post-write save — must survive handler cancel so the enrichment write completes (30s timeout) |
+| `internal/application/assets/providers/artlist/search_cache.go` (line ~64) | `context.WithoutCancel` Artlist search-cache bump — post-write save that must survive handler cancel (15s timeout) |
+| `internal/infrastructure/artlist/cache/cache.go` (line ~355) | `context.WithoutCancel` Artlist cache.lookup defensive fallback when parentCtx is nil (no fixed timeout; reads cache only) |
+| `internal/infrastructure/database/sqlite/scripts/translation_cache.go` (line ~178) | `context.WithoutCancel` Translation-cache write — must survive handler cancel for the bounded 3s SQLite write |
+| `internal/application/scripts/job_helpers.go` (line ~138) | `context.WithoutCancel` Scripts job-helpers finalisation — post-write save that must survive worker-cancel |
+| `internal/application/youtube/search/service.go` (line ~271; spec was line 267, drift +4 lines — likely a follow-on addition in the same file since the spec was written) | `context.WithoutCancel` YouTube search service cache-bump post-write save — must survive handler cancel (5s timeout) |
+| `internal/application/assets/monitor/semantic_matcher.go` (lines ~117, ~213) | `context.WithoutCancel` Asset-deletion / semantic-matcher post-write save — must survive handler cancel so the cleanup write completes (5s timeout) |
+| `internal/api/handlers/youtube/callbacks.go` (line ~167) | `context.WithoutCancel` YouTube-callback handler finalisation — must survive request cancel so the callback post-write save completes |
+| `internal/application/jobs/outbox/delivery.go` (line ~421) | `context.WithoutCancel` Outbox-delivery audit-log write — must survive worker cancel so the delivery receipt is recorded even on shutdown |
 
 ---
 

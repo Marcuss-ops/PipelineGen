@@ -90,6 +90,14 @@ func leaseTTLDefault(cfg *config.Config) time.Duration {
 // default). JobTypes is nil so the runner accepts any job type, matching
 // the pre-PR4.8 surface.
 //
+// PR-Polling / ADR-0002 §D6.5 (June 2026): the RunnerConfig now carries
+// a Backoff sub-struct (MaxBackoff / JitterFraction /
+// ConsecutiveEmptyThreshold) sourced from JobsConfig.PollMaxBackoff /
+// PollJitterFraction / PollConsecutiveEmptyBeforeBackoff, plus a
+// Notifier pointer (the in-process *SQLiteStore satisfies the
+// application-side QueueNotifier port via the compile-time assertion
+// at internal/application/jobs/notifier.go).
+//
 // Returns nil when the jobs bundle's Service / Dispatcher / Repo is
 // missing — the caller (lifecycle.go) gates the StartupStep append on
 // the returned pointer to preserve the partial-deploy safety net.
@@ -101,13 +109,52 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		return nil
 	}
 
+	// PR-Polling: parse polling knobs (PollMaxBackoff is a duration
+	// string per the project's YAML/env convention; falls back to 60s
+	// on parse error or empty value). The composition root is the
+	// single cfg-parse surface; the Worker receives parsed values.
+	pollMaxBackoff := 60 * time.Second
+	if deps.cfg.Jobs.PollMaxBackoff != "" {
+		if parsed, perr := time.ParseDuration(deps.cfg.Jobs.PollMaxBackoff); perr == nil && parsed > 0 {
+			pollMaxBackoff = parsed
+		} else if perr != nil {
+			deps.log.Warn("invalid VELOX_POLL_MAX_BACKOFF; using default 60s",
+				zap.String("raw", deps.cfg.Jobs.PollMaxBackoff), zap.Error(perr))
+		}
+	}
+	pollJitter := deps.cfg.Jobs.PollJitterFraction
+	if pollJitter < 0 {
+		pollJitter = 0
+	} else if pollJitter > 1 {
+		pollJitter = 1
+	}
+	pollConsecutiveEmpty := deps.cfg.Jobs.PollConsecutiveEmptyBeforeBackoff
+	if pollConsecutiveEmpty < 0 {
+		pollConsecutiveEmpty = 0
+	}
+
 	cfg := appjobs.RunnerConfig{
 		Workers:   workerDefault(deps.cfg),
 		PollEvery: 2 * time.Second,
 		LeaseTTL:  leaseTTLDefault(deps.cfg),
 		JobTypes:  nil,
+		Backoff: appjobs.BackoffConfig{
+			MaxBackoff:                 pollMaxBackoff,
+			JitterFraction:             pollJitter,
+			ConsecutiveEmptyThreshold:  pollConsecutiveEmpty,
+		},
+		// The in-process *SQLiteStore's Subscribe/Broadcast methods
+		// satisfy the application-side QueueNotifier port; the
+		// compile-time assertion at internal/application/jobs/
+		// notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)
+		// is the seam marker.
+		Notifier: deps.root.Jobs.Repo,
 	}
-	deps.log.Info("Job runner created", zap.Int("workers", cfg.Workers))
+	deps.log.Info("Job runner created",
+		zap.Int("workers", cfg.Workers),
+		zap.Duration("poll_max_backoff", cfg.Backoff.MaxBackoff),
+		zap.Float64("poll_jitter_fraction", cfg.Backoff.JitterFraction),
+		zap.Int("poll_consecutive_empty_threshold", cfg.Backoff.ConsecutiveEmptyThreshold))
 	return appjobs.NewRunner(
 		deps.root.Jobs.Repo,
 		deps.root.Jobs.Dispatcher,

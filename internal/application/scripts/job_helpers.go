@@ -135,6 +135,9 @@ func GenerateSceneVoiceovers(
 	if voService == nil || destReq == nil || len(scenes) == 0 {
 		return 0
 	}
+	// AGENTS.md §7 post-write save ctx — voiceover job helper writes
+	// must survive the request ctx cancel; the save-context is bounded
+	// by the script-job lifetime, not the request that triggered it.
 	voCtx := context.WithoutCancel(ctx)
 	successCount := 0
 	for i, sc := range scenes {

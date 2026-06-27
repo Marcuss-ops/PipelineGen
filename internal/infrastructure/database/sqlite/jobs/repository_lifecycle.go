@@ -267,17 +267,17 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	evtID := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
 	_, _ = r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		evtID, id, "job_queued", "job.Job retry activated", "{}", now)
+
+	// PR-Polling / ADR-0002 §D6.5 (June 2026): the requeued job
+	// transitions back to QUEUED; wake every sleeping Worker so the
+	// retry is picked up immediately. See repository.go::Create for
+	// the canonical pattern.
+	r.queueChanged()
+
 	return r.Get(ctx, id)
 }
 
 // ── Convenience Wrappers ─────────────────────────────────────────────────
-
-// RequeueExpiredLeasesNoArg is a convenience wrapper that passes time.Now()
-// and a default limit of 1000.
-func (r *SQLiteStore) RequeueExpiredLeasesNoArg(ctx context.Context) error {
-	_, err := r.RequeueExpiredLeases(ctx, time.Now(), 1000)
-	return err
-}
 
 // MarkRunningJobsOlderThanFailed moves stale leased/running jobs to failed
 // if their lease has expired beyond the given cutoff.

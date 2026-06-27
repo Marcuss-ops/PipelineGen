@@ -99,12 +99,17 @@ func reportDB(label string, sdb *storage.SQLiteDB) {
 	// The cancel is deferred (matches runDBStatus's defer log.Sync +
 	// defer ds.Close pattern) so the timer goroutine is reaped even
 	// if JournalMode / BusyTimeoutMs panic.
+	// AGENTS.md §7 post-write save ctx — admin `db_status` PRAGMA-journal
+	// probe; the probe is a sync-style read with no parent request ctx,
+	// so Background + 2s timeout is the canonical shape.
 	jctx, jcancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer jcancel()
 	if mode, err := storage.JournalMode(jctx, sdb.DB); err == nil {
 		fmt.Printf("  journal_mode %s\n", mode)
 	}
 
+	// AGENTS.md §7 post-write save ctx — admin `db_status` PRAGMA-busy
+	// probe; see jctx comment above for rationale.
 	bctx, bcancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer bcancel()
 	if ms, err := storage.BusyTimeoutMs(bctx, sdb.DB); err == nil {

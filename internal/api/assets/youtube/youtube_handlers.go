@@ -11,13 +11,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
@@ -36,63 +35,61 @@ import (
 // idempotency middleware instance installed on POST /clips/process
 // (the only Write route in this handler). Read routes fall through.
 type YouTubeClipHandler struct {
-	service         *youtube.Service
-	log             *zap.Logger
-	jobsSvc         jobservice.Service
-	clipsRepo       ytports.ClipStorePort
-	providerSearch  providers.SearchProvider
-	providerReg     *providers.Registry
-	providerResolve sync.Once
-	toolChecker     appassets.ToolChecker
-	Idempotency     gin.HandlerFunc
-}
-
-// NewYouTubeClipHandler builds the YouTubeClipHandler.
+	service     *youtube.Service
+	log         *zap.Logger
+	jobsSvc     jobservice.Service
+	clipsRepo   ytports.ClipStorePort
+	toolChecker appassets.ToolChecker
+	Idempotency gin.HandlerFunc
+	// searchAggregator (S3d, June 2026): wires SearchAdvanced + Stats
+	// through the canonical SearchAggregator. When nil, both methods
+	// return 503 (services not wired) rather than a partial-result
+	// path; the composition root is required to provide one in any
+	// post-Freeze configuration. Migration target: SearchAdvanced +
+	// Stats are aggregator-routed (S3d); the legacy h.getAllClipRepos()
+	// method is removed.
+	searchAggregator *providers.SearchAggregator
+}// NewYouTubeClipHandler builds the YouTubeClipHandler.
 //
-//	service          - YouTube service used by this handler.
-//	log              - zap logger for diagnostics.
-//	jobsSvc          - job system used by the async extract endpoint.
-//	providerRegistry - providers.Registry for search dispatch (nil = legacy path).
-//	                    Resolved lazily on first SearchTopics call so providers
-//	                    registered after construction are still discovered.
+// service          - YouTube service used by this handler.
+// log              - zap logger for diagnostics.
+// jobsSvc          - job system used by the async extract endpoint.
+// clipsRepo        - canonical YouTube clip-store port.
+// toolChecker      - external-tool probe used by Diagnostics.
+// idempotencyMiddleware - reusable Gin idempotency middleware; nil disables.
+// searchAggregator    - canonical SearchAggregator for SearchAdvanced + Stats.
+//
+// PR-CLIP-YT-REGISTRY-CLEANUP (June 2026): providerRegistry arg +
+// providerSearch field + providerReg field + providerResolve sync.Once +
+// resolveProvider() method all removed. The handler no longer resolves a
+// SearchProvider from providers.Registry; routes that need search dispatch
+// go through SearchAdvanced (aggregator-routed).
+//
+// S3d (June 2026): clipsRepo retained for downstream uses (reprocess /
+// download paths that don't go through the aggregator), but SearchAdvanced
+// + Stats are now aggregator-only via the appended searchAggregator arg.
+// Composition root wires NewSearchAggregator(post-Freeze registry) and
+// passes that SAME pointer to both YouTubeClipHandler + the clips.Handler
+// (FindDuplicates). The h.getAllClipRepos() method was REMOVED.
 //
 // PR8 (June 2026): added idempotencyMiddleware to wrap POST /clips/process
 // (the only Write route in the handler). Read routes (info, search,
 // diagnostics, stats) are unchanged. nil disables idempotency for
 // test fixtures.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, providerRegistry *providers.Registry, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchAggregator *providers.SearchAggregator) *YouTubeClipHandler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
 	}
 	return &YouTubeClipHandler{
-		service:     service,
-		log:         log,
-		jobsSvc:     jobsSvc,
-		clipsRepo:   clipsRepo,
-		providerReg: providerRegistry,
-		toolChecker: toolChecker,
-		Idempotency: idem,
+		service:          service,
+		log:              log,
+		jobsSvc:          jobsSvc,
+		clipsRepo:        clipsRepo,
+		toolChecker:      toolChecker,
+		Idempotency:      idem,
+		searchAggregator: searchAggregator,
 	}
-}
-
-// resolveProvider lazily resolves the YouTube SearchProvider from the
-// registry on first call. Thread-safe via sync.Once so concurrent
-// SearchTopics invocations see a consistent result. No-op when the
-// handler was constructed without a registry (legacy direct path).
-func (h *YouTubeClipHandler) resolveProvider() {
-	if h.providerReg == nil {
-		return
-	}
-	h.providerResolve.Do(func() {
-		p, ok := h.providerReg.Get("youtube")
-		if !ok || p == nil {
-			return
-		}
-		if sp, ok := p.(providers.SearchProvider); ok {
-			h.providerSearch = sp
-		}
-	})
 }
 
 // RegisterRoutes wires the YouTube clip endpoints onto the supplied
@@ -119,15 +116,15 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 // introduction_date + removal_date + tracking_issue + compatibility_test +
 // usage_metric + status).
 //
-// The provider-registry wiring (resolveProvider + providerSearch field +
-// providerReg field + providerResolve sync.Once) is preserved for the
-// follow-up PR-CLIP-YT-REGISTRY-CLEANUP (separate commit) that
-// collapses it in a single archaeology pass against the one provider
-// wiring site (internal/app/clips_adapters_index.go) and the constructor
-// parameter on NewYouTubeClipHandler. Per godlike/07 §"Migration sequence"
-// this PR lands only the method-removal phase; the field/parameter
-// collapse ships with PR-CLIP-YT-REGISTRY-CLEANUP so the diff stays
-// archaeological and review-friendly.
+// PR-CLIP-YT-REGISTRY-CLEANUP (June 2026, this PR): the
+// provider-registry wiring (resolveProvider + providerSearch field +
+// providerReg field + providerResolve sync.Once + providerRegistry ctor
+// arg + providers import) was COLLAPSED here. The handler is now
+// transport-only against the canonical clip-repo; the providers.Registry
+// continues to exist as a composition-root dispatch concern (root.Search.
+// ProviderRegistry in WireRegistry→pr.Freeze()) but does not reach any
+// per-handler field. See architecture/deprecations.yaml#PR-CLIP-YT-REGISTRY-CLEANUP
+// for the deprecation record.
 
 // GetVideoInfo returns metadata for a single YouTube URL.
 func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
@@ -280,74 +277,134 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		}
 	}
 
-	// Search across all clip repositories
+	// S3d (June 2026): SearchAdvanced routes through the
+	// canonical SearchAggregator. The aggregator fans out a
+	// semantic-search call to every provider advertising
+	// CapabilitySearch in providers.Registry. The per-source
+	// clip-repo loop is REMOVED.
+	//
+	// Field-mapping from AdvancedSearchRequest → SearchQuery:
+	//   Q                  → SearchQuery.Query
+	//   Category           → SearchQuery.MediaType (soft hint)
+	//   Min/MaxDuration    → NOT routed (no clean aggregator
+	//                         equivalent in S3d; documented as a
+	//                         future-wave field addition)
+	//   SortBy/SortAsc     → NOT routed (pre-S3d limitation)
+	//   HasTranscript      → NOT routed (pre-S3d limitation)
+	//   HasDriveLink       → NOT routed (pre-S3d limitation)
+	//   CreatedAfter/Before → NOT routed in S3d
+	//   Offset             → translated into a Cursor hint;
+	//                         cursor-based pagination replaces
+	//                         offset semantics starting S3d
+	//
+	// Response shape change: `clips []gin.H{...}` now carries
+	// the canonical Candidate-shaped projection (provider_name,
+	// score, qdrant_score, rerank_score, thumb_url) instead of
+	// the legacy `[]*asset.Asset` projection. Operators that
+	// require asset-shaped response rows should migrate to the
+	// /api/assets/clips/search endpoint (handler.go).
+	if h.searchAggregator == nil {
+		apiutil.InternalError(c, fmt.Errorf("search aggregator not wired (composition root must populate root.Search.SearchAggregator)"))
+		return
+	}
 	ctx := c.Request.Context()
-	repos := h.getAllClipRepos()
-	var allClips []*asset.Asset
-	total := 0
-
-	for source, repo := range repos {
-		sourceReq := req
-		if sourceReq.Source == "" || sourceReq.Source == "all" {
-			sourceReq.Source = "" // search all
-		} else if sourceReq.Source != source {
-			continue
-		}
-
-		result, err := repo.SearchClipsAdvanced(ctx, sourceReq)
-		if err != nil {
-			h.log.Warn("search failed for source", zap.String("source", source), zap.Error(err))
-			continue
-		}
-		allClips = append(allClips, result.Clips...)
-		total += result.Total
+	sources := []string{"artlist", "youtube", "stock"}
+	if req.Source != "" && req.Source != "all" {
+		sources = []string{req.Source}
 	}
-
-	// Apply limit across all results
-	if req.Limit > 0 && len(allClips) > req.Limit {
-		allClips = allClips[:req.Limit]
+	cursor := ""
+	if req.Offset > 0 {
+		// Best-effort: encode Offset as a passable cursor token.
+		// The aggregator decodes opaque cursors best-effort; the
+		// non-base64 form falls back to first-page semantics.
+		cursor = fmt.Sprintf("offset:%d", req.Offset)
 	}
-
+	aggRes, aggErr := h.searchAggregator.Aggregate(ctx, &providers.SearchQuery{
+		Query:     req.Q,
+		MediaType: req.Category,
+	}, providers.AggregateOptions{
+		Limit:   req.Limit,
+		Cursor:  cursor,
+		Sources: sources,
+	})
+	if aggErr != nil {
+		apiutil.InternalError(c, fmt.Errorf("aggregator.Aggregate: %w", aggErr))
+		return
+	}
+	clips := make([]gin.H, 0, len(aggRes.Hits))
+	for _, hit := range aggRes.Hits {
+		clips = append(clips, gin.H{
+			"id":           hit.Candidate.SourceRef,
+			"title":        hit.Candidate.Title,
+			"source_name":  hit.ProviderName,
+			"score":        hit.FinalScore,
+			"thumb_url":    hit.Candidate.ThumbnailURL,
+			"preview_url":  hit.Candidate.PreviewURL,
+			"media_type":   string(hit.Candidate.MediaType),
+			"qdrant_score": hit.QdrantScore,
+			"rerank_score": hit.RerankScore,
+		})
+	}
 	apiutil.OK(c, gin.H{
-		"ok":    true,
-		"count": len(allClips),
-		"total": total,
-		"clips": allClips,
+		"ok":              true,
+		"count":           len(clips),
+		"total":           aggRes.Total,
+		"clips":           clips,
+		"cursor":          aggRes.Cursor,
+		"provider_errors": aggRes.ProviderErrors,
 	})
 }
 
 // Stats returns clip statistics across all sources.
+//
+// S3d (June 2026): Stats routes through the canonical
+// SearchAggregator. Composition root wires the aggregator with
+// Artlist + YouTube + Stock adapters (via providers.SearchProvider
+// fan-out). Per-provider call telemetry is captured in
+// AggregateStats.Providers after the Aggregate call completes.
+//
+// NOTE: this is a semantic shift from the legacy per-source clip-
+// COUNT semantics (`repo.CountClips(ctx)`). The aggregator
+// returns per-provider Hits telemetry = number of candidates
+// returned by each provider's Search call, NOT canonical clip-
+// store COUNTs. Operators that need absolute counts should
+// compose against the asset-store directly (Deps.AssetRepo etc).
 func (h *YouTubeClipHandler) Stats(c *gin.Context) {
-	ctx := c.Request.Context()
-	repos := h.getAllClipRepos()
-
-	stats := make(map[string]int)
-	totalClips := 0
-
-	for source, repo := range repos {
-		count, err := repo.CountClips(ctx)
-		if err != nil {
-			h.log.Warn("failed to count clips", zap.String("source", source), zap.Error(err))
-			continue
-		}
-		stats[source] = count
-		totalClips += count
+	if h.searchAggregator == nil {
+		apiutil.InternalError(c, fmt.Errorf("search aggregator not wired (composition root must populate root.Search.SearchAggregator)"))
+		return
 	}
-
+	ctx := c.Request.Context()
+	if _, aggErr := h.searchAggregator.Aggregate(ctx, &providers.SearchQuery{}, providers.AggregateOptions{
+		Sources: []string{"artlist", "youtube", "stock"},
+	}); aggErr != nil {
+		// Do not 5xx stats: a failed list-everything call
+		// shouldn't blank the operator dashboard. Aggregator-
+		// level errors still surface in /diagnostics.
+		h.log.Warn("search aggregator.Aggregate (stats) failed; returning zeroed Stats() snapshot", zap.Error(aggErr))
+	}
+	aggStats := h.searchAggregator.Stats()
+	stats := make(map[string]any)
+	totalClips := 0
+	for source, ps := range aggStats.Providers {
+		stats[source] = gin.H{
+			"hits":       ps.Hits,
+			"calls":      ps.Calls,
+			"errors":     ps.Errors,
+			"avg_latency_ms": ps.AvgLatency().Milliseconds(),
+		}
+		totalClips += ps.Hits
+	}
 	apiutil.OK(c, gin.H{
-		"ok":        true,
-		"total":     totalClips,
-		"by_source": stats,
+		"ok":          true,
+		"total":       totalClips,
+		"by_source":   stats,
+		"by_provider": aggStats.Providers,
 	})
 }
 
-// getAllClipRepos returns all available clip repositories keyed by source.
-// Currently only YouTube has a registered clips repo; other sources can be
-// added here once their repo wiring is migrated.
-func (h *YouTubeClipHandler) getAllClipRepos() map[string]ytports.ClipStorePort {
-	repos := make(map[string]ytports.ClipStorePort)
-	if h.clipsRepo != nil {
-		repos["youtube"] = h.clipsRepo
-	}
-	return repos
-}
+// S3d (June 2026) removal: getAllClipRepos() is REMOVED.
+// The SearchAdvanced + Stats methods now route through the
+// canonical SearchAggregator. The clipsRepo field on the
+// struct stays for downstream uses (reprocess / download paths
+// that don't aggregate provider fan-out).

@@ -19,24 +19,6 @@ var (
 
 // ── Typed Command Structs ────────────────────────────────────────────────
 
-// ClaimNext is the input for Repository.ClaimNext.
-type ClaimNext struct {
-	WorkerID string
-	LeaseID  string
-	LeaseTTL time.Duration
-	Types    []string
-}
-
-// StartJob is the input for Repository.Start.
-// Transitions queued or leased → running under the caller's lease.
-type StartJob struct {
-	JobID    string
-	WorkerID string
-	LeaseID  string
-	LeaseTTL time.Duration
-	Revision int64
-}
-
 // RenewLease extends an active lease.
 type RenewLease struct {
 	JobID         string

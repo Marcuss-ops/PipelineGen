@@ -88,7 +88,12 @@ func (h *GenerateJobHandler) Handle(
 	var result domainScript.GenerationEnvelopeResult
 
 	if len(env.Items) == 1 {
-		// Single-item path.
+		// Single-item path (PR 7, June 2026).
+		// PR 7 contract: a single-item run still emits the canonical
+		// envelope shape (Items + Summary + Version=2). The previous
+		// code routed single-item runs through the `Single` field
+		// exclusively, requiring callers to special-case the JSON
+		// shape. The unified envelope removes that branch.
 		tracker := NewProgressTracker(progressFn, env.Items[0].ID)
 		single, err := h.one.Execute(ctx, env.Items[0], env.Preset, tracker)
 		if err != nil {
@@ -97,12 +102,24 @@ func (h *GenerateJobHandler) Handle(
 					zap.String("job_id", j.ID),
 					zap.Error(err))
 			}
-			return nil, err
+			// PR 7: emit a single-item envelope with the failure
+			// captured per-item so callers see a consistent shape.
+			result = domainScript.GenerationEnvelopeResult{
+				Version: domainScript.EnvelopeVersion,
+				OK:      false,
+				Items: []domainScript.GenerationEnvelopeItem{{
+					ItemID: env.Items[0].ID,
+					Error:  err.Error(),
+				}},
+				Summary: domainScript.GenerationEnvelopeSummary{
+					Total:     1,
+					Succeeded: 0,
+					Failed:    1,
+				},
+			}
+			return toMap(result)
 		}
-		result = domainScript.GenerationEnvelopeResult{
-			OK:     true,
-			Single: single,
-		}
+		result = singleEnvelopeResult(env.Items[0].ID, single)
 	} else {
 		// Multi-item path.
 		manyResult, err := h.many.Execute(ctx, env, h.cfg, progressFn)

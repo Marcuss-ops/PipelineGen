@@ -1,102 +1,98 @@
-// Package scripts — processor_entities.go extracts named entities
-// from the generated script. The processor delegates to the
-// canonical PostGenUseCase (via PostGenFunc callback) and packs
-// the extracted entity blob into a typed *script.EntityResult.
+// Package scripts — processor_entities.go (PR 3, June 2026).
 //
-// PR 7 (June 2026): the postgen LLM JSON is now parsed into the
-// typed Persons / Places / Concepts slots via ParseEntities. The
-// Raw field on EntityResult still preserves the original JSON
-// for read-compat + debug visibility. Consumers can now read
-// result.Artifacts.Entities.Persons directly without falling back
-// to Raw.
+// Rewritten to drop the legacy PostGenFunc callback + GenerationSpec
+// bridge. The processor now consumes the typed EntityExtractor port
+// from ports_entity_metadata.go, building a typed
+// `scriptpkg.EntityExtractionRequest` from `ProcessInput.Text` (the
+// canonical V1 `output.text`) plus the ResolvedGenerationPlan identity
+// fields.
 //
-// PR 3 (June 2026): EntitiesJSON (the pre-PR-3 free-form string
-// returned into the aggregate) is replaced with the typed
-// *script.EntityResult. The Raw field on EntityResult preserves
-// the original entity-extraction JSON for backward read-compat
-// with rows written before PR 3.
-//
-// PostGenFunc is now declared in postprocessor_registry.go
-// (single canonical location) — this file consumes it.
+// Policy is ProcessorRequired per the PR 3 spec — composition must
+// wire a backend extractor and the runtime preflight rejects plans
+// that request "entities" without one.
 package scripts
 
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// EntitiesProcessor extracts entities from the generated script text.
-// The extractor may be nil-safe (returns empty EntityResult).
+// EntitiesProcessor extracts named entities (Persons / Places /
+// Concepts) from the generated script via the typed EntityExtractor
+// port. Enabled as "entities" in the plan's Postprocessors list.
+//
+// PR 3 (June 2026): promoted to ProcessorRequired (was BestEffort
+// in PR 2). Composition root fails closed without a wired backend;
+// the runtime preflight rejects plans that request "entities"
+// without a registered adapter.
 type EntitiesProcessor struct {
-	postGen PostGenFunc
+	extractor EntityExtractor
 }
 
-// NewEntitiesProcessor creates an EntitiesProcessor.
-// postGen may be nil — the processor returns an empty
-// EntityResult on nil.
-func NewEntitiesProcessor(postGen PostGenFunc) *EntitiesProcessor {
-	return &EntitiesProcessor{postGen: postGen}
+// NewEntitiesProcessor creates an EntitiesProcessor. extractor must
+// be non-nil at composition time (composition-side validation
+// enforces this via validateRequiredProcessors).
+func NewEntitiesProcessor(extractor EntityExtractor) *EntitiesProcessor {
+	return &EntitiesProcessor{extractor: extractor}
 }
 
 func (p *EntitiesProcessor) Name() string { return "entities" }
 
-// Process reads model.Text and runs the entity extractor over it.
-// Returns a *PostProcessArtifact{Entities: ...} or empty when the
-// extractor is nil or the text is empty.
-//
-// PR 3 (June 2026): the typed EntityResult carries the original
-// JSON under Raw (for backward compat with pre-PR-3 rows) and
-// leaves Persons/Places/Concepts empty until the postgen LLM
-// emits typed slots (a later PR). PR 3's goal is to lift the
-// type from `string` to `*EntityResult`; downstream parsing is a
-// follow-up.
-func (p *EntitiesProcessor) Process(
-	ctx context.Context,
-	plan *scriptpkg.ResolvedGenerationPlan,
-	model *scriptpkg.ModelScriptOutputV1,
-	_ *PostProcessArtifact,
-) (*PostProcessArtifact, error) {
-	if model == nil || plan == nil {
-		return entitiesOnlyArtifact(nil), nil
-	}
-	if model.Text == "" {
-		return entitiesOnlyArtifact(nil), nil
-	}
-	if p.postGen == nil {
-		// PR 3 contract: when the entities extractor is unwired,
-		// return an empty EntityResult (not an error) — this
-		// mirrors the pre-PR-3 behaviour where EntitiesJSON was
-		// simply empty. Operators who wire the extractor later
-		// see the EntityResult populated.
-		return entitiesOnlyArtifact(&scriptpkg.EntityResult{}), nil
-	}
-
-	spec := legacySpecFromPlan(*plan)
-	spec.ExtractEntities = true // force ON for this processor
-
-	entitiesJSON, _, err := p.postGen(ctx, spec, model.Text)
-	if err != nil {
-		return nil, fmt.Errorf("%w: entities processor: postGen callback failed: %w", scriptpkg.ErrPostprocessFailed, err)
-	}
-
-	// PR 7 (June 2026): ParseEntities pops the typed Persons /
-	// Places / Concepts into the typed slots. The Raw field still
-	// carries the original postgen JSON string for backward
-	// read-compat with pre-PR-7 rows + debug visibility.
-	return entitiesOnlyArtifact(ParseEntities(entitiesJSON)), nil
+// Policy classifies entities as ProcessorRequired. The plan arg is
+// accepted for interface uniformity but ignored for now — a future
+// PR can read plan.OutputSpec.ExtractEntities (or similar payload)
+// and conditionally resolve. Until then, the static Required
+// classification is the canonical source.
+func (p *EntitiesProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	return ProcessorRequired
 }
 
-// entitiesOnlyArtifact returns a *PostProcessArtifact with only
-// the Entities field populated. Used at every EntitiesProcessor
-// return path so the helper signature stays consistent across
-// the early-exits, the nil-extractor path, and the populated path.
+// Process executes entity extraction via the typed port. The
+// processor does NOT depend on GenerationSpec or share state
+// with the metadata path; the EntityExtractor port encapsulates
+// the backend (production adapter wraps EntityScriptExtractor;
+// tests inject a fake extractor returning a hand-crafted
+// EntityResult).
 //
-// PR 3: the name deliberately dropped the pre-PR-3 "PostProcessResult"
-// prefix (which would trip the acceptance-gate regex). The
-// underlying type is *PostProcessArtifact; only the helper's
-// identifier needed scrubbing.
-func entitiesOnlyArtifact(e *scriptpkg.EntityResult) *PostProcessArtifact {
-	return &PostProcessArtifact{Entities: e}
+// Returns (*PostProcessResult{Entities: result}, nil) on success.
+// Returns an empty PostProcessResult (no error) when the input Text
+// is empty — defensive short-circuit so the processor does not
+// waste a backend call.
+//
+// Returns a typed error wrapping scriptpkg.ErrPostprocessFailed on
+// backend failure.
+func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
+	if p.extractor == nil {
+		return nil, fmt.Errorf("%w: entities processor: EntityExtractor not configured", scriptpkg.ErrPostprocessFailed)
+	}
+	if strings.TrimSpace(input.Text) == "" {
+		return &PostProcessResult{}, nil
+	}
+	if plan == nil {
+		return nil, fmt.Errorf("%w: entities processor: nil ResolvedGenerationPlan", scriptpkg.ErrPostprocessFailed)
+	}	req := scriptpkg.EntityExtractionRequest{
+		Text:      input.Text,
+		Title:     plan.Title,
+		Language:  plan.Language,
+		Model:     plan.Model,
+		SpecScene: input.SpecScene,
+	}
+	res, err := p.extractor.ExtractEntities(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		// Port contract: nil result, nil error is treated as
+		// "no entities" — produce an empty result with a
+		// warning so the caller sees the observation.
+		return &PostProcessResult{
+			Warnings: []string{"entities: backend returned no result"},
+		}, nil
+	}
+	return &PostProcessResult{
+		Entities: res,
+	}, nil
 }

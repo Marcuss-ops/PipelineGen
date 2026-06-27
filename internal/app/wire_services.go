@@ -24,6 +24,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
@@ -205,8 +206,52 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	// Wire the internal worker handler so external workers (including
 	// the Docker worker container) can register via /internal/v1/workers/register.
+	//
+	// PR-Progress (ADR-0002 §D6.4, June 2026): construct the
+	// ProgressCoalescer at composition time so the broker's Progress +
+	// Complete / Fail paths route through the coalesce seam. The
+	// coalescer holds the per-jobID in-memory map; the ticker GOROUTINE
+	// that fires the periodic Tick is launched by internal/app/lifecycle.go
+	// via a dedicated StartupStep (mirrors RetentionSweeper's wiring
+	// shape). Window is parsed here at composition time (cfg is
+	// available) and frozen into the coalescer; the goroutine just
+	// calls coalescer.Start(startCtx) — no config re-parse needed.
+	//
+	// Why construction-at-composition (NOT lazy / per-broker-instance):
+	// the coalescer needs lifetime parity with the broker to flush
+	// pending buckets on ctx.Done / broker shutdown. Holding it in Deps
+	// keeps the Stop() path symmetric (deferred to lifecycle.go Spec).
 	workerNodesRepo := workerassets.NewWorkerNodesRepository(root.DB.DB)
-	broker := localbroker.New(root.Jobs.Repo, workerNodesRepo)
+
+	progressCoalesceWindow := 100 * time.Millisecond
+	if cfg.Jobs.ProgressCoalesceWindow != "" {
+		if parsed, perr := time.ParseDuration(cfg.Jobs.ProgressCoalesceWindow); perr == nil && parsed >= 0 {
+			progressCoalesceWindow = parsed
+		} else if perr != nil {
+			log.Warn("invalid VELOX_PROGRESS_COALESCE_WINDOW; using default 100ms",
+				zap.String("raw", cfg.Jobs.ProgressCoalesceWindow), zap.Error(perr))
+		}
+	}
+	// Coalescer is ALWAYS constructed — when Window=0 the coalescer
+	// runs in passthrough mode (every Take → immediate SetProgress),
+	// which keeps the broker-side Progress + FlushJob paths uniform.
+	// Operators opt out via env VELOX_PROGRESS_COALESCE_WINDOW=0 (adds
+	// the "disable coalescing" escape hatch the ADR §D6.4 promises).
+	progressSink := root.Jobs.Repo // *SQLiteStore satisfies both ProgressSink and domainjob.Store.
+	progressCoalescer := localbroker.NewProgressCoalescer(progressSink, localbroker.ProgressCoalesceConfig{
+		Window: progressCoalesceWindow,
+	}, log)
+
+	broker, err := localbroker.New(localbroker.Deps{
+		Jobs:      root.Jobs.Repo,
+		Workers:   workerNodesRepo,
+		Progress:  progressSink,
+		Coalescer: progressCoalescer,
+		Log:       log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("wire broker: %w", err)
+	}
 	assetSvc := assetsjobs.NewService(
 		root.Search.AssetIndexService,
 		root.Repos.Assets,

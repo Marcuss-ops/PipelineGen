@@ -34,13 +34,15 @@ import (
 
 // fakeOllamaGen is a scriptOllamaGenerator injected into Engine for tests.
 type fakeOllamaGen struct {
-	calls     atomic.Int32
-	result    *ollamatypes.GenerationResult
-	returnErr error
+	calls       atomic.Int32
+	result      *ollamatypes.GenerationResult
+	returnErr   error
+	capturedReq atomic.Pointer[ollamatypes.TextGenerationRequest]
 }
 
-func (f *fakeOllamaGen) GenerateScript(_ context.Context, _ ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error) {
+func (f *fakeOllamaGen) GenerateScript(_ context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error) {
 	f.calls.Add(1)
+	f.capturedReq.Store(&req)
 	if f.returnErr != nil {
 		return nil, f.returnErr
 	}
@@ -513,6 +515,42 @@ func TestEngineGenerate_ModelScenesPreserved(t *testing.T) {
 		assert.Equal(t, i, sc.Index)
 		assert.Equal(t, "scene-"+itoaSimple(i), sc.ID)
 		assert.Equal(t, scriptpkg.SceneNarration, sc.Kind)
+	}
+}
+
+// TestEngineGenerate_AlwaysAppendsVSuffix (P0.1, June 2026): the
+// V1 output instruction is appended to the rendered prompt
+// unconditionally. Previously the conditional `if plan.OutputFmt
+// != "prose"` only emitted the suffix for non-prose requests.
+// After the default flip to "json" + validator rejecting "prose",
+// the canonical pipeline always appends the suffix so the model
+// is steered toward the canonical V1 contract regardless of
+// input shape.
+func TestEngineGenerate_AlwaysAppendsVSuffix(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil)
+
+	plans := []*scriptpkg.ResolvedGenerationPlan{
+		// No OutputFmt at all.
+		{Title: "omit", Language: "en", Mode: "text", RenderedPrompt: "Body A"},
+		// Explicit "json".
+		{Title: "json-explicit", Language: "en", Mode: "text", RenderedPrompt: "Body B", OutputFmt: "json"},
+	}
+
+	for _, p := range plans {
+		_, err := e.Generate(context.Background(), p)
+		require.NoError(t, err)
+		captured := gen.capturedReq.Load()
+		require.NotNil(t, captured, "fakeOllamaGen must have captured the request for plan %q", p.Title)
+		assert.Equal(t, p.RenderedPrompt, captured.Prompt[:len(p.RenderedPrompt)],
+			"rendered prompt body must flow through verbatim to ollama request for plan %q", p.Title)
+		assert.Equal(t, ollamatypes.OutputModeScriptV1, captured.OutputMode,
+			"OutputModeScriptV1 must be set on the ollama request for plan %q", p.Title)
+		assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]",
+			"V1 output instruction must be appended for plan %q", p.Title)
+		assert.Contains(t, captured.Prompt, "schema_version",
+			"V1 output instruction must include schema_version for plan %q", p.Title)
 	}
 }
 

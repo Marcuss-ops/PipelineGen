@@ -34,18 +34,28 @@ func NewClient(baseURL, model string, timeoutSeconds int) *Client {
 
 // Chat executes chat with retry, fallback, and circuit breaker.
 // Supports overriding the model by passing options["model"] as a string.
-func (c *Client) Chat(ctx context.Context, messages []types.Message, options map[string]any) (string, error) {
+//
+// The optional `format` argument is propagated to the wire as a
+// TOP-LEVEL `format` field on the `/api/chat` body (NOT inside
+// `options`). When non-nil Ollama forces the model response to be
+// syntactically valid JSON. P0.2 (June 2026): the script-engine
+// adapter passes a `"json"` RawMessage when caller requested
+// OutputModeScriptV1 so the V1 contract is enforced at both the
+// prompt-suffix and wire-format layers.
+//
+// Pass nil to disable native JSON-mode (free-form prose).
+func (c *Client) Chat(ctx context.Context, messages []types.Message, options map[string]any, format json.RawMessage) (string, error) {
 	model := c.model
 	if options != nil {
 		if optModel, ok := options["model"].(string); ok && optModel != "" {
 			model = optModel
 		}
 	}
-	return c.chatWithRetryAndFallback(ctx, model, messages, options, types.MaxRetries)
+	return c.chatWithRetryAndFallback(ctx, model, messages, options, format, types.MaxRetries)
 }
 
 // chatWithRetryAndFallback implements retry logic with model fallback
-func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, messages []types.Message, options map[string]any, maxRetries int) (string, error) {
+func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage, maxRetries int) (string, error) {
 	// Build fallback chain including current model
 	modelChain := []string{model}
 	if fallbacks, ok := modelFallbackChains[model]; ok {
@@ -67,7 +77,7 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, mes
 		resp, err := retry.DoWithValue(ctx, func() (string, error) {
 			idx := attempt
 			attempt++
-			r, e := c.doChatRequest(ctx, model, messages, options)
+			r, e := c.doChatRequest(ctx, model, messages, options, format)
 			if e != nil {
 				logger.Warn("Chat request failed",
 					zap.String("model", model),
@@ -102,7 +112,7 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, mes
 }
 
 // doChatRequest executes a single chat request
-func (c *Client) doChatRequest(ctx context.Context, model string, messages []types.Message, options map[string]any) (string, error) {
+func (c *Client) doChatRequest(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage) (string, error) {
 	if c.useVLLM {
 		return c.vllmChatRequest(ctx, model, messages)
 	}
@@ -126,6 +136,11 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 		Messages: messages,
 		Stream:   false,
 		Options:  options,
+		// P0.2 (June 2026): thread Format as a TOP-LEVEL body field.
+		// Ollama interprets a top-level `format` value as the JSON-mode
+		// constraint; an `options`-nested `format` would be silently
+		// ignored (or treated as a model param).
+		Format: format,
 	}
 
 	body, err := json.Marshal(req)

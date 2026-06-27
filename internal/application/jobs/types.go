@@ -124,6 +124,21 @@ type RunnerConfig struct {
 	PollEvery time.Duration
 	LeaseTTL  time.Duration
 	JobTypes  []string
+
+	// PR-Polling / ADR-0002 §D6.5 (June 2026): exponential-backoff
+	// subsumed into the config; null-valued here means the Worker
+	// uses the legacy fixed-poll behaviour (no backoff escalation).
+	// Composition root (lifecycle_job_runner.go) populates this
+	// from JobsConfig.{PollMaxBackoff, PollJitterFraction,
+	// PollConsecutiveEmptyBeforeBackoff}.
+	Backoff BackoffConfig
+
+	// Notifier is the wake-on-Enqueue port. Required by the Worker
+	// signature (compile-time seam marker at internal/application/jobs/
+	// notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)).
+	// Composition root wires the in-process *SQLiteStore today; a
+	// future postgres adapter (LISTEN/NOTIFY) plugs in here via Deps.
+	Notifier QueueNotifier
 }
 
 // Runner manages a pool of Workers. Depends on the domain Repository
@@ -150,7 +165,8 @@ func (r *Runner) Start(ctx context.Context) {
 
 	for i := 0; i < r.config.Workers; i++ {
 		workerID := fmt.Sprintf("%s_worker-%d", workerIDPrefix, i+1)
-		worker := NewWorker(workerID, r.repo, r.dispatcher, r.log, r.config.LeaseTTL, r.config.PollEvery, r.config.JobTypes)
+		worker := NewWorker(workerID, r.repo, r.dispatcher, r.config.Notifier,
+			r.log, r.config.LeaseTTL, r.config.PollEvery, r.config.Backoff, r.config.JobTypes)
 		r.workers = append(r.workers, worker)
 		go worker.Start(ctx)
 	}

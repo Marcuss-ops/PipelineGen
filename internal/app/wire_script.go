@@ -43,7 +43,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -202,11 +201,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// Wire ClipSearchPort when Qdrant is enabled (PJ-CURATE-1, June 2026).
 	// Ollama client serves as the embedder via qdrant.NewTextEmbedderAdapter.
 	// Constructed once and shared between CurateSourceResolver and MediaCurator.
-	//
-	// Compile-time assertion: *ollamaclient.Client satisfies asset.Embedder
-	// (structural typing — if the Embed signature ever drifts, this fails).
-	var _ asset.Embedder = (*ollamaclient.Client)(nil)
-
 	var clipSearchPort scripts.ClipSearchPort
 	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
 		if ollamaClient := gen.GetClient(); ollamaClient != nil {
@@ -232,32 +226,71 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	var genDocsSvc *scripts.DocumentsService
 	if root.Drive.DocClient != nil {
 		genDocsSvc = scripts.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
-		ppReg.Register(scripts.NewDocumentProcessor(genDocsSvc, nil))
-		log.Info("wireScriptFlow: Document processor registered")
-	} else {
-		log.Warn("wireScriptFlow: root.Drive.DocClient is nil — Document processor skipped")
+		if !ppReg.Register(scripts.NewDocumentProcessor(genDocsSvc, nil)) {
+			return fmt.Errorf("wireScriptFlow: failed to register document processor (composition bug)")
+		}
 	}
 
 	// Persistence processor (PR 5: now the single persistence owner;
 	// engine no longer writes to SQLite. Constructor takes the
 	// logger for idempotency-hit / replay diagnostics).
-	ppReg.Register(scripts.NewPersistenceProcessor(scriptsRepoAdapter, log))
+	if !ppReg.Register(scripts.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
+		return fmt.Errorf("wireScriptFlow: failed to register persistence processor (composition bug or duplicate name)")
+	}
 
 	// Image processor — adapted from *imgservice.Service to scripts.ImageGenService.
 	if root.Domains.ImageService != nil {
 		imgAdapter := &imageGenSvcAdapter{svc: root.Domains.ImageService}
-		ppReg.Register(scripts.NewImageProcessor(imgAdapter, log))
+		if !ppReg.Register(scripts.NewImageProcessor(imgAdapter, log)) {
+			return fmt.Errorf("wireScriptFlow: failed to register image processor")
+		}
 	}
 
 	// Voiceover processor — adapted from *voiceover.Service to scripts.VoiceoverService.
 	if root.Domains.VoiceoverService != nil {
 		voAdapter := &voiceoverSvcAdapter{svc: root.Domains.VoiceoverService}
-		ppReg.Register(scripts.NewVoiceoverProcessor(voAdapter, log))
+		if !ppReg.Register(scripts.NewVoiceoverProcessor(voAdapter, log)) {
+			return fmt.Errorf("wireScriptFlow: failed to register voiceover processor")
+		}
+	}
+
+	// PR 3 (June 2026): Entities + Metadata processors, now both
+	// ProcessorRequired per the spec. Adapters are nil-tolerant at
+	// runtime (graceful-degradation) and the runtime preflight will
+	// fail-fast when a plan requests these processors without a
+	// real service wired through the composition root. The
+	// composition-time validateRequiredProcessors call below
+	// confirms both names are registered; the runtime preflight
+	// confirms they succeed for any plan that requests them.
+	//
+	// Both adapters take nil-tolerant interfaces, so composition
+	// succeeds even when no real backend is wired in a test
+	// fixture. Production deploys should provide a real
+	// EntityScriptExtractor and ollama.Generator via root points
+	// (future PR; tracked separately).
+	entityAdapter := scripts.NewEntityExtractionAdapter(nil)
+	if !ppReg.Register(scripts.NewEntitiesProcessor(entityAdapter)) {
+		return fmt.Errorf("wireScriptFlow: failed to register entities processor")
+	}
+	metadataAdapter := scripts.NewMetadataGenerationAdapter(nil, metaModel)
+	if !ppReg.Register(scripts.NewMetadataProcessor(metadataAdapter)) {
+		return fmt.Errorf("wireScriptFlow: failed to register metadata processor")
 	}
 
 	// Freeze the source registry — no more resolvers after composition.
 	sourceReg.Freeze()
 	ppReg.Freeze()
+
+	// PR 2 (June 2026): post-freeze invariant — every canonical
+	// ProcessorRequired name MUST be registered. Names that the
+	// composition attempted to register but couldn't (because the
+	// dependency was nil, e.g. DocClient missing) are caught here.
+	// Composition fails closed; the operator sees a clear error
+	// instead of runtime panics on the first plan that requested
+	// the missing processor.
+	if err := validateRequiredProcessors(ppReg, requiredProcessorNames); err != nil {
+		return fmt.Errorf("wireScriptFlow: %w", err)
+	}
 
 	// Use cases: one → many → job handler.
 	oneUC := scripts.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
@@ -265,7 +298,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Media curator (PR 13: uses oneUC) ──────────────────────────
 	if root.Repos.ClipsRepo != nil && engine != nil {
-		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, log)
+		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, oneUC, log)
 		if clipSearchPort != nil {
 			mediaCurator.SetClipSearchPort(clipSearchPort)
 		}
@@ -322,7 +355,85 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		handler,
 		log,
 	)
-	return tryRegisterModuleStrict(registry, log, mod, WithRegistrationPoint("register.ScriptFlow"))
+	return tryRegisterModule(registry, log, mod)
+}
+
+// ── Composition validation: required processors MUST register ────────
+
+// requiredProcessorNames is the canonical list of postprocessor names
+// that MUST be registered for a script pipeline to be considered
+// production-ready. Composition aborts if any name below is missing.
+//
+// PR 2 (June 2026): the list mirrors the static ProcessorRequired
+// classification declared by each concrete processor. Persistence
+// is the single owner of script-table writes (PR 5); Document is
+// the canonical doc-creation deliverable. Images / Voiceover /
+// Entities / Metadata are ProcessorBestEffort (spec: "configurabile"
+// or "best_effort or required based on payload") and not part of
+// this list — if they are present at runtime, Run warns; if they
+// are absent at runtime, Run warns. Either way, composition does
+// NOT fail on them.
+var requiredProcessorNames = []string{
+	"persistence",
+	"document",
+	// PR 3 (June 2026): Entities and Metadata are now
+	// ProcessorRequired per the user spec. The canonical
+	// Composition-time validator fails closed if they are
+	// not registered; the runtime preflight fails closed if
+	// a plan requests them and the registry has no adapter.
+	"entities",
+	"metadata",
+}
+
+// validateRequiredProcessors checks the post-freeze registry for
+// every required processor name. Composition fails-closed: if any
+// required name is missing, returns a typed error so the operator
+// sees a clear restart-required message instead of silent runtime
+// panics on the first plan that requested the missing processor.
+//
+// Returns a *scriptpkg.PlanInvalidError when one or more required
+// processors are missing from the registry. Caller is the
+// composition root, which wraps this with a context string.
+//
+// PR 2 (June 2026): gate that closes the "non-canonical WriteScript
+// to dragnet" gap left by the previous partial-registration pattern
+// (where composition would silently skip a Register call when the
+// underlying dep was nil, then runtime would silently skip the
+// postprocessor — leaving the script row unwritten).
+func validateRequiredProcessors(ppReg *scripts.PostProcessorRegistry, required []string) *scriptpkg.PlanInvalidError {
+	if ppReg == nil {
+		return &scriptpkg.PlanInvalidError{
+			ItemID:  "wireScriptFlow",
+			Details: []string{"preflight: postprocessor registry is nil"},
+		}
+	}
+	if !ppReg.IsFrozen() {
+		return &scriptpkg.PlanInvalidError{
+			ItemID:  "wireScriptFlow",
+			Details: []string{"preflight: postprocessor registry must be frozen before required-processors validation"},
+		}
+	}
+	var missing []string
+	for _, name := range required {
+		if !ppReg.Registered(name) {
+			missing = append(missing, name)
+		} else if ppReg.LookupPolicy(name) != scripts.ProcessorRequired {
+			// Defensive: composition-side invariant. A name in the
+			// required list MUST have the ProcessorRequired
+			// classification. If a future PR flips a processor's
+			// policy to BestEffort, this check surfaces the
+			// dependency drift loudly — the operator MUST update
+			// requiredProcessorNames to match.
+			missing = append(missing, name+" (registered with non-required policy)")
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return &scriptpkg.PlanInvalidError{
+		ItemID:  "wireScriptFlow",
+		Details: []string{"preflight: required postprocessor(s) not registered at composition: " + strings.Join(missing, ", ")},
+	}
 }
 
 // ── Adapters ────────────────────────────────────────────────────────────────

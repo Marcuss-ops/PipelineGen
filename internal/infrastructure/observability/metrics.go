@@ -218,6 +218,192 @@ var (
 		Help: "Age in seconds of the oldest queued job, by type. Zero when no job is pending.",
 	}, []string{"type"})
 
+	// ── Job Events Retention Metrics (PR-Retention / ADR-0002 §D6.3, June 2026) ──
+	// Gauge semantics (PRD-Retention item #2 from the code-review pass):
+	//   JobEventsCount is the canonical "what's currently in job_events
+	//   row count AS OF THE LAST SWEEP TICK" gauge. Updated ONLY at end of
+	//   tick (post-DELETE COUNT). Operators scraping /metrics between
+	//   ticks will read the LAST tick's value even though the table may
+	//   have accumulated N=K_inserts×Δt recent rows since then. This is
+	//   the canonical "tick-bounded" semantics; the alternative (live
+	//   count) would require bumping the gauge from every AddEvent /
+	//   Complete / Fail / Retry / Reaper / Cancel / ScheduleRetry /
+	//   SetProgress / ClaimNext event-write path, which adds a hot-path
+	//   dependency for marginal operator benefit. Document the tick-
+	//   bounded nature explicitly so dashboards and alerting rules read
+	//   it as expected: read the gauge AT TICK boundaries; the value
+	//   reflects "rows younger than cutoff" by construction.
+	//   Operators alert on monotonically-growing tick readings (sweeper
+	//   falling behind) or weekly-step jumps (sudden DELETE burst =
+	//   possible threshold misconfig via VELOX_RETENTION_DAYS).
+	//
+	// Naming follows the AGENTS.md Pattern 0 convention:
+	//   no `_total` suffix on gauges; counters ALWAYS carry `_total`.
+	JobEventsCount = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "job_events_count",
+		Help: "Row count of the job_events table AS OF THE LAST SWEEP TICK (post-DELETE COUNT). Tick-bounded: workers scrape between ticks read the prior tick's value, not live row count. Stabilises below the N-day watermark once the sweeper keeps pace with the insert rate. Operators alert on monotonic growth across ticks (sweeper falling behind) or weekly-step jumps (DELETE burst = threshold misconfig).",
+	})
+
+	// JobEventsDeletedTotal counts rows removed by the retention sweeper.
+	// Increments on every successful per-chunk DELETE inside the sweeper
+	// Tick (cumulative rate-of-removal across the process lifetime).
+	// Per-process: resets to 0 on every restart. The canonical operator
+	// signal is the DELTA per tick (read at tick boundaries via
+	// `rate()` over 12h-aligned windows matching RetentionInterval).
+	JobEventsDeletedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "job_events_deleted_total",
+		Help: "Total number of job_events rows removed by the retention sweeper (cumulative across ticks). Use rate() aligned to RetentionInterval to spot sweeper pathology.",
+	})
+
+	// JobEventsRetentionSweepDuration measures wall-clock duration of a
+	// single retention sweep tick (one or more bounded DELETE chunks +
+	// COUNT, all in a single Tick call). Buckets are sized for the
+	// typical 10ms-30s envelope with a 300s worst-case bucket for
+	// pathological 10k-row sweeps on a hot DB.
+	JobEventsRetentionSweepDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "job_events_retention_sweep_duration_seconds",
+		Help:    "Duration of a single retention sweep tick (one or more bounded DELETEs + COUNT). Buckets sized for typical 10ms-30s envelope + 300s worst-case.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
+	})
+
+	// JobEventsRetentionSweepErrorsTotal counts non-fatal per-tick errors
+	// (e.g. one DELETE chunk failed mid-sweep). The sweep overall may still
+	// succeed; this counter is the input for "sweeper unhealthy" alerts.
+	JobEventsRetentionSweepErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "job_events_retention_sweep_errors_total",
+		Help: "Total number of non-fatal errors encountered during retention sweeps. Non-zero rate means the sweeper is missing ticks.",
+	})
+
+	// ── Job Progress Coalescing Metrics (PR-Progress / ADR-0002 §D6.4, June 2026) ──
+	// Operators alert on the ratio
+	//   rate(job_progress_events_total[5m]) / rate(job_progress_calls_total[5m])
+	// dropping below 1.0 once coalescing is enabled: a ratio strictly
+	// below 1.0 is the canonical "coalescer is reducing event pressure"
+	// signal (= N − coalesced calls/users N calls). A ratio of 0 means
+	// every call coalesced away (impossible unless the window is also
+	// 0, which would be a metric-wiring regression). Operators also
+	// alert on rate(job_progress_flush_duration_seconds_sum) /
+	// rate(job_progress_flush_duration_seconds_count) exceeding p99
+	// since flush latency directly competes with broker throughput.
+
+	// JobProgressCallsTotal counts every broker.Progress(...) call
+	// received from a worker (or via admin/handler paths routed through
+	// the coalescer). Includes both coalesce-coalesced-away calls AND
+	// the eventual winner-pushed-through-to-SQL calls. Stable across
+	// window changes; resets to 0 on process restart.
+	JobProgressCallsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "job_progress_calls_total",
+		Help: "Total number of broker.Progress(...) calls received (including coalesce-coalesced-away ones). The numerator of the coalesce-ratio (calls / events).",
+	})
+
+	// JobProgressEventsTotal counts every actual `job_events` row
+	// INSERT that the coalescer flushed to disk (1 per coalesce-window
+	// per jobID when coalescing is active; 1 per call when disabled).
+	// The denominator of the coalesce-ratio. Operators alert on
+	//   events < calls - coalesced
+	// (invariant: calls == events + coalesced) — drift between the
+	// three counters indicates a wiring bug.
+	JobProgressEventsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "job_progress_events_total",
+		Help: "Total number of job_events rows INSERTed by the progress coalescer (1 per coalesce window per jobID).",
+	})
+
+	// JobProgressCoalescedTotal counts every broker.Progress(...) call
+	// that was buffered (and replaced by a newer call) within a coalesce
+	// window. Resets to 0 on process restart. The canonical
+	// "coalescer is reducing event pressure" signal: a steady-state
+	// rate > 0 with events < calls indicates healthy coalescing.
+	JobProgressCoalescedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "job_progress_coalesced_total",
+		Help: "Total number of broker.Progress(...) calls buffered (overwritten) within a coalesce window. The signal for \"coalescer is reducing event pressure\".",
+	})
+
+	// JobProgressFlushDuration measures wall-clock duration of a single
+	// coalescer flush op (1 update + 1 insert per pending bucket; bounded
+	// by the per-call mu). Buckets sized for the typical 0.1ms-10ms
+	// envelope plus a 250ms worst-case for hot DB contention.
+	JobProgressFlushDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "job_progress_flush_duration_seconds",
+		Help:    "Duration of a single coalescer flush operation (1 UPDATE + 1 INSERT per pending bucket). Buckets sized for typical 0.1ms-10ms envelope + 250ms worst-case for hot DB contention.",
+		Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25},
+	})
+
+	// ── Worker Polling Backoff Metrics (PR-Polling / ADR-0002 §D6.5, June 2026) ──
+	// Operators alert on:
+	//   - rate(worker_idle_ticks_total[5m]) > 0 for sustained periods;
+	//     paired with rate(worker_backoff_events_total[5m]) > 0 ⇒
+	//     "Workers saturating the backoff curve" = queue is empty
+	//     AND jobs are not being enqueued (steady-state OK).
+	//   - rate(worker_wake_on_enqueue_total[5m]) > 0 ⇒ Enqueue is
+	//     arriving faster than the natural poll cadence; the
+	//     wake-on-broadcast primitive is the canonical reason.
+
+	// WorkerIdleTicksTotal counts every Poll-loop iteration where
+	// ClaimNext returned (nil, nil) (the queue was empty). The
+	// counter increments regardless of whether the polling is at
+	// BaseInterval or in the backoff curve.
+	WorkerIdleTicksTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "worker_idle_ticks_total",
+		Help: "Total number of worker poll-loop iterations that returned an empty ClaimNext (queue empty). Resets to 0 on process restart.",
+	})
+
+	// WorkerBackoffEventsTotal counts every escalation of the
+	// per-worker backoff curve (currentBackoff doubled successfully,
+	// capped at MaxBackoff). A monotonic rise during the day is
+	// normal (idle workers accumulate backoff over time). A
+	// spike-to-zero dynamic indicates the queue refilled and
+	// workers reset via the
+	// "successful claim → reset backoff" path.
+	WorkerBackoffEventsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "worker_backoff_events_total",
+		Help: "Total number of worker backoff escalations (currentBackoff doubled, capped at MaxBackoff). Resets to 0 on process restart.",
+	})
+
+	// WorkerWakeOnEnqueueTotal counts every Worker poll-iteration
+	// that was terminated early by the QueueNotifier wake broadcast
+	// (Enqueue / Retry / RequeueExpiredLeases trigger).  Paired
+	// with WorkerIdleTicksTotal: high wake + high idle = "Enqueue
+	// rate exceeds poll cadence; backoff is matching the floor";
+	// operators use this to right-size MaxBackoff vs Enqueue rate.
+	WorkerWakeOnEnqueueTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "worker_wake_on_enqueue_total",
+		Help: "Total number of worker poll iterations terminated early by the QueueNotifier wake broadcast (Enqueue / Retry / RequeueExpiredLeases).",
+	})
+
+	// ── Job Claim Latency (PR-Queue-Split-EXPAND / ADR-0003, June 2026) ──
+	// JobClaimDurationSeconds is the canonical ClaimNext latency
+	// histogram. ADR-0003 §"Trigger conditions" §1 references this metric
+	// to detect WAL contention: "A 7-day rolling window of
+	// JobClaimDurationSeconds{p99} > 100ms observed under non-degenerate
+	// queue write pressure (≥10 enqueue/s sustained)" is the bench-driven
+	// re-evaluation trigger (Option C landing condition). Operators alert
+	// on p99 > 100ms as the canonical "jobs.db.sqlite split is now
+	// warranted" signal.
+	//
+	// Buckets are sized for the typical 0.1–50 ms envelope (steady-state
+	// CTE atomic claim on a quiet DB) with a 5 s tail bucket for
+	// pathological hot-DB contention. The 0.1 s bucket matches the trigger
+	// condition's 100 ms threshold exactly — p99-quantile frontier lives
+	// at this bucket boundary in steady state.
+	//
+	// Observability is ALWAYS-ON (not gated behind cfg.Jobs.SplitDBEnabled) —
+	// ADR-0003 §"Trigger conditions" §1 needs the histogram emitted
+	// regardless of split-mode so the bench (when it lands) can use it
+	// identically. Histogram cost is negligible (1 atomic per call).
+	//
+	// Observed at the storage layer (*SQLiteStore.ClaimNext returns from
+	// commit) — captures the END-TO-END claim path (CTE-UPDATE +
+	// job_events-INSERT + post-commit Get refetch) inside the same tx.
+	// The histogram is the canonical "what is the claim path costing us
+	// today" surface for both single-DB (today) and split-DB EXPAND
+	// (forward). Operators dashboard the ratio p99 / base-interval to
+	// spot WAL-write contention ahead of bench reconfirming it.
+	JobClaimDurationSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "job_claim_duration_seconds",
+		Help:    "Duration of *SQLiteStore.ClaimNext (CTE-UPDATE + job_events-INSERT + post-commit refetch). ADR-0003 §1 trigger condition: p99 > 100ms under sustained queue write pressure indicates WAL contention; jobs.db.sqlite split is warranted when this fires.",
+		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
+	})
+
 	// Outbox Pipeline Metrics — Qdrant indexing queue depth and lag.
 	OutboxQueueDepth = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "outbox_queue_depth",

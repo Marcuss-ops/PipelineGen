@@ -22,7 +22,15 @@ func NewTextSourceResolver() *TextSourceResolver {
 }
 
 // Resolve assembles the text source fields into a ResolvedSource.
-func (r *TextSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, itemID string) (*scriptpkg.ResolvedSource, error) {
+//
+// PR 4 (June 2026): resolutionContext is accepted for signature parity
+// with the other resolvers. The text resolver owns the editor's
+// Guidelines field (it's a text-source concept) and doesn't read
+// resolutionContext.Language/Tone/etc — those are clip-pipeline
+// concerns. However, resolutionContext.Title is used as the
+// document title fallback so the resolver still respects operator
+// intent for purely-textual flows.
+func (r *TextSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	_ = ctx // reserved for future tracing
 
 	topic := strings.TrimSpace(src.Topic)
@@ -31,14 +39,17 @@ func (r *TextSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSp
 
 	if topic == "" && sourceText == "" {
 		return nil, &scriptpkg.NoSourceError{
-			ItemID: itemID,
+			ItemID: resCtx.ItemID,
 			Reason: "text source requires topic or source_text",
 		}
 	}
 
-	// Title defaults to topic. Callers should have already normalized
-	// this, but we support the resolver being called independently.
+	// Title defaults to topic; resolutionContext.Title overrides when
+	// present (caller-provided canonical title).
 	title := topic
+	if resCtx.Title != "" {
+		title = resCtx.Title
+	}
 	if title == "" {
 		title = "Untitled Script"
 	}
@@ -60,7 +71,7 @@ func (r *TextSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSp
 		Topic:      topic,
 		Title:      title,
 		SourceText: assembled.String(),
-		Language:   "", // filled by the caller from the normalized item
+		Language:   resCtx.Language,
 	}
 	resolved.Fingerprint = computeSourceFingerprint(src, nil)
 	return resolved, nil

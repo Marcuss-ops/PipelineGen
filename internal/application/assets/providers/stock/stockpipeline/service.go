@@ -3,6 +3,7 @@ package stockpipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"time"
@@ -42,6 +43,86 @@ func DefaultPipelineConfig() PipelineConfig {
 	}
 }
 
+// Sentinel errors returned by NewService validation. Each error names a
+// missing dependency so composition-time call sites can forward a single
+// error to operators and tests can assert the precise missing dep without
+// reading through the wrapped fmt chain.
+var (
+	ErrStockPipelineNilCfg            = errors.New("stockpipeline.NewService: cfg is required")
+	ErrStockPipelineNilLog            = errors.New("stockpipeline.NewService: log is required")
+	ErrStockPipelineNilDriveSvc       = errors.New("stockpipeline.NewService: driveSvc is required")
+	ErrStockPipelineNilClipsRepo      = errors.New("stockpipeline.NewService: storage.ClipsRepo is required (production path)")
+	ErrStockPipelineNilAssetIndex     = errors.New("stockpipeline.NewService: storage.AssetIndex is required (production path)")
+	ErrStockPipelineNilDispatcher     = errors.New("stockpipeline.NewService: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
+	ErrStockPipelineNilCutter         = errors.New("stockpipeline.NewService: media.Cutter is required (PR6 port)")
+	ErrStockPipelineNilRenderer       = errors.New("stockpipeline.NewService: media.Renderer is required (PR6 port)")
+	ErrStockPipelineNilClipIndexer    = errors.New("stockpipeline.NewService: media.ClipIndexer is required")
+	ErrStockPipelineNilMetadataWriter = errors.New("stockpipeline.NewService: media.MetaWriter is required (semantic enrichment for Drive metadata.json upload)")
+	ErrStockPipelineNilYouTube        = errors.New("stockpipeline.NewService: YouTube is required (provider metadata enrichment for direct URL sources)")
+	ErrStockPipelineNilJobs           = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
+)
+
+// StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
+// Three fields — under the AGENTS.md 10-per-bundle cap.
+type StorageDeps struct {
+	ClipsRepo   *assets.ClipsRepository
+	AssetIndex  *assetindex.Service
+	Dispatcher  *outbox.Dispatcher
+}
+
+// MediaDeps groups the PR6 ports + semantic enrichment. Four fields —
+// under the 10-per-bundle cap. The Cutter / Renderer ports are PR6-defined
+// (see ports.go); MetaWriter / ClipIndexer are cross-cutting enrichment.
+type MediaDeps struct {
+	Cutter      VideoCutter
+	Renderer    StockRenderer
+	ClipIndexer *clipindexer.Service
+	MetaWriter  *semantic.MetadataWriter
+}
+
+// Deps is the canonical constructor input for stockpipeline.Service
+// (PR-D, Wave 22 §D3, June 2026). Sized at 7 top-level fields — well
+// under the AGENTS.md 8-per-bundle cap. Sub-dependencies (StorageDeps
+// + MediaDeps) group related concerns so the field-name list reads as
+// the canonical composition pattern:
+//
+//   Cfg, Log, Drive         — pure data + Drive SDK
+//   Storage                 — media_assets + outbox + asset-index stack
+//   Media                   — PR6 ports + semantic enrichment
+//   YouTube                 — provider for metadata enrichment
+//   Jobs                    — async job tracker
+//
+// Pattern source: artlist.ServiceDeps (PR2.5, June 2026) — `ServiceDeps`
+// embeds `ServicePorts + ServiceDependencies` for terse construction;
+// here the sub-struct names carry semantic meaning rather than the
+// "ports vs dependencies" split at the artlist boundary (the stock
+// pipeline has fewer ports to lift out).
+//
+// PR-D: setter pattern (SetCutter, SetRenderer, SetClipsRepo,
+// SetAssetIndex, SetDispatcher, SetJobsSvc, SetYoutubeService,
+// SetClipIndexer, SetMetadataWriter) is REMOVED. All dependencies
+// are constructor arguments on Deps — replaces the late-bind ordering
+// hazard that swapped the canonical ingestion path on every
+// composition-time race in WireStockPipeline.
+type Deps struct {
+	Cfg   *config.Config
+	Log   *zap.Logger
+	Drive *gdrive.Service
+	Storage StorageDeps
+	Media   MediaDeps
+	// DELIBERATELY FLAT — YouTube + Jobs are cross-cutting fields, intentionally
+	// NOT nested under a sub-group. They are conceptually distinct from the
+	// Storage (DB stack) and Media (PR6 ports + semantic enrichment) buckets
+	// even though they share a "cross-cutting" semantic cluster. Grouping
+	// them under a CrossCuttingDeps struct would add a third embedded
+	// sub-group without any concrete shared-validation benefit (each field
+	// has its own per-field sentinel). The Deps doc-comment explicitly
+	// enumerates this bucketing; future maintainers should preserve the
+	// shape rather than introduce a CrossCuttingDeps for symmetry.
+	YouTube *youtube.Service
+	Jobs    *appjobs.Service
+}
+
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
 // effect overlay, chunk rendering, and Drive upload. All video parameters are read
 // from config.Video to ensure consistency with other media pipelines.
@@ -53,17 +134,21 @@ func DefaultPipelineConfig() PipelineConfig {
 //   - stock.VideoCutter  (extracted-clips from a single source video)
 //   - stock.StockRenderer (cross-clip concatenation + transition/overlay)
 //
-// These ports are wired at composition time by WireStockPipeline via
-// SetCutter / SetRenderer match the existing setter-per-dep convention.
+// PR-D (June 2026): all dependencies — including the PR6 ports —
+// arrive via the ctor-injected Deps struct. The 9 legacy setters
+// (SetCutter / SetRenderer / SetClipsRepo / SetAssetIndex / SetDispatcher
+// / SetJobsSvc / SetYoutubeService / SetClipIndexer / SetMetadataWriter)
+// were removed. Production wire-up lives in WireStockPipeline at
+// internal/app/module_sources.go (Deps{...} literal).
 type Service struct {
 	cfg      *config.Config
 	log      *zap.Logger
 	driveSvc *gdrive.Service
 	driveUp  *driveup.Uploader
 	ytdlp    *downloader.YTDLPDownloader
-	// cutter + renderer are the PR6 ports; nil-safe guarded at each
-	// call site so missing composition wiring surfaces a clean error
-	// rather than a nil-pointer panic.
+	// cutter + renderer are the PR6 ports. Initialised at ctor time so
+	// every method sees either a non-nil port or an error from NewService;
+	// the per-site nil-guards the setters previously required are gone.
 	cutter      VideoCutter
 	renderer    StockRenderer
 	pcfg        PipelineConfig
@@ -73,80 +158,101 @@ type Service struct {
 	clipIndexer *clipindexer.Service
 	metaWriter  *semantic.MetadataWriter
 	clipsRepo   *assets.ClipsRepository
-	// dispatcher is the canonical media_index_outbox dispatcher, injected
-	// at composition time via WireStockPipeline. Required for production
-	// — upsertChunkAndDispatch returns an error when nil.
+	// dispatcher is the canonical media_index_outbox dispatcher,
+	// required at ctor time per QDRANT-002 PR7. NewService rejects
+	// nil dispatcher with ErrStockPipelineNilDispatcher.
 	dispatcher *outbox.Dispatcher
 }
 
-// NewService creates a stock pipeline service using the provided config, logger,
-// and Google Drive service. Video processing defaults are loaded from cfg.Video.
+// NewService creates a stock pipeline service via the canonical Deps struct
+// (PR-D, June 2026). Returns *Service + error (the legacy signature returned
+// only *Service + relied on per-call nil guards; the new contract surfaces
+// missing deps at composition time, the only safe window).
 //
-// PR6: NewService no longer constructs the ffmpeg.Processor. The Cutter and
-// Renderer ports MUST be injected via SetCutter/SetRenderer before
-// processSingleVideo / renderChunk are called. Production wire-up lives in
-// WireStockPipeline (internal/app/module_sources.go::WireStockPipeline).
-func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *Service {
-	v := cfg.Video.WithDefaults()
+// Validation order: pure data (Cfg, Log, Drive) → transport (Storage) →
+// ports (Media) → cross-cutting. Each missing dep surfaces its own
+// sentinel error (see ErrStockPipelineNil* above) so production wiring
+// can forward a single error verbatim and tests can assert the precise
+// field-name without unwrapping the chain.
+//
+// PR6 ports (Cutter, Renderer) are required — missing either fails ctor
+// with ErrStockPipelineNilCutter / ErrStockPipelineNilRenderer. The
+// legacy per-call nil-guards are gone; callers can rely on the
+// invariants without re-checking.
+//
+// Production wire-up lives in WireStockPipeline
+// (internal/app/module_sources.go::WireStockPipeline). The composition
+// root pre-rejects any nil dispatcher at the wire call-site (QDRANT-002
+// PR7 precedent on artlist.WireArtlist); NewService is the second
+// line of defence so accidental misuse from tests still fails loud.
+func NewService(deps Deps) (*Service, error) {
+	if deps.Cfg == nil {
+		return nil, ErrStockPipelineNilCfg
+	}
+	if deps.Log == nil {
+		return nil, ErrStockPipelineNilLog
+	}
+	if deps.Drive == nil {
+		return nil, ErrStockPipelineNilDriveSvc
+	}
+	if deps.Storage.ClipsRepo == nil {
+		return nil, ErrStockPipelineNilClipsRepo
+	}
+	if deps.Storage.AssetIndex == nil {
+		return nil, ErrStockPipelineNilAssetIndex
+	}
+	if deps.Storage.Dispatcher == nil {
+		return nil, ErrStockPipelineNilDispatcher
+	}
+	if deps.Media.Cutter == nil {
+		return nil, ErrStockPipelineNilCutter
+	}
+	if deps.Media.Renderer == nil {
+		return nil, ErrStockPipelineNilRenderer
+	}
+	if deps.Media.ClipIndexer == nil {
+		return nil, ErrStockPipelineNilClipIndexer
+	}
+	if deps.Media.MetaWriter == nil {
+		return nil, ErrStockPipelineNilMetadataWriter
+	}
+	// PR-D post-review (Wave 22 §D3 reviewer #2): YouTube and Jobs are
+	// required at ctor time. Previously nil-tolerant; the silent
+	// nil-passthrough was a regression surface — RegisterHandler(bundle.Jobs)
+	// resolves the jobs.JobsFacade at handler dispatch, and processSingleVideo
+	// touches youtube metadata for direct-URL sources. Validate them
+	// like every other required dep so composition-time pre-rejection
+	// catches the missing wiring without waiting for the first job.
+	if deps.YouTube == nil {
+		return nil, ErrStockPipelineNilYouTube
+	}
+	if deps.Jobs == nil {
+		return nil, ErrStockPipelineNilJobs
+	}
+
+	v := deps.Cfg.Video.WithDefaults()
 	return &Service{
-		cfg:      cfg,
-		log:      log,
-		driveSvc: driveSvc,
-		driveUp:  &driveup.Uploader{Service: driveSvc, Log: log},
-		ytdlp:    downloader.NewYTDLP(cfg),
+		cfg:         deps.Cfg,
+		log:         deps.Log,
+		driveSvc:    deps.Drive,
+		driveUp:     &driveup.Uploader{Service: deps.Drive, Log: deps.Log},
+		ytdlp:       downloader.NewYTDLP(deps.Cfg),
+		cutter:      deps.Media.Cutter,
+		renderer:    deps.Media.Renderer,
 		pcfg: PipelineConfig{
 			ChunkDuration:  v.ChunkDuration,
 			MaxResults:     v.MaxClipsPerSource,
 			EffectInterval: v.EffectInterval,
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
-	}
-}
-
-// SetCutter injects the canonical VideoCutter port (PR6). Required.
-func (s *Service) SetCutter(c VideoCutter) {
-	s.cutter = c
-}
-
-// SetRenderer injects the canonical StockRenderer port (PR6). Required.
-func (s *Service) SetRenderer(r StockRenderer) {
-	s.renderer = r
-}
-
-// SetClipsRepo injects the clips repository dependency.
-func (s *Service) SetClipsRepo(repo *assets.ClipsRepository) {
-	s.clipsRepo = repo
-}
-
-// SetJobsSvc injects the jobs service dependency.
-func (s *Service) SetJobsSvc(jobsSvc *appjobs.Service) {
-	s.jobsSvc = jobsSvc
-}
-
-// SetAssetIndex injects the asset index service dependency.
-func (s *Service) SetAssetIndex(ai *assetindex.Service) {
-	s.assetIndex = ai
-}
-
-// SetYoutubeService injects the YouTube metadata service used to enrich direct URL sources.
-func (s *Service) SetYoutubeService(svc *youtube.Service) {
-	s.youtubeSvc = svc
-}
-
-// SetClipIndexer injects the clip indexer service dependency.
-func (s *Service) SetClipIndexer(indexer *clipindexer.Service) {
-	s.clipIndexer = indexer
-}
-
-// SetDispatcher injects the canonical media_index_outbox dispatcher.
-func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
-	s.dispatcher = d
-}
-
-// SetMetadataWriter injects the unified metadata writer for semantic enrichment.
-// When set, stock chunks get metadata.json uploaded alongside videos on Drive.
-func (s *Service) SetMetadataWriter(w *semantic.MetadataWriter) {
-	s.metaWriter = w
+		jobsSvc:     deps.Jobs,
+		assetIndex:  deps.Storage.AssetIndex,
+		youtubeSvc:  deps.YouTube,
+		clipIndexer: deps.Media.ClipIndexer,
+		metaWriter:  deps.Media.MetaWriter,
+		clipsRepo:   deps.Storage.ClipsRepo,
+		dispatcher:  deps.Storage.Dispatcher,
+	}, nil
 }
 
 // RegisterHandler registers the stock pipeline job handler with the jobs system.

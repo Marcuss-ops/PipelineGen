@@ -169,6 +169,9 @@ func printUsage() {
 }
 
 func cmdContext() context.Context {
+	// AGENTS.md §7 post-write save ctx — admin CLI composition root;
+	// same rationale as cmd/worker/main.go — admin is a one-shot binary
+	// whose lifetime is bounded by the operator invocation.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-ctx.Done()

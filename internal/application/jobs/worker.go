@@ -14,6 +14,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
@@ -89,9 +90,52 @@ func StartMetricsRefresher(ctx context.Context, repo MetricRefresher, interval t
 	}()
 }
 
+// BackoffConfig is the per-Worker polling backoff sub-struct
+// (PR-Polling / ADR-0002 §D6.5, June 2026). All fields are config-driven
+// from JobsConfig.PollMaxBackoff / PollJitterFraction /
+// PollConsecutiveEmptyBeforeBackoff.
+type BackoffConfig struct {
+	// MaxBackoff caps the exponential-backoff curve. Worker poll
+	// intervals grow up to this cap and stay there until a wake
+	// arrives or a non-empty claim resets to BaseInterval. Default
+	// 60s — matches the qdrant-stale-cleaner historical cadence
+	// and bounds the worst-case latency between Wake → Claim.
+	MaxBackoff time.Duration
+
+	// JitterFraction is the FULL-JITTER factor (AWS pattern).
+	// actualSleep = rand(0, currentBackoff) every iteration, which
+	// spreads thundering-herd wake-ups across the worker pool when a
+	// burst of Enqueues lands. 0.0 = no jitter (deterministic burn
+	// of full backoff); 1.0 = uniform [0, currentBackoff] jitter.
+	// Default 0.5.
+	JitterFraction float64
+
+	// ConsecutiveEmptyThreshold is the number of CONSECUTIVE empty
+	// Claims Workers tolerate before escalating the backoff curve.
+	// Below the threshold: stay at BaseInterval. Above: backoff
+	// doubles every subsequent empty claim (capped at MaxBackoff).
+	// 0 disables the escalation entirely (workers stay at
+	// BaseInterval forever — the legacy behaviour, useful as an
+	// emergency unblock toggle).
+	ConsecutiveEmptyThreshold int
+}
+
 // Worker polls the domain Repository for queued jobs and dispatches
 // them to registered handlers. It depends on the domain Repository
 // interface, NOT on the concrete *jobs.Repository.
+//
+// Polling surface (PR-Polling / ADR §D6.5):
+//   - BaseInterval is the canonical PollEvery (the first-claim cadence
+//     + the post-successful-claim reset cadence). Set by the runner
+//     via RunnerConfig.PollEvery.
+//   - MaxBackoff / JitterFraction / ConsecutiveEmptyThreshold are the
+//     backoff knobs (RunnerConfig.Backoff). Together they implement
+//     the exponential-backoff state machine: idle Workers sleep for
+//     exponentially-growing intervals (full-jitter spread, capped at
+//     MaxBackoff) until a Wake-side Broadcast on the QueueNotifier
+//     closes their sleep channel.
+//   - notifier drive the wake-on-Enqueue (Subscribe() per iteration;
+//     channel close = Broadcast on Enqueue / Retry / RequeueExpired).
 type Worker struct {
 	id         string
 	repo       job.Store
@@ -99,11 +143,30 @@ type Worker struct {
 	log        *zap.Logger
 	leaseTTL   time.Duration
 	pollEvery  time.Duration
+	backoff    BackoffConfig
 	types      []string
+	notifier   QueueNotifier
 }
 
-func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, log *zap.Logger,
-	leaseTTL, pollEvery time.Duration, types []string) *Worker {
+// NewWorker constructs a Worker.
+//
+// PR-Polling signature change vs the pre-PR-Poll shape (June 2026):
+//   - `notifier QueueNotifier` is the new wake-on-Enqueue port.
+//   - `pollEvery time.Duration` is the BASE interval (preserved from
+//     the original signature).
+//   - `backoff BackoffConfig` is the new arg carrying MaxBackoff /
+//     JitterFraction / ConsecutiveEmptyThreshold (was a single
+//     time.Duration; now a sub-struct to keep the function signature
+//     flat, ≤8 args per PR-D cap).
+//   - `types []string` is unchanged.
+//
+// Callers MUST pass a non-nil notifier; the worker pulls a fresh
+// channel each iteration. Today the production wiring passes the
+// in-process *SQLiteStore (the compile-time assertion in
+// notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)
+// is the seam marker for a future adapter).
+func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier QueueNotifier,
+	log *zap.Logger, leaseTTL, pollEvery time.Duration, backoff BackoffConfig, types []string) *Worker {
 	return &Worker{
 		id:         id,
 		repo:       repo,
@@ -111,47 +174,175 @@ func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, log *zap.Logge
 		log:        log,
 		leaseTTL:   leaseTTL,
 		pollEvery:  pollEvery,
+		backoff:    backoff,
 		types:      types,
+		notifier:   notifier,
 	}
 }
 
+// Start runs the Worker poll loop until ctx is cancelled.
+//
+// State machine (PR-Polling / ADR §D6.5):
+//   1. Initial sleep = pollEvery + jitter  (spreads Worker startup).
+//   2. Loop:
+//      a. ClaimNext; if err → sleep at BaseInterval (errors don't escalate).
+//      b. (nil, nil) → empty; consecutiveEmpty++; if exceeds the
+//         backoff threshold, double the backoff (capped at MaxBackoff)
+//         with full-jitter sleep on the next iteration.
+//      c. Non-nil lease → reset backoff to BaseInterval, dispatch.
+//   3. Each sleep blocks on ctx.Done, notifier.Subscribe() wake, or
+//      the jittered backoff timer — whichever fires first.
+//
+// Acceptance:
+//   - After N consecutive empty claims (N = backoff.ConsecutiveEmptyThreshold),
+//     the polling interval grows; capped at MaxBackoff. Idle CPU drops to
+//     ~0% while sleeping.
+//   - Enqueue / Retry / RequeueExpiredLeases trigger Broadcast on the
+//     concrete notifier; the sleeping select wakes immediately and
+//     Workers resume polling at the BaseInterval (backoff is reset on
+//     the next successful claim).
 func (w *Worker) Start(ctx context.Context) {
-	w.log.Info("worker started", zap.String("worker_id", w.id))
+	w.log.Info("worker started",
+		zap.String("worker_id", w.id),
+		zap.Duration("base_poll_every", w.pollEvery),
+		zap.Duration("max_backoff", w.backoff.MaxBackoff),
+		zap.Int("consecutive_empty_threshold", w.backoff.ConsecutiveEmptyThreshold),
+	)
 
-	jitterDuration := time.Duration(rand.Int63n(int64(w.pollEvery) / 4))
-	ticker := time.NewTicker(w.pollEvery + jitterDuration)
-	defer ticker.Stop()
+	// Backoff state machine. Reset to base on successful claim;
+	// grow on empty claims past the threshold.
+	currentBackoff := w.pollEvery
+	consecutiveEmpty := 0
+
+	// Initial jitter to spread Worker-goroutine startup.
+	jitterInitial := jitterDuration(w.pollEvery/4, 1.0)
+	if !w.sleepBackoff(ctx, w.pollEvery+jitterInitial) {
+		w.log.Info("worker stopped (ctx before first claim)",
+			zap.String("worker_id", w.id))
+		return
+	}
 
 	for {
-		select {
-		case <-ctx.Done():
-			w.log.Info("worker stopped", zap.String("worker_id", w.id))
+		if ctx.Err() != nil {
+			w.log.Info("worker stopped",
+				zap.String("worker_id", w.id),
+				zap.Duration("current_backoff", currentBackoff),
+				zap.Int("consecutive_empty", consecutiveEmpty))
 			return
-		default:
 		}
 
 		j, err := w.repo.ClaimNext(ctx, w.id, w.leaseTTL, w.types)
 		if err != nil {
 			w.log.Error("failed to claim next job", zap.Error(err))
-			select {
-			case <-ctx.Done():
+			// Errors do NOT escalate backoff — the broker is presumed
+			// transient. Sleep at BaseInterval.
+			if !w.sleepBackoff(ctx, w.effectiveSleep(w.pollEvery)) {
+				w.log.Info("worker stopped", zap.String("worker_id", w.id))
 				return
-			case <-ticker.C:
 			}
 			continue
 		}
 
 		if j == nil {
-			select {
-			case <-ctx.Done():
+			consecutiveEmpty++
+			metrics.WorkerIdleTicksTotal.Inc()
+
+			// Escalate backoff ONLY when threshold exceeded AND
+			// escalation is enabled (threshold > 0). 0 = disabled
+			// (legacy behaviour: stay at BaseInterval forever).
+			if w.backoff.ConsecutiveEmptyThreshold > 0 &&
+				consecutiveEmpty > w.backoff.ConsecutiveEmptyThreshold {
+				prev := currentBackoff
+				next := prev * 2
+				if next > w.backoff.MaxBackoff {
+					next = w.backoff.MaxBackoff
+				}
+				if next > prev {
+					metrics.WorkerBackoffEventsTotal.Inc()
+					currentBackoff = next
+					w.log.Debug("worker backoff escalated",
+						zap.String("worker_id", w.id),
+						zap.Int("consecutive_empty", consecutiveEmpty),
+						zap.Duration("from", prev),
+						zap.Duration("to", next))
+				}
+			}
+
+			if !w.sleepBackoff(ctx, w.effectiveSleep(currentBackoff)) {
+				w.log.Info("worker stopped", zap.String("worker_id", w.id))
 				return
-			case <-ticker.C:
 			}
 			continue
 		}
 
+		// Successful claim — reset backoff state.
+		if consecutiveEmpty > 0 || currentBackoff != w.pollEvery {
+			w.log.Debug("worker backoff reset on successful claim",
+				zap.String("worker_id", w.id),
+				zap.Int("previous_consecutive_empty", consecutiveEmpty),
+				zap.Duration("previous_backoff", currentBackoff))
+		}
+		consecutiveEmpty = 0
+		currentBackoff = w.pollEvery
+
 		w.runJob(ctx, j)
 	}
+}
+
+// effectiveSleep applies the JitterFraction as full-jitter on the base
+// sleep duration. 0.0 jitter ⇒ deterministic burn; 1.0 ⇒ uniform
+// rand(0, base). Negative or >1 are clamped to keep the math safe.
+func (w *Worker) effectiveSleep(base time.Duration) time.Duration {
+	if base <= 0 {
+		base = w.pollEvery
+	}
+	return jitterDuration(base, w.backoff.JitterFraction)
+}
+
+// sleepBackoff blocks for `d` OR wakes on the notifier's wake channel
+// OR returns false on ctx cancellation. The notifier subscription is
+// refreshed on every call so the post-Broadcast replacement channel is
+// the one observed by the next sleep iteration (close-and-replace
+// invariant).
+func (w *Worker) sleepBackoff(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		d = w.pollEvery
+	}
+	wakeCh := w.notifier.Subscribe()
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-wakeCh:
+		metrics.WorkerWakeOnEnqueueTotal.Inc()
+		w.log.Debug("worker woke on enqueue broadcast",
+			zap.String("worker_id", w.id))
+		return true
+	case <-timer.C:
+		return true
+	}
+}
+
+// jitterDuration adds full-jitter to a base duration: actual = rand(0, base).
+// AWS-style full-jitter is the canonical exponential-backoff spread
+// (https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/);
+// on a saturated queue the spread prevents each Worker from burning the
+// next full Backoff identical-interval sleeping in lockstep.
+func jitterDuration(base time.Duration, jitter float64) time.Duration {
+	if base <= 0 {
+		return base
+	}
+	if jitter < 0 {
+		jitter = 0
+	} else if jitter > 1 {
+		jitter = 1
+	}
+	delta := int64(float64(base) * jitter)
+	if delta <= 0 {
+		return base
+	}
+	return time.Duration(rand.Int63n(delta + 1))
 }
 
 func (w *Worker) runJob(parent context.Context, j *job.Job) {

@@ -19,19 +19,31 @@ import (
 	"go.uber.org/zap"
 )
 
-// SourceResolver resolves a SourceSpec into a ResolvedSource.
-// Every resolver produces the same output shape so the engine
-// never branches on source type.
+// SourceResolver resolves a SourceSpec + SourceResolutionContext into
+// a ResolvedSource. Every resolver produces the same output shape so
+// the engine never branches on source type.
+//
+// PR 4 (June 2026): the resolver signature now takes a
+// SourceResolutionContext parameter alongside the SourceSpec. This
+// resolves the bug where the curate resolver hijacked
+// SourceSpec.Guidelines as a stand-in for ClipGenerationOptions
+// Language. SourceSpec carries source-side instructions (Query,
+// ClipIDs, SourceFilter, ...); SourceResolutionContext carries
+// operator-side traits (Language, Tone, Model, Style, TargetWords).
 //
 // Implementation rules:
-//   - Text resolver: assembles topic + source_text + guidelines.
-//   - Clips resolver: fetches explicit clip IDs via ClipSourceBuilder.
+//   - Text resolver: assembles topic + source_text + guidelines; only
+//     the editor's Guidelines matter here, resolutionContext is
+//     informational.
+//   - Clips resolver: fetches explicit clip IDs via ClipSourceBuilder;
+//     resolutionContext fields threads into ClipGenerationOptions.
 //   - Catalog resolver: searches the local catalog, then builds context.
 //   - Search resolver: performs semantic search, then builds context.
+//   - Curate resolver: union of search + HintClipIDs + BuildClipContext.
 //
-// No resolver calls the engine directly — that's PR4's responsibility.
+// No resolver calls the engine directly — that's the engine's job.
 type SourceResolver interface {
-	Resolve(ctx context.Context, src scriptpkg.SourceSpec, itemID string) (*scriptpkg.ResolvedSource, error)
+	Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error)
 }
 
 // SourceRegistry maps SourceType → SourceResolver and dispatches
@@ -145,13 +157,18 @@ func (r *SourceRegistry) Registered(t scriptpkg.SourceType) bool {
 	return ok
 }
 
-// Resolve dispatches the SourceSpec to the registered resolver for
-// its Type. Returns a SourceResolutionError if no resolver is
-// registered for that type.
+// Resolve dispatches the SourceSpec + SourceResolutionContext to the
+// registered resolver for src.Type. Returns a SourceResolutionError
+// if no resolver is registered for that type.
 //
 // Thread-safe: holds a read lock while dispatching. The resolver's
 // Resolve method runs outside any lock.
-func (r *SourceRegistry) Resolve(ctx context.Context, src scriptpkg.SourceSpec, itemID string) (*scriptpkg.ResolvedSource, error) {
+//
+// PR 4 (June 2026): signature now threads SourceResolutionContext
+// alongside the SourceSpec so the curate resolver can use the real
+// target language (Language field) instead of hijacking
+// SourceSpec.Guidelines.
+func (r *SourceRegistry) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil {
 		return nil, fmt.Errorf("source registry: not initialized")
 	}
@@ -168,5 +185,5 @@ func (r *SourceRegistry) Resolve(ctx context.Context, src scriptpkg.SourceSpec, 
 			Inner:       fmt.Errorf("no resolver registered for source type %q", src.Type),
 		}
 	}
-	return resolver.Resolve(ctx, src, itemID)
+	return resolver.Resolve(ctx, src, resCtx)
 }

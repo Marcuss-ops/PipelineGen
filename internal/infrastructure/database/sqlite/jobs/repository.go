@@ -12,7 +12,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -22,9 +21,9 @@ import (
 )
 
 type SQLiteStore struct {
-	db      *sql.DB
-	log     *zap.Logger
-	claimMu sync.Mutex
+	db       *sql.DB
+	log      *zap.Logger
+	notifier *queueNotifier
 }
 
 // jobColumns is the canonical list of column names read by Get, List and
@@ -35,7 +34,50 @@ const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision`
 
 func NewSQLiteStore(db *sql.DB, log *zap.Logger) *SQLiteStore {
-	return &SQLiteStore{db: db, log: log}
+	return &SQLiteStore{db: db, log: log, notifier: newQueueNotifier()}
+}
+
+// ── In-process queue-notifier port (PR-Polling / ADR-0002 §D6.5) ────────────
+
+// Subscribe returns a shared channel that wakes on every QueueChanged
+// (Enqueue / Retry / RequeueExpiredLeases) notification. The returned
+// channel is the LIVE channel at the call moment; the next Broadcast
+// closes it AND replaces it with a fresh open channel (a subsequent
+// Subscribe call returns the new channel, not the closed one).
+//
+// Implementation note: lifecycle is fully owned by *SQLiteStore (the
+// notifier is constructed in NewSQLiteStore). Workers / runners
+// subscribe per-loop via this method.
+func (r *SQLiteStore) Subscribe() <-chan struct{} {
+	return r.notifier.Subscribe()
+}
+
+// Broadcast closes the current notifier channel and replaces it with
+// a fresh open channel. All in-flight subscribers unblock; new
+// subscribers join the fresh channel.
+//
+// Trigger surface: this method is called from Create, Retry, and
+// RequeueExpiredLeases — the only three canonical paths that ADD
+// jobs to the queue. ClaimNext does NOT call Broadcast per ADR
+// §D6.5 ("no fake availability": raw SQL operators do not get wakes).
+//
+// In-process scope: the broadcast is single-process only. A future
+// postgres adapter will need a separate LISTEN/NOTIFY adapter (out of
+// scope for PR-Polling / §D6.5 single-node).
+func (r *SQLiteStore) Broadcast() {
+	r.notifier.Broadcast()
+}
+
+// queueChanged is a private helper that centralises the
+// "after a write added a job to the queue, wake every sleep­ing
+// Worker" pattern. It is the canonical call site for Broadcast on
+// the SQLiteStore write paths; triggering code MUST go through
+// this helper rather than calling r.Broadcast() directly so the
+// trigger set stays in one place (the linter cannot enforce this,
+// but the doc-comment on Create / Retry / RequeueExpiredLeases pins
+// the canonical call).
+func (r *SQLiteStore) queueChanged() {
+	r.Broadcast()
 }
 
 // DB returns the underlying *sql.DB for direct query access in tests + migrations.
@@ -43,6 +85,17 @@ func (r *SQLiteStore) DB() *sql.DB { return r.db }
 
 // Compile-time check: SQLiteStore satisfies the canonical job.Store contract.
 var _ job.Store = (*SQLiteStore)(nil)
+
+// Compile-time check: SQLiteStore satisfies the canonical job.JobBroker
+// port (PR-B, Wave 22, June 2026). The same assertion will be added at
+// the top of any future PostgreSQL adapter's repository file — the
+// port + this assertion is the seam that lets internal/application/**
+// depend on a portable interface instead of *SQLiteStore directly.
+//
+// Rationale for the embedding-not-alias choice (and the call sites a
+// future PR-postgres author must touch): see ADR-0002 §D2 audit notes
+// (`architecture/decisions/0002-p2-p3-roadmap.md`).
+var _ job.JobBroker = (*SQLiteStore)(nil)
 
 func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	query := `
@@ -79,6 +132,14 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
+
+	// PR-Polling / ADR-0002 §D6.5 (June 2026): wake every sleeping
+	// Worker so the new job is picked up immediately instead of
+	// waiting for the next backoff tick. Routed through queueChanged
+	// (singular broadcast trigger — the 3 paths that add to the
+	// queue are Create here, Retry in repository_lifecycle.go, and
+	// RequeueExpiredLeases in repository_claims.go).
+	r.queueChanged()
 
 	return nil
 }

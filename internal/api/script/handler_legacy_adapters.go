@@ -302,6 +302,13 @@ func (r *LegacyGenerateBatchRequest) toEnvelope() domainScript.GenerationEnvelop
 
 // LegacyCurateRequest is the deprecated request for
 // POST /api/script/curate.
+//
+// PR 4 (June 2026): extended with the three SourceCurate fields the
+// user spec demanded: Search (opt-in to semantic search leg),
+// AllowTextOnly (legacy text-only fallback opt-in), and
+// HintClipIDs (caller-seeded clip list). All three map cleanly into
+// SourceSpec on the unified SourceCurate path; previously these were
+// handled by the legacy MediaCurator's bespoke credentialing.
 type LegacyCurateRequest struct {
 	Query             string   `json:"query"`
 	Title             string   `json:"title"`
@@ -324,11 +331,36 @@ type LegacyCurateRequest struct {
 	VoiceoverFolderID string   `json:"voiceover_folder_id"`
 	GenerateVoiceover bool     `json:"generate_voiceover"`
 	DriveFolderID     string   `json:"drive_folder_id"`
+	// PR 4 (June 2026): SourceCurate credentials.
+	Search        bool     `json:"search"`
+	AllowTextOnly bool     `json:"allow_text_only"`
+	HintClipIDs   []string `json:"hint_clip_ids"`
 }
 
 // toEnvelope translates a legacy curate request into a
-// GenerationEnvelopeV2. The query becomes a catalog-source search;
-// clip options are mapped to source search parameters.
+// GenerationEnvelopeV2.
+//
+// PR 4 (June 2026): legacy /curate now routes through SourceCurate
+// (unified resolver) instead of SourceCatalog. Mapping:
+//   - Query             → src.Query
+//   - MaxClips          → src.MaxClips
+//   - MinScore          → src.MinQualityScore (typed *float64)
+//   - HintClipIDs       → src.ClipIDs (caller-seeded clip list)
+//   - Source            → src.SourceFilter
+//   - MediaType         → src.MediaTypeFilter
+//   - AllowTextOnly     → src.AllowTextOnly
+//   - Search=true       → src.Search
+// ResolutionContext (Language, Tone, Model, Style, TargetWords) is
+// derived from item-level fields (Title, Language, Tone, Model,
+// Style, ScriptParams.TargetWords); the curate resolver reads from
+// SourceResolutionContext, never from SourceSpec.Guidelines.
+//
+// SourceSpec.Guidelines is intentionally empty here — the previous
+// path put StyleInstructions there, which historically caused the
+// curate resolver to hijack Guidelines as the language. The fix
+// keeps Guidelines preserving editorial style on the *text* path
+// (SourceText editorial overrides) while the curate flow reads
+// Style from SourceResolutionContext.Style explicitly.
 func (r *LegacyCurateRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
 	item := domainScript.GenerationItemV2{
 		ID:       r.Title,
@@ -338,14 +370,25 @@ func (r *LegacyCurateRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
 		Model:    r.Model,
 		Style:    r.Style,
 		Source: domainScript.SourceSpec{
-			Type:       domainScript.SourceCatalog,
-			Query:      r.Query,
-			MaxClips:   r.MaxClips,
-			ForceRefresh: r.ForceRefresh,
+			Type:            domainScript.SourceCurate,
+			Query:           r.Query,
+			MaxClips:        r.MaxClips,
+			SourceFilter:    r.Source,
+			MediaTypeFilter: r.MediaType,
+			ForceRefresh:    r.ForceRefresh,
+			// PR 4 (June 2026): SourceCurate credentials mapped
+			// verbatim from the legacy request. Search is the
+			// opt-in for the semantic-search leg via
+			// ClipSearchPort; AllowTextOnly gates the legacy
+			// text-only fallback (ErrCurateNoClips surfaces
+			// otherwise); HintClipIDs is caller-seeded clip
+			// list merged with search hits.
+			Search:        r.Search,
+			AllowTextOnly: r.AllowTextOnly,
+			ClipIDs:       r.HintClipIDs,
 		},
 		ScriptParams: domainScript.ScriptSpec{
 			TargetWords: r.TargetWords,
-			Guidelines:  r.StyleInstructions,
 			ForceRefresh: r.ForceRefresh,
 		},
 		Output: domainScript.OutputSpec{

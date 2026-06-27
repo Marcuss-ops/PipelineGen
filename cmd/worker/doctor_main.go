@@ -108,6 +108,9 @@ func runDoctor(args []string, log *zap.Logger) int {
 	}
 
 	// 3) Run + emit.
+	// AGENTS.md §7 post-write save ctx — doctor tool composition root;
+	// one-shot RunOnce aggregation has no parent ctx, so Background is
+	// the canonical choice for a CLI subcommand.
 	rep := agg.RunOnce(context.Background())
 	out := chooseOutput(flags, *rep, agg)
 

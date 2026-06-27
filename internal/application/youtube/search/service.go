@@ -264,7 +264,11 @@ func (s *Service) getCachedVideoMetadata(ctx context.Context, videoID string) (*
 		return nil, false
 	}
 	concurrent.SafeGoFunc("youtube-search-metadata-hit-update", videoID, func(id string) {
-		s.cache.BumpMetaHits(context.WithoutCancel(ctx), id)
+	// AGENTS.md §7 post-write save ctx — YouTube search metadata-hit
+	// bump is a post-write operation detached from the search ctx;
+	// the cache write must complete even if the search request was
+	// cancelled by the operator.
+	s.cache.BumpMetaHits(context.WithoutCancel(ctx), id)
 	})
 	return &metadata, true
 }

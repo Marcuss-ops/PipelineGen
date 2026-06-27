@@ -290,14 +290,24 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// prompt suffix steers the model toward emitting canonical JSON.
 	// Native Ollama JSON-mode (the adapter-side "format" parameter)
 	// is PR 3 territory and is intentionally not wired here.
-	// PR 2: the model receives RenderedPrompt (editorial body) +
-	// the V1 output-format suffix. RenderedPrompt explicitly does
-	// NOT include SourceFingerprint; the suffix is the only
-	// constraint injected by the engine on the wire.
-	builtPrompt := renderedPrompt
-	if plan.OutputFmt != "prose" {
-		builtPrompt += v1OutputInstruction
-	}
+	// PR 2 + P0.1/P0.2 (June 2026): the model receives RenderedPrompt
+	// (editorial body) + the V1 output-format suffix unconditionally.
+	//
+	// P0.1 flipped the default OutputFmt to the structured V1 contract
+	// ("json"), and the validator now rejects the legacy free-form
+	// value outright. The legacy per-plan conditional around the
+	// suffix is therefore dead code: every canonical entry-point
+	// lands here with OutputFmt in the V1 set, so the suffix is
+	// always appended.
+	//
+	// P0.2 additionally sets `format` on the wire to the JSON-mode
+	// native flag in generate.go::GenerateScript whenever the
+	// V1 contract is requested — but the prompt suffix remains as
+	// defense in depth (see v1OutputInstruction's own comment:
+	// native json mode guarantees syntactically valid JSON; the
+	// suffix enforces the V1 schema shape and forbids prose that
+	// would otherwise sneak into the output around the JSON object).
+	builtPrompt := renderedPrompt + v1OutputInstruction
 
 	ollamaReq := ollamatypes.TextGenerationRequest{
 		Language:    language,
@@ -407,14 +417,29 @@ func decodeModelPayload(raw []byte, log *zap.Logger) (*scriptpkg.ModelScriptOutp
 	}
 }
 
-// v1OutputInstruction is the prompt suffix appended when OutputMode
-// is OutputModeScriptV1. The decoder tolerates code fences, so the
-// instruction explicitly forbids them to bias the model toward
-// emitting clean canonical JSON on the wire.
+// v1OutputInstruction is the prompt suffix appended unconditionally
+// for the canonical script-generation pipeline.
 //
-// When the adapter-side JSON-mode (the ollama.Generator "format"
-// parameter) lands in PR 3, this instruction will be replaced by a
-// native format flag and used only as a fallback.
+// Two layers of enforcement cooperate to keep the model output on the
+// ModelScriptOutputV1 contract:
+//
+//  1. Native Ollama JSON-mode (generate.go::GenerateScript sets
+//     `options["format"] = "json"` when OutputMode == script_v1).
+//     Ollama forces the model response to be syntactically valid
+//     JSON — but a JSON object is not a V1 script; the schema
+//     (schema_version, text, specscene.scenes[…].bindings) is still
+//     the model's responsibility.
+//
+//  2. The v1OutputInstruction suffix below tells the model which
+//     keys the V1 contract expects, in what shape, and forbids
+//     markdown fences and any prose around the JSON object. The
+//     decoder (model_output_decoder.go) tolerates code fences for
+//     legacy cache rows, but the suffix biases the model toward
+//     emitting clean canonical JSON so the decoder's path is the
+//     happy path.
+//
+// Removing this suffix in favour of "json format only" is not safe:
+// native json mode does not enforce schema-shaped JSON.
 const v1OutputInstruction = `
 
 [OUTPUT_FORMAT]

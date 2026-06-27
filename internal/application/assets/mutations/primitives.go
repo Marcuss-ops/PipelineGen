@@ -1,44 +1,56 @@
 // Package mutations declares the strictly-scoped AssetMutationPrimitives
-// interface that the outbox dispatcher and the admin purge path consume.
+// interface consumed by the outbox dispatcher + test fakes.
 //
-// Shape (B) — QDRANT-asset-mutation isolation (June 2026)
+// Shape (B) — QDRANT-asset-mutation isolation (June 2026, Wave 22 task 5)
 // ---------------------------------------------------------------
-// The three primitive methods UpsertClip / Restore / HardDelete live
-// canonically on *assets.ClipsRepository (the single infrastructure owner
-// of media_assets). Production code paths in internal/application/**
-// and internal/api/** MUST NOT reach those methods directly: every
-// production write to media_assets goes through outbox.Dispatcher.EnqueueAndIndex
-// (atomic UPSERT + outbox_events INSERT in a single tx) or through
-// outbox.Dispatcher.EnqueueAndDelete for the lifecycle_state transitions.
+// UpsertClip is the ONLY method that survives on the production-canonical
+// repository concrete (*assets.ClipsRepository), because the dispatcher
+// returns it from the port requirement:
 //
-// The AssetMutationPrimitives interface exists for the dispatcher to
-// declare the narrowed 3-method slice it needs from the repository.
-// Outbox.Dispatcher takes Primitives, not *ClipsRepository, so a future
-// port swap (e.g. if we move UpsertClip into the canonical asset/native
-// SQLite store) doesn't require re-wiring every consumer in the repo
-// graph. The same pattern as qdrant/search_adapter.go::VectorStorePort
-// (see AGENTS.md Pattern 0 — typed, signature-bearing, minimal).
+//	(1) Production writes — outbox.Dispatcher.EnqueueAndIndex / .EnqueueAndDelete
+//	    own the upstream flow; the dispatcher is asserted against the
+//	    separate AssetMutationDispatcher interface (3 methods, see
+//	    dispatcher.go), NOT AssetMutationPrimitives. So the dispatcher's
+//	    public surface is unaffected by the Primitives shrink below.
+//	(2) Test fakes and dispatcher stubs that emulate the narrowed surface
+//	    (see internal/application/assets/providers/artlist/dispatcher_stub_test.go)
+//	    consume the Primitives port.
+//	(3) Restore and HardDelete are GONE from this interface and from
+//	    the canonical repository concrete — they moved to the restricted
+//	    tx-scoped package `internal/infrastructure/database/sqlite/assets/txmutation/`
+//	    as RestoreTx / HardDeleteTx. See architecture/deprecations.yaml
+//	    under PR-CLIP-RAW-MUTATIONS for the deprecation record.
 //
-// Why the call site outside the production application/api layers is
-// the only allowed consumer:
-//   - internal/application/** and internal/api/** are the production
-//     callers; the CI lint in scripts/ci-architectural-checks.sh bans
-//     direct UpsertClip/Restore/HardDelete calls in those paths.
-//   - cmd/admin/* uses InternalAdminPurge (separate interface, see
-//     internal/infrastructure/database/sqlite/admin/purge_ports.go) — NOT
-//     this one. The admin and the dispatcher are deliberately bifurcated
-//     so an admin tool cannot accidentally route through the live
-//     outbox pool (admin tooling runs offline, with no worker active).
+// Why UpsertClip stays on the repository concrete:
+//   - Test fixtures in `internal/application/assets/providers/artlist/*_test.go`
+//     and the dispatcher stub call `repo.UpsertClip` to seed clip rows.
+//     Keeping the method on the concrete (with the CI lint banning
+//     production layer callers) avoids rewriting every test fixture.
+//   - The dispatcher itself uses UpsertClipTx (tx-scoped variant) — the
+//     AssetMutationDispatcher's compilation assertion in outbox/repository.go
+//     works against the AssetMutationDispatcher (3 methods), not Primitives.
+//
+// Why Restore and HardDelete are removed entirely:
+//   - Production code MUST NOT call Restore/HardDelete on the repository
+//     directly: Restore bypasses the outbox (so a restored row leaves
+//     Qdrant empty, the canonical re-index path is bypassed). HardDelete
+//     permanently removes the row without emitting an
+//     asset.index.delete_requested event, leaving the Qdrant point
+//     orphaned. The only legitimate caller is the admin tool, which
+//     goes through the InternalAdminPurge port. See
+//     internal/infrastructure/database/sqlite/admin/purge.go::PurgeService
+//     which now uses txmutation.RestoreTx/HardDeleteTx directly
+//     (caller-owned tx).
 //
 // Reading the file:
-//   - AssetMutationPrimitives   : the 3-method narrowed surface for
-//                                 outbox.Dispatcher and test fakes.
+//   - AssetMutationPrimitives   : 1-method narrowed surface for test
+//                                 stubs and any composition-root port
+//                                 that needs UpsertClip specifically.
 //   - ErrUnavailable            : sentinel for "primitives not wired"
 //                                 (errors.Is compatible with the
-//                                 assets.ErrAssetMutationDispatcherUnavailable
-//                                 from the artlist package so the same
-//                                 diagnostic phrasing reads across
-//                                 packages).
+//                                 artlist.ErrAssetMutationDispatcherUnavailable
+//                                 so the same diagnostic phrasing reads
+//                                 across packages).
 package mutations
 
 import (
@@ -59,34 +71,31 @@ import (
 // so a single log message works across both call sites.
 var ErrUnavailable = errors.New("mutations: asset mutation primitives unavailable")
 
-// AssetMutationPrimitives is the strictly-scoped 3-method surface for
-// direct writes to media_assets. ONLY outbox.Dispatcher (production
-// writes) and the admin purge path (offline debug / physical repair)
-// consume this interface; nothing else.
+// AssetMutationPrimitives is the strictly-scoped 1-method surface for
+// direct writes to media_assets. ONLY the dispatcher stub
+// (internal/application/assets/providers/artlist/dispatcher_stub_test.go)
+// and any future composition-root port that needs UpsertClip specifically
+// consume this interface. The outbox.Dispatcher itself is asserted
+// against the ActionMutationDispatcher (3-method) interface, NOT Primitives.
 //
 // Method semantics mirror the canonical implementation on
 // *assets.ClipsRepository (see internal/infrastructure/database/sqlite/
 // assets/clips_repository.go for the SQL + the //nolint:production
-// marker annotations that flag these as dispatcher-only entry points):
+// marker annotation that flags it as dispatcher-only production layer
+// entry point). Test fixtures are allowlisted explicitly:
+//
+//   - internal/application/assets/providers/artlist/service_test.go:
+//     `repo.UpsertClip(context.Background(), clip)` — explicit allowlist
+//     note in the test fixture.
+//   - internal/application/assets/providers/artlist/dispatcher_stub_test.go:
+//     the stub's `EnqueueAndIndex` delegates to `s.repo.UpsertClip` to
+//     mirror production semantics.
 //
 //   - UpsertClip(ctx, clip) : upsert via the OUT-OF-OUTBOX low-level Save()
-//                             path used inside the dispatcher's tx-bound
-//                             UpsertClipTx. Production callers MUST go
-//                             through dispatcher.EnqueueAndIndex instead.
-//
-//   - Restore(ctx, id)      : flips lifecycle_state to 'ready' for a
-//                             previously soft-deleted row. Production code
-//                             rarely needs this (the dispatcher handles
-//                             the lifecycle state transitions). Exposed
-//                             primarily for the admin recovery path.
-//
-//   - HardDelete(ctx, id)   : physically removes the row + dependent rows
-//                             (asset_locations, asset_processing,
-//                             asset_versions). Idempotent. Production
-//                             callers MUST use dispatcher.EnqueueAndDelete
-//                             so the Qdrant point is also cleaned up.
+//                             path. Production callers MUST go through
+//                             dispatcher.EnqueueAndIndex instead, which
+//                             performs the same upsert AND emits the
+//                             matching outbox_event in a single tx.
 type AssetMutationPrimitives interface {
 	UpsertClip(ctx context.Context, clip *asset.Asset) error
-	Restore(ctx context.Context, id string) error
-	HardDelete(ctx context.Context, id string) error
 }

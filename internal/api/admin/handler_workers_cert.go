@@ -1,0 +1,192 @@
+// Package admin hosts system-level HTTP handlers accessible only to
+// operators holding a valid admin token. Unlike the per-feature
+// handlers in internal/api/assets/, internal/api/script/, etc., this
+// surface exposes cross-cutting operational data: worker mTLS
+// identities, broker state, cert inventory.
+//
+// RW-PROD-001 (June 2026): the cert-report endpoint is the canonical
+// JSON inventory referenced in the runbook. It returns the mTLS
+// identity extracted from the most recent worker registration (or
+// the current session, when a session_id filter is supplied).
+//
+// Mounted under /api/v1/admin/* with RequireAdminToken middleware so a
+// stolen worker token can NOT trigger it — admin token only.
+package admin
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	tlsload "github.com/Marcuss-ops/PipelineGen/pkg/tlsload"
+)
+
+// WorkerStore is the narrow port for reading the current worker
+// session row. Satisfied by an adapter over
+// internal/infrastructure/database/sqlite/assets/workernodes_repository.go
+// in production; tests stub it.
+type WorkerStore interface {
+	GetCurrentCertIdentity(ctx context.Context, workerID string) (*CertReport, error)
+}
+
+// CertReport is the JSON shape returned by the admin endpoint.
+// Mirrors tlsload.Identity but adds session metadata useful for the
+// runbook ("scheda finale di certificazione per worker").
+type CertReport struct {
+	WorkerID      string `json:"worker_id"`
+	Hostname      string `json:"hostname,omitempty"`
+	WorkerVersion string `json:"worker_version,omitempty"`
+	SessionID     string `json:"session_id,omitempty"`
+	// SessionExpiresAt is RFC3339 UTC to keep the JSON stable across
+	// servers with different timezone defaults.
+	SessionExpiresAt string `json:"session_expires_at,omitempty"`
+	// ServerCertFP is the SHA-256 fingerprint of the running server's
+	// own listener cert (lookup table: which CA pair is in use).
+	ServerCertFP string `json:"server_cert_fingerprint_sha256,omitempty"`
+
+	// Worker cert fields (filled from the most recent register call).
+	CertFingerprintSHA256 string   `json:"cert_fingerprint_sha256,omitempty"`
+	CertSerialHex         string   `json:"cert_serial_hex,omitempty"`
+	CertSubjectDN         string   `json:"cert_subject_dn,omitempty"`
+	CertIssuerDN          string   `json:"cert_issuer_dn,omitempty"`
+	CertDNSNames          []string `json:"cert_dns_names,omitempty"`
+	CertNotAfter          string   `json:"cert_not_after,omitempty"`
+	CertVerifiedAt        string   `json:"cert_verified_at,omitempty"`
+
+	// Capabilities reported by the worker on register.
+	Capabilities []string `json:"capabilities,omitempty"`
+
+	// SchemaVersion = 1 (RW-PROD-001 v1, June 2026). Future additions
+	// bump this so downstream parsers can branch. The runbook
+	// explicitly asks for "Output stabile e versionato" — DO NOT
+	// change the schema without bumping this field.
+	SchemaVersion int `json:"schema_version"`
+}
+
+// CertReportHandler serves GET /api/v1/admin/workers/:id/cert-report.
+//
+// serverIdentity is a getter returning the parsed TLS identity of the
+// running listener. It is a CLOSURE (NOT a snapshot) because the
+// listener cert is loaded lazily by server.Start() via prepareTLSConfig
+// AFTER this handler is constructed — passing a snapshot here would
+// capture a stale nil. Callers should pass `srv.TLSIdentity` (a method
+// value of type `func() *tlsload.Identity`). When the getter returns
+// nil (TLS disabled / start-up race) the JSON omits
+// server_cert_fingerprint_sha256; nil getter = always omit.
+type CertReportHandler struct {
+	store          WorkerStore
+	serverIdentity func() *tlsload.Identity
+	log            *zap.Logger
+}
+
+// NewCertReportHandler builds the handler with explicit deps. The
+// server-side TLS identity getter is optional: pass nil and the JSON
+// always omits server_cert_fingerprint_sha256.
+func NewCertReportHandler(store WorkerStore, serverIdentity func() *tlsload.Identity, log *zap.Logger) *CertReportHandler {
+	return &CertReportHandler{
+		store:          store,
+		serverIdentity: serverIdentity,
+		log:            log,
+	}
+}
+
+// RegisterRoutes mounts the cert-report handler under the supplied
+// router group. Caller is responsible for attaching RequireAdminToken
+// middleware to the group, e.g.:
+//
+//	adminGroup := engine.Group("/api/v1/admin")
+//	adminGroup.Use(middleware.RequireAdminToken(r.cfg))
+//	adminGroup.GET("/workers/:id/cert-report", h.Report)
+func (h *CertReportHandler) RegisterRoutes(r *gin.RouterGroup) {
+	r.GET("/workers/:id/cert-report", h.Report)
+}
+
+// Report handles GET /api/v1/admin/workers/:id/cert-report.
+//
+// It returns the cert report for the given worker_id; 404 when no
+// worker matches the ID. Never echoes the worker's HMAC token, cert
+// key, or any non-metadata field — the audit list explicitly bans
+// secret leaks in this surface.
+func (h *CertReportHandler) Report(c *gin.Context) {
+	workerID := c.Param("id")
+	if workerID == "" {
+		api.BadRequest(c, "missing worker id")
+		return
+	}
+
+	report, err := h.store.GetCurrentCertIdentity(c.Request.Context(), workerID)
+	if err != nil {
+		if _, ok := err.(*ErrWorkerNotFound); ok {
+			c.JSON(http.StatusNotFound, gin.H{
+				"ok":    false,
+				"error": "worker not found",
+				"id":    workerID,
+			})
+			return
+		}
+		h.log.Error("cert-report lookup failed",
+			zap.String("worker_id", workerID),
+			zap.Error(err),
+		)
+		api.InternalError(c, err)
+		return
+	}
+
+	if report.SchemaVersion == 0 {
+		report.SchemaVersion = 1
+	}
+	if h.serverIdentity != nil {
+		// Lazy getter (NOT snapshot) — the underlying listener cert is
+		// loaded after construction; the getter reads the live value.
+		if ident := h.serverIdentity(); ident != nil {
+			report.ServerCertFP = ident.FingerprintSHA256
+		}
+	}
+	api.OK(c, report)
+}
+
+// ErrWorkerNotFound is returned by WorkerStore implementations when
+// the requested worker has no current session. Routes 1:1 to a 404 in
+// the handler.
+type ErrWorkerNotFound struct {
+	WorkerID string
+}
+
+func (e *ErrWorkerNotFound) Error() string {
+	return "worker not found: " + e.WorkerID
+}
+
+// FromSessionCertIdentity builds a CertReport from an in-memory
+// appjobs.WorkerSession plus the requested host/version metadata.
+// Helper used by adapter implementations of WorkerStore — the
+// production repository returns one of these from the session row.
+func FromSessionCertIdentity(s *appjobs.WorkerSession, hostname, workerVersion string, capabilityTypes []string) *CertReport {
+	if s == nil {
+		return &CertReport{SchemaVersion: 1, Capabilities: capabilityTypes}
+	}
+	r := &CertReport{
+		WorkerID:              s.WorkerID,
+		Hostname:              hostname,
+		WorkerVersion:         workerVersion,
+		SessionID:             s.SessionID,
+		SessionExpiresAt:      s.SessionExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		CertFingerprintSHA256: s.CertFingerprintSHA256,
+		CertSerialHex:         s.CertSerialHex,
+		CertSubjectDN:         s.CertSubjectDN,
+		CertIssuerDN:          s.CertIssuerDN,
+		CertDNSNames:          s.CertDNSNames,
+		SchemaVersion:         1,
+		Capabilities:          capabilityTypes,
+	}
+	if !s.CertNotAfter.IsZero() {
+		r.CertNotAfter = s.CertNotAfter.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	if !s.CertVerifiedAt.IsZero() {
+		r.CertVerifiedAt = s.CertVerifiedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return r
+}

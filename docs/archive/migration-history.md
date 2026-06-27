@@ -281,3 +281,48 @@ archive time) map legacy Wave numbers onto forward-looking operational PRs:
 The Operational Roadmap's `Synchronisation rules` are preserved verbatim
 in the archived current.yaml snapshot; readers seeking modern truth should
 consult `architecture/current.yaml` instead.
+
+---
+
+# Wave 22 PR-5 polish (June 2026) — S1b+S1c reviewer absorption
+
+## S1b — synchronous 10000-record fallback removal
+
+The pre-S1a pattern layered a `repo.ListClipsPaged(..., 10000, 0, ...)`
+inline paginated scan into the HTTP handler's request goroutine. This
+violated AGENTS.md Pattern 8 ("api layer is thin transport only, no
+business orchestration") because the handler thread ended up running
+the orphan-scan + Drive-files.Get + DELETE coordination synchronously.
+
+**Fix**: Cleanup and Reconcile now ALWAYS enqueue a `job.TypeSystemCleanup`
+job through `JobsServicePort` (canonical service side) and
+`jobservice.Enqueue(...)` (api side). The worker registered at
+`internal/application/assets/maintenance/` does the actual orphan scan,
+Drive-files.Get, and physical delete from the broker pool. The
+10000-record synchronous path is REMOVED entirely.
+
+## Wave 22 PR-5 polish (June 2026) — what this PR added
+
+| Reviewer finding                               | Edit location                                                            |
+|------------------------------------------------|--------------------------------------------------------------------------|
+| (a) Canonicalise `"system.cleanup"` -> `job.TypeSystemCleanup` | `internal/application/clips/clip_ops.go` + `internal/api/assets/clips/clip_ops.go` (constant already defined in `internal/domain/job/job.go:69`) |
+| (b) Wire `s.Cleanup` via `JobsServicePort`     | Already wired (no code change). Port stays nil-tolerated for tests.       |
+| (c) Typed sentinel `clips.ErrJobsUnavailable`  | `internal/application/clips/clip_ops.go` (sentinels block)               |
+| (d) Issue-slug blocking/informational split    | `VerifyReport.Issues` godoc clarifies BLOCKING-only contract             |
+| (e) HashRecovered legacy godoc rewrite         | `VerifyReport.HashRecovered` godoc expanded (always-false on verify)     |
+| (f) Regression-test `_test.go` per read-only invariant | `internal/application/clips/clip_ops_test.go::TestVerify_HashInfoSeparateFromIssues/read_only_no_clip_mutation` |
+| (g) Drop `_ = time.Now()` hack                 | `internal/application/clips/clip_ops.go` + `internal/api/assets/clips/clip_ops.go` (+ remove `"time"` import) |
+| (h) Archive 10000 docstring                     | This section (this file) + the inline comment shortens to a pointer      |
+
+Plus puny cleanups that fell out of the polish pass:
+
+- Removed the giant verbose S1b narrative from the inline `Cleanup`
+  comment blocks (both api-side and service-side); replaced with a
+  4-line summary that points here for the historical detail.
+- Api-side verifyClip drive-check section gained a 3-line note
+  explaining the Wave 22 PR-5 polish: the BLOCKING vs INFORMATIONAL
+  contract on `result["issues"]` (mirrors the typed `VerifyReport.Issues`
+  godoc on the service side).
+- `cleanup requires jobs service` HTTP 503 message body on the api
+  side now mirrors `clips.ErrJobsUnavailable` verbatim so dashboards
+  grep one stable string across both layers.

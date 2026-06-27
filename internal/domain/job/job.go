@@ -72,6 +72,7 @@ const (
 	TypeBooksProcess           = "books.process"
 	TypeLessonsProcess         = "lessons.process"
 	TypeMediaReindex           = "media.reindex"
+	TypeMediaEnrich            = "media.enrich"
 	TypeYouTubeRebuildST       = "youtube.rebuild_search_text"
 	TypeScriptGenerate         = "script.generate"
 	TypeBulkUploadYouTubeClips = "media.bulk_upload_youtube_clips"

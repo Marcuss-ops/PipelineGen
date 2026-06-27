@@ -25,6 +25,21 @@
 #                                   txmutation.{RestoreTx,HardDeleteTx} in
 #                                   the restricted tx-scoped package.
 #
+# Records added in this PR (Wave 22 / PR-QDRANT-WIRE-MIRROR EXPAND audit, June 2026):
+#   9. PR-QDRANT-WIRE-MIRROR    — wire-mirror pattern in qdrant ↔ dr packages
+#                                   (EXPAND-phase audit registration; CONTRACT
+#                                   lands in 3 follow-up PRs through Q4 2026
+#                                   per docs/operations/06-qdrant-wire-mirror-review.md).
+#
+# Records added in this PR (Wave 22 / S3f, manifest ratchet, June 2026):
+#  10. PR-CLIP-YT-REGISTRY-CLEANUP — youtube_handlers.go resolveProvider +
+#                                   providerSearch + providerReg + providerResolve
+#                                   fields removed; cross-provider search now
+#                                   routes through SearchAggregator (S3a → S3b →
+#                                   S3c → S3d chain finalisation per
+#                                   architecture/current.yaml#id-16.
+#                                   follow_up_tickets).
+#
 # Each record below cites the Phase 1..4 migration status per godlike/07 §"Migration sequence":
 #   EXPAND (introduce new canonical structure)
 #   BACKFILL (migrate durable state)
@@ -502,16 +517,120 @@ deprecations:
       RIGHT shape (two declarations in different directory_paths +
       same package_name but allowed by Go); Check 5 does not gate it.
 
+  # ────────────────────────────────────────────────────────────────────────
+  # 10. PR-CLIP-YT-REGISTRY-CLEANUP — youtube_handlers.go provider dispatch
+  #   fields + method removed; cross-provider search now routes through
+  #   SearchAggregator.{Aggregate, aggregateHash} (Wave 22 / S3a→S3b→S3c→
+  #   S3d chain finalisation, June 2026).
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-CLIP-YT-REGISTRY-CLEANUP
+    owner_capability: internal/api/assets/youtube
+    exact_symbol: "*YouTubeClipHandler.resolveProvider + providerSearch + providerReg + providerResolve fields"
+    file: internal/api/assets/youtube/youtube_handlers.go
+    # file_line anchors (pre-removal, S3c landing commit):
+    #   line 42-44 : providerSearch, providerReg, providerResolve field declarations
+    #   line 62    : providerReg assignment in ctor body literal
+    #   line 72    : NewYouTubeClipHandler signature `providerRegistry *providers.Registry`
+    #   line 82-92 : resolveProvider() method body (sync.Once + lazy bind)
+    file_line: 42-44, 62, 72, 82-92
+    replacement: "SearchAggregator (internal/application/assets/providers/aggregator.go::Aggregate); FindDuplicates / SearchAdvanced / Stats all route through aggregator.Aggregate(ctx, query, AggregateOptions{HashQuery:..., Sources:[...]}) instead of legacy map-of-repositories fan-out"
+    introduction_date: 2026-04
+    removal_date: 2026-06-27  # S3c landing commit
+    tracking_issue: "architecture/current.yaml#id-16 follow_up_tickets (S3a → S3b → S3c → S3d chain)"
+    compatibility_test: |
+      Three layers of defence are simultaneously enforced (mirrors
+      PR-CLIP-RAW-MUTATIONS's triple-defence pattern):
+        (a) Fields + method removed from *YouTubeClipHandler — any
+            stray reference inside internal/ is a Go compile failure.
+            `rg -n 'resolveProvider\(|providerSearch\b|providerReg\b|providerResolve\b' internal/`
+            returns zero hits outside any deprecation comment.
+        (b) Compile-time assertions — NewYouTubeClipHandler signature
+            shrunk from 7 to 6 positional args (providerRegistry dropped);
+            WireYouTubeClip signature shrunk from 10 to 9 positional args;
+            the composition-root call at internal/app/registry.go::WireYouTubeClip
+            must thread the new shape. A site drift fails to build.
+        (c) `scripts/ci-architectural-checks.sh` Check 8 (factory-only,
+            S3e) rg-gates the inline literal `map[string]*assets.ClipsRepository{...}`
+            in `internal/application internal/api` with the
+            `// ARCH-ALLOWLIST: factory-only` opt-in marker. The two
+            canonical sites (assetindex/resolver.go + app/build_bundles_core.go)
+            are explicitly excluded from the gate.
+    usage_metric: |
+      Post-aggregator migration (audit point in time, 2026-06-27):
+        - resolveProvider()            : 0 callers (rm'd S3c, full method body).
+        - providerSearch field          : 0 callers (rm'd S3c, struct field gone).
+        - providerReg field             : 0 callers (rm'd S3c, struct field gone).
+        - providerResolve field (sync.Once): 0 callers (rm'd S3c, struct field gone).
+        - providerRegistry ctor arg     : 0 callers (rm'd S3c, ctor param dropped).
+      Post-removal audit commands (mandatory before this PR merges):
+        - `rg -n 'resolveProvider\(|providerSearch\b|providerReg\b|providerResolve\b' internal/` → 0
+        - `rg -n 'providerRegistry\b' internal/api/assets/youtube/` → 0
+        - `bash scripts/ci-architectural-checks.sh` → exit 0
+          (including the new Check 8 factory-only gate; the legacy
+          FindDuplicates fallback carries the `// ARCH-ALLOWLIST: factory-only`
+          marker as transitional S3d back-compat).
+    migration_phase: CONTRACT  # zero pre-removal production callers; direct CONTRACT per godlike/07 §"Migration sequence"
+    status: removed
+    notes: |
+      This entry completes the Wave 22 / S3a → S3b → S3c → S3d chain
+      documented in architecture/current.yaml#id-16 follow_up_tickets.
+      Per godlike/07 §"Migration sequence" (EXPAND / BACKFILL / CUTOVER /
+      CONTRACT), the chain maps onto the 4 phases:
+        - S3a = EXPAND : ship the canonical SearchAggregator shape
+          (aggregator types + AggregateOptions struct).
+        - S3b = BACKFILL : re-implement semantic-search fan-out
+          via the aggregator (qdrantScore × 0.65 + rerankScore × 0.35
+          blend through `reranker.MixedScore`). Equivalent to the
+          legacy "fan-out every repo then merge" semantic.
+        - S3c = CUTOVER + CONTRACT : collapse the YouTube handler's
+          legacy provider dispatch wiring (providerSearch /
+          providerReg / providerResolve fields + resolveProvider()
+          method + providerRegistry ctor arg + sync/ providers
+          imports). Removal lands in one commit.
+        - S3d = CUTOVER (hash path) + CONTRACT (getAllClipRepos removal):
+          route FindDuplicates + SearchAdvanced + Stats through the
+          aggregator; remove getAllClipRepos(). Legacy direct-repo
+          loop in FindDuplicates carries the
+          `// ARCH-ALLOWLIST: factory-only` marker (S3e Check 8 opt-in)
+          and is removed in PR-CLIP-DEDUP-MIGRATION.
+        - S3e : ship Check 8 (factory-only) in
+          `scripts/ci-architectural-checks.sh` — gates the literal
+          `map[string]*assets.ClipsRepository{...}` idiom outside the
+          two canonical-factory sites.
+
+      This manifest registration (S3f) is documentation-only. The
+      removal_date (2026-06-27) is the S3c landing commit; one day
+      before this manifest ships. No new code surface is added in
+      S3f itself; the entry exists to ratchet the entire chain as a
+      single deprecation event, providing a single audit point for
+      the "no stragglers" check.
+
+      Why CONTRACT (not CUTOVER or BACKFILL) per godlike/07:
+        - Pre-removal callers were zero (no production code path
+          reads the resolveProvider() method or the three fields).
+        - Per godlike/07 §"Migration sequence", when the canonical
+          replacement already exists and pre-removal callers are zero,
+          the migration jumps directly to CONTRACT.
+
+      Cross-refs:
+        - godlike/06 §"One owner per fact" : media_assets row mutations
+          are owned by outbox.Dispatcher exclusively; this entry mirrors
+          that ownership boundary by removing the handler's hand-rolled
+          "lookup a provider and call it" code path.
+        - godlike/07 §"No fake availability" : the post-removal audit
+          commands above verify the gate, not a "we'll handle it
+          later" promise.
+
 # Audit summary (read-only; not part of the ratchet) -------------------------
 audit:
-  manifest_version: "QDRANT-REVIEW-001 / PR-QDRANT-WIRE-MIRROR EXPAND registration (June 2026)"
-  total_records: 9
+  manifest_version: "Wave 22 / S3f manifest registration (PR-CLIP-YT-REGISTRY-CLEANUP ratchet, June 2026)"
+  total_records: 10
   by_status:
-    removed: 6
+    removed: 7
     in_progress: 2
     keep: 1
   by_migration_phase:
-    CONTRACT: 5
+    CONTRACT: 6
     CUTOVER: 1
     BACKFILL: 1
     EXPAND: 1
@@ -550,3 +669,16 @@ audit:
         docs/operations/06-qdrant-wire-mirror-review.md. CI gate
         does NOT fail on this entry today; the entry is a tracking
         reference + ratchet. Removal is the ratchet trigger.
+    PR-CLIP-YT-REGISTRY-CLEANUP (removed 2026-06-27, this PR):
+        Triple-defence mirroring PR-CLIP-RAW-MUTATIONS: (a) fields +
+        method removed from *YouTubeClipHandler, (b) compile-time
+        signature enforcement (NewYouTubeClipHandler 7→6 args;
+        WireYouTubeClip 10→9 args), (c) `scripts/ci-architectural-checks.sh`
+        Check 8 (factory-only, S3e) now bans the inline literal
+        `map[string]*assets.ClipsRepository{...}` outside the two
+        canonical-factory sites. ARCH-ALLOWLIST comment marker
+        `// ARCH-ALLOWLIST: factory-only` is the explicit opt-in
+        mechanism for transitional back-compat paths (currently:
+        the legacy FindDuplicates direct-repo fallback at
+        `internal/api/assets/clips/clip_action.go`, marked and
+        scheduled for removal in PR-CLIP-DEDUP-MIGRATION).

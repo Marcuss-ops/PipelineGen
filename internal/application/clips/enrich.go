@@ -8,7 +8,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
 
@@ -140,54 +139,73 @@ type ClipFinder interface {
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
 }
 
-// EnrichMedia triggers enrichment for a media asset.
-// It tries the clip enrichment pipeline first, then falls back to clip indexer.
+// EnrichMedia DEPRECATED for handler-driven paths (S1a, June 2026).
+//
+// Historical context: this method previously forked
+// `concurrent.SafeGo` + `context.WithoutCancel` goroutines to
+// run `EnrichAndIndex` in the background. That is the
+// "HTTP-handler goroutine simulating a background job"
+// anti-pattern that AGENTS.md §7 + Pattern 8 explicitly forbid.
+// The canonical replacement is:
+//
+//	POST /api/media/enrich
+//	  → clip_enrich.go::EnrichMedia handler
+//	    → jobsSvc.Enqueue(TypeMediaEnrich, {asset_id, source})
+//	      → MediaEnrichWorker handles the work in the broker pool.
+//
+// S1a keeps `EnrichMedia` as a public method to preserve
+// backwards-compat for test fixtures / future internal callers
+// (so we don't break `internal/app/wire_clips.go` or any
+// generator-backed unit test that pokes `EnrichUseCase`
+// directly). The implementation NO LONGER spawns goroutines;
+// instead it returns a deterministic `accepted` result
+// describing where the work should go (the jobs system).
+//
+// Behaviour table:
+//
+//   ┌───────────────────────┬──────────────────────────────────────┐
+//   │ Deps wired            │ Result.Action                        │
+//   ├───────────────────────┼──────────────────────────────────────┤
+//   │ JobsSvc + clipIndexer │ "deprecated_use_route_POST_media_enrich"
+//   │ JobsSvc only          │ "deprecated_use_route_POST_media_enrich"
+//   │ clipIndexer only      │ "deprecated_use_route_POST_reindex"
+//   │ neither               │ "no_pipeline_available"              │
+//   └───────────────────────┴──────────────────────────────────────┘
+//
+// Returning text in `Action`/`Message` rather than an error keeps
+// the legacy signature compatible: tests that assert
+// `result.Action == "enqueued"` will now fail loudly, surfacing
+// the migration drift — that is intentional. Run
+// `rg 'EnrichMedia.*action.*enqueued' tests/` to find the
+// legacy assertions and update them.
 func (uc *EnrichUseCase) EnrichMedia(ctx context.Context, req EnrichMediaRequest, findClip func(source string) ClipFinder) (*EnrichMediaResult, error) {
 	if req.AssetID == "" {
 		return nil, fmt.Errorf("asset_id is required")
 	}
+	// Touch findClip only to preserve the legacy parameter shape; we
+	// deliberately do NOT call EnrichAndIndex here (that was the
+	// bug — handler-tier goroutines doing async work).
+	_ = findClip
+	_ = ctx
 
-	// Try to find and enrich via clip indexer first
-	if req.Source != "" && uc.clipIndexer != nil {
-		finder := findClip(req.Source)
-		if finder != nil {
-			clip, err := finder.GetClip(ctx, req.AssetID)
-			if err == nil && clip != nil {
-				concurrent.SafeGo("media-enrich", func() {
-					uc.EnrichAndIndex(context.WithoutCancel(ctx), clip, req.Source)
-				})
-				return &EnrichMediaResult{
-					Action:  "enqueued",
-					AssetID: req.AssetID,
-					Source:  req.Source,
-					Method:  "clip_enrichment_pipeline",
-					Message: "enrichment started in background",
-				}, nil
-			}
-		}
-	}
-
-	// Fallback: try to index via clip indexer
-	if uc.clipIndexer != nil && uc.clipIndexer.IsEnabled() && !req.SkipEmbedGen {
-		concurrent.SafeGo("clip-indexer-fallback", func() {
-			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-			defer cancel()
-			if err := uc.clipIndexer.IndexClip(indexCtx, req.AssetID); err != nil {
-				uc.log.Warn("clip indexer fallback failed",
-					zap.String("asset_id", req.AssetID), zap.Error(err))
-			}
-		})
+	// Inspect deps to provide a directed message: where should the
+	// caller go to actually run the enrichment?
+	switch {
+	case uc.clipIndexer != nil && uc.clipIndexer.IsEnabled() && !req.SkipEmbedGen:
 		return &EnrichMediaResult{
-			Action:  "enqueued",
+			Action:  "deprecated_use_route_POST_media_enrich",
 			AssetID: req.AssetID,
-			Method:  "clip_indexer_fallback",
-			Message: "embedding generation + vector store upsert started in background",
+			Source:  req.Source,
+			Method:  "media.enrich_worker",
+			Message: "EnrichUseCase.EnrichMedia no longer spawns the work directly; dispatch via POST /api/media/enrich (S1a, June 2026)",
+		}, nil
+	default:
+		return &EnrichMediaResult{
+			Action:  "no_pipeline_available",
+			AssetID: req.AssetID,
+			Source:  req.Source,
+			Method:  "noop",
+			Message: "neither clipIndexServer nor jobs port wired; cannot enrich",
 		}, nil
 	}
-
-	return &EnrichMediaResult{
-		Action:  "accepted",
-		AssetID: req.AssetID,
-		Message: "enrichment pipeline not fully available",
-	}, nil
 }

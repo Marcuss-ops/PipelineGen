@@ -55,11 +55,19 @@ func (r *CurateSourceResolver) SetClipSearchPort(port ClipSearchPort) {
 // Compile-time assertion: CurateSourceResolver satisfies SourceResolver.
 var _ SourceResolver = (*CurateSourceResolver)(nil)
 
-// Resolve implements SourceResolver. It unions semantic search results
-// with HintClipIDs, deduplicates, then builds clip context via
-// ClipSourceBuilder.BuildClipContext. Returns ErrCurateNoClips when
-// both legs produce zero clips and AllowTextOnly is false.
-func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, itemID string) (*scriptpkg.ResolvedSource, error) {
+// Resolve implements SourceResolver. It unions semantic search
+// results with HintClipIDs, deduplicates, then builds clip context
+// via ClipSourceBuilder.BuildClipContext. Returns ErrCurateNoClips
+// when both legs produce zero clips and AllowTextOnly is false.
+//
+// PR 4 (June 2026) bug fix: previously this resolver passed
+// src.Guidelines into ClipGenerationOptions.Language, hijacking
+// Guidelines as a stand-in for the target language. The fix reads
+// language, tone, model, style, target words, and title from
+// resCtx (the canonical operator-side context) instead. SourceSpec
+// retains Guidelines for the SourceText path only — the curate
+// flow now ignores it.
+func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil {
 		return nil, fmt.Errorf("CurateSourceResolver: nil receiver")
 	}
@@ -142,18 +150,31 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		return &scriptpkg.ResolvedSource{
 			Type:          scriptpkg.SourceCurate,
 			Topic:         query,
+			Title:         resCtx.Title,
+			Language:      resCtx.Language,
 			SourceText:    "",
 			SearchResults: searchResults,
 		}, nil
 	}
 
 	// Build clip context via ClipSourceBuilder.
+	//
+	// PR 4 fix: language/tone/model/style/target words come from
+	// resCtx — the canonical operator-side context. src.Guidelines
+	// is deliberately NOT consumed here (it remains in SourceSpec
+	// for the SourceText editorial path; the curate flow ignores
+	// it so the Language/Tone/etc fields carry operator intent).
 	opts := &ClipGenerationOptions{
-		Language:          src.Guidelines, // passthrough (Guidelines reused as style instructions)
-		TranscriptPolicy:  src.TranscriptPolicy,
-		OrderingStrategy:  src.OrderingStrategy,
-		MinQualityScore:   0,
-		MinTranscriptWords: 0,
+		Language:           resCtx.Language,
+		Title:              resCtx.Title,
+		Tone:               resCtx.Tone,
+		Model:              resCtx.Model,
+		Style:              resCtx.Style,
+		TargetWords:        resCtx.TargetWords,
+		TranscriptPolicy:   src.TranscriptPolicy,
+		OrderingStrategy:   src.OrderingStrategy,
+		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
+		MinTranscriptWords: ptrutil.DerefOr(src.MinTranscriptWords, 0),
 	}
 
 	pack, narrativePlan, sourceText, buildErr := r.clipBuilder.BuildClipContext(ctx, clipIDs, opts)
@@ -166,14 +187,24 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		}
 	}
 
-	_ = narrativePlan // carried via ResolvedSource for downstream consumers
+	_ = narrativePlan // narrative plan is consumed at the engine layer
+	// from the ClipSourceBuilder return value; transports stay
+	// canonical via ResolvedSource.
 
 	// Build ClipEvidence from the resolved clips + pack info.
 	clipEvidence := BuildClipEvidence(pack, sourceText)
 
+	// Title: prefer resCtx-provided title, fall back to query.
+	title := resCtx.Title
+	if title == "" {
+		title = query
+	}
+
 	return &scriptpkg.ResolvedSource{
 		Type:          scriptpkg.SourceCurate,
 		Topic:         query,
+		Title:         title,
+		Language:      resCtx.Language,
 		SourceText:    sourceText,
 		ClipEvidence:  clipEvidence,
 		SearchResults: searchResults,
