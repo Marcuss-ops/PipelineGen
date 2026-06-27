@@ -19,7 +19,15 @@
 // The Engine owns:
 //   - ollama script generation (delegates to *ollama.Generator)
 //   - memory gate check via gemmamemory (UseMemory path)
-//   - script persistence via ScriptRepository (SaveToDB path)
+//
+// PR 5 (June 2026): persistence moved out of the engine.
+// ScriptRepository is no longer a dependency of Engine — the
+// single writer is PersistenceProcessor (registered in the plan's
+// Postprocessors list). EngineResult.ScriptID is dropped; consumers
+// source the canonical ScriptID from postResult.ScriptID (set by
+// PersistenceProcessor). The engine no longer participates in
+// scripts-table persistence (the call has been removed; see
+// processor_persistence.go for the single-writer contract).
 //
 // PR 1 (June 2026): payload decoding is owned by the engine via
 // internal/application/scripts/model_output_decoder.go, with
@@ -48,14 +56,18 @@ import (
 )
 
 // Engine is the canonical script generation engine backed by
-// ollama.Generator, gemmamemory.Service, and ScriptRepository.
-// All fields are concrete typed; the ollamaGen field stores a
+// ollama.Generator and gemmamemory.Service. All fields are
+// concrete typed; the ollamaGen field stores a
 // scriptOllamaGenerator (narrow interface) so tests can inject
 // fakes without depending on the concrete *ollama.Generator.
+//
+// PR 5 (June 2026): the `repo ScriptRepository` field was removed.
+// Persistence is no longer the engine's responsibility — the
+// single owner is PersistenceProcessor, registered in the plan's
+// Postprocessors list.
 type Engine struct {
 	ollamaGen interface{} // scriptOllamaGenerator
 	memorySvc interface{} // memoryGateChecker
-	repo      interface{} // ScriptRepository
 	log       *zap.Logger
 }
 
@@ -83,10 +95,14 @@ var _ memoryGateChecker = (*gemmamemory.Service)(nil)
 // PR 1 (June 2026): the deprecated flat `Script string` and `Prompt
 // string` fields were removed. Consumers must read `Output.Text`,
 // `Output.SpecScene`, and (when present) `Output.SpecScene.Scenes`
-// directly. Persistence still occurs inside Engine when
-// ResolvedGenerationPlan.SaveToDB is true — this duplication with
-// PersistenceProcessor is owned by PR 5, which deletes the
-// engine-side SaveScript call entirely.
+// directly.
+//
+// PR 5 (June 2026): `ScriptID int64` removed — persistence is no
+// longer owned by the engine. Consumers must source the persisted
+// ScriptID from the postprocessor pipeline result
+// (PipelineResult.ScriptID, set by PersistenceProcessor when the
+// plan's Postprocessors list includes "persistence" and the
+// idempotency lookup succeeded).
 type EngineResult struct {
 	// Output is the canonical structured output. In PR 1 the engine
 	// decodes the raw model payload (or the memory-cache hit) into
@@ -108,12 +124,6 @@ type EngineResult struct {
 	// seconds, computed by the model's output.
 	EstDuration int `json:"est_duration"`
 
-	// ScriptID is the persisted script row ID, set when SaveToDB was
-	// enabled on the plan AND the engine-side persistence path
-	// ran. PR 5 will remove this field; consumers must read
-	// postprocessor artifacts in the canonical pipeline.
-	ScriptID int64 `json:"script_id,omitempty"`
-
 	// ClipEvidence echoes the resolved clip evidence from the plan
 	// so downstream (buildGenerationResult) doesn't re-derive it.
 	ClipEvidence *scriptpkg.ClipEvidence `json:"clip_evidence,omitempty"`
@@ -121,23 +131,31 @@ type EngineResult struct {
 
 // NewEngine constructs a real Engine backed by the canonical
 // *ollama.Generator. Accepts concrete typed args.
+//
+// PR 5 (June 2026): the `repo ScriptRepository` argument was
+// removed. Persistence is owned by PersistenceProcessor; the
+// engine does NOT receive a ScriptRepository.
 func NewEngine(
 	ollamaGen *ollama.Generator,
 	memorySvc *gemmamemory.Service,
-	repo ScriptRepository,
 	log *zap.Logger,
 ) *Engine {
 	return &Engine{
 		ollamaGen: ollamaGen,
 		memorySvc: memorySvc,
-		repo:      repo,
 		log:       log,
 	}
 }
 
 // Generate executes the full generation pipeline for a resolved plan.
-// It owns: memory gate check, ollama invocation, and optional DB
-// persistence. It is the ONLY engine entry point for new code.
+// It owns: memory gate check, ollama invocation, and payload decoding.
+// It is the ONLY engine entry point for new code.
+//
+// PR 5 (June 2026): DB persistence is NO LONGER an engine ownership.
+// The engine never writes to SQLite; the single writer is
+// PersistenceProcessor (registered in the plan's Postprocessors
+// list). The engine no longer takes a ScriptRepository constructor
+// arg.
 //
 // Callers: GenerateOneUseCase (canonical — the sole permitted caller).
 // Do NOT call Generate from HTTP handlers, source resolvers, or
@@ -242,6 +260,13 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 					CacheStatus:  "exact_hit",
 					EstDuration:  (result.WordCount * 60) / 150,
 					ClipEvidence: plan.ClipEvidence,
+					// ScriptID intentionally absent: PR 5 moved
+					// persistence to PersistenceProcessor; the cached
+					// payload does NOT trigger an extra DB lookup from
+					// the engine. The use case resolves ScriptID through
+					// the postprocessor pipeline (which sees
+					// idem-key collision on replay and returns the
+					// existing ID).
 				}, nil
 			}
 		}
@@ -299,42 +324,16 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		return nil, fmt.Errorf("engine: model output decode failed: %w", decodeErr)
 	}
 
-	// Persist to DB if requested.
-	//
-	// PR 5 will consolidate persistence into a dedicated
-	// PersistenceProcessor; for now the engine-side SaveScript call
-	// remains so PR 1 is wire-up only and SaveToDB semantics are
-	// unchanged for downstream consumers. The input is now read
-	// from output.Text (canonical) instead of genResult.Script (raw).
-	scriptID := int64(0)
-	if saveToDB && e.repo != nil && output.Text != "" {
-		if repo, ok := e.repo.(ScriptRepository); ok {
-			rec := &ScriptRecord{
-				Title:          title,
-				Topic:          topic,
-				Language:       language,
-				Tone:           tone,
-				Model:          model,
-				ModelUsed:      genResult.Model,
-				Mode:           mode,
-				Status:         "completed",
-				TargetWords:    minWords,
-				FinalWordCount: genResult.WordCount,
-				OutputText:     output.Text,
-				NarrativeText:  output.Text,
-				FullDocument:   output.Text,
-				Version:        1,
-			}
-			id, saveErr := repo.SaveScript(ctx, rec, nil, nil)
-			if saveErr != nil {
-				if e.log != nil {
-					e.log.Warn("engine: failed to save script to db", zap.Error(saveErr))
-				}
-			} else {
-				scriptID = id
-			}
-		}
-	}
+	// PR 5 (June 2026): persistence removed from the engine.
+	// The engine is the canonical owner of generation (memory gate
+	// check, ollama invocation, payload decode) but NOT persistence.
+	// When plan.SaveToDB is true, the calling use case must include
+	// "persistence" in the plan's Postprocessors list so that
+	// PersistenceProcessor is dispatched and writes the script row
+	// with idem-key dedup. The engine returns ScriptID = 0 always;
+	// consumers must read the canonical ScriptID from the
+	// postprocessor pipeline result.
+	_ = saveToDB // intentionally unused in the engine post-PR 5.
 
 	return &EngineResult{
 		Output:       *output,
@@ -342,7 +341,6 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		Model:        genResult.Model,
 		CacheStatus:  "generated",
 		EstDuration:  genResult.EstDuration,
-		ScriptID:     scriptID,
 		ClipEvidence: plan.ClipEvidence,
 	}, nil
 }

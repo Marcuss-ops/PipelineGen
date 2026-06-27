@@ -150,6 +150,34 @@ func (r *ScriptRepository) ListScripts(limit, offset int, language, template str
 	return scripts, total, nil
 }
 
+// FindByIdempotencyKey (PR 5, June 2026) looks up an existing script
+// row whose stored idempotency key (currently on the `template` slot —
+// PR 6 introduces a dedicated column) matches the supplied hash.
+// Returns the most recently inserted matching row (ORDER BY id DESC
+// LIMIT 1) so that newer replays shadow older ones when collisions
+// occur.
+//
+// On no match, returns (nil, nil) — the caller treats this as
+// "fresh insert", not an error. SQL errors are surfaced so the
+// caller can decide whether to fall through to insert or fail-closed.
+func (r *ScriptRepository) FindByIdempotencyKey(ctx context.Context, idemKey, language string) (*ScriptRecord, error) {
+	var script ScriptRecord
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id, topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, created_at, updated_at, version, parent_script_id, is_deleted
+		 FROM scripts
+		 WHERE template = ? AND language = ? AND is_deleted = 0
+		 ORDER BY id DESC LIMIT 1`,
+		idemKey, language,
+	).Scan(&script.ID, &script.Topic, &script.Title, &script.Duration, &script.Language, &script.Template, &script.Mode, &script.Tone, &script.TargetWords, &script.FinalWordCount, &script.Status, &script.NarrativeText, &script.TimelineJSON, &script.EntitiesJSON, &script.MetadataJSON, &script.FullDocument, &script.ModelUsed, &script.OllamaBaseURL, &script.CreatedAt, &script.UpdatedAt, &script.Version, &script.ParentScriptID, &script.IsDeleted)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find script by idempotency key: %w", err)
+	}
+	return &script, nil
+}
+
 func (r *ScriptRepository) FindByTopic(ctx context.Context, topic, language string) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error) {
 	var script ScriptRecord
 	err := r.db.QueryRowContext(ctx,

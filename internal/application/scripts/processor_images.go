@@ -35,7 +35,8 @@ func NewImageProcessor(gen ImageGenService, log *zap.Logger) *ImageProcessor {
 
 func (p *ImageProcessor) Name() string { return "images" }
 
-func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, script string) (*PostProcessResult, error) {
+// PR 5 (June 2026): signature now takes ProcessInput envelope.
+func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
 		return nil, fmt.Errorf("%w: image processor: ImageGenService not configured", scriptpkg.ErrPostprocessFailed)
 	}
@@ -49,11 +50,11 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 		return &PostProcessResult{}, nil
 	}
 
-	if script == "" {
+	if input.Text == "" {
 		return &PostProcessResult{}, nil
 	}
 
-	segments := splitScriptIntoSegments(script, sceneCount)
+	segments := splitScriptIntoSegments(input.Text, sceneCount)
 	language := plan.Language
 	if language == "" {
 		language = "en"

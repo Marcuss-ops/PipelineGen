@@ -36,7 +36,8 @@ func NewVoiceoverProcessor(gen VoiceoverService, log *zap.Logger) *VoiceoverProc
 
 func (p *VoiceoverProcessor) Name() string { return "voiceover" }
 
-func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, script string) (*PostProcessResult, error) {
+// PR 5 (June 2026): signature now takes ProcessInput envelope.
+func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
 		return nil, fmt.Errorf("%w: voiceover processor: VoiceoverService not configured", scriptpkg.ErrPostprocessFailed)
 	}
@@ -50,11 +51,11 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return &PostProcessResult{}, nil
 	}
 
-	if script == "" {
+	if input.Text == "" {
 		return &PostProcessResult{}, nil
 	}
 
-	segments := splitScriptIntoSegments(script, sceneCount)
+	segments := splitScriptIntoSegments(input.Text, sceneCount)
 	language := plan.Language
 	if language == "" {
 		language = "en"

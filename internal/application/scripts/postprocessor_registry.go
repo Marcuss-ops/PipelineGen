@@ -27,6 +27,14 @@ import (
 // PostProcessor executes one post-generation phase. Each processor
 // is opt-in — it only runs when its name is in the plan's
 // Postprocessors list.
+//
+// PR 5 (June 2026): the second argument changed from `script string`
+// to `input ProcessInput`. The envelope carries the canonical
+// output text plus typed fields required by individual processors
+// — most importantly the canonical ScriptID for PersistenceProcessor.
+// Non-persistence processors that only need the prose read
+// `input.Text`; processors that need the full output (specscene,
+// wordcount) read the relevant typed fields.
 type PostProcessor interface {
 	// Name returns the processor identifier ("entities", "metadata",
 	// "voiceover", "images", "document", "persistence").
@@ -34,11 +42,12 @@ type PostProcessor interface {
 
 	// Process executes the post-generation work. The plan carries
 	// the resolved generation plan (including identity, sizing,
-	// and output options). The script is the raw generated text.
+	// and output options). The input envelope carries the canonical
+	// model output + metadata every processor may need.
 	//
 	// Returns a PostProcessResult on success, or an error wrapping
 	// scriptpkg.ErrPostprocessFailed on failure.
-	Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, script string) (*PostProcessResult, error)
+	Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error)
 }
 
 // PostProcessResult carries the output of a single processor.
@@ -51,6 +60,54 @@ type PostProcessResult struct {
 	DocLink      string
 	DocID        string
 	ScriptID     int64
+
+	// AlreadyPersisted is set true by PersistenceProcessor when the
+	// idempotency lookup found an existing row and the save was
+	// skipped. Consumers downstream can use this flag to log a
+	// "replay" outcome without re-marking the script as newly
+	// produced. PR 5 default value is false for non-persistence
+	// processors.
+	AlreadyPersisted bool
+}
+
+// ProcessInput is the typed envelope passed to every postprocessor.
+// It carries the canonical model output plus the metadata fields
+// that individual processors need:
+//
+//   - Text: the canonical V1 `output.text` field — what the model
+//     produced. All non-persistence processors read this for their
+//     own text-driven work (splitting scenes, generating metadata,
+//     building doc HTML, etc.).
+//   - WordCount: the model's reported token count. PersistenceProcessor
+//     uses this to populate `final_word_count` on the script row.
+//   - SpecScene: the structured V1 scene breakdown. PersistenceProcessor
+//     persists it as a JSON column on the script row.
+//   - ModelUsed: the model name that produced the output. Forwarded
+//     to the script row as `model_used`.
+//   - CacheStatus: "exact_hit" or "generated". Persisted to the script
+//     row's generation_logs to make cache replays auditable.
+//   - SourceTrace: nullable clip-evidence forward — currently unused
+//     by processors but exposed so future processors (e.g. a
+//     clip-driven QA processor) can read the resolved clip IDs
+//     without re-deriving them.
+//   - PriorArtifacts: outputs of earlier postprocessors (in the
+//     order they ran). Processors that depend on prior-output
+//     metadata receive it here. Currently empty (postprocessors
+//     are independent today), but the slot is reserved for
+//     staggered-pipeline work without a signature change.
+//
+// PR 5 (June 2026): introduced alongside the unified PostProcessor
+// interface change. The previous `script string` shape was lossy
+// — WordCount, SpecScene, ModelUsed, CacheStatus were re-derivable
+// only by callers reading engineResult directly.
+type ProcessInput struct {
+	Text           string
+	WordCount      int
+	SpecScene      scriptpkg.SpecSceneOutput
+	ModelUsed      string
+	CacheStatus    string
+	SourceTrace    *scriptpkg.ClipEvidence
+	PriorArtifacts map[string]PostProcessResult
 }
 
 // PostProcessorRegistry runs enabled processors in order.
@@ -167,10 +224,15 @@ func (r *PostProcessorRegistry) Len() int {
 // Run returns the aggregate PipelineResult (for backward compat
 // with buildGenerationResult). The total error is non-nil only
 // when ALL processors failed; partial failures produce warnings.
+//
+// PR 5 (June 2026): the `script string` parameter was replaced
+// with `input ProcessInput`. Processors that only need the prose
+// read `input.Text`; processors that need WordCount / SpecScene /
+// CacheStatus / ModelUsed read those fields directly.
 func (r *PostProcessorRegistry) Run(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
-	script string,
+	input ProcessInput,
 ) (*PipelineResult, error) {
 	if r == nil {
 		return &PipelineResult{}, nil
@@ -210,7 +272,7 @@ func (r *PostProcessorRegistry) Run(
 				zap.String("item_id", plan.ID))
 		}
 
-		ppResult, err := proc.Process(ctx, plan, script)
+		ppResult, err := proc.Process(ctx, plan, input)
 		if err != nil {
 			failCount++
 			warn := fmt.Sprintf("postprocessor %q failed: %v", name, err)
@@ -224,9 +286,23 @@ func (r *PostProcessorRegistry) Run(
 			continue
 		}
 
-		// Merge processor output.
+		// Merge processor output (PR 5: honours AlreadyPersisted
+		// flag from PersistenceProcessor so consumers see the
+		// replay state).
 		if ppResult != nil {
 			mergePostProcessResult(result, ppResult)
+		}
+
+		// PR 5: feed each processor's PostProcessResult into the
+		// next iteration's PriorArtifacts slot. Currently unused
+		// (processors are independent) but the slot is wired so
+		// future staggered processors don't need a signature
+		// change.
+		if input.PriorArtifacts == nil {
+			input.PriorArtifacts = make(map[string]PostProcessResult)
+		}
+		if ppResult != nil {
+			input.PriorArtifacts[name] = *ppResult
 		}
 	}
 
@@ -262,5 +338,7 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult) {
 	}
 	if src.ScriptID > 0 {
 		dst.ScriptID = src.ScriptID
+		// PR 5: forward the AlreadyPersisted replay flag.
+		dst.AlreadyPersisted = src.AlreadyPersisted
 	}
 }

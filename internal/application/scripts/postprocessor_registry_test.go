@@ -26,7 +26,8 @@ type countingProcessor struct {
 
 func (p *countingProcessor) Name() string { return p.name }
 
-func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, _ string) (*scripts.PostProcessResult, error) {
+// PR 5 (June 2026): signature now takes ProcessInput envelope.
+func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, _ scripts.ProcessInput) (*scripts.PostProcessResult, error) {
 	p.calls++
 	if p.err != nil {
 		return nil, p.err
@@ -120,12 +121,12 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	r.Register(persist)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:            "item-1",
-		Title:         "Test",
+		ID:             "item-1",
+		Title:          "Test",
 		Postprocessors: []string{"document", "persistence"},
 	}
 
-	result, err := r.Run(context.Background(), plan, "Generated script text.")
+	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "Generated script text."})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -155,7 +156,7 @@ func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 		Postprocessors: []string{"document"}, // persistence NOT requested
 	}
 
-	_, err := r.Run(context.Background(), plan, "text")
+	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -179,7 +180,7 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 		Postprocessors: []string{"document", "persistence"},
 	}
 
-	_, err := r.Run(context.Background(), plan, "text")
+	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run should not fail on partial error: %v", err)
 	}
@@ -200,7 +201,7 @@ func TestRegistry_RunProcessorNotRegistered(t *testing.T) {
 		Postprocessors: []string{"voiceover"}, // not registered
 	}
 
-	_, err := r.Run(context.Background(), plan, "text")
+	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run should not fail on missing processor: %v", err)
 	}
@@ -213,7 +214,7 @@ func TestRegistry_RunNilRegistry(t *testing.T) {
 		Postprocessors: []string{"document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, "text")
+	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Errorf("nil registry should return empty result: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestRegistry_RunEmptyRegistry(t *testing.T) {
 		Postprocessors: []string{"document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, "text")
+	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Errorf("empty registry should return empty result: %v", err)
 	}
@@ -247,7 +248,7 @@ func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
 		Postprocessors: nil,
 	}
 
-	_, err := r.Run(context.Background(), plan, "text")
+	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("empty postprocessors list should succeed: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 		Postprocessors: []string{"entities", "document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, "text")
+	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}

@@ -24,18 +24,19 @@ func NewMetadataProcessor(postGen PostGenFunc) *MetadataProcessor {
 
 func (p *MetadataProcessor) Name() string { return "metadata" }
 
-func (p *MetadataProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, script string) (*PostProcessResult, error) {
+// PR 5 (June 2026): signature now takes ProcessInput envelope.
+func (p *MetadataProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.postGen == nil {
 		return nil, fmt.Errorf("%w: metadata processor: postGen callback not configured", scriptpkg.ErrPostprocessFailed)
 	}
-	if script == "" {
+	if input.Text == "" {
 		return &PostProcessResult{}, nil
 	}
 
 	spec := legacySpecFromPlan(*plan)
 	spec.GenerateMetadata = true // force ON for this processor
 
-	_, _, videoMetadata := p.postGen(ctx, spec, script)
+	_, _, videoMetadata := p.postGen(ctx, spec, input.Text)
 	if len(videoMetadata) == 0 {
 		return &PostProcessResult{}, nil
 	}

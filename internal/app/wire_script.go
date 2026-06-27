@@ -206,8 +206,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		ppReg.Register(scripts.NewDocumentProcessor(genDocsSvc, nil))
 	}
 
-	// Persistence processor.
-	ppReg.Register(scripts.NewPersistenceProcessor(scriptsRepoAdapter))
+	// Persistence processor (PR 5: now the single persistence owner;
+	// engine no longer writes to SQLite. Constructor takes the
+	// logger for idempotency-hit / replay diagnostics).
+	ppReg.Register(scripts.NewPersistenceProcessor(scriptsRepoAdapter, log))
 
 	// Image processor — adapted from *imgservice.Service to scripts.ImageGenService.
 	if root.Domains.ImageService != nil {
@@ -250,10 +252,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
-		Engine:                engine,
-		Section:               sectionRegen,
-		CacheEviction:         cacheEvictionUC,
-		Image:                 root.Domains.ImageService,
+		Engine:        engine,
+		Section:       sectionRegen,
+		CacheEviction: cacheEvictionUC,
+		Image:         root.Domains.ImageService,
 		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
 		// typed ports — `scripts.RealtimeSearchService` and
 		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +
