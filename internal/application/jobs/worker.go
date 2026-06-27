@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -18,39 +17,18 @@ import (
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
-// JobType is a string alias for the timeout registry. Passaggio 6 will
-// migrate this to the canonical domain types.
-type JobType = string
-
-// jobTimeoutRegistry maps job types to their per-type timeout (punto 27).
-var (
-	jobTimeoutRegistry = map[JobType]time.Duration{
-		"catalog.sync":                    2 * time.Minute,
-		"system.cleanup":                  2 * time.Minute,
-		"media.reindex":                   2 * time.Minute,
-		"drive.folder.sync":               30 * time.Minute,
-		"media.stock":                     60 * time.Minute,
-		"youtube_clip.extract":            60 * time.Minute,
-		"media.bulk_upload_youtube_clips": 120 * time.Minute,
-	}
-	mu sync.RWMutex
-)
-
-func SetJobTimeout(t string, d time.Duration) {
-	mu.Lock()
-	jobTimeoutRegistry[t] = d
-	mu.Unlock()
-}
-
-func jobTimeout(t string) time.Duration {
-	mu.RLock()
-	d, ok := jobTimeoutRegistry[t]
-	mu.RUnlock()
-	if ok {
-		return d
-	}
-	return 10 * time.Minute
-}
+// ── HC-1 (June 2026): typed Registry-based timeout lookup ──────────────────
+//
+// The pre-HC-1 worker.go carried a package-level global `var jobTimeoutRegistry`
+// (a `map[JobType]time.Duration`) and exported `SetJobTimeout(t, d)` +
+// a `jobTimeout(t)` helper protected by a `sync.RWMutex`. HC-1 removes the
+// global in favour of a typed Registry on the Worker: composition root
+// calls `WithRegistry(jobs.Compose())` (or any TimeoutResolver port) and
+// the runJob path looks up `j.Type` in the snapshot `timeouts TimeoutMap`.
+//
+// Anti-reintro gate: Check 40 in scripts/ci-architectural-checks.sh
+// fails CI on any new `var jobTimeoutRegistry = ` / `SetJobTimeout(`
+// caller / `jobTimeout(` helper usage.
 
 var workerIDPrefix string
 
@@ -126,7 +104,7 @@ type BackoffConfig struct {
 //
 // Polling surface (PR-Polling / ADR §D6.5):
 //   - BaseInterval is the canonical PollEvery (the first-claim cadence
-//   - the post-successful-claim reset cadence). Set by the runner
+//     + the post-successful-claim reset cadence). Set by the runner
 //     via RunnerConfig.PollEvery.
 //   - MaxBackoff / JitterFraction / ConsecutiveEmptyThreshold are the
 //     backoff knobs (RunnerConfig.Backoff). Together they implement
@@ -136,16 +114,30 @@ type BackoffConfig struct {
 //     closes their sleep channel.
 //   - notifier drive the wake-on-Enqueue (Subscribe() per iteration;
 //     channel close = Broadcast on Enqueue / Retry / RequeueExpired).
+//
+// HC-1 (June 2026) additions:
+//   - reg     *Registry      — the typed config-port for per-job-type
+//                              execution timeouts. Set via WithRegistry()
+//                              at composition time. If nil, the worker
+//                              falls back to the canonical 10-minute
+//                              default for every job type.
+//   - timeouts TimeoutMap    — cached snapshot of reg.Compose() taken
+//                              at WithRegistry() time. The worker's
+//                              runJob path indexes this map by j.Type;
+//                              a zero value falls through to the
+//                              canonical default.
 type Worker struct {
-	id         string
-	repo       job.Store
+	id        string
+	repo      job.Store
 	dispatcher *Dispatcher
-	log        *zap.Logger
-	leaseTTL   time.Duration
-	pollEvery  time.Duration
-	backoff    BackoffConfig
-	types      []string
-	notifier   sqljobs.QueueNotifier
+	log       *zap.Logger
+	leaseTTL  time.Duration
+	pollEvery time.Duration
+	backoff   BackoffConfig
+	types     []string
+	notifier  QueueNotifier
+	reg       *Registry
+	timeouts  TimeoutMap
 }
 
 // NewWorker constructs a Worker.
@@ -160,12 +152,18 @@ type Worker struct {
 //     flat, ≤8 args per PR-D cap).
 //   - `types []string` is unchanged.
 //
+// HC-1 (June 2026): the per-job-type timeout lookup is NOT a constructor
+// arg — callers must use `WithRegistry(reg *Registry) *Worker` to
+// attach the typed config-port. This keeps NewWorker under the PR-D
+// 8-arg cap. Composition root (internal/app/registry.go::WireRegistry)
+// is required to call WithRegistry(jobs.Compose()) AFTER NewWorker.
+//
 // Callers MUST pass a non-nil notifier; the worker pulls a fresh
 // channel each iteration. Today the production wiring passes the
 // in-process *SQLiteStore (the compile-time assertion in
 // notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)
 // is the seam marker for a future adapter).
-func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier sqljobs.QueueNotifier,
+func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier QueueNotifier,
 	log *zap.Logger, leaseTTL, pollEvery time.Duration, backoff BackoffConfig, types []string) *Worker {
 	return &Worker{
 		id:         id,
@@ -178,6 +176,48 @@ func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier sqljo
 		types:      types,
 		notifier:   notifier,
 	}
+}
+
+// WithRegistry attaches a typed Registry to the Worker for per-job-type
+// execution timeouts (HC-1, June 2026). Replaces the pre-HC-1
+// package-level `var jobTimeoutRegistry` global, which was process-
+// global mutable state. The worker snapshots reg.Compose() at attach
+// time; a frozen Registry means the snapshot is also frozen, so the
+// per-job lookup is branch-free (`timeouts[j.Type]`).
+//
+// Composition root pattern:
+//
+//	w := jobs.NewWorker(...).WithRegistry(jobs.Compose())
+//
+// Nil-tolerant: if reg is nil, the worker falls back to the canonical
+// 10-minute default for every job type. This preserves the legacy
+// "no timeouts configured" behaviour that test fixtures used to rely
+// on; production wiring ALWAYS supplies jobs.Compose().
+//
+// Returns the receiver to allow builder-style chaining at the
+// composition site.
+func (w *Worker) WithRegistry(reg *Registry) *Worker {
+	w.reg = reg
+	if reg != nil {
+		w.timeouts = reg.Compose()
+	} else {
+		w.timeouts = nil
+	}
+	return w
+}
+
+// jobTimeoutFor returns the cached timeout for a job type, falling
+// back to the canonical 10-minute default when (a) the worker has no
+// attached registry, (b) the snapshot is nil, or (c) the job type is
+// not registered. Mirrors the pre-HC-1 jobTimeout() helper semantics
+// without the global mutex.
+func (w *Worker) jobTimeoutFor(jobType string) time.Duration {
+	if w.timeouts != nil {
+		if d, ok := w.timeouts[jobType]; ok && d > 0 {
+			return d
+		}
+	}
+	return 10 * time.Minute
 }
 
 // Start runs the Worker poll loop until ctx is cancelled.
@@ -361,7 +401,11 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		zap.Int("revision", j.Revision),
 	)
 
-	jobCtx, jobCancel := context.WithTimeout(ctx, jobTimeout(j.Type))
+	// HC-1 (June 2026): per-job-type timeout resolves through the
+	// typed Registry attached via WithRegistry(). Replaces the
+	// pre-HC-1 `context.WithTimeout(ctx, jobTimeout(j.Type))` call
+	// which read from a package-level `var jobTimeoutRegistry` map.
+	jobCtx, jobCancel := context.WithTimeout(ctx, w.jobTimeoutFor(j.Type))
 	defer jobCancel()
 
 	// Lease renewal.

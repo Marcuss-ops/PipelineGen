@@ -106,8 +106,43 @@ func NewBulkUploadWorker(
 // Job-level deadline prevents abandoned jobs from sitting half-done
 // forever; the worker ctx only times out on shutdown, which leaves
 // orphans otherwise.
+//
+// HC-1 (June 2026): the per-job timeout resolves through the typed
+// config-port `w.cfg.JobTimeout(jobType)` — the canonical Registry is
+// the SSOT (replaces the pre-HC-1 hard-coded 2*time.Hour literal).
+// Refusal to fire wall-clock timeouts left a job open indefinitely
+// under stacked Drive + indexer + Qdrant lock contention; the typed
+// lookup lets the operator override the timeout per job-type without
+// re-deploying the worker.
+//
+// HC-1 code-review cleanup: NO belt-and-suspenders 2h fallback on
+// nil-cfg — the cfg adapter (internal/app/clips_adapters_cfg.go's
+// clipsCfgAdapter.JobTimeout) already returns the canonical 10-minute
+// default when the resolver is nil or returns 0. Trusting the typed
+// port removes a dead-code path AND the 2h/10m inconsistency between
+// the worker fallback (2h) and the rest of the pipeline (10m).
 func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+	// HC-1 (June 2026): per-job-type timeout resolves through the
+	// typed config-port (ClipConfigPort.JobTimeout → adapter
+	// → *jobs.Registry.JobTimeout). The hard-coded `2*time.Hour`
+	// literal was deleted in HC-1; the operator override layer
+	// now lives in registry.go::Compose().
+	//
+	// HC-1 code-review nil-cfg guard (consistent with the canonical
+	// 10-minute default in clipsCfgAdapter.JobTimeout). This guard
+	// protects ONLY test fixtures that pass cfg=nil to
+	// NewBulkUploadWorker; production wiring in
+	// internal/app/module_media.go::WireAssets unconditionally
+	// supplies non-nil cfg via newClipsCfgAdapter(cfg, appjobs.Compose()).
+	const defaultTimeout = 10 * time.Minute
+	jobTimeout := defaultTimeout
+	if w.cfg != nil {
+		jobTimeout = w.cfg.JobTimeout(appjobs.TypeBulUploadYouTubeClips)
+		if jobTimeout <= 0 {
+			jobTimeout = defaultTimeout
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()
 
 	payload := &appjobs.BulkUploadYouTubeClipsPayload{}

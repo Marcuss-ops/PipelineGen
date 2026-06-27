@@ -85,6 +85,23 @@ func (r *Registry) Timeout(jobType string) time.Duration {
 	return 10 * time.Minute
 }
 
+// ── HC-1 Typed Timeout Surface (June 2026) ─────────────────────────────
+// HC-1 (June 2026) replaces the pre-HC-1 package-level
+// `var jobTimeoutRegistry` global in worker.go with a type-keyed
+// lookup rooted here on Registry. Three new entities:
+//
+//   - TimeoutMap         : a type-keyed snapshot of every registered
+//                          job-type timeout (Compose()).
+//   - TimeoutResolver    : the typed port both worker.go and the
+//                          bulk_upload config-port consume.
+//   - JobTimeout(t)      : canonical method on Registry, aliased to
+//                          Timeout(t) for naming consistency with
+//                          the typed-port world.
+//
+// Anti-reintro: Check 40 in scripts/ci-architectural-checks.sh
+// blocks re-introduction of `var jobTimeoutRegistry` or
+// `SetJobTimeout` callers.
+
 // DefaultMaxRetries returns the default max retries for a job type.
 func (r *Registry) DefaultMaxRetries(jobType string) int {
 	if entry, ok := r.Get(jobType); ok {
@@ -98,6 +115,86 @@ func (r *Registry) IsRegistered(jobType string) bool {
 	_, ok := r.Get(jobType)
 	return ok
 }
+
+// TimeoutMap is the type-keyed lookup of per-job-type execution
+// timeouts. Returned by (*Registry).Compose() as a fresh snapshot
+// so callers cannot mutate the underlying registry state.
+//
+// Usage: `reg.Compose()[j.Type]` returns the canonical timeout for
+// job type j.Type, or zero if not registered (worker.go treats zero
+// as the canonical 10-minute default).
+type TimeoutMap map[string]time.Duration
+
+// TimeoutResolver is the typed timeout lookup port consumed by HC-1
+// worker.go (replaces the pre-HC-1 package-level global) and by the
+// HC-1 bulk_upload config-port (see clips.ClipConfigPort.JobTimeout
+// + internal/app/clips_adapters_cfg.go::clipsCfgAdapter).
+//
+// *Registry satisfies this interface directly (via JobTimeout). A
+// narrow port interface lets future consumers (e.g. an admin-driven
+// override layer) satisfy the contract without forcing them to also
+// be a Registry.
+type TimeoutResolver interface {
+	JobTimeout(jobType string) time.Duration
+}
+
+// Compose returns a fresh type-keyed snapshot of every registered
+// job-type timeout. Mirrors the per-call shape used in worker.go HC-1:
+// `w.reg.Compose()[j.Type]`. The MU read-lock keeps the snapshot
+// consistent across the iteration; the returned map is an independent
+// copy safe for caller-side mutation.
+//
+// Zero-filter semantics (HC-1 code-review DISCUSS): entries with
+// `Timeout == 0` (the canonical "use the default" shape) are filtered
+// out of the snapshot. The complementary accessor `JobTimeout(t)`
+// returns the canonical 10-minute default for entries with a zero
+// Timeout. Worker.go's `jobTimeoutFor(t)` adds a `&& d > 0` guard so
+// the two paths agree on the default.
+//
+// Rationale: an entry with Timeout = 0 is ambiguous ("explicit 0
+// timeout" vs "default"); the conservative interpretation is "default"
+// and we surface that consistently. Future contributors iterating
+// `for t, d := range timeouts { ... }` MUST treat a missing key as
+// "use the canonical default", not as "deliberately 0 timeout" —
+// see Worker.jobTimeoutFor for the canonical guard pattern.
+func (r *Registry) Compose() TimeoutMap {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(TimeoutMap, len(r.entries))
+	for t, e := range r.entries {
+		if e.Timeout > 0 {
+			out[t] = e.Timeout
+		}
+	}
+	return out
+}
+
+// JobTimeout is the canonical typed accessor for per-job-type
+// execution timeouts. Naming mirrors the typed-port world; this is
+// the method that satisfies the TimeoutResolver interface and
+// what internal/app/clips_adapters_cfg.go::clipsCfgAdapter forwards
+// to.
+//
+// HC-1 code-review REQUEST CHANGES rationale: JobTimeout is a typed-
+// port alias for Timeout() — the dual-name surface exists because
+// (a) Timeout() is the pre-HC-1 canonical method (kept for back-
+// compat with any test fixture or future caller that imports the
+// pre-HC-1 surface), and (b) JobTimeout() is the canonical name in
+// the typed-port world (matches the adapter pattern in
+// internal/app/clips_adapters_cfg.go::JobTimeout). Choice of name
+// for new code: prefer JobTimeout — any reader/usecase introduced
+// post-HC-1 should consume the typed-port surface.
+//
+// Behaviour is identical to Timeout(): returns the registered
+// entry's Timeout if non-zero, else the canonical 10-minute default.
+func (r *Registry) JobTimeout(jobType string) time.Duration {
+	return r.Timeout(jobType)
+}
+
+// Compile-time assertion: *Registry satisfies TimeoutResolver.
+// Catches signature drift at compile time (mirrors the Pattern 0
+// convention used for typed config-port adapters).
+var _ TimeoutResolver = (*Registry)(nil)
 
 // AllTypes returns all registered job type strings (for ClaimNext type filters).
 func (r *Registry) AllTypes() []string {

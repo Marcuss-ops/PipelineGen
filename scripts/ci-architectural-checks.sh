@@ -1799,3 +1799,66 @@ go run ./scripts/archcheck --ratchet --future-ratchet
 # exceptions; fail-closed semantics deadlined entries become hard
 # fail (verdict: PR-I implementation in_progress per ADR-0002 §D5).
 go run ./cmd/archcheck --strict
+# HC-1 (June 2026) deletes the pre-HC-1 package-level `var jobTimeoutRegistry`
+# global in internal/application/jobs/worker.go + the `SetJobTimeout` and
+# `jobTimeout(` helper callers. Per-job-type timeouts are now keyed through
+# `*jobs.Registry.Compose()[j.Type]` (or the typed `JobTimeout()` method)
+# via the Worker.WithRegistry(reg) builder attached at composition time.
+#
+# Pattern anchors (re-introduction patterns we forbid):
+#   var jobTimeoutRegistry[[:space:]]*=
+#       — package-level map re-emergence with a MapType-typed name
+#       (catches `var jobTimeoutRegistry`, `var ( ... jobTimeoutRegistry ...)`).
+#   SetJobTimeout\(
+#       — exported helper to mutate the map (the pre-HC-1 surface);
+#       only worker.go::SetJobTimeout defined this; the alias was removed.
+#   ^func jobTimeout\(  (top-level package function)
+#   {{:blank:}}jobTimeout\(  (in-function call to package helper)
+#       — the lowercase helper that read from the global; renamed to
+#       Worker.jobTimeoutFor(t) post-HC-1.
+#
+# Scope: internal/ + cmd/ (composition root + production callers).
+# The canonical site is internal/application/jobs/registry.go (owns the
+# TimeoutMap + TimeoutResolver surface); it does NOT contain the
+# forbidden patterns. *Registry.Compose() / JobTimeout() are the
+# AND ONLY the supported lookup paths.
+#
+# Negative examples (the patterns being checked for, when invoked
+# legitimately as inline fixtures/tests) live in tests/fixtures/zero_legacy/
+# — excluded below to mirror Check 36 / Check 39 gating convention.
+echo "=== Check 40: HC-1 anti-reintro gate (var jobTimeoutRegistry re-emergence) ==="
+hc1_hits=$(rg -n --type go \
+    -e 'var[[:space:]]+jobTimeoutRegistry[[:space:]]*=' \
+    -e 'SetJobTimeout\(' \
+    -e '^func[[:space:]]+jobTimeout\(' \
+    -e '\bjobTimeout\(' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/*' \
+    internal cmd 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$hc1_hits" ]; then
+    echo "FAIL: HC-1 re-introduction detected (jobTimeoutRegistry global / SetJobTimeout / jobTimeout helper):"
+    printf '%s\n' "$hc1_hits" | sed 's/^/  /'
+    echo ""
+    echo "Fix: per-job-type timeouts MUST be keyed through *jobs.Registry via"
+    echo "      Worker.WithRegistry(reg) at composition time. The HC-1 surface:"
+    echo "    - registry.Compose()  → TimeoutMap (type-keyed snapshot)"
+    echo "    - registry.JobTimeout(t) → typed single-shot lookup (the canonical"
+    echo "                              TimeoutResolver method)"
+    echo "    - worker.WithRegistry(reg)  → builder attached at composition time"
+    echo "      (also snapshots reg.Compose() so runJob's lookup is branch-free)."
+    echo ""
+    echo "There is NO legitimate use of `var jobTimeoutRegistry ... = ...`, no"
+    echo "`SetJobTimeout(t, d)` mutation hook, and no top-level `jobTimeout(t)`"
+    echo "helper. Adding any of these requires a godlike/07 EXPAND/BACKFILL/"
+    echo "CUTOVER/CONTRACT migration sequence (architecture/deprecations.yaml)"
+    echo "and a tracking entry in architecture/current.yaml#HC-1 sub_tasks."
+    exit 1
+fi
+echo "Check 40: 0 HC-1 re-introduction patterns (var jobTimeoutRegistry \/ SetJobTimeout \/ jobTimeout)"

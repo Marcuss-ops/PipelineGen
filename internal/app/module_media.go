@@ -257,12 +257,19 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// mutations.AssetMutationDispatcher SSOT is the 7th positional arg
 	// so the worker routes media_assets UPSERT through the canonical
 	// outbox+tx writer (QDRANT-002 atomicity invariant).
+	//
+	// HC-1 (June 2026): the `cfg` 5th positional arg is now constructed
+	// with appjobs.Compose() as the typed TimeoutResolver — the
+	// bulk_upload worker uses cfg.JobTimeout(TypeBulUploadYouTubeClips)
+	// to derive its 2*time.Hour literal via the canonical Registry
+	// (replaces the pre-HC-1 hard-coded context.WithTimeout(ctx, 2*time.Hour)
+	// in bulk_upload_worker.go::HandleJob).
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		newClipsDriveAdapter(driveUploader),
 		newClipsRepoAdapter(bundle.ClipsRepo),
 		newClipsIndexerAdapter(bundle.ClipIndexerService),
 		newClipsHashAdapter(),
-		newClipsCfgAdapter(cfg),
+		newClipsCfgAdapter(cfg, appjobs.Compose()),
 		mutationsDisp,
 		log,
 	)
@@ -281,6 +288,12 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		driveUploader, metaWriter, bundle.ClipIndexerService,
 		folderMemSvc, bundle.AssetTreeService,
 		nil, // vectorSvc removed PG-034
+		// HC-1 (June 2026): pass the typed TimeoutResolver (canonical
+		// impl: appjobs.Compose() — *jobs.Registry) so the cfg adapter
+		// in the bundle has the timeouts port wired. Mirrors the
+		// newClipsCfgAdapter(appjobs.Compose()) call above for the
+		// BulkUploadWorker.
+		appjobs.Compose(),
 	)
 	clipOpsSvc := appclips.NewClipOpsService(
 		clipsOpsPorts.SourceResolver,
