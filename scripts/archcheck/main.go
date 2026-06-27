@@ -602,7 +602,6 @@ func subtractSet(actual, allowed []string) []string {
 // databaseSQLLegacyBaseline captures the pre-gate db/sql surface that still
 // exists in api/application/domain and is being shrunk incrementally.
 var databaseSQLLegacyBaseline = []string{
-	"internal/api/common/health_integration_test.go",
 	"internal/api/middleware/middleware_auth_test.go",
 	"internal/application/assets/artifacts/clips_adapter.go",
 	"internal/application/assets/artifacts/finalizer_test.go",
@@ -1196,7 +1195,6 @@ func checkHandlerToDB(baseline []string) (actual []string, violations []string, 
 		"internal/api",
 		"--type", "go",
 		"--glob", "!*_test.go",
-		"--glob", "!internal/api/common/*.go",
 	).Output()
 	if err != nil && !execErrIsNoMatch(err) {
 		return actual, []string{fmt.Sprintf("checkHandlerToDB: rg failed: %v", err)}, stats

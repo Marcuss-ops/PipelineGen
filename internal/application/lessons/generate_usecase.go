@@ -1,14 +1,14 @@
 // Package lessons contains use-case implementations for the Lesson
 // generation flow. Each use case is the canonical bind+validate+invoke
 // entry point invoked by the thin HTTP handler in
-// internal/api/content/lessons.go via transport.JSON.
+// internal/api/content/lessons.go.
 //
 // See internal/application/books for the boundary contract; this
-// package mirrors it. Per the transport.JSON contract, asyncEnqueuer
-// and lessonProcessor are unexported interfaces declared in this
-// file so the production wiring in internal/app/ passes the concrete
-// pointers (*jobs.Service, *Service) without an
-// adapter layer — they satisfy the interface automatically.
+// package mirrors it. asyncEnqueuer and lessonProcessor are
+// unexported interfaces declared in this file so the production
+// wiring in internal/app/ passes the concrete pointers
+// (*jobs.Service, *Service) without an adapter layer — they
+// satisfy the interface automatically.
 package lessons
 
 import (
@@ -21,7 +21,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -99,7 +98,7 @@ type GenerateLessonResult struct {
 	GeneratedAt  string `json:"generated_at"`
 }
 
-// Validate implements transport.JSONBound.
+// Validate implements the handler-side validation contract.
 func (r GenerateLessonRequest) Validate() error {
 	if strings.TrimSpace(r.SourceText) == "" {
 		return errors.New("source_text is required")
@@ -138,7 +137,7 @@ func (r GenerateLessonRequest) payload() map[string]any {
 // lessons API matches the other text-generation endpoints.
 type GenerateLessonResponse = generation.Response[GenerateLessonResult]
 
-// Sentinels returned by the use case. transport.JSON's ErrorMapper
+// Sentinels returned by the use case. The handler's ErrorMapper
 // translates each into a stable HTTP status so the wire surface is
 // predictable for the 13 future migrations.
 var (
@@ -176,8 +175,8 @@ func NewGenerateLessonUseCase(svc lessonProcessor, jobsSvc asyncEnqueuer, log *z
 	return &GenerateLessonUseCase{svc: svc, jobsSvc: jobsSvc, log: log}
 }
 
-// Handle implements transport.UseCase[In, Out]. Same async/sync split
-// as books.ProcessBookUseCase.
+// Handle implements the canonical handler-use-case contract.
+// Same async/sync split as books.ProcessBookUseCase.
 func (uc *GenerateLessonUseCase) Handle(ctx context.Context, req GenerateLessonRequest) (GenerateLessonResponse, error) {
 	if req.Async {
 		return uc.enqueueLessonJob(ctx, req, string(jobs.TypeLessonsProcess))
@@ -294,4 +293,12 @@ func GenerateLessonErrMapper(err error) (int, string) {
 	return 0, ""
 }
 
-var _ transport.UseCase[GenerateLessonRequest, GenerateLessonResponse] = (*GenerateLessonUseCase)(nil)
+// useCaseContract is the local Handler[I,O] contract surface.
+// Replaces the global transport.UseCase which was removed in June 2026
+// (Issue 9b consolidation). Use cases are invoked directly by handlers
+// via apiutil.BindJSON + useCase.Handle + apiutil.OK/Error.
+type useCaseContract[In any, Out any] interface {
+	Handle(ctx context.Context, req In) (Out, error)
+}
+
+var _ useCaseContract[GenerateLessonRequest, GenerateLessonResponse] = (*GenerateLessonUseCase)(nil)

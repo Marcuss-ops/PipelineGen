@@ -44,7 +44,7 @@ func scanScriptRecord(s interface{ Scan(...any) error }, dst *ScriptRecord) erro
 	)
 }
 
-func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord, sections []ScriptSectionRecord, stockMatches []ScriptStockMatchRecord) (int64, error) {
+func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord, sections []scriptSectionRow, stockMatches []scriptStockMatchRow) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -96,7 +96,7 @@ func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord,
 	return scriptID, nil
 }
 
-func (r *ScriptRepository) GetScriptByID(id int64) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error) {
+func (r *ScriptRepository) GetScriptByID(id int64) (*ScriptRecord, []scriptSectionRow, []scriptStockMatchRow, error) {
 	var script ScriptRecord
 	err := scanScriptRecord(
 		r.db.QueryRow(`
@@ -109,28 +109,28 @@ func (r *ScriptRepository) GetScriptByID(id int64) (*ScriptRecord, []ScriptSecti
 		return nil, nil, nil, fmt.Errorf("failed to get script: %w", err)
 	}
 
-	sections := []ScriptSectionRecord{}
+	sections := []scriptSectionRow{}
 	rows, err := r.db.Query(`		SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status FROM script_sections WHERE script_id = ? ORDER BY sort_order`, id)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get sections: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var s ScriptSectionRecord
+		var s scriptSectionRow
 		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status); err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to scan section: %w", err)
 		}
 		sections = append(sections, s)
 	}
 
-	matches := []ScriptStockMatchRecord{}
+	matches := []scriptStockMatchRow{}
 	mRows, err := r.db.Query(`SELECT id, script_id, segment_index, stock_path, stock_source, score, matched_terms FROM script_stock_matches WHERE script_id = ?`, id)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get stock matches: %w", err)
 	}
 	defer mRows.Close()
 	for mRows.Next() {
-		var m ScriptStockMatchRecord
+		var m scriptStockMatchRow
 		if err := mRows.Scan(&m.ID, &m.ScriptID, &m.SegmentIndex, &m.StockPath, &m.StockSource, &m.Score, &m.MatchedTerms); err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to scan stock match: %w", err)
 		}
@@ -220,7 +220,7 @@ func (r *ScriptRepository) FindByIdempotencyKey(ctx context.Context, idemKey, la
 	return &script, nil
 }
 
-func (r *ScriptRepository) FindByTopic(ctx context.Context, topic, language string) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error) {
+func (r *ScriptRepository) FindByTopic(ctx context.Context, topic, language string) (*ScriptRecord, []scriptSectionRow, []scriptStockMatchRow, error) {
 	var script ScriptRecord
 	err := scanScriptRecord(
 		r.db.QueryRowContext(ctx, `
@@ -233,21 +233,21 @@ func (r *ScriptRepository) FindByTopic(ctx context.Context, topic, language stri
 		return nil, nil, nil, err
 	}
 
-	sections := []ScriptSectionRecord{}
+	sections := []scriptSectionRow{}
 	rows, err := r.db.QueryContext(ctx, "		SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status FROM script_sections WHERE script_id = ? ORDER BY sort_order", script.ID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var s ScriptSectionRecord
+		var s scriptSectionRow
 		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status); err != nil {
 			return nil, nil, nil, err
 		}
 		sections = append(sections, s)
 	}
 
-	matches := []ScriptStockMatchRecord{}
+	matches := []scriptStockMatchRow{}
 	return &script, sections, matches, nil
 }
 
@@ -256,7 +256,7 @@ func (r *ScriptRepository) SoftDeleteScript(id int64) error {
 	return err
 }
 
-func (r *ScriptRepository) CreateNewVersion(ctx context.Context, parentID int64, script *ScriptRecord, sections []ScriptSectionRecord, stockMatches []ScriptStockMatchRecord) (int64, error) {
+func (r *ScriptRepository) CreateNewVersion(ctx context.Context, parentID int64, script *ScriptRecord, sections []scriptSectionRow, stockMatches []scriptStockMatchRow) (int64, error) {
 	script.ParentScriptID = &parentID
 	script.Version = r.getNextVersion(ctx, parentID)
 	return r.SaveScript(ctx, script, sections, stockMatches)

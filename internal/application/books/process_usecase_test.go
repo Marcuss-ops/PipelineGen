@@ -70,8 +70,8 @@ func (f *FakeAsyncEnqueuer) Enqueue(_ context.Context, req *jobs.EnqueueRequest)
 
 // TestProcessBookRequest_Validate — arm-1 (sync validation).
 //
-// Pin the use-case's reject-when-both-empty contract; transport.JSON
-// calls Validate() during binding and surfaces false via api.BadRequest
+// Pin the use-case's reject-when-both-empty contract; the handler
+// calls Validate() during binding and surfaces false via apiutil.BadRequest
 // (400). Future migrations of similar async+sync endpoints should
 // inherit this assertion style as the canonical pattern.
 func TestProcessBookRequest_Validate(t *testing.T) {

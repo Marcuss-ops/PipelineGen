@@ -13,6 +13,12 @@ import (
 // sqliteRepoAdapter bridges the concrete *sqlitescripts.ScriptRepository
 // to the scripts.ScriptRepository interface by converting between the
 // two type systems (same-named structs in different packages).
+//
+// Issue 15a (June 2026): ScriptSectionRecord in the SQLite package is now
+// a private row type (scriptSectionRow). The adapter is the single
+// conversion point: write direction uses the exported SectionRows builder,
+// read direction uses the exported EachSectionRow callback. No inline
+// field copies outside the adapter.
 type sqliteRepoAdapter struct {
 	inner *sqlitescripts.ScriptRepository
 }
@@ -69,11 +75,6 @@ func toSQLiteScriptRecord(rec *ScriptRecord) *sqlitescripts.ScriptRecord {
 		Version:        rec.Version,
 		ParentScriptID: parentID,
 		IsDeleted:      false,
-		// PR 6 (June 2026): dedicated idempotency_key + specscene
-		// columns replace the pre-PR-6 dual-purpose
-		// Template / TimelineJSON slots. PersistenceProcessor is the
-		// only writer; the adapter passes the fields straight
-		// through to the SQL side.
 		IdempotencyKey: rec.IdempotencyKey,
 		SpecScene:      rec.SpecScene,
 	}
@@ -114,84 +115,34 @@ func fromSQLiteScriptRecord(rec *sqlitescripts.ScriptRecord) *ScriptRecord {
 		Version:        rec.Version,
 		CreatedAt:      createdAt,
 		UpdatedAt:      updatedAt,
-		// PR 6 (June 2026): dedicated idempotency_key + specscene
-		// columns. The fields flow from the SQL side without any
-		// slot-shape heuristic. The PR 5 era's "idempotency key is
-		// stuffed into Template" is gone.
 		IdempotencyKey: rec.IdempotencyKey,
 		SpecScene:      rec.SpecScene,
 	}
 }
 
-// ── Section record conversion ────────────────────────────────────────────
+// ── Section record conversion (Issue 15a — single conversion point) ──────
 
-func toSQLiteSectionRecords(in []ScriptSectionRecord) []sqlitescripts.ScriptSectionRecord {
-	out := make([]sqlitescripts.ScriptSectionRecord, len(in))
-	for i, s := range in {
-		out[i] = sqlitescripts.ScriptSectionRecord{
-			ID:           s.ID,
-			ScriptID:     s.ScriptID,
-			SectionType:  s.SectionType,
-			SectionTitle: s.SectionTitle,
-			Content:      s.Content,
-			SortOrder:    s.SortOrder,
-			WordCount:    s.WordCount,
-			Status:       s.Status,
-		}
+// buildSectionRows converts application ScriptSectionRecord values into
+// the SQLite package's private row type via the exported SectionRows builder.
+// This is the canonical write-direction conversion point.
+func buildSectionRows(in []ScriptSectionRecord) *sqlitescripts.SectionRows {
+	b := sqlitescripts.NewSectionRows(len(in))
+	for _, s := range in {
+		b.Add(s.ID, s.ScriptID, s.SectionType, s.SectionTitle, s.Content, s.SortOrder, s.WordCount, s.Status)
 	}
-	return out
+	return b
 }
 
-func fromSQLiteSectionRecords(in []sqlitescripts.ScriptSectionRecord) []ScriptSectionRecord {
-	out := make([]ScriptSectionRecord, len(in))
-	for i, s := range in {
-		out[i] = ScriptSectionRecord{
-			ID:           s.ID,
-			ScriptID:     s.ScriptID,
-			Index:        s.SortOrder,
-			SectionType:  s.SectionType,
-			SectionTitle: s.SectionTitle,
-			Content:      s.Content,
-			SortOrder:    s.SortOrder,
-			WordCount:    s.WordCount,
-			Status:       s.Status,
-		}
-	}
-	return out
-}
+// ── Stock match conversion (Issue 15b — single conversion point) ────────
 
-// ── Stock match conversion ───────────────────────────────────────────────
-
-func toSQLiteStockMatchRecords(in []ScriptStockMatchRecord) []sqlitescripts.ScriptStockMatchRecord {
-	out := make([]sqlitescripts.ScriptStockMatchRecord, len(in))
-	for i, m := range in {
-		out[i] = sqlitescripts.ScriptStockMatchRecord{
-			ID:           m.ID,
-			ScriptID:     m.ScriptID,
-			SegmentIndex: m.SegmentIndex,
-			StockPath:    m.StockPath,
-			StockSource:  m.StockSource,
-			Score:        m.Score,
-			MatchedTerms: m.MatchedTerms,
-		}
+// buildStockMatchRows converts application ScriptStockMatchRecord values
+// into the SQLite package's private row type via the exported StockMatchRows builder.
+func buildStockMatchRows(in []ScriptStockMatchRecord) *sqlitescripts.StockMatchRows {
+	b := sqlitescripts.NewStockMatchRows(len(in))
+	for _, m := range in {
+		b.Add(m.ID, m.ScriptID, m.SegmentIndex, m.StockPath, m.StockSource, m.Score, m.MatchedTerms)
 	}
-	return out
-}
-
-func fromSQLiteStockMatchRecords(in []sqlitescripts.ScriptStockMatchRecord) []ScriptStockMatchRecord {
-	out := make([]ScriptStockMatchRecord, len(in))
-	for i, m := range in {
-		out[i] = ScriptStockMatchRecord{
-			ID:           m.ID,
-			ScriptID:     m.ScriptID,
-			SegmentIndex: m.SegmentIndex,
-			StockPath:    m.StockPath,
-			StockSource:  m.StockSource,
-			Score:        m.Score,
-			MatchedTerms: m.MatchedTerms,
-		}
-	}
-	return out
+	return b
 }
 
 // ── Research source conversion ───────────────────────────────────────────
@@ -213,22 +164,17 @@ func toSQLiteResearchSources(in []ScriptResearchSource) []sqlitescripts.ScriptRe
 	return out
 }
 
-// ── Outline section conversion ───────────────────────────────────────────
+// ── Outline section conversion (Issue 15b — single conversion point) ─────
 
-func toSQLiteOutlineSectionRecords(in []ScriptOutlineSectionRecord) []sqlitescripts.ScriptOutlineSectionRecord {
-	out := make([]sqlitescripts.ScriptOutlineSectionRecord, len(in))
-	for i, s := range in {
-		out[i] = sqlitescripts.ScriptOutlineSectionRecord{
-			ScriptID:      s.ScriptID,
-			SectionIndex:  s.SectionIndex,
-			Title:         s.Title,
-			Purpose:       s.Purpose,
-			TargetWords:   s.TargetWords,
-			KeyPointsJSON: s.KeyPointsJSON,
-			EmotionalRole: s.EmotionalRole,
-		}
+// buildOutlineSectionRows converts application ScriptOutlineSectionRecord
+// values into the SQLite package's private row type via the exported
+// OutlineSectionRows builder.
+func buildOutlineSectionRows(in []ScriptOutlineSectionRecord) *sqlitescripts.OutlineSectionRows {
+	b := sqlitescripts.NewOutlineSectionRows(len(in))
+	for _, s := range in {
+		b.Add(s.ScriptID, s.SectionIndex, s.Title, s.Purpose, s.TargetWords, s.KeyPointsJSON, s.EmotionalRole)
 	}
-	return out
+	return b
 }
 
 // ── Generation log conversion ────────────────────────────────────────────
@@ -251,7 +197,7 @@ func toSQLiteGenerationLog(in ScriptGenerationLog) sqlitescripts.ScriptGeneratio
 // ── Interface methods ────────────────────────────────────────────────────
 
 func (a *sqliteRepoAdapter) SaveScript(ctx context.Context, rec *ScriptRecord, sections []ScriptSectionRecord, matches []ScriptStockMatchRecord) (int64, error) {
-	return a.inner.SaveScript(ctx, toSQLiteScriptRecord(rec), toSQLiteSectionRecords(sections), toSQLiteStockMatchRecords(matches))
+	return a.inner.SaveScript(ctx, toSQLiteScriptRecord(rec), buildSectionRows(sections).Slice(), buildStockMatchRows(matches).Slice())
 }
 
 func (a *sqliteRepoAdapter) UpdateScriptFinalContent(ctx context.Context, scriptID int64, outputText string, wordCount int, status, metadata, model, ollamaBaseURL string, version int) error {
@@ -263,7 +209,7 @@ func (a *sqliteRepoAdapter) SaveGenerationLog(ctx context.Context, log ScriptGen
 }
 
 func (a *sqliteRepoAdapter) SaveOutlineSections(ctx context.Context, scriptID int64, sections []ScriptOutlineSectionRecord) error {
-	return a.inner.SaveOutlineSections(ctx, scriptID, toSQLiteOutlineSectionRecords(sections))
+	return a.inner.SaveOutlineSections(ctx, scriptID, buildOutlineSectionRows(sections).Slice())
 }
 
 func (a *sqliteRepoAdapter) SaveResearchSources(ctx context.Context, scriptID int64, sources []ScriptResearchSource) error {
@@ -279,6 +225,8 @@ func (a *sqliteRepoAdapter) GetSectionByID(ctx context.Context, sectionID int64)
 	if err != nil || sec == nil {
 		return nil, err
 	}
+	// sec is *scriptSectionRow (private type, inferred via :=).
+	// The adapter accesses exported fields without naming the type.
 	return &ScriptSectionRecord{
 		ID:           sec.ID,
 		ScriptID:     sec.ScriptID,
@@ -296,7 +244,26 @@ func (a *sqliteRepoAdapter) GetScriptByID(id int64) (*ScriptRecord, []ScriptSect
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return fromSQLiteScriptRecord(rec), fromSQLiteSectionRecords(sections), fromSQLiteStockMatchRecords(matches), nil
+	// sections and matches are []scriptSectionRow / []scriptStockMatchRow
+	// (private types, inferred via :=). Convert via canonical callbacks.
+	outSections := make([]ScriptSectionRecord, 0, len(sections))
+	sqlitescripts.EachSectionRow(sections, func(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string) {
+		outSections = append(outSections, ScriptSectionRecord{
+			ID: id, ScriptID: scriptID, Index: sortOrder,
+			SectionType: sectionType, SectionTitle: sectionTitle,
+			Content: content, SortOrder: sortOrder,
+			WordCount: wordCount, Status: status,
+		})
+	})
+	outMatches := make([]ScriptStockMatchRecord, 0, len(matches))
+	sqlitescripts.EachStockMatchRow(matches, func(id, scriptID int64, segmentIndex int, stockPath, stockSource string, score float64, matchedTerms string) {
+		outMatches = append(outMatches, ScriptStockMatchRecord{
+			ID: id, ScriptID: scriptID, SegmentIndex: segmentIndex,
+			StockPath: stockPath, StockSource: stockSource,
+			Score: score, MatchedTerms: matchedTerms,
+		})
+	})
+	return fromSQLiteScriptRecord(rec), outSections, outMatches, nil
 }
 
 func (a *sqliteRepoAdapter) GetAdjacentSections(ctx context.Context, scriptID int64, sortOrder int) (prev, next *ScriptSectionRecord, err error) {
@@ -304,6 +271,7 @@ func (a *sqliteRepoAdapter) GetAdjacentSections(ctx context.Context, scriptID in
 	if err != nil {
 		return nil, nil, err
 	}
+	// sp/sn are *scriptSectionRow (private type, inferred via :=).
 	if sp != nil {
 		r := ScriptSectionRecord{
 			ID:           sp.ID,
@@ -350,10 +318,6 @@ func (a *sqliteRepoAdapter) ListScripts(ctx context.Context, filter ScriptListFi
 }
 
 // FindScriptByIdempotencyKey delegates to the concrete sqlite repo.
-// PR 5: the concrete repo looks up by `template = ? AND language = ?`
-// ORDER BY id DESC LIMIT 1 (the idem key is currently carried on the
-// existing Template slot — PR 6 introduces a dedicated
-// `idempotency_key` column).
 func (a *sqliteRepoAdapter) FindScriptByIdempotencyKey(ctx context.Context, itemID, cacheKey, promptVersion string, targetWords int, language string) (*ScriptRecord, bool, error) {
 	if a == nil || a.inner == nil {
 		return nil, false, nil

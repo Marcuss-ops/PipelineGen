@@ -253,7 +253,7 @@ func TestGenerateLessonUseCase_EmptyLessonsService(t *testing.T) {
 
 // TestGenerateLessonErrMapper — pin the use-case → HTTP status mapping.
 // Three sentinel cases + ErrGenerateFailed + pass-through (0/"")
-// delegates to transport.JSON's safe default.
+// delegates to the handler's safe default.
 func TestGenerateLessonErrMapper(t *testing.T) {
 	cases := []struct {
 		name       string

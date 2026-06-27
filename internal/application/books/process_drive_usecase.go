@@ -9,7 +9,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 )
 
@@ -71,7 +70,7 @@ type ProcessBookFromDriveResult struct {
 	VoiceoverError     string `json:"voiceover_error"`
 }
 
-// Validate implements transport.JSONBound.
+// Validate implements the handler-side validation contract.
 func (r ProcessBookFromDriveRequest) Validate() error {
 	if strings.TrimSpace(r.DriveFileURL) == "" {
 		return errors.New("drive_file_url is required")
@@ -102,10 +101,10 @@ func NewProcessBookFromDriveUseCase(svc driveBookProcessor, log *zap.Logger) *Pr
 	return &ProcessBookFromDriveUseCase{svc: svc, log: log}
 }
 
-// Handle implements transport.UseCase[In, Out]. It runs the books
-// pipeline synchronously with a processBookFromDriveTimeout ceiling
-// because the worst case is a drive download + rewrite + voiceover
-// generation pipeline the user is waiting on interactively.
+// Handle implements the canonical handler-use-case contract. It runs
+// the books pipeline synchronously with a processBookFromDriveTimeout
+// ceiling because the worst case is a drive download + rewrite +
+// voiceover generation pipeline the user is waiting on interactively.
 func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBookFromDriveRequest) (ProcessBookFromDriveResponse, error) {
 	if uc.svc == nil {
 		return ProcessBookFromDriveResponse{}, ErrDriveMissing
@@ -177,4 +176,4 @@ func ProcessBookFromDriveErrMapper(err error) (int, string) {
 	return 0, ""
 }
 
-var _ transport.UseCase[ProcessBookFromDriveRequest, ProcessBookFromDriveResponse] = (*ProcessBookFromDriveUseCase)(nil)
+var _ useCaseContract[ProcessBookFromDriveRequest, ProcessBookFromDriveResponse] = (*ProcessBookFromDriveUseCase)(nil)
