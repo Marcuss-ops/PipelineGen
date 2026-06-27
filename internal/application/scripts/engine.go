@@ -33,12 +33,27 @@ import (
 	"go.uber.org/zap"
 )
 
+type scriptOllamaGenerator interface {
+	GenerateScript(ctx context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error)
+}
+
+type memoryGateChecker interface {
+	CheckGate(ctx context.Context, req gemmamemory.MemoryGateRequest) (*gemmamemory.GateResult, error)
+}
+
+var _ scriptOllamaGenerator = (*ollama.Generator)(nil)
+var _ memoryGateChecker = (*gemmamemory.Service)(nil)
+
 // Engine is the canonical script generation engine backed by
 // ollama.Generator, gemmamemory.Service, and ScriptRepository.
-// All fields are concrete typed.
+// Fields use concrete typed ports (ARCHITECTURE.md §14 + AGENTS.md
+// Pattern 0). Compile-time assertions above guarantee that
+// *ollama.Generator / *gemmamemory.Service implement the local
+// interfaces so composition-root wiring at internal/app passes the
+// concrete types directly without an `any` shim.
 type Engine struct {
-	ollamaGen interface{} // *ollama.Generator
-	memorySvc interface{} // *gemmamemory.Service
+	ollamaGen scriptOllamaGenerator
+	memorySvc memoryGateChecker
 	repo      interface{} // ScriptRepository
 	log       *zap.Logger
 }
@@ -76,10 +91,13 @@ type WriteScriptResult struct {
 }
 
 // NewEngine constructs a real Engine backed by the canonical
-// *ollama.Generator. Accepts concrete typed args.
+// *ollama.Generator (typed port scriptOllamaGenerator) and
+// *gemmamemory.Service (typed port memoryGateChecker). Compilation
+// fails if a non-implementing type is passed, so degradation to `any`
+// is impossible.
 func NewEngine(
-	ollamaGen *ollama.Generator,
-	memorySvc *gemmamemory.Service,
+	ollamaGen scriptOllamaGenerator,
+	memorySvc memoryGateChecker,
 	repo ScriptRepository,
 	log *zap.Logger,
 ) *Engine {
@@ -96,11 +114,7 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 	if e == nil || e.ollamaGen == nil {
 		return nil, fmt.Errorf("engine: ollama generator not configured")
 	}
-
-	ollamaGen, ok := e.ollamaGen.(*ollama.Generator)
-	if !ok || ollamaGen == nil {
-		return nil, fmt.Errorf("engine: ollama generator not properly configured")
-	}
+	ollamaGen := e.ollamaGen
 
 	// Resolve parameters: Plan takes precedence when populated.
 	plan, _ := req.Plan.(*scriptpkg.ScriptGenerationPlan)
@@ -177,29 +191,29 @@ func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*Writ
 
 	// Memory gate: check if we have a cached result.
 	if useMemory && e.memorySvc != nil {
-		if memSvc, ok := e.memorySvc.(*gemmamemory.Service); ok {
-			memoryReq := gemmamemory.MemoryGateRequest{
-				Title:    title,
-				Language: language,
-				Mode:     mode,
+		memSvc := e.memorySvc
+
+		memoryReq := gemmamemory.MemoryGateRequest{
+			Title:    title,
+			Language: language,
+			Mode:     mode,
+		}
+		if result, memErr := memSvc.CheckGate(ctx, memoryReq); memErr == nil && result != nil && result.Output != "" {
+			if e.log != nil {
+				e.log.Info("engine: memory gate cache hit",
+					zap.String("title", title),
+					zap.Int("word_count", result.WordCount))
 			}
-			if result, memErr := memSvc.CheckGate(ctx, memoryReq); memErr == nil && result != nil && result.Output != "" {
-				if e.log != nil {
-					e.log.Info("engine: memory gate cache hit",
-						zap.String("title", title),
-						zap.Int("word_count", result.WordCount))
-				}
-				return &WriteScriptResult{
-					Script:      result.Output,
-					WordCount:   result.WordCount,
-					Model:       result.Model,
-					Prompt:      prompt,
-					CacheStatus: "exact_hit",
-					CacheHit:    true,
-					WasCached:   true,
-					EstDuration: (result.WordCount * 60) / 150,
-				}, nil
-			}
+			return &WriteScriptResult{
+				Script:      result.Output,
+				WordCount:   result.WordCount,
+				Model:       result.Model,
+				Prompt:      prompt,
+				CacheStatus: "exact_hit",
+				CacheHit:    true,
+				WasCached:   true,
+				EstDuration: (result.WordCount * 60) / 150,
+			}, nil
 		}
 	}
 

@@ -7,7 +7,8 @@
 // Critical contract — MOUNTED ON A NON-API PREFIX:
 //   - JobsHandler          mounts on `/jobs` → /api/jobs/{, stats, :id ...}
 //   - WorkersBrokerHandler mounts on remoteshared.InternalPathPrefix
-//                            (typically /internal/v1/) → NOT under /api/.
+//     (typically /internal/v1/) → NOT under /api/.
+//
 // See internal/api/server.go::Router.SetWorkerHandler and
 // remoteshared.InternalPathPrefix for the exact routing context.
 //
@@ -24,9 +25,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Broker is the narrow port for worker session RPC. Satisfied by
@@ -93,7 +94,7 @@ type registerWorkerRequest struct {
 func (h *WorkersBrokerHandler) RegisterWorker(c *gin.Context) {
 	var req registerWorkerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	session, err := h.broker.RegisterWorker(c.Request.Context(), appjobs.RegisterWorkerCommand{
@@ -105,10 +106,10 @@ func (h *WorkersBrokerHandler) RegisterWorker(c *gin.Context) {
 		SessionTTL:   90 * time.Second,
 	})
 	if err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, session)
+	api.OK(c, session)
 }
 
 func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
@@ -118,7 +119,7 @@ func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
 		SessionTTL      int64  `json:"session_ttl_seconds,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	if err := h.broker.Heartbeat(c.Request.Context(), appjobs.HeartbeatCommand{
@@ -126,100 +127,100 @@ func (h *WorkersBrokerHandler) Heartbeat(c *gin.Context) {
 		WorkerSessionID: req.WorkerSessionID,
 		SessionTTL:      time.Duration(req.SessionTTL) * time.Second,
 	}); err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"ok": true})
+	api.OK(c, gin.H{"ok": true})
 }
 
 func (h *WorkersBrokerHandler) Claim(c *gin.Context) {
 	var req appjobs.ClaimCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	lease, err := h.broker.Claim(c.Request.Context(), req)
 	if err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, lease)
+	api.OK(c, lease)
 }
 
 func (h *WorkersBrokerHandler) Renew(c *gin.Context) {
 	var req appjobs.RenewCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	req.JobID = c.Param("id")
 	lease, err := h.broker.Renew(c.Request.Context(), req)
 	if err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, lease)
+	api.OK(c, lease)
 }
 
 func (h *WorkersBrokerHandler) Progress(c *gin.Context) {
 	var req appjobs.ProgressCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	req.JobID = c.Param("id")
 	if err := h.broker.Progress(c.Request.Context(), req); err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"ok": true})
+	api.OK(c, gin.H{"ok": true})
 }
 
 func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 	var req appjobs.CompleteCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	req.JobID = c.Param("id")
 	if err := h.broker.Complete(c.Request.Context(), req); err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"ok": true})
+	api.OK(c, gin.H{"ok": true})
 }
 
 func (h *WorkersBrokerHandler) Fail(c *gin.Context) {
 	var req appjobs.FailCommand
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	req.JobID = c.Param("id")
 	if err := h.broker.Fail(c.Request.Context(), req); err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"ok": true})
+	api.OK(c, gin.H{"ok": true})
 }
 
 func (h *WorkersBrokerHandler) IsCancelled(c *gin.Context) {
 	cancelled, err := h.broker.IsCancelled(c.Request.Context(), c.Param("id"), c.Query("lease_id"))
 	if err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"cancelled": cancelled})
+	api.OK(c, gin.H{"cancelled": cancelled})
 }
 
 func (h *WorkersBrokerHandler) DownloadAsset(c *gin.Context) {
 	if h.assets == nil {
-		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return
 	}
 	rc, filename, err := h.assets.Download(c.Request.Context(), c.Param("asset_id"))
 	if err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 	defer rc.Close()
@@ -232,27 +233,27 @@ func (h *WorkersBrokerHandler) DownloadAsset(c *gin.Context) {
 
 func (h *WorkersBrokerHandler) InitiateUpload(c *gin.Context) {
 	if h.assets == nil {
-		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return
 	}
 	var req struct {
 		AssetID string `json:"asset_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	out, err := h.assets.InitiateUpload(c.Request.Context(), req.AssetID)
 	if err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, out)
+	api.OK(c, out)
 }
 
 func (h *WorkersBrokerHandler) UploadAssetContent(c *gin.Context) {
 	if h.assets == nil {
-		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return
 	}
 	filename := c.GetHeader("X-Filename")
@@ -263,29 +264,29 @@ func (h *WorkersBrokerHandler) UploadAssetContent(c *gin.Context) {
 		filename = c.Param("asset_id")
 	}
 	if err := h.assets.Upload(c.Request.Context(), c.Param("asset_id"), filename, c.Request.Body); err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"ok": true})
+	api.OK(c, gin.H{"ok": true})
 }
 
 func (h *WorkersBrokerHandler) FinalizeUpload(c *gin.Context) {
 	if h.assets == nil {
-		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		api.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
 		return
 	}
 	var req struct {
 		AssetID string `json:"asset_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	if err := h.assets.FinalizeUpload(c.Request.Context(), req.AssetID); err != nil {
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"ok": true})
+	api.OK(c, gin.H{"ok": true})
 }
 
 var _ = http.StatusOK

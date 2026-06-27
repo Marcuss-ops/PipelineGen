@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/gin-gonic/gin"
@@ -137,10 +137,10 @@ func TestBuild_HandlerRoutesAreRegistered(t *testing.T) {
 // values supplied in Dependencies are carried into the descriptor's
 // JobHandlers slot — the import-cycle fix depends on this.
 func TestBuild_BooksAndLessonsHandlersFlowThrough(t *testing.T) {
-	noopBooks := HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
+	noopBooks := appjobs.HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
 		return map[string]any{"via": "books"}, nil
 	})
-	noopLessons := HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
+	noopLessons := appjobs.HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
 		return map[string]any{"via": "lessons"}, nil
 	})
 	d, err := Build(Dependencies{
@@ -190,10 +190,10 @@ func TestJobHandlers_RegisterJobHandlersSkipsNilHandlers(t *testing.T) {
 // TestJobHandlers_RegisterJobHandlersFiresForNonNilHandlers confirms
 // both worker types register when their handlers are non-nil.
 func TestJobHandlers_RegisterJobHandlersFiresForNonNilHandlers(t *testing.T) {
-	noopBooks := HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
+	noopBooks := appjobs.HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
 		return nil, nil
 	})
-	noopLessons := HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
+	noopLessons := appjobs.HandlerFunc(func(_ context.Context, _ *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
 		return nil, nil
 	})
 	jh := JobHandlers{Books: noopBooks, Lessons: noopLessons, Log: zap.NewNop()}

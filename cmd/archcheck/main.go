@@ -6,28 +6,11 @@
 // violations are present) so existing CI is undisturbed while the policy
 // and tooling stabilise. Phase N promotes the gate by passing `--strict`.
 //
-// Scope: this binary is the **target-tree half** of PipelineGen's
-// architectural gating. The **legacy burndown** half lives in
-// `scripts/archcheck/` — a regex-heavy (`rg`) transitional ratchet that
-// enforces the monotone-decreasing baselines for legacy surface area
-// (`database/sql` in api/application/domain, interface{} growth,
-// dependency setters, fake 501 routes, Python legacy writers, ...).
-// The two binaries are KEEP_BOTH by design (June 2026 Wave 16 PR
-// "scripts/archcheck dead-code sweep" decision recorded in
-// architecture/current.yaml):
-//
-//   - cmd/archcheck is **permanent**: it enforces the target tree
-//     (kernel/capability/platform subzones, max files per package,
-//     forbidden top-level dirs, legacy→target internal roots, ownership
-//     rule family) indefinitely.
-//   - scripts/archcheck is **transient**: each rule family expires once
-//     it reaches `verified_zero: true` in current.yaml; the binary
-//     lives until the last legacy family is burned down.
-//
-// They are NOT overlapping: same name, complementary concerns. The
-// shared JSON contract (`passed`, `mode`, `checks`, `violations`) is
-// kept structurally identical so downstream dashboards can consume
-// BOTH outputs without per-binary plumbing.
+// Scope: this binary is **independent** of the existing
+// `scripts/archcheck/` tool. `scripts/archcheck` enforces legacy ratchets
+// (allowedInternalRoots, import-pattern drift). `cmd/archcheck` enforces
+// the **target-tree** rules in `architecture/policy.yaml` and reports their
+// drift. Phase 1+ may consolidate the two tools.
 //
 // Stdlib only — no gopkg.in/yaml.v3 import. The flat policy format is
 // documented in architecture/policy.yaml and intentionally simple
@@ -73,7 +56,6 @@ type Policy struct {
 	MaxFilesPerPackage    int
 	MaxLinesPerFile       int
 	CmdMainMaxLines       int
-	MaxConstructorDeps    int
 	ForbiddenTopLevelDirs []string
 	KernelSubzones        []string
 	Capabilities          []string
@@ -168,11 +150,9 @@ func main() {
 		Summary:    Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
 	}
 
-	// Phase 1 (June 2026): scan for New<X>(...) constructors whose
-	// parameter count exceeds policy.yaml max_constructor_deps. See
-	// docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md §"Complexity
-	// budgets" for the canonical rule definition.
-	scanConstructorDeps(*root, pol, &report)
+	// TODO(phase-1): implement `New<X>(...)` regex arg-count scan for
+	// the constructor max-deps rule (policy.yaml `max_constructor_deps`,
+	// currently future work — see ARCHITECTURE.md §11.5).
 
 	scanForbiddenDirs(*root, pol, &report)
 	scanKernelSubzoneHints(*root, pol, &report)
@@ -266,8 +246,6 @@ func loadPolicy(path string) (*Policy, error) {
 			p.MaxLinesPerFile = atoiOrDefault(val, 500)
 		case "cmd_main_max_lines":
 			p.CmdMainMaxLines = atoiOrDefault(val, 200)
-		case "max_constructor_deps":
-			p.MaxConstructorDeps = atoiOrDefault(val, 8)
 		case "forbidden_top_level_dirs":
 			p.ForbiddenTopLevelDirs = splitTrim(val)
 		case "kernel_subzones":
@@ -741,204 +719,6 @@ func scanStaleProsePaths(root string, pol *Policy, r *Report) {
 		}
 		return nil
 	})
-}
-
-// scanConstructorDeps walks non-test Go source files under internal/,
-// finds func New<X>(...) constructor signatures, counts their parameters,
-// and emits a warn-severity violation when parameter count exceeds
-// pol.MaxConstructorDeps.
-//
-// Multi-line signatures are handled by accumulating lines until
-// parentheses balance. Generic type parameters [T any] before the
-// opening paren are detected when [ and ] are on the same line
-// (rare multi-line generic blocks are silently skipped — acceptable
-// Phase 1 gap). Package-level constructors only: methods with
-// receivers (func (r *R) NewXxx(...)) are detected via presence of
-// ')' between func and New, and skipped.
-//
-// Phase 1 (June 2026): implements the TODO formerly at the call site
-// per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md §"Complexity
-// budgets". Skipped dirs mirror scanPackages.
-func scanConstructorDeps(root string, pol *Policy, r *Report) {
-	if pol.MaxConstructorDeps <= 0 {
-		return
-	}
-	re := regexp.MustCompile(`func New\w+`)
-	skipDirs := map[string]bool{
-		".git": true, "vendor": true, "node_modules": true,
-		"node-scraper": true, "examples": true, "scripts": true,
-	}
-	internalDir := filepath.Join(root, "internal")
-	_ = filepath.WalkDir(internalDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if skipDirs[filepath.Base(path)] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			return nil
-		}
-		defer f.Close()
-		rel, _ := filepath.Rel(root, path)
-		relPath := filepath.ToSlash(rel)
-		sc := bufio.NewScanner(f)
-		lineNum := 0
-		for sc.Scan() {
-			lineNum++
-			line := sc.Text()
-			loc := re.FindStringIndex(line)
-			if loc == nil {
-				continue
-			}
-			// Check for method receiver: if the text between "func"
-			// and the matched name contains ')', it's a method with
-			// a receiver (e.g. func (s *Service) NewFoo(...)).
-			// Skip these — only package-level constructors count.
-			if strings.Contains(line[loc[0]:loc[1]], ")") {
-				continue
-			}
-			// Find the parameter-list '(' — scan forward past any
-			// generic type parameter block [T any] that may appear
-			// between the constructor name and the param list.
-			// e.g. func NewFoo[T any](ctx context.Context, ...).
-			rest := line[loc[1]:] // text after "func New<X>"
-			openIdx := strings.Index(rest, "(")
-			// If there's a '[' before '(', it's a generic type param
-			// block; skip past the matching ']' to find the real '('.
-			if b := strings.IndexByte(rest, '['); b >= 0 && (openIdx < 0 || b < openIdx) {
-				if closeB := matchBracket(rest, b); closeB >= 0 {
-					openIdx = strings.Index(rest[closeB+1:], "(")
-					if openIdx >= 0 {
-						openIdx += closeB + 1
-					}
-				}
-			}
-			if openIdx < 0 {
-				// No '(' found on this line — not a constructor call.
-				continue
-			}
-			// Accumulate the full signature from the opening paren
-			// onward until parentheses balance.
-			sig := rest[openIdx:]
-			depth := parenDepth(sig)
-			for depth > 0 && sc.Scan() {
-				lineNum++
-				next := sc.Text()
-				sig += "\n" + next
-				depth = parenDepth(sig)
-			}
-			// Extract params between the outermost ( ... ).
-			closeIdx := matchParen(sig, 0)
-			if closeIdx < 0 {
-				continue
-			}
-			params := sig[1:closeIdx]
-			count := countTopLevelCommas(params)
-			// +1 because N commas means N+1 parameters (0 commas = 1 param).
-			// Handle empty params (func NewFoo()) — zero commas, zero params.
-			paramCount := 0
-			if strings.TrimSpace(params) != "" {
-				paramCount = count + 1
-			}
-			if paramCount > pol.MaxConstructorDeps {
-				r.Violations = append(r.Violations, Violation{
-					File:         relPath,
-					Line:         lineNum - (strings.Count(sig, "\n")),
-					ActualCount:  paramCount,
-					AllowedCount: pol.MaxConstructorDeps,
-					MatchedRule:  "max_constructor_deps",
-					Rule:         "constructor_deps",
-					Severity:     "warn",
-					Note: fmt.Sprintf(
-						"func New<X>(...) has %d parameters (max %d); split into smaller constructors or use a config struct",
-						paramCount, pol.MaxConstructorDeps,
-					),
-				})
-			}
-		}
-		return nil
-	})
-}
-
-// parenDepth returns the depth delta of '(' minus ')' in s.
-// Positive means more opens than closes (unbalanced).
-func parenDepth(s string) int {
-	d := 0
-	for _, c := range s {
-		switch c {
-		case '(':
-			d++
-		case ')':
-			d--
-		}
-	}
-	return d
-}
-
-// matchParen returns the index of the closing paren that matches the
-// opening paren at openIdx. Returns -1 if unmatched.
-func matchParen(s string, openIdx int) int {
-	d := 0
-	for i := openIdx; i < len(s); i++ {
-		switch s[i] {
-		case '(':
-			d++
-		case ')':
-			d--
-			if d == 0 {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-// matchBracket returns the index of the closing ']' that matches the
-// opening '[' at openIdx. Mirrors matchParen for bracket pairs.
-func matchBracket(s string, openIdx int) int {
-	d := 0
-	for i := openIdx; i < len(s); i++ {
-		switch s[i] {
-		case '[':
-			d++
-		case ']':
-			d--
-			if d == 0 {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-// countTopLevelCommas counts commas at nesting depth 0 (i.e. commas
-// that separate parameters, not commas inside nested parens/brackets/
-// braces). This is used to count constructor parameters from a
-// balanced parameter list.
-func countTopLevelCommas(s string) int {
-	depth := 0
-	count := 0
-	for _, c := range s {
-		switch c {
-		case '(', '[', '{':
-			depth++
-		case ')', ']', '}':
-			depth--
-		case ',':
-			if depth == 0 {
-				count++
-			}
-		}
-	}
-	return count
 }
 
 // scanCommandBinaries checks that each cmd/<name>/main.go is below

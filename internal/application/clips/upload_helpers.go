@@ -1,16 +1,3 @@
-// Package clips (upload_helpers) — port-typed helpers supporting the
-// upload + cumulative-metadata workflow.
-//
-// Wave 14 PR2 (June 2026): migrated from internal/api/assets/clips/upload_helpers.go.
-// The previous file's only non-pure dependency was `*drive.Uploader`
-// (concrete google drive SDK), required by
-// UpdateCumulativeMetadataJSON's drive search call. The replacement
-// uses the canonical typed port ClipDriveUploaderPort (declared in
-// ports.go) so this file imports zero infrastructure packages. The
-// remaining helpers (ExtractDriveFolderID, CleanFolderName,
-// BuildDriveDescription) are pure string functions and have always
-// been infra-free — they only migrated to follow the Wave 14 PR2
-// rule "API package files must not import any internal/infrastructure/*".
 package clips
 
 import (
@@ -31,9 +18,8 @@ var driveFolderIDRegex = regexp.MustCompile(`/folders/([a-zA-Z0-9_-]+)`)
 
 // ExtractDriveFolderID extracts the folder ID from a Google Drive URL or
 // returns the input unchanged if it's already a raw ID. Used by both
-// clip_upload flows (clips upload_helpers) and the legacy
-// register_from_youtube flow (sources package). Exported so callers
-// cross-package can use it without an alias.
+// clip_upload.go (clips package) and the legacy register_from_youtube.go
+// (sources package) — exporting it lets both consume the same impl.
 func ExtractDriveFolderID(input string) string {
 	if input == "" {
 		return ""
@@ -48,7 +34,8 @@ func ExtractDriveFolderID(input string) string {
 	return input
 }
 
-// CleanFolderName normalizes a folder name for comparison.
+// CleanFolderName normalizes a folder name for comparison. Exposed as
+// CleanFolderName so callers cross-package can use it without an alias.
 func CleanFolderName(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = strings.ReplaceAll(s, "-", "")
@@ -58,9 +45,13 @@ func CleanFolderName(s string) string {
 }
 
 // BuildDriveDescription builds a description string for the Drive file.
-// Pure function: no-op on migration, signature unchanged from the
-// api-side copy.
-func BuildDriveDescription(name, reqDescription, metaDescription string, tags []string, category, source, urlVal, videoID string) string {
+//
+// # PR-A Phase 4 BULK note
+//
+// This was previously `func buildDriveDescription` lowercase in
+// sources/; cross-package consumption forced renaming to uppercase. The
+// signature is unchanged.
+func BuildDriveDescription(name, reqDescription, metaDescription string, tags []string, category, source, url, videoID string) string {
 	var parts []string
 
 	parts = append(parts, fmt.Sprintf("Name: %s", name))
@@ -74,8 +65,8 @@ func BuildDriveDescription(name, reqDescription, metaDescription string, tags []
 	if videoID != "" {
 		parts = append(parts, fmt.Sprintf("YouTube ID: %s", videoID))
 	}
-	if urlVal != "" {
-		parts = append(parts, fmt.Sprintf("URL: %s", urlVal))
+	if url != "" {
+		parts = append(parts, fmt.Sprintf("URL: %s", url))
 	}
 
 	desc := reqDescription
@@ -97,26 +88,32 @@ func BuildDriveDescription(name, reqDescription, metaDescription string, tags []
 }
 
 // UpdateCumulativeMetadataJSON maintains a single metadata.json per group
-// folder. Migrated from api package; the `*drive.Uploader` parameter
-// was previously used to access `driveUploader.Service.Files.List().Q(...)`
-// directly — that low-level SDK call is now encapsulated behind
-// ClipDriveUploaderPort.ListFiles in the composition root adapter
-// (internal/app/clips_adapters_drive.go). The port returns a slice
-// of ClipDriveFileDTO; we use it identically here.
+// folder. Refactored in PR-A Phase 4 BULK from a
+// `func (h *Handler) updateCumulativeMetadataJSON` method on
+// *sources.Handler to a free function so both packages (clips via
+// clip_upload.go, sources via register_from_youtube.go) can pass their
+// own driveUploader + tempPath instead of depending on a shared receiver.
+//
+// W14-PR2 slice 6 (June 2026): driveUploader parameter changed from
+// *drive.Uploader to ClipDriveUploaderPort so the api/ layer
+// never imports internal/infrastructure/drive. The narrow projection
+// already lives in the adapter (see clipsDriveAdapter.ListFiles +
+// ClipDriveFileDTO). The caller still passes a port-backed value.
+//
+// cleanupLegacyMetadataJSON is left package-private internal to the body
+// here; if a third caller appears, hoist it next to this function and
+// rename to CleanupLegacyMetadataJSON.
 //
 // # Behavior
-//   - Lists existing metadata.json under folderID via the port.
+//   - Lists existing metadata.json under folderID via Drive search.
 //   - If found, downloads current entries, replaces-or-appends the clip
 //     entry by clip_id, trashes the old file.
-//   - Marshals the merged set to a temp file, uploads to the folder as
+//   - Marshals the merged set to a temp file, upload to the folder as
 //     metadata.json, removes the temp.
 //   - Cleans up any older per-video .json files in the same folder.
-//
-// cleanupLegacyMetadataJSON is package-private since no caller outside
-// this file needs it post-refactor.
 func UpdateCumulativeMetadataJSON(
 	ctx context.Context,
-	uploader ClipDriveUploaderPort,
+	driveUploader ClipDriveUploaderPort,
 	tempPath string,
 	folderID string,
 	clipID string,
@@ -124,20 +121,23 @@ func UpdateCumulativeMetadataJSON(
 	log *zap.Logger,
 ) {
 	const metaFilename = "metadata.json"
-	if uploader == nil || folderID == "" {
+	if driveUploader == nil || folderID == "" {
 		return
-	}
-	if log == nil {
-		log = zap.NewNop()
 	}
 
 	var existing []map[string]interface{}
-	list, err := uploader.ListFiles(ctx, fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename))
+	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
+	list, err := driveUploader.ListFiles(ctx, query)
 	if err != nil {
 		log.Warn("failed to list metadata.json", zap.Error(err))
 	} else if len(list) > 0 {
 		existingFileID := list[0].ID
-		body, _, dlErr := uploader.DownloadFile(ctx, existingFileID)
+		// Reconstruct the metadata.json filename. The adapter narrows the
+		// projection to {ID, Name} so we rederive the name from the
+		// query's constant (it is always "metadata.json" per convention).
+		// We still need the name to satisfy the DownloadFile flow.
+		_ = metaFilename
+		body, _, dlErr := driveUploader.DownloadFile(ctx, existingFileID)
 		if dlErr == nil && body != nil {
 			defer body.Close()
 			var raw []map[string]interface{}
@@ -145,7 +145,7 @@ func UpdateCumulativeMetadataJSON(
 				existing = raw
 			}
 		}
-		if err := uploader.TrashFile(ctx, existingFileID); err != nil {
+		if err := driveUploader.TrashFile(ctx, existingFileID); err != nil {
 			log.Warn("failed to trash old metadata.json", zap.Error(err))
 		}
 	}
@@ -172,32 +172,34 @@ func UpdateCumulativeMetadataJSON(
 		log.Warn("failed to write metadata json temp file", zap.Error(err))
 		return
 	}
-	if _, err := uploader.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
+	if _, err := driveUploader.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
 		log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
 	} else {
 		log.Info("uploaded cumulative metadata.json to Drive", zap.Int("entries", len(existing)))
 	}
 	os.Remove(metaTempPath)
 
-	cleanupLegacyMetadataJSON(ctx, uploader, folderID, log)
+	cleanupLegacyMetadataJSON(ctx, driveUploader, folderID, log)
 }
 
 // cleanupLegacyMetadataJSON removes old per-video metadata files.
-// Package-private; only UpdateCumulativeMetadataJSON above calls it.
-func cleanupLegacyMetadataJSON(ctx context.Context, uploader ClipDriveUploaderPort, folderID string, log *zap.Logger) {
-	if uploader == nil || folderID == "" {
+// Internal to this file; package-private since no caller outside this
+// function needs it post-refactor.
+//
+// W14-PR2 slice 6 (June 2026): signature mirrors UpdateCumulativeMetadataJSON —
+// takes the typed port instead of *drive.Uploader.
+func cleanupLegacyMetadataJSON(ctx context.Context, driveUploader ClipDriveUploaderPort, folderID string, log *zap.Logger) {
+	if driveUploader == nil || folderID == "" {
 		return
 	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	list, err := uploader.ListFiles(ctx, fmt.Sprintf("'%s' in parents and trashed = false and name contains '.json' and name != 'metadata.json'", folderID))
+	query := fmt.Sprintf("'%s' in parents and trashed = false and name contains '.json' and name != 'metadata.json'", folderID)
+	list, err := driveUploader.ListFiles(ctx, query)
 	if err != nil {
 		return
 	}
 	for _, f := range list {
 		log.Info("cleaning up legacy metadata json", zap.String("file_id", f.ID), zap.String("name", f.Name))
-		if err := uploader.TrashFile(ctx, f.ID); err != nil {
+		if err := driveUploader.TrashFile(ctx, f.ID); err != nil {
 			log.Warn("failed to trash legacy metadata json", zap.String("file_id", f.ID), zap.Error(err))
 		}
 	}

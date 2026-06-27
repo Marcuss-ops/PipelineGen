@@ -147,10 +147,10 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	}
 
 	// 6. Resolve Drive target folder
-	targetFolderID := ExtractDriveFolderID(folderID)
+	targetFolderID := appclips.ExtractDriveFolderID(folderID)
 	if targetFolderID == "" {
 		// Use the MediaRootFolder as default root
-		targetFolderID = h.cfg.Drive.RootFolder()
+		targetFolderID = h.cfg.RootFolder()
 		if group != "" && targetFolderID != "" {
 			dirID, err := h.driveUploader.GetOrCreateFolder(ctx, group, targetFolderID)
 			if err != nil {
@@ -162,7 +162,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		}
 	} else if group != "" {
 		// Check if the target folder already IS the group folder (avoid nested duplicates)
-		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && CleanFolderName(existingName) == CleanFolderName(group) {
+		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && appclips.CleanFolderName(existingName) == appclips.CleanFolderName(group) {
 			log.Info("folder_id already points to group folder, reusing it",
 				zap.String("folder_id", targetFolderID),
 				zap.String("name", existingName))
@@ -181,7 +181,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	driveFilename := fmt.Sprintf("%s%s", name, ext)
 	var uploadResult *DriveUploadResult
 	if h.driveUploader != nil && localPath != "" {
-		driveDescription := BuildDriveDescription(name, description, "", tags, category, source, "", "")
+		driveDescription := appclips.BuildDriveDescription(name, description, "", tags, category, source, "", "")
 		result, err := h.driveUploader.UploadFileWithDescription(ctx, localPath, targetFolderID, driveFilename, driveDescription)
 		if err != nil {
 			log.Warn("Drive upload failed, continuing with local file only",
@@ -213,7 +213,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 			clipEntry["drive_file_id"] = uploadResult.FileID
 			clipEntry["drive_link"] = uploadResult.WebViewLink
 		}
-		UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
+		appclips.UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.TempPath(), targetFolderID, clipID, clipEntry, log)
 	}
 
 	// 8. Build the MediaAsset record

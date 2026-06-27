@@ -17,15 +17,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	ffmpegtypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )
@@ -66,7 +65,7 @@ func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo ass
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
 	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing)
-	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpegtypes.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
+	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
 }
 
 // ── Sync target building ────────────────────────────────────────────────────

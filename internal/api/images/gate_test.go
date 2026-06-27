@@ -3,7 +3,7 @@ package images
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/scripts/archcheck/gate"
+	"github.com/Marcuss-ops/PipelineGen/pkg/archcheck/gate"
 )
 
 // prohibitedPatterns is the per-area list for internal/api/images.

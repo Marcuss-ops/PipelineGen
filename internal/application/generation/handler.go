@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/generation"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -66,12 +66,12 @@ type createRequest struct {
 // codes via writeErr.
 func (h *Handler) Create(c *gin.Context) {
 	if h.svc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
 		return
 	}
 	var req createRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 	out, err := h.svc.Create(c.Request.Context(), generation.Request{
@@ -84,13 +84,13 @@ func (h *Handler) Create(c *gin.Context) {
 		h.writeErr(c, err)
 		return
 	}
-	apiutil.Accepted(c, toCreateResult(out))
+	api.Accepted(c, toCreateResult(out))
 }
 
 // Get returns the current job status.
 func (h *Handler) Get(c *gin.Context) {
 	if h.svc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
 		return
 	}
 	out, err := h.svc.Status(c.Request.Context(), strings.TrimSpace(c.Param("id")))
@@ -98,20 +98,20 @@ func (h *Handler) Get(c *gin.Context) {
 		h.writeErr(c, err)
 		return
 	}
-	apiutil.OK(c, toStatusResult(out))
+	api.OK(c, toStatusResult(out))
 }
 
 // Cancel cancels a generation job.
 func (h *Handler) Cancel(c *gin.Context) {
 	if h.svc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
 		return
 	}
 	if err := h.svc.Cancel(c.Request.Context(), strings.TrimSpace(c.Param("id"))); err != nil {
 		h.writeErr(c, err)
 		return
 	}
-	apiutil.OK(c, CancelResult{OK: true})
+	api.OK(c, CancelResult{OK: true})
 }
 
 // writeErr maps capability-defined errors to HTTP status codes.
@@ -119,16 +119,16 @@ func (h *Handler) Cancel(c *gin.Context) {
 func (h *Handler) writeErr(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrUnsupportedType):
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 	case errors.Is(err, ErrTypeDisabled):
-		apiutil.Error(c, http.StatusServiceUnavailable, err.Error())
+		api.Error(c, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, ErrJobNotFound):
-		apiutil.NotFound(c, err.Error())
+		api.NotFound(c, err.Error())
 	default:
 		if h.log != nil {
 			h.log.Error("generation request failed", zap.Error(err))
 		}
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 	}
 }
 

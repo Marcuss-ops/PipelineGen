@@ -15,8 +15,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 

@@ -236,8 +236,8 @@ loop:
 	return out, nil
 }
 
-// ParallelMap runs fn for each item with bounded concurrency. Prefer Map
-// for new code when context propagation and error returns are needed.
+// ParallelMap is the legacy name kept for backward compatibility.
+// Deprecated: use Map.
 func ParallelMap[T, R any](
 	items []T,
 	concurrency int,

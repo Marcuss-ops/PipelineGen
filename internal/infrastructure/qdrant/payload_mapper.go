@@ -45,14 +45,13 @@ func (m *PayloadMapper) ListAllAssetIDs(ctx context.Context) ([]string, error) {
 //   - Empty vectors for required channels are rejected.
 //   - Assets with invalid vectors are NOT silently skipped — errors are typed.
 //
-// QDRANT-001 (June 2026): the point ID is canonicalised via
+// QDRANT-001 closure (June 2026): the point ID is canonicalised via
 // AssetIDToQdrantPointID so all writes share a single translation rule
-// (UUID v5 SHA-1 with project-namespacing). UUID v5 is one-way; the
-// canonical asset_id is read directly from point.Payload["asset_id"]
-// when a point is retrieved (see verifier.go::VerifyReindex).
-// raw asset.ID literals in the qdrant package are an anti-pattern;
-// this is the only legal site that derives a Qdrant point ID from a
-// media_assets.id.
+// (the asset_id is wrapped with the AssetIDPrefix namespace marker).
+// Readers in client.go apply the symmetric PointIDToAssetID, so
+// downstream consumers see the bare asset ID. raw asset.ID literals
+// in the qdrant package are an anti-pattern; this is the only legal
+// site that derives a Qdrant point ID from a media_assets.id.
 func (m *PayloadMapper) AssetToPoint(asset *AssetData, schema *IndexSchema) (*Point, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset is nil")
@@ -158,23 +157,12 @@ func (m *PayloadMapper) getVectorForChannel(asset *AssetData, channel string) []
 // BuildPayload constructs the Qdrant payload from an AssetData and schema.
 // It includes only data necessary for filtering, ranking, and hydration.
 // No tokens, secrets, or physical paths are stored directly.
-//
-// QDRANT-004 PR2 (June 2026): the canonical lifecycle key is
-// `lifecycle_state` (SSOT — matches media_assets.lifecycle_state in
-// SQLite, qdrant.DefaultV3Schema().PayloadIndexes, and the search
-// adapter filter). The previous `status` key was a legacy alias from
-// pre-QDRANT-004 ingest pipelines; it has been retired from the
-// writer (here), the reader (search_adapter, clip_search_adapter),
-// and the manifest (DefaultV3Schema.PayloadIndexes). One-shot
-// migration of historical points is the QDRANT-005B reconciler's
-// repair path (target wave); until then legacy points carry both
-// keys and the reader falls through silently.
 func BuildPayload(asset *AssetData, schema *IndexSchema) map[string]interface{} {
 	payload := map[string]interface{}{
-		"asset_id":        asset.ID,
-		"lifecycle_state": asset.Status,
-		"source":          asset.Source,
-		"media_type":      asset.MediaType,
+		"asset_id":   asset.ID,
+		"status":     asset.Status,
+		"source":     asset.Source,
+		"media_type": asset.MediaType,
 	}
 
 	if asset.WorkspaceID != "" {

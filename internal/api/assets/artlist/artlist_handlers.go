@@ -1,12 +1,11 @@
 // Package artlist hosts the HTTP handlers for the Artlist media catalog
 // endpoints: tag-pipeline runs, status, stats, search (live + DB),
 // diagnostics, clipresolver recommend, and catalog sync. Split out from
-// the now-deleted internal/api/sources/ package (PR-A Phase 3 consolidation)
+// the legacy flat internal/api/sources/ package as part of PR-A Phase 3
 // to keep the Artlist transport isolated from the rest of SourcesHandler.
 package artlist
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -19,32 +18,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
-
-// ClipResolverPort is a local interface replacing the removed
-// clipresolver.Service (package internal/application/assets/clipresolver).
-type ClipResolverPort interface {
-	Recommend(ctx context.Context, req *ClipResolverRecommendRequest) (*ClipResolverRecommendResponse, error)
-}
-
-// ClipResolverRecommendRequest is a local type replacing clipresolver.RecommendRequest.
-type ClipResolverRecommendRequest struct {
-	Topic     string   `json:"topic"`
-	SegmentID string   `json:"segment_id"`
-	Queries   []string `json:"queries"`
-	MinScore  float64  `json:"min_score"`
-}
-
-// ClipResolverRecommendResponse is a local type for recommend responses.
-type ClipResolverRecommendResponse struct {
-	Results []ClipResolverRecommendResult `json:"results"`
-}
-
-// ClipResolverRecommendResult is a local type.
-type ClipResolverRecommendResult struct {
-	ClipID    string  `json:"clip_id"`
-	Score     float64 `json:"score"`
-	DriveLink string  `json:"drive_link"`
-}
 
 // ArtlistHandler owns the HTTP transport for Artlist operations:
 // tag-pipeline runs (run/status/stats), search (DB + live), diagnostics,
@@ -61,7 +34,6 @@ type ArtlistHandler struct {
 	service        *artlist.Service
 	catalogSync    *catalogsync.Service
 	jobsService    jobservice.Service
-	clipResolver   ClipResolverPort
 	nodeScraperDir string
 	log            *zap.Logger
 	cfg            artlist.ArtlistConfigPort
@@ -69,15 +41,14 @@ type ArtlistHandler struct {
 
 // NewArtlistHandler builds the ArtlistHandler. service is the domain
 // Artlist service; catalogSync handles catalog reconciliation; jobsSvc
-// enqueues the artlist.run job; clipResolver is used by /recommend;
-// nodeScraperDir is the path to the persistent Node scraper dir;
-// cfgPort exposes the artlist-side config defaults the handler reads
-// during request normalization (e.g. the default Artlist root folder).
+// enqueues the artlist.run job; nodeScraperDir is the path to the
+// persistent Node scraper dir; cfgPort exposes the artlist-side config
+// defaults the handler reads during request normalization (e.g. the
+// default Artlist root folder).
 func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
 	jobsService jobservice.Service,
-	clipResolver ClipResolverPort,
 	nodeScraperDir string,
 	log *zap.Logger,
 	cfgPort artlist.ArtlistConfigPort,
@@ -86,7 +57,6 @@ func NewArtlistHandler(
 		service:        service,
 		catalogSync:    catalogSync,
 		jobsService:    jobsService,
-		clipResolver:   clipResolver,
 		nodeScraperDir: nodeScraperDir,
 		log:            log,
 		cfg:            cfgPort,
@@ -109,7 +79,6 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 		internalGroup.GET("/diagnostics", h.Diagnostics)
 		internalGroup.POST("/search", h.Search)
 		internalGroup.POST("/search/live", h.SearchLive)
-		internalGroup.POST("/recommend", h.Recommend)
 		internalGroup.POST("/sync-catalogs", h.SyncCatalogs)
 	}
 }
@@ -263,35 +232,6 @@ func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{"clips": clips})
-}
-
-// Recommend handles the recommendation endpoint using clipresolver
-func (h *ArtlistHandler) Recommend(c *gin.Context) {
-	req, ok := apiutil.BindJSON[ClipResolverRecommendRequest](c)
-	if !ok {
-		return
-	}
-
-	if h.clipResolver == nil {
-		apiutil.InternalError(c, fmt.Errorf("clip resolver service not available"))
-		return
-	}
-
-	h.log.Info("clip resolver recommend request",
-		zap.String("topic", req.Topic),
-		zap.String("segment_id", req.SegmentID),
-		zap.Int("queries", len(req.Queries)),
-		zap.Float64("min_score", req.MinScore),
-	)
-
-	resp, err := h.clipResolver.Recommend(c.Request.Context(), &req)
-	if err != nil {
-		h.log.Error("clip resolver recommend failed", zap.Error(err))
-		apiutil.InternalError(c, fmt.Errorf("recommend failed: %v", err))
-		return
-	}
-
-	apiutil.OK(c, resp)
 }
 
 // SyncCatalogs synchronizes all artlist catalogs.

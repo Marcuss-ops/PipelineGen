@@ -7,22 +7,17 @@
 // DocumentCreator). Admin token is held as a plain string and exposed
 // via the local AdminTokenProvider interface so RequireAdminToken can
 // accept the handler directly without intermediate adapters.
-//
-// PR7 (June 2026): removed legacy per-mode endpoints (GenerateFromClips,
-// GenerateWithImages, GenerateBatch, GetBatchProgress) and their route
-// registrations — superseded by POST /api/script/generate (PR6).
-// GenerateFromCatalog removed — superseded by the unified endpoint.
-// PipelineUseCase, GenerateBatchUseCase, GenerationService, FeatureGates
-// references removed — all legacy wiring gone.
 
 package script
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -31,8 +26,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── Local interfaces ────────────────────────────────────────────────────────
@@ -66,6 +61,7 @@ type ScriptFlowHandler struct {
 	mediaCurator      *scripts.MediaCurator
 	sectionRegen      *scripts.SectionRegenerator
 	cacheEviction     *scripts.CacheEvictionUseCase
+	genBatchUC        *scripts.GenerateBatchUseCase
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      scripts.ClipServices
 	driveFolderClient DriveFolderClient
@@ -73,21 +69,22 @@ type ScriptFlowHandler struct {
 	jobsSvc           jobservice.Service
 	scriptsRepo       scripts.ScriptRepository
 	memorySvc         *gemmamemory.Service
-	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
 	log               *zap.Logger
-}
+	genSvc            GenerationService // backing service for /generate-from-clips, /generate-with-images
+	gates             FeatureGates      // per-route feature flags (clips / images / docs)
 
-type AutoHarvestService interface {
-	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
+	pipelineUC *scripts.PipelineUseCase
 }
 
 // ScriptFlowDeps groups all constructor inputs.
 type ScriptFlowDeps struct {
-	Engine        *scripts.Engine
-	Section       *scripts.SectionRegenerator
-	CacheEviction *scripts.CacheEvictionUseCase
+	Engine          *scripts.Engine
+	Section         *scripts.SectionRegenerator
+	CacheEviction   *scripts.CacheEvictionUseCase
+	GenBatchUC      *scripts.GenerateBatchUseCase
+	PipelineUseCase *scripts.PipelineUseCase
 
 	Image *images.Service
 	// Wave 16 (June 2026): typed ports — replace the `interface{}`
@@ -101,7 +98,6 @@ type ScriptFlowDeps struct {
 
 	ClipSourceBuilder *scripts.ClipSourceBuilder
 	MediaCurator      *scripts.MediaCurator
-	Harvest           AutoHarvestService
 
 	ScriptsRepo scripts.ScriptRepository
 	Memory      *gemmamemory.Service
@@ -113,6 +109,9 @@ type ScriptFlowDeps struct {
 	DriveScriptsGenFolder string
 	ClipServices          scripts.ClipServices // pre-built in wire_script.go
 	Log                   *zap.Logger
+
+	GenService GenerationService // backs /generate-from-clips, /generate-with-images
+	Gates      FeatureGates      // per-route feature flags (clips / images / docs)
 }
 
 func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
@@ -134,7 +133,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	h := &ScriptFlowHandler{
 		engine:            deps.Engine,
 		imgService:        deps.Image,
-		realtimeSvc:       deps.Realtime,
 		associationSvc:    deps.Association,
 		voService:         deps.Voiceover,
 		assetTreeSvc:      deps.AssetTree,
@@ -143,17 +141,20 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		mediaCurator:      deps.MediaCurator,
 		sectionRegen:      deps.Section,
 		cacheEviction:     deps.CacheEviction,
+		genBatchUC:        deps.GenBatchUC,
 		driveFolderClient: deps.DriveFolderClient,
 		documentCreator:   deps.DocumentCreator,
 		jobsSvc:           deps.Jobs,
 		scriptsRepo:       deps.ScriptsRepo,
 		memorySvc:         deps.Memory,
-		harvestSvc:        deps.Harvest,
 		driveFolderID:     deps.DriveScriptsGenFolder,
 		adminToken:        deps.AdminToken,
 		log:               log,
 		clipServices:      clipSvc,
 		insightBuilder:    NewScriptInsightBuilder(log, 12, clipSvc),
+		pipelineUC:        deps.PipelineUseCase,
+		genSvc:            deps.GenService,
+		gates:             deps.Gates,
 	}
 
 	return h
@@ -162,9 +163,9 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 // ── Local AdminTokenProvider port ──────────────────────────────────────────
 //
 // Two-method interface consumed by RequireAdminToken. The canonical
-// concrete is internal/api/middleware.TokenSecurityAdapter;
-// ScriptFlowHandler itself satisfies the port structurally so it can
-// be passed in without an intermediate adapter struct.
+// concrete is pkg/middleware.TokenSecurityAdapter; ScriptFlowHandler
+// itself satisfies the port structurally so it can be passed in without
+// an intermediate adapter struct.
 type AdminTokenProvider interface {
 	EnableAuth() bool
 	AdminToken() string
@@ -223,15 +224,26 @@ func extractHeaderToken(c *gin.Context) string {
 	return strings.TrimSpace(bearer)
 }
 
-// RegisterRoutes mounts every script-flow route under r. The unified
-// generation endpoint (POST /generate) handles all generation modes;
-// flow routes (curate, regenerate, evict, job status) are always mounted
-// because they cover all script-flow use cases regardless of which
-// generation path is enabled.
+// RegisterRoutes mounts every script-flow route under r. Each legacy
+// generation route (/generate-from-clips, /generate-with-images, the
+// /generate-batch pair) is feature-gated; the flow routes (/curate,
+// /generate-from-catalog, /:id/sections/:section_id/regenerate,
+// /cache/evict, /jobs/:job_id[/full]) are always mounted because they
+// cover all script-flow use cases regardless of which generation path
+// is enabled.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
-	// Unified generation endpoint (replaces all legacy per-mode endpoints).
-	r.POST("/generate", h.Generate)
+	if h.gates.ScriptClipsEnabled {
+		r.POST("/generate-from-clips", h.GenerateFromClips)
+	}
+	if h.gates.ScriptImagesEnabled {
+		r.POST("/generate-with-images", h.GenerateWithImages)
+	}
+	if h.gates.ScriptDocsEnabled {
+		r.POST("/generate-batch", h.GenerateBatch)
+		r.GET("/generate-batch/progress", h.GetBatchProgress)
+	}
 
+	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
 	r.POST("/curate", h.Curate)
 	h.registerJobRoutes(r)
 	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
@@ -275,19 +287,61 @@ func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, con
 
 // ── Job endpoints ───────────────────────────────────────────────────────────
 
+// ── Legacy generation endpoints (/generate-from-clips, /generate-with-images) ─
+
+// GenerateFromClips handles POST /generate-from-clips.
+func (h *ScriptFlowHandler) GenerateFromClips(c *gin.Context) {
+	if h.genSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
+		return
+	}
+	var spec scriptpkg.GenerationSpec
+	if err := c.ShouldBindJSON(&spec); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
+		return
+	}
+	result, err := h.genSvc.EnqueueFromClips(c.Request.Context(), spec)
+	if err != nil {
+		status := mapErrorToHTTP(err)
+		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
+}
+
+// GenerateWithImages handles POST /generate-with-images.
+func (h *ScriptFlowHandler) GenerateWithImages(c *gin.Context) {
+	if h.genSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "generation service not initialized"})
+		return
+	}
+	var spec scriptpkg.GenerationSpec
+	if err := c.ShouldBindJSON(&spec); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
+		return
+	}
+	result, err := h.genSvc.EnqueueWithImages(c.Request.Context(), spec)
+	if err != nil {
+		status := mapErrorToHTTP(err)
+		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": result.JobID, "status": result.JobStatus})
+}
+
 func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
 		return
 	}
 	jobID := strings.TrimSpace(c.Param("job_id"))
 	if jobID == "" {
-		apiutil.BadRequest(c, "job_id is required")
+		api.BadRequest(c, "job_id is required")
 		return
 	}
 	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)
 	if err != nil {
-		apiutil.NotFound(c, fmt.Sprintf("job not found: %v", err))
+		api.NotFound(c, fmt.Sprintf("job not found: %v", err))
 		return
 	}
 	events, err := h.jobsSvc.ListEvents(c.Request.Context(), jobID)
@@ -305,19 +359,128 @@ func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 	})
 }
 
-func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
-	if h.jobsSvc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+// GenerateBatch handles POST /generate-batch.
+//
+// PR-A (June 2026): thin transport — the canonical orchestrator now
+// lives in scripts.GenerateBatchUseCase (Run takes a typed input and
+// returns a typed output: Async or Response, plus DocTitle). The
+// handler is responsible only for:
+//   - parsing the JSON body
+//   - extracting the Idempotency-Key header (transport-only concern)
+//   - calling the use case
+//   - translating typed domain errors into HTTP status codes
+//   - serialising the typed output (Async vs Response) to JSON
+//
+// Adding logic here is a code smell — extend
+// scripts.GenerateBatchUseCase instead.
+func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
+	var req scripts.GenerateBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload"})
 		return
 	}
-	jobID := strings.TrimSpace(c.Param("job_id"))
+
+	if h.genBatchUC == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "batch use case not initialized"})
+		return
+	}
+
+	idemKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+
+	out, err := h.genBatchUC.Run(c.Request.Context(), scripts.GenerateBatchInput{
+		Request:        &req,
+		IdempotencyKey: idemKey,
+	})
+	if err != nil {
+		h.mapBatchError(c, err)
+		return
+	}
+	if out == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "use case returned nil output"})
+		return
+	}
+
+	if out.Async != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":         true,
+			"async":      true,
+			"job_id":     out.Async.JobID,
+			"status":     out.Async.Status,
+			"status_url": out.Async.StatusURL,
+			"doc_title":  out.DocTitle,
+		})
+		return
+	}
+
+	resp := out.Response
+	c.JSON(http.StatusOK, gin.H{
+		"ok":        true,
+		"async":     false,
+		"doc_title": resp.DocTitle,
+		"doc_id":    resp.DocID,
+		"doc_link":  resp.DocLink,
+		"scripts":   resp.Scripts,
+	})
+}
+
+// mapBatchError translates a use-case error into an HTTP response.
+// Domain typed errors map to specific codes; everything else falls
+// through to a 500 Internal Server Error. Mirrors the regen/error
+// mappers in handler_flow_ops.go.
+func (h *ScriptFlowHandler) mapBatchError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, scripts.ErrGenerateBatchInvalid):
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+	case errors.Is(err, scripts.ErrGenerateBatchMissing):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": err.Error()})
+	case errors.Is(err, scripts.ErrGenerateBatchAsyncFailed), errors.Is(err, scripts.ErrGenerateBatchSyncFailed):
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+	default:
+		if h.log != nil {
+			h.log.Error("generate-batch use case failed", zap.Error(err))
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+	}
+}
+
+// GetBatchProgress handles GET /generate-batch/progress.
+func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
+	if h.jobsSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "jobs service not initialized"})
+		return
+	}
+	jobID := strings.TrimSpace(c.Query("job_id"))
 	if jobID == "" {
-		apiutil.BadRequest(c, "job_id is required")
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "job_id is required"})
 		return
 	}
 	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)
 	if err != nil {
-		apiutil.NotFound(c, fmt.Sprintf("job not found: %v", err))
+		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": fmt.Sprintf("job not found: %v", err)})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":       true,
+		"job_id":   job.ID,
+		"status":   job.Status,
+		"progress": job.Progress,
+		"error":    job.Error,
+	})
+}
+
+func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
+	if h.jobsSvc == nil {
+		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		return
+	}
+	jobID := strings.TrimSpace(c.Param("job_id"))
+	if jobID == "" {
+		api.BadRequest(c, "job_id is required")
+		return
+	}
+	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)
+	if err != nil {
+		api.NotFound(c, fmt.Sprintf("job not found: %v", err))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

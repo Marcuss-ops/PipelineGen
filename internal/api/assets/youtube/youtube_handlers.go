@@ -1,6 +1,6 @@
 // Package youtube hosts the HTTP handlers for the YouTube clip download,
 // info, extract, search, and diagnostics endpoints. Split out from the
-// now-deleted internal/api/sources/ package (PR-A consolidation)
+// legacy flat internal/api/sources/ package as part of PR-A to keep the
 // YouTube transport isolated from the rest of the SourcesHandler.
 //
 // The clips repository is injected at construction time so the handler has
@@ -110,23 +110,130 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/stats", h.Stats)
 }
 
-// Wave 16 PR1 (June 2026): SearchTopics + searchTopicsViaProvider +
-// providersToTopicResults removed — canonical search is
-// SearchAdvanced via GET/POST /api/media/clips/search. See
-// architecture/deprecations.yaml#PR-YT-SEARCHTOPICS for the removal
-// record (deprecation ID + owner_capability + replacement +
-// introduction_date + removal_date + tracking_issue + compatibility_test +
-// usage_metric + status).
+// SearchTopics topic-search endpoint, kept for backward compatibility
+// (deprecated in favor of YouTubeClipHandler.SearchAdvanced).
 //
-// The provider-registry wiring (resolveProvider + providerSearch field +
-// providerReg field + providerResolve sync.Once) is preserved for the
-// follow-up PR-CLIP-YT-REGISTRY-CLEANUP (separate commit) that
-// collapses it in a single archaeology pass against the one provider
-// wiring site (internal/app/clips_adapters_index.go) and the constructor
-// parameter on NewYouTubeClipHandler. Per godlike/07 §"Migration sequence"
-// this PR lands only the method-removal phase; the field/parameter
-// collapse ships with PR-CLIP-YT-REGISTRY-CLEANUP so the diff stays
-// archaeological and review-friendly.
+// Cut-over recipe step 1 (docs/migration-maps/internal-sources.md):
+// when resolveProvider() has bound a SearchProvider handle on the
+// handler (the production wiring path through providers.Registry), this
+// route dispatches via the adapter so the response shape originates
+// from the canonical providers package. When no provider is bound
+// (e.g. unit tests that don't exercise the registry, or stub wiring),
+// we fall back to the legacy *youtube.Service direct call — the JSON
+// shape is preserved in both paths.
+func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
+	var req yttypes.TopicSearchRequest
+	if err := c.ShouldBind(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
+	if req.Q == "" {
+		apiutil.BadRequest(c, "q parameter is required")
+		return
+	}
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.Limit > 50 {
+		req.Limit = 50
+	}
+
+	// Lazy resolve: providers may be registered after construction.
+	h.resolveProvider()
+
+	if h.providerSearch != nil {
+		h.searchTopicsViaProvider(c, &req)
+		return
+	}
+
+	// PR-3F: SearchTopicVideos wrapper was deleted; route through the
+	// single canonical SearchByTopicWithFilter entry point.
+	resp, err := h.service.SearchByTopicWithFilter(c.Request.Context(), req.Q, req.Limit, req.Sort, "")
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, resp)
+}
+
+// searchTopicsViaProvider dispatches the topic search through the
+// injected SearchProvider and translates the canonical
+// providers.SearchResult back into the legacy youtube.TopicSearchResponse
+// shape so the API contract is preserved for both code paths.
+func (h *YouTubeClipHandler) searchTopicsViaProvider(c *gin.Context, req *yttypes.TopicSearchRequest) {
+	searchReq := providers.SearchRequest{
+		Query:     req.Q,
+		Limit:     req.Limit,
+		TopicOnly: true, // YouTube adapter prefers SearchByTopicWithFilter
+	}
+	if req.Sort != "" {
+		searchReq.Filters.Sort = providers.SortMode(req.Sort)
+	}
+
+	res, err := h.providerSearch.Search(c.Request.Context(), searchReq)
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("youtube provider search: %w", err))
+		return
+	}
+
+	apiutil.OK(c, &youtube.TopicSearchResponse{
+		OK:      true,
+		Query:   req.Q,
+		Limit:   req.Limit,
+		Count:   len(res.Candidates),
+		Source:  "youtube_live", // preserved verbatim from legacy path for HTTP-client compat
+		Results: providersToTopicResults(res.Candidates),
+	})
+}
+
+// providersToTopicResults translates the canonical providers.Candidate
+// shape back into the legacy youtube.TopicSearchResult JSON.
+//
+// IMPORTANT — LOSSY TRANSLATION
+// The Provider boundary intentionally drops the YouTube-specific
+// per-dimension metadata (channel name, view count, separate topic
+// similarity vs format-match scores — they belong to a YouTube view
+// layer the Adapter is meant to abstract away). Consumers reading
+// ChannelName and ViewCount will always see "" / 0 on the provider
+// path; consumers reading SimilarityScore and FormatMatchPercent
+// will see the same combined percentage on both fields rather than
+// the legacy 70/30 split (the adapter collapses them into a single
+// Score). If a downstream consumer depends on the per-dimension
+// values, route the search through the legacy direct call instead
+// (don't bind the ProviderRegistry on the handler in that path).
+func providersToTopicResults(candidates []providers.Candidate) []youtube.TopicSearchResult {
+	out := make([]youtube.TopicSearchResult, 0, len(candidates))
+	for _, c := range candidates {
+		r := youtube.TopicSearchResult{
+			VideoID:      c.SourceRef,
+			Title:        c.Title,
+			ThumbnailURL: c.ThumbnailURL,
+			DirectLink:   c.PreviewURL,
+			Duration:     c.Duration.Seconds(),
+		}
+		if c.PublishedAt != nil {
+			r.UploadDate = c.PublishedAt.UTC().Format("20060102")
+		}
+		// Adapter combines legacy (similarity*70 + format*30)/10000
+		// into the single Candidate.Score ∈ [0,1]. The Provider
+		// boundary does NOT carry the per-dimension split, so we
+		// publish the combined percentage on BOTH legacy fields.
+		// summary: similarity == format always on the provider path.
+		score100 := int(c.Score * 100)
+		if score100 > 100 {
+			score100 = 100
+		}
+		if score100 < 0 {
+			score100 = 0
+		}
+		r.SimilarityScore = score100
+		r.FormatMatchPercent = score100
+		out = append(out, r)
+	}
+	return out
+}
 
 // GetVideoInfo returns metadata for a single YouTube URL.
 func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {

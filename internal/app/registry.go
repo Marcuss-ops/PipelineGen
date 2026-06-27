@@ -19,32 +19,26 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
+	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
-	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
-	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/gin-gonic/gin"
-
-	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
-	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
+	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
 // RegistryWiring holds the registry and all wired modules.
@@ -58,65 +52,31 @@ type RegistryWiring struct {
 	Assets        *AssetsWiring
 	FullImages    *FullImagesWiring
 	StockPipeline *StockPipelineWiring
-
-	// QDRANT-002 + QDRANT-004 separation-of-routes (June 2026):
-	// These handlers are constructed by WireRegistry but NOT registered
-	// in the public /api registry. They are plumbed through AppDeps and
-	// mounted on the /internal/v1 WorkerAuth-protected internalGroup
-	// by cmd/server/main.go. The split is enforced by the
-	// anti-regression test internal/api/routes_test.go.
-	OutboxHandler      interface{ RegisterRoutes(*gin.RouterGroup) }
-	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	// Re-base (June 2026): OutboxHandler has no producer post-PR3 3b
+	// (QDRANT-002 retired); nil-tolerated via Server.SetOutboxHandler.
+	// MediasearchHandler is populated inline below from QDRANT-004 searchH.
+	OutboxHandler      module.InternalOutboxRouter
+	MediasearchHandler module.InternalMediaSearchRouter
 }
 
-// tryRegisterModule is the coalescing composition-time variant used by
-// WireRegistry (June 2026, Registries-and-SSOT §Uniqueness + PR17 slot
-// cross-publishing).
-//
-// Behavior: if a module with the same Name() is already registered, this
-// function silently skips + Debug-logs and returns nil. Otherwise it
-// delegates to tryRegisterModuleStrict (the strict path that surfaces
-// ErrAlreadyRegistered and post-freeze ErrFrozen). The pre-registry Has
-// check makes the cross-slot publication path idempotent so that
-// DescriptorJobs and DescriptorProviders publishing the same capability
-// name through a shared Descriptor do not hard-fail at composition time.
-//
-// IMPORTANT — SCOPE OF COALESCE: because Has is a name-match (not an
-// identity check), this primitive cannot distinguish "same instance
-// re-published through a different slot" from "distinct capability
-// instance, same name". The latter case is silently swallowed here; the
-// composition-time invariant is that capability names are unique, and
-// drift is detected via registry.go's pre-flight deduplication audit +
-// Reviewer Q8 fail-fast path, NOT in this primitive. See Has() in
-// internal/api/module_base.go for the full scope-of-coalesce contract.
-//
-// Compare with tryRegisterModuleStrict (used by
-// registry_failfast_test.go): that variant skips the Has check and
-// always surfaces ErrAlreadyRegistered, pinning the Registries-and-SSOT
-// §Uniqueness contract for fail-fast regression coverage.
-//
-// The "compose:" prefix is pinned by
-// TestTryRegisterModule_ErrorContainsSpecMarker in
-// internal/app/registry_failfast_test.go; do not change without updating
-// the test marker.
-func tryRegisterModule(registry *module.Registry, log *zap.Logger, mod module.Module) error {
-	if registry.Has(mod.Name()) {
-		log.Debug("module already registered — coalescing duplicate slot publication",
-			zap.String("module", mod.Name()))
-		return nil
-	}
-	return tryRegisterModuleStrict(registry, log, mod)
-}
-
-// tryRegisterModuleStrict is the strict-fail variant. Skips the
-// pre-Registry Has check and always surfaces ErrAlreadyRegistered,
-// pinning the Registries-and-SSOT §Uniqueness contract for fail-fast
-// regression tests (registry_failfast_test.go). Production code
-// uses the coalescing tryRegisterModule above.
-func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod module.Module) error {
+func registerModule(registry *module.Registry, log *zap.Logger, mod module.Module) {
 	if err := registry.Register(mod); err != nil {
 		log.Warn("failed to register module", zap.String("module", mod.Name()), zap.Error(err))
-		return fmt.Errorf("compose: module=%q already registered: %w", mod.Name(), err)
+	}
+}
+
+// tryRegisterModuleStrict is the fail-fast companion of registerModule.
+// Per the "Registries and Single Source of Truth" spec §"Uniqueness",
+// composition MUST error out on duplicate or post-freeze registrations
+// instead of warn-and-continue. The wrapper prepends a "compose:" prefix
+// so downstream log lines stay tagged with composition context, and
+// threads the offending module name into the message so the
+// ErrContainsSpecMarker pin stays satisfied. Test pins live in
+// registry_failfast_test.go.
+func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod module.Module) error {
+	_ = log // log reserved for future composition-context enrichment
+	if err := registry.Register(mod); err != nil {
+		return fmt.Errorf("compose: module %s: %w", mod.Name(), err)
 	}
 	return nil
 }
@@ -143,15 +103,14 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if root.Drive != nil && root.Drive.DriveClient != nil {
 		driveUploaderAdapter = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
 	}
-	if err := tryRegisterModule(registry, log, systemapi.NewModule(
+	reconcileSvcAdapter := drivecleanup.NewService()
+	registerModule(registry, log, systemapi.NewModule(
 		doctorConfigFrom(cfg),
 		log,
 		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
 		newDriveAdminAdapter(driveUploaderAdapter, log),
-		&noopReconciler{},
-	)); err != nil {
-		return nil, fmt.Errorf("wire registry: system module: %w", err)
-	}
+		newReconcilerAdapter(reconcileSvcAdapter, log),
+	))
 
 	// Artlist (PR4d-chunk2): takes *ArtlistBundle + vectorStore.
 	artlistBundle := &ArtlistBundle{
@@ -169,18 +128,14 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
 	} else {
-		if err := tryRegisterModule(registry, log, aw.Module); err != nil {
-			return nil, fmt.Errorf("wire registry: artlist: %w", err)
-		}
+		registerModule(registry, log, aw.Module)
 		wiring.ArtlistSvc = aw
 	}
 
 	// ScriptFlow — sources from root.<bundle>.<field>. Extracted into
 	// wireScriptFlow (PR7 cleanup, June 2026) to shrink WireRegistry and
 	// reuse the canonical engine + memorySvc from AIBundle.
-	if err := wireScriptFlow(ctx, cfg, log, root, registry); err != nil {
-		return nil, fmt.Errorf("wire registry: script-flow: %w", err)
-	}
+	wireScriptFlow(ctx, cfg, log, root, registry)
 
 	// YouTubeClip (PR4d-chunk2): 4 direct narrow args + ProviderRegistry.
 	// ProviderRegistry is not yet populated when WireYouTubeClip runs —
@@ -196,9 +151,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry, toolCheckerAdapter, idemHandler); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
-		if err := tryRegisterModule(registry, log, yw.Module); err != nil {
-			return nil, fmt.Errorf("wire registry: youtube: %w", err)
-		}
+		registerModule(registry, log, yw.Module)
 		wiring.YouTubeClip = yw
 	}
 
@@ -285,121 +238,24 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if err != nil {
 			log.Warn("failed to wire module", zap.String("module", m.name), zap.Error(err))
 		} else if mod != nil {
-			if err := tryRegisterModule(registry, log, mod); err != nil {
-				return nil, fmt.Errorf("wire registry: %s: %w", m.name, err)
-			}
-		}
-
-		if root.Domains != nil && root.Domains.RealtimeMatcher != nil {
-			realtimeEnabled := false // Realtime package removed (commit d61068b3)
-			// PR3 (June 2026): Wave 14 close — moved from internal/api/realtime/
-			// to internal/api/assets/handler_realtime.go as RealtimeMatchHandler.
-			// Wave 15 (June 2026): DomainBundle.RealtimeMatcher is the typed
-			// assetsapi.RealtimeMatcher — drop the runtime cast. The field
-			// stays typed-nil (unassigned = nil interface); the handler is
-			// itself nil-tolerant.
-			matcher := root.Domains.RealtimeMatcher
-			if err := tryRegisterModule(registry, log, module.NewRouteModule(
-				"realtime",
-				func() bool { return root.Domains.RealtimeMatcher != nil && realtimeEnabled },
-				"",
-				assetsapi.NewRealtimeMatchHandler(matcher, log),
-				log,
-			)); err != nil {
-				return nil, fmt.Errorf("wire registry: realtime module: %w", err)
-			}
-		}
-		// ── Unified generation API (replaces /api/books + /api/lessons) ──
-		// Capability Standard migration (June 2026): the unified generation
-		// endpoint at /api/generations is wired via generation.Build(deps).
-		// Build returns a single Descriptor that carries:
-		//   - the api.Module for /api/generations routes, AND
-		//   - the api.DescriptorJobs slot which the composition root uses to
-		//     publish the books.process and lessons.process worker handlers
-		//     into the canonical jobs.Service — single source of truth replaces
-		//     the late-binding calls that previously lived in composition.go.
-		//
-		// Worker-side handler-function values are passed via nil-guarded
-		// method-value extraction: root.Domains.BooksService.HandleJob /
-		// root.Domains.LessonsService.HandleJob. nil service → nil handler
-		// → JobHandlers.RegisterJobHandlers silently skips that job type.
-		var booksHandler generation.HandlerFunc
-		if root.Domains != nil && root.Domains.BooksService != nil {
-			booksHandler = root.Domains.BooksService.HandleJob
-		}
-		var lessonsHandler generation.HandlerFunc
-		if root.Domains != nil && root.Domains.LessonsService != nil {
-			lessonsHandler = root.Domains.LessonsService.HandleJob
-		}
-		if genDesc, err := generation.Build(generation.Dependencies{
-			Jobs:           root.Jobs.Service,
-			Assets:         root.Repos.Assets,
-			Books:          booksHandler,
-			Lessons:        lessonsHandler,
-			BooksEnabled:   cfg.Books.Enabled,
-			LessonsEnabled: cfg.Lessons.Enabled,
-			ScriptEnabled:  anyScriptFeatureEnabled(cfg),
-			Logger:         log,
-		}); err != nil {
-			log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
-		} else {
-			// PR17 (June 2026): tryRegisterModule is universally coalescing
-			// on duplicate names (see registry.go::tryRegisterModule). The
-			// cross-slot publication path for `generation` is therefore
-			// idempotent here without an inline Has check.
-			if err := tryRegisterModule(registry, log, genDesc); err != nil {
-				return nil, fmt.Errorf("wire registry: generation: %w", err)
-			}
-			// *GenerationDescriptor satisfies api.Descriptor via the
-			// three explicit delegation methods (Name/Enabled/RegisterRoutes),
-			// and api.DescriptorJobs via RegisterJobHandlers. So:
-			//   - no AsDescriptor adapter round-trip is needed,
-			//   - the cast goes directly against the concrete pointer.
-			// Same package alias as the rest of the composition layer
-			// (`module "github.com/Marcuss-ops/PipelineGen/internal/api"`).
-			if dj, ok := genDesc.(module.DescriptorJobs); ok {
-				if err := dj.RegisterJobHandlers(root.Jobs.Service); err != nil {
-					log.Warn("failed to register generation job handlers", zap.Error(err))
-				}
-			}
-		}
-
-		if root.DB != nil && root.DB.DB != nil {
-			// channels capability (Capability Standard migration, June 2026):
-			// the composition root only knows the persistable form of the
-			// repository; the canonical Build(deps) wraps it with the
-			// application-level adapter and constructs the descriptor that
-			// exposes both the api.Module (for route registration) and the
-			// underlying *channels.Service (for non-HTTP callers such as
-			// cmd/admin).
-			if d, err := channels.Build(channels.Dependencies{
-				Repository: channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
-				Logger:     log,
-			}); err != nil {
-				log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
-			} else {
-				if err := tryRegisterModule(registry, log, d); err != nil {
-					return nil, fmt.Errorf("wire registry: channels: %w", err)
-				}
-			}
-		}
-		// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
-		// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
-		//
-		// Wave 14 problem #3 close-out (June 2026): the handler no longer
-		// owns the *assets.SearchQueriesRepository. Composition builds
-		// the *searchqueriesuc.UseCase from the concrete repo and injects
-		// it into the handler — keeping handler = thin transport.
-		if err := tryRegisterModule(registry, log, module.NewRouteModule(
-			"search_queries",
-			func() bool { return true },
-			"/search-queries",
-			assetsapi.NewSearchQueriesHandler(searchqueriesuc.NewUseCase(assets.NewSearchQueriesRepository(root.DB.DB)), log),
-			log,
-		)); err != nil {
-			return nil, fmt.Errorf("wire registry: search_queries module: %w", err)
+			registerModule(registry, log, mod)
 		}
 	}
+
+	// ── Search Queries ────────────────────────────────────────────
+	// PR3 (June 2026): Wave 14 close — moved from internal/api/searchqueries/
+	// to internal/api/assets/handler_searchqueries.go as SearchQueriesHandler.
+	// Wave 14 problem #3 close-out (June 2026): the handler no longer
+	// owns the *assets.SearchQueriesRepository. Composition builds
+	// the *searchqueriesuc.UseCase from the concrete repo and injects
+	// it into the handler — keeping handler = thin transport.
+	registerModule(registry, log, module.NewRouteModule(
+		"search_queries",
+		func() bool { return true },
+		"/search-queries",
+		assetsapi.NewSearchQueriesHandler(searchqueriesuc.NewUseCase(assets.NewSearchQueriesRepository(root.DB.DB)), log),
+		log,
+	))
 
 	if wiring.MediaIngest != nil {
 		log.Info("MediaIngest module wired (service pre-built via BuildDomainBundle, no late-binding needed)")
@@ -412,18 +268,14 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// all script entrypoints, so we keep it alive whenever any script
 		// feature is enabled.
 		scriptHistoryEnabled := anyScriptFeatureEnabled(cfg)
-		if err := tryRegisterModule(registry, log, scriptapi.NewScriptHistoryModule(
+		registerModule(registry, log, scriptapi.NewScriptHistoryModule(
 			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 			log,
 			middleware.FeatureFlagChecker("Script", scriptHistoryEnabled),
 			scriptHistoryEnabled,
-		)); err != nil {
-			return nil, fmt.Errorf("wire registry: script-history module: %w", err)
-		}
+		))
 	}
-	if err := tryRegisterModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility)); err != nil {
-		return nil, fmt.Errorf("wire registry: utility module: %w", err)
-	}
+	registerModule(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility))
 
 	// PR4d-chunk2: maintenanceSvc constructed locally (no longer assigned to CoreDeps);
 	// voiceoverSvc selected from root.Domains; assets bundle built from root.
@@ -451,91 +303,41 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
 	}
-	// Wave 16 (June 2026): WireAssets realtimeSvc is typed
-	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
-	// Pass-through is direct: DomainBundle.RealtimeMatcher → WireAssets
-	// (typed-to-typed, no auto-bridge required).
-	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
+	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
-		if err := tryRegisterModule(registry, log, aw.Module); err != nil {
-			return nil, fmt.Errorf("wire registry: assets module: %w", err)
-		}
+		registerModule(registry, log, aw.Module)
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
 			maintenanceSvc.SetDeletionService(aw.DeletionSvc)
 			log.Info("injected DeletionService into MaintenanceService")
 		}
 	}
 
-	// ── QDRANT-002: build canonical internal outbox handler ─────────
-	// Exposes GET /internal/v1/outbox/status and /events for operator
-	// dashboard visibility into the outbox events pipeline (pending,
-	// processing, dead_letter, completed, superseded counts + event list).
-	//
-	// QDRANT-002 (June 2026) separation-of-routes fix: the handler is
-	// constructed here but NOT registered in the public /api registry —
-	// that caused /api/internal/v1/outbox/* to leak past the WorkerAuth
-	// boundary. The handler is now passed to AppDeps.OutboxHandler and
-	// mounted on the /internal/v1 WorkerAuth-protected internalGroup by
-	// cmd/server/main.go. See internal/api/routes.go::Setup for the
-	// wiring site; the test internal/api/routes_test.go::TestRoutes_
-	// NoApiInternalV1Prefix enforces this split at CI time.
-	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		// Wave 14 PR5 (June 2026): wrap the concrete *outboxevents.Repository
-		// in a typed outbox.MonitorPort adapter so the api layer stays free of
-		// internal/infrastructure/* imports. Adapter is constructed here
-		// because the api package must not import outboxevents directly per
-		// AGENTS.md Pattern 8 ("API package: thin transport only").
-		outboxPort := newOutboxMonitorAdapter(root.Outbox.EventsRepo)
-		outboxH := outboxapi.NewHandler(outboxPort, log)
-		wiring.OutboxHandler = outboxH
-		log.Info("QDRANT-002: outbox events handler BUILT (mounted on /internal/v1/outbox via AppDeps, NOT via /api)")
-	}
-
-	// ── QDRANT-004: build mediasearch handler ─────────────────────────
+	// ── QDRANT-004: wire mediasearch handler ─────────────────────────
 	// Wires the unified media search API at POST /internal/v1/media/search
 	// when Qdrant is enabled and the vector store adapter is available.
-	//
-	// QDRANT-004 (June 2026) separation-of-routes fix: same reasoning as
-	// the outbox handler above — the handler is constructed here but NOT
-	// registered through the public /api registry (which would mount it
-	// at /api/internal/v1/media/* outside the WorkerAuth boundary).
-	// AppDeps.MediasearchHandler is mounted on internalGroup by
-	// cmd/server/main.go.
 	if root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
-		// Wave 15 (June 2026): ProcessBundle.VectorSvc is the typed
-		// assetsearch.VectorStorePort — no runtime cast needed.
-		// portutil.IsNilPort is the typed-nil safety net (catches the
-		// `(*searchAdapter)(nil)` case if a future refactor accidentally
-		// injects a typed-nil concrete; the field type guard above is
-		// the front line).
-		vectorStore := root.Process.VectorSvc
-		if vectorStore != nil && !portutil.IsNilPort(vectorStore) {
+		vectorStore, _ := root.Process.VectorSvc.(assetsearch.VectorStorePort)
+		if vectorStore != nil {
 			// Build the VectorSearchPort adapter: OllamaClient for embedding +
 			// Qdrant search adapter for vector store operations.
-			// Wave 15 (June 2026): ProcessBundle.VectorSvc is the typed
-			// assetsearch.VectorStorePort — `vectorStore` above is direct read.
-			// Compile-time assertion at internal/infrastructure/qdrant/search_adapter.go
-			// guarantees the qdrant adapter satisfies the port.
 			vectorPort := &mediasearchVectorAdapter{
 				embedder: root.AI.OllamaClient,
 				store:    vectorStore,
 			}
+			// MediaReadRepository reads canonical metadata from SQLite.
 			readRepo := &mediasearchReadAdapter{clips: root.Repos.ClipsRepo}
-			deliverySvc, err := buildMediasearchDeliverySvc(
-				cfg.Security.DeliveryHMACSecret,
-				cfg.External.VeloxBaseURL,
-				cfg.Security.DeliveryReplayWindowSec,
-				log,
-			)
-			if err != nil {
-				log.Warn("QDRANT-004: mediasearch delivery signer unavailable, skipping mediasearch handler", zap.Error(err))
-				// QDRANT-004 closed (June 2026): when the delivery signer
-				// can't be built, mediasearch is disabled rather than
-				// serving results without authorized download URLs.
-				// The handler is not wired; /internal/v1/media/search
-				// will 404 (no route registered).
-				return wiring, fmt.Errorf("mediasearch delivery signer: %w", err)
-			}
+			// AssetDeliveryService: use HMAC-signed URLs when secrets are
+			// configured, fall back to noop for dev/test.
+				deliverySvc, err := buildMediasearchDeliverySvc(
+					cfg.Security.DeliveryHMACSecret,
+					cfg.External.VeloxBaseURL,
+					cfg.Security.DeliveryReplayWindowSec,
+					log,
+				)
+				if err != nil {
+					log.Warn("mediasearch: delivery signer unavailable", zap.Error(err))
+					deliverySvc = nil
+				}
 
 			searchSvc := mediasearch.NewService(
 				vectorPort,
@@ -545,8 +347,18 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 				mediasearchLogger{sugar: log.Sugar()},
 			)
 			searchH := mediasearchapi.NewHandler(searchSvc, log)
+			// Expose the handler on RegistryWiring before route registration
+			// so wire_services.go's AppDeps.MediasearchHandler slot receives
+			// the canonical reference (QDRANT-004 surface).
 			wiring.MediasearchHandler = searchH
-			log.Info("QDRANT-004: mediasearch handler BUILT (mounted on /internal/v1/media/search via AppDeps, NOT via /api)")
+			registerModule(registry, log, module.NewRouteModule(
+				"mediasearch",
+				func() bool { return cfg.Qdrant.Enabled },
+				"/internal/v1/media",
+				searchH,
+				log,
+			))
+			log.Info("QDRANT-004: mediasearch handler wired at /internal/v1/media/search")
 		}
 	}
 
@@ -581,47 +393,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			}
 		} else {
 			log.Info("stock pipeline service unavailable — skipping fetch provider registration")
-		}
-		// ── ScriptAssets capability (Capability Standard DescriptorProviders
-		// slot migration, June 2026): the script_assets capability is wired
-		// via scriptassets.Build(deps). Build returns a single Descriptor that
-		// carries:
-		//   - the api.Module for /script-assets routes, AND
-		//   - the api.DescriptorProviders slot which the composition root uses
-		//     to publish the script_assets catalog entry (provider identity +
-		//     capabilities) into the canonical providers.Registry.
-		//
-		// This is the "richer" capability migration demonstrating the slot
-		// pattern's RANGE beyond DescriptorJobs: DescriptorProviders is a
-		// one-shot composition-time publication of catalog identity (not per-
-		// job runtime registration like DescriptorJobs). Both slots coexist
-		// on the same Descriptor mechanism; the composition root type-asserts
-		// for each independently.
-		//
-		// RegisterProviders must run BEFORE pr.Freeze() below; the registry
-		// must be mutable when the descriptor publishes into it. Frozen
-		// registries return ErrFrozen from Register, so ordering matters.
-		scDesc, scErr := scriptassets.Build(scriptassets.Dependencies{
-			Logger: log,
-		})
-		if scErr != nil {
-			log.Warn("failed to wire module", zap.String("module", "script-assets"), zap.Error(scErr))
-		} else {
-			if err := tryRegisterModule(registry, log, scDesc); err != nil {
-				return nil, fmt.Errorf("wire registry: script-assets: %w", err)
-			}
-			// *ScriptAssetsDescriptor satisfies api.Descriptor via the three
-			// explicit delegation methods (Name/Enabled/RegisterRoutes), and
-			// api.DescriptorProviders via RegisterProviders. Same concrete
-			// pointer cast as the generation block above.
-			if dp, ok := scDesc.(*scriptassets.ScriptAssetsDescriptor); ok {
-				if err := dp.RegisterProviders(pr); err != nil {
-					return nil, fmt.Errorf("wire registry: script-assets providers: %w", err)
-				}
-				log.Info("registered script_assets catalog entry in providers.Registry",
-					zap.String("name", "script_assets"),
-					zap.Strings("capabilities", []string{"search", "script"}))
-			}
 		}
 		// FREEZE here, after all registrations. (Reviewer Q8 fix.)
 		pr.Freeze()

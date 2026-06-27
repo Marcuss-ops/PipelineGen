@@ -1,6 +1,6 @@
 // Package script (api/script) — handler_flow_ops.go holds the small
 // "ops-style" HTTP endpoints that aren't tied to the generation pipeline:
-// section regeneration, LLM cache eviction, and media curation.
+// section regeneration and LLM cache eviction.
 //
 // PR4.F (June 2026) collapses the previous 120-line RegenerateSection
 // into a thin transport. The prompt construction, Ollama invocation,
@@ -13,9 +13,6 @@
 // application/scripts/cache_eviction_usecase.go::CacheEvictionUseCase.
 // This file only parses path/body, calls the use cases, and maps
 // domain errors to HTTP status codes.
-//
-// PR7 (June 2026): removed GenerateFromCatalog — superseded by
-// POST /api/script/generate (unified endpoint, PR6).
 package script
 
 import (
@@ -27,8 +24,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
@@ -56,23 +52,23 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 
 	scriptID, err := strconv.ParseInt(scriptIDStr, 10, 64)
 	if err != nil {
-		apiutil.Error(c, http.StatusBadRequest, "invalid script ID")
+		api.Error(c, http.StatusBadRequest, "invalid script ID")
 		return
 	}
 	sectionID, err := strconv.ParseInt(sectionIDStr, 10, 64)
 	if err != nil {
-		apiutil.Error(c, http.StatusBadRequest, "invalid section ID")
+		api.Error(c, http.StatusBadRequest, "invalid section ID")
 		return
 	}
 
 	var req RegenerateSectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.Error(c, http.StatusBadRequest, err.Error())
+		api.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if h.sectionRegen == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "section regenerator not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "section regenerator not initialized")
 		return
 	}
 
@@ -103,13 +99,13 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 func (h *ScriptFlowHandler) mapRegenError(c *gin.Context, scriptID, sectionID int64, err error) {
 	switch {
 	case errors.Is(err, scripts.ErrSectionNotFound):
-		apiutil.Error(c, http.StatusNotFound, "section not found")
+		api.Error(c, http.StatusNotFound, "section not found")
 	case errors.Is(err, scripts.ErrScriptNotFound):
-		apiutil.Error(c, http.StatusNotFound, "script not found")
+		api.Error(c, http.StatusNotFound, "script not found")
 	case errors.Is(err, scripts.ErrSectionScriptMismatch):
-		apiutil.Error(c, http.StatusBadRequest, "section does not belong to the specified script")
+		api.Error(c, http.StatusBadRequest, "section does not belong to the specified script")
 	case errors.Is(err, scripts.ErrEmptyGeneratorOutput):
-		apiutil.Error(c, http.StatusInternalServerError, "received empty response from generator")
+		api.Error(c, http.StatusInternalServerError, "received empty response from generator")
 	default:
 		if h.log != nil {
 			h.log.Error("regenerate section failed",
@@ -117,7 +113,7 @@ func (h *ScriptFlowHandler) mapRegenError(c *gin.Context, scriptID, sectionID in
 				zap.Int64("section_id", sectionID),
 				zap.Error(err))
 		}
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 	}
 }
 
@@ -126,16 +122,80 @@ type EvictCacheRequest struct {
 	Titles []string `json:"titles,omitempty"`
 }
 
+// GenerateFromCatalog handles POST /api/script/generate-from-catalog.
+func (h *ScriptFlowHandler) GenerateFromCatalog(c *gin.Context) {
+	if h.jobsSvc == nil {
+		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		return
+	}
+
+	var req scripts.JobPayloadCatalogScript
+	if err := c.ShouldBindJSON(&req); err != nil {
+		api.Error(c, http.StatusBadRequest, "invalid payload")
+		return
+	}
+
+	req.Topic = strings.TrimSpace(req.Topic)
+	req.Title = strings.TrimSpace(req.Title)
+	req.OutputName = strings.TrimSpace(req.OutputName)
+	if req.Topic == "" {
+		req.Topic = req.Title
+	}
+	if req.Title == "" {
+		req.Title = req.Topic
+	}
+	if req.Title == "" {
+		req.Title = "catalog script"
+	}
+	if req.OutputName == "" {
+		req.OutputName = req.Title
+	}
+	if req.Topic == "" && len(req.ClipIDs) == 0 {
+		api.Error(c, http.StatusBadRequest, "topic or clip_ids are required")
+		return
+	}
+	if req.MaxClips <= 0 {
+		req.MaxClips = 10
+	}
+	if req.MinCoverage < 0 {
+		req.MinCoverage = 0
+	}
+	if req.MinCoverage > 1 {
+		req.MinCoverage = 1
+	}
+	req.Language = "en"
+	if req.Model == "" {
+		req.Model = "fallback"
+	}
+	if req.Tone == "" {
+		req.Tone = "clear"
+	}
+	if req.TargetWords <= 0 {
+		req.TargetWords = 1800
+	}
+	req.Languages = scripts.NormalizeLanguages(req.Languages)
+	if len(req.Languages) == 0 {
+		req.Languages = []string{"en"}
+	}
+
+	api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
+		Type:       job.TypeCatalogScriptGenerate,
+		Payload:    req,
+		Priority:   5,
+		MaxRetries: 2,
+	}, "Catalog script generation queued.")
+}
+
 // Curate handles POST /api/script/curate.
 func (h *ScriptFlowHandler) Curate(c *gin.Context) {
 	if h.jobsSvc == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
 		return
 	}
 
 	var req scripts.JobPayloadCurate
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.Error(c, http.StatusBadRequest, "invalid payload")
+		api.Error(c, http.StatusBadRequest, "invalid payload")
 		return
 	}
 
@@ -145,7 +205,7 @@ func (h *ScriptFlowHandler) Curate(c *gin.Context) {
 		req.Query = req.Title
 	}
 	if req.Query == "" {
-		apiutil.Error(c, http.StatusBadRequest, "query is required")
+		api.Error(c, http.StatusBadRequest, "query is required")
 		return
 	}
 	if req.Title == "" {
@@ -177,7 +237,7 @@ func (h *ScriptFlowHandler) Curate(c *gin.Context) {
 		req.MinScore = 0.5
 	}
 
-	common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+	api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
 		Type:       job.TypeMediaCurate,
 		Payload:    req,
 		Priority:   5,
@@ -204,14 +264,14 @@ func (h *ScriptFlowHandler) EvictCache(c *gin.Context) {
 		// Only EOF (empty body) is treated as "evict all". Malformed JSON
 		// still gets a 400 so callers can debug.
 		if err.Error() != "EOF" {
-			apiutil.Error(c, http.StatusBadRequest, err.Error())
+			api.Error(c, http.StatusBadRequest, err.Error())
 			return
 		}
 		req.Titles = nil
 	}
 
 	if h.cacheEviction == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "cache eviction use case not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "cache eviction use case not initialized")
 		return
 	}
 
@@ -240,8 +300,8 @@ func (h *ScriptFlowHandler) EvictCache(c *gin.Context) {
 func (h *ScriptFlowHandler) mapCacheEvictionError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, scripts.ErrCacheEvictionMissing):
-		apiutil.Error(c, http.StatusServiceUnavailable, "memory service not initialized")
+		api.Error(c, http.StatusServiceUnavailable, "memory service not initialized")
 	default:
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 	}
 }

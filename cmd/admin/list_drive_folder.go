@@ -8,10 +8,10 @@
 //
 //   - app.ExportInitCoreMinimal was removed in PR4d-final; we use
 //     app.InitComposition instead.
-//   - The deleted internal/media/models package; the local
+//   - drives internal/media/models is removed; the local
 //     `folderRec` struct replaces `models.ClipFolder`. The struct
 //     mirrors the column shape from migration 011_create_characters.sql
-//     + the canonical schema in internal/infrastructure/database/canonical.go.
+//   - the canonical schema in internal/infrastructure/database/canonical.go.
 //   - internal/repository/clips is removed; the canonical
 //     *assets.ClipsRepository (root.Repos.ClipsRepo) only knows about
 //     `media_assets`, not the `clip_folders` table. We use raw SQL on

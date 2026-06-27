@@ -443,6 +443,153 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 	})
 }
 
+// EnqueueAndRestore (QDRANT-002 close-out, June 2026) atomically flips
+// lifecycle_state back to 'ready' AND emits an asset.index.requested.v1
+// outbox event in a single tx, so Qdrant re-indexes the restored point.
+//
+// Required wiring:
+//   - d.stateWriter: must implement RestoreTx (production: *assets.ClipsRepository).
+//     nil → error returned.
+//   - d.outboxEventsRepo + d.txmgr: not nil.
+func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string, contentHash string) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.txmgr == nil {
+		return errors.New("outbox.Dispatcher: txmgr not configured")
+	}
+	if d.stateWriter == nil {
+		return errors.New("outbox.Dispatcher: state writer not configured (required for EnqueueAndRestore — wire *assets.ClipsRepository)")
+	}
+	if d.outboxEventsRepo == nil {
+		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+	}
+	if assetID == "" {
+		return errors.New("outbox.Dispatcher.EnqueueAndRestore: assetID is required")
+	}
+
+	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		// Step 1: restore lifecycle_state to 'ready'.
+		if err := d.stateWriter.RestoreTx(ctx, tx, assetID); err != nil {
+			return fmt.Errorf("dispatcher restore: %s: %w", assetID, err)
+		}
+
+		// Step 2: emit index request so Qdrant re-indexes the restored point.
+		eventID := uuid.NewString()
+		eventKey := fmt.Sprintf("index:%s:%s:%s:%s:%s",
+			assetID,
+			shortHashPrefix(contentHash),
+			clipindexer.EmbeddingModel(),
+			clipindexer.EmbeddingModelVersion(),
+			clipindexer.CollectionVersion(),
+		)
+		payload := indexRequestV1{
+			SchemaVersion:      "asset.index.requested.v1",
+			EventID:            eventID,
+			AssetID:            assetID,
+			Operation:          "RESTORE",
+			SourceVersion:      contentHash,
+			TargetIndexVersion: clipindexer.CollectionVersion(),
+			RequestedVectors:   []string{"text", "transcript"},
+			RequestedAt:        timeutil.FormatRFC3339(time.Now()),
+			EmbeddingModel:     clipindexer.EmbeddingModel(),
+			EmbeddingVersion:   clipindexer.EmbeddingModelVersion(),
+			IdempotencyKey:     eventKey,
+		}
+		if payload.IdempotencyKey != eventKey {
+			return fmt.Errorf("dispatcher: restore payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("dispatcher marshal v1 restore payload %s: %w", assetID, err)
+		}
+		if err := d.outboxEventsRepo.Enqueue(
+			ctx, tx,
+			outboxevents.EventAssetIndexRequested,
+			assetID,
+			"media_asset",
+			string(payloadJSON),
+			eventKey,
+		); err != nil {
+			return fmt.Errorf("dispatcher enqueue restore outbox event %s: %w", assetID, err)
+		}
+
+		if d.log != nil {
+			d.log.Debug("dispatcher enqueued asset for outbox_events restore (v1 envelope)",
+				zap.String("asset_id", assetID),
+				zap.String("outbox_event_id", eventID),
+			)
+		}
+		return nil
+	})
+}
+
+// EnqueueAndHardDelete (QDRANT-002 close-out, June 2026) physically removes
+// the media_assets row + related rows AND emits an asset.index.delete_requested.v1
+// outbox event in a single tx, so Qdrant cleans up the point.
+//
+// Unlike EnqueueAndDelete which goes through SoftDelete (lifecycle_state='deleted'),
+// this method is the nuclear option: the SQLite row is gone after this tx commits.
+// Use only for admin operations where permanent removal is intended.
+//
+// Required wiring:
+//   - d.stateWriter: must implement HardDeleteTx (production: *assets.ClipsRepository).
+//     nil → error returned.
+//   - d.outboxEventsRepo + d.txmgr: not nil.
+func (d *Dispatcher) EnqueueAndHardDelete(ctx context.Context, assetID string) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.txmgr == nil {
+		return errors.New("outbox.Dispatcher: txmgr not configured")
+	}
+	if d.stateWriter == nil {
+		return errors.New("outbox.Dispatcher: state writer not configured (required for EnqueueAndHardDelete — wire *assets.ClipsRepository)")
+	}
+	if d.outboxEventsRepo == nil {
+		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+	}
+	if assetID == "" {
+		return errors.New("outbox.Dispatcher.EnqueueAndHardDelete: assetID is required")
+	}
+
+	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		// Step 1: emit delete request so Qdrant cleans up the point.
+		payload := buildDeleteRequestV1(assetID)
+		eventKey := deleteEventKey(assetID)
+		if payload.IdempotencyKey != eventKey {
+			return fmt.Errorf("dispatcher: hard-delete payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("dispatcher marshal v1 hard-delete payload %s: %w", assetID, err)
+		}
+		if err := d.outboxEventsRepo.Enqueue(
+			ctx, tx,
+			outboxevents.EventAssetIndexDeleteRequested,
+			assetID,
+			"media_asset",
+			string(payloadJSON),
+			eventKey,
+		); err != nil {
+			return fmt.Errorf("dispatcher enqueue hard-delete outbox event %s: %w", assetID, err)
+		}
+
+		// Step 2: physically remove the row (atomic with the outbox event).
+		if err := d.stateWriter.HardDeleteTx(ctx, tx, assetID); err != nil {
+			return fmt.Errorf("dispatcher hard-delete %s: %w", assetID, err)
+		}
+
+		if d.log != nil {
+			d.log.Debug("dispatcher enqueued asset for outbox_events hard-delete (v1 envelope)",
+				zap.String("asset_id", assetID),
+				zap.String("outbox_event_id", payload.EventID),
+			)
+		}
+		return nil
+	})
+}
+
 // MultiClipsUpserter routes UpsertClipTx calls to one of several underlying
 // repositories based on `clip.Source`. Useful when a single outbox.Dispatcher
 // must ingest across many per-source assets.ClipsRepository instances (e.g.

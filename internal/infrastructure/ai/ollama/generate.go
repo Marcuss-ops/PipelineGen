@@ -170,6 +170,7 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		options = make(map[string]any)
 	}
 	if req.MaxChars > 0 {
+		options["format"] = "json"
 		// Gemma4 needs a generous token budget: the model "thinks" first,
 		// consuming tokens before the actual response. Budget = JSON structure
 		// overhead (256) + per-clip thinking overhead (512) + char limit ÷ 4.

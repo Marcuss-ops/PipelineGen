@@ -42,10 +42,11 @@ type Artifact struct {
 // Used by internal/application/assets/generation/style_registry.go, which loads
 // style definitions from config/generation_styles.yaml.
 //
-// This type was moved here from the now-deleted internal/domain/media/styles.go
-// during Wave-14. The domain/media package previously held these types
-// alongside type aliases; since only the aliases were meant to be deleted,
-// the GenerationStyle types are preserved in the canonical domain/asset package.
+// This type moved here from internal/domain/media/styles.go during the
+// Wave-14 cut-over that eliminates internal/domain/media. The
+// domain/media package previously held these types alongside type aliases;
+// since only the aliases were meant to be deleted, the GenerationStyle
+// types are preserved in the canonical domain/asset package.
 type GenerationStyle struct {
 	Name        string `yaml:"name" json:"name"`
 	Description string `yaml:"description" json:"description"`

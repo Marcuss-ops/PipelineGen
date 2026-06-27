@@ -114,12 +114,12 @@ func TestBuild_HandlerRoutesAreRegistered(t *testing.T) {
 	d.RegisterRoutes(rg)
 
 	wantRoutes := map[string]bool{
-		"GET /api/channels":             false,
-		"GET /api/channels/categories":  false,
+		"GET /api/channels":              false,
+		"GET /api/channels/categories":   false,
 		"GET /api/channels/:id":          false,
-		"POST /api/channels":            false,
+		"POST /api/channels":             false,
 		"POST /api/channels/bulk-upsert": false,
-		"DELETE /api/channels/:id":      false,
+		"DELETE /api/channels/:id":       false,
 	}
 	for _, route := range engine.Routes() {
 		key := route.Method + " " + route.Path

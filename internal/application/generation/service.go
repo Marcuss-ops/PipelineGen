@@ -186,7 +186,7 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 
 	_ = reg.Register(Definition{
 		Type:    domaingeneration.TypeScriptGenerate,
-		JobType: string(jobdomain.TypeScriptGenerate),
+		JobType: string(jobdomain.TypeClipScriptGenerate),
 		Enabled: scriptEnabled,
 		Validate: func(raw json.RawMessage) error {
 			var input ScriptSource
@@ -209,7 +209,7 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 
 	_ = reg.Register(Definition{
 		Type:    domaingeneration.TypeScriptFromClips,
-		JobType: string(jobdomain.TypeScriptGenerate),
+		JobType: string(jobdomain.TypeClipScriptGenerate),
 		Enabled: scriptEnabled,
 		Validate: func(raw json.RawMessage) error {
 			var input ScriptSource
@@ -232,7 +232,7 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 
 	_ = reg.Register(Definition{
 		Type:    domaingeneration.TypeScriptWithImages,
-		JobType: string(jobdomain.TypeScriptGenerate),
+		JobType: string(jobdomain.TypeClipScriptGenerate),
 		Enabled: scriptEnabled,
 		Validate: func(raw json.RawMessage) error {
 			var input ScriptSource
@@ -256,7 +256,7 @@ func BuildDefaultRegistry(bookEnabled, lessonEnabled, scriptEnabled bool) *Regis
 
 	_ = reg.Register(Definition{
 		Type:    domaingeneration.TypeScriptBatch,
-		JobType: string(jobdomain.TypeScriptGenerate),
+		JobType: string(jobdomain.TypeBatchScriptGenerate),
 		Enabled: scriptEnabled,
 		Validate: func(raw json.RawMessage) error {
 			var input BatchSource

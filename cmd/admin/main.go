@@ -12,8 +12,6 @@
 //   - cleanup-artlist-empty-folders (cmd/admin/cleanup.go)
 //   - cleanup-stock-orphans       (cmd/admin/cleanup.go)
 //   - delete-specific-folders     (cmd/admin/cleanup.go)
-//   - dr-qdrant                   (cmd/admin/dr_qdrant.go) — QDRANT-005C PR3:
-//     list-snapshots / take-snapshot / restore-snapshot / apply-retention.
 //   - list-drive-folder           (cmd/admin/list_drive_folder.go)
 //   - reset-video-ai              (cmd/admin/reset_video_ai.go)
 //   - sync-all-drive              (cmd/admin/cleanup.go)
@@ -46,19 +44,16 @@ var availableCommands = []string{
 	"backfill-artlist-media-type",
 	"backfill-missing",
 	"benchmark",
-	"clean-qdrant-locators",
 	"cleanup-all-orphans",
 	"cleanup-artlist-empty-folders",
 	"cleanup-orphans",
 	"cleanup-stock-orphans",
 	"db",
 	"delete-specific-folders",
-	"dr-qdrant",
 	"gen-api-docs",
 	"list-drive-folder",
 	"list-styles",
 	"reindex-qdrant",
-	"reconcile-qdrant",
 	"reset-video-ai",
 	"seed-channels",
 	"stock-reset",
@@ -88,8 +83,6 @@ func main() {
 		err = runBackfillArtlistMediaType(args)
 	case "benchmark":
 		err = runBenchmark(args)
-	case "clean-qdrant-locators":
-		err = runCleanLocators(args)
 	case "cleanup-all-orphans":
 		err = runCleanupAllOrphans(args)
 	case "cleanup-artlist-empty-folders":
@@ -104,8 +97,6 @@ func main() {
 		err = runListDriveFolder(args)
 	case "reindex-qdrant":
 		err = runReindexQdrant(args)
-	case "reconcile-qdrant":
-		err = runReconcileQdrant(args)
 	case "reset-video-ai":
 		err = runResetVideoAI(args)
 	case "sync-all-drive":
@@ -136,8 +127,6 @@ func main() {
 		err = runBackfillMissing(args)
 	case "db":
 		err = runDB(args)
-	case "dr-qdrant":
-		err = runDrQdrant(args)
 	case "gen-api-docs":
 		err = runGenAPIDocs(args)
 	default:

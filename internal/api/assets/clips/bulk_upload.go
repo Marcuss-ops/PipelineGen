@@ -152,9 +152,9 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 			apiutil.BadRequest(c, "either drive_folder_id or drive_folder_name is required")
 			return
 		}
-		root := h.cfg.Drive.ClipsFolder()
+		root := h.cfg.ClipsDriveFolder()
 		if root == "" {
-			root = h.cfg.Drive.RootFolder()
+			root = h.cfg.RootFolder()
 		}
 		if root == "" {
 			apiutil.InternalError(c, fmt.Errorf("no Drive root folder configured (drive.clips_folder / drive.root_folder)"))

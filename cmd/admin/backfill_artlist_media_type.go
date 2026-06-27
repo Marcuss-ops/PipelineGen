@@ -19,8 +19,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 func runBackfillArtlistMediaType(args []string) error {

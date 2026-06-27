@@ -224,11 +224,27 @@ func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id st
 //
 // QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Restoring an asset
 // should trigger a re-index via the dispatcher so Qdrant gets the
-// point back. Today this is a diagnostic/operator operation; a future
-// PR should add a Dispatcher.EnqueueAndRestore counterpart.
+// point back. Production callers MUST use Dispatcher.EnqueueAndRestore
+// instead. This method remains for diagnostic/operator use only.
 func (r *ClipsRepository) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
+	return err
+}
+
+// RestoreTx is the tx-scoped restore used by Dispatcher.EnqueueAndRestore
+// (QDRANT-002 close-out, June 2026). It flips lifecycle_state back to
+// 'ready' inside the dispatcher's tx, atomically with the outbox_events
+// INSERT for reindex.
+func (r *ClipsRepository) RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
+	if tx == nil {
+		return fmt.Errorf("clips.RestoreTx: tx is required")
+	}
+	if id == "" {
+		return fmt.Errorf("clips.RestoreTx: id is required")
+	}
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	_, err := tx.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
 	return err
 }
 
@@ -247,6 +263,26 @@ func (r *ClipsRepository) HardDelete(ctx context.Context, id string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// HardDeleteTx is the tx-scoped physical delete used by
+// Dispatcher.EnqueueAndHardDelete (QDRANT-002 close-out, June 2026).
+// It removes the media_assets row and related rows inside the dispatcher's
+// tx, atomically with the outbox_events INSERT for Qdrant cleanup.
+func (r *ClipsRepository) HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
+	if tx == nil {
+		return fmt.Errorf("clips.HardDeleteTx: tx is required")
+	}
+	if id == "" {
+		return fmt.Errorf("clips.HardDeleteTx: id is required")
+	}
+	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_locations WHERE asset_id = ?", id)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_processing WHERE asset_id = ?", id)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_versions WHERE asset_id = ?", id)
+	if _, err := tx.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *ClipsRepository) Canonical() *ClipsRepository {
@@ -362,8 +398,10 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 	return r.SoftDelete(ctx, id)
 }
 
-// Wave 16 (June 2026): RestoreClip alias removed. Callers must invoke
-// Restore directly. See docs/architecture/deprecations.yaml#PR-CLIP-RESTORE.
+// RestoreClip is the legacy alias for Restore. See Restore's QDRANT-002 doc.
+func (r *ClipsRepository) RestoreClip(ctx context.Context, id string) error {
+	return r.Restore(ctx, id)
+}
 
 func (r *ClipsRepository) HardDeleteClip(ctx context.Context, id string) error {
 	return r.HardDelete(ctx, id)

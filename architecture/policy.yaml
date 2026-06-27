@@ -13,12 +13,6 @@ max_files_per_package: 40
 max_lines_per_file: 500
 cmd_main_max_lines: 200
 
-# Constructor dependency cap (per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
-# §"Complexity budgets"). Phase 1 scan: counts parameters in func New<X>(...) signatures
-# (including context.Context). Exceeding this is a design failure unless a short-lived
-# exception exists. Default 8 per the CI-gates doc; operators can tune.
-max_constructor_deps: 8
-
 # Generic dumping-ground dirs forbidden as top-level package names
 # (per the proposal §"internal/capabilities").
 forbidden_top_level_dirs: service, repository, models, utils, helpers, common
@@ -120,8 +114,8 @@ target_internal_roots: app, kernel, capabilities, platform
 # entry is a free-form comment consumed by the human reviewer; the binary
 # only checks the structural rules above.
 known_grandfathered:
-  - "internal/application/scripts (55 files) — in_progress to capability/scripts split"
-  - "internal/application/images (25 files) — in_progress to capability/images split"
+  - "internal/application/scripts (32 files) — in_progress to capability/scripts split"
+  - "internal/application/images (20 files) — in_progress to capability/images split"
   - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
   - "internal/api (24 files in flat root + subdirs) — Wave 14 transport consolidation in_progress"
   - "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"

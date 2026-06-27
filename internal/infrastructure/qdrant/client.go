@@ -317,13 +317,9 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 // scroll API. Returns the batch of points and the next offset (empty string
 // when iteration is complete).
 //
-// filter is an optional Qdrant filter (nil = no filter). When non-nil, only
-// points matching the filter are returned. This is used by the QDRANT-005
-// filter smoke runner to validate that payload indexes work correctly.
-//
 // QDRANT-003 (June 2026): used by VerifyReindex to compare Qdrant point
 // IDs against SQLite assets for missing/orphan detection.
-func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int, filter map[string]interface{}) (*ScrollResult, error) {
+func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int) (*ScrollResult, error) {
 	body := map[string]interface{}{
 		"limit":        limit,
 		"with_payload": true,
@@ -331,9 +327,6 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 	}
 	if offset != "" {
 		body["offset"] = offset
-	}
-	if filter != nil {
-		body["filter"] = filter
 	}
 
 	url := fmt.Sprintf("%s/collections/%s/points/scroll", c.baseURL, collection)
@@ -356,8 +349,8 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 	}
 	var result struct {
 		Result struct {
-			Points          []scrollPoint `json:"points"`
-			NextPageOffset  *string       `json:"next_page_offset"`
+			Points         []scrollPoint `json:"points"`
+			NextPageOffset *string       `json:"next_page_offset"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -501,37 +494,6 @@ func (c *Client) executeSearch(ctx context.Context, collection string, body map[
 	return c.decodeSearchResults(resp)
 }
 
-// ── Payload API ─────────────────────────────────────────────────────
-
-// DeletePayloadKeys removes specific payload keys from points in a collection.
-// pointIDs must be non-empty. This wraps the Qdrant POST /points/payload/delete
-// endpoint, which is the canonical way to strip legacy keys (e.g. drive_link,
-// local_path) without mutating vectors or other payload fields.
-//
-// QDRANT-005 (June 2026): used by LocatorCleaner to scrub legacy locator
-// keys from historical points that were upserted before the QDRANT-001
-// payload cleanup.
-func (c *Client) DeletePayloadKeys(ctx context.Context, collection string, keys []string, pointIDs []string) error {
-	if len(keys) == 0 || len(pointIDs) == 0 {
-		return nil
-	}
-	body := map[string]interface{}{
-		"keys":   keys,
-		"points": pointIDs,
-	}
-	url := fmt.Sprintf("%s/collections/%s/points/payload/delete?wait=true", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
-	if err != nil {
-		return fmt.Errorf("delete payload keys from %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return c.parseError(resp)
-	}
-	return nil
-}
-
 // ── Payload index API ────────────────────────────────────────────────
 
 // CreatePayloadIndex creates a payload field index.
@@ -555,6 +517,57 @@ func (c *Client) CreatePayloadIndex(ctx context.Context, collection, field, fiel
 
 // ── HTTP helpers ─────────────────────────────────────────────────────
 
+// ── Snapshot API (QDRANT-005, June 2026) ─────────────────────────────
+
+type SnapshotDescription struct {
+	Name         string `json:"name"`
+	CreationTime string `json:"creation_time,omitempty"`
+	Size         int64  `json:"size"`
+	Checksum     string `json:"checksum,omitempty"`
+}
+
+func (c *Client) CreateSnapshot(ctx context.Context, collection string) (*SnapshotDescription, error) {
+	url := fmt.Sprintf("%s/collections/%s/snapshots", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPost, url, map[string]interface{}{})
+	if err != nil { return nil, fmt.Errorf("create snapshot %q: %w", collection, err) }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted { return nil, c.parseError(resp) }
+	var result struct { Result SnapshotDescription `json:"result"` }
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil { return nil, fmt.Errorf("decode snapshot result: %w", err) }
+	return &result.Result, nil
+}
+
+func (c *Client) ListSnapshots(ctx context.Context, collection string) ([]SnapshotDescription, error) {
+	url := fmt.Sprintf("%s/collections/%s/snapshots", c.baseURL, collection)
+	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
+	if err != nil { return nil, err }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK { return nil, c.parseError(resp) }
+	var result struct { Result []SnapshotDescription `json:"result"` }
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil { return nil, fmt.Errorf("decode snapshots: %w", err) }
+	return result.Result, nil
+}
+
+func (c *Client) RestoreSnapshot(ctx context.Context, collection, snapshotURL string) error {
+	body := map[string]interface{}{"location": snapshotURL}
+	url := fmt.Sprintf("%s/collections/%s/snapshots/recover", c.baseURL, collection)
+	resp, err := c.doJSON(ctx, http.MethodPut, url, body)
+	if err != nil { return fmt.Errorf("restore snapshot %q: %w", collection, err) }
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted { return c.parseError(resp) }
+	return nil
+}
+
+func (c *Client) DeleteSnapshot(ctx context.Context, collection, snapshotName string) error {
+	url := fmt.Sprintf("%s/collections/%s/snapshots/%s", c.baseURL, collection, snapshotName)
+	resp, err := c.doRequest(ctx, http.MethodDelete, url, nil)
+	if err != nil { return fmt.Errorf("delete snapshot %q/%q: %w", collection, snapshotName, err) }
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound { return nil }
+	if resp.StatusCode != http.StatusOK { return c.parseError(resp) }
+	return nil
+}
+
 func (c *Client) doJSON(ctx context.Context, method, url string, body interface{}) (*http.Response, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -570,6 +583,12 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	// QDRANT-003 close-out (June 2026): send the API key on every
+	// request. Previously stored but never sent — Qdrant Cloud
+	// deployments would fail to authenticate silently.
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 	return c.httpClient.Do(req)
 }
@@ -624,79 +643,4 @@ func (c *Client) executeQuery(ctx context.Context, collection string, body map[s
 func (c *Client) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("qdrant HTTP %d: %s", resp.StatusCode, string(body))
-}
-
-// OverwritePayload merges key/value pairs into existing point payloads WITHOUT altering their vectors.
-// Uses Qdrant REST PUT /collections/{name}/points/payload?wait=true.
-func (c *Client) OverwritePayload(ctx context.Context, collection string, points []PointPayload) error {
-	if len(points) == 0 {
-		return nil
-	}
-	body := map[string]interface{}{"points": points}
-	url := fmt.Sprintf("%s/collections/%s/points/payload?wait=true", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodPut, url, body)
-	if err != nil {
-		return fmt.Errorf("overwrite payload on %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return c.parseError(resp)
-	}
-	return nil
-}
-
-// CreateSnapshot creates a snapshot of the named collection (Qdrant REST POST /collections/{name}/snapshots).
-// Returns the canonical SnapshotDescription parsed from Qdrant's {"result": {...}} envelope.
-func (c *Client) CreateSnapshot(ctx context.Context, collection string) (*SnapshotDescription, error) {
-	url := fmt.Sprintf("%s/collections/%s/snapshots", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodPost, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create snapshot for %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, c.parseError(resp)
-	}
-	var out struct {
-		Result SnapshotDescription `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decode snapshot for %q: %w", collection, err)
-	}
-	return &out.Result, nil
-}
-
-// ListSnapshots enumerates snapshots of the named collection (Qdrant REST GET /collections/{name}/snapshots).
-func (c *Client) ListSnapshots(ctx context.Context, collection string) ([]SnapshotDescription, error) {
-	url := fmt.Sprintf("%s/collections/%s/snapshots", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("list snapshots for %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, c.parseError(resp)
-	}
-	var out struct {
-		Result []SnapshotDescription `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decode snapshots for %q: %w", collection, err)
-	}
-	return out.Result, nil
-}
-
-// RestoreSnapshot restores the collection from a snapshot URL (Qdrant REST PUT /collections/{name}/snapshots/restore).
-func (c *Client) RestoreSnapshot(ctx context.Context, collection string, snapshotURL string) error {
-	body := map[string]interface{}{"location": snapshotURL}
-	url := fmt.Sprintf("%s/collections/%s/snapshots/restore", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodPut, url, body)
-	if err != nil {
-		return fmt.Errorf("restore snapshot for %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return c.parseError(resp)
-	}
-	return nil
 }

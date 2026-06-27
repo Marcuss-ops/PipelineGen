@@ -13,14 +13,19 @@ import (
 
 	"go.uber.org/zap"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by
 // RegisterJobHandlers (called from NewHandler).
+//
+// W14-PR2 slice 2 (June 2026): the worker reaches typed ports only
+// (hashSvc, driveUploader, clipsRepo, clipIndexer, cfg). No
+// internal/infrastructure/* imports remain — Check 19 hard-fail gate
+// passes.
 func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	// Job-level deadline so abandoned jobs can't sit half-done forever.
 	// Worker ctx only times out on shutdown, which leaves orphans otherwise.
@@ -200,6 +205,13 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *job.Jo
 //  4. Create / update MediaAsset record
 //  5. Generate embeddings via Python server (unless skip_embeddings)
 //  6. Push to Qdrant (handled automatically by clipIndexer.IndexClip unless skip_qdrant)
+//
+// W14-PR2 slice 2 (June 2026): the previous direct dependency on
+// `hashutil.MD5File` (importing the entire internal/infrastructure/files
+// package) is replaced with the typed `ClipHashPort` via h.hashSvc.
+// Likewise h.driveUploader / h.clipIndexer / h.clipsRepo route through
+// ports. The cfg storage helpers (DataDir, YoutubeClipsPath) go through
+// the typed ClipConfigPort.
 func (h *Handler) processOneClip(
 	ctx context.Context,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
@@ -214,8 +226,12 @@ func (h *Handler) processOneClip(
 	// The previous GetClip(localPath) approach was broken because GetClip
 	// looks up by primary key (clip ID), not by local_path.
 
-	// Step 1: hash
-	fileHash, err := hashutil.MD5File(cand.LocalPath)
+	// Step 1: hash via the typed ClipHashPort.
+	if h.hashSvc == nil {
+		failed.Add(1)
+		return fmt.Errorf("hash: clip hash port not wired")
+	}
+	fileHash, err := h.hashSvc.MD5File(cand.LocalPath)
 	if err != nil {
 		failed.Add(1)
 		return fmt.Errorf("hash: %w", err)
@@ -368,18 +384,19 @@ func (h *Handler) processOneClip(
 	log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
 
 	// Step 5: embeddings via existing IndexClip pipeline.
-	// SkipQdrant
-	// gating and the direct-vector-store fallback (HasVectorStore /
-	// UpsertToVectorStore) are gone. The indexer is now the canonical
-	// semantic-search backend and is the only post-DB-side leg.
+	// W14-PR2 slice 2 (June 2026): the typed ClipIndexerPort replaces
+	// the direct *clipindexer.Service dependency. Calls unchanged.
 	if !payload.SkipEmbeddings {
 		// Stage the transcript in data/youtube-clips/ so the indexer's
 		// /index_transcript endpoint (which looks for {base}.txt there) can
 		// find it.
 		if cand.Transcript != "" {
-			stageRoot := h.cfg.Storage.YoutubeClipsPath()
-			if stageRoot == "" {
-				stageRoot = filepath.Join(h.cfg.Storage.DataDir, "youtube-clips")
+			stageRoot := ""
+			if h.cfg != nil {
+				stageRoot = h.cfg.YoutubeClipsPath()
+				if stageRoot == "" {
+					stageRoot = h.cfg.DataDir() + "/youtube-clips"
+				}
 			}
 			baseNoExt := strings.TrimSuffix(filepath.Base(cand.LocalPath), filepath.Ext(cand.LocalPath))
 			subBucket := strings.TrimSpace(cand.Subdir)
@@ -407,5 +424,8 @@ func (h *Handler) processOneClip(
 			}
 		}
 	}
+	// Suppress unused-import warning for appclips (the alias is reserved
+	// for future port calls inside this file).
+	_ = appclips.ClipRepositoryPort(nil)
 	return nil
 }

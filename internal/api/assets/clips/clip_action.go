@@ -9,13 +9,17 @@ import (
 	"time"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// driveFileURLPrefix is the canonical Drive web-view URL prefix used for
+// the fallback when an UploadResult.DownloadLink is empty. Inlined here
+// (previously in internal/infrastructure/drive/helpers.go::FileURLFromID)
+// so clip_action.go has zero internal/infrastructure imports.
+const driveFileURLPrefix = "https://drive.google.com/file/d/"
 
 // ReprocessClip reprocesses a clip (download/process/upload).
 func (h *Handler) ReprocessClip(c *gin.Context) {
@@ -215,7 +219,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	// Update clip with new Drive link
 	driveLinkVal := result.DownloadLink
 	if driveLinkVal == "" && result.FileID != "" {
-		driveLinkVal = driveutil.FileURLFromID(result.FileID)
+		driveLinkVal = driveFileURLPrefix + result.FileID
 	}
 	clip.SetDriveLink(driveLinkVal)
 
@@ -272,7 +276,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	}
 
 	duplicates := []gin.H{}
-	repos := map[string]*assets.ClipsRepository{
+	repos := map[string]appclips.ClipRepositoryPort{
 		"artlist": h.artlistRepo,
 		"youtube": h.clipsRepo,
 		"stock":   h.stockRepo,

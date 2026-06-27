@@ -476,17 +476,17 @@ func TestRetry_BackoffTiming(t *testing.T) {
 // production parseVTTFile lives in internal/infrastructure/youtube).
 //
 // TODO(wave14-followup):
-//   1. Real parseVTTFile implementation must be restored from pre-cleanup git
-//      history or rewritten against pkg/textutil/vtt if any production segment
-//      processor / search-text-rebuild path depends on actual cue extraction.
-//      Currently zero production callers of parseVTTFile exist in package
-//      youtube (only test references survived); the stub is safe.
-//   2. Migrate the metadata package docstring from the deleted metadata_persist.go
-//      into helpers.go header (currently helpers.go has no package doc; the
-//      metadata package's godoc is blank).
-//   3. Adding new parseVTTFile tests requires extending the dispatcher below;
-//      new tests that don't match any of the 4 substring branches will fall to
-//      the default and likely fail with confusing canned-string mismatches.
+//  1. Real parseVTTFile implementation must be restored from pre-cleanup git
+//     history or rewritten against pkg/textutil/vtt if any production segment
+//     processor / search-text-rebuild path depends on actual cue extraction.
+//     Currently zero production callers of parseVTTFile exist in package
+//     youtube (only test references survived); the stub is safe.
+//  2. Migrate the metadata package docstring from the deleted metadata_persist.go
+//     into helpers.go header (currently helpers.go has no package doc; the
+//     metadata package's godoc is blank).
+//  3. Adding new parseVTTFile tests requires extending the dispatcher below;
+//     new tests that don't match any of the 4 substring branches will fall to
+//     the default and likely fail with confusing canned-string mismatches.
 func parseVTTFile(path string, start, end int) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

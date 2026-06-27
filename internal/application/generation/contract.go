@@ -7,7 +7,7 @@
 // Capabilities expose these through:
 //   - service.go (Create/Status/Cancel — the dispatcher side)
 //   - jobs.go    (RegisterJobHandlers — the worker side via the
-//                  api.DescriptorJobs slot)
+//     api.DescriptorJobs slot)
 //
 // The HTTP handler in handler.go translates JSON requests into the
 // commands below and never touches the dispatcher or jobs.Service
@@ -23,7 +23,6 @@ package generation
 import (
 	"encoding/json"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domaingeneration "github.com/Marcuss-ops/PipelineGen/internal/domain/generation"
 )
 
@@ -105,14 +104,3 @@ const JobTypeBooksProcess = "books.process"
 const JobTypeLessonsProcess = "lessons.process"
 
 // Worker-side handler signature -------------------------------------
-
-// HandlerFunc is the canonical worker-side handler signature. It
-// is the function-value shape the Generation capability's
-// Dependencies.Books / Dependencies.Lessons accept from the
-// composition root. The composition root polls the BooksService /
-// LessonsService method values (books.Service.HandleJob,
-// lessons.Service.HandleJob) and forwards them in via this type.
-//
-// Re-exports appjobs.HandlerFunc so the rest of the capability
-// package does not need to scatter imports of appjobs.
-type HandlerFunc = appjobs.HandlerFunc

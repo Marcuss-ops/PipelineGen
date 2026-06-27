@@ -4,21 +4,6 @@
 // Agente 4 — H (June 2026): extracted from registry.go. ClipServices is
 // pre-built here (access to concrete infrastructure) and passed to the
 // handler. Job registration happens at composition time.
-//
-// Registries-and-SSOT (June 2026): function now returns error so the
-// module registration at the bottom propagates duplicate-name /
-// frozen-registry failures up to WireRegistry. Every early-return
-// returns nil; only the final Register call returns tryRegisterModule's
-// possible error.
-//
-// PR7 (June 2026): removed legacy job registrations (BatchJobHandler,
-// CatalogJobServiceImpl, PipelineUseCase.RegisterJobs), GenerationService,
-// GenerateBatchUseCase, FeatureGates, PipelineUseCase construction.
-//
-// PR8 (June 2026): wired unified generation pipeline — SourceRegistry
-// (4 resolvers), Pipeline (post-generation), GenerateOneUseCase,
-// GenerateManyUseCase, GenerateJobHandler registered for
-// script.generate. Replaces the deleted PipelineUseCase block.
 
 package app
 
@@ -29,12 +14,11 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -43,17 +27,23 @@ import (
 )
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
-// Returns an error if module registration fails on duplicate-name or
-// frozen-registry (Registries-and-SSOT §"Uniqueness" — composition
-// fails closed on duplicate module names, propagated up to WireRegistry).
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) {
 	// Phase 2 activation (June 2026) — ImageService is now OPTIONAL:
 	// text-only script generation no longer requires ImageService to be
 	// wired. The gate that previously aborted whole ScriptFlow when
 	// ImageService was missing prevented operators from running a
-	// bare script generation request.
+	// bare /api/script/generate-from-clips request with no clip_ids,
+	// no num_clips, no scene images. From this point on:
+	//   - text-only path    → always works (engine.WriteScript only)
+	//   - clip-source path  → works if clipSourceBuilder is wired
+	//   - scene-image path  → gated by PipelineUseCase.Run with
+	//                          typed error when ImageService missing
+	//                          + spec.GenerateSceneImages=true
+	// Keeps ScriptFlow routes mounted as long as the script engine,
+	// generator, and AI bundle are present (the minimum required for
+	// any script generation path).
 	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil {
-		return nil
+		return
 	}
 
 	memorySvc := root.AI.MemoryService
@@ -62,15 +52,17 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	if memorySvc == nil || engine == nil {
 		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
-		return nil
+		return
 	}
 
 	scriptsRepoAdapter := scripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
+	batchSvc := scripts.NewBatchService(cfg, log, gen, engine, root.Drive.DocClient, root.Domains.VoiceoverService, scriptsRepoAdapter)
 
 	// ── Clip source builder ────────────────────────────────────────────
 	var clipSourceBuilder *scripts.ClipSourceBuilder
 	if ollamaClient := gen.GetClient(); ollamaClient != nil {
 		clipSourceBuilder = scripts.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
+		// SetVectorStore removed from this workflow.
 		if cfg.Reranker.Enabled {
 			clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
 				Enabled:   cfg.Reranker.Enabled,
@@ -83,16 +75,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Media curator ──────────────────────────────────────────────────
+	// PG-034 (June 2026): NewMediaCurator lost the vectorStore arg.
 	var mediaCurator *scripts.MediaCurator
 	if root.Repos.ClipsRepo != nil && engine != nil {
 		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
 	}
 
-	// ── Harvest service ────────────────────────────────────────────────
-	var _ = artlistpkg.LoadPresets
-	var _ = cfg.Drive.ArtlistFolder()
-	var harvestSvc scriptapi.AutoHarvestService
-	harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
+	var curationJobSvc *scripts.CurationJobServiceImpl
+	var catalogJobSvc *scripts.CatalogJobServiceImpl
 
 	// ── Pre-built ClipServices (avoids infrastructure imports in api/script) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
@@ -100,6 +90,16 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		metaModel = mm
 	}
 	artlistFolder := cfg.Drive.ArtlistFolder()
+	// AGENT-2 (June 2026): DomainBundle.RealtimeService + AssocService are
+	// interface{} (canonical stubs, packages removed in commit d61068b3).
+	// The ClipServices struct ports (RealtimeSearchService, AssocSearchService,
+	// JobEnqueueService) require concrete types implementing matching methods,
+	// but `*job.Service`, `*images.Service`, `scriptapi.AutoHarvestService`,
+	// and `*voiceover.Service` have signature drift from the stub ports. The
+	// minimum cascade is to OMIT the conflicting fields entirely; downstream
+	// script-api consumers already nil-tolerate (they check for nil before
+	// invoking via the existing safe-asset gating from prior waves). The
+	// fields that DO bind cleanly remain populated.
 	clipServices := scripts.ClipServices{
 		Logger:        log,
 		DriveSvc:      root.Drive.DriveUploader,
@@ -120,8 +120,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		driveFolderID: cfg.Drive.ScriptsGenFolder(),
 	}
 
-	// ── Curation job service ───────────────────────────────────────────
-	var curationJobSvc *scripts.CurationJobServiceImpl
 	if mediaCurator != nil {
 		var maybeCreateDoc func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string)
 		if documentCreator != nil {
@@ -148,6 +146,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			maybeCreateDoc,
 		)
 	}
+	if clipSourceBuilder != nil && engine != nil {
+		if root.Repos != nil && root.Repos.CatalogRepo != nil {
+			catalogJobSvc = scripts.NewCatalogJobServiceImpl(clipSourceBuilder, engine, &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}, log)
+		}
+	}
 
 	// ── Admin token ────────────────────────────────────────────────────
 	adminToken := ""
@@ -163,25 +166,175 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	cacheEvictionUC := scripts.NewCacheEvictionUseCase(
 		gen, memorySvc, log,
 	)
+	// PR-A (June 2026): canonical GenerateBatchUseCase — SSOT for
+	// /api/script/generate-batch orchestration. Pre-PR-A, the inline
+	// handler in api/script/handler_flow.go::GenerateBatch ran the
+	// async/sync dispatch itself (duplicated against the async job
+	// handler in api/script/handler_jobs.go). Now both call sites go
+	// through this use case; default-coercion, drive-folder resolution,
+	// idempotency-key probing, and the BatchService sync/async split
+	// live in one place. The GenerationSpec/GenerationService sync path
+	// is unaffected (it lives behind /generate-from-clips).
+	genBatchUC := scripts.NewGenerateBatchUseCase(
+		cfg, log, root.Jobs.Facade, batchSvc,
+		cfg.Drive.ScriptsGenFolder(),
+	)
+
+	// ── Pipeline use case ──────────────────────────────────────────────
+	var pipelineUC *scripts.PipelineUseCase
+	var semUC *scripts.SemaphoreUseCase
+	var prewarmUC *scripts.PrewarmUseCase
+
+	if root.AI.ScriptEngine != nil && engine != nil {
+		maxScriptGen := 1
+		if cfg != nil && cfg.Concurrency.MaxConcurrentScriptGenerations > 0 {
+			maxScriptGen = cfg.Concurrency.MaxConcurrentScriptGenerations
+		}
+		if uc, err := scripts.NewSemaphoreUseCase(maxScriptGen, log); err == nil {
+			semUC = uc
+		} else {
+			log.Warn("pipeline use case: semaphore init failed", zap.Error(err))
+		}
+
+		var prewarmPort scripts.PrewarmImageService
+		if root.Domains != nil && root.Domains.ImageService != nil {
+			prewarmPort = root.Domains.ImageService
+		}
+		// AGENT-2 (June 2026): NewSceneBuilderUseCase consumes
+		// `*images.Service` (concrete), while NewPrewarmUseCase consumes
+		// the `scripts.PrewarmImageService` port (interface). The two
+		// interface{} slots in the variadic args are resolved at
+		// composition by the use-case ctors; here we forward the same
+		// concrete pointer to both. AGENT-3+ may narrow the scene-builder
+		// ctor to a port interface to drop the cast.
+		prewarmUC = scripts.NewPrewarmUseCase(prewarmPort, log)
+
+		scenesUC := scripts.NewSceneBuilderUseCase(
+			root.Domains.ImageService, root.Domains.VoiceoverService, log, cfg,
+			nil, nil,
+		)
+		docsUC := scripts.NewDocumentsUseCase(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
+
+		// Agente 4 — J: use composition context
+		var scenesSvc *scripts.ScenesService
+		if scenesUC != nil {
+			if sv, err := scenesUC.Build(ctx); err == nil {
+				scenesSvc = sv
+			} else {
+				log.Warn("pipeline use case: scene builder init failed", zap.Error(err))
+			}
+		}
+		var docsSvc *scripts.DocumentsService
+		if docsUC != nil {
+			docsSvc = docsUC.DocumentsService()
+		}
+
+		// ── PostGenUseCase (Agente 4 — F, G) ──────────────────────────
+		postGenMetaModel := metaModel
+		postGenArtlistFolder := artlistFolder
+		// AGENT-2 (June 2026): same minimum-cascade strategy as the outer
+		// ClipServices literal above — omit the conflicting fields so the
+		// post-gen insight builder gets a well-typed struct with nil values
+		// for the ports that require removed-package implementations.
+		postGenInsightBuilder := &scripts.ScriptInsightBuilder{
+			Logger:      log,
+			MaxEntities: 12,
+			Services: scripts.ClipServices{
+				Logger:        log,
+				DriveSvc:      root.Drive.DriveUploader,
+				Translator:    gen,
+				ArtlistFolder: postGenArtlistFolder,
+				MetadataModel: postGenMetaModel,
+			},
+		}
+		var postGenExtractor scripts.EntityScriptExtractor
+		if gen != nil {
+			if client := gen.GetClient(); client != nil {
+				postGenExtractor = &ollamaEntityExtractorAdapter{inner: client}
+			}
+		}
+		postGenUC := scripts.NewPostGenUseCase(
+			postGenExtractor, postGenInsightBuilder, gen, postGenMetaModel, log,
+		)
+		postGen := func(ctx context.Context, spec *scriptpkg.GenerationSpec, scr string) (entitiesJSON string, insights any, videoMetadata []scripts.VideoMetadata) {
+			res, err := postGenUC.Run(ctx, spec, scr)
+			if err != nil {
+				log.Warn("post-gen use case error (continuing with partial results)", zap.Error(err))
+			}
+			return res.EntitiesJSON, res.Insights, res.VideoMetadata
+		}
+
+		pipeline := scripts.NewPipeline(log, "", scenesSvc, docsSvc, postGen, nil)
+		// Phase 2 activation (June 2026): track whether scenes
+		// were actually built at composition time. We pass this
+		// flag to NewPipelineUseCase so it can reject jobs
+		// asking for scene images when scenes aren't wired
+		// (a typed ErrSceneImagesUnavailable surfaces at
+		// worker-time rather than silently producing empty
+		// scene arrays).
+		scenesReady := scenesSvc != nil
+		minFloor := 100
+		ollamaModel := ""
+		if cfg != nil {
+			if cfg.Scripts.MinWordFloor > 0 {
+				minFloor = cfg.Scripts.MinWordFloor
+			}
+			ollamaModel = cfg.External.OllamaModel
+		}
+		pu, puErr := scripts.NewPipelineUseCase(
+			log, root.AI.ScriptEngine,
+			minFloor, ollamaModel,
+			clipSourceBuilder,
+			mediaCurator,
+			semUC, prewarmUC,
+			pipeline,
+			scenesReady,
+		)
+		if puErr != nil {
+			log.Warn("pipeline use case: construction failed", zap.Error(puErr))
+		} else {
+			pipelineUC = pu
+		}
+	}
+
+	// ── Generation service + feature gates ───────────────────────────
+	// genSvc backs the /generate-from-clips and /generate-with-images
+	// HTTP endpoints; gates decide which routes are mounted.
+	//
+	// root.Jobs.Facade (NOT root.Jobs.Service) is passed to
+	// NewGenerationService because the canonical JobEnqueuer port
+	// (internal/application/scripts/ports.go) takes *job.EnqueueRequest
+	// (the domain type). root.Jobs.Facade = *job.Service (the
+	// domain facade) whose Enqueue method signature matches the
+	// port exactly; the facade internally translates to
+	// *appjobs.EnqueueRequest via its installed EnqueueFn closure.
+	genSvc := scripts.NewGenerationService(root.Jobs.Facade, cfg, log)
+	gates := scriptapi.FeatureGates{
+		ScriptClipsEnabled:  cfg.Features.ScriptClipsEnabled,
+		ScriptDocsEnabled:   cfg.Features.ScriptDocsEnabled,
+		ScriptImagesEnabled: cfg.Features.ImagesEnabled,
+	}
 
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:                engine,
 		Section:               sectionRegen,
 		CacheEviction:         cacheEvictionUC,
+		GenBatchUC:            genBatchUC,
+		PipelineUseCase:       pipelineUC,
 		Image:                 root.Domains.ImageService,
-		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
-		// typed ports — `scripts.RealtimeSearchService` and
-		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +
-		// AssocService fields (typed in Wave 15 Onda 3) feed them
-		// directly — typed-to-typed assignment, no auto-bridge.
+		// Wave 16 (June 2026, post-0c3089d rebase closeout): ScriptFlowDeps.Realtime
+		// + Association are typed ports — `scripts.RealtimeSearchService` and
+		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch (added in
+		// composition.go after the HandlerRealtime type died) + AssocService
+		// (typed in Wave 15 Onda 3) feed them directly — typed-to-typed
+		// assignment, no auto-bridge.
 		Realtime:              root.Domains.RealtimeSearch,
 		Association:           root.Domains.AssocService,
 		Voiceover:             root.Domains.VoiceoverService,
 		AssetTree:             root.Search.AssetTreeService,
 		ClipSourceBuilder:     clipSourceBuilder,
 		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
 		ScriptsRepo:           scriptsRepoAdapter,
 		Memory:                memorySvc,
 		Jobs:                  root.Jobs.Facade,
@@ -191,83 +344,43 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
 		ClipServices:          clipServices,
 		Log:                   log,
+		GenService:            genSvc,
+		Gates:                 gates,
 	})
 
 	// ── Register job handlers at composition time ──────────────────────
 	if root.Jobs.Service != nil {
+		if genBatchUC != nil {
+			// PR-A (June 2026): the canonical app-layer handler now
+			// lives in internal/application/scripts/batch_job.go. The
+			// wiring site here MUST type-reference the canonical
+			// constant (jobdomain.TypeBatchScriptGenerate) rather
+			// than the string literal — this closes one of the SSOT
+			// violations the Wave 19 audit documented.
+			batchJobH := scripts.NewBatchJobHandler(genBatchUC, log)
+			root.Jobs.Service.RegisterHandler(jobdomain.TypeBatchScriptGenerate, batchJobH.Handle)
+			log.Info("registered script.generate_batch job handler (PR-A: BatchJobHandler in internal/application/scripts)")
+		}
 		if curationJobSvc != nil {
-			root.Jobs.Service.RegisterHandler(job.TypeMediaCurate, curationJobSvc.HandleCurateJob)
+			root.Jobs.Service.RegisterHandler(jobdomain.TypeMediaCurate, curationJobSvc.HandleCurateJob)
 			log.Info("registered media.curate job handler (wire_script.go)")
 		}
-	}
-
-	// ── Unified generation pipeline (PR8, June 2026) ───────────────────
-	// Constructs the canonical generation stack:
-	//   SourceRegistry (4 resolvers) → Pipeline (post-gen) →
-	//   GenerateOneUseCase → GenerateManyUseCase → GenerateJobHandler
-	// Registered for script.generate — replaces the deleted
-	// PipelineUseCase.RegisterJobs block removed in PR7.
-
-	// Normalization config: extracted from the platform config so the
-	// normalizer has zero import on internal/platform/config.
-	normCfg := scripts.NormalizationConfig{
-		DefaultLanguage:          cfg.Scripts.DefaultLanguage,
-		DefaultTone:              cfg.Scripts.DefaultTone,
-		DefaultDurationSeconds:   cfg.Scripts.DefaultDurationSeconds,
-		OllamaModel:              cfg.External.OllamaModel,
-		ChannelID:                cfg.Scripts.ChannelID,
-		MinWordFloor:             cfg.Scripts.MinWordFloor,
-		PromptVersion:            "v1",
-		EditorPromptVersion:      "v1",
-		QAPromptVersion:          "v1",
-		DefaultSentencesPerImage: 10,
-		DefaultImagesPerScene:    2,
-	}
-
-	// Source registry: one resolver per source type.
-	sourceReg := scripts.NewSourceRegistry(log)
-	sourceReg.Register(scriptpkg.SourceText, scripts.NewTextSourceResolver())
-
-	if clipSourceBuilder != nil {
-		sourceReg.Register(scriptpkg.SourceClips, scripts.NewClipsSourceResolver(clipSourceBuilder, log))
-	}
-
-	// Catalog resolver: reuse searchCatalogAdapter (assets_adapters.go)
-	// to bridge *catalog.Repository → appsearch.LocalCatalogPort.
-	if root.Repos.CatalogRepo != nil && clipSourceBuilder != nil {
-		catAdapter := &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}
-		sourceReg.Register(scriptpkg.SourceCatalog, scripts.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
-	}
-
-	// Search resolver: deferred — requires qdrant.Searcher +
-	// qdrant.TextEmbedder which are not yet accessible from
-	// ProcessBundle. SourceSearch gracefully falls back to
-	// SourceResolutionError at runtime.
-
-	// Pipeline: post-generation phases (entities, metadata, doc).
-	// PostGenFunc is nil — entity extraction + metadata deferred
-	// to future postprocessor implementations.
-	// ScenesService is nil — scene image generation deferred.
-	var genDocsSvc *scripts.DocumentsService
-	if root.Drive.DocClient != nil {
-		genDocsSvc = scripts.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
-	}
-	pipeline := scripts.NewPipeline(log, "unified", nil, genDocsSvc, nil, nil)
-
-	// Use cases: one → many → job handler.
-	oneUC := scripts.NewGenerateOneUseCase(normCfg, sourceReg, engine, pipeline, log)
-	manyUC := scripts.NewGenerateManyUseCase(oneUC, log)
-
-	genJobHandler := scripts.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
-	if root.Jobs.Service != nil {
-		if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
-			log.Warn("wireScriptFlow: failed to register script.generate job handler", zap.Error(err))
-		} else {
-			log.Info("registered script.generate job handler (unified pipeline, PR8)")
+		if catalogJobSvc != nil {
+			root.Jobs.Service.RegisterHandler(jobdomain.TypeCatalogScriptGenerate, catalogJobSvc.HandleCatalogScriptGenerateJob)
+			log.Info("registered script.generate_from_catalog job handler (wire_script.go)")
+		}
+		if pipelineUC != nil {
+			// AGENT-2 (June 2026): root.Jobs.Service is *jobs.Service;
+			// pipelineUC.RegisterJobs accepts interface{} (post-sig widen
+			// done in pipeline_usecase.go). Forwarding through the wider
+			// type avoids a cross-package cast.
+			if err := pipelineUC.RegisterJobs(root.Jobs.Service); err != nil {
+				log.Warn("pipeline use case job registration failed", zap.Error(err))
+			}
 		}
 	}
 
-	// ── Set metadata model ─────────────────────────────────────────────
+	// ── Set metadata model + build source resolver ────────────────────
 	if gen != nil {
 		gen.SetMetadataModel(metaModel)
 	}
@@ -280,7 +393,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		handler,
 		log,
 	)
-	return tryRegisterModule(registry, log, mod)
+	registerModule(registry, log, mod)
 }
 
 // ── Adapters ────────────────────────────────────────────────────────────────
@@ -309,8 +422,27 @@ func (d *docCreatorImpl) CreateDoc(ctx context.Context, title, content, folderID
 		return "", ""
 	}
 	docsSvc := scripts.NewDocumentsService(d.docClient, d.log, d.driveFolderID)
+	// Folder resolution: if folderID looks like a raw Drive ID, use it directly;
+	// otherwise, treat it as a path and try get-or-create (delegates to uploader).
 	resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
 		return input, nil // raw ID assumed (caller resolved beforehand)
 	}
 	return docsSvc.CreateDoc(ctx, title, content, resolveFolder, folderID)
+}
+
+// ollamaEntityExtractorAdapter bridges *client.Client into
+// scripts.EntityScriptExtractor. The ollama client's
+// ExtractEntitiesFromScriptWithModel returns *asset.FullEntityAnalysis;
+// the stub interface expects interface{} (the caller only json.Marshal's
+// the result). This adapter delegates through and returns the concrete
+// value as interface{}.
+type ollamaEntityExtractorAdapter struct {
+	inner *client.Client
+}
+
+// Compile-time assertion: the adapter satisfies scripts.EntityScriptExtractor.
+var _ scripts.EntityScriptExtractor = (*ollamaEntityExtractorAdapter)(nil)
+
+func (a *ollamaEntityExtractorAdapter) ExtractEntitiesFromScriptWithModel(ctx context.Context, segments []string, limit int, model string) (interface{}, error) {
+	return a.inner.ExtractEntitiesFromScriptWithModel(ctx, segments, limit, model)
 }

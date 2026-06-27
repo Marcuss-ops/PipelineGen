@@ -60,11 +60,8 @@ async def embed(req: EmbedRequest):
             embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
             return {
                 "embedding": embedding,
-                "dimensions": len(embedding),
                 "normalized_text": normalized,
                 "type": req.type,
-                "model": TEXT_MODEL_NAME,
-                "model_version": TEXT_MODEL_VERSION,
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

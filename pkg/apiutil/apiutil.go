@@ -6,8 +6,8 @@
 // consume it without dragging in transitive weight.
 //
 // Three redundant copies of these helpers used to live in internal/api/
-// (internal/api/helpers.go and the now-deleted internal/api/sources/*/helpers.go
-// duplicates). This package is the single source of truth.
+// (internal/api/helpers.go, internal/api/sources/internal/helpers.go,
+// internal/api/sources/helpers.go). This package is the single source of truth.
 package apiutil
 
 import (

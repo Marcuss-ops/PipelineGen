@@ -30,12 +30,7 @@ async def embed_audio(req: EmbedRequest):
     async with _inference_sem:
         try:
             embedding = clap_model.encode(req.text).tolist()
-            return {
-                "embedding": embedding,
-                "dimensions": len(embedding),
-                "model": CLAP_MODEL_NAME,
-                "model_version": CLAP_MODEL_VERSION,
-            }
+            return {"embedding": embedding, "dimensions": len(embedding)}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -52,12 +47,7 @@ async def embed_audio_from_file(req: AudioFileEmbedRequest):
     async with _inference_sem:
         try:
             embedding = clap_model.encode(req.audio_path).tolist()
-            return {
-                "embedding": embedding,
-                "dimensions": len(embedding),
-                "model": CLAP_MODEL_NAME,
-                "model_version": CLAP_MODEL_VERSION,
-            }
+            return {"embedding": embedding, "dimensions": len(embedding)}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

@@ -16,8 +16,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/application/images/fullimages"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // FullImagesHandler exposes the FullImages endpoint under /images/video/generate.
@@ -62,7 +62,7 @@ type GenerateFullImagesResponse struct {
 func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 	var req GenerateFullImagesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 	result, err := h.service.GenerateForSections(c.Request.Context(), req.Sections, req.Topic, req.Language)
 	if err != nil {
 		zap.L().Error("fullimages: generation failed", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
@@ -97,7 +97,7 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 		zap.Int("total", len(result.Videos)),
 	)
 
-	apiutil.OK(c, GenerateFullImagesResponse{
+	api.OK(c, GenerateFullImagesResponse{
 		OK:     true,
 		Videos: result.Videos,
 	})

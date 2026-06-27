@@ -75,8 +75,9 @@ import (
 //   - Cleanup: REMOVED in PG-020 (June 2026). All teardown now goes
 //     through Lifecycle.Stop. Callers that previously referenced
 //     deps.Cleanup() now call deps.Lifecycle.Stop(ctx).
-type AppDeps struct {	Registry             *module.Registry
-	WorkerHandler        interface{ RegisterRoutes(*gin.RouterGroup) }
+type AppDeps struct {
+	Registry      *module.Registry
+	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 	// InternalMediaHandler is the QDRANT-001 server-to-server surface
 	// for /internal/v1/media/* (currently just /sync-drive-folder).
 	// Same shape as WorkerHandler — narrow interface, no infra imports

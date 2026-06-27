@@ -155,7 +155,7 @@ func TestSearch_ANN_ModeCallsSearchNotHybrid(t *testing.T) {
 	}
 	vec := &fakeVector{
 		storeFn: func() search.VectorStorePort { return store },
-		vc:      search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"},
+		vc:      search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"},
 	}
 	read := &fakeRead{rows: map[string]MediaAsset{"a1": {ID: "a1", Name: "A1", Source: "stock"}}}
 	svc := NewService(vec, read, &fakeDeliver{}, Config{}, nil)
@@ -188,7 +188,7 @@ func TestSearch_Hybrid_DefaultMode(t *testing.T) {
 	}
 	vec := &fakeVector{
 		storeFn: func() search.VectorStorePort { return store },
-		vc:      search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"},
+		vc:      search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"},
 	}
 	read := &fakeRead{rows: map[string]MediaAsset{
 		"h1": {ID: "h1", Name: "Hybrid Hit", Source: "youtube"},
@@ -222,7 +222,7 @@ func TestSearch_HybridDoesNotSendTranscriptVector(t *testing.T) {
 			return []search.VectorSearchResult{{AssetID: "h", Score: 0.9}}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{"h": {ID: "h"}}}
 	svc := NewService(vec, read, &fakeDeliver{}, Config{}, nil)
 	if _, err := svc.Search(context.Background(), MediaSearchRequest{
@@ -252,7 +252,7 @@ func TestSearch_HonoursMinScore(t *testing.T) {
 	}
 	vec := &fakeVector{
 		storeFn: func() search.VectorStorePort { return store },
-		vc:      search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"},
+		vc:      search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"},
 	}
 	read := &fakeRead{rows: map[string]MediaAsset{
 		"ok": {ID: "ok", Name: "OK"},
@@ -281,7 +281,7 @@ func TestSearch_MinScoreFloorFromConfig(t *testing.T) {
 			return nil, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	svc := NewService(vec, &fakeRead{}, &fakeDeliver{}, Config{MinScoreFloor: 0.55}, nil)
 	_, err := svc.Search(context.Background(), MediaSearchRequest{
 		Query:     "test",
@@ -307,7 +307,7 @@ func TestSearch_TrimsToLimit(t *testing.T) {
 			return out, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	rows := map[string]MediaAsset{}
 	for i := 0; i < 20; i++ {
 		rows[fmt.Sprintf("a%d", i)] = MediaAsset{ID: fmt.Sprintf("a%d", i), Name: fmt.Sprintf("A%d", i)}
@@ -336,7 +336,7 @@ func TestSearch_DefaultLimitApplied(t *testing.T) {
 			return nil, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	svc := NewService(vec, &fakeRead{}, &fakeDeliver{}, Config{}, nil)
 	_, err := svc.Search(context.Background(), MediaSearchRequest{
 		Query:     "test",
@@ -359,7 +359,7 @@ func TestSearch_MaxLimitFromConfig(t *testing.T) {
 			return nil, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	svc := NewService(vec, &fakeRead{}, &fakeDeliver{}, Config{MaxLimit: 50}, nil)
 	_, _ = svc.Search(context.Background(), MediaSearchRequest{
 		Query:     "test",
@@ -379,7 +379,7 @@ func TestSearch_DropsUnhydratedHit(t *testing.T) {
 			}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{
 		"ok": {ID: "ok", Name: "OK"},
 	}}
@@ -404,7 +404,7 @@ func TestSearch_AlwaysInvokesDelivery(t *testing.T) {
 			return []search.VectorSearchResult{{AssetID: "sigme", Score: 0.9}}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{
 		"sigme": {ID: "sigme", Name: "S"},
 	}}
@@ -430,7 +430,7 @@ func TestSearch_DeliveryErrorDoesNotFailSearch(t *testing.T) {
 			return []search.VectorSearchResult{{AssetID: "fail", Score: 0.9}}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{"fail": {ID: "fail", Name: "F"}}}
 	deliver := &fakeDeliver{err: errors.New("signing failed")}
 	svc := NewService(vec, read, deliver, Config{}, &captureLogger{})
@@ -460,7 +460,7 @@ func TestSearch_DropBelowDurationMsMin(t *testing.T) {
 			}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{
 		"short": {ID: "short", DurationMs: 4000},
 		"long":  {ID: "long", DurationMs: 60_000},
@@ -488,7 +488,7 @@ func TestSearch_DurationMsMinZeroIsNoOp(t *testing.T) {
 			}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{
 		"short": {ID: "short", DurationMs: 4000},
 		"long":  {ID: "long", DurationMs: 60_000},
@@ -515,7 +515,7 @@ func TestSearch_DurationMsUnknownIsKept(t *testing.T) {
 			return []search.VectorSearchResult{{AssetID: "x", Score: 0.9}}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{"x": {ID: "x", DurationMs: 0}}}
 	svc := NewService(vec, read, &fakeDeliver{}, Config{}, nil)
 	resp, err := svc.Search(context.Background(), MediaSearchRequest{
@@ -543,7 +543,7 @@ func TestSearch_TagFilterAND(t *testing.T) {
 			}, nil
 		},
 	}
-	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript", SparseVectorName: "bm25_text"}}, store)
+	vec := storeFn(&fakeVector{vc: search.VectorConfig{TextVectorName: "text", TranscriptVectorName: "transcript"}}, store)
 	read := &fakeRead{rows: map[string]MediaAsset{
 		"a": {ID: "a"},
 		"b": {ID: "b"},
@@ -572,122 +572,4 @@ type vectorBuilder = fakeVector
 func storeFn(v *fakeVector, s search.VectorStorePort) *fakeVector {
 	v.storeFn = func() search.VectorStorePort { return s }
 	return v
-}
-
-// ── QDRANT-004 PR1: hybrid fail-closed contract ───────────────────────
-//
-// PR1 (June 2026): mode=hybrid must produce real dense+sparse retrieval
-// OR return ErrHybridRequiresSparse. The orchestrator cannot silently
-// degrade to ANN. These tests pin the contract at the service boundary.
-
-// TestSearch_HybridPassesSparseVectorToStore pin that the orchestrator
-// computes BM25 client-side and propagates the SparseVector &
-// SparseVectorName through the HybridSearchRequest. Without this
-// assertion a regression that drops SparseVector on the wire would
-// fail through qdrant.Searcher.HybridSearch (defence-in-depth) but go
-// undetected in service-level tests.
-func TestSearch_HybridPassesSparseVectorToStore(t *testing.T) {
-	var captured search.HybridSearchRequest
-	store := &fakeStore{
-		hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
-			captured = req
-			return []search.VectorSearchResult{{AssetID: "ok", Score: 0.92, SearchText: "alpha test"}}, nil
-		},
-	}
-	vec := storeFn(&fakeVector{
-		vc: search.VectorConfig{
-			TextVectorName:   "text",
-			SparseVectorName: "bm25_text",
-		},
-	}, store)
-	read := &fakeRead{rows: map[string]MediaAsset{"ok": {ID: "ok", Name: "OK"}}}
-	svc := NewService(vec, read, &fakeDeliver{}, Config{}, nil)
-
-	resp, err := svc.Search(context.Background(), MediaSearchRequest{
-		Query:     "alpha test",
-		Mode:      SearchModeHybrid,
-		Workspace: WorkspaceContext{WorkspaceID: "w1"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Count != 1 {
-		t.Fatalf("Count = %d, want 1", resp.Count)
-	}
-	if captured.SparseVector == nil {
-		t.Fatal("SparseVector must be populated by orchestrator; got nil")
-	}
-	if captured.SparseVectorName != "bm25_text" {
-		t.Errorf("SparseVectorName = %q, want %q", captured.SparseVectorName, "bm25_text")
-	}
-	if len(captured.SparseVector.Indices) == 0 || len(captured.SparseVector.Values) == 0 {
-		t.Errorf("SparseVector must carry non-empty Indices/Values; got %+v", captured.SparseVector)
-	}
-}
-
-// TestSearch_HybridFailsClosedOnNoBM25Tokens encodes the fail-closed
-// rule: queries that BM25 cannot tokenize (all tokens <2 chars after
-// normalisation — e.g. "a", "??", "12 34") MUST return
-// ErrHybridRequiresSparse. They cannot be silently downgraded to ANN.
-func TestSearch_HybridFailsClosedOnNoBM25Tokens(t *testing.T) {
-	store := &fakeStore{}
-	vec := storeFn(&fakeVector{
-		vc: search.VectorConfig{
-			TextVectorName:   "text",
-			SparseVectorName: "bm25_text",
-		},
-	}, store)
-	svc := NewService(vec, &fakeRead{}, &fakeDeliver{}, Config{}, &captureLogger{})
-
-	_, err := svc.Search(context.Background(), MediaSearchRequest{
-		Query:     "a",
-		Mode:      SearchModeHybrid,
-		Workspace: WorkspaceContext{WorkspaceID: "w1"},
-	})
-	if err == nil {
-		t.Fatal("expected ErrHybridRequiresSparse for non-tokenizable query, got nil")
-	}
-	if !errors.Is(err, ErrHybridRequiresSparse) {
-		t.Errorf("error %v does not wrap ErrHybridRequiresSparse", err)
-	}
-}
-
-// TestSearch_HybridFailsClosedOnEmptySparseChannel asserts that a
-// VectorConfig WITHOUT a SparseVectorName cannot execute a hybrid
-// request — even when BM25 succeeds. The orchestrator must fall back
-// to canonicalSparseVectorName ("bm25_text") so this scenario stays
-// valid; this test pins the canonical fallback as part of the
-// service contract.
-func TestSearch_HybridFailsClosedOnEmptySparseChannel(t *testing.T) {
-	var captured search.HybridSearchRequest
-	store := &fakeStore{
-		hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
-			captured = req
-			return []search.VectorSearchResult{{AssetID: "ok", Score: 0.9}}, nil
-		},
-	}
-	vec := storeFn(&fakeVector{
-		// Note: SparseVectorName deliberately omitted — orchestrator MUST
-		// re-pin to canonicalSparseVectorName. If this regresses (empty
-		// SparseVectorName reaches the wire) qdrant.Searcher.HybridSearch
-		// would return ErrSparseRequired.
-		vc: search.VectorConfig{TextVectorName: "text"},
-	}, store)
-	read := &fakeRead{rows: map[string]MediaAsset{"ok": {ID: "ok", Name: "OK"}}}
-	svc := NewService(vec, read, &fakeDeliver{}, Config{}, nil)
-
-	_, err := svc.Search(context.Background(), MediaSearchRequest{
-		Query:     "meaningful query here",
-		Mode:      SearchModeHybrid,
-		Workspace: WorkspaceContext{WorkspaceID: "w1"},
-	})
-	if err != nil {
-		t.Fatalf("canonical fallback should kick in, got %v", err)
-	}
-	if captured.SparseVectorName != "bm25_text" {
-		t.Errorf("SparseVectorName = %q, want %q (canonical fallback)", captured.SparseVectorName, "bm25_text")
-	}
-	if captured.SparseVector == nil {
-		t.Error("SparseVector must be populated even when VectorConfig.SparseVectorName was empty (canonical fallback covers channel)")
-	}
 }

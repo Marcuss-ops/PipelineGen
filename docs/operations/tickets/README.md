@@ -72,3 +72,35 @@ Per essere considerato "implementabile" e quindi candidato come **executable act
 - Checklist operativa per singolo worker: `../worker-certification-checklist.md`
 - Definizione di Done globale: sezione 3 del runbook.
 - Regola finale di ammissione: sezione 6 del runbook + sezione 2 della checklist.
+
+---
+
+## Indice ticket Wave 19 PR4 + PR5 (Direction Hardening + db/sql shrinkage)
+
+> Indice sintetico dei 2 ticket definiti nel runbook
+> [`wave-19-pr4-pr5-tickets.md`](../wave-19-pr4-pr5-tickets.md).
+
+Derivati da `architecture/current.yaml::Wave 19::pr4_pr5_followups.items[*]`
+(`verified_zero: false` al commit corrente). Non sono P0 come la serie
+RW-PROD: W19-PR4-001 è P0 (fail-fail-closed gate maintenance), W19-PR5-001
+è P1 (audit monotono). La chiusura dei due ticket NON cambia lo status
+top-level di Wave 19 (già `done` + `verified_zero: true`); aggiorna solo
+i due `verified_zero` figli `pr4_pr5_followups.items[PR4|P5]`.
+
+| # | ID | Titolo | Dipendenze | Stato al commit corrente |
+|---|----|--------|------------|--------------------------|
+| 1 | W19-PR4-001 | Hard gate promotion: allowlist subtractSet per application→infrastructure + cross_capability_import | nessuna (PR2-1, PR2-3, PR5 hardening `1b2da8f1` già upstream) | `OPEN` |
+| 2 | W19-PR5-001 | database/sql inheritance shrinkage (Path B baseline-growth audit) | W19-PR4-001 `DONE` | `OPEN` |
+
+## Regole di transizione (Wave 19)
+
+- `OPEN → IN_PROGRESS` per W19-PR4-001 può partire subito (nessuna dipendenza).
+- `OPEN → IN_PROGRESS` per W19-PR5-001 solo dopo che W19-PR4-001 è `DONE`.
+- `READY_FOR_REVIEW → DONE` solo dopo merge + verifica post-deploy (counter
+  blocks dalla focused + ratchet mode archcheck + cross-link YAML aggiornato).
+
+## Note di correlazione
+
+- I due allowlist file `docs/migrations/{application-infrastructure,cross-capability}-imports-allowlist.txt` sono già `DONE` su `main` come parte del PR-track PR4. La promozione del gate li consuma.
+- Il ticket `FollowWave19PR3TypedPortLift` (Path A typed-port lift) è indipendente da W19-PR5-001; può procedere in parallelo dopo W19-PR4-001.
+- I due ticket NON chiudono Wave 19 (Wave 19 è già `done`). Chiudono solo i due `pr4_pr5_followups.items[*]` figli (`verified_zero: false → true`).
