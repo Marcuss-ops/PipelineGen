@@ -3,7 +3,7 @@
 // is stable and versioned: schema_version tracks forward-compatible
 // evolution; the decoder rejects unsupported versions.
 //
-//   ModelScriptOutputV1 { text, specscene }
+//	ModelScriptOutputV1 { text, specscene }
 //
 // Every generation endpoint produces this exact shape; no endpoint-
 // specific output arrays (clip_scenes, image_scenes, voiceover_scenes)
@@ -56,13 +56,20 @@ func (k SceneKind) Valid() bool {
 // for this contract; the decoder validates and rejects unknown
 // versions.
 //
-// JSON shape:
+// JSON shape (model-emitted):
 //
 //	{
 //	  "schema_version": 1,
 //	  "text": "Complete generated script...",
 //	  "specscene": { "version": 1, "scenes": [...] }
 //	}
+//
+// PR 3 (June 2026): WordCount / ModelUsed / CacheStatus are
+// engine-stamped provenance fields, NOT part of the model-emitted
+// JSON shape. The decoder ignores them on read; the engine sets them
+// in-place after decoding so that processors (which receive the
+// canonical typed MSOV1) can read WordCount / ModelUsed / CacheStatus
+// uniformly without extra wrapping.
 type ModelScriptOutputV1 struct {
 	// SchemaVersion is the version of this output contract.
 	// Currently always 1.
@@ -74,6 +81,22 @@ type ModelScriptOutputV1 struct {
 	// SpecScene is the structured scene breakdown. Always present;
 	// may contain zero scenes for pure prose generation.
 	SpecScene SpecSceneOutput `json:"specscene"`
+
+	// WordCount is the model's reported token count, stamped by
+	// the engine post-decode. The pre-PR-3 ProcessInput envelope
+	// carried this as a separate field; the PR 3 typed walk
+	// surfaces it on the model directly. omitempty so the
+	// model-emitted JSON shape is unaffected.
+	WordCount int `json:"word_count,omitempty"`
+
+	// ModelUsed is the engine's provenance stamp for which
+	// model produced this output ("llama3:8b", "qwen2.5:14b",
+	// ""). omitempty.
+	ModelUsed string `json:"model_used,omitempty"`
+
+	// CacheStatus is "exact_hit" (memory gate hit) or
+	// "generated". omitempty.
+	CacheStatus string `json:"cache_status,omitempty"`
 }
 
 // Validate checks structural invariants. Returns a ModelOutputError

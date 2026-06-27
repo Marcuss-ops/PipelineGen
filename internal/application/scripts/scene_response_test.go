@@ -46,4 +46,3 @@ func TestBuildNormalizedScenes_MergesTextImagesAndVideos(t *testing.T) {
 	_, hasImage := got[1]["image"]
 	require.False(t, hasImage)
 }
-

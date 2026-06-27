@@ -4,6 +4,23 @@ import (
 	"strings"
 )
 
+// SceneImage is the legacy processor-output image record consumed
+// by buildNormalizedScenes for the API response normalizer. The
+// canonical PR 3 typed walk writes image binding data directly
+// into model.SpecScene.Scenes[i].Bindings.Image, so SceneImage is
+// no longer the canonical processor shape — it lives here because
+// the response normalizer has its own slice shape (one per index).
+//
+// PR 3 (June 2026): the type moved here from pipeline_impl.go as
+// part of the postprocessor_registry simplification. If the
+// response normalizer is rewritten to walk SpecScene directly,
+// this type can be deleted.
+type SceneImage struct {
+	Index int    `json:"index"`
+	Text  string `json:"text"`
+	URL   string `json:"url"`
+}
+
 // buildNormalizedScenes merges clip scenes and generated scene images into a
 // single response payload. The result keeps only the fields that actually have
 // data:

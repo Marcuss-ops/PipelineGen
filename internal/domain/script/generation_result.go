@@ -80,14 +80,50 @@ type CacheResult struct {
 }
 
 // ArtifactResult holds all postprocessor outputs in one typed bundle.
+//
+// PR 3 (June 2026): EntitiesJSON replaced with typed Entities. The
+// pre-PR-3 EntitiesJSON TODO has been resolved — the canonical entity
+// shape now carries typed Person, Place, Concept slices, plus a Raw
+// field for backward read-compat with pre-PR-3 rows.
 type ArtifactResult struct {
 	// Document holds the Google Doc link + ID.
 	Document *DocumentArtifact `json:"document,omitempty"`
 	// Metadata holds YouTube-style metadata.
 	Metadata []VideoMetadata `json:"metadata,omitempty"`
-	// EntitiesJSON holds the raw entity extraction output.
-	// TODO(PR 7): replace with typed EntityResult.
-	EntitiesJSON string `json:"entities_json,omitempty"`
+	// Entities holds the typed entity extraction output. Replaces
+	// the pre-PR-3 EntitiesJSON string.
+	Entities *EntityResult `json:"entities,omitempty"`
+}
+
+// Entity is one item extracted by the entities processor.
+//
+// PR 3 (June 2026): typed shape replaces the pre-PR-3 free-form
+// string-array. Value is the canonical entity name; Score (when
+// present) is the confidence returned by the entity extractor.
+// Future PRs will tighten the entity struct (type label, span
+// offsets, etc.) once the entity extraction LLM emits typed slots.
+type Entity struct {
+	Value string  `json:"value"`
+	Score float32 `json:"score,omitempty"`
+}
+
+// EntityResult is the typed entity extraction output. Carries grouped
+// slots (Persons, Places, Concepts) plus a Raw field for backward
+// read-compat with pre-PR-3 untyped JSON dump rows.
+//
+// PR 3 (June 2026): introduced to replace the pre-PR-3 EntitiesJSON
+// string. The Persons/Places/Concepts slices are empty by default —
+// the entity extractor is responsible for parsing the postgen LLM
+// output into these slots. Empty slices still yield a valid
+// EntityResult (callers see a consistent shape across all generation
+// flows).
+type EntityResult struct {
+	Persons  []Entity `json:"persons,omitempty"`
+	Places   []Entity `json:"places,omitempty"`
+	Concepts []Entity `json:"concepts,omitempty"`
+	// Raw is the original postgen LLM JSON string, kept for backward
+	// read-compat with rows written before PR 3.
+	Raw string `json:"raw,omitempty"`
 }
 
 // DocumentArtifact holds the output of the document postprocessor.

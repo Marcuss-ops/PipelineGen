@@ -118,8 +118,7 @@ func (uc *GenerateOneUseCase) Execute(
 			plan.ClipEvidence = resolved.ClipEvidence
 		}
 		// PR 2: fingerprint goes to SourceFingerprint (cache-key
-		// input), not Prompt (model input). Editorial guidelines
-		// already came from item.Source.Guidelines via BuildPlan.
+		// input), not Prompt (model input).
 		if resolved.Fingerprint != "" {
 			plan.SourceFingerprint = resolved.Fingerprint
 		}
@@ -127,8 +126,6 @@ func (uc *GenerateOneUseCase) Execute(
 			plan.SourceKind = string(resolved.Type)
 		}
 	}
-	// PR 2: compute the canonical cache key once the plan is fully
-	// resolved — the engine feeds it to the memory gate.
 	plan.CacheKey = scriptpkg.BuildCacheKey(&plan)
 	timings.PlanBuildMs = time.Since(planStart).Milliseconds()
 
@@ -136,9 +133,6 @@ func (uc *GenerateOneUseCase) Execute(
 	tracker.PhaseGenerateStart()
 	engineStart := time.Now()
 
-	// Pass the resolved plan directly to the engine.
-	// The engine owns: memory gate check, ollama invocation,
-	// optional DB persistence. No WriteScriptRequest needed.
 	engineResult, engineErr := uc.engine.Generate(ctx, &plan)
 	if engineErr != nil {
 		return nil, &scriptpkg.GenerationError{
@@ -152,30 +146,20 @@ func (uc *GenerateOneUseCase) Execute(
 
 	// ── Phase 6: Postprocess ────────────────────────────────────────
 	timings.PostprocessMs = make(map[string]int64)
-	var postResult *PipelineResult
+	var postArtifact *PostProcessArtifact
 	if uc.ppReg != nil {
 		for _, pp := range plan.Postprocessors {
 			tracker.PhasePostprocess(pp)
 		}
 		ppStart := time.Now()
 		var ppErr error
-		// PR 5: build the typed ProcessInput envelope from the
-		// engine result. PersistenceProcessor consumes the typed
-		// fields (WordCount, SpecScene, ModelUsed, CacheStatus,
-		// SourceTrace); non-persistence processors consume
-		// input.Text. Plan.SaveToDB -> "persistence" in
-		// Postprocessors list (set by generation_plan_builder.go
-		// via buildPostprocessorList) is now the ONLY trigger for
-		// script-table writes.
-		procInput := ProcessInput{
-			Text:        engineResult.Output.Text,
-			WordCount:   engineResult.WordCount,
-			SpecScene:   engineResult.Output.SpecScene,
-			ModelUsed:   engineResult.Model,
-			CacheStatus: engineResult.CacheStatus,
-			SourceTrace: engineResult.ClipEvidence,
-		}
-		postResult, ppErr = uc.ppReg.Run(ctx, &plan, procInput)
+		// PR 3 (June 2026): pass the canonical typed
+		// *scriptpkg.ModelScriptOutputV1 directly to the
+		// registry. Processors walk model.SpecScene.Scenes by
+		// reference and write back into scene.Bindings.{Image,
+		// Voiceover}. PostProcessArtifact replaces the
+		// pre-PR-3 PostProcessResult / PipelineResult aggregate.
+		postArtifact, ppErr = uc.ppReg.Run(ctx, &plan, &engineResult.Output)
 		if ppErr != nil {
 			return nil, &scriptpkg.PostprocessError{
 				ItemID:    item.ID,
@@ -183,7 +167,6 @@ func (uc *GenerateOneUseCase) Execute(
 				Inner:     ppErr,
 			}
 		}
-		// Approximate per-postprocessor timing.
 		ppMs := time.Since(ppStart).Milliseconds()
 		for _, pp := range plan.Postprocessors {
 			timings.PostprocessMs[pp] = ppMs / int64(len(plan.Postprocessors))
@@ -191,7 +174,7 @@ func (uc *GenerateOneUseCase) Execute(
 	}
 
 	// ── Phase 7: Build result ───────────────────────────────────────
-	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
+	result := buildGenerationResult(item, plan, engineResult, postArtifact, timings)
 	timings.TotalMs = time.Since(startAll).Milliseconds()
 	result.Timings = timings
 
@@ -217,36 +200,52 @@ func (uc *GenerateOneUseCase) Execute(
 // ── Helpers ──────────────────────────────────────────────────────────
 
 // buildGenerationResult constructs a GenerationResult from the
-// engine and postprocessor outputs. PR 13: populates ONLY the
-// canonical nested fields (Output, Source, Cache, Artifacts).
-// The deprecated flat fields were removed in PR 13.
+// engine and postprocessor outputs.
+//
+// PR 3 (June 2026):
+//   - postArtifact *PostProcessArtifact replaces the pre-PR-3
+//     aggregate shape. The Document / Metadata / Entities / ScriptID
+//     flow directly into result.Artifacts.{Document, Metadata,
+//     Entities, ScriptID} (no flat field re-mapping).
+//   - The pre-PR-3 overwriting clip-binding loop is gone —
+//     processors (images, voiceover) write scene.Bindings.{Image,
+//     Voiceover} directly into the canonical typed model during
+//     ppReg.Run. The same struct is referenced through
+//     engineResult.Output.SpecScene.Scenes, so result.Output already
+//     carries the populated bindings.
+//   - The pre-PR-3 split-ProC-Result / VideoMetadata merge loops
+//     are gone — replaced by the canonical aggregate read.
 func buildGenerationResult(
 	item scriptpkg.GenerationItemV2,
 	plan scriptpkg.ResolvedGenerationPlan,
 	engineResult *EngineResult,
-	postResult *PipelineResult,
+	postArtifact *PostProcessArtifact,
 	timings scriptpkg.GenerationTimings,
 ) *scriptpkg.GenerationResult {
 	cacheHit := engineResult.CacheStatus == "exact_hit"
 
-	// PR 5: ScriptID is sourced from postResult.ScriptID (set by
-	// PersistenceProcessor), NOT from engineResult.ScriptID (which
-	// no longer exists post-PR 5). When the persistence processor
-	// is not in the plan's Postprocessors list, ScriptID is zero.
-	scriptIDFromPostprocess := int64(0)
-	if postResult != nil {
-		scriptIDFromPostprocess = postResult.ScriptID
+	// PR 3: ScriptID is sourced from postArtifact.ScriptID (set by
+	// PersistenceProcessor when its plan runs). When persistence is
+	// disabled, ScriptID is zero.
+	scriptIDFromArtifact := int64(0)
+	if postArtifact != nil {
+		scriptIDFromArtifact = postArtifact.ScriptID
 	}
 
 	result := &scriptpkg.GenerationResult{
 		ItemID:   item.ID,
-		ScriptID: scriptIDFromPostprocess,
+		ScriptID: scriptIDFromArtifact,
 		Title:    plan.Title,
 		Language: plan.Language,
 		Model:    engineResult.Model,
 		Output: scriptpkg.ScriptOutput{
 			Text:      engineResult.Output.Text,
 			WordCount: engineResult.WordCount,
+			// SpecScene shares the same backing array as
+			// engineResult.Output.SpecScene. The processors
+			// mutated scene.Bindings directly during ppReg.Run,
+			// so the populated bindings flow through here
+			// without a re-mapping walk.
 			SpecScene: engineResult.Output.SpecScene,
 		},
 		Cache: scriptpkg.CacheResult{
@@ -258,44 +257,29 @@ func buildGenerationResult(
 
 	// Populate Source trace.
 	var sourceTrace scriptpkg.SourceTrace
-
-	// PR 1: preserve the model-emitted SpecScene verbatim. Clip
-	// evidence may only ENRICH missing Clip bindings — never
-	// replaces existing model-authored text, IDs, or kind tags.
-	// If the model emitted no scenes (pure prose generation), we
-	// still carry the empty struct so consumers see a consistent
-	// SpecSceneOutput shape across all generation flows.
 	if engineResult.ClipEvidence != nil {
 		sourceTrace.AcceptedClipIDs = engineResult.ClipEvidence.ClipIDs
-
-		scenes := result.Output.SpecScene.Scenes
-		for i, id := range engineResult.ClipEvidence.ClipIDs {
-			if i >= len(scenes) {
-				break
-			}
-			sc := &scenes[i]
-			if sc.Bindings.Clip == nil {
-				sc.Bindings.Clip = &scriptpkg.ClipBinding{}
-			}
-			// Only fill empty fields — never overwrite.
-			if sc.Bindings.Clip.ClipID == "" {
-				sc.Bindings.Clip.ClipID = id
-			}
-			if sc.Bindings.Clip.DriveLink == "" && engineResult.ClipEvidence.DriveLinks != nil {
-				sc.Bindings.Clip.DriveLink = engineResult.ClipEvidence.DriveLinks[id]
-			}
-		}
 	}
+	// PR 3: the pre-PR-3 overwriting loop that enriched
+	// scene.Bindings.Clip.ClipID/DriveLink from
+	// engineResult.ClipEvidence is gone. Clip bindings are now
+	// model-emitted authors of the canonical V1 contract; if the
+	// model emits a Clip.binding, that binding is already on the
+	// scene at this point. DriveLink enrichment (where the model
+	// emitted ClipID but not DriveLink) is post-PR-7 work.
 
-	// Merge postprocessor results into canonical Artifacts.
-	if postResult != nil {
-		// Entities.
-		result.Artifacts.EntitiesJSON = postResult.EntitiesJSON
-
-		// Metadata.
-		if len(postResult.VideoMetadata) > 0 {
-			meta := make([]scriptpkg.VideoMetadata, len(postResult.VideoMetadata))
-			for i, m := range postResult.VideoMetadata {
+	// PR 3: copy typed post-processor artifacts into the
+	// canonical GenerationResult.Artifacts.
+	if postArtifact != nil {
+		if postArtifact.Document != nil {
+			result.Artifacts.Document = postArtifact.Document
+		}
+		if len(postArtifact.Metadata) > 0 {
+			// Convert applyapplication.VideoMetadata to
+			// domain/script.VideoMetadata (typed destination —
+			// same shape).
+			meta := make([]scriptpkg.VideoMetadata, len(postArtifact.Metadata))
+			for i, m := range postArtifact.Metadata {
 				meta[i] = scriptpkg.VideoMetadata{
 					Language:    m.Language,
 					Title:       m.Title,
@@ -305,43 +289,8 @@ func buildGenerationResult(
 			}
 			result.Artifacts.Metadata = meta
 		}
-
-		// Scene images — enrich SpecScene bindings.
-		if len(postResult.Scenes) > 0 {
-			for _, s := range postResult.Scenes {
-				if s.Index < len(result.Output.SpecScene.Scenes) {
-					sc := &result.Output.SpecScene.Scenes[s.Index]
-					if sc.Bindings.Image == nil {
-						sc.Bindings.Image = &scriptpkg.ImageBinding{}
-					}
-					sc.Bindings.Image.URL = s.URL
-					sc.Bindings.Image.Status = "generated"
-				}
-			}
-		}
-
-		// Voiceovers — enrich SpecScene bindings.
-		if len(postResult.Voiceovers) > 0 {
-			for _, v := range postResult.Voiceovers {
-				if v.SceneIndex < len(result.Output.SpecScene.Scenes) {
-					sc := &result.Output.SpecScene.Scenes[v.SceneIndex]
-					if sc.Bindings.Voiceover == nil {
-						sc.Bindings.Voiceover = &scriptpkg.VoiceoverBinding{}
-					}
-					sc.Bindings.Voiceover.Status = v.Status
-					sc.Bindings.Voiceover.Link = v.Link
-					sc.Bindings.Voiceover.LocalPath = v.LocalPath
-				}
-			}
-		}
-
-		// Document.
-		if postResult.DocLink != "" {
-			result.Artifacts.Document = &scriptpkg.DocumentArtifact{
-				DocLink: postResult.DocLink,
-				DocID:   postResult.DocID,
-				Status:  "completed",
-			}
+		if postArtifact.Entities != nil {
+			result.Artifacts.Entities = postArtifact.Entities
 		}
 	}
 
@@ -349,6 +298,3 @@ func buildGenerationResult(
 
 	return result
 }
-
-// legacySpecFromPlan moved to generation_helpers.go — shared by
-// processors (entities, metadata) and the use case.

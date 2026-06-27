@@ -2,6 +2,12 @@
 // the PostProcessorRegistry: freeze, duplicate rejection, nil
 // safety, skip disabled, fail when processor unavailable, and
 // per-processor error isolation.
+//
+// PR 3 (June 2026): the PostProcessor interface changed to a
+// 4-arg Process signature (ctx, plan, *ModelScriptOutputV1,
+// accumulator *PostProcessArtifact). The fake countingProcessor
+// follows the new signature, and Run() callers pass the typed
+// model instead of the pre-PR-3 ProcessInput envelope.
 package scripts_test
 
 import (
@@ -26,16 +32,38 @@ type countingProcessor struct {
 
 func (p *countingProcessor) Name() string { return p.name }
 
-// PR 5 (June 2026): signature now takes ProcessInput envelope.
-func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, _ scripts.ProcessInput) (*scripts.PostProcessResult, error) {
+// PR 3 (June 2026): 4-arg signature (ctx, plan, *ModelScriptOutputV1, accumulator).
+func (p *countingProcessor) Process(
+	_ context.Context,
+	_ *scriptpkg.ResolvedGenerationPlan,
+	_ *scriptpkg.ModelScriptOutputV1,
+	_ *scripts.PostProcessArtifact,
+) (*scripts.PostProcessArtifact, error) {
 	p.calls++
 	if p.err != nil {
 		return nil, p.err
 	}
 	if p.docID != "" {
-		return &scripts.PostProcessResult{DocID: p.docID, DocLink: "https://docs.example.com/" + p.docID}, nil
+		return &scripts.PostProcessArtifact{
+			Document: &scriptpkg.DocumentArtifact{
+				DocID:   p.docID,
+				DocLink: "https://docs.example.com/" + p.docID,
+			},
+		}, nil
 	}
-	return &scripts.PostProcessResult{}, nil
+	return &scripts.PostProcessArtifact{}, nil
+}
+
+// emptyModel returns a typed zero-valued canonical model that
+// satisfies Process's *ModelScriptOutputV1 argument. Tests do
+// NOT need a meaningful model — the countingProcessor doesn't
+// read it. Kept as a helper so calling code reads at one glance.
+func emptyModel() *scriptpkg.ModelScriptOutputV1 {
+	return &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          "Generated script text.",
+		SpecScene:     scriptpkg.SpecSceneOutput{Version: 1},
+	}
 }
 
 // ── Registration ───────────────────────────────────────────────────
@@ -88,7 +116,6 @@ func TestRegistry_Freeze(t *testing.T) {
 		t.Error("should be frozen after Freeze()")
 	}
 
-	// Registration after freeze should fail.
 	if r.Register(&countingProcessor{name: "metadata"}) {
 		t.Error("register after freeze should fail")
 	}
@@ -96,7 +123,6 @@ func TestRegistry_Freeze(t *testing.T) {
 		t.Errorf("len after freeze-register: %d", r.Len())
 	}
 
-	// Freeze is idempotent.
 	r.Freeze()
 	if !r.IsFrozen() {
 		t.Error("should still be frozen after second Freeze()")
@@ -105,7 +131,7 @@ func TestRegistry_Freeze(t *testing.T) {
 
 func TestRegistry_FreezeNil(t *testing.T) {
 	var r *scripts.PostProcessorRegistry
-	r.Freeze() // must not panic
+	r.Freeze()
 	if r.IsFrozen() {
 		t.Error("nil registry should not be frozen")
 	}
@@ -126,7 +152,7 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 		Postprocessors: []string{"document", "persistence"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "Generated script text."})
+	result, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -139,8 +165,8 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	if persist.calls != 1 {
 		t.Errorf("persistence calls: %d", persist.calls)
 	}
-	if result.DocID != "doc-1" {
-		t.Errorf("DocID: %s", result.DocID)
+	if result.Document == nil || result.Document.DocID != "doc-1" {
+		t.Errorf("Document artifact not aggregated: %+v", result.Document)
 	}
 }
 
@@ -153,10 +179,10 @@ func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"document"}, // persistence NOT requested
+		Postprocessors: []string{"document"},
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -180,7 +206,7 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 		Postprocessors: []string{"document", "persistence"},
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Fatalf("run should not fail on partial error: %v", err)
 	}
@@ -198,10 +224,10 @@ func TestRegistry_RunProcessorNotRegistered(t *testing.T) {
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"voiceover"}, // not registered
+		Postprocessors: []string{"voiceover"},
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Fatalf("run should not fail on missing processor: %v", err)
 	}
@@ -214,7 +240,7 @@ func TestRegistry_RunNilRegistry(t *testing.T) {
 		Postprocessors: []string{"document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Errorf("nil registry should return empty result: %v", err)
 	}
@@ -230,7 +256,7 @@ func TestRegistry_RunEmptyRegistry(t *testing.T) {
 		Postprocessors: []string{"document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Errorf("empty registry should return empty result: %v", err)
 	}
@@ -248,7 +274,7 @@ func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
 		Postprocessors: nil,
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Fatalf("empty postprocessors list should succeed: %v", err)
 	}
@@ -259,22 +285,19 @@ func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
 func TestRegistry_MergeAllFields(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 
-	// Create processors that each return a different field.
-	entitiesProc := &countingProcessor{name: "entities"}
-	docProc := &countingProcessor{name: "document", docID: "doc-merged"}
-	r.Register(entitiesProc)
-	r.Register(docProc)
+	df := &countingProcessor{name: "document", docID: "doc-merged"}
+	r.Register(df)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"entities", "document"},
+		Postprocessors: []string{"document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, emptyModel())
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if result.DocID != "doc-merged" {
-		t.Errorf("DocID not merged: %s", result.DocID)
+	if result.Document == nil || result.Document.DocID != "doc-merged" {
+		t.Errorf("DocID not merged: %+v", result.Document)
 	}
 }

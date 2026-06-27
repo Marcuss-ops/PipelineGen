@@ -11,6 +11,14 @@
 //
 // PR 13 (June 2026): migrated from engine.WriteScript to
 // GenerateOneUseCase.Execute — canonical unified pipeline.
+//
+// PR 3 (June 2026): the typed walk via PostProcessorRegistry is
+// the canonical generator path. Scenes are walked by the
+// processors (ImageProcessor, VoiceoverProcessor) directly inside
+// ppReg.Run; the curator no longer mediates scene ↔ asset pairing.
+// The pre-PR-3 overwriting clip-binding loop in the canonical
+// pipeline output is gone — clip bindings flow from the model's
+// V1 contract or are absent.
 package scripts
 
 import (
