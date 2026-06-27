@@ -39,7 +39,9 @@ type ClipsRegistry struct {
 // sites (internal/app/build_bundles_domain.go::BuildDomainBundle+buildIngestService
 // + internal/app/module_media.go::WireMediaIngest +
 // internal/app/module_sources.go::wireArtlistLifecycle +
-// internal/app/registry_helpers.go::initMediaProcessor).
+// internal/app/registry_helpers.go::initMediaProcessor). Rec == nil
+// returns a contract violation error at runtime (see UpsertMedia
+// method godoc for the runtime contract).
 func NewClipsRegistry(
 	db *sql.DB,
 	assets asset.Repository,
@@ -59,6 +61,23 @@ func NewClipsRegistry(
 }
 
 func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {
+	// PR 7 followups (June 2026, codex/qdrant-app-writers-fail-closed): nil
+	// contract guards applied in the order (1) dispatcher fail-closed then
+	// (2) nil-rec contract violation. Dispatcher-first matches the upstream
+	// BulkUploadWorker + ReprocessUseCase convention so a config-broken
+	// environment surfaces the actionable ErrDispatcherUnavailable signal
+	// before the per-call contract violation. Both checks fire before any
+	// asset-derivation so a nil rec cannot panic on rec.ID / rec.Source /
+	// rec.FileHash. Strict fail-closed at the lifecycle adapter's error
+	// propagation boundary.
+	//
+	// Rec == nil returns a contract violation error at runtime.
+	if r.dispatcher == nil {
+		return fmt.Errorf("clips registry dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+	}
+	if rec == nil {
+		return fmt.Errorf("UpsertMedia: MediaRecord is nil (contract violation)")
+	}
 	m := &asset.Asset{
 		ID:             rec.ID,
 		Source:         asset.Source(rec.Source),
@@ -88,14 +107,9 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
 	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
 	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
-	// INSERT in one tx) applies uniformly to artifacts-driven write paths.
-	//
-	// Strict fail-closed: a nil dispatcher returns mutations.ErrDispatcherUnavailable
-	// wrapped with context so the registry write fails loudly (operator-visible
-	// via the consumer's error propagation), not as a half-written asset row.
-	if r.dispatcher == nil {
-		return fmt.Errorf("clips registry dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
-	}
+	// INSERT in one tx) applies uniformly to artifacts-driven write paths. The
+	// strict fail-closed nil dispatcher check fires at the top of this function
+	// (before asset-derivation) so the dispatcher surface is reached first.
 	if err := r.dispatcher.EnqueueAndIndex(ctx, m, rec.FileHash); err != nil {
 		return fmt.Errorf("dispatcher enqueue: %w", err)
 	}

@@ -208,15 +208,6 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 // buildIngestService constructs the ingest.Service from the same deps
 // that WireMediaIngest uses.
 //
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): outbox and
-// mutationsDisp are the 7th and 8th positional args so the four
-// artifacts.NewClipsRegistry + ingest.NewClipStoreAdapter ctor calls
-// inside this function route their media_assets UPSERT through the
-// canonical outbox+tx writer. mutationsDisp is constructed once in
-// BuildDomainBundle and reused so the same SSOT instance flows into
-// every caller without raising the boot-time cost of repeated
-// newMutationsDispatcherAdapter wraps.
-//
 // PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
 // is the 7th positional arg so the four
 // artifacts.NewClipsRegistry + ingest.NewClipStoreAdapter ctor calls

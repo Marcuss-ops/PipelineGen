@@ -73,6 +73,17 @@ func hydrateMediaProcessor(p *ProcessBundle, cfg *config.Config, dbs *databases,
 	if p == nil {
 		return fmt.Errorf("hydrate: ProcessBundle is nil (QDRANT-002 fail-closed)")
 	}
+	// PR 7 followups (June 2026, codex/qdrant-app-writers-fail-closed):
+	// double-hydration invariant guard. BuildProcessBundle leaves
+	// p.MediaProcessor=nil by design; hydrateMediaProcessor is called once
+	// from composition.go::NewComposition after BuildOutboxBundle to fill
+	// it. A second call would silently rebuild initMediaProcessor(...) with
+	// a fresh mutations adapter, masking any state drift between the two
+	// hydration passes. Return an error so WireRegistry aborts composition
+	// loudly rather than masking the double-hydration at runtime.
+	if p.MediaProcessor != nil {
+		return fmt.Errorf("hydrate: ProcessBundle.MediaProcessor already hydrated (QDRANT-002 PR7 invariant violated: hydrate-once - duplicate hydration detected)")
+	}
 	if outbox == nil || outbox.Dispatcher == nil {
 		log.Warn("hydrateMediaProcessor: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR7 fail-closed; worker + reprocess + ingest paths will surface the missing dep)")
 		return nil
