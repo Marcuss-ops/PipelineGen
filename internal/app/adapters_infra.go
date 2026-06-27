@@ -21,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 )
@@ -138,6 +139,45 @@ func (a *sfxResolverAdapter) Resolve(req sfxports.AssetDestinationRequest) (sfxp
 		return sfxports.ResolvedDest{}, nil
 	}
 	return sfxports.ResolvedDest{LocalPath: res.LocalPath}, nil
+}
+
+// ── Sfx dispatcher adapter ──────────────────────────────────────────────────
+//
+// sfxDispatcherAdapter wraps the canonical *outbox.Dispatcher to satisfy
+// sfxports.DispatcherPort. Outbox.Dispatcher.EnqueueAndIndex (the production
+// implementation audited per the SSOT assertion at
+// internal/infrastructure/database/sqlite/outbox/repository.go:720) accepts
+// *asset.Asset + contentHash and atomically UPSERTs media_assets + emits the
+// matching asset.index.requested outbox event in a single transaction.
+//
+// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the sfx handler
+// is migrated off direct h.clipsRepo.Upsert to dispatcher routing so the
+// QDRANT-002 atomicity invariant (media_assets write and outbox event
+// emit committed in one tx) applies uniformly to sfx asset writes.
+//
+// Signature-drift detection: any change to (a) sfxports.DispatcherPort's
+// EnqueueAndIndex signature, OR (b) the outbox.Dispatcher's same method
+// signature, surfaces as a build failure at the compile-time `var _` line
+// below. AGENTS.md Pattern 0 convention — compile-time over runtime checks.
+type sfxDispatcherAdapter struct {
+	disp *outbox.Dispatcher
+}
+
+// Compile-time assertion: sfxDispatcherAdapter satisfies sfxports.DispatcherPort.
+var _ sfxports.DispatcherPort = (*sfxDispatcherAdapter)(nil)
+
+func newSfxDispatcherAdapter(disp *outbox.Dispatcher) sfxports.DispatcherPort {
+	if disp == nil {
+		return nil
+	}
+	return &sfxDispatcherAdapter{disp: disp}
+}
+
+func (a *sfxDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error {
+	if a == nil || a.disp == nil {
+		return nil
+	}
+	return a.disp.EnqueueAndIndex(ctx, clip, contentHash)
 }
 
 // ── DriveAdminOps adapter ────────────────────────────────────────────────────

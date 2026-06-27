@@ -333,10 +333,18 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	}
 	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
 
-	// SoundEffect: wrapped repos + uploader + metaWriter via sfxports
-	// adapters. PG-003 (June 2026) replaces the four concrete
+	// SoundEffect: wrapped repos + uploader + metaWriter + dispatcher via
+	// sfxports adapters. PG-003 (June 2026) replaced the four concrete
 	// infrastructure reach-throughs with structural ports so the api/
 	// layer stays thin (per AGENTS.md Pattern 0).
+	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed):
+	// sfxDispatcher is added so the Generate path routes through the
+	// canonical *outbox.Dispatcher.EnqueueAndIndex instead of the legacy
+	// direct h.clipsRepo.Upsert fallback — the same fail-closed pattern
+	// the four clips writers in this PR migrate to. Nil-tolerant in
+	// composition: when dispatcher is nil (test fixtures, partial
+	// deploys), the handler returns 503 to the operator. Production
+	// wiring in cmd/server always supplies a non-nil dispatcher.
 	sfxClips := &sfxClipsRepoAdapter{repo: bundle.ClipsRepo}
 	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
 	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
@@ -344,7 +352,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if driveUploader != nil {
 		sfxDriveUp = &sfxDriveUploaderAdapter{up: driveUploader}
 	}
-	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
+	var sfxDispatcher sfxports.DispatcherPort
+	sfxDispatcher = newSfxDispatcherAdapter(dispatcher)
+	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
 	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher)

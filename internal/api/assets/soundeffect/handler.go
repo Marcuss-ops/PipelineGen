@@ -9,6 +9,7 @@ package soundeffect
 
 import (
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,11 +21,20 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
+
+// errSfxDispatcherUnavailable is the fail-closed sentinel surfaced in the
+// HTTP body when the canonical sfxports.DispatcherPort is not wired at
+// composition time. The 503 status + this message together mark the
+// regression shape the operator checks for when investigating
+// "Generate returned empty clip_id" — see
+// internal/api/assets/soundeffect/dispatcher_fail_closed_test.go for the
+// contract pinning.
+const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMutationDispatcher not wired (QDRANT-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via sfxDispatcherAdapter)"
 
 // Handler manages sound effect generation via Python synth + ffmpeg.
 type Handler struct {
@@ -32,29 +42,39 @@ type Handler struct {
 	driveUploader          sfxports.DriveUploaderPort
 	metaWriter             sfxports.SemanticMetadataWriterPort
 	resolver               sfxports.DestinationResolverPort
+	// dispatcher (PR 6, June 2026, codex/qdrant-api-writers-fail-closed):
+	// the canonical narrow port sfxports.DispatcherPort wrapping the
+	// production *outbox.Dispatcher. Required for the Generate write
+	// path; nil causes Generate to return HTTP 503 (fail-closed) — this
+	// is the documented contract replacement for the legacy
+	// "if h.clipsRepo != nil { h.clipsRepo.Upsert }" soft-fallback that
+	// the Wave 22 task-2 handler migration removes.
+	dispatcher             sfxports.DispatcherPort
 	soundEffectsRootFolder string
 	processRunner          appassets.ProcessRunner
-	// dispatcher is the clip index dispatcher port (PR 2 Wave 22 PR-2).
-	// Late-bound via SetDispatcher by the composition root in
-	// internal/app/adapters_soundeffect.go AFTER NewHandler returns.
-	// Nil-tolerated: Generate() falls back to
-	// clipsRepo.Upsert(ctx, ...) when nil — preserves documented "nil
-	// dispatcher = tests / partial deployments" semantics in
-	// internal/application/clips/ports.go::ClipIndexDispatcherPort.
-	dispatcher appclips.ClipIndexDispatcherPort
-	log        *zap.Logger
+	log                    *zap.Logger
 }
 
 // NewHandler creates a sound effect handler.
 //
 // All concrete infrastructure collaborators are injected via structural
 // ports (sfxports.*). The composition root is responsible for instantiating
-// the adapters in internal/app and wiring them here.
+// the adapters in internal/app and injecting them here.
+//
+// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the dispatcher
+// parameter is added so the Generate write path can route through the
+// canonical *outbox.Dispatcher.EnqueueAndIndex (atomic UPSERT +
+// asset.index.requested outbox event) instead of the legacy direct
+// h.clipsRepo.Upsert write. A nil dispatcher is tolerated by the constructor
+// so existing test fixtures that omit the dispatcher continue to compile —
+// the Generate handler fails closed with HTTP 503 when invoked against a
+// nil dispatcher.
 func NewHandler(
 	clipsRepo sfxports.ClipRepositoryPort,
 	driveUploader sfxports.DriveUploaderPort,
 	metaWriter sfxports.SemanticMetadataWriterPort,
 	resolver sfxports.DestinationResolverPort,
+	dispatcher sfxports.DispatcherPort,
 	soundEffectsRootFolder string,
 	processRunner appassets.ProcessRunner,
 	log *zap.Logger,
@@ -64,6 +84,7 @@ func NewHandler(
 		driveUploader:          driveUploader,
 		metaWriter:             metaWriter,
 		resolver:               resolver,
+		dispatcher:             dispatcher,
 		soundEffectsRootFolder: soundEffectsRootFolder,
 		processRunner:          processRunner,
 		log:                    log,
@@ -74,21 +95,6 @@ func NewHandler(
 func (h *Handler) SetMetaWriter(mw sfxports.SemanticMetadataWriterPort) {
 	h.metaWriter = mw
 }
-
-// SetDispatcher (PR 2 Wave 22 PR-2) updates the clip index dispatcher
-// port after construction (late-binding support). Composition root in
-// internal/app/adapters_soundeffect.go calls this once per process
-// boot, after NewHandler returns. Passing nil resets to fallback-to-repo
-// semantics.
-func (h *Handler) SetDispatcher(d appclips.ClipIndexDispatcherPort) {
-	h.dispatcher = d
-}
-
-// Compile-time assertion: Handler satisfies the canonical clip-index
-// dispatcher consumer shape (QDRANT-002 single-tx upsert + outbox
-// enqueue). The assertion lives next to the field decl so any future
-// refactor surfaces drift at compile time, not first runtime call.
-var _ appclips.ClipIndexDispatcherPort = (appclips.ClipIndexDispatcherPort)(nil) // marker: see ports.go
 
 // RegisterRoutes registers the sound_effect sub-routes.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
@@ -275,20 +281,43 @@ func (h *Handler) Generate(c *gin.Context) {
 	clip.SetDriveFileID(driveFileID)
 	clip.SetParentFolderID(parentFolderID)
 	clip.SetLocalPath(dest.LocalPath)
+	// Stash the MD5 content hash on the asset so the dispatcher's
+	// supersede-gate dedup uses the ingest-time fingerprint (mirrors
+	// the contract pinned at
+	// internal/application/assets/catalogsync/dispatcher_test.go::TestUpsertPreservingExisting_DispatcherPath).
+	clip.SetFileHash(hashStr)
 
-	if h.dispatcher != nil {
-		// PR 2 (Wave 22 PR-2 — clip thin transport): canonical path
-		// absorbs the supersede-gate dedup keyed by hashStr. Same
-		// "nil dispatcher = fallback" semantics as clips/Handler.
-		if err := h.dispatcher.EnqueueAndIndex(ctx, &clip, hashStr); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("clip dispatcher enqueue failed (soundeffect): %w", err))
+	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the legacy
+	// `if h.clipsRepo != nil { Upsert }` path bypasses the outbox —
+	// a freshly-written media_assets row would never reach Qdrant and
+	// would corrupt semantic search. Replace with the canonical
+	// dispatcher.EnqueueAndIndex: it atomically UPSERTs media_assets
+	// and emits asset.index.requested in a single transaction. A nil
+	// dispatcher is a wiring error (composition root must supply
+	// one), so we fail closed with HTTP 503 rather than swallow the
+	// write or fall back to the legacy bypass.
+	if h.dispatcher == nil {
+		h.log.Error("sfx Generate: dispatcher not wired \u2014 atomic UPSERT + outbox enqueue refused",
+			zap.String("clip_id", clip.ID))
+		apiutil.Error(c, 503, errSfxDispatcherUnavailable)
+		return
+	}
+	if err := h.dispatcher.EnqueueAndIndex(ctx, &clip, hashStr); err != nil {
+		// Mirror the clips writers' sentinel-branch pattern (PR 6
+		// consistency): when the SSOT dispatcher returns
+		// ErrDispatcherUnavailable, surface 503 verbatim so operators
+		// see the canonical "AssetMutationDispatcher not wired"
+		// message and can correlate against the upstream sentinel.
+		if errors.Is(err, mutations.ErrDispatcherUnavailable) {
+			h.log.Error("sfx Generate: dispatcher unavailable",
+				zap.String("clip_id", clip.ID), zap.Error(err))
+			apiutil.Error(c, 503, errSfxDispatcherUnavailable)
 			return
 		}
-	} else if h.clipsRepo != nil {
-		if err := h.clipsRepo.Upsert(ctx, &clip); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to save clip record to DB: %w", err))
-			return
-		}
+		h.log.Error("sfx Generate: dispatcher.EnqueueAndIndex failed",
+			zap.String("clip_id", clip.ID), zap.Error(err))
+		apiutil.InternalError(c, fmt.Errorf("dispatcher.EnqueueAndIndex: %w", err))
+		return
 	}
 
 	apiutil.OK(c, gin.H{
