@@ -1,13 +1,16 @@
 // Package scripts — media_curator.go replaces the MediaCurator stub
 // with a real implementation that searches clips semantically via
-// Qdrant vector store and generates scripts via the Engine.
+// Qdrant vector store and generates scripts via GenerateOneUseCase.
 //
 // AGENT-3 (June 2026): the previous stub returned the query string as
 // the script text. The real implementation:
 //   1. Searches for clips semantically via the vector store
 //   2. Converts results to clip IDs
 //   3. Builds clip context via ClipSourceBuilder
-//   4. Generates the script via Engine.WriteScript
+//   4. Generates the script via GenerateOneUseCase.Execute
+//
+// PR 13 (June 2026): migrated from engine.WriteScript to
+// GenerateOneUseCase.Execute — canonical unified pipeline.
 package scripts
 
 import (
@@ -16,20 +19,22 @@ import (
 	"strings"
 	"time"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
 )
 
 // NewMediaCurator constructs a real MediaCurator backed by the
-// clips repository, ClipSourceBuilder, and Engine. All concrete typed args.
+// clips repository, ClipSourceBuilder, and GenerateOneUseCase.
+// All concrete typed args.
 //
 // vectorStore parameter was removed from this constructor and the
 // capability was deleted. Semantic clip discovery now flows solely
-// through the clips repository + ClipSourceBuilder; the engine leg
-// is unchanged.
+// through the clips repository + ClipSourceBuilder; the generation
+// leg now flows through the canonical GenerateOneUseCase.
 //   - clipsRepo may be nil (Curate returns an error when missing).
-//   - engine is required for the script generation leg.
+//   - generateOneUC is required for the script generation leg.
 //   - clipBuilder is required for the clip context building leg.
 //   - clipSearch (PG-CURATE-1, June 2026) is the optional
 //     ClipSearchPort for the semantic-search leg. nil is allowed —
@@ -42,15 +47,15 @@ func NewMediaCurator(
 	serverURL string,
 	clipsRepo *assets.ClipsRepository,
 	clipBuilder *ClipSourceBuilder,
-	engine *Engine,
+	generateOneUC *GenerateOneUseCase,
 	log *zap.Logger,
 ) *MediaCurator {
 	return &MediaCurator{
-		serverURL:   serverURL,
-		clipsRepo:   clipsRepo,
-		clipBuilder: clipBuilder,
-		engine:      engine,
-		log:         log,
+		serverURL:     serverURL,
+		clipsRepo:     clipsRepo,
+		clipBuilder:   clipBuilder,
+		generateOneUC: generateOneUC,
+		log:           log,
 	}
 }
 
@@ -73,7 +78,7 @@ func (m *MediaCurator) SetClipSearchPort(port ClipSearchPort) {
 //     The clip IDs are derived from req.HintClipIDs or from a text-only
 //     fallback if the caller supplied none.
 //  2. Build clip context via ClipSourceBuilder
-//  3. Generate script via Engine.WriteScript
+//  3. Generate script via GenerateOneUseCase.Execute (canonical)
 //  4. Build CurateResult with timings
 func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateResult, error) {
 	if m == nil {
@@ -129,11 +134,7 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 		hits, searchErr := m.clipSearch.SearchClips(ctx, ClipSearchQuery{
 			Query:     req.Query,
 			Source:    req.Source,
-			Category:  "", // CurateRequest does not expose Category; operators
-			// raise it via JobPayloadCurate once the typed-payload wiring
-			// lands (PJ-CURATE-2 follow-up). For now the search leg carries
-			// Source + MediaType filters only. The previous code passed
-			// req.Tone as Category which was a silent cross-field leak.
+			Category:  "", // CurateRequest does not expose Category
 			MediaType: req.MediaType,
 			Limit:     req.MaxClips,
 			MinScore:  req.MinScore,
@@ -232,50 +233,66 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 	}
 	buildCtxMs := time.Since(buildCtxStart).Milliseconds()
 
-	// Phase 3: generate script.
-	writeStart := time.Now()
-	if m.engine == nil {
-		return nil, fmt.Errorf("media curator: engine not configured")
+	// Phase 3: generate script via GenerateOneUseCase (canonical).
+	genStart := time.Now()
+	if m.generateOneUC == nil {
+		return nil, fmt.Errorf("media curator: generateOneUC not configured")
 	}
 
-	writeReq := WriteScriptRequest{
-		Topic:      query,
-		Title:      title,
-		Language:   req.Language,
-		Tone:       req.Tone,
-		Model:      req.Model,
-		Mode:       "curate",
-		SourceText: sourceText,
-		MinWords:   req.TargetWords,
-		Prompt:     sourceFingerprint,
-		UseMemory:  !req.ForceRefresh,
-		SaveToDB:   true,
+	// Build a GenerationItemV2 from the curator's resolved context.
+	// Use SourceText so the TextSourceResolver passes through our
+	// already-built source text; the clip context (narrativePlan,
+	// clipScenes, sourceFingerprint) stays in the CurateResult
+	// side-channel — GenerateOneUseCase only needs the text.
+	item := scriptpkg.GenerationItemV2{
+		ID:       query,
+		Title:    title,
+		Language: req.Language,
+		Tone:     req.Tone,
+		Model:    req.Model,
+		Source: scriptpkg.SourceSpec{
+			Type:       scriptpkg.SourceText,
+			Topic:      query,
+			SourceText: sourceText,
+			// Guidelines carries the sourceFingerprint as prompt context.
+			Guidelines: sourceFingerprint,
+		},
+		ScriptParams: scriptpkg.ScriptSpec{
+			TargetWords:  req.TargetWords,
+			UseMemory:    !req.ForceRefresh,
+			ForceRefresh: req.ForceRefresh,
+		},
+		Output: scriptpkg.OutputSpec{
+			SaveToDB: true, // engine persists; PersistenceProcessor re-saves idempotently
+		},
 	}
-	writeResult, err := m.engine.WriteScript(ctx, writeReq)
-	if err != nil {
-		return nil, fmt.Errorf("media curator: script generation failed: %w", err)
+
+	tracker := NewProgressTracker(nil, "curate")
+	genResult, genErr := m.generateOneUC.Execute(ctx, item, scriptpkg.PresetCustom, tracker)
+	if genErr != nil {
+		return nil, fmt.Errorf("media curator: script generation failed: %w", genErr)
 	}
-	writeScriptMs := time.Since(writeStart).Milliseconds()
+	genMs := time.Since(genStart).Milliseconds()
 
 	totalMs := time.Since(startAll).Milliseconds()
 
 	if m.log != nil {
 		m.log.Info("media curator: curation completed",
 			zap.String("title", title),
-			zap.Int("word_count", writeResult.WordCount),
+			zap.Int("word_count", genResult.Output.WordCount),
 			zap.Int("clips_found", len(clipIDs)),
 			zap.Int64("search_ms", searchMs),
 			zap.Int64("build_ctx_ms", buildCtxMs),
-			zap.Int64("write_ms", writeScriptMs),
+			zap.Int64("gen_ms", genMs),
 			zap.Int64("total_ms", totalMs))
 	}
 
 	return &CurateResult{
 		Title:             title,
 		ClipScenes:        clipScenes,
-		Script:            writeResult.Script,
-		WordCount:         writeResult.WordCount,
-		CacheStatus:       writeResult.CacheStatus,
+		Script:            genResult.Output.Text,
+		WordCount:         genResult.Output.WordCount,
+		CacheStatus:       genResult.Cache.Status,
 		AcceptedClipIDs:   clipIDs,
 		NarrativePlan:     narrativePlan,
 		SourceText:        sourceText,
@@ -284,7 +301,7 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 		Timings: CurateTimings{
 			SearchMs:      searchMs,
 			BuildCtxMs:    buildCtxMs,
-			WriteScriptMs: writeScriptMs,
+			WriteScriptMs: genMs,
 			TotalMs:       totalMs,
 		},
 	}, nil

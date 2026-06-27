@@ -172,7 +172,7 @@ func (uc *GenerateOneUseCase) Execute(
 
 	// Merge search results from resolved source.
 	if resolved != nil && len(resolved.SearchResults) > 0 {
-		result.SearchResults = resolved.SearchResults
+		result.Source.SearchResults = resolved.SearchResults
 	}
 
 	tracker.PhaseComplete()
@@ -181,8 +181,8 @@ func (uc *GenerateOneUseCase) Execute(
 		uc.log.Info("generate-one: completed",
 			zap.String("item_id", item.ID),
 			zap.String("title", plan.Title),
-			zap.Int("word_count", result.WordCount),
-			zap.String("cache_status", result.CacheStatus),
+			zap.Int("word_count", result.Output.WordCount),
+			zap.String("cache_status", result.Cache.Status),
 			zap.Int64("total_ms", timings.TotalMs))
 	}
 
@@ -192,10 +192,9 @@ func (uc *GenerateOneUseCase) Execute(
 // ── Helpers ──────────────────────────────────────────────────────────
 
 // buildGenerationResult constructs a GenerationResult from the
-// engine and postprocessor outputs. PR 9: populates BOTH the
-// deprecated flat fields AND the canonical nested fields (Output,
-// Source, Cache, Artifacts). New consumers read the nested fields;
-// legacy consumers still read the flat fields.
+// engine and postprocessor outputs. PR 13: populates ONLY the
+// canonical nested fields (Output, Source, Cache, Artifacts).
+// The deprecated flat fields were removed in PR 13.
 func buildGenerationResult(
 	item scriptpkg.GenerationItemV2,
 	plan scriptpkg.ResolvedGenerationPlan,
@@ -206,7 +205,6 @@ func buildGenerationResult(
 	cacheHit := engineResult.CacheStatus == "exact_hit"
 
 	result := &scriptpkg.GenerationResult{
-		// Canonical.
 		ItemID:   item.ID,
 		ScriptID: engineResult.ScriptID,
 		Title:    plan.Title,
@@ -221,29 +219,14 @@ func buildGenerationResult(
 			Hit:    cacheHit,
 		},
 		Timings: timings,
-
-		// Deprecated (migration window).
-		ID:          item.ID,
-		Script:      engineResult.Script,
-		WordCount:   engineResult.WordCount,
-		CacheStatus: engineResult.CacheStatus,
-		CacheHit:    cacheHit,
 	}
 
 	// Populate Source trace.
 	var sourceTrace scriptpkg.SourceTrace
 
-	// Merge clip evidence into both deprecated ClipScenes and
-	// canonical Output.SpecScene.
-	//
-	// NOTE: SpecScene.Text is empty at this point — the model output
-	// is not yet structured (DecodeModelOutput from PR 2 is not yet
-	// integrated into the engine). When the engine starts producing
-	// ModelScriptOutputV1, the specscene texts will be filled from
-	// the model output and merged with these evidence skeletons.
+	// Merge clip evidence into canonical Output.SpecScene.
 	if engineResult.ClipEvidence != nil {
 		specScenes := make([]scriptpkg.SpecScene, 0, len(engineResult.ClipEvidence.ClipIDs))
-		clipScenes := make([]scriptpkg.ClipSceneResult, 0, len(engineResult.ClipEvidence.ClipIDs))
 		for i, id := range engineResult.ClipEvidence.ClipIDs {
 			link := ""
 			if engineResult.ClipEvidence.DriveLinks != nil {
@@ -253,7 +236,7 @@ func buildGenerationResult(
 			specScenes = append(specScenes, scriptpkg.SpecScene{
 				ID:    sceneID,
 				Index: i,
-				Text:  "", // text filled by model output, not evidence
+				Text:  "",
 				Kind:  scriptpkg.SceneClip,
 				Bindings: scriptpkg.SceneBindings{
 					Clip: &scriptpkg.ClipBinding{
@@ -262,26 +245,17 @@ func buildGenerationResult(
 					},
 				},
 			})
-			clipScenes = append(clipScenes, scriptpkg.ClipSceneResult{
-				SceneIndex: i,
-				ClipID:     id,
-				DriveLink:  link,
-				Kind:       "clip",
-			})
 		}
 		result.Output.SpecScene = scriptpkg.SpecSceneOutput{
 			Version: 1,
 			Scenes:  specScenes,
 		}
-		result.ClipScenes = clipScenes
-		result.AcceptedClipIDs = engineResult.ClipEvidence.ClipIDs
 		sourceTrace.AcceptedClipIDs = engineResult.ClipEvidence.ClipIDs
 	}
 
-	// Merge postprocessor results into both deprecated and canonical.
+	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
 		// Entities.
-		result.EntitiesJSON = postResult.EntitiesJSON
 		result.Artifacts.EntitiesJSON = postResult.EntitiesJSON
 
 		// Metadata.
@@ -295,20 +269,12 @@ func buildGenerationResult(
 					Tags:        m.Tags,
 				}
 			}
-			result.Metadata = meta
 			result.Artifacts.Metadata = meta
 		}
 
 		// Scene images — enrich SpecScene bindings.
 		if len(postResult.Scenes) > 0 {
-			scenes := make([]scriptpkg.SceneImageResult, len(postResult.Scenes))
-			for i, s := range postResult.Scenes {
-				scenes[i] = scriptpkg.SceneImageResult{
-					SceneIndex: s.Index,
-					Text:       s.Text,
-					ImageURL:   s.URL,
-				}
-				// Enrich the matching SpecScene if it exists.
+			for _, s := range postResult.Scenes {
 				if s.Index < len(result.Output.SpecScene.Scenes) {
 					sc := &result.Output.SpecScene.Scenes[s.Index]
 					if sc.Bindings.Image == nil {
@@ -318,20 +284,11 @@ func buildGenerationResult(
 					sc.Bindings.Image.Status = "generated"
 				}
 			}
-			result.SceneImages = scenes
 		}
 
 		// Voiceovers — enrich SpecScene bindings.
 		if len(postResult.Voiceovers) > 0 {
-			vos := make([]scriptpkg.VoiceoverResult, len(postResult.Voiceovers))
-			for i, v := range postResult.Voiceovers {
-				vos[i] = scriptpkg.VoiceoverResult{
-					SceneIndex: v.SceneIndex,
-					Status:     v.Status,
-					Link:       v.Link,
-					LocalPath:  v.LocalPath,
-				}
-				// Enrich the matching SpecScene if it exists.
+			for _, v := range postResult.Voiceovers {
 				if v.SceneIndex < len(result.Output.SpecScene.Scenes) {
 					sc := &result.Output.SpecScene.Scenes[v.SceneIndex]
 					if sc.Bindings.Voiceover == nil {
@@ -342,13 +299,10 @@ func buildGenerationResult(
 					sc.Bindings.Voiceover.LocalPath = v.LocalPath
 				}
 			}
-			result.Voiceovers = vos
 		}
 
 		// Document.
 		if postResult.DocLink != "" {
-			result.DocLink = postResult.DocLink
-			result.DocID = postResult.DocID
 			result.Artifacts.Document = &scriptpkg.DocumentArtifact{
 				DocLink: postResult.DocLink,
 				DocID:   postResult.DocID,
