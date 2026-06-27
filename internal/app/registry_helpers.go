@@ -56,49 +56,6 @@ func (d *DriveDestinations) ImagesFolder() string { return d.imagesFolder }
 
 // ── Media processor initialisation ──────────────────────────────────────────
 
-// hydrateMediaProcessor populates p.MediaProcessor via initMediaProcessor.
-// Called from composition.go::NewComposition after BuildOutboxBundle.
-//
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): composition-
-// order deferred hydration. The composition graph between
-// BuildProcessBundle (reads process.QdrantDeleter) and initMediaProcessor
-// (needs outbox.Dispatcher for the canonical mutations SSOT) is a ring.
-// Breaking the ring: BuildProcessBundle returns MediaProcessor=nil;
-// composition.go::NewComposition calls hydrateMediaProcessor(p, outbox)
-// after BuildOutboxBundle. The hydrate is fail-closed — a nil
-// outbox.Dispatcher leaves MediaProcessor=nil and the worker / reprocess
-// / ingest paths surface the missing dep rather than silently defaulting
-// to the legacy path.
-func hydrateMediaProcessor(p *ProcessBundle, cfg *config.Config, dbs *databases, repos *RepoBundle, driveUploader *driveup.Uploader, outbox *OutboxBundle, log *zap.Logger) error {
-	if p == nil {
-		return fmt.Errorf("hydrate: ProcessBundle is nil (QDRANT-002 fail-closed)")
-	}
-	// PR 7 followups (June 2026, codex/qdrant-app-writers-fail-closed):
-	// double-hydration invariant guard. BuildProcessBundle leaves
-	// p.MediaProcessor=nil by design; hydrateMediaProcessor is called once
-	// from composition.go::NewComposition after BuildOutboxBundle to fill
-	// it. A second call would silently rebuild initMediaProcessor(...) with
-	// a fresh mutations adapter, masking any state drift between the two
-	// hydration passes. Return an error so WireRegistry aborts composition
-	// loudly rather than masking the double-hydration at runtime.
-	if p.MediaProcessor != nil {
-		return fmt.Errorf("hydrate: ProcessBundle.MediaProcessor already hydrated (QDRANT-002 PR7 invariant violated: hydrate-once - duplicate hydration detected)")
-	}
-	if outbox == nil || outbox.Dispatcher == nil {
-		log.Warn("hydrateMediaProcessor: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR7 fail-closed; worker + reprocess + ingest paths will surface the missing dep)")
-		return nil
-	}
-	mutationsDisp, err := newMutationsDispatcherAdapter(outbox.Dispatcher)
-	if err != nil {
-		return fmt.Errorf("hydrate: %w", err)
-	}
-	p.MediaProcessor = initMediaProcessor(cfg, dbs.main, repos.Assets.Repository(), repos.Assets,
-		repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(),
-		mutationsDisp, log, driveUploader)
-	log.Info("PR 7: MediaProcessor hydrated with canonical mutations.AssetMutationDispatcher (clipsRegistry UPSERT routed through outbox+tx)")
-	return nil
-}
-
 // initMediaProcessor wires the media processor. PG-011: db is now
 // *storage.SQLiteDB (the typed canonical handle) instead of raw *sql.DB;
 // the artifacts.NewClipsRegistry constructor still takes *sql.DB so we
@@ -106,13 +63,19 @@ func hydrateMediaProcessor(p *ProcessBundle, cfg *config.Config, dbs *databases,
 // unchanged while letting the composition layer stop holding a raw
 // sqlite handle in signatures.
 //
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
+// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
 // is the 8th positional arg so the embedded artifacts.NewClipsRegistry
 // routes its media_assets UPSERT through the canonical outbox+tx
-// writer. hydration is composed from hydrateMediaProcessor after
-// BuildOutboxBundle (which depends on process.QdrantDeleter, itself
-// produced by BuildProcessBundle — the ring dependency prevents inline
-// construction; see composition.go::NewComposition for the rationale).
+// writer. The PR-7 deferred-hydration strategy (hydrateMediaProcessor +
+// MediaProcessor=nil) is gone; BuildProcessBundle now consumes
+// outbox.OutboxBundle inline and constructs MediaProcessor directly
+// (see composition.go::buildQdrantDeps + BuildProcessBundle for the
+// strict-DAG shape: qdrantDeps -> outbox -> process).
+//
+// Fail-closed at the composition root: BuildProcessBundle returns
+// MediaProcessor=nil if outbox.Dispatcher is nil so worker / reprocess
+// / ingest paths surface the missing dep rather than silently defaulting
+// to the legacy path.
 func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)

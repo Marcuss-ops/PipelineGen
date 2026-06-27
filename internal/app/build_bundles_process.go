@@ -203,27 +203,53 @@ var (
 // passed in directly.
 //
 // QDRANT-003 (June 2026): Qdrant vector-store capability reintroduced.
-// IndexWriter is created and wired as the clipindexer's VectorStoreIndexer.
-// EnsureSchema is deferred to wire_services.go startup plan (startup-time).
+// IndexWriter + ClipIndexerService are constructed in the canonical
+// pre-phase (composition.go::buildQdrantDeps) so BuildOutboxBundle can
+// run BEFORE BuildProcessBundle, and threaded back here via the qd
+// *QdrantDeps input. EnsureSchema is deferred to wire_services.go
+// startup plan (startup-time).
 //
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): MediaProcessor
-// is intentionally left nil on return. initMediaProcessor requires
-// outbox.Dispatcher for the canonical mutations.AssetMutationDispatcher
-// SSOT (QDRANT-002), but BuildOutboxBundle reads process.QdrantDeleter
-// — the composition graph is a ring between ProcessBundle and Outbox.
-// Breaking the ring: BuildProcessBundle returns MediaProcessor=nil here;
-// composition.go::NewComposition calls hydrateMediaProcessor(p, outbox)
-// after BuildOutboxBundle. The hydrate is fail-closed: a nil dispatcher
-// leaves MediaProcessor=nil so worker / reprocess / ingest paths surface
-// the missing dep rather than silently defaulting to the legacy path.
-func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader) (*ProcessBundle, error) {
+// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed):
+// BuildProcessBundle gains `outbox *OutboxBundle` + `qd *QdrantDeps` as
+// the last 2 positional args. MediaProcessor is now constructed INLINE
+// here — the previous PR-7 deferred-hydration strategy
+// (`BuildProcessBundle.MediaProcessor=nil + hydrateMediaProcessor`) is
+// gone. Composition graph is now a strict DAG:
+//
+//	qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd) ->
+//	  domains(reads process+outbox)
+//
+// Fail-closed at the composition root: a nil outbox.Dispatcher leaves
+// MediaProcessor=nil so worker / reprocess / ingest paths surface the
+// missing dep rather than silently defaulting to the legacy path. A
+// nil qd fails composition immediately (composition forgot to call
+// buildQdrantDeps first?).
+func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader, outbox *OutboxBundle, qd *QdrantDeps) (*ProcessBundle, error) {
 	_ = ctx
-	_ = cfg
-	_ = repos
-	_ = driveUploader
-	// PR 7: MediaProcessor construction deferred to hydrateMediaProcessor
-	// after BuildOutboxBundle. See function doc comment for the rationale.
-	var mediaProcessor asset.Processor // intentionally nil — hydrated post-Outbox
+
+	if qd == nil {
+		return nil, fmt.Errorf("BuildProcessBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
+	}
+
+	// PR 8 (June 2026): MediaProcessor constructed INLINE here. The
+	// previous `MediaProcessor=nil + hydrateMediaProcessor` deferred-
+	// hydration strategy (PR 7) is gone — composition order is
+	// qd -> outbox -> process so outbox.Dispatcher is available at this
+	// point in NewComposition's strict-DAG orchestration. Fail-closed:
+	// a nil outbox.Dispatcher leaves MediaProcessor=nil.
+	var mediaProcessor asset.Processor
+	if outbox != nil && outbox.Dispatcher != nil {
+		mutationsDisp, err := newMutationsDispatcherAdapter(outbox.Dispatcher)
+		if err != nil {
+			return nil, fmt.Errorf("BuildProcessBundle: mutations dispatcher adapter: %w", err)
+		}
+		mediaProcessor = initMediaProcessor(cfg, dbs.main, repos.Assets.Repository(), repos.Assets,
+			repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(),
+			mutationsDisp, log, driveUploader)
+		log.Info("PR 8: MediaProcessor constructed inline with canonical mutations.AssetMutationDispatcher (clipsRegistry UPSERT routed through outbox+tx)")
+	} else {
+		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed; worker + reprocess + ingest paths will surface the missing dep)")
+	}
 
 	vlmClient := vlm.NewClient(vlm.Config{
 		Enabled:   cfg.VLM.Enabled,
@@ -233,25 +259,16 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		Weight:    cfg.VLM.Weight,
 	})
 
-	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
-		Enabled:               cfg.ClipIndexer.Enabled,
-		ServerURL:             cfg.ClipIndexer.ServerURL,
-		ScriptPath:            cfg.ClipIndexer.ScriptPath,
-		PythonBin:             cfg.ClipIndexer.PythonBin,
-		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
-		MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing,
-		DBPath:                dbs.main.Path(),
-	}, dbs.main, dbs.main.Path(), log)
-
 	// QDRANT-005 Phase 1 Blocker 2 (June 2026): Qdrant client, health
 	// probe, locator cleaner, searcher, search adapter, and collection
 	// manager are created when cfg.Qdrant.Enabled == true, regardless of
-	// whether the clip indexer is enabled. The IndexWriter (which depends
-	// on clipindexer.SetVectorStore) is gated on BOTH Qdrant.Enabled AND
-	// clipIndexerService.IsEnabled(). This ensures /ready always has a
-	// real Qdrant probe when Qdrant is configured.
+	// whether the clip indexer is enabled. PR 8 (June 2026): the
+	// IndexWriter construction moved to composition.go::buildQdrantDeps.
+	// Here we only build the QdrantClient and the adapters that depend
+	// on it (CollectionManager, VectorSvc, HealthProbe, LocatorCleaner,
+	// Searcher). ClipIndexerService + QdrantDeleter are reused from
+	// qd.ClipIndexerService + qd.QdrantDeleter.
 	var collectionMgr *qdrant.CollectionManager
-	var indexDeleter qdrant.QdrantDeleter
 	var vectorSvc assetsearch.VectorStorePort
 	var qdrantClient *qdrant.Client
 	var qdrantHealthProbe any
@@ -280,33 +297,20 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		// Expose searcher for wire_script.go ClipSearchPort construction.
 		qdrantSearcher = searcher
 
-		log.Info("QDRANT-005: HealthProbe + LocatorCleaner wired (Qdrant enabled)",
+		log.Info("QDRANT-005: HealthProbe + LocatorCleaner wired (Qdrant enabled, BuildProcessBundle)",
 			zap.String("qdrant_url", cfg.Qdrant.BaseURL),
 			zap.String("schema_version", schema.Version))
-		log.Info("QDRANT-004: Searcher + SearchAdapter wired for mediasearch API")
-
-		// IndexWriter: requires ClipIndexer (writes embeddings back).
-		if clipIndexerService.IsEnabled() {
-			assetStore := qdrant.NewSQLiteAssetStore(dbs.main.DB)
-			mapper := qdrant.NewPayloadMapper(assetStore, log)
-			indexWriter := qdrant.NewIndexWriter(qdrantClient, schema, mapper, log)
-			indexDeleter = indexWriter
-			clipIndexerService.SetVectorStore(indexWriter)
-			log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
-				zap.String("runtime_alias", schema.RuntimeAlias))
-		} else {
-			log.Info("QDRANT-003: ClipIndexer disabled — IndexWriter skipped, Qdrant client+probe still active")
-		}
+		log.Info("QDRANT-004: Searcher + SearchAdapter wired for mediasearch API (BuildProcessBundle)")
 	} else {
-		log.Info("QDRANT-003: Qdrant disabled — no Qdrant components wired")
+		log.Info("QDRANT-003: Qdrant disabled — no Qdrant components wired (BuildProcessBundle)")
 	}
 
 	return &ProcessBundle{
 		MediaProcessor:     mediaProcessor,
-		ClipIndexerService: clipIndexerService,
+		ClipIndexerService: qd.ClipIndexerService,
 		VLMClient:          vlmClient,
 		CollectionManager:  collectionMgr,
-		QdrantDeleter:      indexDeleter,
+		QdrantDeleter:      qd.QdrantDeleter,
 		VectorSvc:          vectorSvc,
 		QdrantClient:       qdrantClient,
 		QdrantHealthProbe:  qdrantHealthProbe,
@@ -320,7 +324,23 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 // PR9-B (June 2026): BuildOutboxBundle returns an IOpaqueStartFunc closure
 // that defers the outbox events pool goroutines (Start + shutdown) to the
 // lifecycle. The bundle itself is fully populated on return.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, process *ProcessBundle, jobs *JobsBundle) (*OutboxBundle, IOpaqueStartFunc, error) {
+//
+// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): the previous
+// `process *ProcessBundle` arg was replaced with `qd *QdrantDeps`, the
+// tiny pre-phase bundle that composition.go::buildQdrantDeps populates
+// BEFORE BuildOutboxBundle runs. The ring between ProcessBundle and
+// OutboxBundle is broken: BuildOutboxBundle now reads ONLY
+// `qd.QdrantDeleter` + `qd.ClipIndexerService` (NOT the full ProcessBundle),
+// so BuildOutboxBundle can run BEFORE BuildProcessBundle. Composition graph:
+//
+//	qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd)
+//
+// Fail-closed: a nil qd fails composition immediately (composition forgot
+// to call buildQdrantDeps first?).
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle) (*OutboxBundle, IOpaqueStartFunc, error) {
+	if qd == nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
+	}
 	outboxEventsRepo := outboxevents.NewRepository(dbs.main.DB)
 
 	multiClipsUp := outbox.NewMultiClipsUpserter(
@@ -386,13 +406,19 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		Jobs:               jobs.Service,
 		AssetSourceChecker: assetSourceChecker,
 	}
-	// QDRANT-003: wire IndexWriter as QdrantDeleter for index.delete_requested events.
-	if process.QdrantDeleter != nil {
-		if qd, ok := process.QdrantDeleter.(jobsoutbox.QdrantDeleter); ok {
-			outboxDeps.QdrantDeleter = qd
+	// QDRANT-003 PR8: wire qd.QdrantDeleter (IndexWriter built by
+	// composition.go::buildQdrantDeps) as outbox.Deps.QdrantDeleter for
+	// index.delete_requested events. The previous `process.QdrantDeleter`
+	// indirection is gone — qd directly satisfies the jobsoutbox port via
+	// the static-implementation contract at
+	// internal/infrastructure/qdrant/index_writer.go (compile-time
+	// assertion at the top of this file pins the conformance).
+	if qd.QdrantDeleter != nil {
+		if deleter, ok := qd.QdrantDeleter.(jobsoutbox.QdrantDeleter); ok {
+			outboxDeps.QdrantDeleter = deleter
 		}
 	}
-	if err := jobsoutbox.RegisterAll(eventsRegistry, log, process.ClipIndexerService, outboxDeps); err != nil {
+	if err := jobsoutbox.RegisterAll(eventsRegistry, log, qd.ClipIndexerService, outboxDeps); err != nil {
 		log.Warn("failed to register outbox events handlers", zap.Error(err))
 	}
 
