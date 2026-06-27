@@ -109,12 +109,12 @@ func runDoctor(args []string, log *zap.Logger) int {
 
 	// 3) Run + emit.
 	rep := agg.RunOnce(context.Background())
-	out := chooseOutput(flags, rep, agg)
+	out := chooseOutput(flags, *rep, agg)
 
 	if flags.jsonOutput {
-		emitJSON(out, flags, log)
+		emitJSON(*out, flags, log)
 	} else {
-		emitHuman(out, flags, log, rep)
+		emitHuman(*out, flags, log, agg)
 	}
 
 	exit := workerdoctor.ReturnCodeFromVerdict(rep.Verdict)
@@ -191,17 +191,14 @@ func emitHuman(rep workerdoctor.Report, flags *doctorFlags, _ *zap.Logger, _ *wo
 // chooseOutput is a no-op at the moment — both modes show the same
 // JSON-equivalent fields — but it's a seam for future human-only
 // enrichments (e.g. summary statistics) without a flag-tangle.
-func chooseOutput(_ *doctorFlags, rep workerdoctor.Report, _ *workerdoctor.Aggregator) workerdoctor.Report {
-	return rep
+func chooseOutput(_ *doctorFlags, rep workerdoctor.Report, _ *workerdoctor.Aggregator) *workerdoctor.Report {
+	return &rep
 }
 
 // getStringFlag extracts a string flag value with a default.
 // Wraps flag.FlagSet.Get in a nil-safe way for the doctor's nested
 // flag set.
 func getStringFlag(fs *flag.FlagSet, name, def string) string {
-	if v, ok := fs.Get(name).(string); ok && v != "" {
-		return v
-	}
 	if fs != nil {
 		// Visit looks for explicitly-set values; if unset, fall through.
 		var explicit string
