@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
@@ -280,13 +281,19 @@ func newClipsAdapterBundle(
 	folderMemSvc *foldermemory.Service,
 	assetTreeSvc *assettree.Service,
 	_ /* vectorSvc removed PG-034 */ any,
+	timeouts appjobs.TimeoutResolver,
 ) clipsAdapterBundle {
 	_ = log // reserved for future adapters that need a logger
 	artPort := newClipsRepoAdapter(artlistRepo)
 	clpPort := newClipsRepoAdapter(clipsRepo)
 	stockPort := newClipsRepoAdapter(stockRepo)
 	return clipsAdapterBundle{
-		Cfg:            newClipsCfgAdapter(cfg),
+		// HC-1 (June 2026): pass the typed TimeoutResolver (canonical
+		// impl: jobs.Compose() — *jobs.Registry) to the cfg adapter so
+		// the bulk_upload worker can resolve per-job-type timeouts
+		// through the typed port instead of the pre-HC-1 hard-coded
+		// 2*time.Hour literal in bulk_upload_worker.go.
+		Cfg:            newClipsCfgAdapter(cfg, timeouts),
 		SourceResolver: newSourceResolverAdapter(artPort, clpPort, stockPort),
 		ClipsRepo:      clpPort,
 		StockRepo:      stockPort,

@@ -18,6 +18,7 @@ package clips
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -224,6 +225,15 @@ type ClipFolderMemoryPort interface{}
 // ClipConfigPort is the canonical clips-side narrow surface of
 // *config.Config. Each method exposes exactly the field the handler
 // reads (Pattern 0: never return the whole *Config).
+//
+// HC-1 (June 2026): adds JobTimeout(t) — the typed config-port for
+// per-job-type execution timeouts. Consumed by the bulk_upload worker
+// (`internal/application/clips/bulk_upload_worker.go::HandleJob` —
+// was `context.WithTimeout(ctx, 2*time.Hour)` pre-HC-1, now
+// `w.cfg.JobTimeout(jobs.TypeBulUploadYouTubeClips)`). The concrete
+// adapter at internal/app/clips_adapters_cfg.go delegates to
+// jobs.TimeoutResolver (canonical impl: *jobs.Registry via
+// jobs.Compose()).
 type ClipConfigPort interface {
 	ClipsDriveFolder() string
 	RootFolder() string
@@ -235,6 +245,7 @@ type ClipConfigPort interface {
 	YoutubeClipsPath() string
 	AssetsPath() string
 	AssetsStoragePath() string
+	JobTimeout(jobType string) time.Duration
 }
 
 // ClipHashPort is the canonical narrow surface of hashutil.MD5File
