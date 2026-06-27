@@ -15,23 +15,27 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
-	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
-// Deps is the constructor bag for Handler.
+// Deps is the constructor bag for Handler. Keeping deps in a struct
+// rather than 14+ positional arguments makes wiring sites readable and
+// future dep additions non-breaking.
+// VectorStore field removed from handler deps.
 type Deps struct {
 	SourceResolver *artifacts.SourceResolver
 	AssetRepo      asset.Repository
@@ -47,33 +51,66 @@ type Deps struct {
 	JobsSvc        jobservice.Service
 	Cfg            *config.Config
 	Log            *zap.Logger
-	VoiceoverRepo  *assets.VoiceoversRepository
-	ImagesRepo     *assets.ImagesRepository
-	ArtifactSvc    *artifacts.Service
-	FolderMemSvc   *foldermemory.Service
-	SearchSvc      *appclipssearch.Service
-	ProcessRunner  appassets.ProcessRunner
-	Dispatcher     appclips.ClipIndexDispatcherPort
+	// VoiceoverRepo enables the voiceover-source branch in DownloadClip.
+	// Nil-tolerated so absence of voiceover wiring never crashes the chain.
+	VoiceoverRepo *assets.VoiceoversRepository
+	// ImagesRepo enables the "source=images" branch in ListClips.
+	// Nil-tolerated; nil means GET /:source/clips for that source returns 400.
+	ImagesRepo *assets.ImagesRepository
+	// ArtifactSvc streams uploaded files through content-addressed drive.
+	// Used by UploadVideoClip. Nil means POST /upload-video returns 500.
+	ArtifactSvc *artifacts.Service
+	// FolderMemSvc supports manifest regeneration heuristics.
+	FolderMemSvc *foldermemory.Service
+	// SearchSvc owns advanced multi-source clip search.
+	// Wave 21 PR 10 (June 2026): type canonicalised to
+	// *search.Aggregator (the canonical Search capability SSOT). Field
+	// NAME kept to minimise consumer churn. See
+	// architecture/deprecations.yaml PR-SEARCH-LEGACY-CLIPSSEARCH.
+	SearchSvc *search.Aggregator
+	// ProcessRunner executes external subprocesses (ffprobe, mediainfo, etc.).
+	ProcessRunner appassets.ProcessRunner
+	// Dispatcher is the application port (NOT the concrete
+	// *outbox.Dispatcher) for QDRANT-002 routing. When non-nil,
+	// UpdateClip routes through port.EnqueueAndIndex instead of raw
+	// repo.UpsertClip. Nil-tolerated for test fixtures.
+	Dispatcher appclips.ClipIndexDispatcherPort
+	// SearchAggregator (S3d, June 2026): when non-nil,
+	// FindDuplicates routes through the aggregator's HashQuery
+	// path keyed by fanned-out ClipHashSource adapters.
+	SearchAggregator *providers.SearchAggregator
+	// EnrichUC, when non-nil, is shared with the worker
+	// (`media.enrich`) registered at composition time. S1a
+	// (June 2026) lifts the use-case construction out of the
+	// handler so the worker and the handler reuse the same
+	// instance — the worker was previously orphaned because the
+	// handler constructed the use case internally.
+	EnrichUC *appclips.EnrichUseCase
 
-	// BulkUploadWorker is the canonical port-based worker for the
-	// "bulk_upload_youtube_clips" job. W14 PR2 slice 3 (June 2026):
-	// Nil-tolerated so test fixtures can opt out.
+	// BulkUploadWorker is the canonical port-based worker for
+	// the "bulk_upload_youtube_clips" job (W14 PR2 slice 3,
+	// June 2026). Nil-tolerated so test fixtures / legacy
+	// compositions can opt out.
 	BulkUploadWorker *appclips.BulkUploadWorker
 
 	// ClipOpsService owns the orchestration behind the HTTP verbs
-	// Reconcile / Cleanup / VerifyClip. PR 2 (June 2026) cutover:
+	// Reconcile / Cleanup / VerifyClip (PR 2 cutover, June 2026).
 	// Nil-tolerated for legacy fixtures.
 	ClipOpsService *appclips.ClipOpsService
 
 	// ManifestService is the canonical AssetManifestService —
-	// PR 6/PR 7 (codex/asset-manifest-cutover) cutover. The pre-PR7
-	// helper-method + cumulative Drive-adapter pair
-	// is REMOVED; clip_upload.go step 10b calls this directly.
+	// PR 6/PR 7 (codex/asset-manifest-cutover, June 2026). The
+	// pre-PR7 helper-method + cumulative Drive-adapter pair is
+	// REMOVED; clip_upload.go step 10b + Artlist semantic
+	// enrichment call this directly through the manifest.Service
+	// port. Production wiring lives in
+	// internal/app/manifest_adapters.go::newManifestDriveAdapter.
 	// Nil-tolerated for legacy fixtures (manifest writes skipped).
 	ManifestService manifest.Service
 }
 
-// Handler owns every clip-related HTTP method.
+// Handler owns every clip-related HTTP method. One receiver per method;
+// no nested struct fan-out.
 type Handler struct {
 	Idempotency gin.HandlerFunc
 
@@ -95,22 +132,38 @@ type Handler struct {
 	imagesRepo     *assets.ImagesRepository
 	artifactSvc    *artifacts.Service
 	folderMemSvc   *foldermemory.Service
-	searchSvc      *appclipssearch.Service
-	processRunner  appassets.ProcessRunner
-	dispatcher     appclips.ClipIndexDispatcherPort
+	// searchSvc mirrors Deps.SearchSvc (Wave 21 PR 10: type is
+	// *search.Aggregator — the canonical Search capability).
+	searchSvc     *search.Aggregator
+	processRunner appassets.ProcessRunner
+	// dispatcher mirrors Deps.Dispatcher (the application port
+	// type, see ClipIndexDispatcherPort for the rationale).
+	dispatcher appclips.ClipIndexDispatcherPort
+	// searchAggregator mirrors Deps.SearchAggregator (S3d, June 2026).
+	searchAggregator *providers.SearchAggregator
+	// manifestService mirrors Deps.ManifestService (PR 6/7 cutover,
+	// June 2026). Wired at construction time via Deps.ManifestService;
+	// nil-tolerated for legacy fixtures.
 	manifestService manifest.Service
-
-	reprocessUC      *appclips.ReprocessUseCase
-	downloadUC       *appclips.DownloadUseCase
-	bulkTagsUC       *appclips.BulkTagsUseCase
-	enrichUC         *appclips.EnrichUseCase
+	// bulkUploadWorker mirrors Deps.BulkUploadWorker (W14 PR2 slice 3).
 	bulkUploadWorker *appclips.BulkUploadWorker
-	clipOpsService   *appclips.ClipOpsService
+	// clipOpsService mirrors Deps.ClipOpsService (PR 2 cutover).
+	clipOpsService *appclips.ClipOpsService
+
+	// Use cases — business logic extracted from handlers
+	reprocessUC *appclips.ReprocessUseCase
+	downloadUC  *appclips.DownloadUseCase
+	bulkTagsUC  *appclips.BulkTagsUseCase
+	enrichUC    *appclips.EnrichUseCase
 }
 
-// NewHandler constructs the unified Handler. May be called before every
-// dependency is wired — individual methods that need a missing dep will
-// internal-error handle it.
+// NewHandler constructs the unified Handler.
+//
+// PR8: idempotencyMiddleware is the reusable Gin idempotency middleware
+// instance; a nil value disables idempotency (test fixtures / dry-run
+// CLI invocations). Production wiring passes the canonical
+// *middleware.Idempotency value constructed from
+// BuildRepoBundle.IdempotencyStore.
 func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
@@ -139,6 +192,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		searchSvc:        d.SearchSvc,
 		processRunner:    d.ProcessRunner,
 		dispatcher:       d.Dispatcher,
+		searchAggregator: d.SearchAggregator,
 		manifestService:  d.ManifestService,
 		bulkUploadWorker: d.BulkUploadWorker,
 		clipOpsService:   d.ClipOpsService,
@@ -146,8 +200,24 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
 		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
 		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
-		enrichUC:    appclips.NewEnrichUseCase(d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log),
+		enrichUC:    enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log),
 	}
+}
+
+// enrichUCOrLocal returns `shared` when non-nil, otherwise constructs a
+// fresh EnrichUseCase. Single-line helper that documents the
+// share-or-construct decision inline.
+func enrichUCOrLocal(
+	shared *appclips.EnrichUseCase,
+	repo asset.Repository,
+	indexer *clipindexer.Service,
+	mw *semantic.MetadataWriter,
+	log *zap.Logger,
+) *appclips.EnrichUseCase {
+	if shared != nil {
+		return shared
+	}
+	return appclips.NewEnrichUseCase(repo, indexer, mw, log)
 }
 
 // repoForSource resolves a clip source to its canonical repository.
@@ -182,8 +252,11 @@ func (h *Handler) driveRootForSource(source string) (string, string) {
 	return spec.root(h.cfg), spec.marker
 }
 
+// RegisterJobHandlers wires up the bulk-upload worker. SourcesHandler's
+// RegisterJobHandlers delegates here.
 // RegisterJobHandlers wires up the bulk-upload worker via the
-// application-layer BulkUploadWorker.
+// canonical BulkUploadWorker port (W14 PR2 slice 3). SourcesHandler's
+// RegisterJobHandlers delegates here.
 func (h *Handler) RegisterJobHandlers() error {
 	if h.jobsSvc == nil {
 		return nil
@@ -195,7 +268,8 @@ func (h *Handler) RegisterJobHandlers() error {
 }
 
 // PR8 helper: idemWriter returns h.Idempotency if set, else a no-op
-// pass-through handler. Used only for Write routes.
+// pass-through handler. Used only for Write routes (POST/PUT/PATCH/DELETE);
+// read routes never need idempotency.
 func (h *Handler) idemWriter() gin.HandlerFunc {
 	if h.Idempotency == nil {
 		return func(c *gin.Context) { c.Next() }
@@ -207,7 +281,9 @@ func (h *Handler) idemWriter() gin.HandlerFunc {
 // gin router group.
 //
 // PR8 (June 2026): write routes (POST/PUT/PATCH/DELETE) install
-// h.Idempotency BEFORE the handler.
+// h.Idempotency BEFORE the handler — when present — so Idempotency-Key
+// replay, body-hash conflict (422), and in-flight (409) semantics
+// apply uniformly. Read routes are unchanged.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
 	r.POST("/:source/clips", idem, h.CreateClip)
@@ -216,6 +292,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PATCH("/:source/clips/:id", idem, h.UpdateClip)
 	r.POST("/:source/clips/:id/status", idem, h.ClipStatus)
 	r.POST("/:source/clips/:id/verify", idem, h.VerifyClip)
+	r.POST("/:source/clips/:id/fix-hash", idem, h.HandleFixHash)
 	r.POST("/:source/clips/:id/trash", idem, h.TrashClip)
 	r.POST("/:source/clips/:id/delete", idem, h.DeleteClip)
 	r.POST("/:source/clips/:id/download", idem, h.DownloadClip)
@@ -240,6 +317,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 	r.POST("/enrich", idem, h.EnrichMedia)
 	r.POST("/enrich/batch", idem, h.BatchReindex)
+
 	r.POST("/upload-video", idem, h.UploadVideoClip)
+
 	r.POST("/search/advanced", idem, h.AdvancedSearch)
 }
