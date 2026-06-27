@@ -108,18 +108,7 @@ func runDrQdrant(args []string) error {
 	case "take-snapshot":
 		return runDrTakeSnapshot(ctx, client, log, deps.Raw)
 	case "restore-snapshot":
-		restoreCfg := appConfigLike{
-			Qdrant: adminQdrantShape{
-				Enabled: cfg.Qdrant.Enabled,
-				BaseURL: cfg.Qdrant.BaseURL,
-				APIKey:  cfg.Qdrant.APIKey,
-				Timeout: cfg.Qdrant.Timeout,
-			},
-			Storage: adminStorageShape{
-				PrimaryDBFullPath: cfg.Storage.PrimaryDBFullPath,
-			},
-		}
-		return runDrRestoreSnapshot(ctx, restoreCfg, client, schema, log, deps.Raw)
+		return runDrRestoreSnapshot(ctx, cfg, client, schema, log, deps.Raw)
 	case "apply-retention":
 		return runDrApplyRetention(ctx, client, schema, log, deps.Raw)
 	}
