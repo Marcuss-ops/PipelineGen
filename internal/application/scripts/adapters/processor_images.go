@@ -106,7 +106,18 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 			sceneName = scene.ID
 		}
 
-		asset, err := p.gen.SearchAndDownload(ctx, sceneName, sceneText, sceneText, language, nil)
+		query := scene.Title
+		if query == "" {
+			query = plan.Topic
+		}
+		if query == "" {
+			query = plan.Title
+		}
+		if query == "" {
+			query = sceneText
+		}
+
+		asset, err := p.gen.SearchAndDownload(ctx, sceneName, sceneText, query, language, nil)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("image generation failed for scene %d: %v", i, err))
 			images = append(images, SceneImage{Index: i, Text: sceneText})
