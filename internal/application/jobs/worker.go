@@ -30,6 +30,10 @@ import (
 // fails CI on any new `var jobTimeoutRegistry = ` / `SetJobTimeout(`
 // caller / `jobTimeout(` helper usage.
 
+// TimeoutMap is a frozen snapshot of per-job-type execution timeouts,
+// derived from the Registry at WithRegistry() time.
+type TimeoutMap map[string]time.Duration
+
 var workerIDPrefix string
 
 func init() {
@@ -199,7 +203,7 @@ func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier Queue
 func (w *Worker) WithRegistry(reg *Registry) *Worker {
 	w.reg = reg
 	if reg != nil {
-		w.timeouts = reg.Compose()
+		w.timeouts = reg.TimeoutMap()
 	} else {
 		w.timeouts = nil
 	}

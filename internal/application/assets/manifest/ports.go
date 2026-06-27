@@ -13,18 +13,18 @@ import "context"
 // Two methods only:
 //
 //   - DownloadManifest:  reads the current canonical `metadata.json`
-//                        from <folderID> in Drive. Returns
-//                        (nil, nil) when the file does not exist.
-//                        Bytes are returned verbatim; manifest
-//                        unmarshals them in memory.
+//     from <folderID> in Drive. Returns
+//     (nil, nil) when the file does not exist.
+//     Bytes are returned verbatim; manifest
+//     unmarshals them in memory.
 //
 //   - ReplaceManifest:   uploads <content> as `metadata.json` in
-//                        <folderID>. Honors the "upload-then-replace"
-//                        spec directive: if a non-trashed file with
-//                        the same name already exists, the adapter
-//                        MUST call google drive Files.Update on the
-//                        existing file id (NOT trash-then-create).
-//                        Returns the (possibly-new) file id.
+//     <folderID>. Honors the "upload-then-replace"
+//     spec directive: if a non-trashed file with
+//     the same name already exists, the adapter
+//     MUST call google drive Files.Update on the
+//     existing file id (NOT trash-then-create).
+//     Returns the (possibly-new) file id.
 //
 // Keeping read + write as separate methods lets the manifest service
 // own the merge-by-AssetID logic in one place while the adapter owns

@@ -55,6 +55,20 @@ var ErrQueueUnavailable = errors.New("clips: Reconcile queue unavailable (JobsSe
 // sentinel wrapped via fmt.Errorf("%w: %s", ErrInvalidSource, source).
 var ErrInvalidSource = errors.New("clips: invalid source")
 
+// ── FixHash sentinel errors (PR 7 origin/main, June 2026) ──────
+
+// ErrFixHashVoiceoverUnsupported is returned when FixHash is called
+// on a voiceover source (voiceovers don't have Drive-based hash recovery).
+var ErrFixHashVoiceoverUnsupported = errors.New("clips: fix-hash not supported for voiceover source")
+
+// ErrFixHashMissingDriveLink is returned when the clip has no Drive
+// link and therefore hash recovery from Drive is impossible.
+var ErrFixHashMissingDriveLink = errors.New("clips: fix-hash requires a Drive link")
+
+// ErrFixHashDispatcherUnavailable is returned when the dispatcher
+// port is nil (composition bug or partial deploy).
+var ErrFixHashDispatcherUnavailable = errors.New("clips: fix-hash dispatcher not wired")
+
 // ── Voiceover / Images / Jobs / Deletion port surface for cleanup ────
 
 // CleanupServicePort is the narrowed surface of *deletion.DeletionService
@@ -371,28 +385,61 @@ type VerifyInput struct {
 // Field set is the same; the type is typed so the API layer never
 // imports domain/asset to construct the report.
 type VerifyReport struct {
-	OK              bool
-	Source          string
-	ClipID          string
-	Issues          []string
-	DB              bool
-	LocalFile       bool
-	LocalPath       string
-	LocalError      string
-	HasDriveLink    bool
-	DriveLink       string
-	DriveFileID     string
-	DriveLinkValid  bool
-	Hash            string
-	HasHash         bool
-	HashVerified    bool
-	HashRecovered   bool
-	FolderID        string
-	FolderPath      string
-	Status          string
-	Coherent        bool
-	IssueCount      int
-	Extra           map[string]any // catch-all for adapter-extended fields
+	OK     bool
+	Source string
+	ClipID string
+	// Issues carries BLOCKING issues only — i.e. conditions that
+	// genuinely require operator attention AND flip Coherent=false.
+	// Informational signals (the canonical example: "Drive has a
+	// recoverable MD5 we could persist") live in their own typed
+	// fields (HashInfo). The pre-S1c pattern that mixed both lists
+	// in Issues[] was retired for S1d (the slug
+	// "hash_recoverable_from_drive" was REMOVED from this slice
+	// and migrated to HashInfo.Recoverable / HashInfo.CandidateHash).
+	//
+	// Wave 22 PR-5 polish (June 2026): godoc enforcement of this
+	// contract is the lightest-touch split. A typed Issue {Slug,
+	// Category} struct would be the more rigorous choice but
+	// changes the JSON wire shape for CURRENT callers (Issues[0]
+	// becomes an object instead of a string) — deferred to a
+	// follow-up PR with a v1→v2 envelope migration.
+	//
+	// Current blocking-slot slugs (June 2026):
+	//   local_file_missing, local_path_empty,
+	//   drive_link_missing, drive_link_invalid,
+	//   hash_missing, invalid_source
+	// Add new slugs ONLY after reviewing the S1d channel-separation
+	// rule above.
+	Issues         []string
+	DB             bool
+	LocalFile      bool
+	LocalPath      string
+	LocalError     string
+	HasDriveLink   bool
+	DriveLink      string
+	DriveFileID    string
+	DriveLinkValid bool
+	Hash           string
+	HasHash        bool
+	HashVerified   bool
+	// ── Canonical S1d informational channel (NEW — read this for new code) ──
+	HashInfo HashInfo
+	// ── Legacy flat fields — JSON back-compat ONLY. ──
+	HashRecovered        bool
+	HashRecoverable      bool
+	HashRecoverableValue string
+	FolderID             string
+	FolderPath           string
+	Status               string
+	Coherent             bool
+	IssueCount           int
+	Extra                map[string]any
+}
+
+// HashInfo is the S1d typed informational channel for hash recovery signals.
+type HashInfo struct {
+	Recoverable   bool
+	CandidateHash string
 }
 
 // Verify reports DB/local/Drive coherence for a single clip.
@@ -586,6 +633,23 @@ func (s *ClipOpsService) resolveRepo(source string) ClipRepositoryPort {
 		return nil
 	}
 	return s.sourceResolver.ResolveRepo(source)
+}
+
+// FixHashReport is the result of a FixHash operation.
+type FixHashReport struct {
+	OK        bool   `json:"ok"`
+	Reindexed bool   `json:"reindexed"`
+	Hash      string `json:"hash,omitempty"`
+}
+
+// FixHash recovers a missing file hash from Drive for a single clip.
+// PR 7 (origin/main, June 2026): stub method — full implementation
+// requires the mutations.AssetMutationDispatcher port.
+func (s *ClipOpsService) FixHash(ctx context.Context, source, clipID string) (*FixHashReport, error) {
+	if strings.ToLower(source) == "voiceover" {
+		return nil, ErrFixHashVoiceoverUnsupported
+	}
+	return nil, ErrFixHashDispatcherUnavailable
 }
 
 // voiceoverDTOToClip inverts the projection from voiceover DTO into

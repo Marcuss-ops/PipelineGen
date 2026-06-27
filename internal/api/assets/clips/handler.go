@@ -197,7 +197,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		bulkUploadWorker: d.BulkUploadWorker,
 		clipOpsService:   d.ClipOpsService,
 
-		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
+		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, nil),
 		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
 		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
 		enrichUC:    enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log),

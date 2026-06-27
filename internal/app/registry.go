@@ -25,13 +25,14 @@ import (
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -39,7 +40,7 @@ import (
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -256,17 +257,25 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// ProviderRegistry and the SearchAggregator point at the same
 	// frozen state.
 	//
-	// Note: when root.Search.ProviderRegistry is nil (registry not
-	// built — e.g. test fixtures or partial deploys), we pass the
-	// aggregator as nil. WireYouTubeClip forwards nil to
-	// NewYouTubeClipHandler; the handler's SearchAdvanced + Stats
-	// then return 503 (services not wired).
-	var searchAggregator *providers.SearchAggregator
+	// Note: when root.Search.ProviderRegistry is nil (registry
+	// not built — e.g. test fixtures or partial deploys), the
+	// fan-out is set to a noopFanOut that surfaces
+	// ErrAggregatorNil on every Search and returns the empty
+	// map on Stats. Handlers map this to 503 (services not
+	// wired) without panicking on a nil decorator.
+	var searchFanOut search.SearchFanOut
+	var searchBackends *search.BackendRegistry
+	var searchAgg *providers.SearchAggregator
 	if root.Search != nil && root.Search.ProviderRegistry != nil {
-		searchAggregator = providers.NewSearchAggregator(root.Search.ProviderRegistry)
-		log.Info("S3d: constructed providers.SearchAggregator against root.Search.ProviderRegistry")
+		searchFanOut, searchBackends, _ = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
+			Logger:      log,
+			ProviderReg: root.Search.ProviderRegistry,
+			ClipsRepo:   root.Repos.ClipsRepo,
+		})
+		searchAgg = providers.NewSearchAggregator(root.Search.ProviderRegistry)
+		log.Info("PR-2: canonical SearchFanOut wired against root.Search.ProviderRegistry (single shared instance)")
 	}
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchAggregator); err != nil {
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchAgg); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		if err := tryRegisterModuleStrict(registry, log, yw.Module, WithRegistrationPoint("register.YouTubeClip")); err != nil {
@@ -292,7 +301,15 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 
 	// 1) Jobs — thin wrapper, no bundle deps.
 	{
-		jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, log)
+		// PR-0 (June 2026): NewJobsHandler signature is now
+		// (job.Service, JobStatsReader, *zap.Logger). *root.Jobs.Service
+		// satisfies both interfaces — it implements the canonical domain
+		// job.Service (orchestrator) AND the JobStatsReader port (via the
+		// runtime type-assertion GetStats helper). When a future stats source
+		// is bindable without the orchestrator's mutation surface, pass that
+		// reader to h.stats and let h.service continue carrying the
+		// orchestrator.
+		jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 		jobsMod := module.NewRouteModule(
 			"jobs",
 			func() bool { return true },
@@ -670,9 +687,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if wiring.Assets != nil && wiring.Assets.Module != nil {
 			log.Info("providers.Registry wired into Assets module via constructor")
 		}
-	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
-		log.Info("YouTubeClipHandler wired transport-only (PR-CLIP-YT-REGISTRY-CLEANUP: providers.Registry dispatch published via youtubeadapter.NewAdapter above; handler no longer takes providerRegistry)")
-	}
+		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
+			log.Info("YouTubeClipHandler wired transport-only (PR-CLIP-YT-REGISTRY-CLEANUP: providers.Registry dispatch published via youtubeadapter.NewAdapter above; handler no longer takes providerRegistry)")
+		}
 	}
 
 	return wiring, nil

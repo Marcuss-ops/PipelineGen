@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
@@ -98,7 +99,7 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 	}
 	offset = apiutil.ClampLimit(offset, 0, 0)
 
-	scriptRecords, err := h.repo.ListScripts(c.Request.Context(), usecase.ScriptListFilter{Limit: limit, Offset: offset, Language: language, Status: template})
+	scriptRecords, err := h.repo.ListScripts(c.Request.Context(), adapters.ScriptListFilter{Limit: limit, Offset: offset, Language: language, Status: template})
 	if err != nil {
 		h.log.Error("Failed to list scripts", zap.Error(err))
 		apiutil.InternalError(c, err)

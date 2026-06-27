@@ -218,14 +218,14 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 				"duplicate_of":  result.DuplicateOf,
 			}
 			entry := manifest.AssetToEntry(&asset.Asset{
-				ID:         input.ID,
-				Name:       input.Name,
-				Filename:   result.Filename,
-				Source:     asset.Source(sourceVal),
-				Tags:       []string{},
-				CreatedAt:  time.Now().UTC(),
-				UpdatedAt:  time.Now().UTC(),
-				Duration:   time.Duration(input.Duration) * time.Second,
+				ID:        input.ID,
+				Name:      input.Name,
+				Filename:  result.Filename,
+				Source:    asset.Source(sourceVal),
+				Tags:      []string{},
+				CreatedAt: time.Now().UTC(),
+				UpdatedAt: time.Now().UTC(),
+				Duration:  time.Duration(input.Duration) * time.Second,
 			}, sourceVal, input.Term, extras)
 			entry.LocalPath = processedPath
 			entry.DriveFileID = result.DriveFileID

@@ -13,13 +13,13 @@
 // pre-PR5 *CleanupReport (Items/Checked/Deleted/Summary) shape.
 // Behavioural invariants pinned at the service level:
 //
-//   1. jobs.Enqueue receives an "assets.cleanup" job with a
-//      deterministic ActiveKey derived from the CleanupInput
-//      tuple.
-//   2. The synchronous CleanupOrphanFiles fallback is REMOVED
-//      per spec; jobs=nil surfaces ErrQueueUnavailable.
-//   3. Invalid source -> ErrInvalidSource (still surfaced via
-//      HTTP 400 via mapClipOpsError).
+//  1. jobs.Enqueue receives an "assets.cleanup" job with a
+//     deterministic ActiveKey derived from the CleanupInput
+//     tuple.
+//  2. The synchronous CleanupOrphanFiles fallback is REMOVED
+//     per spec; jobs=nil surfaces ErrQueueUnavailable.
+//  3. Invalid source -> ErrInvalidSource (still surfaced via
+//     HTTP 400 via mapClipOpsError).
 //
 // The 6 spec-matrix tests (resume-from-checkpoint / cancel /
 // dry_run / retry-idempotent / asset-added-mid-scan /
@@ -84,7 +84,7 @@ func (r *testClipsRepo) ListByFolderID(_ context.Context, _ string) ([]*asset.As
 func (r *testClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
+func (r *testClipsRepo) DeleteFolder(_ context.Context, _ string) error        { return nil }
 func (r *testClipsRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
 func (r *testClipsRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
 func (r *testClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
@@ -98,7 +98,9 @@ func (r *testClipsRepo) FindClipsByHash(_ context.Context, _ string) ([]*asset.A
 	return nil, nil
 }
 
-type testVoiceoverRepo struct{ records map[string]*ClipVoiceoverRecordDTO }
+type testVoiceoverRepo struct {
+	records map[string]*ClipVoiceoverRecordDTO
+}
 
 func (r *testVoiceoverRepo) GetByID(_ context.Context, id string) (*ClipVoiceoverRecordDTO, error) {
 	if r == nil {

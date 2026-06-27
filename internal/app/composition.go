@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"

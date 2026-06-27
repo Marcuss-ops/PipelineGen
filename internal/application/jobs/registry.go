@@ -110,29 +110,43 @@ func (r *Registry) AllTypes() []string {
 	return types
 }
 
+// TimeoutMap returns a frozen snapshot of per-job-type execution timeouts
+// for the Worker's fast-lookup path (HC-1, June 2026).
+func (r *Registry) TimeoutMap() TimeoutMap {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	m := make(TimeoutMap, len(r.entries))
+	for _, e := range r.entries {
+		if e.Timeout > 0 {
+			m[e.Type] = e.Timeout
+		}
+	}
+	return m
+}
+
 // ── Standard job.Job Types ──────────────────────────────────────────────────
 
 // Each constant is the canonical string identifier. These are the SSOT; no
 // other package should define job type string literals.
 const (
-	TypeMediaExtract        = "media.extract"
-	TypeMediaStock          = "media.stock"
-	TypeVoiceoverBatch      = "voiceover.batch"
-	TypeSubtitleGenerate    = "subtitle.generate"
-	TypeRenderVideo         = "render.video"
-	TypeYouTubeUpload       = "youtube.upload"
-	TypeYouTubeClipExtract  = "youtube_clip.extract"
-	TypeCatalogSync         = "catalog.sync"
-	TypeArtlistRun          = "media.artlist"
-	TypeSystemCleanup       = "system.cleanup"
-	TypeAssetsCleanup       = "assets.cleanup"
-	TypeMediaGenerate       = "media.generate_missing_asset"
-	TypeVideoGenerate       = "video.generate"
-	TypeBooksProcess        = "books.process"
-	TypeLessonsProcess      = "lessons.process"
-	TypeMediaReindex        = "media.reindex"
-	TypeMediaEnrich         = job.TypeMediaEnrich
-	TypeYouTubeRebuildST    = "youtube.rebuild_search_text"
+	TypeMediaExtract          = "media.extract"
+	TypeMediaStock            = "media.stock"
+	TypeVoiceoverBatch        = "voiceover.batch"
+	TypeSubtitleGenerate      = "subtitle.generate"
+	TypeRenderVideo           = "render.video"
+	TypeYouTubeUpload         = "youtube.upload"
+	TypeYouTubeClipExtract    = "youtube_clip.extract"
+	TypeCatalogSync           = "catalog.sync"
+	TypeArtlistRun            = "media.artlist"
+	TypeSystemCleanup         = "system.cleanup"
+	TypeAssetsCleanup         = "assets.cleanup"
+	TypeMediaGenerate         = "media.generate_missing_asset"
+	TypeVideoGenerate         = "video.generate"
+	TypeBooksProcess          = "books.process"
+	TypeLessonsProcess        = "lessons.process"
+	TypeMediaReindex          = "media.reindex"
+	TypeMediaEnrich           = job.TypeMediaEnrich
+	TypeYouTubeRebuildST      = "youtube.rebuild_search_text"
 	TypeScriptGenerate        = job.TypeScriptGenerate
 	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync       = "drive.folder.sync"

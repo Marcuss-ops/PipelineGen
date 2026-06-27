@@ -2,20 +2,20 @@
 //
 // 7-case test matrix per PR 6 spec:
 //
-//	1. update — replace existing entry by AssetID
-//	2. append — add new entry preserving old
-//	3. corrupted JSON — recover without losing new entry
-//	4. concurrent writes to DIFFERENT folders — no contention
-//	5. upload error — graceful degradation, ErrRemoteWrite wrap
-//	6. retry idempotent — UpsertRemote twice with same AssetID → 1 entry
-//	7. missing remote — initial create from (nil, nil)
+//  1. update — replace existing entry by AssetID
+//  2. append — add new entry preserving old
+//  3. corrupted JSON — recover without losing new entry
+//  4. concurrent writes to DIFFERENT folders — no contention
+//  5. upload error — graceful degradation, ErrRemoteWrite wrap
+//  6. retry idempotent — UpsertRemote twice with same AssetID → 1 entry
+//  7. missing remote — initial create from (nil, nil)
 //
 // Plus 4 defensive tests pinning the contract surface:
 //
-//	- UpsertLocal happy path (atomic temp+fsync+rename)
-//	- UpsertLocal empty path → ErrInvalidPath
-//	- UpsertRemote empty folderID → ErrInvalidPath
-//	- Upsert* empty AssetID → ErrInvalidEntry
+//   - UpsertLocal happy path (atomic temp+fsync+rename)
+//   - UpsertLocal empty path → ErrInvalidPath
+//   - UpsertRemote empty folderID → ErrInvalidPath
+//   - Upsert* empty AssetID → ErrInvalidEntry
 //
 // The fakeDriveAdapter below is in-memory + injectable error hooks;
 // no real Drive API access is required. Concurrent test runs cleanly
@@ -301,7 +301,8 @@ func TestService_UpsertRemote_Concurrent_DifferentFolders(t *testing.T) {
 }
 
 // ── 4b. Concurrent SAME-folder, SAME-AssetID writes: merge-by-ID
-//     under per-folder serialisation must collapse to 1 entry. ────────────
+//
+//	under per-folder serialisation must collapse to 1 entry. ────────────
 //
 // The cross-folder test (#4) uses unique AssetIDs per goroutine, so the
 // per-folder lock is exercised but the merge-by-AssetID dedupe is never
@@ -803,4 +804,3 @@ func TestService_UpsertLocal_CorruptedJSON_Recovery(t *testing.T) {
 		t.Fatalf("expected exactly [L1-corrupt] after corruption recovery, got: %v", entries)
 	}
 }
-

@@ -56,14 +56,14 @@ type SystemCleanupPayload struct {
 // cursor.LastOffset to resume from a checkpoint via the jobs
 // Service Get → patch Payload → Enqueue (same ActiveKey) flow.
 type AssetsCleanupPayload struct {
-	Source     string                `json:"source"`
-	DryRun     bool                  `json:"dry_run,omitempty"`
-	CheckLocal bool                  `json:"check_local,omitempty"`
-	CheckDrive bool                  `json:"check_drive,omitempty"`
-	Repair     bool                  `json:"repair,omitempty"`
-	Delete     bool                  `json:"delete,omitempty"`
-	BatchSize  int                   `json:"batch_size,omitempty"`
-	Cursor     AssetsCleanupCursor   `json:"cursor"`
+	Source     string              `json:"source"`
+	DryRun     bool                `json:"dry_run,omitempty"`
+	CheckLocal bool                `json:"check_local,omitempty"`
+	CheckDrive bool                `json:"check_drive,omitempty"`
+	Repair     bool                `json:"repair,omitempty"`
+	Delete     bool                `json:"delete,omitempty"`
+	BatchSize  int                 `json:"batch_size,omitempty"`
+	Cursor     AssetsCleanupCursor `json:"cursor"`
 }
 
 // AssetsCleanupCursor is the per-batch pagination checkpoint

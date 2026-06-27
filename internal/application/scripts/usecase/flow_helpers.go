@@ -727,10 +727,22 @@ func minInt(a, b int) int {
 	return b
 }
 
-// NewGenerateEnqueueRequest builds the request for the unified generate endpoint.
-// Phase 1b stub.
-func NewGenerateEnqueueRequest(payload any) any { return payload }
+// ── Generation enqueue helpers (typed stubs) ──────────────────────────
 
-func EnqueueGenerationJob(ctx context.Context, jobsSvc any, req any, log any) (any, error) {
-	return nil, fmt.Errorf("enqueue not implemented (Phase 1b stub)")
+// EnqueuedJob is the typed result of EnqueueGenerationJob, carrying the
+// fields the HTTP handler reads (ID, Status).
+type EnqueuedJob struct {
+	ID     string
+	Status string
+}
+
+// NewGenerateEnqueueRequest wraps an envelope for enqueue.
+func NewGenerateEnqueueRequest(env any) any {
+	return env
+}
+
+// EnqueueGenerationJob enqueues a script.generate job. Stub returning
+// a typed result so handlers can access .ID and .Status.
+func EnqueueGenerationJob(ctx context.Context, jobsSvc any, req any, log any) (*EnqueuedJob, error) {
+	return nil, fmt.Errorf("enqueue not implemented (stub)")
 }

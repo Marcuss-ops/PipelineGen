@@ -10,46 +10,46 @@
 // single ListClipsPaged call. That violated three invariants the new
 // spec pinned:
 //
-//   1. Eliminate synchronous scans → the work must move to the jobs
-//      system.
-//   2. Eliminate the 10K physical limit → pagination is mandatory;
-//      the batch max is 250.
-//   3. Cursor/checkpoint persisted → the handler iterates in batches
-//      of 250 and persists cursor + per-batch metadata so a
-//      cancellation or worker crash can be recovered from
-//      (cursor emits as a structural field in the payload AND as a
-//      "checkpoint" event for observability).
+//  1. Eliminate synchronous scans → the work must move to the jobs
+//     system.
+//  2. Eliminate the 10K physical limit → pagination is mandatory;
+//     the batch max is 250.
+//  3. Cursor/checkpoint persisted → the handler iterates in batches
+//     of 250 and persists cursor + per-batch metadata so a
+//     cancellation or worker crash can be recovered from
+//     (cursor emits as a structural field in the payload AND as a
+//     "checkpoint" event for observability).
 //
 // Phase separation:
 //
-//   scan →  ListClipsPaged(source, batch=250, cursor.LastOffset, "")
-//   classify →  per-clip status (orphan | coherent | hash_missing |
-//                drive_trashed | local_missing)
-//   repair →  if CheckDrive && Repair && status==hash_missing →
-//              driveUploader.GetFileMD5(fileID) + repo.Upsert(clip)
-//   delete → if !DryRun && Delete && status==orphan (or trashed) →
-//              cleanup.DeleteClip(source, clipID, false)
+//	scan →  ListClipsPaged(source, batch=250, cursor.LastOffset, "")
+//	classify →  per-clip status (orphan | coherent | hash_missing |
+//	             drive_trashed | local_missing)
+//	repair →  if CheckDrive && Repair && status==hash_missing →
+//	           driveUploader.GetFileMD5(fileID) + repo.Upsert(clip)
+//	delete → if !DryRun && Delete && status==orphan (or trashed) →
+//	           cleanup.DeleteClip(source, clipID, false)
 //
 // Spec exclusions:
 //
-//   ✓ The previous `synchronous CleanupOrphanFiles` fallback in
-//     ClipOpsService is REMOVED — every path goes through this job
-//     handler.
-//   ✓ The 10,000-record ListClipsPaged is REPLACED with batch=250 +
-//     cursor pagination.
-//   ✓ The per-clip verifyClip call inside the handler is REMOVED —
-//     classification is in-place, no extra DB hits per clip.
-//   ✓ `delete` runs ONLY in the delete sub-phase; the scan phase does
-//     not mutate rows.
+//	✓ The previous `synchronous CleanupOrphanFiles` fallback in
+//	  ClipOpsService is REMOVED — every path goes through this job
+//	  handler.
+//	✓ The 10,000-record ListClipsPaged is REPLACED with batch=250 +
+//	  cursor pagination.
+//	✓ The per-clip verifyClip call inside the handler is REMOVED —
+//	  classification is in-place, no extra DB hits per clip.
+//	✓ `delete` runs ONLY in the delete sub-phase; the scan phase does
+//	  not mutate rows.
 //
 // Resume semantics:
 //
-//   The handler checks `tools.IsCancelled()` between batches and
-//   emits a "checkpoint" Event after each batch with the new cursor.
-//   A subsequent Enqueue with the same ActiveKey creates a fresh
-//   job (FindActiveByKey returns nil once the prior job is
-//   terminal) inheriting the original payload + ActiveKey, which
-//   the caller can pre-populate with cursor.LastOffset to resume.
+//	The handler checks `tools.IsCancelled()` between batches and
+//	emits a "checkpoint" Event after each batch with the new cursor.
+//	A subsequent Enqueue with the same ActiveKey creates a fresh
+//	job (FindActiveByKey returns nil once the prior job is
+//	terminal) inheriting the original payload + ActiveKey, which
+//	the caller can pre-populate with cursor.LastOffset to resume.
 package cleanup
 
 import (
@@ -339,10 +339,10 @@ func (c *Cleaner) HandleJob(ctx context.Context, j *appjobs.Job, tools *appjobs.
 	}
 	report["end_offset"] = payload.Cursor.LastOffset
 	report["cursor"] = map[string]any{
-		"source":     payload.Cursor.Source,
-		"batch_size": payload.Cursor.BatchSize,
+		"source":      payload.Cursor.Source,
+		"batch_size":  payload.Cursor.BatchSize,
 		"last_offset": payload.Cursor.LastOffset,
-		"updated_at": payload.Cursor.UpdatedAt,
+		"updated_at":  payload.Cursor.UpdatedAt,
 	}
 	return report, nil
 }
@@ -500,12 +500,12 @@ func (c *Cleaner) progressPct(offset, batch int) int {
 // the request flags (CheckLocal + CheckDrive) and the clip's
 // attributes. Buckets:
 //
-//   classCoherent       — DB row + (local file OR drive link) + hash
-//   classOrphan         — DB row missing BOTH local file AND drive link
-//   classLocalMissing   — DB row + drive link, but local_path not on disk
-//   classDriveMissing   — DB row + local file, but no drive link
-//   classHashMissing    — DB row + everything else, but no file_hash
-//   classDriveTrashed   — set by HandleJob after FileIsNotTrashed=false
+//	classCoherent       — DB row + (local file OR drive link) + hash
+//	classOrphan         — DB row missing BOTH local file AND drive link
+//	classLocalMissing   — DB row + drive link, but local_path not on disk
+//	classDriveMissing   — DB row + local file, but no drive link
+//	classHashMissing    — DB row + everything else, but no file_hash
+//	classDriveTrashed   — set by HandleJob after FileIsNotTrashed=false
 type clipClass string
 
 const (

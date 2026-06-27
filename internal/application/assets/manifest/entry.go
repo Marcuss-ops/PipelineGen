@@ -68,12 +68,12 @@ type Entry struct {
 // params:
 //   - a:       the asset struct (must be non-nil; nil maps to empty Entry).
 //   - source:  the canonical source string ("youtube", "artlist",
-//              "manual", "stock", ...). Required.
+//     "manual", "stock", ...). Required.
 //   - term:    the search term for artlist-style discovery (optional;
-//              empty string leaves the term key absent from Metadata).
+//     empty string leaves the term key absent from Metadata).
 //   - extras:  call-site-specific keys (clip_page_url, duplicate_of,
-//              etc.). Merged at the top level of Metadata, NOT
-//              promoted to first-class Entry fields.
+//     etc.). Merged at the top level of Metadata, NOT
+//     promoted to first-class Entry fields.
 func AssetToEntry(a *asset.Asset, source, term string, extras map[string]any) Entry {
 	if a == nil {
 		return Entry{UpdatedAt: time.Now().UTC()}

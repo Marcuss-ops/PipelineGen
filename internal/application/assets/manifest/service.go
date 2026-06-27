@@ -7,27 +7,28 @@
 //
 // Per-path lock (vs. the pre-cutover single global mutex):
 //
-//   The pre-cutover code serialised ALL writes across ALL clips across
-//   ALL folders through a single package-level sync.Mutex. The new
-//   Service uses per-path locks keyed by absolute manifest path
-//   (local) or "drive:<folderID>" (remote); two writers to DIFFERENT
-//   files do not contend, two writers to the SAME file serialise
-//   correctly.
+//	The pre-cutover code serialised ALL writes across ALL clips across
+//	ALL folders through a single package-level sync.Mutex. The new
+//	Service uses per-path locks keyed by absolute manifest path
+//	(local) or "drive:<folderID>" (remote); two writers to DIFFERENT
+//	files do not contend, two writers to the SAME file serialise
+//	correctly.
 //
 // Atomic local write (temp + fsync + rename):
 //
-//   The new Service writes to a uniquely-named temp file in the
-//   SAME directory (so os.Rename is atomic on the same fs), calls
-//   fsync on the temp file (so its bytes are durable), then
-//   atomically renames temp → manifest. Readers never see a
-//   partially-written file.
+//	The new Service writes to a uniquely-named temp file in the
+//	SAME directory (so os.Rename is atomic on the same fs), calls
+//	fsync on the temp file (so its bytes are durable), then
+//	atomically renames temp → manifest. Readers never see a
+//	partially-written file.
 //
 // Remote merge-by-AssetID:
-//   The adapter's ReplaceManifest is the single boundary that owns
-//   the Drive-side file-id lifecycle. The manifest service itself
-//   only sees bytes-before and bytes-after; the adapter decides
-//   whether to call Files.Update or delete-and-recreate on the
-//   target file id.
+//
+//	The adapter's ReplaceManifest is the single boundary that owns
+//	the Drive-side file-id lifecycle. The manifest service itself
+//	only sees bytes-before and bytes-after; the adapter decides
+//	whether to call Files.Update or delete-and-recreate on the
+//	target file id.
 package manifest
 
 import (

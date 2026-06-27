@@ -5,11 +5,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -129,45 +135,140 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	// P0.5 (June 2026): ReuploadClip now delegates to the
-	// ReuploadUseCase — business logic (folder resolution,
-	// Drive upload, hash update, dispatcher persistence) lives
-	// in internal/application/clips/reupload_usecase.go.
-	// The handler is thin transport only, per AGENTS.md Pattern 8.
-	if h.reuploadUC == nil {
-		apiutil.InternalError(c, fmt.Errorf("reupload use case not wired"))
+	if h.assetRepo == nil {
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
-	result, err := h.reuploadUC.Execute(c.Request.Context(), appclips.ReuploadRequest{
-		Source: source,
-		ClipID: clipID,
-	})
+	ctx := c.Request.Context()
+	clip, err := h.assetRepo.Get(ctx, clipID)
 	if err != nil {
-		switch {
-		case errors.Is(err, appclips.ErrReuploadNotFound):
-			apiutil.NotFound(c, "clip not found")
-		case errors.Is(err, appclips.ErrReuploadNoLocalPath):
-			apiutil.BadRequest(c, "clip has no local path")
-		case errors.Is(err, appclips.ErrReuploadLocalFileMissing):
-			apiutil.BadRequest(c, err.Error())
-		case errors.Is(err, appclips.ErrReuploadFolderResolutionFailed):
-			apiutil.BadRequest(c, "clip has no folder ID and dynamic resolution failed (check local path format)")
-		case errors.Is(err, appclips.ErrReuploadDispatcherUnavailable):
-			apiutil.Error(c, 503, err.Error())
-		default:
-			apiutil.InternalError(c, err)
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
+	if clip == nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
+
+	// Check local file
+	if clip.LocalPath() == "" {
+		apiutil.BadRequest(c, "clip has no local path")
+		return
+	}
+
+	if _, err := os.Stat(clip.LocalPath()); err != nil {
+		apiutil.BadRequest(c, "local file not found: "+clip.LocalPath())
+		return
+	}
+
+	// Check if uploader is available
+	if h.driveUploader == nil {
+		apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
+		return
+	}
+
+	// Determine folder ID
+	folderID := clip.FolderID()
+	if folderID == "" {
+		// Attempt to resolve folder ID dynamically based on source and local path.
+		rootID, pathMarker := h.driveRootForSource(source)
+
+		if rootID != "" && pathMarker != "" && strings.Contains(clip.LocalPath(), pathMarker) {
+			idx := strings.Index(clip.LocalPath(), pathMarker)
+			relPath := clip.LocalPath()[idx+len(pathMarker):]
+			dir := filepath.Dir(relPath)
+			if dir != "." && dir != "" {
+				segments := strings.Split(dir, string(filepath.Separator))
+				currentID := rootID
+				for _, seg := range segments {
+					if seg == "" {
+						continue
+					}
+					id, err := h.driveUploader.GetOrCreateFolder(ctx, seg, currentID)
+					if err != nil {
+						apiutil.InternalError(c, fmt.Errorf("failed to create drive folder %s: %w", seg, err))
+						return
+					}
+					currentID = id
+				}
+				folderID = currentID
+				clip.SetFolderID(folderID) // save it for later
+			}
 		}
+
+		if folderID == "" {
+			apiutil.BadRequest(c, "clip has no folder ID and dynamic resolution failed (check local path format)")
+			return
+		}
+	}
+
+	// Upload file to Drive
+	filename := clip.Filename
+	if filename == "" {
+		filename = filepath.Base(clip.LocalPath())
+	}
+
+	result, err := h.driveUploader.UploadFile(ctx, clip.LocalPath(), folderID, filename)
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("upload failed: %w", err))
+		return
+	}
+
+	// Update clip with new Drive link
+	driveLinkVal := result.DownloadLink
+	if driveLinkVal == "" && result.FileID != "" {
+		driveLinkVal = driveutil.FileURLFromID(result.FileID)
+	}
+	clip.SetDriveLink(driveLinkVal)
+
+	// Update file hash if available
+	if result.MD5Checksum != "" {
+		clip.SetFileHash(result.MD5Checksum)
+	}
+
+	// Save to DB
+	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the legacy
+	// direct-write path against the canonical asset repository is removed.
+	// ReuploadClip must route through dispatcher.EnqueueAndIndex so the
+	// new drive link + updated MD5 reach Qdrant through the canonical
+	// outbox event. A nil dispatcher is treated as a wiring error
+	// (HTTP 503), not as a silent raw-write fallback.
+	if h.dispatcher == nil {
+		h.log.Error("ReuploadClip: dispatcher not wired — atomic UPSERT + outbox enqueue refused",
+			zap.String("clip_id", clipID))
+		apiutil.Error(c, 503, errClipDispatcherUnavailable.Error())
+		return
+	}
+	contentHash := clip.FileHash()
+	if contentHash == "" {
+		contentHash = clipID
+	}
+	if err := h.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
+		// Mirror the CreateClip / UploadVideoClip sentinel-branch pattern:
+		// when the SSOT dispatcher returns ErrDispatcherUnavailable (e.g.
+		// composition wired but pre-flight rejected), surface 503 verbatim
+		// so operators see the canonical "AssetMutationDispatcher not
+		// wired" message and can correlate against the upstream sentinel.
+		if errors.Is(err, mutations.ErrDispatcherUnavailable) {
+			h.log.Error("ReuploadClip: dispatcher unavailable",
+				zap.String("clip_id", clipID), zap.Error(err))
+			apiutil.Error(c, 503, errClipDispatcherUnavailable.Error())
+			return
+		}
+		h.log.Error("ReuploadClip: dispatcher.EnqueueAndIndex failed",
+			zap.String("clip_id", clipID), zap.Error(err))
+		apiutil.InternalError(c, fmt.Errorf("dispatcher.EnqueueAndIndex: %w", err))
 		return
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":          result.OK,
-		"source":      result.Source,
-		"clip_id":     result.ClipID,
-		"drive_link":  result.DriveLink,
-		"file_hash":   result.FileHash,
-		"uploaded_at": result.UploadedAt,
+		"ok":          true,
+		"source":      source,
+		"clip_id":     clipID,
+		"drive_link":  clip.DriveLink(),
+		"file_hash":   clip.FileHash(),
+		"uploaded_at": timeutil.FormatRFC3339(time.Now()),
 	})
 }
 
@@ -202,47 +303,90 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		return
 	}
 
-	// P0.4 (June 2026): SearchAggregator is now MANDATORY for FindDuplicates.
-	// The legacy direct-repo fallback (map[string]*assets.ClipsRepository
-	// keyed by {"artlist","youtube","stock"}) was removed — the aggregator's
-	// HashQuery path fans out deterministically to all registered
-	// ClipHashSource adapters, and the Sources filter is left empty so the
-	// registry drives the fan-out instead of a hardcoded whitelist.
-	// Reference: PR-CLIP-DEDUP-MIGRATION.
-	if h.searchAggregator == nil {
-		h.log.Error("FindDuplicates: SearchAggregator not wired")
-		apiutil.Error(c, 503, "search aggregator not available")
-		return
-	}
-
 	duplicates := []gin.H{}
-	res, aggErr := h.searchAggregator.Aggregate(
-		c.Request.Context(),
-		&providers.SearchQuery{},
-		providers.AggregateOptions{
-			HashQuery: clip.FileHash(),
-		},
-	)
-	if aggErr != nil {
-		apiutil.InternalError(c, fmt.Errorf("aggregator.Aggregate: %w", aggErr))
-		return
-	}
-	if res != nil {
-		for name, e := range res.ProviderErrors {
-			h.log.Warn("Failed to search duplicates in "+name, zap.Error(e))
+	// S3d (June 2026): FindDuplicates routes through the
+	// SearchAggregator when wired. The aggregator's HashQuery
+	// path fans out a deterministic MD5 hash-match lookup
+	// against the registered ClipHashSource adapters. Partial-
+	// results semantics: per-source errors are recorded in
+	// AggregateResult.ProviderErrors; the legacy direct-repo
+	// fallback fires when the aggregator isn't wired
+	// (composition root hasn't populated Deps.SearchAggregator
+	// OR the registry doesn't carry ClipHashSource adapters).
+	if h.searchAggregator != nil {
+		res, aggErr := h.searchAggregator.Aggregate(
+			c.Request.Context(),
+			&providers.SearchQuery{},
+			providers.AggregateOptions{
+				HashQuery: clip.FileHash(),
+				Sources:   []string{"artlist", "youtube", "stock"},
+			},
+		)
+		if aggErr != nil {
+			apiutil.InternalError(c, fmt.Errorf("aggregator.Aggregate: %w", aggErr))
+			return
 		}
-		for _, hit := range res.Hits {
-			if hit.SourceSource == source && hit.SourceID == clipID {
+		if res != nil {
+			for name, e := range res.ProviderErrors {
+				h.log.Warn("Failed to search duplicates in "+name, zap.Error(e))
+			}
+			for _, hit := range res.Hits {
+				if hit.SourceSource == source && hit.SourceID == clipID {
+					continue
+				}
+				duplicates = append(duplicates, gin.H{
+					"source":     hit.SourceSource,
+					"id":         hit.SourceID,
+					"name":       hit.Name,
+					"drive_link": hit.DriveLink,
+					"local_path": hit.LocalPath,
+					"thumb_url":  hit.ThumbnailURL,
+				})
+			}
+		}
+	} else {
+		// Legacy direct-repo fallback when no aggregator is wired.
+		// Removal of this branch is gated on the composition root
+		// shipping a real SearchAggregator with the three
+		// ClipHashSource adapters wired.
+		// ARCH-ALLOWLIST: factory-only — S3e (June 2026): the legacy
+		// FindDuplicates fallback constructs the bag of repos
+		// inline because the aggregator path requires wired
+		// CompositionRoot + ClipHashSource adapters. Removal of
+		// this branch is the S3d-followup PR-CLIP-DEDUP-MIGRATION
+		// task; until then, the marker is the documented allowlist
+		// entry per scripts/ci-architectural-checks.sh::Check 8
+		// (factory-only). Per AGENTS.md §7 zero-baseline rule, this
+		// entry carries explicit owner (clips.Handler) and deadline
+		// (post-S3d migration series).
+		repos := map[string]*assets.ClipsRepository{
+			"artlist": h.artlistRepo,
+			"youtube": h.clipsRepo,
+			"stock":   h.stockRepo,
+		}
+		for repoSource, srcRepo := range repos {
+			if srcRepo == nil {
 				continue
 			}
-			duplicates = append(duplicates, gin.H{
-				"source":     hit.SourceSource,
-				"id":         hit.SourceID,
-				"name":       hit.Name,
-				"drive_link": hit.DriveLink,
-				"local_path": hit.LocalPath,
-				"thumb_url":  hit.ThumbnailURL,
-			})
+			found, err := srcRepo.FindClipsByHash(c.Request.Context(), clip.FileHash())
+			if err != nil {
+				h.log.Warn("Failed to search duplicates in "+repoSource, zap.Error(err))
+				continue
+			}
+			for _, dup := range found {
+				if repoSource == source && dup.ID == clipID {
+					continue
+				}
+				canonDup := dup
+				duplicates = append(duplicates, gin.H{
+					"source":     repoSource,
+					"id":         canonDup.ID,
+					"name":       canonDup.Name,
+					"drive_link": canonDup.DriveLink(),
+					"local_path": canonDup.LocalPath(),
+					"thumb_url":  canonDup.ThumbnailURL,
+				})
+			}
 		}
 	}
 

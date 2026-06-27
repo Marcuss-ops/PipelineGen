@@ -22,10 +22,10 @@ import (
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -207,26 +207,26 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		log,
 	)
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
-		AssetRepo:      assetRepo,
-		ClipsRepo:      bundle.ClipsRepo,
-		StockRepo:      bundle.ClipsRepo,
-		ArtlistRepo:    bundle.ClipsRepo,
-		DeletionSvc:    deletionSvc,
-		DriveUploader:  driveUploader,
-		MediaProcessor: bundle.MediaProcessor,
-		AssetTreeSvc:   bundle.AssetTreeService,
-		MetaWriter:     metaWriter,
-		ClipIndexer:    bundle.ClipIndexerService,
-		JobsSvc:        jobs.Facade,
-		Cfg:            cfg,
-		Log:            log,
-		ManifestService: bundle.ManifestService,
-		VoiceoverRepo:  bundle.VoiceoverRepo,
-		ImagesRepo:     bundle.ImageRepo,
-		FolderMemSvc:   folderMemSvc,
-		ProcessRunner:   processRunnerAdapter,
-		Dispatcher:      clipsDispatcherPort,
+		SourceResolver:   artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
+		AssetRepo:        assetRepo,
+		ClipsRepo:        bundle.ClipsRepo,
+		StockRepo:        bundle.ClipsRepo,
+		ArtlistRepo:      bundle.ClipsRepo,
+		DeletionSvc:      deletionSvc,
+		DriveUploader:    driveUploader,
+		MediaProcessor:   bundle.MediaProcessor,
+		AssetTreeSvc:     bundle.AssetTreeService,
+		MetaWriter:       metaWriter,
+		ClipIndexer:      bundle.ClipIndexerService,
+		JobsSvc:          jobs.Facade,
+		Cfg:              cfg,
+		Log:              log,
+		ManifestService:  bundle.ManifestService,
+		VoiceoverRepo:    bundle.VoiceoverRepo,
+		ImagesRepo:       bundle.ImageRepo,
+		FolderMemSvc:     folderMemSvc,
+		ProcessRunner:    processRunnerAdapter,
+		Dispatcher:       clipsDispatcherPort,
 		BulkUploadWorker: bulkUploadWorker,
 		ClipOpsService:   clipOpsSvc,
 	}, idemHandler)

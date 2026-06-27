@@ -93,7 +93,7 @@ func SetLogger(log *zap.Logger) {
 //
 //	{asset_locations,  asset_id}  — verified by migration 055
 //	{asset_processing, asset_id}  — verified by migration 058
-//	{asset_versions,   asset_id}  — verified by migration 105
+//	{asset_versions,   asset_id}  — verified by migration 101
 //
 //	asset_dedupe is intentionally OMITTED (was previously in the
 //	list with `column = id`). There is no `CREATE TABLE asset_dedupe`

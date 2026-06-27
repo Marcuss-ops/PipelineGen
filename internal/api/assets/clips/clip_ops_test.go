@@ -32,7 +32,9 @@ import (
 
 // Local port stubs (different package from application/clips).
 
-type handlerSourceResolver struct{ repos map[string]appclips.ClipRepositoryPort }
+type handlerSourceResolver struct {
+	repos map[string]appclips.ClipRepositoryPort
+}
 
 func (r *handlerSourceResolver) ResolveRepo(s string) appclips.ClipRepositoryPort {
 	if r == nil {
@@ -73,7 +75,7 @@ func (r *handlerClipsRepo) ListByFolderID(_ context.Context, _ string) ([]*asset
 func (r *handlerClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
+func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error        { return nil }
 func (r *handlerClipsRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
 func (r *handlerClipsRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
 func (r *handlerClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
@@ -87,7 +89,9 @@ func (r *handlerClipsRepo) FindClipsByHash(_ context.Context, _ string) ([]*asse
 	return nil, nil
 }
 
-type handlerVoiceoverRepo struct{ records map[string]*appclips.ClipVoiceoverRecordDTO }
+type handlerVoiceoverRepo struct {
+	records map[string]*appclips.ClipVoiceoverRecordDTO
+}
 
 func (r *handlerVoiceoverRepo) GetByID(_ context.Context, id string) (*appclips.ClipVoiceoverRecordDTO, error) {
 	if r == nil {

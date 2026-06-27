@@ -14,7 +14,7 @@
 //   - os (manifest owns atomic writes)
 //   - path/filepath (manifest owns path computation)
 //   - sync (manifest owns locking; the per-path lock registry in
-//           manifest.pathLockRegistry replaces the global mutex.)
+//     manifest.pathLockRegistry replaces the global mutex.)
 package artlist
 
 import (
@@ -215,9 +215,9 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 	// row is the source of truth.
 	if e.manifestSvc != nil && existing.LocalPath() != "" {
 		entry := manifest.AssetToEntry(existing, "artlist", term, map[string]any{
-			"filename":     existing.Filename,
+			"filename":      existing.Filename,
 			"clip_page_url": existing.ClipPageURL,
-			"source_url":   existing.ExternalURL(),
+			"source_url":    existing.ExternalURL(),
 		})
 		if entry.Metadata == nil {
 			entry.Metadata = make(map[string]any)

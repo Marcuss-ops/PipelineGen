@@ -84,10 +84,11 @@ func (r cleanupRequest) toCommand(source string, deepFromQuery bool) appclips.Cl
 // slice for deep-batch enqueu (job_id polls the broker for results).
 //
 // Status codes:
-//   200 — cleanup finished (sync or job enqueued).
-//   400 — invalid JSON body OR invalid source value.
-//   500 — service error.
-//   503 — clip ops service not wired (composition bug).
+//
+//	200 — cleanup finished (sync or job enqueued).
+//	400 — invalid JSON body OR invalid source value.
+//	500 — service error.
+//	503 — clip ops service not wired (composition bug).
 func (h *Handler) Cleanup(c *gin.Context) {
 	source := c.Param("source")
 	var req cleanupRequest
@@ -116,8 +117,9 @@ func (h *Handler) Cleanup(c *gin.Context) {
 // coherent, has_drive_link) for the verdict.
 //
 // Status codes:
-//   200 — verify ran (see report fields).
-//   503 — clip ops service not wired.
+//
+//	200 — verify ran (see report fields).
+//	503 — clip ops service not wired.
 func (h *Handler) VerifyClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
@@ -163,12 +165,13 @@ func (r reconcileRequest) toCommand(source string) appclips.ReconcileCommand {
 // "dry_run": bool}. Caller polls status_url for results.
 //
 // Status codes:
-//   200 — durable job enqueued.
-//   400 — invalid JSON body OR invalid source.
-//   500 — service error (enqueue failure).
-//   503 — clip ops service not wired (composition bug).
-//   503 with body.code == "RECONCILE_QUEUE_UNAVAILABLE" — broker
-//        unwired (JobsServicePort nil at composition time).
+//
+//	200 — durable job enqueued.
+//	400 — invalid JSON body OR invalid source.
+//	500 — service error (enqueue failure).
+//	503 — clip ops service not wired (composition bug).
+//	503 with body.code == "RECONCILE_QUEUE_UNAVAILABLE" — broker
+//	     unwired (JobsServicePort nil at composition time).
 func (h *Handler) Reconcile(c *gin.Context) {
 	source := c.Param("source")
 	var req reconcileRequest
@@ -298,11 +301,11 @@ func buildVerifyResponse(report *appclips.VerifyReport) gin.H {
 			"recoverable":    report.HashInfo.Recoverable,
 			"candidate_hash": report.HashInfo.CandidateHash,
 		},
-		"folder_id":        report.FolderID,
-		"folder_path":      report.FolderPath,
-		"status":           report.Status,
-		"coherent":         report.Coherent,
-		"issue_count":      report.IssueCount,
+		"folder_id":   report.FolderID,
+		"folder_path": report.FolderPath,
+		"status":      report.Status,
+		"coherent":    report.Coherent,
+		"issue_count": report.IssueCount,
 	}
 }
 
