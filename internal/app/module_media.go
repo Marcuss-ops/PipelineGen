@@ -214,6 +214,43 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	//       handlers now enqueue to instead of spawning goroutines
 	//       with context.WithoutCancel.
 	enrichUC := appclips.NewEnrichUseCase(assetRepo, bundle.ClipIndexerService, metaWriter, log)
+	// W14 PR2 slice 3 (June 2026): construct the BulkUploadWorker
+	// from typed ports so the handler never imports infra for the
+	// bulk-upload job path. The concrete adapters already exist in
+	// clips_adapters_index.go.
+	bulkUploadWorker := appclips.NewBulkUploadWorker(
+		newClipsDriveAdapter(driveUploader),
+		newClipsRepoAdapter(bundle.ClipsRepo),
+		newClipsIndexerAdapter(bundle.ClipIndexerService),
+		newClipsHashAdapter(),
+		newClipsCfgAdapter(cfg),
+		log,
+	)
+	// PR 2 (June 2026): construct the application-layer ClipOpsService so
+	// the HTTP handler can delegate Reconcile / Cleanup / VerifyClip to a
+	// single canonical service instead of duplicating the business logic
+	// locally. The clipsAdapterBundle exposes typed ports for every dep
+	// the service takes; the new clipsJobsPortAdapter bridges
+	// domain/job.Service.Enqueue into the service's narrowed DTO. The
+	// cleanup port is a thin pass-through over deletionSvc.
+	clipsOpsPorts := newClipsAdapterBundle(
+		cfg, log,
+		bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo,
+		bundle.VoiceoverRepo, bundle.ImageRepo,
+		driveUploader, metaWriter, bundle.ClipIndexerService,
+		folderMemSvc, bundle.AssetTreeService,
+		nil, // vectorSvc removed PG-034
+	)
+	clipOpsSvc := appclips.NewClipOpsService(
+		clipsOpsPorts.SourceResolver,
+		clipsOpsPorts.VoiceoverRepo,
+		clipsOpsPorts.ImagesRepo,
+		clipsOpsPorts.DriveUploader,
+		newClipsCleanupPortAdapter(deletionSvc),
+		newClipsJobsPortAdapter(jobs.Facade),
+		clipsDispatcherPort,
+		log,
+	)
 	// Wave 21 PR 10: SearchSvc is the canonical *search.Aggregator
 	// (was *assetclipssearch.Service, deleted in PR 10). The legacy
 	// map[string]AdvancedSearchRepo hand-rolled fan-out is replaced
@@ -242,6 +279,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		Dispatcher:    clipsDispatcherPort,
 		EnrichUC:      enrichUC,
 		SearchSvc:     searchAggregator,
+		BulkUploadWorker: bulkUploadWorker,
+		ClipOpsService:   clipOpsSvc,
 
 	}, idemHandler)
 

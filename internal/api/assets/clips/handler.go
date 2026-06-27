@@ -87,6 +87,17 @@ type Deps struct {
 	// handler constructed the use case internally.
 	EnrichUC *appclips.EnrichUseCase
 
+	// BulkUploadWorker is the canonical port-based worker for
+	// the "bulk_upload_youtube_clips" job (W14 PR2 slice 3,
+	// June 2026). Nil-tolerated so test fixtures / legacy
+	// compositions can opt out.
+	BulkUploadWorker *appclips.BulkUploadWorker
+
+	// ClipOpsService owns the orchestration behind the HTTP verbs
+	// Reconcile / Cleanup / VerifyClip (PR 2 cutover, June 2026).
+	// Nil-tolerated for legacy fixtures.
+	ClipOpsService *appclips.ClipOpsService
+
 	// ManifestService is the canonical AssetManifestService —
 	// PR 6/PR 7 (codex/asset-manifest-cutover, June 2026). The
 	// pre-PR7 helper-method + cumulative Drive-adapter pair is
@@ -134,6 +145,10 @@ type Handler struct {
 	// June 2026). Wired at construction time via Deps.ManifestService;
 	// nil-tolerated for legacy fixtures.
 	manifestService manifest.Service
+	// bulkUploadWorker mirrors Deps.BulkUploadWorker (W14 PR2 slice 3).
+	bulkUploadWorker *appclips.BulkUploadWorker
+	// clipOpsService mirrors Deps.ClipOpsService (PR 2 cutover).
+	clipOpsService *appclips.ClipOpsService
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -179,6 +194,8 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		dispatcher:       d.Dispatcher,
 		searchAggregator: d.SearchAggregator,
 		manifestService:  d.ManifestService,
+		bulkUploadWorker: d.BulkUploadWorker,
+		clipOpsService:   d.ClipOpsService,
 
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
 		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
