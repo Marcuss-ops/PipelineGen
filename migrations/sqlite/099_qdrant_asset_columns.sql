@@ -1,4 +1,4 @@
--- 098_qdrant_asset_columns.sql
+-- 099_qdrant_asset_columns.sql
 -- Canonical Qdrant asset-column alignment for fresh installs and legacy DBs.
 --
 -- Adds the fields required by qdrant.SQLiteAssetStore.FetchAsset and the

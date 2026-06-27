@@ -2,30 +2,30 @@
 //
 // Subcommands exposed under the `dr-qdrant` admin umbrella:
 //
-//   list-snapshots    list all snapshots for the active (or explicit)
-//                     collection. Output is one row per snapshot:
-//                     name, size_bytes, creation_time, checksum.
-//   take-snapshot     create a new snapshot of the active (or explicit)
-//                     collection. Returns the snapshot descriptor.
-//   restore-snapshot  verify-then-switch from a named snapshot into
-//                     the runtime alias. URL resolution + target
-//                     allocation + verify gate + alias switch live in
-//                     dr/RestoreService — this CLI is a thin wrapper.
-//   apply-retention   drop old non-active collections matching the
-//                     schema prefix. Hard floor: keep_last_n=2.
+//	list-snapshots    list all snapshots for the active (or explicit)
+//	                  collection. Output is one row per snapshot:
+//	                  name, size_bytes, creation_time, checksum.
+//	take-snapshot     create a new snapshot of the active (or explicit)
+//	                  collection. Returns the snapshot descriptor.
+//	restore-snapshot  verify-then-switch from a named snapshot into
+//	                  the runtime alias. URL resolution + target
+//	                  allocation + verify gate + alias switch live in
+//	                  dr/RestoreService — this CLI is a thin wrapper.
+//	apply-retention   drop old non-active collections matching the
+//	                  schema prefix. Hard floor: keep_last_n=2.
 //
 // Wire-up pattern (mirrors reconcile_qdrant.go):
-//   1. parseDrQdrantDispatcher — peel subcommand
-//   2. appLogger / qdrant cfg — same heat path as reconcile_qdrant
-//   3. Build canonical stack: qdrant.Client + CollectionManager +
-//      SQLiteAssetStore + ReindexVerifier
-//   4. Construct dr service via ServiceDeps struct (PR2-style)
-//   5. Run + pretty-print; --json switches to JSON-only output
+//  1. parseDrQdrantDispatcher — peel subcommand
+//  2. appLogger / qdrant cfg — same heat path as reconcile_qdrant
+//  3. Build canonical stack: qdrant.Client + CollectionManager +
+//     SQLiteAssetStore + ReindexVerifier
+//  4. Construct dr service via ServiceDeps struct (PR2-style)
+//  5. Run + pretty-print; --json switches to JSON-only output
 //
 // Failure handling:
 //   - infra / I/O errors         → exit 1 with non-empty stderr line
 //   - verify-gate blocked (DR)   → exit 0, Applied=false printed;
-//                                 operator inspects VerifyReport.Errors
+//     operator inspects VerifyReport.Errors
 package main
 
 import (
@@ -107,7 +107,18 @@ func runDrQdrant(args []string) error {
 	case "take-snapshot":
 		return runDrTakeSnapshot(ctx, client, log, deps.Raw)
 	case "restore-snapshot":
-		return runDrRestoreSnapshot(ctx, cfg, client, schema, log, deps.Raw)
+		restoreCfg := appConfigLike{
+			Qdrant: adminQdrantShape{
+				Enabled: cfg.Qdrant.Enabled,
+				BaseURL: cfg.Qdrant.BaseURL,
+				APIKey:  cfg.Qdrant.APIKey,
+				Timeout: cfg.Qdrant.Timeout,
+			},
+			Storage: adminStorageShape{
+				PrimaryDBFullPath: cfg.Storage.PrimaryDBFullPath,
+			},
+		}
+		return runDrRestoreSnapshot(ctx, restoreCfg, client, schema, log, deps.Raw)
 	case "apply-retention":
 		return runDrApplyRetention(ctx, client, schema, log, deps.Raw)
 	}

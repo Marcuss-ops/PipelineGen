@@ -214,11 +214,11 @@ func backfillVisualEmbeddings(ctx context.Context, db *sql.DB, cfg *config.Confi
 	defer rows.Close()
 
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
+	schema := qdrant.DefaultV3Schema()
 	imageEmbedder := qdrant.NewImageEmbedderAdapter(qdrant.ImageEmbedderConfig{
 		ServerURL: cfg.ClipIndexer.ServerURL,
 		Timeout:   90 * time.Second,
-	}, log)
-	schema := qdrant.DefaultV3Schema()
+	}, schema, log)
 	visualVersion := ""
 	if spec := schema.GetDense("visual"); spec != nil {
 		visualVersion = spec.ModelVersion
