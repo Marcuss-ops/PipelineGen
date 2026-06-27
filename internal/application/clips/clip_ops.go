@@ -76,6 +76,20 @@ var (
 	// reject" (the dispatcher's own runtime errors).
 	ErrJobsUnavailable = errors.New("cleanup requires jobs service (no sync pagination fallback — use POST /:source/cleanup)")
 
+	// ErrInvalidSource is the typed sentinel returned by Cleanup
+	// when the source parameter is not a canonical cleanup
+	// source: neither a static global scope (all / voiceover /
+	// images) nor a provider-registered source resolvable via
+	// s.sourceResolver. Cleanup returns this with a wrapped
+	// reason (via fmt.Errorf("%w: %s", ErrInvalidSource,
+	// in.Source)) so the HTTP layer (api/assets/clips/clip_ops.go
+	// ::mapClipOpsError) can map it to 400 Bad Request via
+	// errors.Is. Source validation runs BEFORE the jobs-nil
+	// check so callers with bad input see a clean 400 instead
+	// of a misleading 503 (composition-bug signal reserved for
+	// callers who passed valid input but have no broker wired).
+	ErrInvalidSource = errors.New("invalid cleanup source")
+
 	// ErrReconcileQueueUnavailable is the typed sentinel returned by
 	// Reconcile when s.jobs is nil OR the broker-side enqueue fails.
 	// PR-3 (June 2026): the previous log-only stub has been removed;
@@ -328,6 +342,10 @@ type CleanupItem struct {
 // via errors.Is. The job type is also canonicalised to
 // job.TypeSystemCleanup (was the literal "system.cleanup").
 func (s *ClipOpsService) Cleanup(ctx context.Context, in CleanupInput) (*CleanupReport, error) {
+	src := strings.ToLower(strings.TrimSpace(in.Source))
+	if !s.isKnownCleanupSource(src) {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidSource, in.Source)
+	}
 	if s.jobs == nil {
 		return nil, ErrJobsUnavailable
 	}
@@ -335,7 +353,7 @@ func (s *ClipOpsService) Cleanup(ctx context.Context, in CleanupInput) (*Cleanup
 	deep := in.Deep
 	report := &CleanupReport{
 		OK:         true,
-		Source:     in.Source,
+		Source:     src, // normalized so report.Source == payload["source"] (worker routing key alignment)
 		DryRun:     in.DryRun,
 		CheckDrive: in.CheckDrive,
 		Items:      []CleanupItem{},
@@ -358,7 +376,7 @@ func (s *ClipOpsService) Cleanup(ctx context.Context, in CleanupInput) (*Cleanup
 			"deep":        deep,
 			"dry_run":     in.DryRun,
 			"check_drive": in.CheckDrive,
-			"source":      in.Source,
+			"source":      src, // normalized so worker receives payload["source"] matching resolver-registered keys (case-insensitive dependency)
 		},
 		Priority:  10,
 		ActiveKey: activeKey,
@@ -573,6 +591,33 @@ func (s *ClipOpsService) Verify(ctx context.Context, source, clipID string) *Ver
 		return report
 	}
 	return s.verifyClip(ctx, source, repo, clip)
+}
+
+// isKnownCleanupSource returns true when src (already
+// lowercase-normalized by the caller) matches one of the
+// canonical static global cleanup scopes or resolves via
+// s.sourceResolver to a registered clip repo. This is the
+// single source of truth for "what's a valid cleanup source";
+// the HTTP layer relies on errors.Is(err, ErrInvalidSource)
+// to translate the negative answer into a 400 Bad Request.
+//
+// Static scopes (per AGENTS.md + pre-PR-3 handler contract):
+//   - "all"      — wildcard (cleanup every source)
+//   - "voiceover" — voiceover-source cleanup (separate voiceovers table;
+//                   AssetMutationDispatcher does not write to it)
+//   - "images"   — images-source cleanup
+//
+// Dynamic scopes (provider-registered: youtube / artlist /
+// stock / etc.) come from s.sourceResolver.ResolveRepo(src).
+// Co-existence with the resolver delegate prevents hardcoding
+// the full provider register while still keeping the
+// global-scope validation self-contained.
+func (s *ClipOpsService) isKnownCleanupSource(src string) bool {
+	switch src {
+	case "all", "voiceover", "images":
+		return true
+	}
+	return s.sourceResolver != nil && s.sourceResolver.ResolveRepo(src) != nil
 }
 
 // verifyClip is the private verifier. Mirrors the legacy verifyClip

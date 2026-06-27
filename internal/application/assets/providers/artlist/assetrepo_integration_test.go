@@ -107,7 +107,7 @@ func TestArtlistPR12b_DispatcherRoutesWritesThroughRepo(t *testing.T) {
 		ClipPageURL:    "https://artlist.io/clip/pr12b-artlist-001",
 		ThumbnailURL:   "https://artlist.io/thumb/pr12b-artlist-001.jpg",
 		Duration:       30 * time.Second,
-		LifecycleState: asset.LifecycleState("ready"),
+		LifecycleState: asset.LifecycleState("ACTIVE"),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 		DeletedAt:      &zeroTime, // non-nil pointer → non-NULL binding

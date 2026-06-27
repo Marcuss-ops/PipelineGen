@@ -207,14 +207,17 @@ func decodeBody(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 // ── Subtests ─────────────────────────────────────────────────────────────────
 
 // TestHandler_Cleanup_200_ReportsOrphan pins the happy-path
-// transport: service runs Cleanup → returns Items → handler
-// marshals to gin.H JSON.
+// transport: jobs port wired + Cleanup succeeds → handler
+// marshals 200 + job_id + empty items slice (S1b post-cutover
+// shape; per-clip orphan records live in the worker output
+// downstream of the broker poll, not the synchronous response).
 func TestHandler_Cleanup_200_ReportsOrphan(t *testing.T) {
 	clip := &asset.Asset{ID: "yt-orphan-1", Name: "foo"}
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &handlerClipsRepo{clips: []*asset.Asset{clip}}
+	jobsRP := &handlerJobsPort{nextID: "job-rp"}
 	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{"youtube": repo}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, jobsRP, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -229,10 +232,13 @@ func TestHandler_Cleanup_200_ReportsOrphan(t *testing.T) {
 	require.Equal(t, true, resp["ok"])
 	require.Equal(t, "youtube", resp["source"])
 	require.Equal(t, true, resp["dry_run"])
+	require.Equal(t, "job-rp", resp["job_id"])
 	items, ok := resp["items"].([]any)
 	require.True(t, ok)
-	require.Len(t, items, 1)
-	require.Equal(t, "yt-orphan-1", items[0].(map[string]any)["id"])
+	require.Len(t, items, 0, "S1b cleanup enqueues a job; per-clip items live in worker output, not the handler response")
+	require.Len(t, jobsRP.enqueued, 1)
+	require.Equal(t, "system.cleanup", jobsRP.enqueued[0].Type)
+	require.Equal(t, "youtube", jobsRP.enqueued[0].Payload["source"])
 }
 
 // TestHandler_Cleanup_200_DeepEnqueue pins the deep-mode path:
@@ -253,7 +259,7 @@ func TestHandler_Cleanup_200_DeepEnqueue(t *testing.T) {
 	resp := decodeBody(t, w)
 	require.Equal(t, true, resp["ok"])
 	require.Equal(t, "job-xyz", resp["job_id"])
-	require.Equal(t, "system cleanup job enqueued", resp["message"])
+	require.Equal(t, "system cleanup job enqueued; poll job_id=job-xyz for results", resp["message"])
 	require.Len(t, jobs.enqueued, 1)
 	require.Equal(t, "system.cleanup", jobs.enqueued[0].Type)
 }
@@ -279,11 +285,21 @@ func TestHandler_Cleanup_200_QueryDeepOverridesBody(t *testing.T) {
 }
 
 // TestHandler_Cleanup_400_InvalidSource pins the early return
-// for unknown source. Service returns "invalid source" sentinel;
-// handler maps to 400 via mapClipOpsError.
+// for unknown source. Service returns the typed
+// appclips.ErrInvalidSource sentinel via errors.Is; handler
+// maps to 400 via mapClipOpsError. Jobs port is wired so the
+// source-validation branch (which runs BEFORE the jobs-nil check
+// per the service implementation, per source-first precedence)
+// is the one triggered; without wiring the test would fail
+// earlier with a 503.
+//
+// Spec contract: POST /api/clips/:source/cleanup with an
+// unrecognised :source must return 400 (handler-layer
+// bad-request signal), not 500 or 503. The S1b post-cutover
+// layer routes the typed ErrInvalidSource sentinel into 400.
 func TestHandler_Cleanup_400_InvalidSource(t *testing.T) {
 	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, &handlerJobsPort{}, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -326,15 +342,20 @@ func TestHandler_Cleanup_503_NoService(t *testing.T) {
 }
 
 // TestHandler_Cleanup_VoiceoverSource_ReportsOrphan pins the
-// voiceover-source branch (spec: test voiceover).
+// voiceover-source branch (spec: test voiceover). S1b
+// post-cutover: the canonical Cleanup response is empty items +
+// broker-assigned job_id; per-record items live in the worker
+// output downstream of broker poll (the voiceover cleanup
+// operates on the separate voiceovers table).
 func TestHandler_Cleanup_VoiceoverSource_ReportsOrphan(t *testing.T) {
 	rec := &appclips.ClipVoiceoverRecordDTO{
 		ID:        "vo-1",
 		Filename:  "foo.wav",
 		LocalPath: "/nonexistent/foo.wav",
 	}
+	jobsVO := &handlerJobsPort{nextID: "job-vo"}
 	voiceover := &handlerVoiceoverRepo{records: map[string]*appclips.ClipVoiceoverRecordDTO{"vo-1": rec}}
-	svc := appclips.NewClipOpsService(nil, voiceover, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(nil, voiceover, nil, nil, &handlerCleanupPort{}, jobsVO, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -347,10 +368,13 @@ func TestHandler_Cleanup_VoiceoverSource_ReportsOrphan(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	resp := decodeBody(t, w)
 	require.Equal(t, "voiceover", resp["source"])
+	require.Equal(t, "job-vo", resp["job_id"])
 	items, ok := resp["items"].([]any)
 	require.True(t, ok)
-	require.Len(t, items, 1)
-	require.Equal(t, "vo-1", items[0].(map[string]any)["id"])
+	require.Len(t, items, 0, "S1b voiceover cleanup enqueues a job; per-record items live in worker output, not the handler response")
+	require.Len(t, jobsVO.enqueued, 1)
+	require.Equal(t, "system.cleanup", jobsVO.enqueued[0].Type)
+	require.Equal(t, "voiceover", jobsVO.enqueued[0].Payload["source"])
 }
 
 // TestHandler_VerifyClip_200_ResponseShape pins the

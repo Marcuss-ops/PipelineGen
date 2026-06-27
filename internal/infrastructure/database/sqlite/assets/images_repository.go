@@ -86,7 +86,7 @@ func (r *ImagesRepository) AddImage(ctx context.Context, img *asset.ImageAsset) 
 	now := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, file_hash, local_path, relative_path, drive_file_id, status, metadata_json, created_at, updated_at)
-		VALUES (?, 'image', ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?)
+		VALUES (?, 'image', ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, 'STAGING', ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			url=excluded.url,

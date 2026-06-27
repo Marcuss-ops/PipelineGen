@@ -135,7 +135,7 @@ func buildSummaryQuery(filter Filter) (string, []any) {
 	}
 
 	query := "SELECT id, COALESCE(source,''), COALESCE(name,''), COALESCE(filename,''), " +
-		"COALESCE(media_type,''), COALESCE(category,''), COALESCE(lifecycle_state,'ready'), " +
+		"COALESCE(media_type,''), COALESCE(category,''), COALESCE(lifecycle_state,'ACTIVE'), " +
 		"created_at, COALESCE(updated_at,'') " +
 		"FROM media_assets WHERE " + strings.Join(conds, " AND ") +
 		" ORDER BY created_at DESC"
@@ -304,11 +304,18 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, details *Details) error {
 }
 
 // Delete soft-deletes the asset by moving its lifecycle_state to
-// 'deleted' and setting deleted_at.
+// the canonical 'DELETED' and setting deleted_at.
+//
+// PR 1 (June 2026, Lifecycle state SSOT): lowercase 'deleted' is no
+// longer accepted by production readers; the writer here emits the
+// UPPERCASE form so the SoftDeleteFilter
+// (`lifecycle_state != 'DELETED'`) recognises the tombstone uniformly
+// across the application, the Qdrant search waterfall, and the
+// outbox-driven index state machine.
 func (s *AssetStoreSQLite) Delete(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE media_assets SET lifecycle_state = 'deleted', deleted_at = ?, updated_at = ? WHERE id = ?",
+		"UPDATE media_assets SET lifecycle_state = 'DELETED', deleted_at = ?, updated_at = ? WHERE id = ?",
 		nowStr, nowStr, id)
 	return err
 }
@@ -374,7 +381,7 @@ func (a *assetRepositoryAdapter) SoftDelete(ctx context.Context, id string) erro
 func (a *assetRepositoryAdapter) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := a.store.db.ExecContext(ctx,
-		"UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?",
+		"UPDATE media_assets SET lifecycle_state = 'ACTIVE', deleted_at = NULL, updated_at = ? WHERE id = ?",
 		nowStr, id)
 	return err
 }

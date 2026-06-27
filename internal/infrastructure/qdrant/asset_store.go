@@ -32,16 +32,15 @@ var _ AssetStore = (*SQLiteAssetStore)(nil)
 
 // FetchAsset reads one row from media_assets and populates an AssetData.
 //
-// QDRANT-005 closure (June 2026): AssetData gains a LifecycleState
-// field sourced from media_assets.lifecycle_state (the canonical
-// SQLite column). Status remains populated from the legacy
-// media_assets.status column (default 'ACTIVE' for rows where it is
-// NULL — column may be absent on very early dbs, where the COALESCE
-// guard prevents the query from failing). Both fields are
-// populated when the column exists; payload_mapper's
-// canonicalLifecycleState helper prefers LifecycleState and falls
-// back to Status, so the search_adapter filter key (lifecycle_state)
-// is always non-empty.
+// PR 1 / QDRANT-005 closure (June 2026): AssetData.LifecycleState
+// is sourced from media_assets.lifecycle_state (the canonical
+// UPPERCASE column). The legacy `status` column is dropped by
+// migration 101; the parallel lowercase enum (`asset.AssetStatus`)
+// has been retired. Pre-PR1 the read helper COALESCE-fell-through
+// `lifecycle_state` → `status` → 'ACTIVE' to mask writers that hit
+// either column; post-PR1 the column store is the only source and
+// the canonical fallback is 'ACTIVE'. The query no longer selects
+// `status`, so the row layout shrinks by one column.
 func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*AssetData, error) {
 	a := &AssetData{}
 
@@ -56,8 +55,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
-			COALESCE(status, 'ACTIVE'),
-			COALESCE(NULLIF(lifecycle_state, ''), COALESCE(NULLIF(status, ''), 'ACTIVE')),
+			COALESCE(lifecycle_state, 'ACTIVE'),
 			COALESCE(tags, '[]'),
 			COALESCE(search_text, ''),
 			COALESCE(drive_link, ''),
@@ -72,13 +70,12 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 			start_time, end_time,
 			duration_ms,
 			workspace_id, channel_id, license,
-		source_version,
-		created_at, updated_at, deleted_at
+			source_version,
+			created_at, updated_at, deleted_at
 		FROM media_assets
 		WHERE id = ?
 	`, assetID).Scan(
 		&a.ID, &a.Name, &a.Source, &a.MediaType,
-		&a.Status,
 		&lifecycleState,
 		&tagsJSON,
 		&a.SearchText,
@@ -227,7 +224,7 @@ func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLi
 		SELECT
 			id,
 			COALESCE(workspace_id, ''),
-			COALESCE(NULLIF(lifecycle_state, ''), COALESCE(NULLIF(status, ''), 'ACTIVE')),
+			COALESCE(lifecycle_state, 'ACTIVE'),
 			COALESCE(json_extract(metadata_json, '$.content_hash'), '')
 		FROM media_assets
 		WHERE media_type != 'folder'
@@ -236,7 +233,7 @@ func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLi
 
 	var args []any
 	if len(includeLifecycleStates) > 0 {
-		query += ` AND COALESCE(NULLIF(lifecycle_state, ''), COALESCE(NULLIF(status, ''), 'ACTIVE')) IN (`
+		query += ` AND COALESCE(lifecycle_state, 'ACTIVE') IN (`
 		for i, state := range includeLifecycleStates {
 			if i > 0 {
 				query += ", "

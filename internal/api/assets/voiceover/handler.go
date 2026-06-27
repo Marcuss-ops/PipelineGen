@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -104,7 +104,7 @@ func (h *Handler) Generate(c *gin.Context) {
 			batchReq.FilenameTemplate = req.Filename
 		}
 
-		if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 			Type: "voiceover.batch",
 			Payload: batchReq.PayloadMap(),
 		}, "Voiceover generation enqueued."); ok {
@@ -149,7 +149,7 @@ func (h *Handler) Batch(c *gin.Context) {
 		zap.Int("languages", len(req.Languages)),
 		zap.Strings("languages", req.Languages))
 
-	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type: "voiceover.batch",
 		Payload: req.PayloadMap(),
 	}, "Voiceover batch enqueued."); ok {
@@ -194,7 +194,7 @@ func (h *Handler) Promo(c *gin.Context) {
 		langCount = len(voiceover.DefaultPromoLanguages())
 	}
 
-	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type: "voiceover.promo",
 		Payload: req.PayloadMap(),
 	}, fmt.Sprintf("Promo voiceover enqueued (%d languages).", langCount)); ok {
@@ -307,7 +307,7 @@ func (h *Handler) GenerateWithGroup(c *gin.Context) {
 		payload["folder_id"] = group.FolderID
 		payload["voiceover_group"] = req.VoiceoverGroup
 
-		if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 			Type:    "voiceover.batch",
 			Payload: payload,
 		}, "Voiceover generation enqueued."); ok {

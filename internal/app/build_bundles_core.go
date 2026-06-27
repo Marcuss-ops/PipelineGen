@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -109,7 +109,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveClient *gdrive.Service) *UtilityBundle {
 	svc := buildHealthService(cfg, db, driveClient)
 	return &UtilityBundle{
-		Utility:       common.NewUtilityHandler(),
+		Utility:       transport.NewUtilityHandler(),
 		HealthService: svc,
 		ReadyChecker:  systemhealth.NewReadyChecker(svc),
 	}

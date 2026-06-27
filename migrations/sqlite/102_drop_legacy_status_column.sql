@@ -1,0 +1,30 @@
+-- migrations/sqlite/102_drop_legacy_status_column.sql
+--
+-- PR 1 — Lifecycle state SSOT (June 2026), non-idempotent half.
+--
+-- This file completes the asset-status-table cleanup that migration
+-- 101 kicked off. 101 normalised the data (lifecycle_state values
+-- collapsed to UPPERCASE canonical); 102 drops the now-vestigial
+-- `status` column whose sole readers were the COALESCE-fallback
+-- helpers PR 1 retired (qdrant/asset_store.go row reads,
+-- clips_repository.go mediaAssetColumns projection, mediasearch
+-- hydration guard).
+--
+-- IDEMPOTENCY: This ALTER is NOT idempotent. SQLite's
+-- `ALTER TABLE … DROP COLUMN` does NOT support `IF EXISTS`, and
+-- a re-run against a column-less table emits error
+-- `error: no such column: status`. Most migration runners in
+-- this repo (including the one driving tests/fixtures/zero_legacy)
+-- mark a failed migration as "applied on partial error", so a
+-- re-run is a no-op only if the runner captures the exact error
+-- shape. We document this explicitly so an operator who re-runs
+-- the chain manually sees a clean failure rather than a silent
+-- silent-bypass.
+--
+-- PRODUCTION ROLLOUT: applied once after migration 101. The
+-- fixture path (drive.NewTestDBWithSchema) does NOT run this
+-- migration because its CanonicalMediaAssetsSchema already omits
+-- the column — see internal/infrastructure/database/canonical.go
+-- for the in-memory CREATE TABLE block.
+
+ALTER TABLE media_assets DROP COLUMN status;

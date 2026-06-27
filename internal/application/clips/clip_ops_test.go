@@ -288,22 +288,37 @@ func TestClipOps_Cleanup_DeepNoJobs_FailsClosed(t *testing.T) {
 }
 
 // TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError
-// pins the early-return on unrecognised source. With jobs=nil the
-// fail-closed check fires first (composition-bug guard), so the
-// canonical error reported here is ErrJobsUnavailable — the
-// previous Wave 22 PR-5 behaviour documented "invalid source"
-// precedence, but that precedence was incorrect (broken): a request
-// reaching Cleanup without a wired broker is a composition bug, not
-// bad input. The test retains its name (historical pin) but
-// updates its assertion to the current canonical error.
+// pins the source-validation precedence: source="not-a-source"
+// fails BEFORE the jobs-nil check. Cleanup returns
+// ErrInvalidSource immediately, so callers see a typed signal
+// for bad input (caller-actionable: fix the source value)
+// distinct from "broker missing" (operator-infrastructure: wire
+// the broker). Both layers route via typed sentinels; the HTTP
+// handler maps ErrInvalidSource → 400 and ErrJobsUnavailable
+// → 503.
+//
+// The previous Wave 22 PR-5 behaviour put jobs-nil FIRST
+// regardless of source validity. That precedence was a
+// quiet regression: a 503 from the broker-missing path
+// obscured whether the request was caller-actionable (fix
+// input) or operator-infrastructure (wire broker). The new
+// order — source first — pins both layers to a single typed
+// answer that callers can grep on without parsing free-form
+// strings.
+//
+// jobs port is wired (not nil) so the source-validation branch
+// fires first; without wiring the test would short-circuit on
+// ErrJobsUnavailable, occluding the precedence this test pins.
 func TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError(t *testing.T) {
-	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil, zap.NewNop())
+	jobsStub := &testJobsPort{nextID: "stub-job"}
+	svc := NewClipOpsService(nil, nil, nil, nil, nil, jobsStub, nil, zap.NewNop())
 	_, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "not-a-source",
 	})
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrJobsUnavailable,
-		"jobs=nil check fires first; invalid-source precedence is no longer canonical")
+	require.ErrorIs(t, err, ErrInvalidSource,
+		"source validation runs BEFORE jobs-nil check (PR-3 source-first precedence)")
+	require.Len(t, jobsStub.enqueued, 0, "invalid source must NOT enqueue (validation rejected upstream)")
 }
 
 // TestClipOps_Cleanup_YoutubeDryRun_ReportsOrphanWithoutDelete

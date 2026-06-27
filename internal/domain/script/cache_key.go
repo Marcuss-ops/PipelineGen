@@ -5,6 +5,7 @@
 //   - SourceFingerprint (resolved source aggregates)
 //   - Language, Tone, Style, Model
 //   - TargetWords / Duration / MinWords
+//   - NumClips / SegmentWords / SegmentTopics
 //   - PromptVersion, PromptProfile
 //   - SourceKind (text|clip|catalog|search)
 //   - Guidelines (real editorial guidelines)
@@ -30,6 +31,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strconv"
+	"strings"
 )
 
 // BuildCacheKey returns the deterministic cache key for a plan.
@@ -75,6 +77,19 @@ func BuildCacheKey(plan *ResolvedGenerationPlan) string {
 	addInt("tw", plan.TargetWords)
 	addInt("dur", plan.Duration)
 	addInt("min", plan.MinWords)
+	addInt("clips_n", plan.NumClips)
+	addInt("segment_words", plan.SegmentWords)
+	if len(plan.SegmentTopics) > 0 {
+		topics := make([]string, 0, len(plan.SegmentTopics))
+		for _, topic := range plan.SegmentTopics {
+			if trimmed := strings.TrimSpace(topic); trimmed != "" {
+				topics = append(topics, trimmed)
+			}
+		}
+		if len(topics) > 0 {
+			add("segment_topics", strings.Join(topics, ","))
+		}
+	}
 	add("prompt_v", plan.PromptVersion)
 	add("profile", plan.PromptProfile)
 

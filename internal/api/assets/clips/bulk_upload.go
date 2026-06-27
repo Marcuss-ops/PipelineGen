@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -179,7 +179,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 
 	// Enqueue the job
 	activeKey := fmt.Sprintf("bulk_upload_yt:%s", abs)
-	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type:    "bulk_upload_youtube_clips",
 		Project: "media",
 		Payload: map[string]any{

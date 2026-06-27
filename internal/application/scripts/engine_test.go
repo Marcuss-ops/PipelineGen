@@ -293,6 +293,9 @@ func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 		Tone:           "documentary",
 		Model:          "llama3:8b",
 		Mode:           "clip_to_script",
+		NumClips:       2,
+		SegmentWords:   120,
+		SegmentTopics:  []string{"Breakfast setup", "Street reaction"},
 		RenderedPrompt: "Write about the supplied clips.",
 		ClipEvidence: &scriptpkg.ClipEvidence{
 			ClipIDs:   []string{"clip-1", "clip-2"},
@@ -312,6 +315,10 @@ func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 	assert.Contains(t, captured.Prompt, "CLIP-GROUNDED WRITING RULES:")
 	assert.Contains(t, captured.Prompt, "clip-1, clip-2")
 	assert.Contains(t, captured.Prompt, "describe what is happening in the clips")
+	assert.Contains(t, captured.Prompt, "Use exactly 2 clip-driven scenes.")
+	assert.Contains(t, captured.Prompt, "Aim for about 120 words per segment.")
+	assert.Contains(t, captured.Prompt, "Breakfast setup")
+	assert.Contains(t, captured.Prompt, "Street reaction")
 	assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]")
 }
 

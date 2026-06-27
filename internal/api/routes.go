@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
@@ -234,15 +234,15 @@ func (r *Router) Setup() *gin.Engine {
 	// SetHealthService before Setup() runs.
 	// codex/health-ready-contract (June 2026): ReadyChecker is now wired
 	// via SetReadyChecker — /ready no longer receives nil in production.
-	var healthHandler *common.HealthHandler
+	var healthHandler *transport.HealthHandler
 	if r.healthSvc != nil {
 		if svc, svcOk := r.healthSvc.(*systemhealth.Service); svcOk {
-			healthHandler = common.NewHealthHandler(svc, r.readyChecker)
+			healthHandler = transport.NewHealthHandler(svc, r.readyChecker)
 		}
 	}
 	if healthHandler == nil {
 		log.Warn("health service not wired, health endpoints will return 503")
-		healthHandler = common.NewHealthHandler(nil, nil /* nil-by-design; integration stub only */)
+		healthHandler = transport.NewHealthHandler(nil, nil /* nil-by-design; integration stub only */)
 	}
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)

@@ -154,6 +154,17 @@ func (s *Service) VersionRepository() VersionRepository {
 }
 
 // mediaAssetColumns defines the columns selected from media_assets table.
+//
+// PR 1 (June 2026, Lifecycle state SSOT): the legacy `status` column
+// is RETIRED as part of the canonical-lifecycle rewrite. Migration
+// 101 normalises the data; migration 102 drops the column in
+// production. The projection here reads lifecycle_state directly,
+// so callers always observe the canonical-cased value at lookup
+// time (the legacy COALESCE(status, …) fallback path is gone).
+// For fresh test fixtures that never had the `status` column,
+// removing it from the projection keeps SELECT — Scan alignment
+// exact (the matching scanner in clips_repository.go has already
+// dropped the corresponding destination).
 const mediaAssetColumns = `
 	id,
 	COALESCE(source, '') AS source,
@@ -164,7 +175,6 @@ const mediaAssetColumns = `
 	COALESCE(duration_ms, 0) AS duration_ms,
 	COALESCE(url, '') AS url,
 	COALESCE(media_type, '') AS media_type,
-	COALESCE(status, '') AS status,
 	COALESCE(local_path, '') AS local_path,
 	COALESCE(relative_path, '') AS relative_path,
 	COALESCE(drive_file_id, '') AS drive_file_id,
@@ -179,7 +189,7 @@ const mediaAssetColumns = `
 	COALESCE(updated_at, '') AS updated_at,
 	COALESCE(width, 0) AS width,
 	COALESCE(height, 0) AS height,
-	COALESCE(lifecycle_state, 'ready') AS lifecycle_state,
+	COALESCE(lifecycle_state, 'ACTIVE') AS lifecycle_state,
 	COALESCE(deleted_at, '') AS deleted_at,
 	COALESCE(folder_id, '') AS folder_id,
 	COALESCE(parent_folder_id, '') AS parent_folder_id,
@@ -198,8 +208,18 @@ const mediaAssetColumns = `
 
 const clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
 
+// SoftDeleteFilter returns the canonical SQL fragment that excludes
+// soft-deleted rows from query results.
+//
+// PR 1 (June 2026, Lifecycle state SSOT): the canonical tombstone is
+// UPPERCASE 'DELETED'. Pre-PR1 readers accepted both 'deleted' and
+// 'DELETED' (mixed-case writers); post-PR1 history rows are rewritten
+// to UPPERCASE by migration 101, so a single equality check is enough.
+// Compatibility with the pre-101 lower-case value is dropped because
+// no production writer emits it anymore and migration 101 is a hard
+// pre-condition for the canonical enum to be SSOT.
 func SoftDeleteFilter() string {
-	return "lifecycle_state != 'deleted'"
+	return "lifecycle_state != 'DELETED'"
 }
 
 func buildMediaAssetQuery(source string) string {

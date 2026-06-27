@@ -41,32 +41,23 @@ func (s SourceType) IsValid() bool {
 	return false
 }
 
-// ── Asset status ─────────────────────────────────────────────────────
+// ── Tree node (API response shape) ──────────────────────────────────
 
-// AssetStatus tracks the lifecycle of a media asset.
-type AssetStatus string
-
-const (
-	// AssetStatusActive indicates an active and available asset.
-	AssetStatusActive AssetStatus = "active"
-	// AssetStatusArchived indicates an archived asset.
-	AssetStatusArchived AssetStatus = "archived"
-	// AssetStatusDeleted indicates a soft-deleted asset.
-	AssetStatusDeleted AssetStatus = "deleted"
-	// AssetStatusProcessing indicates an asset currently being processed.
-	AssetStatusProcessing AssetStatus = "processing"
-	// AssetStatusFailed indicates an asset with a processing error.
-	AssetStatusFailed AssetStatus = "failed"
-)
-
-// IsValid reports whether the AssetStatus matches a known constant.
-func (s AssetStatus) IsValid() bool {
-	switch s {
-	case AssetStatusActive, AssetStatusArchived, AssetStatusDeleted, AssetStatusProcessing, AssetStatusFailed:
-		return true
-	}
-	return false
-}
+// ── AssetStatus enum REMOVED ────────────────────────────────────────
+//
+// Pre-PR1 (Lifecycle state SSOT, June 2026), this file declared a
+// separate lowercase `AssetStatus` enum (active/archived/deleted/
+// processing/failed) that co-existed with `LifecycleState` and the
+// `status` column in media_assets. The two enums polluted writers
+// (lowercase strings in production code) and readers (the COALESCE
+// fallback in qdrant/asset_store.go). PR 1 retired AssetStatus and
+// the `status` column so `LifecycleState` is the single source of
+// truth at every layer (enum, column, payload, search filter).
+//
+// Any future reintroduction of an archived/failed state must add a
+// new LifecycleState constant instead of reviving AssetStatus —
+// reintroducing a parallel enum is what created the drift in the
+// first place.
 
 // ── Tree node (API response shape) ──────────────────────────────────
 

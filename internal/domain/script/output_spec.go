@@ -68,20 +68,22 @@ func (t Toggle) AsBool() bool {
 // on GenerationItemV2; the normalizer merges them into the resolved
 // plan.
 type ScriptSpec struct {
-	TargetWords       int    `json:"target_words,omitempty"`
-	Duration          int    `json:"duration,omitempty"`
-	MinWords          int    `json:"min_words,omitempty"`
-	SentencesPerImage int    `json:"sentences_per_image,omitempty"`
-	ImagesPerScene    int    `json:"images_per_scene,omitempty"`
-	Style             string `json:"style,omitempty"`
-	Guidelines        string `json:"guidelines,omitempty"`
-	TranscriptPolicy  string `json:"transcript_policy,omitempty"`
-	OrderingStrategy  string `json:"ordering_strategy,omitempty"`
-	PromptVersion     string `json:"prompt_version,omitempty"`
-	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
-	QAPromptVersion string `json:"qa_prompt_version,omitempty"`
-	ForceRefresh bool `json:"force_refresh,omitempty"`
-	UseMemory    bool `json:"use_memory,omitempty"`
+	TargetWords         int      `json:"target_words,omitempty"`
+	Duration            int      `json:"duration,omitempty"`
+	MinWords            int      `json:"min_words,omitempty"`
+	SegmentWords        int      `json:"segment_words,omitempty"`
+	SegmentTopics       []string `json:"segment_topics,omitempty"`
+	SentencesPerImage   int      `json:"sentences_per_image,omitempty"`
+	ImagesPerScene      int      `json:"images_per_scene,omitempty"`
+	Style               string   `json:"style,omitempty"`
+	Guidelines          string   `json:"guidelines,omitempty"`
+	TranscriptPolicy    string   `json:"transcript_policy,omitempty"`
+	OrderingStrategy    string   `json:"ordering_strategy,omitempty"`
+	PromptVersion       string   `json:"prompt_version,omitempty"`
+	EditorPromptVersion string   `json:"editor_prompt_version,omitempty"`
+	QAPromptVersion     string   `json:"qa_prompt_version,omitempty"`
+	ForceRefresh        bool     `json:"force_refresh,omitempty"`
+	UseMemory           bool     `json:"use_memory,omitempty"`
 }
 
 // ── OutputSpec ─────────────────────────────────────────────────────

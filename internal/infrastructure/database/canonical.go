@@ -12,11 +12,19 @@ package storage
 //     created_at, metadata_json, drive_folder_id, visual_embedding,
 //     transcript_embedding, updated_at).
 //
-//  2. Nine legacy-promoted columns (drive_link, download_link,
-//     drive_file_id, file_hash, local_path, status, media_type,
+//  2. Eight legacy-promoted columns (drive_link, download_link,
+//     drive_file_id, file_hash, local_path, media_type,
 //     audio_embedding, language)
 //     plus image dimensions (width, height) — already-existed columns
 //     whose JSON mirror was deleted by migration 059's json_remove.
+//
+//     The `status` column is REMOVED by migration 101 (PR1 — Lifecycle
+//     state SSOT, June 2026) because it co-existed with `lifecycle_state`
+//     and writers used it for a parallel lowercase asset-status enum.
+//     Pre-101 readers consulted COALESCE(lifecycle_state, status, …);
+//     post-101 reads skip the column entirely. Including `status`
+//     here would re-introduce the dual-source-of-truth drift the
+//     migration was authored to eliminate.
 //
 //  3. Fifteen canonical columns added by migration 059
 //     (lifecycle_state, deleted_at, folder_id, parent_folder_id,
@@ -57,7 +65,6 @@ CREATE TABLE IF NOT EXISTS media_assets (
     transcript_embedding TEXT,
     updated_at TEXT NOT NULL DEFAULT '',
     media_type TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'ready',
     local_path TEXT,
     relative_path TEXT,
     drive_file_id TEXT,
@@ -68,7 +75,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     language TEXT NOT NULL DEFAULT '',
     width INTEGER NOT NULL DEFAULT 0,
     height INTEGER NOT NULL DEFAULT 0,
-    lifecycle_state TEXT NOT NULL DEFAULT 'ready',
+    lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
     deleted_at TEXT NOT NULL DEFAULT '',
     folder_id TEXT NOT NULL DEFAULT '',
     parent_folder_id TEXT NOT NULL DEFAULT '',

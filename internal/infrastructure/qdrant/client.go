@@ -385,10 +385,19 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 
 // ── Search API ───────────────────────────────────────────────────────
 
-// SearchPoints performs an ANN search.
+// SearchPoints performs an ANN search via the Qdrant Query API
+// (PR 2 — Qdrant query contract, June 2026). The legacy
+// `/points/search` endpoint was retired: its `vector` body key
+// is rejected by Qdrant 1.10+ which has flipped the canonical
+// search surface to `/points/query` with the `query` body key
+// (see https://qdrant.tech/documentation/concepts/search/#query-api).
+//
+// Response decoding is shared with HybridSearchPoints via
+// decodeSearchResults — both endpoints return the same
+// `result: []pointEntry` JSON envelope.
 func (c *Client) SearchPoints(ctx context.Context, collection string, req SearchRequest) ([]SearchResult, error) {
 	body := map[string]interface{}{
-		"vector":       req.QueryVector,
+		"query":        req.QueryVector,
 		"limit":        req.Limit,
 		"with_payload": true,
 	}
@@ -402,11 +411,38 @@ func (c *Client) SearchPoints(ctx context.Context, collection string, req Search
 		body["filter"] = req.Filter
 	}
 
-	return c.executeSearch(ctx, collection, body)
+	return c.executeQuery(ctx, collection, body)
 }
 
 // HybridSearchPoints performs a real hybrid (dense + sparse) search via the
 // Qdrant Query API with prefetch blocks and Reciprocal Rank Fusion (RRF).
+//
+// PR 2 (June 2026, Qdrant query contract): the previous implementation
+// issued TWO HttpRequest round-trips per hybrid call — one inline
+// `c.doJSON` (lines 481-489 of pre-PR2 code) followed by a second
+// `c.executeQuery`. The first round-trip was wasted: its body matched
+// the second call byte-for-byte, so any error path that tripped in
+// the first call would silently retry on the second with no
+// observability difference. PR 2 collapses the path to a SINGLE POST
+// via `c.executeQuery` and threads the canonical lifecycle + workspace
+// filter into the body (the previous shape built the filter but
+// never inserted it into the JSON payload, silently bypassing the
+// tenant/lifecycle isolation contract for hybrid retrieval).
+//
+// Wire shape:
+//
+//	POST /collections/{name}/points/query
+//	{
+//	    "prefetch": [
+//	        { "query": <dense>, "using": "<dense_ch>", "limit": N },
+//	        { "query": { "indices":[..], "values":[..] }, "using": "<bm25_ch>", "limit": N }
+//	    ],
+//	    "query": { "fusion": "rrf" },
+//	    "limit": <int>,
+//	    "with_payload": true,
+//	    "filter": {...},                 // PR 2: forwarded (was missing!)
+//	    "score_threshold": <float>       // optional
+//	}
 //
 // Unlike the legacy /points/search endpoint which silently falls back to
 // dense-only when sparse is omitted, this method REQUIRES a non-nil
@@ -476,30 +512,29 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 	if req.MinScore > 0 {
 		body["score_threshold"] = req.MinScore
 	}
-
-	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
-	if err != nil {
-		return nil, fmt.Errorf("hybrid query %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, c.parseError(resp)
+	// PR 2 (June 2026): forward the canonical filter into the body.
+	// Pre-PR2 the filter was built in search_adapter.go but discarded
+	// at the wire boundary — a hybrid retrieval could return rows
+	// that violated the lifecycle_state or workspace_id contract
+	// for the calling principal. The fix is a single line at the
+	// shape level so every hybrid path inherits it without requiring
+	// every caller to thread Filter explicitly.
+	if req.Filter != nil {
+		body["filter"] = req.Filter
 	}
 
 	return c.executeQuery(ctx, collection, body)
 }
 
-func (c *Client) executeSearch(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
-	url := fmt.Sprintf("%s/collections/%s/points/search", c.baseURL, collection)
-	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
-	if err != nil {
-		return nil, fmt.Errorf("search %q: %w", collection, err)
-	}
-	defer resp.Body.Close()
-	return c.decodeSearchResults(resp)
-}
+// NOTE: the legacy `executeSearch` (POST /points/search) helper was
+// retired in PR 2 (June 2026, Qdrant query contract). The legacy
+// endpoint's `vector` body key is replaced by `query` and the single
+// remaining call site (SearchPoints) now lives on /points/query via
+// executeQuery, eliminating the duplicate helper entirely. If a
+// future operator wires a Qdrant version that drops /points/search,
+// the code is already-shaped correctly; if a future change needs the
+// legacy shape, the helper can be added back as a one-line wrapper
+// around executeQuery with the legacy body key.
 
 // ── Payload API ─────────────────────────────────────────────────────
 
@@ -574,9 +609,13 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 	return c.httpClient.Do(req)
 }
 
-// decodeSearchResults is the shared result decoder for both the legacy
-// Search API (/points/search) and the Query API (/points/query). Both
-// Qdrant endpoints return the same JSON shape.
+// decodeSearchResults is the shared result decoder for the Qdrant
+// Query API (/points/query). Post PR 2 (June 2026, Qdrant query
+// contract) the legacy Search API (/points/search) is no longer
+// hit from this client — SearchPoints and HybridSearchPoints both
+// route through executeQuery, so the decoder narrows its docstring
+// to a single endpoint while remaining byte-compatible with the
+// pre-PR2 decoder shape.
 func (c *Client) decodeSearchResults(resp *http.Response) ([]SearchResult, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, c.parseError(resp)
@@ -607,10 +646,14 @@ func (c *Client) decodeSearchResults(resp *http.Response) ([]SearchResult, error
 	return results, nil
 }
 
-// executeQuery sends a request to the Qdrant Query API (/points/query) and
-// decodes the results. Used by HybridSearchPoints for real RRF fusion;
-// executeSearch (POST /points/search) remains available for ANN-only
-// queries. Both share decodeSearchResults for response parsing.
+// executeQuery sends a request to the Qdrant Query API (/points/query)
+// and decodes the results. Post PR 2 (June 2026, Qdrant query
+// contract) this is the SOLE wire path for both ANN-only and hybrid
+// retrieval — SearchPoints and HybridSearchPoints both delegate to
+// it. The legacy executeSearch helper that targeted /points/search
+// was retired; re-introducing it would require a deliberate
+// operator override (see the trailing comment block above
+// HybridSearchPoints).
 func (c *Client) executeQuery(ctx context.Context, collection string, body map[string]interface{}) ([]SearchResult, error) {
 	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
 	resp, err := c.doJSON(ctx, http.MethodPost, url, body)

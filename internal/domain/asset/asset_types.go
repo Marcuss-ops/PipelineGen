@@ -19,24 +19,65 @@ type Source string
 // that don't have dedicated columns.
 type Metadata map[string]any
 
-// LifecycleState tracks where an asset is in its lifecycle.
+// LifecycleState is the SINGLE canonical enum for the asset lifecycle
+// (PR 1 — Lifecycle state SSOT, June 2026). Six values, all UPPERCASE.
+// The previous lowercase compat values (`ready`, `pending`) and the
+// dual-enum AssetStatus (lifecycle_core.go) have been retired.
+//
+// Migration history:
+//   - Legacy compat (pre-PR1): lowercase values mixed with canonical
+//     uppercase values in media_assets.lifecycle_state, plus a
+//     parallel `status` column with its own lowercase enum (`active`,
+//     `archived`, `deleted`, `processing`, `failed`). Reads consulted
+//     the COALESCE fallback (NULLIF(lifecycle_state), NULLIF(status)).
+//   - PR1: AssetStatus enum deleted; `status` column dropped by
+//     migration 101; writers use only these 6 constants; readers
+//     read the column directly without fallback.
 type LifecycleState string
 
 const (
-	StateStaging    LifecycleState = "STAGING"
+	// StateStaging — asset row created but not yet indexable.
+	StateStaging LifecycleState = "STAGING"
+	// StateProcessing — vectorisation currently in flight.
 	StateProcessing LifecycleState = "PROCESSING"
-	StateActive     LifecycleState = "ACTIVE"
-	StateDeleted    LifecycleState = "DELETED"
-
-	// Legacy compatibility values.
-	StateReady   LifecycleState = "ready"
-	StatePending LifecycleState = "pending"
+	// StateActive — terminal-and-searchable default for indexable rows.
+	// This is the canonical payload value at Qdrant and the only state
+	// returned by the /internal/v1/media/search endpoint.
+	StateActive LifecycleState = "ACTIVE"
+	// StateDeletePending — soft-delete initiated but Qdrant drain
+	// not yet acknowledged. Visible to operators; not returned by
+	// search. The countdown from DELETE_PENDING → DELETED is owned by
+	// outbox/index_delete.go.
+	StateDeletePending LifecycleState = "DELETE_PENDING"
+	// StateDeleted — terminal tombstone. The SoftDeleteFilter and
+	// the Qdrant lifecycle waterfall exclude this state from all
+	// reads.
+	StateDeleted LifecycleState = "DELETED"
+	// StateError — indexer failed and could not recover; surfaced
+	// to operators via dashboards and the reaper diagnostic.
+	StateError LifecycleState = "ERROR"
 )
 
-// Valid returns true if s is a known lifecycle state.
+// CanonicalLifecycleStateValues returns the closed enumeration of
+// canonical lifecycle_state strings. Callers use this as the
+// single-source-of-truth list for migrations, dashboards, and
+// qdrant payload validation.
+func CanonicalLifecycleStateValues() []LifecycleState {
+	return []LifecycleState{
+		StateStaging,
+		StateProcessing,
+		StateActive,
+		StateDeletePending,
+		StateDeleted,
+		StateError,
+	}
+}
+
+// Valid returns true if s is a known canonical lifecycle state.
 func (s LifecycleState) Valid() bool {
 	switch s {
-	case StateStaging, StateProcessing, StateActive, StateDeleted, StateReady, StatePending:
+	case StateStaging, StateProcessing, StateActive,
+		StateDeletePending, StateDeleted, StateError:
 		return true
 	}
 	return false

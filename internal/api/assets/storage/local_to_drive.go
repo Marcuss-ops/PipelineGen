@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -89,7 +89,7 @@ func (h *Handler) LocalToDrive(c *gin.Context) {
 		conc = 3
 	}
 
-	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type:    "bulk_upload_youtube_clips",
 		Project: "media",
 		Payload: map[string]any{

@@ -36,55 +36,17 @@ var _ appsearch.VectorStorePort = (*searchAdapter)(nil)
 
 // Search converts an application-level VectorSearchRequest into a qdrant
 // SearchRequest, delegates to the Searcher, and converts results back.
+//
+// PR 1 (June 2026, Lifecycle state SSOT): the canonical lifecycle_state
+// filter is {\"ACTIVE\"} only. Pre-PR1 the waterfall was {\"active\",
+// \"searchable\"} — both legacy values are pruned by migration 101 and
+// no production code path writes a non-ACTIVE searchable value anymore.
 func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRequest) ([]appsearch.VectorSearchResult, error) {
 	if a.searcher == nil {
 		return nil, fmt.Errorf("qdrant searcher not configured")
 	}
 
-	// Build the qdrant-level filter from application filter fields.
-	var filter map[string]interface{}
-	hasFilter := req.Source != "" || req.Category != "" || req.MediaType != "" || req.Language != "" || req.WorkspaceID != ""
-	if hasFilter {
-		must := make([]map[string]interface{}, 0, 6)
-		if req.Source != "" {
-			must = append(must, map[string]interface{}{
-				"key": "source", "match": map[string]interface{}{"value": req.Source},
-			})
-		}
-		if req.Category != "" {
-			must = append(must, map[string]interface{}{
-				"key": "category", "match": map[string]interface{}{"value": req.Category},
-			})
-		}
-		if req.MediaType != "" {
-			must = append(must, map[string]interface{}{
-				"key": "media_type", "match": map[string]interface{}{"value": req.MediaType},
-			})
-		}
-		if req.Language != "" {
-			must = append(must, map[string]interface{}{
-				"key": "language", "match": map[string]interface{}{"value": req.Language},
-			})
-		}
-		// QDRANT-004: workspace_id isolation — vector search must only
-		// return points belonging to the caller's workspace.
-		if req.WorkspaceID != "" {
-			must = append(must, map[string]interface{}{
-				"key": "workspace_id", "match": map[string]interface{}{"value": req.WorkspaceID},
-			})
-		}
-		// QDRANT-004: status filter — only return points whose
-		// lifecycle_state is searchable or active. Non-searchable
-		// states (deleted, archived, pending, error) are excluded
-		// at the vector-store level so they never reach hydration.
-		must = append(must, map[string]interface{}{
-			"key": "lifecycle_state",
-			"match": map[string]interface{}{
-				"any": []string{"active", "searchable"},
-			},
-		})
-		filter = map[string]interface{}{"must": must}
-	}
+	filter := buildLifecycleAwareFilter(req.Source, req.Category, req.MediaType, req.Language, req.WorkspaceID)
 
 	qReq := SearchRequest{
 		QueryVector: req.QueryVector,
@@ -104,53 +66,16 @@ func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 
 // HybridSearch converts an application-level HybridSearchRequest into a
 // qdrant HybridSearchRequest, delegates to the Searcher, and converts back.
+//
+// PR 1 (June 2026, Lifecycle state SSOT): same canonical ACTIVE-only
+// filter as Search() so hybrid results never include DELETED/STAGING/
+// PROCESSING/DELETE_PENDING/ERROR points.
 func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSearchRequest) ([]appsearch.VectorSearchResult, error) {
 	if a.searcher == nil {
 		return nil, fmt.Errorf("qdrant searcher not configured")
 	}
 
-	// Build filter.
-	var filter map[string]interface{}
-	hasFilter := req.Source != "" || req.Category != "" || req.MediaType != "" || req.Language != "" || req.WorkspaceID != ""
-	if hasFilter {
-		must := make([]map[string]interface{}, 0, 6)
-		if req.Source != "" {
-			must = append(must, map[string]interface{}{
-				"key": "source", "match": map[string]interface{}{"value": req.Source},
-			})
-		}
-		if req.Category != "" {
-			must = append(must, map[string]interface{}{
-				"key": "category", "match": map[string]interface{}{"value": req.Category},
-			})
-		}
-		if req.MediaType != "" {
-			must = append(must, map[string]interface{}{
-				"key": "media_type", "match": map[string]interface{}{"value": req.MediaType},
-			})
-		}
-		if req.Language != "" {
-			must = append(must, map[string]interface{}{
-				"key": "language", "match": map[string]interface{}{"value": req.Language},
-			})
-		}
-		// QDRANT-004: workspace_id isolation — hybrid search must only
-		// return points belonging to the caller's workspace.
-		if req.WorkspaceID != "" {
-			must = append(must, map[string]interface{}{
-				"key": "workspace_id", "match": map[string]interface{}{"value": req.WorkspaceID},
-			})
-		}
-		// QDRANT-004: status filter — only return points whose
-		// lifecycle_state is searchable or active (shared with Search).
-		must = append(must, map[string]interface{}{
-			"key": "lifecycle_state",
-			"match": map[string]interface{}{
-				"any": []string{"active", "searchable"},
-			},
-		})
-		filter = map[string]interface{}{"must": must}
-	}
+	filter := buildLifecycleAwareFilter(req.Source, req.Category, req.MediaType, req.Language, req.WorkspaceID)
 
 	// QDRANT-004 PR1 (June 2026): the orchestrator now owns BM25
 	// tokenization (mediasearch.Service builds the *bm25.SparseVector
@@ -259,4 +184,71 @@ func payloadString(payload map[string]interface{}, key string) string {
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+// buildLifecycleAwareFilter is the canonical filter builder for Qdrant
+// search + hybrid search (PR 1 — Lifecycle state SSOT, June 2026).
+//
+// The function ALWAYS appends the lifecycle_state must-clause even when
+// all caller-side filters are empty — a vector query without a
+// lifecycle filter could return TOMBSTONE rows (DELETE_PENDING/DELETED/
+// ERROR/STAGING/PROCESSING) to the application layer, which would be a
+// "no fake availability" invariant violation. Defence-in-depth: the
+// post-query guard in mediasearch/service.go drops rows whose
+// lifecycle_state is not in SearchableLifecycleStates, but enforcing
+// the constraint at the Qdrant boundary keeps the user-visible surface
+// (SearchHit) immune to a future orchestrator that forgets the
+// defence-in-depth layer.
+//
+// The canonical value is "ACTIVE". Pre-PR1 the filter was a 2-value
+// waterfall {"active", "searchable"}; both legacy values were pruned
+// by migration 101 so a single-string match is enough. Hybrid and
+// pure ANN share this builder — the no-filter-vs-with-filter split is
+// gone so a Searcher wiring that sets QueryVector but forgets a
+// Filter arg can no longer silently bypass the lifecycle clause.
+//
+// Parameters mirror the previous inline builder exactly so the wire
+// shape of the Qdrant filter is byte-identical between callers (the
+// only difference from the pre-PR1 inline builder is the lifecycle
+// filter value-list).
+func buildLifecycleAwareFilter(source, category, mediaType, language, workspaceID string) map[string]interface{} {
+	must := make([]map[string]interface{}, 0, 6)
+	if source != "" {
+		must = append(must, map[string]interface{}{
+			"key": "source", "match": map[string]interface{}{"value": source},
+		})
+	}
+	if category != "" {
+		must = append(must, map[string]interface{}{
+			"key": "category", "match": map[string]interface{}{"value": category},
+		})
+	}
+	if mediaType != "" {
+		must = append(must, map[string]interface{}{
+			"key": "media_type", "match": map[string]interface{}{"value": mediaType},
+		})
+	}
+	if language != "" {
+		must = append(must, map[string]interface{}{
+			"key": "language", "match": map[string]interface{}{"value": language},
+		})
+	}
+	// QDRANT-004 §workspace_id isolation — vector/hybrid search must
+	// only return points belonging to the caller's workspace.
+	if workspaceID != "" {
+		must = append(must, map[string]interface{}{
+			"key": "workspace_id", "match": map[string]interface{}{"value": workspaceID},
+		})
+	}
+	// Canonical lifecycle filter (PR 1, June 2026): single value
+	// {\"ACTIVE\"} replaces the legacy {\"active\", \"searchable\"}
+	// waterfall. The lifecycle_state payload key is SSOT (QDRANT-004
+	// PR2); the previous \"status\" payload key was retired in this
+	// same commit and any pre-PR1 point that wrote it is repaired
+	// by the reconciler's KindLifecycleKeyLegacy classification.
+	must = append(must, map[string]interface{}{
+		"key":   "lifecycle_state",
+		"match": map[string]interface{}{"value": string("ACTIVE")},
+	})
+	return map[string]interface{}{"must": must}
 }

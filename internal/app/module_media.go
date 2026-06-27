@@ -80,10 +80,20 @@ var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
 // constructed inside WireAssets — keeps the registry-level lifecycle
 // simple and avoids double-ticker leaks.
 //
-// Wave 21 PR 9/10 (June 2026): MediasearchService + WorkspaceID + SearchBackendRegistry
-// are composition inputs for the canonical SearchAggregator. The
+// Wave 21 PR 9/10 (June 2026): MediasearchService + WorkspaceID are
+// composition inputs for the canonical SearchAggregator. The
 // semantic backend activates only when WorkspaceID is non-empty
 // (QDRANT-004 tenant-isolation gate).
+//
+// PR-2 (June 2026): SearchFanOut + SearchBackendRegistry are
+// pre-built by WireRegistry via BuildCanonicalSearchFanOut and
+// stamped into the bundle BEFORE WireAssets runs. WireAssets
+// consumes these slots rather than constructing its own — the
+// canonical SearchFanOut is a SINGLE shared instance, so stats
+// counters aggregate across every search entry-point (YouTube
+// /api/media/clips/search + Assets /api/clips/search/advanced +
+// Mediasearch + FindDuplicates) rather than fragmenting across
+// per-handler instances.
 //
 // Wave 19 cross-capability rule: module_media.go is itself a
 // composition-only bridge; the heavy cross-cap import dance
@@ -107,11 +117,14 @@ type AssetsBundle struct {
 	// canonical SearchAggregator. MediasearchService + WorkspaceID
 	// activate the semantic backend (QDRANT-004 tenant-isolation
 	// gate requires a non-default workspace); empty disables it.
-	// SearchBackendRegistry is the frozen cross-capability backend
-	// catalog populated by WireAssets and exposed here for
-	// diagnostic routes + future Health probes.
-	MediasearchService    *mediasearch.Service
-	SearchWorkspaceID     string
+	MediasearchService *mediasearch.Service
+	SearchWorkspaceID  string
+	// PR-2 (June 2026): SearchFanOut + SearchBackendRegistry are
+	// pre-built by WireRegistry. WireAssets MUST consume these
+	// pre-built slots rather than constructing its own — see the
+	// package doc on the AssetsBundle struct above for the
+	// single-instance invariant.
+	SearchFanOut         search.SearchFanOut
 	SearchBackendRegistry *search.BackendRegistry
 }
 
@@ -126,7 +139,12 @@ type AssetsWiring struct {
 	// architecture/deprecations.yaml records
 	// PR-SEARCH-LEGACY-CLIPSSEARCH + PR-SEARCH-LEGACY-CROSSPROVIDER.
 	SearchAggregator *search.Aggregator
-
+	// PR-2 (June 2026): the canonical SearchFanOut (decorator
+	// wrapping the canonical Aggregator). Exposed via this
+	// wiring handle so other consumers (diagnostics + future
+	// Health probes) read the SHARED instance rather than
+	// constructing a parallel one. == bundle.SearchFanOut alias.
+	SearchFanOut search.SearchFanOut
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -157,27 +175,32 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	}
 
 	// ── Wave 21 PR 10 (June 2026): canonical SearchAggregator
-	//    constructed FIRST so clipsHandler and the assets/search
-	//    handler can both consume it at construction time. The
-	//    legacy clipssearch.Service + appsearchsvc.Service
-	//    wirings are gone (CUTOVER delivered). The aggregator is
-	//    the SSOT for the Search capability; see
-	//    architecture/deprecations.yaml records PR-SEARCH-LEGACY-*.
-	//    PR-1 (June 2026): BuildSearchBackends is fail-closed;
-	//    a Register error aborts boot with a wrapped error.
-	searchBackends, backendsErr := BuildSearchBackends(SearchBackendBuildOpts{
-		Logger:         log,
-		ProviderReg:    providerRegistry,
-		ClipsRepo:      bundle.ClipsRepo,
-		MediasearchSvc: bundle.MediasearchService,
-		WorkspaceID:    bundle.SearchWorkspaceID,
-	})
-	if backendsErr != nil {
-		return nil, fmt.Errorf("WireAssets: %w", backendsErr)
+	//    + the PR-2 SearchFanOut decorator wrapping it are
+	//    pre-built by WireRegistry and stamped onto
+	//    bundle.SearchFanOut + bundle.SearchBackendRegistry.
+	//    WireAssets CONSUMES the pre-built instance — it does
+	//    not construct its own. The single shared instance
+	//    invariant guarantees stats counters aggregate across
+	//    every search entry-point (YouTube + Assets + Mediasearch
+	//    + FindDuplicates) instead of fragmenting per-handler.
+	//    See AssetsBundle package doc for the rationale.
+	//    The legacy clipssearch.Service + appsearchsvc.Service
+	//    wirings are gone (PR-10 CUTOVER delivered). The
+	//    aggregator is the SSOT for the Search capability; see
+	//    architecture/deprecations.yaml records PR-SEARCH-LEGACY-*
+	//    + the new PR-SEARCH-LEGACY-PROVIDERS-AGGREGATOR.
+	searchBackends := bundle.SearchBackendRegistry
+	searchFanOut := bundle.SearchFanOut
+	if searchFanOut == nil {
+		// Composition-bug guard: WireRegistry is required to
+		// stamp bundle.SearchFanOut BEFORE WireAssets runs. A
+		// nil slot is a wiring-time defect; surface it here as
+		// a fail-closed error instead of letting downstream
+		// handlers silently degrade to 503 on every Search call.
+		return nil, fmt.Errorf("WireAssets: bundle.SearchFanOut is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)")
 	}
-	bundle.SearchBackendRegistry = searchBackends
 	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
-	log.Info("search aggregator wired (PR 10 CUTOVER; replaces BACKFILL dual-path)",
+	log.Info("WireAssets: consumed pre-built canonical SearchFanOut",
 		zap.Int("backends", len(searchBackends.All())))
 
 	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
@@ -379,15 +402,17 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	)
 	log.Info("created unified Assets module (thin transport)")
 
-	// Return AssetsWiring. The canonical SearchAggregator (built
-	// above the clipsHandler construction) is exposed here for
-	// diagnostic routes, future Health probes, and Wave 22 follow-ups.
-	// Legacy clipssearch.Service + appsearchsvc.Service no longer
-	// exist (PR 10 CUTOVER delivered).
+	// Return AssetsWiring. The canonical SearchAggregator + the
+	// pre-built SearchFanOut are exposed here for diagnostic
+	// routes, future Health probes, and Wave 22 follow-ups. Both
+	// reference the SAME instance wired by BuildCanonicalSearchFanOut
+	// in WireRegistry (see the AssetBundle construction below).
 	return &AssetsWiring{
 		Module:               assetsRouteMod,
 		DeletionSvc:          deletionSvc,
 		InternalMediaHandler: storageHandler,
+		SearchAggregator:     searchAggregator,
+		SearchFanOut:         searchFanOut,
 	}, nil
 }
 

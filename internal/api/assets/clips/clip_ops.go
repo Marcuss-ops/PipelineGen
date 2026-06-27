@@ -237,8 +237,8 @@ func mapClipOpsError(c *gin.Context, err error) {
 		apiutil.Error(c, http.StatusServiceUnavailable, appclips.ErrJobsUnavailable.Error())
 		return
 	}
-	if strings.Contains(err.Error(), "invalid source") {
-		apiutil.BadRequest(c, "invalid source: "+err.Error())
+	if errors.Is(err, appclips.ErrInvalidSource) {
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 	apiutil.InternalError(c, err)

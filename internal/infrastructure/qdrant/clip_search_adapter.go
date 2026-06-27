@@ -122,9 +122,19 @@ func convertClipHits(results []SearchResult) []scripts.ClipSearchHit {
 }
 
 // buildCurateClipFilter matches the worker_search path filter shape:
-// "source"/"category"/"media_type" matched value + lifecycle_state ∈
-// {active,searchable}. Keeps curate results consistent with the
+// "source"/"category"/"media_type" matched value + canonical
+// lifecycle_state = ACTIVE. Keeps curate results consistent with the
 // canonical /internal/v1/media/search filter contract.
+//
+// PR 1 — Lifecycle state SSOT (June 2026): the lifecycle filter is
+// the canonical ACTIVE match only. Pre-PR1 the waterfall was {active,
+// searchable}; both legacy values are pruned by migration 101. The
+// delegate to qdrant.buildLifecycleAwareFilter is intentionally
+// avoided here to keep this function testable without depending on
+// the Search/HybridSearch path — curate is the only fan-out that
+// owns no caller-side workspace, so we hardcode the workspace-id
+// clause as "not present" and let the canonical builder plumbing be
+// exercised from search_adapter.go.
 //
 // Mirrors search_adapter.go::filter-must construction so curate
 // returns the same set of points the search endpoint would.
@@ -149,10 +159,8 @@ func buildCurateClipFilter(source, category, mediaType string) map[string]interf
 		})
 	}
 	must = append(must, map[string]interface{}{
-		"key": "lifecycle_state",
-		"match": map[string]interface{}{
-			"any": []string{"active", "searchable"},
-		},
+		"key":   "lifecycle_state",
+		"match": map[string]interface{}{"value": "ACTIVE"},
 	})
 	return map[string]interface{}{"must": must}
 }

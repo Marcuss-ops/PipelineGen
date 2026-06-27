@@ -67,36 +67,44 @@ func addDeprecationHeader(c *gin.Context) {
 // LegacyGenerateFromClipsRequest is the deprecated request for
 // POST /api/script/generate-from-clips.
 type LegacyGenerateFromClipsRequest struct {
-	Topic              string   `json:"topic"`
-	SourceText         string   `json:"source_text"`
-	Title              string   `json:"title"`
-	Language           string   `json:"language"`
-	Tone               string   `json:"tone"`
-	Model              string   `json:"model"`
-	Style              string   `json:"style"`
-	ClipIDs            []string `json:"clip_ids"`
-	TargetWords        int      `json:"target_words"`
-	Duration           int      `json:"duration"`
-	SaveToDB           bool     `json:"save_to_db"`
-	ForceRefresh       bool     `json:"force_refresh"`
-	GenerateSceneImages bool    `json:"generate_scene_images"`
-	GenerateVoiceover  bool     `json:"generate_voiceover"`
-	GenerateDocument   bool     `json:"generate_document"`
-	GenerateDoc        bool     `json:"generate_doc"`
-	ExtractEntities    bool     `json:"extract_entities"`
-	GenerateMetadata   bool     `json:"generate_metadata"`
-	DriveFolderID      string   `json:"drive_folder_id"`
-	StyleInstructions  string   `json:"style_instructions"`
-	VoiceoverGroup     string   `json:"voiceover_group"`
-	VoiceoverFolderID  string   `json:"voiceover_folder_id"`
-	TranscriptPolicy   string   `json:"transcript_policy"`
-	PromptVersion      string   `json:"prompt_version"`
+	Topic               string   `json:"topic"`
+	SourceText          string   `json:"source_text"`
+	Title               string   `json:"title"`
+	Language            string   `json:"language"`
+	Tone                string   `json:"tone"`
+	Model               string   `json:"model"`
+	Style               string   `json:"style"`
+	ClipIDs             []string `json:"clip_ids"`
+	IntroClipIDs        []string `json:"intro_clip_ids"`
+	IntroClips          []string `json:"intro_clips"`
+	NumClips            int      `json:"num_clips"`
+	TargetWords         int      `json:"target_words"`
+	Duration            int      `json:"duration"`
+	SegmentWords        int      `json:"segment_words"`
+	SegmentTopics       []string `json:"segment_topics"`
+	SaveToDB            bool     `json:"save_to_db"`
+	ForceRefresh        bool     `json:"force_refresh"`
+	GenerateSceneImages bool     `json:"generate_scene_images"`
+	GenerateVoiceover   bool     `json:"generate_voiceover"`
+	GenerateDocument    bool     `json:"generate_document"`
+	GenerateDoc         bool     `json:"generate_doc"`
+	ExtractEntities     bool     `json:"extract_entities"`
+	GenerateMetadata    bool     `json:"generate_metadata"`
+	DriveFolderID       string   `json:"drive_folder_id"`
+	StyleInstructions   string   `json:"style_instructions"`
+	VoiceoverGroup      string   `json:"voiceover_group"`
+	VoiceoverFolderID   string   `json:"voiceover_folder_id"`
+	TranscriptPolicy    string   `json:"transcript_policy"`
+	PromptVersion       string   `json:"prompt_version"`
 }
 
 // toEnvelope translates a legacy generate-from-clips request into a
 // canonical GenerationEnvelopeV2. Clips present → SourceClips;
 // topic-only → SourceText.
 func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
+	introIDs := append([]string(nil), r.IntroClipIDs...)
+	introIDs = append(introIDs, r.IntroClips...)
+
 	item := domainScript.GenerationItemV2{
 		ID:       r.Title,
 		Title:    r.Title,
@@ -105,18 +113,21 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 		Model:    r.Model,
 		Style:    r.Style,
 		Source: domainScript.SourceSpec{
-			Type:              domainScript.SourceText,
-			Topic:             r.Topic,
-			SourceText:        r.SourceText,
-			Guidelines:        r.StyleInstructions,
-			TranscriptPolicy:  r.TranscriptPolicy,
-			ForceRefresh:      r.ForceRefresh,
+			Type:             domainScript.SourceText,
+			Topic:            r.Topic,
+			SourceText:       r.SourceText,
+			Guidelines:       r.StyleInstructions,
+			TranscriptPolicy: r.TranscriptPolicy,
+			ForceRefresh:     r.ForceRefresh,
+			IntroClipIDs:     introIDs,
 		},
 		ScriptParams: domainScript.ScriptSpec{
 			TargetWords:   r.TargetWords,
 			Duration:      r.Duration,
 			PromptVersion: r.PromptVersion,
 			ForceRefresh:  r.ForceRefresh,
+			SegmentWords:  r.SegmentWords,
+			SegmentTopics: append([]string(nil), r.SegmentTopics...),
 		},
 		Output: domainScript.OutputSpec{
 			ExtractEntities:     r.ExtractEntities,
@@ -134,6 +145,7 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 		item.Source.Type = domainScript.SourceClips
 		item.Source.ClipIDs = r.ClipIDs
 	}
+	item.Source.NumClips = r.NumClips
 	return domainScript.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  domainScript.PresetCustom,
@@ -152,8 +164,11 @@ type LegacyGenerateWithImagesRequest struct {
 	Model             string   `json:"model"`
 	Style             string   `json:"style"`
 	ClipIDs           []string `json:"clip_ids"`
+	NumClips          int      `json:"num_clips"`
 	TargetWords       int      `json:"target_words"`
 	Duration          int      `json:"duration"`
+	SegmentWords      int      `json:"segment_words"`
+	SegmentTopics     []string `json:"segment_topics"`
 	SaveToDB          bool     `json:"save_to_db"`
 	ForceRefresh      bool     `json:"force_refresh"`
 	DriveFolderID     string   `json:"drive_folder_id"`
@@ -188,6 +203,8 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 			Duration:      r.Duration,
 			PromptVersion: r.PromptVersion,
 			ForceRefresh:  r.ForceRefresh,
+			SegmentWords:  r.SegmentWords,
+			SegmentTopics: append([]string(nil), r.SegmentTopics...),
 		},
 		Output: domainScript.OutputSpec{
 			// PR 8 (June 2026): with_images preset enables ONLY
@@ -203,17 +220,18 @@ func (r *LegacyGenerateWithImagesRequest) toEnvelope() domainScript.GenerationEn
 			// entities+metadata" recipe. That fight-callers fix
 			// made the preset a no-op for any caller that wanted
 			// the opposite shape. PR 8 removes the hardcoding.
-			SaveToDB:          r.SaveToDB,
+			SaveToDB:            r.SaveToDB,
 			GenerateSceneImages: true, // sole preset responsibility
-			VoiceoverGroup:    r.VoiceoverGroup,
-			VoiceoverFolderID: r.VoiceoverFolderID,
-			DriveFolderID:     r.DriveFolderID,
+			VoiceoverGroup:      r.VoiceoverGroup,
+			VoiceoverFolderID:   r.VoiceoverFolderID,
+			DriveFolderID:       r.DriveFolderID,
 		},
 	}
 	if len(r.ClipIDs) > 0 {
 		item.Source.Type = domainScript.SourceClips
 		item.Source.ClipIDs = r.ClipIDs
 	}
+	item.Source.NumClips = r.NumClips
 	return domainScript.GenerationEnvelopeV2{
 		Version: 2,
 		Preset:  domainScript.PresetWithImages,
@@ -265,10 +283,10 @@ type LegacyGenerateBatchRequest struct {
 // (which then leaked into the LLM prompt). PR 8 calls for clean
 // separation:
 //
-//	- TargetWords left at 0 (the normalizer derives it from
-//	  Duration via the canonical ~150 wpm formula in
-//	  generation_normalizer.go::applyConfigDefaults)
-//	- Duration carries r.Duration as-is
+//   - TargetWords left at 0 (the normalizer derives it from
+//     Duration via the canonical ~150 wpm formula in
+//     generation_normalizer.go::applyConfigDefaults)
+//   - Duration carries r.Duration as-is
 //
 // The handler adapter no longer applies defaults (PR 8: non
 // applicare default dentro l'handler); the normalizer owns the
@@ -312,9 +330,9 @@ func (r *LegacyGenerateBatchRequest) toEnvelope() domainScript.GenerationEnvelop
 				ForceRefresh:  r.ForceRefresh,
 			},
 			Output: domainScript.OutputSpec{
-				SaveToDB:      r.SaveToDB,
+				SaveToDB:         r.SaveToDB,
 				GenerateDocument: true,
-				DriveFolderID: r.DriveFolderID,
+				DriveFolderID:    r.DriveFolderID,
 			},
 		})
 	}
@@ -377,6 +395,7 @@ type LegacyCurateRequest struct {
 //   - MediaType         → src.MediaTypeFilter
 //   - AllowTextOnly     → src.AllowTextOnly
 //   - Search=true       → src.Search
+//
 // ResolutionContext (Language, Tone, Model, Style, TargetWords) is
 // derived from item-level fields (Title, Language, Tone, Model,
 // Style, ScriptParams.TargetWords); the curate resolver reads from
@@ -415,7 +434,7 @@ func (r *LegacyCurateRequest) toEnvelope() domainScript.GenerationEnvelopeV2 {
 			ClipIDs:       r.HintClipIDs,
 		},
 		ScriptParams: domainScript.ScriptSpec{
-			TargetWords: r.TargetWords,
+			TargetWords:  r.TargetWords,
 			ForceRefresh: r.ForceRefresh,
 		},
 		Output: domainScript.OutputSpec{

@@ -2,10 +2,10 @@
 // Phase 2 hydration logic used by Clips, Catalog, and Search
 // resolvers. Every non-text resolver follows the same pattern:
 //
-//   1. Resolve clip IDs (Phase 1 — resolver-specific).
-//   2. Build opts → BuildClipContext → BuildClipEvidence → derive title
-//      → compute fingerprint → log → return ResolvedSource (Phase 2 —
-//      shared here).
+//  1. Resolve clip IDs (Phase 1 — resolver-specific).
+//  2. Build opts → BuildClipContext → BuildClipEvidence → derive title
+//     → compute fingerprint → log → return ResolvedSource (Phase 2 —
+//     shared here).
 //
 // The helper keeps the three resolvers in sync: any new field added
 // to ResolvedSource or ClipGenerationOptions is added once here and
@@ -52,6 +52,7 @@ func buildSearchClipOpts(src scriptpkg.SourceSpec) *ClipGenerationOptions {
 	return &ClipGenerationOptions{
 		TranscriptPolicy:   src.TranscriptPolicy,
 		OrderingStrategy:   src.OrderingStrategy,
+		NumClips:           src.NumClips,
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
 		MinTranscriptWords: ptrutil.DerefOr(src.MinTranscriptWords, 0),
 	}
