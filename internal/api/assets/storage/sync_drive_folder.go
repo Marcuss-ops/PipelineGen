@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -69,32 +70,23 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 		zap.String("media_type", mediaType),
 	)
 
-	// QDRANT-001 closure: route through the shared dispatch helper so the
-	// admin (/api) and server-to-server (/internal/v1) variants stay in
-	// lockstep on payload schema, job type, and error envelope.
-	out, err := h.dispatchDriveFolderSync(c, &DispatchSyncInput{
+	// QDRANT-001 closure: build payload via shared helper so admin
+	// (/api) and server-to-server (/internal/v1) variants stay in
+	// lockstep on payload schema and job type.
+	payload, _ := buildSyncPayload(&SyncPayloadInput{
 		FolderID:  folderID,
 		Source:    source,
 		Name:      req.Name,
 		MediaType: mediaType,
-		IdemKey:   "", // admin variant: no client-supplied Idempotency-Key
 		Caller:    "api_admin",
 	})
-	if err != nil {
-		h.log.Error("failed to enqueue drive folder sync job",
-			zap.String("drive_folder_id", folderID),
-			zap.Error(err),
-		)
-		apiutil.InternalError(c, fmt.Errorf("failed to enqueue drive folder sync: %w", err))
+
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type:       "drive.folder.sync",
+		Payload:    payload,
+		MaxRetries: 2,
+	}, "Drive folder sync dispatched."); ok {
 		return
 	}
-
-	c.JSON(202, gin.H{
-		"ok":              true,
-		"job_id":          out.JobID,
-		"drive_folder_id": folderID,
-		"source":          source,
-		"name":            req.Name,
-		"message":         "Drive folder sync dispatched. Poll GET /api/jobs/" + out.JobID + " for status.",
-	})
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
