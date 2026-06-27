@@ -1,4 +1,4 @@
-// cmd/admin/reindex_qdrant.go — QDRANT-003 + QDRANT-004 closure (June 2026)
+// cmd/admin/reindex_qdrant.go — QDRANT-003 + QDRANT-004 closure + PR 13 (June 2026)
 //
 // One-shot reindex of media_assets into Qdrant using the canonical
 // IndexWriter.ReindexAll pipeline (AssetStore → PayloadMapper → IndexWriter).
@@ -19,13 +19,40 @@
 // `Ready` is true. On failure it returns *qdrant.ErrAliasSwitchNotReady
 // and never touches the alias.
 //
+// PR 13 (June 2026) closure — Blue-green reindex (the user spec):
+//
+//	Apply mode NEVER reuses schema.PhysicalName as the target
+//	collection. Each `--apply` invocation creates a brand-new
+//	timestamped collection (e.g. media_assets_v3_20260627_153045),
+//	indexes into it, runs the strict PR 12 verifier, and only
+//	switches the runtime alias on Ready=true. The previous
+//	collection (the "old target") is RETAINED — never deleted —
+//	so the operator can `retry --target-collection=<old>` to
+//	rollback manually. The SwitchReport is augmented with
+//	`rollback_target` (the active alias target captured BEFORE
+//	the verifier ran) and `old_collection` (the timestamped
+//	target that was attempted). On Ready=false the operator
+//	sees the new collection kept AND the alias unchanged in
+//	the returned ErrAliasSwitchNotReady payload.
+//
+//	Operator escape hatch: `--target-collection=<NAME>` writes
+//	into the explicit target (no timestamp override). The
+//	strict verifier still gates the alias switch, same as the
+//	auto-timestamped path; the override is for recovery flows
+//	(manual fix-up after a failed auto-reindex, or matching a
+//	pre-published collection name from a different CI run).
+//
+//	The legacy QDRANT-003 block "targetCollection != schema.PhysicalName
+//	MUST be rejected in --apply" is REMOVED per the PR 12 code-review
+//	which flagged it as the literal blocker for blue-green mode.
+//
 // Usage:
 //
 //	go run ./cmd/admin reindex-qdrant                           # dry-run (counts only)
-//	go run ./cmd/admin reindex-qdrant --apply                    # reindex + schema + alias swap (gated)
-//	go run ./cmd/admin reindex-qdrant --apply --target-collection=media_assets_v4  # explicit target
+//	go run ./cmd/admin reindex-qdrant --apply                    # apply, target = media_assets_v3_<UTC> (PR 13 blue-green)
+//	go run ./cmd/admin reindex-qdrant --apply --target-collection=media_assets_recovery_v9  # explicit recovery target
 //	go run ./cmd/admin reindex-qdrant --apply --limit=500        # cap rows
-//	go run ./cmd/admin reindex-qdrant --json                     # machine-readable dry-run
+//	go run ./cmd/admin reindex-qdrant --json                     # machine-readable dry-run / apply
 package main
 
 import (
@@ -88,6 +115,32 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 		return deps, fmt.Errorf("--apply and --dry-run are mutually exclusive")
 	}
 	return deps, nil
+}
+
+// timestampedTargetCollection (PR 13, June 2026) — builds the
+// canonical blue-green target name from the schema's PhysicalName
+// base + a UTC timestamp suffix. The schema's PhysicalName is the
+// "logical" name (e.g. media_assets_v3_e5_768_siglip_768); the
+// timestamped variant is the immutable physical collection the
+// apply flow writes into.
+//
+// Format: <base>_<UTC-YYYYMMDD-HHMMSS>
+//
+// Notes:
+//
+//   - Deterministically derived from `now time.Time` so tests can
+//     assert against a frozen clock.
+//   - Returns a string that — by construction — does NOT equal
+//     schema.PhysicalName (the suffix is non-empty). PR 13's
+//     `new != active` invariant is structurally guaranteed.
+//   - UTC token (Z suffix) keeps the format operator-friendly
+//     across timezones; the Production clock source is
+//     time.Now().UTC() to avoid local-tz drift in the suffix.
+func timestampedTargetCollection(base string, now time.Time) string {
+	if base == "" {
+		base = "media_assets_v3"
+	}
+	return fmt.Sprintf("%s_%s", base, now.UTC().Format("20060102_150405"))
 }
 
 // runReindexQdrant is the entry point registered in cmd/admin/main.go.
@@ -161,8 +214,15 @@ func runReindexQdrant(args []string) error {
 	collectionMgr := qdrant.NewCollectionManager(client, schema, log)
 
 	targetCollection := deps.TargetCollection
-	if targetCollection == "" {
+	if targetCollection == "" && !deps.Apply {
 		targetCollection = schema.PhysicalName
+	}
+	// PR 13: Apply mode auto-targets a fresh timestamped collection
+	// unless the operator explicitly chose one. Dry-run mode still
+	// uses the canonical physical name (no new collection is created
+	// — dry-run is a side-effect-free enumeration).
+	if deps.Apply && targetCollection == "" {
+		targetCollection = timestampedTargetCollection(schema.PhysicalName, time.Now())
 	}
 
 	// ── Dry-run ──────────────────────────────────────────────────
@@ -197,16 +257,24 @@ func runReindexQdrant(args []string) error {
 	}
 
 	// ── Apply ────────────────────────────────────────────────────
-	// QDRANT-003 fix: disallow --target-collection in --apply mode.
-	// EnsureSchema uses the schema's canonical physical name; passing
-	// a different target would write into an unverified collection.
-	if deps.TargetCollection != "" && deps.TargetCollection != schema.PhysicalName {
-		return fmt.Errorf(
-			"--target-collection=%q does not match schema physical name %q; "+
-				"--target-collection is only allowed in dry-run mode. "+
-				"Re-run without --target-collection to use the canonical name.",
-			deps.TargetCollection, schema.PhysicalName,
-		)
+	// PR 13 (June 2026): removed the QDRANT-003 era
+	// `targetCollection != schema.PhysicalName` rejection. The
+	// blue-green Apply path uses timestamped collections by
+	// construction, which are intentionally NOT equal to
+	// schema.PhysicalName. Operators can also pass an explicit
+	// recovery target via --target-collection; the strict verifier
+	// still gates the alias switch in either case.
+	//
+	// Sanity: the new collection must NOT collide with
+	// schema.PhysicalName (we are running PR 13 blue-green, not
+	// a same-collection overwrite). If the operator passed
+	// `schema.PhysicalName` explicitly the verifier still gates
+	// on Ready but an in-place overwrite is the explicit
+	// recovery escape hatch — log a warning so the operator
+	// sees the special-case flag in the log line.
+	if deps.TargetCollection != "" && deps.TargetCollection == schema.PhysicalName {
+		log.Warn("PR 13: --target-collection matches schema.PhysicalName — same-collection overwrite. Use the auto-timestamped path unless you are recovering from a failed blue-green run.",
+			zap.String("target_collection", deps.TargetCollection))
 	}
 
 	// Phase 1: Ensure the target collection exists with matching schema.
@@ -234,6 +302,21 @@ func runReindexQdrant(args []string) error {
 		return fmt.Errorf("reindex failed after %d indexed / %d failed: %w", indexed, failed, err)
 	}
 
+	// PR 13: capture the currently-active alias target BEFORE running
+	// the verifier. We need it on BOTH paths (Ready=true and
+	// Ready=false) so the operator's report carries the rollback
+	// target. CaptureException is logged but not fatal — a missing
+	// runtime alias at this point means the verifier will surface
+	// other failures anyway.
+	oldTarget, err := collectionMgr.GetActiveCollection(ctx)
+	if err != nil {
+		log.Warn("PR 13: could not read active collection before verify (report rollback target will be empty)",
+			zap.Error(err))
+	}
+	log.Info("PR 13: pre-verify active target captured",
+		zap.String("active_target", oldTarget),
+		zap.String("apply_target", targetCollection))
+
 	// Phase 3: Post-reindex verification (QDRANT-003 + PR 12 gates).
 	// The verifier runs the full suite: strict point count parity,
 	// missing/orphan ID detection, payload minimum, FULL per-channel
@@ -246,9 +329,37 @@ func runReindexQdrant(args []string) error {
 	// hit returns non-nil err + CompleteScan=false + Ready=false; pt.ID
 	// MUST equal AssetIDToQdrantPointID(payload["asset_id"]) literally
 	// (not just uuid-parseable).
+	//
+	// PR 13 (June 2026): the new targetCollection is the timestamped
+	// one (`media_assets_v3_<UTC>`) or the explicit recovery
+	// override. The verifier runs on the NEW collection only; the
+	// old alias target is untouched.
 	deadLetter := qdrant.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB.DB))
 	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, nil, log)
 	report, verifyErr := verifier.VerifyReindex(ctx, targetCollection, reindexResult.IndexedAssets)
+
+	// PR 13: populate rollback metadata on the report regardless
+	// of gateway result. The operator reading the JSON
+	// (ErrAliasSwitchNotReady or success print) MUST see
+	// `rollback_target` so the recovery path is deterministic.
+	//
+	// Field semantics (per the user spec):
+	//
+	//   - RollbackTarget = the active alias target captured
+	//     BEFORE the verifier ran. On failure: the alias target
+	//     to swap back to via `--target-collection=<this>`. On
+	//     success: the previously-active collection retained for
+	//     rollback in case turnup needs to be reverted later.
+	//
+	//   - OldCollection  = the timestamped target that was
+	//     attempted (the new collection written into, in BOTH
+	//     cases — failed verification AND successful swap). It
+	//     names the run uniquely in operator logs (two reindexes
+	//     in the same minute get distinct suffixes) and answers
+	//     "what did THIS apply attempt?" for post-mortems.
+	report.RollbackTarget = oldTarget
+	report.OldCollection = targetCollection
+
 	if verifyErr != nil {
 		// PR 12 hardening: a non-nil verifyErr implies scrollAborted or
 		// another fatal infrastructure failure (page error, cap hit).
@@ -266,8 +377,13 @@ func runReindexQdrant(args []string) error {
 		fmt.Println(string(b))
 	}
 	if !report.Ready {
-		log.Error("alias switch BLOCKED by SwitchReport.Ready=false (no alias mutation performed)",
+		// PR 13: Ready=false path. Alias NOT switched (we never
+		// call SwitchAlias on this branch), new timestamped
+		// collection RETAINED (Qdrant has no auto-delete so
+		// keeping is the default), report carries rollback info.
+		log.Error("alias switch BLOCKED by SwitchReport.Ready=false (no alias mutation performed; new collection RETAINED for retry)",
 			zap.String("target", targetCollection),
+			zap.String("rollback_target", report.RollbackTarget),
 			zap.Int("expected_points", report.ExpectedPoints),
 			zap.Int("actual_points", report.ActualPoints),
 			zap.Bool("complete_scan", report.CompleteScan),
@@ -289,6 +405,7 @@ func runReindexQdrant(args []string) error {
 	}
 	log.Info("switch gate PASSED (Ready=true)",
 		zap.String("target", targetCollection),
+		zap.String("rollback_target", report.RollbackTarget),
 		zap.Int("expected_points", report.ExpectedPoints),
 		zap.Int("actual_points", report.ActualPoints),
 		zap.Int("missing", report.MissingCount),
@@ -297,22 +414,38 @@ func runReindexQdrant(args []string) error {
 		zap.Bool("golden_queries_ok", report.GoldenQueriesOK),
 		zap.Bool("filters_ok", report.FiltersOK))
 
-	oldTarget, err := collectionMgr.GetActiveCollection(ctx)
-	if err != nil {
-		log.Warn("could not read active collection before switch",
-			zap.Error(err))
-	}
+	// PR 13: SwitchAlias(oldTarget, targetCollection). The old
+	// collection is RETAINED (Qdrant has no auto-delete; we never
+	// call DELETE on it) so the operator can `retry
+	// --target-collection=<oldTarget>` to rollback manually. The
+	// rollback target is now in `report.RollbackTarget` (the
+	// active target pre-switch) and on the success log line the
+	// operator sees the explicit `from → to` transition.
 	if err := collectionMgr.SwitchAlias(ctx, oldTarget, targetCollection); err != nil {
-		log.Error("alias switch failed — rollback may be needed",
+		// PR 13: SwitchAlias failed AFTER the verifier passed.
+		// The new collection is RETAINED (never deleted). The
+		// operator must investigate; the most common failure
+		// mode is a concurrent alias mutation in another admin
+		// process or a Qdrant write conflict on the alias table.
+		log.Error("PR 13 alias switch failed after verify — neither collection deleted; manual intervention required",
 			zap.String("from", oldTarget),
 			zap.String("to", targetCollection),
+			zap.String("rollback_target", report.RollbackTarget),
 			zap.Error(err))
-		return fmt.Errorf("switch alias from %q to %q: %w", oldTarget, targetCollection, err)
+		return fmt.Errorf("PR 13 switch alias from %q to %q (rollback to %q via --target-collection): %w",
+			oldTarget, targetCollection, oldTarget, err)
 	}
-	log.Info("alias switched",
+	// PR 13: alias swapped. After this point, the runtime alias
+	// points at the new timestamped collection; the previous one
+	// (oldTarget) is retained. `report.RollbackTarget` was set
+	// BEFORE the switch; reading it post-switch tells the operator
+	// "this is the collection to swap back to" if turnup needs to
+	// be reverted later.
+	log.Info("PR 13 alias switched (blue-green complete; previous collection retained)",
 		zap.String("alias", schema.RuntimeAlias),
 		zap.String("old", oldTarget),
-		zap.String("new", targetCollection))
+		zap.String("new", targetCollection),
+		zap.String("rollback_target", oldTarget))
 
 	if deps.JSON {
 		b, _ := json.Marshal(reindexResult)
