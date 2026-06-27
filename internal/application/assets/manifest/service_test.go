@@ -361,6 +361,64 @@ func TestService_UpsertRemote_Concurrent_SameFolder_SameAssetID(t *testing.T) {
 	}
 }
 
+// ── 4c. Same-folder, same-AssetID writes at N=5 (exact-spec variant).
+//
+// Stable companion to the stress test above (#4b, N=20). Runs
+// faster under -race and pins the invariant at exactly the N the
+// spec calls out: "5 goroutines × shared AssetID → final state has
+// 1 entry, not 5". Each goroutine writes a DIFFERENT Name + DriveLink
+// so the last-writer-wins order is unpredictable — we do not pin
+// WHICH Name wins, only that exactly 1 entry survives and all 5
+// drive roundtrips ran (so len==1 is load-bearing, not coincidental
+// from a single early winner pre-empting the rest).
+func TestService_UpsertRemote_Concurrent_SameFolder_5Writers(t *testing.T) {
+	adapter := newFakeDriveAdapter()
+	svc := New(adapter, zap.NewNop())
+	ctx := context.Background()
+
+	const goroutines = 5
+	const folderID = "folder-five"
+	const assetID = "A1-fivewriters"
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			entry := newTestEntry(assetID, fmt.Sprintf("writer-%d", i))
+			entry.DriveLink = fmt.Sprintf("https://drive/five/%d", i)
+			if err := svc.UpsertRemote(ctx, folderID, entry); err != nil {
+				errCh <- fmt.Errorf("writer %d: %w", i, err)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatalf("concurrent same-folder upsert failed: %v", err)
+	}
+
+	entries := decodeEntries(t, adapter.getOrFatal(t, folderID))
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly 1 entry after %d concurrent same-folder same-assetID writes, got %d: %v",
+			goroutines, len(entries), entries)
+	}
+	if entries[0].AssetID != assetID {
+		t.Fatalf("assetID drift under concurrency: got %q want %q",
+			entries[0].AssetID, assetID)
+	}
+	if adapter.downloadCount != goroutines {
+		t.Fatalf("every writer must issue DownloadManifest (per-folder serialisation proof): want %d got %d",
+			goroutines, adapter.downloadCount)
+	}
+	if adapter.replaceCount != goroutines {
+		t.Fatalf("every writer must issue ReplaceManifest (no short-circuit): want %d got %d",
+			goroutines, adapter.replaceCount)
+	}
+}
+
 // ── 5. Upload error (graceful degradation via ErrRemoteWrite wrap) ────────
 
 func TestService_UpsertRemote_UploadError_Returns(t *testing.T) {
