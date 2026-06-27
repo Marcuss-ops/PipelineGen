@@ -296,9 +296,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	oneUC := scripts.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 	manyUC := scripts.NewGenerateManyUseCase(oneUC, log)
 
-	// ── Media curator (PR 13: uses oneUC) ──────────────────────────
+	// ── Media curator ───────────────────────────────────────────────
 	if root.Repos.ClipsRepo != nil && engine != nil {
-		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, oneUC, log)
+		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, log)
 		if clipSearchPort != nil {
 			mediaCurator.SetClipSearchPort(clipSearchPort)
 		}

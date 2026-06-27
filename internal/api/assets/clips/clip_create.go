@@ -51,9 +51,22 @@ func (h *Handler) CreateClip(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// 1. Save to DB via canonical asset.Repository (no converter needed).
-	if err := h.assetRepo.Upsert(ctx, &clip); err != nil {
-		apiutil.InternalError(c, err)
-		return
+	//    PR 2 (Wave 22 PR-2 — clip thin transport): route through
+	//    appclips.ClipIndexDispatcherPort when wired (QDRANT-002 single-tx
+	//    upsert + outbox enqueue). Falls back to h.assetRepo.Upsert when
+	//    nil — preserves the documented "nil dispatcher = tests / partial
+	//    deployments" semantics in
+	//    internal/application/clips/ports.go::ClipIndexDispatcherPort.
+	if h.dispatcher != nil {
+		if err := h.dispatcher.EnqueueAndIndex(ctx, &clip, ""); err != nil {
+			apiutil.InternalError(c, fmt.Errorf("clip dispatcher enqueue failed (create): %w", err))
+			return
+		}
+	} else if h.assetRepo != nil {
+		if err := h.assetRepo.Upsert(ctx, &clip); err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
 	}
 
 	// 2. Update Asset Tree

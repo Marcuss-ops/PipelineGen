@@ -234,3 +234,43 @@ func TestBuildGenerationDocumentHTML_EmptyModelMinimal(t *testing.T) {
 		t.Error("expected closing body+html tags")
 	}
 }
+
+// TestBuildClipSpecSceneDocumentHTML_RendersDriveLinks verifies the
+// clip-aware renderer emits the compact SpecScene JSON with drive_links
+// arrays mapped from resolved clip evidence.
+func TestBuildClipSpecSceneDocumentHTML_RendersDriveLinks(t *testing.T) {
+	t.Parallel()
+
+	html := scripts.BuildClipSpecSceneDocumentHTML(
+		&scriptpkg.ModelScriptOutputV1{
+			SchemaVersion: 1,
+			SpecScene: scriptpkg.SpecSceneOutput{
+				Version: 1,
+				Scenes: []scriptpkg.SpecScene{
+					{ID: "scene-1", Index: 0, Text: "One", Kind: scriptpkg.SceneClip},
+					{ID: "scene-2", Index: 1, Text: "Two", Kind: scriptpkg.SceneClip},
+					{ID: "scene-3", Index: 2, Text: "Three", Kind: scriptpkg.SceneNarration},
+				},
+			},
+		},
+		"Jackie Chan",
+		&scriptpkg.ClipEvidence{
+			DriveLinks: map[string]string{
+				"clip-b": "https://drive.google.com/file/d/clip-b/view",
+				"clip-a": "https://drive.google.com/file/d/clip-a/view",
+			},
+		},
+	)
+
+	for _, want := range []string{
+		"<h1>Jackie Chan</h1>",
+		"<h2>SpecScene JSON</h2>",
+		"\"drive_links\": [",
+		"https://drive.google.com/file/d/clip-a/view",
+		"https://drive.google.com/file/d/clip-b/view",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected clip HTML to contain %q; not found", want)
+		}
+	}
+}

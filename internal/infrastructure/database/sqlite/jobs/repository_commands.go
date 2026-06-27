@@ -37,7 +37,6 @@ type StartJob struct {
 	JobID    string
 	WorkerID string
 	LeaseID  string
-
 	// LeaseTTL is required (non-zero). Zero would expire the lease
 	// immediately on transition.
 	LeaseTTL time.Duration

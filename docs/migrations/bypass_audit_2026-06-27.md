@@ -60,16 +60,28 @@ docs/tmp/bypass_audit_2026-06-27.txt   (93 lines, 80 actual hits)
 
 #### production — must use dispatcher (must migrate to `AssetMutationDispatcher.EnqueueAndIndex`)
 
-Task 2 (handlers):
+Task 2 (handlers) — **RESOLVED in PR 2 (June 2026)**:
 
 | file:line | context | remediation |
 |---|---|---|
-| internal/api/assets/clips/clip_create.go:55       | `h.assetRepo.Upsert(ctx, &clip)` (HTTP handler) | rewrite to dispatcher |
-| internal/api/assets/clips/clip_upload.go:252      | `h.assetRepo.Upsert(ctx, clip)` (HTTP upload) | rewrite to dispatcher |
-| internal/api/assets/clips/clip_action.go:228      | `h.assetRepo.Upsert(ctx, clip)` (HTTP action handler) | rewrite to dispatcher |
-| internal/api/assets/clips/bulk_upload_worker.go:364 | `h.clipsRepo.Upsert(ctx, clip)` (HTTP bulk) | rewrite to dispatcher |
-| internal/api/assets/clips/clip_ops.go:296          | `repo.Upsert(ctx, clip)` (HTTP bulk ops, clip target) | rewrite to dispatcher |
-| internal/api/assets/soundeffect/handler.go:256    | `h.clipsRepo.Upsert(ctx, &clip)` (soundeffect HTTP) | rewrite to dispatcher |
+| internal/api/assets/clips/clip_create.go:54       | `h.assetRepo.Upsert(ctx, &clip)` (HTTP handler) | ✅ migrated → `h.dispatcher.EnqueueAndIndex` w/ `assetRepo.Upsert` fallback |
+| internal/api/assets/clips/clip_upload.go:252      | `h.assetRepo.Upsert(ctx, clip)` (HTTP upload) | ✅ migrated → `h.dispatcher.EnqueueAndIndex(fileHash)` w/ fallback |
+| internal/api/assets/clips/clip_action.go:229      | `h.assetRepo.Upsert(ctx, clip)` (ReuploadClip) | ✅ migrated → `h.dispatcher.EnqueueAndIndex(clip.FileHash())` w/ fallback |
+| internal/api/assets/soundeffect/handler.go:256    | `h.clipsRepo.Upsert(ctx, &clip)` (soundeffect HTTP) | ✅ migrated → `h.dispatcher.EnqueueAndIndex(hashStr)` w/ typed-port fallback + added `SetDispatcher` late-binding |
+
+Stale-removed in PR 2 (no direct Upsert call exists):
+
+| stale entry | reason | resolution |
+|---|---|---|
+| internal/api/assets/clips/bulk_upload_worker.go:364 | file no longer exists (migrated by earlier wave) | removed from allowlist |
+| internal/api/assets/clips/clip_ops.go:296 | file is now pure delegate shells (Cleanup/Verify/Reconcile ⇒ h.clipOpsService); no `.Upsert(` anywhere | removed from allowlist; mixed-voiceover lines stayed documented but never had direct Upsert either |
+
+All four PR 2 migrations follow the canonical "nil dispatcher = fallback to
+repo.Upsert" pattern documented in
+`internal/application/clips/ports.go::ClipIndexDispatcherPort. The fallback
+calls remain satisfy-test-fixtures + partial-deployments — production wiring
+passes the dispatcher via `Deps.Dispatcher` (clips) or
+`SetDispatcher(...)` (soundeffect).
 
 Task 2 — mixed files (whole-file migration, voiceover/locations ride along):
 

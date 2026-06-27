@@ -126,7 +126,7 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 			// half-open pair does not leak. The operator either retries
 			// with a fixed path OR flips SplitDBEnabled=false to fall
 			// back to the canonical single-DB shape.
-			_ = dbs.Close()
+			dbs.Close()
 			return nil, fmt.Errorf("init jobs DB %s: %w", jobsPath, jobsOpenErr)
 		}
 		dbs.jobs = jobsDB

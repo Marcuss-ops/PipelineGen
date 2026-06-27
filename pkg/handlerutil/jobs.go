@@ -1,4 +1,4 @@
-package api
+package handlerutil
 
 import (
 	"encoding/json"
@@ -22,6 +22,10 @@ type Pagination struct {
 }
 
 // ParsePagination parses limit and offset from query parameters with defaults.
+// Out-of-bounds limits fall back to defaultLimit; negative offsets clamp to 0;
+// unparsable values silently fall back to the default. The (defaultLimit,
+// maxLimit) bounds match the canonical job-listing contract for
+// /api/*/jobs endpoints.
 func ParsePagination(c *gin.Context, defaultLimit, maxLimit int) Pagination {
 	limit := defaultLimit
 	offset := 0
@@ -43,6 +47,7 @@ func ParsePagination(c *gin.Context, defaultLimit, maxLimit int) Pagination {
 // ── Job Listing ─────────────────────────────────────────────────────────
 
 // JobSummary is the standard job summary struct used by /api/*/jobs endpoints.
+// It mirrors the on-the-wire shape consumed by the front-end job dashboards.
 type JobSummary struct {
 	ID          string         `json:"id"`
 	Type        string         `json:"type"`
@@ -57,7 +62,10 @@ type JobSummary struct {
 }
 
 // BuildJobSummaries converts a slice of Job models into the standard
-// JobSummary response format.
+// JobSummary response format. Result and Payload raw JSON bytes are decoded
+// into `map[string]any` for the response; unparsable JSON is silently
+// dropped (matches the existing handler contract — the original /jobs
+// endpoints never errored on malformed nested JSON).
 func BuildJobSummaries(jobsList []job.Job) []JobSummary {
 	summaries := make([]JobSummary, 0, len(jobsList))
 	for _, j := range jobsList {
@@ -90,7 +98,12 @@ func BuildJobSummaries(jobsList []job.Job) []JobSummary {
 	return summaries
 }
 
-// ListJobsResponse writes the standard job listing response.
+// ListJobsResponse writes the standard job listing response envelope:
+//
+//	{ "ok": true, "count": N, "jobs": [...] }
+//
+// The shape mirrors the pre-PR-1 contract of internal/api/job.go::ListJobsResponse
+// so existing front-end consumers do not break.
 func ListJobsResponse(c *gin.Context, summaries []JobSummary) {
 	c.JSON(http.StatusOK, gin.H{
 		"ok":    true,
@@ -99,7 +112,10 @@ func ListJobsResponse(c *gin.Context, summaries []JobSummary) {
 	})
 }
 
-// ParseJobStatusFilter parses an optional status query parameter.
+// ParseJobStatusFilter parses an optional status query parameter. Returns
+// nil when the query parameter is absent or empty; otherwise returns a
+// pointer to a trimmed job.Status. Whitespace-only values are preserved as
+// status strings (callers typically re-check for known constants).
 func ParseJobStatusFilter(c *gin.Context) *job.Status {
 	if status := c.Query("status"); status != "" {
 		s := job.Status(strings.TrimSpace(status))

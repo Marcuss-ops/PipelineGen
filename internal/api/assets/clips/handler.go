@@ -17,9 +17,9 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -98,6 +98,10 @@ type Deps struct {
 	// for test fixtures and partial deploys: when nil, NewHandler
 	// constructs a local copy preserving pre-lift behaviour.
 	EnrichUC *appclips.EnrichUseCase
+	// BulkUploadWorker handles the bulk_upload_youtube_clips job.
+	BulkUploadWorker *appclips.BulkUploadWorker
+	// ClipOpsService owns reconcile / cleanup / verify / fix-hash orchestration.
+	ClipOpsService *appclips.ClipOpsService
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -144,6 +148,10 @@ type Handler struct {
 	dispatcher appclips.ClipIndexDispatcherPort
 	// searchAggregator mirrors Deps.SearchAggregator (S3d, June 2026).
 	searchAggregator *providers.SearchAggregator
+	// bulkUploadWorker handles the bulk_upload_youtube_clips job.
+	bulkUploadWorker *appclips.BulkUploadWorker
+	// clipOpsService owns the high-level clip ops endpoints.
+	clipOpsService *appclips.ClipOpsService
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -166,29 +174,31 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		idem = idempotencyMiddleware
 	}
 	return &Handler{
-		Idempotency:    idem,
-		sourceResolver: d.SourceResolver,
-		assetRepo:      d.AssetRepo,
-		clipsRepo:      d.ClipsRepo,
-		stockRepo:      d.StockRepo,
-		artlistRepo:    d.ArtlistRepo,
-		deletionSvc:    d.DeletionSvc,
-		driveUploader:  d.DriveUploader,
-		mediaProcessor: d.MediaProcessor,
-		assetTreeSvc:   d.AssetTreeSvc,
-		metaWriter:     d.MetaWriter,
-		clipIndexer:    d.ClipIndexer,
-		jobsSvc:        d.JobsSvc,
-		cfg:            d.Cfg,
-		log:            d.Log,
-		voiceoverRepo:  d.VoiceoverRepo,
-		imagesRepo:     d.ImagesRepo,
-		artifactSvc:    d.ArtifactSvc,
-		folderMemSvc:   d.FolderMemSvc,
-		searchSvc:      d.SearchSvc,
+		Idempotency:      idem,
+		sourceResolver:   d.SourceResolver,
+		assetRepo:        d.AssetRepo,
+		clipsRepo:        d.ClipsRepo,
+		stockRepo:        d.StockRepo,
+		artlistRepo:      d.ArtlistRepo,
+		deletionSvc:      d.DeletionSvc,
+		driveUploader:    d.DriveUploader,
+		mediaProcessor:   d.MediaProcessor,
+		assetTreeSvc:     d.AssetTreeSvc,
+		metaWriter:       d.MetaWriter,
+		clipIndexer:      d.ClipIndexer,
+		jobsSvc:          d.JobsSvc,
+		cfg:              d.Cfg,
+		log:              d.Log,
+		voiceoverRepo:    d.VoiceoverRepo,
+		imagesRepo:       d.ImagesRepo,
+		artifactSvc:      d.ArtifactSvc,
+		folderMemSvc:     d.FolderMemSvc,
+		searchSvc:        d.SearchSvc,
 		processRunner:    d.ProcessRunner,
 		dispatcher:       d.Dispatcher,
 		searchAggregator: d.SearchAggregator,
+		bulkUploadWorker: d.BulkUploadWorker,
+		clipOpsService:   d.ClipOpsService,
 
 		// Initialize use cases
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),

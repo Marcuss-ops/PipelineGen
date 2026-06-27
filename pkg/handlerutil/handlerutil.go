@@ -1,13 +1,22 @@
 // Package handlerutil provides shared utilities for HTTP handlers to reduce
-// duplicated patterns across endpoints — service nil-checks, async job enqueuing,
-// pagination, and source validation.
+// duplicated patterns across endpoints — service nil-checks, async job
+// enqueuing, pagination, and source validation.
+//
+// Migration note (PR 1, June 2026): this package replaces the drifted
+// `package api` block previously sitting in `internal/api/service.go` whose
+// doc comment claimed "Package handlerutil" while the actual package
+// declaration was `api`. Utilities that depend on `internal/domain/*` types
+// (Pagination/JobSummary/BuildJobSummaries) live in jobs.go inside this same
+// package and accept the documented pkg/-leaf policy exception for
+// `internal/domain/job` (see architecture/deprecations.yaml and
+// `Wave 14 transport consolidation in_progress` for the historical context).
 //
 // Usage:
 //
 //	if !handlerutil.RequireService(c, h.svc, "my service") {
 //	    return
 //	}
-package api
+package handlerutil
 
 import (
 	"net/http"

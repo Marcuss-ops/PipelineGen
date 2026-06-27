@@ -46,7 +46,7 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	if p.docsSvc == nil {
 		return nil, fmt.Errorf("%w: document processor: DocumentsService not configured", scriptpkg.ErrPostprocessFailed)
 	}
-	if input.Text == "" {
+	if input.Text == "" && len(input.SpecScene.Scenes) == 0 {
 		return &PostProcessResult{}, nil
 	}
 
@@ -55,7 +55,17 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		docTitle = "Generated Script"
 	}
 
-	htmlContent := BuildSectionDocHTML(docTitle, []string{""}, []string{input.Text}, true, plan.Language)
+	htmlContent := ""
+	if input.SourceTrace != nil && len(input.SourceTrace.ClipIDs) > 0 && len(input.SpecScene.Scenes) > 0 {
+		model := &scriptpkg.ModelScriptOutputV1{
+			SchemaVersion: 1,
+			Text:          input.Text,
+			SpecScene:     input.SpecScene,
+		}
+		htmlContent = BuildClipSpecSceneDocumentHTML(model, docTitle, input.SourceTrace)
+	} else {
+		htmlContent = BuildSectionDocHTML(docTitle, []string{""}, []string{input.Text}, true, plan.Language)
+	}
 
 	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID)
 	if link == "" {

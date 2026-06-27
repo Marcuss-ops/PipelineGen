@@ -19,8 +19,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
 )
@@ -224,6 +224,22 @@ func buildEnvelopeResult(r *GenerateManyResult) domainScript.GenerationEnvelopeR
 			Failed:    r.Summary.Failed,
 		},
 		Warnings: r.Warnings,
+	}
+}
+
+func singleEnvelopeResult(itemID string, result *domainScript.GenerationResult) domainScript.GenerationEnvelopeResult {
+	return domainScript.GenerationEnvelopeResult{
+		OK:     result != nil,
+		Single: result,
+		Items: []domainScript.GenerationEnvelopeItem{{
+			ItemID: itemID,
+			Result: result,
+		}},
+		Summary: &domainScript.GenerationEnvelopeSummary{
+			Total:     1,
+			Succeeded: 1,
+			Failed:    0,
+		},
 	}
 }
 

@@ -166,13 +166,13 @@ type PostProcessor interface {
 // producers MUST NOT regenerate Entities from any prior
 // EntitiesJSON string.
 type PostProcessResult struct {
-	Entities  *scriptpkg.EntityResult
-	Metadata  []VideoMetadata
-	Voiceovers []SceneVoiceover
+	Entities    *scriptpkg.EntityResult
+	Metadata    []scriptpkg.VideoMetadata
+	Voiceovers  []SceneVoiceover
 	SceneImages []SceneImage
-	DocLink   string
-	DocID     string
-	ScriptID  int64
+	DocLink     string
+	DocID       string
+	ScriptID    int64
 
 	// AlreadyPersisted is set true by PersistenceProcessor when the
 	// idempotency lookup found an existing row and the save was

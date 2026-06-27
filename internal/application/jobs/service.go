@@ -33,6 +33,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -54,6 +55,14 @@ type Service struct {
 	// race where two concurrent Enqueue calls both find no existing
 	// job and then both insert a duplicate.
 	enqueueMu sync.Mutex
+}
+
+type requeueExpiredLeaser interface {
+	RequeueExpiredLeasesNoArg(context.Context) error
+}
+
+type statsProvider interface {
+	GetStats(context.Context) (*sqljobs.JobStats, error)
 }
 
 // NewService constructs the Service from the canonical job.JobBroker port.
@@ -276,6 +285,23 @@ func (s *Service) ListEvents(ctx context.Context, jobID string) ([]job.Event, er
 // Implements job.Service interface.
 func (s *Service) IsTerminal(status job.Status) bool {
 	return status.IsTerminal()
+}
+
+func (s *Service) RequeueExpiredLeases(ctx context.Context) error {
+	provider, ok := s.repo.(requeueExpiredLeaser)
+	if !ok {
+		return fmt.Errorf("requeue expired leases: repository does not support RequeueExpiredLeasesNoArg")
+	}
+	return provider.RequeueExpiredLeasesNoArg(ctx)
+}
+
+// GetStats returns aggregated job statistics.
+func (s *Service) GetStats(ctx context.Context) (*sqljobs.JobStats, error) {
+	provider, ok := s.repo.(statsProvider)
+	if !ok {
+		return nil, fmt.Errorf("get stats: repository does not support GetStats")
+	}
+	return provider.GetStats(ctx)
 }
 
 // Complete marks a job as completed.

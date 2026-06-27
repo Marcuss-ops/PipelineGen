@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -33,7 +34,15 @@ type Handler struct {
 	resolver               sfxports.DestinationResolverPort
 	soundEffectsRootFolder string
 	processRunner          appassets.ProcessRunner
-	log                    *zap.Logger
+	// dispatcher is the clip index dispatcher port (PR 2 Wave 22 PR-2).
+	// Late-bound via SetDispatcher by the composition root in
+	// internal/app/adapters_soundeffect.go AFTER NewHandler returns.
+	// Nil-tolerated: Generate() falls back to
+	// clipsRepo.Upsert(ctx, ...) when nil — preserves documented "nil
+	// dispatcher = tests / partial deployments" semantics in
+	// internal/application/clips/ports.go::ClipIndexDispatcherPort.
+	dispatcher appclips.ClipIndexDispatcherPort
+	log        *zap.Logger
 }
 
 // NewHandler creates a sound effect handler.
@@ -65,6 +74,21 @@ func NewHandler(
 func (h *Handler) SetMetaWriter(mw sfxports.SemanticMetadataWriterPort) {
 	h.metaWriter = mw
 }
+
+// SetDispatcher (PR 2 Wave 22 PR-2) updates the clip index dispatcher
+// port after construction (late-binding support). Composition root in
+// internal/app/adapters_soundeffect.go calls this once per process
+// boot, after NewHandler returns. Passing nil resets to fallback-to-repo
+// semantics.
+func (h *Handler) SetDispatcher(d appclips.ClipIndexDispatcherPort) {
+	h.dispatcher = d
+}
+
+// Compile-time assertion: Handler satisfies the canonical clip-index
+// dispatcher consumer shape (QDRANT-002 single-tx upsert + outbox
+// enqueue). The assertion lives next to the field decl so any future
+// refactor surfaces drift at compile time, not first runtime call.
+var _ appclips.ClipIndexDispatcherPort = (appclips.ClipIndexDispatcherPort)(nil) // marker: see ports.go
 
 // RegisterRoutes registers the sound_effect sub-routes.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
@@ -252,7 +276,15 @@ func (h *Handler) Generate(c *gin.Context) {
 	clip.SetParentFolderID(parentFolderID)
 	clip.SetLocalPath(dest.LocalPath)
 
-	if h.clipsRepo != nil {
+	if h.dispatcher != nil {
+		// PR 2 (Wave 22 PR-2 — clip thin transport): canonical path
+		// absorbs the supersede-gate dedup keyed by hashStr. Same
+		// "nil dispatcher = fallback" semantics as clips/Handler.
+		if err := h.dispatcher.EnqueueAndIndex(ctx, &clip, hashStr); err != nil {
+			apiutil.InternalError(c, fmt.Errorf("clip dispatcher enqueue failed (soundeffect): %w", err))
+			return
+		}
+	} else if h.clipsRepo != nil {
 		if err := h.clipsRepo.Upsert(ctx, &clip); err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to save clip record to DB: %w", err))
 			return

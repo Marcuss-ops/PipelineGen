@@ -73,7 +73,8 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	}
 	if plan == nil {
 		return nil, fmt.Errorf("%w: entities processor: nil ResolvedGenerationPlan", scriptpkg.ErrPostprocessFailed)
-	}	req := scriptpkg.EntityExtractionRequest{
+	}
+	req := scriptpkg.EntityExtractionRequest{
 		Text:      input.Text,
 		Title:     plan.Title,
 		Language:  plan.Language,

@@ -121,17 +121,23 @@ func TestDecodeModelOutputFencedWithLeadingText(t *testing.T) {
 	}
 }
 
-// ── Canonical decoder: bare prose rejected ─────────────────────────
+// ── Canonical decoder: bare prose falls back to text-only output ────
 
 func TestDecodeModelOutputBareProse(t *testing.T) {
 	raw := []byte("This is just plain prose, no JSON at all.")
 
-	_, err := scripts.DecodeModelOutput(raw, testLog)
-	if err == nil {
-		t.Fatal("expected error for bare prose")
+	output, err := scripts.DecodeModelOutput(raw, testLog)
+	if err != nil {
+		t.Fatalf("expected text fallback, got: %v", err)
 	}
-	if !errors.Is(err, scriptpkg.ErrModelOutputMalformed) {
-		t.Errorf("expected ErrModelOutputMalformed, got %v", err)
+	if output.Text != "This is just plain prose, no JSON at all." {
+		t.Fatalf("unexpected text fallback: %q", output.Text)
+	}
+	if output.SchemaVersion != 1 {
+		t.Fatalf("unexpected schema version: %d", output.SchemaVersion)
+	}
+	if len(output.SpecScene.Scenes) != 0 {
+		t.Fatalf("expected empty specscene, got %d scenes", len(output.SpecScene.Scenes))
 	}
 }
 

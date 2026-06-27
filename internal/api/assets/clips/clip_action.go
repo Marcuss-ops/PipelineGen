@@ -225,8 +225,16 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 		clip.SetFileHash(result.MD5Checksum)
 	}
 
-	// Save to DB
-	if err := h.assetRepo.Upsert(ctx, clip); err != nil {
+	// Save to DB. PR 2 (Wave 22 PR-2 — clip thin transport): dispatcher
+	// path absorbs the supersede-gate dedup keyed by the (possibly
+	// Drive-uploaded MD5) clip.FileHash(); falls back to repo.Upsert when
+	// nil — same documented semantics as CreateClip + UploadVideoClip.
+	if h.dispatcher != nil {
+		if err := h.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
+			apiutil.InternalError(c, fmt.Errorf("clip dispatcher enqueue failed (reupload): %w", err))
+			return
+		}
+	} else if err := h.assetRepo.Upsert(ctx, clip); err != nil {
 		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
 		return
 	}
