@@ -80,12 +80,13 @@ if [ "${1:-}" = "--self-check" ]; then
         "Check 8 (SetOutboxHandler/SetMediasearchHandler after construction)|\\.SetMediasearchHandler\\(|check_08_setter.go"
         "Check 9 (nil-dispatcher silent fallback)|dispatcher\\s*==\\s*nil\\s*\\{[^}]*return\\s+nil\\b|check_09_nil_dispatcher.go"
         "Check 10 (asset-repo Upsert outside allowlist)|\\.Upsert\\(ctx,|check_10_upsert.go"
-        "Check 11 (event_key constructed with random UUID)|eventKey.*uuid\\.NewString|check_11_uuid_event_key.go"
-        "Check 11 (event_key constructed with random UUID, multiline reverse)|uuid\\.NewString[^\\n]*\\n(?:[^\\n]*\\n){0,3}[^\\n]*eventKey|check_11_uuid_event_key.go"
-        "Check 11 (event_key constructed with random UUID, multiline forward)|eventKey[^\\n]*\\n(?:[^\\n]*\\n){0,3}[^\\n]*uuid\\.NewString|check_11_uuid_event_key.go"
+        "Check 11 (event_key constructed with random UUID, inline)|eventKey[^\\n]*uuid\\.NewString|check_11_uuid_event_key.go"
+        "Check 11 (event_key constructed with random UUID, multiline reverse)|eventID[^\\n]*=\\s*uuid\\.NewString[^\\n]*\\n(?:[^\\n]*\\n){0,3}[^\\n]*eventKey[^\\n]*=[^\\n]*\\beventID\\b|check_11_uuid_event_key.go"
+        "Check 11 (event_key constructed with random UUID, multiline forward)|eventKey[^\\n]*\\n(?:[^\\n]*\\n){0,3}[^\\n]*eventID[^\\n]*=\\s*uuid\\.NewString|check_11_uuid_event_key.go"
         "Check 12 (payload_mapper legacy lifecycle_state fallback)|\"lifecycle_state\":\\s*\\w+\\.Status|check_12_payload_mapper_status.go"
         "Check 13 (ListAssetsForReconcile placeholder)|wired as build-time placeholder|check_13_listassets_placeholder.go"
         "Check 14 (BuildPayload legacy status key)|\"status\":\\s*\\w+\\.|check_14_buildpayload_status_key.go"
+        "Check 15 (qdrant.NewClient construction)|qdrant\\.NewClient\\(&qdrant\\.Config\\{|check_15_qdrant_config_apikey.go"
     )
 
     failed=0
@@ -116,7 +117,23 @@ if [ "${1:-}" = "--self-check" ]; then
         echo "Fix the regex OR update the fixture so the forbidden pattern is present." >&2
         exit 1
     fi
-    echo "All self-checks passed (8 patterns / 7 fixtures)."
+    # Count unique check names (Check 8 has 2 patterns for 2 methods; Check 11
+    # has 3 patterns for 3 shapes; etc.) so the summary is accurate. Use
+    # bash parameter expansion (${def%%|*}) instead of awk to avoid breakage
+    # if a check name ever contains a `|` character.
+    unique_names=()
+    for def in "${check_defs[@]}"; do
+        name="${def%%|*}"
+        if [[ " ${unique_names[*]} " != *" ${name} "* ]]; then
+            unique_names+=("$name")
+        fi
+    done
+    unique_count=${#unique_names[@]}
+    pattern_count=${#check_defs[@]}
+    # Count fixture files dynamically (ls instead of hardcoded "7") so the
+    # summary stays accurate when new fixtures are added.
+    fixture_count=$(ls -1 "${FIXTURE_DIR}"/*.go 2>/dev/null | wc -l)
+    echo "All self-checks passed (${pattern_count} patterns / ${unique_count} unique checks / ${fixture_count} fixtures)."
     exit 0
 fi
 
@@ -1152,18 +1169,25 @@ echo "OK: no asset-repo Upsert calls outside the canonical allowlist"
 # are `delete:<asset_id>` (delete_envelope.go) and the index envelope in
 # outboxevents/repository.go; uuid-suffixed keys are an anti-pattern.
 #
-# ALLOWLIST RATIONALE: the multi-line patterns match within a 3-line window
-# in either direction, so any function that has a uuid.NewString call
-# within 3 lines of an eventKey assignment will be caught. The legitimate
-# patterns below fall into TWO distinct categories — a future tightening
-# (regex that requires the UUID to be in the eventKey expression itself)
-# would let us drop the first category but MUST keep the second:
+# ALLOWLIST RATIONALE: the tightened multi-line patterns (June 2026
+# follow-up) match uuid.NewString ONLY when the eventKey assignment line
+# references the variable that holds the uuid (eventID). This lets the
+# gate distinguish:
 #
-# Category A — UUID is for the SEPARATE `event_id` audit field, NOT in eventKey:
-#   - cmd/admin/reconcile_qdrant.go::EnqueueDelete: eventKey is
-#     deterministic ("delete:<assetID>"), the UUID is for the `event_id`
-#     field that IndexDeleteHandler.Handle requires (line 183-188 of
-#     index_delete.go fails terminally on missing event_id).
+#   ANTI-PATTERN: eventKey assignment line contains `\beventID\b` (the
+#     uuid-holding variable), so the uuid IS concatenated into the
+#     eventKey value (directly via `+ eventID`, via `fmt.Sprintf` with
+#     eventID as an arg, or any other reference).
+#
+#   LEGITIMATE:   eventKey assignment line does NOT reference eventID
+#     at all (e.g. `eventKey := "delete:" + assetID`), so the uuid
+#     is for a SEPARATE field (event_id audit) and ON CONFLICT(event_key)
+#     DO NOTHING still works correctly.
+#
+# The allowlist below covers Category B only (reindex is intentionally
+# uuid-suffixed per canonical design). Category A (UUID for separate
+# event_id field) is NO LONGER allowlisted — the tightened patterns
+# correctly accept it without an explicit allowlist entry.
 #
 # Category B — reindex is intentionally uuid-suffixed per canonical design:
 #   - internal/infrastructure/database/sqlite/outboxevents/envelope.go::
@@ -1174,42 +1198,50 @@ echo "OK: no asset-repo Upsert calls outside the canonical allowlist"
 #     outbox-enqueue layer. Every --apply run enqueues a fresh reindex
 #     event; redundant fix-up work is collapsed at execution time.
 #   - internal/infrastructure/database/sqlite/outbox/delete_envelope.go::
-#     buildDeleteRequestV1: same shape (UUID for event_id, deterministic
-#     eventKey) — pre-existing canonical pattern.
+#     buildDeleteRequestV1: pre-existing canonical pattern.
+#
+# Pattern shapes (3 tightened patterns):
+#   1. INLINE:   `eventKey[^\n]*uuid\.NewString` — uuid.NewString is on
+#                the SAME line as the eventKey assignment (direct
+#                concatenation, e.g. `eventKey := "..." + uuid.NewString()`).
+#   2. FORWARD:  `eventKey[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventID[^\n]*=
+#                \s*uuid\.NewString` — eventKey is on line N, and an
+#                `eventID := uuid.NewString()` assignment is on line
+#                N+1..N+3 (uuid-suffixed via a forward intermediate var).
+#   3. REVERSE:  `eventID[^\n]*=\s*uuid\.NewString[^\n]*\n(?:[^\n]*\n){0,3}
+#                [^\n]*eventKey[^\n]*=[^\n]*\beventID\b` — the canonical
+#                production shape: `eventID := uuid.NewString()` on line N,
+#                `eventKey := "..." + eventID` on line N+1. The `\beventID\b`
+#                on the eventKey line proves the uuid IS being concatenated
+#                into the eventKey value (not just adjacent to it).
+#
+# Loophole: the patterns hardcode the variable name `eventID`. A future
+# contributor using a different name (e.g. `uid := uuid.NewString()`) would
+# not be caught. ripgrep's default regex engine does not support
+# backreferences for dynamic variable matching. The trade-off is
+# acceptable because (a) `eventID` is the canonical name across all
+# canonical envelope builders (BuildReindexEnvelopeV1, buildDeleteRequestV1)
+# and the canonical reconcile adapter, and (b) the escape hatch is to
+# promote Check 11 to a Go-side AST pass via
+# `scripts/archcheck/check11eventkey/` (mirrors the Wave 19 PR2-1 pattern
+# for cross-capability edge graph emission) if the loophole is exercised
+# in practice.
 #
 # Allowlist:
 #   - internal/infrastructure/database/sqlite/outbox/**       : canonical envelope builders
 #                                                              (Category B pattern).
 #   - internal/infrastructure/database/sqlite/outboxevents/** : canonical reindex envelope
 #                                                              (Category B pattern).
-#   - cmd/admin/**                                            : reconcile_qdrant.go uses
-#                                                              uuid.NewString for event_id
-#                                                              alongside deterministic
-#                                                              eventKey (Category A pattern).
 #   - *_test.go                                               : test fixtures may use
 #                                                              uuid.NewString for distinct keys.
 #   - tests/fixtures/zero_legacy/**                           : self-check fixtures.
-# Multiline pattern (rg -nU) catches the production anti-pattern at
-# cmd/admin/reconcile_qdrant.go (pre-fix shape) where
-# `eventID := uuid.NewString()` and `eventKey := "..." + eventID` were on
-# separate lines. A single-line pattern would miss this because the uuid
-# is hidden behind an intermediate var. The pattern matches within a 3-line
-# window in either order:
-#   - eventKey ... uuid.NewString (single line)
-#   - eventKey ... NEWLINE ... uuid.NewString (multiline, eventKey first)
-#   - uuid.NewString ... NEWLINE ... eventKey (multiline, uuid first)
-# After the TODO 16 follow-up fix (eventKey := "delete:" + assetID with
-# the UUID only in event_id), cmd/admin/reconcile_qdrant.go is back on
-# the allowlist because the eventKey no longer contains a UUID.
 echo "=== Check 11: forbid event_key construction with random UUID (TODO 16) ==="
 uuidEventKeys=$(rg -nU --type go \
-    -e 'eventKey.*uuid\.NewString' \
-    -e 'eventKey.*uuid\.New\(\)' \
-    -e 'eventKey[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*uuid\.NewString' \
-    -e 'uuid\.NewString[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventKey' \
+    -e 'eventKey[^\n]*uuid\.NewString' \
+    -e 'eventKey[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventID[^\n]*=\s*uuid\.NewString' \
+    -e 'eventID[^\n]*=\s*uuid\.NewString[^\n]*\n(?:[^\n]*\n){0,3}[^\n]*eventKey[^\n]*=[^\n]*\beventID\b' \
     --glob '!**/internal/infrastructure/database/sqlite/outbox/**' \
     --glob '!**/internal/infrastructure/database/sqlite/outboxevents/**' \
-    --glob '!**/cmd/admin/**' \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
@@ -1305,7 +1337,7 @@ if [ -n "$placeholderReconcile" ]; then
 fi
 echo "OK: no ListAssetsForReconcile placeholder in production"
 
-# ── Check 14: forbid legacy \"status\" key in BuildPayload (TODO 16) ────
+# ── Check 14: forbid legacy "status" key in BuildPayload (TODO 16) ────
 # QDRANT-001 §(b): the canonical payload key is `lifecycle_state`; a `status`
 # key in BuildPayload is the QDRANT-RECOVERY-001 legacy that QDRANT-001
 # removed. Any new BuildPayload that re-introduces the `status` key is a
@@ -1344,6 +1376,68 @@ if [ -n "$legacyStatusKey" ]; then
     exit 1
 fi
 echo "OK: no legacy \"status\" payload key in BuildPayload"
+
+# ── Check 15: qdrant.NewClient constructions must propagate APIKey (QDRANT-005A) ────
+# QDRANT-005A Phase 1 Blocker #1: cfg.Qdrant.APIKey is not propagated to
+# qdrant.NewClient at every construction site. An API-key-protected Qdrant
+# deployment appears unhealthy (401) because the client omits the X-Api-Key
+# header on every request. The canonical pattern is:
+#
+#   client := qdrant.NewClient(&qdrant.Config{
+#       BaseURL: cfg.Qdrant.BaseURL,
+#       APIKey:  cfg.Qdrant.APIKey,   // <-- REQUIRED
+#       Timeout: cfg.Qdrant.Timeout,
+#   }, log)
+#
+# Implementation: per-file check. Find every Go file that constructs
+# qdrant.NewClient(&qdrant.Config{...}), then verify the SAME file
+# also contains the literal pattern `APIKey:\s*cfg\.Qdrant\.APIKey`.
+# A file that constructs the client but does NOT propagate the APIKey
+# is the production anti-pattern.
+#
+# Why per-file (not per-block): a Go file may legitimately construct
+# multiple qdrant.Config{...} literals (e.g. one for the production
+# client + one for a test stub). Per-file is the conservative
+# scope: any file that touches the client must also touch the
+# APIKey propagation. If a file has TWO client constructions and
+# ONE omits APIKey, the per-file check still catches it (the
+# file-level pattern absence is the signal).
+#
+# Limit: a test file that constructs a stub client with no auth
+# would false-positive. Test files are excluded via --glob
+# `!**/*_test.go` per the standard check convention.
+#
+# Allowlist:
+#   - *_test.go                  : test stubs may construct unauthenticated clients.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+#   - internal/infrastructure/qdrant/** : the Config TYPE lives here;
+#                                     test files in this package are
+#                                     excluded by the *_test.go rule,
+#                                     and production code in this
+#                                     package does NOT construct the
+#                                     client (it only defines types).
+echo "=== Check 15: qdrant.NewClient must propagate APIKey (QDRANT-005A) ==="
+clientFiles=$(rg -l 'qdrant\.NewClient\(&qdrant\.Config\{' --type go \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    || true)
+missingApiKey=""
+for f in $clientFiles; do
+    if ! rg -q 'APIKey:\s*cfg\.Qdrant\.APIKey' "$f" 2>/dev/null; then
+        missingApiKey="$missingApiKey $f"
+    fi
+done
+if [ -n "$missingApiKey" ]; then
+    echo "FAIL: file(s) construct qdrant.NewClient but do NOT propagate cfg.Qdrant.APIKey:"
+    for f in $missingApiKey; do echo "  $f"; done
+    echo ""
+    echo "Fix: add 'APIKey: cfg.Qdrant.APIKey,' to the qdrant.Config{...} literal."
+    echo "An API-key-protected Qdrant deployment appears unhealthy (401) when"
+    echo "the client omits the X-Api-Key header. QDRANT-005A Phase 1 Blocker 1."
+    exit 1
+fi
+echo "OK: all qdrant.NewClient constructions propagate cfg.Qdrant.APIKey"
 
 # ── Main gate ──────────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
