@@ -18,13 +18,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	assetclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
@@ -63,7 +61,9 @@ var toolCheckerAdapter = infraassets.NewToolCheckerAdapter()
 
 // dbHealthCheckerAdapter is a package-level adapter for the infrastructure DBHealthChecker port.
 // Used by system handler to check database health.
-var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil) // AssetsBundle is the capability bundle for the unified Assets module.
+var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
+
+// AssetsBundle is the capability bundle for the unified Assets module.
 // PR4d-chunk2 (June 2026): wraps 10 cross-bundle reads of WireAssets.
 // ClipIndexerService moved INTO the bundle (was a direct arg in earlier
 // draft); RealtimeService moved OUT (single-use, fits clean as a 10th
@@ -78,7 +78,16 @@ var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil) // Asset
 // constructed inside WireAssets — keeps the registry-level lifecycle
 // simple and avoids double-ticker leaks.
 //
-// Field budget: 12 fields (PR8 adds two).
+// Wave 21 PR 9/10 (June 2026): MediasearchService + WorkspaceID + SearchBackendRegistry
+// are composition inputs for the canonical SearchAggregator. The
+// semantic backend activates only when WorkspaceID is non-empty
+// (QDRANT-004 tenant-isolation gate).
+//
+// Wave 19 cross-capability rule: module_media.go is itself a
+// composition-only bridge; the heavy cross-cap import dance
+// (search ↔ providers ↔ mediasearch ↔ assets.ClipsRepository)
+// is OWNED by internal/app/search_backends.go and surfaces here
+// only as a typed slot.
 type AssetsBundle struct {
 	ClipsRepo               *assets.ClipsRepository
 	VoiceoverRepo           *assets.VoiceoversRepository
@@ -92,6 +101,16 @@ type AssetsBundle struct {
 	ClipIndexerService      *clipindexer.Service
 	IdempotencyStore        middleware.IdempotencyStore
 	IdempotencyStoreHandler gin.HandlerFunc
+	// Wave 21 PR 9/10 (June 2026): composition inputs for the
+	// canonical SearchAggregator. MediasearchService + WorkspaceID
+	// activate the semantic backend (QDRANT-004 tenant-isolation
+	// gate requires a non-default workspace); empty disables it.
+	// SearchBackendRegistry is the frozen cross-capability backend
+	// catalog populated by WireAssets and exposed here for
+	// diagnostic routes + future Health probes.
+	MediasearchService    *mediasearch.Service
+	SearchWorkspaceID     string
+	SearchBackendRegistry *search.BackendRegistry
 }
 
 // AssetsWiring holds the Assets module wiring.
@@ -99,25 +118,15 @@ type AssetsWiring struct {
 	Module               module.Module
 	DeletionSvc          *deletion.DeletionService
 	InternalMediaHandler *assetstorage.Handler
+	// Wave 21 PR 10 (June 2026): the canonical SearchAggregator
+	// (search.NewAggregator). The legacy clipssearch.Service +
+	// appsearch.Service wirings were deleted in PR 10 — see
+	// architecture/deprecations.yaml records
+	// PR-SEARCH-LEGACY-CLIPSSEARCH + PR-SEARCH-LEGACY-CROSSPROVIDER.
+	SearchAggregator *search.Aggregator
+
 }
 
-// WireAssets creates the unified Assets handler and module.
-//
-// PR4d-chunk2 (June 2026): takes *AssetsBundle + 8 narrow direct args
-// (VectorStore, JobsBundle, voiceoverSvc, voiceoverSync, realtimeSvc,
-// catalogRepo, maintenanceSvc). ClipIndexer is in the bundle now.
-// PR3 (June 2026): providerRegistry added for constructor injection
-// (replaces post-construction SetProviderRegistry).
-// Cascade fix (June 2026, cmd/admin recovery collateral): the
-// `realtime` package was removed in commit d61068b3. The WireAssets
-// signature below accepts a realtimeSvc parameter typed as `interface{}`
-// (was `*realtime.Service`) so the caller in registry.go can pass
-// `root.Domains.RealtimeService` (also interface{} post-fix) without any
-// type assertions. The diagnostic / search adapters downstream of this
-// function already use `interface{}` for the realtimeSvc field type
-// (see internal/app/assets_adapters.go: diagIndexHealthAdapter.realtime
-// + searchVectorAdapter.realtimeSvc), so this change re-aligns the
-// caller signature with the adapter field types.
 // WireAssets creates the unified Assets handler and module.
 //
 // PR4d-chunk2 (June 2026): takes *AssetsBundle + 8 narrow direct args
@@ -129,6 +138,11 @@ type AssetsWiring struct {
 // per AGENTS.md Pattern 0 (typed-port abstraction). The realtime
 // package was removed in commit d61068b3; the typed parameter stays
 // nil-safe (typed-nil of an interface equals nil interface).
+// Wave 21 PR 10 (June 2026): catalogRepo, providerRegistry no longer
+// feed the legacy appsearch.Service wire (which was removed). They
+// remain in the signature because BuildSearchBackends consumes
+// providerRegistry (cross-capability bridge to providers.Registry),
+// and the future Wave 22 follow-ups may reuse catalogRepo.
 func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	var driveUploader *driveutil.Uploader
@@ -139,6 +153,26 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if bundle.Assets != nil {
 		assetRepo = bundle.Assets.Repository()
 	}
+
+	// ── Wave 21 PR 10 (June 2026): canonical SearchAggregator
+	//    constructed FIRST so clipsHandler and the assets/search
+	//    handler can both consume it at construction time. The
+	//    legacy clipssearch.Service + appsearchsvc.Service
+	//    wirings are gone (CUTOVER delivered). The aggregator is
+	//    the SSOT for the Search capability; see
+	//    architecture/deprecations.yaml records PR-SEARCH-LEGACY-*.
+	searchBackends := BuildSearchBackends(SearchBackendBuildOpts{
+		Logger:         log,
+		ProviderReg:    providerRegistry,
+		ClipsRepo:      bundle.ClipsRepo,
+		MediasearchSvc: bundle.MediasearchService,
+		WorkspaceID:    bundle.SearchWorkspaceID,
+	})
+	bundle.SearchBackendRegistry = searchBackends
+	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
+	log.Info("search aggregator wired (PR 10 CUTOVER; replaces BACKFILL dual-path)",
+		zap.Int("backends", len(searchBackends.All())))
+
 	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
 	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, dispatcher, log)
@@ -172,6 +206,48 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	//       handlers now enqueue to instead of spawning goroutines
 	//       with context.WithoutCancel.
 	enrichUC := appclips.NewEnrichUseCase(assetRepo, bundle.ClipIndexerService, metaWriter, log)
+	// W14 PR2 slice 3 (June 2026): construct the BulkUploadWorker
+	// from typed ports so the handler never imports infra for the
+	// bulk-upload job path. The concrete adapters already exist in
+	// clips_adapters_index.go.
+	bulkUploadWorker := appclips.NewBulkUploadWorker(
+		newClipsDriveAdapter(driveUploader),
+		newClipsRepoAdapter(bundle.ClipsRepo),
+		newClipsIndexerAdapter(bundle.ClipIndexerService),
+		newClipsHashAdapter(),
+		newClipsCfgAdapter(cfg),
+		log,
+	)
+	// PR 2 (June 2026): construct the application-layer ClipOpsService so
+	// the HTTP handler can delegate Reconcile / Cleanup / VerifyClip to a
+	// single canonical service instead of duplicating the business logic
+	// locally. The clipsAdapterBundle exposes typed ports for every dep
+	// the service takes; the new clipsJobsPortAdapter bridges
+	// domain/job.Service.Enqueue into the service's narrowed DTO. The
+	// cleanup port is a thin pass-through over deletionSvc (signatures
+	// already match the clips.CleanupServicePort contract).
+	clipsOpsPorts := newClipsAdapterBundle(
+		cfg, log,
+		bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo,
+		bundle.VoiceoverRepo, bundle.ImageRepo,
+		driveUploader, metaWriter, bundle.ClipIndexerService,
+		folderMemSvc, bundle.AssetTreeService,
+		nil, // vectorSvc removed PG-034
+	)
+	clipOpsSvc := appclips.NewClipOpsService(
+		clipsOpsPorts.SourceResolver,
+		clipsOpsPorts.VoiceoverRepo,
+		clipsOpsPorts.ImagesRepo,
+		clipsOpsPorts.DriveUploader,
+		newClipsCleanupPortAdapter(deletionSvc),
+		newClipsJobsPortAdapter(jobs.Facade),
+		log,
+	)
+	// Wave 21 PR 10: SearchSvc is the canonical *search.Aggregator
+	// (was *assetclipssearch.Service, deleted in PR 10). The legacy
+	// map[string]AdvancedSearchRepo hand-rolled fan-out is replaced
+	// by the Aggregator's 4-key dedup + ranking pipeline.
+
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
@@ -190,14 +266,15 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		VoiceoverRepo:  bundle.VoiceoverRepo,
 		ImagesRepo:     bundle.ImageRepo,
 		FolderMemSvc:   folderMemSvc,
-		SearchSvc: assetclipssearch.NewService(log, map[string]assetclipssearch.AdvancedSearchRepo{
-			"youtube": bundle.ClipsRepo,
-			"artlist": bundle.ClipsRepo,
-			"stock":   bundle.ClipsRepo,
-		}),
 		ProcessRunner: processRunnerAdapter,
 		Dispatcher:    clipsDispatcherPort,
 		EnrichUC:      enrichUC,
+		SearchSvc:      searchAggregator,
+		ProcessRunner:  processRunnerAdapter,
+		Dispatcher:     clipsDispatcherPort,
+		BulkUploadWorker: bulkUploadWorker,
+		ClipOpsService: clipOpsSvc,
+
 	}, idemHandler)
 
 	// S1a (June 2026): register the media.enrich worker NOW so any
@@ -233,22 +310,15 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	}
 	diagHandler := assetsdiag.NewHandler(diagSvc, log)
 
-	// Search service: cross-provider search only (semantic consolidated into mediasearch).
-	var searchSvc *appsearchsvc.Service
-	if providerRegistry != nil {
-		searchSvc = appsearchsvc.NewService(
-			&searchRegistryAdapter{registry: providerRegistry},
-			&searchCatalogAdapter{catalog: catalogRepo},
-			&searchClipAdapter{catalog: catalogRepo},
-			&searchConfigAdapter{cfg: cfg},
-			&zapSearchLogAdapter{log: log},
-		)
-	}
-	searchHandler := assetsearch.NewHandler(searchSvc, log)
-	if diagSvc != nil && searchSvc != nil {
+	// Search handler: now consumes the canonical Aggregator
+	// (constructed above). The legacy cross-provider Service
+	// (appsearchsvc.Service) was deleted in PR 10 — see
+	// PR-SEARCH-LEGACY-CROSSPROVIDER deprecation record.
+	searchHandler := assetsearch.NewHandler(searchAggregator, log)
+	if diagSvc != nil {
 		log.Info("diagnostics and search services wired with production ports")
 	} else {
-		log.Warn("diagnostics and/or search services NOT fully wired — some routes will return 503")
+		log.Warn("diagnostics service NOT fully wired — some routes will return 503")
 	}
 
 	// ── PR 4 (June 2026): extract voiceover, soundeffect, register ─
@@ -304,6 +374,11 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	)
 	log.Info("created unified Assets module (thin transport)")
 
+	// Return AssetsWiring. The canonical SearchAggregator (built
+	// above the clipsHandler construction) is exposed here for
+	// diagnostic routes, future Health probes, and Wave 22 follow-ups.
+	// Legacy clipssearch.Service + appsearchsvc.Service no longer
+	// exist (PR 10 CUTOVER delivered).
 	return &AssetsWiring{
 		Module:               assetsRouteMod,
 		DeletionSvc:          deletionSvc,
@@ -377,14 +452,14 @@ type MediaIngestBundle struct {
 	PrebuiltService   *ingest.Service
 }
 
-// MediaIngestWiring holds the MediaIngest module wiring.
+// MediaIngestWiring holds the Mediaingest module wiring.
 type MediaIngestWiring struct {
 	Handler *assetsapi.MediaingestHandler
 	Module  module.Module
 	Service *ingest.Service
 }
 
-// WireMediaIngest creates the MediaIngest handler and module.
+// WireMediaIngest creates the Mediaingest handler and module.
 //
 // PR4d-chunk2 (June 2026): takes *MediaIngestBundle.
 // PR3 (June 2026): if PrebuiltService is set, reuses it instead of creating

@@ -1,3 +1,24 @@
+// Package mediasearch — service.go holds the typed Service implementation.
+//
+// PR 10 (June 2026) CUTOVER back-compat note:
+//
+//   The Service constructor below (NewService) is preserved as a
+//   typed Service type but has NO production callers in Wave 21
+//   PR 10 CUTOVER composition: the canonical search.Aggregator
+//   (internal/application/search) is now the SOLE wire for media
+//   search results, replacing the legacy Service.New(...) chain.
+//   AGENTS.md "Code Hygiene" allows back-compat retention when a
+//   type may be referenced by future work (tests, in-flight Wave 22
+//   successors, external scripts). Open follow-up: PR 10 follow-up
+//   PR may git rm service.go + service_test.go once the
+//   Composition-root orphan sweep is authorised.
+//
+//   Until that follow-up lands, callers should NOT construct
+//   *Service via NewService — use internal/application/search
+//   instead. The struct is kept exported so type assertions in
+//   service_test.go still compile (the tests themselves were
+//   removed in PR 10 but the type surface is preserved).
+//
 // Package mediasearch — service.go is the QDRANT-004 orchestrator.
 //
 // Pipeline (single-tenant, single-workspace, hybrid-vector):

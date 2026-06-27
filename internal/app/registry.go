@@ -39,7 +39,6 @@ import (
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
@@ -139,6 +138,17 @@ func collectRegPoint(opts []strictOption) string {
 // TestTryRegisterModule_ErrorContainsSpecMarker in
 // internal/app/registry_failfast_test.go; do not change without updating
 // the test marker.
+// tryRegisterModule is the production-path register helper retained
+// for fail-fast regression coverage (registry_failfast_test.go tests
+// "production path fails on duplicate"). Delegates to the strict
+// variant so all register paths share one composition-time failure
+// rule; the PR 1 (June 2026) coalescing Has-check deletion is the
+// reason this is now a thin one-line passthrough (per the test's
+// own spec marker "After the composition-fix (June 2026)...").
+func tryRegisterModule(registry *module.Registry, log *zap.Logger, mod module.Module) error {
+	return tryRegisterModuleStrict(registry, log, mod)
+}
+
 func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod module.Module, opts ...strictOption) error {
 	if registry == nil {
 		// Composition-bug guard: a nil registry is never expected at
@@ -561,35 +571,17 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			// assetsearch.VectorStorePort — `vectorStore` above is direct read.
 			// Compile-time assertion at internal/infrastructure/qdrant/search_adapter.go
 			// guarantees the qdrant adapter satisfies the port.
-			vectorPort := &mediasearchVectorAdapter{
-				embedder: root.AI.OllamaClient,
-				store:    vectorStore,
+			// PR 10 (June 2026): the canonical *search.Aggregator is the
+			// SOLE wire for media search results. The handler now takes
+			// WireParams{Aggregator, Log}. wiring.Assets.SearchAggregator
+			// is populated by WireAssets' BuildSearchBackends + NewAggregator
+			// (search_backends.go). When nil, the handler returns 503 on
+			// every Search call (fail-closed) per godlike/07.
+			var searchAgg mediasearchapi.AggregatorSearcher
+			if wiring.Assets != nil && wiring.Assets.SearchAggregator != nil {
+				searchAgg = wiring.Assets.SearchAggregator
 			}
-			readRepo := &mediasearchReadAdapter{clips: root.Repos.ClipsRepo}
-			deliverySvc, err := buildMediasearchDeliverySvc(
-				cfg.Security.DeliveryHMACSecret,
-				cfg.External.VeloxBaseURL,
-				cfg.Security.DeliveryReplayWindowSec,
-				log,
-			)
-			if err != nil {
-				log.Warn("QDRANT-004: mediasearch delivery signer unavailable, skipping mediasearch handler", zap.Error(err))
-				// QDRANT-004 closed (June 2026): when the delivery signer
-				// can't be built, mediasearch is disabled rather than
-				// serving results without authorized download URLs.
-				// The handler is not wired; /internal/v1/media/search
-				// will 404 (no route registered).
-				return wiring, fmt.Errorf("mediasearch delivery signer: %w", err)
-			}
-
-			searchSvc := mediasearch.NewService(
-				vectorPort,
-				readRepo,
-				deliverySvc,
-				mediasearch.Config{},
-				mediasearchLogger{sugar: log.Sugar()},
-			)
-			searchH := mediasearchapi.NewHandler(searchSvc, log)
+			searchH := mediasearchapi.NewHandler(mediasearchapi.WireParams{Aggregator: searchAgg, Log: log})
 			wiring.MediasearchHandler = searchH
 			log.Info("QDRANT-004: mediasearch handler BUILT (mounted on /internal/v1/media/search via AppDeps, NOT via /api)")
 		}

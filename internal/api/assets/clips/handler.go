@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	appclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -62,7 +62,12 @@ type Deps struct {
 	// FolderMemSvc supports manifest regeneration heuristics.
 	FolderMemSvc *foldermemory.Service
 	// SearchSvc owns advanced multi-source clip search.
-	SearchSvc *appclipssearch.Service
+	// Wave 21 PR 10 (June 2026): type changed from
+	// *appclipssearch.Service to *search.Aggregator — the
+	// canonical Search capability SSOT. Field NAME kept to
+	// minimise consumer churn. See
+	// architecture/deprecations.yaml PR-SEARCH-LEGACY-CLIPSSEARCH.
+	SearchSvc *search.Aggregator
 	// ProcessRunner executes external subprocesses (ffprobe, mediainfo, etc.).
 	ProcessRunner appassets.ProcessRunner
 	// Dispatcher is the application port (NOT the concrete
@@ -128,7 +133,9 @@ type Handler struct {
 	artifactSvc  *artifacts.Service
 	folderMemSvc *foldermemory.Service
 	// searchSvc mirrors Deps.SearchSvc.
-	searchSvc *appclipssearch.Service
+	// Wave 21 PR 10: type is *search.Aggregator (canonical Search
+	// capability). See Deps.SearchSvc note for rationale.
+	searchSvc *search.Aggregator
 	// processRunner mirrors Deps.ProcessRunner.
 	processRunner appassets.ProcessRunner
 	// dispatcher mirrors Deps.Dispatcher (now the application port

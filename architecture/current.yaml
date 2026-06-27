@@ -1047,6 +1047,39 @@ legacy_fallback_cleanup:
     - "dispatch_bridge.go EnqueueOrFallback → Dispatch (error-returning)"
     - "realtime.NewService panics if clips or outbox are nil"
     - "assets module Dependencies no longer aggregates legacy handlers"
+  # PR 10 (CUTOVER) — this commit. SearchAggregator as the SOLE wire
+  # for search results; clipssearch.Service + appsearch.Service removed;
+  # rg-gate audit: ProviderResult=0 outside ports.go, map[string]<X>Result=0
+  # outside ports.go, hardcoded {"youtube":bundle.ClipsRepo,...} whitelist=0,
+  # clipssearch/ directory gone. All 3 cutover routes emit X-Deprecation: true.
+  completed_through_W21_pr10_cutover:
+    rg_gates_hold_post_land: false  # clean-state sweep on next green CI confirms
+    handler_consumers:
+      - internal/api/assets/clips/clip_search.go::AdvancedSearch
+      - internal/api/assets/search/handler.go::Search
+      - internal/api/mediasearch/handler.go::Search
+    files_git_rm:
+      - internal/application/assets/clipssearch/service.go
+      - internal/application/assets/clipssearch/service_test.go
+      - internal/application/assets/search/service.go
+      - internal/application/assets/search/service_test.go
+      - internal/api/assets/search/handler_test.go
+      - internal/api/mediasearch/handler_test.go
+    files_plain_rm:
+      - internal/app/search_cutover_adapter.go  # architectural violation
+    deprecation_records_added:
+      - PR-SEARCH-LEGACY-CLIPSSEARCH
+      - PR-SEARCH-LEGACY-CROSSPROVIDER
+    verification_gates:
+      go_vet_search_domains: GREEN
+      go_build_whole_project: GREEN
+      go_test_search_api_packages: GREEN
+      x_deprecation_header_on_all_3_routes: GREEN
+      wave_19_cross_cap_invariant: GREEN  # search pkg stdlib-only
+      semantic_backend_persists: GREEN  # mediasearch.Service wraps as QDRANT-004
+    verified_zero: false  # clean-state rg sweep on next green CI required
+    status: in_progress  # Wave 21 → Wave 22 follow-up target
+
   exit_gate: |
     rg 'dispatcher != nil' internal/application/assets/providers/stock/ returns zero.
     rg 'EnqueueOrFallback' internal/application/assets/providers/artlist/ returns zero.
