@@ -181,12 +181,13 @@ func (a *sourcingClipStoreAdapter) GetClip(ctx context.Context, id string) (*sou
 	return toExistingClip(clip), nil
 }
 
-func (a *sourcingClipStoreAdapter) UpsertClip(ctx context.Context, clip *sourcing.ExistingClip) error {
-	if a.repo == nil || clip == nil {
-		return nil
-	}
-	return a.repo.UpsertClip(ctx, fromExistingClip(clip))
-}
+// QDRANT-asset-mutation isolation (June 2026): UpsertClip was
+// REMOVED from sourcing.ClipStorePort. The adapter above no longer
+// exposes UpsertClip because there is no legitimate production caller;
+// sourcing callers MUST go through IndexDispatcherPort. The
+// non-dispatcher fallback in sourcing.Service.RegisterFromYouTube was
+// also removed and replaced with a typed error so a missing
+// dispatcher is loud at runtime, not silent.
 
 type sourcingHashAdapter struct{}
 

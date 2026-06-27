@@ -125,13 +125,21 @@ type ClipIndexBatchResultDTO struct {
 // ── Structural ports (signature-bearing, minimal per Pattern 0) ────────
 
 // ClipRepositoryPort is the canonical clips-side narrowed surface of
-// *assets.ClipsRepository. The 14 methods listed below are exactly
+// *assets.ClipsRepository. The 13 methods listed below are exactly
 // the ones handlers + helpers + worker + clip_ops + clip_action call
 // on the concrete repo. Adapter struct machinery lives in
 // internal/app/clips_adapters.go.
+//
+// QDRANT-asset-mutation isolation (June 2026): UpsertClip was REMOVED
+// from this port. Production callers (clips.ClipOpsService +
+// api/assets/clips) MUST use ClipIndexDispatcherPort to emit media_assets
+// writes via outbox.Dispatcher.EnqueueAndIndex; the lower-level UpsertClip
+// method stays on *assets.ClipsRepository for the dispatcher's exclusive
+// use. The CI lint scripts/ci-architectural-checks.sh enforces this
+// boundary by failing on `UpsertClip\(` matches in
+// internal/application + internal/api production paths.
 type ClipRepositoryPort interface {
 	Upsert(ctx context.Context, clip *asset.Asset) error
-	UpsertClip(ctx context.Context, clip *asset.Asset) error
 	Get(ctx context.Context, id string) (*asset.Asset, error)
 	GetClip(ctx context.Context, id string) (*asset.Asset, error)
 	ListFolders(ctx context.Context, source string) ([]*asset.ClipFolder, error)

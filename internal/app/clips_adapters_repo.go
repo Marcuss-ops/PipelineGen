@@ -33,10 +33,6 @@ func (a *clipsRepoAdapter) Upsert(ctx context.Context, clip *asset.Asset) error 
 	return a.inner.Upsert(ctx, clip)
 }
 
-func (a *clipsRepoAdapter) UpsertClip(ctx context.Context, clip *asset.Asset) error {
-	return a.inner.UpsertClip(ctx, clip)
-}
-
 func (a *clipsRepoAdapter) Get(ctx context.Context, id string) (*asset.Asset, error) {
 	return a.inner.Get(ctx, id)
 }

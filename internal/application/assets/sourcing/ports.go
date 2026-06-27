@@ -66,11 +66,16 @@ type ExistingClip struct {
 }
 
 // ClipStorePort persists and queries clip metadata.
+//
+// QDRANT-asset-mutation isolation (June 2026): UpsertClip was REMOVED
+// from this port. Sourcing callers MUST go through IndexDispatcherPort
+// (EnqueueAndIndex on outbox.Dispatcher) for any media_assets write.
+// Read-side methods (FindByName, FindExisting, GetClip) stay because
+// they're for dedup checks, not mutation.
 type ClipStorePort interface {
 	FindByName(ctx context.Context, name string) (string, error)
 	FindExisting(ctx context.Context, videoID, url string, startSec, endSec float64) (string, error)
 	GetClip(ctx context.Context, id string) (*ExistingClip, error)
-	UpsertClip(ctx context.Context, clip *ExistingClip) error
 }
 
 // ── Jobs ports ─────────────────────────────────────────────────────────

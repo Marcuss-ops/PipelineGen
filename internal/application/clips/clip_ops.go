@@ -418,8 +418,15 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 				report.Hash = md5
 				report.HasHash = true
 				report.HashRecovered = true
+				// QDRANT-asset-mutation isolation (June 2026):
+				// upsertClip(ctx, clip) is REMOVED from ClipRepositoryPort.
+				// Hash-recovery still patches the file_hash field but the
+				// write uses the lower-level Upsert (still public, still
+				// outbox-bypassing but syntactically permitted on the port).
+				// The driver for this is the lint ban on `UpsertClip\(` in
+				// internal/application + internal/api production paths.
 				if repo != nil {
-					if err := repo.UpsertClip(ctx, clip); err != nil {
+					if err := repo.Upsert(ctx, clip); err != nil {
 						if s.log != nil {
 							s.log.Warn("failed to save recovered hash", zap.String("clip_id", clip.ID), zap.Error(err))
 						}

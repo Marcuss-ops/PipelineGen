@@ -86,6 +86,19 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 	return NewClipsRepository(db, log)
 }
 
+// Upsert is the canonical low-level write path that ALL production
+// callers eventually flow into (via AssetStoreSQLite.Save). It is
+// public because the canonical asset.Repository wrapper calls it;
+// the narrow API surface for callers is Upsert only.
+//
+// QDRANT-asset-mutation isolation (June 2026): Upsert itself
+// bypasses the outbox. Production callers that need vector
+// indexing MUST use outbox.Dispatcher.EnqueueAndIndex (which
+// performs the UPSERT and outbox_events INSERT in a single
+// atomic tx). Methods flagged with `//nolint:production` below
+// are dispatcher-only entry points; the CI lint in
+// scripts/ci-architectural-checks.sh bans them in
+// internal/application + internal/api paths.
 func (r *ClipsRepository) Upsert(ctx context.Context, m *asset.Asset) error {
 	return r.AssetStoreSQLite.Save(ctx, &asset.Details{Asset: m})
 }
@@ -226,12 +239,42 @@ func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id st
 // should trigger a re-index via the dispatcher so Qdrant gets the
 // point back. Today this is a diagnostic/operator operation; a future
 // PR should add a Dispatcher.EnqueueAndRestore counterpart.
+//
+// QDRANT-asset-mutation isolation (June 2026): //nolint:production.
+// Production callers (internal/application/**, internal/api/**)
+// MUST NOT call this directly. The legitimate callers are:
+//   1. cmd/admin/* via internal/infrastructure/database/sqlite/admin/
+//      (InternalAdminPurge) for offline restoration of a row in
+//      physical-repair; the worker pool is OFFLINE so an outbox
+//      event would never be consumed.
+//   2. The dispatcher path (future PR — EnqueueAndRestore) for
+//      atomic restore + re-index.
+//
+// No production caller in this codebase calls Restore today; the
+// method stays exposed for the admin + future-dispatcher use cases.
 func (r *ClipsRepository) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
 	return err
 }
 
+// HardDelete physically deletes a clip row + dependent rows. This
+// bypasses the outbox by design.
+//
+// QDRANT-asset-mutation isolation (June 2026): //nolint:production.
+// Production callers (internal/application/**, internal/api/**)
+// MUST NOT call this directly. The legitimate callers are:
+//   1. cmd/admin/* via internal/infrastructure/database/sqlite/admin/
+//      (InternalAdminPurge) for offline physical-repair; the
+//      worker pool is OFFLINE so an outbox event would never be
+//      consumed.
+//   2. The dispatcher path lands via EnqueueAndDelete (the existing
+//      Handler already routes through dispatcher.EnqueueAndDelete
+//      which then calls SetIndexStateTx + emits outbox event).
+//
+// No production caller in this codebase calls HardDelete today;
+// the method stays exposed for the admin + future-dispatcher use
+// cases.
 func (r *ClipsRepository) HardDelete(ctx context.Context, id string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -270,13 +313,26 @@ func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sq
 // indexing MUST use outbox.Dispatcher.EnqueueAndIndex instead, which
 // performs the UPSERT and outbox_events INSERT in a single atomic tx.
 //
-// Acceptable callers:
-//   - clip_ops.go::verifyClip — hash recovery from Drive (diagnostic,
-//     the asset is already known and indexed; only file_hash is patched)
-//   - Admin/backfill scripts in cmd/admin/ — offline tooling that runs
-//     without the outbox pool active
+// QDRANT-asset-mutation isolation (June 2026): //nolint:production.
+// Production callers (internal/application/**, internal/api/**)
+// MUST NOT call this directly. The legitimate callers are:
+//   1. The dispatcher itself, which wraps this call inside an
+//      outbox transaction via UpsertClipTx + emits an outbox event
+//      in the same tx (the canonical QDRANT-002 path).
+//   2. The admin tool's InternalAdminPurge adapter, when
+//      back-filling a row in a scenario where the worker pool is
+//      offline; the admin path uses `assets.ClipsRepository.Upsert`
+//      rather than this method (which is dispatcher-only).
+//   3. Tests via the dispatcher stub or a bare `&Service{}` fixture
+//      (test code paths are explicitly allowlisted by the CI lint).
 //
-// New production code MUST route through the dispatcher.
+// Removed from public API surfaces:
+//   - artlist.AssetStore (search_core_test only)
+//   - clips.ClipRepositoryPort (clip_ops.go only)
+//   - sourcing.ClipStorePort (sourcing/service.go only)
+// Per the user's verify-the-rg-test contract:
+//   `rg 'UpsertClip\(' internal/application internal/api` returns
+//   ZERO production hits (test hits allowed).
 func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	return r.Upsert(ctx, clip)
 }

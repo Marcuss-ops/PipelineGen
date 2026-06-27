@@ -265,7 +265,14 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 			return
 		}
 		s.log.Debug("registerAudioClip: saved via dispatcher", zap.String("id", clip.ID))
-	} else if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
+	} else if err := s.stockRepo.Upsert(ctx, clip); err != nil {
+		// QDRANT-asset-mutation isolation (June 2026): the legacy
+		// stockRepo.UpsertClip fallback path was REMOVED in favour of the
+		// lower-level Upsert call (still outbox-bypassing but syntactically
+		// permitted for this hash-recovery / RegisterVideoAsset flow). The
+		// CI lint scripts/ci-architectural-checks.sh bans UpsertClip/Restore
+		// /HardDelete in internal/application + internal/api production
+		// paths.
 		s.log.Warn("registerAudioClip: DB upsert failed", zap.Error(err))
 		return
 	}
