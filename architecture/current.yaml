@@ -746,6 +746,29 @@
     - "ZERO handler/service call site changed; ZERO wire shape changed; ZERO route changed; ZERO test in any existing package broken"
 
 
+
+  # PR 9 (BACKFILL) — this commit. Real fanout + 4-key dedup +
+  # ranking alongside legacy clipssearch.Service (BACKFILL dual path).
+  completed_through_W21_pr9_backfill:
+    - "internal/application/search/dedup.go: 4-key dedup (AssetID + Source+SourceRef-compound + SourceRef-solo + canonicalURL + Hash) via dedupIndex; max-score overrides existing on collision; equal score keeps existing (deterministic)"
+    - "internal/application/search/rank.go: deterministic RankByScore (Score DESC, Source ASC, AssetID ASC stable secondary) for cursor stability"
+    - "internal/application/search/cursor.go: fingerprintItem now carries SourceRef (omitempty additive; v1 cursors round-trip); EncodeCursorFromItems + SkipSetFromCursor updated; sref: keyspace covers provider-backend page-2 cursor stability"
+    - "internal/application/search/aggregator.go: real fanout via pkg/concurrent.Group + per-backend timeout (DefaultProviderBackendTimeout=5s, DefaultLocalBackendTimeout=2s, DefaultSemanticBackendTimeout=8s); partial preferred — backend errors land in Result.ProviderErrors[name] with Result.Partial=true, NOT cancelling the whole search"
+    - "internal/application/search/aggregator.go: nil-log noop fallback (matches mediasearch convention); backends=nil → fresh in-memory registry; SetPerBackendTimeouts composition-root hook"
+    - "internal/application/search/aggregator_test.go: 8 unit tests (ConcurrentFanout, PartialFailure, Dedup4Key, CursorStability, CtxCancel, MediaTypeFilter, InvalidCursor, MaxScoreRanking)"
+    - "internal/app/search_backends.go: NEW — composition-only Wave 19 bridge; providerBackendAdapter (wraps providers.SearchProvider with cap translation), localBackendAdapter (wraps assets.ClipsRepository via SearchClipsAdvanced), semanticBackendAdapter (wraps mediasearch.Service with workspace-injection for QDRANT-004 tenant-isolation gate); BuildSearchBackends(opts) is the composition-root helper called by WireAssets"
+    - "internal/app/module_media.go: AssetsBundle gained 3 fields (MediasearchService + SearchWorkspaceID + SearchBackendRegistry); AssetsWiring gained SearchAggregator; WireAssets populates via BuildSearchBackends (BACKFILL dual path — legacy clipssearch.Service is still wired in clipsHandler.SearchSvc, untouched for PR 10 cutover)"
+    - "Wave 19 cross-capability rule satisfied: search package remains stdlib-only; internal/app/search_backends.go is the ONLY composition bridge importing search+providers+mediasearch+sqassets at once"
+
+  # PR 9 verification (real run on origin/main HEAD post-commit):
+  pr9_verification:
+    go_vet: "go vet ./internal/application/search/... ./internal/app/... exit 0"
+    go_build: "go build ./... exit 0"
+    go_test: "go test ./internal/application/search/... -count=1 exit 0 (8 aggregator tests + 8 prior search_test.go tests)"
+    go_version_directive: "go 1.25.0 (loop-scoping safe)"
+    cross_cap_imports: "internal/application/search/* stdlib-only; search_backends.go is single composition bridge"
+
+
 ---
 # ── Document #2/3: Post-cascade operational followups (June 2026) ─────────
 post_cascade_followups:

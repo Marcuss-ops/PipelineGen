@@ -1,42 +1,90 @@
+// Package search — aggregator.go is the Wave 21 PR 9 BACKFILL
+// implementation of the canonical SearchAggregator. It replaces
+// the PR 8 NOOP stub with the real fanout + dedup + ranking
+// pipeline described by the project plan.
+//
+// Pipeline (PR 9):
+//   1. Decode cursor  → SkipSet (dedup.go::SkipSetFromCursor).
+//   2. Trim text + clamp limit (q.Limit; default DefaultLimit;
+//      capped MaxLimit).
+//   3. Pick eligible backends (BackendRegistry.Eligible(q)) —
+//      filtered by Query.MediaTypes ∩ Backend.Capabilities.
+//   4. Fan-out: pkg/concurrent errgroup + per-backend timeout via
+//      context.WithTimeout. Per PR 9 spec the defaults are:
+//         provider-style backends: 5s
+//         "local" backend:          2s
+//         "semantic" backend:       8s
+//      The composition root can override by populating
+//      a.perBackendTimeouts before calling Search.
+//   5. Per-backend Search errors DO NOT cancel the whole search;
+//      they land in Result.ProviderErrors[name] and set
+//      Result.Partial = true. "Partial preferred" per Wave 21
+//      survey of the search subsystem: one slow backend must
+//      never starve the others or kill the response.
+//   6. Pool candidates across backends → Merge(skips dedup by
+//      4-key). Then RankByScore (Score DESC, Source ASC,
+//      AssetID ASC).
+//   7. Trim to q.Limit. Build NextCursor from the last served
+//      items via EncodeCursorFromItems + EncodeCursor (wire
+//      base64 form).
+//   8. Return Result{Items, NextCursor, ProviderErrors, Partial}.
 package search
 
-import "context"
+import (
+	"context"
+	"strings"
+	"time"
 
-// Aggregator fans out a Query across registered SearchBackends and
-// merges the results. Wave 21 (Fase 4) ships it incrementally across
-// three commits — all three remain GREEN on origin/main:
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+)
+
+// Per-backend timeout defaults (PR 9 spec): provider = 5s,
+// local = 2s, semantic = 8s. Export as constants so tests + the
+// composition root can pin them. Composition-root overrides flow
+// through Aggregator.perBackendTimeouts (constructor or
+// WithPerBackendTimeouts).
+const (
+	DefaultProviderBackendTimeout = 5 * time.Second
+	DefaultLocalBackendTimeout    = 2 * time.Second
+	DefaultSemanticBackendTimeout = 8 * time.Second
+)
+
+// PerBackendTimeout returns the per-backend timeout for a given
+// backend Name. Overrides in overrides take precedence; otherwise
+// the canonical buckets ("local", "semantic") get their dedicated
+// defaults and any other name (provider-style) falls back to
+// DefaultProviderBackendTimeout.
 //
-//   PR 8 (this commit) ships the NOOP stub. The struct, constructor,
-//     and Search method signature are stable; behaviour is "return
-//     empty Result with no Error and no Partial flag".
-//   PR 9 (BACKFILL): replace Search with the real fanout —
-//     pkg/concurrent errgroup, per-backend timeout (5s provider /
-//     2s local / 8s semantic), Partial flag if any backend errors,
-//     ProviderErrors populated per backend name, dedup.go + rank.go
-//     wrap the merge step. Cursor stability: skip items already in
-//     q.Cursor's fingerprint.
-//   PR 10 (CUTOVER): switch handler dependencies and delete legacy
-//     clipssearch + assets/search cross-provider packages.
-//
-// Wave 19 invariants that this file respects:
-//
-//   - Aggregator does NOT import internal/infrastructure/* (no SQLite,
-//     no pgx, no Qdrant client — ports only). Vector store + SQLite
-//     adapters live under internal/app.
-//   - Aggregator does NOT import another capability. The semantic
-//     backend's *mediasearch.Service is injected via composition root
-//     (internal/app/search_backends.go) implementing SearchBackend —
-//     mediasearch is never imported here. Capability-crossing wiring
-//     lives exclusively in internal/app.
-type Aggregator struct {
-	backends *BackendRegistry
-	log      Logger
+// Composition root: populate overrides via:
+//   a.SetPerBackendTimeouts(map[string]time.Duration{"artlist": 7*time.Second})
+// before exposing the Aggregator to handlers.
+func PerBackendTimeout(name string, overrides map[string]time.Duration) time.Duration {
+	if d, ok := overrides[name]; ok {
+		return d
+	}
+	switch name {
+	case "local":
+		return DefaultLocalBackendTimeout
+	case "semantic":
+		return DefaultSemanticBackendTimeout
+	default:
+		return DefaultProviderBackendTimeout
+	}
 }
 
-// NewAggregator constructs the Aggregator. backends may be nil (a
-// fresh in-memory registry is substituted inside the constructor);
-// log may be nil (a noopLogger is substituted, matching the
-// pattern used by mediasearch.NewService).
+// Aggregator fans out a Query across registered SearchBackends
+// and merges the results per the Wave 21 PR 9 pipeline above.
+type Aggregator struct {
+	backends           *BackendRegistry
+	log                Logger
+	perBackendTimeouts map[string]time.Duration
+}
+
+// NewAggregator constructs the Aggregator. backends may be nil —
+// a fresh in-memory registry is substituted (matches patterns in
+// the rest of internal/application/*). log may be nil — a
+// noopLogger is substituted so Search never panics on a missing
+// logger in tests.
 func NewAggregator(backends *BackendRegistry, log Logger) *Aggregator {
 	if log == nil {
 		log = noopLogger{}
@@ -44,37 +92,144 @@ func NewAggregator(backends *BackendRegistry, log Logger) *Aggregator {
 	if backends == nil {
 		backends = NewBackendRegistry()
 	}
-	return &Aggregator{backends: backends, log: log}
+	return &Aggregator{
+		backends:           backends,
+		log:                log,
+		perBackendTimeouts: make(map[string]time.Duration),
+	}
+}
+
+// SetPerBackendTimeouts wires composition-root overrides into the
+// aggregator. Safe to call before any Search; concurrent reads
+// during Search see a partially-applied map but the lookup is
+// idempotent (worst case a single request uses a partially-loaded
+// override set). For PR 9 the call is performed once at
+// composition wiring.
+func (a *Aggregator) SetPerBackendTimeouts(overrides map[string]time.Duration) {
+	if overrides == nil {
+		return
+	}
+	a.perBackendTimeouts = overrides
 }
 
 // Backends returns the registry the aggregator was constructed
-// with. Useful for diagnostics (route_health.go) and tests.
+// with. Useful for diagnostics + tests.
 func (a *Aggregator) Backends() *BackendRegistry {
 	return a.backends
 }
 
-// Search is the NOOP stub (PR 8). It accepts any Query, never errors,
-// and returns an empty, non-partial Result. The real implementation
-// lands in PR 9 (BACKFILL) and is committed in a separate commit
-// that keeps the type signature stable.
-//
-// The stub faithfully initialises ProviderErrors as a non-nil empty
-// map so handler code that iterates over Result.ProviderErrors
-// without a nil-guard already compiles and runs (returns zero hits).
-// This is what "GREEN at every commit" looks like for an additive
-// capability.
+// Search runs the full PR 9 pipeline. Errors from the cursor
+// decoder propagate (handlers map to 422); backend errors are
+// demoted to Result.ProviderErrors + Result.Partial.
 func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
-	a.log.Debug("search.Aggregator.Search: NOOP — PR 8 stub",
+	cur, err := DecodeCursor(q.Cursor)
+	if err != nil {
+		return nil, err
+	}
+	skipSet := SkipSetFromCursor(cur)
+
+	q.Text = strings.TrimSpace(q.Text)
+	limit := q.Limit
+	if limit <= 0 {
+		limit = DefaultLimit
+	}
+	if limit > MaxLimit {
+		limit = MaxLimit
+	}
+
+	eligible := a.backends.Eligible(q)
+	if len(eligible) == 0 {
+		a.log.Debug("search.Aggregator.Search: no eligible backends",
+			"text_len", len(q.Text),
+			"media_types", q.MediaTypes,
+		)
+		return &Result{
+			Items:          []Candidate{},
+			NextCursor:     "",
+			ProviderErrors: map[string]string{},
+			Partial:        false,
+		}, nil
+	}
+
+	// Per-backend outcomes pre-allocated by index so goroutines
+	// can write to their own slot without contention. The simple
+	// "first-error-wins" policy of concurrent.Group is overridden:
+	// we IGNORE the first error so a single backend failure does
+	// not cancel other backends. Partial preferred.
+	outcomes := make([]backendOutcome, len(eligible))
+
+	g, fanoutCtx := concurrent.WithContext(ctx)
+	for i := range eligible {
+		i, b := i, eligible[i]
+		timeout := PerBackendTimeout(b.Name(), a.perBackendTimeouts)
+		// context.WithTimeout inside the fanout context: backend
+		// completes within timeout OR the per-backend context is
+		// cancelled and the backend sees ctx.Done(). Defer cancel
+		// inside the goroutine to free the timer early on fast
+		// completion.
+		perCtx, perCancel := context.WithTimeout(fanoutCtx, timeout)
+		g.Go(b.Name(), func() error {
+			items, berr := b.Search(perCtx, q)
+			perCancel()
+			outcomes[i] = backendOutcome{
+				backendName: b.Name(),
+				items:       items,
+				err:         berr,
+			}
+			return nil // see comment above
+		})
+	}
+	_ = g.Wait() // first-error is intentionally swallowed; partial preferred.
+
+	pending := make([]Candidate, 0, len(eligible)*DefaultLimit)
+	providerErrors := make(map[string]string)
+	partial := false
+	for _, o := range outcomes {
+		if o.err != nil {
+			providerErrors[o.backendName] = o.err.Error()
+			partial = true
+			continue
+		}
+		if len(o.items) > 0 {
+			pending = append(pending, o.items...)
+		}
+	}
+
+	merged := Merge(pending, skipSet)
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+
+	next := ""
+	if len(merged) > 0 {
+		cursorObj, cerr := EncodeCursorFromItems(merged)
+		if cerr == nil {
+			wire, werr := EncodeCursor(cursorObj)
+			if werr == nil {
+				next = wire
+			}
+		}
+	}
+
+	a.log.Info("search.Aggregator.Search completed",
 		"text_len", len(q.Text),
-		"sources", len(q.Sources),
-		"media_types", len(q.MediaTypes),
-		"limit", q.Limit,
-		"has_cursor", q.Cursor != "",
+		"eligible_backends", len(eligible),
+		"partial", partial,
+		"items", len(merged),
 	)
 	return &Result{
-		Items:          []Candidate{},
-		NextCursor:     "",
-		ProviderErrors: map[string]string{},
-		Partial:        false,
+		Items:          merged,
+		NextCursor:     next,
+		ProviderErrors: providerErrors,
+		Partial:        partial,
 	}, nil
+}
+
+// backendOutcome is per-backend fan-out result captured into a
+// pre-allocated slice slot to avoid mutex contention. Naming is
+// stable; tests inspect it via the public Result.
+type backendOutcome struct {
+	backendName string
+	items       []Candidate
+	err         error
 }
