@@ -120,9 +120,10 @@ func TestArtlistServiceCreation(t *testing.T) {
 			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:    cfg,
-			MainDB: db,
-			Log:    logger,
+			Cfg:        cfg,
+			MainDB:     db,
+			Log:        logger,
+			Dispatcher: &stubDispatcherForArtlist{},
 		},
 	})
 	if err != nil {
@@ -149,9 +150,10 @@ func TestArtlistSearchRequest(t *testing.T) {
 			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:    cfg,
-			MainDB: db,
-			Log:    logger,
+			Cfg:        cfg,
+			MainDB:     db,
+			Log:        logger,
+			Dispatcher: &stubDispatcherForArtlist{},
 		},
 	})
 
@@ -399,6 +401,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 			Cfg:            cfg,
 			MainDB:         db,
 			Log:            logger,
+			Dispatcher:     &stubDispatcherForArtlist{},
 			MediaProcessor: processor,
 		},
 	})
@@ -480,6 +483,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 			Cfg:            cfg,
 			MainDB:         db,
 			Log:            logger,
+			Dispatcher:     &stubDispatcherForArtlist{},
 			MediaProcessor: processor,
 		},
 	})
@@ -567,6 +571,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 			Cfg:            cfg,
 			MainDB:         db,
 			Log:            logger,
+			Dispatcher:     &stubDispatcherForArtlist{},
 			MediaProcessor: processor,
 		},
 	})
