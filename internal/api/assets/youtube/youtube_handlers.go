@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"

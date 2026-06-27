@@ -37,7 +37,7 @@ import (
 type SQLiteStore struct {
 	db       *sql.DB
 	log      *zap.Logger
-	notifier *QueueNotifier
+	notifier *notifier
 }
 
 // jobColumns is the canonical list of column names read by Get, List and
@@ -48,7 +48,7 @@ const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision`
 
 func NewSQLiteStore(db *sql.DB, log *zap.Logger) *SQLiteStore {
-	return &SQLiteStore{db: db, log: log, notifier: newQueueNotifier()}
+	return &SQLiteStore{db: db, log: log, notifier: newNotifier()}
 }
 
 // ── In-process queue-notifier port (PR-Polling / ADR-0002 §D6.5) ────────────
