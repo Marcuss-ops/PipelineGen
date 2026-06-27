@@ -8,9 +8,28 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
+)
+
+// Type aliases so the test (package usecase_test) can reference the
+// canonical usecase/adapters types by their bare name (matches the
+// test fixtures in scriptflow_usecase_test.go and the rest of the
+// usecase test surface).
+type (
+	GenerateManyResult      = usecase.GenerateManyResult
+	GenerateManyItemResult  = usecase.GenerateManyItemResult
+	GenerateManySummary     = usecase.GenerateManySummary
+	NormalizationConfig     = adapters.NormalizationConfig
+)
+
+var (
+	NewSourceRegistry     = adapters.NewSourceRegistry
+	NewGenerateOneUseCase = usecase.NewGenerateOneUseCase
+	NewTextSourceResolver = usecase.NewTextSourceResolver
 )
 
 // ── Helpers ───────────────────────────────────────────────────────

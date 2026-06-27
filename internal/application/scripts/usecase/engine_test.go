@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	gemmamemory "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )

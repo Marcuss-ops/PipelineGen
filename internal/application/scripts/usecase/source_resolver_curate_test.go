@@ -28,11 +28,11 @@ import (
 
 // fakeClipSearch implements ClipSearchPort for tests.
 type fakeClipSearch struct {
-	hits      []ClipSearchHit
+	hits      []scriptpkg.SearchResultItem
 	returnErr error
 }
 
-func (f *fakeClipSearch) SearchClips(_ context.Context, _ ClipSearchQuery) ([]ClipSearchHit, error) {
+func (f *fakeClipSearch) SearchClips(_ context.Context, _ ClipSearchQuery) ([]scriptpkg.SearchResultItem, error) {
 	if f.returnErr != nil {
 		return nil, f.returnErr
 	}
@@ -71,10 +71,10 @@ func (r *recordClipBuilder) BuildClipContext(_ context.Context, ids []string, op
 
 // Helpers
 
-func makeClipSearchHits(ids ...string) []ClipSearchHit {
-	hits := make([]ClipSearchHit, len(ids))
+func makeClipSearchHits(ids ...string) []scriptpkg.SearchResultItem {
+	hits := make([]scriptpkg.SearchResultItem, len(ids))
 	for i, id := range ids {
-		hits[i] = ClipSearchHit{AssetID: id, Name: "clip-" + id, Score: 0.9, Source: "youtube"}
+		hits[i] = scriptpkg.SearchResultItem{ClipID: id, Name: "clip-" + id, Score: 0.9, Source: "youtube"}
 	}
 	return hits
 }

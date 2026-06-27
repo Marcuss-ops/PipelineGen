@@ -18,6 +18,27 @@ type ProcessInput = adapters.ProcessInput
 type FolderResolver = adapters.FolderResolver
 type ScriptRepository = adapters.ScriptRepository
 type SourceResolver = adapters.SourceResolver
+type PostProcessResult = adapters.PostProcessResult
+type ProcessorPolicy = adapters.ProcessorPolicy
+type PostProcessor = adapters.PostProcessor
+type SceneImage = adapters.SceneImage
+type SceneVoiceover = adapters.SceneVoiceover
+
+const (
+	ProcessorRequired   = adapters.ProcessorRequired
+	ProcessorBestEffort = adapters.ProcessorBestEffort
+)
+
+// ScriptRecord / ScriptSectionRecord — the native types are
+// declared in section_regen.go (usecase package). Re-exports
+// of the canonical adapters types below cover the remaining
+// types used by the engine_test.go fake repo.
+type (
+	ScriptStockMatchRecord     = adapters.ScriptStockMatchRecord
+	ScriptGenerationLog        = adapters.ScriptGenerationLog
+	ScriptOutlineSectionRecord = adapters.ScriptOutlineSectionRecord
+	ScriptResearchSource       = adapters.ScriptResearchSource
+)
 
 // ── adapters/ function aliases ─────────────────────────────────────
 var (

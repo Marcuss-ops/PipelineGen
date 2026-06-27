@@ -34,8 +34,20 @@ type NarrativePlan struct {
 
 // ── ClipSourceBuilder (unchanged from prior version) ─────────────────────
 
+// clipsResolverPort is the narrow resolver interface that
+// ClipSourceBuilder consumes. *assets.ClipsRepository satisfies it
+// in production; unit tests inject a hand-rolled stub via
+// NewClipSourceBuilderForTest. Defining the port here (rather than
+// in `ports/`) keeps the package self-contained: the builder
+// has no other port dependency and tests don't need a new import
+// just to wire a stub.
+type clipsResolverPort interface {
+	GetClip(ctx context.Context, id string) (*asset.Asset, error)
+	GetByDriveFileID(ctx context.Context, id string) (*asset.Asset, error)
+}
+
 type ClipSourceBuilder struct {
-	clipsRepo    interface{} // *assets.ClipsRepository
+	clipsRepo    clipsResolverPort
 	ollamaClient interface{} // *client.Client
 	reranker     interface{}
 	log          *zap.Logger
@@ -71,6 +83,24 @@ func NewClipSourceBuilder(
 	}
 }
 
+// NewClipSourceBuilderForTest is the test-only constructor that
+// accepts a clipsResolverPort stub rather than the concrete
+// *assets.ClipsRepository. The canonical NewClipSourceBuilder
+// preserves its production signature so the composition root
+// (internal/app/wire_script.go) keeps wiring the concrete repo
+// unchanged; tests reach for this constructor to inject fakes
+// without dragging SQLite + asset fixtures into the unit-test
+// boundary.
+func NewClipSourceBuilderForTest(
+	clipsRepo clipsResolverPort,
+	log *zap.Logger,
+) *ClipSourceBuilder {
+	return &ClipSourceBuilder{
+		clipsRepo: clipsRepo,
+		log:       log,
+	}
+}
+
 func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
 
 func (c *ClipSourceBuilder) BuildClipContext(
@@ -103,9 +133,9 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		return nil, nil, "", fmt.Errorf("clip source builder: no valid clip IDs provided")
 	}
 
-	clipsRepo, ok := c.clipsRepo.(*assets.ClipsRepository)
-	if !ok || clipsRepo == nil {
-		return nil, nil, "", fmt.Errorf("clip source builder: clipsRepo is not a *assets.ClipsRepository")
+	clipsRepo := c.clipsRepo
+	if clipsRepo == nil {
+		return nil, nil, "", fmt.Errorf("clip source builder: clips repository not configured")
 	}
 
 	clips := make([]*asset.Asset, 0, len(uniqueIDs))

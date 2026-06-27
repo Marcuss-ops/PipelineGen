@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 )
 
 // TestClipSearchAdapter_InterfaceSatisfiesPort is a compile-time
@@ -35,7 +35,7 @@ func TestClipSearchAdapter_InterfaceSatisfiesPort(t *testing.T) {
 	// nil searcher + nil embedder accepted by NewClipSearchAdapter;
 	// the adapter's nil-guards inside SearchClips will return typed
 	// errors when called (see other tests).
-	var port scripts.ClipSearchPort = NewClipSearchAdapter(nil, nil, "", nil)
+	var port ports.ClipSearchPort = NewClipSearchAdapter(nil, nil, "", nil)
 	if port == nil {
 		t.Fatal("NewClipSearchAdapter returned nil port")
 	}
@@ -51,7 +51,7 @@ func TestClipSearchAdapter_NilSearcher_TypedError(t *testing.T) {
 
 	port := NewClipSearchAdapter(nil, nil, "text", nil)
 
-	_, err := port.SearchClips(context.Background(), scripts.ClipSearchQuery{
+	_, err := port.SearchClips(context.Background(), ports.ClipSearchQuery{
 		Query: "kafka observability",
 	})
 	if err == nil {
@@ -73,7 +73,7 @@ func TestClipSearchAdapter_NilEmbedder_TypedError(t *testing.T) {
 	// embedder guard (the searcher guard fires first otherwise).
 	port := NewClipSearchAdapter(&Searcher{}, nil, "text", nil)
 
-	_, err := port.SearchClips(context.Background(), scripts.ClipSearchQuery{
+	_, err := port.SearchClips(context.Background(), ports.ClipSearchQuery{
 		Query: "kafka observability",
 	})
 	if err == nil {

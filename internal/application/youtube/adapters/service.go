@@ -14,6 +14,10 @@
 package adapters
 
 import (
+	"context"
+	"errors"
+	"fmt"
+
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -41,4 +45,45 @@ type Service struct {
 	segmentsSvc       *usecase.SegmentsService
 	videoPipeline     youtubeports.VideoPipelinePort
 	ollama            youtubeports.OllamaClientPort
+	assetRepo         asset.Repository
+}
+
+// ServiceDeps is the PR1.6/1.7 constructor envelope for Service.
+// Log is mandatory (composition root supplies a real logger).
+// AssetRepo is required by dispatchOrIndex (the canonical
+// asset.Repository.Upsert writer); passing a nil AssetRepo is a
+// hard-fail at the first dispatchOrIndex call rather than a silent
+// fall-through.
+type ServiceDeps struct {
+	Log       *zap.Logger
+	AssetRepo asset.Repository
+}
+
+// NewService constructs a Service from a ServiceDeps envelope. Only
+// the fields exercised by the current test surface (Log + AssetRepo)
+// are wired; the remaining fields keep their zero values and the
+// corresponding adapters methods stay nil-safe.
+func NewService(deps ServiceDeps) *Service {
+	return &Service{
+		log:       deps.Log,
+		assetRepo: deps.AssetRepo,
+	}
+}
+
+// dispatchOrIndex is the canonical PR1.6 single-writer entry point for
+// the YouTube extraction pipeline: it routes the supplied clip
+// through asset.Repository.Upsert and returns the typed error when
+// no AssetRepo is wired (composition-time contract: a missing writer
+// is a hard fail, not a silent fall-through to the legacy
+// outbox/clipsRepo paths). The hash argument is reserved for
+// de-duplication of legacy callers and is currently unused; it stays
+// in the signature so the dispatch surface remains stable.
+func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.Asset, hash string) error {
+	if s == nil {
+		return errors.New("dispatchOrIndex: nil service")
+	}
+	if s.assetRepo == nil {
+		return fmt.Errorf("dispatchOrIndex: AssetRepo not wired (clip_id=%q)", clip.ID)
+	}
+	return s.assetRepo.Upsert(ctx, clip)
 }

@@ -405,7 +405,7 @@ func TestSearch_CandidateTranslation(t *testing.T) {
 					ThumbnailURL:       "https://example.com/thumb.jpg",
 					ViewCount:          9000,
 					UploadDate:         "20250101",
-					Duration:           123.5, // seconds
+					Duration:           123, // seconds
 					SimilarityScore:    80,
 					FormatMatchPercent: 60,
 					DirectLink:         "https://www.youtube.com/watch?v=v123abc",
@@ -441,7 +441,7 @@ func TestSearch_CandidateTranslation(t *testing.T) {
 	if c.MediaType != youtubeMediaType {
 		t.Errorf("MediaType=%q want %q", c.MediaType, youtubeMediaType)
 	}
-	wantDur := time.Duration(123.5 * float64(time.Second))
+	wantDur := time.Duration(123 * time.Second)
 	if c.Duration != wantDur {
 		t.Errorf("Duration=%v want %v", c.Duration, wantDur)
 	}
