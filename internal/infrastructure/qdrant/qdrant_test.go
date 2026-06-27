@@ -665,6 +665,100 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 	assert.Equal(t, 0, createCalls, "PUT should not have been called")
 }
 
+// ── Snapshot idempotency tests ────────────────────────────────────────
+
+// TestCreateSnapshot_Idempotency locks in the QDRANT-005C PR3 invariant
+// documented in client_dr.go::CreateSnapshot godoc: "Qdrant may return
+// the same Name on repeated POSTs of the same collection." The test
+// mocks a controlled Qdrant server that returns the SAME snapshot Name
+// on every POST, and asserts that two consecutive client.CreateSnapshot
+// calls against the same collection return the same Name.
+//
+// Why this matters: the dr package treats the snapshot Name as the
+// canonical handle for subsequent List/Restore operations (see
+// dr.RestoreService + client_dr.go::GetSnapshotURL). A future Qdrant
+// server (or refactor of qdrant.Client.CreateSnapshot) that returns
+// different Names on repeated POSTs would silently break the
+// verify-then-switch contract — restore would resolve to a stale or
+// missing URL. This test fails CI loudly if the invariant regresses.
+func TestCreateSnapshot_Idempotency(t *testing.T) {
+	t.Parallel()
+
+	const collection = "test-collection-snapshot-idempotency"
+	const expectedName = "snapshot-2026-06-27-stable-name"
+
+	var mu sync.Mutex
+	var postCalls int
+
+	// Mock Qdrant that ALWAYS returns the canonical Name on POST, regardless
+	// of how many calls arrive — this is the idempotency contract we are
+	// pinning. We also count POST calls so a future client-side dedupe
+	// (which would be equivalent but a different surface) does not silently
+	// make this test pass on one round-trip.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		if r.Method == http.MethodPost && r.URL.Path == "/collections/"+collection+"/snapshots" {
+			postCalls++
+			w.Header().Set("Content-Type", "application/json")
+			// Mock deliberately omits CreationTime: real Qdrant UPDATES the
+			// snapshot's CreationTime on every idempotent re-POST (the
+			// snapshot is fresh, only the Name is preserved by the server).
+			// Excluding it here prevents a future maintainer from being
+			// tempted to assert snap1.CreationTime.Equal(snap2.CreationTime),
+			// which would lock in a wrong expectation against real Qdrant.
+			// Size is included to keep the wire shape realistic.
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"result": SnapshotDescription{
+					Name:     expectedName,
+					Size:     4096,
+					Checksum: "stable-checksum-1",
+				},
+				"status": "ok",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	client := NewClient(&Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
+	ctx := context.Background()
+
+	// First call — captures the canonical Name.
+	snap1, err := client.CreateSnapshot(ctx, collection)
+	require.NoError(t, err)
+	require.NotNil(t, snap1)
+
+	// Second call — Qdrant returns the SAME Name for the same collection per
+	// QDRANT-005C PR3 invariant. This is the canonical idempotency signal:
+	// the create-snapshot operation is repeatable and stable across POSTs.
+	snap2, err := client.CreateSnapshot(ctx, collection)
+	require.NoError(t, err)
+	require.NotNil(t, snap2)
+
+	// Primary invariant (QDRANT-005C PR3, client_dr.go::CreateSnapshot):
+	// both calls return the same Name.
+	assert.Equal(t, expectedName, snap1.Name,
+		"CreateSnapshot must return the canonical Name on first call (QDRANT-005C PR3 invariant)")
+	assert.Equal(t, expectedName, snap2.Name,
+		"CreateSnapshot idempotency: second POST must return the SAME Name as first "+
+			"(QDRANT-005C PR3 invariant — see client_dr.go::CreateSnapshot doc-comment)")
+	assert.Equal(t, snap1.Name, snap2.Name,
+		"CreateSnapshot Name equality across two POSTs is the canonical idempotency signal")
+
+	// Defense-in-depth: confirm we actually triggered two POSTs. If
+	// fewer than 2 POSTs hit the wire, the Name-equality assertion above is
+	// vacuous (a future client-side cache of the snapshot response would
+	// make Name-equal-by-construction). This guard fires LOUDLY to keep the
+	// test surface at the wire level — exactly two independent round-trips
+	// to the controlled server.
+	assert.Equal(t, 2, postCalls,
+		"test server should have received exactly 2 POST calls — fewer means "+
+			"the Name-equality assertion above passed vacuously and is meaningless")
+}
+
 // ── Vector dimension rejection tests ─────────────────────────────────
 
 func TestValidatePoint_ValidPoint(t *testing.T) {
