@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
 )
 
 // CollectionManager handles Qdrant collection lifecycle: inspection, creation,
@@ -214,55 +216,15 @@ func (cm *CollectionManager) RestoreSnapshot(ctx context.Context, collection, sn
 
 // ── Retention (QDRANT-005, June 2026) ────────────────────────────────
 
-// RetentionConfig configures a single CleanupOldCollections sweep.
-// The QDRANT-005 closure introduced these knobs to replace the
-// previous bool switch (retentionDays > 0 → drop everything). The new
-// default-safe policy is:
-//
-//   - keep_last_n: minimum number of collections (including the
-//     active one) to retain, regardless of age. The default 2
-//     guarantees at least one rollback target is always reachable.
-//   - protected_rollback_target: explicit collection name to never
-//     drop, e.g. the collection the operator marked as the last
-//     known-good before a reindex. Optional.
-//   - max_age_seconds: 0 disables age-gating. When > 0 the operator
-//     MUST also supply an `aging_table` (a SQLite-backed registry of
-//     collection creation times — see internal/infrastructure/
-//     database/sqlite/qdrantcolls/); bare Qdrant REST has no
-//     per-collection creation timestamp.
-//
-// All-in-one or per-axis: the function supports both — when
-// max_age_seconds is 0 the sweep falls back to the keep_last_n alpha
-// cut (N oldest collections are dropped, the rest are kept), which
-// is provably safe-floor.
-type RetentionConfig struct {
-	RetentionDays           int
-	KeepLastN               int
-	ProtectedRollbackTarget string
-	MaxAgeSeconds           int
-	// AgingTable is OPTIONAL. When non-nil, it provides per-
-	// collection creation timestamps; the sweep then drops only
-	// collections older than MaxAgeSeconds. When nil, the sweep
-	// uses KeepLastN as the keep-floor.
-	//
-	// NOTE: the SQLite-backed aging registry is part of a follow-up
-	// migration (QDRANT-005 reconciliation ramp). For now this
-	// parameter is accepted but read-only — the alpha cut keeps the
-	// sweep deterministic until the migration ships.
-	AgingTable AgingTable
-}
+// RetentionConfig is the canonical DR retention config (type alias).
+// See internal/domain/qdrantdr/types.go for the canonical definition.
+// AgingTable is the infra-side collection-aging interface; the alias
+// field is typed `any` in the domain package. Callers that pass an
+// AgingTable must type-assert cfg.AgingTable.(AgingTable) at call sites.
+type RetentionConfig = qdrantdr.RetentionConfig
 
-type RetentionResult struct {
-	CollectionsDropped int      `json:"collections_dropped"`
-	CollectionsKept    int      `json:"collections_kept"`
-	DroppedNames       []string `json:"dropped_names,omitempty"`
-	Errors             []string `json:"errors,omitempty"`
-	// ProtectedKept lists collections that were KEPT explicitly
-	// because of the protected_rollback_target knob or because
-	// their position satisfied the keep_last_n floor. Operators
-	// can compare this against DroppedNames for runbook audit.
-	ProtectedKept []string `json:"protected_kept,omitempty"`
-}
+// RetentionResult is the canonical DR retention result (type alias).
+type RetentionResult = qdrantdr.RetentionResult
 
 // AgingTable is the optional interface for the Qdrant collection
 // aging registry. The canonical implementation lives in

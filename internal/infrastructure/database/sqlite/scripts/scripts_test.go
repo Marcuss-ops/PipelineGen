@@ -98,12 +98,12 @@ func TestSaveScript_PersistsScriptAndSections(t *testing.T) {
 	repo := newTestRepo(t)
 
 	script := sampleScriptRecord()
-	sections := []ScriptSectionRecord{
+	sections := []scriptSectionRow{
 		{SectionType: "intro", SectionTitle: "Introduction", Content: "Hi", SortOrder: 0},
 		{SectionType: "body", SectionTitle: "Body", Content: "Story", SortOrder: 1},
 		{SectionType: "outro", SectionTitle: "Conclusion", Content: "Bye", SortOrder: 2},
 	}
-	matches := []ScriptStockMatchRecord{
+	matches := []scriptStockMatchRow{
 		{SegmentIndex: 0, StockPath: "/stock/a.mp4", StockSource: "pexels", Score: 0.92, MatchedTerms: "intro"},
 		{SegmentIndex: 1, StockPath: "/stock/b.mp4", StockSource: "pexels", Score: 0.81, MatchedTerms: "story"},
 	}
@@ -511,7 +511,7 @@ func TestSectionCRUD(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
 
-	scriptID, err := repo.SaveScript(context.Background(), sampleScriptRecord(), []ScriptSectionRecord{
+	scriptID, err := repo.SaveScript(context.Background(), sampleScriptRecord(), []scriptSectionRow{
 		{SectionType: "intro", SectionTitle: "Intro", Content: "A", SortOrder: 0},
 		{SectionType: "body", SectionTitle: "Body", Content: "B", SortOrder: 1},
 		{SectionType: "outro", SectionTitle: "Outro", Content: "C", SortOrder: 2},

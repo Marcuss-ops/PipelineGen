@@ -1,25 +1,19 @@
-// dr_adapter.go — QDRANT-005C PR3 (June 2026): concrete adapters for
-// the application-layer dr ports.
+// dr_adapter.go — QDRANT-005C PR3 / PR-QDRANT-WIRE-MIRROR (June 2026).
 //
-// Lives in the infrastructure package so the qdrant.Client +
-// qdrant.CollectionManager + qdrant.ReindexVerifier + observability
-// concrete types can satisfy the dr.SnapshotStore / AliasSwitcher /
-// CollectionCreator / Verifier / DRMetrics / RetentionExecutor ports.
-// The application-layer dr tests do not depend on qdrant at all; the
-// production wire-up at cmd/admin/dr_qdrant.go composes these adapters
-// into dr.ServiceDeps structs.
+// Concrete adapters for the application-layer dr ports. Lives in the
+// infrastructure package so qdrant.Client + qdrant.CollectionManager +
+// qdrant.ReindexVerifier + observability concrete types can satisfy the
+// dr.SnapshotStore / AliasSwitcher / CollectionCreator / Verifier /
+// DRMetrics / RetentionExecutor ports.
 //
-// Cycle break (June 2026): every adapter method translates between
-// the dr-owned canonical types (dr.SnapshotDescription, dr.RetentionConfig,
-// dr.RetentionResult) and the qdrant-infra mirror shapes. Without this
-// translation, a qdrant → dr import would be required inside dr/ports.go
-// (dr SnapshotStore returning qdrant.SnapshotDescription), which would
-// form a cycle: qdrant imports dr (via this file) → dr imports qdrant
-// (via ports.go) → Go compile error: "import cycle not allowed".
+// PR-QDRANT-WIRE-MIRROR (June 2026): SnapshotDescription, RetentionConfig,
+// and RetentionResult were unified in internal/domain/qdrantdr/. Both
+// sides now share the same type (type alias in both packages).
+// Field-by-field translation functions are removed — the adapters pass
+// through directly.
 //
 // Compile-time assertions on every adapter catch drift between the
-// dr/ port surface and the qdrant surface at build time, not at the
-// first panic runtime.
+// dr/ port surface and the qdrant surface at build time.
 package qdrant
 
 import (
@@ -35,70 +29,25 @@ import (
 
 // SnapshotStoreAdapter exposes qdrant.Client snapshot methods to dr's
 // SnapshotStore port. Stateless — pass the same Client through every
-// call. Translates qdrant.SnapshotDescription ↔ dr.SnapshotDescription
-// at every boundary so the application layer (dr) does not see qdrant
-// types.
+// call. After PR-QDRANT-WIRE-MIRROR, no translation needed (both sides
+// share the canonical qdrantdr.SnapshotDescription).
 type SnapshotStoreAdapter struct {
 	client *Client
 }
 
-// NewSnapshotStoreAdapter constructs a SnapshotStoreAdapter. client
-// must be non-nil; nil-client calls would panic on Client method
-// invocations anyway.
+// NewSnapshotStoreAdapter constructs a SnapshotStoreAdapter.
 func NewSnapshotStoreAdapter(client *Client) *SnapshotStoreAdapter {
 	return &SnapshotStoreAdapter{client: client}
 }
 
-// Compile-time assertion.
 var _ dr.SnapshotStore = (*SnapshotStoreAdapter)(nil)
 
-// translateSnapshot converts qdrant.SnapshotDescription →
-// dr.SnapshotDescription (nil-safe). Both types have identical field
-// sets; the translation is lossless.
-func translateSnapshot(qd *SnapshotDescription) *dr.SnapshotDescription {
-	if qd == nil {
-		return nil
-	}
-	return &dr.SnapshotDescription{
-		Name:         qd.Name,
-		CreationTime: qd.CreationTime,
-		Size:         qd.Size,
-		Checksum:     qd.Checksum,
-	}
-}
-
-// translateSnapshotSlice converts []qdrant.SnapshotDescription →
-// []dr.SnapshotDescription (nil-safe).
-func translateSnapshotSlice(qd []SnapshotDescription) []dr.SnapshotDescription {
-	if qd == nil {
-		return nil
-	}
-	out := make([]dr.SnapshotDescription, len(qd))
-	for i := range qd {
-		out[i] = dr.SnapshotDescription{
-			Name:         qd[i].Name,
-			CreationTime: qd[i].CreationTime,
-			Size:         qd[i].Size,
-			Checksum:     qd[i].Checksum,
-		}
-	}
-	return out
-}
-
 func (a *SnapshotStoreAdapter) CreateSnapshot(ctx context.Context, collection string) (*dr.SnapshotDescription, error) {
-	qd, err := a.client.CreateSnapshot(ctx, collection)
-	if err != nil {
-		return nil, err
-	}
-	return translateSnapshot(qd), nil
+	return a.client.CreateSnapshot(ctx, collection)
 }
 
 func (a *SnapshotStoreAdapter) ListSnapshots(ctx context.Context, collection string) ([]dr.SnapshotDescription, error) {
-	qd, err := a.client.ListSnapshots(ctx, collection)
-	if err != nil {
-		return nil, err
-	}
-	return translateSnapshotSlice(qd), nil
+	return a.client.ListSnapshots(ctx, collection)
 }
 
 func (a *SnapshotStoreAdapter) DeleteSnapshot(ctx context.Context, collection, snapshotName string) error {
@@ -208,13 +157,8 @@ func (a *VerifierAdapter) VerifyReindex(ctx context.Context, targetCollection st
 // ── RetentionExecutorAdapter ─────────────────────────────────────────
 
 // RetentionExecutorAdapter wraps qdrant.CollectionManager.CleanupWithConfig
-// into the dr.RetentionExecutor port. Translates dr.RetentionConfig →
-// qdrant.RetentionConfig on the way in, and qdrant.RetentionResult →
-// dr.RetentionResult on the way out. This is the canonical seam for
-// the cycle break: dr cannot hold a back-reference to qdrant
-// (forbidden), and qdrant.CollectionManager.CleanupWithConfig's
-// signature uses qdrant.RetentionConfig (kept for back-compat with
-// the broader reconciler/retention flows shipped in QDRANT-005).
+// into the dr.RetentionExecutor port. After PR-QDRANT-WIRE-MIRROR,
+// both sides share the canonical qdrantdr types — pass-through directly.
 type RetentionExecutorAdapter struct {
 	cm *CollectionManager
 }
@@ -224,35 +168,10 @@ func NewRetentionExecutorAdapter(cm *CollectionManager) *RetentionExecutorAdapte
 	return &RetentionExecutorAdapter{cm: cm}
 }
 
-// Compile-time assertion.
 var _ dr.RetentionExecutor = (*RetentionExecutorAdapter)(nil)
 
 func (a *RetentionExecutorAdapter) CleanupWithConfig(ctx context.Context, cfg dr.RetentionConfig) (*dr.RetentionResult, error) {
-	qr, err := a.cm.CleanupWithConfig(ctx, RetentionConfig{
-		RetentionDays:           cfg.RetentionDays,
-		KeepLastN:               cfg.KeepLastN,
-		ProtectedRollbackTarget: cfg.ProtectedRollbackTarget,
-		// MaxAgeSeconds + AgingTable: deliberately not bridged — the
-		// application-layer dr surface does not orchestrate aging yet.
-		// When the SQLite-backed aging registry migration lands (a
-		// follow-up QDRANT-005 ramp), the bridge struct gets these two
-		// fields added on both sides.
-		MaxAgeSeconds: 0,
-		AgingTable:    nil,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if qr == nil {
-		return nil, nil
-	}
-	return &dr.RetentionResult{
-		CollectionsDropped: qr.CollectionsDropped,
-		CollectionsKept:    qr.CollectionsKept,
-		DroppedNames:       qr.DroppedNames,
-		Errors:             qr.Errors,
-		ProtectedKept:      qr.ProtectedKept,
-	}, nil
+	return a.cm.CleanupWithConfig(ctx, cfg)
 }
 
 // ── PromDRMetricsAdapter ─────────────────────────────────────────────

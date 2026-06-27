@@ -27,6 +27,8 @@ import (
 	"sync/atomic"
 
 	"go.uber.org/zap"
+
+	appoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 )
 
 // withAdminAuditLogger holds the logger used to audit every stamp of the
@@ -101,19 +103,14 @@ func IsAdminReindex(ctx context.Context) bool {
 // bypassing the outbox worker. Use only for admin reindex; ingestion
 // callers must use Dispatcher.
 type DirectIndexer struct {
-	indexer IndexClipper
+	indexer appoutbox.IndexClipper
 	log     *zap.Logger
 }
 
-// IndexClipper is the minimum surface that DirectIndexer needs from the
-// underlying clipindexer.Service. Defined as an interface so tests can
-// substitute a stub that records calls without doing real embedding work.
-type IndexClipper interface {
-	IndexClip(ctx context.Context, clipID string) error
-}
-
 // NewDirectIndexer wires a DirectIndexer against the actual indexer.
-func NewDirectIndexer(indexer IndexClipper, log *zap.Logger) *DirectIndexer {
+// Issue 15c (June 2026): the duplicate IndexClipper interface was removed;
+// the canonical definition lives in internal/application/jobs/outbox.
+func NewDirectIndexer(indexer appoutbox.IndexClipper, log *zap.Logger) *DirectIndexer {
 	return &DirectIndexer{indexer: indexer, log: log}
 }
 

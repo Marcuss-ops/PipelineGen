@@ -1,9 +1,9 @@
 // Package books contains use-case implementations for the Book
 // generation flow. Each use case is the canonical bind+validate+invoke
 // entry point invoked by the thin HTTP handler in
-// internal/api/content/books.go via transport.JSON.
+// internal/api/content/books.go.
 //
-// Boundaries (enforced by AGENTS.md + transport.JSON contract):
+// Boundaries (enforced by AGENTS.md):
 //   - This package NEVER imports gin, database/sql, os/exec, or
 //     google.golang.org/api/drive/v3.
 //   - All side effects call into the books.Service (internal/application/books) or
@@ -24,7 +24,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
@@ -106,9 +105,9 @@ type ProcessBookResult struct {
 	Language        string `json:"language"`
 }
 
-// Validate implements transport.JSONBound. transport.JSON calls this
-// after binding and BEFORE invoking the use case; on error the handler
-// returns 400 via api.BadRequest.
+// Validate implements the handler-side validation contract. The HTTP
+// handler calls this after binding and BEFORE invoking the use case;
+// on error the handler returns 400 via apiutil.BadRequest.
 func (r ProcessBookRequest) Validate() error {
 	if strings.TrimSpace(r.FilePath) == "" && strings.TrimSpace(r.GoogleDocURL) == "" {
 		return errors.New("file_path or google_doc_url is required")
@@ -149,7 +148,7 @@ func (r ProcessBookRequest) payload() map[string]any {
 // matches the other text-generation endpoints.
 type ProcessBookResponse = generation.Response[ProcessBookResult]
 
-// Sentinels returned by the use case. transport.JSON's ErrorMapper
+// Sentinels returned by the use case. The handler's ErrorMapper
 // translates each into a stable HTTP status so the wire surface is
 // predictable for the 13 future migrations that will follow the
 // template established here.
@@ -198,7 +197,7 @@ func NewProcessBookUseCase(svc bookProcessor, jobsSvc asyncEnqueuer, log *zap.Lo
 	return &ProcessBookUseCase{svc: svc, jobsSvc: jobsSvc, log: log}
 }
 
-// Handle implements transport.UseCase[In, Out].
+// Handle implements the canonical handler-use-case contract.
 //
 // Branch (1): req.Async == true. Defers to enqueueBookJob.
 // Branch (2): req.Async == false. Runs svc.ProcessBook synchronously
@@ -311,12 +310,11 @@ func (uc *ProcessBookUseCase) enqueueBookJob(ctx context.Context, req ProcessBoo
 }
 
 // ProcessBookErrMapper maps use-case errors to HTTP status codes. It
-// is the canonical ErrorMapper signature registered with
-// transport.JSON. Sensible default: 503 for any service-layer
-// unavailability or enqueue failure; 500 for ErrProcessFailed
-// (worker-level failure with the original message exposed verbatim);
-// pass-through (0, "") for unknown errors so transport.JSON's safe
-// 500 fallback kicks in.
+// is the canonical ErrorMapper signature for the books-process handler.
+// Sensible default: 503 for any service-layer unavailability or
+// enqueue failure; 500 for ErrProcessFailed (worker-level failure
+// with the original message exposed verbatim); pass-through (0, "")
+// for unknown errors so the handler's safe 500 fallback kicks in.
 func ProcessBookErrMapper(err error) (int, string) {
 	if errors.Is(err, ErrBooksServiceUnavailable) {
 		return http.StatusServiceUnavailable, "books service is not initialized"
@@ -331,14 +329,23 @@ func ProcessBookErrMapper(err error) (int, string) {
 	if errors.As(err, &procErr) {
 		return http.StatusInternalServerError, procErr.Message
 	}
-	// Unknown errors fall through to transport.JSON's safe default
-	// (500 with err.Error() mapped to "internal error" for 5xx via the
-	// transport package's mapping), preserving the leak-safe contract.
+	// Unknown errors fall through to the handler's safe default
+	// (500 with err.Error() mapped via the package-level ErrorMapper,
+	// preserving the leak-safe contract).
 	return 0, ""
 }
 
 // Compile-time guarantee that ProcessBookUseCase satisfies the
-// transport.UseCase contract. Other use cases in this package should
-// add the same assertion so a future refactor that breaks the
-// signature is caught at build time, not at runtime.
-var _ transport.UseCase[ProcessBookRequest, ProcessBookResponse] = (*ProcessBookUseCase)(nil)
+// canonical Handler[I,O] contract. Other use cases in this package
+// should add an equivalent assertion so a future refactor that
+// breaks the signature is caught at build time, not at runtime.
+//
+// Note: the transport.JSON pipeline was removed in June 2026
+// (Issue 9b consolidation). Use cases are invoked directly by
+// handlers via apiutil.BindJSON + useCase.Handle + apiutil.OK/Error;
+// the contract surface (Handle(ctx, In) (Out, error)) remains.
+type useCaseContract[In any, Out any] interface {
+	Handle(ctx context.Context, req In) (Out, error)
+}
+
+var _ useCaseContract[ProcessBookRequest, ProcessBookResponse] = (*ProcessBookUseCase)(nil)

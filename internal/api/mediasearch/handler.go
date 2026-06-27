@@ -6,19 +6,18 @@
 // All business logic lives in internal/application/mediasearch. This
 // file is responsible for: bind the JSON body, extract the workspace
 // scope from the auth context (never from the request body), call the
-// canonical search.Aggregator (Wave 21), translate the canonical
-// Result into the legacy MediaSearchResponse envelope, and render a
-// JSON response with no internal-server fields exposed.
+// canonical search.Aggregator (Wave 21), and render the response DTO
+// derived directly from search.Result with no internal-server fields
+// exposed.
 //
-// Wave 21 PR 10 (June 2026): Search() now consumes search.Aggregator
-// directly. The Aggregator's semanticSearchBackend internally calls
-// mediasearch.Service (kept alive as the semantic path's backend
-// engine); per-source providers and the local catalog search flow
-// alongside. The wire-equivalence test is byte-stable for fields
-// present on the canonical search.Candidate; fields NOT in Candidate
-// (matched_channels, reason, tags, language, duration_ms, width,
-// height, request_id) are deliberately dropped in this CUTOVER and
-// flagged with the X-Deprecation header so clients know to migrate.
+// Issue 14b (June 2026): the legacy cutover.go translator
+// (resultToMediaSearchResponse → MediaSearchResponse envelope) and
+// the MediaSearchRequest construction have been removed. The handler
+// now publishes a response DTO (searchResponse) derived directly from
+// search.Result. The lossy translation fields (matched_channels,
+// reason, tags, language, duration_ms, width, height, request_id)
+// are permanently dropped — this is the CONTRACT phase of
+// PR-SEARCH-LEGACY-MEDIASEARCH.
 //
 // Do NOT add anything here that requires `database/sql`, an HTTP
 // client, os/exec, or any other infra import — AGENTS.md Pattern 8
@@ -114,11 +113,10 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 // post-hydration (canonical duration comes from SQLite, not the
 // vector payload — that's why it's not a vector-store filter).
 type searchRequest struct {
-	Query    string              `json:"query" binding:"required"`
-	Mode     string              `json:"mode,omitempty"` // "ann" or "hybrid"
-	Limit    int                 `json:"limit,omitempty"`
-	MinScore float64             `json:"min_score,omitempty"`
-	Filters  searchRequestFilter `json:"filters,omitempty"`
+	Query   string              `json:"query" binding:"required"`
+	Mode    string              `json:"mode,omitempty"` // "ann" or "hybrid"
+	Limit   int                 `json:"limit,omitempty"`
+	Filters searchRequestFilter `json:"filters,omitempty"`
 }
 
 type searchRequestFilter struct {
@@ -128,6 +126,33 @@ type searchRequestFilter struct {
 	Language      string   `json:"language,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
 	DurationMsMin int      `json:"duration_ms_min,omitempty"`
+}
+
+// searchResponse is the response DTO derived directly from
+// search.Result (Issue 14b CONTRACT phase). Fields are a 1:1
+// projection of search.Candidate — no lossy translation, no
+// legacy envelope. OK flips to false only when the result is
+// partial AND has zero items (no fake availability).
+type searchResponse struct {
+	OK           bool               `json:"ok"`
+	Query        string             `json:"query"`
+	Mode         string             `json:"mode"`
+	Count        int                `json:"count"`
+	Items        []searchResultItem `json:"items"`
+	Partial      bool               `json:"partial,omitempty"`
+	NextCursor   string             `json:"next_cursor,omitempty"`
+	IndexVersion string             `json:"index_version"`
+}
+
+// searchResultItem is the per-result item in the response,
+// projected directly from search.Candidate.
+type searchResultItem struct {
+	AssetID    string  `json:"asset_id"`
+	Score      float64 `json:"score"`
+	Title      string  `json:"title"`
+	Source     string  `json:"source"`
+	MediaType  string  `json:"media_type"`
+	PreviewURL string  `json:"preview_url"`
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────
@@ -145,10 +170,10 @@ type searchRequestFilter struct {
 //	422 — invalid cursor (semantic error from Aggregator).
 //	500 — internal error from embedder / vector store / hydration.
 //
-// Wire shape (Wave 21 PR 10): MediasearchResponse is rebuilt from the
-// canonical search.Result via the package-local cutover.go helper.
-// The partial-preferred model flips OK=false when (Result.Partial == true
-// AND len(Result.Items) == 0); OK=true otherwise.
+// Issue 14b (June 2026): the response DTO (searchResponse) is derived
+// directly from search.Result. The legacy MediaSearchRequest /
+// MediaSearchResponse envelope and the X-Deprecation headers have been
+// removed — this is the CONTRACT phase of PR-SEARCH-LEGACY-MEDIASEARCH.
 func (h *Handler) Search(c *gin.Context) {
 	if h.aggreg == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable,
@@ -190,27 +215,7 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
-	// Build the legacy MediaSearchRequest envelope so cutover.go's
-	// translator has all the metadata it needs (Query, Mode, Workspace).
-	legacyReq := mediasearchapp.MediaSearchRequest{
-		Query:     q.Text,
-		Mode:      mode,
-		Limit:     limit,
-		MinScore:  req.MinScore,
-		Filters:   q.Filters, // alias-mediated; identity at type level
-		Workspace: workspace,
-	}
-	resp := resultToMediaSearchResponse(res, legacyReq)
-
-	// X-Deprecation: true — Wave 21 PR 10 cutover marker. The legacy
-	// route shape (more fields, complex hydration) has been replaced
-	// by the canonical Aggregator pipeline; the migration window is
-	// in effect. Clients should consume the new field set. See
-	// deprecation record PR-SEARCH-LEGACY-MEDIASEARCH in
-	// architecture/deprecations.yaml.
-	c.Header("X-Deprecation", "true")
-	c.Header("X-Deprecation-Migration", "aggregator")
-
+	resp := resultToResponse(res, q.Text, mode)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -248,6 +253,68 @@ func (h *Handler) parseMode(c *gin.Context, raw string) (mediasearchapp.SearchMo
 		apiutil.Error(c, http.StatusBadRequest,
 			"mode must be one of: hybrid, ann")
 		return "", false
+	}
+}
+
+// ── Response construction ───────────────────────────────────────────────
+
+// resultToResponse converts the canonical search.Result into the
+// handler's response DTO (searchResponse). Items map 1:1 from
+// search.Candidate with no lossy translation — every field on
+// Candidate is projected. OK flips to false only when Partial &&
+// zero items (no fake availability).
+func resultToResponse(r *search.Result, query string, mode mediasearchapp.SearchMode) *searchResponse {
+	ok := true
+	items := make([]searchResultItem, 0)
+	if r != nil {
+		if r.Partial && len(r.Items) == 0 {
+			ok = false
+		}
+		for _, c := range r.Items {
+			items = append(items, searchResultItem{
+				AssetID:    c.AssetID,
+				Score:      c.Score,
+				Title:      c.Title,
+				Source:     c.Source,
+				MediaType:  c.MediaType,
+				PreviewURL: c.PreviewURL,
+			})
+		}
+	}
+	nextCursor := ""
+	if r != nil {
+		nextCursor = r.NextCursor
+	}
+	partial := false
+	if r != nil {
+		partial = r.Partial
+	}
+	return &searchResponse{
+		OK:           ok,
+		Query:        strings.TrimSpace(query),
+		Mode:         string(mode),
+		Count:        len(items),
+		Items:        items,
+		Partial:      partial,
+		NextCursor:   nextCursor,
+		IndexVersion: "v1-search-api",
+	}
+}
+
+// searchQueryFromRequest builds a search.Query from the API request DTO.
+func searchQueryFromRequest(req searchRequest, mode mediasearchapp.SearchMode, limit int) search.Query {
+	return search.Query{
+		Text:  strings.TrimSpace(req.Query),
+		Mode:  mode,
+		Limit: limit,
+		Filters: search.Filters{
+			Source:        strings.TrimSpace(req.Filters.Source),
+			MediaType:     strings.TrimSpace(req.Filters.MediaType),
+			Category:      strings.TrimSpace(req.Filters.Category),
+			Language:      strings.TrimSpace(req.Filters.Language),
+			Tags:          req.Filters.Tags,
+			DurationMsMin: req.Filters.DurationMsMin,
+		},
 	}
 }
 

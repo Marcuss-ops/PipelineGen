@@ -1,36 +1,50 @@
 // Package jobs (application-tier) — QueueNotifier port.
 //
-// Pre-PR-Queue-Split cleanup history (June 2026):
-//   - The duplicate `notifier.go` in internal/infrastructure/database/sqlite/jobs
-//     was deleted because it was a stale copy of queue_notifier.go (the canonical
-//     queueNotifier struct + newQueueNotifier + Subscribe + Broadcast).
-//   - That deletion was safe for the infrastructure tier — the canonical
-//     interface in repository_commands.go (var _ QueueNotifier port) is
-//     untouched, and the compile-time assertion
-//     `var _ QueueNotifier = (*SQLiteStore)(nil)` in repository.go is
-//     still satisfied.
-//   - BUT the application tier had no local copy of `QueueNotifier` after
-//     Wave 5 PR 3 (June 2026) removed the prior notifier.go from this
-//     directory — and the deletion of the infrastructure-tier notifier.go
-//     surfaced this missing-local-port gap as a build breakage:
-//     `internal/application/jobs/types.go:141` and
-//     `internal/application/jobs/worker.go:148:168` referenced
-//     `QueueNotifier` which had no in-package definition.
+// AGENTS.md Pattern 0 typed-port abstraction (June 2026): this file
+// declares the application-tier QueueNotifier as a Go type alias to
+// the canonical infrastructure-tier interface declared in
+// internal/infrastructure/database/sqlite/jobs/queue_notifier.go.
 //
-// This file restores the application-tier port as a Go type alias to
-// the canonical infrastructure-tier interface. Rationale:
+// Why an alias and not a re-declaration:
 //   - Compile-time seam unchanged: the assertion
-//     `var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)` at
-//     internal/app/lifecycle_job_runner.go (the composition-root wiring
-//     site) continues to verify that the SQLiteStore satisfies the
-//     application-tier port.
-//   - Cross-package type alias (not re-declaration) keeps the two
-//     contract surfaces in lock-step — if repository_commands.go
-//     changes the interface method set, the application tier sees the
-//     change at compile time, not via interface-divergence drift.
-//   - Avoids a fresh `interface {}` re-declaration which would create
-//     a second canonical port surface (against godlike/06's
-//     "one owner per fact" + the project's pattern-0 port abstraction).
+//     `var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)` here, plus
+//     the equivalent assertion at
+//     internal/app/lifecycle_job_runner.go (the composition-root
+//     wiring site), both verify that *sqljobs.SQLiteStore satisfies
+//     the canonical interface. SQLiteStore does so via its Subscribe
+//     + Broadcast methods that delegate to a private `*notifier`
+//     channel (the unexported struct implementation living in
+//     queue_notifier.go — see that file for the mutex + chan detail).
+//   - Cross-package alias (not re-declaration) keeps the two contract
+//     surfaces in lock-step: if the interface method set changes in
+//     queue_notifier.go, this alias picks up the change at compile
+//     time (no interface-divergence drift between application-tier
+//     consumers and infrastructure-tier implementers).
+//   - Avoids a fresh `interface {}` re-declaration which would
+//     create a second canonical port surface (against godlike/06's
+//     "one owner per fact" + the project's pattern-0 port abstraction
+//     rule).
+//
+// History note: the prior version of this file carried a long
+// "Pre-PR-Queue-Split cleanup history" comment block referencing
+// QueueNotifier as a struct + TODO assertions in repository_commands.go.
+// That history was rendered stale by the Pattern-0 struct→interface
+// refactor in queue_notifier.go (June 2026, codex/qdrant-app-writers-
+// fail-closed followup). The current doc-comment captures the live
+// rationale only; see commit 61818692 ("Restore clip-aware script
+// docs flow", 2026-06-27) for the file's lineage via git blame.
+//
+// Consumers of this port (verified via grep, June 2026):
+//   - internal/application/jobs/worker.go (Worker.NewWorker takes
+//     a QueueNotifier arg + subscribes via port.Subscribe for
+//     in-process wake on Enqueue)
+//   - internal/application/jobs/lifecycle_job_runner.go
+//     (RunnerConfig.Notifier wires the composition-root SQLiteStore)
+//   - internal/application/jobs/types.go (RunnerConfig carries the
+//     port as a struct member)
+// Nil-safety: nil port = typed-nil interface value; concrete callers
+// pattern-match `if notifier == nil { return SKIP }` rather than
+// calling methods on the nil interface.
 package jobs
 
 import sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
@@ -38,19 +52,26 @@ import sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/datab
 // QueueNotifier is the application-tier wake-on-Enqueue port.
 //
 // Type alias of sqljobs.QueueNotifier (the canonical interface declared
-// at internal/infrastructure/database/sqlite/jobs/repository_commands.go).
-// Workers (Worker.NewWorker) + RunnerConfig.Notifier both use this port;
-// the composition root (internal/app/lifecycle_job_runner.go) passes a
-// *sqljobs.SQLiteStore which satisfies BOTH the type alias and the
-// canonical interface (compile-time assertion marker referenced in this
-// file's package-level doc + in lifecycle_job_runner.go).
+// at internal/infrastructure/database/sqlite/jobs/queue_notifier.go).
+// Go type aliases resolve to whatever the target is — struct or
+// interface — so the alias picks up the Pattern-0 interface shape
+// from queue_notifier.go automatically. If a future PR moves the
+// canonical port (e.g. to a Postgres LISTEN/NOTIFY adapter under a
+// new package), update the import path below; the alias plumbing
+// remains unchanged.
 type QueueNotifier = sqljobs.QueueNotifier
 
-// Compile-time assertion: the canonical SQLiteStore satisfies the
-// application-tier QueueNotifier port. The same assertion is expected
-// at internal/app/lifecycle_job_runner.go where the composition root
-// wires *sqljobs.SQLiteStore into RunnerConfig.Notifier. Both
-// assertions are intentional duplication — defense-in-depth so the
-// port contract is checked both at the consumer (here, application
+// Compile-time assertion: *sqljobs.SQLiteStore satisfies the
+// application-tier QueueNotifier port. The same assertion lives at
+// internal/app/lifecycle_job_runner.go (the composition-root wiring
+// site) — both are intentional duplicates (defence-in-depth) so the
+// port contract is verified both at the consumer (here, application
 // tier) and at the wiring site (composition root).
+//
+// TODO (zero-baseline ticket `dup-assertion-queue-notifier`): collapse
+// to a single assertion at the composition-root site once the worker
+// lifecycle lands its constructor-mock removal (target: 2026-08-01,
+// owner: jobs-tier, tracked in architecture/current.yaml#follow_up_tickets).
+// Until then the second assertion here is the documented transitional
+// baseline per AGENTS.md zero-baseline rule.
 var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)

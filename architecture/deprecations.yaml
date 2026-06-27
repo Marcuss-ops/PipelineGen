@@ -271,6 +271,29 @@ deprecations:
       Completes Wave 22 / S3a→S3b→S3c→S3d chain. Pre-removal callers were zero;
       per godlike/07 §"Migration sequence", jumps directly to CONTRACT.
 
+      This manifest registration (S3f) is documentation-only. The
+      removal_date (2026-06-27) is the S3c landing commit; one day
+      before this manifest ships. No new code surface is added in
+      S3f itself; the entry exists to ratchet the entire chain as a
+      single deprecation event, providing a single audit point for
+      the "no stragglers" check.
+
+      Why CONTRACT (not CUTOVER or BACKFILL) per godlike/07:
+        - Pre-removal callers were zero (no production code path
+          reads the resolveProvider() method or the three fields).
+        - Per godlike/07 §"Migration sequence", when the canonical
+          replacement already exists and pre-removal callers are zero,
+          the migration jumps directly to CONTRACT.
+
+      Cross-refs:
+        - godlike/06 §"One owner per fact" : media_assets row mutations
+          are owned by outbox.Dispatcher exclusively; this entry mirrors
+          that ownership boundary by removing the handler's hand-rolled
+          "lookup a provider and call it" code path.
+        - godlike/07 §"No fake availability" : the post-removal audit
+          commands above verify the gate, not a "we'll handle it
+          later" promise.
+
   # ── 11. PR-SEARCH-LEGACY-CLIPSSEARCH — git-rm of legacy multi-source AdvancedSearch ──
   - id: PR-SEARCH-LEGACY-CLIPSSEARCH
     owner_capability: internal/application/assets/clipssearch (deleted in PR 10)
@@ -312,13 +335,73 @@ deprecations:
       response. map[string]<X>Result envelope has zero production callers post-removal.
 
 
+  # ────────────────────────────────────────────────────────────────────────
+  # 13. PR-SEARCH-LEGACY-MEDIASEARCH — resultToMediaSearchResponse translator
+  #   bridges canonical search.Result → legacy MediaSearchResponse envelope.
+  #   Wave 21 PR 10 (June 2026) cut the handler over to search.Aggregator
+  #   but retained the lossy translation layer with X-Deprecation headers.
+  #   CONTRACT phase will remove the translator + legacy envelope entirely.
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-SEARCH-LEGACY-MEDIASEARCH
+    owner_capability: internal/api/mediasearch
+    exact_symbol: "resultToMediaSearchResponse + X-Deprecation: true header + legacy MediaSearchResponse envelope"
+    file: internal/api/mediasearch/cutover.go + internal/api/mediasearch/handler.go
+    file_line: "37 (resultToMediaSearchResponse func body), 205-208 (X-Deprecation headers in handler.go)"
+    replacement: "Clients consume canonical search.Result shape directly; handler responds with search.Result JSON (no translation layer, no lossy field drop)"
+    introduction_date: 2026-06
+    removal_date: 2026-Q3
+    tracking_issue: "Wave 21 PR 10 CUTOVER follow-up (mediasearch cutover to Aggregator); tracked in architecture/current.yaml#Wave 21"
+    compatibility_test: |
+      Post-CONTRACT:
+        (a) `rg 'resultToMediaSearchResponse' internal/` returns zero hits.
+        (b) `rg 'mediasearchapp.MediaSearchResponse' internal/api/` returns zero hits
+            (the legacy DTO is no longer constructed in the handler layer).
+        (c) `rg 'X-Deprecation.*true' internal/api/mediasearch/` returns zero hits
+            (the migration-window header is removed).
+        (d) Handler responds with canonical search.Result JSON directly;
+            wire-equivalence test must be byte-stable for the new shape.
+    usage_metric: |
+      Today (audit baseline, 2026-06-27):
+        - resultToMediaSearchResponse() : 1 caller (handler.go::Search, line ~203).
+        - X-Deprecation: true header     : 1 site (handler.go::Search, lines 205-208).
+        - mediasesearchapp.MediaSearchResponse : constructed in 1 API site
+          (cutover.go::resultToMediaSearchResponse) + consumed by
+          internal/app/search_backends.go::semanticSearchBackend.Search
+          (the mediasearch.Service still returns the legacy envelope
+          as its internal contract; that internal contract is a
+          separate deprecation — see follow-up ticket).
+      Post-CONTRACT metric: zero callers of the translator,
+      zero construction of the legacy DTO in the API layer,
+      zero X-Deprecation headers on the mediasearch route.
+    migration_phase: CUTOVER
+    status: in_progress
+    notes: |
+      Per godlike/07 §"Migration sequence", this entry is at CUTOVER.
+
+      Lossy translation (documented in cutover.go package doc):
+      the canonical search.Candidate has a NARROWER field set than
+      the legacy SearchHit. Fields dropped in the CUTOVER translation:
+      Tags, Language, DurationMs, Width, Height, MatchedChannels,
+      Reason, RequestID. Clients consuming these fields MUST migrate
+      before the CONTRACT deadline (Q3 2026).
+
+      The mediasearch.Service's internal return type
+      (*mediasearchapp.MediaSearchResponse) is a separate concern —
+      it is consumed by internal/app/search_backends.go as the
+      semantic backend's internal contract. That internal contract
+      persists independently of this API-layer deprecation;
+      collapsing it is a follow-up ticket (not in scope for
+      PR-SEARCH-LEGACY-MEDIASEARCH which covers the API transport
+      layer only).
+
+
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
 audit:
-  manifest_version: "Cleanup June 2026 — 12 unique records, single deprecations block"
-  total_records: 12
+  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation (June 2026)"
+  total_records: 13
   by_status:
     removed: 10
-    in_progress: 2
+    in_progress: 3
     keep: 1
   by_migration_phase:
     CONTRACT: 8

@@ -6,7 +6,7 @@ import "context"
 //
 // fix(health) close-out (June 2026, problem #2 final cleanup): the
 // readiness policy used to live inline in the http handler
-// (internal/api/common/health.go::Ready), where the handler called
+// (the health handler's Ready method, removed in Issue 10 June 2026), where the handler called
 // svc.Check(ctx, []string{"db"}) AND independently decided the HTTP
 // status code. That conflated transport with policy: any new check
 // (e.g. broker liveness) required a handler edit. The ReadyChecker

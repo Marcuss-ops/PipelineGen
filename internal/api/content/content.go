@@ -15,9 +15,9 @@
 // NewLessonsModule) are exported so the registry can wire the two
 // sub-handlers independently and each gets its own base path.
 //
-// Adopting transport.JSON(I,O) for these handlers is tracked as a
-// follow-up (post-consolidation). The current code path uses the
-// api.Error / api.OK / api.InternalError helpers directly, which is
-// accepted by AGENTS.md Pattern 1 (handlers delegate to services via
-// application-layer services) but is not yet on the unified transport layer.
+// The transport.JSON pipeline was removed in June 2026 (Issue 9b
+// consolidation). Handlers now use apiutil.BindJSON + apiutil.OK /
+// apiutil.Error directly, which is the canonical pattern per
+// AGENTS.md Pattern 1 (handlers delegate to services via
+// application-layer use cases).
 package content

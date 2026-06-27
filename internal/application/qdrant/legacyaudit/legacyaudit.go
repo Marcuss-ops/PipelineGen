@@ -1,12 +1,14 @@
 // Package legacyaudit — single-source-of-truth for legacy Qdrant
 // point classification and canonical cleanup contract.
 //
-// PR 14 (June 2026): the unified cleanup-qdrant-legacy command
-// consolidates 8 orthogonal "this point is broken" classifications
-// under one report, replacing the previous single-purpose subcommand
-// (clean-qdrant-locators) which only addressed one category
-// (legacy locator payload). The 8 categories are the canonical list
-// per the user spec:
+// Issue 12 (June 2026): the qdrant-maintenance command consolidates
+// clean-qdrant-locators + cleanup-qdrant-legacy under one surface
+// with 3 modes: audit (classify all 8 categories, no mutations),
+// repair-locators (strip drive_link/local_path keys), and
+// delete-invalid (outbox-delete non-locator assets). Per the user
+// spec, locator payload keys are repairable — points whose only
+// finding is LegacyLocatorPayload are excluded from delete-invalid.
+// The 8 categories are the canonical list:
 //
 //  1. non-media rows           — payload.source is missing or not
 //     in the allowed media-type set
@@ -539,7 +541,7 @@ func IsCanonicalPointID(assetID, ptID string) bool {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Apply helpers (used by cmd/admin/cleanup_qdrant_legacy.go).
+// Apply helpers (used by cmd/admin/qdrant_maintenance.go delete-invalid mode).
 // ──────────────────────────────────────────────────────────────────────
 
 // ApplyRequest is the input the CLI passes to the apply step. The

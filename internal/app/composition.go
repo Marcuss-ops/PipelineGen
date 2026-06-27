@@ -16,7 +16,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"

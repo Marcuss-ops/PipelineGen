@@ -5,17 +5,15 @@
 //
 // The post-recovery dispatcher honours all subcommands plus the pre-existing fleet:
 //
-//   - backfill-artlist-media-type (cmd/admin/backfill_artlist_media_type.go)
 //   - benchmark                   (cmd/admin/benchmark.go)
 //   - cleanup-orphans             (cmd/admin/cleanup.go)
 //   - cleanup-all-orphans         (cmd/admin/cleanup.go)
 //   - cleanup-artlist-empty-folders (cmd/admin/cleanup.go)
-//   - cleanup-qdrant-legacy       (cmd/admin/cleanup_qdrant_legacy.go) — PR 14:
-//     unified dry-run-first cleanup over the 8 legacy-audit categories
-//     (non-media / metadata.json / hidden-temp / invalid vectors /
-//     wrong dims / legacy lifecycle / legacy locator / non-canonical
-//     point ID). Apply dispatches canonical outbox EnqueueAndDelete —
-//     NEVER direct DELETE FROM media_assets.
+//   - qdrant-maintenance          (cmd/admin/qdrant_maintenance.go) — Issue 12:
+//     unified qdrant maintenance with 3 modes: audit (classify all 8 categories),
+//     repair-locators (strip drive_link/local_path keys), delete-invalid
+//     (outbox-delete non-locator assets). Replaces clean-qdrant-locators (QDRANT-005)
+//     and cleanup-qdrant-legacy (PR 14).
 //   - cleanup-stock-orphans       (cmd/admin/cleanup.go)
 //   - delete-specific-folders     (cmd/admin/cleanup.go)
 //   - dr-qdrant                   (cmd/admin/dr_qdrant.go) — QDRANT-005C PR3:
@@ -49,14 +47,11 @@ import (
 // `TestAdminCommands_AreRegistered` against the live switch block in
 // main(). Keep it in lock-step with the switch below.
 var availableCommands = []string{
-	"backfill-artlist-media-type",
 	"backfill-missing",
 	"benchmark",
-	"clean-qdrant-locators",
 	"cleanup-all-orphans",
 	"cleanup-artlist-empty-folders",
 	"cleanup-orphans",
-	"cleanup-qdrant-legacy",
 	"cleanup-stock-orphans",
 	"db",
 	"delete-specific-folders",
@@ -67,6 +62,7 @@ var availableCommands = []string{
 	"reindex-qdrant",
 	"reconcile-qdrant",
 	"reset-video-ai",
+	"qdrant-maintenance",
 	"qdrant-readiness",
 	"seed-channels",
 	"stock-reset",
@@ -93,22 +89,16 @@ func main() {
 	var err error
 	switch cmd {
 	// ── AGENT-1 owned subcommands (cmd/admin/<file>.go) ─────────────
-	case "backfill-artlist-media-type":
-		err = runBackfillArtlistMediaType(args)
 	case "backfill-visual-embeddings":
 		err = runBackfillVisualEmbeddings(args)
 	case "benchmark":
 		err = runBenchmark(args)
-	case "clean-qdrant-locators":
-		err = runCleanLocators(args)
 	case "cleanup-all-orphans":
 		err = runCleanupAllOrphans(args)
 	case "cleanup-artlist-empty-folders":
 		err = runCleanupArtlistEmptyFolders(args)
 	case "cleanup-orphans":
 		err = runCleanupOrphans(args)
-	case "cleanup-qdrant-legacy":
-		err = runCleanupQdrantLegacy(args)
 	case "cleanup-stock-orphans":
 		err = runCleanupStockOrphans(args)
 	case "delete-specific-folders":
@@ -117,6 +107,8 @@ func main() {
 		err = runListDriveFolder(args)
 	case "reindex-qdrant":
 		err = runReindexQdrant(args)
+	case "qdrant-maintenance":
+		err = runQdrantMaintenance(args)
 	case "reconcile-qdrant":
 		err = runReconcileQdrant(args)
 	case "reset-video-ai":

@@ -6,8 +6,8 @@ import (
 	"fmt"
 )
 
-func (r *ScriptRepository) GetSectionByID(ctx context.Context, id int64) (*ScriptSectionRecord, error) {
-	var s ScriptSectionRecord
+func (r *ScriptRepository) GetSectionByID(ctx context.Context, id int64) (*scriptSectionRow, error) {
+	var s scriptSectionRow
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status
 		 FROM script_sections WHERE id = ?`, id,
@@ -23,8 +23,8 @@ func (r *ScriptRepository) UpdateSectionContent(ctx context.Context, id int64, c
 	return err
 }
 
-func (r *ScriptRepository) GetAdjacentSections(ctx context.Context, scriptID int64, currentSortOrder int) (prev *ScriptSectionRecord, next *ScriptSectionRecord, err error) {
-	var p ScriptSectionRecord
+func (r *ScriptRepository) GetAdjacentSections(ctx context.Context, scriptID int64, currentSortOrder int) (prev *scriptSectionRow, next *scriptSectionRow, err error) {
+	var p scriptSectionRow
 	err = r.db.QueryRowContext(ctx,
 		`SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status
 		 FROM script_sections
@@ -38,7 +38,7 @@ func (r *ScriptRepository) GetAdjacentSections(ctx context.Context, scriptID int
 		return nil, nil, err
 	}
 
-	var n ScriptSectionRecord
+	var n scriptSectionRow
 	err = r.db.QueryRowContext(ctx,
 		`SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status
 		 FROM script_sections
@@ -55,7 +55,7 @@ func (r *ScriptRepository) GetAdjacentSections(ctx context.Context, scriptID int
 	return prev, next, nil
 }
 
-func (r *ScriptRepository) SaveOutlineSections(ctx context.Context, scriptID int64, sections []ScriptOutlineSectionRecord) error {
+func (r *ScriptRepository) SaveOutlineSections(ctx context.Context, scriptID int64, sections []scriptOutlineSectionRow) error {
 	if len(sections) == 0 {
 		return nil
 	}
@@ -78,7 +78,7 @@ func (r *ScriptRepository) SaveOutlineSections(ctx context.Context, scriptID int
 	return tx.Commit()
 }
 
-func (r *ScriptRepository) GetOutlineSections(ctx context.Context, scriptID int64) ([]ScriptOutlineSectionRecord, error) {
+func (r *ScriptRepository) GetOutlineSections(ctx context.Context, scriptID int64) ([]scriptOutlineSectionRow, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, script_id, section_index, title, purpose, target_words, key_points_json, emotional_role, created_at
 		 FROM script_outline_sections WHERE script_id = ? ORDER BY section_index`, scriptID)
@@ -87,9 +87,9 @@ func (r *ScriptRepository) GetOutlineSections(ctx context.Context, scriptID int6
 	}
 	defer rows.Close()
 
-	var sections []ScriptOutlineSectionRecord
+	var sections []scriptOutlineSectionRow
 	for rows.Next() {
-		var s ScriptOutlineSectionRecord
+		var s scriptOutlineSectionRow
 		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionIndex, &s.Title, &s.Purpose, &s.TargetWords, &s.KeyPointsJSON, &s.EmotionalRole, &s.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan outline section: %w", err)
 		}

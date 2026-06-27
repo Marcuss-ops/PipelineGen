@@ -32,16 +32,11 @@ import (
 
 // Broker is the narrow port for worker session RPC. Satisfied by
 // *appjobs.Service in production; tests can stub.
-type Broker interface {
-	RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error)
-	Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error
-	Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.Lease, error)
-	Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error)
-	Progress(ctx context.Context, cmd appjobs.ProgressCommand) error
-	Complete(ctx context.Context, cmd appjobs.CompleteCommand) error
-	Fail(ctx context.Context, cmd appjobs.FailCommand) error
-	IsCancelled(ctx context.Context, jobID string, leaseID string) (bool, error)
-}
+//
+// Issue 15e (June 2026): type alias to appjobs.Broker — single source
+// of truth. The 8-method interface lives canonically in
+// internal/application/jobs/broker.go.
+type Broker = appjobs.Broker
 
 // AssetTransferService is the narrow port for the worker binary's
 // asset push/pull. Satisfied by *jobs.assets.AssetTransferService.
