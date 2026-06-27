@@ -163,10 +163,17 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	model := plan.Model
 	mode := plan.Mode
 	sourceText := plan.SourceText
-	prompt := plan.Prompt
+	// PR 2: engine reads RenderedPrompt (editorial instructions).
+	// The legacy plan.Prompt field was removed — it conflated
+	// fingerprint with model input. RenderedPrompt never contains
+	// a fingerprint hash.
+	renderedPrompt := plan.RenderedPrompt
 	minWords := plan.TargetWords
 	useMemory := plan.UseMemory
 	saveToDB := plan.SaveToDB
+	// PR 2: plan.CacheKey is the canonical memory-gate cache key.
+	// It is NEVER sent to the model.
+	cacheKey := plan.CacheKey
 
 	// ForceRefresh bypasses the memory gate read.
 	skipMemory := plan.ForceRefresh
@@ -206,6 +213,11 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 				Title:    title,
 				Language: language,
 				Mode:     mode,
+				// PR 2: feed the canonical cache key alongside the
+				// legacy Title/Language/Mode lookup. The gemmamemory
+				// stub still returns nil; production wiring uses
+				// CacheKey when the real Service lands.
+				CacheKey: cacheKey,
 			}
 			if result, memErr := memSvc.CheckGate(ctx, memoryReq); memErr == nil && result != nil && result.Output != "" {
 				if e.log != nil {
@@ -243,7 +255,11 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// prompt suffix steers the model toward emitting canonical JSON.
 	// Native Ollama JSON-mode (the adapter-side "format" parameter)
 	// is PR 3 territory and is intentionally not wired here.
-	builtPrompt := prompt
+	// PR 2: the model receives RenderedPrompt (editorial body) +
+	// the V1 output-format suffix. RenderedPrompt explicitly does
+	// NOT include SourceFingerprint; the suffix is the only
+	// constraint injected by the engine on the wire.
+	builtPrompt := renderedPrompt
 	if plan.OutputFmt != "prose" {
 		builtPrompt += v1OutputInstruction
 	}

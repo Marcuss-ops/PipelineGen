@@ -4,16 +4,18 @@
 // that the engine consumes.
 //
 // At this point the item has already been through:
-//   1. Structural validation (GenerationEnvelopeV2.Validate)
-//   2. Preset application (ApplyPreset)
-//   3. Config defaults (applyConfigDefaults)
-//   4. Safety defaults (applySafetyDefaults)
-//   5. Semantic validation (ValidateItem)
+//  1. Structural validation (GenerationEnvelopeV2.Validate)
+//  2. Preset application (ApplyPreset)
+//  3. Config defaults (applyConfigDefaults)
+//  4. Safety defaults (applySafetyDefaults)
+//  5. Semantic validation (ValidateItem)
 //
 // The builder does not validate — it trusts its inputs.
 package scripts
 
 import (
+	"strings"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -47,38 +49,45 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	}
 
 	plan := scriptpkg.ResolvedGenerationPlan{
-		ID:    item.ID,
-		Title: item.Title,
-		Topic:    topic,
-		Language: item.Language,
-		Tone:           item.Tone,
-		Model:          item.Model,
-		Mode:           modeForSource(item.Source.Type),
-		SourceText:     item.Source.SourceText,
-		Guidelines:     item.Source.Guidelines,
-		TargetWords:    item.ScriptParams.TargetWords,
-		Duration:       item.ScriptParams.Duration,
-		MinWords:       item.ScriptParams.MinWords,
-		SentencesPerImage: item.ScriptParams.SentencesPerImage,
-		ImagesPerScene:    item.ScriptParams.ImagesPerScene,
-		Style:          item.Style,
+		ID:                  item.ID,
+		Title:               item.Title,
+		Topic:               topic,
+		Language:            item.Language,
+		Tone:                item.Tone,
+		Model:               item.Model,
+		Mode:                modeForSource(item.Source.Type),
+		SourceText:          item.Source.SourceText,
+		Guidelines:          item.Source.Guidelines,
+		TargetWords:         item.ScriptParams.TargetWords,
+		Duration:            item.ScriptParams.Duration,
+		MinWords:            item.ScriptParams.MinWords,
+		SentencesPerImage:   item.ScriptParams.SentencesPerImage,
+		ImagesPerScene:      item.ScriptParams.ImagesPerScene,
+		Style:               item.Style,
 		PromptVersion:       item.ScriptParams.PromptVersion,
 		EditorPromptVersion: item.ScriptParams.EditorPromptVersion,
 		QAPromptVersion:     item.ScriptParams.QAPromptVersion,
-		UseMemory:      item.ScriptParams.UseMemory,
-		ForceRefresh:   item.ScriptParams.ForceRefresh,
-		DriveFolderID:  item.Output.DriveFolderID,
-		MaxChars:       item.Output.MaxChars,
-		OutputFmt:      item.Output.OutputFmt,
-		SaveToDB:       item.Output.SaveToDB,
-		Languages:      append([]string(nil), item.Output.Languages...),
+		UseMemory:           item.ScriptParams.UseMemory,
+		ForceRefresh:        item.ScriptParams.ForceRefresh,
+		DriveFolderID:       item.Output.DriveFolderID,
+		MaxChars:            item.Output.MaxChars,
+		OutputFmt:           item.Output.OutputFmt,
+		SaveToDB:            item.Output.SaveToDB,
+		Languages:           append([]string(nil), item.Output.Languages...),
 	}
 
 	// Build postprocessor list from output flags.
 	plan.Postprocessors = buildPostprocessorList(item.Output)
 
-	// Build prompt from source text and guidelines.
-	plan.Prompt = buildPrompt(item)
+	// PR 2: split of the legacy ambiguous `Prompt` field.
+	//   - RenderedPrompt carries real editorial instructions
+	//     (topic, source text, guidelines, sizing).
+	//   - The model-facing prompt body NEVER contains a fingerprint
+	//     hash; fingerprints go to SourceFingerprint (cache-key
+	//     input, not model input).
+	plan.RenderedPrompt = buildEditorialPrompt(item)
+	plan.SourceKind = string(item.Source.Type)
+	plan.PromptProfile = "default-v1"
 
 	return plan
 }
@@ -141,13 +150,45 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []string {
 	return pp
 }
 
-// buildPrompt assembles the prompt text from the item's source and
-// script parameters. Returns the deterministic item identity hash,
-// which serves as the memory-gate cache key. The engine uses this
-// together with the plan's SourceText to look up cached results.
+// buildEditorialPrompt assembles the actual model-facing prompt
+// from item.Source + item.ScriptParams. PR 2 reverse of the
+// previous buildPrompt which returned BuildItemIdentity(item)
+// (a SHA-256 hex digest sent to the model as the prompt —
+// wrong, anti-pattern).
 //
-// This matches the existing pattern where fingerprint = prompt for
-// the memory gate (see pipeline_handlers.go::handleClipPathExplicit).
-func buildPrompt(item scriptpkg.GenerationItemV2) string {
-	return BuildItemIdentity(item)
+// The prompt body contains topic, source text, guidelines, sizing,
+// style, language, tone — fields the model reads — but NEVER a
+// fingerprint hash. Fingerprints live on plan.SourceFingerprint.
+func buildEditorialPrompt(item scriptpkg.GenerationItemV2) string {
+	var parts []string
+
+	if item.Source.Topic != "" {
+		parts = append(parts, "Topic: "+item.Source.Topic)
+	}
+	if item.Source.SourceText != "" {
+		parts = append(parts, "Source text:\n"+item.Source.SourceText)
+	}
+	if item.Source.Guidelines != "" {
+		parts = append(parts, "Guidelines:\n"+item.Source.Guidelines)
+	}
+	if item.ScriptParams.TargetWords > 0 {
+		parts = append(parts, "Target words: "+itoa(item.ScriptParams.TargetWords))
+	}
+	if item.ScriptParams.MinWords > 0 {
+		parts = append(parts, "Min words: "+itoa(item.ScriptParams.MinWords))
+	}
+	if item.Style != "" {
+		parts = append(parts, "Style: "+item.Style)
+	}
+	if item.Language != "" {
+		parts = append(parts, "Language: "+item.Language)
+	}
+	if item.Tone != "" {
+		parts = append(parts, "Tone: "+item.Tone)
+	}
+	if item.ScriptParams.PromptVersion != "" {
+		parts = append(parts, "Prompt version: "+item.ScriptParams.PromptVersion)
+	}
+
+	return strings.Join(parts, "\n\n")
 }
