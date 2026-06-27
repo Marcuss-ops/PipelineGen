@@ -378,16 +378,33 @@ domain_asset:
 
 application_scripts:
   owner: internal/application/scripts
-  rationale: Script-generation orchestration (batch, curation, documents, scenes, generate, memory).
-  target_subdirs:
-    - scripts/batch
-    - scripts/curation
-    - scripts/documents
-    - scripts/generate
-    - scripts/jobs
-    - scripts/scenes
-    - scripts/memory
-  current_drift: internal/application/scriptflow/ directory eliminated (flat-merged into internal/application/scripts/). internal/scripts/ still has 5 file-level comment references to old merge sources.
+  rationale: Script-generation orchestration. Production files owned by
+    1 root facade + 6 capability-bounded subpackage. Each subpackage
+    exposes ≤ 17 production files (well under policy.yaml
+    ::max_files_per_package=40). The 53-production-file mega-package
+    state (June 2026) is being unwound in PR-G (4-phase migration
+    EXPAND → BACKFILL → CUTOVER → CONTRACT per godlike/07).
+  target_subdirs:  # PR-G.1 EXPAND registered 2026-06-27
+    - scripts/curation       # NEW per PR-G; owns MediaCurator + clip ports + scene stubs
+    - scripts/generation     # NEW per PR-G; owns Engine + Pipeline + html + enqueue + job
+    - scripts/persistence    # NEW per PR-G; owns ScriptRepository contract + adapter
+    - scripts/postprocess    # NEW per PR-G; owns PostprocessorRegistry + 7 processor_*.go
+    - scripts/source         # NEW per PR-G; owns SourceRegistry + 6 source_resolver_*.go
+    - scripts/usecases       # NEW per PR-G; owns 9 use-case entry points
+    - scripts/memory         # existing (text-normalize helper)
+    - scripts/gemmamemory    # existing (gemma-based caching layer)
+    - scripts/compat         # existing (legacy array→ModelScriptOutputV1 bridge)
+  pr_g_status: in_progress (PR-G.1 EXPAND landed 2026-06-27;
+    PR-G.2 BACKFILL pending; deadline 2026-07-10)
+  current_drift: internal/application/scriptflow/ directory eliminated
+    (flat-merged into internal/application/scripts/). The 5 pre-existing
+    aspirational subdirs in the older target_subdirs list (batch,
+    documents, generate, jobs, scenes) were NEVER materialised on disk
+    and have been dropped from the canonical list. The 6 NEW subpackage
+    entries above replace them.
+  cross_refs:
+    plan: architecture/current.yaml#id-21 (Wave 21 PR-G.1 EXPAND block)
+    policy: architecture/policy.yaml::max_files_per_package=40
 
 application_assets:
   owner: internal/application/assets
