@@ -96,6 +96,7 @@ type ClipScene struct {
 	SceneIndex int
 	Text       string
 	ClipID     string
+	ClipTitle  string
 	DriveLink  string
 	Kind       string
 }

@@ -378,15 +378,18 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 
 // ── Search API ───────────────────────────────────────────────────────
 
-// SearchPoints performs an ANN search.
 func (c *Client) SearchPoints(ctx context.Context, collection string, req SearchRequest) ([]SearchResult, error) {
+	var vectorObj interface{} = req.QueryVector
+	if req.VectorName != "" {
+		vectorObj = map[string]interface{}{
+			"name":   req.VectorName,
+			"vector": req.QueryVector,
+		}
+	}
 	body := map[string]interface{}{
-		"vector":       req.QueryVector,
+		"vector":       vectorObj,
 		"limit":        req.Limit,
 		"with_payload": true,
-	}
-	if req.VectorName != "" {
-		body["using"] = req.VectorName
 	}
 	if req.MinScore > 0 {
 		body["score_threshold"] = req.MinScore

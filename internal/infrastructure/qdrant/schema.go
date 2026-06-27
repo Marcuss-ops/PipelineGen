@@ -59,7 +59,7 @@ func DefaultV3Schema() *IndexSchema {
 			},
 		},
 		SparseVectors: []SparseSpec{
-			{Channel: "bm25_text", Modifier: "bm25"},
+			{Channel: "bm25_text", Modifier: "idf"},
 		},
 		PayloadIndexes: []PayloadIndexSpec{
 			{FieldName: "workspace_id", FieldType: "keyword"},
