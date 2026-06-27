@@ -91,13 +91,9 @@ func (h *Handler) Generate(c *gin.Context) {
 	}
 
 	// If async is requested, enqueue as a batch job with 1 item.
-	// fix/voiceover-sync-async-strategy (June 2026): set
-	// Strategy="replace" to mirror the sync path (and the
-	// /generate-with-group async branch). Without this, two
-	// identical async /generate calls would default to "verify"
-	// via normalizeBatchRequest and produce a duplicate file
-	// instead of replacing the previous one. The contract is
-	// pinned at types_test.go::TestBatchRequest_StrategyReplace_Roundtrip.
+	// fix/voiceover-sync-async-strategy (June 2026): async must set
+	// Strategy="replace" to match sync + /generate-with-group; otherwise
+	// normalizeBatchRequest defaults to "verify" and produces a duplicate.
 	if req.Async {
 		h.log.Info("enqueuing voiceover generation (async)",
 			zap.String("language", req.Language),
@@ -113,7 +109,7 @@ func (h *Handler) Generate(c *gin.Context) {
 		}
 
 		if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-			Type: "voiceover.batch",
+			Type:    "voiceover.batch",
 			Payload: batchReq.PayloadMap(),
 		}, "Voiceover generation enqueued."); ok {
 			return
@@ -158,7 +154,7 @@ func (h *Handler) Batch(c *gin.Context) {
 		zap.Strings("languages", req.Languages))
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type: "voiceover.batch",
+		Type:    "voiceover.batch",
 		Payload: req.PayloadMap(),
 	}, "Voiceover batch enqueued."); ok {
 		return
@@ -203,7 +199,7 @@ func (h *Handler) Promo(c *gin.Context) {
 	}
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type: "voiceover.promo",
+		Type:    "voiceover.promo",
 		Payload: req.PayloadMap(),
 	}, fmt.Sprintf("Promo voiceover enqueued (%d languages).", langCount)); ok {
 		return
