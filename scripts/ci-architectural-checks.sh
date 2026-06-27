@@ -57,6 +57,67 @@ else
 fi
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# ── Self-check mode (TODO 16, June 2026) ──────────────────────────────
+# When invoked with `--self-check`, the script runs each check's regex
+# against its corresponding fixture in tests/fixtures/zero_legacy/ and
+# verifies the regex catches the forbidden pattern. Exits 0 only if
+# every check's pattern still matches its fixture; exits 1 if any
+# fixture is missing or any pattern is broken.
+#
+# Self-check is a UNIT TEST FOR THE REGEXES — it does NOT scan the
+# production tree. The standard mode (no flag) is the production gate.
+if [ "${1:-}" = "--self-check" ]; then
+    FIXTURE_DIR="${REPO_ROOT}/tests/fixtures/zero_legacy"
+    if [ ! -d "${FIXTURE_DIR}" ]; then
+        echo "FAIL: fixture dir ${FIXTURE_DIR} does not exist (run from repo root)" >&2
+        exit 1
+    fi
+
+    # Format: name|pattern|fixture_file. Pattern uses ripgrep -E syntax.
+    # The fixture MUST contain the forbidden pattern; rg must match.
+    check_defs=(
+        "Check 8 (SetOutboxHandler/SetMediasearchHandler after construction)|\\.SetOutboxHandler\\(|check_08_setter.go"
+        "Check 8 (SetOutboxHandler/SetMediasearchHandler after construction)|\\.SetMediasearchHandler\\(|check_08_setter.go"
+        "Check 9 (nil-dispatcher silent fallback)|dispatcher\\s*==\\s*nil\\s*\\{[^}]*return\\s+nil\\b|check_09_nil_dispatcher.go"
+        "Check 10 (asset-repo Upsert outside allowlist)|\\.Upsert\\(ctx,|check_10_upsert.go"
+        "Check 11 (event_key constructed with random UUID)|eventKey.*uuid\\.NewString|check_11_uuid_event_key.go"
+        "Check 12 (payload_mapper legacy lifecycle_state fallback)|\"lifecycle_state\":\\s*\\w+\\.Status|check_12_payload_mapper_status.go"
+        "Check 13 (ListAssetsForReconcile placeholder)|wired as build-time placeholder|check_13_listassets_placeholder.go"
+        "Check 14 (BuildPayload legacy status key)|\"status\":\\s*\\w+\\.|check_14_buildpayload_status_key.go"
+    )
+
+    failed=0
+    seen_names=""
+    for def in "${check_defs[@]}"; do
+        IFS='|' read -r name pattern fixture <<< "${def}"
+        fixture_path="${FIXTURE_DIR}/${fixture}"
+        if [ ! -f "${fixture_path}" ]; then
+            echo "FAIL: ${name} — fixture ${fixture} missing" >&2
+            failed=1
+            continue
+        fi
+        if rg -q -- "${pattern}" "${fixture_path}" 2>/dev/null; then
+            # De-duplicate per check (Check 8 has 2 patterns for 2 methods).
+            if [[ "${seen_names}" != *"${name}"* ]]; then
+                echo "PASS: ${name} — caught fixture ${fixture}"
+                seen_names="${seen_names}|${name}|"
+            fi
+        else
+            echo "FAIL: ${name} — pattern did NOT catch fixture ${fixture} (regex is broken)" >&2
+            failed=1
+        fi
+    done
+
+    if [ "${failed}" -gt 0 ]; then
+        echo "" >&2
+        echo "Self-check FAILED: at least one regex does not catch its fixture." >&2
+        echo "Fix the regex OR update the fixture so the forbidden pattern is present." >&2
+        exit 1
+    fi
+    echo "All self-checks passed (8 patterns / 7 fixtures)."
+    exit 0
+fi
+
 # ── Check 0: forbid literal job-type strings outside canonical SSOT ─────
 # The 4 canonical constants carry string values:
 #   "script.generate_batch"          (job.TypeBatchScriptGenerate)
@@ -776,6 +837,300 @@ fi
 echo "Check 23: 0 ServiceDeps/Deps structs exceeding the 8 visible field-line cap"
 
 # ── Main gate ──────────────────────────────────────────────────────
+# Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
+# 5 Phase 0 rules in grace-cycle regression-detection mode.
+# ── Check 8: forbid post-Setup SetOutboxHandler/SetMediasearchHandler (TODO 16, Wave 19) ────
+# The deprecated setters on *Server MUST NOT be called from production
+# code. The constructor NewServerWithHealth accepts outboxHandler and
+# mediasearchHandler as params; routes are wired BEFORE Setup() runs.
+# Post-construction setter calls silently fail to register routes.
+#
+# Allowlist (the ONLY legitimate call sites):
+#   - internal/api/server.go        : the Server constructor wires handlers before Setup().
+#   - internal/api/routes.go        : Router.SetOutboxHandler/SetMediasearchHandler (called
+#                                     FROM the constructor, not by external callers).
+#   - *_test.go                     : test files may call deprecation-setters to verify
+#                                     the error contract.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures (caught only in --self-check mode).
+echo "=== Check 8: forbid post-Setup SetOutboxHandler / SetMediasearchHandler (TODO 16) ==="
+postSetupSetters=$(rg -n --type go \
+    -e '\.SetOutboxHandler\(' \
+    -e '\.SetMediasearchHandler\(' \
+    --glob '!**/internal/api/server.go' \
+    --glob '!**/internal/api/routes.go' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$postSetupSetters" ]; then
+    echo "FAIL: SetOutboxHandler / SetMediasearchHandler call outside canonical constructor:"
+    echo "$postSetupSetters"
+    echo ""
+    echo "Fix: pass outboxHandler and mediasearchHandler through the"
+    echo "NewServerWithHealth constructor (before Setup()), NOT via post-"
+    echo "construction setters. The setters are deprecated and return errors"
+    echo "when called after the gin engine is already built."
+    exit 1
+fi
+echo "OK: no SetOutboxHandler / SetMediasearchHandler calls outside the canonical allowlist"
+
+# ── Check 9: forbid nil-dispatcher silent fallback (return nil) (TODO 16, Wave 19) ────
+# The canonical write path for indexed mutations is outbox.Dispatcher. Any code
+# path that silently no-ops when the dispatcher is nil (`if dispatcher == nil {
+# return nil }`) risks silently dropping writes. Hard-error patterns (return
+# fmt.Errorf, return err) are intentionally NOT caught by this check — those
+# correctly fail-fast and the existing artlist/search_core.go is a canonical
+# example of the fail-fast pattern.
+#
+# Allowlist:
+#   - internal/app/**                : composition root (Build*Bundle constructors).
+#   - internal/infrastructure/database/sqlite/outbox/** : canonical dispatcher impl.
+#   - *_test.go                      : test fixtures may stub nil dispatcher.
+#   - cmd/admin/**                   : one-shot operator tooling.
+#   - tests/fixtures/zero_legacy/**  : self-check fixtures.
+echo "=== Check 9: forbid nil-dispatcher silent fallback (return nil) (TODO 16) ==="
+nilDispatcher=$(rg -nU --type go \
+    -e 'dispatcher\s*==\s*nil\s*\{[^}]*return\s+nil\b' \
+    -e 'dispatcher\s*==\s*nil\s*\{?\s*\n\s*return(\s+nil\b|\s*$)' \
+    --glob '!**/internal/app/**' \
+    --glob '!**/internal/infrastructure/database/sqlite/outbox/**' \
+    --glob '!**/*_test.go' \
+    --glob '!**/cmd/admin/**' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$nilDispatcher" ]; then
+    echo "FAIL: nil-dispatcher silent fallback (return nil) outside composition/test/allowlist:"
+    echo "$nilDispatcher"
+    echo ""
+    echo "Fix: handlers MUST fail-fast when the dispatcher is nil rather than"
+    echo "silently returning nil. The canonical pattern is:"
+    echo "  if d.dispatcher == nil { return fmt.Errorf(\"dispatcher is nil — invariant broken\") }"
+    echo "instead of:"
+    echo "  if d.dispatcher == nil { return nil }  // silently drops writes"
+    exit 1
+fi
+echo "OK: no nil-dispatcher silent fallback patterns outside composition/test/allowlist"
+
+# ── Check 10: forbid asset-repo Upsert(ctx, outside allowlist (TODO 16, Wave 19) ────
+# The domain-level asset.Repository.Upsert and the concrete *ClipsRepository.Upsert
+# are outbox-bypass surfaces in production handler code. Any handler that calls
+# repo.Upsert (or assetStore.Upsert) outside the canonical write path (outbox
+# dispatcher) risks silently writing to media_assets without an outbox event,
+# leaving the Qdrant vector stale.
+#
+# Allowlist: cmd/admin/**, internal/infrastructure/database/sqlite/**,
+# internal/application/{assets/{ingest,jobs/assets,artifacts,providers,searchqueries,catalogsync},
+# voiceover,channels,images,youtube,clips}/**, internal/api/assets/**,
+# internal/app/**, internal/infrastructure/{ai/autotag,database/assetindex}/**,
+# *_test.go, tests/fixtures/zero_legacy/**.
+echo "=== Check 10: forbid asset-repo Upsert outside canonical allowlist (TODO 16) ==="
+assetUpserts=$(rg -n --type go \
+    -e '\.Upsert\(ctx,' \
+    --glob '!**/cmd/admin/**' \
+    --glob '!**/internal/infrastructure/database/sqlite/**' \
+    --glob '!**/internal/application/assets/ingest/**' \
+    --glob '!**/internal/application/jobs/assets/**' \
+    --glob '!**/internal/application/assets/artifacts/**' \
+    --glob '!**/internal/application/assets/providers/**' \
+    --glob '!**/internal/application/voiceover/**' \
+    --glob '!**/internal/application/channels/**' \
+    --glob '!**/internal/application/images/**' \
+    --glob '!**/internal/application/youtube/**' \
+    --glob '!**/internal/application/clips/**' \
+    --glob '!**/internal/application/assets/searchqueries/**' \
+    --glob '!**/internal/application/assets/catalogsync/**' \
+    --glob '!**/internal/api/assets/**' \
+    --glob '!**/internal/app/**' \
+    --glob '!**/internal/infrastructure/ai/autotag/**' \
+    --glob '!**/internal/infrastructure/database/assetindex/**' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$assetUpserts" ]; then
+    echo "FAIL: asset-repo Upsert call outside canonical allowlist:"
+    echo "$assetUpserts"
+    echo ""
+    echo "Fix: route writes through the outbox dispatcher (production) or"
+    echo "the canonical adapter layer (internal/application/assets/ingest/)."
+    echo "Direct repo.Upsert in handler code silently bypasses the outbox"
+    echo "and leaves Qdrant vectors stale."
+    exit 1
+fi
+echo "OK: no asset-repo Upsert calls outside the canonical allowlist"
+
+# ── Check 11: forbid event_key construction with random UUID (TODO 16, Wave 19) ────
+# Outbox event_keys MUST be deterministic (computed from the aggregate id +
+# content hash) so the ON CONFLICT(event_key) DO NOTHING guarantee collapses
+# duplicate enqueues. A random UUID in the event_key shape forces every
+# enqueue to produce a new row, defeating idempotency. The canonical shapes
+# are `delete:<asset_id>` (delete_envelope.go) and the index envelope in
+# outboxevents/repository.go; uuid-suffixed keys are an anti-pattern.
+#
+# Allowlist:
+#   - internal/infrastructure/database/sqlite/outbox/** : canonical envelope builders.
+#   - *_test.go                  : test fixtures may use uuid.NewString for distinct keys.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+echo "=== Check 11: forbid event_key construction with random UUID (TODO 16) ==="
+uuidEventKeys=$(rg -n --type go \
+    -e 'eventKey.*uuid\.NewString' \
+    -e 'eventKey.*uuid\.New\(\)' \
+    --glob '!**/internal/infrastructure/database/sqlite/outbox/**' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$uuidEventKeys" ]; then
+    echo "FAIL: event_key constructed with random UUID outside canonical envelope:"
+    echo "$uuidEventKeys"
+    echo ""
+    echo "Fix: use the canonical envelope builders (delete_envelope.go, index"
+    echo "envelope in outboxevents/repository.go) which produce deterministic"
+    echo "event_keys from the aggregate id + content hash. uuid.NewString in"
+    echo "the event_key shape defeats ON CONFLICT(event_key) DO NOTHING and"
+    echo "creates a fresh outbox row on every enqueue."
+    exit 1
+fi
+echo "OK: no event_key construction with random UUID outside canonical envelope"
+
+# ── Check 12: forbid legacy "lifecycle_state: <asset>.Status" fallback (TODO 16) ────
+# QDRANT-001 §(b): the canonical lifecycle key is `lifecycle_state`; the
+# legacy `status` column is the QDRANT-RECOVERY-001 / QDRANT-005 source of
+# truth, but BuildPayload MUST populate the canonical key from
+# `asset.LifecycleState`, NOT from the legacy `asset.Status`. The latter is a
+# SSOT regression that loses fidelity on rows where Status and LifecycleState
+# diverge (which is most rows post-059 migration).
+#
+# Allowlist:
+#   - *_test.go                  : tests may exercise the legacy path explicitly.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+echo "=== Check 12: forbid legacy \"lifecycle_state\": <asset>.Status fallback (TODO 16) ==="
+legacyLifecycleState=$(rg -n --type go \
+    -e '"lifecycle_state":\s*\w+\.Status' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$legacyLifecycleState" ]; then
+    echo "FAIL: legacy \"lifecycle_state\": <asset>.Status fallback in payload builder:"
+    echo "$legacyLifecycleState"
+    echo ""
+    echo "Fix: change the BuildPayload (or equivalent) line to source the"
+    echo "lifecycle_state from asset.LifecycleState (the canonical field),"
+    echo "not asset.Status (the legacy column). The status -> lifecycle_state"
+    echo "rename happened in migration 059; rows where both exist will have"
+    echo "diverged since then and the legacy key reads stale data."
+    exit 1
+fi
+echo "OK: no legacy \"lifecycle_state\": <asset>.Status fallback in payload builders"
+
+# ── Check 13: forbid ListAssetsForReconcile placeholder (TODO 16, TODO 2) ────
+# SQLiteAssetStore.ListAssetsForReconcile is currently wired as a build-time
+# placeholder (returns `wired as build-time placeholder only` error). That
+# means any reconcile --apply call silently produces 0 findings, hiding real
+# drift. The fix is to implement the SQL scan; this check fails until then.
+#
+# Pattern: any source code that returns the placeholder error string.
+#
+# Allowlist:
+#   - *_test.go                  : tests may stub the placeholder explicitly.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+echo "=== Check 13: forbid ListAssetsForReconcile placeholder (TODO 16, TODO 2) ==="
+placeholderReconcile=$(rg -n --type go \
+    -e 'wired as build-time placeholder' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$placeholderReconcile" ]; then
+    echo "FAIL: ListAssetsForReconcile placeholder still wired in production:"
+    echo "$placeholderReconcile"
+    echo ""
+    echo "Fix: implement the SQL scan in SQLiteAssetStore.ListAssetsForReconcile."
+    echo "The placeholder (return fmt.Errorf(\"wired as build-time placeholder\"))"
+    echo "silently produces 0 reconcile findings, hiding real drift. See TODO 2."
+    exit 1
+fi
+echo "OK: no ListAssetsForReconcile placeholder in production"
+
+# ── Check 14: forbid legacy \"status\" key in BuildPayload (TODO 16) ────
+# QDRANT-001 §(b): the canonical payload key is `lifecycle_state`; a `status`
+# key in BuildPayload is the QDRANT-RECOVERY-001 legacy that QDRANT-001
+# removed. Any new BuildPayload that re-introduces the `status` key is a
+# SSOT regression: the qdrant-side search filter (`lifecycle_state`) is
+# what payloads and queries must agree on.
+#
+# Pattern: `"status": <value>` where value is a struct field reference
+# (e.g. asset.Status). Literal-string `status` values (HTTP codes, state
+# machine strings) are not in scope — the pattern is restricted to
+# `<word>.<word>` (struct field ref) to keep the check tight.
+#
+# Allowlist:
+#   - *_test.go                  : tests may construct legacy payloads.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+echo "=== Check 14: forbid legacy \"status\" key in BuildPayload (TODO 16) ==="
+legacyStatusKey=$(rg -n --type go \
+    -e '"status":\s*\w+\.' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$legacyStatusKey" ]; then
+    echo "FAIL: legacy \"status\" payload key (struct field ref) in BuildPayload:"
+    echo "$legacyStatusKey"
+    echo ""
+    echo "Fix: rename the payload key from \"status\" to \"lifecycle_state\""
+    echo "and source it from asset.LifecycleState. The QDRANT-001 §(b)"
+    echo "search contract requires both writer (BuildPayload) and reader"
+    echo "(Qdrant filter) to agree on the canonical key. See TODO 16."
+    exit 1
+fi
+echo "OK: no legacy \"status\" payload key in BuildPayload"
+
+# ── Main gate ──────────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
 # 5 Phase 0 rules in grace-cycle regression-detection mode.
 go run ./scripts/archcheck --ratchet --future-ratchet
