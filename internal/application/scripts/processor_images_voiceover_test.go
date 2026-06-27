@@ -1,5 +1,17 @@
 // Package scripts_test — processor_images_voiceover_test.go exercises
-// the ImageProcessor and VoiceoverProcessor (PR 8).
+// the ImageProcessor and VoiceoverProcessor.
+//
+// PR 3 (June 2026): the processors walk model.SpecScene.Scenes and
+// write directly into scene.Bindings.{Image, Voiceover}. Tests
+// assert on the mutated model rather than on the pre-PR-3
+// returned SceneImage / SceneVoiceover slices (which don't exist
+// anymore).
+//
+// PR 3 close-out: switched from a custom `mustT` reflect wrapper
+// to testify's standard assert/require. The previous closure was
+// missing NotEmpty + had unprefixed reflect.{Array,Slice,Map,String}
+// constants — kept compiling inline after the PR 3 type-walk
+// rewrite to avoid one-off assertion helpers.
 package scripts_test
 
 import (
@@ -7,6 +19,9 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -59,31 +74,67 @@ func (f *fakeVoiceoverGen) Generate(_ context.Context, _, _, _ string) (interfac
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-func makePlanWithClips(count int) *scriptpkg.ResolvedGenerationPlan {
-	ids := make([]string, count)
-	links := make(map[string]string, count)
-	for i := 0; i < count; i++ {
-		id := string(rune('a' + i))
-		ids[i] = id
-		links[id] = "https://drive.example.com/" + id
+// textOnlyPlan returns a ResolvedGenerationPlan without clip
+// evidence — the processors will no-op on empty SpecScene.
+func textOnlyPlan() *scriptpkg.ResolvedGenerationPlan {
+	return &scriptpkg.ResolvedGenerationPlan{ID: "item-text", Language: "en"}
+}
+
+// planWithLanguage returns a ResolvedGenerationPlan with the
+// requested language; no clip evidence (PR 3 typed walk derives
+// scenes from SpecScene, not from ClipEvidence).
+func planWithLanguage(lang string) *scriptpkg.ResolvedGenerationPlan {
+	return &scriptpkg.ResolvedGenerationPlan{ID: "item-" + lang, Language: lang}
+}
+
+// nScenesModel returns a canonical typed ModelScriptOutputV1
+// with n text-only scenes of kind narration.
+func nScenesModel(n int) *scriptpkg.ModelScriptOutputV1 {
+	scenes := make([]scriptpkg.SpecScene, n)
+	for i := 0; i < n; i++ {
+		scenes[i] = scriptpkg.SpecScene{
+			ID:    "scene-" + itoaSimple(i),
+			Index: i,
+			Text:  scenePool[i%len(scenePool)],
+			Kind:  scriptpkg.SceneImage,
+		}
 	}
-	return &scriptpkg.ResolvedGenerationPlan{
-		ID:    "item-1",
-		Title: "Test Plan",
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			ClipIDs:    ids,
-			ClipCount:  count,
-			DriveLinks: links,
-		},
+	return &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          "Generated script.",
+		SpecScene:     scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},
 	}
 }
 
-func imgAsset(url string) *asset.ImageAsset {
-	return &asset.ImageAsset{SourceURL: url}
+// scenePool is a tiny pool of narration strings for tests with
+// multiple scenes.
+var scenePool = []string{
+	"First scene narration.",
+	"Second scene narration.",
+	"Third scene narration.",
+	"Fourth scene narration.",
 }
 
-func voResult(link, path string) map[string]any {
-	return map[string]any{"drive_link": link, "path": path}
+// itoaSimple is a tiny strconv-free helper for test scene indexes.
+func itoaSimple(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	if i < 0 {
+		return "-" + itoaSimple(-i)
+	}
+	digits := []byte{}
+	for i > 0 {
+		digits = append([]byte{byte('0' + i%10)}, digits...)
+		i /= 10
+	}
+	return string(digits)
+}
+
+// emptyArtifact returns a zero PostProcessArtifact accumulator
+// (PR 3 typed signature).
+func emptyArtifact() *scripts.PostProcessArtifact {
+	return &scripts.PostProcessArtifact{}
 }
 
 // ── Test: ImageProcessor ──────────────────────────────────────────
@@ -91,93 +142,75 @@ func voResult(link, path string) map[string]any {
 func TestImageProcessorNilGen(t *testing.T) {
 	t.Parallel()
 	proc := scripts.NewImageProcessor(nil, zap.NewNop())
-	_, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "some script"})
+	_, err := proc.Process(context.Background(), textOnlyPlan(), nScenesModel(2), emptyArtifact())
 	if err == nil {
 		t.Fatal("expected error when ImageGenService is nil")
 	}
 }
 
-func TestImageProcessorNoClipEvidence(t *testing.T) {
+func TestImageProcessorNoScenes(t *testing.T) {
 	t.Parallel()
-	gen := &fakeImageGen{results: []*asset.ImageAsset{imgAsset("http://img1")}}
+	gen := &fakeImageGen{results: []*asset.ImageAsset{{SourceURL: "http://img1"}}}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
-	plan := &scriptpkg.ResolvedGenerationPlan{ID: "text-only"}
-	result, err := proc.Process(context.Background(), plan, scripts.ProcessInput{Text: "some script"})
+	model := nScenesModel(0)
+	_, err := proc.Process(context.Background(), textOnlyPlan(), model, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.SceneImages) != 0 {
-		t.Errorf("expected 0 images, got %d", len(result.SceneImages))
-	}
+	assert.Equal(t, int32(0), gen.calls.Load(), "gen should not be called when SpecScene is empty")
+	assert.Len(t, model.SpecScene.Scenes, 0)
 }
 
-func TestImageProcessorEmptyScript(t *testing.T) {
+func TestImageProcessorNilModel(t *testing.T) {
 	t.Parallel()
-	gen := &fakeImageGen{results: []*asset.ImageAsset{imgAsset("http://img1")}}
+	gen := &fakeImageGen{results: []*asset.ImageAsset{{SourceURL: "http://img1"}}}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{})
+	result, err := proc.Process(context.Background(), textOnlyPlan(), nil, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.SceneImages) != 0 {
-		t.Errorf("expected 0 images for empty script, got %d", len(result.SceneImages))
+	if result == nil {
+		t.Fatal("result should be non-nil empty artifact")
 	}
 }
 
 func TestImageProcessorSuccess(t *testing.T) {
 	t.Parallel()
-	gen := &fakeImageGen{
-		results: []*asset.ImageAsset{imgAsset("http://img1.jpg")},
-	}
+	gen := &fakeImageGen{results: []*asset.ImageAsset{{SourceURL: "http://img1.jpg"}}}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(1), scripts.ProcessInput{Text: "Scene one text."})
+	model := nScenesModel(1)
+	_, err := proc.Process(context.Background(), planWithLanguage("en"), model, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.SceneImages) != 1 {
-		t.Fatalf("expected 1 image, got %d", len(result.SceneImages))
-	}
-	img := result.SceneImages[0]
-	if img.Index != 0 {
-		t.Errorf("image index: %d, want 0", img.Index)
-	}
-	if img.URL != "http://img1.jpg" {
-		t.Errorf("image URL: %q", img.URL)
-	}
-	if img.Text == "" {
-		t.Error("image text should not be empty")
-	}
+	// Assert the typed walk wrote the binding onto the scene.
+	require.Len(t, model.SpecScene.Scenes, 1)
+	binding := model.SpecScene.Scenes[0].Bindings.Image
+	require.NotNil(t, binding)
+	assert.Equal(t, "http://img1.jpg", binding.URL)
+	assert.Equal(t, "generated", binding.Status)
+	assert.NotEmpty(t, binding.Prompt)
 }
 
 func TestImageProcessorPartialFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeImageGen{
-		results: []*asset.ImageAsset{
-			imgAsset("http://img1.jpg"),
-			nil,
-		},
-		errs: []error{nil, errors.New("timeout")},
+		results: []*asset.ImageAsset{{SourceURL: "http://img1.jpg"}, nil},
+		errs:    []error{nil, errors.New("timeout")},
 	}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "Scene1.\n\nScene2."})
+	model := nScenesModel(2)
+	_, err := proc.Process(context.Background(), planWithLanguage("en"), model, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error (partial failures should not abort): %v", err)
 	}
-	if len(result.SceneImages) != 2 {
-		t.Fatalf("expected 2 images (one placeholder), got %d", len(result.SceneImages))
-	}
-	if result.SceneImages[0].URL != "http://img1.jpg" {
-		t.Errorf("scene 0 URL: %q", result.SceneImages[0].URL)
-	}
-	if result.SceneImages[1].URL != "" {
-		t.Errorf("scene 1 URL should be empty (failed), got %q", result.SceneImages[1].URL)
-	}
-	if result.SceneImages[0].Index != 0 {
-		t.Errorf("scene 0 index: %d", result.SceneImages[0].Index)
-	}
-	if result.SceneImages[1].Index != 1 {
-		t.Errorf("scene 1 index preserved: %d", result.SceneImages[1].Index)
-	}
+	require.Len(t, model.SpecScene.Scenes, 2)
+	require.NotNil(t, model.SpecScene.Scenes[0].Bindings.Image)
+	assert.Equal(t, "http://img1.jpg", model.SpecScene.Scenes[0].Bindings.Image.URL)
+	assert.Equal(t, "generated", model.SpecScene.Scenes[0].Bindings.Image.Status)
+	require.NotNil(t, model.SpecScene.Scenes[1].Bindings.Image)
+	assert.Equal(t, "failed", model.SpecScene.Scenes[1].Bindings.Image.Status)
+	assert.Equal(t, "", model.SpecScene.Scenes[1].Bindings.Image.URL)
 }
 
 // ── Test: VoiceoverProcessor ──────────────────────────────────────
@@ -185,96 +218,78 @@ func TestImageProcessorPartialFailure(t *testing.T) {
 func TestVoiceoverProcessorNilGen(t *testing.T) {
 	t.Parallel()
 	proc := scripts.NewVoiceoverProcessor(nil, zap.NewNop())
-	_, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "some script"})
+	_, err := proc.Process(context.Background(), textOnlyPlan(), nScenesModel(2), emptyArtifact())
 	if err == nil {
 		t.Fatal("expected error when VoiceoverService is nil")
 	}
 }
 
-func TestVoiceoverProcessorNoClipEvidence(t *testing.T) {
+func TestVoiceoverProcessorNoScenes(t *testing.T) {
 	t.Parallel()
-	gen := &fakeVoiceoverGen{results: []map[string]any{voResult("http://vo1", "/tmp/vo1.mp3")}}
+	gen := &fakeVoiceoverGen{results: []map[string]any{{"drive_link": "http://vo1", "path": "/tmp/vo1.mp3"}}}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
-	plan := &scriptpkg.ResolvedGenerationPlan{ID: "text-only"}
-	result, err := proc.Process(context.Background(), plan, scripts.ProcessInput{Text: "some script"})
+	model := nScenesModel(0)
+	_, err := proc.Process(context.Background(), textOnlyPlan(), model, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.Voiceovers) != 0 {
-		t.Errorf("expected 0 voiceovers, got %d", len(result.Voiceovers))
-	}
+	assert.Equal(t, int32(0), gen.calls.Load(), "gen should not be called when SpecScene is empty")
 }
 
-func TestVoiceoverProcessorEmptyScript(t *testing.T) {
+func TestVoiceoverProcessorNilModel(t *testing.T) {
 	t.Parallel()
-	gen := &fakeVoiceoverGen{results: []map[string]any{voResult("http://vo1", "/tmp/vo1.mp3")}}
+	gen := &fakeVoiceoverGen{results: []map[string]any{{"drive_link": "http://vo1", "path": "/tmp/vo1.mp3"}}}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{})
+	result, err := proc.Process(context.Background(), textOnlyPlan(), nil, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.Voiceovers) != 0 {
-		t.Errorf("expected 0 voiceovers for empty script, got %d", len(result.Voiceovers))
+	if result == nil {
+		t.Fatal("result should be non-nil empty artifact")
 	}
 }
 
 func TestVoiceoverProcessorSuccess(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
-		results: []map[string]any{voResult("http://vo.mp3", "/tmp/scene-1.mp3")},
+		results: []map[string]any{{"drive_link": "http://vo.mp3", "path": "/tmp/scene-1.mp3"}},
 	}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(1), scripts.ProcessInput{Text: "Scene one text."})
+	model := nScenesModel(1)
+	_, err := proc.Process(context.Background(), planWithLanguage("en"), model, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(result.Voiceovers) != 1 {
-		t.Fatalf("expected 1 voiceover, got %d", len(result.Voiceovers))
-	}
-	vo := result.Voiceovers[0]
-	if vo.SceneIndex != 0 {
-		t.Errorf("voiceover index: %d, want 0", vo.SceneIndex)
-	}
-	if vo.Status != "completed" {
-		t.Errorf("voiceover status: %q, want \"completed\"", vo.Status)
-	}
-	if vo.Link != "http://vo.mp3" {
-		t.Errorf("voiceover link: %q", vo.Link)
-	}
-	if vo.LocalPath != "/tmp/scene-1.mp3" {
-		t.Errorf("voiceover localPath: %q", vo.LocalPath)
-	}
+	require.Len(t, model.SpecScene.Scenes, 1)
+	binding := model.SpecScene.Scenes[0].Bindings.Voiceover
+	require.NotNil(t, binding)
+	assert.Equal(t, "completed", binding.Status)
+	assert.Equal(t, "http://vo.mp3", binding.Link)
+	assert.Equal(t, "/tmp/scene-1.mp3", binding.LocalPath)
 }
 
 func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
 		results: []map[string]any{
-			voResult("http://vo1.mp3", "/tmp/s1.mp3"),
+			{"drive_link": "http://vo1.mp3", "path": "/tmp/s1.mp3"},
 			nil,
 		},
 		errs: []error{nil, errors.New("synthesis timeout")},
 	}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "Scene1.\n\nScene2."})
+	model := nScenesModel(2)
+	_, err := proc.Process(context.Background(), planWithLanguage("en"), model, emptyArtifact())
 	if err != nil {
 		t.Fatalf("unexpected error (partial failures should not abort): %v", err)
 	}
-	if len(result.Voiceovers) != 2 {
-		t.Fatalf("expected 2 voiceovers (one placeholder), got %d", len(result.Voiceovers))
-	}
-	if result.Voiceovers[0].Status != "completed" {
-		t.Errorf("scene 0 status: %q", result.Voiceovers[0].Status)
-	}
-	if result.Voiceovers[1].Status != "failed" {
-		t.Errorf("scene 1 status: %q, want \"failed\"", result.Voiceovers[1].Status)
-	}
-	if result.Voiceovers[0].SceneIndex != 0 {
-		t.Errorf("scene 0 index: %d", result.Voiceovers[0].SceneIndex)
-	}
-	if result.Voiceovers[1].SceneIndex != 1 {
-		t.Errorf("scene 1 index preserved: %d", result.Voiceovers[1].SceneIndex)
-	}
+	require.Len(t, model.SpecScene.Scenes, 2)
+	require.NotNil(t, model.SpecScene.Scenes[0].Bindings.Voiceover)
+	assert.Equal(t, "completed", model.SpecScene.Scenes[0].Bindings.Voiceover.Status)
+	assert.Equal(t, "http://vo1.mp3", model.SpecScene.Scenes[0].Bindings.Voiceover.Link)
+	require.NotNil(t, model.SpecScene.Scenes[1].Bindings.Voiceover)
+	assert.Equal(t, "failed", model.SpecScene.Scenes[1].Bindings.Voiceover.Status)
+	assert.Equal(t, "", model.SpecScene.Scenes[1].Bindings.Voiceover.Link)
 }
 
 // ── Test: processor names ─────────────────────────────────────────

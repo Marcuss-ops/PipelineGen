@@ -253,6 +253,16 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 				if decodeErr != nil {
 					return nil, decodeErr
 				}
+				// PR 3 (June 2026): stamp engine-side provenance
+				// fields onto the canonical typed MSOV1 so post-
+				// processors (notably PersistenceProcessor) read
+				// WordCount / ModelUsed / CacheStatus uniformly on
+				// the cache-hit path. Without this stamp, replay
+				// rows would persist FinalWordCount=0 + empty
+				// ModelUsed.
+				output.WordCount = result.WordCount
+				output.ModelUsed = result.Model
+				output.CacheStatus = "exact_hit"
 				return &EngineResult{
 					Output:       *output,
 					WordCount:    result.WordCount,
@@ -323,6 +333,16 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	if decodeErr != nil {
 		return nil, fmt.Errorf("engine: model output decode failed: %w", decodeErr)
 	}
+
+	// PR 3 (June 2026): stamp engine-side provenance fields onto
+	// the canonical typed ModelScriptOutputV1 in-place so the
+	// typed walk (ppReg.Run with &engineResult.Output) reads
+	// WordCount / ModelUsed / CacheStatus directly from the
+	// model. Pre-PR-3 ProcessInput envelope carried these as
+	// separate fields; PR 3 collapses them onto MSOV1 itself.
+	output.WordCount = genResult.WordCount
+	output.ModelUsed = genResult.Model
+	output.CacheStatus = "generated"
 
 	// PR 5 (June 2026): persistence removed from the engine.
 	// The engine is the canonical owner of generation (memory gate

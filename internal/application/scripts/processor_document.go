@@ -1,6 +1,13 @@
 // Package scripts — processor_document.go creates a Google Doc
 // from the generated script. Enabled as "document" in the plan's
 // Postprocessors list.
+//
+// PR 3 (June 2026): uses BuildGenerationDocumentHTML to render the
+// canonical typed model + accumulator-supplied entities +
+// accumulator-supplied metadata into a single HTML body. Earlier
+// processors (entities, metadata) accumulate their typed outputs
+// into the shared accumulator; the document processor reads them
+// at run time. Pre-PR-3 BuildSectionDocHTML flattener is gone.
 package scripts
 
 import (
@@ -12,6 +19,8 @@ import (
 )
 
 // DocumentProcessor creates a Google Doc from the generated script.
+// Reads accumulator.Entities + accumulator.Metadata for the
+// cross-processor entities + metadata sections.
 type DocumentProcessor struct {
 	docsSvc       *DocumentsService
 	resolveFolder FolderResolver
@@ -28,13 +37,25 @@ func NewDocumentProcessor(docsSvc *DocumentsService, resolveFolder FolderResolve
 
 func (p *DocumentProcessor) Name() string { return "document" }
 
-// PR 5 (June 2026): signature now takes ProcessInput envelope.
-func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
+// Process renders BuildGenerationDocumentHTML(model, plan.Title,
+// plan.Language, accumulator.Entities, accumulator.Metadata) and
+// hands it to DocumentsService.CreateDoc. Returns the typed
+// DocumentArtifact on success.
+//
+// PR 3 (June 2026): the canonical typed model is the source of
+// truth for scenes + bindings. Pre-PR-3 inputs (flat section
+// titles + contents, BuildSectionDocHTML) are gone.
+func (p *DocumentProcessor) Process(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	model *scriptpkg.ModelScriptOutputV1,
+	accumulator *PostProcessArtifact,
+) (*PostProcessArtifact, error) {
 	if p.docsSvc == nil {
 		return nil, fmt.Errorf("%w: document processor: DocumentsService not configured", scriptpkg.ErrPostprocessFailed)
 	}
-	if input.Text == "" {
-		return &PostProcessResult{}, nil
+	if model == nil || plan == nil {
+		return &PostProcessArtifact{}, nil
 	}
 
 	docTitle := strings.TrimSpace(plan.Title)
@@ -42,15 +63,45 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		docTitle = "Generated Script"
 	}
 
-	htmlContent := BuildSectionDocHTML(docTitle, []string{""}, []string{input.Text}, true, plan.Language)
+	// Look up entities + metadata from the shared accumulator.
+	// PR 3 conversion note: accumulator.Metadata carries the
+	// scripts.VideoMetadata shape (live in this package because
+	// the legacy VideoMetadata was defined here). The domain
+	// VideoMetadata (scriptpkg.VideoMetadata) is what
+	// BuildGenerationDocumentHTML expects. The conversion loop
+	// below is a structural copy — same Go shape, different
+	// package identity. A PR 7+ cleanup migrates scripts.VideoMetadata
+	// to scriptpkg.VideoMetadata exclusively and removes this
+	// copy.
+	var entities *scriptpkg.EntityResult
+	var metadata []scriptpkg.VideoMetadata
+	if accumulator != nil {
+		entities = accumulator.Entities
+		if accMetadata := accumulator.Metadata; len(accMetadata) > 0 {
+			metadata = make([]scriptpkg.VideoMetadata, len(accMetadata))
+			for i := range accMetadata {
+				metadata[i] = scriptpkg.VideoMetadata{
+					Language:    accMetadata[i].Language,
+					Title:       accMetadata[i].Title,
+					Description: accMetadata[i].Description,
+					Tags:        accMetadata[i].Tags,
+				}
+			}
+		}
+	}
+
+	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, entities, metadata)
 
 	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID)
 	if link == "" {
 		return nil, fmt.Errorf("%w: document processor: Google Doc creation returned empty link", scriptpkg.ErrPostprocessFailed)
 	}
 
-	return &PostProcessResult{
-		DocLink: link,
-		DocID:   id,
+	return &PostProcessArtifact{
+		Document: &scriptpkg.DocumentArtifact{
+			DocLink: link,
+			DocID:   id,
+			Status:  "completed",
+		},
 	}, nil
 }

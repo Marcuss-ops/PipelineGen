@@ -1,7 +1,7 @@
 // Package scripts — processor_persistence_test.go exercises the
 // single-writer idempotency contract of PersistenceProcessor.
 //
-// PR 5 (June 2026) acceptance tests:
+// PR 3 (June 2026) acceptance tests:
 //
 //   - idempotency key is a 16-hex-char SHA-256 prefix
 //   - same 5-tuple reproduces the same key
@@ -10,13 +10,21 @@
 //   - changing item_id produces a different key
 //   - a fresh insert path is taken when the repo returns found=false
 //   - a replay path is taken when the repo returns found=true (no
-//     second SaveScript call; the existing ScriptID is returned)
+//     second SaveScript call; the existing ScriptID is returned).
+//     The AlreadyPersisted flag is GONE in PR 3 — the persistence
+//     layer logs INFO on idempotency hit instead.
 //   - the textual-script-only key criterion: same text + same item
 //     but different language → different rows
 //
 // All tests use a counting in-memory fake ScriptRepository so the
 // success / replay / insert paths are observable independently of
 // the production sqlite repository.
+//
+// PR 3 (June 2026) structural change: the helper now returns a typed
+// *scriptpkg.ModelScriptOutputV1 (not a ProcessInput envelope) since
+// the Process signature changed to take the canonical typed model.
+// WordCount, ModelUsed, CacheStatus live on ModelScriptOutputV1 as
+// engine-stamped provenance fields.
 package scripts
 
 import (
@@ -93,15 +101,9 @@ func (f *idemFakeRepo) ListScripts(_ context.Context, _ ScriptListFilter) ([]*Sc
 // supplied idem hash matches the seedHash. Otherwise nil, false (the
 // caller treats it as "fresh insert").
 func (f *idemFakeRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ string, _ int, _ string) (*ScriptRecord, bool, error) {
-	// The processor computes the idem key from the plan; pass
-	// through the recording via lastRec on the next SaveScript.
-	// For deterministic testing, we tag the seedHash externally.
 	if f.seedHash == "" || f.seedRec == nil {
 		return nil, false, nil
 	}
-	// Return the seed record. (The processor computes the hash
-	// from the plan; tests pre-compute it via computeIdempotencyKey
-	// and inject only when the hashes match.)
 	return f.seedRec, true, nil
 }
 
@@ -124,13 +126,18 @@ func basePlanForIdem() *scriptpkg.ResolvedGenerationPlan {
 	}
 }
 
-func baseInputForIdem() ProcessInput {
-	return ProcessInput{
-		Text:        "Canonical V1 prose text.",
-		WordCount:   4,
-		SpecScene:   scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{}},
-		ModelUsed:   "llama3:8b",
-		CacheStatus: "generated",
+// baseModelForIdem returns the canonical typed MSOV1 that
+// PersistenceProcessor consumes. Replaces the pre-PR-3
+// baseInputForIdem() ProcessInput helper. PersistenceProcessor
+// reads model.{Text, WordCount, SpecScene, ModelUsed, CacheStatus}.
+func baseModelForIdem() *scriptpkg.ModelScriptOutputV1 {
+	return &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          "Canonical V1 prose text.",
+		WordCount:     4,
+		ModelUsed:     "llama3:8b",
+		CacheStatus:   "generated",
+		SpecScene:     scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{}},
 	}
 }
 
@@ -157,7 +164,6 @@ func TestIdempotencyKey_Stable(t *testing.T) {
 	k2 := computeIdempotencyKey(basePlanForIdem())
 	assert.Equal(t, k1, k2, "idem key must be stable for the same plan")
 
-	// Mutating non-key fields on the plan must NOT alter the key.
 	p := basePlanForIdem()
 	p.Title = "Different Title"
 	p.Topic = "Different Topic"
@@ -205,28 +211,30 @@ func TestIdempotencyKey_ItemIDChangesKey(t *testing.T) {
 // ── Processor behaviour ────────────────────────────────────────────────
 
 // TestPersistence_FreshInsert asserts the first call inserts.
+// PR 3: the typed walk now returns *PostProcessArtifact{ScriptID}
+// (no AlreadyPersisted flag — single-writer contract).
 func TestPersistence_FreshInsert(t *testing.T) {
 	t.Parallel()
 	repo := &idemFakeRepo{}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
-	result, err := proc.Process(context.Background(), basePlanForIdem(), baseInputForIdem())
+	result, err := proc.Process(context.Background(), basePlanForIdem(), baseModelForIdem(), &PostProcessArtifact{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, int64(1234), result.ScriptID)
-	assert.False(t, result.AlreadyPersisted)
 	assert.Equal(t, int32(1), repo.saveCalls.Load())
 
-	// The idem key must be persisted on the saved record's Template
-	// slot so future replays can collide.
 	require.NotNil(t, repo.lastRec)
 	assert.Len(t, repo.lastRec.Template, 16, "Template slot must carry the idem key (16 hex chars)")
 }
 
 // TestPersistence_ReplayNoInsert asserts that when the repository
 // reports a hit, the processor returns the existing ScriptID without
-// a second SaveScript call. The AlreadyPersisted flag is set so
-// downstream consumers see the replay state.
+// a second SaveScript call. PR 3: the AlreadyPersisted flag is gone
+// — the persistence layer logs INFO on hit instead. The flag's
+// absence is enforced by compile-time: the PostProcessArtifact
+// struct in postprocessor_registry.go has no AlreadyPersisted
+// field, so the test cannot reference one even by accident.
 func TestPersistence_ReplayNoInsert(t *testing.T) {
 	t.Parallel()
 	plan := basePlanForIdem()
@@ -237,31 +245,27 @@ func TestPersistence_ReplayNoInsert(t *testing.T) {
 	}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
-	result, err := proc.Process(context.Background(), plan, baseInputForIdem())
+	result, err := proc.Process(context.Background(), plan, baseModelForIdem(), &PostProcessArtifact{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, int64(99), result.ScriptID, "replay must return the existing row's ID")
-	assert.True(t, result.AlreadyPersisted, "AlreadyPersisted must be set on replay")
 	assert.Equal(t, int32(0), repo.saveCalls.Load(), "SaveScript must NOT be called on replay")
 }
 
 // TestPersistence_EmptyScriptNoOp asserts that an empty script text
-// is treated as a no-op (returns a zero PostProcessResult with no
-// repo call). This mirrors the rest of the processors and prevents
-// persisting half-written rows on cache-miss+decode-fail edge
-// cases.
+// is treated as a no-op (returns a zero PostProcessArtifact with no
+// repo call).
 func TestPersistence_EmptyScriptNoOp(t *testing.T) {
 	t.Parallel()
 	repo := &idemFakeRepo{}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
-	in := baseInputForIdem()
-	in.Text = ""
-	result, err := proc.Process(context.Background(), basePlanForIdem(), in)
+	m := baseModelForIdem()
+	m.Text = ""
+	result, err := proc.Process(context.Background(), basePlanForIdem(), m, &PostProcessArtifact{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, int64(0), result.ScriptID)
-	assert.False(t, result.AlreadyPersisted)
 	assert.Equal(t, int32(0), repo.saveCalls.Load())
 }
 
@@ -270,55 +274,60 @@ func TestPersistence_EmptyScriptNoOp(t *testing.T) {
 func TestPersistence_NilRepoRejected(t *testing.T) {
 	t.Parallel()
 	proc := NewPersistenceProcessor(nil, zap.NewNop())
-	_, err := proc.Process(context.Background(), basePlanForIdem(), baseInputForIdem())
+	_, err := proc.Process(context.Background(), basePlanForIdem(), baseModelForIdem(), &PostProcessArtifact{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ScriptRepository not configured")
 }
 
 // TestPersistence_PersistsSpecSceneJSON asserts that the canonical
-// SpecScene flows to the record on SaveScript. PR 5 stores the
-// SpecScene JSON in the existing TimelineJSON slot — PR 6 will
-// introduce a dedicated specscene column.
+// SpecScene flows to the record on SaveScript. PR 5/3 stores the
+// SpecScene JSON in the existing TimelineJSON slot.
 func TestPersistence_PersistsSpecSceneJSON(t *testing.T) {
 	t.Parallel()
 	repo := &idemFakeRepo{}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
-	in := baseInputForIdem()
-	in.SpecScene = scriptpkg.SpecSceneOutput{
+	m := baseModelForIdem()
+	m.SpecScene = scriptpkg.SpecSceneOutput{
 		Version: 1,
 		Scenes: []scriptpkg.SpecScene{
 			{ID: "scene-0", Index: 0, Text: "A scene.", Kind: scriptpkg.SceneNarration},
 		},
 	}
 
-	_, err := proc.Process(context.Background(), basePlanForIdem(), in)
+	_, err := proc.Process(context.Background(), basePlanForIdem(), m, &PostProcessArtifact{})
 	require.NoError(t, err)
 	require.NotNil(t, repo.lastRec)
-	// The TimelineJSON slot should now contain valid JSON with the
-	// expected shape (the specscene is serialised with json.Marshal).
+	// SpecSceneOutput uses lowercase json tags ("version", "scenes")
+	// — assert on the canonical lowercase keys.
 	assert.Contains(t, repo.lastRec.TimelineJSON, "scene-0")
-	// SpecSceneOutput has no per-field json tags — json.Marshal
-	// emits Go field names "Version" and "Scenes" (capitalised).
-	assert.Contains(t, repo.lastRec.TimelineJSON, "\"version\":1")
-	assert.Contains(t, repo.lastRec.TimelineJSON, "\"scenes\":")
+	assert.Contains(t, repo.lastRec.TimelineJSON, `"version":1`)
+	assert.Contains(t, repo.lastRec.TimelineJSON, `"scenes":`)
 }
 
 // TestPersistence_PropagatesWordCountAndModelUsed asserts the engine
 // metadata fields propagate to the saved record.
+//
+// PR 3: WordCount + ModelUsed live on ModelScriptOutputV1 (engine-stamped
+// provenance). The processor reads them from model.
 func TestPersistence_PropagatesWordCountAndModelUsed(t *testing.T) {
 	t.Parallel()
 	repo := &idemFakeRepo{}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
-	in := baseInputForIdem()
-	in.WordCount = 555
-	in.ModelUsed = "qwen2.5:14b"
-	in.CacheStatus = "exact_hit"
+	m := baseModelForIdem()
+	m.WordCount = 555
+	m.ModelUsed = "qwen2.5:14b"
+	m.CacheStatus = "exact_hit"
 
-	_, err := proc.Process(context.Background(), basePlanForIdem(), in)
+	_, err := proc.Process(context.Background(), basePlanForIdem(), m, &PostProcessArtifact{})
 	require.NoError(t, err)
 	require.NotNil(t, repo.lastRec)
 	assert.Equal(t, 555, repo.lastRec.FinalWordCount)
 	assert.Equal(t, "qwen2.5:14b", repo.lastRec.ModelUsed)
 }
+
+// _ ensures the type reference stays auditable for any future
+// continuation — the AlreadyPersisted field is compile-time absent
+// from PostProcessArtifact (see postprocessor_registry.go).
+var _ = PostProcessArtifact{}

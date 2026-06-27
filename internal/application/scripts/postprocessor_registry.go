@@ -9,9 +9,25 @@
 // entities → metadata → voiceover → images → document → persistence.
 //
 // PR 7 (June 2026): added Freeze/IsFrozen so composition-time
-// registration is rejected after wiring is complete. The
-// composition root calls Freeze() once all processors are
-// registered; any subsequent Register() call returns false.
+// registration is rejected after wiring is complete.
+//
+// PR 5 (June 2026): the Process signature took a flat
+// `script string` argument; PR 5.1 promoted it to a ProcessInput
+// envelope carrying Text + WordCount + SpecScene + ModelUsed +
+// CacheStatus + SourceTrace + PriorArtifacts.
+//
+// PR 3 (June 2026):
+//   - the Process signature uses the canonical typed
+//     *scriptpkg.ModelScriptOutputV1 directly (4 args).
+//   - processors walk SpecScene.Scenes by reference and write
+//     back into scene.Bindings.{Image, Voiceover}.
+//   - PostProcessArtifact replaces the pre-PR-3 aggregate shape.
+//   - PostGenFunc hoisted to a single canonical location here
+//     (was previously duplicated in processor_entities.go and
+//     processor_metadata.go).
+//   - VideoMetadata + FolderResolver carried over from the
+//     pre-PR-3 pipeline_impl.go stub (required by
+//     processor_document.go / processor_metadata.go).
 package scripts
 
 import (
@@ -24,91 +40,105 @@ import (
 	"go.uber.org/zap"
 )
 
+// ── Shared types carried over from the pre-PR-3 pipeline_impl.go
+// stub. These types were originally defined in pipeline_impl.go,
+// which is now an empty stub awaiting `git rm` in the PR 3 commit.
+// PostProcessArtifact and PostProcessorRegistry live here
+// permanently; VideoMetadata + FolderResolver are kept here as
+// their canonical home to avoid scattering.
+
+// VideoMetadata holds YouTube-style metadata for a single
+// language. Used internally by processor_metadata.go and the
+// PostProcessArtifact aggregate. The domain/script package
+// mirrors this shape under scriptpkg.VideoMetadata — both stay
+// because the canonical domain shape is consumed by the
+// generation_result.go serialiser, while scripts.VideoMetadata
+// is the in-memory shape that flows through the processor
+// pipeline. They're structurally identical and the existing
+// buildGenerationResult conversion in generate_one_usecase.go
+// carries fields across the boundary.
+type VideoMetadata struct {
+	Language    string   `json:"language"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+}
+
+// FolderResolver resolves a folder ID from an input name and a
+// default root. Used by processor_document.go + DocumentsService.
+type FolderResolver func(ctx context.Context, input, defaultRootID string) (string, error)
+
+// ── PostProcessArtifact ──────────────────────────────────────────
+
+// PostProcessArtifact is the canonical typed result of the
+// post-generation phase. It carries the typed outputs of every
+// processor in one bundle, consumed by generate_one_usecase.go
+// to populate GenerationResult.Artifacts.
+//
+// Document, Metadata, Entities are populated by their respective
+// processors. ScriptID is populated by PersistenceProcessor (and
+// remains zero when persistence is disabled).
+//
+// PR 3 (June 2026): replaces the pre-PR-3 aggregate shape.
+// The pre-PR-3 AlreadyPersisted flag (a single-writer replay
+// signal) was dropped because downstream consumers do not need
+// it — the persistence layer logs INFO on idempotency hit, and
+// the postprocessing pipeline returns the canonical ScriptID
+// either way.
+type PostProcessArtifact struct {
+	// Document holds the Google Doc link + ID, populated by
+	// DocumentProcessor when "document" runs.
+	Document *scriptpkg.DocumentArtifact
+
+	// Metadata holds YouTube-style metadata (title, description,
+	// tags per language), populated by MetadataProcessor when
+	// "metadata" runs.
+	Metadata []VideoMetadata
+
+	// Entities holds the typed entity-extraction output, populated
+	// by EntitiesProcessor when "entities" runs.
+	Entities *scriptpkg.EntityResult
+
+	// ScriptID is the persisted script-row ID, populated by
+	// PersistenceProcessor when "persistence" runs.
+	ScriptID int64
+}
+
+// ── PostProcessor interface ──────────────────────────────────────
+
 // PostProcessor executes one post-generation phase. Each processor
 // is opt-in — it only runs when its name is in the plan's
 // Postprocessors list.
 //
-// PR 5 (June 2026): the second argument changed from `script string`
-// to `input ProcessInput`. The envelope carries the canonical
-// output text plus typed fields required by individual processors
-// — most importantly the canonical ScriptID for PersistenceProcessor.
-// Non-persistence processors that only need the prose read
-// `input.Text`; processors that need the full output (specscene,
-// wordcount) read the relevant typed fields.
+// PR 3 (June 2026): the second argument is the canonical typed
+// *scriptpkg.ModelScriptOutputV1 (model). Processors that need to
+// mutate scenes walk model.SpecScene.Scenes by reference and write
+// directly into scene.Bindings.{Image, Voiceover}.
+//
+// The third argument is the shared accumulator. processors that
+// depend on prior outputs (e.g. DocumentProcessor reads entities
+// + metadata accumulated by earlier processors) read from
+// accumulator. The accumulator is mutated by the registry into
+// the canonical *PostProcessArtifact returned by Run.
+//
+// Returns this processor's typed *PostProcessArtifact contribution
+// (only the fields this processor owns are populated). Returns nil
+// when the processor has nothing to contribute (no-op).
 type PostProcessor interface {
 	// Name returns the processor identifier ("entities", "metadata",
 	// "voiceover", "images", "document", "persistence").
 	Name() string
 
-	// Process executes the post-generation work. The plan carries
-	// the resolved generation plan (including identity, sizing,
-	// and output options). The input envelope carries the canonical
-	// model output + metadata every processor may need.
-	//
-	// Returns a PostProcessResult on success, or an error wrapping
-	// scriptpkg.ErrPostprocessFailed on failure.
-	Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error)
+	// Process executes the post-generation work.
+	Process(
+		ctx context.Context,
+		plan *scriptpkg.ResolvedGenerationPlan,
+		model *scriptpkg.ModelScriptOutputV1,
+		accumulator *PostProcessArtifact,
+	) (*PostProcessArtifact, error)
 }
 
-// PostProcessResult carries the output of a single processor.
-// Each processor populates only the fields relevant to its phase.
-type PostProcessResult struct {
-	EntitiesJSON string
-	Metadata     []VideoMetadata
-	Voiceovers   []SceneVoiceover
-	SceneImages  []SceneImage
-	DocLink      string
-	DocID        string
-	ScriptID     int64
-
-	// AlreadyPersisted is set true by PersistenceProcessor when the
-	// idempotency lookup found an existing row and the save was
-	// skipped. Consumers downstream can use this flag to log a
-	// "replay" outcome without re-marking the script as newly
-	// produced. PR 5 default value is false for non-persistence
-	// processors.
-	AlreadyPersisted bool
-}
-
-// ProcessInput is the typed envelope passed to every postprocessor.
-// It carries the canonical model output plus the metadata fields
-// that individual processors need:
-//
-//   - Text: the canonical V1 `output.text` field — what the model
-//     produced. All non-persistence processors read this for their
-//     own text-driven work (splitting scenes, generating metadata,
-//     building doc HTML, etc.).
-//   - WordCount: the model's reported token count. PersistenceProcessor
-//     uses this to populate `final_word_count` on the script row.
-//   - SpecScene: the structured V1 scene breakdown. PersistenceProcessor
-//     persists it as a JSON column on the script row.
-//   - ModelUsed: the model name that produced the output. Forwarded
-//     to the script row as `model_used`.
-//   - CacheStatus: "exact_hit" or "generated". Persisted to the script
-//     row's generation_logs to make cache replays auditable.
-//   - SourceTrace: nullable clip-evidence forward — currently unused
-//     by processors but exposed so future processors (e.g. a
-//     clip-driven QA processor) can read the resolved clip IDs
-//     without re-deriving them.
-//   - PriorArtifacts: outputs of earlier postprocessors (in the
-//     order they ran). Processors that depend on prior-output
-//     metadata receive it here. Currently empty (postprocessors
-//     are independent today), but the slot is reserved for
-//     staggered-pipeline work without a signature change.
-//
-// PR 5 (June 2026): introduced alongside the unified PostProcessor
-// interface change. The previous `script string` shape was lossy
-// — WordCount, SpecScene, ModelUsed, CacheStatus were re-derivable
-// only by callers reading engineResult directly.
-type ProcessInput struct {
-	Text           string
-	WordCount      int
-	SpecScene      scriptpkg.SpecSceneOutput
-	ModelUsed      string
-	CacheStatus    string
-	SourceTrace    *scriptpkg.ClipEvidence
-	PriorArtifacts map[string]PostProcessResult
-}
+// ── Registry runtime ─────────────────────────────────────────────
 
 // PostProcessorRegistry runs enabled processors in order.
 // After Freeze() is called (post-composition), registration
@@ -133,9 +163,7 @@ func NewPostProcessorRegistry(log *zap.Logger) *PostProcessorRegistry {
 // the registry is nil, a processor with the same Name is already
 // registered, or the registry is frozen.
 //
-// Duplicate registration is rejected (fail-closed) — the first
-// registration wins. Callers that need idempotent registration
-// should check Registered() first.
+// Duplicate registration is rejected (fail-closed).
 func (r *PostProcessorRegistry) Register(proc PostProcessor) bool {
 	if r == nil || proc == nil {
 		return false
@@ -180,8 +208,7 @@ func (r *PostProcessorRegistry) Registered(name string) bool {
 }
 
 // Freeze prevents further registration. After freeze, all
-// Register() calls return false. Idempotent — multiple
-// freeze calls are no-ops.
+// Register() calls return false. Idempotent.
 func (r *PostProcessorRegistry) Freeze() {
 	if r == nil {
 		return
@@ -218,24 +245,29 @@ func (r *PostProcessorRegistry) Len() int {
 // Run executes every processor whose name appears in the plan's
 // Postprocessors list, in list order. Each processor is run
 // independently; a failure in one processor does not abort the
-// remaining processors — errors are collected as warnings in the
-// result and the failing processor's output is skipped.
+// remaining processors — errors are collected as warnings and
+// the failing processor's output is skipped.
 //
-// Run returns the aggregate PipelineResult (for backward compat
-// with buildGenerationResult). The total error is non-nil only
-// when ALL processors failed; partial failures produce warnings.
+// Run returns the aggregate *PostProcessArtifact. Processors that
+// mutate scenes (ImageProcessor, VoiceoverProcessor) write to
+// model.SpecScene.Scenes[i].Bindings directly because the
+// registry passes `model` by pointer. Processors that produce
+// typed artefacts (entities, metadata, document, persistence)
+// return their contribution through Process, which the registry
+// merges into the accumulator.
 //
-// PR 5 (June 2026): the `script string` parameter was replaced
-// with `input ProcessInput`. Processors that only need the prose
-// read `input.Text`; processors that need WordCount / SpecScene /
-// CacheStatus / ModelUsed read those fields directly.
+// PR 3 (June 2026): replaces the pre-PR-3 merged-aggregate
+// design. The accumulator is shared across processors so that
+// processors depending on prior outputs (e.g. DocumentProcessor
+// reads prior entities + metadata) see them at the canonical
+// *PostProcessArtifact surface.
 func (r *PostProcessorRegistry) Run(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
-	input ProcessInput,
-) (*PipelineResult, error) {
+	model *scriptpkg.ModelScriptOutputV1,
+) (*PostProcessArtifact, error) {
 	if r == nil {
-		return &PipelineResult{}, nil
+		return &PostProcessArtifact{}, nil
 	}
 	r.mu.RLock()
 	procs := make(map[string]PostProcessor, len(r.processors))
@@ -245,10 +277,13 @@ func (r *PostProcessorRegistry) Run(
 	r.mu.RUnlock()
 
 	if len(procs) == 0 {
-		return &PipelineResult{}, nil
+		return &PostProcessArtifact{}, nil
+	}
+	if plan == nil {
+		return &PostProcessArtifact{}, nil
 	}
 
-	result := &PipelineResult{}
+	result := &PostProcessArtifact{}
 	var warnings []string
 	failCount := 0
 	totalRequested := len(plan.Postprocessors)
@@ -272,7 +307,7 @@ func (r *PostProcessorRegistry) Run(
 				zap.String("item_id", plan.ID))
 		}
 
-		ppResult, err := proc.Process(ctx, plan, input)
+		ppResult, err := proc.Process(ctx, plan, model, result)
 		if err != nil {
 			failCount++
 			warn := fmt.Sprintf("postprocessor %q failed: %v", name, err)
@@ -286,23 +321,9 @@ func (r *PostProcessorRegistry) Run(
 			continue
 		}
 
-		// Merge processor output (PR 5: honours AlreadyPersisted
-		// flag from PersistenceProcessor so consumers see the
-		// replay state).
+		// Merge processor contribution into the running accumulator.
 		if ppResult != nil {
-			mergePostProcessResult(result, ppResult)
-		}
-
-		// PR 5: feed each processor's PostProcessResult into the
-		// next iteration's PriorArtifacts slot. Currently unused
-		// (processors are independent) but the slot is wired so
-		// future staggered processors don't need a signature
-		// change.
-		if input.PriorArtifacts == nil {
-			input.PriorArtifacts = make(map[string]PostProcessResult)
-		}
-		if ppResult != nil {
-			input.PriorArtifacts[name] = *ppResult
+			mergePostProcessArtifact(result, ppResult)
 		}
 	}
 
@@ -317,28 +338,41 @@ func (r *PostProcessorRegistry) Run(
 	return result, nil
 }
 
-// mergePostProcessResult copies non-zero fields from a processor
-// result into the aggregate PipelineResult.
-func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult) {
-	if src.EntitiesJSON != "" {
-		dst.EntitiesJSON = src.EntitiesJSON
+// mergePostProcessArtifact copies non-zero fields from a processor
+// contribution into the aggregate accumulator.
+func mergePostProcessArtifact(dst, src *PostProcessArtifact) {
+	if src == nil {
+		return
+	}
+	if src.Document != nil {
+		dst.Document = src.Document
 	}
 	if len(src.Metadata) > 0 {
-		dst.VideoMetadata = append(dst.VideoMetadata, src.Metadata...)
+		dst.Metadata = src.Metadata
 	}
-	if len(src.Voiceovers) > 0 {
-		dst.Voiceovers = append(dst.Voiceovers, src.Voiceovers...)
-	}
-	if len(src.SceneImages) > 0 {
-		dst.Scenes = append(dst.Scenes, src.SceneImages...)
-	}
-	if src.DocLink != "" {
-		dst.DocLink = src.DocLink
-		dst.DocID = src.DocID
+	if src.Entities != nil {
+		dst.Entities = src.Entities
 	}
 	if src.ScriptID > 0 {
 		dst.ScriptID = src.ScriptID
-		// PR 5: forward the AlreadyPersisted replay flag.
-		dst.AlreadyPersisted = src.AlreadyPersisted
 	}
 }
+
+// ── PostGenFunc callback signature ────────────────────────────────
+
+// PostGenFunc is the canonical callback signature used by
+// EntitiesProcessor and MetadataProcessor to invoke the
+// PostGenUseCase. The callback returns (entitiesJSON string,
+// videoMetadata []VideoMetadata, err error); the entities/metadata
+// processors consume the relevant slots and wrap their output
+// into their respective PostProcessArtifact fields.
+//
+// PR 3 (June 2026): hoisted to a single canonical location here.
+// Previously duplicated (with identical signatures) in
+// processor_entities.go and processor_metadata.go; that duplication
+// made wire-up unclear and obscured PR 3's ownership restructure.
+//
+// Deprecated-name kept for backward compat with existing
+// wire-up names; a follow-up rename to entitiesAndMetadataFn
+// is on the post-PR-3 cleanup list.
+type PostGenFunc func(ctx context.Context, spec *scriptpkg.GenerationSpec, script string) (entitiesJSON string, videoMetadata []VideoMetadata, err error)
