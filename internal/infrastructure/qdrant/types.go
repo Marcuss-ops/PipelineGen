@@ -388,16 +388,47 @@ type ReindexResult struct {
 }
 
 // SwitchReport is the pre-switch verification report.
+//
+// PR 12 (June 2026) extensions: three new fields expose the strict
+// gate footprint that PR 12 enforces:
+//
+//   - CompleteScan: true iff every scroll page succeeded AND the
+//     maxScrolls safety cap was not hit AND the trailing NextOffset
+//     was empty at the end of the loop. Mirrors PR 10's
+//     ScannedTotals.CompleteScan vocabulary so the JSON-shape
+//     surface is consistent across the (reconciler, verifier)
+//     couple. False ⇒ the report is partial; consumers must NOT
+//     gate on counts in that case.
+//
+//   - TotalScrolled: the canonical number of points observed by
+//     the verifier. Differs from ActualPoints only in degenerate
+//     cases (e.g. the verifier scanned fewer points than the
+//     CountPoints endpoint reported due to early-failure). The
+//     strict pt.ID and per-channel gates apply on TotalScrolled;
+//     if TotalScrolled != ActualPoints the OPERATOR must inspect
+//     Errors — the count is suspect.
+//
+//   - NonCanonicalPointCount + NonCanonicalPointIDs: pt.ID must
+//     equal AssetIDToQdrantPointID(payload["asset_id"]) literally.
+//     A generic UUID-parseable id (the previous behaviour) is no
+//     longer accepted — only the canonical boundary can locate a
+//     Qdrant point via our reverse-mapping, so a generic-UUID
+//     substitute silently lost the read path.
 type SwitchReport struct {
-	TargetCollection string   `json:"target_collection"`
-	ExpectedPoints   int      `json:"expected_points"`
-	ActualPoints     int      `json:"actual_points"`
-	MissingCount     int      `json:"missing_count"`
-	OrphanCount      int      `json:"orphan_count"`
-	MissingIDs       []string `json:"missing_ids,omitempty"`
-	OrphanIDs        []string `json:"orphan_ids,omitempty"`
-	PayloadIssues    int      `json:"payload_issues"`
-	VersionMismatch  int      `json:"version_mismatch"`
+	TargetCollection string `json:"target_collection"`
+	ExpectedPoints   int    `json:"expected_points"`
+	ActualPoints     int    `json:"actual_points"`
+	// CompleteScan: see type doc. Initialised to false; flipped true
+	// only when the verifier ran the full scroll loop without any
+	// truncating condition (page error | cap hit | trailing NextOffset).
+	CompleteScan    bool     `json:"complete_scan"`
+	TotalScrolled   int      `json:"total_scrolled"`
+	MissingCount    int      `json:"missing_count"`
+	OrphanCount     int      `json:"orphan_count"`
+	MissingIDs      []string `json:"missing_ids,omitempty"`
+	OrphanIDs       []string `json:"orphan_ids,omitempty"`
+	PayloadIssues   int      `json:"payload_issues"`
+	VersionMismatch int      `json:"version_mismatch"`
 	// VersionMismatchPerChannel (QDRANT-003, June 2026, "versioni embedding
 	// per canale") breaks the global VersionMismatch counter down by
 	// vector channel. Key is the channel name (e.g. "text", "visual",
@@ -407,12 +438,39 @@ type SwitchReport struct {
 	// legacy-global-fallback (see verifier.go). Empty map means: every
 	// point carried the expected per-channel model version (or the legacy
 	// global fallback honoured the global schema version).
+	//
+	// PR 12: the per-channel check runs on EVERY scrolled page (no
+	// 1000-point sample). The per-channel counter therefore reflects
+	// the full collection, not a sample.
 	VersionMismatchPerChannel map[string]int `json:"version_mismatch_per_channel,omitempty"`
 	GoldenQueriesOK           bool           `json:"golden_queries_ok"`
 	FiltersOK                 bool           `json:"filters_ok"`
 	DeadLetterOpen            int            `json:"dead_letter_open"`
-	Ready                     bool           `json:"ready"`
-	Errors                    []string       `json:"errors,omitempty"`
+	// NonCanonicalPointCount + NonCanonicalPointIDs (PR 12): points
+	// whose pt.ID != AssetIDToQdrantPointID(payload["asset_id"]). Any
+	// such point is BLOCKING — the alias switch must not proceed.
+	NonCanonicalPointCount int `json:"non_canonical_point_count"`
+	// NonCanonicalTruncated is true when NonCanonicalPointIDs' slice
+	// cap-threshold (currently 20) truncated the canonical-list
+	// entries below NonCanonicalPointCount. Operators reading the
+	// JSON should consult the count first; the slice is a
+	// sample-of-the-first-20 for human-readable diagnostics.
+	NonCanonicalTruncated bool     `json:"non_canonical_truncated,omitempty"`
+	NonCanonicalPointIDs  []string `json:"non_canonical_point_ids,omitempty"`
+	// RollbackTarget (PR 13) carries the active alias target that
+	// was in place BEFORE the verification attempt. On Ready=false
+	// the operator's PR 13 path retains this collection so a future
+	// --apply can re-promote it (or a manual alias switch undoes the
+	// blue-green swap). Empty when the cmd path cannot resolve the
+	// active alias (e.g. recovery from a missing-runtime-alias scenario).
+	RollbackTarget string `json:"rollback_target,omitempty"`
+	// OldCollection is the timestamped collection the blue-green
+	// reindex was ABOUT TO swap away from (PR 13). Set by command
+	// pre-switch; the suffix distinguishes "currently active" from
+	// "previously active" rolling snapshots.
+	OldCollection string   `json:"old_collection,omitempty"`
+	Ready         bool     `json:"ready"`
+	Errors        []string `json:"errors,omitempty"`
 }
 
 // ScrollResult holds a page of scrolled points and the next offset.
