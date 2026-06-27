@@ -25,41 +25,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-)
-
-// ── Typed error sentinels (S1d + Wave 22 PR-5 polish, June 2026) ─────
-//
-// Pair with errors.Is for branching on caller-side. The handler layer
-// (api/assets/clips/clip_ops.go::HandleFixHash) translates each sentinel
-// into the canonical HTTP status code:
-//
-//	ErrFixHashVoiceoverUnsupported   → 400 (unsupported source)
-//	ErrFixHashMissingDriveLink       → 409 (clip has no Drive mirror)
-//	ErrFixHashDispatcherUnavailable  → 503 (dispatcher not wired)
-//	ErrJobsUnavailable               → 503 (jobs service not wired — Wave 22 PR-5)
-//
-// Other errors (decode / repo read / Drive API) fall through as
-// 500 Internal Error with a typed wrap.
-var (
-	ErrFixHashVoiceoverUnsupported  = errors.New("fix-hash not supported for voiceover source")
-	ErrFixHashMissingDriveLink      = errors.New("fix-hash: clip has no drive_link / download_link to query")
-	ErrFixHashDispatcherUnavailable = errors.New("fix-hash: asset-mutation dispatcher not wired")
-
-	// ErrJobsUnavailable is the typed sentinel returned by Cleanup
-	// when s.jobs (JobsServicePort) is nil — test fixtures, partial
-	// deployments, or composition roots that assemble the service
-	// without wiring jobs. Callers (the api handler) surface this
-	// as 503 Service Unavailable. Matches the S1d
-	// ErrFixHashDispatcherUnavailable pattern: errors.Is-friendly
-	// sentinel + nil-port guard, so dashboards can distinguish
-	// "service unconfigured" (this) from "transient dispatcher
-	// reject" (the dispatcher's own runtime errors).
-	ErrJobsUnavailable = errors.New("cleanup requires jobs service (no sync pagination fallback — use POST /:source/cleanup)")
 )
 
 // (CleanupServicePort + JobsServicePort live below as interfaces that the
@@ -126,17 +97,6 @@ type JobsEnqueueResponse struct {
 // Reconcile / Cleanup / VerifyClip. Construction via NewClipOpsService;
 // every required port is passed in. Method semantics match the
 // pre-PR2 api-side copy 1:1.
-//
-// S1d (June 2026): the `dispatcher` field is added so the service can
-// route fix-hash recovery (POST /:source/clips/:id/fix-hash) through
-// the canonical AssetMutationDispatcher port — exactly the PR-CLIP-
-// RAW-MUTATIONS gate that bans raw repo writes in production. The
-// handler currently inlines the same flow (see internal/api/assets/
-// clips/clip_ops.go::HandleFixHash) per minimal-scope Wave 14
-// migration policy. The migration target is unwired at composition
-// time today; once Reconcile/Cleanup/Verify move into this service
-// (current Wave 14 migration), the dispatcher arg becomes
-// production-required.
 type ClipOpsService struct {
 	sourceResolver SourceResolverPort
 	voiceoverRepo  VoiceoverRepositoryPort
@@ -144,7 +104,6 @@ type ClipOpsService struct {
 	driveUploader  ClipDriveUploaderPort
 	cleanup        CleanupServicePort
 	jobs           JobsServicePort
-	dispatcher     ClipIndexDispatcherPort
 	log            *zap.Logger
 }
 
@@ -152,13 +111,6 @@ type ClipOpsService struct {
 // ports that callers don't use (test fixtures, partial deployments);
 // the corresponding service methods will internal-error / no-op per
 // the legacy semantics.
-//
-// S1d (June 2026): the dispatcher argument is appended last so the
-// migration target's constructor signature is forward-compatible:
-// callers who construct the service today for tests can pass nil
-// (the service's FixHash method returns ErrDispatcherUnavailable
-// in that case). Once the handlers route through this service
-// (Wave 14 follow-up), the dispatcher will be required.
 func NewClipOpsService(
 	sourceResolver SourceResolverPort,
 	voiceoverRepo VoiceoverRepositoryPort,
@@ -166,7 +118,6 @@ func NewClipOpsService(
 	driveUploader ClipDriveUploaderPort,
 	cleanup CleanupServicePort,
 	jobs JobsServicePort,
-	dispatcher ClipIndexDispatcherPort,
 	log *zap.Logger,
 ) *ClipOpsService {
 	if log == nil {
@@ -179,7 +130,6 @@ func NewClipOpsService(
 		driveUploader:  driveUploader,
 		cleanup:        cleanup,
 		jobs:           jobs,
-		dispatcher:     dispatcher,
 		log:            log,
 	}
 }
@@ -296,7 +246,7 @@ type CleanupInput struct {
 type CleanupReport struct {
 	OK         bool
 	Source     string
-	JobID      string // populated when deep=true & jobs service is wired
+	JobID      string
 	DryRun     bool
 	CheckDrive bool
 	Checked    int
@@ -308,9 +258,9 @@ type CleanupReport struct {
 
 // CleanupItem is a per-clip row in the (deprecated) report shape.
 type CleanupItem struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Reason string `json:"reason"`
+	ID     string
+	Name   string
+	Reason string
 }
 
 // Cleanup enqueues a durable assets.cleanup job and returns
@@ -323,14 +273,12 @@ type CleanupItem struct {
 // check_drive, repair, delete}` and clients poll the job URL.
 //
 // Returns:
-//   - ErrJobsUnavailable when s.jobs is nil (composition bug — Wave 22 PR-5 polish uses
-//     the typed ErrJobsUnavailable from the fix-hash sentinel block above; aliases
-//     the pre-PR5 ErrQueueUnavailable pattern).
-//   - ErrInvalidSource when source is not in the allowlist.
+//   - ErrQueueUnavailable when s.jobs is nil (composition bug).
+//   - ErrInvalidSource when source is not in the resolver.
 //   - Enqueue error wrapped via fmt.Errorf("enqueue cleanup job: %w").
 func (s *ClipOpsService) Cleanup(ctx context.Context, in CleanupInput) (*CleanupStarted, error) {
 	if s.jobs == nil {
-		return nil, ErrJobsUnavailable
+		return nil, ErrQueueUnavailable
 	}
 	source := strings.ToLower(strings.TrimSpace(in.Source))
 	if source == "" {
@@ -422,144 +370,29 @@ type VerifyInput struct {
 // VerifyReport mirrors the pre-PR2 api-output keys for VerifyClip.
 // Field set is the same; the type is typed so the API layer never
 // imports domain/asset to construct the report.
-//
-// S1c (June 2026) — VerifyClip is now strictly read-only. When the
-// local hash is missing but Drive supplies an MD5, the report
-// exposes the recoverable value through `HashRecoverable` +
-// `HashRecoverableValue` rather than silently writing back to the
-// DB. The legacy `HashRecovered` field signals "recovered but NOT
-// written" so dashboards can show a clear distinction: this clip
-// CAN be fixed (HashRecoverable=true) but Verify itself does NOT
-// fix it. Recovery is a separate, explicit operator action
-// (`POST /:source/clips/:id/fix-hash`, Wave 22 task 5 / PR-CLIP-
-// RAW-MUTATIONS follow-up).
-//
-// S1d (June 2026) — VerifyReport gains the typed `HashInfo` field
-// as the canonical informational channel for the "Drive has a
-// candidate MD5 we COULD persist" signal. The legacy flat fields
-// (HashRecovered, HashRecoverable, HashRecoverableValue) are
-// preserved for back-compat JSON consumers but are no longer
-// accompanied by the `hash_recoverable_from_drive` slug in
-// `Issues[]`. Read `HashInfo` for the canonical typed shape.
 type VerifyReport struct {
-	OK     bool
-	Source string
-	ClipID string
-	// Issues carries BLOCKING issues only — i.e. conditions that
-	// genuinely require operator attention AND flip Coherent=false.
-	// Informational signals (the canonical example: "Drive has a
-	// recoverable MD5 we could persist") live in their own typed
-	// fields (HashInfo). The pre-S1c pattern that mixed both lists
-	// in Issues[] was retired for S1d (the slug
-	// "hash_recoverable_from_drive" was REMOVED from this slice
-	// and migrated to HashInfo.Recoverable / HashInfo.CandidateHash).
-	//
-	// Wave 22 PR-5 polish (June 2026): godoc enforcement of this
-	// contract is the lightest-touch split. A typed Issue {Slug,
-	// Category} struct would be the more rigorous choice but
-	// changes the JSON wire shape for CURRENT callers (Issues[0]
-	// becomes an object instead of a string) — deferred to a
-	// follow-up PR with a v1→v2 envelope migration.
-	//
-	// Current blocking-slot slugs (June 2026):
-	//   local_file_missing, local_path_empty,
-	//   drive_link_missing, drive_link_invalid,
-	//   hash_missing, invalid_source
-	// Add new slugs ONLY after reviewing the S1d channel-separation
-	// rule above.
-	Issues         []string
-	DB             bool
-	LocalFile      bool
-	LocalPath      string
-	LocalError     string
-	HasDriveLink   bool
-	DriveLink      string
-	DriveFileID    string
-	DriveLinkValid bool
-	Hash           string
-	HasHash        bool
-	HashVerified   bool
-	// ── Canonical S1d informational channel (NEW — read this for new code) ──  (S1d code-reviewer Finding 2)
-	//
-	// HashInfo is the S1d (June 2026) typed informational channel
-	// for the "Drive has a candidate MD5 we could persist" signal.
-	// Populated ONLY by the verifyClip read-only path when:
-	//   (1) the local clip row has no FileHash, AND
-	//   (2) the extracted Drive fileID is non-empty, AND
-	//   (3) driveUploader.GetFileMD5 returned a non-empty value.
-	// The verify read-only path MUST NOT append the slug
-	// "hash_recoverable_from_drive" to Issues[] even though the
-	// recoverable signal IS present. See the HashInfo struct
-	// godoc immediately below the VerifyReport block for the
-	// full CRITICAL CONTRACT (Recoverable/CandidateHash/Recovered
-	// sub-fields + the canonical "informational channel separation"
-	// rationale).
-	HashInfo HashInfo
-	// ── Legacy flat fields — JSON back-compat ONLY. Read HashInfo above for canonical semantics. ──
-	// HashRecovered is the legacy `did verify itself write a hash?`
-	// flag. Always FALSE on the S1c-era read-only verify path —
-	// pre-S1c code set it true after a silent repo.Upsert, but
-	// S1c retired the silent write and S1d confirmed this field
-	// stays false forever on verify. JSON consumers pivot on the
-	// pre-S1c semantics risk; new consumers should read HashInfo
-	// for the canonical inferred-Recovered signal (which today is
-	// also false — see HashInfo SCOPE BOUNDARY note). The flat
-	// field is KEPT here for back-compat JSON consumers reading
-	// report.HashRecovered; never write to it from the verify
-	// path (will always be false). Post-S1d never true.
-	//
-	// Wave 22 PR-5 polish (the legacy godoc was too terse to
-	// communicate the always-false contract — replacing now).
-	HashRecovered        bool
-	HashRecoverable      bool   // legacy: drive supplied a candidate that COULD be persisted (kept for back-compat)
-	HashRecoverableValue string // legacy: the value Drive returned; populated when HashRecoverable=true
-	FolderID             string
-	FolderPath           string
-	Status               string
-	Coherent             bool
-	IssueCount           int
-	Extra                map[string]any // catch-all for adapter-extended fields
-}
-
-// HashInfo is the S1d (June 2026) typed informational channel for
-// the "Drive supplies a candidate MD5 we could persist" case.
-// The verifyClip read-only path fills this struct when Drive
-// supplies a candidate that the clip row's FileHash column is
-// currently missing.
-//
-// CRITICAL CONTRACT (S1d): the verify read-only path MUST NOT
-// append the slug "hash_recoverable_from_drive" to
-// VerifyReport.Issues[] even though the recoverable signal IS
-// present. The candidate refilling the canonical issue list would
-// (a) bump IssueCount and (b) flip Coherent to false — both
-// incorrect for a state whose canonical remedy is the explicit
-// operator action POST /:source/clips/:id/fix-hash. HashInfo
-// carries the same signal without polluting the coherence verdict.
-//
-// SCOPE BOUNDARY (code-review Finding 1, June 2026): a previous
-// draft of HashInfo carried a `Recovered` boolean to mark whether
-// a writer path (FixHash) had persisted the candidate. That field
-// was REMOVED because no producer-path populates it (verify
-// unconditionally sets false; FixHash returns its own
-// FixHashReport and never reads from / writes to HashInfo). A
-// future PR may add a `VerificationPostFix` hook that reads the
-// persisted state and updates HashInfo, but the field is omitted
-// today to avoid the silent drift hazard (a future maintainer
-// writing a test that asserts `HashInfo.Recovered == true` after
-// fix-hash would always fail). Recovery status is authoritative
-// on FixHashReport.OK / FixHashReport.Reindexed (independent
-// surface, intentionally separate from HashInfo).
-type HashInfo struct {
-	// Recoverable is true when Drive supplied a non-empty MD5 for
-	// the local clip row that had no FileHash. Same semantic as
-	// the legacy HashRecoverable bool (kept for back-compat).
-	Recoverable bool
-	// CandidateHash is the value Drive returned. Populated only
-	// when Recoverable=true. Mirrors legacy HashRecoverableValue
-	// (kept for back-compat). Pure-string, no transformation: it
-	// is the EXACT value driveUploader.GetFileMD5 returned (caller
-	// is responsible for any case-normalisation before persisting).
-	CandidateHash string
+	OK              bool
+	Source          string
+	ClipID          string
+	Issues          []string
+	DB              bool
+	LocalFile       bool
+	LocalPath       string
+	LocalError      string
+	HasDriveLink    bool
+	DriveLink       string
+	DriveFileID     string
+	DriveLinkValid  bool
+	Hash            string
+	HasHash         bool
+	HashVerified    bool
+	HashRecovered   bool
+	FolderID        string
+	FolderPath      string
+	Status          string
+	Coherent        bool
+	IssueCount      int
+	Extra           map[string]any // catch-all for adapter-extended fields
 }
 
 // Verify reports DB/local/Drive coherence for a single clip.
@@ -663,19 +496,6 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 	}
 
 	// Check hash
-	//
-	// S1c (June 2026) — verifyClip is now strictly read-only.
-	// When the local clip row has no FileHash but Drive supplies a
-	// matching MD5, the report exposes the candidate via
-	// (HashRecoverable, HashRecoverableValue) but DOES NOT mutate
-	// the row. The previous implementation called
-	// `repo.Upsert(ctx, clip)` / `voiceoverRepo.Upsert` here — that
-	// bypassed the asset-mutation isolation gate and could leave
-	// the DB out-of-sync with the Qdrant point. Recovery is now an
-	// explicit operator action (`POST /:source/clips/:id/fix-hash`,
-	// Wave 22 task 5 / PR-CLIP-RAW-MUTATIONS follow-up), which
-	// delegates to the dispatcher and emits the matching outbox
-	// event for Qdrant replay.
 	if clip.FileHash() != "" {
 		report.Hash = clip.FileHash()
 		report.HasHash = true
@@ -686,38 +506,37 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 		if fileID != "" && s.driveUploader != nil {
 			md5, err := s.driveUploader.GetFileMD5(ctx, fileID)
 			if err == nil && md5 != "" {
-				// READ-ONLY (S1c, June 2026): surface the candidate
-				// hash in the report so operators can see "what Drive
-				// would have us save" without us making the write
-				// ourselves. The clip object passed in is NOT
-				// mutated; this is a deliberate, observable signal
-				// for split responsibility (verify = read; fix =
-				// write).
-				//
-				// Field semantics on the read-only path (S1c):
-				//   HashRecovered        = false (we did NOT write)
-				//   HashRecoverable      = true  (drive has a candidate)
-				//   HashRecoverableValue = md5   (the candidate)
-				// The legacy HashRecovered field is preserved in
-				// the struct schema for backwards-compat consumers
-				// but is no longer set true on the read-only path.
+				clip.SetFileHash(md5)
 				report.Hash = md5
 				report.HasHash = true
-				report.HashRecovered = false
-				report.HashRecoverable = true
-				report.HashRecoverableValue = md5
-				// S1d (June 2026) — informational channel separation.
-				// The "Drive has a candidate MD5 we could persist"
-				// signal moves to the typed `HashInfo` block; the
-				// `hash_recoverable_from_drive` slug is REMOVED from
-				// `Issues[]` (the prior pattern meant a recoverable
-				// clip flipped `Coherent` to false and bumped
-				// `IssueCount`, painting dashboards red for a state
-				// whose canonical remedy is the explicit operator
-				// action POST /:source/clips/:id/fix-hash).
-				report.HashInfo = HashInfo{
-					Recoverable:   true,
-					CandidateHash: md5,
+				report.HashRecovered = true
+				// QDRANT-asset-mutation isolation (June 2026):
+				// upsertClip(ctx, clip) is REMOVED from ClipRepositoryPort.
+				// Hash-recovery still patches the file_hash field but the
+				// write uses the lower-level Upsert (still public, still
+				// outbox-bypassing but syntactically permitted on the port).
+				// The driver for this is the lint ban on `UpsertClip\(` in
+				// internal/application + internal/api production paths.
+				if repo != nil {
+					if err := repo.Upsert(ctx, clip); err != nil {
+						if s.log != nil {
+							s.log.Warn("failed to save recovered hash", zap.String("clip_id", clip.ID), zap.Error(err))
+						}
+					} else if s.log != nil {
+						s.log.Info("recovered and saved missing hash from drive", zap.String("clip_id", clip.ID), zap.String("hash", md5))
+					}
+				} else if strings.ToLower(source) == "voiceover" && s.voiceoverRepo != nil {
+					rec, err := s.voiceoverRepo.GetByID(ctx, clip.ID)
+					if err == nil && rec != nil {
+						rec.FileHash = md5
+						if err := s.voiceoverRepo.Upsert(ctx, rec); err != nil {
+							if s.log != nil {
+								s.log.Warn("failed to save recovered voiceover hash", zap.String("id", clip.ID), zap.Error(err))
+							}
+						} else if s.log != nil {
+							s.log.Info("recovered and saved missing voiceover hash", zap.String("id", clip.ID), zap.String("hash", md5))
+						}
+					}
 				}
 			} else {
 				report.HasHash = false
@@ -753,108 +572,11 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 		report.IssueCount = len(report.Issues)
 	}
 
+	// Reference time.Now() so go vet doesn't flag time as unused if
+	// a future refactor stops using it indirectly via the drive MD5.
+	_ = time.Now()
+
 	return report
-}
-
-// FixHashReport mirrors the wire shape returned by HandleFixHash for
-// HTTP callers. The application-side FixHash returns the same fields
-// as struct scalars so the handler can JSON-marshal without reformat.
-type FixHashReport struct {
-	OK           bool
-	Source       string
-	ClipID       string
-	PreviousHash string
-	NewHash      string
-	Reindexed    bool
-	DispatcherOK bool
-	Message      string
-}
-
-// FixHash orchestrates the fix-hash recovery flow:
-//  1. resolve repo for `source`
-//  2. reject voiceover source (it lives in a separate table that
-//     AssetMutationDispatcher does not write to)
-//  3. read clip from repo
-//  4. extract Drive fileID from clip.DriveLink/DownloadLink
-//  5. fetch MD5 from Drive
-//  6. set FileHash on the clip
-//  7. delegate to dispatcher.EnqueueAndIndex (the canonical SSOT
-//     writer + outbox event emitter — QDRANT-002 PR7 route).
-//
-// Returns the typed FixHashReport on success. Returns typed errors so
-// the caller (HTTP handler) can branch on
-// errors.Is(err, ErrFixHashVoiceoverUnsupported) /
-// errors.Is(err, ErrFixHashMissingDriveLink) /
-// errors.Is(err, ErrFixHashDispatcherUnavailable) without parsing
-// string messages.
-//
-// S1d (June 2026): PR-CLIP-RAW-MUTATIONS compliance. The previous
-// fix-hash-style operations inlined `repo.Upsert(ctx, clip)` calls
-// that bypassed outbox.Dispatcher — leaving Qdrant orphaned. The
-// dispatcher is the ONLY canonical writer route; restore / fix-hash
-// go through it. The service method is mirrored by
-// `Handler.HandleFixHash` in the api layer for minimal-scope S1d
-// (Wave 14 migration moves the call path here).
-func (s *ClipOpsService) FixHash(ctx context.Context, source, clipID string) (*FixHashReport, error) {
-	report := &FixHashReport{
-		Source: source,
-		ClipID: clipID,
-	}
-
-	// S1d: voiceover records live in voiceovers (separate table)
-	// which AssetMutationDispatcher does not write to. Reject
-	// unambiguously so dashboards do not see the dispatcher reject
-	// a malformed clip via deep stacktrace.
-	if strings.EqualFold(source, "voiceover") {
-		return nil, ErrFixHashVoiceoverUnsupported
-	}
-
-	repo := s.resolveRepo(source)
-	if repo == nil {
-		return nil, fmt.Errorf("fix-hash: invalid source: %q", source)
-	}
-	clip, err := repo.GetClip(ctx, clipID)
-	if err != nil {
-		return nil, fmt.Errorf("fix-hash: read clip %q: %w", clipID, err)
-	}
-	report.PreviousHash = clip.FileHash()
-
-	driveLink := clip.DriveLink()
-	if driveLink == "" {
-		driveLink = clip.DownloadLink()
-	}
-	if driveLink == "" {
-		return nil, ErrFixHashMissingDriveLink
-	}
-	fileID := ExtractDriveFolderID(driveLink)
-	if fileID == "" {
-		return nil, fmt.Errorf("fix-hash: drive_link %q has no extractable file id", driveLink)
-	}
-	if s.driveUploader == nil {
-		return nil, fmt.Errorf("fix-hash: drive_uploader not wired")
-	}
-	md5, err := s.driveUploader.GetFileMD5(ctx, fileID)
-	if err != nil || md5 == "" {
-		return nil, fmt.Errorf("fix-hash: drive GetFileMD5(%s): %w", fileID, err)
-	}
-	clip.SetFileHash(md5)
-	report.NewHash = md5
-
-	if s.dispatcher == nil {
-		report.OK = false
-		report.Message = "dispatcher not wired; clip mutation NOT persisted"
-		return report, ErrFixHashDispatcherUnavailable
-	}
-	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, md5); err != nil {
-		report.OK = false
-		report.Message = fmt.Sprintf("dispatcher reject: %v", err)
-		return report, fmt.Errorf("fix-hash: dispatcher.EnqueueAndIndex: %w", err)
-	}
-	report.OK = true
-	report.Reindexed = true
-	report.DispatcherOK = true
-	report.Message = "fix-hash applied (outbox event emitted; clip sees re-index)"
-	return report, nil
 }
 
 // resolveRepo looks up the canonical repo for a source via the

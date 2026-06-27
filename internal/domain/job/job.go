@@ -72,13 +72,11 @@ const (
 	TypeBooksProcess           = "books.process"
 	TypeLessonsProcess         = "lessons.process"
 	TypeMediaReindex           = "media.reindex"
-	TypeMediaEnrich            = "media.enrich"
 	TypeYouTubeRebuildST       = "youtube.rebuild_search_text"
 	TypeScriptGenerate         = "script.generate"
 	TypeBulkUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync        = "drive.folder.sync"
 	TypeMediaCurate            = "media.curate"
-	TypeVoiceoverPromo         = "voiceover.promo"
 	// PR 5 (June 2026 — codex/clips-cleanup-job):
 	// assets.cleanup is the canonical paginated async cleanup job. It
 	// replaces the previous synchronous ListClipsPaged(..., 10000, 0, "")
