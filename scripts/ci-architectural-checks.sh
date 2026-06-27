@@ -15,6 +15,21 @@
 # quoted-string occurrences of those values outside the canonical decl are
 # a SSOT regression and fail this gate.
 #
+# PR-D (June 2026): adds Check 4 — migration version uniqueness lint.
+# Fails when two or more files in `migrations/sqlite/` share the leading
+# numeric version prefix. Historically observed as the `069_*.sql` × 2
+# incident (surface: composition-test panic at server startup) — the
+# duplicate-prefix collision silently picks one candidate at runtime.
+# Renumbered to Check 4 because Checks 0/1/2/3 were already claimed by
+# PR-B, QDRANT-002, QDRANT-001, and PR 6 (engine.Generate SSOT gate)
+# respectively.
+#
+# PR 6 (June 2026): adds Check 3 — forbid `engine.Generate()` outside
+# the canonical `GenerateOneUseCase`. Engine access must flow through
+# the typed pipeline orchestrator; any direct call is a SSOT regression.
+# Check 3 was introduced on origin/main after this branch forked; the
+# merge here places PR-D's lint as Check 4 to avoid the collision.
+#
 # Promote-to-required checklist (separate follow-up PR):
 #   1. Drop `--future-ratchet` from the command line below.
 #   2. Fold runPhase0Checks() into runRatchetChecks() in
@@ -22,6 +37,25 @@
 #   3. Update docs/architecture/godlike/14_INITIAL_BACKLOG.md — mark
 #      Block 1 + the 5 Phase 0 rules as verified_zero: true.
 set -euo pipefail
+
+# Resolve REPO_ROOT once so the migration-uniqueness lint below works from
+# any cwd (CI runners, IDE hook invocations, manual bash). BASH_SOURCE is
+# always the script's own absolute path under `bash script.sh` — the only
+# case where it's empty / unset is when the script is being read via
+# process substitution (`bash <(curl ...)`) or `bash -c "source ..."` from
+# a parent shell, which we refuse to silently misroute (a wrong-resolution
+# REPO_ROOT would silently scan the wrong dir and emit false-negative
+# passes). Fail loud and let the operator fix the invocation.
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  echo "CI: cannot resolve script directory from BASH_SOURCE[0]=" >&2
+  echo "    (process substitution / bash -c \"source ...\" invocation)." >&2
+  echo "    Run the script as: bash scripts/ci-architectural-checks.sh" >&2
+  echo "    or set MIGRATIONS_ROOT=/abs/path/to/migrations/sqlite explicitly." >&2
+  exit 1
+fi
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── Check 0: forbid literal job-type strings outside canonical SSOT ─────
 # The 4 canonical constants carry string values:
@@ -42,7 +76,7 @@ set -euo pipefail
 #
 # Pattern anchors:
 #   [=:(,]\s*"..."  — matches TypeBatchScriptGenerate = "...", Type: "...", func args
-#   "...\"\s*[:,)]  — matches map keys ("...": NUMBER), trailing ,) cases
+#   "..."\s*[:,)]  — matches map keys ("...": NUMBER), trailing ,) cases
 # Comment-only lines are excluded via awk so descriptive log strings
 # ("handling foo job") don't trigger false positives. A second grep-vE
 # belt-and-suspenders rejects inline comments where "// \"...\" ..."
@@ -177,7 +211,7 @@ if [ "$failures" -gt 0 ]; then
 fi
 echo "OK: QDRANT-001 gates pass"
 
-# ── Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR 6) ──
+# ── Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR-6) ──
 # The canonical engine entry point is Engine.Generate(ctx, plan). The ONLY
 # permitted production caller is generate_one_usecase.go::GenerateOneUseCase.
 #
@@ -187,8 +221,8 @@ echo "OK: QDRANT-001 gates pass"
 #   - *_test.go                  : tests may call Generate for verification
 #
 # Any new engine.Generate( call in production code outside the allowlist
-# is a PR 6 regression: engine access must flow through GenerateOneUseCase.
-echo "=== Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR 6) ==="
+# is a PR-6 regression: engine access must flow through GenerateOneUseCase.
+echo "=== Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR-6) ==="
 literals=$(rg -n --type go \
     -e '\bengine\.Generate\(' \
     --glob '!**/generate_one_usecase.go' \
@@ -213,6 +247,45 @@ if [ -n "$literals" ]; then
     exit 1
 fi
 echo "OK: no direct engine.Generate() calls outside GenerateOneUseCase"
+
+# ── Check 4: Migration version uniqueness lint (PR-D) ──────────────
+# Fails when two or more files in `migrations/sqlite/` share the
+# leading numeric version prefix. The canonical convention for this
+# repo is one file per migration number; the slot ordering encodes the
+# upgrade path, and a duplicate-prefix collision silently picks one
+# candidate at runtime — historically observed as `069_*.sql` × 2 in
+# the working tree (surface: composition-test panic at server startup).
+#
+# This lint catches the same pattern at pre-CI time so a new migration
+# cannot land with a colliding slot.
+#
+# Implementation: list all migration files, project the prefix, then
+# fail on any prefix that appears more than once. The regex
+# `/^[0-9]+$/` (one or more digits) matches the canonical 3-digit slot
+# AND any future widening (4-digit slot if a future numbering scheme
+# requires it), while excluding vim backup files (`~001_foo.sql`),
+# Emacs locks (`.#002_bar.sql`), and any other neighbour of a real
+# migration that would otherwise look like a colliding slot.
+migration_root="${MIGRATIONS_ROOT:-${REPO_ROOT}/migrations/sqlite}"
+if [ -d "${migration_root}" ]; then
+  dupes=$(ls -1 "${migration_root}/" 2>/dev/null \
+    | awk -F_ '$1 ~ /^[0-9]+$/ {print $1}' \
+    | sort \
+    | uniq -d) || true
+  if [ -n "${dupes}" ]; then
+    echo "CI: duplicate migration version prefix(es) detected in ${migration_root}/:" >&2
+    for v in ${dupes}; do
+      echo >&2
+      echo "  prefix ${v}:" >&2
+      ls -1 "${migration_root}/${v}_"*.sql 2>/dev/null | sed 's|^|    |' >&2
+    done
+    echo >&2
+    echo "Convention: one file per 3-digit version prefix." >&2
+    echo "Resolve by renaming one of the colliding files to a free numeric slot." >&2
+    exit 1
+  fi
+fi
+echo "OK: no duplicate migration version prefixes in ${migration_root}/"
 
 # ── Main gate ────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the

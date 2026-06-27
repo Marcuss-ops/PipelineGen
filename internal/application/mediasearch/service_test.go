@@ -71,7 +71,12 @@ type fakeRead struct {
 	err  error
 }
 
-func (f *fakeRead) GetMany(ctx context.Context, w WorkspaceContext, ids []string) ([]MediaAsset, error) {
+func (f *fakeRead) GetMany(
+	ctx context.Context,
+	w WorkspaceContext,
+	ids []string,
+	allowStates []string,
+) ([]MediaAsset, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -572,6 +577,129 @@ type vectorBuilder = fakeVector
 func storeFn(v *fakeVector, s search.VectorStorePort) *fakeVector {
 	v.storeFn = func() search.VectorStorePort { return s }
 	return v
+}
+
+// ── QDRANT-004 PR3: hydration safety — post-query defence layer ──────────
+//
+// PR3 (June 2026): even when the SQL allowlist is correctly applied,
+// the orchestrator layers a defence-in-depth filter that drops any
+// hydrated row whose lifecycle_state is NOT in
+// SearchableLifecycleStates. The fakeRead adapter returns ALL rows
+// matching IDs (it ignores allowStates — simulating the drifted
+// adapter scenario the post-query guard is designed to catch).
+
+// TestSearch_PostQueryGuard_DropsNonSearchableLifecycle verifies
+// that a row whose lifecycle_state is "deleted" (NOT in the
+// canonical allowlist) is dropped by the post-query guard even when
+// the adapter returns it.
+func TestSearch_PostQueryGuard_DropsNonSearchableLifecycle(t *testing.T) {
+	store := &fakeStore{
+		hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
+			return []search.VectorSearchResult{
+				{AssetID: "ok", Score: 0.9},
+				{AssetID: "bad", Score: 0.85},
+			}, nil
+		},
+	}
+	vec := storeFn(&fakeVector{
+		vc: search.VectorConfig{
+			TextVectorName:   "text",
+			SparseVectorName: "bm25_text",
+		},
+	}, store)
+	read := &fakeRead{rows: map[string]MediaAsset{
+		"ok":  {ID: "ok", LifecycleState: "active"},
+		"bad": {ID: "bad", LifecycleState: "deleted"},
+	}}
+	svc := NewService(vec, read, &fakeDeliver{}, Config{}, &captureLogger{})
+
+	resp, err := svc.Search(context.Background(), MediaSearchRequest{
+		Query:     "test",
+		Mode:      SearchModeHybrid,
+		Workspace: WorkspaceContext{WorkspaceID: "w1"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Count != 1 {
+		t.Fatalf("Count = %d, want 1 (deleted-row must be dropped by post-query guard)", resp.Count)
+	}
+	if resp.Hits[0].AssetID != "ok" {
+		t.Errorf("surviving hit AssetID = %q, want %q", resp.Hits[0].AssetID, "ok")
+	}
+}
+
+// TestSearch_PostQueryGuard_DropsAllDenyListedStates iterates
+// every state in AllNonSearchableLifecycleStates; all must be
+// dropped.
+func TestSearch_PostQueryGuard_DropsAllDenyListedStates(t *testing.T) {
+	for _, badState := range AllNonSearchableLifecycleStates {
+		t.Run("drop_"+badState, func(t *testing.T) {
+			store := &fakeStore{
+				hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
+					return []search.VectorSearchResult{{AssetID: "a", Score: 0.9}}, nil
+				},
+			}
+			vec := storeFn(&fakeVector{
+				vc: search.VectorConfig{
+					TextVectorName:   "text",
+					SparseVectorName: "bm25_text",
+				},
+			}, store)
+			read := &fakeRead{rows: map[string]MediaAsset{
+				"a": {ID: "a", LifecycleState: badState},
+			}}
+			svc := NewService(vec, read, &fakeDeliver{}, Config{}, &captureLogger{})
+
+			resp, err := svc.Search(context.Background(), MediaSearchRequest{
+				Query:     "test",
+				Mode:      SearchModeHybrid,
+				Workspace: WorkspaceContext{WorkspaceID: "w1"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected: %v", err)
+			}
+			if resp.Count != 0 {
+				t.Errorf("state %q must be dropped, got Count=%d", badState, resp.Count)
+			}
+		})
+	}
+}
+
+// TestSearch_PostQueryGuard_PassesSearchableStates iterates the
+// canonical allowlist; all must survive.
+func TestSearch_PostQueryGuard_PassesSearchableStates(t *testing.T) {
+	for _, okState := range SearchableLifecycleStates {
+		t.Run("pass_"+okState, func(t *testing.T) {
+			store := &fakeStore{
+				hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
+					return []search.VectorSearchResult{{AssetID: "a", Score: 0.9, SearchText: "x"}}, nil
+				},
+			}
+			vec := storeFn(&fakeVector{
+				vc: search.VectorConfig{
+					TextVectorName:   "text",
+					SparseVectorName: "bm25_text",
+				},
+			}, store)
+			read := &fakeRead{rows: map[string]MediaAsset{
+				"a": {ID: "a", LifecycleState: okState},
+			}}
+			svc := NewService(vec, read, &fakeDeliver{}, Config{}, &captureLogger{})
+
+			resp, err := svc.Search(context.Background(), MediaSearchRequest{
+				Query:     "test",
+				Mode:      SearchModeHybrid,
+				Workspace: WorkspaceContext{WorkspaceID: "w1"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected: %v", err)
+			}
+			if resp.Count != 1 {
+				t.Errorf("state %q must pass, got Count=%d", okState, resp.Count)
+			}
+		})
+	}
 }
 
 // ── QDRANT-004 PR1: hybrid fail-closed contract ───────────────────────
