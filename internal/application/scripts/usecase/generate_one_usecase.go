@@ -15,6 +15,10 @@
 //   - Engine: calls ollama for script text
 //   - adapters.PostProcessorRegistry: runs postprocessors (entities, metadata,
 //     voiceover, images, document, persistence)
+//   - ports.VoiceoverGroupResolver + parent ID: optional. Set via
+//     SetVoiceoverRouting so callers passing only `voiceover_group`
+//     have their item.Output.VoiceoverFolderID populated BEFORE
+//     BuildPlan runs (fix/voiceover-group-resolver, June 2026).
 package usecase
 
 import (
@@ -23,6 +27,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -32,15 +37,21 @@ import (
 // generation item. All dependencies are typed — no interface{} on
 // the public surface.
 type GenerateOneUseCase struct {
-	cfg      adapters.NormalizationConfig
-	registry *adapters.SourceRegistry
-	engine   *Engine
-	ppReg    *adapters.PostProcessorRegistry
-	log      *zap.Logger
+	cfg             adapters.NormalizationConfig
+	registry        *adapters.SourceRegistry
+	engine          *Engine
+	ppReg           *adapters.PostProcessorRegistry
+	log             *zap.Logger
+	voGroupResolver scriptports.VoiceoverGroupResolver
+	voRootID        string
 }
 
 // NewGenerateOneUseCase constructs the use case. engine and registry
 // must be non-nil; ppReg may be nil (postprocessors are skipped).
+// The voiceover_group resolver is optional — composition root wires
+// it via SetVoiceoverRouting (post-construction, additive) so test
+// fixtures that don't exercise routing continue to work without
+// parameter churn.
 func NewGenerateOneUseCase(
 	cfg adapters.NormalizationConfig,
 	registry *adapters.SourceRegistry,
@@ -55,6 +66,25 @@ func NewGenerateOneUseCase(
 		ppReg:    ppReg,
 		log:      log,
 	}
+}
+
+// SetVoiceoverRouting wires the resolver and parent ID used by the
+// pre-BuildPlan step (fix/voiceover-group-resolver, June 2026).
+// Optional: if not called, resolver is nil and
+// ResolveVoiceoverFolderForItem is a no-op (the existing test
+// fixtures and default compositions skip this call, preserving
+// behavior parity with pre-PR scripts).
+//
+// Pass an empty parentID to disable routing at runtime without
+// nil-checking the resolver; an empty parentID makes the resolver
+// return immediately because parentID == "" is rejected by the
+// underlying GroupsResolver.
+func (uc *GenerateOneUseCase) SetVoiceoverRouting(resolver scriptports.VoiceoverGroupResolver, parentID string) {
+	if uc == nil {
+		return
+	}
+	uc.voGroupResolver = resolver
+	uc.voRootID = parentID
 }
 
 // Execute runs the full pipeline for one item and returns a typed
@@ -107,6 +137,21 @@ func (uc *GenerateOneUseCase) Execute(
 	// ── Phase 4: Build plan ─────────────────────────────────────────
 	tracker.PhaseBuildPlan()
 	planStart := time.Now()
+	// fix/voiceover-group-resolver (June 2026): resolve
+	// item.Output.VoiceoverGroup → item.Output.VoiceoverFolderID
+	// BEFORE BuildPlan copies the field onto plan.VoiceoverFolderID,
+	// so the voiceover processor uses GenerateWithDestination with
+	// the resolved folder rather than falling back to the default
+	// folder + warning the operator. Idempotent no-op when the
+	// resolver is nil (test fixtures / compositions without
+	// routing support) or when the group name is empty.
+	resolvedItem, resolveVOErr := ResolveVoiceoverFolderForItem(
+		ctx, item, uc.voGroupResolver, uc.voRootID, uc.log,
+	)
+	if resolveVOErr != nil {
+		return nil, resolveVOErr
+	}
+	item = resolvedItem
 	plan := BuildPlan(item)
 
 	// Merge resolved source into plan.
