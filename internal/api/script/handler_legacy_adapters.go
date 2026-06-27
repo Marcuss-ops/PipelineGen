@@ -82,6 +82,7 @@ type LegacyGenerateFromClipsRequest struct {
 	GenerateSceneImages bool    `json:"generate_scene_images"`
 	GenerateVoiceover  bool     `json:"generate_voiceover"`
 	GenerateDocument   bool     `json:"generate_document"`
+	GenerateDoc        bool     `json:"generate_doc"`
 	ExtractEntities    bool     `json:"extract_entities"`
 	GenerateMetadata   bool     `json:"generate_metadata"`
 	DriveFolderID      string   `json:"drive_folder_id"`
@@ -122,7 +123,7 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 			GenerateMetadata:    r.GenerateMetadata,
 			GenerateVoiceover:   r.GenerateVoiceover,
 			GenerateSceneImages: r.GenerateSceneImages,
-			GenerateDocument:    r.GenerateDocument,
+			GenerateDocument:    r.GenerateDocument || r.GenerateDoc,
 			SaveToDB:            r.SaveToDB,
 			VoiceoverGroup:      r.VoiceoverGroup,
 			VoiceoverFolderID:   r.VoiceoverFolderID,
