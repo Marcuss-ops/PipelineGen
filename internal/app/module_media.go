@@ -14,6 +14,7 @@ import (
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -23,13 +24,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
@@ -37,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -47,7 +47,6 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -80,20 +79,10 @@ var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
 // constructed inside WireAssets — keeps the registry-level lifecycle
 // simple and avoids double-ticker leaks.
 //
-// Wave 21 PR 9/10 (June 2026): MediasearchService + WorkspaceID are
-// composition inputs for the canonical SearchAggregator. The
+// Wave 21 PR 9/10 (June 2026): MediasearchService + WorkspaceID + SearchBackendRegistry
+// are composition inputs for the canonical SearchAggregator. The
 // semantic backend activates only when WorkspaceID is non-empty
 // (QDRANT-004 tenant-isolation gate).
-//
-// PR-2 (June 2026): SearchFanOut + SearchBackendRegistry are
-// pre-built by WireRegistry via BuildCanonicalSearchFanOut and
-// stamped into the bundle BEFORE WireAssets runs. WireAssets
-// consumes these slots rather than constructing its own — the
-// canonical SearchFanOut is a SINGLE shared instance, so stats
-// counters aggregate across every search entry-point (YouTube
-// /api/media/clips/search + Assets /api/clips/search/advanced +
-// Mediasearch + FindDuplicates) rather than fragmenting across
-// per-handler instances.
 //
 // Wave 19 cross-capability rule: module_media.go is itself a
 // composition-only bridge; the heavy cross-cap import dance
@@ -117,15 +106,19 @@ type AssetsBundle struct {
 	// canonical SearchAggregator. MediasearchService + WorkspaceID
 	// activate the semantic backend (QDRANT-004 tenant-isolation
 	// gate requires a non-default workspace); empty disables it.
-	MediasearchService *mediasearch.Service
-	SearchWorkspaceID  string
-	// PR-2 (June 2026): SearchFanOut + SearchBackendRegistry are
-	// pre-built by WireRegistry. WireAssets MUST consume these
-	// pre-built slots rather than constructing its own — see the
-	// package doc on the AssetsBundle struct above for the
-	// single-instance invariant.
-	SearchFanOut          search.SearchFanOut
+	// SearchBackendRegistry is the frozen cross-capability backend
+	// catalog populated by WireAssets and exposed here for
+	// diagnostic routes + future Health probes.
+	MediasearchService    *mediasearch.Service
+	SearchWorkspaceID     string
 	SearchBackendRegistry *search.BackendRegistry
+	// PR 7 cutover (codex/asset-manifest-cutover, June 2026): the
+	// canonical manifest.Service instance shared across
+	// clipsHandler.Deps.ManifestService + the register handlers.
+	// Constructed once in BuildProcessBundle and threaded into
+	// ArtlistBundle + AssetsBundle via WireRegistry. Nil = manifest
+	// writes disabled (legacy + test-fixture path).
+	ManifestService manifest.Service
 }
 
 // AssetsWiring holds the Assets module wiring.
@@ -139,12 +132,7 @@ type AssetsWiring struct {
 	// architecture/deprecations.yaml records
 	// PR-SEARCH-LEGACY-CLIPSSEARCH + PR-SEARCH-LEGACY-CROSSPROVIDER.
 	SearchAggregator *search.Aggregator
-	// PR-2 (June 2026): the canonical SearchFanOut (decorator
-	// wrapping the canonical Aggregator). Exposed via this
-	// wiring handle so other consumers (diagnostics + future
-	// Health probes) read the SHARED instance rather than
-	// constructing a parallel one. == bundle.SearchFanOut alias.
-	SearchFanOut search.SearchFanOut
+
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -175,32 +163,22 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	}
 
 	// ── Wave 21 PR 10 (June 2026): canonical SearchAggregator
-	//    + the PR-2 SearchFanOut decorator wrapping it are
-	//    pre-built by WireRegistry and stamped onto
-	//    bundle.SearchFanOut + bundle.SearchBackendRegistry.
-	//    WireAssets CONSUMES the pre-built instance — it does
-	//    not construct its own. The single shared instance
-	//    invariant guarantees stats counters aggregate across
-	//    every search entry-point (YouTube + Assets + Mediasearch
-	//    + FindDuplicates) instead of fragmenting per-handler.
-	//    See AssetsBundle package doc for the rationale.
-	//    The legacy clipssearch.Service + appsearchsvc.Service
-	//    wirings are gone (PR-10 CUTOVER delivered). The
-	//    aggregator is the SSOT for the Search capability; see
-	//    architecture/deprecations.yaml records PR-SEARCH-LEGACY-*
-	//    + the new PR-SEARCH-LEGACY-PROVIDERS-AGGREGATOR.
-	searchBackends := bundle.SearchBackendRegistry
-	searchFanOut := bundle.SearchFanOut
-	if searchFanOut == nil {
-		// Composition-bug guard: WireRegistry is required to
-		// stamp bundle.SearchFanOut BEFORE WireAssets runs. A
-		// nil slot is a wiring-time defect; surface it here as
-		// a fail-closed error instead of letting downstream
-		// handlers silently degrade to 503 on every Search call.
-		return nil, fmt.Errorf("WireAssets: bundle.SearchFanOut is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)")
-	}
+	//    constructed FIRST so clipsHandler and the assets/search
+	//    handler can both consume it at construction time. The
+	//    legacy clipssearch.Service + appsearchsvc.Service
+	//    wirings are gone (CUTOVER delivered). The aggregator is
+	//    the SSOT for the Search capability; see
+	//    architecture/deprecations.yaml records PR-SEARCH-LEGACY-*.
+	searchBackends := BuildSearchBackends(SearchBackendBuildOpts{
+		Logger:         log,
+		ProviderReg:    providerRegistry,
+		ClipsRepo:      bundle.ClipsRepo,
+		MediasearchSvc: bundle.MediasearchService,
+		WorkspaceID:    bundle.SearchWorkspaceID,
+	})
+	bundle.SearchBackendRegistry = searchBackends
 	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
-	log.Info("WireAssets: consumed pre-built canonical SearchFanOut",
+	log.Info("search aggregator wired (PR 10 CUTOVER; replaces BACKFILL dual-path)",
 		zap.Int("backends", len(searchBackends.All())))
 
 	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
@@ -227,19 +205,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if dispatcher != nil {
 		clipsDispatcherPort = &clipsDispatcherAdapter{disp: dispatcher}
 	}
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): wire the
-	// canonical mutations.AssetMutationDispatcher SSOT for the wider
-	// application-layer producers (BulkUploadWorker + ReprocessUseCase
-	// constructed inside NewHandler). Both adapters wrap the same
-	// *outbox.Dispatcher; the SSOT one is the canonical surface per
-	// mutations/dispatcher.go ("application producers MUST depend on the
-	// SSOT shape"). Strict fail-closed — composition errors when
-	// dispatcher is nil, mirroring WireArtlist's strict composition-time
-	// check (QDRANT-002 PR7 invariant).
-	mutationsDisp, err := newMutationsDispatcherAdapter(dispatcher)
-	if err != nil {
-		return nil, fmt.Errorf("WireAssets: %w", err)
-	}
 	// S1a (June 2026): construct the shared EnrichUseCase ONCE at
 	// composition time. The clipsHandler receives it via Deps.EnrichUC
 	// so the same instance is used by:
@@ -249,62 +214,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	//       handlers now enqueue to instead of spawning goroutines
 	//       with context.WithoutCancel.
 	enrichUC := appclips.NewEnrichUseCase(assetRepo, bundle.ClipIndexerService, metaWriter, log)
-	// W14 PR2 slice 3 (June 2026): construct the BulkUploadWorker
-	// from typed ports so the handler never imports infra for the
-	// bulk-upload job path. The concrete adapters already exist in
-	// clips_adapters_index.go.
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): the
-	// mutations.AssetMutationDispatcher SSOT is the 7th positional arg
-	// so the worker routes media_assets UPSERT through the canonical
-	// outbox+tx writer (QDRANT-002 atomicity invariant).
-	//
-	// HC-1 (June 2026): the `cfg` 5th positional arg is now constructed
-	// with appjobs.Compose() as the typed TimeoutResolver — the
-	// bulk_upload worker uses cfg.JobTimeout(TypeBulUploadYouTubeClips)
-	// to derive its 2*time.Hour literal via the canonical Registry
-	// (replaces the pre-HC-1 hard-coded context.WithTimeout(ctx, 2*time.Hour)
-	// in bulk_upload_worker.go::HandleJob).
-	bulkUploadWorker := appclips.NewBulkUploadWorker(
-		newClipsDriveAdapter(driveUploader),
-		newClipsRepoAdapter(bundle.ClipsRepo),
-		newClipsIndexerAdapter(bundle.ClipIndexerService),
-		newClipsHashAdapter(),
-		newClipsCfgAdapter(cfg, appjobs.Compose()),
-		mutationsDisp,
-		log,
-	)
-	// PR 2 (June 2026): construct the application-layer ClipOpsService so
-	// the HTTP handler can delegate Reconcile / Cleanup / VerifyClip to a
-	// single canonical service instead of duplicating the business logic
-	// locally. The clipsAdapterBundle exposes typed ports for every dep
-	// the service takes; the new clipsJobsPortAdapter bridges
-	// domain/job.Service.Enqueue into the service's narrowed DTO. The
-	// cleanup port is a thin pass-through over deletionSvc (signatures
-	// already match the clips.CleanupServicePort contract).
-	clipsOpsPorts := newClipsAdapterBundle(
-		cfg, log,
-		bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo,
-		bundle.VoiceoverRepo, bundle.ImageRepo,
-		driveUploader, metaWriter, bundle.ClipIndexerService,
-		folderMemSvc, bundle.AssetTreeService,
-		nil, // vectorSvc removed PG-034
-		// HC-1 (June 2026): pass the typed TimeoutResolver (canonical
-		// impl: appjobs.Compose() — *jobs.Registry) so the cfg adapter
-		// in the bundle has the timeouts port wired. Mirrors the
-		// newClipsCfgAdapter(appjobs.Compose()) call above for the
-		// BulkUploadWorker.
-		appjobs.Compose(),
-	)
-	clipOpsSvc := appclips.NewClipOpsService(
-		clipsOpsPorts.SourceResolver,
-		clipsOpsPorts.VoiceoverRepo,
-		clipsOpsPorts.ImagesRepo,
-		clipsOpsPorts.DriveUploader,
-		newClipsCleanupPortAdapter(deletionSvc),
-		newClipsJobsPortAdapter(jobs.Facade),
-		clipsDispatcherPort,
-		log,
-	)
 	// Wave 21 PR 10: SearchSvc is the canonical *search.Aggregator
 	// (was *assetclipssearch.Service, deleted in PR 10). The legacy
 	// map[string]AdvancedSearchRepo hand-rolled fan-out is replaced
@@ -325,22 +234,28 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		JobsSvc:        jobs.Facade,
 		Cfg:            cfg,
 		Log:            log,
+		ManifestService: bundle.ManifestService,
 		VoiceoverRepo:  bundle.VoiceoverRepo,
 		ImagesRepo:     bundle.ImageRepo,
 		FolderMemSvc:   folderMemSvc,
-		ProcessRunner:  processRunnerAdapter,
-		Dispatcher:     clipsDispatcherPort,
-		// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): pass
-		// the SSOT mutations dispatcher to the unified clips handler so
-		// the ReprocessUseCase (constructed inside NewHandler) routes
-		// its media_assets UPSERT through the canonical outbox+tx path.
-		MutationsDispatcher: mutationsDisp,
-		EnrichUC:            enrichUC,
-		SearchSvc:           searchAggregator,
-		BulkUploadWorker:    bulkUploadWorker,
-		ClipOpsService:      clipOpsSvc,
+		ProcessRunner: processRunnerAdapter,
+		Dispatcher:    clipsDispatcherPort,
+		EnrichUC:      enrichUC,
+		SearchSvc:     searchAggregator,
+
 	}, idemHandler)
 
+	// S1a (June 2026): register the media.enrich worker NOW so any
+	// clip created/uploaded/reindexed via the API can be enriched
+	// asynchronously by the jobs pool. Without this registration, the
+	// new jobs.Enqueue calls would land in the broker and fall to
+	// the default no-handler error path. Nil-tolerant so wire tests
+	// can opt out.
+	if err := appclips.RegisterMediaEnrichWorker(jobs.Service, assetRepo, enrichUC, log); err != nil {
+		log.Warn("failed to register media.enrich worker", zap.Error(err))
+	} else {
+		log.Info("registered media.enrich worker in jobs.Service")
+	}
 	var drivePort appstorage.DrivePort
 	if driveUploader != nil {
 		drivePort = &storageDriveAdapter{up: driveUploader}
@@ -391,18 +306,10 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	}
 	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
 
-	// SoundEffect: wrapped repos + uploader + metaWriter + dispatcher via
-	// sfxports adapters. PG-003 (June 2026) replaced the four concrete
+	// SoundEffect: wrapped repos + uploader + metaWriter via sfxports
+	// adapters. PG-003 (June 2026) replaces the four concrete
 	// infrastructure reach-throughs with structural ports so the api/
 	// layer stays thin (per AGENTS.md Pattern 0).
-	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed):
-	// sfxDispatcher is added so the Generate path routes through the
-	// canonical *outbox.Dispatcher.EnqueueAndIndex instead of the legacy
-	// direct h.clipsRepo.Upsert fallback — the same fail-closed pattern
-	// the four clips writers in this PR migrate to. Nil-tolerant in
-	// composition: when dispatcher is nil (test fixtures, partial
-	// deploys), the handler returns 503 to the operator. Production
-	// wiring in cmd/server always supplies a non-nil dispatcher.
 	sfxClips := &sfxClipsRepoAdapter{repo: bundle.ClipsRepo}
 	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
 	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
@@ -410,12 +317,10 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if driveUploader != nil {
 		sfxDriveUp = &sfxDriveUploaderAdapter{up: driveUploader}
 	}
-	var sfxDispatcher sfxports.DispatcherPort
-	sfxDispatcher = newSfxDispatcherAdapter(dispatcher)
-	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
+	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
-	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher)
+	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher, bundle.ManifestService)
 	// PR8: register receives the same shared idempotency handler as clips.
 	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
 
@@ -437,17 +342,15 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	)
 	log.Info("created unified Assets module (thin transport)")
 
-	// Return AssetsWiring. The canonical SearchAggregator + the
-	// pre-built SearchFanOut are exposed here for diagnostic
-	// routes, future Health probes, and Wave 22 follow-ups. Both
-	// reference the SAME instance wired by BuildCanonicalSearchFanOut
-	// in WireRegistry (see the AssetBundle construction below).
+	// Return AssetsWiring. The canonical SearchAggregator (built
+	// above the clipsHandler construction) is exposed here for
+	// diagnostic routes, future Health probes, and Wave 22 follow-ups.
+	// Legacy clipssearch.Service + appsearchsvc.Service no longer
+	// exist (PR 10 CUTOVER delivered).
 	return &AssetsWiring{
 		Module:               assetsRouteMod,
 		DeletionSvc:          deletionSvc,
 		InternalMediaHandler: storageHandler,
-		SearchAggregator:     searchAggregator,
-		SearchFanOut:         searchFanOut,
 	}, nil
 }
 
@@ -506,10 +409,6 @@ func (a *zapLogAdapter) Debug(msg string, keysAndValues ...any) {
 // BuildDomainBundle can pre-build the service and pass it via the bundle.
 // PG-011 (June 2026): DB typed as *storage.SQLiteDB instead of *sql.DB so
 // the composition layer never holds raw sqlite handles.
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): Dispatcher
-// added so WireMediaIngest can construct the canonical mutations SSOT
-// for NewClipStoreAdapter / NewClipsRegistry (the 4 ctor calls in
-// buildIngestService clone paths).
 type MediaIngestBundle struct {
 	DB                *storage.SQLiteDB
 	Assets            *asset.Service
@@ -519,7 +418,6 @@ type MediaIngestBundle struct {
 	ClipsRepo         *sqassets.ClipsRepository
 	AssetIndexService *assetindex.Service
 	PrebuiltService   *ingest.Service
-	Dispatcher        *outbox.Dispatcher
 }
 
 // MediaIngestWiring holds the Mediaingest module wiring.
@@ -537,10 +435,6 @@ type MediaIngestWiring struct {
 // built the ingest service).
 // PR8 (June 2026): added idempotencyMiddleware (reusable Gin idempotency
 // middleware instance) — installed by MediaingestHandler on POST /ingest.
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): construct the
-// canonical mutations.AssetMutationDispatcher SSOT once here so both the
-// clip + stock registries (and their ingest lifecycle stores) route
-// media_assets UPSERT through the same outbox+tx writer.
 func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBundle, idempotencyMiddleware gin.HandlerFunc) (*MediaIngestWiring, error) {
 	if bundle == nil || bundle.DriveClient == nil {
 		return nil, nil
@@ -548,20 +442,16 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 	if bundle.ImageRepo == nil || bundle.VoiceoverRepo == nil || bundle.ClipsRepo == nil || bundle.AssetIndexService == nil {
 		return nil, nil
 	}
-	mutationsDisp, err := newMutationsDispatcherAdapter(bundle.Dispatcher)
-	if err != nil {
-		return nil, fmt.Errorf("WireMediaIngest: %w", err)
-	}
 	svc := bundle.PrebuiltService
 	if svc == nil {
 		imagesRegistry := imgapp.NewRegistryAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath(), log)
 		imagesLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: imagesRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
 		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
 		voiceoverLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: voiceoverRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
-		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
-		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
-		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
+		clipRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
+		clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: clipRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())}, log)
+		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())
+		stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, DriveClient: bundle.DriveClient, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository())}, log)
 		svc = ingest.NewService(cfg, log, bundle.DriveClient, map[ingest.Kind]*ingest.Pipeline{
 			ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 			ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
