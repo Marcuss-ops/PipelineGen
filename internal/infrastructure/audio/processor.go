@@ -119,7 +119,23 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 
 	p.log.Info("TTS generated", zap.String("path", outputPath))
 
-	// 2. Optional silence removal
+	// 2. Parse JSON output from tts_edge.py for voice profile information
+	// First validate it exists and is readable
+	if outputData, err := os.ReadFile(outputPath); err == nil {
+		// Try to parse JSON output from tts_edge.py (it's printed to stdout)
+		// The script may write JSON to stdout (can be mixed with stderr)
+		var scriptOutput struct {
+			OK    bool   `json:"ok"`
+			Voice string `json:"voice"`
+			Path  string `json:"path"`
+		}
+		if jsonValid := json.Unmarshal(outputData, &scriptOutput); jsonValid == nil && scriptOutput.OK && scriptOutput.Voice != "" {
+			// Use the actual voice profile from tts_edge.py
+			result.VoiceProfile = scriptOutput.Voice
+		}
+	}
+
+	// 3. Optional silence removal
 	if input.RemoveSilence {
 		cleanedPath := filepath.Join(input.OutputDir, "cleaned_"+safeName)
 		err := audio.RemoveSilence(ctx, "", outputPath, cleanedPath)
@@ -132,7 +148,7 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		}
 	}
 
-	// 3. Compute hash
+	// 4. Compute hash
 	if result.LocalPath != "" {
 		hash, err := hashutil.HashFile(result.LocalPath, md5.New())
 		if err != nil {
