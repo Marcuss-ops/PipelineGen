@@ -60,7 +60,7 @@
   # Wave 14's rule forbids internal/infrastructure imports in internal/api/,
   # but ~20 imports remain grandfathered in
   # docs/migrations/api-infrastructure-imports-allowlist.txt while the
-  # API compaction migrates per docs/roadmap/PR3_API_COMPACTION.md.
+  # API compaction migrates per architecture/current.yaml Wave 14 (June 2026).
   status: in_progress
   verified_zero: false
   description: |
@@ -83,7 +83,7 @@
   rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
   exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files; zero grandfathered imports remain in docs/migrations/api-infrastructure-imports-allowlist.txt."
   grandfathered_imports_ref: docs/migrations/api-infrastructure-imports-allowlist.txt
-  grandfathered_imports_migration: docs/roadmap/PR3_API_COMPACTION.md
+  # Migration plan lives in this same file (Wave 14 description: block above) — no separate migration doc needed.
 
   # W14 clips-helpers-extract (June 2026, PR2 slice 1/8):
   # api/assets/clips/helpers.go was lifted to application-layer
@@ -206,6 +206,31 @@
     architecture_exceptions: 0
   exit_gate: "All target_metrics are zero. archcheck exits 0 in strict mode (no ratchet)."
   blocked_by: ["15"]
+  # W16 alias-cleanup PR1 (June 2026): 7 deprecation records created in
+  # architecture/deprecations.yaml per godlike/07 schema (id,
+  # owner_capability, exact_symbol, file:line, replacement,
+  # introduction_date, removal_date, tracking_issue, compatibility_test,
+  # usage_metric, status). Live code removal: SearchTopics + helpers
+  # ripped out of internal/api/assets/youtube/youtube_handlers.go
+  # (the method was defined but UNROUTED — pure dead code path).
+  completed_through_W16_alias_cleanup_pr1:
+    - "architecture/deprecations.yaml: 7 records shipped (PR-CLIP-RESTORE, PR-JOB-STATUS-DEFENSIVE, PR-QDRANT-PAYLOAD-STATUS, PR-QDRANT-CFG-URL, PR-INDEXST-LEGACY-ALPHABET, PR-YT-SEARCHTOPICS, PR-YT-TYPES-TOPIC)"
+    - "internal/api/assets/youtube/youtube_handlers.go: SearchTopics method removed (line 124 in original)"
+    - "internal/api/assets/youtube/youtube_handlers.go: searchTopicsViaProvider helper removed (line 165 in original)"
+    - "internal/api/assets/youtube/youtube_handlers.go: providersToTopicResults free function removed (line 211 in original)"
+    - "internal/api/assets/youtube/youtube_handlers.go: provider-registry wiring (resolveProvider, providerSearch, providerReg, providerResolve sync.Once) DELIBERATELY KEPT for the follow-up PR-CLIP-YT-REGISTRY-CLEANUP"
+    - "Migration phase distribution after PR1: CONTRACT=4 (removed), CUTOVER=1 (removed-but-history-migrating), BACKFILL=1 (in_progress), keep=1 (intentional anti-corruption)"
+  follow_up_tickets:
+    - id: PR-CLIP-YT-REGISTRY-CLEANUP
+      title: "Collapse provider-registry wiring in YouTubeClipHandler (resolveProvider + 3 fields + constructor parameter)"
+      owner_capability: internal/api/assets/youtube
+      target: "single archaeology pass against the one provider wiring site (internal/app/clips_adapters_index.go) and the constructor parameter on NewYouTubeClipHandler"
+      notes: "After this PR lands, the next Wave 16 PR will: (a) remove the 4 provider fields + resolveProvider method, (b) drop the `providerRegistry *providers.Registry` parameter from NewYouTubeClipHandler, (c) delete the providers import once no other callsite in this package needs it, (d) update the one caller that currently wires the registry (clips_adapters_index.go::RegisterRoutes)."
+    - id: PR-JOB-STATUS-UPPERCASE-MIGRATION
+      title: "Migrate jobs.status to UPPERCASE-only + drop LOWER() defensive fold in jobs_checker.go::livenessQuery"
+      owner_capability: internal/infrastructure/database/sqlite/jobs
+      target: "data migration on the `jobs` table writing all rows to UPPERCASE, then remove the LOWER() defensive read in jobs_checker.go::livenessQuery and flip PR-JOB-STATUS-DEFENSIVE status → removed"
+      notes: "Until this PR ships, the defensive read stays. Pre-flight validation: `SELECT COUNT(*) FROM jobs WHERE LOWER(status) IN ('running','failed','completed')` MUST return 0 before CUTOVER."
   pg_016_api_test_residuals:
     description: "Completion of PG-016 typed-handle sweep through internal/api/ test fixtures from raw *sql.DB to *storage.SQLiteDB."
     test_compile_state: GREEN (resolved 2026-06-24)
@@ -388,6 +413,8 @@
       - id: PR2-2
         title: "Wire or delete scripts/archcheck/imports.go::AnalyzeImports (dead code)"
         target: "scripts/archcheck/imports.go"
+        status: done
+        closed_in_commit: "Wave 19 PR2 dead-plus-setup (June 2026)"
         description: |
           imports.go defines `AnalyzeImports()` but `main.go` never calls
           it (PR1 review flagged it as dead code). PR2 makes the call:
@@ -410,6 +437,8 @@
       - id: PR2-3
         title: "Migrate applicationCapabilities from hardcoded list to filesystem-driven discovery"
         target: "scripts/archcheck/main.go::applicationCapabilities"
+        status: done
+        closed_in_commit: "Wave 19 PR2 dead-plus-setup (June 2026)"
         description: |
           Replace the hardcoded 22-capability list with one of:
           (a) `os.ReadDir("internal/application")` at startup, filtering
@@ -430,14 +459,102 @@
         recommended: "(a) os.ReadDir"
     deferred_impact:
       - "Until PR2-1 ships, the PR2 graph emission cannot be enforced — operators rely on PR1 counts as a smoke signal only."
-      - "Until PR2-2 ships, scripts/archcheck/imports.go stays dead; future code reviewers will keep flagging it."
-      - "Until PR2-3 ships, adding a new application/<capN>/ requires a manual entry in applicationCapabilities() — silent under-detect if forgotten."
     exit_gate_PR2: |
-      PR2-1 + PR2-2 + PR2-3 all green AND the ratchet subtracts from
+      PR2-1 green (PR2-2 + PR2-3 already done, June 2026) AND the
+      ratchet subtracts from
       `docs/migrations/application-infrastructure-imports-allowlist.txt`
       and `docs/migrations/cross-capability-imports-allowlist.txt`
       (initial content TBD by operators with PR1 counts as starting
       reference baseline) AND CI strict-mode exit code stays 0.
+
+  # Archcheck entry-point decision (June 2026, Wave 19 PR2 dead-plus-setup):
+  # Two archcheck binaries coexist by design — see AGENTS.md
+  # "Architecture Map" and the package-level docstrings on both binaries.
+  # KEEP_BOTH is the canonical answer (NOT a working-around-Phase-0 hack):
+  #   - cmd/archcheck is PERMANENT (target tree shape; never expires).
+  #   - scripts/archcheck is TRANSIENT (legacy burndown; rules expire as
+  #     they reach verified_zero: true, binary dies with last legacy family).
+  # They cover COMPLEMENTARY concerns, NOT overlapping rule families. A
+  # forced merge would couple permanent rules with ephemeral burndown
+  # logic at huge refactor cost; the deferred_merger_trigger below is
+  # the natural endgame when scripts/archcheck reaches end-of-life.
+  archcheck_entry_point_decision:
+    decision: KEEP_BOTH
+    decided_in: "Wave 19 PR2 dead-plus-setup commit (June 2026)"
+    binary_a:
+      path: cmd/archcheck
+      role: target-tree validator
+      lifecycle: permanent
+      parses: architecture/policy.yaml
+      mode: Phase 0 report-only (no --strict enforcement yet)
+    binary_b:
+      path: scripts/archcheck
+      role: legacy burndown ratchet
+      lifecycle: transient
+      invokes: rg (regex-heavy)
+      mode: live CI gate via scripts/ci-architectural-checks.sh
+    deferred_merger_trigger: |
+      Reopen the merge question when scripts/archcheck reaches
+      `verified_zero: true` across all rule families AND the
+      application-infrastructure + cross-capability ratchets
+      converge to zero — at that point a one-time merge absorbing
+      remaining legacy rules into cmd/archcheck is the natural
+      endgame. PR2-1 edge graph emission is a precondition (the
+      graph needs a stable consumer-shaped target before any
+      merge move).
+  completed_through_W19_pr2_deadplus_setup:
+    - "scripts/archcheck/imports.go REMOVED (PR2-2 wire-or-delete: `rg AnalyzeImports .` returns ZERO callers; the file's AST-based architecture rules were never invoked from any focus/ratchet mode)"
+    - "scripts/archcheck/aliases.go REMOVED (`rg FindAliases .` returns ZERO callers; the file's AST-based import-alias + local-alias detection was a hypothetical detector never wired into runFocusedChecks/runRatchetChecks)"
+    - "scripts/archcheck/wrappers.go REMOVED (`rg FindWrappers .` returns ZERO callers; the file's single-statement wrapper detector was a hypothetical detector never wired into runFocusedChecks/runRatchetChecks)"
+    - "scripts/archcheck/main.go::applicationCapabilities rewritten to use os.ReadDir(\"internal/application\") (PR2-3; hardcoded 22-entry map replaced; filesystem re-read on every invocation so new capability dirs are picked up automatically)"
+    - "scripts/archcheck/main.go::Report struct: unused Graphs field + its long docstring reverted (forward-looking declaration; re-introduction deferred to PR-W19-PR2-1 follow-up PR once the allowlist for cross-capability edges is committed)"
+    - "scripts/archcheck/main.go: added package-level docstring cross-referencing cmd/archcheck ('this binary is the legacy burndown half; companion is cmd/archcheck')"
+    - "cmd/archcheck/main.go: package doc enhanced to cross-reference scripts/archcheck ('this binary is the target-tree half; companion is scripts/archcheck')"
+    - "scripts/archcheck still vets cleanly: go vet + go build on scripts/archcheck/... GREEN; rg-sanity post-deletion conclusion: 0 callers across FindAliases/FindWrappers/AnalyzeImports"
+    - "ci-architectural-checks.sh smoke GREEN: scripts/archcheck/main.go continues to be the last CI check before exit, no caller changes needed"
+
+  # PR-W19-AST-DETECTION-RENEWAL (follow-up ticket, deferred):
+  # If a future rule family needs AST-based detection (per-file alias
+  # catalogues, single-statement wrapper counts, etc.) that the
+  # `rg`-based Phase 0 rules cannot provide, the three deleted files
+  # are available in git history (`git show HEAD~N:scripts/archcheck/
+  # {aliases,wrappers,imports}.go`) and can be partially restored as
+  # `_test_only` helpers or rewritten under a new
+  # `scripts/archcheck/ast/` subpackage. Until such a need arises, the
+  # caller-free AST detectors stay removed — restoring them in this
+  # PR would resurrect the very dead-code drift this sweep targeted.
+  w19_followup_ast_detection_renewal:
+    id: PR-W19-AST-DETECTION-RENEWAL
+    status: deferred
+    trigger_criteria: |
+      Restore the deleted AST-based detectors ONLY IF a future rule
+      family requires per-file classification that rg patterns cannot
+      express (e.g. ANNOTATING PRODUCTION ASSETS with import-alias
+      provenance for a refactor audit). Otherwise the rg-based Phase 0
+      rules remain the canonical detection surface and the deleted AST
+      code stays out of the source tree.
+    recovery_path: |
+      Pin the deletion SHA deterministically (avoids `HEAD~N`
+      drifting after future rebases): run
+      `git log --all --diff-filter=D --pretty='%H' --name-only --
+      scripts/archcheck/<name>.go` to retrieve the deletion SHA, then
+      `git show <sha>:scripts/archcheck/<name>.go` to recover the file
+      content. The `--all` covers cases where the deletion lived on a
+      merged-in branch; `--diff-filter=D` filters to the deletion event;
+      `--pretty='%H'` returns the SHA alone; `--name-only` confirms
+      the path matched. (`--follow` is NOT used: it traces renames
+      backward from a path that currently exists in HEAD, so once
+      the file is deleted from HEAD `--follow` has nothing to track
+      and silently degrades to plain `git log`.) Relocate restored
+      code under `scripts/archcheck/ast/` (new subpackage) to avoid
+      recreating the prior main-package file pile-up Wave 16
+      disciplined against.
+    rationale: |
+      The pre-PR deletion rationale is
+      `rg -l FindAliases . / rg -l FindWrappers . / rg -l AnalyzeImports .`
+      each returning ZERO callers. The AST detection was correct but
+      un-wired — re-introducing it without a caller would resurrect the
+      dead-code drift this PR targeted.
 
 
 ---

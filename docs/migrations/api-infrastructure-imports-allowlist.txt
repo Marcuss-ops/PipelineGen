@@ -40,7 +40,7 @@
 # middleware still legitimately need access to internal/infrastructure
 # adapters for upload, Drive binding, and DB-backed policy checks.
 #
-# Migration plan (per PR3 docs/roadmap/PR3_API_COMPACTION.md):
+# Migration plan (per architecture/current.yaml Wave 14, June 2026):
 #   * Wave 14-PR2: extract bulk_upload + handler.go + workers out of
 #     api/assets/clips/* → internal/application/assets/clips/{service,worker}.
 #     This removes 8 entries.

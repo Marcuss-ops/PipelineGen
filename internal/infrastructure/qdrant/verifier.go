@@ -246,21 +246,6 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		}
 	}
 
-	// ── Gate 6: Golden‑query smoke ─────────────────────────────
-	// QDRANT-005 (June 2026): replaces the hardcoded-true placeholder.
-	// Scrolls a small sample and verifies the collection is queryable
-	// with well-formed payloads. A failing collection (scroll error,
-	// zero points, or all malformed payloads) sets GoldenQueriesOK=false
-	// and blocks the Ready gate.
-	report.GoldenQueriesOK = v.runGoldenQuerySmoke(ctx, targetCollection)
-
-	// ── Gate 7: Filter smoke ───────────────────────────────────
-	// QDRANT-005 (June 2026): validates that Qdrant payload indexes
-	// work correctly. Discovers a source value from an unfiltered
-	// scroll, then scrolls with a source filter and verifies every
-	// returned point matches. Filter failure blocks the Ready gate.
-	report.FiltersOK = v.runFilterSmoke(ctx, targetCollection)
-
 	// ── Gate 5: Dead‑letter check (optional) ─────────────────────
 	if v.deadLetter != nil {
 		if dl, err := v.deadLetter.CountOpen(ctx); err != nil {
@@ -268,6 +253,30 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		} else {
 			report.DeadLetterOpen = dl
 		}
+	}
+
+	// ── Gate 6: Golden‑query smoke ─────────────────────────────
+	// QDRANT-005 (June 2026): replaces the hardcoded-true placeholder.
+	// Scrolls a small sample and verifies the collection is queryable
+	// with well-formed payloads. Failure blocks the Ready gate and
+	// appends a diagnostic to report.Errors so the JSON report is
+	// self-diagnosable without tailing logs.
+	report.GoldenQueriesOK = v.runGoldenQuerySmoke(ctx, targetCollection)
+	if !report.GoldenQueriesOK {
+		report.Errors = append(report.Errors,
+			"QDRANT-005: golden query smoke failed — collection not queryable or payloads malformed")
+	}
+
+	// ── Gate 7: Filter smoke ───────────────────────────────────
+	// QDRANT-005 (June 2026): validates that Qdrant payload indexes
+	// work correctly. Discovers a source value from an unfiltered
+	// scroll, then scrolls with a source filter and verifies every
+	// returned point matches. Filter failure blocks the Ready gate
+	// and appends a diagnostic to report.Errors.
+	report.FiltersOK = v.runFilterSmoke(ctx, targetCollection)
+	if !report.FiltersOK {
+		report.Errors = append(report.Errors,
+			"QDRANT-005: filter smoke failed — payload index or filtering broken")
 	}
 
 	// ── Ready gate: ALL conditions must pass ─────────────────────

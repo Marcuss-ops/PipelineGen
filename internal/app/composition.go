@@ -305,7 +305,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg, dbs.main)
+	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.DriveClient)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	if sync.CatalogSync != nil && jobs.Service != nil {

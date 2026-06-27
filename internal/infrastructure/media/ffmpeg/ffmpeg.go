@@ -43,10 +43,6 @@ func NewFromConfig(cfg *config.Config) *Processor {
 func (p *Processor) Path() string { return p.path }
 
 // ── Type aliases — canonical definitions in ffmpeg/types (PR6-B, June 2026) ──
-//
-// Deprecated: import ".../internal/infrastructure/media/ffmpeg/types" and use
-// types.NormalizeOptions, types.CutJob, etc. directly. These aliases exist
-// for backward compatibility; they will be removed in a future wave.
 
 type (
 	NormalizeOptions       = types.NormalizeOptions

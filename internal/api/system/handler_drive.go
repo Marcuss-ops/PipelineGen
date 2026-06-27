@@ -27,8 +27,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"              // api.Error, api.BadRequest, api.OK — gin response helpers
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips" // clips.ExtractDriveFolderID — URL/ID parsing helper
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ── Port interfaces (AGENTS.md Pattern 0 / Wiki §14) ─────────────────────────
@@ -101,24 +101,24 @@ type CreateFoldersRequest struct {
 // Response: { "ok": true, "created": {"ziwe": "folder-id-1", "TeamCoco": "folder-id-2"} }
 func (h *DriveHandler) CreateFolders(c *gin.Context) {
 	if h.driveOps == nil {
-		api.Error(c, 500, "drive uploader not configured")
+		apiutil.Error(c, 500, "drive uploader not configured")
 		return
 	}
 
 	var req CreateFoldersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, "invalid request: "+err.Error())
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
 	if len(req.Folders) == 0 {
-		api.BadRequest(c, "folders list is empty")
+		apiutil.BadRequest(c, "folders list is empty")
 		return
 	}
 
 	parentID := clips.ExtractDriveFolderID(strings.TrimSpace(req.ParentID))
 	if parentID == "" {
-		api.BadRequest(c, "parent_id is required")
+		apiutil.BadRequest(c, "parent_id is required")
 		return
 	}
 
@@ -138,7 +138,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		created[folderName] = folderID
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":            true,
 		"parent_id":     req.ParentID,
 		"created":       created,
@@ -152,7 +152,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 // Body: { "source": "artlist", "root_folder_id": "xxx", "dry_run": true }
 func (h *DriveHandler) Reconcile(c *gin.Context) {
 	if h.reconciler == nil {
-		api.Error(c, 500, "reconcile service not configured")
+		apiutil.Error(c, 500, "reconcile service not configured")
 		return
 	}
 
@@ -163,25 +163,25 @@ func (h *DriveHandler) Reconcile(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, "invalid request body")
+		apiutil.BadRequest(c, "invalid request body")
 		return
 	}
 
 	ctx := c.Request.Context()
 	result, err := h.reconciler.Reconcile(ctx, req.Source, req.RootFolderID, req.DryRun)
 	if err != nil {
-		api.Error(c, 500, err.Error())
+		apiutil.Error(c, 500, err.Error())
 		return
 	}
 
-	api.OK(c, result)
+	apiutil.OK(c, result)
 }
 
 // Cleanup performs orphan removal.
 // Body: { "source": "artlist", "root_folder_id": "xxx" }
 func (h *DriveHandler) Cleanup(c *gin.Context) {
 	if h.reconciler == nil {
-		api.Error(c, 500, "reconcile service not configured")
+		apiutil.Error(c, 500, "reconcile service not configured")
 		return
 	}
 
@@ -191,18 +191,18 @@ func (h *DriveHandler) Cleanup(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, "invalid request body")
+		apiutil.BadRequest(c, "invalid request body")
 		return
 	}
 
 	ctx := c.Request.Context()
 	result, err := h.reconciler.Reconcile(ctx, req.Source, req.RootFolderID, false)
 	if err != nil {
-		api.Error(c, 500, err.Error())
+		apiutil.Error(c, 500, err.Error())
 		return
 	}
 
-	api.OK(c, result)
+	apiutil.OK(c, result)
 }
 
 // MoveFileRequest represents a request to move files between Drive folders.
@@ -216,12 +216,12 @@ type MoveFileRequest struct {
 // POST /api/drive/move
 func (h *DriveHandler) MoveFile(c *gin.Context) {
 	if h.driveOps == nil {
-		api.Error(c, 500, "drive uploader not configured")
+		apiutil.Error(c, 500, "drive uploader not configured")
 		return
 	}
 	var req MoveFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, "invalid request: "+err.Error())
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 	ctx := c.Request.Context()
@@ -234,7 +234,7 @@ func (h *DriveHandler) MoveFile(c *gin.Context) {
 		}
 		moved++
 	}
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":           true,
 		"moved":        moved,
 		"errors":       errs,
@@ -276,18 +276,18 @@ const resolveMaxBatchSize = 100
 //	Response: { "ok": true, "resolved": [{id,name,mime_type,parents,trashed,...}], "errors": ["id: msg"], "resolved_count": N, "error_count": M }
 func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
 	if h.driveOps == nil {
-		api.Error(c, 500, "drive uploader not configured")
+		apiutil.Error(c, 500, "drive uploader not configured")
 		return
 	}
 
 	var req ResolveByIDsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, "invalid request: "+err.Error())
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
 	if len(req.IDs) > resolveMaxBatchSize {
-		api.BadRequest(c, fmt.Sprintf("ids list exceeds max batch size of %d", resolveMaxBatchSize))
+		apiutil.BadRequest(c, fmt.Sprintf("ids list exceeds max batch size of %d", resolveMaxBatchSize))
 		return
 	}
 
@@ -352,7 +352,7 @@ func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
 		out = append(out, item)
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":             true,
 		"resolved":       out,
 		"resolved_count": len(out),

@@ -19,8 +19,6 @@
     "internal/api/middleware/middleware_validation.go:21:func BindAndValidate(c *gin.Context, dst any) error {",
     "internal/api/middleware/middleware_workspace_scope.go:12://   - Admin principals may request any workspace (the header indicates a choice).",
     "internal/api/module_base.go:59:// Freeze prevents any further module registration. Safe to call concurrently",
-    "internal/api/response.go:13:func Accepted(c *gin.Context, data any) {",
-    "internal/api/response.go:9:func OK(c *gin.Context, data any) {",
     "internal/api/service.go:28:func RequireService(c *gin.Context, svc any, serviceName string) bool {",
     "internal/api/service.go:39:func RequireJobs(c *gin.Context, svc any) bool {",
     "internal/api/transport/transport.go:138:type Binder[In any] func(c *gin.Context) (In, error)",

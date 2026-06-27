@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -32,6 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -277,17 +277,17 @@ func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, con
 
 func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
-		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
 		return
 	}
 	jobID := strings.TrimSpace(c.Param("job_id"))
 	if jobID == "" {
-		api.BadRequest(c, "job_id is required")
+		apiutil.BadRequest(c, "job_id is required")
 		return
 	}
 	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)
 	if err != nil {
-		api.NotFound(c, fmt.Sprintf("job not found: %v", err))
+		apiutil.NotFound(c, fmt.Sprintf("job not found: %v", err))
 		return
 	}
 	events, err := h.jobsSvc.ListEvents(c.Request.Context(), jobID)
@@ -307,17 +307,17 @@ func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
 
 func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
-		api.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
 		return
 	}
 	jobID := strings.TrimSpace(c.Param("job_id"))
 	if jobID == "" {
-		api.BadRequest(c, "job_id is required")
+		apiutil.BadRequest(c, "job_id is required")
 		return
 	}
 	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)
 	if err != nil {
-		api.NotFound(c, fmt.Sprintf("job not found: %v", err))
+		apiutil.NotFound(c, fmt.Sprintf("job not found: %v", err))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

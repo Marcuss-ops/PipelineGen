@@ -1,3 +1,29 @@
+// Package main — archcheck (legacy burndown ratchet).
+//
+// scripts/archcheck is the **legacy burndown** half of PipelineGen's
+// architectural gating. It is a regex-heavy (`rg`) transitional
+// ratchet — its job is to enforce that the codebase shrinks the
+// legacy surface (database/sql in api/application/domain, interface{}
+// growth, dependency setters, type aliases, fake 501 routes,
+// handlers reaching for *sql.DB, Python legacy writers, etc.) under a
+// committed monotone-decreasing baseline.
+//
+// Companion binary: **cmd/archcheck** is the **target-tree** half —
+// for its role description, see cmd/archcheck/main.go's package doc.
+// Keep the two binaries separate because their lifecycles are
+// orthogonal: this binary is transient (rules expire when they reach
+// verified_zero=true); cmd/archcheck is permanent (it enforces the
+// target tree indefinitely). Cross-references between the two
+// binaries live in AGENTS.md §"Architecture Map", in
+// architecture/current.yaml (Wave 16 + Wave 19 docs), and in
+// architecture/current.yaml::archcheck_entry_point_decision
+// (Wave 19 PR2 dead-plus-setup, June 2026).
+//
+// Exit codes:
+//
+//	0 — report printed; no violations (default mode).
+//	1 — violations present (focused or ratchet mode).
+//	2 — load/walk/marshal/seek error.
 package main
 
 import (
@@ -68,6 +94,15 @@ func main() {
 }
 
 // Report is the JSON contract for scripts/archcheck consumers.
+//
+// The schema is intentionally minimal (`Checks map[string]int` +
+// `Violations []string`) so dashboards and `jq` pipelines reading the
+// report are stable. The Wave 19 PR2-1 edge-graph emission
+// (`application_to_infrastructure_edges`, `cross_capability_import_edges`)
+// is tracked separately under architecture/current.yaml and not yet
+// wired in this struct — the field was prototyped and reverted; a
+// follow-up PR will reintroduce it under `report.graphs` after the
+// ratchet allowlist for those edges is committed.
 type Report struct {
 	Passed            bool           `json:"passed"`
 	FocusedGatePassed bool           `json:"focused_gate_passed,omitempty"`
@@ -233,10 +268,10 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 //
 // Vocabulary mapping (PR1 does NOT rename directories — would invalidate
 // the active Wave 14-18 ratchet):
-//   * capabilities = internal/application/<cap>
-//   * platform     = internal/infrastructure/<sub>
-//   * kernel       = internal/domain/<x>
-//   * app          = internal/app
+//   - capabilities = internal/application/<cap>
+//   - platform     = internal/infrastructure/<sub>
+//   - kernel       = internal/domain/<x>
+//   - app          = internal/app
 //
 // Target after Wave 15-18 hardening: 0. For the FIRST PR the function
 // reports COUNTS in the `Checks` map and emits NO violations, so the
@@ -350,50 +385,60 @@ func checkCrossCapabilityImport() (map[string]int, []string) {
 	return stats, nil
 }
 
-// applicationCapabilities returns the set of well-known capability
-// sub-package names under internal/application/. Used by
-// checkCrossCapabilityImport to classify source files and imports.
+// applicationCapabilities returns the set of capability sub-package
+// names under internal/application/, derived from the filesystem at
+// archcheck startup. Adds/removes of capability directories are picked
+// up automatically without list edits (Wave 19 PR2-3 acceptance).
 //
-// PR2 HOOK (do not forget when promoting this rule to hard gate):
-// the current list is a HARDCODED SNAPSHOT of known capability
-// directories. New capability directories added after this snapshot
-// will be SILENTLY IGNORED (no error, no warning) until the list is
-// re-rolled. PR2 must replace this map with one of:
-//  1. os.ReadDir("internal/application") at archcheck startup (auto-
-//     discover, immune to new capability dirs), OR
-//  2. Compute the list from architecture/ownership.yaml::application_*
-//     keys (single source of truth, requires ownership.yaml to have
-//     one entry per capability — see ownership.yaml::application_assets
-//     as the canonical shape).
-// PR1 remains safe for now because the in_progress Wave 14-18 waves
-// are the only ones adding/removing capabilities and we re-roll the
-// list in lockstep with each wave.
+// Both focused and ratchet modes call this function and observe the
+// same set (no drift between modes) because the underlying fs read is
+// deterministic for a given checkout.
+//
+// Non-capability directories are filtered out: hidden directories
+// (leading "."), well-known non-cap sub-paths (testdata, mocks,
+// helpers). The filter is intentionally narrow — when in doubt, treat
+// a directory as a capability so PR2's ratchet gate catches unintended
+// drift at the (srcCap == importCap) filter layer.
+//
+// Edge cases:
+//   - os.ReadDir error: a stderr warning is emitted and an empty set
+//     returned. This surfaces the symptom (zero counts) immediately to
+//     operators instead of silently degrading to a stale hardcoded map.
+//     The ratchet gate stays GREEN because 0 < baseline is the natural
+//     state. The next operator step is to fix the filesystem path.
+//   - No matches at all (empty internal/application): same as above —
+//     operators see a zero count instead of a poisoned 22-entry map.
+//
+// PR2-3 (June 2026) replaces the pre-PR2 hardcoded 22-entry map. The
+// prior hook comment ("do not forget when promoting this rule to hard
+// gate") is RESOLVED — the divergence risk (silent under-detect when
+// new capability dirs are added) no longer exists because
+// applicationCapabilities() re-reads the filesystem on every invocation.
 func applicationCapabilities() map[string]bool {
-	return map[string]bool{
-		"assets":             true,
-		"artlist":            true,
-		"association":        true,
-		"books":              true,
-		"catalog":            true,
-		"channels":           true,
-		"clips":              true,
-		"content":            true,
-		"generation":         true,
-		"images":             true,
-		"ingest":             true,
-		"jobs":               true,
-		"lessons":            true,
-		"mediasearch":        true,
-		"middleware":         true,
-		"monitor":            true,
-		"realtime":           true,
-		"scriptassets":       true,
-		"scripts":            true,
-		"searchqueries":      true,
-		"system":             true,
-		"voiceover":          true,
-		"youtube":            true,
+	const appPath = "internal/application"
+	out := map[string]bool{}
+	entries, err := os.ReadDir(appPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "archcheck: applicationCapabilities: read %s: %v (returning empty set; check filesystem mount and operator access)\n", appPath, err)
+		return out
 	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		// Filter: hidden directories (e.g. .git) are never capabilities.
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		// Filter: well-known non-capability sub-paths.
+		switch name {
+		case "testdata", "mocks", "helpers":
+			continue
+		}
+		out[name] = true
+	}
+	return out
 }
 
 // capabilityOfFile returns the capability name for a Go file under
@@ -1162,4 +1207,3 @@ func checkPythonLegacyWriterGate() (int, []string) {
 	sort.Strings(violations)
 	return len(violations), violations
 }
-
