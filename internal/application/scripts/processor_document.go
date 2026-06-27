@@ -64,30 +64,16 @@ func (p *DocumentProcessor) Process(
 	}
 
 	// Look up entities + metadata from the shared accumulator.
-	// PR 3 conversion note: accumulator.Metadata carries the
-	// scripts.VideoMetadata shape (live in this package because
-	// the legacy VideoMetadata was defined here). The domain
-	// VideoMetadata (scriptpkg.VideoMetadata) is what
-	// BuildGenerationDocumentHTML expects. The conversion loop
-	// below is a structural copy — same Go shape, different
-	// package identity. A PR 7+ cleanup migrates scripts.VideoMetadata
-	// to scriptpkg.VideoMetadata exclusively and removes this
-	// copy.
+	// PR 8 (June 2026): the pre-PR-3 structural-copy bridge is
+	// gone — both accumulator.Metadata and BuildGenerationDocumentHTML's
+	// argument are now scriptpkg.VideoMetadata (the canonical
+	// shape in internal/domain/script). The accumulator value
+	// flows through directly.
 	var entities *scriptpkg.EntityResult
 	var metadata []scriptpkg.VideoMetadata
 	if accumulator != nil {
 		entities = accumulator.Entities
-		if accMetadata := accumulator.Metadata; len(accMetadata) > 0 {
-			metadata = make([]scriptpkg.VideoMetadata, len(accMetadata))
-			for i := range accMetadata {
-				metadata[i] = scriptpkg.VideoMetadata{
-					Language:    accMetadata[i].Language,
-					Title:       accMetadata[i].Title,
-					Description: accMetadata[i].Description,
-					Tags:        accMetadata[i].Tags,
-				}
-			}
-		}
+		metadata = accumulator.Metadata
 	}
 
 	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, entities, metadata)
