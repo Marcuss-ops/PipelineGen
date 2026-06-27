@@ -20,6 +20,7 @@ package scripts
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -259,6 +260,8 @@ func buildGenerationResult(
 	var sourceTrace scriptpkg.SourceTrace
 	if engineResult.ClipEvidence != nil {
 		sourceTrace.AcceptedClipIDs = engineResult.ClipEvidence.ClipIDs
+	}
+	// PR 3: the pre-PR-3 overwriting loop that enriched
 	}
 	// PR 3: the pre-PR-3 overwriting loop that enriched
 	// scene.Bindings.Clip.ClipID/DriveLink from
