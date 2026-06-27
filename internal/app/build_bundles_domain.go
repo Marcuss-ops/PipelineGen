@@ -16,15 +16,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
@@ -293,8 +293,8 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
-	memoryRepo := gemmamemory.NewRepository(dbs.main.DB)
-	memorySvc := gemmamemory.NewService(memoryRepo, log)
+	memoryRepo := adapters.NewRepository(dbs.main.DB)
+	memorySvc := adapters.NewService(memoryRepo, log)
 	log.Info("Gemma Memory Gate service initialized")
 
 	// PR 5 (June 2026): NewEngine no longer takes a ScriptRepository

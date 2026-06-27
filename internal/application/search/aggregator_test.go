@@ -1,24 +1,24 @@
 // Package search — aggregator_test.go covers the Wave 21 PR 9
 // Aggregator pipeline. Eight unit tests as specified by PR 9:
 //
-//   1. TestAggregatorConcurrentFanout — backends run in parallel
-//      (start time + finish time overlap); order of late arrival
-//      does not bias ranking.
-//   2. TestAggregatorPartialFailure — one backend errors →
-//      Result.Partial=true, ProviderErrors["name"] populated,
-//      other backends' results still served.
-//   3. TestAggregatorDedup4Key — same evidence presented via
-//      all 4 identity keys (assetID / sourceRef / url / hash) on
-//      different backends; Survives merged slice has 1 entry.
-//   4. TestAggregatorCursorStability — page 1 emits items; the
-//      cursor is fed back into page 2 which skips those items.
-//   5. TestAggregatorCtxCancel — parent ctx cancelled mid-fanout
-//      → all in-flight backends observed ctx.Done() OR completed.
-//   6. TestAggregatorMediaTypeFilter — only backends whose
-//      Capabilities intersect q.MediaTypes participate.
-//   7. TestAggregatorInvalidCursor — malformed cursor → ErrInvalidCursor.
-//   8. TestAggregatorMaxScoreRanking — duplicates collide; the
-//      higher-Score entry wins.
+//  1. TestAggregatorConcurrentFanout — backends run in parallel
+//     (start time + finish time overlap); order of late arrival
+//     does not bias ranking.
+//  2. TestAggregatorPartialFailure — one backend errors →
+//     Result.Partial=true, ProviderErrors["name"] populated,
+//     other backends' results still served.
+//  3. TestAggregatorDedup4Key — same evidence presented via
+//     all 4 identity keys (assetID / sourceRef / url / hash) on
+//     different backends; Survives merged slice has 1 entry.
+//  4. TestAggregatorCursorStability — page 1 emits items; the
+//     cursor is fed back into page 2 which skips those items.
+//  5. TestAggregatorCtxCancel — parent ctx cancelled mid-fanout
+//     → all in-flight backends observed ctx.Done() OR completed.
+//  6. TestAggregatorMediaTypeFilter — only backends whose
+//     Capabilities intersect q.MediaTypes participate.
+//  7. TestAggregatorInvalidCursor — malformed cursor → ErrInvalidCursor.
+//  8. TestAggregatorMaxScoreRanking — duplicates collide; the
+//     higher-Score entry wins.
 //
 // The stubs are kept minimal: name + caps + items + err + delay +
 // ctxCheck hook. Adapters translate backend shapes in
@@ -379,19 +379,19 @@ func TestAggregatorInvalidCursor(t *testing.T) {
 func TestAggregatorMaxScoreRanking(t *testing.T) {
 	registry := NewBackendRegistry()
 	if err := registry.Register(&stubBackend{
-		name: "low-score",
+		name:  "low-score",
 		items: []Candidate{{AssetID: "winner", Source: "low-score", Score: 0.3}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(&stubBackend{
-		name: "high-score",
+		name:  "high-score",
 		items: []Candidate{{AssetID: "winner", Source: "high-score", Score: 0.95}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(&stubBackend{
-		name: "mid-score",
+		name:  "mid-score",
 		items: []Candidate{{AssetID: "winner", Source: "mid-score", Score: 0.7}},
 	}); err != nil {
 		t.Fatal(err)

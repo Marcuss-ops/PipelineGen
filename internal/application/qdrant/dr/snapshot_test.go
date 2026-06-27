@@ -221,10 +221,30 @@ func TestRestoreService_PanicOnNilCore(t *testing.T) {
 		name    string
 		mutator func(*RestoreServiceDeps)
 	}{
-		{"nil Store", func(d *RestoreServiceDeps) { d.Store = nil; d.Switcher = &stubSwitcher{}; d.Creator = &stubCreator{}; d.Verifier = &stubVerifier{} }},
-		{"nil Switcher", func(d *RestoreServiceDeps) { d.Switcher = nil; d.Store = &stubSnapshotStore{}; d.Creator = &stubCreator{}; d.Verifier = &stubVerifier{} }},
-		{"nil Creator", func(d *RestoreServiceDeps) { d.Creator = nil; d.Store = &stubSnapshotStore{}; d.Switcher = &stubSwitcher{}; d.Verifier = &stubVerifier{} }},
-		{"nil Verifier", func(d *RestoreServiceDeps) { d.Verifier = nil; d.Store = &stubSnapshotStore{}; d.Switcher = &stubSwitcher{}; d.Creator = &stubCreator{} }},
+		{"nil Store", func(d *RestoreServiceDeps) {
+			d.Store = nil
+			d.Switcher = &stubSwitcher{}
+			d.Creator = &stubCreator{}
+			d.Verifier = &stubVerifier{}
+		}},
+		{"nil Switcher", func(d *RestoreServiceDeps) {
+			d.Switcher = nil
+			d.Store = &stubSnapshotStore{}
+			d.Creator = &stubCreator{}
+			d.Verifier = &stubVerifier{}
+		}},
+		{"nil Creator", func(d *RestoreServiceDeps) {
+			d.Creator = nil
+			d.Store = &stubSnapshotStore{}
+			d.Switcher = &stubSwitcher{}
+			d.Verifier = &stubVerifier{}
+		}},
+		{"nil Verifier", func(d *RestoreServiceDeps) {
+			d.Verifier = nil
+			d.Store = &stubSnapshotStore{}
+			d.Switcher = &stubSwitcher{}
+			d.Creator = &stubCreator{}
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -4,30 +4,30 @@
 // pipeline described by the project plan.
 //
 // Pipeline (PR 9):
-//   1. Decode cursor  → SkipSet (dedup.go::SkipSetFromCursor).
-//   2. Trim text + clamp limit (q.Limit; default DefaultLimit;
-//      capped MaxLimit).
-//   3. Pick eligible backends (BackendRegistry.Eligible(q)) —
-//      filtered by Query.MediaTypes ∩ Backend.Capabilities.
-//   4. Fan-out: pkg/concurrent errgroup + per-backend timeout via
-//      context.WithTimeout. Per PR 9 spec the defaults are:
-//         provider-style backends: 5s
-//         "local" backend:          2s
-//         "semantic" backend:       8s
-//      The composition root can override by populating
-//      a.perBackendTimeouts before calling Search.
-//   5. Per-backend Search errors DO NOT cancel the whole search;
-//      they land in Result.ProviderErrors[name] and set
-//      Result.Partial = true. "Partial preferred" per Wave 21
-//      survey of the search subsystem: one slow backend must
-//      never starve the others or kill the response.
-//   6. Pool candidates across backends → Merge(skips dedup by
-//      4-key). Then RankByScore (Score DESC, Source ASC,
-//      AssetID ASC).
-//   7. Trim to q.Limit. Build NextCursor from the last served
-//      items via EncodeCursorFromItems + EncodeCursor (wire
-//      base64 form).
-//   8. Return Result{Items, NextCursor, ProviderErrors, Partial}.
+//  1. Decode cursor  → SkipSet (dedup.go::SkipSetFromCursor).
+//  2. Trim text + clamp limit (q.Limit; default DefaultLimit;
+//     capped MaxLimit).
+//  3. Pick eligible backends (BackendRegistry.Eligible(q)) —
+//     filtered by Query.MediaTypes ∩ Backend.Capabilities.
+//  4. Fan-out: pkg/concurrent errgroup + per-backend timeout via
+//     context.WithTimeout. Per PR 9 spec the defaults are:
+//     provider-style backends: 5s
+//     "local" backend:          2s
+//     "semantic" backend:       8s
+//     The composition root can override by populating
+//     a.perBackendTimeouts before calling Search.
+//  5. Per-backend Search errors DO NOT cancel the whole search;
+//     they land in Result.ProviderErrors[name] and set
+//     Result.Partial = true. "Partial preferred" per Wave 21
+//     survey of the search subsystem: one slow backend must
+//     never starve the others or kill the response.
+//  6. Pool candidates across backends → Merge(skips dedup by
+//     4-key). Then RankByScore (Score DESC, Source ASC,
+//     AssetID ASC).
+//  7. Trim to q.Limit. Build NextCursor from the last served
+//     items via EncodeCursorFromItems + EncodeCursor (wire
+//     base64 form).
+//  8. Return Result{Items, NextCursor, ProviderErrors, Partial}.
 package search
 
 import (
@@ -56,7 +56,9 @@ const (
 // DefaultProviderBackendTimeout.
 //
 // Composition root: populate overrides via:
-//   a.SetPerBackendTimeouts(map[string]time.Duration{"artlist": 7*time.Second})
+//
+//	a.SetPerBackendTimeouts(map[string]time.Duration{"artlist": 7*time.Second})
+//
 // before exposing the Aggregator to handlers.
 func PerBackendTimeout(name string, overrides map[string]time.Duration) time.Duration {
 	if d, ok := overrides[name]; ok {

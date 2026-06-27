@@ -33,9 +33,9 @@ import (
 // field add. The two paths resolve to the same underlying type at
 // compile time — no wrapping, no projection, no copy.
 type (
-	StockCommand              = stockpipeline.StockCommand
-	StockSearchAndRunRequest  = stockpipeline.StockSearchAndRunRequest
-	ChunkMetadataInput        = stockpipeline.ChunkMetadataInput
+	StockCommand             = stockpipeline.StockCommand
+	StockSearchAndRunRequest = stockpipeline.StockSearchAndRunRequest
+	ChunkMetadataInput       = stockpipeline.ChunkMetadataInput
 )
 
 // ── SubmitResult ────────────────────────────────────────────────────────
@@ -46,12 +46,12 @@ type (
 // populated whenever the submit ends in a non-success terminal state;
 // the returned error mirrors Error for errors.Is classification.
 type SubmitResult struct {
-	JobID       string                       `json:"job_id,omitempty"`
-	Status      string                       `json:"status"`
-	TotalClips  int                          `json:"total_clips,omitempty"`
-	TotalChunks int                          `json:"total_chunks,omitempty"`
-	Chunks      []stockpipeline.ChunkResult  `json:"chunks,omitempty"`
-	Error       string                       `json:"error,omitempty"`
+	JobID       string                      `json:"job_id,omitempty"`
+	Status      string                      `json:"status"`
+	TotalClips  int                         `json:"total_clips,omitempty"`
+	TotalChunks int                         `json:"total_chunks,omitempty"`
+	Chunks      []stockpipeline.ChunkResult `json:"chunks,omitempty"`
+	Error       string                      `json:"error,omitempty"`
 }
 
 // ── FromAPIRequest (api → StockCommand with validation) ──────────────
@@ -131,16 +131,16 @@ var ErrJobsServiceRequired = errors.New("stock: jobs service required for async 
 
 // Submit dispatches a stock pipeline run.
 //
-//   async=true  + jobs wired → enqueue a media.stock job; return
-//                SubmitResult{JobID, Status: "enqueued"}.
-//   async=true  + jobs nil   → SubmitResult{Status: "rejected",
-//                Error: "...jobs required..."}, ErrJobsServiceRequired.
-//   async=true  + enqueue FAILED → SubmitResult{Status: "error",
-//                Error: err.Error()}, err.
-//   async=false             → run synchronously via svc.Run;
-//                return SubmitResult projected from *PipelineResult,
-//                or SubmitResult{Status: "error", Error: err.Error()}
-//                on failure.
+//	async=true  + jobs wired → enqueue a media.stock job; return
+//	             SubmitResult{JobID, Status: "enqueued"}.
+//	async=true  + jobs nil   → SubmitResult{Status: "rejected",
+//	             Error: "...jobs required..."}, ErrJobsServiceRequired.
+//	async=true  + enqueue FAILED → SubmitResult{Status: "error",
+//	             Error: err.Error()}, err.
+//	async=false             → run synchronously via svc.Run;
+//	             return SubmitResult projected from *PipelineResult,
+//	             or SubmitResult{Status: "error", Error: err.Error()}
+//	             on failure.
 //
 // Spec'd signature: `Submit(ctx, cmd, async) (*SubmitResult, error)`.
 // The returned error is non-nil on any non-success terminal state;

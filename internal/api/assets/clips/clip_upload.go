@@ -445,4 +445,3 @@ func execCmd(ctx context.Context, name string, args []string, runner appassets.P
 	}
 	return strings.TrimSpace(result.Output), nil
 }
-

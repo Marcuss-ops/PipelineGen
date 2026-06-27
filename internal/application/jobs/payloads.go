@@ -16,7 +16,6 @@ import (
 //   2. Register it in payloadDecoders.
 //   3. In the handler, call DecodePayload[*NewPayload](job).
 
-
 type MediaStockPayload struct {
 	Project   string `json:"project"`
 	VideoName string `json:"video_name"`
@@ -121,7 +120,7 @@ type DriveFolderSyncPayload struct {
 
 // TypedPayload is a constraint satisfied by all job payload structs.
 type TypedPayload interface {
-		MediaStockPayload | YouTubeClipExtractPayload |
+	MediaStockPayload | YouTubeClipExtractPayload |
 		CatalogSyncPayload |
 		SystemCleanupPayload | VoiceoverBatchPayload |
 		BooksProcessPayload | LessonsProcessPayload |

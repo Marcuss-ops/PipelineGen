@@ -15,12 +15,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+<<<<<<< Updated upstream
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+=======
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+>>>>>>> Stashed changes
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -49,8 +54,7 @@ type YouTubeClipHandler struct {
 	// Stats are aggregator-routed (S3d); the legacy h.getAllClipRepos()
 	// method is removed.
 	searchAggregator *providers.SearchAggregator
-}// NewYouTubeClipHandler builds the YouTubeClipHandler.
-//
+} // NewYouTubeClipHandler builds the YouTubeClipHandler.
 // service          - YouTube service used by this handler.
 // log              - zap logger for diagnostics.
 // jobsSvc          - job system used by the async extract endpoint.
@@ -388,9 +392,9 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 	totalClips := 0
 	for source, ps := range aggStats.Providers {
 		stats[source] = gin.H{
-			"hits":       ps.Hits,
-			"calls":      ps.Calls,
-			"errors":     ps.Errors,
+			"hits":           ps.Hits,
+			"calls":          ps.Calls,
+			"errors":         ps.Errors,
 			"avg_latency_ms": ps.AvgLatency().Milliseconds(),
 		}
 		totalClips += ps.Hits

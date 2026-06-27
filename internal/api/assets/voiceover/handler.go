@@ -104,8 +104,13 @@ func (h *Handler) Generate(c *gin.Context) {
 			batchReq.FilenameTemplate = req.Filename
 		}
 
+<<<<<<< Updated upstream
 		if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 			Type: "voiceover.batch",
+=======
+		if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+			Type:    "voiceover.batch",
+>>>>>>> Stashed changes
 			Payload: batchReq.PayloadMap(),
 		}, "Voiceover generation enqueued."); ok {
 			return
@@ -149,8 +154,13 @@ func (h *Handler) Batch(c *gin.Context) {
 		zap.Int("languages", len(req.Languages)),
 		zap.Strings("languages", req.Languages))
 
+<<<<<<< Updated upstream
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type: "voiceover.batch",
+=======
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type:    "voiceover.batch",
+>>>>>>> Stashed changes
 		Payload: req.PayloadMap(),
 	}, "Voiceover batch enqueued."); ok {
 		return
@@ -194,8 +204,13 @@ func (h *Handler) Promo(c *gin.Context) {
 		langCount = len(voiceover.DefaultPromoLanguages())
 	}
 
+<<<<<<< Updated upstream
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type: "voiceover.promo",
+=======
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type:    "voiceover.promo",
+>>>>>>> Stashed changes
 		Payload: req.PayloadMap(),
 	}, fmt.Sprintf("Promo voiceover enqueued (%d languages).", langCount)); ok {
 		return

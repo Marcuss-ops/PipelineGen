@@ -182,11 +182,11 @@ func ExtractIntFromManifest(m map[string]any, key string) int {
 // bulk-upload scanning logic. Defined here (single owner) and
 // consumed by bulk_upload_worker.go.
 type clipCandidate struct {
-	Name        string
-	LocalPath   string
-	Subdir      string
-	Manifest    map[string]any
-	Transcript  string
+	Name       string
+	LocalPath  string
+	Subdir     string
+	Manifest   map[string]any
+	Transcript string
 }
 
 // DisplayName returns the readable clip name (manifest title preferred).

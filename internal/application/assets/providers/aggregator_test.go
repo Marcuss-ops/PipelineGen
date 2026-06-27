@@ -18,24 +18,24 @@ import (
 // stay short and the actions the test cares about are obvious from
 // the constructor.
 type stubSearchProvider struct {
-	name    string
-	search  func(ctx context.Context, req SearchRequest) (SearchResult, error)
-	delay   time.Duration
-	err     error
-	empty   bool
-	hits    int
+	name   string
+	search func(ctx context.Context, req SearchRequest) (SearchResult, error)
+	delay  time.Duration
+	err    error
+	empty  bool
+	hits   int
 }
 
 func (p *stubSearchProvider) Name() string               { return p.name }
 func (p *stubSearchProvider) Capabilities() []Capability { return []Capability{CapabilitySearch} }
 
 // Search implements the deterministic stub behaviour:
-//   1. Honour ctx cancellation (mirror production adapters).
-//   2. Sleep `delay` (release the slot so other providers run in
-//      parallel) — used to validate the 5s per-provider timeout.
-//   3. Return `err` when non-nil.
-//   4. Return `hits` candidates when `empty == false`; empty list
-//      when `empty == true`.
+//  1. Honour ctx cancellation (mirror production adapters).
+//  2. Sleep `delay` (release the slot so other providers run in
+//     parallel) — used to validate the 5s per-provider timeout.
+//  3. Return `err` when non-nil.
+//  4. Return `hits` candidates when `empty == false`; empty list
+//     when `empty == true`.
 func (p *stubSearchProvider) Search(ctx context.Context, req SearchRequest) (SearchResult, error) {
 	if p.delay > 0 {
 		select {
@@ -429,12 +429,12 @@ func (p *stubHashSource) Name() string { return p.name }
 
 // FindClipsByHash mirrors the deterministic stubSearchProvider.Search
 // contract:
-//   1. Honour ctx cancellation (mirror production adapters).
-//   2. Sleep `delay` (release the slot so other sources run in
-//      parallel) — used to validate the 5s default timeout.
-//   3. Return `err` when non-nil.
-//   4. Return `empty=true` for no candidates; otherwise return
-//      `hits` HashHit rows.
+//  1. Honour ctx cancellation (mirror production adapters).
+//  2. Sleep `delay` (release the slot so other sources run in
+//     parallel) — used to validate the 5s default timeout.
+//  3. Return `err` when non-nil.
+//  4. Return `empty=true` for no candidates; otherwise return
+//     `hits` HashHit rows.
 func (p *stubHashSource) FindClipsByHash(ctx context.Context, hash string) ([]HashHit, error) {
 	if p.delay > 0 {
 		select {

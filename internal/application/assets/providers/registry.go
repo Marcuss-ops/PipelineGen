@@ -135,32 +135,32 @@ func (s *ProviderCapabilitySet) Has(cap Capability) bool {
 //
 // Field semantics:
 //   - Name         : canonical human-readable identifier, matches
-//                    Provider.Name() (the registry uses Name as the
-//                    dedup key).
+//     Provider.Name() (the registry uses Name as the
+//     dedup key).
 //   - Provider     : the underlying source integration. Required.
-//                    Lookups via All/ByCapability/Get strip this and
-//                    return Provider for back-compat.
+//     Lookups via All/ByCapability/Get strip this and
+//     return Provider for back-compat.
 //   - Capabilities : typed set declared at Register time. Pointer
-//                    fields are populated when the provider advertises
-//                    the capability AND the caller has enriched the
-//                    entry with a per-capability detail. Zero value
-//                    (all nil) is acceptable and means "no per-
-//                    capability enrichment declared" — this is the
-//                    migration-friendly path from the previous
-//                    `[]Capability` shape.
+//     fields are populated when the provider advertises
+//     the capability AND the caller has enriched the
+//     entry with a per-capability detail. Zero value
+//     (all nil) is acceptable and means "no per-
+//     capability enrichment declared" — this is the
+//     migration-friendly path from the previous
+//     `[]Capability` shape.
 //   - HealthProbe  : optional liveness probe for this provider. When
-//                    nil, Registry.HealthCheck omits the provider from
-//                    the result map (no entry = no probe configured).
+//     nil, Registry.HealthCheck omits the provider from
+//     the result map (no entry = no probe configured).
 //   - Timeout      : per-provider timeout applied to the HealthProbe
-//                    call. 0 falls back to DefaultHealthTimeout (5s).
-//                    Per S3a spec wording.
+//     call. 0 falls back to DefaultHealthTimeout (5s).
+//     Per S3a spec wording.
 //   - MaxResults   : per-provider cap on candidate counts. 0 means
-//                    "use adapter default". Forwarded to consumers
-//                    in a future wave that pipes registry-level
-//                    limits into SearchRequest.Limit.
+//     "use adapter default". Forwarded to consumers
+//     in a future wave that pipes registry-level
+//     limits into SearchRequest.Limit.
 //   - MaxPages     : per-provider cap on pagination depth. 0 means
-//                    "no pagination" / adapter default. Same forward-
-//                    shape as MaxResults.
+//     "no pagination" / adapter default. Same forward-
+//     shape as MaxResults.
 type ProviderEntry struct {
 	Name         string
 	Provider     Provider
@@ -297,8 +297,8 @@ func (r *Registry) Register(p Provider) error {
 // Returns:
 //   - ErrNilEntry           if entry is nil;
 //   - ErrEmptyName          if entry.Name is "" AND entry.Provider is nil
-//                           (forward-compat: callers may pass entry
-//                           with explicit Name but no Provider);
+//     (forward-compat: callers may pass entry
+//     with explicit Name but no Provider);
 //   - ErrFrozen             if the registry is already frozen;
 //   - ErrAlreadyRegistered  if a provider with the same Name exists.
 func (r *Registry) RegisterEntry(entry *ProviderEntry) error {

@@ -531,6 +531,7 @@ type VerifyReport struct {
 // on two parallel surfaces (the names mirror each other):
 //   - api-side:    Handler.HandleFixHash -> response {"reindexed": true}
 //   - service-side: FixHashReport.{OK, Reindexed, DispatcherOK}
+//
 // Both intentionally live on FixHashReport (not HashInfo) so
 // HashInfo remains the strictly informational channel.
 type HashInfo struct {

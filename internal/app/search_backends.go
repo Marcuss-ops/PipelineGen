@@ -35,9 +35,9 @@ import (
 	"go.uber.org/zap"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // ── Adapters (one type per backend) ───────────────────────────────────
@@ -93,13 +93,13 @@ func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	out := make([]search.Candidate, 0, len(res.Candidates))
 	for _, c := range res.Candidates {
 		out = append(out, search.Candidate{
-			Source:      b.Name(),
-			SourceRef:   c.SourceRef,
-			MediaType:   string(c.MediaType),
-			Title:       c.Title,
-			PreviewURL:  c.PreviewURL,
-			Hash:        "", // providers don't emit content hash
-			Score:       c.Score,
+			Source:     b.Name(),
+			SourceRef:  c.SourceRef,
+			MediaType:  string(c.MediaType),
+			Title:      c.Title,
+			PreviewURL: c.PreviewURL,
+			Hash:       "", // providers don't emit content hash
+			Score:      c.Score,
 		})
 	}
 	return out, nil
@@ -114,7 +114,7 @@ var _ search.SearchBackend = (*providerSearchBackend)(nil)
 // metadata; the semantic rerank at the Aggregator level is what
 // surfaces relevance ordering across all backends.
 type localSearchBackend struct {
-	repo   *sqassets.ClipsRepository
+	repo    *sqassets.ClipsRepository
 	srcName string
 }
 
@@ -344,11 +344,11 @@ var _ search.SearchBackend = (*semanticSearchBackend)(nil)
 // the new AssetsBundle.MediasearchService + SearchWorkspaceID
 // fields added by Wave 21 PR 9.
 type SearchBackendBuildOpts struct {
-	Logger          *zap.Logger
-	ProviderReg     *providers.Registry
-	ClipsRepo       *sqassets.ClipsRepository
-	MediasearchSvc  *mediasearch.Service
-	WorkspaceID     string // for semantic backend; empty disables it
+	Logger         *zap.Logger
+	ProviderReg    *providers.Registry
+	ClipsRepo      *sqassets.ClipsRepository
+	MediasearchSvc *mediasearch.Service
+	WorkspaceID    string // for semantic backend; empty disables it
 }
 
 // BuildSearchBackends registers backends in a fresh BackendRegistry,

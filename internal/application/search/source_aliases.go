@@ -187,5 +187,3 @@ func ResolveCanonicals(in []string) []string {
 	defaultAliasMu.RUnlock()
 	return r.CanonicalizeSources(in)
 }
-
-

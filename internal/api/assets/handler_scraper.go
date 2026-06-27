@@ -12,8 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ScraperHandler exposes the Node-based Artlist search endpoint.

@@ -14,8 +14,8 @@ import (
 // the outbox-events column. The QDRANT-002 ticket's "media.index.*"
 // naming maps to these constants 1:1.
 const (
-	EventAssetIndexRequested          = "asset.index.requested"
-	EventAssetIndexDeleteRequested    = "asset.index.delete_requested"
+	EventAssetIndexRequested       = "asset.index.requested"
+	EventAssetIndexDeleteRequested = "asset.index.delete_requested"
 	// EventAssetIndexRestoreRequested is the canonical event-type
 	// emitted by mutations.AssetMutationDispatcher.EnqueueAndRestore.
 	// Handler (deferred to task 3 of 5, currently

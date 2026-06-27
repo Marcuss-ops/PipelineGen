@@ -14,8 +14,12 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
+<<<<<<< Updated upstream
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+=======
+>>>>>>> Stashed changes
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -28,12 +32,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
@@ -44,7 +48,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -55,6 +58,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Bundle types (≤10 fields each) ───────────────────────────────────────
@@ -173,8 +177,8 @@ type QdrantDeps struct {
 type AIBundle struct {
 	OllamaClient  *client.Client
 	ScriptGen     *ollama.Generator
-	MemoryRepo    *gemmamemory.Repository
-	MemoryService *gemmamemory.Service
+	MemoryRepo    *adapters.Repository
+	MemoryService *adapters.Service
 	ScriptEngine  *scriptcore.Engine
 }
 
@@ -187,7 +191,7 @@ type DomainBundle struct {
 	IngestService      *ingest.Service
 	BooksService       *books.Service
 	LessonsService     *lessonsSvc.Service
-	MetaWriter    *semantic.MetadataWriter
+	MetaWriter         *semantic.MetadataWriter
 	// Wave 15 (June 2026): RealtimeService split into two typed ports (the
 	// realtime package was removed in commit d61068b3). Both slots stay
 	// typed-nil at composition. Asset-side consumer

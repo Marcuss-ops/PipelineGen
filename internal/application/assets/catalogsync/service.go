@@ -82,26 +82,26 @@ var (
 // REQUIRED vs OPTIONAL contract (right-sized to the actual call-site
 // nil-safe guards, post review):
 //
-//   REQUIRED (ctor rejects nil with typed sentinel):
-//     - Uploader    : sync_targets.go:23 + sync_recursive.go dereference
-//                     unconditionally (Drive uploader is the canonical
-//                     transport integration point).
-//     - Dispatcher  : sync_persist.go::upsertPreservingExisting calls
-//                     s.dispatcher.EnqueueAndIndex unconditionally
-//                     (QDRANT-002 PR7 \u2014 production canonical ingest).
-//     - Log         : every warn/error path dereferences s.log.
+//	REQUIRED (ctor rejects nil with typed sentinel):
+//	  - Uploader    : sync_targets.go:23 + sync_recursive.go dereference
+//	                  unconditionally (Drive uploader is the canonical
+//	                  transport integration point).
+//	  - Dispatcher  : sync_persist.go::upsertPreservingExisting calls
+//	                  s.dispatcher.EnqueueAndIndex unconditionally
+//	                  (QDRANT-002 PR7 \u2014 production canonical ingest).
+//	  - Log         : every warn/error path dereferences s.log.
 //
-//   OPTIONAL (nil-safe guarded at every call site):
-//     - Targets     : empty slice == no pre-configured targets; ad-hoc
-//                     SyncFolderID paths still work via repo arg.
-//     - AssetIndex  : sync_persist.go:66 \u2014 `if s.assetIndex == nil { return }`.
-//                     TESTS may pass nil.
-//     - AssetTree   : sync_prune.go:35 + sync_recursive.go:79,175 \u2014
-//                     `if s.assetTree != nil { ... }`. nil falls back to
-//                     flat folder-id sync (no tree-bounded walks).
-//     - ClipIndexer : legacy field; not currently referenced in any
-//                     catalogsync method \u2014 retained on the Service
-//                     struct for the historical api surface; nil-safe.
+//	OPTIONAL (nil-safe guarded at every call site):
+//	  - Targets     : empty slice == no pre-configured targets; ad-hoc
+//	                  SyncFolderID paths still work via repo arg.
+//	  - AssetIndex  : sync_persist.go:66 \u2014 `if s.assetIndex == nil { return }`.
+//	                  TESTS may pass nil.
+//	  - AssetTree   : sync_prune.go:35 + sync_recursive.go:79,175 \u2014
+//	                  `if s.assetTree != nil { ... }`. nil falls back to
+//	                  flat folder-id sync (no tree-bounded walks).
+//	  - ClipIndexer : legacy field; not currently referenced in any
+//	                  catalogsync method \u2014 retained on the Service
+//	                  struct for the historical api surface; nil-safe.
 //
 // The 5 optional fields do NOT have typed sentinels because they don't
 // fail at any documented runtime path. Adding Err*s for them would be

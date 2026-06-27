@@ -9,8 +9,8 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
 	"go.uber.org/zap"

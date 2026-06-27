@@ -11,12 +11,12 @@
 //
 // Architectural placement note (Wave 19):
 //
-//   This file lives in internal/api/mediasearch/, NOT internal/app/.
-//   Internal/api is thin transport only (AGENTS.md Pattern 8) and
-//   MUST NOT depend on the composition root (internal/app/) — the
-//   composition root imports api to wire routes, so the reverse
-//   direction would create an import cycle. The helpers are
-//   package-local so the handler can call them as bare names.
+//	This file lives in internal/api/mediasearch/, NOT internal/app/.
+//	Internal/api is thin transport only (AGENTS.md Pattern 8) and
+//	MUST NOT depend on the composition root (internal/app/) — the
+//	composition root imports api to wire routes, so the reverse
+//	direction would create an import cycle. The helpers are
+//	package-local so the handler can call them as bare names.
 package mediasearch
 
 import (

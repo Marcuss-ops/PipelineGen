@@ -49,6 +49,7 @@
 //
 // Method semantics (mirror the canonical outbox.Dispatcher impl)
 // -----------------------------------------------------------------
+//
 //   - EnqueueAndIndex(ctx, asset, contentHash):
 //     atomic UPSERT media_assets + INSERT outbox_events
 //     (event_type='asset.index.requested', v1 envelope) + commit.
@@ -57,13 +58,15 @@
 //
 //   - EnqueueAndRestore(ctx, assetID):
 //     atomic STATE STAMP media_assets.index_state=PENDING
-//     + INSERT outbox_events (event_type='asset.index.restore_requested',
+//
+//   - INSERT outbox_events (event_type='asset.index.restore_requested',
 //     v1 envelope) + commit. Handler (planned for task 3 of 5) completes
 //     the picture with Qdrant re-upsert + lifecycle_state flip.
 //
 //   - EnqueueAndDelete(ctx, assetID):
 //     atomic STATE STAMP media_assets.index_state=DELETE_PENDING
-//     + INSERT outbox_events (event_type='asset.index.delete_requested',
+//
+//   - INSERT outbox_events (event_type='asset.index.delete_requested',
 //     v1 envelope) + commit. IndexDeleteHandler completes the picture
 //     with Qdrant DeletePoints + SoftDelete + index_state=DELETED.
 //
@@ -91,7 +94,7 @@
 //     that emits both media_assets writes AND outbox_events rows.
 //   - test stubs in artlist/dispatcher_stub_test.go + future
 //     testdouble packages — receive no-op behaviour for EnqueueAndIndex
-//     + deleted/restore methods so unit tests run without a real
+//   - deleted/restore methods so unit tests run without a real
 //     outbox pool.
 //
 // What is NOT a consumer:

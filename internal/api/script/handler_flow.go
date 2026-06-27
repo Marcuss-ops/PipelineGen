@@ -33,11 +33,12 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ── Local interfaces ────────────────────────────────────────────────────────
@@ -55,29 +56,29 @@ type DocumentCreator interface {
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 type ScriptFlowHandler struct {
-	engine     *scripts.Engine
+	engine     *usecase.Engine
 	imgService *images.Service
 	// Wave 16 (June 2026): typed ports — `realtimeSvc` is
-	// `scripts.RealtimeSearchService`, `associationSvc` is
-	// `scripts.AssocSearchService`. Packages removed in commit
+	// `usecase.RealtimeSearchService`, `associationSvc` is
+	// `usecase.AssocSearchService`. Packages removed in commit
 	// d61068b3 → fields stay typed-nil. NewScriptFlowHandler assigns
 	// directly from deps.Realtime / deps.Association (typed-to-typed).
-	realtimeSvc       scripts.RealtimeSearchService
-	associationSvc    scripts.AssocSearchService
+	realtimeSvc       usecase.RealtimeSearchService
+	associationSvc    usecase.AssocSearchService
 	voService         *voiceover.Service
 	assetTreeSvc      *assettree.Service
 	groupsResolver    *voiceover.GroupsResolver
-	clipSourceBuilder *scripts.ClipSourceBuilder
-	mediaCurator      *scripts.MediaCurator
-	sectionRegen      *scripts.SectionRegenerator
-	cacheEviction     *scripts.CacheEvictionUseCase
+	clipSourceBuilder *usecase.ClipSourceBuilder
+	mediaCurator      *scriptdto.MediaCurator
+	sectionRegen      *usecase.SectionRegenerator
+	cacheEviction     *usecase.CacheEvictionUseCase
 	insightBuilder    *ScriptInsightBuilder
-	clipServices      scripts.ClipServices
+	clipServices      usecase.ClipServices
 	driveFolderClient DriveFolderClient
 	documentCreator   DocumentCreator
 	jobsSvc           jobservice.Service
-	scriptsRepo       scripts.ScriptRepository
-	memorySvc         *gemmamemory.Service
+	scriptsRepo       usecase.ScriptRepository
+	memorySvc         *adapters.Service
 	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
@@ -90,33 +91,33 @@ type AutoHarvestService interface {
 
 // ScriptFlowDeps groups all constructor inputs.
 type ScriptFlowDeps struct {
-	Engine        *scripts.Engine
-	Section       *scripts.SectionRegenerator
-	CacheEviction *scripts.CacheEvictionUseCase
+	Engine        *usecase.Engine
+	Section       *usecase.SectionRegenerator
+	CacheEviction *usecase.CacheEvictionUseCase
 
 	Image *images.Service
 	// Wave 16 (June 2026): typed ports — replace the `interface{}`
 	// carrier for the script-side realtime + association consumers
 	// (packages removed in commit d61068b3; fields stay typed-nil).
 	// Compile-time enforcement replaces the prior runtime safety net.
-	Realtime    scripts.RealtimeSearchService
-	Association scripts.AssocSearchService
+	Realtime    usecase.RealtimeSearchService
+	Association usecase.AssocSearchService
 	Voiceover   *voiceover.Service
 	AssetTree   *assettree.Service
 
-	ClipSourceBuilder *scripts.ClipSourceBuilder
-	MediaCurator      *scripts.MediaCurator
+	ClipSourceBuilder *usecase.ClipSourceBuilder
+	MediaCurator      *scriptdto.MediaCurator
 	Harvest           AutoHarvestService
 
-	ScriptsRepo scripts.ScriptRepository
-	Memory      *gemmamemory.Service
+	ScriptsRepo usecase.ScriptRepository
+	Memory      *adapters.Service
 	Jobs        jobservice.Service
 
 	AdminToken            string
 	DriveFolderClient     DriveFolderClient
 	DocumentCreator       DocumentCreator
 	DriveScriptsGenFolder string
-	ClipServices          scripts.ClipServices // pre-built in wire_script.go
+	ClipServices          usecase.ClipServices // pre-built in wire_script.go
 	Log                   *zap.Logger
 }
 

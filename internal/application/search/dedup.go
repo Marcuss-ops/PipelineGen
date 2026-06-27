@@ -2,17 +2,18 @@
 // policy used by Aggregator.Search after per-backend fanout.
 //
 // Dedup contract (project rule, PR 8 spec):
-//   Two Candidates are "the same" if they share ANY of:
 //
-//     1. AssetID         (canonical UUID/hex)
-//     2. Source+"|"+SourceRef
-//                       (provider-native identity, e.g.
-//                        "youtube|dQw4w9WgXcQ")
-//     3. canonical(PreviewURL)
-//                       (URL with query-string + fragment stripped
-//                        so tracking params and signed-token short-
-//                        expiry variants do NOT diverge identity)
-//     4. Hash            (content hash if the backend reported one)
+//	Two Candidates are "the same" if they share ANY of:
+//
+//	  1. AssetID         (canonical UUID/hex)
+//	  2. Source+"|"+SourceRef
+//	                    (provider-native identity, e.g.
+//	                     "youtube|dQw4w9WgXcQ")
+//	  3. canonical(PreviewURL)
+//	                    (URL with query-string + fragment stripped
+//	                     so tracking params and signed-token short-
+//	                     expiry variants do NOT diverge identity)
+//	  4. Hash            (content hash if the backend reported one)
 //
 // When a collision exists, the higher-Score entry wins. Ties
 // resolve deterministically (existing stays; new is dropped). The

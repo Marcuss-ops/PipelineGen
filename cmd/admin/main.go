@@ -10,6 +10,12 @@
 //   - cleanup-orphans             (cmd/admin/cleanup.go)
 //   - cleanup-all-orphans         (cmd/admin/cleanup.go)
 //   - cleanup-artlist-empty-folders (cmd/admin/cleanup.go)
+//   - cleanup-qdrant-legacy       (cmd/admin/cleanup_qdrant_legacy.go) — PR 14:
+//     unified dry-run-first cleanup over the 8 legacy-audit categories
+//     (non-media / metadata.json / hidden-temp / invalid vectors /
+//     wrong dims / legacy lifecycle / legacy locator / non-canonical
+//     point ID). Apply dispatches canonical outbox EnqueueAndDelete —
+//     NEVER direct DELETE FROM media_assets.
 //   - cleanup-stock-orphans       (cmd/admin/cleanup.go)
 //   - delete-specific-folders     (cmd/admin/cleanup.go)
 //   - dr-qdrant                   (cmd/admin/dr_qdrant.go) — QDRANT-005C PR3:
@@ -50,6 +56,7 @@ var availableCommands = []string{
 	"cleanup-all-orphans",
 	"cleanup-artlist-empty-folders",
 	"cleanup-orphans",
+	"cleanup-qdrant-legacy",
 	"cleanup-stock-orphans",
 	"db",
 	"delete-specific-folders",
@@ -100,6 +107,8 @@ func main() {
 		err = runCleanupArtlistEmptyFolders(args)
 	case "cleanup-orphans":
 		err = runCleanupOrphans(args)
+	case "cleanup-qdrant-legacy":
+		err = runCleanupQdrantLegacy(args)
 	case "cleanup-stock-orphans":
 		err = runCleanupStockOrphans(args)
 	case "delete-specific-folders":

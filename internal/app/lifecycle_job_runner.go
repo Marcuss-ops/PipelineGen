@@ -139,9 +139,9 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		LeaseTTL:  leaseTTLDefault(deps.cfg),
 		JobTypes:  nil,
 		Backoff: appjobs.BackoffConfig{
-			MaxBackoff:                 pollMaxBackoff,
-			JitterFraction:             pollJitter,
-			ConsecutiveEmptyThreshold:  pollConsecutiveEmpty,
+			MaxBackoff:                pollMaxBackoff,
+			JitterFraction:            pollJitter,
+			ConsecutiveEmptyThreshold: pollConsecutiveEmpty,
 		},
 		// The in-process *SQLiteStore's Subscribe/Broadcast methods
 		// satisfy the application-side QueueNotifier port; the

@@ -62,9 +62,9 @@ type Router struct {
 	// enforces the split. Typed ports isolate each handler's contract.
 	outboxHandler      InternalOutboxRouter
 	mediasearchHandler InternalMediaSearchRouter
-	ctx                  context.Context
-	healthSvc            interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
-	readyChecker         *systemhealth.ReadyChecker
+	ctx                context.Context
+	healthSvc          interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
+	readyChecker       *systemhealth.ReadyChecker
 }
 
 // MediaInternalRouter is the narrow port for /internal/v1/media/*
@@ -286,7 +286,7 @@ func (r *Router) Setup() *gin.Engine {
 		}
 	}
 
-		// QDRANT-002 + QDRANT-004 (June 2026): the internal-worker-broker
+	// QDRANT-002 + QDRANT-004 (June 2026): the internal-worker-broker
 	// prefix is "/internal/v1" — historically `remoteshared.InternalPathPrefix`.
 	// The Wave 14 PR5 cleanup hardcodes it here so internal/api stops
 	// importing internal/infrastructure/remote/shared (a transport concern,

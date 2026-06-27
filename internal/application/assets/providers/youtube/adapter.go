@@ -26,8 +26,8 @@ import (
 
 	// DTOs (VideoCutRequest/Result, DownloaderMetadata, etc.) live in ports/.
 	// TopicSearchResponse/Result and Service stay top-level.
-	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	youtubesrcports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -169,7 +169,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 			PreviewURL:   r.DirectLink,
 			ThumbnailURL: r.ThumbnailURL,
 			MediaType:    youtubeMediaType,
-			Duration:     time.Duration(r.Duration * float64(time.Second)),
+			Duration:     time.Duration(float64(r.Duration) * float64(time.Second)),
 			PublishedAt:  parseYouTubeUploadDate(r.UploadDate),
 			Score:        combinedScore(r.SimilarityScore, r.FormatMatchPercent),
 		})

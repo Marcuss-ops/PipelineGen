@@ -16,14 +16,14 @@
 //
 // Architecture map (PR3 deliverable):
 //
-//   cmd/admin/dr_qdrant.go        ─► dr.SnapshotService / dr.RestoreService / dr.RetentionService
-//   internal/application/qdrant/dr/ports.go    ─► port interfaces
-//   internal/application/qdrant/dr/snapshot.go ─► SnapshotService (Take / List / Delete)
-//   internal/application/qdrant/dr/restore.go  ─► RestoreService (Verify-then-Switch)
-//   internal/application/qdrant/dr/retention.go ─► RetentionService (SafeKeep + Drop)
-//   internal/application/qdrant/dr/types.go    ─► DR-owned canonical types
-//   internal/infrastructure/qdrant/dr_adapter.go ─► SnapshotStore / AliasSwitcher / CollectionCreator / Verifier / DRMetrics / RetentionExecutor adapters
-//   internal/infrastructure/observability/metrics.go ─► qdrant_alias_switch_{total, duration, current}
+//	cmd/admin/dr_qdrant.go        ─► dr.SnapshotService / dr.RestoreService / dr.RetentionService
+//	internal/application/qdrant/dr/ports.go    ─► port interfaces
+//	internal/application/qdrant/dr/snapshot.go ─► SnapshotService (Take / List / Delete)
+//	internal/application/qdrant/dr/restore.go  ─► RestoreService (Verify-then-Switch)
+//	internal/application/qdrant/dr/retention.go ─► RetentionService (SafeKeep + Drop)
+//	internal/application/qdrant/dr/types.go    ─► DR-owned canonical types
+//	internal/infrastructure/qdrant/dr_adapter.go ─► SnapshotStore / AliasSwitcher / CollectionCreator / Verifier / DRMetrics / RetentionExecutor adapters
+//	internal/infrastructure/observability/metrics.go ─► qdrant_alias_switch_{total, duration, current}
 //
 // Cycle break (June 2026): dr owns the 3 canonical DR types
 // (SnapshotDescription, RetentionConfig, RetentionResult — see dr/types.go).
@@ -124,7 +124,7 @@ type RetentionExecutor interface {
 type noopMetrics struct{}
 
 func (noopMetrics) RecordAliasSwitch(_ string, _ float64) {}
-func (noopMetrics) SetAliasCurrent(_ string, _ string)      {}
+func (noopMetrics) SetAliasCurrent(_ string, _ string)    {}
 
 // NowFunc is the canonical clock source for RestoreService — used by
 // tests to inject deterministic times for the timestamped target

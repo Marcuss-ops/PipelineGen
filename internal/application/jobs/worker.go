@@ -126,7 +126,7 @@ type BackoffConfig struct {
 //
 // Polling surface (PR-Polling / ADR §D6.5):
 //   - BaseInterval is the canonical PollEvery (the first-claim cadence
-//     + the post-successful-claim reset cadence). Set by the runner
+//   - the post-successful-claim reset cadence). Set by the runner
 //     via RunnerConfig.PollEvery.
 //   - MaxBackoff / JitterFraction / ConsecutiveEmptyThreshold are the
 //     backoff knobs (RunnerConfig.Backoff). Together they implement
@@ -145,7 +145,7 @@ type Worker struct {
 	pollEvery  time.Duration
 	backoff    BackoffConfig
 	types      []string
-	notifier   QueueNotifier
+	notifier   sqljobs.QueueNotifier
 }
 
 // NewWorker constructs a Worker.
@@ -165,7 +165,7 @@ type Worker struct {
 // in-process *SQLiteStore (the compile-time assertion in
 // notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)
 // is the seam marker for a future adapter).
-func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier QueueNotifier,
+func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier sqljobs.QueueNotifier,
 	log *zap.Logger, leaseTTL, pollEvery time.Duration, backoff BackoffConfig, types []string) *Worker {
 	return &Worker{
 		id:         id,
@@ -183,15 +183,15 @@ func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier Queue
 // Start runs the Worker poll loop until ctx is cancelled.
 //
 // State machine (PR-Polling / ADR §D6.5):
-//   1. Initial sleep = pollEvery + jitter  (spreads Worker startup).
-//   2. Loop:
-//      a. ClaimNext; if err → sleep at BaseInterval (errors don't escalate).
-//      b. (nil, nil) → empty; consecutiveEmpty++; if exceeds the
-//         backoff threshold, double the backoff (capped at MaxBackoff)
-//         with full-jitter sleep on the next iteration.
-//      c. Non-nil lease → reset backoff to BaseInterval, dispatch.
-//   3. Each sleep blocks on ctx.Done, notifier.Subscribe() wake, or
-//      the jittered backoff timer — whichever fires first.
+//  1. Initial sleep = pollEvery + jitter  (spreads Worker startup).
+//  2. Loop:
+//     a. ClaimNext; if err → sleep at BaseInterval (errors don't escalate).
+//     b. (nil, nil) → empty; consecutiveEmpty++; if exceeds the
+//     backoff threshold, double the backoff (capped at MaxBackoff)
+//     with full-jitter sleep on the next iteration.
+//     c. Non-nil lease → reset backoff to BaseInterval, dispatch.
+//  3. Each sleep blocks on ctx.Done, notifier.Subscribe() wake, or
+//     the jittered backoff timer — whichever fires first.
 //
 // Acceptance:
 //   - After N consecutive empty claims (N = backoff.ConsecutiveEmptyThreshold),

@@ -7,18 +7,18 @@ package images
 //
 // Invariants:
 //   - StatusAvailable         — feature is wired AND its configurable
-//                                 dependencies are present.
+//     dependencies are present.
 //   - StatusNotImplemented    — feature is wired as a stub. The 501 path
-//                                 is the honest outcome.
+//     is the honest outcome.
 //   - StatusMissingDependency — feature is wired but a required dep is
-//                                 absent (e.g. NVIDIA_API_KEY not set).
-//                                 The 503 path is the honest outcome.
+//     absent (e.g. NVIDIA_API_KEY not set).
+//     The 503 path is the honest outcome.
 //
 // Today's mapping (June 2026):
 //   - CapImageGenNvidia    — NVIDIA Flux image gen (depends on
-//                             nvidiaAPIKey + cfg.Concurrency.MaxConcurrentNvidiaGenerations)
+//     nvidiaAPIKey + cfg.Concurrency.MaxConcurrentNvidiaGenerations)
 //   - CapRemoteImageGen    — Remote Google Flow image gen (depends on
-//                             remoteImageEndpointURL)
+//     remoteImageEndpointURL)
 type Capability string
 
 const (

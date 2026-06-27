@@ -2,15 +2,15 @@
 // codex/registry-strict-uniqueness) invariant tests.
 //
 // Pins the strict-uniqueness contract on tryRegisterModuleStrict:
-//   1. Empty module name → explicit error with "compose:" prefix.
-//   2. Different instance + same name → explicit error ("already registered")
-//      with composition-level metadata (capability + descriptor-type +
-//      registration-point).
-//   3. Same instance + same name → silent no-op (composition-time idempotency;
-//      Module may be re-published across composition sites without error).
-//   4. Post-Freeze registration → explicit error with "compose:" prefix.
-//   5. Enriched error includes the WithRegistrationPoint tag verbatim.
-//   6. Enriched error includes the descriptor type (fmt.Sprintf("%T", mod)).
+//  1. Empty module name → explicit error with "compose:" prefix.
+//  2. Different instance + same name → explicit error ("already registered")
+//     with composition-level metadata (capability + descriptor-type +
+//     registration-point).
+//  3. Same instance + same name → silent no-op (composition-time idempotency;
+//     Module may be re-published across composition sites without error).
+//  4. Post-Freeze registration → explicit error with "compose:" prefix.
+//  5. Enriched error includes the WithRegistrationPoint tag verbatim.
+//  6. Enriched error includes the descriptor type (fmt.Sprintf("%T", mod)).
 //
 // Reuses the `fakeModule` declared in registry_failfast_test.go (same
 // package app). Each test uses a unique module name to avoid collisions

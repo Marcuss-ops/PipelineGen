@@ -67,15 +67,15 @@ var ErrJobsServiceRequired = errors.New("stock: jobs service required for async 
 
 // Submit dispatches a stock pipeline run.
 //
-//   async=true  + jobsSvc wired → enqueue a media.stock job via the
-//                broker pool; returns the assigned job ID.
-//   async=true  + jobsSvc nil   → ErrJobsServiceRequired (matches the
-//                S1b+S1c pattern: fail loud, no in-process fallback).
-//   async=false + jobsSvc nil   → run synchronously via the runner
-//                (test fixture + partial deploy).
-//   async=false + jobsSvc wired → run synchronously anyway — the
-//                operator asked for synchronous, the runner is the
-//                canonical answer.
+//	async=true  + jobsSvc wired → enqueue a media.stock job via the
+//	             broker pool; returns the assigned job ID.
+//	async=true  + jobsSvc nil   → ErrJobsServiceRequired (matches the
+//	             S1b+S1c pattern: fail loud, no in-process fallback).
+//	async=false + jobsSvc nil   → run synchronously via the runner
+//	             (test fixture + partial deploy).
+//	async=false + jobsSvc wired → run synchronously anyway — the
+//	             operator asked for synchronous, the runner is the
+//	             canonical answer.
 //
 // On success, returns (jobID, nil) for async paths and ("", nil) for
 // synchronous paths. Run-result inspection is a separate verify-clip

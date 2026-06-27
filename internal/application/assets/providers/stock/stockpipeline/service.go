@@ -12,15 +12,15 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -65,9 +65,9 @@ var (
 // StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
 // Three fields — under the AGENTS.md 10-per-bundle cap.
 type StorageDeps struct {
-	ClipsRepo   *assets.ClipsRepository
-	AssetIndex  *assetindex.Service
-	Dispatcher  *outbox.Dispatcher
+	ClipsRepo  *assets.ClipsRepository
+	AssetIndex *assetindex.Service
+	Dispatcher *outbox.Dispatcher
 }
 
 // MediaDeps groups the PR6 ports + semantic enrichment. Four fields —
@@ -86,11 +86,11 @@ type MediaDeps struct {
 // + MediaDeps) group related concerns so the field-name list reads as
 // the canonical composition pattern:
 //
-//   Cfg, Log, Drive         — pure data + Drive SDK
-//   Storage                 — media_assets + outbox + asset-index stack
-//   Media                   — PR6 ports + semantic enrichment
-//   YouTube                 — provider for metadata enrichment
-//   Jobs                    — async job tracker
+//	Cfg, Log, Drive         — pure data + Drive SDK
+//	Storage                 — media_assets + outbox + asset-index stack
+//	Media                   — PR6 ports + semantic enrichment
+//	YouTube                 — provider for metadata enrichment
+//	Jobs                    — async job tracker
 //
 // Pattern source: artlist.ServiceDeps (PR2.5, June 2026) — `ServiceDeps`
 // embeds `ServicePorts + ServiceDependencies` for terse construction;
@@ -105,9 +105,9 @@ type MediaDeps struct {
 // hazard that swapped the canonical ingestion path on every
 // composition-time race in WireStockPipeline.
 type Deps struct {
-	Cfg   *config.Config
-	Log   *zap.Logger
-	Drive *gdrive.Service
+	Cfg     *config.Config
+	Log     *zap.Logger
+	Drive   *gdrive.Service
 	Storage StorageDeps
 	Media   MediaDeps
 	// DELIBERATELY FLAT — YouTube + Jobs are cross-cutting fields, intentionally
@@ -232,13 +232,13 @@ func NewService(deps Deps) (*Service, error) {
 
 	v := deps.Cfg.Video.WithDefaults()
 	return &Service{
-		cfg:         deps.Cfg,
-		log:         deps.Log,
-		driveSvc:    deps.Drive,
-		driveUp:     &driveup.Uploader{Service: deps.Drive, Log: deps.Log},
-		ytdlp:       downloader.NewYTDLP(deps.Cfg),
-		cutter:      deps.Media.Cutter,
-		renderer:    deps.Media.Renderer,
+		cfg:      deps.Cfg,
+		log:      deps.Log,
+		driveSvc: deps.Drive,
+		driveUp:  &driveup.Uploader{Service: deps.Drive, Log: deps.Log},
+		ytdlp:    downloader.NewYTDLP(deps.Cfg),
+		cutter:   deps.Media.Cutter,
+		renderer: deps.Media.Renderer,
 		pcfg: PipelineConfig{
 			ChunkDuration:  v.ChunkDuration,
 			MaxResults:     v.MaxClipsPerSource,
