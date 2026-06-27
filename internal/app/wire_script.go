@@ -43,6 +43,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -201,6 +202,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// Wire ClipSearchPort when Qdrant is enabled (PJ-CURATE-1, June 2026).
 	// Ollama client serves as the embedder via qdrant.NewTextEmbedderAdapter.
 	// Constructed once and shared between CurateSourceResolver and MediaCurator.
+	//
+	// Compile-time assertion: *ollamaclient.Client satisfies asset.Embedder
+	// (structural typing — if the Embed signature ever drifts, this fails).
+	var _ asset.Embedder = (*ollamaclient.Client)(nil)
+
 	var clipSearchPort scripts.ClipSearchPort
 	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
 		if ollamaClient := gen.GetClient(); ollamaClient != nil {
