@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -26,8 +26,6 @@ type LocalToDriveRequest struct {
 
 type LocalToDriveResponse struct {
 	OK         bool     `json:"ok"`
-	JobID      string   `json:"job_id"`
-	Message    string   `json:"message"`
 	DryRun     bool     `json:"dry_run"`
 	LocalFound int      `json:"local_found,omitempty"`
 	Actors     []string `json:"actors,omitempty"`
@@ -82,11 +80,6 @@ func (h *Handler) LocalToDrive(c *gin.Context) {
 		return
 	}
 
-	if h.jobsSvc == nil {
-		apiutil.InternalError(c, fmt.Errorf("jobs service not available"))
-		return
-	}
-
 	source := req.Source
 	if source == "" {
 		source = "youtube-local"
@@ -96,34 +89,23 @@ func (h *Handler) LocalToDrive(c *gin.Context) {
 		conc = 3
 	}
 
-	payload := map[string]any{
-		"local_folder":           abs,
-		"drive_folder_id":        strings.TrimSpace(req.DriveFolderID),
-		"source":                 source,
-		"subdir_as_drive_subdir": true,
-		"recursive":              true,
-		"concurrency":            conc,
-		"limit":                  req.Limit,
-		"file_patterns":          []string{"*.mp4"},
-	}
-
-	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
 		Type:    "bulk_upload_youtube_clips",
 		Project: "media",
-		Payload: payload,
-	})
-	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("enqueue: %w", err))
+		Payload: map[string]any{
+			"local_folder":           abs,
+			"drive_folder_id":        strings.TrimSpace(req.DriveFolderID),
+			"source":                 source,
+			"subdir_as_drive_subdir": true,
+			"recursive":              true,
+			"concurrency":            conc,
+			"limit":                  req.Limit,
+			"file_patterns":          []string{"*.mp4"},
+		},
+	}, fmt.Sprintf("Job enqueued (%d clips, %d actors).", len(candidates), len(actorNames))); ok {
 		return
 	}
-
-	apiutil.OK(c, LocalToDriveResponse{
-		OK:         true,
-		JobID:      job.ID,
-		Message:    fmt.Sprintf("job enqueued (%d clips, %d actors)", len(candidates), len(actorNames)),
-		LocalFound: len(candidates),
-		Actors:     actorNames,
-	})
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
 type localClip struct {
