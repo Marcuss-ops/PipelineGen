@@ -118,7 +118,14 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 			"created_at": s.CreatedAt,
 			"updated_at": s.UpdatedAt,
 			"version":    s.Version,
-			"parent_id":  "",
+			// DRIFT-23-4 (June 2026, HC-7): emit the actual parent ID
+			// rather than the historical empty-string literal that
+			// surfaced in /scripts as `parent_id: ""` regardless of
+			// whether the script had a parent. Matches the canonical
+			// GetScriptByID behaviour (line 193 of this file) which
+			// emits scriptRec.ParentScriptID. The canonical JSON
+			// field name is pkg/defaults.DefaultVideoConfig().ParentFieldName.
+			"parent_id": s.ParentScriptID,
 		})
 	}
 
