@@ -165,7 +165,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 		Name:           "Search Test Clip",
 		SourceURL:      "https://artlist.io/clip/search",
 		Source:         "artlist",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		Tags:           []string{"search"},
 	}
 	clip.SetDownloadLink("https://artlist.io/hls/search.m3u8")
@@ -192,7 +192,7 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 		Name:           "Store Test Clip",
 		SourceURL:      "https://artlist.io/clip/store",
 		Source:         "artlist",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		Tags:           []string{"store"},
 	}
 	clip.SetDownloadLink("https://artlist.io/hls/store.m3u8")
@@ -230,7 +230,7 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 		Name:           "Drive Link Test Clip",
 		SourceURL:      "https://artlist.io/clip/drive",
 		Source:         "artlist",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		Tags:           []string{"drive"},
 	}
 	clip.SetDownloadLink("https://artlist.io/hls/drive.m3u8")
@@ -377,7 +377,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		Name:           "City Night",
 		SourceURL:      "https://cdn.artlist.io/video.m3u8",
 		Source:         "artlist",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		Tags:           []string{"city", "night"},
 	}
 	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")
@@ -463,7 +463,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 		Name:           "City Night",
 		SourceURL:      "https://cdn.artlist.io/video.m3u8",
 		Source:         "artlist",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		Tags:           []string{"city", "night"},
 	}
 	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")
@@ -549,7 +549,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		Name:           "City Night",
 		SourceURL:      "https://cdn.artlist.io/video.m3u8",
 		Source:         "artlist",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		Tags:           []string{"city", "night"},
 	}
 	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")

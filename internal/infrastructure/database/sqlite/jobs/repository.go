@@ -27,7 +27,6 @@ import (
 type SQLiteStore struct {
 	db       *sql.DB
 	log      *zap.Logger
-	claimMu  sync.Mutex
 	notifier *queueNotifier
 	// claimMu serializes ClaimNext so concurrent worker goroutines do not
 	// race on the SELECT-then-UPDATE atomic claim + start transition.
@@ -106,14 +105,6 @@ var _ job.Store = (*SQLiteStore)(nil)
 // future PR-postgres author must touch): see ADR-0002 §D2 audit notes
 // (`architecture/decisions/0002-p2-p3-roadmap.md`).
 var _ job.JobBroker = (*SQLiteStore)(nil)
-
-// Compile-time check: SQLiteStore satisfies the in-package QueueNotifier
-// port (PR-Reaper followup, June 2026). The assertion sits next to the
-// job.Store / job.JobBroker assertions so all canonical port
-// satisfactions this type promises live in one file. *SQLiteStore
-// forwards Subscribe and Broadcast to its embedded *queueNotifier
-// (queue_notifier.go).
-var _ QueueNotifier = (*SQLiteStore)(nil)
 
 func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	query := `

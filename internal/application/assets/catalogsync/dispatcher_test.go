@@ -109,7 +109,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 		MediaType:      "video",
 		Tags:           []string{"nature"},
 		Group:          "youtube",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 	}
 	clip.SetIsFolder(false)
 	clip.SetFileHash("abc123")
@@ -167,7 +167,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 		ID:             "test_folder_001",
 		Source:         "youtube",
 		Name:           "Root Folder",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 	}
 	folder.SetIsFolder(true)
 	folder.SetFolderID("test_folder_001")
@@ -213,7 +213,7 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 		Source:         "youtube",
 		Name:           "Legacy clip",
 		MediaType:      "video",
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 	}
 	clip.SetIsFolder(false)
 	clip.SetFileHash("legacy_hash")

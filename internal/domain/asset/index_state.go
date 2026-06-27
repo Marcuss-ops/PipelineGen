@@ -66,12 +66,12 @@ const (
 	// Maps to the legacy "failed" JSON value during backfill.
 	StateIndexFailed IndexState = "INDEX_FAILED"
 
-	// StateDeletePending — IndexDeleteHandler has acknowledged the
+	// StateIndexDeletePending — IndexDeleteHandler has acknowledged the
 	// Qdrant DeletePoints call but the SQLite SoftDelete has not yet
 	// committed (retryable window). Same lease-fence guarantees as
 	// INDEXING: only one worker per event, but a restart between
 	// Qdrant and SQLite leaves the row here.
-	StateDeletePending IndexState = "DELETE_PENDING"
+	StateIndexDeletePending IndexState = "DELETE_PENDING"
 
 	// StateDELETED — canonical tombstone. Qdrant point gone AND
 	// media_assets.lifecycle_state set to "deleted" (lowercase, per
@@ -105,7 +105,7 @@ const (
 func (s IndexState) Valid() bool {
 	switch s {
 	case StateDiscovered, StateIndexPending, StateIndexing, StateIndexed,
-		StateIndexFailed, StateDeletePending, StateDELETED:
+		StateIndexFailed, StateIndexDeletePending, StateDELETED:
 		return true
 	}
 	return false
@@ -138,5 +138,5 @@ func (s IndexState) IsFailedTerminal() bool {
 // idempotency pre-flight consults this in addition to
 // LifecycleState — see index_delete.go for the contract.
 func (s IndexState) IsDeletedCanonical() bool {
-	return s == StateDeletePending || s == StateDELETED
+	return s == StateIndexDeletePending || s == StateDELETED
 }
