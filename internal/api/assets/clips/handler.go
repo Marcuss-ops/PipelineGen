@@ -75,6 +75,13 @@ type Deps struct {
 	// (`internal/app`) wires a clipsDispatcherAdapter that wraps
 	// the concrete *outbox.Dispatcher.
 	Dispatcher appclips.ClipIndexDispatcherPort
+
+	// BulkUploadWorker is the canonical port-based worker for the
+	// "bulk_upload_youtube_clips" job. W14 PR2 slice 3 (June 2026):
+	// replaces the in-handler HandleBulkUploadYouTubeClipsJob method
+	// that previously lived in api/assets/clips/bulk_upload_worker.go.
+	// Nil-tolerated so test fixtures can opt out.
+	BulkUploadWorker *appclips.BulkUploadWorker
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -119,10 +126,11 @@ type Handler struct {
 	dispatcher appclips.ClipIndexDispatcherPort
 
 	// Use cases — business logic extracted from handlers
-	reprocessUC *appclips.ReprocessUseCase
-	downloadUC  *appclips.DownloadUseCase
-	bulkTagsUC  *appclips.BulkTagsUseCase
-	enrichUC    *appclips.EnrichUseCase
+	reprocessUC     *appclips.ReprocessUseCase
+	downloadUC      *appclips.DownloadUseCase
+	bulkTagsUC      *appclips.BulkTagsUseCase
+	enrichUC        *appclips.EnrichUseCase
+	bulkUploadWorker *appclips.BulkUploadWorker
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -161,6 +169,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		searchSvc:      d.SearchSvc,
 		processRunner:  d.ProcessRunner,
 		dispatcher:     d.Dispatcher,
+		bulkUploadWorker: d.BulkUploadWorker,
 
 		// Initialize use cases
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
@@ -203,13 +212,19 @@ func (h *Handler) driveRootForSource(source string) (string, string) {
 	return spec.root(h.cfg), spec.marker
 }
 
-// RegisterJobHandlers wires up the bulk-upload worker. SourcesHandler's
-// RegisterJobHandlers delegates here.
+// RegisterJobHandlers wires up the bulk-upload worker via the
+// application-layer BulkUploadWorker (W14 PR2 slice 3, June 2026).
+// The previous in-handler HandleBulkUploadYouTubeClipsJob method
+// (api/assets/clips/bulk_upload_worker.go) was deleted; the worker
+// is now constructed at the composition root with typed ports.
 func (h *Handler) RegisterJobHandlers() error {
 	if h.jobsSvc == nil {
 		return nil
 	}
-	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.HandleBulkUploadYouTubeClipsJob)
+	if h.bulkUploadWorker == nil {
+		return nil
+	}
+	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.bulkUploadWorker.HandleJob)
 }
 
 // PR8 helper: idemWriter returns h.Idempotency if set, else a no-op

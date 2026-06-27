@@ -82,8 +82,7 @@
 #   folder_tree.go    :: Handler.GetFolderChildren + Handler.GetTree
 # (Line-number citations deliberately omitted: the gate tokenizes on
 # file paths only, while comment-side line numbers drift on edit.)
-# Remaining PR2 grandfathered entries: 6.
-internal/api/assets/clips/bulk_upload_worker.go
+# Remaining PR2 grandfathered entries: 4.
 internal/api/assets/clips/clip_action.go
 internal/api/assets/clips/clip_ops.go
 internal/api/assets/clips/handler.go
