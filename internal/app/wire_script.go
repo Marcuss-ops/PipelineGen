@@ -233,6 +233,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if root.Drive.DocClient != nil {
 		genDocsSvc = scripts.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
 		ppReg.Register(scripts.NewDocumentProcessor(genDocsSvc, nil))
+		log.Info("wireScriptFlow: Document processor registered")
+	} else {
+		log.Warn("wireScriptFlow: root.Drive.DocClient is nil — Document processor skipped")
 	}
 
 	// Persistence processor (PR 5: now the single persistence owner;
