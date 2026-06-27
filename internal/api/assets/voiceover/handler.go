@@ -2,21 +2,19 @@
 package voiceover
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // Handler is the unified handler for all voiceover operations:
@@ -93,7 +91,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	}
 
 	// If async is requested, enqueue as a batch job with 1 item
-	if req.Async && h.jobsSvc != nil {
+	if req.Async {
 		h.log.Info("enqueuing voiceover generation (async)",
 			zap.String("language", req.Language),
 			zap.Bool("async", req.Async))
@@ -106,19 +104,12 @@ func (h *Handler) Generate(c *gin.Context) {
 			batchReq.FilenameTemplate = req.Filename
 		}
 
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    "voiceover.batch",
+		if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+			Type: "voiceover.batch",
 			Payload: batchReq.PayloadMap(),
-		})
-		if err != nil {
-			apiutil.InternalError(c, err)
+		}, "Voiceover generation enqueued."); ok {
 			return
 		}
-
-		apiutil.OK(c, gin.H{
-			"job_id":  job.ID,
-			"message": "Voiceover generation enqueued",
-		})
 		return
 	}
 
@@ -158,39 +149,18 @@ func (h *Handler) Batch(c *gin.Context) {
 		zap.Int("languages", len(req.Languages)),
 		zap.Strings("languages", req.Languages))
 
-	if h.jobsSvc != nil {
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    "voiceover.batch",
-			Payload: req.PayloadMap(),
-		})
-		if err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-
-		apiutil.OK(c, gin.H{
-			"job_id":  job.ID,
-			"message": "Voiceover batch enqueued",
-		})
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type: "voiceover.batch",
+		Payload: req.PayloadMap(),
+	}, "Voiceover batch enqueued."); ok {
 		return
 	}
-
-	// Fallback to sync if jobs service not available
-	h.log.Info("jobs service unavailable, falling back to sync batch processing")
-
-	resp, err := h.service.GenerateBatch(c.Request.Context(), &req)
-	if err != nil {
-		h.log.Error("voiceover batch generation failed", zap.Error(err))
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, resp)
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
 // Promo generates promotional voiceovers in multiple languages.
 // Translates the source text via Ollama, then generates a voiceover per language.
-// Runs async via goroutine — returns immediately with translation preview.
+// Non-dry-run requests are enqueued as persistent voiceover.promo jobs.
 func (h *Handler) Promo(c *gin.Context) {
 	if h.service == nil {
 		apiutil.BadRequest(c, "voiceover service not initialized")
@@ -208,10 +178,8 @@ func (h *Handler) Promo(c *gin.Context) {
 		req.DriveFolderID = h.service.Cfg().Drive.VoiceoverFolder()
 	}
 
-	ctx := c.Request.Context()
-
 	if req.DryRun {
-		resp, err := h.service.GeneratePromo(ctx, &req)
+		resp, err := h.service.GeneratePromo(c.Request.Context(), &req)
 		if err != nil {
 			apiutil.InternalError(c, err)
 			return
@@ -220,31 +188,19 @@ func (h *Handler) Promo(c *gin.Context) {
 		return
 	}
 
-	// Async: fire-and-forget goroutine, return immediately
-	concurrent.SafeGo("promo-voiceover", func() {
-		promoCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
-		defer cancel()
-		resp, err := h.service.GeneratePromo(promoCtx, &req)
-		if err != nil {
-			h.log.Error("promo voiceover generation failed", zap.Error(err))
-			return
-		}
-		h.log.Info("promo voiceover generation complete",
-			zap.Int("success", resp.Success),
-			zap.Int("failed", resp.Failed),
-			zap.Int("total", resp.Total))
-	})
-
+	// Async: enqueue as a persistent job (no fire-and-forget)
 	langCount := len(req.Languages)
 	if langCount == 0 {
 		langCount = len(voiceover.DefaultPromoLanguages())
 	}
 
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"action":  "promo_started",
-		"message": fmt.Sprintf("Translating to %d languages and generating voiceovers (async)", langCount),
-	})
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type: "voiceover.promo",
+		Payload: req.PayloadMap(),
+	}, fmt.Sprintf("Promo voiceover enqueued (%d languages).", langCount)); ok {
+		return
+	}
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
 // ListGroups lists the canonical topic→folder_id mapping under the voiceover root.
@@ -339,7 +295,7 @@ func (h *Handler) GenerateWithGroup(c *gin.Context) {
 		req.Filename = group.Name + " " + strings.ReplaceAll(req.Language, "-", " ") + ".mp3"
 	}
 
-	if req.Async && h.jobsSvc != nil {
+	if req.Async {
 		batchReq := voiceover.BatchRequest{
 			Text:      req.Text,
 			Languages: []string{req.Language},
@@ -351,21 +307,12 @@ func (h *Handler) GenerateWithGroup(c *gin.Context) {
 		payload["folder_id"] = group.FolderID
 		payload["voiceover_group"] = req.VoiceoverGroup
 
-		job, jobErr := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+		if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
 			Type:    "voiceover.batch",
 			Payload: payload,
-		})
-		if jobErr != nil {
-			apiutil.InternalError(c, jobErr)
+		}, "Voiceover generation enqueued."); ok {
 			return
 		}
-		apiutil.OK(c, gin.H{
-			"ok":              true,
-			"job_id":          job.ID,
-			"voiceover_group": req.VoiceoverGroup,
-			"folder_id":       group.FolderID,
-			"message":         "Voiceover generation enqueued",
-		})
 		return
 	}
 

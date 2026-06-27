@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -94,12 +95,12 @@ func (h *Handler) InternalSyncDriveFolder(c *gin.Context) {
 		zap.String("idempotency_key", idem),
 	)
 
-	// Reuse the canonical job-dispatch path: drive.folder.sync with the
-	// idempotency-ready payload. The job service already enforces
-	// event-level dedup (QDRANT-002 PR4 contract) when the same
-	// (type, correlation_id) tuple is replayed, so this handler does
-	// not need a second dedup layer.
-	out, err := h.dispatchDriveFolderSync(c, &DispatchSyncInput{
+	// QDRANT-001 closure: build payload via shared helper so admin
+	// (/api) and server-to-server (/internal/v1) variants stay in
+	// lockstep on payload schema and job type. The job service already
+	// enforces event-level dedup (QDRANT-002 PR4 contract) when the
+	// same (type, correlation_id) tuple is replayed.
+	payload, correlationID := buildSyncPayload(&SyncPayloadInput{
 		FolderID:  folderID,
 		Source:    source,
 		Name:      req.Name,
@@ -107,24 +108,14 @@ func (h *Handler) InternalSyncDriveFolder(c *gin.Context) {
 		IdemKey:   idem,
 		Caller:    "internal_v1",
 	})
-	if err != nil {
-		h.log.Error("internal sync-dispatch failed",
-			zap.String("drive_folder_id", folderID),
-			zap.String("idempotency_key", idem),
-			zap.Error(err),
-		)
-		apiutil.InternalError(c, err)
+
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type:          "drive.folder.sync",
+		Payload:       payload,
+		MaxRetries:    2,
+		CorrelationID: correlationID,
+	}, "Drive folder sync dispatched."); ok {
 		return
 	}
-
-	c.JSON(202, gin.H{
-		"ok":              true,
-		"job_id":          out.JobID,
-		"drive_folder_id": folderID,
-		"source":          source,
-		"media_type":      mediaType,
-		"name":            req.Name,
-		"idempotency_key": idem,
-		"message":         "Drive folder sync dispatched. Poll /api/jobs/" + out.JobID + " for status.",
-	})
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }

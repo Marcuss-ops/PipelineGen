@@ -68,6 +68,13 @@ type Deps struct {
 	SearchSvc *appclipssearch.Service
 	// ProcessRunner executes external subprocesses (ffprobe, mediainfo, etc.).
 	ProcessRunner appassets.ProcessRunner
+	// ClipOpsSvc owns the orchestration behind Reconcile/Cleanup/VerifyClip.
+	// Nil-tolerated; when nil, those endpoints return 503.
+	ClipOpsSvc *appclips.ClipOpsService
+	// BulkWorker is the canonical application-layer worker for
+	// "bulk_upload_youtube_clips" jobs. Nil-tolerated; when nil,
+	// RegisterJobHandlers skips bulk upload registration.
+	BulkWorker *appclips.BulkUploadWorker
 	// Dispatcher is the application port (NOT the concrete
 	// *outbox.Dispatcher) for QDRANT-002 routing. When non-nil,
 	// UpdateClip routes through port.EnqueueAndIndex instead of raw
@@ -133,6 +140,10 @@ type Handler struct {
 	searchSvc *appclipssearch.Service
 	// processRunner mirrors Deps.ProcessRunner.
 	processRunner appassets.ProcessRunner
+	// clipOpsSvc mirrors Deps.ClipOpsSvc.
+	clipOpsSvc *appclips.ClipOpsService
+	// bulkWorker mirrors Deps.BulkWorker.
+	bulkWorker *appclips.BulkUploadWorker
 	// dispatcher mirrors Deps.Dispatcher (now the application port
 	// type, see ClipIndexDispatcherPort for the rationale). Nil-
 	// tolerated for test fixtures and partial deployments.
@@ -180,9 +191,11 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		imagesRepo:     d.ImagesRepo,
 		artifactSvc:    d.ArtifactSvc,
 		folderMemSvc:   d.FolderMemSvc,
-		searchSvc:      d.SearchSvc,
-		processRunner:  d.ProcessRunner,
-		dispatcher:     d.Dispatcher,
+		searchSvc:        d.SearchSvc,
+		processRunner:    d.ProcessRunner,
+		clipOpsSvc:       d.ClipOpsSvc,
+		bulkWorker:       d.BulkWorker,
+		dispatcher:       d.Dispatcher,
 		bulkUploadWorker: d.BulkUploadWorker,
 		clipOpsService:   d.ClipOpsService,
 
@@ -227,19 +240,17 @@ func (h *Handler) driveRootForSource(source string) (string, string) {
 	return spec.root(h.cfg), spec.marker
 }
 
-// RegisterJobHandlers wires up the bulk-upload worker via the
-// application-layer BulkUploadWorker (W14 PR2 slice 3, June 2026).
-// The previous in-handler HandleBulkUploadYouTubeClipsJob method
-// (api/assets/clips/bulk_upload_worker.go) was deleted; the worker
-// is now constructed at the composition root with typed ports.
+// RegisterJobHandlers wires up the bulk-upload worker via the canonical
+// application-layer BulkUploadWorker. SourcesHandler's RegisterJobHandlers
+// delegates here.
 func (h *Handler) RegisterJobHandlers() error {
 	if h.jobsSvc == nil {
 		return nil
 	}
-	if h.bulkUploadWorker == nil {
-		return nil
+	if h.bulkWorker != nil {
+		return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.bulkWorker.HandleJob)
 	}
-	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.bulkUploadWorker.HandleJob)
+	return nil
 }
 
 // ─── W14 PR2 slice 4 bridge: cumulative metadata adapter ──────────────────

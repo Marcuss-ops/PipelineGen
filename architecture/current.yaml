@@ -674,6 +674,101 @@
     zero_legacy_doc_note: shipped (canonical note on wire-mirror + cycle-break + lint enforcement)
 
 
+# ── Wave 21 — Fase 4 · Unified Asset Search (in_progress, June 2026) ─────
+# Triggers: three-PR plan (PR 8 → 9 → 10) shipped as three sequential
+# direct-to-main commits on `main` per Git-Lesson-2. Each commit lands
+# GREEN (vet + build + test on affected packages). EXPAND → BACKFILL →
+# CUTOVER sequence.
+- id: 21
+  title: "Fase 4 — Unified Asset Search (consolidated Query/Result contract)"
+  status: in_progress
+  verified_zero: false
+  description: |
+    Three legacy media-search subsystems drift independently today:
+      1. internal/application/assets/clipssearch — hand-coded fanout via
+         map[string]AdvancedSearchRepo keyed by {"youtube","artlist",
+         "stock"} (composition-root hardcoded whitelist at
+         internal/app/module_media.go:196).
+      2. internal/application/assets/search — cross-provider returning
+         SearchResponse{Results:map[string]ProviderResult,Errors:...}
+         (the exact shape the project rule forbids).
+      3. internal/application/mediasearch — the QDRANT-004 semantic
+         API at /internal/v1/media/search (single-tenant WorkerAuth,
+         signed delivery URLs).
+    Three PRs replace them with one capability (internal/application/search/):
+
+      PR 8 (EXPAND, this commit): types.go + ports.go + cursor.go +
+        aggregator.go NOOP stub + search_test.go + type aliases in
+        mediasearch/types.go + delete the SearchMode type from
+        mediasearch/ports.go (constants preserved). ZERO call-site or
+        wire-shape touched.
+
+      PR 9 (BACKFILL, separate commit): real Aggregator with
+        pkg/concurrent errgroup + per-backend timeout + dedup by
+        {assetID, provider+sourceRef, URL, hash} + max-score ranking +
+        opaque cursor + Result.Partial; cross-cap composition-bridge
+        adapters in internal/app/search_backends.go; legacy paths
+        remain live during BACKFILL.
+
+      PR 10 (CUTOVER, separate commit): handlers switch to Aggregator;
+        composition-root drops hand-rolled map[string]AdvancedSearchRepo;
+        git rm legacy packages; 2 deprecation records in
+        architecture/deprecations.yaml.
+  blocked_by: ["16"]
+  target_metrics:
+    legacy_clipssearch_files: 0
+    legacy_crossprovider_response_shape: 0
+    hardcoded_youtube_artlist_stock_whitelist: 0
+    map_string_response_shape_in_application: 0
+    active_handler_callers_of_search_aggregator: 3
+  exit_gate: |
+    PR 10 GREEN + ratchet gates green:
+      - go vet ./... exit 0; go build ./... exit 0.
+      - go test ./internal/application/search/...
+              ./internal/application/mediasearch/... -short → exit 0.
+      - rg 'map\Q[string]\E[A-Z][A-Za-z]*Result' internal/application/
+        → zero hits.
+      - rg 'AdvancedSearchRepo{' internal/app/ → zero hits.
+      - rg 'sources := [\]string{"youtube", "artlist", "stock"}'
+        internal/ → zero hits.
+      - /internal/v1/media/search byte-equivalent before vs after PR 10.
+
+  # PR 8 (EXPAND) — this commit. Contract + Go-level aliases land
+  # additively; no handler/service call site or response shape changes.
+  completed_through_W21_pr8_expand:
+    - "internal/application/search/types.go: Query/Result/Candidate/Filters/SearchMode/Capability/Cursor + DefaultLimit/MaxLimit + ErrInvalidCursor/ErrEmptyCandidate"
+    - "internal/application/search/ports.go: SearchBackend + BackendRegistry (Register/Freeze/IsFrozen/All/Eligible) + ErrAlreadyRegistered/ErrFrozen/ErrNilBackend/ErrEmptyName + Logger + noopLogger"
+    - "internal/application/search/cursor.go: fingerprintBlob v1 wire shape + EncodeCursor + DecodeCursor + EncodeCursorFromItems"
+    - "internal/application/search/aggregator.go: NOOP Aggregator stub (empty Result, non-nil ProviderErrors, no partial, never errors)"
+    - "internal/application/search/search_test.go: 12 tests covering type-alias identity (3 sub), NOOP behaviour, nil-log fallback, cursor round-trip empty, cursor malformed (4 classes), EncodeFromItems empty + non-empty, RegistryEligible filters by media type, RegistryFreeze blocks new Register"
+    - "internal/application/mediasearch/types.go: header comment documents W21 alias migration; type MediaSearchFilter = search.Filters + type SearchMode = search.SearchMode inserted as Go-level aliases; struct field shapes intact (service.go literals keep compiling)"
+    - "internal/application/mediasearch/ports.go: type SearchMode declaration removed (alias lives in types.go); SearchModeANN/SearchModeHybrid constants preserved"
+    - "ZERO handler/service call site changed; ZERO wire shape changed; ZERO route changed; ZERO test in any existing package broken"
+
+
+
+  # PR 9 (BACKFILL) — this commit. Real fanout + 4-key dedup +
+  # ranking alongside legacy clipssearch.Service (BACKFILL dual path).
+  completed_through_W21_pr9_backfill:
+    - "internal/application/search/dedup.go: 4-key dedup (AssetID + Source+SourceRef-compound + SourceRef-solo + canonicalURL + Hash) via dedupIndex; max-score overrides existing on collision; equal score keeps existing (deterministic)"
+    - "internal/application/search/rank.go: deterministic RankByScore (Score DESC, Source ASC, AssetID ASC stable secondary) for cursor stability"
+    - "internal/application/search/cursor.go: fingerprintItem now carries SourceRef (omitempty additive; v1 cursors round-trip); EncodeCursorFromItems + SkipSetFromCursor updated; sref: keyspace covers provider-backend page-2 cursor stability"
+    - "internal/application/search/aggregator.go: real fanout via pkg/concurrent.Group + per-backend timeout (DefaultProviderBackendTimeout=5s, DefaultLocalBackendTimeout=2s, DefaultSemanticBackendTimeout=8s); partial preferred — backend errors land in Result.ProviderErrors[name] with Result.Partial=true, NOT cancelling the whole search"
+    - "internal/application/search/aggregator.go: nil-log noop fallback (matches mediasearch convention); backends=nil → fresh in-memory registry; SetPerBackendTimeouts composition-root hook"
+    - "internal/application/search/aggregator_test.go: 8 unit tests (ConcurrentFanout, PartialFailure, Dedup4Key, CursorStability, CtxCancel, MediaTypeFilter, InvalidCursor, MaxScoreRanking)"
+    - "internal/app/search_backends.go: NEW — composition-only Wave 19 bridge; providerBackendAdapter (wraps providers.SearchProvider with cap translation), localBackendAdapter (wraps assets.ClipsRepository via SearchClipsAdvanced), semanticBackendAdapter (wraps mediasearch.Service with workspace-injection for QDRANT-004 tenant-isolation gate); BuildSearchBackends(opts) is the composition-root helper called by WireAssets"
+    - "internal/app/module_media.go: AssetsBundle gained 3 fields (MediasearchService + SearchWorkspaceID + SearchBackendRegistry); AssetsWiring gained SearchAggregator; WireAssets populates via BuildSearchBackends (BACKFILL dual path — legacy clipssearch.Service is still wired in clipsHandler.SearchSvc, untouched for PR 10 cutover)"
+    - "Wave 19 cross-capability rule satisfied: search package remains stdlib-only; internal/app/search_backends.go is the ONLY composition bridge importing search+providers+mediasearch+sqassets at once"
+
+  # PR 9 verification (real run on origin/main HEAD post-commit):
+  pr9_verification:
+    go_vet: "go vet ./internal/application/search/... ./internal/app/... exit 0"
+    go_build: "go build ./... exit 0"
+    go_test: "go test ./internal/application/search/... -count=1 exit 0 (8 aggregator tests + 8 prior search_test.go tests)"
+    go_version_directive: "go 1.25.0 (loop-scoping safe)"
+    cross_cap_imports: "internal/application/search/* stdlib-only; search_backends.go is single composition bridge"
+
+
 ---
 # ── Document #2/3: Post-cascade operational followups (June 2026) ─────────
 post_cascade_followups:

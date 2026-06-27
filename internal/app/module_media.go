@@ -49,6 +49,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/gin-gonic/gin"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -92,6 +94,22 @@ type AssetsBundle struct {
 	ClipIndexerService      *clipindexer.Service
 	IdempotencyStore        middleware.IdempotencyStore
 	IdempotencyStoreHandler gin.HandlerFunc
+	// Wave 21 PR 9 (June 2026): composition inputs for the
+	// canonical SearchAggregator. MediasearchService + WorkspaceID
+	// activate the semantic backend (QDRANT-004 tenant-isolation
+	// gate requires a non-default workspace); empty disables it.
+	// SearchBackendRegistry is the frozen cross-capability backend
+	// catalog populated by WireAssets and exposed here for
+	// diagnostic routes + future Health probes.
+	//
+	// Wave 19 cross-capability rule: module_media.go is itself a
+	// composition-only bridge; the heavy cross-cap import dance
+	// (search ↔ providers ↔ mediasearch ↔ assets.ClipsRepository)
+	// is OWNED by internal/app/search_backends.go and surfaces
+	// here only as a typed slot.
+	MediasearchService    *mediasearch.Service
+	SearchWorkspaceID     string
+	SearchBackendRegistry *search.BackendRegistry
 }
 
 // AssetsWiring holds the Assets module wiring.
@@ -99,6 +117,11 @@ type AssetsWiring struct {
 	Module               module.Module
 	DeletionSvc          *deletion.DeletionService
 	InternalMediaHandler *assetstorage.Handler
+	// Wave 21 PR 9 (June 2026): the canonical SearchAggregator.
+	// BACKFILL keeps legacy clipssearch.Service wired alongside;
+	// PR 10 cutover swaps clip_search.go::AdvancedSearch to
+	// consume this Aggregator.
+	SearchAggregator *search.Aggregator
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -321,10 +344,35 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	)
 	log.Info("created unified Assets module (thin transport)")
 
+	// ── Wave 21 PR 9 (June 2026): canonical SearchAggregator
+	//    ALONGSIDE legacy clipssearch.Service for BACKFILL
+	//    dual-path. Compose roots:
+	//     1. Bridge adapters (providerBackend, localBackend,
+	//        semanticBackend) — registered via the composition-
+	//        only BuildSearchBackends helper at
+	//        internal/app/search_backends.go.
+	//     2. Frozen BackendRegistry → NewAggregator → return to
+	//        caller via AssetsWiring.SearchAggregator.
+	//    Until PR 10 cutover, the Aggregator is exposed for
+	//    diagnostics + integration tests; clip_search.go::AdvancedSearch
+	//    still consumes assetclipssearch.Service for safety.
+	searchBackends := BuildSearchBackends(SearchBackendBuildOpts{
+		Logger:         log,
+		ProviderReg:    providerRegistry,
+		ClipsRepo:      bundle.ClipsRepo,
+		MediasearchSvc: bundle.MediasearchService,
+		WorkspaceID:    bundle.SearchWorkspaceID,
+	})
+	bundle.SearchBackendRegistry = searchBackends
+	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
+	log.Info("search aggregator wired (PR 9 BACKFILL dual-path)",
+		zap.Int("backends", len(searchBackends.All())))
+
 	return &AssetsWiring{
 		Module:               assetsRouteMod,
 		DeletionSvc:          deletionSvc,
 		InternalMediaHandler: storageHandler,
+		SearchAggregator:     searchAggregator,
 	}, nil
 }
 

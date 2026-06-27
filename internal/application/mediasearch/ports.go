@@ -161,10 +161,16 @@ const (
 	// constant when the channel returns to the wire format.
 )
 
-// SearchMode toggles ANN vs. hybrid (dense + sparse + transcript)
-// retrieval. Default is Hybrid (matches QDRANT-004's "real hybrid search"
-// acceptance criterion: dense+sparse actually fused, not just relabeled).
-type SearchMode string
+// SearchMode lives in types.go as a Go-level alias of the canonical
+// search.SearchMode (Wave 21 PR 8). The constants below still
+// compile because aliases are bidirectional type identity — the
+// underlying type is `string`, so constants of the alias work.
+//
+// This block is preserved (constants live here, type lives in
+// types.go) to keep the file-by-file dependency lattice simple:
+// ports.go owns the request/response sentinels (VectorSearchPort,
+// MediaReadRepository, AssetDeliveryService) and the channel-name
+// constants; types.go owns the data DTOs and the Mode enum.
 
 const (
 	SearchModeANN    SearchMode = "ann"

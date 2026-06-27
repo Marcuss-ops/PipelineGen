@@ -4,7 +4,39 @@
 // InternalRootURL, FileSystemPath, raw Drive file IDs, etc.) —
 // QDRANT-004 acceptance criterion: "Nessun path locale o secret
 // esposto".
+//
+// Wave 21 (Fase 4, June 2026, PR 8) notes
+// ─────────────────────────────────────────────────────────────────────
+// MediaSearchFilter and SearchMode are now Go-level aliases of the
+// canonical contracts in internal/application/search. The new search
+// package is the SSOT for the Search capability; mediasearch keeps
+// these names for legacy callers (handler.go, service.go, ports.go)
+// without copying field shapes. Existing code that constructs or
+// consumes MediaSearchFilter / SearchMode keeps compiling because
+// aliases are bidirectional identity at the type-system level —
+// no "shape-compatible" reconciliation at runtime.
+//
+// Wave 19 cross-capability reference: this file imports
+// internal/application/search (a capability). The reference is valid
+// under the "shared port via type identity" reading of Wave 19's
+// rule; an entry in docs/migrations/cross-capability-imports-allowlist.txt
+// will be registered at the next Wave 19 PR2 promotion cycle to make
+// this explicit. PR 10 (CUTOVER) does NOT remove this import — the
+// aliases remain so legacy /internal/v1/media/search callers stay
+// byte-compatible forever (or until the route is deprecated via a
+// separate EXPAND→BACKFILL→CUTOVER migration).
 package mediasearch
+
+import (
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+)
+
+// ── Cross-capability aliases (W21 PR 8) ─────────────────────────────
+//
+// MediaSearchFilter is now a Go-level alias of search.Filters. Field
+// shapes match 1:1 so existing service.go literals (req.Filters.Source,
+// req.Filters.Tags, etc.) compile unchanged.
+type MediaSearchFilter = search.Filters
 
 // MediaSearchRequest is the canonical orchestrator input. The handler
 // translates the JSON DTO into this shape before invoking the
@@ -12,23 +44,11 @@ package mediasearch
 // the service assumes a well-formed request.
 type MediaSearchRequest struct {
 	Query     string            // required, trimmed
-	Mode      SearchMode        // default SearchModeHybrid
+	Mode      search.SearchMode // default SearchModeHybrid; alias of mediasearch.SearchMode
 	Limit     int               // default 10, capped at 50
 	MinScore  float64           // default 0 (service falls back to cfg)
 	Filters   MediaSearchFilter // optional
 	Workspace WorkspaceContext  // required (handler sets it from auth)
-}
-
-// MediaSearchFilter mirrors the OData-style filter set the spec
-// describes. Empty strings disable the relevant filter; numeric
-// DurationMsMin == 0 disables the duration predicate.
-type MediaSearchFilter struct {
-	Source        string   // "stock", "youtube", "artlist", ...
-	MediaType     string   // "video", "image", "audio"
-	Category      string   // topology bucket
-	Language      string   // BCP-47 code
-	Tags          []string // AND semantics: all tags must be present
-	DurationMsMin int      // inclusive lower bound on duration (videos only)
 }
 
 // MediaSearchResponse is the orchestrator output. The JSON DTO is a
@@ -81,3 +101,11 @@ const (
 	MaxLimit     = 50
 	DefaultScore = 0.50 // floor below which a hit is dropped pre-hydration
 )
+
+// SearchMode is the Wave 21 canonical enum; mediasearch.SearchMode
+// is also a Go-level alias for cross-package code that hasn't yet
+// been migrated to `search.` references directly. Constants
+// SearchModeANN and SearchModeHybrid remain in ports.go so the
+// reverse-dependency (port constants, type used in queries) keeps
+// functioning — Go allows constants of aliased types.
+type SearchMode = search.SearchMode

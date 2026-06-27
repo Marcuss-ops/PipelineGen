@@ -137,6 +137,22 @@ type PromoResponse struct {
 	Results []PromoResult `json:"results"`
 }
 
+// PayloadMap serialises PromoRequest into a map for the job system.
+func (r *PromoRequest) PayloadMap() map[string]any {
+	if r == nil {
+		return map[string]any{}
+	}
+	payload := map[string]any{
+		"text":            r.Text,
+		"drive_folder_id": r.DriveFolderID,
+		"dry_run":         r.DryRun,
+	}
+	if len(r.Languages) > 0 {
+		payload["languages"] = r.Languages
+	}
+	return payload
+}
+
 func (i *BatchItem) fail(status string, err error) BatchItem {
 	i.Status = status
 	i.Error = err.Error()
