@@ -11,6 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -21,6 +22,21 @@ import (
 )
 
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
+	// PR 2: delegate to the canonical use case when wired.
+	if s.useCase != nil {
+		var dest *DestinationRequest
+		if s.cfg != nil && s.cfg.Drive.VoiceoverFolder() != "" {
+			dest = &DestinationRequest{FolderID: s.cfg.Drive.VoiceoverFolder()}
+		}
+		cmd := s.toCommandFromLegacy(text, language, dest, true)
+		result, err := s.useCase.Execute(ctx, cmd)
+		if err != nil {
+			return nil, err
+		}
+		return s.toLegacyResult(result), nil
+	}
+
+	// Legacy fallback: construct a BatchRequest and delegate to GenerateBatch.
 	req := &BatchRequest{
 		Text:             text,
 		Languages:        []string{language},
@@ -63,6 +79,14 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		return nil, fmt.Errorf("text is required")
 	}
 
+	// PR 2: delegate to the canonical use case when wired.
+	// Loop over languages and call Execute for each.
+	if s.useCase != nil {
+		return s.generateBatchDelegated(ctx, req)
+	}
+
+	// Legacy path (kept for backward compatibility; removed in a
+	// follow-up PR once the use case is fully validated).
 	requestID := buildRequestID()
 	textHash := hashutil.SHA256String(req.Text)
 
@@ -101,6 +125,42 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		if item.Status == "failed" {
 			resp.OK = false
 		}
+		resp.Items = append(resp.Items, item)
+	}
+
+	return resp, nil
+}
+
+// generateBatchDelegated loops over languages and calls the canonical
+// use case for each. It maps the legacy BatchRequest semantics to
+// domain.GenerateVoiceoverCommand and constructs a BatchResponse from
+// the results.
+//
+// PR 2 (June 2026): temporary delegation bridge; replaced when the
+// BatchRequest type is removed.
+func (s *Service) generateBatchDelegated(ctx context.Context, req *BatchRequest) (*BatchResponse, error) {
+	requestID := buildRequestID()
+	forceRegenerate := req.Strategy == "replace"
+
+	resp := &BatchResponse{
+		OK:        true,
+		RequestID: requestID,
+	}
+
+	for _, lang := range req.Languages {
+		cmd := s.toCommandFromLegacy(req.Text, lang, req.Destination, forceRegenerate)
+		result, err := s.useCase.Execute(ctx, cmd)
+		if err != nil {
+			resp.OK = false
+			resp.Items = append(resp.Items, BatchItem{
+				ID:       domain.BuildID(cmd),
+				Language: lang,
+				Status:   "failed",
+				Error:    err.Error(),
+			})
+			continue
+		}
+		item := s.toLegacyBatchItem(result, lang)
 		resp.Items = append(resp.Items, item)
 	}
 
