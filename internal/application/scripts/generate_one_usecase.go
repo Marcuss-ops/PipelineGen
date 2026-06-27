@@ -2,7 +2,7 @@
 // single-item script-generation orchestrator. It executes the
 // unified pipeline for exactly one GenerationItemV2:
 //
-//   normalize → validate → resolve source → build plan → generate → postprocess → typed result
+//	normalize → validate → resolve source → build plan → generate → postprocess → typed result
 //
 // This use case replaces the 3-way switch (clip-explicit /
 // auto-search / text-only) in pipeline_run.go and the duplicated
@@ -150,7 +150,7 @@ func (uc *GenerateOneUseCase) Execute(
 		}
 		ppStart := time.Now()
 		var ppErr error
-		postResult, ppErr = uc.ppReg.Run(ctx, &plan, engineResult.Script)
+		postResult, ppErr = uc.ppReg.Run(ctx, &plan, engineResult.Output.Text)
 		if ppErr != nil {
 			return nil, &scriptpkg.PostprocessError{
 				ItemID:    item.ID,
@@ -211,8 +211,9 @@ func buildGenerationResult(
 		Language: plan.Language,
 		Model:    engineResult.Model,
 		Output: scriptpkg.ScriptOutput{
-			Text:      engineResult.Script,
+			Text:      engineResult.Output.Text,
 			WordCount: engineResult.WordCount,
+			SpecScene: engineResult.Output.SpecScene,
 		},
 		Cache: scriptpkg.CacheResult{
 			Status: engineResult.CacheStatus,
@@ -224,33 +225,32 @@ func buildGenerationResult(
 	// Populate Source trace.
 	var sourceTrace scriptpkg.SourceTrace
 
-	// Merge clip evidence into canonical Output.SpecScene.
+	// PR 1: preserve the model-emitted SpecScene verbatim. Clip
+	// evidence may only ENRICH missing Clip bindings — never
+	// replaces existing model-authored text, IDs, or kind tags.
+	// If the model emitted no scenes (pure prose generation), we
+	// still carry the empty struct so consumers see a consistent
+	// SpecSceneOutput shape across all generation flows.
 	if engineResult.ClipEvidence != nil {
-		specScenes := make([]scriptpkg.SpecScene, 0, len(engineResult.ClipEvidence.ClipIDs))
-		for i, id := range engineResult.ClipEvidence.ClipIDs {
-			link := ""
-			if engineResult.ClipEvidence.DriveLinks != nil {
-				link = engineResult.ClipEvidence.DriveLinks[id]
-			}
-			sceneID := fmt.Sprintf("scene-%d", i)
-			specScenes = append(specScenes, scriptpkg.SpecScene{
-				ID:    sceneID,
-				Index: i,
-				Text:  "",
-				Kind:  scriptpkg.SceneClip,
-				Bindings: scriptpkg.SceneBindings{
-					Clip: &scriptpkg.ClipBinding{
-						ClipID:    id,
-						DriveLink: link,
-					},
-				},
-			})
-		}
-		result.Output.SpecScene = scriptpkg.SpecSceneOutput{
-			Version: 1,
-			Scenes:  specScenes,
-		}
 		sourceTrace.AcceptedClipIDs = engineResult.ClipEvidence.ClipIDs
+
+		scenes := result.Output.SpecScene.Scenes
+		for i, id := range engineResult.ClipEvidence.ClipIDs {
+			if i >= len(scenes) {
+				break
+			}
+			sc := &scenes[i]
+			if sc.Bindings.Clip == nil {
+				sc.Bindings.Clip = &scriptpkg.ClipBinding{}
+			}
+			// Only fill empty fields — never overwrite.
+			if sc.Bindings.Clip.ClipID == "" {
+				sc.Bindings.Clip.ClipID = id
+			}
+			if sc.Bindings.Clip.DriveLink == "" && engineResult.ClipEvidence.DriveLinks != nil {
+				sc.Bindings.Clip.DriveLink = engineResult.ClipEvidence.DriveLinks[id]
+			}
+		}
 	}
 
 	// Merge postprocessor results into canonical Artifacts.
@@ -318,4 +318,3 @@ func buildGenerationResult(
 
 // legacySpecFromPlan moved to generation_helpers.go — shared by
 // processors (entities, metadata) and the use case.
-
