@@ -15,6 +15,8 @@ package search
 import (
 	"context"
 	"encoding/base64"
+	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -176,6 +178,163 @@ func TestRegistryEligibleFiltersByMediaType(t *testing.T) {
 	all := reg.Eligible(Query{}) // empty MediaTypes = no filter
 	if len(all) != 3 {
 		t.Fatalf("Eligible(empty) want 3 backends, got %d", len(all))
+	}
+}
+
+// TestRegistryEligibleFiltersBySources proves PR-1 source filtering.
+// Query.Sources=["youtube"] must select ONLY the "youtube" backend
+// despite other backends being registered with overlapping caps.
+// Aliases resolve via ResolveCanonicals so Query.Sources=["yt"]
+// must produce the same eligible set as Query.Sources=["youtube"].
+func TestRegistryEligibleFiltersBySources(t *testing.T) {
+	reg := NewBackendRegistry()
+	for _, name := range []string{"youtube", "artlist", "local", "semantic", "stock"} {
+		if err := reg.Register(&fakeBackend{name: name, caps: []Capability{CapVideo}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg.Freeze()
+
+	cases := []struct {
+		name      string
+		input     []string
+		wantNames []string
+	}{
+		{"canonical_youtube", []string{"youtube"}, []string{"youtube"}},
+		{"alias_yt_resolves_to_youtube", []string{"yt"}, []string{"youtube"}},
+		{"artlist_canonical", []string{"artlist"}, []string{"artlist"}},
+		{"clips_alias_resolves_to_local", []string{"clips"}, []string{"local"}},
+		{"vector_alias_resolves_to_semantic", []string{"vector"}, []string{"semantic"}},
+		{"multiple_sources", []string{"youtube", "artlist"}, []string{"artlist", "youtube"}},
+		{"case_insensitive_YT_upper", []string{"YT"}, []string{"youtube"}},
+		{"mixed_case_ArTlist", []string{"ArTlist"}, []string{"artlist"}},
+		{"mixed_canoncials_aliases", []string{"yt", "stock"}, []string{"stock", "youtube"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := reg.Eligible(Query{Sources: tc.input})
+			gotNames := backendNames(got)
+			sort.Strings(gotNames)
+			wantSorted := append([]string{}, tc.wantNames...)
+			sort.Strings(wantSorted)
+			if !reflect.DeepEqual(gotNames, wantSorted) {
+				t.Fatalf("Eligible(%v) want %v, got %v", tc.input, wantSorted, gotNames)
+			}
+		})
+	}
+}
+
+// TestRegistryEligibleUnknownSourcesReturnsEmpty — PR-1 fail-fast
+// invariant: when caller supplies ONLY unknown aliases, return
+// empty eligible set (no silent fallback to all backends).
+func TestRegistryEligibleUnknownSourcesReturnsEmpty(t *testing.T) {
+	reg := NewBackendRegistry()
+	for _, name := range []string{"youtube", "artlist", "local"} {
+		if err := reg.Register(&fakeBackend{name: name, caps: []Capability{CapVideo}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg.Freeze()
+
+	cases := []struct {
+		name  string
+		input []string
+	}{
+		{"single_unknown", []string{"bogus"}},
+		{"all_unknown_separate", []string{"fake", "nope"}},
+		{"mixed_known_and_unknown", []string{"youtube", "fake"}}, // known wins, unknown dropped — yields [youtube]
+		{"empty_string_treated_as_unknown", []string{"", ""}},
+	}
+	t.Run("all_unknown_empty_result", func(t *testing.T) {
+		got := reg.Eligible(Query{Sources: cases[0].input})
+		if len(got) != 0 {
+			t.Fatalf("Eligible(unknown) must be empty, got %v", backendNames(got))
+		}
+	})
+	t.Run("multiple_unknown_empty_result", func(t *testing.T) {
+		got := reg.Eligible(Query{Sources: cases[1].input})
+		if len(got) != 0 {
+			t.Fatalf("Eligible([fake nope]) must be empty, got %v", backendNames(got))
+		}
+	})
+	t.Run("mixed_known_unknown_filters_known", func(t *testing.T) {
+		got := reg.Eligible(Query{Sources: cases[2].input})
+		gotNames := backendNames(got)
+		if len(gotNames) != 1 || gotNames[0] != "youtube" {
+			t.Fatalf("Eligible([youtube fake]) want [youtube], got %v", gotNames)
+		}
+	})
+	t.Run("empty_string_treated_as_unknown", func(t *testing.T) {
+		// Empty-string slots in q.Sources are silently dropped by
+		// CanonicalizeSource so ["" ""] normalises to empty → empty result.
+		got := reg.Eligible(Query{Sources: cases[3].input})
+		if len(got) != 0 {
+			t.Fatalf("Eligible([\"\"]) must be empty, got %v", backendNames(got))
+		}
+	})
+}
+
+// TestRegistryEligibleSourcesAndMediaTypes proves PR-1 dual filter
+// composition: q.Sources=["yt"] narrows to {youtube}, q.MediaTypes=["audio"]
+// further narrows to backends whose caps intersect "audio".
+func TestRegistryEligibleSourcesAndMediaTypes(t *testing.T) {
+	reg := NewBackendRegistry()
+	if err := reg.Register(&fakeBackend{name: "youtube", caps: []Capability{CapVideo}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(&fakeBackend{name: "artlist", caps: []Capability{CapAudio}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Register(&fakeBackend{name: "local", caps: []Capability{CapVideo, CapAudio}}); err != nil {
+		t.Fatal(err)
+	}
+	reg.Freeze()
+
+	// Sources=[yt,artlist] AND MediaTypes=[audio] — youtube filtered
+	// out by MediaTypes; artlist kept; local kept.
+	got := reg.Eligible(Query{Sources: []string{"yt", "artlist"}, MediaTypes: []string{"audio"}})
+	gotNames := backendNames(got)
+	sort.Strings(gotNames)
+	want := []string{"artlist", "local"}
+	if !reflect.DeepEqual(gotNames, want) {
+		t.Fatalf("Eligible(sources+mediaTypes) want %v, got %v", want, gotNames)
+	}
+
+	// Sources=[] AND MediaTypes=[audio] — all video-only youtube gone.
+	got = reg.Eligible(Query{MediaTypes: []string{"audio"}})
+	gotNames = backendNames(got)
+	sort.Strings(gotNames)
+	if !reflect.DeepEqual(gotNames, want) {
+		t.Fatalf("Eligible(mediaTypes=audio) want %v, got %v", want, gotNames)
+	}
+}
+
+// TestQueryActorFieldPresent confirms the Query struct carries
+// the PR-1 Actor field at the package level. The semantic backend
+// adapter relies on Query.Actor.WorkspaceID/IsAdmin/UserID being
+// settable by handlers; the Aggregator passes the Query through
+// without modification so backends see exact middleware-set values.
+func TestQueryActorFieldPresent(t *testing.T) {
+	q := Query{
+		Text: "x",
+		Actor: Actor{
+			WorkspaceID: "ws-1",
+			UserID:      "u-1",
+			IsAdmin:     false,
+		},
+	}
+	if q.Actor.WorkspaceID != "ws-1" || q.Actor.UserID != "u-1" || q.Actor.IsAdmin {
+		t.Fatalf("Actor field round-trip broken: %+v", q.Actor)
+	}
+	if !q.Actor.IsZero() == true {
+		t.Fatal("non-zero Actor must not report IsZero=true")
+	}
+	if q.Actor.IsZero() {
+		t.Fatal("non-zero Actor must not report IsZero=true")
+	}
+	var zeroQ Query
+	if !zeroQ.Actor.IsZero() {
+		t.Fatal("zero Actor must report IsZero=true")
 	}
 }
 
