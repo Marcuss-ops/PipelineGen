@@ -14,12 +14,14 @@ package clips
 
 import (
 	"context"
+	"errors"
 	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── Port stubs (minimal happy-defaults) ──────────────────────────────────────
@@ -171,6 +173,11 @@ type testJobsPort struct {
 	err      error
 }
 
+// Enqueue returns (nextID, err) verbatim — no auto-fill. Tests that
+// need a sentinel "empty ID" return value (TestClipOps_Reconcile_
+// EmptyJobID_ReturnsError) construct a testJobsPort{nextID: ""} and
+// expect Enqueue to return JobsEnqueueResponse{ID: ""}, which the
+// service then translates into "empty job id" wrapped error.
 func (j *testJobsPort) Enqueue(_ context.Context, req JobsEnqueueRequest) (*JobsEnqueueResponse, error) {
 	if j == nil {
 		return nil, nil
@@ -179,9 +186,6 @@ func (j *testJobsPort) Enqueue(_ context.Context, req JobsEnqueueRequest) (*Jobs
 		return nil, j.err
 	}
 	j.enqueued = append(j.enqueued, req)
-	if j.nextID == "" {
-		j.nextID = "stub-job-id"
-	}
 	return &JobsEnqueueResponse{ID: j.nextID}, nil
 }
 
@@ -355,4 +359,99 @@ func TestClipOps_Verify_DriveUnavailable_HashMissingIssue(t *testing.T) {
 	require.NotNil(t, report)
 	require.Contains(t, report.Issues, "local_file_missing", "path doesn't exist on disk")
 	require.Contains(t, report.Issues, "hash_missing", "Drive uploaded empty MD5")
+}
+
+// ── Reconcile subtests (PR 4, June 2026 — codex/clips-reconcile-real) ────
+
+// TestClipOps_Reconcile_EnqueuesCatalogSyncJob pins the happy path:
+// JobsServicePort wired → service emits a "catalog.sync" job with the
+// payload {source, folder_id, fix, dry_run} mirroring the request and an
+// ActiveKey deterministic on the same tuple. Returns *ReconcileStarted
+// with JobID + ActiveKey.
+func TestClipOps_Reconcile_EnqueuesCatalogSyncJob(t *testing.T) {
+	jobs := &testJobsPort{nextID: "job-recon-001"}
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil)
+
+	started, err := svc.Reconcile(context.Background(), ReconcileCommand{
+		Source:   "youtube",
+		FolderID: "drive-folder-abc",
+		Fix:      true,
+		DryRun:   false,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, started)
+	require.Equal(t, "job-recon-001", started.JobID)
+	require.Equal(t, "reconcile_youtube_drive-folder-abc_true_false", started.ActiveKey)
+	require.Len(t, jobs.enqueued, 1)
+	require.Equal(t, job.TypeCatalogSync, jobs.enqueued[0].Type)
+	require.Equal(t, "youtube", jobs.enqueued[0].Payload["source"])
+	require.Equal(t, "drive-folder-abc", jobs.enqueued[0].Payload["folder_id"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["fix"])
+	require.Equal(t, false, jobs.enqueued[0].Payload["dry_run"])
+}
+
+// TestClipOps_Reconcile_QueueUnavailable_NoJobs pins the 503 path:
+// JobsServicePort=nil composition bug → sentinel ErrQueueUnavailable.
+func TestClipOps_Reconcile_QueueUnavailable_NoJobs(t *testing.T) {
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, nil, nil)
+	started, err := svc.Reconcile(context.Background(), ReconcileCommand{Source: "youtube"})
+	require.Error(t, err)
+	require.Nil(t, started)
+	require.ErrorIs(t, err, ErrQueueUnavailable)
+}
+
+// TestClipOps_Reconcile_EnqueueFailure_ReturnsWrappedError pins the
+// broker-rejection path: jobs.Enqueue returns err → service wraps and
+// returns it (no sentinel match).
+func TestClipOps_Reconcile_EnqueueFailure_ReturnsWrappedError(t *testing.T) {
+	jobs := &testJobsPort{err: errors.New("broker down")}
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil)
+	started, err := svc.Reconcile(context.Background(), ReconcileCommand{Source: "youtube"})
+	require.Error(t, err)
+	require.Nil(t, started)
+	require.Contains(t, err.Error(), "enqueue reconcile job")
+	require.Contains(t, err.Error(), "broker down")
+	require.NotErrorIs(t, err, ErrQueueUnavailable, "broker-rejection is NOT a queue-unavailable")
+}
+
+// TestClipOps_Reconcile_EmptyJobID_ReturnsError pins the empty-id
+// safety net: Enqueue returns JobID="" → service returns a wrapped error.
+func TestClipOps_Reconcile_EmptyJobID_ReturnsError(t *testing.T) {
+	jobs := &testJobsPort{nextID: ""}
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil)
+	started, err := svc.Reconcile(context.Background(), ReconcileCommand{Source: "youtube"})
+	require.Error(t, err)
+	require.Nil(t, started)
+	require.Contains(t, err.Error(), "empty job id")
+}
+
+// TestClipOps_Reconcile_ActiveKey_Deterministic pins the
+// cross-process-deduplication invariant: the same ReconcileCommand
+// produces the same ActiveKey; distinct commands produce distinct keys.
+func TestClipOps_Reconcile_ActiveKey_Deterministic(t *testing.T) {
+	a := reconcileActiveKey(ReconcileCommand{Source: "youtube", FolderID: "F", Fix: true, DryRun: false})
+	b := reconcileActiveKey(ReconcileCommand{Source: "youtube", FolderID: "F", Fix: true, DryRun: false})
+	c := reconcileActiveKey(ReconcileCommand{Source: "youtube", FolderID: "F", Fix: false, DryRun: false})
+	d := reconcileActiveKey(ReconcileCommand{Source: "artlist", FolderID: "F", Fix: true, DryRun: false})
+	e := reconcileActiveKey(ReconcileCommand{Source: "youtube", FolderID: "G", Fix: true, DryRun: false})
+	require.Equal(t, a, b, "tuple equality → key equality")
+	require.NotEqual(t, a, c, "Fix flips the key")
+	require.NotEqual(t, a, d, "Source change flips the key")
+	require.NotEqual(t, a, e, "FolderID change flips the key")
+}
+
+// TestClipOps_Reconcile_NoFolderID_FolderIDEmptyPayload pins the
+// shape contract: FolderID="" → payload.folder_id is the empty
+// string (NOT omitted) so the catalogsync dispatcher can route to
+// SyncSource/SyncAll correctly.
+func TestClipOps_Reconcile_NoFolderID_FolderIDEmptyPayload(t *testing.T) {
+	jobs := &testJobsPort{nextID: "j-2"}
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil)
+	_, err := svc.Reconcile(context.Background(), ReconcileCommand{Source: "youtube"})
+	require.NoError(t, err)
+	require.Len(t, jobs.enqueued, 1)
+	folderID, ok := jobs.enqueued[0].Payload["folder_id"].(string)
+	require.True(t, ok, "folder_id should be a string even when empty")
+	require.Equal(t, "", folderID)
+	require.Equal(t, "reconcile_youtube__false_false", jobs.enqueued[0].ActiveKey)
 }

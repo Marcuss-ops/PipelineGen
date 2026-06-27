@@ -391,3 +391,89 @@ func TestHandler_VerifyClip_503_NoService(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
+
+// ── Reconcile subtests (PR 4, June 2026 — codex/clips-reconcile-real) ────
+
+// TestHandler_Reconcile_200_QueuedWithJobIDAndStatusURL pins the happy
+// path: handler returns 200 + {ok, status: "queued", job_id, status_url:
+// "/api/jobs/{id}", source, folder_id, fix, dry_run}. The hardcoded
+// StatusURL is the only contract the handler computes — caller polls
+// /api/jobs/{id} for results.
+func TestHandler_Reconcile_200_QueuedWithJobIDAndStatusURL(t *testing.T) {
+	jobs := &handlerJobsPort{nextID: "recon-job-123"}
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
+	h := newOpsHandler(t, svc)
+	router := newOpsRouter(t, h)
+
+	body := `{"folder_id": "folder-abc", "fix": true, "dry_run": false}`
+	req := httptest.NewRequest("POST", "/api/clips/youtube/reconcile", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	resp := decodeBody(t, w)
+	require.Equal(t, true, resp["ok"])
+	require.Equal(t, "queued", resp["status"])
+	require.Equal(t, "recon-job-123", resp["job_id"])
+	require.Equal(t, "/api/jobs/recon-job-123", resp["status_url"])
+	require.Equal(t, "youtube", resp["source"])
+	require.Equal(t, "folder-abc", resp["folder_id"])
+	require.Equal(t, true, resp["fix"])
+	require.Equal(t, false, resp["dry_run"])
+	require.Len(t, jobs.enqueued, 1)
+	require.Equal(t, "folder-abc", jobs.enqueued[0].Payload["folder_id"])
+}
+
+// TestHandler_Reconcile_503_QueueUnavailableCode pins the spec's
+// RECONCILE_QUEUE_UNAVAILABLE contract. When the service returns
+// ErrQueueUnavailable (jobs=nil composition bug), the handler returns
+// HTTP 503 with body.code == "RECONCILE_QUEUE_UNAVAILABLE".
+func TestHandler_Reconcile_503_QueueUnavailableCode(t *testing.T) {
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, nil, zap.NewNop())
+	h := newOpsHandler(t, svc)
+	router := newOpsRouter(t, h)
+
+	body := `{"folder_id": "folder-abc"}`
+	req := httptest.NewRequest("POST", "/api/clips/youtube/reconcile", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	resp := decodeBody(t, w)
+	require.Equal(t, false, resp["ok"])
+	require.Equal(t, "RECONCILE_QUEUE_UNAVAILABLE", resp["code"], "code marker must be present for clients to disambiguate")
+}
+
+// TestHandler_Reconcile_400_MalformedJSON pins the bind-error path
+// for the Reconcile handler — handler maps JSON parse errors to 400.
+func TestHandler_Reconcile_400_MalformedJSON(t *testing.T) {
+	jobs := &handlerJobsPort{nextID: "ignored"}
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
+	h := newOpsHandler(t, svc)
+	router := newOpsRouter(t, h)
+
+	req := httptest.NewRequest("POST", "/api/clips/youtube/reconcile", strings.NewReader(`{not json}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Empty(t, jobs.enqueued, "malformed JSON must NOT reach Enqueue")
+}
+
+// TestHandler_Reconcile_503_NoService pins the composition-bug guard:
+// clipOpsService == nil → 503 Service Unavailable. Distinguished from
+// the 503+code path by omitting code (handler can't tell the difference).
+func TestHandler_Reconcile_503_NoService(t *testing.T) {
+	h := NewHandler(Deps{Log: zap.NewNop()}, nil)
+	router := newOpsRouter(t, h)
+
+	req := httptest.NewRequest("POST", "/api/clips/youtube/reconcile", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+}

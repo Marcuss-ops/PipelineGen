@@ -1,8 +1,8 @@
 // Package system (api/system) — handler_drive.go holds the DriveHandler
-// (reconcile/cleanup/folders/move/resolve-by-id) as a second receiver in
-// the system package. Wave 14 PR4 close (June 24, 2026): this file absorbed
-// the legacy internal/api/drive/handler.go when the standalone
-// internal/api/drive/ directory was eliminated.
+// (folders, move, resolve-by-id) as a second receiver in the system package.
+// Wave 14 PR4 close (June 24, 2026): this file absorbed the legacy
+// internal/api/drive/handler.go when the standalone internal/api/drive/
+// directory was eliminated.
 //
 // The route prefix `/drive` is mounted on the system Module's group
 // in module.go::Module.RegisterRoutes, sibling to /system/doctor.
@@ -11,11 +11,18 @@
 // DriveHandler (admin/Drive ops).
 //
 // PR4-cleanup delta (June 24, 2026): the previous concrete deps
-// (*drive.Uploader) were replaced with `Reconciler` +
-// `DriveAdminOps` port interfaces declared right here.
-// The concrete adapters live in `internal/app/system_adapters.go`
-// (composition root). This keeps the api layer free of
-// `internal/infrastructure/*` imports per AGENTS.md Pattern 8.
+// (*drive.Uploader) were replaced with the `DriveAdminOps` port
+// interface declared right here. The concrete adapters live in
+// `internal/app/system_adapters.go` (composition root). This keeps
+// the api layer free of `internal/infrastructure/*` imports per
+// AGENTS.md Pattern 8.
+//
+// PR4 follow-on (June 27, 2026 — codex/clips-reconcile-real):
+// the previous `Reconciler` port + /drive/reconcile + /drive/cleanup
+// routes were REMOVED. Canonical reconcile is now POST
+// /api/clips/:source/reconcile (clips.ClipOpsService.Reconcile →
+// durable catalog.sync job). DriveHandler is now strictly a Drive
+// admin surface (folders + move + resolve-by-id).
 package system
 
 import (
@@ -33,20 +40,6 @@ import (
 
 // ── Port interfaces (AGENTS.md Pattern 0 / Wiki §14) ─────────────────────────
 
-// ReconcileResult is the JSON-shaped summary returned by Reconciler.Reconcile.
-// Defined here to keep the api package free of infrastructure imports
-// (AGENTS.md Pattern 8).
-type ReconcileResult struct {
-	Deleted int `json:"deleted"`
-	Kept    int `json:"kept"`
-}
-
-// Reconciler is the port for Drive → SQLite reconciliation flows.
-// Wired at composition time in internal/app.
-type Reconciler interface {
-	Reconcile(ctx context.Context, source, rootFolderID string, dryRun bool) (*ReconcileResult, error)
-}
-
 // DriveAdminOps is the port for the small set of Drive operations the
 // admin handlers need: create folders, move files, resolve ID metadata.
 // It is satisfied at composition time by the adapter wrapping
@@ -61,20 +54,23 @@ type DriveAdminOps interface {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-// DriveHandler handles Drive admin ops (reconcile, cleanup, folders,
-// move, resolve-by-id). It is constructed in app.WireRegistry and
-// mounted by system.Module on the /drive sub-group.
+// DriveHandler handles Drive admin ops (folders, move, resolve-by-id).
+// It is constructed in app.WireRegistry and mounted by system.Module on
+// the /drive sub-group.
+//
+// PR 4 (June 2026 — branch codex/clips-reconcile-real): the previous
+// `reconciler Reconciler` field + /drive/reconcile + /drive/cleanup routes
+// have been DELETED. The canonical reconcile entry point is now
+// POST /api/clips/:source/reconcile (clips.ClipOpsService.Reconcile) which
+// enqueues a durable `catalog.sync` job via JobsServicePort. This handler
+// is now strictly a Drive admin surface (folder ops + ID resolution).
 type DriveHandler struct {
-	reconciler Reconciler
-	driveOps   DriveAdminOps
+	driveOps DriveAdminOps
 }
 
 // NewDriveHandler creates a new DriveHandler.
-func NewDriveHandler(reconciler Reconciler, driveOps DriveAdminOps) *DriveHandler {
-	return &DriveHandler{
-		reconciler: reconciler,
-		driveOps:   driveOps,
-	}
+func NewDriveHandler(driveOps DriveAdminOps) *DriveHandler {
+	return &DriveHandler{driveOps: driveOps}
 }
 
 // RegisterRoutes registers the Drive routes on the supplied RouterGroup.
@@ -82,8 +78,6 @@ func NewDriveHandler(reconciler Reconciler, driveOps DriveAdminOps) *DriveHandle
 // resulting URLs are /api/drive/...
 func (h *DriveHandler) RegisterRoutes(r *gin.RouterGroup) {
 	zap.L().Info("DriveHandler.RegisterRoutes called", zap.String("handler_addr", fmt.Sprintf("%p", h)))
-	r.POST("/reconcile", h.Reconcile)
-	r.POST("/cleanup", h.Cleanup)
 	r.POST("/folders", h.CreateFolders)
 	r.POST("/move", h.MoveFile)
 	r.POST("/resolve-by-id", h.ResolveByIDs)
@@ -146,63 +140,6 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		"errors":        errs,
 		"error_count":   len(errs),
 	})
-}
-
-// Reconcile checks for mismatches between SQLite and Google Drive.
-// Body: { "source": "artlist", "root_folder_id": "xxx", "dry_run": true }
-func (h *DriveHandler) Reconcile(c *gin.Context) {
-	if h.reconciler == nil {
-		apiutil.Error(c, 500, "reconcile service not configured")
-		return
-	}
-
-	var req struct {
-		Source       string `json:"source"`
-		RootFolderID string `json:"root_folder_id"`
-		DryRun       bool   `json:"dry_run"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request body")
-		return
-	}
-
-	ctx := c.Request.Context()
-	result, err := h.reconciler.Reconcile(ctx, req.Source, req.RootFolderID, req.DryRun)
-	if err != nil {
-		apiutil.Error(c, 500, err.Error())
-		return
-	}
-
-	apiutil.OK(c, result)
-}
-
-// Cleanup performs orphan removal.
-// Body: { "source": "artlist", "root_folder_id": "xxx" }
-func (h *DriveHandler) Cleanup(c *gin.Context) {
-	if h.reconciler == nil {
-		apiutil.Error(c, 500, "reconcile service not configured")
-		return
-	}
-
-	var req struct {
-		Source       string `json:"source"`
-		RootFolderID string `json:"root_folder_id"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request body")
-		return
-	}
-
-	ctx := c.Request.Context()
-	result, err := h.reconciler.Reconcile(ctx, req.Source, req.RootFolderID, false)
-	if err != nil {
-		apiutil.Error(c, 500, err.Error())
-		return
-	}
-
-	apiutil.OK(c, result)
 }
 
 // MoveFileRequest represents a request to move files between Drive folders.

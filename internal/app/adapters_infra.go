@@ -202,20 +202,16 @@ func (a *driveAdminAdapter) ResolveFileInfo(ctx context.Context, fileID string) 
 	}, nil
 }
 
-// ── Reconciler (no-op placeholder) ────────────────────────────────────────────
-
-// noopReconciler satisfies systemapi.Reconciler with a zero-result response.
-// Previously this was backed by the now-removed drivecleanup.Service compatibility
-// shim; the real Drive→SQLite reconciliation logic has not been implemented yet.
-// This keeps the /drive/reconcile and /drive/cleanup endpoints functional
-// (returning {deleted:0,kept:0}) while the feature is built out.
-type noopReconciler struct{}
-
-func (noopReconciler) Reconcile(_ context.Context, _, _ string, _ bool) (*systemapi.ReconcileResult, error) {
-	return &systemapi.ReconcileResult{}, nil
-}
-
 // ── DoctorConfig snapshot factory ────────────────────────────────────────────
+
+// (PR 4, June 2026 — branch codex/clips-reconcile-real.) The previous
+// noopReconciler adapter that satisfied a now-removed systemapi.Reconciler
+// port has been deleted together with the dead /api/drive/reconcile and
+// /api/drive/cleanup routes. The canonical reconcile entry point is now
+// POST /api/clips/:source/reconcile, backed by ClipOpsService.Reconcile + a
+// durable catalog.sync job (see internal/application/clips/clip_ops.go
+// for the new contract and ActiveKey derivation).
+
 
 // doctorConfigFrom reads the diagnostic-relevant fields off *config.Config
 // and packs them into a value-typed snapshot. Eager path resolution
@@ -249,7 +245,6 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 // port signature drifts, the assignment `wrap → interface` fails compile.
 var (
 	_ systemapi.DriveAdminOps = (*driveAdminAdapter)(nil)
-	_ systemapi.Reconciler    = (*noopReconciler)(nil)
 )
 
 // artlistConfigAdapter wraps *config.Config to satisfy

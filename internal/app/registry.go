@@ -114,8 +114,14 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// PR3 (June 2026): Wave 14 close — the system module absorbed the
 	// former `internal/api/drive/` directory as a second receiver
 	// (DriveHandler) sharing the same /drive sub-group. The ctor takes
-	// driveUploader + reconcileSvc so /drive routes can answer (when
-	// either is nil the corresponding handler returns 503).
+	// + driveUploader so /drive/folders + /drive/move + /drive/resolve-by-id
+	// can answer (returns 503 when nil).
+	//
+	// PR 4 (June 2026 — branch codex/clips-reconcile-real): the previous
+	// `&noopReconciler{}` argument has been REMOVED along with the
+	// /drive/reconcile + /drive/cleanup routes. Canonical reconcile is now
+	// POST /api/clips/:source/reconcile (clips.ClipOpsService.Reconcile →
+	// durable catalog.sync job).
 	var driveUploaderAdapter *driveup.Uploader
 	if root.Drive != nil && root.Drive.DriveClient != nil {
 		driveUploaderAdapter = &driveup.Uploader{Service: root.Drive.DriveClient, Log: log}
@@ -125,7 +131,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		log,
 		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
 		newDriveAdminAdapter(driveUploaderAdapter, log),
-		&noopReconciler{},
 	)); err != nil {
 		return nil, fmt.Errorf("wire registry: system module: %w", err)
 	}

@@ -42,10 +42,16 @@ type Module struct {
 // NewModule creates a new system module.
 //
 // driveOps is optional; when nil, drive routes return 503 with
-// "drive uploader not configured". reconciler is also optional; the
-// reconcile/cleanup routes return 503 when it is nil. toolChecker /
-// processRunner / dbHealthChecker feed only SystemHandler (the /doctor
-// route) and are themselves application-layer ports.
+// "drive uploader not configured". toolChecker / processRunner /
+// dbHealthChecker feed only SystemHandler (the /doctor route) and
+// are themselves application-layer ports.
+//
+// PR 4 (June 2026 — branch codex/clips-reconcile-real): the previously-
+// optional reconciler parameter has been REMOVED. The /drive/reconcile
+// and /drive/cleanup routes that consumed it have been deleted from
+// DriveHandler.RegisterRoutes; the canonical reconcile entry point is
+// now POST /api/clips/:source/reconcile (clips.ClipOpsService.Reconcile)
+// which enqueues a durable `catalog.sync` job via JobsServicePort.
 func NewModule(
 	cfg DoctorConfig,
 	log *zap.Logger,
@@ -53,7 +59,6 @@ func NewModule(
 	processRunner appassets.ProcessRunner,
 	dbHealthChecker appassets.DBHealthChecker,
 	driveOps DriveAdminOps,
-	reconciler Reconciler,
 ) *Module {
 	return &Module{
 		name: "system",
@@ -62,10 +67,7 @@ func NewModule(
 			cfg, log,
 			toolChecker, processRunner, dbHealthChecker,
 		),
-		driveHandler: NewDriveHandler(
-			reconciler,
-			driveOps,
-		),
+		driveHandler: NewDriveHandler(driveOps),
 	}
 }
 
