@@ -44,6 +44,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -190,6 +191,28 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		sourceReg.Register(scriptpkg.SourceSearch, scripts.NewSearchSourceResolver(searchAdapter, clipSourceBuilder, log))
 	}
 
+	// Curate resolver (PR E, June 2026): extracted from MediaCurator.
+	var curateResolver *scripts.CurateSourceResolver
+	if clipSourceBuilder != nil {
+		curateResolver = scripts.NewCurateSourceResolver(clipSourceBuilder, log)
+		sourceReg.Register(scriptpkg.SourceCurate, curateResolver)
+	}
+
+	// Wire ClipSearchPort when Qdrant is enabled (PJ-CURATE-1, June 2026).
+	// Ollama client serves as the embedder via qdrant.NewTextEmbedderAdapter.
+	// Constructed once and shared between CurateSourceResolver and MediaCurator.
+	var clipSearchPort scripts.ClipSearchPort
+	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
+		if ollamaClient := gen.GetClient(); ollamaClient != nil {
+			embedder := qdrant.NewTextEmbedderAdapter(ollamaClient)
+			clipSearchPort = qdrant.NewClipSearchAdapter(root.Process.QdrantSearcher, embedder, "text", log)
+			log.Info("ClipSearchPort wired (Qdrant + Ollama embedder)")
+		}
+	}
+	if curateResolver != nil && clipSearchPort != nil {
+		curateResolver.SetClipSearchPort(clipSearchPort)
+	}
+
 	// PostProcessorRegistry: individually-testable postprocessors
 	// registered at composition time and frozen before use.
 	// Replaces the monolithic Pipeline.Run.
@@ -234,6 +257,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Media curator (PR 13: uses oneUC) ──────────────────────────
 	if root.Repos.ClipsRepo != nil && engine != nil {
 		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, oneUC, log)
+		if clipSearchPort != nil {
+			mediaCurator.SetClipSearchPort(clipSearchPort)
+		}
 	}
 
 	genJobHandler := scripts.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)

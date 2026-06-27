@@ -241,6 +241,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 	var qdrantClient *qdrant.Client
 	var qdrantHealthProbe any
 	var locatorCleaner *qdrant.LocatorCleaner
+	var qdrantSearcher *qdrant.Searcher
 
 	if cfg.Qdrant.Enabled {
 		qdrantCfg := &qdrant.Config{
@@ -260,6 +261,9 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		searchAdapter := qdrant.NewSearchAdapter(searcher, log)
 		vectorSvc = searchAdapter
 		collectionMgr = qdrant.NewCollectionManager(qdrantClient, schema, log)
+
+		// Expose searcher for wire_script.go ClipSearchPort construction.
+		qdrantSearcher = searcher
 
 		log.Info("QDRANT-005: HealthProbe + LocatorCleaner wired (Qdrant enabled)",
 			zap.String("qdrant_url", cfg.Qdrant.BaseURL),
@@ -292,6 +296,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		QdrantClient:       qdrantClient,
 		QdrantHealthProbe:  qdrantHealthProbe,
 		LocatorCleaner:     locatorCleaner,
+		QdrantSearcher:     qdrantSearcher,
 	}, nil
 }
 

@@ -64,6 +64,9 @@ func validateSource(src scriptpkg.SourceSpec, ref string) []string {
 		if src.MaxClips <= 0 {
 			d = append(d, ref+": "+string(src.Type)+" source requires max_clips > 0")
 		}
+	case scriptpkg.SourceCurate:
+		// Curate has no required fields — search + hints are optional;
+		// the resolver validates resolution at runtime.
 	default:
 		d = append(d, ref+": unknown source type "+string(src.Type))
 	}
