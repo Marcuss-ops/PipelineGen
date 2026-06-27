@@ -13,9 +13,3 @@ type ScenesService struct{}
 func NewScenesService(imgSvc, voSvc, log, cfg, resolveFolder, groupsRes interface{}, albumCapacity int) *ScenesService {
 	return &ScenesService{}
 }
-
-// BuildScenesWithMarkers builds scenes with narration/clip markers (stub).
-// Real implementation was in scenes_service.go (deleted).
-func BuildScenesWithMarkers(script string, pack interface{}) []ClipScene {
-	return nil
-}

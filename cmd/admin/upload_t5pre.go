@@ -14,9 +14,9 @@ package main
 import (
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 func runUploadT5Pre(_ []string) error {

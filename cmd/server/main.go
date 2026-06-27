@@ -31,8 +31,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 )
 
 func main() {
@@ -96,14 +96,20 @@ func main() {
 	// by the remote cmd/worker binary to claim jobs), the lifecycle
 	// manager (background job runner + cleanup), and the health-service
 	// (DB+Drive+Qdrant+Jobs checks wired from the composition root).
-	server := api.NewServerWithHealth(cfg, deps.Registry, deps.WorkerHandler, deps.InternalMediaHandler, deps.Lifecycle, deps.HealthService, deps.ReadyChecker, deps.OutboxHandler, deps.MediasearchHandler)
-	// QDRANT-002 route-production fix (June 2026): outboxHandler and
-	// mediasearchHandler are now constructor parameters (wired above)
-	// rather than post-construction setters. The previous order called
-	// SetOutboxHandler / SetMediasearchHandler AFTER NewServerWithHealth
-	// (which invokes router.Setup() internally), meaning the gin engine
-	// was already built when the handlers were nil — the outbox and
-	// media search routes were never registered in production.
+	server := api.NewServerWithHealth(cfg, deps.Registry, deps.WorkerHandler, deps.InternalMediaHandler, deps.Lifecycle, deps.HealthService, deps.ReadyChecker)
+	// QDRANT-002 + QDRANT-004 separation-of-routes fix (June 2026):
+	// the outbox monitor and the mediasearch endpoint live on the
+	// /internal/v1 WorkerAuth-protected internalGroup — NOT on /api.
+	// Without these two wires the underlying Server fields default to
+	// nil and the routes silently 404 (which the previous WRG_DESIGN
+	// accepted as "acceptable for non-prod"). In production these
+	// calls are unconditional.
+	if deps.OutboxHandler != nil {
+		server.SetOutboxHandler(deps.OutboxHandler)
+	}
+	if deps.MediasearchHandler != nil {
+		server.SetMediasearchHandler(deps.MediasearchHandler)
+	}
 	// QDRANT-005: plug the Qdrant probe into the lifecycle readiness
 	// barrier so /ready actually checks Qdrant reachability. nil-safe.
 	// QDRANT-005 v2: api.LifecycleManager now exposes AddProbe directly,

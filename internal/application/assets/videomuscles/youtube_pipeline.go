@@ -10,11 +10,12 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	ffmpegtypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // YouTubeCutRequest contains all parameters for downloading and cutting a YouTube clip.
@@ -205,7 +206,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 			zap.String("clip", outputPath))
 
 		watermarkedPath := outputPath + ".wm.mp4"
-		wmOpts := pkgffmpeg.DefaultWatermarkOptions(watermarkPath)
+		wmOpts := ffmpegtypes.DefaultWatermarkOptions(watermarkPath)
 		wmOpts.Position = "center"
 		wmOpts.Opacity = 0.25
 		wmOpts.ScalePercent = 20

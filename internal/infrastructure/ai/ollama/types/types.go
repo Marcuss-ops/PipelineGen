@@ -4,8 +4,8 @@ type TextGenerationRequest struct {
 	Language        string
 	Duration        int // Duration in seconds (kept for backward compat)
 	DurationMinutes int // Preferred: explicit duration in minutes
-	MinWords        int // Optional: override the duration-derived word count target
-	MaxChars        int // Optional: hard character limit per response; 0 = unlimited
+	MinWords        int    // Optional: override the duration-derived word count target
+	MaxChars        int    // Optional: hard character limit per response; 0 = unlimited
 	Tone            string
 	Model           string
 	Prompt          string

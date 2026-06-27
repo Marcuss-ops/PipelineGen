@@ -305,4 +305,115 @@ var (
 		Help:    "Duration of MediaCurator search operations by backend",
 		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 	}, []string{"backend"})
+
+	// ── QDRANT-005C Observability ─────────────────────────────────────
+	// Reconciler & legacy-cleanup metrics. Names follow the
+	// Prometheus naming convention:
+	//   _total               — Counter (monotonic)
+	//   _seconds             — Histogram (duration)
+	//   _timestamp_seconds   — Gauge (Unix epoch of last successful event)
+	//
+	// ReconcileRunMode label values: "dry_run" | "apply".
+
+	// ReconcilerLastSuccess is the Unix timestamp of the most recent
+	// successful Reconcile run (regardless of DryRun / Apply). Updated
+	// by Service.Reconcile at end-of-run. Allows ops dashboards to
+	// alert on staleness ("no successful reconcile in N minutes").
+	ReconcilerLastSuccess = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "qdrant_reconciler_last_success_timestamp_seconds",
+		Help: "Unix timestamp of the most recent successful reconciler run (DryRun or Apply).",
+	})
+
+	// ReconcilerDuration measures wall-clock duration of a Reconcile
+	// run by mode (dry_run / apply). Buckets sized for the typical
+	// 5-300s run envelope; the tail bucket (max=300s) covers worst-case
+	// 200k-point scrolls.
+	ReconcilerDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "qdrant_reconciler_duration_seconds",
+		Help:    "Duration of reconciler runs by mode (dry_run, apply).",
+		Buckets: []float64{0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
+	}, []string{"mode"})
+
+	// ReconcilerFindingsTotal counts every classification emitted by
+	// the scanner, partitioned by ClassificationKind (9 label values).
+	// Reported on BOTH DryRun and Apply (drift visibility is the
+	// primary value — repair is the secondary outcome).
+	ReconcilerFindingsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "qdrant_reconciler_findings_total",
+		Help: "Total number of classification findings emitted by the reconciler, by kind (9 categories).",
+	}, []string{"kind"})
+
+	// ReconcilerErrorsTotal counts non-fatal per-run errors (e.g. one
+	// scroll page failed). The run overall may still succeed; this
+	// counter is the input for "reconcile is unhealthy" alerts.
+	ReconcilerErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "qdrant_reconciler_errors_total",
+		Help: "Total number of non-fatal errors encountered during reconciler runs.",
+	})
+
+	// ReconcilerVersionMismatchPerChannel breaks down version-stale
+	// findings by embedding channel (text, transcript, visual, audio).
+	// Useful for spotting "the visual model regressed this week but
+	// text still matches" — alerts on the channel with the largest
+	// delta vs. baseline.
+	ReconcilerVersionMismatchPerChannel = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "qdrant_reconciler_version_mismatch_per_channel_total",
+		Help: "Total number of version-stale classifications, by embedding channel.",
+	}, []string{"channel"})
+
+	// ReconcilerDispatchesTotal counts repair actions actually fired,
+	// by action label: "reindex" | "delete" | "payload_strip". Apply
+	// mode only. DryRun emits ZERO so dashboards distinguish "scan ran"
+	// from "repairs ran".
+	ReconcilerDispatchesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "qdrant_reconciler_dispatches_total",
+		Help: "Total number of repair actions dispatched by the reconciler, by action (reindex, delete, payload_strip). Apply mode only.",
+	}, []string{"action"})
+
+	// PayloadLegacyCleanedTotal counts points stripped of legacy
+	// payload keys by the reconciler, partitioned by key name
+	// (status / drive_link / local_path). Apply mode only.
+	PayloadLegacyCleanedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "qdrant_payload_legacy_cleaned_total",
+		Help: "Total number of legacy payload keys stripped from Qdrant points by the reconciler, by key.",
+	}, []string{"legacy_key"})
+
+	// ── QDRANT-005C DR/snapshot alias-switch telemetry ────────────────
+	// Forward-looking placeholders for PR3 (DR/snapshots) wiring.
+	// Declared now (QDRANT-005C scope per user spec) so dashboards and
+	// alerts can be configured against stable metric names regardless
+	// of the wire-up order — production wiring lands in PR3 alongside
+	// the SnapshotService / RestoreService that produce these signals.
+	// Until then, the counters stay at 0 and the gauge stays at the
+	// initialised runtime alias target.
+
+	// QdrantAliasSwitchTotal counts every alias-switch operation,
+	// partitioned by action label: "switch" (active alias swapped to
+	// restore candidate), "rollback" (active alias restored from
+	// rotate-back snapshot), "rehydrate" (alias re-bound after the
+	// primary collection was rewritten).
+	QdrantAliasSwitchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "qdrant_alias_switch_total",
+		Help: "Total number of alias-switch operations, by action (switch, rollback, rehydrate).",
+	}, []string{"action"})
+
+	// QdrantAliasSwitchDuration measures wall-clock duration of
+	// alias-switch operations by action. Buckets sized for typical
+	// 10ms-5s Qdrant REST round-trips.
+	QdrantAliasSwitchDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "qdrant_alias_switch_duration_seconds",
+		Help:    "Duration of alias-switch operations by action (switch, rollback, rehydrate).",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+	}, []string{"action"})
+
+	// QdrantAliasCurrentCollection exposes the current physical
+	// collection pointing at each runtime alias (e.g.
+	// `media_assets_current` -> `media_assets_v3_...`). Updates on
+	// every successful alias switch. Operators can alert on
+	// `qdrant_alias_current_collection{alias=...}` matching a planned
+	// target to verify a DR switch actually landed.
+	QdrantAliasCurrentCollection = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "qdrant_alias_current_collection",
+		Help: "Current physical collection bound to each runtime alias. Set to 1 for the current target, 0 otherwise (PromQL: alias != '...' filters out unbound aliases).",
+	}, []string{"alias", "collection"})
 )

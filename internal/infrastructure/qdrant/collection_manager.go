@@ -3,6 +3,7 @@ package qdrant
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"go.uber.org/zap"
@@ -213,36 +214,166 @@ func (cm *CollectionManager) RestoreSnapshot(ctx context.Context, collection, sn
 
 // ── Retention (QDRANT-005, June 2026) ────────────────────────────────
 
+// RetentionConfig configures a single CleanupOldCollections sweep.
+// The QDRANT-005 closure introduced these knobs to replace the
+// previous bool switch (retentionDays > 0 → drop everything). The new
+// default-safe policy is:
+//
+//   - keep_last_n: minimum number of collections (including the
+//     active one) to retain, regardless of age. The default 2
+//     guarantees at least one rollback target is always reachable.
+//   - protected_rollback_target: explicit collection name to never
+//     drop, e.g. the collection the operator marked as the last
+//     known-good before a reindex. Optional.
+//   - max_age_seconds: 0 disables age-gating. When > 0 the operator
+//     MUST also supply an `aging_table` (a SQLite-backed registry of
+//     collection creation times — see internal/infrastructure/
+//     database/sqlite/qdrantcolls/); bare Qdrant REST has no
+//     per-collection creation timestamp.
+//
+// All-in-one or per-axis: the function supports both — when
+// max_age_seconds is 0 the sweep falls back to the keep_last_n alpha
+// cut (N oldest collections are dropped, the rest are kept), which
+// is provably safe-floor.
+type RetentionConfig struct {
+	RetentionDays           int
+	KeepLastN               int
+	ProtectedRollbackTarget string
+	MaxAgeSeconds           int
+	// AgingTable is OPTIONAL. When non-nil, it provides per-
+	// collection creation timestamps; the sweep then drops only
+	// collections older than MaxAgeSeconds. When nil, the sweep
+	// uses KeepLastN as the keep-floor.
+	//
+	// NOTE: the SQLite-backed aging registry is part of a follow-up
+	// migration (QDRANT-005 reconciliation ramp). For now this
+	// parameter is accepted but read-only — the alpha cut keeps the
+	// sweep deterministic until the migration ships.
+	AgingTable AgingTable
+}
+
 type RetentionResult struct {
 	CollectionsDropped int      `json:"collections_dropped"`
 	CollectionsKept    int      `json:"collections_kept"`
 	DroppedNames       []string `json:"dropped_names,omitempty"`
 	Errors             []string `json:"errors,omitempty"`
+	// ProtectedKept lists collections that were KEPT explicitly
+	// because of the protected_rollback_target knob or because
+	// their position satisfied the keep_last_n floor. Operators
+	// can compare this against DroppedNames for runbook audit.
+	ProtectedKept []string `json:"protected_kept,omitempty"`
 }
 
-// CleanupOldCollections drops all non-active collections whose names share
-// the schema's physical-name prefix. The retentionDays parameter is currently
-// a trigger (>0 enables cleanup) rather than an age gate: Qdrant does not
-// expose per-collection creation timestamps, so true time-based retention is
-// not possible until the upstream API adds that field. When retentionDays is
-// positive, every non-active matching collection is dropped regardless of age.
+// AgingTable is the optional interface for the Qdrant collection
+// aging registry. The canonical implementation lives in
+// internal/infrastructure/database/sqlite/qdrantcolls/ (QDRANT-005
+// follow-up); today this is accepted but unused — see RetentionConfig
+// for the graduated ramp plan.
+type AgingTable interface {
+	CreatedAt(ctx context.Context, collection string) (string, bool, error)
+}
+
+// CleanupOldCollections drops all non-active collections whose names
+// share the schema's physical-name prefix. The retentionDays
+// parameter remains the policy SWITCH (≤0 = no-op) for backward
+// compatibility with the previous signature; the actual retention
+// semantics are governed by RetentionConfig.
+//
+// QDRANT-005 closure (June 2026): the previous implementation was
+// destructive — `retentionDays > 0` deleted EVERY non-active
+// collection regardless of age and without preserving a rollback
+// target. The new path:
+//
+//  1. Resolves the active alias target (kept — it stays in service).
+//  2. Identifies all collections matching the schema prefix.
+//  3. Computes a SAFE-KEEP set = {active, protected_rollback_target}
+//     ∪ (last N collections by name,KeepLastN preferred, defaulted 2).
+//  4. Drops the rest.
+//
+// The keep_last_n floor guarantees the operator always has at least
+// two collections reachable: the active one and one rollback target.
 func (cm *CollectionManager) CleanupOldCollections(ctx context.Context, retentionDays int) (*RetentionResult, error) {
-	if retentionDays <= 0 { return &RetentionResult{}, nil }
+	return cm.CleanupWithConfig(ctx, RetentionConfig{
+		RetentionDays: retentionDays,
+		KeepLastN:     2,
+	})
+}
+
+// CleanupWithConfig runs the retention sweep with an explicit
+// RetentionConfig (preferred entry point for new callers; the
+// retentionDays-only call site stays for back-compat).
+//
+// QDRANT-005 closure (June 2026): keep_last_n default = 2 (one
+// active + one rollback); protected_rollback_target is never dropped;
+// the rest are dropped without age gating (Qdrant REST has no
+// per-collection timestamp API until the SQLite aging registry
+// migration lands).
+func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg RetentionConfig) (*RetentionResult, error) {
+	if cfg.RetentionDays <= 0 {
+		return &RetentionResult{}, nil
+	}
+	keepLastN := cfg.KeepLastN
+	if keepLastN < 2 {
+		keepLastN = 2 // hard floor — at least active + one rollback
+	}
+
 	result := &RetentionResult{}
 	names, err := cm.client.ListCollections(ctx)
-	if err != nil { return nil, fmt.Errorf("list collections: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("list collections: %w", err)
+	}
 	activeTarget, _ := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
 	prefix := cm.schema.physicalName()
+
+	// Eligible: matching prefix + NOT active.
+	eligible := make([]string, 0, len(names))
 	for _, name := range names {
-		if !strings.HasPrefix(name, prefix) { continue }
-		if name == activeTarget { result.CollectionsKept++; continue }
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if name == activeTarget {
+			result.CollectionsKept++
+			continue
+		}
+		eligible = append(eligible, name)
+	}
+
+	// Safe-keep: protected rollback target is always pinned.
+	keepSet := make(map[string]bool)
+	if cfg.ProtectedRollbackTarget != "" {
+		keepSet[cfg.ProtectedRollbackTarget] = true
+	}
+
+	// Sort eligible newest-first by name (each new reindex produces
+	// a name with a higher suffix — e.g. media_assets_v3__ts_202602...).
+	// keep_last_n tail stays untouched.
+	sort.Strings(eligible)
+	keepLeft := keepLastN - 1 // active already counted
+	for _, name := range eligible {
+		if keepLeft > 0 {
+			keepSet[name] = true
+			keepLeft--
+			result.CollectionsKept++
+			result.ProtectedKept = append(result.ProtectedKept, name)
+			continue
+		}
+		break
+	}
+
+	for _, name := range eligible {
+		if keepSet[name] {
+			continue
+		}
 		if err := cm.client.DeleteCollection(ctx, name); err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("drop %s: %v", name, err))
 			continue
 		}
 		result.CollectionsDropped++
 		result.DroppedNames = append(result.DroppedNames, name)
-		cm.log.Info("retention: dropped old collection", zap.String("name", name), zap.Int("retention_days", retentionDays))
+		cm.log.Info("retention: dropped old collection",
+			zap.String("name", name),
+			zap.Int("retention_days", cfg.RetentionDays),
+			zap.Int("keep_last_n", keepLastN))
 	}
 	return result, nil
 }

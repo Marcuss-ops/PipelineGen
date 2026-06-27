@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // DownloadUseCase resolves where a clip's video file lives and returns
 // the location for the handler to stream.
 type DownloadUseCase struct {
 	assetRepo     asset.Repository
-	voiceoverRepo VoiceoverRepositoryPort
+	voiceoverRepo *assets.VoiceoversRepository
 }
 
 // NewDownloadUseCase constructs the use case.
-func NewDownloadUseCase(repo asset.Repository, voiceoverRepo VoiceoverRepositoryPort) *DownloadUseCase {
+func NewDownloadUseCase(repo asset.Repository, voiceoverRepo *assets.VoiceoversRepository) *DownloadUseCase {
 	return &DownloadUseCase{assetRepo: repo, voiceoverRepo: voiceoverRepo}
 }
 
@@ -55,7 +57,7 @@ func (uc *DownloadUseCase) Resolve(ctx context.Context, source, clipID string) (
 		if err != nil {
 			return nil, fmt.Errorf("voiceover not found: %s", clipID)
 		}
-		clip = VoiceoverDTOToAsset(rec)
+		clip = artifacts.VoiceoverRecordToClip(rec)
 	} else {
 		if uc.assetRepo == nil {
 			return nil, fmt.Errorf("asset repository not available")
@@ -85,14 +87,10 @@ func (uc *DownloadUseCase) Resolve(ctx context.Context, source, clipID string) (
 	// 2. Try Drive
 	driveID := clip.DriveFileID()
 	if driveID == "" {
-		if id, err := urlutil.FileIDFromDriveLink(clip.DriveLink()); err == nil && id != "" {
-			driveID = id
-		}
+		driveID = driveutil.FileIDFromLink(clip.DriveLink())
 	}
 	if driveID == "" {
-		if id, err := urlutil.FileIDFromDriveLink(clip.DownloadLink()); err == nil && id != "" {
-			driveID = id
-		}
+		driveID = driveutil.FileIDFromLink(clip.DownloadLink())
 	}
 
 	if driveID != "" {

@@ -21,9 +21,9 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )

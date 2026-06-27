@@ -7,15 +7,15 @@
 // `os` for verification.
 //
 // Import-boundary invariant (AGENTS.md Pattern 0 + Pattern 8):
-//   - internal/application/** MUST NOT import this package.
-//   - This package MAY import the stock port types from the application
+//   * internal/application/** MUST NOT import this package.
+//   * This package MAY import the stock port types from the application
 //     layer (hexagonal: app owns the port, infra owns the adapter).
 //
 // Behavioural equivalence with pre-PR6:
-//  1. Try CutReencodeBatch (single FFmpeg invocation producing N clips)
-//  2. On batch failure, fall back to per-clip CutReencode invocations
-//  3. Verify each produced output exists on disk (os.Stat) and only
-//     include it in the result when present.
+//   1. Try CutReencodeBatch (single FFmpeg invocation producing N clips)
+//   2. On batch failure, fall back to per-clip CutReencode invocations
+//   3. Verify each produced output exists on disk (os.Stat) and only
+//      include it in the result when present.
 package render
 
 import (

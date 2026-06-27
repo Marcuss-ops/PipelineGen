@@ -205,3 +205,7 @@ func inClause(n int, col string, notOpt ...string) string {
 	}
 	return col + " " + op + " (" + strings.Join(placeholders, ",") + ")"
 }
+
+type AdvancedSearchRequest = asset.AdvancedSearchRequest
+type AdvancedSearchResult = asset.AdvancedSearchResult
+type SegmentEmbeddingRecord = asset.SegmentEmbeddingRecord

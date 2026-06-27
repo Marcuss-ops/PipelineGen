@@ -17,12 +17,16 @@ package middleware
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -32,16 +36,36 @@ import (
 )
 
 // inMemStore builds an IdempotencyStore backed by an in-memory
-// SQLite database. Delegates to the infrastructure-level
-// OpenTestDB helper (Wave 16 — zero database/sql import in api/).
+// SQLite database. Returns the store + a teardown that closes the
+// underlying db handle.
 func inMemStore(t *testing.T) idem.IdempotencyStore {
 	t.Helper()
-	store, cleanup, err := idempotency.OpenTestDB()
+	tmp := filepath.Join(t.TempDir(), "test.sqlite")
+	db, err := sql.Open("sqlite3", tmp+"?mode=memory&cache=shared")
 	if err != nil {
-		t.Fatalf("OpenTestDB: %v", err)
+		t.Fatalf("open: %v", err)
 	}
-	t.Cleanup(cleanup)
-	return store
+	t.Cleanup(func() { _ = db.Close() })
+
+	const ddl = `
+		CREATE TABLE IF NOT EXISTS idempotency_keys (
+			key TEXT PRIMARY KEY,
+			body_hash TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'in_flight',
+			response_status INTEGER NOT NULL DEFAULT 0,
+			response_body TEXT NOT NULL DEFAULT '',
+			response_content_type TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			last_replayed_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires_at
+			ON idempotency_keys(expires_at);
+	`
+	if _, err := db.Exec(ddl); err != nil {
+		t.Fatalf("ddl: %v", err)
+	}
+	return idempotency.NewSQLiteRepository(db)
 }
 
 // newRouter builds a one-route gin engine with the idempotency

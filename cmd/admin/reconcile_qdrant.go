@@ -1,57 +1,77 @@
-// cmd/admin/reconcile_qdrant.go — QDRANT-005B closure (June 2026)
+// cmd/admin/reconcile_qdrant.go — QDRANT-005B reconciler (June 2026)
 //
-// One-shot reconciliation between SQLite media_assets and a Qdrant
-// collection. Classifies 5 drift classes (MISSING/EXTRA/STALE/VERSION/
-// ID_MISMATCH), reports them, and (when --apply) repairs them via the
-// canonical IndexWriter (REST UPSERT/DELETE — both idempotent on
-// Qdrant point IDs, no event_key dedup needed).
+// One-shot dual-store compare + repair.
 //
-// FAIL-CLOSED contract: a partial Qdrant scroll (error or empty
-// NextOffset before end-of-stream) blocks the apply phase. Status
-// "scan_incomplete" is returned and no repairs are issued.
-// Reconciliation against a half-scroll would manufacture false-positive
-// MISSING drifts for every unseen Qdrant point.
+// Scope (per docs/architecture/qdrant/QDRANT-005.md §005B):
+//   - Compare real ID sets (SQLite media_assets vs. Qdrant points via
+//     payload.asset_id). NOT counts.
+//   - 9 classification categories (see
+//     internal/application/qdrant/reconciler/types.go).
+//   - Repair routes are canonical:
+//       - missing / version_stale / payload_incomplete /
+//         lifecycle_mismatch / workspace_mismatch /
+//         non_canonical_point_id → outbox_events UPSERT event
+//         (routed via an inline adapter; see outboxRepairAdapter
+//         below for rationale on bypassing outbox.Dispatcher).
+//       - orphan → outbox_events DELETE event.
+//       - lifecycle_key_legacy / locator_legacy →
+//         qdrant.Client.DeletePayloadKeys (canonical for legacy key
+//         stripping; no outbox primitive for partial payload mutation).
 //
 // Usage:
 //
-//	go run ./cmd/admin reconcile-qdrant                          # dry-run on active alias target
-//	go run ./cmd/admin reconcile-qdrant --apply                   # apply repairs (capped by --limit if set)
-//	go run ./cmd/admin reconcile-qdrant --apply --limit=500       # cap repairs to 500
-//	go run ./cmd/admin reconcile-qdrant --collection=media_assets_v3_20260620150405  # explicit collection
-//	go run ./cmd/admin reconcile-qdrant --json                    # machine-readable output
+//	go run ./cmd/admin reconcile-qdrant                              # dry-run (default)
+//	go run ./cmd/admin reconcile-qdrant --apply                       # dispatch repairs
+//	go run ./cmd/admin reconcile-qdrant --json                        # JSON-only output
+//	go run ./cmd/admin reconcile-qdrant --apply --report-path=./out.json
+//	go run ./cmd/admin reconcile-qdrant --collection=media_assets_v3
+//	go run ./cmd/admin reconcile-qdrant --include-lifecycle=ACTIVE,STAGING
+//	go run ./cmd/admin reconcile-qdrant --batch-size=1000
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
 )
 
 // reconcileQdrantDeps holds the parsed flags for runReconcileQdrant.
 type reconcileQdrantDeps struct {
-	Apply      bool
-	JSON       bool
-	DryRun     bool
-	Limit      int    // caps # of repairs (not scans)
-	Collection string // explicit Qdrant collection name (default: active alias target)
+	Apply            bool
+	DryRun           bool
+	JSON             bool
+	ReportPath       string
+	Collection       string
+	IncludeLifecycle []string
+	BatchSize        int
 }
 
-// parseReconcileQdrantArgs parses CLI args into reconcileQdrantDeps.
+// parseReconcileQdrantArgs parses CLI args.
+//
 // Flags:
 //
-//	--apply              actually repair via IndexWriter
-//	--dry-run            explicit dry-run (default, omit when --apply)
-//	--json               machine-readable output
-//	--limit=N            cap number of repair operations
-//	--collection=X       explicit Qdrant collection name (default: active alias)
+//	--apply                              actually dispatch repairs (default: dry-run)
+//	--dry-run                            explicit dry-run
+//	--json                               machine-readable output
+//	--report-path=PATH                   write JSON report to disk
+//	--collection=NAME                    override Qdrant collection
+//	--include-lifecycle=ACTIVE,STAGING   restrict SQLite scan to these states
+//	--batch-size=N                       points per scroll page (default 500)
 func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
-	deps := reconcileQdrantDeps{}
+	deps := reconcileQdrantDeps{BatchSize: 500}
 	for _, a := range args {
 		a = strings.TrimSpace(a)
 		switch {
@@ -61,14 +81,21 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 			deps.DryRun = true
 		case a == "--json":
 			deps.JSON = true
-		case strings.HasPrefix(a, "--limit="):
-			n, err := parsePositiveFlag(a, "--limit")
+		case strings.HasPrefix(a, "--report-path="):
+			deps.ReportPath = strings.TrimPrefix(a, "--report-path=")
+		case strings.HasPrefix(a, "--collection="):
+			deps.Collection = strings.TrimPrefix(a, "--collection=")
+		case strings.HasPrefix(a, "--include-lifecycle="):
+			deps.IncludeLifecycle = strings.Split(strings.TrimPrefix(a, "--include-lifecycle="), ",")
+			for i, s := range deps.IncludeLifecycle {
+				deps.IncludeLifecycle[i] = strings.TrimSpace(s)
+			}
+		case strings.HasPrefix(a, "--batch-size="):
+			n, err := parsePositiveFlag(a, "--batch-size")
 			if err != nil {
 				return deps, err
 			}
-			deps.Limit = n
-		case strings.HasPrefix(a, "--collection="):
-			deps.Collection = strings.TrimPrefix(a, "--collection=")
+			deps.BatchSize = n
 		default:
 			if strings.HasPrefix(a, "-") {
 				return deps, fmt.Errorf("unknown flag: %s", a)
@@ -83,13 +110,14 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 
 // runReconcileQdrant is the entry point registered in cmd/admin/main.go.
 //
-// Pipeline (QDRANT-005B, June 2026):
-//  1. Load config and open the media DB
-//  2. Build the canonical Qdrant stack: SQLiteAssetStore → PayloadMapper → Client → IndexWriter → Reconciler
-//  3. Resolve the target collection (--collection override, else active alias target via CollectionManager.GetActiveCollection)
-//  4. Run the reconciler
-//  5. Print human or --json output
-//  6. Return ErrScanIncomplete when status="scan_incomplete" (CI signal)
+// Pipeline:
+//  1. Load config; require qdrant.enabled=true.
+//  2. Open the media DB.
+//  3. Build canonical stack: DefaultV3Schema, asset store, qdrant.Client.
+//  4. Resolve target collection (override > runtime alias target).
+//  5. Wire service ports from the canonical concrete adapters.
+//  6. Run Service.Reconcile.
+//  7. Pretty-print (or JSON-only) the resulting ReconcileReport.
 func runReconcileQdrant(args []string) error {
 	cfg, log, cleanup, err := appLogger()
 	if err != nil {
@@ -104,8 +132,7 @@ func runReconcileQdrant(args []string) error {
 
 	if !cfg.Qdrant.Enabled {
 		return errors.New(
-			"qdrant is disabled in config (qdrant.enabled=false); " +
-				"reconcile-qdrant requires qdrant.enabled=true",
+			"qdrant is disabled in config; reconcile-qdrant requires qdrant.enabled=true",
 		)
 	}
 
@@ -114,108 +141,318 @@ func runReconcileQdrant(args []string) error {
 	log.Info("reconcile-qdrant starting",
 		zap.Bool("apply", deps.Apply),
 		zap.Bool("dry_run", deps.DryRun || !deps.Apply),
-		zap.Int("repair_limit", deps.Limit),
-		zap.String("collection", deps.Collection),
+		zap.String("report_path", deps.ReportPath),
+		zap.String("collection_override", deps.Collection),
+		zap.Strings("include_lifecycle", deps.IncludeLifecycle),
+		zap.Int("batch_size", deps.BatchSize),
 		zap.String("qdrant_url", cfg.Qdrant.BaseURL),
 	)
 
+	// 1. Open the media DB.
 	sqliteDB, err := storage.OpenSQLiteDB(cfg.Storage.PrimaryDBFullPath(), log)
 	if err != nil {
 		return fmt.Errorf("open media DB: %w", err)
 	}
 	defer sqliteDB.Close()
 
-	// ── Build canonical Qdrant stack ──────────────────────────────
+	// 2. Build canonical stack.
 	schema := qdrant.DefaultV3Schema()
 	assetStore := qdrant.NewSQLiteAssetStore(sqliteDB.DB)
-	mapper := qdrant.NewPayloadMapper(assetStore, log)
 	client := qdrant.NewClient(&qdrant.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
-		Timeout: cfg.Qdrant.Timeout,
 		APIKey:  cfg.Qdrant.APIKey,
+		Timeout: cfg.Qdrant.Timeout,
 	}, log)
-	writer := qdrant.NewIndexWriter(client, schema, mapper, log)
-	collectionMgr := qdrant.NewCollectionManager(client, schema, log)
 
-	// ── Resolve target collection ─────────────────────────────────
-	targetCollection := deps.Collection
-	if targetCollection == "" {
-		resolved, resolveErr := collectionMgr.GetActiveCollection(ctx)
-		if resolveErr != nil {
-			return fmt.Errorf("resolve active collection (no --collection override and no alias target): %w", resolveErr)
+	// 3. Resolve collection: explicit override > runtime alias target.
+	collection := deps.Collection
+	if collection == "" {
+		resolved, err := client.GetAliasTarget(ctx, schema.RuntimeAlias)
+		if err != nil {
+			return fmt.Errorf("resolve runtime alias %q: %w", schema.RuntimeAlias, err)
 		}
 		if resolved == "" {
-			return errors.New("no active alias target and no --collection override")
+			return fmt.Errorf(
+				"runtime alias %q has no target; pass --collection=NAME to scrub a specific collection",
+				schema.RuntimeAlias,
+			)
 		}
-		targetCollection = resolved
-		log.Info("resolved default target via runtime alias", zap.String("collection", targetCollection))
+		collection = resolved
+	}
+	log.Info("reconciling collection", zap.String("collection", collection))
+
+	// 4. Build port adapters.
+	qdrantAdapter := &qdrantListerAdapter{client: client}
+	payloadAdapter := &qdrantPayloadAdapter{client: client}
+	outboxEventsRepo := outboxevents.NewRepository(sqliteDB.DB)
+	outboxAdapter := &outboxRepairAdapter{
+		db:         sqliteDB.DB,
+		outboxRepo: outboxEventsRepo,
+		schemaVersion: schema.Version,
+	}
+	sqliteAdapter := &reconcileReaderAdapter{store: assetStore}
+	pointIDFor := qdrant.AssetIDToQdrantPointID
+
+	// 5. Derive schema for the scanner.
+	perChannel := map[string]string{}
+	for _, spec := range schema.DenseVectors {
+		perChannel[spec.Channel] = spec.ModelVersion
+	}
+	scannerSchema := reconciler.SchemaVersions{
+		Version:           schema.Version,
+		PhysicalName:      schema.PhysicalName,
+		RuntimeAlias:      schema.RuntimeAlias,
+		PerChannelVersion: perChannel,
+		RequiredKeys:      []string{"asset_id", "name", "source", "lifecycle_state"},
 	}
 
-	// ── Run reconciler ───────────────────────────────────────────
-	reconciler := qdrant.NewReconciler(client, sqliteDB.DB, writer, schema, log)
-	result, runErr := reconciler.Reconcile(ctx, qdrant.ReconcileOptions{
-		Collection:  targetCollection,
-		RepairLimit: deps.Limit,
-		DryRun:      !deps.Apply,
+	// 6. Build the service via ServiceDeps (PR2 refactor — eliminated
+	// positional-arg footgun). Metrics port wired to PromMetricsAdapter
+	// so reconcile-qdrant emits QDRANT-005C observability on every run.
+	svc := reconciler.NewServiceFromDeps(reconciler.ServiceDeps{
+		Schema:       scannerSchema,
+		Qdrant:       qdrantAdapter,
+		SQLite:       sqliteAdapter,
+		Outbox:       outboxAdapter,
+		Payload:      payloadAdapter,
+		PointIDFor:   pointIDFor,
+		ReportWriter: nil, // default filesystem report writer
+		Metrics:      qdrant.PromMetricsAdapter{},
+		Log:          log,
 	})
 
-	// Even on non-fatal runErr we still want to print the partial result;
-	// the operator can see exactly which scans went sideways.
+	// 7. Run.
+	report, err := svc.Reconcile(ctx, reconciler.ReconcileOptions{
+		DryRun:                 !deps.Apply,
+		BatchSize:              deps.BatchSize,
+		Collection:             collection,
+		ReportPath:             deps.ReportPath,
+		IncludeLifecycleStates: deps.IncludeLifecycle,
+	})
+	if err != nil {
+		if deps.ReportPath != "" && report != nil {
+			b, _ := json.MarshalIndent(report, "", "  ")
+			_ = os.WriteFile(deps.ReportPath, b, 0o644)
+		}
+		log.Error("reconcile-qdrant failed", zap.Error(err))
+		return err
+	}
+
+	// 8. Print.
 	if deps.JSON {
-		b, marshalErr := json.Marshal(result)
-		if marshalErr == nil {
-			fmt.Println(string(b))
-		} else {
-			log.Warn("failed to marshal reconcile result", zap.Error(marshalErr))
-		}
-	} else if result != nil {
-		log.Info("reconcile-qdrant complete",
-			zap.String("status", result.Status),
-			zap.Int("db_scanned", result.DBScanned),
-			zap.Int("qd_scanned", result.QDScanned),
-			zap.Int("missing", result.DriftSummary[qdrant.DriftMissing]),
-			zap.Int("extra", result.DriftSummary[qdrant.DriftExtra]),
-			zap.Int("stale", result.DriftSummary[qdrant.DriftStale]),
-			zap.Int("version", result.DriftSummary[qdrant.DriftVersion]),
-			zap.Int("id_mismatch", result.DriftSummary[qdrant.DriftIdMismatch]),
-			zap.Int("repaired_upserts", result.RepairedUpserts),
-			zap.Int("repaired_deletes", result.RepairedDeletes),
-			zap.Strings("errors", result.Errors),
-		)
-
-		fmt.Printf("\nReconcile summary\n")
-		fmt.Printf("  Status:            %s\n", result.Status)
-		fmt.Printf("  Collection:        %s\n", targetCollection)
-		fmt.Printf("  DB rows scanned:   %d\n", result.DBScanned)
-		fmt.Printf("  Qdrant pts scanned: %d\n", result.QDScanned)
-		fmt.Printf("  Drift summary:\n")
-		fmt.Printf("    MISSING:      %d\n", result.DriftSummary[qdrant.DriftMissing])
-		fmt.Printf("    EXTRA:        %d\n", result.DriftSummary[qdrant.DriftExtra])
-		fmt.Printf("    STALE:        %d\n", result.DriftSummary[qdrant.DriftStale])
-		fmt.Printf("    VERSION:      %d\n", result.DriftSummary[qdrant.DriftVersion])
-		fmt.Printf("    ID_MISMATCH:  %d\n", result.DriftSummary[qdrant.DriftIdMismatch])
-		if !deps.Apply {
-			fmt.Printf("  Dry-run: no repairs applied (re-run with --apply to fix)\n")
-		} else {
-			fmt.Printf("  Repairs applied:\n")
-			fmt.Printf("    upserts:      %d\n", result.RepairedUpserts)
-			fmt.Printf("    deletes:      %d\n", result.RepairedDeletes)
-		}
-		if len(result.Errors) > 0 {
-			fmt.Printf("  Errors:\n")
-			for _, e := range result.Errors {
-				fmt.Printf("    - %s\n", e)
-			}
-		}
+		b, _ := json.MarshalIndent(report, "", "  ")
+		fmt.Println(string(b))
+		return nil
 	}
 
-	if runErr != nil {
-		return fmt.Errorf("reconcile run failed: %w", runErr)
+	fmt.Printf("=== QDRANT-005B reconcile: %s ===\n", modeLabel(deps))
+	fmt.Printf("  Collection:   %s\n", report.Collection)
+	fmt.Printf("  Schema:       %s\n", report.SchemaVersion)
+	fmt.Printf("  DryRun:       %v\n", report.DryRun)
+	fmt.Printf("  Applied:      %v\n", report.Applied)
+	fmt.Printf("  Duration:     %dms\n", report.DurationMs)
+	fmt.Printf("  SQLite rows:  %d\n", report.ScannedTotals.SQLiteAssets)
+	fmt.Printf("  Qdrant pts:   %d\n", report.ScannedTotals.QdrantPoints)
+	fmt.Printf("  Pairs:        %d\n", report.ScannedTotals.Pairs)
+	fmt.Println("  --- Counts (per category):")
+	for _, k := range reconciler.AllClassificationKinds {
+		fmt.Printf("    %-26s = %d\n", k, report.Counts[k])
 	}
-	if result != nil && result.Status == qdrant.ReconStatusScanIncomplete {
-		// Surface as an error so CI runs fail loudly when the scan didn't
-		// complete (QDRANT-005B fail-closed contract).
-		return fmt.Errorf("reconcile aborted: scan incomplete (collection=%s); repairs NOT applied", targetCollection)
+	if report.Applied {
+		fmt.Println("  --- Repairs dispatched:")
+		fmt.Printf("    reindex_enqueued   = %d\n", report.RepairSummary.ReindexEnqueued)
+		fmt.Printf("    delete_enqueued    = %d\n", report.RepairSummary.DeleteEnqueued)
+		fmt.Printf("    payload_strips     = %d\n", report.RepairSummary.PayloadStrips)
+	}
+	if len(report.Errors) > 0 {
+		fmt.Printf("  Errors: %d\n", len(report.Errors))
+		for i, e := range report.Errors {
+			fmt.Printf("    [%d] %s\n", i, e)
+		}
+	}
+	if deps.ReportPath != "" {
+		fmt.Printf("  Report path:    %s\n", deps.ReportPath)
+	}
+	if !deps.Apply {
+		fmt.Println("\nRe-run with --apply to dispatch repairs.")
 	}
 	return nil
+}
+
+func modeLabel(d reconcileQdrantDeps) string {
+	if d.Apply && !d.DryRun {
+		return "APPLY"
+	}
+	return "DRY-RUN"
+}
+
+// ── Port adapters (cmd/admin glue) ────────────────────────────────────
+
+// qdrantListerAdapter wraps qdrant.Client.ScrollPoints to satisfy
+// reconciler.QdrantLister. The reconciler sees only PointSnapshot (no
+// leak of qdrant.ScrollPoint into the application layer).
+type qdrantListerAdapter struct {
+	client *qdrant.Client
+}
+
+func (a *qdrantListerAdapter) ScrollPoints(ctx context.Context, collection string, offset string, limit int) (reconciler.Points, error) {
+	res, err := a.client.ScrollPoints(ctx, collection, offset, limit, nil)
+	if err != nil {
+		return reconciler.Points{}, err
+	}
+	out := reconciler.Points{
+		NextOffset: res.NextOffset,
+		Items:      make([]reconciler.PointSnapshot, len(res.Points)),
+	}
+	for i, p := range res.Points {
+		out.Items[i] = reconciler.PointSnapshot{ID: p.ID, Payload: p.Payload}
+	}
+	return out, nil
+}
+
+// qdrantPayloadAdapter wraps qdrant.Client.DeletePayloadKeys. The
+// collection is captured at construction so the reconciler call sites
+// stay simple.
+type qdrantPayloadAdapter struct {
+	client *qdrant.Client
+}
+
+func (a *qdrantPayloadAdapter) DeletePayloadKeys(ctx context.Context, collection string, keys []string, pointIDs []string) error {
+	return a.client.DeletePayloadKeys(ctx, collection, keys, pointIDs)
+}
+
+// outboxRepairAdapter satisfies reconciler.OutboxRepairEnqueuer by
+// writing directly to outbox_events + lightly bumping media_assets,
+// bypassing outbox.Dispatcher.
+//
+// Rationale (vs. going through outbox.Dispatcher):
+//   - Dispatcher.EnqueueAndIndex demands a fully-populated *asset.Asset
+//     and constructs an event_key derived from clipindexer package vars
+//     + a content_hash supplied by the caller. Calling it from
+//     reconcile-repair would require synthesising an Asset and choosing
+//     a content hash that varies per reconcile run — both undesirable.
+//   - Reconcile-repair does NOT need the metadata-write side-effect of
+//     Dispatcher (UpdateClipTx). All reconcile-repair needs is to
+//     ENQUEUE an asset.index.requested.v1 event for the worker to
+//     re-run IndexClip with the canonical row's current payload.
+//   - Wiring direct to outboxevents.Repository keeps the adapter thin
+//     (one tx per enqueue, v1 envelope built inline from a typed
+//     schema-version constant) and avoids the ClipsUpserter dependency
+//     cycle (production assets.ClipsRepository is NOT visible at this
+//     admin path).
+//
+// Idempotency: the event_key shape ("reconcile:reindex:<assetID>:<uuid>")
+// guarantees ON CONFLICT(event_key) DO NOTHING only fires when an
+// identical-key event was already enqueued. We use a fresh UUID for
+// every call so re-running reconcile-qdrant --apply twice produces
+// two distinct events (and the worker honor supersede semantically).
+type outboxRepairAdapter struct {
+	db            *sql.DB
+	outboxRepo    *outboxevents.Repository
+	schemaVersion string
+}
+
+// EnqueueReindex inserts an asset.index.requested.v1 outbox event for
+// the supplied assetID. Idempotency is uuid-suffixed (fresh event_key
+// per call) — see outboxevents.BuildReindexEnvelopeV1 for the seam.
+func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string) error {
+	if assetID == "" {
+		return errors.New("outboxRepairAdapter.EnqueueReindex: assetID must not be empty")
+	}
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // standard commit-or-rollback idiom
+
+	// Light parity bump: refresh updated_at so monitors can see the
+	// reconcile-repair touched the row. We do NOT mutate source_version
+	// (the worker's supersede gate reads source_version from metadata).
+	nowStr := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE media_assets SET updated_at = ? WHERE id = ?`,
+		nowStr, assetID,
+	); err != nil {
+		return fmt.Errorf("update updated_at %s: %w", assetID, err)
+	}
+
+	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(assetID, a.schemaVersion, time.Now())
+	if err != nil {
+		return fmt.Errorf("build reindex envelope: %w", err)
+	}
+	if err := a.outboxRepo.Enqueue(
+		ctx, tx,
+		outboxevents.EventAssetIndexRequested,
+		assetID, "media_asset",
+		payloadJSON, eventKey,
+	); err != nil {
+		return fmt.Errorf("enqueue outbox reindex event: %w", err)
+	}
+	return tx.Commit()
+}
+
+func (a *outboxRepairAdapter) EnqueueDelete(ctx context.Context, assetID string) error {
+	if assetID == "" {
+		return errors.New("outboxRepairAdapter.EnqueueDelete: assetID must not be empty")
+	}
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // standard commit-or-rollback idiom
+
+	// Stamp DELETE_PENDING so dashboards show the in-flight delete
+	// even if the worker crashes mid-process.
+	nowStr := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE media_assets SET lifecycle_state = 'DELETE_PENDING', deleted_at = ?, updated_at = ? WHERE id = ?`,
+		nowStr, nowStr, assetID,
+	); err != nil {
+		return fmt.Errorf("set DELETE_PENDING %s: %w", assetID, err)
+	}
+
+	eventID := uuid.NewString()
+	eventKey := "reconcile:delete:" + assetID + ":" + eventID
+	payload := map[string]any{
+		"schema_version":  "asset.index.delete_requested.v1",
+		"event_id":        eventID,
+		"asset_id":        assetID,
+		"requested_at":    nowStr,
+		"idempotency_key": eventKey,
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal v1 delete payload: %w", err)
+	}
+	if err := a.outboxRepo.Enqueue(
+		ctx, tx,
+		outboxevents.EventAssetIndexDeleteRequested,
+		assetID, "media_asset",
+		string(payloadJSON), eventKey,
+	); err != nil {
+		return fmt.Errorf("enqueue outbox delete event: %w", err)
+	}
+	return tx.Commit()
+}
+
+// reconcileReaderAdapter wraps qdrant.SQLiteAssetStore.ListAssetsForReconcile.
+type reconcileReaderAdapter struct {
+	store *qdrant.SQLiteAssetStore
+}
+
+func (a *reconcileReaderAdapter) ListForReconcile(ctx context.Context, includeLifecycleStates []string) ([]reconciler.AssetSnapshot, error) {
+	rows, err := a.store.ListAssetsForReconcile(ctx, includeLifecycleStates)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]reconciler.AssetSnapshot, len(rows))
+	for i, r := range rows {
+		out[i] = reconciler.AssetSnapshot{
+			ID:             r.ID,
+			WorkspaceID:    r.WorkspaceID,
+			LifecycleState: r.LifecycleState,
+			ContentHash:    r.ContentHash,
+		}
+	}
+	return out, nil
 }

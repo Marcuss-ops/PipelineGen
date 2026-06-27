@@ -8,9 +8,9 @@
 //
 // API surface:
 //
-//	type SectionRegenerator struct { Repo, Generator, DocClient, Cfg, Log }
-//	func (r *SectionRegenerator) Regenerate(ctx, req) (*Result, error)
-//	func BuildSectionDocHTML(title, sectionTitles, sectionContents, noChapters, language) string
+//   type SectionRegenerator struct { Repo, Generator, DocClient, Cfg, Log }
+//   func (r *SectionRegenerator) Regenerate(ctx, req) (*Result, error)
+//   func BuildSectionDocHTML(title, sectionTitles, sectionContents, noChapters, language) string
 package scripts
 
 import (
@@ -25,8 +25,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

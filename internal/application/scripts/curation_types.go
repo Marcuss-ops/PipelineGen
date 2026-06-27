@@ -96,7 +96,6 @@ type ClipScene struct {
 	SceneIndex int
 	Text       string
 	ClipID     string
-	ClipTitle  string
 	DriveLink  string
 	Kind       string
 }
@@ -167,30 +166,6 @@ type JobPayloadCurate struct {
 	HintClipIDs   []string `json:"hint_clip_ids"`
 	Search        bool     `json:"search"`
 	AllowTextOnly bool     `json:"allow_text_only"`
-}
-
-// JobPayloadCatalogScript holds the payload for catalog-first script generation.
-type JobPayloadCatalogScript struct {
-	Topic              string   `json:"topic"`
-	ClipIDs            []string `json:"clip_ids"`
-	Title              string   `json:"title"`
-	OutputName         string   `json:"output_name"`
-	MaxClips           int      `json:"max_clips"`
-	MinCoverage        float64  `json:"min_coverage"`
-	Languages          []string `json:"languages,omitempty"`
-	Language           string   `json:"language"`
-	Tone               string   `json:"tone"`
-	Model              string   `json:"model"`
-	TargetWords        int      `json:"target_words"`
-	Duration           int      `json:"duration"`
-	TranscriptPolicy   string   `json:"transcript_policy"`
-	OrderingStrategy   string   `json:"ordering_strategy"`
-	CreateDoc          bool     `json:"create_doc"`
-	SaveToDB           bool     `json:"save_to_db"`
-	GenerateTimeline   bool     `json:"generate_timeline"`
-	ForceRefresh       bool     `json:"force_refresh"`
-	MinQualityScore    *float64 `json:"min_quality_score,omitempty"`
-	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
 }
 
 // ── Curate error contract ────────────────────────────────────────────────

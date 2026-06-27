@@ -1,0 +1,889 @@
+// Package scripts_test — normalizer_plan_tests_test.go exercises
+// the canonical normalization, preset, validation, and plan-building
+// pipeline for PR 3 of the unified-script-output migration.
+//
+//   item → ApplyPreset → NormalizeItem → ValidateItem → BuildPlan
+//
+// Every test verifies one invariant from the plan §10-12.
+package scripts_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+func defaultCfg() scripts.NormalizationConfig {
+	return scripts.NormalizationConfig{
+		DefaultLanguage:          "it",
+		DefaultTone:              "documentary",
+		DefaultDurationSeconds:   600,
+		OllamaModel:              "llama3.2",
+		MinWordFloor:             200,
+		PromptVersion:            "v1",
+		EditorPromptVersion:      "v1",
+		QAPromptVersion:          "v1",
+		DefaultSentencesPerImage: 10,
+		DefaultImagesPerScene:    2,
+	}
+}
+
+func textItem() scriptpkg.GenerationItemV2 {
+	return scriptpkg.GenerationItemV2{
+		ID:    "item-1",
+		Title: "AI Revolution",
+		Source: scriptpkg.SourceSpec{
+			Type:      scriptpkg.SourceText,
+			Topic:     "The future of AI",
+			SourceText: "Artificial intelligence is transforming society.",
+		},
+	}
+}
+
+func clipsItem() scriptpkg.GenerationItemV2 {
+	return scriptpkg.GenerationItemV2{
+		ID:    "item-clips",
+		Title: "Clip Script",
+		Source: scriptpkg.SourceSpec{
+			Type:    scriptpkg.SourceClips,
+			ClipIDs: []string{"clip-a", "clip-b"},
+		},
+	}
+}
+
+// ── Normalization: precedence chain ────────────────────────────────
+
+func TestNormalizeItemPrecedenceCallerBeatsPreset(t *testing.T) {
+	cfg := defaultCfg()
+	item := textItem()
+	item.Language = "de" // caller explicit
+
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	if item.Language != "de" {
+		t.Errorf("caller language should beat preset/config: got %q", item.Language)
+	}
+}
+
+func TestNormalizeItemPrecedencePresetBeatsConfig(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.DefaultLanguage = "en" // config
+	item := textItem()
+	item.Language = "" // not set by caller
+
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	if item.Language != "en" {
+		t.Errorf("config should fill unset language: got %q, want %q", item.Language, "en")
+	}
+}
+
+func TestNormalizeItemPrecedenceConfigBeatsHardDefault(t *testing.T) {
+	cfg := scripts.NormalizationConfig{} // no config defaults
+	item := textItem()
+	item.Language = ""
+
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	if item.Language != "en" {
+		t.Errorf("hard safety default should be 'en': got %q", item.Language)
+	}
+}
+
+// ── Normalization: idempotency ─────────────────────────────────────
+
+func TestNormalizeItemIdempotent(t *testing.T) {
+	cfg := defaultCfg()
+	item := textItem()
+
+	// First normalization.
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	first := item
+
+	// Second normalization — should not change anything.
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	if item.Language != first.Language {
+		t.Errorf("language changed on second pass: %q → %q", first.Language, item.Language)
+	}
+	if item.Tone != first.Tone {
+		t.Errorf("tone changed on second pass")
+	}
+	if item.ScriptParams.TargetWords != first.ScriptParams.TargetWords {
+		t.Errorf("target_words changed on second pass: %d → %d",
+			first.ScriptParams.TargetWords, item.ScriptParams.TargetWords)
+	}
+	if item.ScriptParams.SentencesPerImage != first.ScriptParams.SentencesPerImage {
+		t.Errorf("sentences_per_image changed on second pass")
+	}
+}
+
+func TestNormalizeItemIdempotentWithImages(t *testing.T) {
+	cfg := defaultCfg()
+	item := clipsItem()
+
+	scripts.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
+	first := item
+
+	scripts.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
+
+	if item.Output.GenerateSceneImages != first.Output.GenerateSceneImages {
+		t.Error("generate_scene_images changed on second pass")
+	}
+	if item.Output.GenerateVoiceover != first.Output.GenerateVoiceover {
+		t.Error("generate_voiceover changed on second pass")
+	}
+	if item.Output.ExtractEntities != first.Output.ExtractEntities {
+		t.Error("extract_entities changed on second pass")
+	}
+}
+
+// ── Normalization: nil safety ──────────────────────────────────────
+
+func TestNormalizeItemPreservesSourceTopic(t *testing.T) {
+	// The normalizer sets item.Title from item.Source.Topic when
+	// Title is empty, but it must NOT mutate Source.Topic itself.
+	cfg := defaultCfg()
+	item := scriptpkg.GenerationItemV2{
+		ID:    "item-topic-preserve",
+		Title: "",
+		Source: scriptpkg.SourceSpec{
+			Type:  scriptpkg.SourceText,
+			Topic: "Original Topic",
+		},
+	}
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	if item.Source.Topic != "Original Topic" {
+		t.Errorf("normalizer must not mutate Source.Topic: got %q", item.Source.Topic)
+	}
+	// Title should be derived from Source.Topic.
+	if item.Title != "Original Topic" {
+		t.Errorf("normalizer should set Title from Source.Topic: got %q", item.Title)
+	}
+}
+
+func TestNormalizeItemNil(t *testing.T) {
+	scripts.NormalizeItem(nil, scriptpkg.PresetCustom, defaultCfg())
+	// Must not panic.
+}
+
+func TestNormalizeEnvelopeNil(t *testing.T) {
+	result := scripts.NormalizeEnvelope(nil, defaultCfg())
+	if result != nil {
+		t.Errorf("expected nil from nil envelope, got %v", result)
+	}
+}
+
+func TestNormalizeEnvelopeEmpty(t *testing.T) {
+	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: nil}
+	result := scripts.NormalizeEnvelope(env, defaultCfg())
+	if result != nil {
+		t.Errorf("expected nil from empty envelope, got %d items", len(result))
+	}
+}
+
+// ── Normalization: duration-to-words conversion ────────────────────
+
+func TestNormalizeItemDurationToWords(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.DefaultDurationSeconds = 300 // 5 minutes
+	item := textItem()
+
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	// 300 seconds × 150 wpm / 60 = 750 words
+	expected := (300 * 150) / 60
+	if item.ScriptParams.TargetWords != expected {
+		t.Errorf("target_words: got %d, want %d", item.ScriptParams.TargetWords, expected)
+	}
+}
+
+func TestNormalizeItemExplicitWordsBeatDuration(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.DefaultDurationSeconds = 300
+	item := textItem()
+	item.ScriptParams.TargetWords = 500 // caller explicit
+
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	if item.ScriptParams.TargetWords != 500 {
+		t.Errorf("caller words should beat duration-derived: got %d", item.ScriptParams.TargetWords)
+	}
+}
+
+// ── Preset: with_images changes only images/voiceover/entities ─────
+
+func TestApplyPresetWithImages(t *testing.T) {
+	item := clipsItem()
+	item.Language = "it"
+	item.Tone = "cinematic"
+
+	scripts.ApplyPreset(&item, scriptpkg.PresetWithImages)
+
+	if !item.Output.GenerateSceneImages {
+		t.Error("with_images: generate_scene_images should be true")
+	}
+	if !item.Output.GenerateVoiceover {
+		t.Error("with_images: generate_voiceover should be true")
+	}
+	if item.Output.ExtractEntities {
+		t.Error("with_images: extract_entities should be false")
+	}
+	if item.Output.GenerateMetadata {
+		t.Error("with_images: generate_metadata should be false")
+	}
+
+	// Identity fields untouched.
+	if item.Language != "it" {
+		t.Errorf("with_images should not change language: got %q", item.Language)
+	}
+	if item.Tone != "cinematic" {
+		t.Errorf("with_images should not change tone: got %q", item.Tone)
+	}
+	if item.Title != "Clip Script" {
+		t.Errorf("with_images should not change title: got %q", item.Title)
+	}
+
+	// Image sizing defaults applied.
+	if item.ScriptParams.SentencesPerImage != 8 {
+		t.Errorf("with_images: sentences_per_image should be 8, got %d",
+			item.ScriptParams.SentencesPerImage)
+	}
+	if item.ScriptParams.ImagesPerScene != 2 {
+		t.Errorf("with_images: images_per_scene should be 2, got %d",
+			item.ScriptParams.ImagesPerScene)
+	}
+}
+
+func TestApplyPresetWithImagesRespectsExplicitSizing(t *testing.T) {
+	item := clipsItem()
+	item.ScriptParams.SentencesPerImage = 12 // caller explicit
+	item.Output.GenerateDocument = false      // caller explicit OFF
+
+	scripts.ApplyPreset(&item, scriptpkg.PresetWithImages)
+
+	// Caller explicit sizing preserved.
+	if item.ScriptParams.SentencesPerImage != 12 {
+		t.Errorf("caller sentences_per_image should be preserved: got %d",
+			item.ScriptParams.SentencesPerImage)
+	}
+	// Document: preset forces ON because bool zero-value is indistinguishable.
+	// Current behavior: preset overwrites false → true.
+	if !item.Output.GenerateDocument {
+		t.Log("generate_document false was overwritten by preset (bool zero-value limitation)")
+	}
+}
+
+func TestApplyPresetCustom(t *testing.T) {
+	item := clipsItem()
+	item.Output.GenerateSceneImages = true
+
+	scripts.ApplyPreset(&item, scriptpkg.PresetCustom)
+
+	// Custom: no overrides.
+	if !item.Output.GenerateSceneImages {
+		t.Error("custom preset should not change generate_scene_images")
+	}
+}
+
+func TestApplyPresetBatchPassThrough(t *testing.T) {
+	item := textItem()
+
+	// "batch" preset is pass-through (identical to "custom") — no
+	// force flags. The domain only defines PresetCustom and
+	// PresetWithImages; batch is a plain string.
+	scripts.ApplyPreset(&item, scriptpkg.Preset("batch"))
+
+	// Batch: no overrides — same as custom.
+	if item.Output.GenerateSceneImages {
+		t.Error("batch preset should not enable generate_scene_images")
+	}
+}
+
+func TestApplyPresetNilItem(t *testing.T) {
+	scripts.ApplyPreset(nil, scriptpkg.PresetWithImages)
+	// Must not panic.
+}
+
+// ── Validator: edge cases ──────────────────────────────────────────
+
+func TestValidateItemValidText(t *testing.T) {
+	item := textItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	if err := scripts.ValidateItem(item); err != nil {
+		t.Errorf("valid text item should not error: %v", err)
+	}
+}
+
+func TestValidateItemValidClips(t *testing.T) {
+	item := clipsItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	if err := scripts.ValidateItem(item); err != nil {
+		t.Errorf("valid clips item should not error: %v", err)
+	}
+}
+
+func TestValidateItemEmptySource(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceClips, ClipIDs: nil},
+	}
+	err := scripts.ValidateItem(item)
+	if err == nil {
+		t.Fatal("empty clip source should fail validation")
+	}
+}
+
+func TestValidateItemUnknownSourceType(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceType("bogus")},
+	}
+	err := scripts.ValidateItem(item)
+	if err == nil {
+		t.Fatal("unknown source type should fail validation")
+	}
+}
+
+func TestValidateItemNegativeTargetWords(t *testing.T) {
+	item := textItem()
+	item.ScriptParams.TargetWords = -1
+	err := scripts.ValidateItem(item)
+	if err == nil {
+		t.Fatal("negative target_words should fail validation")
+	}
+}
+
+func TestValidateItemExcessiveSentencesPerImage(t *testing.T) {
+	item := textItem()
+	item.ScriptParams.SentencesPerImage = 200
+	err := scripts.ValidateItem(item)
+	if err == nil {
+		t.Fatal("excessive sentences_per_image should fail validation")
+	}
+}
+
+func TestValidateItemBadOutputFmt(t *testing.T) {
+	item := textItem()
+	item.Output.OutputFmt = "xml"
+	err := scripts.ValidateItem(item)
+	if err == nil {
+		t.Fatal("bad output_fmt should fail validation")
+	}
+}
+
+func TestValidateItemDuplicateLanguages(t *testing.T) {
+	item := textItem()
+	item.Output.Languages = []string{"it", "en", "it"}
+	err := scripts.ValidateItem(item)
+	if err == nil {
+		t.Fatal("duplicate languages should fail validation")
+	}
+}
+
+// ── Plan builder: deterministic output ─────────────────────────────
+
+func TestBuildPlanTextFieldMapping(t *testing.T) {
+	cfg := defaultCfg()
+	item := textItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	plan := scripts.BuildPlan(item)
+
+	if plan.ID != "item-1" {
+		t.Errorf("plan.ID: %q", plan.ID)
+	}
+	if plan.Title != "AI Revolution" {
+		t.Errorf("plan.Title: %q", plan.Title)
+	}
+	if plan.Language != "it" {
+		t.Errorf("plan.Language: %q (expected config default 'it')", plan.Language)
+	}
+	if plan.Tone != "documentary" {
+		t.Errorf("plan.Tone: %q", plan.Tone)
+	}
+	if plan.Mode != "text" {
+		t.Errorf("plan.Mode for text source: %q", plan.Mode)
+	}
+	if plan.SourceText != "Artificial intelligence is transforming society." {
+		t.Errorf("plan.SourceText: %q", plan.SourceText)
+	}
+	if plan.Guidelines == "" {
+		t.Log("guidelines empty (expected when not set)")
+	}
+}
+
+func TestBuildPlanClipsFieldMapping(t *testing.T) {
+	cfg := defaultCfg()
+	item := clipsItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	plan := scripts.BuildPlan(item)
+
+	if plan.Mode != "clip_to_script" {
+		t.Errorf("plan.Mode for clips: %q", plan.Mode)
+	}
+	// Clip evidence is nil at plan-build time — source resolver fills it later.
+	if plan.ClipEvidence != nil {
+		t.Error("plan.ClipEvidence should be nil before source resolution")
+	}
+}
+
+func TestBuildPlanPostprocessorList(t *testing.T) {
+	item := textItem()
+	item.Output.ExtractEntities = true
+	item.Output.GenerateDocument = true
+	item.Output.SaveToDB = true
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	plan := scripts.BuildPlan(item)
+
+	if len(plan.Postprocessors) != 3 {
+		t.Fatalf("expected 3 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
+	}
+	if plan.Postprocessors[0] != "entities" {
+		t.Errorf("postprocessor[0]: %q", plan.Postprocessors[0])
+	}
+	if plan.Postprocessors[1] != "document" {
+		t.Errorf("postprocessor[1]: %q", plan.Postprocessors[1])
+	}
+	if plan.Postprocessors[2] != "persistence" {
+		t.Errorf("postprocessor[2]: %q", plan.Postprocessors[2])
+	}
+}
+
+func TestBuildPlanPostprocessorListFull(t *testing.T) {
+	item := textItem()
+	item.Output.ExtractEntities = true
+	item.Output.GenerateMetadata = true
+	item.Output.GenerateVoiceover = true
+	item.Output.GenerateSceneImages = true
+	item.Output.GenerateDocument = true
+	item.Output.SaveToDB = true
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	plan := scripts.BuildPlan(item)
+
+	expected := []string{"entities", "metadata", "voiceover", "images", "document", "persistence"}
+	if len(plan.Postprocessors) != len(expected) {
+		t.Fatalf("expected %d postprocessors, got %d", len(expected), len(plan.Postprocessors))
+	}
+	for i, name := range expected {
+		if plan.Postprocessors[i] != name {
+			t.Errorf("postprocessor[%d]: got %q, want %q", i, plan.Postprocessors[i], name)
+		}
+	}
+}
+
+func TestBuildPlanDeterministic(t *testing.T) {
+	cfg := defaultCfg()
+	item := textItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	plan1 := scripts.BuildPlan(item)
+	plan2 := scripts.BuildPlan(item)
+
+	// Plans must be deeply equal for the same input.
+	if plan1.ID != plan2.ID {
+		t.Error("ID differs")
+	}
+	if plan1.Title != plan2.Title {
+		t.Error("Title differs")
+	}
+	if plan1.Language != plan2.Language {
+		t.Error("Language differs")
+	}
+	if plan1.TargetWords != plan2.TargetWords {
+		t.Error("TargetWords differs")
+	}
+	if len(plan1.Postprocessors) != len(plan2.Postprocessors) {
+		t.Error("Postprocessors length differs")
+	}
+}
+
+func TestBuildPlanNoEndpointNames(t *testing.T) {
+	cfg := defaultCfg()
+	item := textItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+
+	plan := scripts.BuildPlan(item)
+
+	// The plan must not contain any endpoint name string.
+	if plan.Mode == "generate_from_clips" || plan.Mode == "generate_with_images" ||
+		plan.Mode == "generate_batch" || plan.Mode == "generate_from_catalog" {
+		t.Errorf("plan.Mode contains legacy endpoint name: %q", plan.Mode)
+	}
+}
+
+func TestBuildPlansEmpty(t *testing.T) {
+	plans := scripts.BuildPlans(nil)
+	if plans != nil {
+		t.Errorf("BuildPlans(nil) should return nil, got %v", plans)
+	}
+	plans = scripts.BuildPlans([]scriptpkg.GenerationItemV2{})
+	if plans != nil {
+		t.Errorf("BuildPlans(empty) should return nil, got %d items", len(plans))
+	}
+}
+
+func TestBuildPlansMultiple(t *testing.T) {
+	cfg := defaultCfg()
+	item1 := textItem()
+	item2 := clipsItem()
+	item1.ID = "one"
+	item2.ID = "two"
+	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, cfg)
+	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, cfg)
+
+	plans := scripts.BuildPlans([]scriptpkg.GenerationItemV2{item1, item2})
+
+	if len(plans) != 2 {
+		t.Fatalf("expected 2 plans, got %d", len(plans))
+	}
+	if plans[0].ID != "one" {
+		t.Errorf("plan[0].ID: %q", plans[0].ID)
+	}
+	if plans[1].ID != "two" {
+		t.Errorf("plan[1].ID: %q", plans[1].ID)
+	}
+	// Text source maps to mode "text", clips to "clip_to_script".
+	if plans[0].Mode != "text" {
+		t.Errorf("plan[0].Mode: %q", plans[0].Mode)
+	}
+	if plans[1].Mode != "clip_to_script" {
+		t.Errorf("plan[1].Mode: %q", plans[1].Mode)
+	}
+}
+
+// ── Single/batch parity: same item normalizes identically ──────────
+
+func TestSingleBatchParityNormalization(t *testing.T) {
+	cfg := defaultCfg()
+	item := textItem()
+
+	// Normalize standalone.
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
+	single := item
+
+	// Normalize via envelope.
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Items:   []scriptpkg.GenerationItemV2{textItem()},
+		Preset:  scriptpkg.PresetCustom,
+	}
+	normalized := scripts.NormalizeEnvelope(env, cfg)
+	batchItem := normalized[0]
+
+	if batchItem.Language != single.Language {
+		t.Errorf("language: single=%q, batch=%q", single.Language, batchItem.Language)
+	}
+	if batchItem.Tone != single.Tone {
+		t.Errorf("tone: single=%q, batch=%q", single.Tone, batchItem.Tone)
+	}
+	if batchItem.ScriptParams.TargetWords != single.ScriptParams.TargetWords {
+		t.Errorf("target_words: single=%d, batch=%d",
+			single.ScriptParams.TargetWords, batchItem.ScriptParams.TargetWords)
+	}
+	if batchItem.Model != single.Model {
+		t.Errorf("model: single=%q, batch=%q", single.Model, batchItem.Model)
+	}
+}
+
+// ── Validation: nil input safety ───────────────────────────────────
+
+func TestValidateItemFuzz(t *testing.T) {
+	items := []scriptpkg.GenerationItemV2{
+		{},
+		{Source: scriptpkg.SourceSpec{Type: ""}},
+		{Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceType(strings.Repeat("x", 100))}},
+		{Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "x"}},
+		{Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceClips, ClipIDs: []string{}}},
+		{Output: scriptpkg.OutputSpec{Languages: make([]string, 30)}},
+		{ScriptParams: scriptpkg.ScriptSpec{TargetWords: -999, MinWords: -1}},
+	}
+	for i, item := range items {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("item %d: ValidateItem panicked: %v", i, r)
+				}
+			}()
+			_ = scripts.ValidateItem(item)
+		}()
+	}
+}
+
+// ── Plan builder: Topic derivation from Source ─────────────────────
+
+func TestBuildPlanTopicFromSource(t *testing.T) {
+	// When source.topic is explicitly set, plan.Topic should use it,
+	// not item.Title. This distinguishes "the topic of the generation"
+	// from "the title of the output script".
+	item := scriptpkg.GenerationItemV2{
+		ID:    "item-topic",
+		Title: "My Script Title",
+		Source: scriptpkg.SourceSpec{
+			Type:  scriptpkg.SourceText,
+			Topic: "Climate Change",
+		},
+	}
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	plan := scripts.BuildPlan(item)
+
+	if plan.Title != "My Script Title" {
+		t.Errorf("plan.Title should remain the item title: %q", plan.Title)
+	}
+	if plan.Topic != "Climate Change" {
+		t.Errorf("plan.Topic should use source.topic when set: got %q, want %q",
+			plan.Topic, "Climate Change")
+	}
+}
+
+func TestBuildPlanTopicFallbackToTitle(t *testing.T) {
+	// When source.topic is empty, plan.Topic falls back to item.Title.
+	item := scriptpkg.GenerationItemV2{
+		ID:    "item-fallback",
+		Title: "Fallback Title",
+		Source: scriptpkg.SourceSpec{
+			Type:  scriptpkg.SourceText,
+			Topic: "",
+		},
+	}
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	plan := scripts.BuildPlan(item)
+
+	if plan.Topic != "Fallback Title" {
+		t.Errorf("plan.Topic should fall back to title: got %q, want %q",
+			plan.Topic, "Fallback Title")
+	}
+}
+
+func TestBuildPlanTopicBothEmpty(t *testing.T) {
+	// When both source.topic and title are empty, plan.Topic is "".
+	// This is valid — the engine will use the Untitled Script
+	// default applied by the normalizer to item.Title.
+	item := scriptpkg.GenerationItemV2{
+		ID: "item-empty",
+		Source: scriptpkg.SourceSpec{
+			Type: scriptpkg.SourceText,
+		},
+	}
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	// After normalization, item.Title should be "Untitled Script".
+	if item.Title != "Untitled Script" {
+		t.Fatalf("expected normalizer to set Title to 'Untitled Script', got %q", item.Title)
+	}
+
+	plan := scripts.BuildPlan(item)
+
+	if plan.Topic != "Untitled Script" {
+		t.Errorf("plan.Topic should be normalized title: got %q", plan.Topic)
+	}
+}
+
+// ── Identity: deterministic fingerprint ────────────────────────────
+
+func TestBuildItemIdentityDeterministic(t *testing.T) {
+	item := textItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	id1 := scripts.BuildItemIdentity(item)
+	id2 := scripts.BuildItemIdentity(item)
+
+	if id1 != id2 {
+		t.Errorf("identity not deterministic: %q vs %q", id1, id2)
+	}
+	if len(id1) != 16 {
+		t.Errorf("identity should be 16 hex chars, got %d: %q", len(id1), id1)
+	}
+}
+
+func TestBuildItemIdentityDifferentItems(t *testing.T) {
+	item1 := textItem()
+	item2 := textItem()
+	item2.Title = "Different Title"
+	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+
+	id1 := scripts.BuildItemIdentity(item1)
+	id2 := scripts.BuildItemIdentity(item2)
+
+	if id1 == id2 {
+		t.Error("items with different titles should have different identities")
+	}
+}
+
+func TestBuildItemIdentityIgnoresOutputFlags(t *testing.T) {
+	// Output flags control postprocessors, not script text.
+	// The identity must not change when output flags change.
+	item1 := textItem()
+	item1.Output.ExtractEntities = false
+	item1.Output.GenerateDocument = false
+	item1.Output.SaveToDB = false
+
+	item2 := textItem()
+	item2.Output.ExtractEntities = true
+	item2.Output.GenerateDocument = true
+	item2.Output.SaveToDB = true
+
+	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+
+	id1 := scripts.BuildItemIdentity(item1)
+	id2 := scripts.BuildItemIdentity(item2)
+
+	if id1 != id2 {
+		t.Errorf("identity should ignore output flags: %q vs %q", id1, id2)
+	}
+}
+
+func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
+	// Clip IDs are sorted for determinism — different input orders
+	// must produce the same identity.
+	item1 := clipsItem()
+	item1.Source.ClipIDs = []string{"clip-b", "clip-a", "clip-c"}
+
+	item2 := clipsItem()
+	item2.Source.ClipIDs = []string{"clip-c", "clip-b", "clip-a"}
+
+	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+
+	id1 := scripts.BuildItemIdentity(item1)
+	id2 := scripts.BuildItemIdentity(item2)
+
+	if id1 != id2 {
+		t.Errorf("identity should be stable regardless of clip ID order: %q vs %q", id1, id2)
+	}
+}
+
+func TestBuildItemIdentityNilSafety(t *testing.T) {
+	// BuildItemIdentity is called on a value (not pointer), so nil
+	// isn't possible at the Go level. But empty items should still
+	// produce a stable identity.
+	item := scriptpkg.GenerationItemV2{}
+	id := scripts.BuildItemIdentity(item)
+	if id == "" {
+		t.Error("empty item should still produce a non-empty identity")
+	}
+}
+
+func TestBuildEnvelopeIdentitySingleItem(t *testing.T) {
+	item := textItem()
+	scripts.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Items:   []scriptpkg.GenerationItemV2{item},
+	}
+
+	envID := scripts.BuildEnvelopeIdentity(env)
+	itemID := scripts.BuildItemIdentity(item)
+
+	if envID != itemID {
+		t.Errorf("single-item envelope identity should equal item identity: %q vs %q",
+			envID, itemID)
+	}
+}
+
+func TestBuildEnvelopeIdentityMultiItem(t *testing.T) {
+	item1 := textItem()
+	item1.ID = "a"
+	item2 := clipsItem()
+	item2.ID = "b"
+	scripts.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
+	scripts.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
+
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Items:   []scriptpkg.GenerationItemV2{item1, item2},
+	}
+
+	envID := scripts.BuildEnvelopeIdentity(env)
+	if len(envID) != 16 {
+		t.Errorf("multi-item envelope identity should be 16 hex chars, got %d: %q",
+			len(envID), envID)
+	}
+
+	// Multi-item identity should differ from any single-item identity.
+	if envID == scripts.BuildItemIdentity(item1) {
+		t.Error("multi-item identity should not equal item1 identity")
+	}
+	if envID == scripts.BuildItemIdentity(item2) {
+		t.Error("multi-item identity should not equal item2 identity")
+	}
+}
+
+func TestBuildEnvelopeIdentityNil(t *testing.T) {
+	if id := scripts.BuildEnvelopeIdentity(nil); id != "" {
+		t.Errorf("nil envelope should return empty identity: got %q", id)
+	}
+	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: nil}
+	if id := scripts.BuildEnvelopeIdentity(env); id != "" {
+		t.Errorf("empty-items envelope should return empty identity: got %q", id)
+	}
+}
+
+// ── ResolvedGenerationPlan helpers ─────────────────────────────────
+
+func TestResolvedGenerationPlanHasClips(t *testing.T) {
+	// Nil evidence → false.
+	plan := scriptpkg.ResolvedGenerationPlan{ClipEvidence: nil}
+	if plan.HasClips() {
+		t.Error("nil ClipEvidence should return false")
+	}
+
+	// Empty clip IDs → false.
+	plan = scriptpkg.ResolvedGenerationPlan{
+		ClipEvidence: &scriptpkg.ClipEvidence{ClipIDs: []string{}},
+	}
+	if plan.HasClips() {
+		t.Error("empty ClipIDs should return false")
+	}
+
+	// Populated clip IDs → true.
+	plan = scriptpkg.ResolvedGenerationPlan{
+		ClipEvidence: &scriptpkg.ClipEvidence{ClipIDs: []string{"clip-a"}},
+	}
+	if !plan.HasClips() {
+		t.Error("populated ClipEvidence should return true")
+	}
+}
+
+func TestResolvedGenerationPlanHasPostprocessor(t *testing.T) {
+	plan := scriptpkg.ResolvedGenerationPlan{
+		Postprocessors: []string{"entities", "document", "persistence"},
+	}
+
+	if !plan.HasPostprocessor("entities") {
+		t.Error("should have 'entities' postprocessor")
+	}
+	if !plan.HasPostprocessor("document") {
+		t.Error("should have 'document' postprocessor")
+	}
+	if plan.HasPostprocessor("voiceover") {
+		t.Error("should NOT have 'voiceover' postprocessor")
+	}
+	if plan.HasPostprocessor("") {
+		t.Error("empty string should not match")
+	}
+}
+
+func TestResolvedGenerationPlanHasPostprocessorEmpty(t *testing.T) {
+	plan := scriptpkg.ResolvedGenerationPlan{Postprocessors: nil}
+	if plan.HasPostprocessor("anything") {
+		t.Error("nil postprocessors should return false for any name")
+	}
+
+	plan.Postprocessors = []string{}
+	if plan.HasPostprocessor("anything") {
+		t.Error("empty postprocessors should return false for any name")
+	}
+}

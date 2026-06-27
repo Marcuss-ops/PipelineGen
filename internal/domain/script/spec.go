@@ -1,12 +1,12 @@
 // Package scriptjobs defines the typed contract for script generation jobs.
 //
-// GenerationSpec is the single source of truth for all script generation
-// parameters. It is used across the full pipeline:
+// GenerationSpec is the canonical parameters struct for script generation.
+// It is used by the post-processor pipeline (PostGenUseCase, EntityProcessor,
+// MetadataProcessor) to carry generation flags.
 //
-//	HTTP request → GenerationSpec → GeneratePayload → worker decode
-//
-// This eliminates the triplication between GenerateFromClipsRequest,
-// FromClipsCommand, jobPayloadUnified, and map[string]any.
+// PR 12 (June 2026): GeneratePayload / DecodeGeneratePayload removed —
+// the worker now decodes GenerationEnvelopeV2 via DecodeEnvelopeV2.
+// GenerationSpec remains as a parameter carrier for the post-gen pipeline.
 package script
 
 // (Removed June 2026, Wave 5 PR3) JobTypeGenerateFromClips was a duplicate

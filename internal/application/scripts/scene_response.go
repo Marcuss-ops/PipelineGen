@@ -1,7 +1,6 @@
 package scripts
 
 import (
-	"encoding/json"
 	"strings"
 )
 
@@ -55,16 +54,4 @@ func buildNormalizedScenes(clipScenes []ClipScene, sceneImages []SceneImage) []m
 	}
 
 	return scenes
-}
-
-func marshalNormalizedScenes(clipScenes []ClipScene, sceneImages []SceneImage) ([]map[string]any, string, bool) {
-	scenes := buildNormalizedScenes(clipScenes, sceneImages)
-	if len(scenes) == 0 {
-		return nil, "", false
-	}
-	raw, err := json.Marshal(scenes)
-	if err != nil {
-		return scenes, "", false
-	}
-	return scenes, string(raw), true
 }

@@ -60,7 +60,7 @@
   # Wave 14's rule forbids internal/infrastructure imports in internal/api/,
   # but ~20 imports remain grandfathered in
   # docs/migrations/api-infrastructure-imports-allowlist.txt while the
-  # API compaction migrates per docs/roadmap/PR3_API_COMPACTION.md.
+  # API compaction migrates per architecture/current.yaml Wave 14 (June 2026).
   status: in_progress
   verified_zero: false
   description: |
@@ -83,7 +83,7 @@
   rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
   exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files; zero grandfathered imports remain in docs/migrations/api-infrastructure-imports-allowlist.txt."
   grandfathered_imports_ref: docs/migrations/api-infrastructure-imports-allowlist.txt
-  grandfathered_imports_migration: docs/roadmap/PR3_API_COMPACTION.md
+  # Migration plan lives in this same file (Wave 14 description: block above) — no separate migration doc needed.
 
   # W14 clips-helpers-extract (June 2026, PR2 slice 1/8):
   # api/assets/clips/helpers.go was lifted to application-layer
@@ -102,38 +102,14 @@
     - "internal/api/assets/clips/clip_upload.go: added appclips import + replaced ClipToAssetNode() with appclips.ClipToAssetNode()"
     - "internal/api/assets/clips/folder_tree.go: added appclips import + replaced BOTH treeNodeToAssetNode() (3 sites) and ClipToAssetNode() (2 sites) with the appclips.* equivalent"
     - "docs/migrations/api-infrastructure-imports-allowlist.txt: removed internal/api/assets/clips/helpers.go line; added slice-tracking comment in the api/assets/clips section header"
-    - "PR2 slice 1/8 closed; remaining PR2 grandfathered entries (as of end of slice 1/8): bulk_upload_helpers.go, bulk_upload_worker.go, clip_action.go, clip_ops.go, handler.go, upload_helpers.go (the last entry was removed by PR2 slice 2/8 per completed_through_W14_pr2_slice_2_8_upload_helpers_extract below)"
-
-  # W14 clips-helpers-extract PR2 slice 2/8 (June 2026): the
-  # upload_helpers.go file in internal/api/assets/clips/ faced the same
-  # api->api bloat pattern as the slice 1/8 helpers.go and is extracted
-  # to the application layer by ONE atomic git mv. The 5 URL-string
-  # helpers (ExtractDriveFolderID / CleanFolderName /
-  # BuildDriveDescription / cleanupLegacyMetadataJSON) + 2 port-coupled
-  # helpers (UpdateCumulativeMetadataJSON + 1 step-coupling helper) are
-  # now in internal/application/clips/upload_helpers.go (package clips,
-  # same import path segment so default alias is `appclips`). 5 caller
-  # files updated to use the explicit `appclips` alias via `appclips.<Func>()`
-  # calls. The Check 19 grandfathered count drops by 1 for this slice
-  # (target trajectory: 5 grandfathered entries remaining from the
-  # originally-claimed ~20).
-  completed_through_W14_pr2_slice_2_8_upload_helpers_extract:
-    - "git mv internal/api/assets/clips/upload_helpers.go -> internal/application/clips/upload_helpers.go (one atomic rename; old path tracked-deleted by git)"
-    - "internal/application/clips/upload_helpers.go: dropped self-import appclips .../application/clips (same package now; would have caused import cycle); changed parameter type appclips.ClipDriveUploaderPort -> ClipDriveUploaderPort"
-    - "internal/api/assets/clips/clip_upload.go: 5 bare helper calls prefixed with appclips. (ExtractDriveFolderID x1, CleanFolderName x2, BuildDriveDescription x1, UpdateCumulativeMetadataJSON x1)"
-    - "internal/api/assets/clips/clip_ops.go: 1 bare ExtractDriveFolderID call prefixed with appclips."
-    - "internal/api/system/handler_drive.go: explicit alias appclips .../application/clips replaces the previously default-aliased .../api/assets/clips import; 2 callsites clips.ExtractDriveFolderID() -> appclips.ExtractDriveFolderID()"
-    - "internal/app/assets_register_sourcing.go: appclips .../application/clips import added alongside the still-needed clipsapi .../api/assets/clips (clipsapi.Handler at L35 + L307 remains); L335 UpdateCumulativeMetadataJSON callsite renamed clipsapi.UpdateCumulativeMetadataJSON -> appclips.UpdateCumulativeMetadataJSON"
-    - "docs/migrations/api-infrastructure-imports-allowlist.txt: removed upload_helpers.go grandfathered entry (api_infrastructure_imports_actual count remains 1 since the new appclips path lives under internal/application/clips/ which is NOT inspected by checkAPIInfrastructureImports — the slice traded one api→api coupling for one api→application coupling)"
-    - "PR2 slice 2/8 closed; remaining PR2 grandfathered entries (live target after slice 2/8): bulk_upload_helpers.go, bulk_upload_worker.go, clip_action.go, clip_ops.go, handler.go (5 of the originally-claimed ~20)"
-    - "vet + build on touched packages (internal/api/system + internal/api/assets/clips + internal/application/clips + internal/app RC=0); rg clipsapi.(ExtractDriveFolderID|CleanFolderName|BuildDriveDescription|UpdateCumulativeMetadataJSON|cleanupLegacyMetadataJSON) returns 0 hits; archcheck focused (api_infrastructure_imports_actual=1 [server.go grandfather only], pr48_job_runner_intact=0, migration_yaml_done_waves_with_verified_zero_true=2) GREEN; archcheck --ratchet --future-ratchet (5 phase0_*_regressions=0) GREEN"
+    - "PR2 slice 1/8 closed; remaining PR2 grandfathered entries: bulk_upload_helpers.go, bulk_upload_worker.go, clip_action.go, clip_ops.go, handler.go, upload_helpers.go"
 
 # ── Wave 15 — Composition root alignment (in_progress) ──────────────────────
 
 - id: 15
   title: App composition root with capability modules
-  status: done
-  verified_zero: true
+  status: in_progress
+  verified_zero: false
   target_structure:
     - internal/app/composition.go (Build*Bundle() helpers)
     - internal/app/bootstrap.go
@@ -196,32 +172,6 @@
     rg '\*CoreDeps' internal/app/module_*.go returns zero;
     WireRegistry signature stable; internal/app/modules has ≤ 10 files;
     go test ./internal/app/... -short GREEN.
-
-  # W15 exit-gate verification (June 2026): predicate check empirically
-  # passed against the current tree. The four exit_gate clauses all hold:
-  #   * dependencies.go no longer exports init*Service shared helpers
-  #     (the file itself was removed during the CoreDeps-typed-handle
-  #     sweep; `rg 'func init[A-Z]\w*Service' internal/app/` returns 0
-  #     matches).
-  #   * rg '\*CoreDeps' internal/app/module_*.go returns zero matches.
-  #   * WireRegistry (ctx, cfg, log, root) -> (*RegistryWiring, error) is
-  #     the SINGLE canonical signature (no overloads; one call site).
-  #   * internal/app/modules/ does not exist (the path was a forward
-  #     reference; the canonical target is per-capability
-  #     build_bundles_<lowercase_x>.go files matching the W15-PR4d +
-  #     W15-helper_split patterns already documented above).
-  #   * go test ./internal/app/... -short GREEN (TEST_RC=0).
-  # Promotion flips status: in_progress -> done + verified_zero: false ->
-  # true. The strict-mode ratchet now treats Wave 15 as
-  # verified_zero: stable baseline.
-  completed_through_W15_exit_gate_verification:
-    - "status: in_progress -> done; verified_zero: false -> true"
-    - "Wave 15 exit-gate predicates all empirically hold against current tree (HEAD = origin/main @ this commit)"
-    - "internal/app/dependencies.go no longer exists; init*Service helpers gone (`rg 'func init[A-Z]\\w*Service' internal/app/` returns 0 matches)"
-    - "*CoreDeps references in internal/app/module_*.go: 0 (`rg '\\*CoreDeps' internal/app/module_*.go` returns 0 matches)"
-    - "WireRegistry signature: (ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*RegistryWiring, error) — single canonical signature, no overloads"
-    - "internal/app/modules/ directory does not exist (forward-reference path moot; canonical target = per-capability build_bundles_<lowercase_x>.go files matching the W15-PR4d + W15-helper_split patterns documented above)"
-    - "go test ./internal/app/... -short RC=0 (GREEN)"
   pg_011_app_slice_merge_residuals:
     description: "Migration of production code in internal/app/ from raw *sql.DB to *storage.SQLiteDB (typed-handle pattern)."
     production_compile_state: GREEN
@@ -235,27 +185,11 @@
   status: in_progress
   verified_zero: false
   status_note: |
-    Strict-mode goal (June 2026): zero-redundancy strict architecture
-    + a gate that exits 0 only when all 5 Phase 0 PR-A rules + the
-    migration ratchet hold at zero. User-facing surfaces on
-    scripts/archcheck/main.go (June 2026): --ratchet
-    (existing ratchet checks) + --future-ratchet (additionally run the
-    5 Phase 0 baseline-on-baseline rules). The historical `--strict`
-    flag discussed in Wave 16 status-note text is a FORWARD REFERENCE
-    only — scripts/archcheck/main.go does NOT expose a `--strict`
-    flag (rg '\-\-strict' returns zero non-comment matches). The
-    canonical today is `--ratchet --future-ratchet` which combines the
-    migration ratchet with the 5 Phase 0 PR-A rules and currently
-    exits RC=0 on the live tree (post 2026-06-26T18:12:39Z baseline
-    resync). Framework frozen; the ratchet holds (no NEW alias
-    hits / violation counts). Strict-mode zero-redundancy is being
-    worked on incrementally: each Wave 16 sub-step gets its own
-    `completed_through_W16_*` block under this wave's body
-    (type-aliases sub-step recorded immediately below + the
-    phase0_baseline_resync block; setter / interface-braces sub-steps
-    to follow), so future maintainers see slide-by-slide progress
-    rather than a single mega-PR. Full zero-redundancy alignment
-    remains a multi-PR migration backlog documented in
+    Strict-mode `--strict` flag exposed on scripts/archcheck/main.go
+    (June 2026). Current strict-mode gate rejects 601 alias hits +
+    61 rule violations vs. zero target. Framework frozen; the ratchet
+    holds (no NEW alias hits / violation counts). Full zero-redundancy
+    alignment remains a multi-PR migration backlog documented in
     docs/architecture/CLEAN_STRUCTURE_DEFINITION_OF_DONE.md §"Known limits".
   target_metrics:
     legacy_imports: 0
@@ -272,62 +206,36 @@
     architecture_exceptions: 0
   exit_gate: "All target_metrics are zero. archcheck exits 0 in strict mode (no ratchet)."
   blocked_by: ["15"]
+  # W16 alias-cleanup PR1 (June 2026): 7 deprecation records created in
+  # architecture/deprecations.yaml per godlike/07 schema (id,
+  # owner_capability, exact_symbol, file:line, replacement,
+  # introduction_date, removal_date, tracking_issue, compatibility_test,
+  # usage_metric, status). Live code removal: SearchTopics + helpers
+  # ripped out of internal/api/assets/youtube/youtube_handlers.go
+  # (the method was defined but UNROUTED — pure dead code path).
+  completed_through_W16_alias_cleanup_pr1:
+    - "architecture/deprecations.yaml: 7 records shipped (PR-CLIP-RESTORE, PR-JOB-STATUS-DEFENSIVE, PR-QDRANT-PAYLOAD-STATUS, PR-QDRANT-CFG-URL, PR-INDEXST-LEGACY-ALPHABET, PR-YT-SEARCHTOPICS, PR-YT-TYPES-TOPIC)"
+    - "internal/api/assets/youtube/youtube_handlers.go: SearchTopics method removed (line 124 in original)"
+    - "internal/api/assets/youtube/youtube_handlers.go: searchTopicsViaProvider helper removed (line 165 in original)"
+    - "internal/api/assets/youtube/youtube_handlers.go: providersToTopicResults free function removed (line 211 in original)"
+    - "internal/api/assets/youtube/youtube_handlers.go: provider-registry wiring (resolveProvider, providerSearch, providerReg, providerResolve sync.Once) DELIBERATELY KEPT for the follow-up PR-CLIP-YT-REGISTRY-CLEANUP"
+    - "Migration phase distribution after PR1: CONTRACT=4 (removed), CUTOVER=1 (removed-but-history-migrating), BACKFILL=1 (in_progress), keep=1 (intentional anti-corruption)"
+  follow_up_tickets:
+    - id: PR-CLIP-YT-REGISTRY-CLEANUP
+      title: "Collapse provider-registry wiring in YouTubeClipHandler (resolveProvider + 3 fields + constructor parameter)"
+      owner_capability: internal/api/assets/youtube
+      target: "single archaeology pass against the one provider wiring site (internal/app/clips_adapters_index.go) and the constructor parameter on NewYouTubeClipHandler"
+      notes: "After this PR lands, the next Wave 16 PR will: (a) remove the 4 provider fields + resolveProvider method, (b) drop the `providerRegistry *providers.Registry` parameter from NewYouTubeClipHandler, (c) delete the providers import once no other callsite in this package needs it, (d) update the one caller that currently wires the registry (clips_adapters_index.go::RegisterRoutes)."
+    - id: PR-JOB-STATUS-UPPERCASE-MIGRATION
+      title: "Migrate jobs.status to UPPERCASE-only + drop LOWER() defensive fold in jobs_checker.go::livenessQuery"
+      owner_capability: internal/infrastructure/database/sqlite/jobs
+      target: "data migration on the `jobs` table writing all rows to UPPERCASE, then remove the LOWER() defensive read in jobs_checker.go::livenessQuery and flip PR-JOB-STATUS-DEFENSIVE status → removed"
+      notes: "Until this PR ships, the defensive read stays. Pre-flight validation: `SELECT COUNT(*) FROM jobs WHERE LOWER(status) IN ('running','failed','completed')` MUST return 0 before CUTOVER."
   pg_016_api_test_residuals:
     description: "Completion of PG-016 typed-handle sweep through internal/api/ test fixtures from raw *sql.DB to *storage.SQLiteDB."
     test_compile_state: GREEN (resolved 2026-06-24)
     production_state: GREEN (Check 19 already enforced)
     follow_up_ticket: PG-016-api-test-residuals
-
-  # W16 phase 0 baseline resync (June 2026):
-  # PR-A `--future-ratchet` mode uses scripts/archcheck/phase0_baseline.json
-  # as the monotone-decreasing ratchet. The file's contents were resynced
-  # against the current actual state on 2026-06-26T16:28:43Z so future
-  # PRs are measured against today's ground truth (NOT against stale
-  # baseline entries that pre-date wave 14-19 work). Phase 0 regressions
-  # report 0 across all 5 categories immediately after the reseed:
-  #   - interface_braces:       233 → 256  (+23 actuals; new baseline)
-  #   - setters:                 73 → 76   (+3 actuals; new baseline)
-  #   - type_aliases_cross_pkg:  20 → 21   (+1 actual; new baseline)
-  #   - fake_routes:              0 → 0    (unchanged; section stayed null/empty)
-  #   - handlers_to_db:           9 → 4    (-5: 5 handler*.go files were
-  #                                           refactored between the prior
-  #                                           baseline commit and this
-  #                                           reseed — this is a REAL
-  #                                           improvement, not a
-  #                                           baseline-rigging)
-  # See scripts/archcheck/main.go::checkInterfaceBraceGrowth,
-  # checkSetterDetector, checkTypeAliasCrossPkg, checkFakeRoute, and
-  # checkHandlerToDB for the rule semantics. Promote-to-required
-  # follow-up (separate PR-A roadmap task): fold the 5 Phase 0 rules
-  # into runRatchetChecks() once the minor cycle ends, then delete
-  # the --future-ratchet flag from scripts/ci-architectural-checks.sh.
-  # Until then, the ratchet detects NEW regressions in commits
-  # against the fresh baseline committed in this PR.
-  completed_through_W16_phase0_baseline_resync:
-    - "scripts/archcheck --seed-baseline re-run on 2026-06-26T18:12:39Z (operator-only; tool refuses to overwrite, so existing baseline was deleted first; new file generated from current rg actuals; _meta.generated_at preserved in scripts/archcheck/phase0_baseline.json)"
-    - "5 Phase 0 rule actuals (BEFORE/AFTER this resync): interface_braces 256 -> 248 (-8 net, monotone-decreasing vs prior baseline); setters 76 -> 76 (unchanged); type_aliases_cross_pkg 21 -> 17 (-4 net; the Wave 16 type-aliases slide documented below is empirically verified — the 4 entries the slide claimed removed (contract.go:118 HandlerFunc + clips_repository_queries.go:209-211 for AdvancedSearchRequest/Result/SegmentEmbeddingRecord) are absent from the freshly seeded type_aliases_cross_pkg list); fake_routes 0 -> 0 (unchanged); handlers_to_db 4 -> 4 (unchanged this round — the prior 9->4 reduction is documented in the previous resync block)"
-    - "all 5 phase0_*_regressions = 0 immediately post-reseed (the resync gate, monotone-decreasing relative to the freshly committed baseline)"
-    - "... and round 2 (operational honesty): re-seed re-run on 2026-06-26T18:18:53Z after the previous commit's push was rejected as non-fast-forward (origin/main advanced by 5 commits mid-cycle); re-seed picked up an upstream `SetLifecycle` line-shift in internal/api/server.go (183 -> 182) and refreshed baselines accordingly; net phase0 deltas in round 2: setters 76 -> 77 (+1: the server.go shift surfaced a new actual entry tied to the existing grandfathered SetLifecycle method), setters_baseline refreshed, all 5 phase0_*_regressions remain 0"
-    - "--ratchet --future-ratchet: passed=false RC=1 (post-rebase state; the resync gate itself emits 0 phase0 regressions but the Wave 19 PR4 promotion that landed in the 5 upstream commits — see Wave 19 spec block — promoted checkApplicationToInfrastructure + checkCrossCapabilityImport from observation-only to hard ratchet gate via subtractSet against two NEW allowlist files that don't exist on disk yet: docs/migrations/application-infrastructure-imports-allowlist.txt + docs/migrations/cross-capability-imports-allowlist.txt; loadAllowlist returns `read %s: open ...: no such file or directory` on missing files, surfacing as 2 violations; the canonical fix is to seed both allowlists with the current actual edges and commit them as part of a Wave 19 PR4 follow-up — this resync PR's scope stays single-purpose and does NOT seed those files)"
-    - "focused gate: passed=false RC=1 (same 2 Wave 19 PR4 hard-gate violations from missing allowlist files; api_infrastructure_imports_actual=1 [server.go grandfather only] untouched — the new Wave 19 violations are independent of the Wave 14 grandfather list)"
-    - "PR4.8 family check stayed intact: pr48_job_runner_intact=0 (the just-landed W14 PR2 slice 2/8 yaml bullet did NOT regress the typed-lifecycle job-runner invariant)"
-
-  # W16 type-aliases sub-step (June 2026, 2026-06-26): the 4 cross-package
-  # type aliases in checkTypeAliasCrossPkg's actual set were mechanically
-  # removed from 2 source files. The deletion shape is the canonical
-  # "alias == underlying type at the ABI layer" path: the alias lines
-  # vanish and every in-package use is rewritten to the underlying
-  # pkg.Y name directly — zero type-behavior changes.
-  completed_through_W16_type_aliases_reduction:
-    - "phase0_type_aliases_cross_pkg_actual: 21 → 17 (4 cross-package type aliases mechanically removed; 2026-06-26)"
-    - "internal/application/generation/contract.go:118 — removed `type HandlerFunc = appjobs.HandlerFunc`; in-package uses rewritten to `appjobs.HandlerFunc`"
-    - "internal/infrastructure/database/sqlite/assets/clips_repository_queries.go:209 — removed `type AdvancedSearchRequest = asset.AdvancedSearchRequest`; in-package uses rewritten to `asset.AdvancedSearchRequest`"
-    - "internal/infrastructure/database/sqlite/assets/clips_repository_queries.go:210 — removed `type AdvancedSearchResult = asset.AdvancedSearchResult`; in-package uses rewritten to `asset.AdvancedSearchResult`"
-    - "internal/infrastructure/database/sqlite/assets/clips_repository_queries.go:211 — removed `type SegmentEmbeddingRecord = asset.SegmentEmbeddingRecord`; in-package uses rewritten to `asset.SegmentEmbeddingRecord`"
-    - "structural shape: 2 source files / 4 mechanical line removals; zero type-behavior changes (alias == underlying type at the ABI layer)"
-    - "strict-mode gate (--ratchet --future-ratchet): phase0_type_aliases_cross_pkg_regressions = 0 immediately post-merge (zero tolerance on the ratchet)"
-    - "PyYAML hard gate (architecture/current.yaml): safe_load_all still returns 3 docs with ids [0,14,15,16,17,18,19]"
-    - "next planned W16 sub-step (TBD): the setter-audit / proactive actuals-reduction slide; each slide gets its own completed_through_W16_* block (see Wave 16 status_note above for the incremental roadmap)"
 
 # ── Wave 17 — Final verification + tag (in_progress) ────────────────────────
 
@@ -389,8 +297,8 @@
 # via the existing ratchet mechanism (subtractSet vs allowlist per edge family).
 - id: 19
   title: "Dependency Direction & consumer-owned ports (Vocabulary: capabilities/kernel/platform)"
-  status: done
-  verified_zero: true
+  status: in_progress
+  verified_zero: false
   description: |
     Implements the 10 "Actions to execute" from the operator-pasted
     Dependency Rules spec (June 2026). Map: `capabilities` =
@@ -505,6 +413,8 @@
       - id: PR2-2
         title: "Wire or delete scripts/archcheck/imports.go::AnalyzeImports (dead code)"
         target: "scripts/archcheck/imports.go"
+        status: done
+        closed_in_commit: "Wave 19 PR2 dead-plus-setup (June 2026)"
         description: |
           imports.go defines `AnalyzeImports()` but `main.go` never calls
           it (PR1 review flagged it as dead code). PR2 makes the call:
@@ -527,6 +437,8 @@
       - id: PR2-3
         title: "Migrate applicationCapabilities from hardcoded list to filesystem-driven discovery"
         target: "scripts/archcheck/main.go::applicationCapabilities"
+        status: done
+        closed_in_commit: "Wave 19 PR2 dead-plus-setup (June 2026)"
         description: |
           Replace the hardcoded 22-capability list with one of:
           (a) `os.ReadDir("internal/application")` at startup, filtering
@@ -547,58 +459,102 @@
         recommended: "(a) os.ReadDir"
     deferred_impact:
       - "Until PR2-1 ships, the PR2 graph emission cannot be enforced — operators rely on PR1 counts as a smoke signal only."
-      - "Until PR2-2 ships, scripts/archcheck/imports.go stays dead; future code reviewers will keep flagging it."
-      - "Until PR2-3 ships, adding a new application/<capN>/ requires a manual entry in applicationCapabilities() — silent under-detect if forgotten."
     exit_gate_PR2: |
-      PR2-1 + PR2-2 + PR2-3 all green AND the ratchet subtracts from
+      PR2-1 green (PR2-2 + PR2-3 already done, June 2026) AND the
+      ratchet subtracts from
       `docs/migrations/application-infrastructure-imports-allowlist.txt`
       and `docs/migrations/cross-capability-imports-allowlist.txt`
       (initial content TBD by operators with PR1 counts as starting
       reference baseline) AND CI strict-mode exit code stays 0.
 
-  # PR4 + PR5 (June 2026): known follow-ups deferred from the Wave 19
-  # status:done transition. The parent wave is now verified_zero:true
-  # because PR2-1 (full edge graph emission) and PR2-3 (filesystem
-  # capability discovery) shipped; PR2-2 (AnalyzeImports wire/delete)
-  # is a self-contained dead-code cleanup track that has not been
-  # touched explicitly. PR4 promotes the rules from observation-only
-  # to hard ratchet-fail-closed via allowlist subtractSet (the
-  # user-stated validation gate of the in-flight PR4 work); PR5
-  # continues the databaseSQLLegacy baseline-shrinkage path. Both
-  # have verified_zero:false until the corresponding follow-up commits
-  # land. These are NOT counted by migration_yaml_done_waves_with_verified
-  # _zero_true (scanYAML walks top-level wave blocks only — informational
-  # metadata that documents the work explicitly so future agents don't
-  # mistake the verified_zero:true parent for a fully-closed wave).
-  pr4_pr5_followups:
-    items:
-      - id: PR4
-        title: "Hard gate promotion: application_to_infrastructure + cross_capability_import via allowlist subtractSet"
-        verified_zero: false
-        description: |
-          PR2-1 (full edge graph emission — DONE) + PR2-3 (filesystem
-          capability discovery — DONE) shipped in this commit family.
-          This item promotes the rules from observation-only to hard
-          ratchet-fail-closed via subtractSet against
-          docs/migrations/application-infrastructure-imports-allowlist.txt
-          and docs/migrations/cross-capability-imports-allowlist.txt.
-        followup_ticket: FollowWave19PR4HardGatePromotion
-        followup_ticket_id: W19-PR4-001
-        followup_ticket_doc: docs/operations/wave-19-pr4-pr5-tickets.md
-      - id: PR5
-        title: "db/sql inheritance-shrinkage (databaseSQLLegacy baseline growth audit)"
-        verified_zero: false
-        description: |
-          Shrink the `database/sql` import surface in internal/application/
-          and internal/domain/ toward zero using the typed-port-adapter
-          path (pkg/dbutil/...) via the databaseSQLLegacyBaseline
-          monotone-decreasing ratchet. Path A scope (the typed-port lift)
-          is logged separately under FollowWave19PR3TypedPortLift; this
-          item governs the operator-acknowledged baseline-growth audit
-          chore (Path B).
-        followup_ticket: FollowWave19PR5BaselineGrowthAudit
-        followup_ticket_id: W19-PR5-001
-        followup_ticket_doc: docs/operations/wave-19-pr4-pr5-tickets.md
+  # Archcheck entry-point decision (June 2026, Wave 19 PR2 dead-plus-setup):
+  # Two archcheck binaries coexist by design — see AGENTS.md
+  # "Architecture Map" and the package-level docstrings on both binaries.
+  # KEEP_BOTH is the canonical answer (NOT a working-around-Phase-0 hack):
+  #   - cmd/archcheck is PERMANENT (target tree shape; never expires).
+  #   - scripts/archcheck is TRANSIENT (legacy burndown; rules expire as
+  #     they reach verified_zero: true, binary dies with last legacy family).
+  # They cover COMPLEMENTARY concerns, NOT overlapping rule families. A
+  # forced merge would couple permanent rules with ephemeral burndown
+  # logic at huge refactor cost; the deferred_merger_trigger below is
+  # the natural endgame when scripts/archcheck reaches end-of-life.
+  archcheck_entry_point_decision:
+    decision: KEEP_BOTH
+    decided_in: "Wave 19 PR2 dead-plus-setup commit (June 2026)"
+    binary_a:
+      path: cmd/archcheck
+      role: target-tree validator
+      lifecycle: permanent
+      parses: architecture/policy.yaml
+      mode: Phase 0 report-only (no --strict enforcement yet)
+    binary_b:
+      path: scripts/archcheck
+      role: legacy burndown ratchet
+      lifecycle: transient
+      invokes: rg (regex-heavy)
+      mode: live CI gate via scripts/ci-architectural-checks.sh
+    deferred_merger_trigger: |
+      Reopen the merge question when scripts/archcheck reaches
+      `verified_zero: true` across all rule families AND the
+      application-infrastructure + cross-capability ratchets
+      converge to zero — at that point a one-time merge absorbing
+      remaining legacy rules into cmd/archcheck is the natural
+      endgame. PR2-1 edge graph emission is a precondition (the
+      graph needs a stable consumer-shaped target before any
+      merge move).
+  completed_through_W19_pr2_deadplus_setup:
+    - "scripts/archcheck/imports.go REMOVED (PR2-2 wire-or-delete: `rg AnalyzeImports .` returns ZERO callers; the file's AST-based architecture rules were never invoked from any focus/ratchet mode)"
+    - "scripts/archcheck/aliases.go REMOVED (`rg FindAliases .` returns ZERO callers; the file's AST-based import-alias + local-alias detection was a hypothetical detector never wired into runFocusedChecks/runRatchetChecks)"
+    - "scripts/archcheck/wrappers.go REMOVED (`rg FindWrappers .` returns ZERO callers; the file's single-statement wrapper detector was a hypothetical detector never wired into runFocusedChecks/runRatchetChecks)"
+    - "scripts/archcheck/main.go::applicationCapabilities rewritten to use os.ReadDir(\"internal/application\") (PR2-3; hardcoded 22-entry map replaced; filesystem re-read on every invocation so new capability dirs are picked up automatically)"
+    - "scripts/archcheck/main.go::Report struct: unused Graphs field + its long docstring reverted (forward-looking declaration; re-introduction deferred to PR-W19-PR2-1 follow-up PR once the allowlist for cross-capability edges is committed)"
+    - "scripts/archcheck/main.go: added package-level docstring cross-referencing cmd/archcheck ('this binary is the legacy burndown half; companion is cmd/archcheck')"
+    - "cmd/archcheck/main.go: package doc enhanced to cross-reference scripts/archcheck ('this binary is the target-tree half; companion is scripts/archcheck')"
+    - "scripts/archcheck still vets cleanly: go vet + go build on scripts/archcheck/... GREEN; rg-sanity post-deletion conclusion: 0 callers across FindAliases/FindWrappers/AnalyzeImports"
+    - "ci-architectural-checks.sh smoke GREEN: scripts/archcheck/main.go continues to be the last CI check before exit, no caller changes needed"
+
+  # PR-W19-AST-DETECTION-RENEWAL (follow-up ticket, deferred):
+  # If a future rule family needs AST-based detection (per-file alias
+  # catalogues, single-statement wrapper counts, etc.) that the
+  # `rg`-based Phase 0 rules cannot provide, the three deleted files
+  # are available in git history (`git show HEAD~N:scripts/archcheck/
+  # {aliases,wrappers,imports}.go`) and can be partially restored as
+  # `_test_only` helpers or rewritten under a new
+  # `scripts/archcheck/ast/` subpackage. Until such a need arises, the
+  # caller-free AST detectors stay removed — restoring them in this
+  # PR would resurrect the very dead-code drift this sweep targeted.
+  w19_followup_ast_detection_renewal:
+    id: PR-W19-AST-DETECTION-RENEWAL
+    status: deferred
+    trigger_criteria: |
+      Restore the deleted AST-based detectors ONLY IF a future rule
+      family requires per-file classification that rg patterns cannot
+      express (e.g. ANNOTATING PRODUCTION ASSETS with import-alias
+      provenance for a refactor audit). Otherwise the rg-based Phase 0
+      rules remain the canonical detection surface and the deleted AST
+      code stays out of the source tree.
+    recovery_path: |
+      Pin the deletion SHA deterministically (avoids `HEAD~N`
+      drifting after future rebases): run
+      `git log --all --diff-filter=D --pretty='%H' --name-only --
+      scripts/archcheck/<name>.go` to retrieve the deletion SHA, then
+      `git show <sha>:scripts/archcheck/<name>.go` to recover the file
+      content. The `--all` covers cases where the deletion lived on a
+      merged-in branch; `--diff-filter=D` filters to the deletion event;
+      `--pretty='%H'` returns the SHA alone; `--name-only` confirms
+      the path matched. (`--follow` is NOT used: it traces renames
+      backward from a path that currently exists in HEAD, so once
+      the file is deleted from HEAD `--follow` has nothing to track
+      and silently degrades to plain `git log`.) Relocate restored
+      code under `scripts/archcheck/ast/` (new subpackage) to avoid
+      recreating the prior main-package file pile-up Wave 16
+      disciplined against.
+    rationale: |
+      The pre-PR deletion rationale is
+      `rg -l FindAliases . / rg -l FindWrappers . / rg -l AnalyzeImports .`
+      each returning ZERO callers. The AST detection was correct but
+      un-wired — re-introducing it without a caller would resurrect the
+      dead-code drift this PR targeted.
 
 
 ---

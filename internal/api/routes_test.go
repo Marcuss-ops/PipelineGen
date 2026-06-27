@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
-	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
@@ -220,9 +220,9 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 // the registry was attached to engine.Group("/api"). The current
 // canonical path requires that:
 //
-//  1. NO route appears under any /api/internal/v1/* prefix.
-//  2. The outbox handlers DO register at /internal/v1/outbox/{status,events}.
-//  3. The mediasearch handler DOES register at /internal/v1/media/search.
+//   1. NO route appears under any /api/internal/v1/* prefix.
+//   2. The outbox handlers DO register at /internal/v1/outbox/{status,events}.
+//   3. The mediasearch handler DOES register at /internal/v1/media/search.
 //
 // If you change the wiring in routes.go (Setup), cmd/server/main.go,
 // or registry.go, this test will fail and force you to update the
@@ -239,7 +239,7 @@ func TestRoutes_NoApiInternalV1Prefix(t *testing.T) {
 	// Auth is disabled so the WorkerAuth middleware lets /internal/v1
 	// requests through (the test never issues a request, but Setup()
 	// still constructs the middleware chain).
-	authAdapter := &pkgmw.TokenSecurityAdapter{
+	authAdapter := &middleware.TokenSecurityAdapter{
 		Enable: false,
 	}
 	rateAdapter := testRateLimitAdapter{}

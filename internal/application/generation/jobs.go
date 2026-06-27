@@ -24,7 +24,6 @@ import (
 	"fmt"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"go.uber.org/zap"
 )
 
@@ -42,10 +41,10 @@ type JobHandlers struct {
 	// Books is the worker-side handler for books.process jobs.
 	// nil = skip (e.g. when BooksEnabled is false or the books
 	// sub-service isn't wired).
-	Books appjobs.HandlerFunc
+	Books HandlerFunc
 	// Lessons is the worker-side handler for lessons.process jobs.
 	// nil = skip.
-	Lessons appjobs.HandlerFunc
+	Lessons HandlerFunc
 	// Log records the per-handler registration outcome.
 	Log *zap.Logger
 }

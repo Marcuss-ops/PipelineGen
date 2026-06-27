@@ -148,14 +148,19 @@ func TestEngineWriteScript_NilOllamaGen(t *testing.T) {
 	assert.Contains(t, err.Error(), "not configured")
 }
 
-// TestEngineWriteScript_WrongShapeOllamaGen was retired with the typed-
-// port refactor (June 2026): the Engine struct now exposes concrete
-// interfaces (scriptOllamaGenerator / memoryGateChecker) and the field
-// is typed at the call site. Passing a non-implementing type (e.g.
-// struct{}{}) is now a compile-time error, not a runtime assertion
-// path, so this test can no longer be expressed. Nil-handling +
-// success paths are covered by TestEngineWriteScript_NilEngine /
-// TestEngineWriteScript_NilOllamaGen + the typed fake injection tests.
+func TestEngineWriteScript_WrongShapeOllamaGen(t *testing.T) {
+	t.Parallel()
+	e := &Engine{
+		ollamaGen: struct{}{},
+		log:       zap.NewNop(),
+	}
+	_, err := e.WriteScript(context.Background(), WriteScriptRequest{
+		Topic:    "test",
+		Language: "en",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not properly configured")
+}
 
 // ── Successful generation ──────────────────────────────────────────────────
 
@@ -603,4 +608,155 @@ func TestEngineWriteScript_TableDriven(t *testing.T) {
 			assert.NotEmpty(t, result.Script)
 		})
 	}
+}
+
+// === New Generate API (PR 6, June 2026) ===============================================
+
+func TestEngineGenerate_Success(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:          "item-1",
+		Title:       "Generate Test",
+		Topic:       "Generate API",
+		Language:    "it",
+		Tone:        "documentary",
+		Model:       "llama3:8b",
+		Mode:        "text",
+		TargetWords: 500,
+		Prompt:      "Write about testing.",
+	}
+
+	result, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, int32(1), gen.calls.Load())
+	assert.Equal(t, "This is a generated script with multiple sentences and narrative depth.", result.Script)
+	assert.Equal(t, 12, result.WordCount)
+	assert.Equal(t, "llama3:8b", result.Model)
+	assert.Equal(t, "generated", result.CacheStatus)
+	assert.Equal(t, 4, result.EstDuration)
+	assert.Equal(t, int64(0), result.ScriptID)
+	assert.Nil(t, result.ClipEvidence, "text-only plan should have nil clip evidence")
+}
+
+func TestEngineGenerate_WithClips(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:       "item-clips",
+		Title:    "Clip Script",
+		Topic:    "Clip Generation",
+		Language: "en",
+		Mode:     "clip_to_script",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipIDs:   []string{"clip-a", "clip-b"},
+			ClipCount: 2,
+			DriveLinks: map[string]string{
+				"clip-a": "https://drive.google.com/a",
+				"clip-b": "https://drive.google.com/b",
+			},
+		},
+	}
+
+	result, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.ClipEvidence)
+	assert.Equal(t, []string{"clip-a", "clip-b"}, result.ClipEvidence.ClipIDs)
+	assert.Equal(t, "https://drive.google.com/a", result.ClipEvidence.DriveLinks["clip-a"])
+}
+
+func TestEngineGenerate_MemoryGateHit(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	mem := &fakeMemoryGate{
+		result: &gemmamemory.GateResult{
+			Output:    "Cached script from memory.",
+			WordCount: 42,
+			Model:     "llama3:8b",
+		},
+	}
+	e := buildTestEngine(gen, mem, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:     "Cached",
+		Language:  "en",
+		Mode:      "text",
+		UseMemory: true,
+	}
+
+	result, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, int32(0), gen.calls.Load(), "ollama must NOT be called on memory hit")
+	assert.Equal(t, "Cached script from memory.", result.Script)
+	assert.Equal(t, "exact_hit", result.CacheStatus)
+}
+
+func TestEngineGenerate_ForceRefreshBypassesMemory(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	mem := &fakeMemoryGate{
+		result: &gemmamemory.GateResult{
+			Output:    "Should not be returned.",
+			WordCount: 10,
+		},
+	}
+	e := buildTestEngine(gen, mem, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:        "Force Refresh",
+		Language:     "en",
+		Mode:         "text",
+		UseMemory:    true,
+		ForceRefresh: true, // bypass cache
+	}
+
+	result, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, int32(1), gen.calls.Load(), "ollama must be called when ForceRefresh=true")
+	assert.Equal(t, "generated", result.CacheStatus)
+}
+
+func TestEngineGenerate_SaveToDB(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	repo := &fakeScriptRepo{returnID: 99}
+	e := buildTestEngine(gen, nil, repo)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:       "Save Me",
+		Topic:       "DB persistence",
+		Language:    "it",
+		Tone:        "educational",
+		Model:       "llama3",
+		Mode:        "text",
+		TargetWords: 200,
+		SaveToDB:    true,
+	}
+
+	result, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, int64(99), result.ScriptID)
+	assert.Equal(t, int32(1), repo.saveCalls.Load())
+	require.NotNil(t, repo.lastRecord)
+	assert.Equal(t, "Save Me", repo.lastRecord.Title)
+	assert.Equal(t, 200, repo.lastRecord.TargetWords)
+}
+
+func TestEngineGenerate_NilPlan(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil, nil)
+
+	_, err := e.Generate(context.Background(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "plan is nil")
 }

@@ -1,28 +1,22 @@
-// package drive is the legacy destination/upload facade that the team's
-// PR-Phase 7 refactor removed without updating the 13 dangling call sites.
+// Package drive provides the destination/upload facade that re-exports
+// canonical domain types (SourceType, MediaType from internal/domain/asset)
+// and destination/upload types so legacy call sites continue to compile.
 //
-// Context: in PR-Phase 7 the team merged versions of this package into
-// independent micro-modules (internal/upload/drive for the uploader,
-// internal/media/models for the enums, internal/domain/asset for the
-// resolver). They shipped the moves without rewriting the consumer side,
-// so `internal/media/storage` is referenced from 13 files but contains
-// no Go files. The build fails with:
+// Historical context: during PR-Phase 7, types were migrated to their
+// canonical homes (internal/domain/asset for enums + resolver, internal/
+// infrastructure/drive for upload logic). This package was re-created as
+// a STOPGAP to keep existing call sites compiling while follow-up
+// migrations landed.
 //
-//	no required module provides package
-//	github.com/Marcuss-ops/PipelineGen/internal/media/storage
+// Canonical locations (current):
 //
-// This package was re-created as a STOPGAP so the existing call sites
-// compile while migrate-to-canonical follow-ups land. Long-term, every
-// consumer should import:
+//   - SourceType / MediaType  → internal/domain/asset (re-exported here)
+//   - AssetDestinationRequest → internal/domain/asset.ResolveRequest
+//   - Drive upload logic      → internal/infrastructure/drive.Uploader
 //
-//   - SourceType / MediaType  â†’ internal/media/models (canonical enums)
-//   - AssetDestinationRequest â†’ internal/domain/asset (canonical request)
-//   - Drive upload logic      â†’ internal/upload/drive.Uploader
-//
-// For now, all existing `storage.SourceImage`, `storage.MediaTypeImage*`,
-// `storage.AssetDestinationRequest`, `storage.Resolver`,
-// `storage.NewResolver`, `storage.Store`, `storage.NewStore`, etc.
-// resolve to this package so the 13 dangling sites compile.
+// The type aliases below (`storage.SourceImage`, `storage.MediaTypeImage`,
+// `storage.AssetDestinationRequest`, etc.) resolve to this package so
+// existing call sites compile without import rewrites.
 package drive
 
 import (

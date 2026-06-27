@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -11,12 +12,12 @@ import (
 
 // BulkTagsUseCase adds or removes tags from multiple clips atomically.
 type BulkTagsUseCase struct {
-	sourceResolver SourceResolverPort
+	sourceResolver *artifacts.SourceResolver
 	assetTreeSvc   *assettree.Service
 }
 
 // NewBulkTagsUseCase constructs the use case.
-func NewBulkTagsUseCase(resolver SourceResolverPort, treeSvc *assettree.Service) *BulkTagsUseCase {
+func NewBulkTagsUseCase(resolver *artifacts.SourceResolver, treeSvc *assettree.Service) *BulkTagsUseCase {
 	return &BulkTagsUseCase{sourceResolver: resolver, assetTreeSvc: treeSvc}
 }
 
@@ -34,7 +35,7 @@ type BulkTagsResult struct {
 	Message string `json:"message"`
 }
 
-func (uc *BulkTagsUseCase) repoForSource(source string) ClipRepositoryPort {
+func (uc *BulkTagsUseCase) repoForSource(source string) *assets.ClipsRepository {
 	if uc.sourceResolver == nil {
 		return nil
 	}
@@ -61,7 +62,8 @@ func (uc *BulkTagsUseCase) AddTags(ctx context.Context, req BulkTagsRequest) (*B
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(ctx, id)
 			if err == nil && clip != nil {
-				uc.assetTreeSvc.UpsertNode(ctx, clipToAssetNode(clip))
+				node := clipToAssetNode(clip)
+				uc.assetTreeSvc.UpsertNode(ctx, node)
 			}
 		}
 	}
@@ -93,7 +95,8 @@ func (uc *BulkTagsUseCase) RemoveTags(ctx context.Context, req BulkTagsRequest) 
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(ctx, id)
 			if err == nil && clip != nil {
-				uc.assetTreeSvc.UpsertNode(ctx, clipToAssetNode(clip))
+				node := clipToAssetNode(clip)
+				uc.assetTreeSvc.UpsertNode(ctx, node)
 			}
 		}
 	}
@@ -105,9 +108,7 @@ func (uc *BulkTagsUseCase) RemoveTags(ctx context.Context, req BulkTagsRequest) 
 	}, nil
 }
 
-// clipToAssetNode converts a canonical asset.Asset to an infra asset node
-// for the assettree service. UpsertNode takes *assets.AssetNode from the
-// sqlite/assets package.
+// clipToAssetNode converts a canonical asset.Asset to an assets.AssetNode.
 func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 	if clip == nil {
 		return nil

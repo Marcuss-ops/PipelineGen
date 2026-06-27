@@ -11,8 +11,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 )
 
 // DriveFileChecker is the minimal interface we need from the Drive uploader
