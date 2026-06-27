@@ -619,7 +619,7 @@ var _ ClipsUpserter = (*MultiClipsUpserter)(nil)
 // clip.Source (e.g. "youtube", "stock", "artlist") and may be nil. The
 // `defaultRepo` catches any source not present in `repos`. Pass a sane
 // fallback so unknown sources don't fail loudly — the prior behaviour was
-// `repo.UpsertClip(...)` against a single chosen repo, so defaulting to
+// `repo.UpsertClipTx(...)` against a single chosen repo, so defaulting to
 // the same instance preserves the silent fallback.
 //
 // `log` may be nil for tests; production callers pass a logger so the

@@ -310,21 +310,188 @@ func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sq
 	return r.db.BeginTx(ctx, opts)
 }
 
-// UpsertClip upserts a clip through the low-level Save() path.
+// upsertClip is the private post-QDRANT-005 (TODO 6) escape hatch for
+// callers that cannot route through outbox.Dispatcher — admin/backfill
+// tooling in cmd/admin/**, and any operator-driven recovery scripts.
 //
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Callers that need vector
-// indexing MUST use outbox.Dispatcher.EnqueueAndIndex instead, which
-// performs the UPSERT and outbox_events INSERT in a single atomic tx.
+// QDRANT-005 close-out (TODO 6, June 2026): UpsertClip was a public
+// production-write API surface that bypassed the outbox. Renamed to
+// lowercase so production callers cannot use it accidentally. Production
+// callers that need a targeted column update should use one of the
+// narrow patch methods below (UpdateFileHash, UpdateDriveLocation,
+// UpdateProcessingMetadata); production callers that need a full
+// atomic ingest MUST route through outbox.Dispatcher.EnqueueAndIndex
+// (which calls UpsertClipTx inside the dispatcher's tx).
 //
-// Acceptable callers:
-//   - clip_ops.go::verifyClip — hash recovery from Drive (diagnostic,
-//     the asset is already known and indexed; only file_hash is patched)
-//   - Admin/backfill scripts in cmd/admin/ — offline tooling that runs
-//     without the outbox pool active
+// Acceptable callers (gate, posts aggregator):
+//   - cmd/admin/qdrant_readiness.go — backfill ingestion tools.
+//   - Future operator-driven recovery scripts (one-shot, audited).
+//   - The ClipsRepository's own internal helpers that already ran.
 //
-// New production code MUST route through the dispatcher.
-func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *asset.Asset) error {
+// Production handler / use-case code MUST NOT call this method.
+// CI gate scripts/ci-architectural-checks.sh::Check 2 is the canonical
+// enforcement; any new caller outside the admin/* allowlist will fail CI.
+func (r *ClipsRepository) upsertClip(ctx context.Context, clip *asset.Asset) error {
 	return r.Upsert(ctx, clip)
+}
+
+// ── QDRANT-005 (TODO 6) narrow patch methods ──────────────────────────────────────────
+//
+// Each of these is a single-column (or two-column) UPDATE that DOES NOT
+// touch lifecycle_state. They exist so production code can record a
+// single piece of state on the asset without re-running the full
+// UPSERT (which would silently overwrite any out-of-band state changes
+// the dispatcher has committed since the last ingest).
+//
+// Non-tx (per spec): each UPDATE is a single statement with a
+// well-defined boundary; the read-modify-write in
+// UpdateProcessingMetadata uses an internal tx to make the JSON-merge
+// atomic, but the API surface itself accepts only (ctx, ...) — no
+// caller-supplied tx. Tx-scoped variants (UpdateFileHashTx,
+// UpdateDriveLocationTx, UpdateProcessingMetadataTx) are deferred to
+// TODO 7 for use inside batched outbox flows.
+//
+// RowsAffected() is checked on every UPDATE: 0 rows = asset not found,
+// returned as a typed error so callers can distinguish a failed
+// pre-condition from a successful no-op write on an unchanged row.
+//
+// updatePattern (atomicity): each method wraps its work in at most
+// one tx (either explicit or implicit via BatchExec). The non-tx
+// variants are safe because the SQL is a single statement;
+// read-modify-write goes through internal tx for the metadata merge.
+
+// UpdateFileHash patches media_assets.file_hash for an existing asset
+// without touching lifecycle_state. QDRANT-005 (TODO 6): canonical
+// narrow patch for the Drive-hash-recovery flow (verifyClip and
+// similar) where the asset is already known + indexed and only the
+// file_hash column needs to be backfilled.
+func (r *ClipsRepository) UpdateFileHash(ctx context.Context, assetID, fileHash string) error {
+	if assetID == "" {
+		return fmt.Errorf("clips.UpdateFileHash: assetID is required")
+	}
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets SET file_hash = ?, updated_at = ? WHERE id = ?`,
+		fileHash, nowStr, assetID,
+	)
+	if err != nil {
+		return fmt.Errorf("clips.UpdateFileHash(%s): %w", assetID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("clips.UpdateFileHash(%s) rows-affected: %w", assetID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("clips.UpdateFileHash(%s): asset not found", assetID)
+	}
+	return nil
+}
+
+// UpdateDriveLocation patches the Drive destination columns for an
+// existing asset (drive_file_id, drive_link) without touching
+// lifecycle_state. QDRANT-005 (TODO 6): canonical narrow patch for
+// the post-Drive-upload stamp flow where the file has just been
+// uploaded via the Dispatcher and only the destination metadata
+// needs to be recorded.
+//
+// Idempotent on same id: two calls with the same arguments write the
+// same values (no diff signal in updated_at because both calls run
+// within the same second). Callers that want a "first-time stamped"
+// signal should use a transaction-spanning flow + lifecycle_state
+// transition (out of scope for this method).
+func (r *ClipsRepository) UpdateDriveLocation(ctx context.Context, assetID, driveID, driveURL string) error {
+	if assetID == "" {
+		return fmt.Errorf("clips.UpdateDriveLocation: assetID is required")
+	}
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets SET drive_file_id = ?, drive_link = ?, updated_at = ? WHERE id = ?`,
+		driveID, driveURL, nowStr, assetID,
+	)
+	if err != nil {
+		return fmt.Errorf("clips.UpdateDriveLocation(%s): %w", assetID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("clips.UpdateDriveLocation(%s) rows-affected: %w", assetID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("clips.UpdateDriveLocation(%s): asset not found", assetID)
+	}
+	return nil
+}
+
+// UpdateProcessingMetadata merges a single key into the
+// media_assets.metadata_json JSON blob without touching lifecycle_state,
+// file_hash, or any other column. QDRANT-005 (TODO 6): canonical narrow
+// patch for post-processing flows that record a single piece of state
+// without re-running the full UPSERT.
+//
+// Semantics:
+//   - value == nil         → delete the key from the metadata map
+//                            (consistent with map literal semantics).
+//   - value != nil         → set the key (add or overwrite); existing
+//                            other keys are preserved.
+//   - metadata_json empty  → treated as {} so first-write works
+//                            without a precondition INSERT.
+//
+// Read-modify-write cost: 1 SELECT + 1 UPDATE per call inside an
+// internal tx for atomicity. Acceptable because this is invoked from
+// tail-end processing flows (post-indexing, post-render), not hot-path
+// ingestion. Tx-scoped variant (UpdateProcessingMetadataTx) is
+// deferred to TODO 7.
+func (r *ClipsRepository) UpdateProcessingMetadata(ctx context.Context, assetID, key string, value any) error {
+	if assetID == "" {
+		return fmt.Errorf("clips.UpdateProcessingMetadata: assetID is required")
+	}
+	if key == "" {
+		return fmt.Errorf("clips.UpdateProcessingMetadata: key is required")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("clips.UpdateProcessingMetadata(%s) begin tx: %w", assetID, err)
+	}
+	defer tx.Rollback()
+
+	// Read current metadata_json (if any) so we can merge the new
+	// key without blowing away existing keys. NULL / empty / "{}"
+	// all map to "start from empty map".
+	var raw sql.NullString
+	if err := tx.QueryRowContext(ctx,
+		`SELECT metadata_json FROM media_assets WHERE id = ?`, assetID,
+	).Scan(&raw); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("clips.UpdateProcessingMetadata(%s): asset not found", assetID)
+		}
+		return fmt.Errorf("clips.UpdateProcessingMetadata(%s) select: %w", assetID, err)
+	}
+
+	merged := map[string]any{}
+	if raw.Valid && strings.TrimSpace(raw.String) != "" && raw.String != "{}" {
+		if err := json.Unmarshal([]byte(raw.String), &merged); err != nil {
+			return fmt.Errorf("clips.UpdateProcessingMetadata(%s) unmarshal existing metadata: %w", assetID, err)
+		}
+	}
+
+	if value == nil {
+		delete(merged, key)
+	} else {
+		merged[key] = value
+	}
+
+	mergedJSON, err := json.Marshal(merged)
+	if err != nil {
+		return fmt.Errorf("clips.UpdateProcessingMetadata(%s) marshal merged: %w", assetID, err)
+	}
+
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE media_assets SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+		string(mergedJSON), nowStr, assetID,
+	); err != nil {
+		return fmt.Errorf("clips.UpdateProcessingMetadata(%s) update: %w", assetID, err)
+	}
+	return tx.Commit()
 }
 
 func (r *ClipsRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.Asset, error) {
