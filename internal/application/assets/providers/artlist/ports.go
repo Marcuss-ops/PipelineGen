@@ -41,6 +41,18 @@ var (
 	ErrEmptyResult       = errors.New("artlist: empty result")
 	ErrNotFound          = errors.New("artlist: not found")
 	ErrTransportFallback = errors.New("artlist: transport failure, fall back to next searcher")
+	// ErrAssetMutationDispatcherUnavailable is the typed-typed sentinel
+	// NewSearchService returns when the canonical outbox dispatcher
+	// is nil at construction time. Per the QDRANT-002 contract, every
+	// asset mutation MUST route through the atomic
+	// media_assets upsert + outbox enqueue (dispatcher); production
+	// composition rejects nil in module_sources.go::WireArtlist so
+	// this sentinel should never reach the call sites that fire
+	// SearchLiveAndSave — it's here for tests that exercise the
+	// dispatcher guard without a wired dispatcher, and as a runtime
+	// belt-and-suspenders check inside SearchLiveAndSave itself
+	// (catches tampering via SetDispatcher post-construction).
+	ErrAssetMutationDispatcherUnavailable = errors.New("artlist: asset mutation dispatcher unavailable (production must wire outbox dispatcher at composition)")
 )
 
 // Candidate is the application-level representation of a search hit.
