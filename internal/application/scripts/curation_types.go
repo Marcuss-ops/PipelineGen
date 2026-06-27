@@ -45,7 +45,6 @@ type CurateRequest struct {
 	Type              string
 	Style             string
 	StyleInstructions string
-	ForceRefresh      bool
 	// PG-034 (June 2026): HintClipIDs lets callers seed a curation with
 	// pre-resolved clip IDs from upstream sources, replacing the deleted
 	// Qdrant semantic-search leg.

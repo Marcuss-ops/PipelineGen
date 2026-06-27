@@ -11,7 +11,6 @@ package scripts
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -22,10 +21,6 @@ import (
 // clips AND the caller did not opt into the text-only fallback, the
 // curator returns the typed ErrCurateNoClips sentinel (detectable via
 // errors.Is) wrapping *CurateNoClipsError with ResultCount=0.
-//
-// engine/clipsRepo/clipBuilder are all nil intentionally — the typed
-// error short-circuits BEFORE phase 3, so no real infrastructure is
-// touched. This is the real contract surface the audit demanded.
 func TestMediaCurator_Curate_NoClips_NoPort_DefaultError(t *testing.T) {
 	t.Parallel()
 
@@ -42,7 +37,6 @@ func TestMediaCurator_Curate_NoClips_NoPort_DefaultError(t *testing.T) {
 	if !errors.Is(err, ErrCurateNoClips) {
 		t.Fatalf("expected errors.Is(err, ErrCurateNoClips)=true, got err=%v", err)
 	}
-	// Structured details via errors.As.
 	var typed *CurateNoClipsError
 	if !errors.As(err, &typed) {
 		t.Fatalf("expected errors.As(*CurateNoClipsError)=true, got err=%v", err)
@@ -58,41 +52,35 @@ func TestMediaCurator_Curate_NoClips_NoPort_DefaultError(t *testing.T) {
 // TestMediaCurator_Curate_HintClipIDs_PassesGate_Pins_NonCurateError
 // asserts the legacy HintClipIDs-only path: when the caller seeds the
 // curation with pre-resolved IDs and the port is not wired, the
-// typed-error gate MUST NOT fire — even with no engine wired, the
-// curator reaches the engine-not-configured error path instead.
+// typed-error gate MUST NOT fire — even with no clipBuilder wired,
+// the curator reaches the clip context build error path instead.
 //
-// This pins the negative surface ("the gate did NOT block") rather
-// than the engine write path itself (which has its own integration
-// tests in scripts/curation_engine_test.go). Avoids the panic-as-
-// assertion pattern of the previous version: the test now relies on
-// the documented "media curator: engine not configured" error path
-// rather than a panic-based probe.
+// PR D.3: generateOneUC removed — test now omits it from struct.
+// With clipIDs > 0 and no clipBuilder, the curator skips context
+// building but still resolves successfully (sourceText remains empty).
 func TestMediaCurator_Curate_HintClipIDs_PassesGate_Pins_NonCurateError(t *testing.T) {
 	t.Parallel()
 
 	m := &MediaCurator{
-		log:           zap.NewNop(),
-		generateOneUC: nil, // intentional: forces the generateOneUC-not-configured path
-		clipBuilder:   nil, // intentional: skips BuildClipContext
-		clipSearch:    nil, // intentional: HintClipIDs-only legacy path
+		log:         zap.NewNop(),
+		clipBuilder: nil, // intentional: skips BuildClipContext
+		clipSearch:  nil, // intentional: HintClipIDs-only legacy path
 	}
 
-	_, err := m.Curate(context.Background(), CurateRequest{
-		Query:        "hint-list path",
-		HintClipIDs:  []string{"clip-A", "clip-B"},
+	result, err := m.Curate(context.Background(), CurateRequest{
+		Query:         "hint-list path",
+		HintClipIDs:   []string{"clip-A", "clip-B"},
 		AllowTextOnly: false,
 	})
 
-	if err == nil {
-		t.Fatal("expected generateOneUC-not-configured error (generateOneUC is nil), got nil")
+	if err != nil {
+		t.Fatalf("hint-clip-ids path should succeed in pure resolver mode: %v", err)
 	}
 	if errors.Is(err, ErrCurateNoClips) {
-		t.Fatalf("HintClipIDs-resolved path MUST NOT surface ErrCurateNoClips; got err=%v", err)
+		t.Fatalf("HintClipIDs-resolved path MUST NOT surface ErrCurateNoClips")
 	}
-	// The downstream error must be the documented "generateOneUC not configured"
-	// path. This is the negative gate contract: the typed-error gate
-	// only fires when clipIDs == 0 AND !AllowTextOnly.
-	if got, want := err.Error(), "media curator: generateOneUC not configured"; !strings.Contains(got, want) {
-		t.Errorf("expected error %q to contain %q (generateOneUC-not-configured path), got %q", got, want, got)
+	// Verify the result carries the resolved clip IDs.
+	if len(result.AcceptedClipIDs) != 2 {
+		t.Errorf("expected 2 accepted clip IDs, got %d", len(result.AcceptedClipIDs))
 	}
 }

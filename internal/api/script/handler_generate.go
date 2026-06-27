@@ -59,7 +59,7 @@ func (h *ScriptFlowHandler) Generate(c *gin.Context) {
 	// Build a typed GenerateRequest so the generation service
 	// enqueues a script.generate job with the envelope as payload.
 	req := scripts.NewGenerateEnqueueRequest(env)
-	enqueuedJob, err := scripts.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req)
+	enqueuedJob, err := scripts.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
