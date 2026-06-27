@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
 
 // TestClipSearchAdapter_InterfaceSatisfiesPort is a compile-time

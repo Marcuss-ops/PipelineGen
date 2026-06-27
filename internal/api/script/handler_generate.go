@@ -21,7 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -58,8 +58,8 @@ func (h *ScriptFlowHandler) Generate(c *gin.Context) {
 
 	// Build a typed GenerateRequest so the generation service
 	// enqueues a script.generate job with the envelope as payload.
-	req := scripts.NewGenerateEnqueueRequest(env)
-	enqueuedJob, err := scripts.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
+	req := usecase.NewGenerateEnqueueRequest(env)
+	enqueuedJob, err := usecase.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return

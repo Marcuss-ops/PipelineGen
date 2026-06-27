@@ -25,8 +25,8 @@ import (
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
@@ -39,7 +39,7 @@ import (
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -311,14 +311,14 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// 1) Jobs — thin wrapper, no bundle deps.
 	{
 		// PR-0 (June 2026): NewJobsHandler signature is now
-// (job.Service, JobStatsReader, *zap.Logger). *root.Jobs.Service
-// satisfies both interfaces — it implements the canonical domain
-// job.Service (orchestrator) AND the JobStatsReader port (via the
-// runtime type-assertion GetStats helper). When a future stats source
-// is bindable without the orchestrator's mutation surface, pass that
-// reader to h.stats and let h.service continue carrying the
-// orchestrator.
-jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
+		// (job.Service, JobStatsReader, *zap.Logger). *root.Jobs.Service
+		// satisfies both interfaces — it implements the canonical domain
+		// job.Service (orchestrator) AND the JobStatsReader port (via the
+		// runtime type-assertion GetStats helper). When a future stats source
+		// is bindable without the orchestrator's mutation surface, pass that
+		// reader to h.stats and let h.service continue carrying the
+		// orchestrator.
+		jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 		jobsMod := module.NewRouteModule(
 			"jobs",
 			func() bool { return true },
@@ -708,9 +708,9 @@ jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 		if wiring.Assets != nil && wiring.Assets.Module != nil {
 			log.Info("providers.Registry wired into Assets module via constructor")
 		}
-	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
-		log.Info("YouTubeClipHandler wired transport-only (PR-CLIP-YT-REGISTRY-CLEANUP: providers.Registry dispatch published via youtubeadapter.NewAdapter above; handler no longer takes providerRegistry)")
-	}
+		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
+			log.Info("YouTubeClipHandler wired transport-only (PR-CLIP-YT-REGISTRY-CLEANUP: providers.Registry dispatch published via youtubeadapter.NewAdapter above; handler no longer takes providerRegistry)")
+		}
 	}
 
 	return wiring, nil

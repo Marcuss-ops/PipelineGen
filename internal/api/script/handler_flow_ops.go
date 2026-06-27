@@ -26,8 +26,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 type RegenerateSectionRequest struct {
@@ -38,7 +38,7 @@ type RegenerateSectionRequest struct {
 // RegenerateSection handles POST /api/script/:id/sections/:section_id/regenerate.
 //
 // PR4.F (June 2026): thin transport — all business logic now lives in
-// scripts.SectionRegenerator. This handler is responsible only for:
+// usecase.SectionRegenerator. This handler is responsible only for:
 //   - parsing path params + JSON body
 //   - binding the typed request through a validate-on-bind check
 //   - calling the use case
@@ -46,7 +46,7 @@ type RegenerateSectionRequest struct {
 //   - serializing the typed result to JSON
 //
 // The handler is intentionally short. Adding logic here is a code smell —
-// extend scripts.SectionRegenerator instead.
+// extend usecase.SectionRegenerator instead.
 func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 	scriptIDStr := c.Param("id")
 	sectionIDStr := c.Param("section_id")
@@ -73,7 +73,7 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 		return
 	}
 
-	result, err := h.sectionRegen.Regenerate(c.Request.Context(), scripts.SectionRegenRequest{
+	result, err := h.sectionRegen.Regenerate(c.Request.Context(), usecase.SectionRegenRequest{
 		ScriptID:    scriptID,
 		SectionID:   sectionID,
 		Instruction: req.Instruction,
@@ -99,13 +99,13 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 // client request, while the use case logs the structural error chain.
 func (h *ScriptFlowHandler) mapRegenError(c *gin.Context, scriptID, sectionID int64, err error) {
 	switch {
-	case errors.Is(err, scripts.ErrSectionNotFound):
+	case errors.Is(err, usecase.ErrSectionNotFound):
 		apiutil.Error(c, http.StatusNotFound, "section not found")
-	case errors.Is(err, scripts.ErrScriptNotFound):
+	case errors.Is(err, usecase.ErrScriptNotFound):
 		apiutil.Error(c, http.StatusNotFound, "script not found")
-	case errors.Is(err, scripts.ErrSectionScriptMismatch):
+	case errors.Is(err, usecase.ErrSectionScriptMismatch):
 		apiutil.Error(c, http.StatusBadRequest, "section does not belong to the specified script")
-	case errors.Is(err, scripts.ErrEmptyGeneratorOutput):
+	case errors.Is(err, usecase.ErrEmptyGeneratorOutput):
 		apiutil.Error(c, http.StatusInternalServerError, "received empty response from generator")
 	default:
 		if h.log != nil {
@@ -126,7 +126,7 @@ type EvictCacheRequest struct {
 // EvictCache handles POST /api/script/cache/evict.
 //
 // PR4.F6 (June 2026): thin transport — all business logic now lives in
-// scripts.CacheEvictionUseCase. This handler is responsible only for:
+// usecase.CacheEvictionUseCase. This handler is responsible only for:
 //   - parsing the JSON body (with the empty-body-EOF special case so
 //     callers can omit titles to mean "just reset breakers")
 //   - trimming + filtering empty titles before the use case
@@ -135,7 +135,7 @@ type EvictCacheRequest struct {
 //   - serializing the typed result to JSON
 //
 // The handler is intentionally short. Adding logic here is a code smell —
-// extend scripts.CacheEvictionUseCase instead.
+// extend usecase.CacheEvictionUseCase instead.
 func (h *ScriptFlowHandler) EvictCache(c *gin.Context) {
 	var req EvictCacheRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -153,8 +153,8 @@ func (h *ScriptFlowHandler) EvictCache(c *gin.Context) {
 		return
 	}
 
-	result, err := h.cacheEviction.Run(c.Request.Context(), scripts.CacheEvictionInput{
-		Titles: scripts.TrimAndFilterTitles(req.Titles),
+	result, err := h.cacheEviction.Run(c.Request.Context(), usecase.CacheEvictionInput{
+		Titles: usecase.TrimAndFilterTitles(req.Titles),
 	})
 	if err != nil {
 		h.mapCacheEvictionError(c, err)
@@ -177,7 +177,7 @@ func (h *ScriptFlowHandler) EvictCache(c *gin.Context) {
 // logged exactly once.
 func (h *ScriptFlowHandler) mapCacheEvictionError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, scripts.ErrCacheEvictionMissing):
+	case errors.Is(err, usecase.ErrCacheEvictionMissing):
 		apiutil.Error(c, http.StatusServiceUnavailable, "memory service not initialized")
 	default:
 		apiutil.InternalError(c, err)

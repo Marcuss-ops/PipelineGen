@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 
 	"go.uber.org/zap"

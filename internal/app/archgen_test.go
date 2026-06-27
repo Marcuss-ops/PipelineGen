@@ -28,8 +28,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
@@ -39,8 +39,8 @@ import (
 // capabilityManifest is the JSON shape of capabilities.json.
 // Module names + enabled flag (the only observable surface post-Freeze).
 type capabilityManifest struct {
-	Commit       string             `json:"commit,omitempty"`
-	Capabilities []capabilityEntry  `json:"capabilities"`
+	Commit       string            `json:"commit,omitempty"`
+	Capabilities []capabilityEntry `json:"capabilities"`
 }
 
 type capabilityEntry struct {
@@ -56,11 +56,11 @@ type jobManifest struct {
 }
 
 type jobEntry struct {
-	Type                string `json:"type"`
-	Description         string `json:"description,omitempty"`
-	TimeoutSec          int    `json:"timeout_sec"`
-	DefaultMaxRetries   int    `json:"default_max_retries"`
-	HasHandler          bool   `json:"has_handler"`
+	Type              string `json:"type"`
+	Description       string `json:"description,omitempty"`
+	TimeoutSec        int    `json:"timeout_sec"`
+	DefaultMaxRetries int    `json:"default_max_retries"`
+	HasHandler        bool   `json:"has_handler"`
 }
 
 // providerManifest is the JSON shape of providers.json.
@@ -71,7 +71,7 @@ type providerManifest struct {
 }
 
 type providerEntry struct {
-	Name         string             `json:"name"`
+	Name         string                 `json:"name"`
 	Capabilities []providers.Capability `json:"capabilities"`
 }
 

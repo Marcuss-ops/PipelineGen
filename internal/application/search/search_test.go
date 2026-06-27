@@ -366,8 +366,8 @@ type fakeBackend struct {
 	caps []Capability
 }
 
-func (f *fakeBackend) Name() string                          { return f.name }
-func (f *fakeBackend) Capabilities() []Capability           { return f.caps }
+func (f *fakeBackend) Name() string               { return f.name }
+func (f *fakeBackend) Capabilities() []Capability { return f.caps }
 func (f *fakeBackend) Search(ctx context.Context, q Query) ([]Candidate, error) {
 	return nil, nil
 }

@@ -1,5 +1,5 @@
 // Package adapters wires the canonical external service adapters
-// (ollama.Generator, gemmamemory.Service, image/voiceover services)
+// (ollama.Generator, adapters.Service, image/voiceover services)
 // to the scripts pipeline. These are the concrete infrastructure
 // references — pass them via interfaces in contracts/ports/ to keep
 // application-layer code testable.

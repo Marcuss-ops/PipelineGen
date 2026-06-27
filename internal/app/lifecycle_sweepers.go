@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
@@ -153,7 +153,7 @@ func runDedupSweep(ctx context.Context, clipsRepo *assets.ClipsRepository, log *
 // (media_assets.drive_file_id_clean += json_extract checks) and the
 // existing clip-dedup sweeper already enumerates sqliteIDs.
 
-func startGemmaMemorySweeper(ctx context.Context, repo *gemmamemory.Repository, log *zap.Logger) {
+func startGemmaMemorySweeper(ctx context.Context, repo *adapters.Repository, log *zap.Logger) {
 	const (
 		initialDelay = 60 * time.Second
 		interval     = 6 * time.Hour

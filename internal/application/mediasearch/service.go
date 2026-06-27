@@ -2,42 +2,42 @@
 //
 // PR 10 (June 2026) CUTOVER back-compat note:
 //
-//   The Service constructor below (NewService) is preserved as a
-//   typed Service type but has NO production callers in Wave 21
-//   PR 10 CUTOVER composition: the canonical search.Aggregator
-//   (internal/application/search) is now the SOLE wire for media
-//   search results, replacing the legacy Service.New(...) chain.
-//   AGENTS.md "Code Hygiene" allows back-compat retention when a
-//   type may be referenced by future work (tests, in-flight Wave 22
-//   successors, external scripts). Open follow-up: PR 10 follow-up
-//   PR may git rm service.go + service_test.go once the
-//   Composition-root orphan sweep is authorised.
+//	The Service constructor below (NewService) is preserved as a
+//	typed Service type but has NO production callers in Wave 21
+//	PR 10 CUTOVER composition: the canonical search.Aggregator
+//	(internal/application/search) is now the SOLE wire for media
+//	search results, replacing the legacy Service.New(...) chain.
+//	AGENTS.md "Code Hygiene" allows back-compat retention when a
+//	type may be referenced by future work (tests, in-flight Wave 22
+//	successors, external scripts). Open follow-up: PR 10 follow-up
+//	PR may git rm service.go + service_test.go once the
+//	Composition-root orphan sweep is authorised.
 //
-//   Until that follow-up lands, callers should NOT construct
-//   *Service via NewService — use internal/application/search
-//   instead. The struct is kept exported so type assertions in
-//   service_test.go still compile (the tests themselves were
-//   removed in PR 10 but the type surface is preserved).
+//	Until that follow-up lands, callers should NOT construct
+//	*Service via NewService — use internal/application/search
+//	instead. The struct is kept exported so type assertions in
+//	service_test.go still compile (the tests themselves were
+//	removed in PR 10 but the type surface is preserved).
 //
 // Package mediasearch — service.go is the QDRANT-004 orchestrator.
 //
 // Pipeline (single-tenant, single-workspace, hybrid-vector):
 //
-//	1. Authorisation: workspace context must be present and non-default.
-//	2. Embedding:      generate dense vector for the query text.
-//	3. Hybrid search:  call the existing assets/search.VectorStorePort
-//	                   (real dense + sparse fusion via fuseSearchResults
-//	                   in internal/infrastructure/qdrant/service.go).
-//	4. Score filter:   drop hits below MinScore pre-hydration so the
-//	                   SQL read sequence is shorter (N+1 paranoia).
-//	5. Hydration:      batched SQLite read via MediaReadRepository.
-//	6. Joins:         the hydrated rows win on metadata; the Qdrant
-//	                  payload's score is canonical.
-//	7. Delivery URL:  each surviving asset is granted a short-TTL
-//	                  signed URL via AssetDeliveryService.
-//	8. Response:    hits are returned in the same order as the vector
-//	                  order — search relevance is the contract, not
-//	                  "stable sort by name".
+//  1. Authorisation: workspace context must be present and non-default.
+//  2. Embedding:      generate dense vector for the query text.
+//  3. Hybrid search:  call the existing assets/search.VectorStorePort
+//     (real dense + sparse fusion via fuseSearchResults
+//     in internal/infrastructure/qdrant/service.go).
+//  4. Score filter:   drop hits below MinScore pre-hydration so the
+//     SQL read sequence is shorter (N+1 paranoia).
+//  5. Hydration:      batched SQLite read via MediaReadRepository.
+//  6. Joins:         the hydrated rows win on metadata; the Qdrant
+//     payload's score is canonical.
+//  7. Delivery URL:  each surviving asset is granted a short-TTL
+//     signed URL via AssetDeliveryService.
+//  8. Response:    hits are returned in the same order as the vector
+//     order — search relevance is the contract, not
+//     "stable sort by name".
 //
 // QDRANT-004 BLOCKER NOTE: cross-tenant isolation at the SQL level
 // requires QDRANT-001 (media_assets.workspace_id column not yet

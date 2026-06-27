@@ -35,8 +35,8 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
-	"go.uber.org/zap"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // TestRegisterGenerationCapability_NilDomains_NoRegister pins: when

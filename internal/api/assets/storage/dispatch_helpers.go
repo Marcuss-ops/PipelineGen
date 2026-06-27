@@ -63,11 +63,11 @@ func buildSyncPayload(in *SyncPayloadInput) (map[string]any, string) {
 	}
 
 	return map[string]any{
-		"drive_folder_id":  payload.DriveFolderID,
-		"source":           payload.Source,
-		"name":             payload.Name,
-		"media_type":       payload.MediaType,
-		"idempotency_key":  payload.IdempotencyKey,
-		"caller":           payload.Caller,
+		"drive_folder_id": payload.DriveFolderID,
+		"source":          payload.Source,
+		"name":            payload.Name,
+		"media_type":      payload.MediaType,
+		"idempotency_key": payload.IdempotencyKey,
+		"caller":          payload.Caller,
 	}, correlationID
 }

@@ -7,7 +7,8 @@
 // Critical contract — MOUNTED ON A NON-API PREFIX:
 //   - JobsHandler          mounts on `/jobs` → /api/jobs/{, stats, :id ...}
 //   - WorkersBrokerHandler mounts on remoteshared.InternalPathPrefix
-//                            (typically /internal/v1/) → NOT under /api/.
+//     (typically /internal/v1/) → NOT under /api/.
+//
 // See internal/api/server.go::Router.SetWorkerHandler and
 // remoteshared.InternalPathPrefix for the exact routing context.
 //

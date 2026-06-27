@@ -5,7 +5,7 @@
 // resolveDriveFolderID and findFolderByNameDeep moved out; the handler
 // now stores a FolderResolver closure for Drive folder resolution. Package-level aliases declared in this file remain
 // for back-compat with handler callers. Cross-package script<->transport
-// aliases were removed in helpers.go (use scripts.<Type> directly).
+// aliases were removed in helpers.go (use usecase.<Type> directly).
 
 package script
 
@@ -16,60 +16,60 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
 
 // ── Type aliases (back-compat, zero churn) ─────────────────────────────────
 
 type (
-	assetSearchTarget = scripts.AssetSearchTarget
+	assetSearchTarget = usecase.AssetSearchTarget
 
-	ScriptAssetSuggestion       = scripts.ScriptAssetSuggestion
-	ScriptPhraseClipSuggestion  = scripts.ScriptPhraseClipSuggestion
-	ScriptDriveFolderSuggestion = scripts.ScriptDriveFolderSuggestion
-	ScriptArtlistClipSuggestion = scripts.ScriptArtlistClipSuggestion
-	ScriptEntityImage           = scripts.ScriptEntityImage
-	ScriptInsights              = scripts.ScriptInsights
+	ScriptAssetSuggestion       = usecase.ScriptAssetSuggestion
+	ScriptPhraseClipSuggestion  = usecase.ScriptPhraseClipSuggestion
+	ScriptDriveFolderSuggestion = usecase.ScriptDriveFolderSuggestion
+	ScriptArtlistClipSuggestion = usecase.ScriptArtlistClipSuggestion
+	ScriptEntityImage           = usecase.ScriptEntityImage
+	ScriptInsights              = usecase.ScriptInsights
 )
 
 // EntityScriptExtractor is the canonical entity extractor interface.
-type EntityScriptExtractor = scripts.EntityScriptExtractor
+type EntityScriptExtractor = usecase.EntityScriptExtractor
 
 // ── Forwarding functions ────────────────────────────────────────────────────
 
-func SearchScriptAssets(ctx context.Context, svc scripts.ClipServices, queries []string, targets []assetSearchTarget, limit int) []ScriptAssetSuggestion {
-	return scripts.SearchScriptAssets(ctx, svc, queries, targets, limit)
+func SearchScriptAssets(ctx context.Context, svc usecase.ClipServices, queries []string, targets []assetSearchTarget, limit int) []ScriptAssetSuggestion {
+	return usecase.SearchScriptAssets(ctx, svc, queries, targets, limit)
 }
 
-func SearchArtlistClips(ctx context.Context, svc scripts.ClipServices, title string, phrases []string) []ScriptArtlistClipSuggestion {
-	return scripts.SearchArtlistClips(ctx, svc, title, phrases)
+func SearchArtlistClips(ctx context.Context, svc usecase.ClipServices, title string, phrases []string) []ScriptArtlistClipSuggestion {
+	return usecase.SearchArtlistClips(ctx, svc, title, phrases)
 }
 
-func BuildPhraseClipSuggestions(ctx context.Context, svc scripts.ClipServices, title string, insights ScriptInsights, targets []assetSearchTarget) []ScriptPhraseClipSuggestion {
-	return scripts.BuildPhraseClipSuggestions(ctx, svc, title, insights, targets)
+func BuildPhraseClipSuggestions(ctx context.Context, svc usecase.ClipServices, title string, insights ScriptInsights, targets []assetSearchTarget) []ScriptPhraseClipSuggestion {
+	return usecase.BuildPhraseClipSuggestions(ctx, svc, title, insights, targets)
 }
 
-func SearchIntroClips(ctx context.Context, svc scripts.ClipServices, title, script string, insights ScriptInsights, targets []assetSearchTarget) []ScriptAssetSuggestion {
-	return scripts.SearchIntroClips(ctx, svc, title, script, insights, targets)
+func SearchIntroClips(ctx context.Context, svc usecase.ClipServices, title, script string, insights ScriptInsights, targets []assetSearchTarget) []ScriptAssetSuggestion {
+	return usecase.SearchIntroClips(ctx, svc, title, script, insights, targets)
 }
 
-func EnrichSpecialNamesWithImages(ctx context.Context, svc scripts.ClipServices, specialNames []string) []ScriptEntityImage {
-	return scripts.EnrichSpecialNamesWithImages(ctx, svc, specialNames)
+func EnrichSpecialNamesWithImages(ctx context.Context, svc usecase.ClipServices, specialNames []string) []ScriptEntityImage {
+	return usecase.EnrichSpecialNamesWithImages(ctx, svc, specialNames)
 }
 
 func ExtractScriptEntities(ctx context.Context, extractor EntityScriptExtractor, script string, model string) (string, error) {
-	return scripts.ExtractScriptEntities(ctx, extractor, script, model)
+	return usecase.ExtractScriptEntities(ctx, extractor, script, model)
 }
 
 // ── ScriptInsightBuilder ────────────────────────────────────────────────────
 
 type ScriptInsightBuilder struct {
-	inner *scripts.ScriptInsightBuilder
+	inner *usecase.ScriptInsightBuilder
 }
 
-func NewScriptInsightBuilder(logger *zap.Logger, maxEntities int, svc scripts.ClipServices) *ScriptInsightBuilder {
+func NewScriptInsightBuilder(logger *zap.Logger, maxEntities int, svc usecase.ClipServices) *ScriptInsightBuilder {
 	return &ScriptInsightBuilder{
-		inner: &scripts.ScriptInsightBuilder{
+		inner: &usecase.ScriptInsightBuilder{
 			Logger:      logger,
 			MaxEntities: maxEntities,
 			Services:    svc,
@@ -81,8 +81,8 @@ func (b *ScriptInsightBuilder) Build(ctx context.Context, title, script, entitie
 	return b.inner.Build(ctx, title, script, entitiesJSON)
 }
 
-func ResolveRecommendedDriveFolder(ctx context.Context, svc scripts.ClipServices, title, script string, insights ScriptInsights) *ScriptDriveFolderSuggestion {
-	return scripts.ResolveRecommendedDriveFolder(ctx, svc, title, script, insights)
+func ResolveRecommendedDriveFolder(ctx context.Context, svc usecase.ClipServices, title, script string, insights ScriptInsights) *ScriptDriveFolderSuggestion {
+	return usecase.ResolveRecommendedDriveFolder(ctx, svc, title, script, insights)
 }
 
 // ── resolveDriveFolderID (ScriptFlowHandler method) ─────────────────────────

@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

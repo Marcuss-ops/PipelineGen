@@ -102,15 +102,15 @@ type CheckResult struct {
 // Report is the aggregated output of Aggregator.RunOnce. The CLI
 // emitter marshals it directly.
 type Report struct {
-	SchemaVersion  int                    `json:"schema_version"`
-	Verdict        Verdict                `json:"verdict"`
-	Timestamp      time.Time              `json:"timestamp"`
-	TotalDurationMS int64                 `json:"total_duration_ms"`
-	WorkerID       string                 `json:"worker_id,omitempty"`
-	WorkerVersion  string                 `json:"worker_version,omitempty"`
-	MasterURL      string                 `json:"master_url,omitempty"`
-	MTLSEnabled    bool                   `json:"mtls_enabled"`
-	Checks         map[string]CheckResult `json:"checks"`
+	SchemaVersion   int                    `json:"schema_version"`
+	Verdict         Verdict                `json:"verdict"`
+	Timestamp       time.Time              `json:"timestamp"`
+	TotalDurationMS int64                  `json:"total_duration_ms"`
+	WorkerID        string                 `json:"worker_id,omitempty"`
+	WorkerVersion   string                 `json:"worker_version,omitempty"`
+	MasterURL       string                 `json:"master_url,omitempty"`
+	MTLSEnabled     bool                   `json:"mtls_enabled"`
+	Checks          map[string]CheckResult `json:"checks"`
 }
 
 // ── Aggregator ────────────────────────────────────────────────────────
@@ -131,8 +131,8 @@ type Aggregator struct {
 }
 
 type checkEntry struct {
-	id  string
-	fn  func() ProbeReceipt
+	id string
+	fn func() ProbeReceipt
 }
 
 // NewAggregator returns an empty Aggregator.

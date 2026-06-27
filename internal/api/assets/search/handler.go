@@ -73,11 +73,12 @@ type searchRequest struct {
 // Search is the HTTP handler for GET /api/assets/search.
 //
 // Status codes:
-//   200 — OK, canonical Result envelope in body
-//   400 — invalid query (missing q, malformed cursor)
-//   422 — invalid cursor (semantic error from Aggregator)
-//   500 — internal error from Aggregator fanout (providerErrors populated)
-//   503 — search aggregator not wired
+//
+//	200 — OK, canonical Result envelope in body
+//	400 — invalid query (missing q, malformed cursor)
+//	422 — invalid cursor (semantic error from Aggregator)
+//	500 — internal error from Aggregator fanout (providerErrors populated)
+//	503 — search aggregator not wired
 func (h *Handler) Search(c *gin.Context) {
 	if h.aggreg == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "search aggregator not wired")

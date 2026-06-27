@@ -29,7 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -75,6 +75,7 @@ type LegacyGenerateFromClipsRequest struct {
 	Model               string   `json:"model"`
 	Style               string   `json:"style"`
 	ClipIDs             []string `json:"clip_ids"`
+<<<<<<< Updated upstream
 	IntroClipIDs        []string `json:"intro_clip_ids"`
 	IntroClips          []string `json:"intro_clips"`
 	NumClips            int      `json:"num_clips"`
@@ -82,6 +83,10 @@ type LegacyGenerateFromClipsRequest struct {
 	Duration            int      `json:"duration"`
 	SegmentWords        int      `json:"segment_words"`
 	SegmentTopics       []string `json:"segment_topics"`
+=======
+	TargetWords         int      `json:"target_words"`
+	Duration            int      `json:"duration"`
+>>>>>>> Stashed changes
 	SaveToDB            bool     `json:"save_to_db"`
 	ForceRefresh        bool     `json:"force_refresh"`
 	GenerateSceneImages bool     `json:"generate_scene_images"`
@@ -119,7 +124,10 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 			Guidelines:       r.StyleInstructions,
 			TranscriptPolicy: r.TranscriptPolicy,
 			ForceRefresh:     r.ForceRefresh,
+<<<<<<< Updated upstream
 			IntroClipIDs:     introIDs,
+=======
+>>>>>>> Stashed changes
 		},
 		ScriptParams: domainScript.ScriptSpec{
 			TargetWords:   r.TargetWords,
@@ -572,8 +580,8 @@ func (h *ScriptFlowHandler) enqueueDeprecated(c *gin.Context, env domainScript.G
 		return
 	}
 
-	req := scripts.NewGenerateEnqueueRequest(env)
-	enqueuedJob, err := scripts.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
+	req := usecase.NewGenerateEnqueueRequest(env)
+	enqueuedJob, err := usecase.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return

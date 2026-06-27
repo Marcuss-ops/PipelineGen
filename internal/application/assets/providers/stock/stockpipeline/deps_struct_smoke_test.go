@@ -55,12 +55,12 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 		// validation order is enforced via the canonical "first-missing
 		// wins" rule (whatever nil dep the validation reaches first is
 		// the sentinel returned).
-		setup    func(d *Deps)
-		wantErr  error
+		setup   func(d *Deps)
+		wantErr error
 	}{
 		{
-			name:   "all-nil returns Cfg sentinel",
-			setup:  func(d *Deps) {}, // every field zero/nil
+			name:    "all-nil returns Cfg sentinel",
+			setup:   func(d *Deps) {}, // every field zero/nil
 			wantErr: ErrStockPipelineNilCfg,
 		},
 	}

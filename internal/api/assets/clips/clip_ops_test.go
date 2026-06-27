@@ -8,7 +8,7 @@
 // the documented contracts in the spec:
 //   - test handler con fake service  (each test below)
 //   - test invalid source            (TestHandler_Cleanup_InvalidSource_Returns400,
-//                                     TestHandler_VerifyClip_NoService_503)
+//     TestHandler_VerifyClip_NoService_503)
 //   - test voiceover                 (TestHandler_Cleanup_VoiceoverSource_ReportsOrphan)
 //   - test Drive non disponibile     (Stub Drive returned empty MD5 + orphan path)
 package clips
@@ -32,7 +32,9 @@ import (
 
 // ── Local port stubs (different package from application/clips) ───────────────
 
-type handlerSourceResolver struct{ repos map[string]appclips.ClipRepositoryPort }
+type handlerSourceResolver struct {
+	repos map[string]appclips.ClipRepositoryPort
+}
 
 func (r *handlerSourceResolver) ResolveRepo(s string) appclips.ClipRepositoryPort {
 	if r == nil {
@@ -43,7 +45,7 @@ func (r *handlerSourceResolver) ResolveRepo(s string) appclips.ClipRepositoryPor
 
 type handlerClipsRepo struct{ clips []*asset.Asset }
 
-func (r *handlerClipsRepo) Upsert(_ context.Context, _ *asset.Asset) error       { return nil }
+func (r *handlerClipsRepo) Upsert(_ context.Context, _ *asset.Asset) error { return nil }
 func (r *handlerClipsRepo) Get(_ context.Context, _ string) (*asset.Asset, error) {
 	return nil, nil
 }
@@ -73,7 +75,7 @@ func (r *handlerClipsRepo) ListByFolderID(_ context.Context, _ string) ([]*asset
 func (r *handlerClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error         { return nil }
+func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error        { return nil }
 func (r *handlerClipsRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
 func (r *handlerClipsRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
 func (r *handlerClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
@@ -87,7 +89,9 @@ func (r *handlerClipsRepo) FindClipsByHash(_ context.Context, _ string) ([]*asse
 	return nil, nil
 }
 
-type handlerVoiceoverRepo struct{ records map[string]*appclips.ClipVoiceoverRecordDTO }
+type handlerVoiceoverRepo struct {
+	records map[string]*appclips.ClipVoiceoverRecordDTO
+}
 
 func (r *handlerVoiceoverRepo) GetByID(_ context.Context, id string) (*appclips.ClipVoiceoverRecordDTO, error) {
 	if r == nil {
@@ -146,7 +150,7 @@ func (d *handlerDriveUploader) GetFileMD5(_ context.Context, fileID string) (str
 func (d *handlerDriveUploader) GetFileMeta(_ context.Context, _ string) (*appclips.ClipDriveFileMetaDTO, error) {
 	return &appclips.ClipDriveFileMetaDTO{}, nil
 }
-func (d *handlerDriveUploader) TrashFile(_ context.Context, _ string) error              { return nil }
+func (d *handlerDriveUploader) TrashFile(_ context.Context, _ string) error { return nil }
 func (d *handlerDriveUploader) ListFiles(_ context.Context, _ string) ([]appclips.ClipDriveFileDTO, error) {
 	return nil, nil
 }

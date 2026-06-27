@@ -93,8 +93,8 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	// prior test fix iteration). nil AssetIndex is the only safe shape.
 	svc, err := NewService(Deps{
 		Uploader:    &uploaddrive.Uploader{},
-		Targets:     nil,                 // no pre-configured targets
-		AssetIndex:  nil,                 // nil-safe per writeAssetIndex guard; bypassed
+		Targets:     nil, // no pre-configured targets
+		AssetIndex:  nil, // nil-safe per writeAssetIndex guard; bypassed
 		AssetTree:   &assettree.Service{},
 		ClipIndexer: &clipindexer.Service{},
 		Dispatcher:  dispatcher,
@@ -155,7 +155,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	svc, err := NewService(Deps{
 		Uploader:    &uploaddrive.Uploader{},
 		Targets:     nil,
-		AssetIndex:  nil,                 // nil-safe per writeAssetIndex guard; bypassed
+		AssetIndex:  nil, // nil-safe per writeAssetIndex guard; bypassed
 		AssetTree:   &assettree.Service{},
 		ClipIndexer: &clipindexer.Service{},
 		Dispatcher:  dispatcher,
@@ -282,4 +282,3 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 		require.NoError(t, err, "optional deps (AssetIndex / AssetTree / ClipIndexer) must be acceptable as nil")
 	})
 }
-

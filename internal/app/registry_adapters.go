@@ -27,13 +27,13 @@ import (
 //
 // Compile-time assertion placement rationale (Pattern 0):
 //
-//   The dispatcher (in internal/infrastructure/...) SHOULD NOT import
-//   mutations (in internal/application/...) directly — that would violate
-//   the canonical application ← infrastructure layering. Instead, the
-//   assertion lives HERE in the composition root, which is the ONE place
-//   allowed to import both sides. Drift in either the interface or the
-//   dispatcher's tx-bound implementation surfaces as a build error in
-//   the composition root, not as a runtime panic.
+//	The dispatcher (in internal/infrastructure/...) SHOULD NOT import
+//	mutations (in internal/application/...) directly — that would violate
+//	the canonical application ← infrastructure layering. Instead, the
+//	assertion lives HERE in the composition root, which is the ONE place
+//	allowed to import both sides. Drift in either the interface or the
+//	dispatcher's tx-bound implementation surfaces as a build error in
+//	the composition root, not as a runtime panic.
 //
 // Signature-drift detection: break any of the 3 methods' signatures
 // (e.g. change `contentHash string` to `contentHash int`) and observe

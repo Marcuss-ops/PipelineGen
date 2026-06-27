@@ -36,9 +36,9 @@ func (f *fakeModule) RegisterRoutes(*gin.RouterGroup) {}
 func TestTryRegisterModule_DuplicateFails(t *testing.T) {
 	reg := module.NewRegistry()
 
-	require.NoError(t, tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-dup"}),
+	require.NoError(t, tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-dup"}),
 		"first register must succeed")
-	err := tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-dup"})
+	err := tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-dup"})
 	require.Error(t, err, "second register with same name must fail")
 	require.Contains(t, err.Error(), "already registered",
 		"error text must mention the duplicate-detection sentinel")
@@ -47,19 +47,19 @@ func TestTryRegisterModule_DuplicateFails(t *testing.T) {
 func TestTryRegisterModule_FreezeFails(t *testing.T) {
 	reg := module.NewRegistry()
 
-	require.NoError(t, tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-pre-freeze"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-pre-freeze"}))
 	reg.Freeze()
 
-	err := tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-post-freeze"})
+	err := tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-post-freeze"})
 	require.Error(t, err, "register after Freeze must fail")
 }
 
 func TestTryRegisterModule_DistinctOK(t *testing.T) {
 	reg := module.NewRegistry()
 
-	require.NoError(t, tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-a"}))
-	require.NoError(t, tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-b"}))
-	require.NoError(t, tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-c"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-a"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-b"}))
+	require.NoError(t, tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-c"}))
 }
 
 func TestTryRegisterModule_ErrorContainsSpecMarker(t *testing.T) {
@@ -69,8 +69,8 @@ func TestTryRegisterModule_ErrorContainsSpecMarker(t *testing.T) {
 	// "compose:" prefix the wrap-shareability degrades silently.
 	reg := module.NewRegistry()
 
-	_ = tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-marker"})
-	err := tryRegisterModuleStrict(reg, nil,  &fakeModule{name: "fixture-marker"})
+	_ = tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-marker"})
+	err := tryRegisterModuleStrict(reg, nil, &fakeModule{name: "fixture-marker"})
 	require.Error(t, err)
 	require.True(t, strings.HasPrefix(err.Error(), "compose:"),
 		"wrapped error must start with compose: prefix (got %q)", err.Error())

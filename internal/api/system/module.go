@@ -6,12 +6,12 @@
 // (DriveHandler). The system Module now mounts two sub-groups
 // sharing the same protected router group:
 //
-//   /system/doctor     — admin/doctor diagnostics
-//   /drive/{reconcile,
-//           cleanup,
-//           folders,
-//           move,
-//           resolve-by-id}
+//	/system/doctor     — admin/doctor diagnostics
+//	/drive/{reconcile,
+//	        cleanup,
+//	        folders,
+//	        move,
+//	        resolve-by-id}
 //
 // Both sub-groups inherit Auth + RateLimit + WorkspaceScope from
 // the protected group mounted in routes.go.

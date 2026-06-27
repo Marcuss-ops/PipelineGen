@@ -1,5 +1,5 @@
 // Package qdrant — ClipSearchAdapter adapts the application-level
-// scripts.ClipSearchPort to the qdrant.Searcher primitives
+// ports.ClipSearchPort to the qdrant.Searcher primitives
 // (SearchByText for the no-filter fast path; Search with explicit
 // filter must-clauses for filtered queries).
 //
@@ -21,11 +21,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
-// clipSearchAdapter implements scripts.ClipSearchPort against the
+// clipSearchAdapter implements ports.ClipSearchPort against the
 // canonical qdrant.Searcher. Embedding is supplied by the caller so
 // the adapter has no Ollama / HTTP-text-embedder / Python-script
 // dependency directly — composition root (wire_script.go) chooses
@@ -43,7 +45,7 @@ type clipSearchAdapter struct {
 // vectorName is the dense vector channel name (e.g. "text") whose
 // dimensions the embedder is expected to produce. Both are
 // supplied by the composition root (wire_script.go).
-func NewClipSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName string, log *zap.Logger) scripts.ClipSearchPort {
+func NewClipSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName string, log *zap.Logger) ports.ClipSearchPort {
 	return &clipSearchAdapter{
 		searcher:   searcher,
 		embedder:   embedder,
@@ -53,12 +55,12 @@ func NewClipSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName 
 }
 
 // Compile-time assertion (AGENTS.md Pattern 0).
-var _ scripts.ClipSearchPort = (*clipSearchAdapter)(nil)
+var _ ports.ClipSearchPort = (*clipSearchAdapter)(nil)
 
-// SearchClips implements scripts.ClipSearchPort.
+// SearchClips implements ports.ClipSearchPort.
 //   - No filter set → SearchByText (embed + ANN in one call, fast path).
 //   - Any filter set → embed then Search with explicit must-clauses.
-func (a *clipSearchAdapter) SearchClips(ctx context.Context, q scripts.ClipSearchQuery) ([]scripts.ClipSearchHit, error) {
+func (a *clipSearchAdapter) SearchClips(ctx context.Context, q ports.ClipSearchQuery) ([]ports.ClipSearchHit, error) {
 	if a == nil || a.searcher == nil {
 		return nil, fmt.Errorf("clip search adapter: searcher not configured")
 	}
@@ -67,7 +69,7 @@ func (a *clipSearchAdapter) SearchClips(ctx context.Context, q scripts.ClipSearc
 	}
 	query := strings.TrimSpace(q.Query)
 	if query == "" {
-		return []scripts.ClipSearchHit{}, nil
+		return []ports.ClipSearchHit{}, nil
 	}
 	limit := defaults.Int(q.Limit, 20)
 	minScore := q.MinScore
@@ -108,10 +110,10 @@ func (a *clipSearchAdapter) SearchClips(ctx context.Context, q scripts.ClipSearc
 
 // convertClipHits maps infra-level SearchResult → app-level
 // ClipSearchHit (strips non-port fields).
-func convertClipHits(results []SearchResult) []scripts.ClipSearchHit {
-	out := make([]scripts.ClipSearchHit, 0, len(results))
+func convertClipHits(results []SearchResult) []ports.ClipSearchHit {
+	out := make([]ports.ClipSearchHit, 0, len(results))
 	for _, r := range results {
-		out = append(out, scripts.ClipSearchHit{
+		out = append(out, ports.ClipSearchHit{
 			AssetID: payloadString(r.Payload, "asset_id"),
 			Name:    payloadString(r.Payload, "name"),
 			Score:   r.Score,

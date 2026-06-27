@@ -45,18 +45,18 @@ func NewRegistry() *Registry {
 //   - the module name is empty                   ("module name is empty")
 //   - the registry is frozen                     ("registry is frozen: cannot register module %q")
 //   - a DIFFERENT instance with the same name is already registered
-//                                              ("module %q already registered")
+//     ("module %q already registered")
 //
 // PR 2 (June 2026 — codex/registry-strict-uniqueness) invariants:
-//   1. Empty-name validation: a module with Name() == "" is rejected up front,
-//      so a misconfigured capability cannot silently pollute GetEnabled().
-//   2. Same-instance no-op: re-registering the SAME Module pointer is a
-//      silent no-op. This supports the composition-time contract that a
-//      single Descriptor can be re-published (once via Register, once via
-//      a slot publication such as DescriptorJobs/DescriptorProviders)
-//      without surfacing as an error. A DIFFERENT instance with the same
-//      name still errors. Tests pin this contract (see
-//      internal/app/registry_strict_test.go).
+//  1. Empty-name validation: a module with Name() == "" is rejected up front,
+//     so a misconfigured capability cannot silently pollute GetEnabled().
+//  2. Same-instance no-op: re-registering the SAME Module pointer is a
+//     silent no-op. This supports the composition-time contract that a
+//     single Descriptor can be re-published (once via Register, once via
+//     a slot publication such as DescriptorJobs/DescriptorProviders)
+//     without surfacing as an error. A DIFFERENT instance with the same
+//     name still errors. Tests pin this contract (see
+//     internal/app/registry_strict_test.go).
 func (r *Registry) Register(m Module) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

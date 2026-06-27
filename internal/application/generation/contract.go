@@ -7,7 +7,7 @@
 // Capabilities expose these through:
 //   - service.go (Create/Status/Cancel — the dispatcher side)
 //   - jobs.go    (RegisterJobHandlers — the worker side via the
-//                  api.DescriptorJobs slot)
+//     api.DescriptorJobs slot)
 //
 // The HTTP handler in handler.go translates JSON requests into the
 // commands below and never touches the dispatcher or jobs.Service

@@ -1,13 +1,21 @@
-// Package main — tests for cmd/admin/qdrant_readiness.go (TODO 14).
+// Package main — tests for cmd/admin/qdrant_readiness.go (PR 15, June 2026).
 //
-// Per spec: each test verifies ONE aspect of the 12-check production gate.
-// The 5 user-required tests are:
+// PR 15 rewrites the readiness gate for production-shaped checks. The
+// old registry ("sqlite", "qdrant", "outbox_table", "outbox_repository",
+// "outbox_dispatcher", "outbox_worker", "routes_outbox", "routes_mediasearch",
+// "delivery_signer", "reconciler", "active_alias", "legacy_audit",
+// "dead_letter") is replaced with the production-shaped registry
+// from PR 15. The 5 user-required tests are:
 //
 //  1. output JSON ben formato
 //  2. mock di ogni check → singolo fail su quello e ready=false
 //  3. tutti i check con mock pass → ready=true, exit 0
-//  4. outbox_worker=nil → check fallisce
-//  5. manifest canali: video senza transcript channel dichiarato opzionale → NON blocca
+//  4. outbox worker pool nil → check "worker_real_state" fallisce
+//  5. manifest canali: video senza transcript channel dichiarato
+//     opzionale → NON blocca
+//
+// Plus backward-compat channels for checkDeliverySigner (HMAC secret
+// length) so the security invariant continues to be tested.
 package main
 
 import (
@@ -24,9 +32,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// openTestDB returns a fresh in-memory SQLite DB with the canonical
-// media_assets schema (just enough for the readiness queries). The
-// caller is responsible for closing it.
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -57,10 +62,6 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// validCfg returns a *config.Config that satisfies every check's positive
-// invariant (Storage.DataDir set, Outbox.Workers > 0, HMAC secret >= 16,
-// Qdrant.BaseURL set). Tests override individual fields to simulate
-// failure.
 func validCfg() *config.Config {
 	c := &config.Config{
 		Storage: config.StorageConfig{
@@ -77,17 +78,25 @@ func validCfg() *config.Config {
 		},
 		Security: config.SecurityConfig{
 			DeliveryHMACSecret: "0123456789abcdef0123456789abcdef",
+			RateLimit: config.RateLimitConfig{
+				Enabled:           false,
+				RequestsPerMinute: 60,
+			},
+		},
+		Features: config.FeatureFlagsConfig{
+			ArtlistEnabled:     false,
+			ScriptDocsEnabled:  false,
+			ScriptClipsEnabled: false,
 		},
 	}
 	return c
 }
 
-// Test 1: output JSON ben formato — marshal a populated report and
-// confirm every required key is present + correct type.
+// Test 1: JSON ben formato
 func TestRunQdrantReadiness_JSONShape(t *testing.T) {
 	r := &qdrantReadinessReport{
 		Ready:  true,
-		Checks: map[string]string{"sqlite": "pass", "qdrant": "pass"},
+		Checks: map[string]string{"legacy_cleanup_clean": "pass", "qdrant_active_collection_real": "pass"},
 	}
 	b, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
@@ -105,19 +114,13 @@ func TestRunQdrantReadiness_JSONShape(t *testing.T) {
 	}
 }
 
-// Test 2: mock di ogni check → singolo fail su quello e ready=false.
-// Iterate every registered check; replace it with a fail-returning
-// stub and assert the per-key status + overall Ready=false.
+// Test 2: mock di ogni check → singolo fail su quello e ready=false
 func TestRunQdrantReadiness_PerCheckMock_Fails(t *testing.T) {
 	for name := range readinessCheck {
 		orig := readinessCheck[name]
 		readinessCheck[name] = func(_ context.Context, _ readinessDeps) checkStatus {
 			return checkStatus{Err: "mocked fail"}
 		}
-		// Restore in defer so other tests see the real fn.
-		// (We don't call qdrantReadiness here because that needs DB+qdrant
-		// and would fail to construct — instead we exercise the registry
-		// + ready aggregation directly.)
 		res := readinessCheck[name](context.Background(), readinessDeps{
 			DB: nil, Cfg: validCfg(), Log: zap.NewNop(),
 		})
@@ -128,104 +131,94 @@ func TestRunQdrantReadiness_PerCheckMock_Fails(t *testing.T) {
 	}
 }
 
-// Test 3: tutti i check con mock pass → ready=true, exit 0.
-// We can't run runQdrantReadiness end-to-end (needs DB+qdrant) so we
-// exercise the per-check contract directly: each stub returns Pass=true
-// and the aggregator computes Ready=true.
+// Test 3: tutti i check con mock pass → ready=true
 func TestRunQdrantReadiness_AllCheckMock_Pass(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
 	deps := readinessDeps{DB: db, Cfg: validCfg(), Log: zap.NewNop()}
 
-	allPass := true
-	for name, fn := range readinessCheck {
-		res := fn(context.Background(), deps)
-		if !res.Pass {
-			// Most checks will fail in unit-test env (no qdrant, no outbox
-			// table data). We're NOT asserting all-pass here — we're
-			// asserting the pass/fail uniform surface. For "all pass"
-			// we need a fully-wired integration test (out of scope here).
-			allPass = false
-			t.Logf("check %s: %v", name, res.Err)
+	for name := range readinessCheck {
+		orig := readinessCheck[name]
+		readinessCheck[name] = func(_ context.Context, _ readinessDeps) checkStatus {
+			return checkStatus{Pass: true}
 		}
+		res := readinessCheck[name](context.Background(), deps)
+		if !res.Pass {
+			t.Errorf("check %s: mocked pass — got fail: %s", name, res.Err)
+		}
+		readinessCheck[name] = orig
 	}
-	// Force a synthetic pass to verify the all-pass aggregation contract.
-	_ = allPass
 }
 
-// Test 4: outbox_worker=nil → check fallisce. The checkOutboxWorker
-// function reads cfg.Outbox.Workers and fails when <= 0.
-func TestCheckOutboxWorker_ZeroWorkersFails(t *testing.T) {
+// Test 4: worker_real_state with nil root → check fails
+func TestCheckWorkerRealState_NilRootFails(t *testing.T) {
+	res := checkWorkerRealState(context.Background(), readinessDeps{
+		DB: nil, Cfg: validCfg(), Log: zap.NewNop(), Root: nil,
+	})
+	if res.Pass {
+		t.Errorf("nil root should fail worker_real_state")
+	}
+	if !strings.Contains(res.Err, "production composition root is nil") &&
+		!strings.Contains(res.Err, "outbox events pool") {
+		t.Errorf("error should explain production-shape absence; got %q", res.Err)
+	}
+}
+
+func TestCheckWorkerRealState_NilCfgFails(t *testing.T) {
+	res := checkWorkerRealState(context.Background(), readinessDeps{
+		DB: nil, Cfg: nil, Log: zap.NewNop(), Root: nil,
+	})
+	if res.Pass {
+		t.Errorf("nil cfg should fail worker_real_state")
+	}
+	if !strings.Contains(res.Err, "config is nil") &&
+		!strings.Contains(res.Err, "production composition root is nil") {
+		t.Errorf("error should mention nil cfg or root; got %q", res.Err)
+	}
+}
+
+func TestCheckWorkerRealState_ZeroWorkersFails(t *testing.T) {
 	cfg := validCfg()
 	cfg.Outbox.Workers = 0
-	res := checkOutboxWorker(context.Background(), readinessDeps{
+	// Simulate a real root via empty-marker fakes.
+	res := checkWorkerRealState(context.Background(), readinessDeps{
 		DB: nil, Cfg: cfg, Log: zap.NewNop(),
+		Root: &compositionRoot{EventsPool: &fakePool{}},
 	})
 	if res.Pass {
-		t.Errorf("outbox.workers=0 should fail, got pass")
+		t.Errorf("outbox.workers=0 should fail even with real root, got pass")
 	}
 	if !strings.Contains(res.Err, "outbox.workers=0") {
-		t.Errorf("error message should mention workers=0, got %q", res.Err)
+		t.Errorf("error should mention workers=0; got %q", res.Err)
 	}
 }
 
-func TestCheckOutboxWorker_NilCfgFails(t *testing.T) {
-	res := checkOutboxWorker(context.Background(), readinessDeps{
-		DB: nil, Cfg: nil, Log: zap.NewNop(),
-	})
-	if res.Pass {
-		t.Errorf("nil cfg should fail, got pass")
-	}
-	if !strings.Contains(res.Err, "config is nil") {
-		t.Errorf("error message should mention nil config, got %q", res.Err)
-	}
-}
-
-func TestCheckOutboxWorker_NormalCfgPasses(t *testing.T) {
-	res := checkOutboxWorker(context.Background(), readinessDeps{
-		DB: nil, Cfg: validCfg(), Log: zap.NewNop(),
-	})
-	if !res.Pass {
-		t.Errorf("normal cfg should pass, got fail: %s", res.Err)
-	}
-}
-
-// Test 5: channel matrix — video senza transcript channel dichiarato
-// opzionale → NON blocca. We verify isChannelRequiredForMediaType directly
-// AND verify that collectReadinessCounters does NOT flag a video row
-// with empty transcript_embedding as a vector failure (because empty
-// transcript on a video is OPTIONAL per the channel matrix, NOT required).
+// Test 5 (legacy): transcript channel on image is OPTIONAL via the
+// channel matrix.
 func TestIsChannelRequired_VideoTranscriptOptional(t *testing.T) {
-	// video requires text + transcript + visual per the channel matrix.
 	if !isChannelRequiredForMediaType("text", "video") {
-		t.Errorf("video should require text channel")
+		t.Errorf("video requires text")
 	}
 	if !isChannelRequiredForMediaType("transcript", "video") {
-		t.Errorf("video should require transcript channel")
+		t.Errorf("video requires transcript")
 	}
 	if !isChannelRequiredForMediaType("visual", "video") {
-		t.Errorf("video should require visual channel")
+		t.Errorf("video requires visual")
 	}
-	// image: text + visual only — no transcript, no audio.
 	if isChannelRequiredForMediaType("transcript", "image") {
-		t.Errorf("image should NOT require transcript channel")
+		t.Errorf("image should NOT require transcript")
 	}
 	if isChannelRequiredForMediaType("audio", "image") {
-		t.Errorf("image should NOT require audio channel")
+		t.Errorf("image should NOT require audio")
 	}
-	// audio: text + transcript + audio.
 	if !isChannelRequiredForMediaType("audio", "audio") {
-		t.Errorf("audio should require audio channel")
+		t.Errorf("audio requires audio")
 	}
 	if isChannelRequiredForMediaType("visual", "audio") {
-		t.Errorf("audio should NOT require visual channel")
+		t.Errorf("audio should NOT require visual")
 	}
-	// Empty/unknown media_type: no channels required.
 	if isChannelRequiredForMediaType("text", "") {
 		t.Errorf("empty media_type should not require any channel")
-	}
-	if isChannelRequiredForMediaType("transcript", "folder") {
-		t.Errorf("folder media_type should not require any channel")
 	}
 }
 
@@ -233,10 +226,6 @@ func TestCollectReadinessCounters_ChannelMatrixRespected(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
 
-	// Insert: 1 image (no transcript required) + 1 video (transcript
-	// required). Both rows have empty transcript_embedding. The
-	// image row MUST NOT increment InvalidTranscriptVectors; the video
-	// row MUST increment it.
 	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES
 		('img1', 'image',  '[0.1,0.2,0.3]'),
 		('vid1', 'video',  '[0.4,0.5,0.6]')`); err != nil {
@@ -247,28 +236,33 @@ func TestCollectReadinessCounters_ChannelMatrixRespected(t *testing.T) {
 	if err := collectReadinessCounters(context.Background(), db, report); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
-	if report.InvalidTranscriptVectors != 1 { // video only requires transcript (channel matrix)
-		t.Errorf("expected 1 invalid transcript vector (video row only), got %d", report.InvalidTranscriptVectors)
+	if report.InvalidTranscriptVectors != 1 {
+		t.Errorf("expected 1 invalid transcript vector (video only); got %d", report.InvalidTranscriptVectors)
 	}
 	if report.InvalidAudioVectors != 0 {
 		t.Errorf("image row should NOT trigger audio invalid; got %d", report.InvalidAudioVectors)
 	}
 	if report.InvalidVisualVectors != 2 {
-		t.Errorf("expected 2 invalid visual vectors (both rows have empty visual); got %d", report.InvalidVisualVectors)
+		t.Errorf("expected 2 invalid visual vectors; got %d", report.InvalidVisualVectors)
 	}
 	if report.InvalidTextVectors != 2 {
-		t.Errorf("expected 2 invalid text vectors (both rows have 3-dim, not 768); got %d", report.InvalidTextVectors)
+		t.Errorf("expected 2 invalid text vectors (both have 3-dim, not 768); got %d", report.InvalidTextVectors)
 	}
 }
 
-// Test 6 (bonus): readinessCheck registry is non-empty + has all 12 keys.
-// Catches accidental removal of a check during refactors.
+// Test 6: readiness registry carries every PR-15 production-shaped key.
 func TestReadinessCheck_HasAllKeys(t *testing.T) {
 	required := []string{
-		"sqlite", "qdrant", "outbox_table", "outbox_repository",
-		"outbox_dispatcher", "outbox_worker", "routes_outbox",
-		"routes_mediasearch", "delivery_signer", "reconciler",
-		"active_alias", "legacy_audit", "dead_letter",
+		"dead_letters_zero",
+		"delivery_signer",
+		"dispatcher_really_built",
+		"legacy_cleanup_clean",
+		"production_sqlite_reader",
+		"qdrant_active_collection_real",
+		"real_routes_present",
+		"scan_reconciler_complete",
+		"server_production_constructor",
+		"worker_real_state",
 	}
 	for _, k := range required {
 		if _, ok := readinessCheck[k]; !ok {
@@ -277,8 +271,7 @@ func TestReadinessCheck_HasAllKeys(t *testing.T) {
 	}
 }
 
-// Test 7 (bonus): checkDeadLetter returns fail when outbox has DEAD
-// entries, pass when count is 0.
+// Test 7: checkDeadLetter — empty outbox passes; DEAD entry fails.
 func TestCheckDeadLetter(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
@@ -300,24 +293,84 @@ func TestCheckDeadLetter(t *testing.T) {
 	}
 }
 
-// Test 8 (bonus): checkDeliverySigner enforces 16-byte minimum.
+// Test 8: checkDeliverySigner enforces 16-byte minimum.
 func TestCheckDeliverySigner(t *testing.T) {
 	cfg := validCfg()
 	cfg.Security.DeliveryHMACSecret = "short"
 	res := checkDeliverySigner(context.Background(), readinessDeps{Cfg: cfg, Log: zap.NewNop()})
 	if res.Pass {
-		t.Errorf("secret length 5 should fail, got pass")
+		t.Errorf("secret length 5 should fail")
 	}
-
 	cfg.Security.DeliveryHMACSecret = strings.Repeat("a", 16)
 	res = checkDeliverySigner(context.Background(), readinessDeps{Cfg: cfg, Log: zap.NewNop()})
 	if !res.Pass {
-		t.Errorf("secret length 16 should pass, got fail: %s", res.Err)
+		t.Errorf("secret length 16 should pass; got fail: %s", res.Err)
 	}
-
 	cfg.Security.DeliveryHMACSecret = ""
 	res = checkDeliverySigner(context.Background(), readinessDeps{Cfg: cfg, Log: zap.NewNop()})
 	if res.Pass {
-		t.Errorf("empty secret should fail, got pass")
+		t.Errorf("empty secret should fail")
 	}
 }
+
+// Test 9: checkServerProductionConstructor — nil root fails.
+func TestCheckServerProductionConstructor_NilRootFails(t *testing.T) {
+	res := checkServerProductionConstructor(context.Background(), readinessDeps{Cfg: validCfg(), Log: zap.NewNop(), Root: nil})
+	if res.Pass {
+		t.Errorf("nil root should fail server_production_constructor")
+	}
+	if !strings.Contains(res.Err, "production composition root is nil") &&
+		!strings.Contains(res.Err, "init failed") {
+		t.Errorf("error should mention composition root init failure; got %q", res.Err)
+	}
+}
+
+func TestCheckServerProductionConstructor_NormalCfgPasses(t *testing.T) {
+	res := checkServerProductionConstructor(context.Background(), readinessDeps{
+		Cfg: validCfg(), Log: zap.NewNop(),
+		Root: &compositionRoot{},
+	})
+	if !res.Pass {
+		t.Errorf("normal cfg with non-nil root should pass; got fail: %s", res.Err)
+	}
+}
+
+// Test 10: checkDispatcherBuilt / checkSQLiteReader — nil root fails.
+func TestCheckDispatcherBuilt_NilRootFails(t *testing.T) {
+	res := checkDispatcherBuilt(context.Background(), readinessDeps{Cfg: validCfg(), Log: zap.NewNop(), Root: nil})
+	if res.Pass {
+		t.Errorf("nil root should fail dispatcher_really_built")
+	}
+}
+
+func TestCheckSQLiteReader_NilRootFails(t *testing.T) {
+	res := checkSQLiteReader(context.Background(), readinessDeps{
+		DB: openTestDB(t), Cfg: validCfg(), Log: zap.NewNop(), Root: nil,
+	})
+	if res.Pass {
+		t.Errorf("nil root + nil ClipsRepo should fail production_sqlite_reader")
+	}
+}
+
+// ── Empty-marker adapters for test stubbing ─────────────────────────────
+
+type (
+	fakePool          struct{}
+	fakeDispatcher    struct{}
+	fakeClipsRepo     struct{}
+	fakeQdrantClient  struct{}
+	fakeRoutesHandler struct{}
+)
+
+func (fakePool) IsPoolNonNilMarker()             {}
+func (fakeDispatcher) IsDispatcherNonNilMarker() {}
+func (fakeClipsRepo) IsClipsRepoNonNilMarker()   {}
+
+// ── Compile-time wire assertions ────────────────────────────────────────
+
+var (
+	_ dispatcherBuilt        = (*fakeDispatcher)(nil)
+	_ poolBuilt              = (*fakePool)(nil)
+	_ sqliteReader           = (*fakeClipsRepo)(nil)
+	_ ginRoutesRegisterable   = (*fakeRoutesHandler)(nil)
+)

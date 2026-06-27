@@ -615,11 +615,11 @@ func (f *fakeCoalescer) StartCalls() int {
 // in lifecycle.go::maybeStartCoalescer (the rationale is documented
 // inline in the helper). Three branches verified:
 //
-//   (a) Window=0   → no SafeGo; fc.Start never called.
-//   (b) Window>0   → SafeGo runs; fc.Start called exactly once on the
-//                    spawned goroutine.
-//   (c) Window<0   → no SafeGo; fc.Start never called (defensive clamp,
-//                    symmetric to the Window=0 path).
+//	(a) Window=0   → no SafeGo; fc.Start never called.
+//	(b) Window>0   → SafeGo runs; fc.Start called exactly once on the
+//	                 spawned goroutine.
+//	(c) Window<0   → no SafeGo; fc.Start never called (defensive clamp,
+//	                 symmetric to the Window=0 path).
 //
 // Each subtest asserts both the boolean return AND the fc.Start
 // invocation pattern. The (b) subtest sleeps 5ms to give the goroutine

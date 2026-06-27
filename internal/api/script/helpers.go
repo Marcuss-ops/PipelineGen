@@ -7,7 +7,7 @@
 // composition root with feature flags and a prebuilt feature guard,
 // so this transport file has no concrete configuration imports.
 // Forwarding type aliases for application-side services were deleted:
-// callers in flow.go / handler_flow.go use scripts.* directly.
+// callers in flow.go / handler_flow.go use usecase.* directly.
 package script
 
 import (
@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
 
 	"github.com/gin-gonic/gin"
@@ -56,12 +56,12 @@ func withPostWriteContext(parent context.Context, log *zap.Logger, op string) (c
 
 // ScriptHistoryHandler handles script history endpoints.
 type ScriptHistoryHandler struct {
-	repo scripts.ScriptRepository
+	repo usecase.ScriptRepository
 	log  *zap.Logger
 }
 
 // NewScriptHistoryHandler creates a new script history handler.
-func NewScriptHistoryHandler(repo scripts.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
+func NewScriptHistoryHandler(repo usecase.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
 	return &ScriptHistoryHandler{
 		repo: repo,
 		log:  log,
@@ -98,7 +98,7 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 	}
 	offset = apiutil.ClampLimit(offset, 0, 0)
 
-	scriptRecords, err := h.repo.ListScripts(c.Request.Context(), scripts.ScriptListFilter{Limit: limit, Offset: offset, Language: language, Status: template})
+	scriptRecords, err := h.repo.ListScripts(c.Request.Context(), usecase.ScriptListFilter{Limit: limit, Offset: offset, Language: language, Status: template})
 	if err != nil {
 		h.log.Error("Failed to list scripts", zap.Error(err))
 		apiutil.InternalError(c, err)

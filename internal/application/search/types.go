@@ -136,10 +136,16 @@ func (a Actor) IsZero() bool {
 // backend. Handlers MUST set it from auth middleware; backends MUST
 // forward it instead of substituting default values.
 type Query struct {
+<<<<<<< Updated upstream
 	Text       string     // trimmed before fanout
 	Hash       string     // PR-2 (June 2026): when non-empty, hash-match backends answer; text-match backends ignore
 	Sources    []string   // empty = all from registry; aliases resolved via ResolveCanonicals
 	MediaTypes []string   // empty = all ("video","image","audio","music")
+=======
+	Text       string   // trimmed before fanout
+	Sources    []string // empty = all from registry; aliases resolved via ResolveCanonicals
+	MediaTypes []string // empty = all ("video","image","audio","music")
+>>>>>>> Stashed changes
 	Filters    Filters
 	Limit      int        // 0 → aggregator defaults to DefaultLimit, capped MaxLimit
 	Cursor     string     // opaque base64-JSON; "" = first page

@@ -33,7 +33,7 @@ import (
 // SQLite-backed implementation once Cert* columns land in the
 // worker_nodes table (RW-PROD-001 follow-up).
 type InMemoryWorkerStore struct {
-	mu        sync.RWMutex
+	mu         sync.RWMutex
 	identities map[string]*CertReport
 }
 

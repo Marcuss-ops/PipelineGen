@@ -1,9 +1,9 @@
 // Package channels — handler.go: thin HTTP transport for the channels
 // capability. Capability Standard rule:
 //
-//   "Handlers may bind input, validate transport syntax, translate
-//    to a command/query, invoke one use case, map typed errors,
-//    and serialize output."
+//	"Handlers may bind input, validate transport syntax, translate
+//	 to a command/query, invoke one use case, map typed errors,
+//	 and serialize output."
 //
 // i.e. no SQL, no asset.CategoryChannel construction, no default-policy
 // logic — those all live in Service (service.go) and the SQLite

@@ -21,8 +21,12 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+<<<<<<< Updated upstream
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+=======
+>>>>>>> Stashed changes
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )

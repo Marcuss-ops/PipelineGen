@@ -73,12 +73,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return nil
 	}
 
-	scriptsRepoAdapter := scripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
+	scriptsRepoAdapter := adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 
 	// ── Clip source builder ────────────────────────────────────────────
-	var clipSourceBuilder *scripts.ClipSourceBuilder
+	var clipSourceBuilder *usecase.ClipSourceBuilder
 	if ollamaClient := gen.GetClient(); ollamaClient != nil {
-		clipSourceBuilder = scripts.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
+		clipSourceBuilder = usecase.NewClipSourceBuilder(root.Repos.ClipsRepo, ollamaClient, log)
 		if cfg.Reranker.Enabled {
 			clipSourceBuilder.SetReranker(reranker.NewClient(reranker.Config{
 				Enabled:   cfg.Reranker.Enabled,
@@ -94,7 +94,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// PR 13 (June 2026): mediaCurator is constructed after the unified
 	// pipeline is wired (normCfg, sourceReg, ppReg, oneUC) so it can
 	// receive *GenerateOneUseCase instead of the now-removed *Engine.
-	var mediaCurator *scripts.MediaCurator
+	var mediaCurator *scriptdto.MediaCurator
 
 	// ── Harvest service ────────────────────────────────────────────────
 	var _ = artlistpkg.LoadPresets
@@ -108,7 +108,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		metaModel = mm
 	}
 	artlistFolder := cfg.Drive.ArtlistFolder()
-	clipServices := scripts.ClipServices{
+	clipServices := usecase.ClipServices{
 		Logger:        log,
 		DriveSvc:      root.Drive.DriveUploader,
 		Translator:    gen,
@@ -135,11 +135,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Use cases ──────────────────────────────────────────────────────
-	sectionRegen := scripts.NewSectionRegenerator(
+	sectionRegen := usecase.NewSectionRegenerator(
 		scriptsRepoAdapter, gen,
 		root.Drive.DocClient, cfg, log,
 	)
-	cacheEvictionUC := scripts.NewCacheEvictionUseCase(
+	cacheEvictionUC := usecase.NewCacheEvictionUseCase(
 		gen, memorySvc, log,
 	)
 
@@ -152,7 +152,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Normalization config: extracted from the platform config so the
 	// normalizer has zero import on internal/platform/config.
-	normCfg := scripts.NormalizationConfig{
+	normCfg := adapters.NormalizationConfig{
 		DefaultLanguage:          cfg.Scripts.DefaultLanguage,
 		DefaultTone:              cfg.Scripts.DefaultTone,
 		DefaultDurationSeconds:   cfg.Scripts.DefaultDurationSeconds,
@@ -168,40 +168,40 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// Source registry: one resolver per source type.
-	sourceReg := scripts.NewSourceRegistry(log)
-	sourceReg.Register(scriptpkg.SourceText, scripts.NewTextSourceResolver())
+	sourceReg := adapters.NewSourceRegistry(log)
+	sourceReg.Register(scriptpkg.SourceText, adapters.NewTextSourceResolver())
 
 	if clipSourceBuilder != nil {
-		sourceReg.Register(scriptpkg.SourceClips, scripts.NewClipsSourceResolver(clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceClips, adapters.NewClipsSourceResolver(clipSourceBuilder, log))
 	}
 
 	// Catalog resolver: reuse searchCatalogAdapter (assets_adapters.go)
 	// to bridge *catalog.Repository → appsearch.LocalCatalogPort.
 	if root.Repos.CatalogRepo != nil && clipSourceBuilder != nil {
 		catAdapter := &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}
-		sourceReg.Register(scriptpkg.SourceCatalog, scripts.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceCatalog, adapters.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
 	}
 
 	// Search resolver: wired via semanticSearchAdapter bridging
-	// root.Domains.RealtimeSearch (scripts.RealtimeSearchService)
-	// to scripts.SemanticSearchPort. SourceSearch sources now
+	// root.Domains.RealtimeSearch (usecase.RealtimeSearchService)
+	// to scriptports.SemanticSearchPort. SourceSearch sources now
 	// resolve through Qdrant semantic search.
 	if root.Domains.RealtimeSearch != nil && clipSourceBuilder != nil {
 		searchAdapter := &semanticSearchAdapter{realtime: root.Domains.RealtimeSearch}
-		sourceReg.Register(scriptpkg.SourceSearch, scripts.NewSearchSourceResolver(searchAdapter, clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceSearch, adapters.NewSearchSourceResolver(searchAdapter, clipSourceBuilder, log))
 	}
 
 	// Curate resolver (PR E, June 2026): extracted from MediaCurator.
-	var curateResolver *scripts.CurateSourceResolver
+	var curateResolver *adapters.CurateSourceResolver
 	if clipSourceBuilder != nil {
-		curateResolver = scripts.NewCurateSourceResolver(clipSourceBuilder, log)
+		curateResolver = adapters.NewCurateSourceResolver(clipSourceBuilder, log)
 		sourceReg.Register(scriptpkg.SourceCurate, curateResolver)
 	}
 
 	// Wire ClipSearchPort when Qdrant is enabled (PJ-CURATE-1, June 2026).
 	// Ollama client serves as the embedder via qdrant.NewTextEmbedderAdapter.
 	// Constructed once and shared between CurateSourceResolver and MediaCurator.
-	var clipSearchPort scripts.ClipSearchPort
+	var clipSearchPort scriptports.ClipSearchPort
 	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
 		if ollamaClient := gen.GetClient(); ollamaClient != nil {
 			embedder := qdrant.NewTextEmbedderAdapter(ollamaClient)
@@ -216,17 +216,17 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// PostProcessorRegistry: individually-testable postprocessors
 	// registered at composition time and frozen before use.
 	// Replaces the monolithic Pipeline.Run.
-	ppReg := scripts.NewPostProcessorRegistry(log)
+	ppReg := adapters.NewPostProcessorRegistry(log)
 
 	// Entities + Metadata: deferred — PostGenFunc callback not wired.
 	// When a plan requests these, the registry warns "not registered"
 	// and skips cleanly. PR 8 wires the callback.
 
 	// Document processor.
-	var genDocsSvc *scripts.DocumentsService
+	var genDocsSvc *usecase.DocumentsService
 	if root.Drive.DocClient != nil {
-		genDocsSvc = scripts.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
-		if !ppReg.Register(scripts.NewDocumentProcessor(genDocsSvc, nil)) {
+		genDocsSvc = usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
+		if !ppReg.Register(adapters.NewDocumentProcessor(genDocsSvc, nil)) {
 			return fmt.Errorf("wireScriptFlow: failed to register document processor (composition bug)")
 		}
 	}
@@ -234,22 +234,22 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// Persistence processor (PR 5: now the single persistence owner;
 	// engine no longer writes to SQLite. Constructor takes the
 	// logger for idempotency-hit / replay diagnostics).
-	if !ppReg.Register(scripts.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
+	if !ppReg.Register(adapters.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
 		return fmt.Errorf("wireScriptFlow: failed to register persistence processor (composition bug or duplicate name)")
 	}
 
-	// Image processor — adapted from *imgservice.Service to scripts.ImageGenService.
+	// Image processor — adapted from *imgservice.Service to usecase.ImageGenService.
 	if root.Domains.ImageService != nil {
 		imgAdapter := &imageGenSvcAdapter{svc: root.Domains.ImageService}
-		if !ppReg.Register(scripts.NewImageProcessor(imgAdapter, log)) {
+		if !ppReg.Register(adapters.NewImageProcessor(imgAdapter, log)) {
 			return fmt.Errorf("wireScriptFlow: failed to register image processor")
 		}
 	}
 
-	// Voiceover processor — adapted from *voiceover.Service to scripts.VoiceoverService.
+	// Voiceover processor — adapted from *voiceover.Service to usecase.VoiceoverService.
 	if root.Domains.VoiceoverService != nil {
 		voAdapter := &voiceoverSvcAdapter{svc: root.Domains.VoiceoverService}
-		if !ppReg.Register(scripts.NewVoiceoverProcessor(voAdapter, log)) {
+		if !ppReg.Register(adapters.NewVoiceoverProcessor(voAdapter, log)) {
 			return fmt.Errorf("wireScriptFlow: failed to register voiceover processor")
 		}
 	}
@@ -268,12 +268,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// fixture. Production deploys should provide a real
 	// EntityScriptExtractor and ollama.Generator via root points
 	// (future PR; tracked separately).
-	entityAdapter := scripts.NewEntityExtractionAdapter(nil)
-	if !ppReg.Register(scripts.NewEntitiesProcessor(entityAdapter)) {
+	entityAdapter := adapters.NewEntityExtractionAdapter(nil)
+	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
 		return fmt.Errorf("wireScriptFlow: failed to register entities processor")
 	}
-	metadataAdapter := scripts.NewMetadataGenerationAdapter(nil, metaModel)
-	if !ppReg.Register(scripts.NewMetadataProcessor(metadataAdapter)) {
+	metadataAdapter := adapters.NewMetadataGenerationAdapter(nil, metaModel)
+	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
 		return fmt.Errorf("wireScriptFlow: failed to register metadata processor")
 	}
 
@@ -293,18 +293,18 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// Use cases: one → many → job handler.
-	oneUC := scripts.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
-	manyUC := scripts.NewGenerateManyUseCase(oneUC, log)
+	oneUC := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	manyUC := usecase.NewGenerateManyUseCase(oneUC, log)
 
 	// ── Media curator ───────────────────────────────────────────────
 	if root.Repos.ClipsRepo != nil && engine != nil {
-		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, log)
+		mediaCurator = scriptdto.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, log)
 		if clipSearchPort != nil {
 			mediaCurator.SetClipSearchPort(clipSearchPort)
 		}
 	}
 
-	genJobHandler := scripts.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
+	genJobHandler := usecase.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
 	if root.Jobs.Service != nil {
 		if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
 			log.Warn("wireScriptFlow: failed to register script.generate job handler", zap.Error(err))
@@ -325,8 +325,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		CacheEviction: cacheEvictionUC,
 		Image:         root.Domains.ImageService,
 		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
-		// typed ports — `scripts.RealtimeSearchService` and
-		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +
+		// typed ports — `usecase.RealtimeSearchService` and
+		// `usecase.AssocSearchService`. DomainBundle.RealtimeSearch +
 		// AssocService fields (typed in Wave 15 Onda 3) feed them
 		// directly — typed-to-typed assignment, no auto-bridge.
 		Realtime:              root.Domains.RealtimeSearch,
@@ -400,7 +400,7 @@ var requiredProcessorNames = []string{
 // (where composition would silently skip a Register call when the
 // underlying dep was nil, then runtime would silently skip the
 // postprocessor — leaving the script row unwritten).
-func validateRequiredProcessors(ppReg *scripts.PostProcessorRegistry, required []string) *scriptpkg.PlanInvalidError {
+func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required []string) *scriptpkg.PlanInvalidError {
 	if ppReg == nil {
 		return &scriptpkg.PlanInvalidError{
 			ItemID:  "wireScriptFlow",
@@ -417,7 +417,7 @@ func validateRequiredProcessors(ppReg *scripts.PostProcessorRegistry, required [
 	for _, name := range required {
 		if !ppReg.Registered(name) {
 			missing = append(missing, name)
-		} else if ppReg.LookupPolicy(name) != scripts.ProcessorRequired {
+		} else if ppReg.LookupPolicy(name) != adapters.ProcessorRequired {
 			// Defensive: composition-side invariant. A name in the
 			// required list MUST have the ProcessorRequired
 			// classification. If a future PR flips a processor's
@@ -438,7 +438,7 @@ func validateRequiredProcessors(ppReg *scripts.PostProcessorRegistry, required [
 
 // ── Adapters ────────────────────────────────────────────────────────────────
 
-// imageGenSvcAdapter adapts *imgservice.Service → scripts.ImageGenService.
+// imageGenSvcAdapter adapts *imgservice.Service → usecase.ImageGenService.
 // The concrete SearchAndDownload takes tags []string; the interface takes
 // extra interface{}. We bridge the {extra} → tags conversion.
 type imageGenSvcAdapter struct {
@@ -464,9 +464,15 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, descr
 	return nil, fmt.Errorf("GenerateSmartImage not supported through ImageProcessor")
 }
 
+<<<<<<< Updated upstream
 // voiceoverSvcAdapter adapts *voiceover.Service → scripts.VoiceoverService.
 // The concrete Generate/GenerateWithDestination return *voiceover.VoiceoverResult;
 // the interface returns interface{}. We bridge the return-type conversion.
+=======
+// voiceoverSvcAdapter adapts *voiceover.Service → usecase.VoiceoverService.
+// The concrete Generate returns *voiceover.VoiceoverResult; the interface
+// returns interface{}. We bridge the return-type conversion.
+>>>>>>> Stashed changes
 type voiceoverSvcAdapter struct {
 	svc interface {
 		Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error)
@@ -481,6 +487,7 @@ func (a *voiceoverSvcAdapter) Generate(ctx context.Context, text, language, file
 	return a.svc.Generate(ctx, text, language, filename)
 }
 
+<<<<<<< Updated upstream
 func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (interface{}, error) {
 	if a == nil || a.svc == nil {
 		return nil, nil
@@ -489,8 +496,11 @@ func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text,
 }
 
 // semanticSearchAdapter adapts scripts.RealtimeSearchService → scripts.SemanticSearchPort.
+=======
+// semanticSearchAdapter adapts usecase.RealtimeSearchService → scriptports.SemanticSearchPort.
+>>>>>>> Stashed changes
 type semanticSearchAdapter struct {
-	realtime scripts.RealtimeSearchService
+	realtime usecase.RealtimeSearchService
 }
 
 // SearchByText delegates to RealtimeSearchService.SearchClips.
@@ -498,7 +508,7 @@ type semanticSearchAdapter struct {
 // SourceSpec carries no source/mediaType fields — the search
 // resolver matches across all sources and all media types.
 // Language is not used by the current realtime implementation.
-func (a *semanticSearchAdapter) SearchByText(ctx context.Context, query string, limit int, language string) ([]scripts.SemanticSearchResult, error) {
+func (a *semanticSearchAdapter) SearchByText(ctx context.Context, query string, limit int, language string) ([]scriptports.SemanticSearchResult, error) {
 	if a == nil || a.realtime == nil {
 		return nil, nil
 	}
@@ -507,9 +517,9 @@ func (a *semanticSearchAdapter) SearchByText(ctx context.Context, query string, 
 	if err != nil {
 		return nil, err
 	}
-	results := make([]scripts.SemanticSearchResult, 0, len(matches))
+	results := make([]scriptports.SemanticSearchResult, 0, len(matches))
 	for _, m := range matches {
-		results = append(results, scripts.SemanticSearchResult{
+		results = append(results, scriptports.SemanticSearchResult{
 			ClipID: m.ID,
 			Name:   m.Name,
 			Score:  m.Score,
@@ -541,7 +551,7 @@ func (d *docCreatorImpl) CreateDoc(ctx context.Context, title, content, folderID
 	if d == nil || d.docClient == nil {
 		return "", ""
 	}
-	docsSvc := scripts.NewDocumentsService(d.docClient, d.log, d.driveFolderID)
+	docsSvc := usecase.NewDocumentsService(d.docClient, d.log, d.driveFolderID)
 	resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
 		return input, nil // raw ID assumed (caller resolved beforehand)
 	}

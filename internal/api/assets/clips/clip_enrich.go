@@ -82,8 +82,8 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 		Type: jobservice.TypeMediaEnrich,
 		Payload: map[string]any{
-			"asset_id":      req.AssetID,
-			"source":        req.Source,
+			"asset_id":       req.AssetID,
+			"source":         req.Source,
 			"skip_embed_gen": req.SkipEmbedGen,
 		},
 		ActiveKey: "enrich_clip_" + req.AssetID,

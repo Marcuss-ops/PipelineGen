@@ -44,13 +44,13 @@
 //
 // Reading the file:
 //   - AssetMutationPrimitives   : 1-method narrowed surface for test
-//                                 stubs and any composition-root port
-//                                 that needs UpsertClip specifically.
+//     stubs and any composition-root port
+//     that needs UpsertClip specifically.
 //   - ErrUnavailable            : sentinel for "primitives not wired"
-//                                 (errors.Is compatible with the
-//                                 artlist.ErrAssetMutationDispatcherUnavailable
-//                                 so the same diagnostic phrasing reads
-//                                 across packages).
+//     (errors.Is compatible with the
+//     artlist.ErrAssetMutationDispatcherUnavailable
+//     so the same diagnostic phrasing reads
+//     across packages).
 package mutations
 
 import (
@@ -87,15 +87,16 @@ var ErrUnavailable = errors.New("mutations: asset mutation primitives unavailabl
 //   - internal/application/assets/providers/artlist/service_test.go:
 //     `repo.UpsertClip(context.Background(), clip)` — explicit allowlist
 //     note in the test fixture.
+//
 //   - internal/application/assets/providers/artlist/dispatcher_stub_test.go:
 //     the stub's `EnqueueAndIndex` delegates to `s.repo.UpsertClip` to
 //     mirror production semantics.
 //
 //   - UpsertClip(ctx, clip) : upsert via the OUT-OF-OUTBOX low-level Save()
-//                             path. Production callers MUST go through
-//                             dispatcher.EnqueueAndIndex instead, which
-//                             performs the same upsert AND emits the
-//                             matching outbox_event in a single tx.
+//     path. Production callers MUST go through
+//     dispatcher.EnqueueAndIndex instead, which
+//     performs the same upsert AND emits the
+//     matching outbox_event in a single tx.
 type AssetMutationPrimitives interface {
 	UpsertClip(ctx context.Context, clip *asset.Asset) error
 }

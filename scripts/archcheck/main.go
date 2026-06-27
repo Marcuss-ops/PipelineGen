@@ -609,7 +609,7 @@ var databaseSQLLegacyBaseline = []string{
 	"internal/application/jobs/outbox/registry.go",
 	"internal/application/jobs/service_test.go",
 	"internal/application/scripts/batch_persistence_test.go",
-	"internal/application/scripts/gemmamemory/gemmamemory.go",
+	"internal/application/scripts/gemmamemory/adapters.go",
 	"internal/application/scripts/gemmamemory/stub_test.go",
 	"internal/application/voiceover/groups_resolver_test.go",
 	"internal/application/voiceover/service.go",

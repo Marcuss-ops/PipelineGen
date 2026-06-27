@@ -72,7 +72,7 @@ func NewBackendRegistry() *BackendRegistry {
 
 // Register adds a backend under its Name(). Returns:
 //   - ErrNilBackend        if b is the zero SearchBackend value, OR a
-//                          typed-nil pointer (Kind==Ptr && IsNil).
+//     typed-nil pointer (Kind==Ptr && IsNil).
 //   - ErrEmptyName         if b.Name() returns "" (checked pre-Lock).
 //   - ErrFrozen            if the registry is already frozen.
 //   - ErrAlreadyRegistered if a backend with the same Name exists.

@@ -14,7 +14,6 @@ import (
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -25,11 +24,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
@@ -37,7 +37,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -48,6 +47,7 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -139,12 +139,15 @@ type AssetsWiring struct {
 	// architecture/deprecations.yaml records
 	// PR-SEARCH-LEGACY-CLIPSSEARCH + PR-SEARCH-LEGACY-CROSSPROVIDER.
 	SearchAggregator *search.Aggregator
+<<<<<<< Updated upstream
 	// PR-2 (June 2026): the canonical SearchFanOut (decorator
 	// wrapping the canonical Aggregator). Exposed via this
 	// wiring handle so other consumers (diagnostics + future
 	// Health probes) read the SHARED instance rather than
 	// constructing a parallel one. == bundle.SearchFanOut alias.
 	SearchFanOut search.SearchFanOut
+=======
+>>>>>>> Stashed changes
 }
 
 // WireAssets creates the unified Assets handler and module.
@@ -298,6 +301,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// by the Aggregator's 4-key dedup + ranking pipeline.
 
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
+<<<<<<< Updated upstream
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
 		ClipsRepo:      bundle.ClipsRepo,
@@ -324,9 +328,31 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		MutationsDispatcher: mutationsDisp,
 		EnrichUC:      enrichUC,
 		SearchSvc:      searchAggregator,
+=======
+		SourceResolver:   artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
+		AssetRepo:        assetRepo,
+		ClipsRepo:        bundle.ClipsRepo,
+		StockRepo:        bundle.ClipsRepo,
+		ArtlistRepo:      bundle.ClipsRepo,
+		DeletionSvc:      deletionSvc,
+		DriveUploader:    driveUploader,
+		MediaProcessor:   bundle.MediaProcessor,
+		AssetTreeSvc:     bundle.AssetTreeService,
+		MetaWriter:       metaWriter,
+		ClipIndexer:      bundle.ClipIndexerService,
+		JobsSvc:          jobs.Facade,
+		Cfg:              cfg,
+		Log:              log,
+		VoiceoverRepo:    bundle.VoiceoverRepo,
+		ImagesRepo:       bundle.ImageRepo,
+		FolderMemSvc:     folderMemSvc,
+		ProcessRunner:    processRunnerAdapter,
+		Dispatcher:       clipsDispatcherPort,
+		EnrichUC:         enrichUC,
+		SearchSvc:        searchAggregator,
+>>>>>>> Stashed changes
 		BulkUploadWorker: bulkUploadWorker,
-		ClipOpsService: clipOpsSvc,
-
+		ClipOpsService:   clipOpsSvc,
 	}, idemHandler)
 
 	var drivePort appstorage.DrivePort

@@ -118,7 +118,7 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 // EnrichMediaRequest contains the input for the EnrichMedia endpoint.
 // SkipQdrant was removed from this flow.
 // SkipEmbedGen is preserved for callers that want to skip the embedding
-//-generation leg altogether (the indexer now handles the whole pipeline).
+// -generation leg altogether (the indexer now handles the whole pipeline).
 type EnrichMediaRequest struct {
 	AssetID      string `json:"asset_id"`
 	Source       string `json:"source"`
@@ -163,14 +163,14 @@ type ClipFinder interface {
 //
 // Behaviour table:
 //
-//   ┌───────────────────────┬──────────────────────────────────────┐
-//   │ Deps wired            │ Result.Action                        │
-//   ├───────────────────────┼──────────────────────────────────────┤
-//   │ JobsSvc + clipIndexer │ "deprecated_use_route_POST_media_enrich"
-//   │ JobsSvc only          │ "deprecated_use_route_POST_media_enrich"
-//   │ clipIndexer only      │ "deprecated_use_route_POST_reindex"
-//   │ neither               │ "no_pipeline_available"              │
-//   └───────────────────────┴──────────────────────────────────────┘
+//	┌───────────────────────┬──────────────────────────────────────┐
+//	│ Deps wired            │ Result.Action                        │
+//	├───────────────────────┼──────────────────────────────────────┤
+//	│ JobsSvc + clipIndexer │ "deprecated_use_route_POST_media_enrich"
+//	│ JobsSvc only          │ "deprecated_use_route_POST_media_enrich"
+//	│ clipIndexer only      │ "deprecated_use_route_POST_reindex"
+//	│ neither               │ "no_pipeline_available"              │
+//	└───────────────────────┴──────────────────────────────────────┘
 //
 // Returning text in `Action`/`Message` rather than an error keeps
 // the legacy signature compatible: tests that assert
