@@ -6,66 +6,45 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+
 	"go.uber.org/zap"
 )
 
-// HandleJob processes a voiceover job from the queue.
-// It dispatches to the correct method based on the job type:
-//   - voiceover.batch → GenerateBatch
-//   - voiceover.promo → GeneratePromo
+// HandleJob processes a voiceover.generate job from the queue.
+//
+// PR 3 (June 2026): voiceover.batch and voiceover.promo have been
+// removed from the registry. All voiceover generation now flows
+// through a single typed job type with a domain.GenerateVoiceoverCommand
+// payload — no more PayloadMap() indirection.
 func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("processing voiceover job",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type))
 
-	switch job.Type {
-	case appjobs.TypeVoiceoverPromo:
-		return s.handlePromoJob(ctx, job)
-	default:
-		return s.handleBatchJob(ctx, job)
-	}
-}
-
-func (s *Service) handleBatchJob(ctx context.Context, job *appjobs.Job) (map[string]any, error) {
-	var req BatchRequest
-	if err := json.Unmarshal(job.Payload, &req); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal batch payload: %w", err)
+	var cmd domain.GenerateVoiceoverCommand
+	if err := json.Unmarshal(job.Payload, &cmd); err != nil {
+		return nil, fmt.Errorf("voiceover.generate: failed to unmarshal payload: %w", err)
 	}
 
-	resp, err := s.GenerateBatch(ctx, &req)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("voiceover.generate: invalid command: %w", err)
+	}
+
+	uc := s.UseCase()
+	if uc == nil {
+		return nil, fmt.Errorf("voiceover.generate: use case not initialised")
+	}
+
+	result, err := uc.Execute(ctx, cmd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate batch voiceover: %w", err)
+		return nil, fmt.Errorf("voiceover.generate: execution failed: %w", err)
 	}
 
-	resultJSON, _ := json.Marshal(resp)
-	var result map[string]any
-	json.Unmarshal(resultJSON, &result)
+	// Serialise the typed result for the job store.
+	resultJSON, _ := json.Marshal(result)
+	var resultMap map[string]any
+	_ = json.Unmarshal(resultJSON, &resultMap)
 
-	if !resp.OK {
-		return result, fmt.Errorf("some batch items failed")
-	}
-
-	return result, nil
-}
-
-func (s *Service) handlePromoJob(ctx context.Context, job *appjobs.Job) (map[string]any, error) {
-	var req PromoRequest
-	if err := json.Unmarshal(job.Payload, &req); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal promo payload: %w", err)
-	}
-
-	resp, err := s.GeneratePromo(ctx, &req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate promo voiceover: %w", err)
-	}
-
-	resultJSON, _ := json.Marshal(resp)
-	var result map[string]any
-	json.Unmarshal(resultJSON, &result)
-
-	if !resp.OK {
-		return result, fmt.Errorf("some promo items failed")
-	}
-
-	return result, nil
+	return resultMap, nil
 }

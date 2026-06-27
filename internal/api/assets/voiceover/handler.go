@@ -13,7 +13,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -90,27 +92,23 @@ func (h *Handler) Generate(c *gin.Context) {
 		req.Language = "it"
 	}
 
-	// If async is requested, enqueue as a batch job with 1 item.
-	// fix/voiceover-sync-async-strategy (June 2026): async must set
-	// Strategy="replace" to match sync + /generate-with-group; otherwise
-	// normalizeBatchRequest defaults to "verify" and produces a duplicate.
+	// If async is requested, enqueue a typed voiceover.generate job.
+	// PR 3 (June 2026): payload is the canonical domain command,
+	// not a PayloadMap().
 	if req.Async {
 		h.log.Info("enqueuing voiceover generation (async)",
 			zap.String("language", req.Language),
 			zap.Bool("async", req.Async))
 
-		batchReq := voiceover.BatchRequest{
-			Text:      req.Text,
-			Languages: []string{req.Language},
-			Strategy:  "replace",
-		}
-		if req.Filename != "" {
-			batchReq.FilenameTemplate = req.Filename
+		cmd := domain.GenerateVoiceoverCommand{
+			Text:            req.Text,
+			Locale:          domain.Locale(req.Language),
+			ForceRegenerate: true,
 		}
 
 		if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-			Type:    "voiceover.batch",
-			Payload: batchReq.PayloadMap(),
+			Type:    appjobs.TypeVoiceoverGenerate,
+			Payload: cmd,
 		}, "Voiceover generation enqueued."); ok {
 			return
 		}
@@ -153,13 +151,38 @@ func (h *Handler) Batch(c *gin.Context) {
 		zap.Int("languages", len(req.Languages)),
 		zap.Strings("languages", req.Languages))
 
-	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type:    "voiceover.batch",
-		Payload: req.PayloadMap(),
-	}, "Voiceover batch enqueued."); ok {
-		return
+	// PR 3: enqueue one typed voiceover.generate job per language.
+	// Use Enqueue directly (not EnqueueAsync) to avoid the loop
+	// writing multiple HTTP responses.
+	forceRegenerate := req.Strategy == "replace"
+	jobIDs := make([]string, 0, len(req.Languages))
+	for _, lang := range req.Languages {
+		cmd := domain.GenerateVoiceoverCommand{
+			Text:            req.Text,
+			Locale:          domain.Locale(lang),
+			ForceRegenerate: forceRegenerate,
+		}
+		if req.Destination != nil && req.Destination.FolderID != "" {
+			cmd.Destination = domain.DestinationRef{FolderID: req.Destination.FolderID}
+		}
+		enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+			Type:    appjobs.TypeVoiceoverGenerate,
+			Payload: cmd,
+		})
+		if err != nil {
+			h.log.Warn("batch enqueue failed for language",
+				zap.String("language", lang), zap.Error(err))
+			continue
+		}
+		jobIDs = append(jobIDs, enqueued.ID)
 	}
-	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
+
+	apiutil.OK(c, gin.H{
+		"ok":       true,
+		"enqueued": len(jobIDs),
+		"total":    len(req.Languages),
+		"job_ids":  jobIDs,
+	})
 }
 
 // Promo generates promotional voiceovers in multiple languages.
@@ -192,19 +215,15 @@ func (h *Handler) Promo(c *gin.Context) {
 		return
 	}
 
-	// Async: enqueue as a persistent job (no fire-and-forget)
-	langCount := len(req.Languages)
-	if langCount == 0 {
-		langCount = len(voiceover.DefaultPromoLanguages())
-	}
-
-	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type:    "voiceover.promo",
-		Payload: req.PayloadMap(),
-	}, fmt.Sprintf("Promo voiceover enqueued (%d languages).", langCount)); ok {
+	// PR 3: voiceover.promo removed from registry. Non-dry-run promo
+	// requests execute synchronously via GeneratePromo (which handles
+	// translation + voiceover generation per language).
+	resp, err := h.service.GeneratePromo(c.Request.Context(), &req)
+	if err != nil {
+		apiutil.InternalError(c, err)
 		return
 	}
-	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
+	apiutil.OK(c, resp)
 }
 
 // ListGroups lists the canonical topic→folder_id mapping under the voiceover root.
@@ -300,22 +319,20 @@ func (h *Handler) GenerateWithGroup(c *gin.Context) {
 	}
 
 	if req.Async {
-		batchReq := voiceover.BatchRequest{
-			Text:      req.Text,
-			Languages: []string{req.Language},
-			Strategy:  "replace",
-			Destination: &voiceover.DestinationRequest{
-				FolderID: group.FolderID,
-			},
-			Metadata: map[string]any{"voiceover_group": req.VoiceoverGroup},
-		}
 		if req.Filename != "" {
-			batchReq.FilenameTemplate = req.Filename
+			_ = req.Filename // PR 3: filename is server-generated from the command
+		}
+
+		cmd := domain.GenerateVoiceoverCommand{
+			Text:            req.Text,
+			Locale:          domain.Locale(req.Language),
+			ForceRegenerate: true,
+			Destination:     domain.DestinationRef{FolderID: group.FolderID},
 		}
 
 		if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-			Type:    "voiceover.batch",
-			Payload: batchReq.PayloadMap(),
+			Type:    appjobs.TypeVoiceoverGenerate,
+			Payload: cmd,
 		}, "Voiceover generation enqueued."); ok {
 			return
 		}

@@ -145,6 +145,7 @@ const (
 	TypeMediaExtract          = "media.extract"
 	TypeMediaStock            = "media.stock"
 	TypeVoiceoverBatch        = "voiceover.batch"
+	TypeVoiceoverGenerate     = "voiceover.generate"
 	TypeSubtitleGenerate      = "subtitle.generate"
 	TypeRenderVideo           = "render.video"
 	TypeYouTubeUpload         = "youtube.upload"
@@ -195,8 +196,7 @@ func Compose() *Registry {
 	r.Register(RegistryEntry{Type: TypeYouTubeRebuildST, Description: "Rebuild YouTube search text", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── Voiceover / subtitles ──
-	r.Register(RegistryEntry{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(RegistryEntry{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(RegistryEntry{Type: TypeVoiceoverGenerate, Description: "Voiceover generation (typed GenerateVoiceoverCommand payload)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(RegistryEntry{Type: TypeSubtitleGenerate, Description: "Subtitle generation", Timeout: 10 * time.Minute, DefaultMaxRetries: 2})
 
 	// ── Catalog / sync ──

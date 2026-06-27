@@ -124,13 +124,12 @@ func NewService(
 	return svc
 }
 
-// RegisterHandler registers this service as a handler for voiceover jobs
-// (both batch and promo).
+// RegisterHandler registers this service as the handler for
+// voiceover.generate jobs (PR 3: voiceover.batch and voiceover.promo removed).
 func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverBatch, s.HandleJob)
-		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverPromo, s.HandleJob)
-		s.log.Info("registered voiceover job handlers (batch + promo)")
+		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerate, s.HandleJob)
+		s.log.Info("registered voiceover.generate job handler")
 	}
 }
 

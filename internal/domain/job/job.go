@@ -60,6 +60,7 @@ const (
 	TypeMediaExtract           = "media.extract"
 	TypeMediaStock             = "media.stock"
 	TypeVoiceoverBatch         = "voiceover.batch"
+	TypeVoiceoverGenerate      = "voiceover.generate"
 	TypeSubtitleGenerate       = "subtitle.generate"
 	TypeRenderVideo            = "render.video"
 	TypeYouTubeUpload          = "youtube.upload"
@@ -85,9 +86,9 @@ const (
 	// per batch. Resume is achieved by re-enqueueing with the same
 	// ActiveKey (FindActiveByKey filter excludes terminal jobs).
 	TypeAssetsCleanup = "assets.cleanup"
-	// Main-branch constants recovered after rebase (June 2026): the
-	// W14 manifest cutover on codex dropped these from domain/job
-	// but registry.go still references them.
+	// PR 3 (June 2026): voiceover.generate is the canonical typed job
+	// for voiceover generation. It replaces voiceover.batch and
+	// voiceover.promo which are now removed from the registry.
 	TypeMediaEnrich    = "media.enrich"
 	TypeVoiceoverPromo = "voiceover.promo"
 )
