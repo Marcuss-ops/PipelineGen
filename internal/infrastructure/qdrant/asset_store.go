@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // SQLiteAssetStore implements AssetStore backed by the media_assets table.
@@ -59,8 +60,8 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 			start_time, end_time,
 			duration_ms,
 			workspace_id, channel_id, license,
-		source_version,
-		created_at, updated_at, deleted_at
+			source_version,
+			created_at, updated_at, deleted_at
 		FROM media_assets
 		WHERE id = ?
 	`, assetID).Scan(
@@ -191,4 +192,121 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// ListAssetsForReconcile returns the minimum asset payload needed by the
+// admin-side `cmd/admin/reconcile_qdrant.go` reconcile dry-run.
+//
+// TODO 2 close-out (June 2026): replaces the QDRANT-005 placeholder
+// stub with a real SELECT against media_assets.
+//
+// Selection rules:
+//   - includeLifecycleStates empty → every row with lifecycle_state not
+//     equal to 'DELETED' AND media_type != 'folder' (folder rows are
+//     tree metadata, not Qdrant-indexed assets; including them would
+//     produce spurious missing-classifications).
+//   - includeLifecycleStates non-empty → exact match via IN (?, ?, ...)
+//     on lifecycle_state, also excluding folders.
+//
+// Output: id, workspace_id, lifecycle_state (COALESCE → 'ACTIVE' when
+// empty), file_hash, metadata_json, content_hash (JSON_EXTRACT with
+// file_hash fallback). ORDER BY id ASC for deterministic diffs.
+//
+// SQL composition holds the canonical placeholder invariant: user-supplied
+// states pass through QueryContext args only; the IN-list placeholder
+// string is built from a fixed `?,?,...` alphabet via strings.Join.
+func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLifecycleStates []string) ([]AssetData, error) {
+	const selectCols = `
+		SELECT
+			id,
+			COALESCE(workspace_id, ''),
+			COALESCE(NULLIF(lifecycle_state, ''), 'ACTIVE'),
+			COALESCE(file_hash, ''),
+			COALESCE(metadata_json, '{}'),
+			COALESCE(JSON_EXTRACT(metadata_json, '$.content_hash'), file_hash, '')
+		FROM media_assets
+	`
+
+	const baseFilter = `media_type != 'folder'`
+
+	var (
+		query string
+		args  []any
+	)
+	if len(includeLifecycleStates) == 0 {
+		query = selectCols + " WHERE " + baseFilter + `
+			  AND (lifecycle_state IS NULL OR lifecycle_state = '' OR lifecycle_state != 'DELETED')
+			ORDER BY id ASC
+		`
+	} else {
+		placeholders := make([]string, len(includeLifecycleStates))
+		for i, st := range includeLifecycleStates {
+			placeholders[i] = "?"
+			args = append(args, st)
+		}
+		query = fmt.Sprintf(selectCols+`
+			WHERE %s AND lifecycle_state IN (%s)
+			ORDER BY id ASC
+		`, baseFilter, strings.Join(placeholders, ","))
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list assets for reconcile: %w", err)
+	}
+	defer rows.Close()
+
+	var out []AssetData
+	for rows.Next() {
+		var (
+			a           AssetData
+			workspaceID string
+			lifecycle   string
+			fileHash    string
+			metaJSON    string
+			contentHash string
+		)
+		if err := rows.Scan(
+			&a.ID,
+			&workspaceID,
+			&lifecycle,
+			&fileHash,
+			&metaJSON,
+			&contentHash,
+		); err != nil {
+			return nil, fmt.Errorf("scan reconcile row %q: %w", a.ID, err)
+		}
+		a.WorkspaceID = workspaceID
+		a.LifecycleState = lifecycle
+		a.ContentHash = contentHash
+		a.MetadataJSON = metaJSON
+		// Best-effort metadata map hydration. When the column carries a
+		// non-empty JSON object we hydrate the in-memory map so callers
+		// (cmd/admin/reconcile_qdrant.go::reconcileReaderAdapter) can
+		// read content_hash overrides without re-parsing metadata_json.
+		// file_hash is mirrored into Metadata["file_hash"] only when not
+		// already set by JSON (older rows used file_hash as the canonical
+		// fingerprint pre-migration 059).
+		switch {
+		case metaJSON != "" && metaJSON != "{}":
+			var m map[string]interface{}
+			if jerr := json.Unmarshal([]byte(metaJSON), &m); jerr == nil && m != nil {
+				a.Metadata = m
+				if fileHash != "" {
+					if _, alreadySet := a.Metadata["file_hash"]; !alreadySet {
+						a.Metadata["file_hash"] = fileHash
+					}
+				}
+			} else if fileHash != "" {
+				a.Metadata = map[string]interface{}{"file_hash": fileHash}
+			}
+		case fileHash != "":
+			a.Metadata = map[string]interface{}{"file_hash": fileHash}
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate reconcile rows: %w", err)
+	}
+	return out, nil
 }
