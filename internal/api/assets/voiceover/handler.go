@@ -90,7 +90,14 @@ func (h *Handler) Generate(c *gin.Context) {
 		req.Language = "it"
 	}
 
-	// If async is requested, enqueue as a batch job with 1 item
+	// If async is requested, enqueue as a batch job with 1 item.
+	// fix/voiceover-sync-async-strategy (June 2026): set
+	// Strategy="replace" to mirror the sync path (and the
+	// /generate-with-group async branch). Without this, two
+	// identical async /generate calls would default to "verify"
+	// via normalizeBatchRequest and produce a duplicate file
+	// instead of replacing the previous one. The contract is
+	// pinned at types_test.go::TestBatchRequest_StrategyReplace_Roundtrip.
 	if req.Async {
 		h.log.Info("enqueuing voiceover generation (async)",
 			zap.String("language", req.Language),
@@ -99,6 +106,7 @@ func (h *Handler) Generate(c *gin.Context) {
 		batchReq := voiceover.BatchRequest{
 			Text:      req.Text,
 			Languages: []string{req.Language},
+			Strategy:  "replace",
 		}
 		if req.Filename != "" {
 			batchReq.FilenameTemplate = req.Filename
