@@ -73,7 +73,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 			duration_ms,
 			workspace_id, channel_id, license,
 		source_version,
-			created_at, updated_at, deleted_at
+		created_at, updated_at, deleted_at
 		FROM media_assets
 		WHERE id = ?
 	`, assetID).Scan(
@@ -210,13 +210,68 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 	return ids, rows.Err()
 }
 
-// ListAssetsForReconcile returns the minimum asset payload needed by the admin-side
-// `cmd/admin/reconcile_qdrant.go` reconcile dry-run. Originally stubbed at QDRANT-005
-// closure with (nil, nil) — this made the caller silently produce empty reconcile
-// output. Replaced here (June 2026) with an explicit not-implemented error so a
-// misconfigured reconciler fails LOUDLY rather than pretending to reconcile 0
-// assets. Wire a real SELECT against media_assets (filtered by includeLifecycleStates)
-// BEFORE enabling production reconcile jobs.
+// ListAssetsForReconcile returns the minimum asset payload needed by the
+// admin-side `cmd/admin/reconcile_qdrant.go` reconcile dry-run.
+//
+// Implements the SQL scan (June 2026 follow-up to TODO 16, QDRANT-005
+// closure): selects id + workspace_id + lifecycle_state (with a
+// COALESCE fallback through status and 'ACTIVE') + content_hash
+// (extracted from metadata_json) from media_assets. Filters out
+// folders and soft-deleted rows by default, and optionally
+// restricts to a set of lifecycle states supplied by the caller.
+// The reconciler service handles in-memory batching against Qdrant,
+// so this query is a full scan of the eligible rows ordered by id
+// for deterministic output.
 func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLifecycleStates []string) ([]AssetData, error) {
-	return nil, fmt.Errorf("ListAssetsForReconcile: wired as build-time placeholder only (QDRANT-005); reconcile jobs must implement the SQL scan before being enabled — requested lifecycleStates=%v", includeLifecycleStates)
+	query := `
+		SELECT
+			id,
+			COALESCE(workspace_id, ''),
+			COALESCE(NULLIF(lifecycle_state, ''), COALESCE(NULLIF(status, ''), 'ACTIVE')),
+			COALESCE(json_extract(metadata_json, '$.content_hash'), '')
+		FROM media_assets
+		WHERE media_type != 'folder'
+		  AND (deleted_at IS NULL OR deleted_at = '')
+	`
+
+	var args []any
+	if len(includeLifecycleStates) > 0 {
+		query += ` AND COALESCE(NULLIF(lifecycle_state, ''), COALESCE(NULLIF(status, ''), 'ACTIVE')) IN (`
+		for i, state := range includeLifecycleStates {
+			if i > 0 {
+				query += ", "
+			}
+			query += "?"
+			args = append(args, state)
+		}
+		query += `)`
+	}
+
+	query += ` ORDER BY id`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query media_assets for reconcile: %w", err)
+	}
+	defer rows.Close()
+
+	var out []AssetData
+	for rows.Next() {
+		var a AssetData
+		var wsID, contentHash sql.NullString
+		if err := rows.Scan(&a.ID, &wsID, &a.LifecycleState, &contentHash); err != nil {
+			return nil, fmt.Errorf("scan asset for reconcile: %w", err)
+		}
+		if wsID.Valid {
+			a.WorkspaceID = wsID.String
+		}
+		if contentHash.Valid {
+			a.ContentHash = contentHash.String
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate media_assets for reconcile: %w", err)
+	}
+	return out, nil
 }
