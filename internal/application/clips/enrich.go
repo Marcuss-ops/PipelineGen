@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -15,16 +17,16 @@ import (
 // The clip indexer is the canonical semantic-search backend now.
 type EnrichUseCase struct {
 	assetRepo   asset.Repository
-	clipIndexer ClipIndexerPort
-	metaWriter  ClipMetaWriterPort
+	clipIndexer *clipindexer.Service
+	metaWriter  *semantic.MetadataWriter
 	log         *zap.Logger
 }
 
 // NewEnrichUseCase constructs the use case.
 func NewEnrichUseCase(
 	repo asset.Repository,
-	indexer ClipIndexerPort,
-	mw ClipMetaWriterPort,
+	indexer *clipindexer.Service,
+	mw *semantic.MetadataWriter,
 	log *zap.Logger,
 ) *EnrichUseCase {
 	return &EnrichUseCase{
@@ -54,7 +56,7 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 			prompt = clip.Category + ": " + prompt
 		}
 
-		payload, _, err := uc.metaWriter.GeneratePayload(enrichCtx, ClipMetaWriteRequest{
+		payload, _, err := uc.metaWriter.GeneratePayload(enrichCtx, semantic.WriteRequest{
 			AssetID:   clip.ID,
 			AssetType: "clip",
 			MediaType: string(clip.MediaType),
@@ -117,7 +119,7 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 // EnrichMediaRequest contains the input for the EnrichMedia endpoint.
 // SkipQdrant was removed from this flow.
 // SkipEmbedGen is preserved for callers that want to skip the embedding
-// -generation leg altogether (the indexer now handles the whole pipeline).
+//-generation leg altogether (the indexer now handles the whole pipeline).
 type EnrichMediaRequest struct {
 	AssetID      string `json:"asset_id"`
 	Source       string `json:"source"`

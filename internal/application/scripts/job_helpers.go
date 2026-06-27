@@ -4,8 +4,6 @@ package scripts
 import (
 	"context"
 	"errors"
-	"fmt"
-	"html"
 	"strings"
 	"time"
 
@@ -16,9 +14,7 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ── Pipeline stage logger ───────────────────────────────────────────────────
-
-// StageLog wraps a pipeline phase with structured start/complete logs.
+// ── Pipeline stage logger
 func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 	t := time.Now()
 	log.Info("pipeline_stage_started",
@@ -32,31 +28,6 @@ func StageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 		}, extra...)
 		log.Info("pipeline_stage_completed", fields...)
 	}
-}
-
-// ── Scene counting helper ───────────────────────────────────────────────────
-
-// SceneCountWithKind counts how many ClipScenes have a matching Kind value.
-func SceneCountWithKind(scenes []ClipScene, kind string) int {
-	n := 0
-	for _, s := range scenes {
-		if s.Kind == kind {
-			n++
-		}
-	}
-	return n
-}
-
-// ── ClipSourcePathResult ────────────────────────────────────────────────────
-
-// ClipSourcePathResult is the result produced by a single script generation path.
-type ClipSourcePathResult struct {
-	WriteResult       *WriteScriptResult
-	ClipScenes        []ClipScene
-	SourceFingerprint string
-	SearchResults     []SearchResultInfo
-	NarrativePlan     *NarrativePlan
-	CurateTimings     CurateTimings
 }
 
 // ── buildVoiceoverDestination ────────────────────────────────────────────────
@@ -194,75 +165,6 @@ func GenerateSceneVoiceovers(
 	return successCount
 }
 
-// ── buildCurateDocContent ────────────────────────────────────────────────────
-
-// BuildCurateDocContent builds HTML content for a Google Doc from curate output.
-func BuildCurateDocContent(title string, clipScenes []ClipScene) string {
-	var b strings.Builder
-	b.WriteString("<html><head><style>")
-	b.WriteString("body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.4; margin: 20px; }")
-	b.WriteString("h1 { font-family: Arial, sans-serif; font-size: 16pt; font-weight: bold; }")
-	b.WriteString("h2 { font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; margin-top: 20px; }")
-	b.WriteString("p { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.6; margin: 10px 0; }")
-	b.WriteString(".scene-label { font-family: Arial, sans-serif; font-size: 10pt; color: #666; margin-top: 18px; margin-bottom: 2px; }")
-	b.WriteString(".scene-meta { font-family: Arial, sans-serif; font-size: 9pt; color: #444; font-style: italic; margin: 2px 0 4px 4px; }")
-	b.WriteString(".scene-preview { font-family: Arial, sans-serif; font-size: 9pt; color: #555; background: #f7f7f7; padding: 6px 10px; border-left: 3px solid #ccc; margin: 4px 0 6px 4px; }")
-	b.WriteString(".drive-link { font-family: Arial, sans-serif; font-size: 9pt; color: #1a73e8; margin: 4px 0 6px 4px; }")
-	b.WriteString("</style></head><body>")
-	b.WriteString("<h1>")
-	b.WriteString(html.EscapeString(title))
-	b.WriteString("</h1>")
-
-	for _, sc := range clipScenes {
-		words := countWords(sc.Text)
-		duration := approxReadingSeconds(words)
-
-		if sc.ClipID != "" {
-			b.WriteString(fmt.Sprintf(
-				"<p class=\"scene-label\">🎬 Scene %d — Clip: %s</p>",
-				sc.SceneIndex, html.EscapeString(sc.ClipID)))
-		} else {
-			label := "Intro"
-			if sc.SceneIndex > 1 {
-				if IsLikelyOutro(sc, clipScenes) {
-					label = "Outro"
-				} else {
-					label = "Transition"
-				}
-			}
-			fmt.Fprintf(&b, "<p class=\"scene-label\">📝 Scene %d — %s</p>", sc.SceneIndex, label)
-		}
-
-		b.WriteString(fmt.Sprintf(
-			"<p class=\"scene-meta\">~%d words · ~%ds read</p>",
-			words, duration))
-
-		if preview := firstSentencePreview(sc.Text, 140); preview != "" {
-			b.WriteString("<p class=\"scene-preview\">")
-			b.WriteString(html.EscapeString(preview))
-			b.WriteString("</p>")
-		}
-
-		if sc.ClipID != "" && sc.DriveLink != "" {
-			b.WriteString(fmt.Sprintf(
-				"<p class=\"drive-link\"><a href=\"%s\">Drive link</a></p>",
-				html.EscapeString(sc.DriveLink)))
-		}
-
-		for _, para := range strings.Split(sc.Text, "\n") {
-			para = strings.TrimSpace(para)
-			if para != "" {
-				b.WriteString("<p>")
-				b.WriteString(html.EscapeString(para))
-				b.WriteString("</p>")
-			}
-		}
-	}
-
-	b.WriteString("</body></html>")
-	return b.String()
-}
-
 // ── Text helpers ─────────────────────────────────────────────────────────────
 
 func countWords(text string) int {
@@ -274,61 +176,4 @@ func approxReadingSeconds(words int) int {
 		return 0
 	}
 	return max(1, (words*60)/150)
-}
-
-func firstSentencePreview(text string, maxChars int) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	// Strip narration/clip markers
-	text = textutil.StripNarrationMarkerRe.ReplaceAllString(text, "")
-	text = textutil.StripClipMarkerRe.ReplaceAllString(text, "")
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-
-	cutAt := -1
-	for _, sep := range []string{". ", "!\n", "?\n", ".\n"} {
-		if i := strings.Index(text, sep); i > 0 {
-			if cutAt < 0 || i < cutAt {
-				cutAt = i + len(sep)
-			}
-		}
-	}
-	preview := text
-	if cutAt > 0 {
-		preview = text[:cutAt]
-	}
-	preview = strings.TrimRight(preview, " \t\n")
-	preview = strings.TrimSuffix(preview, ".")
-
-	if len(preview) > maxChars {
-		truncated := preview[:maxChars]
-		if i := strings.LastIndex(truncated, " "); i > maxChars/2 {
-			truncated = truncated[:i]
-		}
-		preview = strings.TrimRight(truncated, " ,;:") + "..."
-	} else {
-		preview += "."
-	}
-	return preview
-}
-
-// IsLikelyOutro checks if a scene is likely an outro.
-func IsLikelyOutro(sc ClipScene, all []ClipScene) bool {
-	if sc.ClipID != "" {
-		return false
-	}
-	if sc.SceneIndex == len(all) {
-		return true
-	}
-	narrationAfter := 0
-	for _, c := range all {
-		if c.SceneIndex > sc.SceneIndex && c.ClipID == "" {
-			narrationAfter++
-		}
-	}
-	return narrationAfter == 0
 }

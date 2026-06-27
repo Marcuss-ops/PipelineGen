@@ -15,17 +15,11 @@ func DerefOr[T any](p *T, fallback T) T {
 	return *p
 }
 
-// Bool returns a pointer to the given bool value.
-// Deprecated: use Ptr(v) instead.
-func Bool(v bool) *bool {
-	return &v
-}
+// Bool is a convenience alias for Ptr[bool].
+func Bool(v bool) *bool { return Ptr(v) }
 
-// Str returns a pointer to the given string value.
-// Deprecated: use Ptr(v) instead.
-func Str(v string) *string {
-	return &v
-}
+// Str is a convenience alias for Ptr[string].
+func Str(v string) *string { return Ptr(v) }
 
 // BoolDefault returns the value of a *bool or def if nil.
 func BoolDefault(v *bool, def bool) bool {

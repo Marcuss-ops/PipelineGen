@@ -4,10 +4,10 @@
 //
 // AGENT-3 (June 2026): the previous stub returned the query string as
 // the script text. The real implementation:
-//  1. Searches for clips semantically via the vector store
-//  2. Converts results to clip IDs
-//  3. Builds clip context via ClipSourceBuilder
-//  4. Generates the script via Engine.WriteScript
+//   1. Searches for clips semantically via the vector store
+//   2. Converts results to clip IDs
+//   3. Builds clip context via ClipSourceBuilder
+//   4. Generates the script via Engine.WriteScript
 package scripts
 
 import (
@@ -127,9 +127,9 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 
 	if req.Search && m.clipSearch != nil {
 		hits, searchErr := m.clipSearch.SearchClips(ctx, ClipSearchQuery{
-			Query:    req.Query,
-			Source:   req.Source,
-			Category: "", // CurateRequest does not expose Category; operators
+			Query:     req.Query,
+			Source:    req.Source,
+			Category:  "", // CurateRequest does not expose Category; operators
 			// raise it via JobPayloadCurate once the typed-payload wiring
 			// lands (PJ-CURATE-2 follow-up). For now the search leg carries
 			// Source + MediaType filters only. The previous code passed
@@ -151,10 +151,10 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 				seen[h.AssetID] = struct{}{}
 				clipIDs = append(clipIDs, h.AssetID)
 				searchResults = append(searchResults, SearchResultInfo{
-					ClipID: h.AssetID,
-					Name:   h.Name,
-					Score:  h.Score,
-					Source: h.Source,
+					ClipID:    h.AssetID,
+					Name:      h.Name,
+					Score:     h.Score,
+					Source:    h.Source,
 				})
 			}
 		}

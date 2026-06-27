@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	pkgmw "github.com/Marcuss-ops/PipelineGen/pkg/middleware"
 )
 
 func runGenAPIDocs(args []string) error {
@@ -46,15 +46,15 @@ func runGenAPIDocs(args []string) error {
 	defer appDeps.Lifecycle.Stop(context.Background())
 
 	// PG-006.1 (June 2026): inline genDocsSecurityAdapter was deleted —
-	// cfg.Security is now snapshotted into the canonical pkg/middleware
-	// leaf struct (TokenSecurityAdapter) directly. Enable carries
-	// cfg.Security.EnableAuth (preserves the pre-PG-006.1
-	// genDocsSecurityAdapter.EnableAuth() semantics; round-2 fix
-	// makes EnableAuth a passthrough, not an Admin-content derivation).
-	// The rate-limit + feature-flags inline adapters remain in this
-	// file (out of scope for PG-006.1; candidate for a separate
-	// consolidation).
-	authAdapter := &pkgmw.TokenSecurityAdapter{
+	// cfg.Security is now snapshotted into the canonical
+	// internal/api/middleware.TokenSecurityAdapter concrete adapter
+	// directly. Enable carries cfg.Security.EnableAuth (preserves the
+	// pre-PG-006.1 genDocsSecurityAdapter.EnableAuth() semantics;
+	// round-2 fix makes EnableAuth a passthrough, not an
+	// Admin-content derivation). The rate-limit + feature-flags inline
+	// adapters remain in this file (out of scope for PG-006.1;
+	// candidate for a separate consolidation).
+	authAdapter := &middleware.TokenSecurityAdapter{
 		Enable: cfg.Security.EnableAuth,
 		Admin:  cfg.Security.AdminToken,
 		Worker: cfg.Security.WorkerToken,
@@ -190,13 +190,17 @@ func matchRoutePattern(pattern, path string) bool {
 // ── Typed-port adapters (PG-006 bridge: cmd/admin → api/middleware) ────────
 //
 // PG-006.1 (June 2026): the genDocsSecurityAdapter inline struct was
-// deleted — the canonical concrete is pkg/middleware.TokenSecurityAdapter
-// (a leaf struct reachable from internal/api, cmd/admin, and internal/app
-// without crossing layering boundaries); cfg.Security is snapshot-fed
-// into the canonical at the call-site. Only the rate-limit and
-// feature-flags inline adapters remain below (their canonical equivalents
-// are NOT yet tracked under pkg/middleware; a separate consolidation would
-// promote them — out of scope for PG-006.1).
+// deleted — the canonical concrete is
+// internal/api/middleware.TokenSecurityAdapter (re-located from
+// pkg/middleware round-2; pkg/ is leaf-only and HTTP-middleware
+// concrete adapters cannot legitimately live there). The struct is
+// reachable from internal/api, cmd/admin, and internal/app without
+// crossing layering boundaries; cfg.Security is snapshot-fed into
+// the canonical at the call-site. Only the rate-limit and
+// feature-flags inline adapters remain below (their canonical
+// equivalents are NOT yet tracked under internal/api/middleware;
+// a separate consolidation would promote them — out of scope
+// for PG-006.1).
 
 type genDocsRateLimitAdapter struct{ cfg *config.Config }
 

@@ -109,7 +109,7 @@ func TestSearch_HappyPath(t *testing.T) {
 		},
 	}
 	svc := newTestSearchService(reg, nil, nil, &mockConfigPort{
-		vc: appsearch.VectorConfig{TextVectorName: "text"},
+		vc: appsearch.VectorConfig{TextVectorName: "text", SparseVectorName: "bm25_text"},
 	})
 	handler := NewHandler(svc, zap.NewNop())
 	r := setupSearchRouter(handler)

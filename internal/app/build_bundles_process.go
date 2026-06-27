@@ -31,12 +31,12 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -228,56 +228,58 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		DBPath:                dbs.main.Path(),
 	}, dbs.main, dbs.main.Path(), log)
 
-	// QDRANT-003: wire IndexWriter as clipindexer VectorStoreIndexer.
-	// Only when Qdrant is enabled AND the clip indexer is enabled.
+	// QDRANT-005 Phase 1 Blocker 2 (June 2026): Qdrant client, health
+	// probe, locator cleaner, searcher, search adapter, and collection
+	// manager are created when cfg.Qdrant.Enabled == true, regardless of
+	// whether the clip indexer is enabled. The IndexWriter (which depends
+	// on clipindexer.SetVectorStore) is gated on BOTH Qdrant.Enabled AND
+	// clipIndexerService.IsEnabled(). This ensures /ready always has a
+	// real Qdrant probe when Qdrant is configured.
 	var collectionMgr *qdrant.CollectionManager
 	var indexDeleter qdrant.QdrantDeleter
-	// Wave 15 (June 2026): typed-nil setter for the canonical
-	// assetsearch.VectorStorePort. NewSearchAdapter returns the typed
-	// port directly (compile-time assertion at
-	// internal/infrastructure/qdrant/search_adapter.go confirms the
-	// concrete satisfies the port).
 	var vectorSvc assetsearch.VectorStorePort
 	var qdrantClient *qdrant.Client
-	var qdrantHealthProbe any // qdrant.HealthProbe or nil — typed `any` so this layer doesn't force every composition path to import health.go
+	var qdrantHealthProbe any
+	var locatorCleaner *qdrant.LocatorCleaner
 
-	if cfg.Qdrant.Enabled && clipIndexerService.IsEnabled() {
+	if cfg.Qdrant.Enabled {
 		qdrantCfg := &qdrant.Config{
 			BaseURL: cfg.Qdrant.BaseURL,
-			Timeout: cfg.Qdrant.Timeout,
 			APIKey:  cfg.Qdrant.APIKey,
+			Timeout: cfg.Qdrant.Timeout,
 		}
 		schema := qdrant.DefaultV3Schema()
 		qdrantClient = qdrant.NewClient(qdrantCfg, log)
-		assetStore := qdrant.NewSQLiteAssetStore(dbs.main.DB)
-		mapper := qdrant.NewPayloadMapper(assetStore, log)
-		indexWriter := qdrant.NewIndexWriter(qdrantClient, schema, mapper, log)
-		indexDeleter = indexWriter
 
-		// QDRANT-004: create Searcher + SearchAdapter for the mediasearch API.
+		// Health probe + locator cleaner: always active when Qdrant is on.
+		qdrantHealthProbe = qdrant.NewHealthProbe(qdrantClient)
+		locatorCleaner = qdrant.NewLocatorCleaner(qdrantClient, schema, log)
+
+		// Searcher + SearchAdapter + CollectionManager: always active.
 		searcher := qdrant.NewSearcher(qdrantClient, schema, log)
 		searchAdapter := qdrant.NewSearchAdapter(searcher, log)
 		vectorSvc = searchAdapter
-
 		collectionMgr = qdrant.NewCollectionManager(qdrantClient, schema, log)
 
-		// QDRANT-005 (June 2026): bind the canonical health probe so
-		// /ready actually checks Qdrant reachability instead of silently
-		// reporting the Qdrant capability as "not applicable". The probe
-		// is exposed on ProcessBundle.QdrantHealthProbe (typed `any`) and
-		// picked up by wire_services.go / cmd/server/main.go via
-		// lifecycle.AddProbe.
-		qdrantHealthProbe = qdrant.NewHealthProbe(qdrantClient)
-
-		clipIndexerService.SetVectorStore(indexWriter)
-		log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
+		log.Info("QDRANT-005: HealthProbe + LocatorCleaner wired (Qdrant enabled)",
 			zap.String("qdrant_url", cfg.Qdrant.BaseURL),
-			zap.String("schema_version", schema.Version),
-			zap.String("runtime_alias", schema.RuntimeAlias))
+			zap.String("schema_version", schema.Version))
 		log.Info("QDRANT-004: Searcher + SearchAdapter wired for mediasearch API")
-		log.Info("QDRANT-005: HealthProbe wired for /ready readiness barrier")
+
+		// IndexWriter: requires ClipIndexer (writes embeddings back).
+		if clipIndexerService.IsEnabled() {
+			assetStore := qdrant.NewSQLiteAssetStore(dbs.main.DB)
+			mapper := qdrant.NewPayloadMapper(assetStore, log)
+			indexWriter := qdrant.NewIndexWriter(qdrantClient, schema, mapper, log)
+			indexDeleter = indexWriter
+			clipIndexerService.SetVectorStore(indexWriter)
+			log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
+				zap.String("runtime_alias", schema.RuntimeAlias))
+		} else {
+			log.Info("QDRANT-003: ClipIndexer disabled — IndexWriter skipped, Qdrant client+probe still active")
+		}
 	} else {
-		log.Info("QDRANT-003: Qdrant disabled — vector store upserts will be skipped")
+		log.Info("QDRANT-003: Qdrant disabled — no Qdrant components wired")
 	}
 
 	return &ProcessBundle{
@@ -287,7 +289,9 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		CollectionManager:  collectionMgr,
 		QdrantDeleter:      indexDeleter,
 		VectorSvc:          vectorSvc,
+		QdrantClient:       qdrantClient,
 		QdrantHealthProbe:  qdrantHealthProbe,
+		LocatorCleaner:     locatorCleaner,
 	}, nil
 }
 

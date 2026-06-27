@@ -13,6 +13,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // RequireService checks that a service is non-nil and returns false (having
@@ -27,7 +29,7 @@ import (
 //	}
 func RequireService(c *gin.Context, svc any, serviceName string) bool {
 	if svc == nil {
-		Error(c, http.StatusServiceUnavailable, serviceName+" not initialized")
+		apiutil.Error(c, http.StatusServiceUnavailable, serviceName+" not initialized")
 		return false
 	}
 	return true

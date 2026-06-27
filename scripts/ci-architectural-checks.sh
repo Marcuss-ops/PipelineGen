@@ -122,6 +122,98 @@ if [ -n "$literals" ]; then
 fi
 echo "OK: no direct IndexWriter constructors outside the canonical allowlist"
 
+# ── Check 2: QDRANT-001 canonical sidecar envelope + zero-legacy search contract ──
+#
+# Enforces the QDRANT-001 definition-of-done gates:
+#   (a) One single canonical AssetIDToQdrantPointID declaration.
+#   (b) No LocalPath/DriveLink locators in the application search DTO.
+#   (c) No PointIDToAssetID (UUID v5 is one-way).
+#   (d) Sidecar endpoints return model + model_version.
+#
+# See docs/architecture/qdrant/QDRANT-001.md for the full spec.
+echo "=== Check 2: QDRANT-001 canonical sidecar envelope + zero-legacy search contract ==="
+failures=0
+
+# Gate (a): one canonical AssetIDToQdrantPointID declaration.
+count=$(rg -n --glob '!**/*_test.go' 'func AssetIDToQdrantPointID\(' internal/infrastructure/qdrant | wc -l)
+if [ "$count" -ne 1 ]; then
+    echo "FAIL: expected exactly 1 AssetIDToQdrantPointID declaration, found $count"
+    failures=$((failures+1))
+fi
+
+# Gate (b): no LocalPath or DriveLink in the application search DTO.
+if rg -q '^\s*(LocalPath|DriveLink)\s+string' internal/application/assets/search/ports.go; then
+    echo "FAIL: LocalPath/DriveLink still present in VectorSearchResult (internal/application/assets/search/ports.go)"
+    failures=$((failures+1))
+fi
+
+# Gate (c): no PointIDToAssetID (UUID v5 is one-way; the reverse helper was removed).
+if rg -n --glob '!**/*_test.go' -e 'PointIDToAssetID' internal/infrastructure/qdrant | grep -vE '^\s*(//|\*)' | grep -q .; then
+    echo "FAIL: PointIDToAssetID found in non-comment code in internal/infrastructure/qdrant (must be removed; UUID v5 is one-way)"
+    failures=$((failures+1))
+fi
+
+# Gate (d): sidecar endpoints return model AND model_version.
+if ! rg -q '"model"' scripts/services/embedding_server/visual.py; then
+    echo "FAIL: visual.py does not return 'model' in its JSON responses"
+    failures=$((failures+1))
+fi
+if ! rg -q '"model_version"' scripts/services/embedding_server/visual.py; then
+    echo "FAIL: visual.py does not return 'model_version' in its JSON responses"
+    failures=$((failures+1))
+fi
+if ! rg -q '"model"' scripts/services/embedding_server/audio.py; then
+    echo "FAIL: audio.py does not return 'model' in its JSON responses"
+    failures=$((failures+1))
+fi
+if ! rg -q '"model_version"' scripts/services/embedding_server/audio.py; then
+    echo "FAIL: audio.py does not return 'model_version' in its JSON responses"
+    failures=$((failures+1))
+fi
+
+if [ "$failures" -gt 0 ]; then
+    echo "QDRANT-001: $failures gate(s) FAILED"
+    exit 1
+fi
+echo "OK: QDRANT-001 gates pass"
+
+# ── Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR 6) ──
+# The canonical engine entry point is Engine.Generate(ctx, plan). The ONLY
+# permitted production caller is generate_one_usecase.go::GenerateOneUseCase.
+#
+# Allowlist:
+#   - generate_one_usecase.go   : canonical caller (typed pipeline orchestrator)
+#   - engine.go                  : definition site
+#   - *_test.go                  : tests may call Generate for verification
+#
+# Any new engine.Generate( call in production code outside the allowlist
+# is a PR 6 regression: engine access must flow through GenerateOneUseCase.
+echo "=== Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR 6) ==="
+literals=$(rg -n --type go \
+    -e '\bengine\.Generate\(' \
+    --glob '!**/generate_one_usecase.go' \
+    --glob '!**/engine.go' \
+    --glob '!**/*_test.go' \
+    internal/ 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$literals" ]; then
+    echo "FAIL: direct engine.Generate() call outside GenerateOneUseCase:"
+    echo "$literals"
+    echo ""
+    echo "Fix: route engine access through GenerateOneUseCase.Execute()."
+    echo "The engine is the canonical script-generator; the sole production"
+    echo "caller is generate_one_usecase.go. Handler code, resolvers, and"
+    echo "postprocessors must NOT call engine.Generate() directly."
+    exit 1
+fi
+echo "OK: no direct engine.Generate() calls outside GenerateOneUseCase"
+
 # ── Main gate ────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
 # 5 Phase 0 rules in grace-cycle regression-detection mode.

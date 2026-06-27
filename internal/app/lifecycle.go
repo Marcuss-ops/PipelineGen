@@ -26,9 +26,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"

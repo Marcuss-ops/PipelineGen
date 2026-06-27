@@ -54,23 +54,6 @@ func (f *fakeClips) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id string, 
 	return nil
 }
 
-// RestoreTx (QDRANT-002 close-out, June 2026) records the restore call.
-func (f *fakeClips) RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
-	f.statesMu.Lock()
-	defer f.statesMu.Unlock()
-	// Record as a state log entry with an empty state marker.
-	f.stateLog = append(f.stateLog, stateTxLog{Tx: tx, ID: id, State: "(restore)"})
-	return nil
-}
-
-// HardDeleteTx (QDRANT-002 close-out, June 2026) records the hard-delete call.
-func (f *fakeClips) HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
-	f.statesMu.Lock()
-	defer f.statesMu.Unlock()
-	f.stateLog = append(f.stateLog, stateTxLog{Tx: tx, ID: id, State: "(hard_delete)"})
-	return nil
-}
-
 // txMgrNoop is a TxManager that prints a clear failure if anyone actually
 // calls InTransaction. Tests that should fail-fast before reaching the
 // transaction (nil-safety, empty-clip-id) wire this in. DB() returns nil

@@ -6,7 +6,11 @@
 // port types used by mediasearch (VectorStorePort, VectorSearchRequest, etc.).
 package search
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
+)
 
 // ── Provider search ports ─────────────────────────────────────────────
 
@@ -86,6 +90,11 @@ type VectorSearchRequest struct {
 }
 
 // VectorSearchResult is a single match from a vector search.
+//
+// QDRANT-001 (June 2026): LocalPath and DriveLink have been removed.
+// Server-internal locators do not belong in the search contract;
+// clients that need a signed URL for an asset should go through
+// the delivery service (delivery.Signer.BuildAuthorizedURL).
 type VectorSearchResult struct {
 	AssetID        string   `json:"asset_id"`
 	QdrantPointID  string   `json:"qdrant_point_id,omitempty"`
@@ -93,8 +102,6 @@ type VectorSearchResult struct {
 	Reason         string   `json:"reason,omitempty"`
 	Source         string   `json:"source"`
 	Name           string   `json:"name"`
-	LocalPath      string   `json:"local_path,omitempty"`
-	DriveLink      string   `json:"drive_link,omitempty"`
 	Category       string   `json:"category,omitempty"`
 	MediaType      string   `json:"media_type,omitempty"`
 	Style          string   `json:"style,omitempty"`
@@ -108,6 +115,14 @@ type VectorSearchResult struct {
 }
 
 // HybridSearchRequest combines dense and sparse vectors for hybrid search.
+//
+// QDRANT-004 PR1 (June 2026): SparseVector is the client-side BM25
+// tokenization result. The orchestrator (mediasearch.Service) owns BM25
+// generation; the adapter (qdrant.searchAdapter) projects it into the
+// infrastructure-level Qdrant request unchanged. Mode=hybrid with
+// SparseVector == nil OR SparseVectorName == "" is a programming error
+// and must fail closed (ErrHybridRequiresSparse) before reaching the
+// adapter — never silently degrade to ANN.
 type HybridSearchRequest struct {
 	QueryText            string
 	DenseVector          []float32
@@ -115,6 +130,7 @@ type HybridSearchRequest struct {
 	TranscriptVector     []float32
 	TranscriptVectorName string
 	SparseVectorName     string
+	SparseVector         *bm25.SparseVector
 	Limit                int
 	MinScore             float64
 	Source               string
@@ -153,11 +169,23 @@ type LocalClipResult struct {
 // ── Config port ───────────────────────────────────────────────────────
 
 // VectorConfig holds named vector dimensions for search.
+//
+// QDRANT-004 PR1 (June 2026): SparseVectorName is the canonical BM25
+// channel in the Qdrant IndexSchema (default "bm25_text" — matches
+// qdrant.DefaultV3Schema().SparseVectors). The orchestrator fails
+// closed with ErrHybridRequiresSparse when mode=hybrid is requested
+// with SparseVectorName == "" (or with a query that BM25 cannot
+// tokenize into ≥1 valid token).
+//
+// MinInstantScore stays a single-tunable scalar; per-channel scores
+// are owned by the Qdrant IndexSchema + Searcher’s RRF fusion, not by
+// orchestrator-side heuristics.
 type VectorConfig struct {
 	TextVectorName       string
 	VisualVectorName     string
 	AudioVectorName      string
 	TranscriptVectorName string
+	SparseVectorName     string
 	MinInstantScore      float64
 }
 

@@ -26,7 +26,6 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -62,10 +61,9 @@ type Dependencies struct {
 	// Books is the worker-side handler for books.process jobs.
 	// nil = skip registration (BooksEnabled=false or wired
 	// sub-service absent).
-	Books appjobs.HandlerFunc
+	Books HandlerFunc
 	// Lessons is the worker-side handler for lessons.process jobs.
-	// nil = skip registration.
-	Lessons appjobs.HandlerFunc
+	Lessons HandlerFunc
 	// BooksEnabled drives the TypeBookGenerate registration flag.
 	BooksEnabled bool
 	// LessonsEnabled drives the TypeLessonGenerate registration flag.

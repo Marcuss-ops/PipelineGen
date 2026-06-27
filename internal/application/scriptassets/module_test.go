@@ -5,7 +5,7 @@
 //
 //   - Provider identity (Name, Capabilities invariants)
 //   - Provider.Search deterministic single-candidate projection
-//   - empty-query + nil-receiver error paths
+//     + empty-query + nil-receiver error paths
 //   - Build returns a Descriptor that satisfies both api.Descriptor
 //     and api.DescriptorProviders
 //   - Build with nil Logger falls back to zap.NewNop (no panic)
@@ -43,8 +43,8 @@ func (s *stubProviderRegistrar) Register(p providers.Provider) error {
 // pulling in zap. Lets tests run with no logger dependency.
 type nilLogger struct{}
 
-func (nilLogger) Info(string, ...any) {}
-func (nilLogger) Warn(string, ...any) {}
+func (nilLogger) Info(string, ...any)  {}
+func (nilLogger) Warn(string, ...any)  {}
 
 // ── Provider identity ────────────────────────────────────────────
 
@@ -235,6 +235,6 @@ func TestRegisterProviders_NilRegistrar_Rejected(t *testing.T) {
 // ScriptAssetsDescriptor satisfies the slot the composition root will
 // type-assert on.
 var (
-	_ providers.SearchProvider = (*ScriptAssetsProvider)(nil)
-	_ api.DescriptorProviders  = (*ScriptAssetsDescriptor)(nil)
+	_ providers.SearchProvider  = (*ScriptAssetsProvider)(nil)
+	_ api.DescriptorProviders   = (*ScriptAssetsDescriptor)(nil)
 )

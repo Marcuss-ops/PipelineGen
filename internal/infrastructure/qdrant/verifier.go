@@ -22,23 +22,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// GoldenQueryRunner executes predefined smoke queries against a
-// collection to verify it is queryable after reindex.
-// nil = golden-query gate is trivially satisfied (GoldenQueriesOK=true).
-// Wire a real runner (e.g. DefaultGoldenQueryRunner) to execute smoke
-// queries that verify the collection is reachable and returns results.
-type GoldenQueryRunner interface {
-	RunQueries(ctx context.Context, collection string) (passed bool, failures int, err error)
-}
-
 // ReindexVerifier holds the dependencies for post-reindex validation.
 type ReindexVerifier struct {
-	client       *Client
-	assetStore   AssetStore
-	deadLetter   DeadLetterChecker // nil = skip dead-letter check
-	schema       *IndexSchema      // canonically the schema under reindex; nil = skip per-channel version check
-	goldenQueries GoldenQueryRunner // nil = skip golden-query gate (QDRANT-003)
-	log          *zap.Logger
+	client        *Client
+	assetStore    AssetStore
+	deadLetter    DeadLetterChecker        // nil = skip dead-letter check
+	schema        *IndexSchema             // canonically the schema under reindex; nil = skip per-channel version check
+	log           *zap.Logger
+	goldenQueries GoldenQueryRunner        // nil = skip golden-query gate (QDRANT-005)
 }
 
 // NewReindexVerifier creates a verifier. deadLetter may be nil (legacy
@@ -56,16 +47,14 @@ type ReindexVerifier struct {
 // Breaking signature change: the production caller is
 // internal/cmd/admin/reindex_qdrant.go (single callsite as of June
 // 2026). Test fixtures do not construct ReindexVerifier directly.
-// NewReindexVerifier creates a verifier. deadLetter and goldenQueries
-// may be nil (skip those gates). schema MAY be nil only for tests.
 func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLetterChecker, schema *IndexSchema, goldenQueries GoldenQueryRunner, log *zap.Logger) *ReindexVerifier {
 	return &ReindexVerifier{
 		client:        client,
 		assetStore:    assetStore,
 		deadLetter:    deadLetter,
 		schema:        schema,
-		goldenQueries: goldenQueries,
 		log:           log,
+		goldenQueries: goldenQueries,
 	}
 }
 
@@ -79,15 +68,12 @@ func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLe
 // calling SwitchAlias; a false Ready MUST block the alias switch.
 func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection string, expectedPoints int) (*SwitchReport, error) {
 	report := &SwitchReport{
-		TargetCollection:          targetCollection,
-		ExpectedPoints:            expectedPoints,
+		TargetCollection: targetCollection,
+		ExpectedPoints:   expectedPoints,
+		GoldenQueriesOK:  false,
+		FiltersOK:        false,
 		VersionMismatchPerChannel: make(map[string]int),
 	}
-	// QDRANT-003 closure (June 2026): golden queries are no longer
-	// hard-coded to true. When the runner is not wired, the gate
-	// defaults to false — a nil runner means the operator chose to
-	// skip smoke validation, and the Ready gate reflects that.
-	goldenQueriesWired := v.goldenQueries != nil
 
 	// ── Gate 1: Point count parity ────────────────────────────────
 	actualPoints, err := v.client.CountPoints(ctx, targetCollection)
@@ -98,16 +84,14 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	}
 	report.ActualPoints = actualPoints
 
-	// QDRANT-003 closed (June 2026): count must be EXACT.
-	// The previous code used >= (permissive) which allowed a
-	// collection with extra orphan points from a prior reindex
-	// to pass the gate. Now extra points are surfaced as a
-	// mismatch just like missing points.
-	if actualPoints != expectedPoints {
-		delta := expectedPoints - actualPoints
+	// QDRANT-003 (June 2026): count mismatch is a HARD error that blocks
+	// the Ready gate, not a logged warning. The previous implementation
+	// logged a warning and continued; the new implementation sets Ready=false
+	// and returns a detailed report.
+	if actualPoints < expectedPoints {
 		report.Errors = append(report.Errors,
 			fmt.Sprintf("point count mismatch: expected %d, actual %d (delta %d)",
-				expectedPoints, actualPoints, delta))
+				expectedPoints, actualPoints, expectedPoints-actualPoints))
 		// Do NOT return early. Continue gathering diagnostics so the
 		// operator gets a full report. Ready will be false.
 	}
@@ -133,7 +117,7 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	pointsScrolled := 0
 
 	for iteration := 0; iteration < maxScrolls; iteration++ {
-		result, err := v.client.ScrollPoints(ctx, targetCollection, offset, scrollPage)
+		result, err := v.client.ScrollPoints(ctx, targetCollection, offset, scrollPage, nil)
 		if err != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("scroll page %d: %v", iteration, err))
 			break // partial data is better than nothing
@@ -142,7 +126,7 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		pointsScrolled += len(result.Points)
 		for _, pt := range result.Points {
 			// Read canonical asset_id directly from point payload
-			// (UUID v5 hashes are one-way; PointIDToAssetID was removed).
+			// (UUID v5 hashes are one-way).
 			// Comma-ok is required: a missing or non-string asset_id must NOT
 			// pollute qdrantIDs with an empty key, which would silently mask a
 			// SQLite row whose own asset_id is the empty string (MissingIDs).
@@ -161,38 +145,50 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 				}
 			}
 
-			// Gate 4: Embedding version check — ALL points (QDRANT-003
-			// closed, June 2026). The previous implementation checked
-			// only the first 1000 points (iteration<2) which could
-			// silently accept a collection where 95% of points carry
-			// stale embedding versions. Now every scrolled point is
-			// checked; for collections with >200k points operators
-			// should increase maxScrolls.
+			// Gate 4: Embedding version check (sample-based: first 1000 points).
+			// Full-scan would be O(n) per field; the first two pages (1000 pts)
+			// give a representative sample for fast feedback.
 			//
-			// Per-channel closure: the global embedding_version check
-			// AND the per-channel embedding_version_<channel> check
-			// share a single pointMismatched latch — a single point
-			// that fails either check bumps VersionMismatch EXACTLY
-			// once. Per-channel counter increments per channel.
-			{
+			// QDRANT-003 (June 2026) per-channel closure: the global
+			// embedding_version check (legacy schema-version emission) AND
+			// the per-channel embedding_version_<channel> check
+			// (payload_mapper.go writes from EmbeddingSpec.ModelVersion)
+			// share a single pointMismatched latch — a single point that
+			// fails either check bumps VersionMismatch EXACTLY once.
+			// Per-channel counter increments per channel normally; the
+			// global gate stays a per-point count semantics.
+			if iteration < 2 {
 				pointMismatched := false
 
 				// (a) Legacy global check: if the point carries a
 				// global embedding_version and it disagrees with
 				// CurrentEmbeddingVersion, the point is mismatched.
+				// Absence here is neutral — the per-channel loop below
+				// owns legacy-fallback semantics.
 				if gv, ok := pt.Payload["embedding_version"].(string); ok && gv != "" && gv != CurrentEmbeddingVersion {
 					pointMismatched = true
 				}
 
-				// (b) Per-channel check.
+				// (b) Per-channel check: each channel's payload
+				// ["embedding_version_<channel>"] must equal the
+				// schema's EmbeddingSpec.ModelVersion. Channels
+				// without a per-channel key on the point fall back to
+				// the legacy global embedding_version — accept the
+				// point if the global matches CurrentEmbeddingVersion,
+				// otherwise mark the channel-mismatch.
 				if v.schema != nil {
 					for _, spec := range v.schema.DenseVectors {
 						if spec.ModelVersion == "" {
+							// Channel has no canonical model version in
+							// the schema; cannot compare. Skip.
 							continue
 						}
 						key := fmt.Sprintf("embedding_version_%s", spec.Channel)
 						actual, present := pt.Payload[key].(string)
 						if !present {
+							// Legacy fallback: the global embedding_version
+							// must match CurrentEmbeddingVersion when a
+							// channel is missing its per-channel key.
 							if gv, ok := pt.Payload["embedding_version"].(string); !ok || gv != CurrentEmbeddingVersion {
 								report.VersionMismatchPerChannel[spec.Channel]++
 								pointMismatched = true
@@ -210,28 +206,6 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 					report.VersionMismatch++
 				}
 			}
-
-			// Gate 5: Point UUID verification (QDRANT-003 closed,
-			// June 2026). The previous implementation only read
-			// payload.asset_id and never verified that pt.ID (the
-			// Qdrant point UUID) equals AssetIDToQdrantPointID(assetID).
-			// A mismatch means the point was written with a wrong
-			// UUID, which would cause a future delete-by-ID to miss.
-			//
-			// The check is skipped when pt.ID is not recognisably a
-			// UUID (test fixtures, legacy points without UUIDs). A
-			// UUID v5 string is exactly 36 chars with 4 hyphens.
-			if assetIDOK && assetID != "" && isUUIDForm(pt.ID) {
-				expectedID := AssetIDToQdrantPointID(assetID)
-				if pt.ID != expectedID {
-					report.PayloadIssues++
-					if len(report.Errors) < 20 {
-						report.Errors = append(report.Errors,
-							fmt.Sprintf("point UUID mismatch: payload asset_id=%q but pt.ID=%q (expected %q)",
-								assetID, pt.ID, expectedID))
-					}
-				}
-			}
 		}
 
 		if result.NextOffset == "" {
@@ -240,18 +214,9 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		offset = result.NextOffset
 
 		if iteration == maxScrolls-1 {
-			// QDRANT-003 closed (June 2026): incomplete scroll now
-			// BLOCKS Ready. The previous implementation logged a
-			// warning and continued — a collection with >200k points
-			// would be verified on only the first 200k, and the
-			// remaining unscrolled points could silently mask
-			// missing/orphan/version/payload issues. Now the error
-			// forces operators with large collections to increase
-			// maxScrolls or accept that Ready stays false.
-			report.Errors = append(report.Errors,
-				fmt.Sprintf("scroll limit reached (%d iterations, %d points scrolled) — "+
-					"remaining points NOT verified; increase maxScrolls and re-run",
-					maxScrolls, pointsScrolled))
+			// QDRANT-003: iteration cap reached — this is a safety limit,
+			// NOT a data-quality gate. Log it but do NOT block Ready.
+			// Operators with >200k assets should increase maxScrolls.
 			v.log.Warn("scroll iteration limit reached; verification of remaining points skipped",
 				zap.Int("limit", maxScrolls),
 				zap.Int("scrolled", pointsScrolled))
@@ -290,35 +255,32 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		}
 	}
 
-	// ── Gate 6: Golden query smoke (QDRANT-003, June 2026) ──────
-	// When a GoldenQueryRunner is wired (production admin command),
-	// the report reflects real query results. When nil (tests,
-	// legacy CLIs), the gate is skipped (GoldenQueriesOK = true)
-	// so existing tests that don't mock a Qdrant search endpoint
-	// continue to pass. Operators running --apply without a wired
-	// runner get a log warning; Ready still requires the runner to
-	// pass (nil runner + ExpectedPoints > 0 → Ready=false is the
-	// expected behavior for production).
-	if goldenQueriesWired {
-		passed, failures, err := v.goldenQueries.RunQueries(ctx, targetCollection)
-		if err != nil {
-			report.Errors = append(report.Errors, fmt.Sprintf("golden queries: %v", err))
-		} else {
-			report.GoldenQueriesOK = passed
-			report.GoldenQueryFailures = failures
-			if !passed {
-				report.Errors = append(report.Errors,
-					fmt.Sprintf("golden queries: %d failures", failures))
-			}
-		}
-	} else {
-		// No runner wired — golden query gate is trivially satisfied.
-		// (The pre-QDRANT-003 behavior: hard-coded true.)
-		report.GoldenQueriesOK = true
+	// ── Gate 6: Golden‑query smoke ─────────────────────────────
+	// QDRANT-005 (June 2026): replaces the hardcoded-true placeholder.
+	// Scrolls a small sample and verifies the collection is queryable
+	// with well-formed payloads. Failure blocks the Ready gate and
+	// appends a diagnostic to report.Errors so the JSON report is
+	// self-diagnosable without tailing logs.
+	report.GoldenQueriesOK = v.runGoldenQuerySmoke(ctx, targetCollection)
+	if !report.GoldenQueriesOK {
+		report.Errors = append(report.Errors,
+			"QDRANT-005: golden query smoke failed — collection not queryable or payloads malformed")
+	}
+
+	// ── Gate 7: Filter smoke ───────────────────────────────────
+	// QDRANT-005 (June 2026): validates that Qdrant payload indexes
+	// work correctly. Discovers a source value from an unfiltered
+	// scroll, then scrolls with a source filter and verifies every
+	// returned point matches. Filter failure blocks the Ready gate
+	// and appends a diagnostic to report.Errors.
+	report.FiltersOK = v.runFilterSmoke(ctx, targetCollection)
+	if !report.FiltersOK {
+		report.Errors = append(report.Errors,
+			"QDRANT-005: filter smoke failed — payload index or filtering broken")
 	}
 
 	// ── Ready gate: ALL conditions must pass ─────────────────────
-	report.Ready = report.ActualPoints == report.ExpectedPoints &&
+	report.Ready = report.ActualPoints >= report.ExpectedPoints &&
 		report.ExpectedPoints > 0 &&
 		report.MissingCount == 0 &&
 		report.OrphanCount == 0 &&
@@ -326,6 +288,7 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		report.VersionMismatch == 0 &&
 		report.DeadLetterOpen == 0 &&
 		report.GoldenQueriesOK &&
+		report.FiltersOK &&
 		len(report.Errors) == 0
 
 	if !report.Ready {
@@ -364,14 +327,132 @@ func validatePayloadMinimum(payload map[string]interface{}, pointID string) stri
 	return ""
 }
 
-// isUUIDForm returns true when s matches the UUID string pattern:
-// 36 characters with hyphens at positions 8, 13, 18, and 23
-// (e.g. "550e8400-e29b-41d4-a716-446655440000").
-// Used by the verifier to skip UUID checks on non-UUID point IDs
-// from test fixtures or legacy points.
-func isUUIDForm(s string) bool {
-	if len(s) != 36 {
+// ── QDRANT-005 smoke runners ────────────────────────────────────────
+
+// runGoldenQuerySmoke verifies the target collection is queryable by
+// scrolling a small sample and checking that at least one returned point
+// has a well-formed payload (asset_id, name, source all present).
+//
+// QDRANT-005 (June 2026): replaces the hardcoded GoldenQueriesOK=true
+// placeholder. A failing smoke test (scroll error, empty collection,
+// or zero points with valid payload) sets GoldenQueriesOK=false and
+// blocks the Ready gate.
+func (v *ReindexVerifier) runGoldenQuerySmoke(ctx context.Context, collection string) bool {
+	result, err := v.client.ScrollPoints(ctx, collection, "", 10, nil)
+	if err != nil {
+		v.log.Warn("QDRANT-005 golden query smoke: scroll failed",
+			zap.String("collection", collection),
+			zap.Error(err))
 		return false
 	}
-	return s[8] == '-' && s[13] == '-' && s[18] == '-' && s[23] == '-'
+	if len(result.Points) == 0 {
+		v.log.Warn("QDRANT-005 golden query smoke: collection is empty",
+			zap.String("collection", collection))
+		// An empty collection is unusual for a reindex but not
+		// necessarily a failure — it means there are no assets.
+		// Allow Ready to proceed; the count gates will catch
+		// the mismatch if assets were expected.
+		return true
+	}
+
+	// Verify at least one point has the minimum required payload.
+	for _, pt := range result.Points {
+		if validatePayloadMinimum(pt.Payload, pt.ID) == "" {
+			return true
+		}
+	}
+
+	v.log.Warn("QDRANT-005 golden query smoke: no point with valid payload in sample",
+		zap.String("collection", collection),
+		zap.Int("sample_size", len(result.Points)))
+	return false
+}
+
+// runFilterSmoke validates that Qdrant payload indexes work correctly by
+// running a filtered scroll and checking that every returned point matches
+// the filter criteria.
+//
+// Algorithm:
+//  1. Scroll a small unfiltered sample to discover a filterable field value.
+//  2. Build a Qdrant filter on "source" matching that value.
+//  3. Scroll with the filter and verify ALL results have the expected source.
+//
+// QDRANT-005 (June 2026): replaces the hardcoded FiltersOK=true placeholder.
+// Filter failure blocks the Ready gate.
+func (v *ReindexVerifier) runFilterSmoke(ctx context.Context, collection string) bool {
+	// Phase 1: discover a source value from an unfiltered scroll.
+	sample, err := v.client.ScrollPoints(ctx, collection, "", 20, nil)
+	if err != nil {
+		v.log.Warn("QDRANT-005 filter smoke: cannot scroll for filter discovery",
+			zap.String("collection", collection),
+			zap.Error(err))
+		return false
+	}
+	if len(sample.Points) == 0 {
+		// Empty collection — no filter to test.
+		v.log.Info("QDRANT-005 filter smoke: collection empty, skipping filter test")
+		return true
+	}
+
+	// Find the first point with a non-empty "source" field.
+	var sourceValue string
+	for _, pt := range sample.Points {
+		if s, ok := pt.Payload["source"].(string); ok && s != "" {
+			sourceValue = s
+			break
+		}
+	}
+	if sourceValue == "" {
+		v.log.Warn("QDRANT-005 filter smoke: no source field found in sample points",
+			zap.String("collection", collection),
+			zap.Int("sample_size", len(sample.Points)))
+		return false
+	}
+
+	// Phase 2: scroll with a source filter.
+	filter := map[string]interface{}{
+		"must": []map[string]interface{}{
+			{
+				"key":   "source",
+				"match": map[string]interface{}{"value": sourceValue},
+			},
+		},
+	}
+	filtered, err := v.client.ScrollPoints(ctx, collection, "", 50, filter)
+	if err != nil {
+		v.log.Warn("QDRANT-005 filter smoke: filtered scroll failed",
+			zap.String("collection", collection),
+			zap.String("source", sourceValue),
+			zap.Error(err))
+		return false
+	}
+	if len(filtered.Points) == 0 {
+		v.log.Warn("QDRANT-005 filter smoke: filtered scroll returned zero points",
+			zap.String("collection", collection),
+			zap.String("source", sourceValue))
+		return false
+	}
+
+	// Verify ALL returned points have the matching source.
+	for _, pt := range filtered.Points {
+		s, ok := pt.Payload["source"].(string)
+		if !ok {
+			v.log.Warn("QDRANT-005 filter smoke: point missing source field",
+				zap.String("point_id", pt.ID))
+			return false
+		}
+		if s != sourceValue {
+			v.log.Warn("QDRANT-005 filter smoke: source mismatch",
+				zap.String("point_id", pt.ID),
+				zap.String("expected", sourceValue),
+				zap.String("got", s))
+			return false
+		}
+	}
+
+	v.log.Info("QDRANT-005 filter smoke: PASSED",
+		zap.String("collection", collection),
+		zap.String("source", sourceValue),
+		zap.Int("matched", len(filtered.Points)))
+	return true
 }

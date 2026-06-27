@@ -16,7 +16,7 @@ import (
 // Trait summary:
 //
 //   - `AssetTree` is accepted as `any` to avoid importing the assettree package
-//     directly. assettree is being migrated toward `internal/core/asset`; this
+// The canonical assettree lives at `internal/application/assets/assettree`; this
 //     facade outlives the migration.
 //
 //   - `TreeSources` maps a Drive folder ID to the logical source key the

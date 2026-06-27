@@ -6,7 +6,7 @@
 // Boundaries (enforced by AGENTS.md + transport.JSON contract):
 //   - This package NEVER imports gin, database/sql, os/exec, or
 //     google.golang.org/api/drive/v3.
-//   - All side effects call into internal/media/books.Service or
+//   - All side effects call into the books.Service (internal/application/books) or
 //     internal/domain/job.Service through unexported interfaces
 //     declared in this file (see asyncEnqueuer, bookProcessor,
 //     driveBookProcessor); the production wiring in internal/app/

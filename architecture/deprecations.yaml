@@ -1,0 +1,320 @@
+# PipelineGen — Deprecation Manifest (Wave 16 PR1)
+# -----------------------------------------------------------------------------
+# Canonical deprecation registry, per docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md.
+# Each record MUST carry: id, owner_capability, exact_symbol, file:line,
+# replacement, introduction_date, removal_date, tracking_issue, compatibility_test,
+# usage_metric, status, notes.
+#
+# Phase-2 CI enforcement (per godlike/07 §"An expired deprecation fails CI"):
+# scripts/archcheck/main.go::runFocusedChecks will scan this file and FAIL
+# the gate on any record whose removal_date is in the past AND whose status
+# is NOT yet "removed". Records with status="removed" are audit-only.
+#
+# Records in this PR (Wave 16 PR1, June 2026):
+#   1. PR-CLIP-RESTORE          — clips_repository.go RestoreClip alias
+#   2. PR-JOB-STATUS-DEFENSIVE  — jobs_checker.go LOWER(status) defensive fold
+#   3. PR-QDRANT-PAYLOAD-STATUS — qdrant/payload_mapper.go legacy "status" key
+#   4. PR-QDRANT-CFG-URL        — qdrant/types.go Config.URL field alias
+#   5. PR-INDEXST-LEGACY-ALPHABET — domain/asset/index_state.go legacyState* constants
+#   6. PR-YT-SEARCHTOPICS       — youtube_handlers.go SearchTopics unrouted method
+#   7. PR-YT-TYPES-TOPIC        — youtube/types/types.go TopicSearchRequest canonical relocation
+#
+# Each record below cites the Phase 1..4 migration status per godlike/07 §"Migration sequence":
+#   EXPAND (introduce new canonical structure)
+#   BACKFILL (migrate durable state)
+#   CUTOVER (switch all callers/routes/writers)
+#   CONTRACT (remove old code/data/tests/docs/allowlists)
+# -----------------------------------------------------------------------------
+
+deprecations:
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 1. PR-CLIP-RESTORE — alias method removed from sqlite/assets repository
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-CLIP-RESTORE
+    owner_capability: internal/infrastructure/database/sqlite/assets
+    exact_symbol: "*ClipsRepository.RestoreClip"
+    file: internal/infrastructure/database/sqlite/assets/clips_repository.go
+    file_line: 365
+    replacement: "*ClipsRepository.Restore(ctx, id)"
+    introduction_date: 2026-04
+    removal_date: 2026-06-26
+    tracking_issue: QDRANT-002 followup (no external tracking number; resolved at CONTRACT)
+    compatibility_test: |
+      clips_repository_test.go references only `Restore`; the
+      ripgrep gate `rg 'RestoreClip' internal/` returns zero hits
+      outside the deprecation comment itself (the line above the
+      removed method).
+    usage_metric: |
+      0 internal callers (rg RestoreClip internal/ → 1 hit, which
+      is the deprecation comment line citing this manifest entry).
+      Pre-removal: 1 alias wrapper, 1 forward to Restore.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      RestoreClip was a one-line method on *ClipsRepository that
+      forwarded to Restore. Removed inline (comment-only fossil
+      remains at the original method position, per godlike/07
+      §"Historical information" → Git history is the canonical
+      record; this manifest is the index, not the narration).
+      No callers were ever migrated because nobody wrote against
+      the spelled-out alias — Restore was always the canonical name.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 2. PR-JOB-STATUS-DEFENSIVE — LOWER(status) fold migrates away after data normalisation
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-JOB-STATUS-DEFENSIVE
+    owner_capability: internal/infrastructure/health
+    exact_symbol: 'jobs_checker.go::livenessQuery LOWER(status) IN (''running'', ''leased'', ''pending'')'
+    file: internal/infrastructure/health/jobs_checker.go
+    file_line: 78
+    replacement: 'livenessQuery no LOWER() fold; rely on canonical migration 066/070 uppercase job statuses (PENDING|LEASED|RUNNING|SUCCEEDED|FAILED|CANCELLED)'
+    introduction_date: 2026-04
+    removal_date: 2026-Q3  # gated on PR-JOB-STATUS-UPPERCASE-MIGRATION (TBD)
+    tracking_issue: "PR-JOB-STATUS-UPPERCASE-MIGRATION (data migration owner: internal/infrastructure/database/sqlite/jobs)"
+    compatibility_test: |
+      After the data migration pass writes all jobs.status as UPPERCASE,
+      remove the LOWER() fold in livenessQuery and re-run
+      `go test ./internal/infrastructure/health/... -short` + the
+      integration probe that confirms the runner heartbeat path
+      is alive.
+    usage_metric: |
+      Until the data migration ships, zero usages of
+      `'running'|'failed'|'completed'` legacy literals
+      remain in application code; the SQL fold is the only
+      defensive read. Migration ticket must include a pre-flight
+      `SELECT COUNT(*) FROM jobs WHERE LOWER(status) IN ('running','failed','completed')`
+      and confirm the count is zero post-migration before the
+      fold can be removed.
+    migration_phase: BACKFILL  # in-flight; CUTOVER blocked on data migration, CONTRACT blocked on CUTOVER
+    status: in_progress
+    notes: |
+      Per godlike/07 §"Forbidden compatibility techniques" the
+      "hidden fallback branches selected on errors" rule does
+      NOT directly apply (this is a defensive READ, not a
+      fallback). However, this deprecation records the rule
+      that the dual-casing state must be eliminated by the
+      BACKFILL phase + a follow-up data migration, not via
+      permanent SQL defensive logic. The migration ticket
+      PR-JOB-STATUS-UPPERCASE-MIGRATION will own this.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 3. PR-QDRANT-PAYLOAD-STATUS — payload "status" key replaced by "lifecycle_state"
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-QDRANT-PAYLOAD-STATUS
+    owner_capability: internal/infrastructure/qdrant
+    exact_symbol: 'BuildPayload() legacy "status" payload key'
+    file: internal/infrastructure/qdrant/payload_mapper.go
+    file_line: 165
+    replacement: 'BuildPayload() canonical "lifecycle_state" key (SSOT with media_assets.lifecycle_state)'
+    introduction_date: pre-QDRANT-004
+    removal_date: 2026-06-26  # writer-side removal happened in QDRANT-004 PR2
+    tracking_issue: QDRANT-005B (PR-history; reconciler drives the cleanup of legacy points)
+    compatibility_test: |
+      payload_mapper_test.go asserts the writer never emits a
+      "status" key (line ~42 — `if _, leaked := payload[\"status\"]`).
+      reader-side search_adapter.go and clip_search_adapter.go
+      stop reading the legacy key as of QDRANT-004 closure.
+    usage_metric: |
+      0 new writes emit "status" (BuildPayload has not written
+      it since pre-PR6). Legacy historical points carrying the
+      "status" key are an estimated <1% of total points and
+      are migrated by QDRANT-005B's Reconciler (point-level
+      payload strip via DeletePayloadKeys on CLASSIFIED_LIFECYCLE_KEY_LEGACY).
+      Metric: `qdrant_reconciler_classifications_total{kind="lifecycle_key_legacy"}`.
+    migration_phase: CUTOVER  # writer/reader/manifest migrated; historical points migrate via QDRANT-005B
+    status: removed
+    notes: |
+      This case is unusual per godlike/07 §"Migration sequence":
+      the canonical update (writer + reader + manifest) shipped
+      in QDRANT-004 PR2 (June 2026), but historical points
+      carrying both keys still exist in production. The
+      QDRANT-005B reconciler's classification
+      LifecycleKeyLegacy (= payload has "status" key) drives
+      the migration; once that counter trends to zero at low
+      observation (operator-runbook per architecture/current.yaml
+      Wave 16 status_note), the CONTRACT phase is complete.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 4. PR-QDRANT-CFG-URL — Config.URL field replaced by Config.BaseURL
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-QDRANT-CFG-URL
+    owner_capability: internal/infrastructure/qdrant
+    exact_symbol: "Config.URL"
+    file: internal/infrastructure/qdrant/types.go
+    file_line: 297
+    replacement: "Config.BaseURL"
+    introduction_date: pre-QDRANT-001
+    removal_date: 2026-06-26  # removal landed in QDRANT-001 closure
+    tracking_issue: QDRANT-001 (PR-history)
+    compatibility_test: |
+      Config struct in types.go carries only BaseURL + APIKey +
+      Timeout + Enabled + CollectionVersion + CollectionRetentionDays.
+      The orphan-fields list comment in Config's doc block lists
+      the historical aliases that were removed (URL, TimeoutMs,
+      RetryMaxAttempts, Collection, CollectionAlias, DisableAlias,
+      TextVectorName, TranscriptVectorName, VisualVectorName,
+      AudioVectorName, SparseVectorName, TextDimensions,
+      TranscriptDimensions, VisualDimensions, AudioDimensions,
+      EmbeddingServerURL).
+    usage_metric: |
+      0 references to Config.URL anywhere in the codebase
+      (rg 'cfg\\.Qdrant\\.URL|cfg\\.URL' returns zero). Config
+      initialisation sites all use Config.BaseURL.
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Removal was bundled with QDRANT-001's V3 manifest migration
+      (June 2026). The orphan-fields list in the Config doc
+      block IS the canonical deprecation record for the cluster
+      (URL + 14 other V2-era fields). This manifest entry picks
+      URL because it is the single most-often-cited alias in
+      historical CHANGELOG entries; the other 14 are summarised
+      in the orphan-fields comment in qdrant/types.go.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 5. PR-INDEXST-LEGACY-ALPHABET — legacyState* constants preserved for negative-validate
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-INDEXST-LEGACY-ALPHABET
+    owner_capability: internal/domain/asset
+    exact_symbol: 'legacyStateEmbedding, legacyStateUpserting, legacyStateRetrying, legacyStateIndexed, legacyStateFailed'
+    file: internal/domain/asset/index_state.go
+    file_line: 36, 101
+    replacement: 'no replacement (anti-corruption pattern; Valid() rejects them deliberately)'
+    introduction_date: 2026-04
+    removal_date: never  # this entry documents the KEEP, not a removal
+    tracking_issue: documentation-only
+    compatibility_test: |
+      `state.Valid()` returns false on every legacyState* value
+      (covered by index_state_test.go). The constants exist
+      solely so a future anti-corruption test can reference
+      them by name without re-typing the literal.
+    usage_metric: |
+      0 callers. The constants are private package-level
+      visibility (lowercase first letter); no production file
+      imports them or references them as values. They appear
+      only in comments within the same file.
+    migration_phase: not applicable  # this is anti-corruption documentation
+    status: keep
+    notes: |
+      Intentional non-removal: per godlike/07 §"No fake
+      availability" + §"Forbidden compatibility techniques",
+      Valid() must explicitly reject pre-migration values.
+      Removing the constants would lose the named reference
+      target. CI gate does NOT flag never-removal entries;
+      this record is the explicit `keep` annotation.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 6. PR-YT-SEARCHTOPICS — unrouted method on YouTubeClipHandler
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-YT-SEARCHTOPICS
+    owner_capability: internal/api/assets/youtube
+    exact_symbol: "*YouTubeClipHandler.SearchTopics / searchTopicsViaProvider / providersToTopicResults"
+    file: internal/api/assets/youtube/youtube_handlers.go
+    file_line: 124, 165, 211
+    replacement: "*YouTubeClipHandler.SearchAdvanced (GET/POST /api/media/clips/search)"
+    introduction_date: 2026-04
+    removal_date: 2026-06-26  # this PR
+    tracking_issue: Wave 16 PR1 (current)
+    compatibility_test: |
+      RegisterRoutes in youtube_handlers.go has NEVER exposed
+      SearchTopics to a Gin route — only SearchAdvanced is
+      mounted (GET /search, POST /search). The method exists
+      in source solely as a backward-compat hedge against the
+      cut-over recipe in docs/migration-maps/internal-sources.md
+      (a historical document; the recipe is now obsolete).
+      Ripgrep gate: `rg 'SearchTopics' internal/` returns only
+      the dead method bodies themselves; removal = compile-clean
+      AND zero route hits.
+    usage_metric: |
+      0 active callers. The dead methods reference
+      providerReg + providerSearch + providerResolve fields,
+      which become dead fields after removal (follow-up
+      PR-CLIP-YT-REGISTRY-CLEANUP will collapse them).
+    migration_phase: CONTRACT  # no callers => direct CONTRACT per godlike/07 §"Migration sequence"
+    status: removed
+    notes: |
+      Follow-up PR-CLIP-YT-REGISTRY-CLEANUP (separate commit)
+      will remove:
+        - resolveProvider()                 (handler method)
+        - providerSearch, providerReg,
+          providerResolve fields            (handler struct)
+        - `providerRegistry *providers.Registry`
+          parameter on NewYouTubeClipHandler
+        - `internal/application/assets/providers`
+          import (when no other callsite uses it)
+        - 1 callsite at internal/app/clips_adapters_index.go::RegisterRoutes
+          that wires the Registry parameter
+      This PR removes only the dead methods + their direct
+      helpful bodies (searchTopicsViaProvider, providersToTopicResults).
+      The provider dispatch wiring stays so the follow-up PR
+      can do its own safe-archaeology pass against callers.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # 7. PR-YT-TYPES-TOPIC — TopicSearchRequest canonical relocation
+  # ────────────────────────────────────────────────────────────────────────
+  - id: PR-YT-TYPES-TOPIC
+    owner_capability: internal/application/youtube/types
+    exact_symbol: "youtube.TopicSearchRequest (legacy in-package struct)"
+    file: internal/application/youtube/types/types.go
+    file_line: 173
+    replacement: "yttypes.TopicSearchRequest (canonical home; zero-copy type alias in parent package)"
+    introduction_date: 2026-04
+    removal_date: 2026-06-26  # PR4-B finalisation (historical)
+    tracking_issue: PR4-B finalisation (PR-history)
+    compatibility_test: |
+      `rg 'youtube\\.TopicSearchRequest' internal/api/`
+      returns zero hits; all callers reference
+      `yttypes.TopicSearchRequest`. The package-doc comment
+      in youtube/types/types.go explicitly cites PR4-B as
+      the canonicalisation commit and notes that the legacy
+      in-package definition is removed.
+    usage_metric: |
+      0 references to the legacy `youtube.TopicSearchRequest`
+      outside this manifest. The canonical type is consumed
+      in internal/api/assets/youtube/youtube_handlers.go via
+      `yttypes.TopicSearchRequest` (referenced by the now-removed
+      SearchTopics method; further orphaning after PR-YT-SEARCHTOPICS).
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      The shim file referenced in earlier package-doc comments
+      (the historical "alias file types.go" merged into the
+      canonical types.go on PR4-B finalisation) no longer
+      exists on disk. This manifest entry records that the
+      shard of code which used to live as `youtube.TopicSearchRequest`
+      is now part of the canonical types package — there is
+      no separate "shim file" to remove. The archive-row
+      below documents the historical commit for audit.
+
+# Audit summary (read-only; not part of the ratchet) -------------------------
+audit:
+  manifest_version: "Wave 16 PR1 (June 2026)"
+  total_records: 7
+  by_status:
+    removed: 5
+    in_progress: 1
+    keep: 1
+  by_migration_phase:
+    CONTRACT: 4
+    CUTOVER: 1
+    BACKFILL: 1
+    'not applicable': 1
+  ci_gate_impact: |
+    PR-CLIP-RESTORE      (removed 2026-06-26): audit-only, no gate.
+    PR-JOB-STATUS-DEFENSIVE (in_progress until data migration):
+        CI does NOT fail; entry is a tracking reference. Once
+        migration ticket PR-JOB-STATUS-UPPERCASE-MIGRATION ships
+        AND validates, the entry flips to "removed" and the
+        defensive fold is deleted in the same commit.
+    PR-QDRANT-PAYLOAD-STATUS (removed 2026-06-26): audit-only.
+        Historical-point migration runs in background via
+        QDRANT-005B reconciler.
+    PR-QDRANT-CFG-URL        (removed 2026-06-26): audit-only.
+    PR-INDEXST-LEGACY-ALPHABET (keep): explicit non-removal
+        annotation; CI never fires on this entry.
+    PR-YT-SEARCHTOPICS       (removed 2026-06-26, this PR):
+        Ci gate fires ONLY on the in-progress item
+        (PR-JOB-STATUS-DEFENSIVE) until it ships.
+    PR-YT-TYPES-TOPIC        (removed 2026-06-26, historical):
+        audit-only.

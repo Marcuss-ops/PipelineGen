@@ -6,23 +6,22 @@
 // (DriveHandler). The system Module now mounts two sub-groups
 // sharing the same protected router group:
 //
-//	/system/doctor     — admin/doctor diagnostics
-//	/drive/{reconcile,
-//	        cleanup,
-//	        folders,
-//	        move,
-//	        resolve-by-id}
+//   /system/doctor     — admin/doctor diagnostics
+//   /drive/{reconcile,
+//           cleanup,
+//           folders,
+//           move,
+//           resolve-by-id}
 //
 // Both sub-groups inherit Auth + RateLimit + WorkspaceScope from
 // the protected group mounted in routes.go.
 //
 // PR4-cleanup delta (June 24, 2026): NewModule signature dropped
 // the three concrete infrastructure deps (`*config.Config`,
-// `*drive.Uploader`, `*drivecleanup.Service`) and now relies on
+// `*drive.Uploader`, `Reconciler`) and now relies on
 // the typed port surface (DoctorConfig + Reconciler + DriveAdminOps)
-// wired at the composition root by `internal/app/system_adapters.go`.
-// No more `internal/infrastructure/*` imports in the api/system
-// subtree (AGENTS.md Pattern 8).
+// wired at the composition root. No more `internal/infrastructure/*`
+// imports in the api/system subtree (AGENTS.md Pattern 8).
 package system
 
 import (

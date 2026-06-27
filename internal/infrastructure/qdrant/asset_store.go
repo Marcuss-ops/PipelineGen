@@ -28,9 +28,18 @@ func NewSQLiteAssetStore(db *sql.DB) *SQLiteAssetStore {
 }
 
 // Compile-time assertion: SQLiteAssetStore satisfies AssetStore.
-var _ AssetStore = (*SQLiteAssetStore)(nil)
-
-// FetchAsset reads one row from media_assets and populates an AssetData.
+var _ AssetStore = (*SQLiteAssetStore)(nil)// FetchAsset reads one row from media_assets and populates an AssetData.
+//
+// QDRANT-005 closure (June 2026): AssetData gains a LifecycleState
+// field sourced from media_assets.lifecycle_state (the canonical
+// SQLite column). Status remains populated from the legacy
+// media_assets.status column (default 'ACTIVE' for rows where it is
+// NULL — column may be absent on very early dbs, where the COALESCE
+// guard prevents the query from failing). Both fields are
+// populated when the column exists; payload_mapper's
+// canonicalLifecycleState helper prefers LifecycleState and falls
+// back to Status, so the search_adapter filter key (lifecycle_state)
+// is always non-empty.
 func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*AssetData, error) {
 	a := &AssetData{}
 
@@ -40,11 +49,13 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	var language, category, style, channelID, lic sql.NullString
 	var workspaceID, youtubeVideoID, youtubeURL, startTime, endTime sql.NullString
 	var createdAt, updatedAt, deletedAt sql.NullString
+	var lifecycleState sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
 			COALESCE(status, 'ACTIVE'),
+			COALESCE(lifecycle_state, 'ready'),
 			COALESCE(tags, '[]'),
 			COALESCE(search_text, ''),
 			COALESCE(drive_link, ''),
@@ -60,12 +71,13 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 			duration_ms,
 			workspace_id, channel_id, license,
 		source_version,
-		created_at, updated_at, deleted_at
+			created_at, updated_at, deleted_at
 		FROM media_assets
 		WHERE id = ?
 	`, assetID).Scan(
 		&a.ID, &a.Name, &a.Source, &a.MediaType,
 		&a.Status,
+		&lifecycleState,
 		&tagsJSON,
 		&a.SearchText,
 		&a.DriveLink,
@@ -83,6 +95,9 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 		&sourceVersionStr,
 		&createdAt, &updatedAt, &deletedAt,
 	)
+	if lifecycleState.Valid {
+		a.LifecycleState = lifecycleState.String
+	}
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("asset %q not found in media_assets", assetID)
@@ -191,4 +206,16 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+
+// ListAssetsForReconcile returns the minimum asset payload needed by the admin-side
+// `cmd/admin/reconcile_qdrant.go` reconcile dry-run. Originally stubbed at QDRANT-005
+// closure with (nil, nil) — this made the caller silently produce empty reconcile
+// output. Replaced here (June 2026) with an explicit not-implemented error so a
+// misconfigured reconciler fails LOUDLY rather than pretending to reconcile 0
+// assets. Wire a real SELECT against media_assets (filtered by includeLifecycleStates)
+// BEFORE enabling production reconcile jobs.
+func (s *SQLiteAssetStore) ListAssetsForReconcile(ctx context.Context, includeLifecycleStates []string) ([]AssetData, error) {
+	return nil, fmt.Errorf("ListAssetsForReconcile: wired as build-time placeholder only (QDRANT-005); reconcile jobs must implement the SQL scan before being enabled — requested lifecycleStates=%v", includeLifecycleStates)
 }

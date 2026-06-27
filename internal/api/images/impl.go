@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -65,7 +65,7 @@ type AnimateRequest struct {
 func (h *ImagesHandler) Upload(c *gin.Context) {
 	var req UploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
@@ -85,21 +85,21 @@ func (h *ImagesHandler) Upload(c *gin.Context) {
 			Source: "upload",
 		})
 		if err != nil {
-			api.InternalError(c, err)
+			apiutil.InternalError(c, err)
 			return
 		}
-		api.OK(c, res)
+		apiutil.OK(c, res)
 		return
 	}
 
 	// Fallback
 	asset, err := h.service.SearchAndDownload(c.Request.Context(), slug, req.Name, req.URL, req.Lang, req.Tags)
 	if err != nil {
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	api.OK(c, asset)
+	apiutil.OK(c, asset)
 }
 
 // Search cerca un'immagine per un soggetto, scaricandola se non esiste
@@ -107,7 +107,7 @@ func (h *ImagesHandler) Search(c *gin.Context) {
 	query := c.Query("q")
 	lang := c.DefaultQuery("lang", "it")
 	if query == "" {
-		api.BadRequest(c, "missing query parameter 'q'")
+		apiutil.BadRequest(c, "missing query parameter 'q'")
 		return
 	}
 
@@ -115,11 +115,11 @@ func (h *ImagesHandler) Search(c *gin.Context) {
 	slug := strings.ReplaceAll(strings.ToLower(query), " ", "-")
 	asset, err := h.service.SearchAndDownload(c.Request.Context(), slug, query, query, lang, nil)
 	if err != nil {
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"subject": query,
 		"image": gin.H{
 			"hash":       asset.Hash,
@@ -138,24 +138,24 @@ func (h *ImagesHandler) Sync(c *gin.Context) {
 
 	// 1. Local Sync
 	if err := h.service.SyncAssets(); err != nil {
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
 	// 2. Drive Sync
 	if err := h.service.SyncFromDrive(ctx); err != nil {
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	api.OK(c, gin.H{"message": "Synchronization complete (Local + Drive)"})
+	apiutil.OK(c, gin.H{"message": "Synchronization complete (Local + Drive)"})
 }
 
 // Generate genera un'immagine AI: prova Google Flow (primario), fallback NVIDIA.
 func (h *ImagesHandler) Generate(c *gin.Context) {
 	var req GenerateNvidiaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
@@ -210,11 +210,11 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		skipDrive,
 	)
 	if err != nil {
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"prompt": req.Prompt,
 		"model":  req.Model,
 		"style":  req.Style,
@@ -235,7 +235,7 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 func (h *ImagesHandler) Animate(c *gin.Context) {
 	var req AnimateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		api.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
@@ -263,11 +263,11 @@ func (h *ImagesHandler) Animate(c *gin.Context) {
 
 	outputPath, err := h.service.AnimateImage(c.Request.Context(), req.ImageHash, req.Duration)
 	if err != nil {
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"image_hash":  req.ImageHash,
 		"duration":    req.Duration,
 		"output_path": outputPath,
@@ -278,11 +278,11 @@ func (h *ImagesHandler) Animate(c *gin.Context) {
 // Diagnostics reports the local state of the image generation and animation wiring.
 func (h *ImagesHandler) Diagnostics(c *gin.Context) {
 	if h.service == nil {
-		api.InternalError(c, fmt.Errorf("image service not configured"))
+		apiutil.InternalError(c, fmt.Errorf("image service not configured"))
 		return
 	}
 
-	api.OK(c, h.service.Diagnostics())
+	apiutil.OK(c, h.service.Diagnostics())
 }
 
 // RemoteWebhookJobJSON is the JSON payload sent by the remote worker alongside image files.
@@ -304,25 +304,25 @@ func (h *ImagesHandler) ReceiveRemoteWebhook(c *gin.Context) {
 
 	// Parse multipart form (max 500MB per image, allow many files)
 	if err := c.Request.ParseMultipartForm(500 << 20); err != nil {
-		api.BadRequest(c, fmt.Sprintf("failed to parse multipart form: %v", err))
+		apiutil.BadRequest(c, fmt.Sprintf("failed to parse multipart form: %v", err))
 		return
 	}
 
 	// Extract job metadata from job_json field
 	jobJSONStr := c.PostForm("job_json")
 	if jobJSONStr == "" {
-		api.BadRequest(c, "missing job_json field")
+		apiutil.BadRequest(c, "missing job_json field")
 		return
 	}
 
 	var jobData RemoteWebhookJobJSON
 	if err := json.Unmarshal([]byte(jobJSONStr), &jobData); err != nil {
-		api.BadRequest(c, fmt.Sprintf("failed to parse job_json: %v", err))
+		apiutil.BadRequest(c, fmt.Sprintf("failed to parse job_json: %v", err))
 		return
 	}
 
 	if jobData.JobID == "" {
-		api.BadRequest(c, "job_json missing job_id")
+		apiutil.BadRequest(c, "job_json missing job_id")
 		return
 	}
 
@@ -352,7 +352,7 @@ func (h *ImagesHandler) ReceiveRemoteWebhook(c *gin.Context) {
 	}
 
 	if len(imageFiles) == 0 {
-		api.BadRequest(c, "no image files found in webhook request")
+		apiutil.BadRequest(c, "no image files found in webhook request")
 		return
 	}
 
@@ -441,11 +441,11 @@ func (h *ImagesHandler) ReceiveRemoteWebhook(c *gin.Context) {
 	}
 
 	if len(ingestedAssets) == 0 {
-		api.InternalError(c, fmt.Errorf("failed to ingest any of the %d received images", len(imageFiles)))
+		apiutil.InternalError(c, fmt.Errorf("failed to ingest any of the %d received images", len(imageFiles)))
 		return
 	}
 
-	api.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"job_id":  jobData.JobID,
 		"status":  jobData.Status,
 		"prompt":  jobData.Prompt,

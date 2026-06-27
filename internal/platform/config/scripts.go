@@ -24,6 +24,12 @@ type ScriptsConfig struct {
 	// Ollama queue depth just adds latency. 3 is the safe default.
 	BatchChapterConcurrency int `yaml:"batch_chapter_concurrency" env:"VELOX_SCRIPTS_BATCH_CHAPTER_CONCURRENCY" default:"3"`
 
+	// MaxBatchWorkers caps the number of concurrent items processed by
+	// GenerateManyUseCase. Each worker runs the full unified pipeline
+	// (normalize → validate → resolve → build → generate → postprocess)
+	// for one item. Default 4.
+	MaxBatchWorkers int `yaml:"max_batch_workers" env:"VELOX_SCRIPTS_MAX_BATCH_WORKERS" default:"4"`
+
 	// MaxInsightEntities caps the number of important words, important phrases,
 	// special names, and artlist phrases extracted per script. Default 12.
 	MaxInsightEntities int `yaml:"max_insight_entities" env:"VELOX_SCRIPTS_MAX_INSIGHT_ENTITIES" default:"12"`
@@ -87,6 +93,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.BatchChapterConcurrency <= 0 {
 		s.BatchChapterConcurrency = 3
+	}
+	if s.MaxBatchWorkers <= 0 {
+		s.MaxBatchWorkers = 4
 	}
 	if s.MaxInsightEntities <= 0 {
 		s.MaxInsightEntities = 12

@@ -25,23 +25,11 @@ import (
 )
 
 // ClipsStateWriter is the *assets.ClipsRepository method surface the
-// Dispatcher needs for state transitions inside the same tx as the
-// outbox_events INSERT. Production concrete is *assets.ClipsRepository
-// from internal/infrastructure/database/sqlite/assets.
+// Dispatcher needs for the SetIndexStateTx half of EnqueueAndDelete.
+// Declared as an interface so unit tests can substitute a fake
+// without pulling the full assets state-machine plus PR6's
+// SetIndexState. Production concrete is *assets.ClipsRepository from
+// internal/infrastructure/database/sqlite/assets.
 type ClipsStateWriter interface {
-	// SetIndexStateTx (QDRANT-002 PR7) flips the media_assets.index_state
-	// column inside the tx — used by EnqueueAndDelete to stamp DELETE_PENDING
-	// before the outbox event.
 	SetIndexStateTx(ctx context.Context, tx *sql.Tx, id string, state asset.IndexState) error
-
-	// RestoreTx (QDRANT-002 close-out, June 2026) flips lifecycle_state
-	// back to 'ready' and clears deleted_at inside the tx — used by
-	// EnqueueAndRestore to atomically restore + reindex.
-	RestoreTx(ctx context.Context, tx *sql.Tx, id string) error
-
-	// HardDeleteTx (QDRANT-002 close-out, June 2026) physically removes
-	// the media_assets row and related rows (asset_locations,
-	// asset_processing, asset_versions) inside the tx — used by
-	// EnqueueAndHardDelete to atomically delete + emit Qdrant cleanup event.
-	HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error
 }

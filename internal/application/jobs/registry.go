@@ -131,12 +131,7 @@ const (
 	TypeLessonsProcess      = "lessons.process"
 	TypeMediaReindex        = "media.reindex"
 	TypeYouTubeRebuildST    = "youtube.rebuild_search_text"
-	TypeBatchScriptGenerate = job.TypeBatchScriptGenerate
-	// NOTE (Wave 5 PR3 second pass, June 2026): the previously-declared
-	// local constant for script.generate_from_clips has been deleted.
-	// Canonical owner is internal/domain/job/job.go::TypeClipScriptGenerate.
-	// All registration below uses the domain constant directly.
-	TypeCatalogScriptGenerate = job.TypeCatalogScriptGenerate
+	TypeScriptGenerate        = job.TypeScriptGenerate
 	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync       = "drive.folder.sync"
 	TypeMediaCurate           = job.TypeMediaCurate
@@ -149,9 +144,7 @@ func Compose() *Registry {
 	r := NewRegistry()
 
 	// ── Script generation ──
-	r.Register(RegistryEntry{Type: TypeBatchScriptGenerate, Description: "Batch script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(RegistryEntry{Type: job.TypeClipScriptGenerate, Description: "Clip-based script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(RegistryEntry{Type: TypeCatalogScriptGenerate, Description: "Catalog script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(RegistryEntry{Type: TypeScriptGenerate, Description: "Script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(RegistryEntry{Type: TypeMediaCurate, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── Media processing ──

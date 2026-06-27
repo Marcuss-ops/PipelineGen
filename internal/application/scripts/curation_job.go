@@ -1,4 +1,9 @@
 // Package scripts — CurationJobServiceImpl extracted from api/script/handler_jobs.go (PR2, June 2026).
+//
+// PR 11 (June 2026): migrated to the unified pipeline. HandleCurateJob
+// now translates the legacy JobPayloadCurate to a GenerationEnvelopeV2
+// and delegates to GenerateOneUseCase.Execute. The old MediaCurator.Curate
+// code path is no longer used for curation jobs.
 package scripts
 
 import (
@@ -10,59 +15,58 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // CurationJobServiceImpl satisfies the CurationJobService interface
 // (defined in api/script/helpers.go) for the script.curate background job.
 type CurationJobServiceImpl struct {
-	MediaCurator   *MediaCurator
-	VOService      *voiceover.Service
-	Cfg            *config.Config
-	Log            *zap.Logger
-	ResolveFolder  func(ctx context.Context, input, defaultRootID string) (string, error)
-	GroupsResolver *voiceover.GroupsResolver
+	One           *GenerateOneUseCase
+	Cfg           *config.Config
+	Log           *zap.Logger
+	ResolveFolder func(ctx context.Context, input, defaultRootID string) (string, error)
 	MaybeCreateDoc func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string)
 }
 
 // NewCurationJobServiceImpl creates the curation job service.
 func NewCurationJobServiceImpl(
-	mediaCurator *MediaCurator,
-	voService *voiceover.Service,
+	one *GenerateOneUseCase,
 	cfg *config.Config,
 	log *zap.Logger,
 	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
-	groupsResolver *voiceover.GroupsResolver,
 	maybeCreateDoc func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string),
 ) *CurationJobServiceImpl {
 	return &CurationJobServiceImpl{
-		MediaCurator:   mediaCurator,
-		VOService:      voService,
-		Cfg:            cfg,
-		Log:            log,
-		ResolveFolder:  resolveFolder,
-		GroupsResolver: groupsResolver,
+		One:           one,
+		Cfg:           cfg,
+		Log:           log,
+		ResolveFolder: resolveFolder,
 		MaybeCreateDoc: maybeCreateDoc,
 	}
 }
 
-// HandleCurateJob processes a background script.curate job.
+// HandleCurateJob processes a background media.curate job.
+// PR 11 (June 2026): migrated to the unified pipeline. Translates
+// the legacy JobPayloadCurate to a GenerationEnvelopeV2 and delegates
+// to GenerateOneUseCase.Execute. The old MediaCurator.Curate path is
+// superseded.
 func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	if c != nil && c.Log != nil {
-		c.Log.Info("handling script.curate job", zap.String("job_id", j.ID))
+		c.Log.Info("handling media.curate job (unified pipeline)", zap.String("job_id", j.ID))
 	}
 
-	curator := c.MediaCurator
-	if curator == nil {
-		return nil, fmt.Errorf("media curator not initialized")
+	if c.One == nil {
+		return nil, fmt.Errorf("curation job handler: GenerateOneUseCase not initialized")
 	}
 
+	// Decode legacy payload.
 	var payload JobPayloadCurate
 	if err := json.Unmarshal(j.Payload, &payload); err != nil {
 		return nil, fmt.Errorf("failed to parse job payload: %w", err)
 	}
+
 	payload.Languages = NormalizeLanguages(payload.Languages)
 	lang := strings.TrimSpace(payload.Language)
 	if lang == "" && len(payload.Languages) > 0 {
@@ -72,162 +76,93 @@ func (c *CurationJobServiceImpl) HandleCurateJob(ctx context.Context, j *job.Job
 		lang = "en"
 	}
 
-	if c != nil && c.Log != nil {
-		c.Log.Info("curate job params",
-			zap.String("query", payload.Query),
-			zap.String("language", lang),
-			zap.String("tone", payload.Tone),
-			zap.Int("max_clips", payload.MaxClips),
-			zap.Int("target_words", payload.TargetWords))
+	// Translate to GenerationEnvelopeV2 item.
+	item := translateCuratePayloadToItem(payload, lang)
+
+	if tools != nil && tools.Progress != nil {
+		tools.Progress(5, fmt.Sprintf("Curating: %s", payload.Query))
 	}
 
-	if tools.Progress != nil {
-		tools.Progress(5, fmt.Sprintf("Searching clips for: %s", payload.Query))
-	}
+	// Run through the unified pipeline.
+	tracker := NewProgressTracker(func(pct int, msg string) {
+		if tools != nil && tools.Progress != nil {
+			tools.Progress(pct, msg)
+		}
+	}, "curate")
 
-	req := CurateRequest{
-		Query:             payload.Query,
-		Title:             payload.Title,
-		Language:          lang,
-		Tone:              payload.Tone,
-		Model:             payload.Model,
-		MaxClips:          payload.MaxClips,
-		SelectableClips:   payload.SelectableClips,
-		TargetWords:       payload.TargetWords,
-		MaxCharsPerScene:  payload.MaxCharsPerScene,
-		MinScore:          payload.MinScore,
-		Source:            payload.Source,
-		MediaType:         payload.MediaType,
-		Type:              payload.Type,
-		Style:             payload.Style,
-		StyleInstructions: payload.StyleInstructions,
-		ForceRefresh:      payload.ForceRefresh,
-	}
-
-	if tools.Progress != nil {
-		tools.Progress(15, "Semantic search complete, building clip context...")
-	}
-
-	result, err := curator.Curate(ctx, req)
+	result, err := c.One.Execute(ctx, item, domainScript.PresetCustom, tracker)
 	if err != nil {
-		return nil, fmt.Errorf("curation failed: %w", err)
+		return nil, fmt.Errorf("curation via unified pipeline failed: %w", err)
 	}
 
-	if tools.Progress != nil {
-		tools.Progress(90, "Creating Google Doc...")
-	}
+	return buildCurateResponse(payload, result, lang), nil
+}
 
-	var docLink, docID, docErr string
-	docContent := BuildCurateDocContent(result.Title, result.ClipScenes)
-	docFolderID := ""
-	if c.Cfg != nil {
-		docFolderID = c.Cfg.Drive.ScriptsGenFolder()
-	}
-	if c.MaybeCreateDoc != nil {
-		if l, id := c.MaybeCreateDoc(ctx, result.Title, docContent, docFolderID, true); l != "" {
-			docLink = l
-			docID = id
-		}
-	}
-	if docLink == "" {
-		docErr = "google doc creation failed (non-fatal)"
-		c.Log.Warn("Google Doc creation failed, continuing without it")
-	}
-
-	voiceoverResults := make([]map[string]any, 0)
-	if payload.GenerateVoiceover && c.VOService != nil && len(result.ClipScenes) > 0 {
-		if tools.Progress != nil {
-			tools.Progress(95, "Generating voiceovers for each scene...")
-		}
-
-		voRootID := payload.VoiceoverFolderID
-		if voRootID == "" && c.Cfg != nil {
-			voRootID = c.Cfg.Drive.VoiceoverFolder()
-		}
-		destReq := BuildVoiceoverDestination(
-			ctx, c.ResolveFolder, c.Log, result.Title,
-			payload.VoiceoverFolderID, payload.VoiceoverGroup,
-			voRootID, c.GroupsResolver,
-		)
-		if destReq != nil {
-			scenes := make([]VoiceoverSceneItem, len(result.ClipScenes))
-			for i, sc := range result.ClipScenes {
-				scenes[i] = VoiceoverSceneItem{Text: sc.Text, SceneIndex: sc.SceneIndex}
-			}
-			GenerateSceneVoiceovers(ctx, c.VOService, scenes, lang, destReq, c.Log, tools.Progress, 95, 5)
-		}
-	}
-
-	if tools.Progress != nil {
-		tools.Progress(100, "Curation completed")
-	}
-
-	clipScenesJSON := make([]map[string]any, 0, len(result.ClipScenes))
-	for _, sc := range result.ClipScenes {
-		m := map[string]any{
-			"scene_index": sc.SceneIndex,
-			"text":        sc.Text,
-		}
-		if sc.ClipID != "" {
-			m["clip_id"] = sc.ClipID
-		}
-		if sc.DriveLink != "" {
-			m["drive_link"] = sc.DriveLink
-		}
-		clipScenesJSON = append(clipScenesJSON, m)
-	}
-
-	searchResultsJSON := make([]map[string]any, 0, len(result.SearchResults))
-	for _, sr := range result.SearchResults {
-		m := map[string]any{
-			"clip_id": sr.ClipID,
-			"name":    sr.Name,
-			"score":   sr.Score,
-		}
-		if sr.Source != "" {
-			m["source"] = sr.Source
-		}
-		if sr.DriveLink != "" {
-			m["drive_link"] = sr.DriveLink
-		}
-		searchResultsJSON = append(searchResultsJSON, m)
-	}
-
-	response := map[string]any{
-		"ok":                 true,
-		"title":              result.Title,
-		"script":             result.Script,
-		"word_count":         result.WordCount,
-		"language":           lang,
-		"tone":               payload.Tone,
-		"cache_status":       result.CacheStatus,
-		"accepted_clip_ids":  result.AcceptedClipIDs,
-		"clip_scenes":        clipScenesJSON,
-		"search_results":     searchResultsJSON,
-		"narrative_plan":     result.NarrativePlan,
-		"source_text":        result.SourceText,
-		"source_fingerprint": result.SourceFingerprint,
-		"voiceover_results":  voiceoverResults,
-		"timings": map[string]any{
-			"search_ms":        result.Timings.SearchMs,
-			"build_context_ms": result.Timings.BuildCtxMs,
-			"write_script_ms":  result.Timings.WriteScriptMs,
-			"total_ms":         result.Timings.TotalMs,
+// translateCuratePayloadToItem converts a legacy JobPayloadCurate
+// to a GenerationItemV2. Curation queries map to catalog-source
+// generation items.
+func translateCuratePayloadToItem(payload JobPayloadCurate, lang string) domainScript.GenerationItemV2 {
+	item := domainScript.GenerationItemV2{
+		Title:    payload.Title,
+		Language: lang,
+		Tone:     payload.Tone,
+		Model:    payload.Model,
+		Style:    payload.Style,
+		Source: domainScript.SourceSpec{
+			Type:         domainScript.SourceCatalog,
+			Query:        payload.Query,
+			MaxClips:     payload.MaxClips,
+			ForceRefresh: payload.ForceRefresh,
+		},
+		ScriptParams: domainScript.ScriptSpec{
+			TargetWords:  payload.TargetWords,
+			Guidelines:   payload.StyleInstructions,
+			ForceRefresh: payload.ForceRefresh,
+		},
+		Output: domainScript.OutputSpec{
+			SaveToDB:          true,
+			GenerateVoiceover: payload.GenerateVoiceover,
+			GenerateDocument:  true,
+			VoiceoverGroup:    payload.VoiceoverGroup,
+			VoiceoverFolderID: payload.VoiceoverFolderID,
+			Languages:         payload.Languages,
 		},
 	}
-	if scenes, scenesJSON, ok := marshalNormalizedScenes(result.ClipScenes, nil); ok {
-		response["scenes"] = scenes
-		response["scenes_json"] = scenesJSON
+	if payload.MinScore > 0 {
+		score := payload.MinScore
+		item.Source.MinQualityScore = &score
 	}
+	if payload.Title == "" {
+		item.Title = payload.Query
+	}
+	return item
+}
 
-	if docLink != "" {
-		response["doc_url"] = docLink
-		response["doc_link"] = docLink
-		response["doc_id"] = docID
+// buildCurateResponse converts a GenerationResult to the legacy
+// curate response shape. This preserves backward compatibility for
+// consumers reading job results.
+// PR 11 (June 2026): simplified — SourceText/Fingerprint are not
+// carried on GenerationResult; the old CurateResult fields are
+// dropped in favor of the canonical nested shape.
+func buildCurateResponse(payload JobPayloadCurate, result *domainScript.GenerationResult, lang string) map[string]any {
+	response := map[string]any{
+		"ok":             true,
+		"title":          result.Title,
+		"script":         result.Output.Text,
+		"word_count":     result.Output.WordCount,
+		"language":       lang,
+		"tone":           payload.Tone,
+		"cache_status":   result.Cache.Status,
+		"cache_hit":      result.Cache.Hit,
+		"voiceover_results": make([]map[string]any, 0),
+		"timings": map[string]any{
+			"total_ms": result.Timings.TotalMs,
+		},
 	}
-	if docErr != "" {
-		response["doc_error"] = docErr
+	if result.Artifacts.Document != nil {
+		response["doc_url"] = result.Artifacts.Document.DocLink
+		response["doc_link"] = result.Artifacts.Document.DocLink
+		response["doc_id"] = result.Artifacts.Document.DocID
 	}
-
-	return response, nil
+	return response
 }

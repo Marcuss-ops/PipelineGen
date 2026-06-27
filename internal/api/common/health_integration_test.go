@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
-	healthapp "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	healthapp	"github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 )
@@ -68,7 +68,7 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 	svc := healthapp.NewService(healthapp.ServiceDeps{
 		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
 		Drive:  infrahealth.NewDriveChecker("", ""),                                          // no Drive creds → applicable=false
-		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false), // disabled
+		Qdrant: nil, // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
 		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
 

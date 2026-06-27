@@ -1,9 +1,8 @@
 package main
 
-// This file can contain additional rules/checks or helper functions for disallowed technology uses if needed.
-// Currently, imports.go checks:
-// 1. Gin outside api
-// 2. os/exec outside infrastructure (or pkg)
-// 3. SQLite outside infrastructure/database
-// 4. database/sql in application
-// 5. os.Getenv outside config/app
+// Placeholder for future technology-restriction rules (Gin outside
+// internal/api/, os/exec outside internal/infrastructure/process, etc.).
+// As of June 2026 (Wave 19 PR2), the canonical restrictions are enforced
+// by live rules in scripts/archcheck/main.go, so no separate
+// technologies.go helper is required. TREESHAKING: do not re-add stale
+// "imports.go checks" comments here.

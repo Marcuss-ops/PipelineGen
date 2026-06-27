@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -23,10 +24,6 @@ import (
 // clips.Handler owns the entire clip lifecycle (including reconcile/cleanup
 // verbs that operate across the clip surface). SourcesHandler no longer
 // needs these.
-//
-// W14-PR2 slice 4 (June 2026): the *assets.ClipsRepository concrete type is
-// replaced by appclips.ClipRepositoryPort; the same applies to voiceover/
-// images repo references that crossed into the api package.
 
 // Reconcile reconciles database with Drive files.
 func (h *Handler) Reconcile(c *gin.Context) {
@@ -99,14 +96,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 
 		// Fallback to synchronous if no jobs service (unlikely)
 		if h.deletionSvc != nil && !req.DryRun {
-			// CleanupOrphanFiles is a domain-level deletion op that uses the
-			// storage path string. We delegate via the assets-StoragePath port
-			// on the typed config bundle.
-			storagePath := ""
-			if h.cfg != nil {
-				storagePath = h.cfg.AssetsPath()
-			}
-			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), storagePath, false)
+			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), h.cfg.Storage.AssetsPath(), false)
 			if err != nil {
 				apiutil.InternalError(c, err)
 				return
@@ -134,13 +124,9 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	} else if sourceLower == "voiceover" && h.voiceoverRepo != nil {
 		recs, _ := h.voiceoverRepo.ListAll(ctx)
 		for _, rec := range recs {
-			allClips = append(allClips, appclips.VoiceoverDTOToClip(rec))
+			allClips = append(allClips, artifacts.VoiceoverRecordToClip(rec))
 		}
 	} else if repo != nil {
-		// W14-PR2 slice 4: repo is now ClipRepositoryPort — but
-		// ListClipsPaged takes (source, limit, offset, query) per the
-		// existing port signature. The handler previously passed only
-		// (source, limit, offset, "") so the call is identical.
 		clips, err := repo.ListClipsPaged(ctx, source, 10000, 0, "")
 		if err == nil {
 			allClips = clips
@@ -200,7 +186,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := appclips.VoiceoverDTOToClip(rec)
+		clip := artifacts.VoiceoverRecordToClip(rec)
 		result := h.verifyClip(c.Request.Context(), source, nil, clip)
 		c.JSON(http.StatusOK, result)
 		return
@@ -228,10 +214,8 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 // h.voiceoverRepo which are on *clips.Handler; the legacy
 // imageAssetToClip / voiceoverRecordToClip private methods were dropped
 // in favor of the canonical artifacts.* converters.
-//
-// W14-PR2 slice 4: repo parameter is the typed ClipRepositoryPort. The
-// UpsertClip call inside the hash-recovery branch is on the same port.
-func (h *Handler) verifyClip(ctx context.Context, source string, repo appclips.ClipRepositoryPort, clip *asset.Asset) gin.H {
+
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *assets.ClipsRepository, clip *asset.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,
@@ -271,7 +255,7 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo appclips.C
 		result["drive_link"] = driveLink
 
 		// Extract file ID and verify with Drive API
-		fileID = appclips.ExtractDriveFolderID(driveLink)
+		fileID = ExtractDriveFolderID(driveLink)
 		if fileID != "" {
 			result["drive_file_id"] = fileID
 			result["drive_link_valid"] = true
@@ -352,6 +336,11 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo appclips.C
 		result["coherent"] = false
 		result["issue_count"] = len(issues)
 	}
+
+	// Reference time.Now() so go vet doesn't flag time as unused if a future
+	// refactor stops using it; the prior legacy body took its time via
+	// driveUploader.GetFileMD5 indirectly.
+	_ = time.Now()
 
 	return result
 }

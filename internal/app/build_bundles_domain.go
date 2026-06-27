@@ -18,7 +18,7 @@ import (
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
@@ -67,7 +67,6 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		cfg.External.OllamaModel,
 		log,
 	)
-	_ = voMetaWriter // consumed by removed initVoiceoverService/initImageService (Wave 15, commit 0c3089d)
 
 	clipProcessor := pkgffmpeg.NewFromConfig(cfg)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
@@ -114,29 +113,32 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	youtubeClipService := youtube.NewService(youtubeDeps)
 
-	// Wave 15 (June 2026): initVoiceoverService, initBooksService, and
-	// initImageService were removed from origin (compose_voiceover.go,
-	// compose_content.go, compose_images.go deleted in commit 0c3089d).
-	// Their consumers nil-tolerate.
-	var voiceoverSvc *voiceover.Service
-	// voiceoverRepo removed — voiceover sync block removed (Wave 15, commit 0c3089d)
-	var booksSvc *books.Service
+	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
+		drive.DriveClient, drive.DriveUploader,
+		search.AssetIndexService, process.ClipIndexerService,
+		drive.DestResolver,
+		voMetaWriter, ai.ScriptGen,
+	)
+
+	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
 
 	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveClient, repos, search)
 
-	var imageSvc *imgservice.Service
-	var metaWriter *semantic.MetadataWriter
+	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
+		drive.DriveClient, repos.ClipsRepo, repos.ClipsRepo,
+		drive.StyleRegistry, ai.ScriptGen,
+		drive.MediaStore, repos.ImageRepo,
+		voMetaWriter, ingestSvc,
+		outbox.Dispatcher,
+	)
 
-	// Wave 15 (June 2026): the RealtimeSearch slot is the typed-nil port
-	// for the script-side feature; its companion `assetsapi.RealtimeMatcher`
-	// slot was dropped because handler_realtime.go (defining that type)
-	// was deleted by origin's commit 0c3089d. Script-side consumers still
-	// see RealtimeSearch typed-nil at composition.
+	// Wave 15 (June 2026): RealtimeService split into two typed ports —
+	// see composition.go DomainBundle for rationale. Both stay typed-nil
+	// (package removed in commit d61068b3).
+	var realtimeMatcher assetsapi.RealtimeMatcher
 	var realtimeSearch scriptcore.RealtimeSearchService
 
 	// autotagVectorStore removed during the bundle simplification
-
-	// PG-034 (June 2026): autotagVectorStore removed — Qdrant capability
 	// deleted. The autotag service no longer takes a vector-store indexer;
 	// its semantic-tagging pipeline can still consume clip embeddings from
 	// the DB but no longer propagates them to a vector store backend.
@@ -161,9 +163,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	)
 	log.Info("Lessons service initialized", zap.Bool("enabled", cfg.Lessons.Enabled))
 
-	// Wave 15 (June 2026): voiceover sync skipped — voiceoverRepo is nil
-	// since initVoiceoverService was removed (commit 0c3089d).
 	var vosyncSvc *voiceoversync.Service
+	if voFolder := cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
+		vosyncSvc = voiceoversync.NewService(drive.DriveUploader, voiceoverRepo, search.AssetTreeService, voFolder, log)
+		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
+	}
 
 	return &DomainBundle{
 		YoutubeClipService: youtubeClipService,
@@ -174,6 +178,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		BooksService:       booksSvc,
 		LessonsService:     lessonsS,
 		MetaWriter:      metaWriter,
+		RealtimeMatcher: realtimeMatcher,
 		RealtimeSearch:  realtimeSearch,
 		AutotagService:  autotagSvc,
 		AssocService:    assocService,
@@ -283,8 +288,16 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,
 		jobs.Service, dbs.main.DB,
 	)
+	// Registries-and-SSOT (June 2026): this is the canonical site for
+	// the `system.cleanup` job-type registration. Spec §"Uniqueness"
+	// requires composition to fail on duplicate job types; the previous
+	// log-Warn-and-continue pattern silently absorbed any second-call
+	// attempt (a latent bug that manifested after WireRegistry's
+	// duplicate call was removed). Propagate so any future second-call
+	// path fails composition rather than masking the underlying
+	// Dispatcher error.
 	if err := maintenanceSvc.RegisterHandler(); err != nil {
-		log.Warn("failed to register maintenance handler", zap.Error(err))
+		return nil, fmt.Errorf("compose: register maintenance job handler (BuildMaintBundle): %w", err)
 	}
 
 	return &MaintBundle{

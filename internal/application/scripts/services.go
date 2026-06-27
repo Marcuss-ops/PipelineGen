@@ -4,31 +4,74 @@ package scripts
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
 
 // ── ClipServices ─────────────────────────────────────────────────────────
 
-// ClipServices bundles the service dependencies that the script-flow use cases
-// actually consume in production wiring (PR2 2b/c, June 2026). The historical
-// shape carried 13 typed ports; this struct keeps only the 5 fields actually
-// populated by WireScriptFlow (post-merge). The dropped ports — realtime
-// search, association, harvest, image-gen, etc. — depended on packages
-// removed from origin (commit d61068b3) and would have been permanently nil,
-// short-circuiting every consumer.
+// ClipServices bundles all service dependencies for clip-related functions.
 type ClipServices struct {
+	ClipSearch    ClipSearchService
+	Association   AssociationService
+	DriveCheck    DriveCheckService
+	ImageSearch   ImageSearchService
+	Translation   TextTranslationService
+	JobEnqueue    JobEnqueueService
+	Harvest       HarvestService
+	Voiceover     VoiceoverService
+	RealtimeSvc   RealtimeSearchService
+	HarvestSvc    HarvestService
 	Logger        *zap.Logger
 	Translator    TranslatorService
-	DriveSvc      DriveCheckService
-	ArtlistFolder string
 	MetadataModel string
+	AssocSvc      AssocSearchService
+	DriveSvc      DriveCheckService
+	JobsSvc       JobEnqueueService
+	ArtlistFolder string
+	ImgSvc        ImageGenService
 }
 
 // ── Service interfaces ───────────────────────────────────────────────────
 
+// ClipSearchService narrows clip search operations.
+type ClipSearchService interface {
+	EmbedTextForVector(ctx context.Context, text, vectorName string) ([]float32, error)
+}
+
+// AssociationService narrows association operations.
+type AssociationService interface {
+	BuildCandidates(ctx context.Context, req interface{}) (interface{}, error)
+}
+
 // DriveCheckService narrows drive check operations.
 type DriveCheckService interface {
 	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
+}
+
+// ImageSearchService narrows image search operations.
+type ImageSearchService interface {
+	Search(ctx context.Context, query string, limit int) ([]interface{}, error)
+}
+
+// TextTranslationService narrows text translation operations.
+type TextTranslationService interface {
+	Translate(ctx context.Context, text, targetLang string) (string, error)
+}
+
+// JobEnqueueService narrows job enqueue operations.
+type JobEnqueueService interface {
+	Enqueue(ctx context.Context, req interface{}) (interface{}, error)
+}
+
+// HarvestService narrows harvest operations.
+type HarvestService interface {
+	EnqueueHarvest(ctx context.Context, req interface{}, maxClips int, profile string) (interface{}, error)
+}
+
+// RealtimeSearchService narrows realtime search operations.
+type RealtimeSearchService interface {
+	SearchClips(ctx context.Context, query, source, mediaType string, limit int, minScore float64) ([]RealtimeMatchAsset, error)
 }
 
 // TranslatorService narrows translator operations with model support.
@@ -36,9 +79,18 @@ type TranslatorService interface {
 	TranslateTextWithModel(ctx context.Context, text, lang, model string) (string, error)
 }
 
-// RealtimeSearchService and AssocSearchService remain as typed-nil
-// compatibility ports for handlers that still carry the fields in their
-// constructor surfaces. The live pipeline no longer invokes methods on
-// these ports, so they stay empty by design.
-type RealtimeSearchService interface{}
-type AssocSearchService interface{}
+// AssocSearchService narrows association search operations with typed request/response.
+type AssocSearchService interface {
+	BuildCandidates(ctx context.Context, req AssociationCandidatesRequest) (*AssociationCandidatesResponse, error)
+}
+
+// ImageGenService narrows image search + generation operations.
+type ImageGenService interface {
+	SearchAndDownload(ctx context.Context, name, description, query, language string, extra interface{}) (*asset.ImageAsset, error)
+	GenerateSmartImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error)
+}
+
+// VoiceoverService narrows voiceover operations.
+type VoiceoverService interface {
+	Generate(ctx context.Context, text, language, filename string) (interface{}, error)
+}

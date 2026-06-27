@@ -237,7 +237,7 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 	// compatibility with legacy code paths and unit-test fixtures
 	// that construct bare Points without populating the payload.
 	// QDRANT-001's silent-failure concern was about the IDENTITY
-	// reverse-mapping (PointIDToAssetID on a UUID point), NOT about
+	// reverse-mapping from the UUID point, NOT about
 	// the bare point.ID itself: the latter is a valid (if
 	// operator-unfriendly) identifier, not a security bypass.
 	var assetID string
@@ -295,16 +295,23 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 // AssetData is the canonical asset representation used by PayloadMapper.
 // It mirrors the media_assets table columns needed for Qdrant points.
 type AssetData struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Source     string   `json:"source"`
-	MediaType  string   `json:"media_type"`
-	Status     string   `json:"status"`
-	Language   string   `json:"language,omitempty"`
-	Category   string   `json:"category,omitempty"`
-	Style      string   `json:"style,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	SearchText string   `json:"search_text,omitempty"`
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Source         string                 `json:"source"`
+	MediaType      string                 `json:"media_type"`
+	Status         string                 `json:"status"`
+	// LifecycleState is the canonical search-filter payload key. Asset
+	// store populates from media_assets.lifecycle_state when the column
+	// exists; legacy rows fall back to Status-derived values so the
+	// search adapter's filter key (lifecycle_state) is never empty.
+	// See payload_mapper.canonicalLifecycleState for the prefer/fall-back
+	// hierarchy used at write time.
+	LifecycleState string                 `json:"lifecycle_state,omitempty"`
+	Language       string                 `json:"language,omitempty"`
+	Category       string                 `json:"category,omitempty"`
+	Style          string                 `json:"style,omitempty"`
+	Tags           []string               `json:"tags,omitempty"`
+	SearchText     string                 `json:"search_text,omitempty"`
 	// DriveLink is the Drive web-view link for non-Qdrant legacy
 	// callers. QDRANT-001 (June 2026): intentionally NOT emitted by
 	// payload_mapper.BuildPayload — clients obtain a short-TTL
@@ -312,7 +319,7 @@ type AssetData struct {
 	// Populated by asset_store.go from media_assets.drive_link for
 	// ingest-path tracking / reconstruct-from-SQL flows; never
 	// shipped to the vector index.
-	DriveLink string `json:"drive_link,omitempty"`
+	DriveLink      string                 `json:"drive_link,omitempty"`
 	// LocalPath is the absolute filesystem path for non-Qdrant
 	// legacy callers. QDRANT-001 (June 2026): intentionally NOT
 	// emitted by payload_mapper.BuildPayload — the canonical search
@@ -344,6 +351,7 @@ type AssetData struct {
 	TranscriptVector []float32 `json:"-"`
 	VisualVector     []float32 `json:"-"`
 	AudioVector      []float32 `json:"-"`
+	ContentHash     string                 `json:"content_hash,omitempty"`
 }
 
 // AssetStore is the interface the PayloadMapper needs to fetch asset data.

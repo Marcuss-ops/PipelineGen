@@ -16,28 +16,7 @@ import (
 //   2. Register it in payloadDecoders.
 //   3. In the handler, call DecodePayload[*NewPayload](job).
 
-// BatchScriptGeneratePayload is sent with JobTypeBatchScriptGenerate.
-type BatchScriptGeneratePayload struct {
-	Project   string `json:"project"`
-	VideoName string `json:"video_name"`
-	Count     int    `json:"count"`
-}
 
-// ClipScriptGeneratePayload is sent with JobTypeClipScriptGenerate.
-type ClipScriptGeneratePayload struct {
-	ClipIDs   []string `json:"clip_ids"`
-	Project   string   `json:"project,omitempty"`
-	VideoName string   `json:"video_name,omitempty"`
-}
-
-// CatalogScriptGeneratePayload is sent with JobTypeCatalogScriptGenerate.
-type CatalogScriptGeneratePayload struct {
-	Query     string `json:"query"`
-	Project   string `json:"project,omitempty"`
-	VideoName string `json:"video_name,omitempty"`
-}
-
-// MediaStockPayload is sent with JobTypeMediaStock.
 type MediaStockPayload struct {
 	Project   string `json:"project"`
 	VideoName string `json:"video_name"`
@@ -142,8 +121,6 @@ type DriveFolderSyncPayload struct {
 
 // TypedPayload is a constraint satisfied by all job payload structs.
 type TypedPayload interface {
-	BatchScriptGeneratePayload |
-		ClipScriptGeneratePayload | CatalogScriptGeneratePayload |
 		MediaStockPayload | YouTubeClipExtractPayload |
 		CatalogSyncPayload |
 		SystemCleanupPayload | VoiceoverBatchPayload |
