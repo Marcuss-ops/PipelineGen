@@ -18,6 +18,15 @@ type Job = job.Job
 // the application layer.
 type WorkerSession = job.WorkerSession
 
+// WorkerCertIdentity is a type alias for the canonical domain cert identity
+// (PR-0, June 2026). The canonical struct lives in internal/domain/job so
+// api-layer callers see `appjobs.WorkerCertIdentity` without taking a
+// direct import on the domain package. Cert fields NO longer live on
+// WorkerSession (which is session-only); this alias gives the api
+// helper (handler_workers_cert.go::FromSessionCertIdentity) the typed
+// channel through which the cert identity reaches the CertReport JSON.
+type WorkerCertIdentity = job.WorkerCertIdentity
+
 // Lease represents a claimed job lease.
 type Lease struct {
 	Job       *Job      `json:"job,omitempty"`

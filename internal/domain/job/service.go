@@ -24,6 +24,13 @@ type Service interface {
 	IsTerminal(status Status) bool
 	RegisterHandler(jobType string, handler any) error
 	ListEvents(ctx context.Context, jobID string) ([]Event, error)
+	// Retry re-enqueues a failed or retry-waiting job, returning the
+	// fresh Job entity (new leasing cycle, retry_count reset).
+	// PR-0 (June 2026): promoted from concrete-only helper to
+	// canonical service surface — api layer's JobsHandler.Retry calls
+	// this through the interface so the api package doesn't leak
+	// *appjobs.Service concrete.
+	Retry(ctx context.Context, id string) (*Job, error)
 }
 
 // EnqueueRequest is the typed payload handed to Service.Enqueue.

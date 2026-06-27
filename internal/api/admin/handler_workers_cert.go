@@ -20,9 +20,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	tlsload "github.com/Marcuss-ops/PipelineGen/pkg/tlsload"
 )
 
@@ -124,7 +124,7 @@ func (h *CertReportHandler) RegisterRoutes(r *gin.RouterGroup) {
 func (h *CertReportHandler) Report(c *gin.Context) {
 	workerID := c.Param("id")
 	if workerID == "" {
-		api.BadRequest(c, "missing worker id")
+		apiutil.BadRequest(c, "missing worker id")
 		return
 	}
 
@@ -142,7 +142,7 @@ func (h *CertReportHandler) Report(c *gin.Context) {
 			zap.String("worker_id", workerID),
 			zap.Error(err),
 		)
-		api.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -156,7 +156,7 @@ func (h *CertReportHandler) Report(c *gin.Context) {
 			report.ServerCertFP = ident.FingerprintSHA256
 		}
 	}
-	api.OK(c, report)
+	apiutil.OK(c, report)
 }
 
 // ErrWorkerNotFound is returned by WorkerStore implementations when
@@ -170,11 +170,24 @@ func (e *ErrWorkerNotFound) Error() string {
 	return "worker not found: " + e.WorkerID
 }
 
-// FromSessionCertIdentity builds a CertReport from an in-memory
-// appjobs.WorkerSession plus the requested host/version metadata.
-// Helper used by adapter implementations of WorkerStore — the
-// production repository returns one of these from the session row.
-func FromSessionCertIdentity(s *appjobs.WorkerSession, hostname, workerVersion string, capabilityTypes []string) *CertReport {
+// FromSessionCertIdentity builds a CertReport from a WorkerSession +
+// WorkerCertIdentity pair plus the requested host/version metadata.
+// Helper used by adapter implementations of WorkerStore — production
+// repositories persist cert metadata in a separate row read alongside
+// the session row.
+//
+// PR-0 (June 2026) split: cert fields (CertFingerprintSHA256,
+// CertSerialHex, CertSubjectDN, CertIssuerDN, CertDNSNames,
+// CertNotAfter, CertVerifiedAt) no longer pollute WorkerSession and
+// no longer replicate via runtime reflection from the canonical
+// WorkerSession struct. The cert identity flows in as a typed
+// *appjobs.WorkerCertIdentity argument, nil-tolerant (when nil the
+// CertReport still renders with session-only fields, matching the
+// pre-split wire shape). The handler reads cert from a SIDECAR
+// repository row independently, keeping WorkerSession narrowly
+// scoped to session concerns (WorkerID, SessionID, SessionExpiresAt,
+// Capabilities, Version, Hostname).
+func FromSessionCertIdentity(s *appjobs.WorkerSession, cert *appjobs.WorkerCertIdentity, hostname, workerVersion string, capabilityTypes []string) *CertReport {
 	if s == nil {
 		return &CertReport{SchemaVersion: 1, Capabilities: capabilityTypes}
 	}
@@ -193,11 +206,18 @@ func FromSessionCertIdentity(s *appjobs.WorkerSession, hostname, workerVersion s
 		Capabilities:          capabilityTypes,
 		Hardware:              s.Hardware,
 	}
-	if !s.CertNotAfter.IsZero() {
-		r.CertNotAfter = s.CertNotAfter.UTC().Format("2006-01-02T15:04:05Z07:00")
-	}
-	if !s.CertVerifiedAt.IsZero() {
-		r.CertVerifiedAt = s.CertVerifiedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	if cert != nil {
+		r.CertFingerprintSHA256 = cert.FingerprintSHA256
+		r.CertSerialHex = cert.SerialHex
+		r.CertSubjectDN = cert.SubjectDN
+		r.CertIssuerDN = cert.IssuerDN
+		r.CertDNSNames = cert.DNSNames
+		if !cert.NotAfter.IsZero() {
+			r.CertNotAfter = cert.NotAfter.UTC().Format("2006-01-02T15:04:05Z07:00")
+		}
+		if !cert.VerifiedAt.IsZero() {
+			r.CertVerifiedAt = cert.VerifiedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+		}
 	}
 	return r
 }
