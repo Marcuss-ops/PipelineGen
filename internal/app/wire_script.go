@@ -36,7 +36,6 @@ import (
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"

@@ -17,7 +17,6 @@ package adapters
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
