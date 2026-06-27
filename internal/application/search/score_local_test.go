@@ -3,34 +3,37 @@
 // regressions in one dimension don't mask improvements in another.
 //
 // Test selection rationale (PR-1 spec):
-//   - title-match: covers exact / substring / token-fuzzy / no-overlap
-//     paths (the four titleMatchScore branches).
+//   - title-match: covers exact / substring / no-overlap paths.
 //   - tag-overlap: covers Jaccard across empty / one-sided / full overlap.
-//   - language + source match: covers exact + non-match + missing values.
-//   - duration fit: covers the MinDuration > 0 vs ≤ 0 opt-in. Includes
-//     a real end-to-end LocalScore call that exercises the wiring from
+//   - language + source match: covers exact match.
+//   - duration fit: covers MinDuration > 0 vs ≤ 0 opt-in, including an
+//     end-to-end LocalScore call that exercises the wiring from
 //     sig.MinDuration (which the local backend adapter populates from
 //     q.Filters.DurationMsMin — see internal/app/search_backends.go).
-//   - empty-signal sentinel: every-blank → 0.50.
-//   - cap invariant: signal-mix > 0.95 must be clamped to 0.95.
+//   - empty-signal sentinel: every-blank → 0.50 floor.
+//   - cap invariant: signal-mix > 0.95 must be clamped to 0.95; only
+//     the all-perfect-signals fixture triggers it.
 package search
 
 import "testing"
 
 func TestLocalScoreTitleExactTitleMatch(t *testing.T) {
-	// Title and query match exactly → score 1.0 from title + 0.10 from
-	// relaxed duration fallback = 1.0 (clamped to 0.95 by spec).
+	// Title-only fixture: title contributes 0.40 × 1.0 = 0.40;
+	// tags/lang/source are blank (contribute 0); duration is
+	// relaxed (MinDuration default 0) → 0.10 × 1.0 = 0.10.
+	// Total = 0.50. The 0.95 cap fires ONLY when ALL signals
+	// saturate; this fixture does NOT trip it.
 	sig := LocalSignal{Title: "Mars rover"}
 	score := LocalScore(sig, Query{Text: "Mars rover"})
-	if !scoreClose(score, 0.95) {
-		t.Fatalf("title exact match: got %v, want ~0.95", score)
+	if !scoreClose(score, 0.50) {
+		t.Fatalf("title-only exact match expected ~0.50, got %v", score)
 	}
 }
 
 func TestLocalScoreTitleSubstringMatch(t *testing.T) {
 	// Title "Mars" is a substring of "Mars rover surface" → 0.40×0.6=0.24
-	// from title signal. duration-fit is relaxed (no MinDuration) →
-	// 0.10×1.0=0.10. Total = 0.34.
+	// from title signal. Duration is relaxed → 0.10×1.0=0.10.
+	// Total = 0.34.
 	sig := LocalSignal{Title: "Mars"}
 	score := LocalScore(sig, Query{Text: "Mars rover surface"})
 	if !scoreClose(score, 0.34) {
@@ -51,10 +54,10 @@ func TestLocalScoreTitleNoOverlap(t *testing.T) {
 
 func TestLocalScoreTagOverlapFullJaccard(t *testing.T) {
 	// Tags {nature,science} ∩ Query.Filters.Tags {nature,science} = full overlap.
+	// title "x" exact → 0.40; tag full Jaccand → 0.25; durRelax → 0.10. Total = 0.75.
 	sig := LocalSignal{Title: "x", Tags: []string{"nature", "science"}}
 	q := Query{Text: "x", Filters: Filters{Tags: []string{"nature", "science"}}}
 	score := LocalScore(sig, q)
-	// 0.40 (title exact) + 0.25 (jaccard=1.0) + 0.10 (relaxed duration) = 0.75
 	if !scoreClose(score, 0.75) {
 		t.Fatalf("full jaccard tag overlap expected ~0.75, got %v", score)
 	}
@@ -72,8 +75,8 @@ func TestLocalScoreTagOverlapEmptyFilter(t *testing.T) {
 }
 
 func TestLocalScoreLanguageExactMatch(t *testing.T) {
-	// Language exact match + source exact match → 0.40 (title) + 0.15
-	// (lang match) + 0.10 (source match) + 0.10 (dur-relaxed) = 0.75
+	// Language exact + source exact + title exact + durRelax → 0.40
+	// + 0.15 + 0.10 + 0.10 = 0.75.
 	sig := LocalSignal{Title: "x", Language: "EN", Source: "youtube"}
 	q := Query{Text: "x", Filters: Filters{Language: "en", Source: "youtube"}}
 	score := LocalScore(sig, q)
@@ -83,8 +86,8 @@ func TestLocalScoreLanguageExactMatch(t *testing.T) {
 }
 
 func TestLocalScoreDurationFitRespectsMin(t *testing.T) {
-	// Direct bipartite durationFitScore exercises — these are stable,
-	// regardless of q.Filters wiring.
+	// Direct bipartite durationFitScore exercises — stable regardless
+	// of q.Filters wiring (these test the helper directly).
 	if got := durationFitScore(5000, 0); got != 1.0 {
 		t.Fatalf("MinDuration=0 + duration=5000: must return 1.0 (relaxed), got %v", got)
 	}
@@ -99,8 +102,8 @@ func TestLocalScoreDurationFitRespectsMin(t *testing.T) {
 	}
 
 	// End-to-end: LocalScore with strict MinDuration=6000 + undersized
-	// row (5000ms) drops the score to 0.40 (only title+bare duration
-	// contribute; the strict-fit gate zeroes out durationFitScore).
+	// row (5000ms) drops the score to 0.40 (title exact 0.40 + dur
+	// strict-fail 0.00 = 0.40).
 	sig := LocalSignal{Title: "x", DurationMs: 5000, MinDuration: 6000}
 	q := Query{Text: "x"}
 	score := LocalScore(sig, q)
@@ -117,7 +120,7 @@ func TestLocalScoreDurationFitRespectsMin(t *testing.T) {
 }
 
 func TestLocalScoreEmptySignalsReturnsFloor(t *testing.T) {
-	// Every field blank → allBlank floor = 0.50 so the row is still served.
+	// Every field blank → allBlank floor = 0.50 so the row is served.
 	sig := LocalSignal{}
 	q := Query{Text: "anything"}
 	score := LocalScore(sig, q)
@@ -149,24 +152,21 @@ func TestLocalScoreCapsAt095(t *testing.T) {
 }
 
 func TestLocalScoreCapsAtNegativeFloor(t *testing.T) {
-	// Defensive: no signals → score must clamp to ≥ 0.
+	// Empty Query + empty LocalSignal = allBlank → 0.50 floor.
 	sig := LocalSignal{}
 	q := Query{}
 	score := LocalScore(sig, q)
 	if score < 0 {
 		t.Fatalf("local score must clamp negatives, got %v", score)
 	}
-	// Empty Query + empty LocalSignal = allBlank → 0.50 floor.
 	if !scoreClose(score, 0.50) {
 		t.Fatalf("empty Query + empty LocalSignal expected 0.50, got %v", score)
 	}
 }
 
-// scoreClose compares two float64 values with a tolerance of 0.001 —
-// tighter than the public 0.005 tolerance used at the package
-// boundary. Internal to score_local_test.go because all assertions
-// target exact expected values derived from the documented
-// 0.40/0.25/0.15/0.10/0.10 weights + cap = 0.95.
+// scoreClose compares two float64 values with a tolerance of 0.001.
+// All assertions target exact expected values derived from the
+// documented 0.40/0.25/0.15/0.10/0.10 weights + cap = 0.95.
 func scoreClose(a, b float64) bool {
 	return absDelta(a, b) < 0.001
 }

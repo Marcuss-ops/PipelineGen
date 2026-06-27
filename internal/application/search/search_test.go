@@ -275,8 +275,8 @@ func TestRegistryEligibleUnknownSourcesReturnsEmpty(t *testing.T) {
 }
 
 // TestRegistryEligibleSourcesAndMediaTypes proves PR-1 dual filter
-// composition: q.Sources=["yt"] narrows to {youtube}, q.MediaTypes=["audio"]
-// further narrows to backends whose caps intersect "audio".
+// composition: q.Sources narrows the candidate set; q.MediaTypes
+// further narrows to backends whose caps intersect.
 func TestRegistryEligibleSourcesAndMediaTypes(t *testing.T) {
 	reg := NewBackendRegistry()
 	if err := reg.Register(&fakeBackend{name: "youtube", caps: []Capability{CapVideo}}); err != nil {
@@ -290,9 +290,10 @@ func TestRegistryEligibleSourcesAndMediaTypes(t *testing.T) {
 	}
 	reg.Freeze()
 
-	// Sources=[yt,artlist] AND MediaTypes=[audio] — youtube filtered
-	// out by MediaTypes; artlist kept; local kept.
-	got := reg.Eligible(Query{Sources: []string{"yt", "artlist"}, MediaTypes: []string{"audio"}})
+	// Sources=[yt, artlist, clips] (clips is an alias that resolves
+	// to "local"). AND MediaTypes=[audio] — youtube filtered out by
+	// MediaTypes (only CapVideo); artlist kept; local kept.
+	got := reg.Eligible(Query{Sources: []string{"yt", "artlist", "clips"}, MediaTypes: []string{"audio"}})
 	gotNames := backendNames(got)
 	sort.Strings(gotNames)
 	want := []string{"artlist", "local"}
@@ -300,12 +301,16 @@ func TestRegistryEligibleSourcesAndMediaTypes(t *testing.T) {
 		t.Fatalf("Eligible(sources+mediaTypes) want %v, got %v", want, gotNames)
 	}
 
-	// Sources=[] AND MediaTypes=[audio] — all video-only youtube gone.
-	got = reg.Eligible(Query{MediaTypes: []string{"audio"}})
+	// Sources=[yt, artlist] (NO clips alias → local filtered out by
+	// Sources filter even though it satisfies MediaTypes=audio) +
+	// MediaTypes=[audio] → only artlist remains. This proves the
+	// Sources filter is applied BEFORE MediaTypes (fail-fast on
+	// unknown alias).
+	got = reg.Eligible(Query{Sources: []string{"yt", "artlist"}, MediaTypes: []string{"audio"}})
 	gotNames = backendNames(got)
 	sort.Strings(gotNames)
-	if !reflect.DeepEqual(gotNames, want) {
-		t.Fatalf("Eligible(mediaTypes=audio) want %v, got %v", want, gotNames)
+	if !reflect.DeepEqual(gotNames, []string{"artlist"}) {
+		t.Fatalf("Eligible(yt+artlist+audio) want [artlist], got %v", gotNames)
 	}
 }
 
@@ -326,15 +331,15 @@ func TestQueryActorFieldPresent(t *testing.T) {
 	if q.Actor.WorkspaceID != "ws-1" || q.Actor.UserID != "u-1" || q.Actor.IsAdmin {
 		t.Fatalf("Actor field round-trip broken: %+v", q.Actor)
 	}
-	if !q.Actor.IsZero() == true {
-		t.Fatal("non-zero Actor must not report IsZero=true")
-	}
 	if q.Actor.IsZero() {
-		t.Fatal("non-zero Actor must not report IsZero=true")
+		t.Fatal("non-zero Actor must NOT report IsZero=true")
 	}
 	var zeroQ Query
 	if !zeroQ.Actor.IsZero() {
 		t.Fatal("zero Actor must report IsZero=true")
+	}
+	if zeroQ.Actor.WorkspaceID != "" || zeroQ.Actor.UserID != "" || zeroQ.Actor.IsAdmin {
+		t.Fatalf("zero Query.Actor must have all fields blank, got %+v", zeroQ.Actor)
 	}
 }
 
