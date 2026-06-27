@@ -79,16 +79,15 @@ func TestTryRegisterModule_ErrorContainsSpecMarker(t *testing.T) {
 }
 
 // TestTryRegisterModule_ProductionPathFailsOnDuplicate verifies that
-// the production tryRegisterModule (not just the strict variant)
-// fails fast on duplicate names. After the composition-fix (June 2026)
-// that removed the coalescing Has-check, tryRegisterModule delegates
-// directly to tryRegisterModuleStrict.
+// the production tryRegisterModuleStrict fails fast on duplicate names.
+// After PR 1 (commit 81e79728) the permissive tryRegisterModule was
+// deleted; tryRegisterModuleStrict is now the ONLY registration path.
 func TestTryRegisterModule_ProductionPathFailsOnDuplicate(t *testing.T) {
 	reg := module.NewRegistry()
 
-	require.NoError(t, tryRegisterModule(reg, nil, &fakeModule{name: "prod-dup"}),
+	require.NoError(t, tryRegisterModuleStrict(reg, nil, &fakeModule{name: "prod-dup"}),
 		"first registration must succeed")
-	err := tryRegisterModule(reg, nil, &fakeModule{name: "prod-dup"})
+	err := tryRegisterModuleStrict(reg, nil, &fakeModule{name: "prod-dup"})
 	require.Error(t, err, "production path must fail on duplicate name")
 	require.Contains(t, err.Error(), "already registered")
 }
