@@ -8,12 +8,20 @@ import (
 // ScriptRepository is the canonical persistence contract for scripts.
 // The concrete implementation lives in
 // internal/infrastructure/database/sqlite (path TBD post-66c646b5).
-// Declaring it here decouples engine.go from the concrete repository
-// and makes engine_test.go cheap to write.
+// Declaring it here decouples the persistence consumer from the
+// concrete repository and makes engine_test.go / persistence_test.go
+// cheap to write.
 //
 // Pre-66c646b5, the contract was inline in engine.go but reproduced
 // here with a minimal method surface so the build closure of the
 // application package doesn't pull in the full infra layer.
+//
+// PR 5 (June 2026): added FindScriptByIdempotencyKey — the single
+// persistence owner (PersistenceProcessor) computes an idempotency
+// key from (item_id, cache_key, prompt_version, target_words, language)
+// and looks up an existing row by it; on hit, the insert is skipped
+// and the existing ScriptID is returned. The Engine no longer
+// touches this interface — the only writer is PersistenceProcessor.
 type ScriptRepository interface {
 	SaveScript(ctx context.Context, rec *ScriptRecord, sections []ScriptSectionRecord, matches []ScriptStockMatchRecord) (int64, error)
 	UpdateScriptFinalContent(ctx context.Context, scriptID int64, outputText string, wordCount int, status, metadata, model, ollamaBaseURL string, version int) error
@@ -26,6 +34,20 @@ type ScriptRepository interface {
 	GetAdjacentSections(ctx context.Context, scriptID int64, sortOrder int) (prev, next *ScriptSectionRecord, err error)
 	UpdateSectionContent(ctx context.Context, sectionID int64, content string) error
 	ListScripts(ctx context.Context, filter ScriptListFilter) ([]*ScriptRecord, error)
+
+	// FindScriptByIdempotencyKey returns the existing script row
+	// (if any) whose idempotency key matches the reconciliation
+	// tuple (itemID, cacheKey, promptVersion, targetWords, language).
+	// The bool return is the existence flag — callers do not treat
+	// nil record + false as an error. A nil record with non-nil err
+	// indicates a real lookup failure (e.g. SQL error).
+	//
+	// PR 5 (June 2026): required by PersistenceProcessor for the
+	// single-writer contract. Implementations may use a dedicated
+	// column or an existing slot (current implementation uses the
+	// `template` slot to carry the idem key — PR 6 will introduce
+	// a dedicated idempotency_key column).
+	FindScriptByIdempotencyKey(ctx context.Context, itemID, cacheKey, promptVersion string, targetWords int, language string) (*ScriptRecord, bool, error)
 }
 
 // ScriptListFilter is the filter for listing scripts.

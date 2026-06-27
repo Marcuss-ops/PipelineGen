@@ -47,6 +47,13 @@ type PipelineResult struct {
 	Scenes        []SceneImage
 	Voiceovers    []SceneVoiceover
 	ScriptID      int64
+
+	// AlreadyPersisted is true when PersistenceProcessor found an
+	// existing script row by idempotency key and skipped the
+	// insert. Consumers downstream can use this flag to log a
+	// "replay" outcome without re-marking the script as newly
+	// produced. PR 5 default value is false.
+	AlreadyPersisted bool
 }
 
 // SceneImage represents a scene with an image.

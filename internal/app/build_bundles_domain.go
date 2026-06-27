@@ -29,12 +29,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
@@ -177,11 +177,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		IngestService:      ingestSvc,
 		BooksService:       booksSvc,
 		LessonsService:     lessonsS,
-		MetaWriter:      metaWriter,
-		RealtimeMatcher: realtimeMatcher,
-		RealtimeSearch:  realtimeSearch,
-		AutotagService:  autotagSvc,
-		AssocService:    assocService,
+		MetaWriter:         metaWriter,
+		RealtimeMatcher:    realtimeMatcher,
+		RealtimeSearch:     realtimeSearch,
+		AutotagService:     autotagSvc,
+		AssocService:       assocService,
 	}, nil
 }
 
@@ -262,8 +262,12 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	memorySvc := gemmamemory.NewService(memoryRepo, log)
 	log.Info("Gemma Memory Gate service initialized")
 
-	scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(repos.ScriptsRepo)
-	engine := scriptcore.NewEngine(scriptGen, memorySvc, scriptsRepoAdapter, log)
+	// PR 5 (June 2026): NewEngine no longer takes a ScriptRepository
+	// arg — engine persistence is gone; the single-writer is
+	// PersistenceProcessor. RepositoryAdapter is still constructed
+	// here because wireScriptFlow(BuildRepoBundle) uses it for
+	// PersistenceProcessor registration (see wire_script.go).
+	engine := scriptcore.NewEngine(scriptGen, memorySvc, log)
 
 	return &AIBundle{
 		OllamaClient:  ollamaClient,

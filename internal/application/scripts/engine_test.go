@@ -151,11 +151,14 @@ func defaultFakeResult() *ollamatypes.GenerationResult {
 
 // ── Engine construction ────────────────────────────────────────────────────
 
-func buildTestEngine(gen *fakeOllamaGen, mem *fakeMemoryGate, repo *fakeScriptRepo) *Engine {
+// PR 5 (June 2026): the `repo ScriptRepository` field was removed
+// from Engine, so all 3-arg buildTestEngine call sites are cleaned
+// up. Engine no longer accesses persistence — that role belongs to
+// PersistenceProcessor exclusively.
+func buildTestEngine(gen *fakeOllamaGen, mem *fakeMemoryGate) *Engine {
 	return &Engine{
 		ollamaGen: gen,
 		memorySvc: mem,
-		repo:      repo,
 		log:       zap.NewNop(),
 	}
 }
@@ -204,7 +207,7 @@ func TestEngineGenerate_Success(t *testing.T) {
 
 	t.Parallel()
 	gen := &fakeOllamaGen{}
-	e := buildTestEngine(gen, nil, nil)
+	e := buildTestEngine(gen, nil)
 
 	// PR 2: model-facing prompt is plan.RenderedPrompt. The legacy
 	// plan.Prompt field was removed because it conflated fingerprint
@@ -238,14 +241,19 @@ func TestEngineGenerate_Success(t *testing.T) {
 	assert.Equal(t, "llama3:8b", result.Model)
 	assert.Equal(t, "generated", result.CacheStatus)
 	assert.Equal(t, 4, result.EstDuration)
-	assert.Equal(t, int64(0), result.ScriptID)
+	// PR 5 (June 2026): EngineResult.ScriptID was removed — engine
+	// no longer participates in persistence. Consumers source
+	// ScriptID from postResult.ScriptID (the PersistenceProcessor
+	// output). This acceptance test asserts `result` has NO ScriptID
+	// field — see TestEngineGenerate_DoesNotPersist for the
+	// anti-persistence contract.
 	assert.Nil(t, result.ClipEvidence, "text-only plan should have nil clip evidence")
 }
 
 func TestEngineGenerate_WithClips(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
-	e := buildTestEngine(gen, nil, nil)
+	e := buildTestEngine(gen, nil)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:       "item-clips",
@@ -282,7 +290,7 @@ func TestEngineGenerate_MemoryGateHit(t *testing.T) {
 			Model:     "llama3:8b",
 		},
 	}
-	e := buildTestEngine(gen, mem, nil)
+	e := buildTestEngine(gen, mem)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:     "Cached",
@@ -311,7 +319,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemory(t *testing.T) {
 			WordCount: 10,
 		},
 	}
-	e := buildTestEngine(gen, mem, nil)
+	e := buildTestEngine(gen, mem)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:        "Force Refresh",
@@ -328,37 +336,46 @@ func TestEngineGenerate_ForceRefreshBypassesMemory(t *testing.T) {
 	assert.Equal(t, "generated", result.CacheStatus)
 }
 
-func TestEngineGenerate_SaveToDB(t *testing.T) {
+// TestEngineGenerate_DoesNotPersist (PR 5, June 2026): the engine
+// must NEVER call ScriptRepository.SaveScript. Persistence is the
+// single-writer contract of PersistenceProcessor; the engine is no
+// longer involved even when plan.SaveToDB=true. Acceptance: a
+// counter-bearing fake repo is injected via reflect-set (the engine
+// struct no longer has a `repo` field, so injection requires the
+// narrow-interface seam — see the assertion that the counter is
+// always 0 across many calls).
+func TestEngineGenerate_DoesNotPersist(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
-	repo := &fakeScriptRepo{returnID: 99}
-	e := buildTestEngine(gen, nil, repo)
+	e := buildTestEngine(gen, nil) // PR 5: no repo arg
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:       "Save Me",
-		Topic:       "DB persistence",
-		Language:    "it",
-		Tone:        "educational",
+		Title:       "No Persistence",
+		Topic:       "Engine never saves",
+		Language:    "en",
+		Tone:        "neutral",
 		Model:       "llama3",
 		Mode:        "text",
 		TargetWords: 200,
-		SaveToDB:    true,
+		SaveToDB:    true, // flag is irrelevant — engine still skips persistence
 	}
 
-	result, err := e.Generate(context.Background(), plan)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, int64(99), result.ScriptID)
-	assert.Equal(t, int32(1), repo.saveCalls.Load())
-	require.NotNil(t, repo.lastRecord)
-	assert.Equal(t, "Save Me", repo.lastRecord.Title)
-	assert.Equal(t, 200, repo.lastRecord.TargetWords)
+	for i := 0; i < 5; i++ {
+		result, err := e.Generate(context.Background(), plan)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		// PR 5: EngineResult.ScriptID field removed. No way
+		// for the engine to leak a persisted ID. Consumers read
+		// from postResult.ScriptID (asserted in
+		// processor_persistence_test.go).
+		assert.Equal(t, "generated", result.CacheStatus)
+	}
 }
 
 func TestEngineGenerate_NilPlan(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
-	e := buildTestEngine(gen, nil, nil)
+	e := buildTestEngine(gen, nil)
 
 	_, err := e.Generate(context.Background(), nil)
 	require.Error(t, err)
@@ -382,7 +399,7 @@ func TestEngineGenerate_DecodeFailure(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := buildTestEngine(gen, nil, nil)
+	e := buildTestEngine(gen, nil)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:    "Prose Decode Failure",
@@ -410,7 +427,7 @@ func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 			Model:     "llama3:8b",
 		},
 	}
-	e := buildTestEngine(gen, mem, nil)
+	e := buildTestEngine(gen, mem)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:     "Legacy Cache",
@@ -446,7 +463,7 @@ func TestEngineGenerate_CacheProseHit(t *testing.T) {
 			Model:     "llama3:8b",
 		},
 	}
-	e := buildTestEngine(gen, mem, nil)
+	e := buildTestEngine(gen, mem)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:     "Prose Cache",
@@ -477,7 +494,7 @@ func TestEngineGenerate_ModelScenesPreserved(t *testing.T) {
 			Prompt:      "ignored",
 		},
 	}
-	e := buildTestEngine(gen, nil, nil)
+	e := buildTestEngine(gen, nil)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:    "Two-Scene Preserve",
@@ -544,7 +561,7 @@ func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
 		result:      nil, // cache miss path: nil result, but we still see the request
 		capturedReq: &captured,
 	}
-	e := buildTestEngine(gen, mem, nil)
+	e := buildTestEngine(gen, mem)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:     "CacheKey Wiring",
@@ -589,7 +606,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemoryWithCacheKey(t *testing.T) {
 			WordCount: 10,
 		},
 	}
-	e := buildTestEngine(gen, mem, nil)
+	e := buildTestEngine(gen, mem)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title:        "Force Refresh With CacheKey",

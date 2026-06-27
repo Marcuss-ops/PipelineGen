@@ -26,11 +26,14 @@ func NewEntitiesProcessor(postGen PostGenFunc) *EntitiesProcessor {
 
 func (p *EntitiesProcessor) Name() string { return "entities" }
 
-func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, script string) (*PostProcessResult, error) {
+// PR 5 (June 2026): signature now takes ProcessInput envelope
+// instead of a flat `script string`. The processor reads
+// `input.Text` for its text input.
+func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.postGen == nil {
 		return nil, fmt.Errorf("%w: entities processor: postGen callback not configured", scriptpkg.ErrPostprocessFailed)
 	}
-	if script == "" {
+	if input.Text == "" {
 		return &PostProcessResult{}, nil
 	}
 
@@ -38,7 +41,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	spec := legacySpecFromPlan(*plan)
 	spec.ExtractEntities = true // force ON for this processor
 
-	entitiesJSON, _, _ := p.postGen(ctx, spec, script)
+	entitiesJSON, _, _ := p.postGen(ctx, spec, input.Text)
 	if entitiesJSON == "" {
 		return &PostProcessResult{}, nil
 	}

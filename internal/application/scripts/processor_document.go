@@ -28,11 +28,12 @@ func NewDocumentProcessor(docsSvc *DocumentsService, resolveFolder FolderResolve
 
 func (p *DocumentProcessor) Name() string { return "document" }
 
-func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, script string) (*PostProcessResult, error) {
+// PR 5 (June 2026): signature now takes ProcessInput envelope.
+func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.docsSvc == nil {
 		return nil, fmt.Errorf("%w: document processor: DocumentsService not configured", scriptpkg.ErrPostprocessFailed)
 	}
-	if script == "" {
+	if input.Text == "" {
 		return &PostProcessResult{}, nil
 	}
 
@@ -41,7 +42,7 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		docTitle = "Generated Script"
 	}
 
-	htmlContent := BuildSectionDocHTML(docTitle, []string{""}, []string{script}, true, plan.Language)
+	htmlContent := BuildSectionDocHTML(docTitle, []string{""}, []string{input.Text}, true, plan.Language)
 
 	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID)
 	if link == "" {

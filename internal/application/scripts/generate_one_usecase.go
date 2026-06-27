@@ -159,7 +159,23 @@ func (uc *GenerateOneUseCase) Execute(
 		}
 		ppStart := time.Now()
 		var ppErr error
-		postResult, ppErr = uc.ppReg.Run(ctx, &plan, engineResult.Output.Text)
+		// PR 5: build the typed ProcessInput envelope from the
+		// engine result. PersistenceProcessor consumes the typed
+		// fields (WordCount, SpecScene, ModelUsed, CacheStatus,
+		// SourceTrace); non-persistence processors consume
+		// input.Text. Plan.SaveToDB -> "persistence" in
+		// Postprocessors list (set by generation_plan_builder.go
+		// via buildPostprocessorList) is now the ONLY trigger for
+		// script-table writes.
+		procInput := ProcessInput{
+			Text:        engineResult.Output.Text,
+			WordCount:   engineResult.WordCount,
+			SpecScene:   engineResult.Output.SpecScene,
+			ModelUsed:   engineResult.Model,
+			CacheStatus: engineResult.CacheStatus,
+			SourceTrace: engineResult.ClipEvidence,
+		}
+		postResult, ppErr = uc.ppReg.Run(ctx, &plan, procInput)
 		if ppErr != nil {
 			return nil, &scriptpkg.PostprocessError{
 				ItemID:    item.ID,
@@ -213,9 +229,18 @@ func buildGenerationResult(
 ) *scriptpkg.GenerationResult {
 	cacheHit := engineResult.CacheStatus == "exact_hit"
 
+	// PR 5: ScriptID is sourced from postResult.ScriptID (set by
+	// PersistenceProcessor), NOT from engineResult.ScriptID (which
+	// no longer exists post-PR 5). When the persistence processor
+	// is not in the plan's Postprocessors list, ScriptID is zero.
+	scriptIDFromPostprocess := int64(0)
+	if postResult != nil {
+		scriptIDFromPostprocess = postResult.ScriptID
+	}
+
 	result := &scriptpkg.GenerationResult{
 		ItemID:   item.ID,
-		ScriptID: engineResult.ScriptID,
+		ScriptID: scriptIDFromPostprocess,
 		Title:    plan.Title,
 		Language: plan.Language,
 		Model:    engineResult.Model,

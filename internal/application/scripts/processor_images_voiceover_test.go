@@ -91,7 +91,7 @@ func voResult(link, path string) map[string]any {
 func TestImageProcessorNilGen(t *testing.T) {
 	t.Parallel()
 	proc := scripts.NewImageProcessor(nil, zap.NewNop())
-	_, err := proc.Process(context.Background(), makePlanWithClips(2), "some script")
+	_, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "some script"})
 	if err == nil {
 		t.Fatal("expected error when ImageGenService is nil")
 	}
@@ -102,7 +102,7 @@ func TestImageProcessorNoClipEvidence(t *testing.T) {
 	gen := &fakeImageGen{results: []*asset.ImageAsset{imgAsset("http://img1")}}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "text-only"}
-	result, err := proc.Process(context.Background(), plan, "some script")
+	result, err := proc.Process(context.Background(), plan, scripts.ProcessInput{Text: "some script"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestImageProcessorEmptyScript(t *testing.T) {
 	t.Parallel()
 	gen := &fakeImageGen{results: []*asset.ImageAsset{imgAsset("http://img1")}}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), "")
+	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestImageProcessorSuccess(t *testing.T) {
 		results: []*asset.ImageAsset{imgAsset("http://img1.jpg")},
 	}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(1), "Scene one text.")
+	result, err := proc.Process(context.Background(), makePlanWithClips(1), scripts.ProcessInput{Text: "Scene one text."})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestImageProcessorPartialFailure(t *testing.T) {
 		errs: []error{nil, errors.New("timeout")},
 	}
 	proc := scripts.NewImageProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), "Scene1.\n\nScene2.")
+	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "Scene1.\n\nScene2."})
 	if err != nil {
 		t.Fatalf("unexpected error (partial failures should not abort): %v", err)
 	}
@@ -185,7 +185,7 @@ func TestImageProcessorPartialFailure(t *testing.T) {
 func TestVoiceoverProcessorNilGen(t *testing.T) {
 	t.Parallel()
 	proc := scripts.NewVoiceoverProcessor(nil, zap.NewNop())
-	_, err := proc.Process(context.Background(), makePlanWithClips(2), "some script")
+	_, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "some script"})
 	if err == nil {
 		t.Fatal("expected error when VoiceoverService is nil")
 	}
@@ -196,7 +196,7 @@ func TestVoiceoverProcessorNoClipEvidence(t *testing.T) {
 	gen := &fakeVoiceoverGen{results: []map[string]any{voResult("http://vo1", "/tmp/vo1.mp3")}}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "text-only"}
-	result, err := proc.Process(context.Background(), plan, "some script")
+	result, err := proc.Process(context.Background(), plan, scripts.ProcessInput{Text: "some script"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestVoiceoverProcessorEmptyScript(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{results: []map[string]any{voResult("http://vo1", "/tmp/vo1.mp3")}}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), "")
+	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestVoiceoverProcessorSuccess(t *testing.T) {
 		results: []map[string]any{voResult("http://vo.mp3", "/tmp/scene-1.mp3")},
 	}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(1), "Scene one text.")
+	result, err := proc.Process(context.Background(), makePlanWithClips(1), scripts.ProcessInput{Text: "Scene one text."})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 		errs: []error{nil, errors.New("synthesis timeout")},
 	}
 	proc := scripts.NewVoiceoverProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), makePlanWithClips(2), "Scene1.\n\nScene2.")
+	result, err := proc.Process(context.Background(), makePlanWithClips(2), scripts.ProcessInput{Text: "Scene1.\n\nScene2."})
 	if err != nil {
 		t.Fatalf("unexpected error (partial failures should not abort): %v", err)
 	}

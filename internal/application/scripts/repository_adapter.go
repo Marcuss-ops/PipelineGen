@@ -2,6 +2,9 @@ package scripts
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
@@ -331,4 +334,34 @@ func (a *sqliteRepoAdapter) ListScripts(ctx context.Context, filter ScriptListFi
 		out[i] = fromSQLiteScriptRecord(&recs[i])
 	}
 	return out, nil
+}
+
+// FindScriptByIdempotencyKey delegates to the concrete sqlite repo.
+// PR 5: the concrete repo looks up by `template = ? AND language = ?`
+// ORDER BY id DESC LIMIT 1 (the idem key is currently carried on the
+// existing Template slot — PR 6 introduces a dedicated
+// `idempotency_key` column).
+func (a *sqliteRepoAdapter) FindScriptByIdempotencyKey(ctx context.Context, itemID, cacheKey, promptVersion string, targetWords int, language string) (*ScriptRecord, bool, error) {
+	if a == nil || a.inner == nil {
+		return nil, false, nil
+	}
+	hash := computeAdapterIdempotencyKey(itemID, cacheKey, promptVersion, targetWords, language)
+	rec, err := a.inner.FindByIdempotencyKey(ctx, hash, language)
+	if err != nil {
+		return nil, false, err
+	}
+	if rec == nil {
+		return nil, false, nil
+	}
+	return fromSQLiteScriptRecord(rec), true, nil
+}
+
+// computeAdapterIdempotencyKey mirrors PersistenceProcessor.computeIdempotencyKey
+// using the same 5-tuple. Kept as a private helper here (rather than
+// calling back into PersistenceProcessor) so the adapter layer does
+// NOT depend on the runtime processor type.
+func computeAdapterIdempotencyKey(itemID, cacheKey, promptVersion string, targetWords int, language string) string {
+	tuple := fmt.Sprintf("%s|%s|%s|%d|%s", itemID, cacheKey, promptVersion, targetWords, language)
+	sum := sha256.Sum256([]byte(tuple))
+	return hex.EncodeToString(sum[:])[:16]
 }

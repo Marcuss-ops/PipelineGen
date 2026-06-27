@@ -267,7 +267,14 @@ func (m *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 			ForceRefresh: req.ForceRefresh,
 		},
 		Output: scriptpkg.OutputSpec{
-			SaveToDB: true, // engine persists; PersistenceProcessor re-saves idempotently
+			// PR 5: SaveToDB enables the "persistence" phase in the
+			// generated plan's Postprocessors list (built by
+			// generation_plan_builder.go). The single writer is
+			// PersistenceProcessor; the engine no longer writes to
+			// the scripts table. Idempotency key on (item_id,
+			// cache_key, prompt_version, target_words, language)
+			// makes replays a no-op.
+			SaveToDB: true,
 		},
 	}
 
