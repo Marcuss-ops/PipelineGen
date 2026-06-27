@@ -21,6 +21,7 @@
 package clips
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -69,10 +70,11 @@ func (r cleanupRequest) toCommand(source string, deepFromQuery bool) appclips.Cl
 // slice for deep-batch enqueu (job_id polls the broker for results).
 //
 // Status codes:
-//   200 — cleanup finished (sync or job enqueued).
-//   400 — invalid JSON body OR invalid source value.
-//   500 — service error.
-//   503 — clip ops service not wired (composition bug).
+//
+//	200 — cleanup finished (sync or job enqueued).
+//	400 — invalid JSON body OR invalid source value.
+//	500 — service error.
+//	503 — clip ops service not wired (composition bug).
 func (h *Handler) Cleanup(c *gin.Context) {
 	source := c.Param("source")
 	var req cleanupRequest
@@ -101,8 +103,9 @@ func (h *Handler) Cleanup(c *gin.Context) {
 // coherent, has_drive_link) for the verdict.
 //
 // Status codes:
-//   200 — verify ran (see report fields).
-//   503 — clip ops service not wired.
+//
+//	200 — verify ran (see report fields).
+//	503 — clip ops service not wired.
 func (h *Handler) VerifyClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
@@ -200,23 +203,18 @@ func buildVerifyResponse(report *appclips.VerifyReport) gin.H {
 		"has_hash":         report.HasHash,
 		"hash_verified":    report.HashVerified,
 		"hash_recovered":   report.HashRecovered,
-		// S1d-Wave 22 PR-5 polish amend: project the typed
-		// HashInfo channel so callers see the canonical
-		// recoverable-MD5 signal without scanning
-		// heterogeneous issues. Two typed fields, no
-		// `recovered` boolean (REMOVED per code-review Finding
-		// 1; was a dead field with no producer-path). The
-		// legacy `hash_recoverable` / `hash_recoverable_value`
-		// flat fields above stay for JSON back-compat.
+		// S1d: project the typed HashInfo channel; canonical
+		// SCOPE BOUNDARY rationale lives on the application-side
+		// HashInfo godoc: see internal/application/clips/clip_ops.go::HashInfo.
 		"hash_info": gin.H{
 			"recoverable":    report.HashInfo.Recoverable,
 			"candidate_hash": report.HashInfo.CandidateHash,
 		},
-		"folder_id":        report.FolderID,
-		"folder_path":      report.FolderPath,
-		"status":           report.Status,
-		"coherent":         report.Coherent,
-		"issue_count":      report.IssueCount,
+		"folder_id":   report.FolderID,
+		"folder_path": report.FolderPath,
+		"status":      report.Status,
+		"coherent":    report.Coherent,
+		"issue_count": report.IssueCount,
 	}
 }
 
@@ -229,6 +227,14 @@ func buildVerifyResponse(report *appclips.VerifyReport) gin.H {
 // ClipOpsService.Reconcile returns ErrQueueUnavailable.
 func mapClipOpsError(c *gin.Context, err error) {
 	if err == nil {
+		return
+	}
+	// Wave 22 PR-5 polish: discriminate the typed
+	// appclips.ErrJobsUnavailable sentinel into a 503 with the
+	// body sourced from .Error() itself, so a future tweak of the
+	// sentinel's text propagates here without duplication drift.
+	if errors.Is(err, appclips.ErrJobsUnavailable) {
+		apiutil.Error(c, http.StatusServiceUnavailable, appclips.ErrJobsUnavailable.Error())
 		return
 	}
 	if strings.Contains(err.Error(), "invalid source") {

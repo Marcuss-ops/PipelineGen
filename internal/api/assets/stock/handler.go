@@ -40,6 +40,32 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/search-and-run", h.SearchAndRun)
 }
 
+// ── 200-vs-202 SEMANTIC DECISION (S2c spec, applies to /run AND /search-and-run) ──
+//
+// Both endpoints return HTTP 200 OK (apiutil.OK) on success — NOT 202
+// Accepted (apiutil.Accepted) — even though the dispatch path routes
+// through an async job broker. The semantic distinction:
+//
+//   - 202 Accepted: fire-and-forget. Response acknowledges RECEIPT
+//     but does NOT carry resolved identifiers. This is the contract
+//     POST /api/jobs uses (handler enqueues into the broker and the
+//     broker itself resolves the job_id asynchronously).
+//
+//   - 200 OK: synchronous acknowledgement. Response carries the
+//     resolved values (job_id + status_url) inline. Used here because
+//     by the time the handler returns, the orchestrator has already
+//     completed the work needed to surface those identifiers (broker
+//     accepted the enqueue, broker resolved a job_id, status URL
+//     resolvable). The downstream async pipeline remains observable
+//     via `status_url` `/api/jobs/<id>/full`, but THIS API call has
+//     fully resolved.
+//
+// Drift trap: do NOT switch these endpoints back to apiutil.Accepted
+// without a product-side review against the S2c spec. Endpoints that
+// return only an unresolved placeholder belong on 202; these two
+// anchor the 200 contract because they return the RESOLVED values
+// inline.
+
 // ── POST /api/stock/search-and-run ──────────────────────────────────────
 //
 // Body binds directly to the canonical stockpipeline.StockSearchAndRunRequest
@@ -108,12 +134,14 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		return
 	}
 
-	apiutil.Accepted(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"job_id":     jobID,
 		"message":    "Stock search-and-run job enqueued",
 		"status_url": "/api/jobs/" + jobID + "/full",
 	})
 }
+
+// 200/202 rationale: see comment block above SearchAndRun.
 
 // ── POST /api/stock/run ────────────────────────────────────────────────
 
@@ -177,7 +205,7 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		return
 	}
 
-	apiutil.Accepted(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"job_id":     jobID,
 		"message":    "Stock pipeline job enqueued",
 		"status_url": "/api/jobs/" + jobID + "/full",

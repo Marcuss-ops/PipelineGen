@@ -425,8 +425,11 @@ type VerifyReport struct {
 // today to avoid the silent drift hazard (a future maintainer
 // writing a test that asserts `HashInfo.Recovered == true` after
 // fix-hash would always fail). Recovery status is authoritative
-// on FixHashReport.OK / FixHashReport.Reindexed (independent
-// surface, intentionally separate from HashInfo).
+// on two parallel surfaces (the names mirror each other):
+//   - api-side:    Handler.HandleFixHash -> response {"reindexed": true}
+//   - service-side: FixHashReport.{OK, Reindexed, DispatcherOK}
+// Both intentionally live on FixHashReport (not HashInfo) so
+// HashInfo remains the strictly informational channel.
 type HashInfo struct {
 	// Recoverable is true when Drive supplied a non-empty MD5 for
 	// the local clip row that had no FileHash. Same semantic as

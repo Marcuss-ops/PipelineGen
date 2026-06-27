@@ -404,6 +404,39 @@ var (
 		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
 	})
 
+	// ── Job Transition Conflict Metric (PR-F / ADR-0002 §D6.7, June 2026) ─
+	// Counts EVERY fenced-UPDATE failure that returned ErrTransitionConflict,
+	// partitioned by the method that surfaced the conflict. Deferred
+	// observability — the gate was the E2E coverage on the new ClaimNext
+	// surface growing enough that the counter would not fire as noise. With
+	// PR-Reaper (batched reaper), PR-Retention (job_events retention), and
+	// PR-Progress (coalescer) all shipped, that gate is met: well-behaved
+	// workers see zero rate; non-zero rate is the canonical "lease is being
+	// stolen / cross-writer race / mis-fenced caller" signal.
+	//
+	// Bumped inside validateOwnership (Complete / Fail / ScheduleRetry
+	// paths) AND at the RowsAffected == 0 CAS fence check on Cancel +
+	// Retry (which do NOT route through validateOwnership). The 5 method-label
+	// values are bounded — the ADR §D6.7 calls out
+	// {Complete, Fail, Cancel, ScheduleRetry}; Retry is added because its
+	// fenced UPDATE returns ErrTransitionConflict in the same shape and
+	// adding it costs zero schema/lint budget while keeping dashboards
+	// complete.
+	//
+	// Operators alert on rate > 0 with method label set. Distinguishing
+	// ErrTransitionConflict (the canonical "stale revision" signal) from
+	// ErrLeaseLost ("different worker, same row, lease expired normally")
+	// and ErrInvalidState ("worker called Complete on a Queued row") is
+	// load-bearing on operator trust — this counter reports ONLY the
+	// transition-conflict path. Future PRs MAY add separate
+	// `job_lease_lost_total` + `job_invalid_state_total` counters if the
+	// operator signal ever fragments; the per-error-type split is NOT in
+	// PR-F's scope.
+	JobTransitionConflictTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "job_transition_conflict_total",
+		Help: "Total number of fenced-UPDATE failures (returned ErrTransitionConflict on revision mismatch), partitioned by method. Bumped inside validateOwnership (Complete/Fail/ScheduleRetry) AND at the RowsAffected==0 CAS fence (Cancel/Retry). Operators alert on rate>0; zero in steady-state is the canonical 'no lease-stolen, no cross-writer race' baseline. Distinct from ErrLeaseLost (different worker on the same row) and ErrInvalidState (worker called the wrong transition) — those error paths do NOT bump this counter.",
+	}, []string{"method"})
+
 	// Outbox Pipeline Metrics — Qdrant indexing queue depth and lag.
 	OutboxQueueDepth = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "outbox_queue_depth",
