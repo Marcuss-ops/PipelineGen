@@ -624,17 +624,134 @@ deprecations:
 # Audit summary (read-only; not part of the ratchet) -------------------------
 audit:
   manifest_version: "Wave 22 / S3f manifest registration (PR-CLIP-YT-REGISTRY-CLEANUP ratchet, June 2026)"
-  total_records: 10
+  total_records: 12
   by_status:
-    removed: 7
+    removed: 9
     in_progress: 2
     keep: 1
   by_migration_phase:
-    CONTRACT: 6
+    CONTRACT: 8
+  # ------------------------------------------------------------------------
+  # 10. PR-SEARCH-LEGACY-CLIPSSEARCH — git-rm of the legacy multi-source
+  #   AdvancedSearch service (Wave 21 PR 10 CUTOVER, June 2026).
+  #   Replaced by *search.Aggregator (canonical Search capability SSOT
+  #   in internal/application/search). See architecture/current.yaml
+  #   Wave 21 PR 10 verification block.
+  # ------------------------------------------------------------------------
+  - id: PR-SEARCH-LEGACY-CLIPSSEARCH
+    owner_capability: internal/application/assets/clipssearch (deleted in PR 10)
+    exact_symbol: "*ClipsSearchService + assetclipssearch.NewService(...) + AdvancedSearchRepo map"
+    file: internal/application/assets/clipssearch/service.go (deleted)
+    file_line: '31 (sources := []string{"youtube","artlist","stock"})'
+    replacement: '*search.Aggregator (Wave 21 canonical SSOT) — clips_search.go::AdvancedSearch consumes via Deps.SearchSvc (type changed PR 10)'
+    introduction_date: 2026-04
+    removal_date: 2026-06-27
+    tracking_issue: 'Wave 21 PR 10 CUTOVER (commit pending)'
+    compatibility_test: 'git ls-files internal/application/assets/clipssearch/ returns 0; rg assetclipssearch|appclipssearch internal/ returns 0'
+    usage_metric: 'net delta = -2 files git-rm'd, -1 import line removed, 1 type change in clips/handler.go'
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      EXPAND (PR 8) + BACKFILL (PR 9) + CUTOVER (PR 10 = this commit)
+      sequence. The legacy per-source AdvancedSearchRepo map literal
+      `{youtube: clipRepo, artlist: clipRepo, stock: clipRepo}` was
+      the only place where a hardcoded backend whitelist lived; both
+      the literal and the assetclipssearch package are gone. X-Deprecation:
+      true header on /api/clips/search/advanced signals migration window.
+
+  # ------------------------------------------------------------------------
+  # 11. PR-SEARCH-LEGACY-CROSSPROVIDER — git-rm of the legacy
+  #   cross-provider Service that fanned out to providers + local
+  #   catalog + local clips with map[string]ProviderResult envelope
+  #   (Wave 21 PR 10 CUTOVER, June 2026). Replaced by
+  #   *search.Aggregator. ports.go retained (VectorStorePort reused).
+  # ------------------------------------------------------------------------
+  - id: PR-SEARCH-LEGACY-CROSSPROVIDER
+    owner_capability: internal/application/assets/search
+    exact_symbol: '*Service + appsearchsvc.NewService(...) + CrossSearchResponse + map[string]ProviderResult'
+    file: internal/application/assets/search/service.go (deleted)
+    file_line: '54 (results := map[string]ProviderResult{})'
+    replacement: '*search.Aggregator (canonical Result envelope: Items, NextCursor, Partial, ProviderErrors)'
+    introduction_date: 2026-04
+    removal_date: 2026-06-27
+    tracking_issue: 'Wave 21 PR 10 CUTOVER (commit pending)'
+    compatibility_test: 'git ls-files internal/application/assets/search/ returns only ports.go; internal/api/assets/search/ returns only handler.go/gate_test.go/ports.go'
+    usage_metric: 'net delta = -3 files git-rm'd (service.go + service_test.go + api/.../handler_test.go); -1 from internal/app/module_media.go'
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      ports.go intentially stays — VectorStorePort is the live QDRANT
+      bridge from mediasearch.Service to qdrant.Client. This is the
+      canonical port-reuse exemption from the strict CONTRACT reading
+      of godlike/07 §"Migration sequence". api/assets/search/handler.go::Search
+      now consumes *search.Aggregator directly; X-Deprecation header
+      set on every response. map[string]<X>Result envelope has zero
+      production callers post-removal.
+
+  # Wave 21 PR 10 CUTOVER deprecation (June 2026): git-rm of the legacy multi-source
+  # AdvancedSearch service. Replaced by *search.Aggregator (canonical Search capability
+  # SSOT in internal/application/search). See architecture/current.yaml Wave 21 PR 10.
+  - id: PR-SEARCH-LEGACY-CLIPSSEARCH
+    owner_capability: "internal/application/assets/clipssearch (deleted in PR 10)"
+    exact_symbol: "*ClipsSearchService + assetclipssearch.NewService(...) + AdvancedSearchRepo map literal"
+    file: internal/application/assets/clipssearch/service.go
+    file_line: "31 (sources := []string{"youtube","artlist","stock"})"
+    replacement: "*search.Aggregator (Wave 21 canonical Search capability SSOT)"
+    introduction_date: 2026-04
+    removal_date: 2026-06-27
+    tracking_issue: "Wave 21 PR 10 CUTOVER (commit pending direct-to-main push)"
+    compatibility_test: "git ls-files internal/application/assets/clipssearch/ returns 0 entries; rg assetclipssearch|appclipssearch internal/ returns 0"
+    usage_metric: "net delta = -2 files git-rm'd, -1 import line removed, 1 type change in clips/handler.go::Deps.SearchSvc"
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      EXPAND (PR 8) + BACKFILL (PR 9) + CUTOVER (PR 10 = this commit) sequence.
+      The legacy per-source AdvancedSearchRepo map literal at module_media.go:~244
+      was the only place where a hardcoded backend whitelist lived; both the
+      literal and the assetclipssearch package are gone. X-Deprecation: true
+      header on /api/clips/search/advanced signals migration window.
+
+  # Wave 21 PR 10 CUTOVER deprecation (June 2026): git-rm of the legacy
+  # cross-provider Service that fanned out to providers + local catalog + local
+  # clips with map[string]ProviderResult envelope. Replaced by *search.Aggregator.
+  # ports.go retained (VectorStorePort reused by mediasearch.Service QDRANT-004).
+  - id: PR-SEARCH-LEGACY-CROSSPROVIDER
+    owner_capability: internal/application/assets/search
+    exact_symbol: "*Service + appsearchsvc.NewService(...) + CrossSearchResponse + map[string]ProviderResult envelope"
+    file: internal/application/assets/search/service.go
+    file_line: "54 (results := map[string]ProviderResult{})"
+    replacement: "*search.Aggregator (canonical Result envelope: Items, NextCursor, Partial, ProviderErrors)"
+    introduction_date: 2026-04
+    removal_date: 2026-06-27
+    tracking_issue: "Wave 21 PR 10 CUTOVER (commit pending direct-to-main push)"
+    compatibility_test: "git ls-files internal/application/assets/search/ returns ONLY ports.go; rg CrossSearchResponse|ProviderResult internal/ returns 0 outside ports.go doc-comments"
+    usage_metric: "net delta = -3 files git-rm'd (service.go + service_test.go + api/.._/handler_test.go); -1 import removals in module_media.go"
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      ports.go intentionally stays — VectorStorePort is the live QDRANT bridge
+      from mediasearch.Service to qdrant.Client. This is the canonical port-reuse
+      exemption from the strict CONTRACT reading of godlike/07 §Migration sequence.
+      api/assets/search/handler.go::Search now consumes *search.Aggregator directly;
+      X-Deprecation header set on every response. map[string]<X>Result envelope
+      has zero production callers post-removal.
+
+
+# Audit summary (read-only; not part of the ratchet) -------------------------
+audit:
+  manifest_version: "QDRANT-REVIEW-001 + Wave 21 PR 10 CUTOVER deprecations (June 2026)"
+  total_records: 12
+  by_status:
+    removed: 9
+    in_progress: 2
+    keep: 1
+  by_migration_phase:
+    CONTRACT: 8
+
     CUTOVER: 1
     BACKFILL: 1
     EXPAND: 1
-    'not applicable': 1
+    ' + chr(39) + 'not applicable' + chr(39) + ': 1
   ci_gate_impact: |
     PR-CLIP-RESTORE      (removed 2026-06-26): audit-only, no gate.
     PR-JOB-STATUS-DEFENSIVE (in_progress until data migration):
@@ -682,3 +799,13 @@ audit:
         the legacy FindDuplicates direct-repo fallback at
         `internal/api/assets/clips/clip_action.go`, marked and
         scheduled for removal in PR-CLIP-DEDUP-MIGRATION).
+    PR-SEARCH-LEGACY-CLIPSSEARCH (removed 2026-06-27):
+        package + tests git-rm'd; clips/handler.go::Deps.SearchSvc type
+        changed from *appclipssearch.Service to *search.Aggregator;
+        clip_handler.go no longer imports internal/application/assets/clipssearch.
+    PR-SEARCH-LEGACY-CROSSPROVIDER (removed 2026-06-27):
+        service.go + service_test.go + api/_/handler_test.go git-rm'd;
+        assetsearch.NewHandler now takes *search.Aggregator (was
+        *appsearch.Service). The package's ports.go stays; X-Deprecation
+        header installed on /api/assets/search.
+

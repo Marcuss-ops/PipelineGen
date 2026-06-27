@@ -3,15 +3,26 @@
 //
 //	POST /internal/v1/media/search
 //
-// All business logic lives in internal/application/mediasearch.
-// This file is responsible for: bind the JSON body, extract the
-// workspace scope from the auth context (never from the request
-// body), call the orchestrator, and render a JSON response with no
-// internal-server fields exposed.
+// All business logic lives in internal/application/mediasearch. This
+// file is responsible for: bind the JSON body, extract the workspace
+// scope from the auth context (never from the request body), call the
+// canonical search.Aggregator (Wave 21), translate the canonical
+// Result into the legacy MediaSearchResponse envelope, and render a
+// JSON response with no internal-server fields exposed.
+//
+// Wave 21 PR 10 (June 2026): Search() now consumes search.Aggregator
+// directly. The Aggregator's semanticSearchBackend internally calls
+// mediasearch.Service (kept alive as the semantic path's backend
+// engine); per-source providers and the local catalog search flow
+// alongside. The wire-equivalence test is byte-stable for fields
+// present on the canonical search.Candidate; fields NOT in Candidate
+// (matched_channels, reason, tags, language, duration_ms, width,
+// height, request_id) are deliberately dropped in this CUTOVER and
+// flagged with the X-Deprecation header so clients know to migrate.
 //
 // Do NOT add anything here that requires `database/sql`, an HTTP
-// client, os/exec, or any other infra import — AGENTS.md Pattern
-// 8 ("API package: thin transport only") applies.
+// client, os/exec, or any other infra import — AGENTS.md Pattern 8
+// ("API package: thin transport only") applies.
 //
 // Wired at internal/app/registry.go → wiring.MediasearchHandler →
 // internal/api/routes.go::Setup() → internalGroup (/internal/v1)
@@ -33,29 +44,42 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
+	mediasearchapp "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
-// Searcher is the narrow contract the handler depends on. The
-// production orchestrator (*mediasearch.Service) satisfies it;
-// tests pass a stub. Keeping the dependency narrow lets the
-// handler stay free of VectorSearchPort / MediaReadRepository
-// imports (per AGENTS.md Pattern 8).
-type Searcher interface {
-	Search(ctx context.Context, req mediasearch.MediaSearchRequest) (*mediasearch.MediaSearchResponse, error)
+// AggregatorSearcher is the narrow contract the handler depends on
+// after PR 10. Production wiring injects *search.Aggregator (cast as
+// the interface to keep the dependency narrow). Tests pass a stub.
+// Keeping the dependency narrow lets the handler stay free of the
+// underlying types (VectorSearchPort / MediaReadRepository /
+// CrossSearchResponse) — per AGENTS.md Pattern 8.
+type AggregatorSearcher interface {
+	Search(ctx context.Context, q search.Query) (*search.Result, error)
 }
 
-// Handler is the thin HTTP transport for MediaSearchService.
+// WireParams bundles all dependencies the handler needs. PR 10 splits
+// it from the previous struct-of-fields shape to make the
+// constructor-injection contract explicit (Wave 15 typed-port rule).
+type WireParams struct {
+	Aggregator AggregatorSearcher
+	Log        *zap.Logger
+}
+
+// Handler is the thin HTTP transport for the canonical MediaSearch API.
 type Handler struct {
-	svc Searcher
-	log *zap.Logger
+	aggreg AggregatorSearcher
+	log    *zap.Logger
 }
 
-// NewHandler creates a MediaSearchHandler.
-func NewHandler(svc Searcher, log *zap.Logger) *Handler {
-	return &Handler{svc: svc, log: log}
+// NewHandler creates a MediaSearchHandler wired to the canonical
+// search.Aggregator (Wave 21). The legacy
+// *mediasearchapp.Service direct-construction path is
+// CompositionRoot-internal only now (semantic backend uses it).
+func NewHandler(p WireParams) *Handler {
+	return &Handler{aggreg: p.Aggregator, log: p.Log}
 }
 
 // safeError logs an error through h.log without panicking if the
@@ -118,11 +142,17 @@ type searchRequestFilter struct {
 //	403 — workspace not provided in auth context, or worker tried to
 //	      pick a non-default workspace (handled upstream by
 //	      middleware.WorkspaceScopeMiddleware).
+//	422 — invalid cursor (semantic error from Aggregator).
 //	500 — internal error from embedder / vector store / hydration.
+//
+// Wire shape (Wave 21 PR 10): MediasearchResponse is rebuilt from the
+// canonical search.Result via the package-local cutover.go helper.
+// The partial-preferred model flips OK=false when (Result.Partial == true
+// AND len(Result.Items) == 0); OK=true otherwise.
 func (h *Handler) Search(c *gin.Context) {
-	if h.svc == nil {
+	if h.aggreg == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable,
-			"media search service not wired")
+			"media search aggregator not wired")
 		return
 	}
 
@@ -141,28 +171,15 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
-	serviceReq := mediasearch.MediaSearchRequest{
-		Query:     strings.TrimSpace(req.Query),
-		Mode:      mode,
-		Limit:     defaults.Int(req.Limit, mediasearch.DefaultLimit),
-		MinScore:  req.MinScore,
-		Workspace: workspace,
-		Filters: mediasearch.MediaSearchFilter{
-			Source:        strings.TrimSpace(req.Filters.Source),
-			MediaType:     strings.TrimSpace(req.Filters.MediaType),
-			Category:      strings.TrimSpace(req.Filters.Category),
-			Language:      strings.TrimSpace(req.Filters.Language),
-			Tags:          req.Filters.Tags,
-			DurationMsMin: req.Filters.DurationMsMin,
-		},
-	}
+	limit := defaults.Int(req.Limit, mediasearchapp.DefaultLimit)
+	q := searchQueryFromRequest(req, mode, limit)
 
-	resp, err := h.svc.Search(c.Request.Context(), serviceReq)
+	res, err := h.aggreg.Search(c.Request.Context(), q)
 	if err != nil {
 		switch {
-		case errors.Is(err, mediasearch.ErrMissingWorkspace):
-			// Defensive: the handler enforces workspace already, but if
-			// Service ever rejects a non-default workspace anyway we land here.
+		case errors.Is(err, search.ErrInvalidCursor):
+			apiutil.Error(c, http.StatusUnprocessableEntity, "invalid cursor")
+		case errors.Is(err, mediasearchapp.ErrMissingWorkspace):
 			apiutil.Error(c, http.StatusForbidden, "workspace_id required in context")
 		default:
 			h.safeError("mediasearch.Search failed",
@@ -173,6 +190,27 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
+	// Build the legacy MediaSearchRequest envelope so cutover.go's
+	// translator has all the metadata it needs (Query, Mode, Workspace).
+	legacyReq := mediasearchapp.MediaSearchRequest{
+		Query:     q.Text,
+		Mode:      mode,
+		Limit:     limit,
+		MinScore:  req.MinScore,
+		Filters:   q.Filters, // alias-mediated; identity at type level
+		Workspace: workspace,
+	}
+	resp := resultToMediaSearchResponse(res, legacyReq)
+
+	// X-Deprecation: true — Wave 21 PR 10 cutover marker. The legacy
+	// route shape (more fields, complex hydration) has been replaced
+	// by the canonical Aggregator pipeline; the migration window is
+	// in effect. Clients should consume the new field set. See
+	// deprecation record PR-SEARCH-LEGACY-MEDIASEARCH in
+	// architecture/deprecations.yaml.
+	c.Header("X-Deprecation", "true")
+	c.Header("X-Deprecation-Migration", "aggregator")
+
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -182,18 +220,16 @@ func (h *Handler) Search(c *gin.Context) {
 // middleware.WorkspaceScopeMiddleware. If the scope is empty or
 // explicitly "default", the handler refuses with 403 (worker
 // principals cannot bypass through the body).
-func (h *Handler) extractWorkspace(c *gin.Context) (mediasearch.WorkspaceContext, bool) {
+func (h *Handler) extractWorkspace(c *gin.Context) (mediasearchapp.WorkspaceContext, bool) {
 	scope := middleware.ScopeFromContext(c)
 	if scope.WorkspaceID == "" || scope.WorkspaceID == "default" {
 		apiutil.Error(c, http.StatusForbidden,
 			"workspace_id is required (set X-Workspace-ID header for admin, or authenticate as a tenant principal)")
-		return mediasearch.WorkspaceContext{}, false
+		return mediasearchapp.WorkspaceContext{}, false
 	}
-	// Best-effort audit metadata; we don't fail the request if
-	// is_admin isn't present — auth middleware already enforced it.
 	isAdmin, _ := c.Get("is_admin")
 	principalID, _ := c.Get("principal_id")
-	return mediasearch.WorkspaceContext{
+	return mediasearchapp.WorkspaceContext{
 		WorkspaceID: scope.WorkspaceID,
 		ProjectID:   scope.ProjectID,
 		PrincipalID: strings.TrimSpace(toString(principalID)),
@@ -202,15 +238,12 @@ func (h *Handler) extractWorkspace(c *gin.Context) (mediasearch.WorkspaceContext
 }
 
 // parseMode accepts "", "ann", "hybrid" — anything else is a 400.
-// Empty defaults to hybrid (which the service also defaults to;
-// pin at the handler so /search callers see the same default
-// whether they pass "" or omit the field).
-func (h *Handler) parseMode(c *gin.Context, raw string) (mediasearch.SearchMode, bool) {
+func (h *Handler) parseMode(c *gin.Context, raw string) (mediasearchapp.SearchMode, bool) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "", "hybrid":
-		return mediasearch.SearchModeHybrid, true
+		return mediasearchapp.SearchModeHybrid, true
 	case "ann":
-		return mediasearch.SearchModeANN, true
+		return mediasearchapp.SearchModeANN, true
 	default:
 		apiutil.Error(c, http.StatusBadRequest,
 			"mode must be one of: hybrid, ann")
