@@ -982,6 +982,118 @@
     go_version_directive: "go 1.25.0 (loop-scoping safe)"
     cross_cap_imports: "internal/application/search/* stdlib-only; search_backends.go is single composition bridge"
 
+  # ── Wave 21 / PR-G — mega-package split (in_progress, June 2026) ─────
+  # PR-G is the mega-package remediation that frees internal/application/scripts
+  # (53 production + 20 test files; above policy.yaml::max_files_per_package=40
+  # with 36 files over the cap) and internal/application/youtube (38 root + subpkg
+  # files; nominally at-cap after Wave 21 but at-risk of growing back). PR-G
+  # is split into 4 phases per godlike/07 §zero-legacy-policy migration sequence
+  # (EXPAND / BACKFILL / CUTOVER / CONTRACT). PR-G.1 EXPAND establishes the
+  # 6 new subpackage boundaries with zero behavior change; PR-G.2 BACKFILL
+  # migrates files via `git mv` plus alias declarations for back-compat;
+  # PR-G.3 CUTOVER switches the composition root's references; PR-G.4
+  # CONTRACT removes the back-compat aliases. Deadline: 2026-07-10.
+  #
+  # PR-G.1 EXPAND (June 2026) — this commit. Six new subpackage `doc.go`
+  # files in internal/application/scripts/{generation,usecases,postprocess,
+  # source,curation,persistence}/ establish the canonical ownership
+  # boundaries established by the AGENTS.md Pattern 5 split rule.
+  #
+  # EXPAND guarantees (per godlike/07 §"Migration sequence"):
+  #   * Zero behavior change: no existing scripts.X consumers touched.
+  #   * Zero alias introduced: subpackage exposes no shim yet.
+  #   * Zero new dependency edge: doc.go imports nothing.
+  #   * Each subpackage compiles to an empty package on `go build ./...`.
+  completed_through_W21_prg1_expand:
+    files_created:
+      - internal/application/scripts/generation/doc.go
+      - internal/application/scripts/usecases/doc.go
+      - internal/application/scripts/postprocess/doc.go
+      - internal/application/scripts/source/doc.go
+      - internal/application/scripts/curation/doc.go
+      - internal/application/scripts/persistence/doc.go
+    files_modified:
+      - architecture/ownership.yaml (application_scripts.target_subdirs now
+        lists the 6 NEW canonical subpkg; dropped the 5 NEVER-materialised
+        aspirational batch/curation/documents/generate/jobs/scenes entries)
+      - architecture/current.yaml (this PR-G.1 EXPAND tracking block)
+    files_moved: 0  # EXPAND is package-skeleton only; BACKFILL moves files
+    aliases_introduced: 0  # EXPAND introduces zero aliases; BACKFILL will
+    new_global_state: 0  # EXPAND does not write to media_assets or jobs;
+                         # durable-state migration is BACKFILL's concern
+    go_vet: "go vet ./internal/application/scripts/... exit 0 (skeleton packages compile)"
+    go_build: "go build ./... exit 0 (zero fan-out from new packages)"
+    pr_g_plan_reference: docs/api/generate-from-clips.md (the
+      clip-spec-scene document renderer documented as the post-Wave 21 PR10
+      CUTOVER extension that motivated the PR-G split cadence — see
+      processor_clip_bindings.go [untracked, June 2026])
+    deadline: 2026-07-10
+    exit_gate_pr_g1: |
+      - bash scripts/ci-architectural-checks.sh exit 0 (transitional baselines
+        intact — PR-G.1 ships zero net change to Wave 20 / Wave 22 baselines
+        because no type aliases or context.WithoutCancel call sites are
+        introduced yet).
+      - go vet ./internal/application/scripts/... exit 0 (skeleton compiles).
+      - go test ./internal/application/scripts/... -short exit 0 (existing
+        tests still green; six new packages contribute zero behaviour).
+      - rg '^package (generation|usecases|postprocess|source|curation|persistence)$'
+        internal/application/scripts/  → exactly 6 hits.
+    pr_g_remaining_phases:
+      - id: PR-G.2
+        title: BACKFILL (git mv + back-compat aliases)
+        description: |
+          Per-subdirectory `git mv` of the 39 production files scheduled in
+          each subpkg's doc.go. Followed by `type X = <subpkg>.X` aliases
+          for every cross-package identifier consumed outside scripts/
+          (scripts.Engine, scripts.MediaCurator, scripts.SourceRegistry,
+          scripts.Pipeline, scripts.PersistenceProcessor, scripts.Document
+          Processor, scripts.ImageProcessor, scripts.EntityProcessor,
+          scripts.MetadataProcessor, scripts.VoiceoverProcessor,
+          scripts.ScriptRepository).
+        pre_backfill_must_hold: |
+          - Composition root (internal/app/wire_script.go) updated to wire
+            sub-package constructors BEFORE the file moves, so any
+            adapter-drift is caught at the first sub-package migration.
+          - Test files (`*_test.go` siblings) migrate alongside their
+            primary file; never leave a test in scripts/ pointing at a
+            type that lives in <subpkg>/.
+        acceptance_criteria:
+          - "find internal/application/scripts -maxdepth 1 -name '*.go' | wc -l = ≤ 12"
+          - "find internal/application/scripts/<subpkg> -name '*.go' | wc -l ≤ 17 each"
+          - "rg '^package scripts$' internal/application/scripts/ → ≤ 12 hits"
+          - "alias count `rg 'type \\w+ = (generation|usecases|postprocess|source|curation|persistence)\\.\\w+' internal/application/scripts/` ≤ 25"
+      - id: PR-G.3
+        title: CUTOVER (consumer migration)
+        description: |
+          internal/app/wire_script.go and internal/api/script/handler_flow.go
+          switch from scripts.X to direct subpkg.X references. internal/app
+          /composition.go::BuildAIBundle is the only composition site that
+          needs the alias chain (multi-bundle).
+        acceptance_criteria:
+          - "rg '\\*scripts\\.Engine\\b' internal/ → 2 hits (only docs/ comments)"
+          - "rg '\\*scripts\\.MediaCurator\\b' internal/ → 2 hits (only docs/ comments)"
+          - "rg '\\*scripts\\.SourceRegistry\\b' internal/application/scripts/source_registry_test.go → 0 hits (test migrated)"
+          - "go vet ./... exit 0"
+      - id: PR-G.4
+        title: CONTRACT (alias removal + final cap audit)
+        description: |
+          All 25 back-compat aliases removed from scripts/. The script
+          capabilities facade file (scripts/services.go) is shrunk to
+          the type-alias package + ports.go only. Wave 21 / PR-I
+          verified_zero flips from false to true when this lands.
+        acceptance_criteria:
+          - "rg '^package scripts' internal/application/scripts/ → 1 (only scripts.go)"
+          - "bash scripts/ci-architectural-checks.sh exit 0"
+          - "go run ./cmd/archcheck --strict exit 0 (PR-G.4 enables the strict-mode promotion)"
+          - "verified_zero: true set on this Wave 21 entry"
+  cross_refs:
+    ownership: architecture/ownership.yaml (application_scripts.target_subdirs)
+    policy: architecture/policy.yaml::max_files_per_package=40
+    pattern: AGENTS.md §Pattern 5 — Splittare un package
+    godlike_07: docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
+    operational_readiness: docs/operations/04-remote-worker-production-readiness-tickets.md
+    ri_production_readiness: "Wave 21 PR-I → PR-G deadline 2026-07-10 (transitional baseline owner: scripts+yt mega-package split work stream)"
+
 
 
 # ── Wave 23 — Runtime Configuration & Hardcode Elimination (in_progress, June 2026) ──
