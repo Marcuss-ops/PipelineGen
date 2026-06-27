@@ -1,6 +1,8 @@
 package jobs
 
 import (
+	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -12,14 +14,34 @@ import (
 )
 
 // JobsHandler exposes HTTP endpoints for job lifecycle management.
+//
+// PR-0 (June 2026): split into (domain Service, JobStatsReader). Service is
+// the canonical domain interface (job.Service); the stats reader is a
+// narrow port (JobStatsReader) exposing the SQLite-specific GetStats
+// helper without leaking it onto the orchestrator surface.
+// *appjobs.Service satisfies both interfaces — composition-root wiring
+// passes the same concrete pointer to both fields. The Stats
+// endpoint consumes only the reader; Enqueue/Cancel/Retry/etc.
+// consume only the orchestrator. The split is intentional so a future
+// Postgres migration can wire a different stats reader (e.g. one that
+// aggregates across shards) without touching the orchestrator's
+// mutation surface.
 type JobsHandler struct {
-	service *appjobs.Service
+	service domainjob.Service
+	stats   appjobs.JobStatsReader
 	log     *zap.Logger
 }
 
 // NewJobsHandler creates a new jobs HTTP handler.
-func NewJobsHandler(service *appjobs.Service, log *zap.Logger) *JobsHandler {
-	return &JobsHandler{service: service, log: log}
+//
+// PR-0 (June 2026): signature expanded to (job.Service,
+// JobStatsReader). Canonical composition root passes `jobs.Service`
+// for both fields (it satisfies both via compile-time assertion in
+// internal/application/jobs/stats.go). A reader-only binding (e.g.
+// a Postgres-backed aggregator without the mutation surface) passes
+// an implementation that satisfies only JobStatsReader.
+func NewJobsHandler(service domainjob.Service, stats appjobs.JobStatsReader, log *zap.Logger) *JobsHandler {
+	return &JobsHandler{service: service, stats: stats, log: log}
 }
 
 // RegisterRoutes mounts the job endpoints under the given router group.
@@ -128,7 +150,16 @@ func (h *JobsHandler) Cancel(c *gin.Context) {
 func (h *JobsHandler) Retry(c *gin.Context) {
 	id := c.Param("id")
 
-	j, err := h.service.Retry(c.Request.Context(), id)
+	type retryer interface {
+		Retry(context.Context, string) (*domainjob.Job, error)
+	}
+	r, ok := h.service.(retryer)
+	if !ok {
+		apiutil.InternalError(c, fmt.Errorf("job retry not supported by wired service"))
+		return
+	}
+
+	j, err := r.Retry(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to retry job", zap.String("job_id", id), zap.Error(err))
 		apiutil.InternalError(c, err)
@@ -151,13 +182,16 @@ func (h *JobsHandler) Events(c *gin.Context) {
 	apiutil.OK(c, gin.H{"events": events, "count": len(events)})
 }
 
-// Stats returns AGGREGATE broker state (queue latency, status counters,
-// ingested counts) — NOT per-worker hardware telemetry. Per-worker
-// /proc-derived state lives in CertReportHandler.Report
-// (admin cert-report endpoint). Drift resolution: separation of
-// concerns (RW-PROD-013).
+// Stats returns aggregated job statistics for monitoring.
+//
+// PR-0 (June 2026): reads from h.stats (the dedicated JobStatsReader
+// port), NOT h.service (the orchestrator). The previous code called
+// h.service.GetStats, which leaked the SQLite-specific helper via
+// type-assertion and tied the Stats endpoint to the orchestrator
+// concrete. With the port split, Stats is reporter-only and the
+// handler compiles against the narrow interface signature.
 func (h *JobsHandler) Stats(c *gin.Context) {
-	stats, err := h.service.GetStats(c.Request.Context())
+	stats, err := h.stats.GetStats(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to get job stats", zap.Error(err))
 		apiutil.InternalError(c, err)

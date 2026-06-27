@@ -28,6 +28,8 @@ import (
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
@@ -241,6 +243,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		clipsOpsPorts.DriveUploader,
 		newClipsCleanupPortAdapter(deletionSvc),
 		newClipsJobsPortAdapter(jobs.Facade),
+		clipsDispatcherPort,
 		log,
 	)
 	// Wave 21 PR 10: SearchSvc is the canonical *search.Aggregator
@@ -270,24 +273,11 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		Dispatcher:    clipsDispatcherPort,
 		EnrichUC:      enrichUC,
 		SearchSvc:      searchAggregator,
-		ProcessRunner:  processRunnerAdapter,
-		Dispatcher:     clipsDispatcherPort,
 		BulkUploadWorker: bulkUploadWorker,
 		ClipOpsService: clipOpsSvc,
 
 	}, idemHandler)
 
-	// S1a (June 2026): register the media.enrich worker NOW so any
-	// clip created/uploaded/reindexed via the API can be enriched
-	// asynchronously by the jobs pool. Without this registration, the
-	// new jobs.Enqueue calls would land in the broker and fall to
-	// the default no-handler error path. Nil-tolerant so wire tests
-	// can opt out.
-	if err := appclips.RegisterMediaEnrichWorker(jobs.Service, assetRepo, enrichUC, log); err != nil {
-		log.Warn("failed to register media.enrich worker", zap.Error(err))
-	} else {
-		log.Info("registered media.enrich worker in jobs.Service")
-	}
 	var drivePort appstorage.DrivePort
 	if driveUploader != nil {
 		drivePort = &storageDriveAdapter{up: driveUploader}

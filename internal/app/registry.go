@@ -291,7 +291,15 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 
 	// 1) Jobs — thin wrapper, no bundle deps.
 	{
-		jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, log)
+		// PR-0 (June 2026): NewJobsHandler signature is now
+// (job.Service, JobStatsReader, *zap.Logger). *root.Jobs.Service
+// satisfies both interfaces — it implements the canonical domain
+// job.Service (orchestrator) AND the JobStatsReader port (via the
+// runtime type-assertion GetStats helper). When a future stats source
+// is bindable without the orchestrator's mutation surface, pass that
+// reader to h.stats and let h.service continue carrying the
+// orchestrator.
+jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 		jobsMod := module.NewRouteModule(
 			"jobs",
 			func() bool { return true },
