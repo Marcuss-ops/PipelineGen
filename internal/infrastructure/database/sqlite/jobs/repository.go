@@ -15,7 +15,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -24,15 +23,21 @@ import (
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
+// SQLiteStore — canonical job.Store implementation.
+//
+// Concurrency model (post-PR-Polling design, ADR-0003 §Implementation-
+// status #6 supersession by PR-Queue-Split-claimMu cleanup, June 2026):
+// the previous `claimMu` application-level mutex on ClaimNext is REMOVED.
+// SQLite's WAL write-serialisation + the `AND revision = ?` CAS gate in
+// repository_claims.go::Start() are sufficient for ClaimNext atomicity.
+// Two workers racing the same row will both SELECT the same `id` at the
+// LIMIT 1 read; the loser's UPDATE matches a stale `revision` and
+// returns rows-affected=0 → ErrTransitionConflict. No application-level
+// mutex is needed; SQLite is the synchronisation point.
 type SQLiteStore struct {
 	db       *sql.DB
 	log      *zap.Logger
 	notifier *queueNotifier
-	// claimMu serializes ClaimNext so concurrent worker goroutines do not
-	// race on the SELECT-then-UPDATE atomic claim + start transition.
-	// Held only for the duration of ClaimNext — no contention on read
-	// paths. See repository_claims.go::ClaimNext for the only call site.
-	claimMu sync.Mutex
 }
 
 // jobColumns is the canonical list of column names read by Get, List and

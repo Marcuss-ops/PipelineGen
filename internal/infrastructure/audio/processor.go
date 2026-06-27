@@ -1,8 +1,10 @@
 package audioasset
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -40,8 +42,18 @@ func NewProcessor(
 func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResult, error) {
 	result := &AudioResult{}
 
-	// 1. Generate TTS via Python script
-	outputPath := filepath.Join(input.OutputDir, input.Filename)
+	// 1. Generate TTS via Python script.
+	// Defense-in-depth: validate filename against path traversal.
+	// filepath.Base strips any directory components; if the result
+	// differs from the input, the filename contained path separators.
+	safeName := filepath.Base(input.Filename)
+	if safeName != input.Filename {
+		return nil, fmt.Errorf("invalid filename: path traversal detected")
+	}
+	if filepath.Ext(safeName) == "" {
+		safeName += ".mp3"
+	}
+	outputPath := filepath.Join(input.OutputDir, safeName)
 
 	scriptPath := filepath.Join(p.pythonScriptsDir, "bridges", "tts_edge.py")
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
@@ -50,15 +62,52 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 
 	args := []string{
 		scriptPath,
-		"--text", input.Text,
 		"--lang", input.Language,
 		"--out", outputPath,
 	}
 
+	// --voice passthrough: override the auto-detected voice profile.
+	if input.Voice != "" {
+		args = append(args, "--voice", input.Voice)
+	}
+
+	// Text delivery: use stdin when requested or when text is long
+	// (> 32 KB — avoids OS argument-length limits and process-table
+	// visibility). stdin also prevents shell interpolation of
+	// special characters.
+	useStdin := input.UseStdin || len(input.Text) > 32*1024
+	if !useStdin {
+		args = append(args, "--text", input.Text)
+	}
+
 	cmd := exec.CommandContext(ctx, "python3", args...)
+	if useStdin {
+		cmd.Stdin = bytes.NewReader([]byte(input.Text))
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("TTS generation failed: %w, output: %s", err, string(output))
+	}
+
+	// Parse the JSON response from tts_edge.py to extract the real
+	// voice name (e.g. "en-US-RogerNeural") and detect failures
+	// the script reports as JSON but exits 0 for (empty-file).
+	type ttsResponse struct {
+		OK    bool   `json:"ok"`
+		Voice string `json:"voice"`
+		Error string `json:"error"`
+		Path  string `json:"path"`
+	}
+	var ttsOut ttsResponse
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(output), &ttsOut); jsonErr != nil {
+		p.log.Warn("TTS script returned non-JSON output",
+			zap.String("output", string(bytes.TrimSpace(output))),
+			zap.Error(jsonErr))
+	} else {
+		result.Voice = ttsOut.Voice
+		if !ttsOut.OK {
+			return nil, fmt.Errorf("TTS generation failed: %s", ttsOut.Error)
+		}
 	}
 
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
@@ -72,7 +121,7 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 
 	// 2. Optional silence removal
 	if input.RemoveSilence {
-		cleanedPath := filepath.Join(input.OutputDir, "cleaned_"+input.Filename)
+		cleanedPath := filepath.Join(input.OutputDir, "cleaned_"+safeName)
 		err := audio.RemoveSilence(ctx, "", outputPath, cleanedPath)
 		if err != nil {
 			p.log.Warn("silence removal failed", zap.Error(err))

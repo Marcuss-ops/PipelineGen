@@ -465,11 +465,12 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, descr
 }
 
 // voiceoverSvcAdapter adapts *voiceover.Service → scripts.VoiceoverService.
-// The concrete Generate returns *voiceover.VoiceoverResult; the interface
-// returns interface{}. We bridge the return-type conversion.
+// The concrete Generate/GenerateWithDestination return *voiceover.VoiceoverResult;
+// the interface returns interface{}. We bridge the return-type conversion.
 type voiceoverSvcAdapter struct {
 	svc interface {
 		Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error)
+		GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error)
 	}
 }
 
@@ -478,6 +479,13 @@ func (a *voiceoverSvcAdapter) Generate(ctx context.Context, text, language, file
 		return nil, nil
 	}
 	return a.svc.Generate(ctx, text, language, filename)
+}
+
+func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (interface{}, error) {
+	if a == nil || a.svc == nil {
+		return nil, nil
+	}
+	return a.svc.GenerateWithDestination(ctx, text, language, filename, dest)
 }
 
 // semanticSearchAdapter adapts scripts.RealtimeSearchService → scripts.SemanticSearchPort.

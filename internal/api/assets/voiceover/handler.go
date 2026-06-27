@@ -299,17 +299,19 @@ func (h *Handler) GenerateWithGroup(c *gin.Context) {
 		batchReq := voiceover.BatchRequest{
 			Text:      req.Text,
 			Languages: []string{req.Language},
+			Strategy:  "replace",
+			Destination: &voiceover.DestinationRequest{
+				FolderID: group.FolderID,
+			},
+			Metadata: map[string]any{"voiceover_group": req.VoiceoverGroup},
 		}
 		if req.Filename != "" {
 			batchReq.FilenameTemplate = req.Filename
 		}
-		payload := batchReq.PayloadMap()
-		payload["folder_id"] = group.FolderID
-		payload["voiceover_group"] = req.VoiceoverGroup
 
 		if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 			Type:    "voiceover.batch",
-			Payload: payload,
+			Payload: batchReq.PayloadMap(),
 		}, "Voiceover generation enqueued."); ok {
 			return
 		}

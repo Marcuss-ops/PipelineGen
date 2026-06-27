@@ -156,6 +156,14 @@ func (s *Service) processLanguage(
 		}
 	}
 
+	// Sanitize the filename against path traversal and enforce .mp3.
+	safePath, err := SanitizeFilename(outputDir, filename)
+	if err != nil {
+		return item.fail("invalid_filename", err)
+	}
+	filename = filepath.Base(safePath)
+	item.Filename = filename // keep persisted metadata in sync with sanitized path
+
 	// Build audio input for processor
 	audioInput := &audioasset.AudioInput{
 		Text:          req.Text,
@@ -184,7 +192,10 @@ func (s *Service) processLanguage(
 	item.FileHash = result.FileHash
 	item.DriveLink = result.DriveLink
 	item.DriveFileID = result.DriveFileID
-	item.Voice = language
+	item.Voice = result.Voice
+	if item.Voice == "" {
+		item.Voice = language // fallback to language code if voice not parsed
+	}
 	item.Status = result.Status
 
 	if result.Status == "" {

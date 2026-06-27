@@ -15,15 +15,19 @@ import (
 
 // ── ClaimNext ───────────────────────────────────────────────────────────
 
-// ── ClaimNext ───────────────────────────────────────────────────────────
-
 // ClaimNext atomically claims the oldest queued job, transitioning it to
 // running (via Start). Returns (nil, nil) on empty queue.
 // Implements Store.ClaimNext.
+//
+// Concurrency (post-PR-Polling design, ADR-0003 §Implementation-status #6
+// supersession by PR-Queue-Split-claimMu cleanup, June 2026): the previous
+// `claimMu` application-level mutex is REMOVED. Two workers racing the
+// same row serialise on SQLite's WAL + the `AND revision = ?` CAS gate in
+// Start() — the loser sees rows-affected=0 → ErrTransitionConflict,
+// surfaced as an error to the caller (treated as "not claimed, retry
+// next iteration"). Empty queue remains (nil, nil) for ErrNoRows on the
+// initial SELECT.
 func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*job.Job, error) {
-	r.claimMu.Lock()
-	defer r.claimMu.Unlock()
-
 	now := time.Now()
 	leaseExpiry := now.Add(leaseTTL)
 

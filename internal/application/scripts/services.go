@@ -4,6 +4,7 @@ package scripts
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
@@ -93,4 +94,10 @@ type ImageGenService interface {
 // VoiceoverService narrows voiceover operations.
 type VoiceoverService interface {
 	Generate(ctx context.Context, text, language, filename string) (interface{}, error)
+	// GenerateWithDestination routes the voiceover to a specific Drive
+	// folder. When the plan carries VoiceoverFolderID or is resolved
+	// from VoiceoverGroup, the processor passes a DestinationRequest
+	// so the audio lands in the correct group folder instead of the
+	// default voiceover root.
+	GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (interface{}, error)
 }

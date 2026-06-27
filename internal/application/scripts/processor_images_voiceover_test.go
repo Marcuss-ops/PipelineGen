@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -70,6 +71,11 @@ func (f *fakeVoiceoverGen) Generate(_ context.Context, _, _, _ string) (interfac
 		return nil, f.errs[i]
 	}
 	return f.results[i], nil
+}
+
+func (f *fakeVoiceoverGen) GenerateWithDestination(_ context.Context, _, _, _ string, _ *voiceover.DestinationRequest) (interface{}, error) {
+	// Delegates to Generate — the fake doesn't inspect the destination.
+	return f.Generate(context.Background(), "", "", "")
 }
 
 // ── Helpers ───────────────────────────────────────────────────────

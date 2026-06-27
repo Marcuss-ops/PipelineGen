@@ -150,7 +150,7 @@ func TestSanitizeFilename(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := sanitizeFilename(tc.outputDir, tc.filename)
+			result, err := SanitizeFilename(tc.outputDir, tc.filename)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return
