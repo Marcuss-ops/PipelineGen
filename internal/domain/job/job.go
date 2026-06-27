@@ -85,6 +85,11 @@ const (
 	// per batch. Resume is achieved by re-enqueueing with the same
 	// ActiveKey (FindActiveByKey filter excludes terminal jobs).
 	TypeAssetsCleanup = "assets.cleanup"
+	// Main-branch constants recovered after rebase (June 2026): the
+	// W14 manifest cutover on codex dropped these from domain/job
+	// but registry.go still references them.
+	TypeMediaEnrich    = "media.enrich"
+	TypeVoiceoverPromo = "voiceover.promo"
 )
 
 // Job is the canonical domain entity for a job in the system.

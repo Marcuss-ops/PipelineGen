@@ -18,7 +18,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	assetclipssearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/clipssearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -226,11 +225,6 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		VoiceoverRepo:  bundle.VoiceoverRepo,
 		ImagesRepo:     bundle.ImageRepo,
 		FolderMemSvc:   folderMemSvc,
-		SearchSvc: assetclipssearch.NewService(log, map[string]assetclipssearch.AdvancedSearchRepo{
-			"youtube": bundle.ClipsRepo,
-			"artlist": bundle.ClipsRepo,
-			"stock":   bundle.ClipsRepo,
-		}),
 		ProcessRunner:   processRunnerAdapter,
 		Dispatcher:      clipsDispatcherPort,
 		BulkUploadWorker: bulkUploadWorker,

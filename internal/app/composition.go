@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -204,7 +204,7 @@ type MaintBundle struct {
 
 // UtilityBundle owns the lightweight non-domain HTTP utility handlers.
 type UtilityBundle struct {
-	Utility       *common.UtilityHandler
+	Utility       *transport.UtilityHandler
 	HealthService *systemhealth.Service
 	ReadyChecker  *systemhealth.ReadyChecker
 }
