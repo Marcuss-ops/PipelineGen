@@ -45,8 +45,14 @@ func DecodeModelOutput(raw []byte, log *zap.Logger) (*scriptpkg.ModelScriptOutpu
 	jsonBytes, err := extractJSONFromOutput(raw)
 	if err != nil {
 		if log != nil {
+			// Log first 2000 chars of raw output for debugging.
+			preview := string(raw)
+			if len(preview) > 2000 {
+				preview = preview[:2000] + "..."
+			}
 			log.Debug("model output decoder: failed to extract JSON",
 				zap.Int("raw_bytes", len(raw)),
+				zap.String("preview", preview),
 				zap.Error(err))
 		}
 		return nil, fmt.Errorf("%w: %w", scriptpkg.ErrModelOutputMalformed, err)
