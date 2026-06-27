@@ -2,6 +2,7 @@ package outbox_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -10,17 +11,25 @@ import (
 	"go.uber.org/zap"
 
 	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // ── Fakes ────────────────────────────────────────────────────────────
 //
-// mockIndexClipper and mockAssetSourceChecker satisfy the handler's
+// mockIndexClipper and mockSourceVersionQuerier satisfy the handler's
 // local port interfaces (Pattern 0 — declared inside indexing.go).
 // Each fake records invocations so tests can assert both SUCCESSFUL
 // calls and non-calls (idempotent / supersede pre-flight).
+//
+// PR 11 follow-up (June 2026): the previous mockAssetSourceChecker
+// exposed GetClip(ctx, id) (*asset.Asset, error); tests built
+// synthetic Asset structs via assetWithContentHash. After the
+// AssetSourceChecker → SourceVersionQuerier port rename, the mock
+// signature is SourceVersionFor(ctx, id) (string, error) — same
+// surface as the production *assets.ClipsRepository.SourceVersionFor
+// delegate. assetWithContentHash is therefore removed (no other
+// test in this file has a use for an *asset.Asset fixture).
 
 type mockIndexClipper struct {
 	calls   []string
@@ -34,14 +43,14 @@ func (m *mockIndexClipper) IndexClip(ctx context.Context, clipID string) error {
 	return m.err
 }
 
-type mockAssetSourceChecker struct {
-	getResult *asset.Asset
+type mockSourceVersionQuerier struct {
+	getResult string
 	getErr    error
 	getCalls  []string
 	invoked   int
 }
 
-func (m *mockAssetSourceChecker) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
+func (m *mockSourceVersionQuerier) SourceVersionFor(ctx context.Context, id string) (string, error) {
 	m.invoked++
 	m.getCalls = append(m.getCalls, id)
 	return m.getResult, m.getErr
@@ -87,15 +96,10 @@ func indexEvt(t *testing.T, payload string) outboxevents.Event {
 	}
 }
 
-// assetWithContentHash builds an asset with metadata
-// {"content_hash": hash} populated from the JSON-canonical map.
-func assetWithContentHash(id, hash string) *asset.Asset {
-	a := &asset.Asset{ID: id}
-	if hash != "" {
-		a.SetMetadataString("content_hash", hash)
-	}
-	return a
-}
+// (assetWithContentHash was REMOVED in PR 11 follow-up — the
+// SourceVersionQuerier surface returns a string directly so no
+// *asset.Asset fixtures are needed in this file. See TestIndexingHandler_
+// SourceVersionSupersede and friends for the direct-string pattern.)
 
 // ── Schema version + strict envelope validation ──────────────────────
 //
@@ -116,7 +120,7 @@ func assetWithContentHash(id, hash string) *asset.Asset {
 func TestIndexingHandler_V1EventType(t *testing.T) {
 	h := outboxhandlers.NewIndexingHandler(
 		&mockIndexClipper{},
-		&mockAssetSourceChecker{},
+		&mockSourceVersionQuerier{},
 		zap.NewNop(),
 	)
 	if got := h.EventType(); got != outboxevents.EventAssetIndexRequested {
@@ -132,7 +136,7 @@ func TestIndexingHandler_V1EventType(t *testing.T) {
 func TestIndexingHandler_V1PayloadParseIsTerminal(t *testing.T) {
 	h := outboxhandlers.NewIndexingHandler(
 		&mockIndexClipper{},
-		&mockAssetSourceChecker{},
+		&mockSourceVersionQuerier{},
 		zap.NewNop(),
 	)
 	err := h.Handle(context.Background(), indexEvt(t, `{ not json`))
@@ -151,7 +155,7 @@ func TestIndexingHandler_V1PayloadParseIsTerminal(t *testing.T) {
 func TestIndexingHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
 	h := outboxhandlers.NewIndexingHandler(
 		&mockIndexClipper{},
-		&mockAssetSourceChecker{},
+		&mockSourceVersionQuerier{},
 		zap.NewNop(),
 	)
 	payload := `{"schema_version":"asset.index.requested.v0","event_id":"e","asset_id":"a","source_version":"hash","idempotency_key":"i"}`
@@ -174,7 +178,7 @@ func TestIndexingHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
 func TestIndexingHandler_V1EmptyAssetIDIsTerminal(t *testing.T) {
 	h := outboxhandlers.NewIndexingHandler(
 		&mockIndexClipper{},
-		&mockAssetSourceChecker{},
+		&mockSourceVersionQuerier{},
 		zap.NewNop(),
 	)
 	payload := `{"schema_version":"asset.index.requested.v1","event_id":"e","asset_id":"","source_version":"hash","idempotency_key":"i"}`
@@ -194,7 +198,7 @@ func TestIndexingHandler_V1EmptyAssetIDIsTerminal(t *testing.T) {
 func TestIndexingHandler_EmptySourceVersionIsTerminal(t *testing.T) {
 	h := outboxhandlers.NewIndexingHandler(
 		&mockIndexClipper{},
-		&mockAssetSourceChecker{},
+		&mockSourceVersionQuerier{},
 		zap.NewNop(),
 	)
 	payload := `{"schema_version":"asset.index.requested.v1","event_id":"e","asset_id":"a","source_version":"","idempotency_key":"i"}`
@@ -216,7 +220,7 @@ func TestIndexingHandler_EmptySourceVersionIsTerminal(t *testing.T) {
 func TestIndexingHandler_MissingIdempotencyKeyIsTerminal(t *testing.T) {
 	h := outboxhandlers.NewIndexingHandler(
 		&mockIndexClipper{},
-		&mockAssetSourceChecker{},
+		&mockSourceVersionQuerier{},
 		zap.NewNop(),
 	)
 	payload := `{"schema_version":"asset.index.requested.v1","event_id":"e","asset_id":"a","source_version":"hash","idempotency_key":""}`
@@ -236,7 +240,7 @@ func TestIndexingHandler_MissingIdempotencyKeyIsTerminal(t *testing.T) {
 func TestIndexingHandler_UnsupportedOperationIsTerminal(t *testing.T) {
 	h := outboxhandlers.NewIndexingHandler(
 		&mockIndexClipper{},
-		&mockAssetSourceChecker{},
+		&mockSourceVersionQuerier{},
 		zap.NewNop(),
 	)
 	payload := `{"schema_version":"asset.index.requested.v1","event_id":"e","asset_id":"a","operation":"REINDEX","source_version":"hash","idempotency_key":"i"}`
@@ -258,8 +262,8 @@ func TestIndexingHandler_UnsupportedOperationIsTerminal(t *testing.T) {
 // IndexClip MUST NOT be invoked — that's the whole point of the gate.
 func TestIndexingHandler_SourceVersionSupersede(t *testing.T) {
 	indexer := &mockIndexClipper{}
-	src := &mockAssetSourceChecker{
-		getResult: assetWithContentHash("clip-z", "hash-CURRENT"),
+	src := &mockSourceVersionQuerier{
+		getResult: "hash-CURRENT",
 	}
 	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
 
@@ -282,7 +286,7 @@ func TestIndexingHandler_SourceVersionSupersede(t *testing.T) {
 		t.Errorf("IndexClip must NOT be invoked on supersede (the whole point of the gate); got %d calls", indexer.invoked)
 	}
 	if src.invoked != 1 {
-		t.Errorf("GetClip must be invoked exactly once for the supersede read; got %d", src.invoked)
+		t.Errorf("SourceVersionFor must be invoked exactly once for the supersede read; got %d", src.invoked)
 	}
 	// Confirm the metric was bumped before the handler returned.
 	// Prometheus counters are global state; we reset by re-reading
@@ -299,8 +303,8 @@ func TestIndexingHandler_SourceVersionSupersede(t *testing.T) {
 // IndexClip's own internal idempotency check is a separate gate).
 func TestIndexingHandler_SourceVersionMatchDelegatesToIndexClip(t *testing.T) {
 	indexer := &mockIndexClipper{}
-	src := &mockAssetSourceChecker{
-		getResult: assetWithContentHash("clip-ok", "hash-X"),
+	src := &mockSourceVersionQuerier{
+		getResult: "hash-X",
 	}
 	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
 
@@ -318,12 +322,19 @@ func TestIndexingHandler_SourceVersionMatchDelegatesToIndexClip(t *testing.T) {
 	}
 }
 
-// TestIndexingHandler_GetClipErrorIsRetryable: source_checker
-// returns error → retryable so the pool's exponential backoff
-// retries (transient SQLite lock / network blip on a remote DB).
-func TestIndexingHandler_GetClipErrorIsRetryable(t *testing.T) {
+// TestIndexingHandler_SourceVersionErrorIsRetryable: a generic
+// (non-sql.ErrNoRows) error returned by the SourceVersionQuerier
+// surfaces as RETRYABLE so the pool's exponential backoff retries.
+// The canonical case is a transient SQLite lock or a network blip
+// on a remote DB — flagging these as terminal would burn max_attempts
+// without ever recovering. The handler distinguishes sql.ErrNoRows
+// (asset missing — fall-through to IndexClip) from generic failures
+// (retryable) via errors.Is. PR 11 follow-up renamed the test from
+// the previous TestIndexingHandler_GetClipErrorIsRetryable to reflect
+// the port rename.
+func TestIndexingHandler_SourceVersionErrorIsRetryable(t *testing.T) {
 	indexer := &mockIndexClipper{}
-	src := &mockAssetSourceChecker{
+	src := &mockSourceVersionQuerier{
 		getErr: errors.New("sqlite: database is locked"),
 	}
 	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
@@ -332,25 +343,27 @@ func TestIndexingHandler_GetClipErrorIsRetryable(t *testing.T) {
 		indexEvt(t, validIndexRequestPayload(t, "clip-r", "h", "i")),
 	)
 	if err == nil {
-		t.Fatal("expected error from GetClip failure; got nil")
+		t.Fatal("expected error from SourceVersionFor failure; got nil")
 	}
 	if outboxevents.IsTerminal(err) {
-		t.Fatalf("GetClip transient error must be RETRYABLE; got terminal: %v", err)
+		t.Fatalf("SourceVersionFor transient error must be RETRYABLE; got terminal: %v", err)
 	}
 	if outboxevents.IsSupersede(err) {
-		t.Fatalf("GetClip error must NOT be classified as supersede; got: %v", err)
+		t.Fatalf("SourceVersionFor error must NOT be classified as supersede; got: %v", err)
 	}
 	if indexer.invoked != 0 {
 		t.Errorf("IndexClip must NOT run when supersede read failed (we don't know if it's stale); got %d", indexer.invoked)
 	}
 }
 
-// TestIndexingHandler_NilSourceCheckerSkipsGate: when the
-// composition root doesn't wire a source_checker (test dbs,
+// TestIndexingHandler_NilSourceQuerierSkipsGate: when the
+// composition root doesn't wire a sourceQuerier (test dbs,
 // partial wiring windows), the gate is skipped and IndexClip
 // runs unconditionally. IndexClip's own internal idempotency
-// check serves as a fallback.
-func TestIndexingHandler_NilSourceCheckerSkipsGate(t *testing.T) {
+// check serves as a fallback. PR 11 follow-up renamed the test
+// from the previous TestIndexingHandler_NilSourceCheckerSkipsGate
+// to reflect the port rename.
+func TestIndexingHandler_NilSourceQuerierSkipsGate(t *testing.T) {
 	indexer := &mockIndexClipper{}
 	h := outboxhandlers.NewIndexingHandler(indexer, nil, zap.NewNop())
 
@@ -358,7 +371,7 @@ func TestIndexingHandler_NilSourceCheckerSkipsGate(t *testing.T) {
 		indexEvt(t, validIndexRequestPayload(t, "clip-n", "h", "i")),
 	)
 	if err != nil {
-		t.Fatalf("nil sourceChecker should still proceed to IndexClip; got: %v", err)
+		t.Fatalf("nil sourceQuerier should still proceed to IndexClip; got: %v", err)
 	}
 	if indexer.invoked != 1 {
 		t.Errorf("IndexClip must be called when supersede gate is skipped; got %d", indexer.invoked)
@@ -370,8 +383,8 @@ func TestIndexingHandler_NilSourceCheckerSkipsGate(t *testing.T) {
 // the row dead-letters loudly rather than spinning max_attempts
 // on a "nil pointer dereference" cycle.
 func TestIndexingHandler_NilIndexerReturnsTerminal(t *testing.T) {
-	src := &mockAssetSourceChecker{
-		getResult: assetWithContentHash("clip-nil", "h"),
+	src := &mockSourceVersionQuerier{
+		getResult: "h",
 	}
 	h := outboxhandlers.NewIndexingHandler(nil, src, zap.NewNop())
 
@@ -386,15 +399,18 @@ func TestIndexingHandler_NilIndexerReturnsTerminal(t *testing.T) {
 	}
 }
 
-// TestIndexingHandler_MissingAssetSkipsGate: if GetClip returns
-// nil for an unknown asset (idempotency shortcut similar to
-// IndexDeleteHandler), the supersede gate is skipped and
-// IndexClip proceeds. IndexClip fetches the same asset again,
-// observes it doesn't exist, and short-circuits on its own —
-// keeping the handler narrow without duplicating that logic.
+// TestIndexingHandler_MissingAssetSkipsGate: if SourceVersionFor
+// returns sql.ErrNoRows for an unknown asset (idempotency
+// shortcut similar to IndexDeleteHandler), the supersede gate is
+// skipped and IndexClip proceeds. IndexClip fetches the same
+// asset again, observes it doesn't exist, and short-circuits on
+// its own — keeping the handler narrow without duplicating that
+// logic. PR 11 follow-up renamed the test from the previous
+// TestIndexingHandler_MissingAssetSkipsGate (the GetClip return
+// value changed shape via the SourceVersionQuerier port rename).
 func TestIndexingHandler_MissingAssetSkipsGate(t *testing.T) {
 	indexer := &mockIndexClipper{}
-	src := &mockAssetSourceChecker{getResult: nil}
+	src := &mockSourceVersionQuerier{getErr: sql.ErrNoRows}
 	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
 
 	err := h.Handle(context.Background(),
@@ -415,8 +431,8 @@ func TestIndexingHandler_MissingAssetSkipsGate(t *testing.T) {
 // drops all sit here.
 func TestIndexingHandler_IndexClipErrorPropagatesAsRetryable(t *testing.T) {
 	indexer := &mockIndexClipper{err: errors.New("embedding-server 503")}
-	src := &mockAssetSourceChecker{
-		getResult: assetWithContentHash("clip-r", "h"),
+	src := &mockSourceVersionQuerier{
+		getResult: "h",
 	}
 	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
 
@@ -441,8 +457,8 @@ func TestIndexingHandler_IndexClipErrorPropagatesAsRetryable(t *testing.T) {
 // deferred Observation is invoked on every return.
 func TestIndexingHandler_MetricsEmitted(t *testing.T) {
 	indexer := &mockIndexClipper{}
-	src := &mockAssetSourceChecker{
-		getResult: assetWithContentHash("clip-m", "h"),
+	src := &mockSourceVersionQuerier{
+		getResult: "h",
 	}
 	h := outboxhandlers.NewIndexingHandler(indexer, src, zap.NewNop())
 

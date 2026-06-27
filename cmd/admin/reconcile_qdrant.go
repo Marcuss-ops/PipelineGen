@@ -44,6 +44,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
@@ -414,23 +415,32 @@ func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string
 	}
 	defer tx.Rollback() //nolint:errcheck // standard commit-or-rollback idiom
 
-	// PR 11 (June 2026): atomic content_hash capture INSIDE the tx.
-	// Mirrors consumer-side readSourceVersion so the producer and
-	// worker agree on the fingerprint without a JOIN. Empty result
-	// → fail-closed (deterministic event_key cannot be derived
-	// without a fingerprint; emitting a placeholder key would
-	// mask real content drift between reconcile runs).
-	var contentHash string
-	err = tx.QueryRowContext(ctx, `
-		SELECT COALESCE(
-			json_extract(metadata_json, '$.content_hash'),
-			json_extract(metadata_json, '$.file_hash'),
-			file_hash,
-			''
-		) FROM media_assets WHERE id = ?
-	`, assetID).Scan(&contentHash)
-	if err == sql.ErrNoRows {
-		return fmt.Errorf("outboxRepairAdapter.EnqueueReindex: asset %s not found in media_assets (PR 11 — fail-closed: cannot derive deterministic event_key for a missing row)", assetID)
+	// PR 11 (June 2026, follow-up): atomic content_hash capture
+	// INSIDE the tx, routed through assets.SourceVersionFor — the
+	// canonical SQL helper that BOTH this call site AND the
+	// IndexingHandler consumer import. Future drift in the
+	// priority chain (metadata_json.$.content_hash →
+	// metadata_json.$.file_hash → media_assets.file_hash) is now
+	// structurally impossible without changing one function.
+	// See
+	// internal/infrastructure/database/sqlite/assets/source_version.go
+	// + source_version_test.go for the regression pin across all
+	// four priority slots (including the legacy top-level column).
+	//
+	// The pre-PR-11-followup sequence duplicated the COALESCE chain
+	// here AND walked the consumer side over *asset.Asset accessors
+	// (the latter's Asset.FileHash() reads the SAME metadata slot
+	// as JSON file_hash — effectively skipping the legacy tier 3).
+	// The replacement helper honours all three tiers in SQL so
+	// backfilled pre-metadata-json rows from legacy ingest tooling
+	// are correctly fingerprinted.
+	//
+	// Empty result → fail-closed (deterministic event_key cannot
+	// be derived without a fingerprint; emitting a placeholder
+	// key would mask real content drift between reconcile runs).
+	contentHash, err := assets.SourceVersionFor(ctx, tx, assetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("outboxRepairAdapter.EnqueueReindex: asset %s not found in media_assets (PR 11 — fail-closed: cannot derive deterministic event_key for a missing row): %w", assetID, err)
 	}
 	if err != nil {
 		return fmt.Errorf("read content_hash for %s: %w", assetID, err)
