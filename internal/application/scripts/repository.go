@@ -143,6 +143,15 @@ type ScriptGenerationLog struct {
 // ScriptSectionRecord + ScriptStockMatchRecord); they are not embedded
 // in this struct to avoid JSON-array columns on the SQL side.
 //
+// PR 6 (June 2026): dedicated IdempotencyKey + SpecScene fields replace
+// the pre-PR-6 dual-purpose Template / TimelineJSON slots — both
+// fields are written by PersistenceProcessor (the only writer) into
+// the dedicated columns on the SQL side. The Template field is
+// retained for downstream ListScripts filters (semantic-history
+// preservation). The TimelineJSON slot is retained as legacy
+// compatibility (the adapter still passes it through but does not
+// populate it as SpecScene JSON any longer).
+//
 // Note: this struct was previously declared inline in engine.go and
 // in types.go; the closure of Stage 2D consolidates it here as a stable
 // contract for engine_test.go and the future concrete repository.
@@ -171,4 +180,17 @@ type ScriptRecord struct {
 	Version        int
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+
+	// IdempotencyKey is the 16-hex-char SHA-256 prefix computed by
+	// PersistenceProcessor from the reconciliation tuple
+	// (item_id|cache_key|prompt_version|target_words|language). PR 6:
+	// stored on the dedicated `idempotency_key TEXT` column. The
+	// adapter passes it through transparently.
+	IdempotencyKey string
+
+	// SpecScene is the JSON-serialised SpecSceneOutput emitted by
+	// the engine. PR 6: stored on the dedicated `specscene TEXT`
+	// column; the pre-PR-6 path of stuffing SpecScene JSON into the
+	// TimelineJSON slot is gone.
+	SpecScene string
 }

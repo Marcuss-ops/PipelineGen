@@ -69,6 +69,13 @@ func toSQLiteScriptRecord(rec *ScriptRecord) *sqlitescripts.ScriptRecord {
 		Version:        rec.Version,
 		ParentScriptID: parentID,
 		IsDeleted:      false,
+		// PR 6 (June 2026): dedicated idempotency_key + specscene
+		// columns replace the pre-PR-6 dual-purpose
+		// Template / TimelineJSON slots. PersistenceProcessor is the
+		// only writer; the adapter passes the fields straight
+		// through to the SQL side.
+		IdempotencyKey: rec.IdempotencyKey,
+		SpecScene:      rec.SpecScene,
 	}
 }
 
@@ -107,6 +114,12 @@ func fromSQLiteScriptRecord(rec *sqlitescripts.ScriptRecord) *ScriptRecord {
 		Version:        rec.Version,
 		CreatedAt:      createdAt,
 		UpdatedAt:      updatedAt,
+		// PR 6 (June 2026): dedicated idempotency_key + specscene
+		// columns. The fields flow from the SQL side without any
+		// slot-shape heuristic. The PR 5 era's "idempotency key is
+		// stuffed into Template" is gone.
+		IdempotencyKey: rec.IdempotencyKey,
+		SpecScene:      rec.SpecScene,
 	}
 }
 

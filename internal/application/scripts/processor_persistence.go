@@ -1,5 +1,5 @@
 // Package scripts — processor_persistence.go is the SINGLE PERSISTENCE
-// OWNER (PR 5/3, June 2026). The engine no longer writes to the
+// OWNER (PR 6, June 2026). The engine no longer writes to the
 // scripts table; this processor is the only writer. Enabled as
 // "persistence" in the plan's Postprocessors list.
 //
@@ -10,23 +10,27 @@
 //     plan.Language) → first 16 hex characters.
 //   - Look up an existing row by IdempotencyKey via
 //     repo.FindScriptByIdempotencyKey. If found, return
-//     {ScriptID: existing.ID} (AlreadyPersisted signal is logged
-//     and not propagated downstream — single-writer contract).
+//     {ScriptID: existing.ID} (an INFO log records the hit — no
+//     downstream signal propagates, single-writer contract).
 //   - If not found, build the ScriptRecord with all canonical fields
-//     (FinalWordCount from model.WordCount, SpecScene JSON marshalled
-//     into TimelineJSON, ModelUsed, CacheStatus) and SaveScript.
+//     (FinalWordCount from model.WordCount, SpecScene JSON marshalled,
+//     ModelUsed, CacheStatus) and SaveScript.
 //   - The idem key MUST include target_words + language so that
 //     callers who change sizing produce distinct rows rather than
 //     colliding with prior runs.
 //
-// PR 5 storage strategy: the IdempotencyKey is currently stored on
-// the existing ScriptRecord.Template slot. PR 6 will introduce a
-// dedicated `idempotency_key TEXT` column.
+// PR 6 (June 2026) — Storage strategy: the IdempotencyKey is now
+// stored on the dedicated `idempotency_key TEXT` column (no longer
+// stuffed into the multi-purpose `template` slot). Likewise the
+// SpecScene JSON is stored on the dedicated `specscene TEXT`
+// column (no longer stuffed into the multi-purpose `timeline_json`
+// slot). The Template and TimelineJSON slots remain populated on
+// new rows for backward compatibility with ListScripts filters.
 //
 // PR 3 (June 2026): the typed PostProcessArtifact replaces the
 // pre-PR-3 aggregate shape. The ScriptID flows through
 // PostProcessArtifact.ScriptID. Idempotency-hit operators see an
-// INFO log only (not an extra postprocessing flag).
+// INFO log only (no extra postprocessing flag).
 package scripts
 
 import (
@@ -42,7 +46,9 @@ import (
 )
 
 // PersistenceProcessor writes the canonical script row.
-// PR 6 (June 2026) follow-up: dedicated idempotency_key column.
+// PR 6 (June 2026): idempotency_key and specscene columns on the
+// scripts table replace the pre-PR-6 dual-purpose Template /
+// TimelineJSON slots.
 type PersistenceProcessor struct {
 	repo ScriptRepository
 	log  *zap.Logger
@@ -105,9 +111,9 @@ func (p *PersistenceProcessor) Process(
 		}, nil
 	}
 
-	// Build the canonical record. PR 5/3: SpecScene JSON stored
-	// in the existing TimelineJSON slot until the dedicated
-	// column lands in PR 6.
+	// Build the canonical record. PR 6: the specscene column is
+	// populated with the canonical SpecSceneOutput JSON directly
+	// (no longer parked in the multi-purpose timeline_json slot).
 	specSceneJSON, specJSONErr := json.Marshal(model.SpecScene)
 	if specJSONErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: specscene marshal failed: %w", scriptpkg.ErrPostprocessFailed, specJSONErr)
@@ -127,14 +133,17 @@ func (p *PersistenceProcessor) Process(
 		OutputText:     model.Text,
 		NarrativeText:  model.Text,
 		FullDocument:   model.Text,
-		// PR 5: store the canonical SpecScene serialised into the
-		// existing TimelineJSON slot — saves a schema migration
-		// (PR 6 territory when a dedicated specscene column lands).
-		TimelineJSON: string(specSceneJSON),
-		// IdempotencyKey stored on Template slot. Concrete repo
-		// FindByIdempotencyKey reads this back.
-		Template: idemKey,
-		Version:  1,
+		// PR 6: dedicated idempotency_key column. The pre-PR-6
+		// strategy of writing the idem key into the Template slot
+		// is retired; Template is left empty so ListScripts filters
+		// using `WHERE template = 'book'` (semantic template
+		// values) keep working as before.
+		IdempotencyKey: idemKey,
+		// PR 6: dedicated specscene column. The pre-PR-6 strategy
+		// of writing SpecScene JSON into the TimelineJSON slot is
+		// retired.
+		SpecScene: string(specSceneJSON),
+		Version:   1,
 	}
 
 	scriptID, err := p.repo.SaveScript(ctx, rec, nil, nil)
