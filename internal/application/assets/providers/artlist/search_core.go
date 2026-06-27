@@ -36,9 +36,25 @@ func (ss *SearchService) SetAssetRepo(r asset.Repository) {
 }
 
 // NewSearchService creates a new SearchService wired to the Service.
-// dispatcher is the canonical outbox port; nil means legacy Upsert path.
-func NewSearchService(s *Service, dispatcher Dispatcher) *SearchService {
-	return &SearchService{service: s, dispatcher: dispatcher}
+//
+// PR1 (User directive, June 2026): fail-closed at construction.
+// `dispatcher` is the canonical outbox port that performs the atomic
+// media_assets upsert + outbox enqueue (QDRANT-002 contract). The
+// legacy nil-dispatcher fallback to raw assetStore.Upsert is REMOVED:
+// callers that need asset ingestion MUST wire the canonical dispatcher
+// at composition time (see internal/app/module_sources.go::WireArtlist
+// which already pre-rejects nil). Returns ErrAssetMutationDispatcherUnavailable
+// when dispatcher is nil; the composition root surfaces that error
+// before the system comes up mis-configured.
+//
+// The constructor also keeps NewService building blocks aligned with
+// the post-QDRANT-002 PR7 contract that production wiring must enforce
+// at composition.
+func NewSearchService(s *Service, dispatcher Dispatcher) (*SearchService, error) {
+	if dispatcher == nil {
+		return nil, ErrAssetMutationDispatcherUnavailable
+	}
+	return &SearchService{service: s, dispatcher: dispatcher}, nil
 }
 
 // Search esegue una ricerca di clip nel database Artlist.
@@ -119,24 +135,33 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		}
 		clip.SetDownloadLink(c.SourceRef)
 
-		if existing, err := s.assetStore.Get(ctx, clip.ID); err == nil && existing != nil {
-			if existing.LocalPath() != "" {
-				clip.SetLocalPath(existing.LocalPath())
-			}
-			if existing.FileHash() != "" {
-				clip.SetFileHash(existing.FileHash())
-			}
-			if existing.DriveLink() != "" {
-				clip.SetDriveLink(existing.DriveLink())
-			}
-			if existing.DriveFileID() != "" {
-				clip.SetDriveFileID(existing.DriveFileID())
-			}
-			if existing.DownloadLink() != "" && !strings.Contains(existing.DownloadLink(), "drive.google.com") {
-				clip.SetDownloadLink(existing.DownloadLink())
-			}
-			if existing.ClipPageURL != "" {
-				clip.ClipPageURL = existing.ClipPageURL
+		// Defensive nil-check on assetStore: production always wires this,
+		// but tests do construct bare &Service{...} fixtures to exercise
+		// the dispatcher guard. Without the guard, those fixtures would
+		// SIGSEGV here before reaching the dispatcher check, masking
+		// the typed-sentinel contract. Skip the merge path silently
+		// when assetStore is nil — the dispatcher check below is the
+		// real surface layer, the merge is just a metadata refresh.
+		if s.assetStore != nil {
+			if existing, err := s.assetStore.Get(ctx, clip.ID); err == nil && existing != nil {
+				if existing.LocalPath() != "" {
+					clip.SetLocalPath(existing.LocalPath())
+				}
+				if existing.FileHash() != "" {
+					clip.SetFileHash(existing.FileHash())
+				}
+				if existing.DriveLink() != "" {
+					clip.SetDriveLink(existing.DriveLink())
+				}
+				if existing.DriveFileID() != "" {
+					clip.SetDriveFileID(existing.DriveFileID())
+				}
+				if existing.DownloadLink() != "" && !strings.Contains(existing.DownloadLink(), "drive.google.com") {
+					clip.SetDownloadLink(existing.DownloadLink())
+				}
+				if existing.ClipPageURL != "" {
+					clip.ClipPageURL = existing.ClipPageURL
+				}
 			}
 		}
 
@@ -145,12 +170,19 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		if contentHash == "" {
 			contentHash = clip.ID
 		}
-		var upsertErr error
-		if ss.dispatcher != nil {
-			upsertErr = ss.dispatcher.EnqueueAndIndex(ctx, clip, contentHash)
-		} else {
-			upsertErr = s.assetStore.Upsert(ctx, clip)
+		// PR1 (User directive, June 2026): the legacy `if dispatcher != nil ...
+		// else assetStore.Upsert` fallback is REMOVED. SearchLiveAndSave
+		// MUST route every ingested asset through the canonical outbox
+		// dispatcher (atomic media_assets upsert + outbox enqueue). The
+		// constructor (NewSearchService) already guards nil at construction
+		// time; this single call site is the post-construction data mutation.
+		// A belt-and-suspenders check at function entry catches runtime
+		// tampering (e.g. someone calling SetDispatcher post-construction)
+		// and yields a typed sentinel rather than a nil-pointer panic.
+		if ss.dispatcher == nil {
+			return nil, ErrAssetMutationDispatcherUnavailable
 		}
+		upsertErr := ss.dispatcher.EnqueueAndIndex(ctx, clip, contentHash)
 
 		if upsertErr == nil {
 			if a := toDomain(clip); a != nil {
@@ -158,8 +190,16 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			}
 
 			searchText := clip.Name + " " + originalTerm
-			if updateErr := s.assetStore.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
-				s.log.Debug("failed to update search terms for clip", zap.String("clip_id", clip.ID), zap.Error(updateErr))
+			// Defensive nil-guard: production always wires assetStore,
+			// but tests construct bare &Service{...} fixtures that
+			// exercise the dispatcher guard. A nil assetStore here would
+			// SIGSEGV before the test could observe the typed-sentinel
+			// contract upstream — guard it to keep tests' assertions
+			// focused on the dispatcher layer.
+			if s.assetStore != nil {
+				if updateErr := s.assetStore.UpdateSearchTerms(ctx, clip.ID, "artlist", clip.Name, clip.Tags, searchText); updateErr != nil {
+					s.log.Debug("failed to update search terms for clip", zap.String("clip_id", clip.ID), zap.Error(updateErr))
+				}
 			}
 
 			if s.metadataWriter != nil {
@@ -239,17 +279,13 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 	return toDomainPtrSlice(clips)
 }
 
-// UpsertClip inserts or updates a clip in the database.
-func (ss *SearchService) UpsertClip(ctx context.Context, clip *asset.Asset) error {
-	if ss.assetRepo != nil {
-		return ss.assetRepo.Upsert(ctx, clip)
-	}
-	s := ss.service
-	if s.assetStore != nil {
-		return s.assetStore.Upsert(ctx, clip)
-	}
-	return nil
-}
+// QDRANT-asset-mutation isolation (June 2026): UpsertClip was
+// DELETED from SearchService. Production callers in artlist MUST
+// route through outbox.Dispatcher.EnqueueAndIndex. The dispatcher
+// consumes mutations.AssetMutationPrimitives (see
+// internal/application/assets/mutations/primitives.go), so tests that
+// previously called ss.UpsertClip now inject a stub dispatcher (see
+// dispatcher_stub_test.go) and assert the dispatcher path.
 
 // searchLiveWithFallbacks orchestrates the fallback chain using the
 // Searcher port. Implementations come from infrastructure:

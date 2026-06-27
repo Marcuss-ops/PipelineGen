@@ -110,12 +110,15 @@ type AssetStore interface {
 	Get(ctx context.Context, id string) (*asset.Asset, error)
 	// Upsert is the canonical write entry point. Mirrors the
 	// application-level upsert contract used by SearchLiveAndSave.
+	//
+	// QDRANT-asset-mutation isolation (June 2026): UpsertClip was
+	// DELETED from this port. Production callers (artlist search +
+	// orphaned callers) MUST go through outbox.Dispatcher.EnqueueAndIndex
+	// (the canonical outbox-compliant path). The lower-level UpsertClip
+	// remains on *assets.ClipsRepository for the dispatcher's exclusive
+	// use; see internal/application/assets/mutations/primitives.go for
+	// the narrowed surface.
 	Upsert(ctx context.Context, clip *asset.Asset) error
-	// UpsertClip mirrors *assets.ClipsRepository.UpsertClip (legacy
-	// dispatch_bridge.go uses it directly). Both Upsert and
-	// UpsertClip write the same row + emit the same outbox event;
-	// the suffix distinguishes caller intent.
-	UpsertClip(ctx context.Context, clip *asset.Asset) error
 	SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error)
 	// SearchClips is the term-exact variant used by Search /
 	// Diagnostics. The mismatch with SearchByTerms (term vs keywords)

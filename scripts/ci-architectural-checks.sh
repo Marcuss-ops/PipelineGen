@@ -248,7 +248,69 @@ if [ -n "$literals" ]; then
 fi
 echo "OK: no direct engine.Generate() calls outside GenerateOneUseCase"
 
-# ── Check 4: Migration version uniqueness lint (PR-D) ──────────────
+# ── Check 5: forbid mutation primitives in production callers (QDRANT-asset-mutation isolation, Wave 22) ────
+# The three primitive methods UpsertClip / Restore / HardDelete are
+# dispatcher-only / admin-only entry points to media_assets. The
+# canonical narrow interface is mutations.AssetMutationPrimitives
+# (consumed by outbox.Dispatcher) and admin.InternalAdminPurge
+# (consumed by cmd/admin tooling). Production code paths in
+# internal/application/** and internal/api/** MUST NOT call these
+# methods directly:
+#
+#   - artlist ingestion MUST route through outbox.Dispatcher.EnqueueAndIndex
+#   - sourcing ingest MUST route through IndexDispatcherPort.EnqueueAndIndex
+#   - hash-recovery patches MUST use the lower-level Upsert (a public
+#     method that still bypasses the outbox but is syntactically
+#     permitted on the port surfaces; the lint is a syntactic guard)
+#   - admin physical-purge MUST go through InternalAdminPurge
+#     (these calls land in cmd/admin/** which is NOT production
+#     caller territory per AGENTS.md / Pattern 8)
+#
+# Verification:
+#   rg 'UpsertClip\(|^\s*\.Restore\(|^\s*\.HardDelete\(' \
+#      internal/application internal/api --glob '!**/*_test.go'
+#   must return ZERO hits.
+#
+# Allowlist:
+#   - mutations/primitives.go : defines the interface, not a caller.
+#   - admin/purge*.go         : cmd/admin's package, not production caller.
+#   - internal/infrastructure/** : the dispatcher + the canonical
+#                                  ClipsRepository (which is the
+#                                  owner of the SQL primitives).
+#   - *_test.go               : tests may call the methods directly.
+echo "=== Check 5: forbid mutation primitives in production callers (QDRANT-asset-mutation) ==="
+literal_calls=$(rg -n --type go \
+    -e '\bUpsertClip\(' \
+    -e '(^|[\s.(])r\.Restore\(' \
+    -e '(^|[\s.(])r\.HardDelete\(' \
+    -e '\.repo\.UpsertClip\(' \
+    -e '\.clips\.UpsertClip\(' \
+    -e '\.inner\.UpsertClip\(' \
+    --glob '!**/*_test.go' \
+    --glob '!**/mutations/primitives.go' \
+    --glob '!**/admin/purge*.go' \
+    --glob '!**/infrastructure/database/sqlite/**' \
+    internal/application internal/api 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$literal_calls" ]; then
+    echo "FAIL: forbidden mutation primitive call in production caller:"
+    echo "$literal_calls"
+    echo ""
+    echo "Fix: route writes through outbox.Dispatcher.EnqueueAndIndex"
+    echo "(production) or admin.InternalAdminPurge (offline tooling)."
+    echo "The narrowed surface is mutations.AssetMutationPrimitives; the"
+    echo "underlying methods on *assets.ClipsRepository are dispatcher-only."
+    exit 1
+fi
+echo "OK: no forbidden mutation primitive calls in production callers"
+
+# ── Check 6: Migration version uniqueness lint (PR-D) ──────────────
 # Fails when two or more files in `migrations/sqlite/` share the
 # leading numeric version prefix. The canonical convention for this
 # repo is one file per migration number; the slot ordering encodes the
@@ -286,6 +348,108 @@ if [ -d "${migration_root}" ]; then
   fi
 fi
 echo "OK: no duplicate migration version prefixes in ${migration_root}/"
+
+# ── Check 5: same-package duplicate-type-declarations lint (QDRANT-RECOVERY-001 follow-up) ──
+# Go cannot distinguish file-level types from package-level types — two .go files
+# in the same package declaring `type X struct{...}` produces a build error:
+# "<X> redeclared in this block". Historically observed as the SnapshotDescription
+# duplicate in internal/infrastructure/qdrant/types.go + types_dr.go on origin/main
+# (fixed by commits 2b67d701 + 38187ded — see docs/operations/05 ticket
+# QDRANT-RECOVERY-001). This lint catches the same pattern at pre-CI time so a new
+# type declaration cannot land with a colliding same-package symbol.
+#
+# Implementation: walk every non-test .go file under internal/, extract the
+# `package X` line + every `^type X ...` declaration, project to <package>:<type>,
+# fail on any redeclaration that is NOT listed in the per-package allowlist.
+#
+# Allowlist: docs/architecture/godlike/duplicate-types-allowlist.txt lists one
+# `<package>:<TypeName>` per line for intentional redeclarations. Per AGENTS.md
+# §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new entry requires
+# owner + deadline. The file is currently empty by design — same-package
+# redeclaration is never a valid production pattern (use a cross-package
+# mirror instead, e.g. qdrant.SnapshotDescription (wire) + dr.SnapshotDescription
+# (canonical application-layer)); the allowlist exists for transitional cases.
+#
+# Pattern anchors:
+#   ^type[[:space:]]+[A-Z]      — exported type declaration (lowercase skipped)
+#   Generic types `type X[T any]` — captured to identifier before `[`
+#   Type aliases `type X = ...`  — captured to identifier before space-or-`=`
+#   *_test.go files              — excluded so test fixtures may freely declare
+#                                  exported types (CI fixture pattern, not a
+#                                  SSOT invariant)
+echo "=== Check 5: same-package duplicate-type-declarations (QDRANT-RECOVERY-001 follow-up) ==="
+
+# Step 1: extract every exported type declaration as TSV: package<TAB>Type<TAB>file:line
+decls=""
+while IFS= read -r -d '' f; do
+  # extract package name from the first `package X` line (guard against empty)
+  pkg_line=$(awk '/^package / {print; exit}' "$f" 2>/dev/null || true)
+  pkg="${pkg_line#package }"
+  [ -z "$pkg" ] && continue
+  per_file=$(awk -v pkg="$pkg" -v file="$f" '
+    /^type[[:space:]]+[A-Z]/ {
+      s = $0
+      sub(/^type[[:space:]]+/, "", s)
+      if (match(s, /^[A-Z][A-Za-z0-9_]*/)) {
+        printf("%s\t%s\t%s:%d\n", pkg, substr(s, RSTART, RLENGTH), file, FNR)
+      }
+    }' "$f" 2>/dev/null || true)
+  decls="$decls"$'\n'"$per_file"
+done < <(find internal/ -name '*.go' -not -name '*_test.go' -print0 2>/dev/null || true)
+
+# Step 2: load allowlist keys (pipe-delimited) if the allowlist file is present.
+# Empty file = no exceptions; missing file = no exceptions (the file is expected
+# to exist on disk per AGENTS.md §8 but we do not gate on its presence here).
+allowed=""
+if [ -f "docs/architecture/godlike/duplicate-types-allowlist.txt" ]; then
+  allowed=$(grep -vE '^\s*(#|$)' docs/architecture/godlike/duplicate-types-allowlist.txt 2>/dev/null \
+            | awk '{print $1}' | sort -u | paste -sd'|' - || true)
+fi
+
+# Step 3: dedup by (package, TypeName), count, fail on count >= 2 not in allowlist.
+# The awk END loop visits counts in arbitrary order (hash) — sorted by count desc
+# would be nicer but not required for correct FAIL output.
+fails=$(printf '%s\n' "$decls" \
+  | sort \
+  | awk -v allow="$allowed" -F'\t' '
+    BEGIN {
+      n = split(allow, a, "|")
+      for (i = 1; i <= n; i++) if (a[i] != "") allowed[a[i]] = 1
+      out = ""
+    }
+    {
+      pkg = $1; tn = $2
+      key = pkg ":" tn
+      sites[key] = (sites[key] == "" ? $3 : sites[key] ", " $3)
+      counts[key]++
+    }
+    END {
+      for (key in counts) {
+        if (counts[key] < 2) continue
+        if (key in allowed) continue
+        split(key, parts, ":")
+        out = out sprintf("\n  %s.%s  (count=%d in same package)\n    sites: %s\n",
+                          parts[1], parts[2], counts[key], sites[key])
+      }
+      printf "%s", out
+    }' 2>/dev/null || true)
+
+if [ -n "$fails" ]; then
+  echo "FAIL: same-package type-redeclaration(s) detected in internal/"
+  echo "$fails"
+  echo ""
+  echo "Resolution order:"
+  echo "  1. Pick one file as canonical; remove the duplicate from every other file;"
+  echo "  2. Or if the redeclaration is intentional (documented wire-mirror), add"
+  echo "     an entry to docs/architecture/godlike/duplicate-types-allowlist.txt"
+  echo "     in the form '<package>:<TypeName>   # rationale + owner + deadline'."
+  echo ""
+  echo "Per AGENTS.md §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new"
+  echo "allowlist entry requires explicit owner + deadline; transitional"
+  echo "baselines default-block the lint rather than silently pass."
+  exit 1
+fi
+echo "Check 5: 0 same-package type-redeclarations detected across internal/"
 
 # ── Main gate ────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the

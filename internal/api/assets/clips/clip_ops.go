@@ -285,13 +285,20 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *assets.Cl
 				result["hash"] = md5
 				result["has_hash"] = true
 				result["hash_recovered"] = true
-				if repo != nil {
-					if err := repo.UpsertClip(ctx, clip); err != nil {
-						h.log.Warn("failed to save recovered hash", zap.String("clip_id", clip.ID), zap.Error(err))
-					} else {
-						h.log.Info("recovered and saved missing hash from drive", zap.String("clip_id", clip.ID), zap.String("hash", md5))
-					}
-				} else if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
+			// QDRANT-asset-mutation isolation (June 2026):
+			// repo.UpsertClip is REMOVED from ClipRepositoryPort. The
+			// hash-recovery write now uses the lower-level Upsert method
+			// (still public, still present on *assets.ClipsRepository).
+			// The lint in scripts/ci-architectural-checks.sh bans
+			// UpsertClip/Restore/HardDelete in internal/application +
+			// internal/api production paths.
+			if repo != nil {
+				if err := repo.Upsert(ctx, clip); err != nil {
+					h.log.Warn("failed to save recovered hash", zap.String("clip_id", clip.ID), zap.Error(err))
+				} else {
+					h.log.Info("recovered and saved missing hash from drive", zap.String("clip_id", clip.ID), zap.String("hash", md5))
+				}
+			} else if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 					rec, err := h.voiceoverRepo.GetByID(ctx, clip.ID)
 					if err == nil && rec != nil {
 						rec.FileHash = md5

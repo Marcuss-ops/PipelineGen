@@ -309,25 +309,21 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 		clip.DriveFileID = uploadResult.FileID
 	}
 
-	viaDispatcher := false
-	if s.indexDisp != nil {
-		// QDRANT-002 canonical path: atomic UPSERT + outbox event via dispatcher.
-		// The dispatcher writes media_assets and outbox_events in a single tx,
-		// then the outbox pool picks up the event and runs IndexClip async.
-		if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
-			return nil, fmt.Errorf("save clip via dispatcher: %w", err)
-		}
-		viaDispatcher = true
-	} else if s.clips != nil {
-		// Legacy path: raw UpsertClip without outbox event.
-		// QDRANT-002: kept for backward compatibility when dispatcher is not wired.
-		if err := s.clips.UpsertClip(ctx, clip); err != nil {
-			return nil, fmt.Errorf("save clip: %w", err)
-		}
+	// QDRANT-asset-mutation isolation (June 2026): the legacy
+	// `s.clips.UpsertClip` fallback is REMOVED. Sourcing callers
+	// MUST route every media_assets write through IndexDispatcherPort
+	// (which atomically upserts + emits an outbox event in a
+	// single tx). When the dispatcher is not wired (test fixture
+	// with a nil IndexDispatcherPort) we record the failure clearly
+	// rather than silently dropping the write into the legacy
+	// bypass path — fail-closed is the only safe behaviour here.
+	if s.indexDisp == nil {
+		return nil, fmt.Errorf("sourcing.RegisterFromYouTube: dispatcher is required (QDRANT-asset-mutation isolation forbids the legacy UpsertClip fallback; wire IndexDispatcherPort at composition time)")
 	}
-	if viaDispatcher || s.clips != nil {
-		s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", viaDispatcher)
+	if err := s.indexDisp.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
+		return nil, fmt.Errorf("save clip via dispatcher: %w", err)
 	}
+	s.log.Info("saved clip to DB", "clip_id", clipID, "via_dispatcher", true)
 
 	// ── 12. Update Asset Tree ───────────────────────────────────────
 	if s.assetTree != nil {
