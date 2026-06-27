@@ -1,0 +1,174 @@
+// Package jsonextract — scanner.go provides a parametrized JSON-output
+// scanner that accepts raw LLM output bytes and decodes them into a
+// typed ModelScriptOutputV1. It replaces the two pre-P0.8 decoders
+// (model_output_decoder.go + compat/legacy_model_output_decoder.go)
+// with a single Scanner whose Mode controls the fallback behaviour.
+//
+//   ModeStrict        — V1 JSON only; plain text and legacy arrays error.
+//   ModeCompatibility — V1 → legacy array (bump metric) → plain text
+//                        wrapper (bump metric) → error.
+//
+// The scanner is self-contained: it registers its own Prometheus
+// counters via promauto so no internal/infrastructure imports are
+// needed. All JSON extraction and legacy-array conversion is handled
+// by the sibling files in this package.
+
+package jsonextract
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
+// ── Mode ────────────────────────────────────────────────────────────
+
+// Mode controls the fallback behaviour of the Scanner.
+type Mode int
+
+const (
+	// ModeStrict accepts ONLY canonical V1 JSON objects. Plain text,
+	// legacy arrays, and any other shape produce an error wrapping
+	// script.ErrModelOutputMalformed. This is the default for
+	// fresh-generation paths where the model contract enforces V1.
+	ModeStrict Mode = iota
+
+	// ModeCompatibility tries the canonical V1 decoder first, then
+	// falls back to legacy-array conversion (bumping the
+	// LegacyArrayFallbackTotal counter), then falls back to a
+	// plain-text wrapper (bumping PlainTextFallbackTotal). All
+	// three fail → typed error. This mode exists for cache-replay
+	// paths where pre-V1 rows may still be present.
+	ModeCompatibility
+)
+
+// String returns a human-readable mode name for log/diagnostics.
+func (m Mode) String() string {
+	switch m {
+	case ModeStrict:
+		return "strict"
+	case ModeCompatibility:
+		return "compatibility"
+	default:
+		return "unknown"
+	}
+}
+
+// ── Metrics ─────────────────────────────────────────────────────────
+
+var (
+	// LegacyArrayFallbackTotal counts every time the compatibility
+	// scanner falls back from V1 JSON to legacy-array conversion.
+	// Replacement for the now-removed observability.LegacyArrayToOutputInvocationsTotal
+	// counter formerly in metrics.go.
+	LegacyArrayFallbackTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "jsonextract_legacy_array_fallback_total",
+		Help: "Monotonic counter for legacy-array fallback conversions inside jsonextract.Scanner (replaces observability.LegacyArrayToOutputInvocationsTotal). Source label: cache or fresh.",
+	}, []string{"source"})
+
+	// PlainTextFallbackTotal counts every time the compatibility
+	// scanner falls back to plain-text wrapping (raw prose with no
+	// JSON at all). In ModeStrict this path is never reached.
+	PlainTextFallbackTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "jsonextract_plain_text_fallback_total",
+		Help: "Monotonic counter for plain-text fallback conversions inside jsonextract.Scanner. Non-zero means the model emitted bare prose despite the V1 output instruction.",
+	})
+)
+
+// ── Scanner ─────────────────────────────────────────────────────────
+
+// Scanner decodes raw LLM output bytes into a typed
+// ModelScriptOutputV1. Its Mode controls whether legacy
+// fallbacks are permitted.
+//
+// Zero value is ModeStrict.
+type Scanner struct {
+	Mode Mode
+}
+
+// NewScanner constructs a Scanner with the given mode.
+func NewScanner(mode Mode) *Scanner {
+	return &Scanner{Mode: mode}
+}
+
+// Scan decodes raw LLM output bytes. The behaviour depends on Mode.
+//
+// ModeStrict:
+//  1. Extract JSON (object or array) from raw bytes.
+//  2. Unmarshal into ModelScriptOutputV1.
+//  3. Validate.
+//  4. Any failure → error wrapping script.ErrModelOutputMalformed.
+//
+// ModeCompatibility:
+//  1. Extract JSON from raw bytes.
+//  2a. Try unmarshal as V1 object → if OK and valid, return.
+//  2b. Try unmarshal as legacy array → convert to V1, bump
+//      LegacyArrayFallbackTotal{source}, return.
+//  2c. Wrap raw bytes as plain-text V1, bump
+//      PlainTextFallbackTotal, return.
+//  3. All fail → error wrapping script.ErrModelOutputMalformed.
+//
+// The source label is passed to the Prometheus counters so
+// operators can distinguish cache-replay from fresh-generation
+// fallbacks. When empty it defaults to "unknown".
+func (s *Scanner) Scan(raw []byte, source string) (*scriptpkg.ModelScriptOutputV1, error) {
+	if s == nil {
+		s = &Scanner{}
+	}
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("%w: empty output", scriptpkg.ErrModelOutputMalformed)
+	}
+
+	jsonBytes, extractErr := extractJSON(raw)
+
+	// ── ModeStrict: JSON required, no fallbacks ──────────────────
+	if s.Mode == ModeStrict {
+		if extractErr != nil {
+			return nil, fmt.Errorf("%w: %w", scriptpkg.ErrModelOutputMalformed, extractErr)
+		}
+		output, err := decodeV1(jsonBytes)
+		if err != nil {
+			return nil, err
+		}
+		return output, nil
+	}
+
+	// ── ModeCompatibility: cascading fallbacks ───────────────────
+	if source == "" {
+		source = "unknown"
+	}
+
+	// 2a — canonical V1 JSON object.
+	if extractErr == nil {
+		if output, err := decodeV1(jsonBytes); err == nil {
+			return output, nil
+		}
+	}
+
+	// 2b — legacy array (pre-V1 cache rows).
+	if legacy, err := convertLegacyArray(raw); err == nil {
+		LegacyArrayFallbackTotal.WithLabelValues(source).Inc()
+		return legacy, nil
+	}
+
+	// 2c — plain-text wrapper (model emitted prose).
+	PlainTextFallbackTotal.Inc()
+	return wrapPlainText(raw), nil
+}
+
+// decodeV1 unmarshals JSON bytes into ModelScriptOutputV1 and
+// validates the result.
+func decodeV1(jsonBytes []byte) (*scriptpkg.ModelScriptOutputV1, error) {
+	var output scriptpkg.ModelScriptOutputV1
+	if err := json.Unmarshal(jsonBytes, &output); err != nil {
+		return nil, fmt.Errorf("%w: invalid JSON: %w", scriptpkg.ErrModelOutputMalformed, err)
+	}
+	if err := output.Validate(); err != nil {
+		return nil, err
+	}
+	return &output, nil
+}

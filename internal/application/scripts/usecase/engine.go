@@ -16,7 +16,7 @@
 // The Engine owns:
 //   - ollama script generation (delegates to *ollama.Generator)
 //   - memory gate check via gemmamemory (UseMemory path)
-//   - payload decoding via DecodeModelOutput (PR 1)
+//   - payload decoding via jsonextract.Scanner (P0.8)
 //
 // PR 5 (June 2026): persistence moved out of the engine.
 // ScriptRepository is no longer a dependency of Engine — the
@@ -27,9 +27,11 @@
 // scripts-table persistence (see processor_persistence.go for the
 // single-writer contract).
 //
-// PR 1 (June 2026): payload decoding is owned by the engine via
-// internal/application/scripts/model_output_decoder.go. EngineResult
-// carries the typed script.ModelScriptOutputV1 directly.
+// P0.8 (June 2026): payload decoding unified into
+// internal/application/scripts/jsonextract/. Engine uses
+// ModeStrict on the fresh path (errors on bare prose) and
+// ModeCompatibility on the cache-replay path (declared fallback
+// with Prometheus metrics).
 //
 // The Engine does NOT own:
 //   - clip context building (ClipSourceBuilder responsibility)
@@ -43,10 +45,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
-	observability "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 
 	"go.uber.org/zap"
 )
@@ -270,13 +272,11 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 						zap.String("title", title),
 						zap.Int("word_count", result.WordCount))
 				}
-				// PR 1: cached output may be canonical V1 JSON, a
-				// pre-V1 legacy array, or unparseable prose. The
-				// decoder helper tries canonical first, falls back
-				// to legacy, and returns ErrModelOutputMalformed on
-				// both-fail so callers see a typed poison-cache
-				// failure rather than a silent downgrade.
-				output, decodeErr := decodeModelPayload([]byte(result.Output), "cache", e.log)
+				// P0.8 (June 2026): jsonextract.Scanner in ModeCompatibility —
+			// cascading fallback: V1 → legacy array → plain-text wrapper.
+			// All fallbacks are declared and measured via Prometheus counters.
+			scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
+			output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
 				if decodeErr != nil {
 					return nil, decodeErr
 				}
@@ -369,19 +369,12 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			zap.Int("est_duration_s", genResult.EstDuration))
 	}
 
-	// PR 1: decode the raw model payload into the canonical V1 shape.
-	// On failure the engine returns a typed script.ErrModelOutputMalformed
-	// so callers can surface the failure uniformly with legacy-poison
-	// cache hits (see decodeModelPayload below).
-	output, decodeErr := DecodeModelOutput([]byte(genResult.Script), e.log)
-	// NOTE: the fresh-generation path bypasses decodeModelPayload by design
-	// (PR 1: DecodeModelOutput is the canonical-only decoder; legacy
-	// fallback is cache-replay only since the model wire side enforces V1).
-	// If a fresh-generation payload ever falls back to legacy, the
-	// canonical decoder sets ErrModelOutputMalformed and the engine
-	// returns the error to the caller — no LegacyArrayToOutput path is
-	// reachable here. Therefore no fresh-path source label is emitted.
-	_ = decodeModelPayload // referenced only at the cache-replay site
+	// P0.8 (June 2026): jsonextract.Scanner in ModeStrict — no
+	// fallbacks. Bare prose and legacy arrays both produce
+	// ErrModelOutputMalformed. The cache-replay path uses
+	// ModeCompatibility (declared fallback with Prometheus metrics).
+	scanner := &jsonextract.Scanner{Mode: jsonextract.ModeStrict}
+	output, decodeErr := scanner.Scan([]byte(genResult.Script), "fresh")
 	if decodeErr != nil {
 		return nil, fmt.Errorf("engine: model output decode failed: %w", decodeErr)
 	}
@@ -473,46 +466,6 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	}
 	lines = append(lines, extra...)
 	return strings.Join(lines, "\n")
-}
-
-// decodeModelPayload parses a raw model payload into the canonical
-// ModelScriptOutputV1 used by EngineResult.Output. It tries the
-// canonical V1 decoder first; on failure it falls back to the
-// LegacyArrayToOutput decoder to honour pre-V1 cache rows
-// during the migration window. Both-fail is a typed failure wrapping
-// scriptpkg.ErrModelOutputMalformed so callers can surface the error
-// uniformly with fresh-decode failures.
-//
-// PR 1 contract: new cache writes MUST emit canonical V1. The legacy
-// decoder only handles reads of pre-existing cache entries from
-// before the V1 rollout.
-func decodeModelPayload(raw []byte, source string, log *zap.Logger) (*scriptpkg.ModelScriptOutputV1, error) {
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("%w: decodeModelPayload — empty payload", scriptpkg.ErrModelOutputMalformed)
-	}
-	if output, err := DecodeModelOutput(raw, log); err == nil {
-		return output, nil
-	} else if legacy, legacyErr := LegacyArrayToOutput(raw); legacyErr == nil {
-		// ── Zero-Legacy §07 deprecation metric (DL-COMPAT-LEGACYDECODER-001) ──
-		// The canonical decoder failed but the legacy array decoder
-		// succeeded — promote the legacy shape to the canonical V1
-		// struct so downstream consumers see V1 exclusively, AND
-		// record the invocation against the deprecation counter.
-		// source label is bounded: "cache" | "fresh" (caller-supplied).
-		if source == "" {
-			source = "unknown"
-		}
-		observability.LegacyArrayToOutputInvocationsTotal.WithLabelValues(source).Inc()
-		return legacy, nil
-	} else {
-		if log != nil {
-			log.Debug("decodeModelPayload: both decoders failed",
-				zap.Int("raw_bytes", len(raw)))
-		}
-		_ = err
-		_ = legacyErr
-		return nil, fmt.Errorf("%w: decodeModelPayload — both canonical and legacy decoders failed", scriptpkg.ErrModelOutputMalformed)
-	}
 }
 
 // v1OutputInstruction is the prompt suffix appended unconditionally

@@ -89,14 +89,20 @@ type Deps struct {
 	// fail-closed at composition root surfaces a 503 if production
 	// wiring accidentally supplies nil).
 	MutationsDispatcher mutations.AssetMutationDispatcher
-	// SearchAggregator (S3d, June 2026): when non-nil,
-	// FindDuplicates routes through the aggregator's HashQuery
-	// path keyed by fanned-out ClipHashSource adapters. When
-	// nil (test fixtures, partial deploys), handler falls back
-	// to the legacy direct-repo loop. Composition root wires
-	// this when the providers.Registry + ClipHashSource
-	// adapters are available (post-Freeze).
+	// SearchAggregator (S3d, June 2026): MANDATORY for FindDuplicates.
+	// The HashQuery path fans out to all registered ClipHashSource
+	// adapters via the providers.Registry. A nil value causes
+	// FindDuplicates to return 503. Composition root wires this when
+	// the providers.Registry + ClipHashSource adapters are available
+	// (post-Freeze). The legacy direct-repo loop was removed in
+	// P0.4 / PR-CLIP-DEDUP-MIGRATION (June 2026).
 	SearchAggregator *providers.SearchAggregator
+	// ReuploadUC (P0.5, June 2026): the ReuploadClip use case.
+	// Extracted from clip_action.go to keep the API layer thin
+	// (AGENTS.md Pattern 8). MANDATORY — nil causes ReuploadClip
+	// to return 500. Composition root wires this via
+	// appclips.NewReuploadUseCase(...).
+	ReuploadUC *appclips.ReuploadUseCase
 	// EnrichUC, when non-nil, is shared with the worker
 	// (`media.enrich`) registered at composition time. S1a
 	// (June 2026) lifts the use-case construction out of the
@@ -170,6 +176,7 @@ type Handler struct {
 	downloadUC  *appclips.DownloadUseCase
 	bulkTagsUC  *appclips.BulkTagsUseCase
 	enrichUC    *appclips.EnrichUseCase
+	reuploadUC  *appclips.ReuploadUseCase
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -230,6 +237,9 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		// legacy test fixtures that construct `NewHandler`
 		// without `Deps.EnrichUC` don't break.
 		enrichUC: enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log),
+		// P0.5 (June 2026): ReuploadUseCase wired from Deps;
+		// nil tolerated for test fixtures (returns 500 at call time).
+		reuploadUC: d.ReuploadUC,
 	}
 }
 
