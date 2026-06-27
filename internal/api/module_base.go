@@ -39,21 +39,67 @@ func NewRegistry() *Registry {
 	}
 }
 
-// Register adds a module to the registry. Returns an error if a module with
-// the same name is already registered, or if the registry is frozen.
+// Register adds a module to the registry. Returns a sentinel error when:
+//
+//   - the module is nil                          ("nil module passed to Registry.Register")
+//   - the module name is empty                   ("module name is empty")
+//   - the registry is frozen                     ("registry is frozen: cannot register module %q")
+//   - a DIFFERENT instance with the same name is already registered
+//                                              ("module %q already registered")
+//
+// PR 2 (June 2026 — codex/registry-strict-uniqueness) invariants:
+//   1. Empty-name validation: a module with Name() == "" is rejected up front,
+//      so a misconfigured capability cannot silently pollute GetEnabled().
+//   2. Same-instance no-op: re-registering the SAME Module pointer is a
+//      silent no-op. This supports the composition-time contract that a
+//      single Descriptor can be re-published (once via Register, once via
+//      a slot publication such as DescriptorJobs/DescriptorProviders)
+//      without surfacing as an error. A DIFFERENT instance with the same
+//      name still errors. Tests pin this contract (see
+//      internal/app/registry_strict_test.go).
 func (r *Registry) Register(m Module) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if m == nil {
+		return fmt.Errorf("nil module passed to Registry.Register")
+	}
+	name := m.Name()
+	if name == "" {
+		return fmt.Errorf("module name is empty")
+	}
 	if r.frozen {
-		return fmt.Errorf("registry is frozen: cannot register module %q", m.Name())
+		return fmt.Errorf("registry is frozen: cannot register module %q", name)
 	}
 	for _, existing := range r.modules {
-		if existing.Name() == m.Name() {
-			return fmt.Errorf("module %q already registered", m.Name())
+		if existing == m {
+			// Same-instance re-registration: silent no-op (PR 2 invariant).
+			return nil
+		}
+		if existing.Name() == name {
+			return fmt.Errorf("module %q already registered", name)
 		}
 	}
 	r.modules = append(r.modules, m)
 	return nil
+}
+
+// Find returns the Module registered under the given name, or false if no
+// module is registered with that name. READ-ONLY inspection helper.
+//
+// PR 2 NOTE: Find is NOT a coalescing path. The previous tryRegisterModule
+// coalescer was deleted in PR 1 (commit 81e79728); Find exists solely so
+// tests can pin the "registered exactly once per name" invariant. The
+// composition root never calls Find — it routes new registrations through
+// Register and inspects the registered set through GetEnabled.
+func (r *Registry) Find(name string) (Module, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.modules {
+		if m.Name() == name {
+			return m, true
+		}
+	}
+	return nil, false
 }
 
 // Freeze prevents any further module registration. Safe to call concurrently
