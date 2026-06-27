@@ -461,28 +461,8 @@ func (w *BulkUploadWorker) processOneClip(
 	return nil
 }
 
-// ── File-local helpers (mirrored from api/bulk_upload_worker.go) ─────
-
-type clipCandidate struct {
-	Name        string
-	LocalPath   string
-	Subdir      string
-	Manifest    map[string]any
-	Transcript  string
-}
-
-// DisplayName returns the readable clip name (manifest title preferred).
-func (c clipCandidate) DisplayName() string {
-	if c.Manifest != nil {
-		if t, ok := c.Manifest["title"].(string); ok && t != "" {
-			return t
-		}
-		if t, ok := c.Manifest["name"].(string); ok && t != "" {
-			return t
-		}
-	}
-	return c.Name
-}
+// clipCandidate and its DisplayName method are defined in
+// bulk_upload_helpers.go (this package). No duplicate here.
 
 func scanLocalClips(root string, recursive bool, include, skip []string, limit int) ([]clipCandidate, error) {
 	if root == "" {
@@ -586,95 +566,7 @@ func readTranscript(txtPath, mp4Path string) string {
 	return ""
 }
 
-func buildBulkClipID(cand clipCandidate, hash string) string {
-	short := hash
-	if len(short) > 8 {
-		short = short[:8]
-	}
-	slug := sanitiseDriveName(cand.DisplayName())
-	if slug == "" {
-		slug = sanitiseDriveName(cand.Name)
-	}
-	return "ytlocal_" + short + "_" + slug
-}
-
-func sanitiseDriveName(s string) string {
-	s = strings.TrimSpace(s)
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			r == '-', r == '_', r == '.':
-			b.WriteRune(r)
-		case r == ' ':
-			b.WriteRune('_')
-		default:
-			b.WriteRune('_')
-		}
-	}
-	out := b.String()
-	if len(out) > 80 {
-		out = out[:80]
-	}
-	return out
-}
-
-func buildBulkDriveDescription(cand clipCandidate, hash string, payload appjobs.BulkUploadYouTubeClipsPayload) string {
-	var parts []string
-	parts = append(parts, fmt.Sprintf("Name: %s", cand.DisplayName()))
-	if cand.Subdir != "" {
-		parts = append(parts, fmt.Sprintf("Subdir: %s", cand.Subdir))
-	}
-	parts = append(parts, fmt.Sprintf("Hash: %s", hash))
-	if payload.Source != "" {
-		parts = append(parts, fmt.Sprintf("Source: %s", payload.Source))
-	}
-	if payload.Category != "" {
-		parts = append(parts, fmt.Sprintf("Category: %s", payload.Category))
-	}
-	if cand.Manifest != nil {
-		if t, ok := cand.Manifest["title"].(string); ok && t != "" {
-			parts = append(parts, fmt.Sprintf("Title: %s", t))
-		}
-		if u, ok := cand.Manifest["youtube_url"].(string); ok && u != "" {
-			parts = append(parts, fmt.Sprintf("URL: %s", u))
-		}
-		if yid, ok := cand.Manifest["youtube_video_id"].(string); ok && yid != "" {
-			parts = append(parts, fmt.Sprintf("YouTube ID: %s", yid))
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-func deriveSearchText(cand clipCandidate) string {
-	bits := []string{cand.DisplayName(), cand.Name}
-	if cand.Subdir != "" {
-		bits = append(bits, cand.Subdir)
-	}
-	if cand.Manifest != nil {
-		if t, ok := cand.Manifest["title"].(string); ok && t != "" {
-			bits = append(bits, t)
-		}
-		if desc, ok := cand.Manifest["description"].(string); ok && desc != "" {
-			bits = append(bits, desc)
-		}
-	}
-	return strings.TrimSpace(strings.Join(bits, " "))
-}
-
-func extractIntFromManifest(m map[string]any, key string) int {
-	if m == nil {
-		return 0
-	}
-	if v, ok := m[key]; ok {
-		switch n := v.(type) {
-		case int:
-			return n
-		case int64:
-			return int(n)
-		case float64:
-			return int(n)
-		}
-	}
-	return 0
-}
+// The helpers buildBulkClipID, sanitiseDriveName, buildBulkDriveDescription,
+// deriveSearchText, and extractIntFromManifest are now defined once in
+// bulk_upload_helpers.go (this package). The previous duplicates in this file
+// were removed during Wave 14 PR2 slice 2 (June 2026).

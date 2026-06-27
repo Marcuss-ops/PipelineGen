@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -174,7 +175,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	// Security: local_folder must be under a configured clips base path to
 	// prevent the endpoint from being used to walk arbitrary directories
 	// (e.g. /etc) and upload their contents to Drive.
-	if !isLocalFolderAllowed(abs, h.cfg) {
+	if !appclips.IsLocalFolderAllowed(abs, h.cfg.Storage.MediaPath(), h.cfg.Storage.TempPath(), h.cfg.Storage.DataDir) {
 		apiutil.BadRequest(c, fmt.Sprintf(
 			"local_folder %q is not under any allowed base path (drive.media_dir, drive.temp_dir, drive.data_dir, or a path explicitly added via config)",
 			abs))
