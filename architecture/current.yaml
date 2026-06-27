@@ -798,6 +798,34 @@
     WithoutCancel sites NOT yet in the AGENTS.md table (basher S3g audit
     surfaced these): to be documented OR marked by the deadline below.
   blocked_by: ["20"]
+  # Phase 1 enforcement promotion (June 2026): Check 8 (factory-only) was
+  # introduced as part of the Wave 22 chain (S3e ship entry in
+  # `completed_through_W22_chain_close` below) and is NOW Phase-1
+  # enforced-fail per the Wave 20 / Check 5 pattern. The gate's exit
+  # behavior already exits 1 on violation; the promotion formalises
+  # + tracks the wave-tracker ENFORCEMENT status, mirrors the canonical
+  # deliverables shape (Wave 20 line 460-475), and confirms the two
+  # composition-root canonical sites are still the only `--glob`
+  # exclusions (the third site clips/clip_action.go is handled via the
+  # `// ARCH-ALLOWLIST: factory-only` marker per the zero-baseline rule).
+  deliverables:
+    - id: scripts/ci-architectural-checks.sh::Check 8
+      kind: ci_gate
+      title: "factory-only map[string]*assets.ClipsRepository lint (Phase 1 ENFORCED, mirrors Wave 20 / Check 5)"
+      log_line_on_pass: "OK: no literal map[string]*assets.ClipsRepository literals in production paths"
+      allowlist_ref: "inline `// ARCH-ALLOWLIST: factory-only` marker on the line preceding the literal (window: 25 lines)"
+      canonical_sites:
+        - internal/infrastructure/database/assetindex/resolver.go
+        - internal/app/build_bundles_core.go
+      # NOTE (post-PR-CLIP-DEDUP-MIGRATION, 2026-06-27): the prior
+      # `transitional_sites:` field referenced `clip_action.go::FindDuplicates`
+      # as the S3e carrier of the ARCH-ALLOWLIST: factory-only marker.
+      # PR-CLIP-DEDUP-MIGRATION removed that legacy fallback + marker,
+      # so the field is dropped here — the canonical-only enumeration above
+      # is now the SSOT for the literal's composition-root carriers.
+      status: enforcement
+      enforcement_promotion_date: "June 2026 (this PR)"
+      shipment_completed_through_W22_chain_close: true
   rule: |
     Inside internal/**, `context.WithoutCancel(...)` MUST be either:
       (a) listed in the AGENTS.md post-write save ctx allowlist table
@@ -861,16 +889,75 @@
     - "Wave 22 / S3g / AGENTS.md allowlist update: 13 context.WithoutCancel rows appended to the post-write save ctx table (25-row total: 12 BG + 13 WOC); intro paragraph + scope footer correct; drift +4 mention for site #10; legacy-row path migration to internal/application/assets/providers/artlist/search_cache.go"
   follow_up_tickets:
     - id: PR-CONTEXT-NO-CANCEL-CI-GATE
-      title: "Promote context.WithoutCancel to Check 9 CI gate; document or arch-allowlist the 8 unlisted sites"
-      owner_capability: scripts/ci-architectural-checks.sh
-      target: "(a) ship Check 9 in scripts/ci-architectural-checks.sh scanning internal/** for context.WithoutCancel call sites outside the AGENTS.md allowlist; (b) add 8-row documentation in AGENTS.md OR `// ARCH-ALLOWLIST: no-cancel` marker for each"
+      title: "PR-CONTEXT-NO-CANCEL-CI-GATE — promote context.Background/WithoutCancel exemption family to Check 35 + capture 8+8 transit sites"
+      owner: scripts/ci-architectural-checks.sh maintainer
+      deadline: 2026-07-15
+      tracking_issue: "architecture/current.yaml#id-22 follow_up_tickets.PR-CONTEXT-NO-CANCEL-CI-GATE (self-reference; promote to GitHub issue at PR open)"
+      status: shipped_through
+      promoted_to: "scripts/ci-architectural-checks.sh::Check 35 (June 2026, Wave 22 task 6)"
+      promoted_date: 2026-06-27
+      promotion_notes: |
+        Check 35 (Wave 22 task 6 promotion): the CI gate scans internal/
+        for context.Background / context.WithoutCancel call sites that
+        are NOT documented in the AGENTS.md post-write save ctx
+        exemption table AND do NOT carry the magic marker
+        `// ARCH-ALLOWLIST: no-cancel` (or `bg-only` for Background).
+        Slot: Check 35 (the user's literal "Check 9" example resolved
+        to the next free numeric slot; the existing Check 9 in
+        scripts/ci-architectural-checks.sh is Wave 19's nil-dispatcher
+        silent-fallback gate). Scope: whole internal/ tree, excluding
+        *_test.go. The 8+8 transit-site audit remains pending per the
+        deadline 2026-07-15.
+      target: "(a) ship Check 9 in scripts/ci-architectural-checks.sh scanning internal/** for context.WithoutCancel call sites outside the AGENTS.md allowlist AND outside files carrying the '// ARCH-ALLOWLIST: no-cancel' magic comment; (b) document the 8 Bg_8_extras + 8 WithoutCancel_8_extras transit sites in AGENTS.md scope-footer OR apply inline magic markers so both baseline counts trend to zero by 2026-07-15."
       notes: |
-        Until this PR ships, the 8 unlisted WithoutCancel sites remain
-        untracked at the docs level. The Check 9 list of these sites is the
-        literal rg query:
-        `rg -l 'context\.WithoutCancel' --type go internal/`
-        minus the 13 AGENTS.md-documented sites. The transitional baseline
-        count of 8 must trend to 0 by 2026-07-15.
+        Until this PR ships, the 16 transit sites remain untracked at the
+        docs/grep level. Each deliverable's verification_command is the
+        canonical rg query that produces the site list:
+          - Bg_8_extras: rg over context.Background minus 4 Check-1 rows
+          - WithoutCancel_8_extras: rg over context.WithoutCancel minus 13 AGENTS rows
+        The transitional baseline target (8 + 8) must trend to zero by
+        2026-07-15. Self-reference tracking_issue is the wave-tracker's
+        own signature; promote to a real GitHub issue when the PR opens.
+      deliverables:
+        - id: "scripts/ci-architectural-checks.sh::Check 9 (without-cancel)"
+          kind: ci_gate
+          title: "Promote context.WithoutCancel to a Check 9 CI gate (Phase-1 ENFORCED)"
+          rule_text: "rg -nF 'context.WithoutCancel' --type go -g '!*_test.go' internal/ — files matching AGENTS.md scope-footer allowlist OR carrying '// ARCH-ALLOWLIST: no-cancel' magic comment are exempt; all others trigger exit 1 + log 'Check 9: N undocumented context.WithoutCancel call sites across internal/'."
+          allowlist_ref: "AGENTS.md scope-footer (lines 478-490) — 13 documented WithoutCancel rows"
+          allowlist_marker: "// ARCH-ALLOWLIST: no-cancel"
+          status: pending
+          enforcement_promotion_date: TBD
+        - id: AGENTS.md::Bg_8_extras
+          kind: transitional_sites
+          title: "Bg_8_extras — 8 currently-allowlisted Background sites that are NOT Check-1-mapped"
+          count: 8
+          verification_command: "rg -nF 'context.Background' --type go -g '!*_test.go' internal/ minus the 4 Check-1-mapped AGENTS rows (postwrite.go, gemmamemory/service.go, scriptcore/write_script.go, jobs/worker.go finalizationCtx)."
+          status: pending
+          sites:
+            - "internal/app/init_core.go — top-level composition root (no parent context exists)"
+            - "internal/api/server.go — signal.NotifyContext canonical graceful-shutdown pattern"
+            - "internal/api/module_base.go line 105 — rollback context for module startup failure"
+            - "internal/service/translations/cache.go — defensive fallback when parentCtx is nil"
+            - "internal/api/middleware/middleware_logger.go line 27 — StopLogger drain; must survive parent cancel during shutdown"
+            - "internal/api/middleware/idempotency.go line 316 — background cleanup goroutine (15-min ticker) for expired idempotency keys"
+            - "internal/infrastructure/database/sqlite/logsink/sqlite_request_log_sink.go lines 161/166/179 — background batch writer goroutine channel-buffered 100ms tick"
+            - "internal/application/assets/providers/artlist/search_cache.go — defensive fallback when parentCtx is nil"
+        - id: AGENTS.md::WithoutCancel_8_extras
+          kind: transitional_sites
+          title: "WithoutCancel_8_extras — 8 additional context.WithoutCancel sites excluded from AGENTS.md table"
+          count: 8
+          verification_command: "rg -nF 'context.WithoutCancel' --type go -g '!*_test.go' internal/ minus the 13 AGENTS.md-documented rows (lines 478-490)."
+          status: pending
+          sites:
+            - "internal/application/assets/providers/artlist/adapter_core.go line 192 — bgCtx for artlist provider-core background goroutine"
+            - "internal/application/assets/sourcing/service.go line 342 — concurrent.SafeGo + WithoutCancel detached ctx for sourcing async"
+            - "internal/application/clips/enrich.go line 145 — concurrent.SafeGo + WithoutCancel goroutine for clip enrichment async"
+            - "internal/api/assets/clips/clip_create.go line 69 — concurrent.SafeGo + WithoutCancel to detach from caller cancel"
+            - "internal/api/assets/clips/clip_enrich.go line 36 — concurrent.SafeGo goroutine launcher (comment-only reference)"
+            - "internal/api/assets/clips/clip_upload.go line 271 — WithoutCancel to simulate background job (explicitly forbidden by inline TODO)"
+            - "internal/app/module_media.go line 207 — doc-only reference to without-cancel pattern in module composition"
+            - "internal/application/youtube/callbacks.go line 171 — bgCtx = context.WithoutCancel for callback handler finalisation"
+
     - id: PR-CONTEXT-DOC-ONLY-BG-EXTRAS
       title: "Document or mark the 8 Background documentation-only rows (composition roots, service-layer shutdown contexts, infra background goroutines)"
       owner_capability: scripts/ci-architectural-checks.sh + AGENTS.md maintainer

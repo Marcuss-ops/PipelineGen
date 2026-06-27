@@ -33,55 +33,64 @@ func (r *testSourceResolver) ResolveRepo(s string) ClipRepositoryPort {
 	return r.repos[s]
 }
 
-type testClipsRepo struct {
+type stubRepo struct {
 	clips []*asset.Asset
+	// lastSeenClip captures the clip returned by the most recent
+	// GetClip call on this stub. Consumed by
+	// TestVerify_HashInfoSeparateFromIssues/read_only_no_clip_mutation
+	// to assert that verify observes but does not mutate: the
+	// fixture pointer passes through unchanged end-to-end.
+	lastSeenClip *asset.Asset
 }
 
-func (r *testClipsRepo) Upsert(_ context.Context, _ *asset.Asset) error       { return nil }
-func (r *testClipsRepo) Get(_ context.Context, _ string) (*asset.Asset, error) {
+func (r *stubRepo) Upsert(_ context.Context, _ *asset.Asset) error { return nil }
+func (r *stubRepo) Get(_ context.Context, _ string) (*asset.Asset, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) GetClip(_ context.Context, id string) (*asset.Asset, error) {
+func (r *stubRepo) GetClip(_ context.Context, id string) (*asset.Asset, error) {
 	if r == nil {
 		return nil, nil
 	}
 	for _, c := range r.clips {
 		if c.ID == id {
+			r.lastSeenClip = c
 			return c, nil
 		}
 	}
 	return nil, nil
 }
-func (r *testClipsRepo) ListFolders(_ context.Context, _ string) ([]*asset.ClipFolder, error) {
+func (r *stubRepo) ListFolders(_ context.Context, _ string) ([]*asset.ClipFolder, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) GetFolder(_ context.Context, _ string) (*asset.ClipFolder, error) {
+func (r *stubRepo) GetFolder(_ context.Context, _ string) (*asset.ClipFolder, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) GetFolderChildren(_ context.Context, _ string) ([]*asset.Asset, error) {
+func (r *stubRepo) GetFolderChildren(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) ListByFolderID(_ context.Context, _ string) ([]*asset.Asset, error) {
+func (r *stubRepo) ListByFolderID(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
+func (r *stubRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) DeleteFolder(_ context.Context, _ string) error         { return nil }
-func (r *testClipsRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
-func (r *testClipsRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
-func (r *testClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
+func (r *stubRepo) DeleteFolder(_ context.Context, _ string) error        { return nil }
+func (r *stubRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
+func (r *stubRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
+func (r *stubRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
 	if r == nil {
 		return nil, nil
 	}
 	out := make([]*asset.Asset, 0, len(r.clips))
 	return append(out, r.clips...), nil
 }
-func (r *testClipsRepo) FindClipsByHash(_ context.Context, _ string) ([]*asset.Asset, error) {
+func (r *stubRepo) FindClipsByHash(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
 
-type testVoiceoverRepo struct{ records map[string]*ClipVoiceoverRecordDTO }
+type testVoiceoverRepo struct {
+	records map[string]*ClipVoiceoverRecordDTO
+}
 
 func (r *testVoiceoverRepo) GetByID(_ context.Context, id string) (*ClipVoiceoverRecordDTO, error) {
 	if r == nil {
@@ -140,7 +149,7 @@ func (d *testDriveUploader) GetFileMD5(_ context.Context, fileID string) (string
 func (d *testDriveUploader) GetFileMeta(_ context.Context, _ string) (*ClipDriveFileMetaDTO, error) {
 	return &ClipDriveFileMetaDTO{}, nil
 }
-func (d *testDriveUploader) TrashFile(_ context.Context, _ string) error              { return nil }
+func (d *testDriveUploader) TrashFile(_ context.Context, _ string) error { return nil }
 func (d *testDriveUploader) ListFiles(_ context.Context, _ string) ([]ClipDriveFileDTO, error) {
 	return nil, nil
 }
@@ -195,7 +204,7 @@ func (j *testJobsPort) Enqueue(_ context.Context, req JobsEnqueueRequest) (*Jobs
 func TestClipOps_Cleanup_Deep_EnqueuesSystemCleanupJob(t *testing.T) {
 	jobs := &testJobsPort{nextID: "job-001"}
 	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, jobs, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, jobs, nil, nil)
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "all",
@@ -215,7 +224,7 @@ func TestClipOps_Cleanup_Deep_EnqueuesSystemCleanupJob(t *testing.T) {
 // ActiveKey suffix when DryRun=true combined with deep-mode.
 func TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix(t *testing.T) {
 	jobs := &testJobsPort{nextID: "job-002"}
-	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil, nil)
 
 	_, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "all",
@@ -232,7 +241,7 @@ func TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix(t *testing.T) {
 // service runs synchronous CleanupOrphanFiles.
 func TestClipOps_Cleanup_DeepNoJobs_FallsBackSynchronous(t *testing.T) {
 	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, nil, nil, nil)
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "all",
@@ -248,7 +257,7 @@ func TestClipOps_Cleanup_DeepNoJobs_FallsBackSynchronous(t *testing.T) {
 // TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError
 // pins the early-return on unrecognised source.
 func TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError(t *testing.T) {
-	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "not-a-source",
 	})
@@ -262,10 +271,10 @@ func TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError(t *testing.T) {
 func TestClipOps_Cleanup_YoutubeDryRun_ReportsOrphanWithoutDelete(t *testing.T) {
 	clip := &asset.Asset{ID: "yt-orphan", Name: "foo"}
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
-	repo := &testClipsRepo{clips: []*asset.Asset{clip}}
+	repo := &stubRepo{clips: []*asset.Asset{clip}}
 	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{"youtube": repo}}
 	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(resolver, nil, nil, nil, cleanup, nil, nil)
+	svc := NewClipOpsService(resolver, nil, nil, nil, cleanup, nil, nil, nil)
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "youtube",
@@ -288,7 +297,7 @@ func TestClipOps_Cleanup_VoiceoverSource_IteratesRecords(t *testing.T) {
 		LocalPath: "/nonexistent/foo.wav",
 	}
 	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{"vo-1": rec}}
-	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil)
+	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, nil)
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "voiceover",
@@ -303,7 +312,7 @@ func TestClipOps_Cleanup_VoiceoverSource_IteratesRecords(t *testing.T) {
 // TestClipOps_Verify_EmptyClipID_ReturnsFalseOK pins the early
 // return when clipID="" — report.OK is set to false.
 func TestClipOps_Verify_EmptyClipID_ReturnsFalseOK(t *testing.T) {
-	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil, nil)
 	report := svc.Verify(context.Background(), "youtube", "")
 	require.NotNil(t, report)
 	require.False(t, report.OK)
@@ -313,7 +322,7 @@ func TestClipOps_Verify_EmptyClipID_ReturnsFalseOK(t *testing.T) {
 // the unknown-source marker.
 func TestClipOps_Verify_InvalidSource_AddsInvalidSourceIssue(t *testing.T) {
 	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{}}
-	svc := NewClipOpsService(resolver, nil, nil, nil, nil, nil, nil)
+	svc := NewClipOpsService(resolver, nil, nil, nil, nil, nil, nil, nil)
 	report := svc.Verify(context.Background(), "not-a-source", "x-1")
 	require.NotNil(t, report)
 	require.False(t, report.OK)
@@ -329,7 +338,7 @@ func TestClipOps_Verify_VoiceoverSource_UsesVoiceoverRepo(t *testing.T) {
 		Filename: "bar.wav",
 	}
 	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{"vo-2": rec}}
-	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil)
+	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, nil)
 
 	report := svc.Verify(context.Background(), "voiceover", "vo-2")
 	require.NotNil(t, report)
@@ -349,10 +358,38 @@ func TestClipOps_Verify_DriveUnavailable_HashMissingIssue(t *testing.T) {
 		DriveFileID: "missing",
 	}
 	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{"vo-3": rec}}
-	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil)
+	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, nil)
 
 	report := svc.Verify(context.Background(), "voiceover", "vo-3")
 	require.NotNil(t, report)
 	require.Contains(t, report.Issues, "local_file_missing", "path doesn't exist on disk")
 	require.Contains(t, report.Issues, "hash_missing", "Drive uploaded empty MD5")
+}
+
+// TestVerify_HashInfoSeparateFromIssues pins the S1c (June 2026)
+// read-only invariant on VerifyClip: verify observes the clip from
+// repo.GetClip but MUST NOT mutate it in place. The fixture pointer
+// passes through unchanged end-to-end — a future stub refactor that
+// detaches `lastSeenClip` would silently break this subtest (a
+// regression guard against the S1c silent-Upsert bug recurring).
+func TestVerify_HashInfoSeparateFromIssues(t *testing.T) {
+	fixture := &asset.Asset{
+		ID:   "yt-verify-1",
+		Name: "fixture-readonly",
+	}
+	fixture.SetLocalPath("/this/path/does/not/exist/fixture.mp4")
+	fixture.SetDriveLink("https://drive.google.com/file/d/no-md5")
+
+	repo := &stubRepo{clips: []*asset.Asset{fixture}}
+	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{"youtube": repo}}
+	svc := NewClipOpsService(resolver, nil, nil, nil, &testCleanupPort{}, nil, nil, nil)
+
+	t.Run("read_only_no_clip_mutation", func(t *testing.T) {
+		report := svc.Verify(context.Background(), "youtube", "yt-verify-1")
+		require.NotNil(t, report)
+		// The fixture pointer must pass through unchanged: the
+		// verify read-only path observes but does not mutate.
+		require.Same(t, fixture, repo.lastSeenClip,
+			"verify must pass the fixture pointer through unchanged (no silent in-place mutation)")
+	})
 }

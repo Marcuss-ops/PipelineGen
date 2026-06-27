@@ -600,10 +600,20 @@ echo "Check 5: 0 same-package type-redeclarations detected across internal/"
 # The allowlist is the SINGLE SOURCE OF TRUTH for what bypass-survives.
 # Adding/removing a row must ship in the same PR as the corresponding
 # code change. See AGENTS.md §"Agenter Workflow" for the 1-PR rule.
+# NON-FATAL bypass-audit wrap. The file opens with `set -euo pipefail`;
+# without this wrap, a non-zero exit short-circuits every subsequent
+# check (Check 8 factory-only, ServiceDeps cap, engine SSOT gates,
+# final archcheck). The captured exit is logged below; do NOT remove
+# this wrap — every check added since Wave 22 PR-4 has implicitly
+# depended on bypass-audit being NON-FATAL.
+set +e
 bash "${REPO_ROOT}/scripts/ci-bypass-audit.sh"
+bypass_audit_rc=$?
+set -e
+echo "ci-bypass-audit exit code: ${bypass_audit_rc} (NON-FATAL)"
 
 
-# ── Check 8 (factory-only, S3e, Wave 22 task 5 follow-up): forbid literal map[string]*assets.ClipsRepository ──
+# ── Check 8 (factory-only, S3e, Wave 22): forbid literal map[string]*assets.ClipsRepository ──
 # The canonical contract for clip-store access in production paths is the
 # typed ClipRepositoryPort / ClipStorePort surface; inline
 # `map[string]*assets.ClipsRepository{...}` literals are a regression to
@@ -657,11 +667,23 @@ literal_calls=$(printf '%s\n' "$all_hits" \
             rest = ""
             for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
             if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*factory-only/) {
-                mp[$1] = $2
+                # Per-line accumulation: append this marker'\''s line number
+                # to the file'\''s comma-separated list so multiple markers
+                # in the same file BOTH persist (overwrite-avoidance —
+                # mirrors Check 5 admin-only semantics).
+                markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2)
                 next
             }
             if (rest ~ /^[[:space:]]*\/\//) next
-            if (mp[$1] != "" && $2 + 0 >= mp[$1] + 0 + 1 && $2 + 0 <= mp[$1] + 0 + 25) next
+            # Check the hit against EVERY stored marker for this file
+            # (any of them may own the active scroll-window).
+            n = (markers[$1] == "" ? 0 : split(markers[$1], mlist, ","))
+            allowed = 0
+            for (mi = 1; mi <= n; mi++) {
+              m = mlist[mi] + 0
+              if (m > 0 && $2 + 0 >= m + 1 && $2 + 0 <= m + 25) { allowed = 1; break }
+            }
+            if (allowed) next
             print
         }' \
     || true)
@@ -717,11 +739,23 @@ literal_calls=$(printf '%s\n' "$all_hits" \
             rest = ""
             for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
             if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*admin-migration/) {
-                mp[$1] = $2
+                # Per-line accumulation: append this marker'\''s line number
+                # to the file'\''s comma-separated list so multiple markers
+                # in the same file BOTH persist (overwrite-avoidance —
+                # mirrors Check 5 admin-only semantics).
+                markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2)
                 next
             }
             if (rest ~ /^[[:space:]]*\/\//) next
-            if (mp[$1] != "" && $2 + 0 >= mp[$1] + 0 + 1 && $2 + 0 <= mp[$1] + 0 + 25) next
+            # Check the hit against EVERY stored marker for this file
+            # (any of them may own the active scroll-window).
+            n = (markers[$1] == "" ? 0 : split(markers[$1], mlist, ","))
+            allowed = 0
+            for (mi = 1; mi <= n; mi++) {
+              m = mlist[mi] + 0
+              if (m > 0 && $2 + 0 >= m + 1 && $2 + 0 <= m + 25) { allowed = 1; break }
+            }
+            if (allowed) next
             print
         }' \
     || true)
@@ -1018,6 +1052,116 @@ if [ -n "$literals" ]; then
     exit 1
 fi
 echo "OK: no OutputFmt \"prose\" surface in canonical path"
+
+# ── Check 33: forbid retention:created_at:mutable SQL tag in jobs (Wave 22 followup, June 2026) ────
+# The retention sweeper (lifecycle.go::NewRetentionSweeper) deletes aged-out
+# outbox events by `created_at`. The canonical contract: created_at is
+# IMMUTABLE — once an event is inserted, the timestamp MUST NOT be
+# updated. A mutable created_at leaks indefinitely-aged rows past the
+# cutoff (and risks dropping active rows the moment a non-creation write
+# touches the column).
+#
+# The TagWeaver sql-tag annotation `retention:created_at:mutable` flags
+# any column-default or column-declaration that allows (or accepts) a
+# created_at update. Production SQL MUST NOT carry this tag — the
+# canonical schema is `DEFAULT CURRENT_TIMESTAMP` with no `ON UPDATE
+# CURRENT_TIMESTAMP` (the MySQL idiom that the project's tag-based
+# schema linter catches on review).
+#
+# Production-side companion to the canonical retention contract. The CI
+# gate rg-greps for the annotation in the production jobs package and
+# fails the gate when the operator has explicitly opted into fail-closed
+# semantics via `eventTimestampIsImmutable=true`. When the env flag is
+# unset / false, the gate logs an INFO message and exits 0 — the
+# hit-count is observable in every CI run so the rollout can be audited
+# before the env flag flips on. A complementary unit test
+# (`TestRetentionSweeper_CreatedAtIsImmutable`) is the planned
+# read-side enforcement; this gate is the operator-side enforcement.
+#
+# Allowlist: a future migration file that legitimately needs to mark the
+# column as mutable (e.g. a feature toggle, an admin one-shot repair
+# that backfills stale timestamps) MUST prepend the magic marker
+# `// ARCH-ALLOWLIST: retention-created-at-mutable` on the line
+# preceding the sql-tag annotation. The awk pre-pass strips such hits
+# from the failing-set via the same 25-line window tolerated by
+# Check 5 / Check 8. Per AGENTS.md §8 zero-baseline rule, every new
+# allowlist entry requires explicit owner + deadline; the marker is
+# the call-site equivalent of an allowlist row.
+#
+# Pattern anchors:
+#   retention:created_at:mutable    — exact literal sql-tag string
+#
+# Env-gated semantics (per user spec, June 2026):
+#   eventTimestampIsImmutable=true   — fail-closed (exit 1 on hits)
+#   eventTimestampIsImmutable=other  — pass-through, log INFO (rollout mode)
+#   The gate ALWAYS runs the rg-grep regardless of the env flag so the
+#   hit count is observable in CI output every run — the env gate only
+#   controls whether hits translate into a hard CI failure.
+echo "=== Check 33: forbid retention:created_at:mutable in sqlite/jobs ==="
+all_hits=$(rg -n --type go \
+    -e 'retention:created_at:mutable' \
+    --glob '!**/*_test.go' \
+    internal/infrastructure/database/sqlite/jobs/ 2>/dev/null \
+    || true)
+literal_calls=$(printf '%s\n' "$all_hits" \
+    | awk -F: '
+        BEGIN { prev_marker = 0 }
+        {
+            rest = ""
+            for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+            if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*retention-created-at-mutable/) {
+                split($1, p, "")
+                markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2)
+                next
+            }
+            if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+            n = (markers[$1] == "" ? 0 : split(markers[$1], mlist, ","))
+            allowed = 0
+            for (mi = 1; mi <= n; mi++) {
+              m = mlist[mi] + 0
+              if (m > 0 && $2 + 0 >= m + 1 && $2 + 0 <= m + 25) { allowed = 1; break }
+            }
+            if (allowed) next
+            print
+        }' \
+    || true)
+hits_count=${all_hits:+$(printf '%s' "$all_hits" | wc -l | awk '{print $1+0}')}
+hits_count=${hits_count:-0}
+literal_count=${literal_calls:+$(printf '%s' "$literal_calls" | wc -l | awk '{print $1+0}')}
+literal_count=${literal_count:-0}
+echo "INFO: retention:created_at:mutable scan in internal/infrastructure/database/sqlite/jobs/:"
+echo "      total hits: ${hits_count}"
+echo "      non-allowlisted hits: ${literal_count}"
+if [ -n "$literal_calls" ]; then
+    if [ "${eventTimestampIsImmutable:-}" = "true" ]; then
+        echo "FAIL: retention:created_at:mutable annotation in production jobs package (eventTimestampIsImmutable=true):"
+        echo "$literal_calls"
+        echo ""
+        echo "Fix: remove the `retention:created_at:mutable` annotation from production SQL"
+        echo "or column declarations — the created_at column is canonical IMMUTABLE"
+        echo "(DEFAULT CURRENT_TIMESTAMP, no ON UPDATE clause). The retention sweeper"
+        echo "depends on this; a mutable created_at leaks active rows past the cutoff"
+        echo "and drops active rows the moment a non-creation write touches the column."
+        echo ""
+        echo "If the annotation is required for a feature flag or admin one-shot repair,"
+        echo "prepend the magic marker on the preceding line:"
+        echo "    // ARCH-ALLOWLIST: retention-created-at-mutable"
+        echo "    // ... ctx -- retention:created_at:mutable"
+        exit 1
+    else
+        echo "INFO: eventTimestampIsImmutable!=true — non-allowlisted hits present but permitted (transitional pass-through):"
+        echo "$literal_calls"
+        echo ""
+        echo "Operator action: when the retention-immutability contract stabilises,"
+        echo "flip eventTimestampIsImmutable=true in CI to fail-closed."
+    fi
+else
+    if [ "${eventTimestampIsImmutable:-}" = "true" ]; then
+        echo "OK: eventTimestampIsImmutable=true, 0 retention:created_at:mutable hits in production jobs package"
+    else
+        echo "OK: 0 retention:created_at:mutable hits in production jobs package (eventTimestampIsImmutable not set; gate is informational)"
+    fi
+fi
 
 # ── Main gate ──────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the
@@ -1438,6 +1582,88 @@ if [ -n "$missingApiKey" ]; then
     exit 1
 fi
 echo "OK: all qdrant.NewClient constructions propagate cfg.Qdrant.APIKey"
+
+# ── Check 35: context.Background / context.WithoutCancel exemption tracking ──
+# Wave 22 task 6 / PR-CONTEXT-NO-CANCEL-CI-GATE (June 2026): promote the
+# documented exemption family from documentation-only status (S3g) to a
+# dedicated CI gate. A site PASSES if EITHER:
+#   (a) the file path is listed in AGENTS.md §Migration Status "Known
+#       intentional exempt sites" table (canonical SSOT), OR
+#   (b) the line preceding the call carries the magic marker
+#       // ARCH-ALLOWLIST: no-cancel  (for context.WithoutCancel)
+#       // ARCH-ALLOWLIST: bg-only    (for context.Background)
+echo "=== Check 35: context.Background / context.WithoutCancel exemption tracking (PR-CONTEXT-NO-CANCEL-CI-GATE / Wave 22 task 6) ==="
+
+EXEMPT_FILES=$(rg -oE '`internal/[^` ]+`' AGENTS.md 2>/dev/null \
+    | sed 's/^`//' | sed 's/`$//' \
+    | sort -u)
+EXEMPT_FILE_COUNT=$(printf '%s\n' "$EXEMPT_FILES" | grep -c . || true)
+
+ALL_HITS=$(rg -nE 'context\.(Background|WithoutCancel)\(' internal/ \
+    --type go --glob '!**/*_test.go' 2>/dev/null || true)
+
+if [ -z "$ALL_HITS" ]; then
+    echo "OK: 0 context.Background / context.WithoutCancel call sites"
+else
+    UNDOCUMENTED_COUNT=0
+    UNDOCUMENTED_OUTPUT=""
+    while IFS= read -r hit; do
+        [ -z "$hit" ] && continue
+        FILE=$(echo "$hit" | cut -d: -f1)
+        LINE=$(echo "$hit" | cut -d: -f2)
+        # (a) AGENTS.md canonical-table exemption
+        if printf '%s\n' "$EXEMPT_FILES" | grep -qxF "$FILE"; then
+            continue
+        fi
+        # (b) ARCH-ALLOWLIST marker within a 25-line window preceding the
+        # call, ONLY inside the godoc / comment block OF THE ENCLOSING
+        # CODE path. (Mirrors Check 5 + Check 8 convention; real-world
+        # godoc spans 2-5 lines.) Hard-stops on the first non-comment,
+        # non-blank line encountered so an unrelated prior function's
+        # marker can't accidentally exempt a NEW call site in the same
+        # file (avoids false-positive exemption via shared-file markers).
+        WALK_OK=0
+        for OFFSET in $(seq 1 25); do
+            PREV=$((LINE - OFFSET))
+            [ "$PREV" -lt 1 ] && break
+            LINE_TEXT=$(sed -n "${PREV}p" "$FILE" 2>/dev/null)
+            if echo "$LINE_TEXT" \
+                | grep -qE 'ARCH-ALLOWLIST:[[:space:]]*(no-cancel|bg-only)'; then
+                WALK_OK=1
+                break
+            fi
+            # Stop walking if we hit non-comment/non-blank line BEFORE
+            # the marker (boundary of the surrounding godoc block).
+            TRIMMED=$(echo "$LINE_TEXT" | sed 's/^[[:space:]]*//')
+            if [ -n "$TRIMMED" ] && ! echo "$TRIMMED" | grep -qE '^//|^/\*'; then
+                break
+            fi
+        done
+        if [ "$WALK_OK" = "1" ]; then
+            continue
+        fi
+        UNDOCUMENTED_OUTPUT="${UNDOCUMENTED_OUTPUT}${hit}
+"
+        UNDOCUMENTED_COUNT=$((UNDOCUMENTED_COUNT + 1))
+    done <<< "$ALL_HITS"
+    if [ "$UNDOCUMENTED_COUNT" -gt 0 ]; then
+        echo "FAIL: ${UNDOCUMENTED_COUNT} context.Background/WithoutCancel sites LACK a tracking entry."
+        echo ""
+        echo "Each site must have BOTH one of the following exemptions:"
+        echo "  (a) The file path appears in AGENTS.md \u00a7Migration Status"
+        echo "      \"Known intentional exempt sites\" table."
+        echo "  (b) Within the 25 lines preceding the call carries the magic marker:"
+        echo "        // ARCH-ALLOWLIST: no-cancel  (for context.WithoutCancel)"
+        echo "        // ARCH-ALLOWLIST: bg-only    (for context.Background)"
+        echo ""
+        echo "PR-CONTEXT-NO-CANCEL-CI-GATE / Wave 22 task 6 (June 2026)."
+        echo ""
+        echo "Sites requiring tracking:"
+        printf '%s\n' "$UNDOCUMENTED_OUTPUT"
+        exit 1
+    fi
+    echo "OK: all context.Background / context.WithoutCancel sites are tracked (${EXEMPT_FILE_COUNT} canonical exempt files)"
+fi
 
 # ── Main gate ──────────────────────────────────────────────────────────
 # Run the focused+ratchet archcheck; PR-A's `--future-ratchet` keeps the

@@ -306,7 +306,7 @@ Drive-files.Get, and physical delete from the broker pool. The
 | Reviewer finding                               | Edit location                                                            |
 |------------------------------------------------|--------------------------------------------------------------------------|
 | (a) Canonicalise `"system.cleanup"` -> `job.TypeSystemCleanup` | `internal/application/clips/clip_ops.go` + `internal/api/assets/clips/clip_ops.go` (constant already defined in `internal/domain/job/job.go:69`) |
-| (b) Wire `s.Cleanup` via `JobsServicePort`     | Already wired (no code change). Port stays nil-tolerated for tests.       |
+| (b) Wire `s.Cleanup` via `JobsServicePort`     | Already wired (no code change). Port stays nil-tolerated for tests. **Note (June 2026, archaeology)**: pre-PR, `clip_ops.go::Cleanup` already routed through `s.jobs.Enqueue(...)` whenever `s.jobs != nil` — the only Wave 22 PR-5 delta was adding the explicit nil-guard + 503 mapping (Edit (a)). Future maintainers: search `s.jobs.Enqueue` in `internal/application/clips/` to confirm wiring is still structurally-satisfied before assuming re-work. |
 | (c) Typed sentinel `clips.ErrJobsUnavailable`  | `internal/application/clips/clip_ops.go` (sentinels block)               |
 | (d) Issue-slug blocking/informational split    | `VerifyReport.Issues` godoc clarifies BLOCKING-only contract             |
 | (e) HashRecovered legacy godoc rewrite         | `VerifyReport.HashRecovered` godoc expanded (always-false on verify)     |

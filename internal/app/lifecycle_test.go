@@ -575,3 +575,117 @@ func TestSafeCall(t *testing.T) {
 		}
 	})
 }
+
+// fakeCoalescer is the test stub for the ProgressCoalescer interface
+// shape that maybeStartCoalescer requires: a single Window() accessor +
+// a single Start(ctx) runner + a Stop() teardown (Stop is FOR THE TEST
+// SEAM, NOT consumed by maybeStartCoalescer — the production lifecycle
+// step's Stop closure calls pc.Stop() directly, not through the helper).
+// StartCalls() is the assertion surface for tests that need to confirm
+// "the coalescer was started" without inspecting concurrent.SafeGo
+// internals.
+type fakeCoalescer struct {
+	window     time.Duration
+	mu         sync.Mutex
+	startCalls int
+}
+
+func (f *fakeCoalescer) Window() time.Duration { return f.window }
+
+// Start increments the call counter and returns nil. The mock ignores
+// the cancellation-on-start contract because the test only verifies
+// "Start was / was not called" — lifecycle cancellation is exercised by
+// the existing TestLifecycle_NoGoroutinesLeaked test, not here.
+func (f *fakeCoalescer) Start(_ context.Context) error {
+	f.mu.Lock()
+	f.startCalls++
+	f.mu.Unlock()
+	return nil
+}
+
+// StartCalls returns a snapshot of the cumulative Start invocations.
+// Reads are atomic-wrt-writes via the mutex — no -race false positives.
+func (f *fakeCoalescer) StartCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.startCalls
+}
+
+// TestMaybeStartCoalescer_GatedByWindow locks the Window=0 short-circuit
+// in lifecycle.go::maybeStartCoalescer (the rationale is documented
+// inline in the helper). Three branches verified:
+//
+//   (a) Window=0   → no SafeGo; fc.Start never called.
+//   (b) Window>0   → SafeGo runs; fc.Start called exactly once on the
+//                    spawned goroutine.
+//   (c) Window<0   → no SafeGo; fc.Start never called (defensive clamp,
+//                    symmetric to the Window=0 path).
+//
+// Each subtest asserts both the boolean return AND the fc.Start
+// invocation pattern. The (b) subtest sleeps 5ms to give the goroutine
+// scheduler time to actually run fc.Start — SafeGo's goroutine-start
+// latency is non-zero, so an immediate StartCalls() check after SafeGo
+// would be racy. The 5ms wait is well below the test-runner timeout
+// and consistent with the OTHER goroutine-coordination tests in this
+// file (TestLifecycle_NoGoroutinesLeaked uses 50ms; we need less
+// because we only care about the FIRST invocation, not full cleanup).
+func TestMaybeStartCoalescer_GatedByWindow(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Window=0-suppresses-goroutine-and-skips-start", func(t *testing.T) {
+		t.Parallel()
+		fc := &fakeCoalescer{window: 0}
+		spawned := maybeStartCoalescer(
+			"test-coalescer-zero",
+			fc.Window(),
+			context.Background(),
+			fc.Start,
+		)
+
+		if spawned {
+			t.Errorf("Window=0 path: maybeStartCoalescer must return false, got true")
+		}
+		time.Sleep(5 * time.Millisecond)
+		if got := fc.StartCalls(); got != 0 {
+			t.Errorf("Window=0 path: fc.Start must NOT be called, got %d calls", got)
+		}
+	})
+
+	t.Run("Window>0-spawns-goroutine-and-invokes-Start", func(t *testing.T) {
+		t.Parallel()
+		fc := &fakeCoalescer{window: 5 * time.Second}
+		spawned := maybeStartCoalescer(
+			"test-coalescer-positive",
+			fc.Window(),
+			context.Background(),
+			fc.Start,
+		)
+
+		if !spawned {
+			t.Errorf("Window>0 path: maybeStartCoalescer must return true, got false")
+		}
+		time.Sleep(5 * time.Millisecond)
+		if got := fc.StartCalls(); got != 1 {
+			t.Errorf("Window>0 path: fc.Start must be called exactly once, got %d calls", got)
+		}
+	})
+
+	t.Run("Window<0-treats-as-suppressed-defensive-clamp", func(t *testing.T) {
+		t.Parallel()
+		fc := &fakeCoalescer{window: -1 * time.Second}
+		spawned := maybeStartCoalescer(
+			"test-coalescer-negative",
+			fc.Window(),
+			context.Background(),
+			fc.Start,
+		)
+
+		if spawned {
+			t.Errorf("Window<0 path: maybeStartCoalescer must return false (clamped), got true")
+		}
+		time.Sleep(5 * time.Millisecond)
+		if got := fc.StartCalls(); got != 0 {
+			t.Errorf("Window<0 path: fc.Start must NOT be called, got %d calls", got)
+		}
+	})
+}
