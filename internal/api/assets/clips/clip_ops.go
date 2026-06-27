@@ -21,6 +21,7 @@
 package clips
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -33,25 +34,39 @@ import (
 
 // cleanupRequest is the typed request body for POST
 // /api/clips/:source/cleanup. Mirrors the JSON keys production
-// callers send (dry_run, check_drive, deep). Empty bodies are
-// accepted with zero-value defaults (preserved pre-PR2 lenient
-// behaviour via the isEmptyJSONErr sentinel).
+// callers send (dry_run, check_local, check_drive, repair, delete,
+// deep, batch_size). Empty bodies are accepted with zero-value
+// defaults via the isEmptyJSONErr sentinel.
+//
+// PR 5 (June 2026 — codex/clips-cleanup-job): expanded to include
+// check_local, repair, delete (the new spec dimensions) plus
+// batch_size (configurable row-cap; cleaner defaults to 250).
 type cleanupRequest struct {
 	DryRun     bool `json:"dry_run"`
+	CheckLocal bool `json:"check_local"`
 	CheckDrive bool `json:"check_drive"`
+	Repair     bool `json:"repair"`
+	Delete     bool `json:"delete"`
 	Deep       bool `json:"deep"`
+	BatchSize  int  `json:"batch_size,omitempty"`
 }
 
 // toCommand translates the request body into the canonical
 // application-side CleanupInput. The "deep=true" query parameter
-// (?deep=true) is OR'd with the body's Deep field so callers have
-// both interfaces.
+// (?deep=true) is OR'd with the body's Deep field AND promotes
+// Repair=true + Delete=true so legacy callers who set deep still
+// trigger a meaningful cleanup pass.
 func (r cleanupRequest) toCommand(source string, deepFromQuery bool) appclips.CleanupInput {
+	deep := r.Deep || deepFromQuery
 	return appclips.CleanupInput{
 		Source:     source,
 		DryRun:     r.DryRun,
-		CheckDrive: r.CheckDrive,
-		Deep:       r.Deep || deepFromQuery,
+		CheckLocal: r.CheckLocal || deep,
+		CheckDrive: r.CheckDrive || deep,
+		Repair:     r.Repair || deep,
+		Delete:     r.Delete || deep,
+		Deep:       deep,
+		BatchSize:  r.BatchSize,
 	}
 }
 
@@ -86,12 +101,12 @@ func (h *Handler) Cleanup(c *gin.Context) {
 		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
 		return
 	}
-	report, err := h.clipOpsService.Cleanup(c.Request.Context(), input)
+	started, err := h.clipOpsService.Cleanup(c.Request.Context(), input)
 	if err != nil {
 		mapClipOpsError(c, err)
 		return
 	}
-	apiutil.OK(c, buildCleanupResponse(report))
+	apiutil.OK(c, buildCleanupQueuedResponse(source, input, started))
 }
 
 // VerifyClip POST + /api/clips/:source/clips/:id/verify — thin
@@ -115,37 +130,82 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 	apiutil.OK(c, buildVerifyResponse(report))
 }
 
-// Reconcile POST + /api/clips/:source/reconcile — placeholder for
-// PR 4 (codex/clips-reconcile-real). The current implementation
-// delegates to ClipOpsService.Reconcile which logs a typed entry,
-// then returns stub-OK. PR 4 will replace this with a durable
-// catalog.sync job enqueue + queue-absent 503 mapping.
+// reconcileRequest is the typed request body for POST
+// /api/clips/:source/reconcile. Mirrors the JSON keys production
+// callers send (folder_id, fix, dry_run). Empty bodies are
+// accepted with the URL-path source prepended via toCommand.
+type reconcileRequest struct {
+	FolderID string `json:"folder_id"`
+	Fix      bool   `json:"fix"`
+	DryRun   bool   `json:"dry_run"`
+}
+
+// toCommand translates the request body + URL-path source into the
+// canonical ReconcileCommand.
+func (r reconcileRequest) toCommand(source string) appclips.ReconcileCommand {
+	return appclips.ReconcileCommand{
+		Source:   source,
+		FolderID: r.FolderID,
+		Fix:      r.Fix,
+		DryRun:   r.DryRun,
+	}
+}
+
+// Reconcile POST + /api/clips/:source/reconcile — durable async
+// reconcile. PR 4 (June 2026 — codex/clips-reconcile-real) replaces
+// the stub-by-log body with a real catalog.sync job enqueue.
+//
+// Request body: {"folder_id": string, "fix": bool, "dry_run": bool}.
+//
+// Response shape (200): {"ok": true, "status": "queued",
+// "job_id": "<job-id>", "status_url": "/api/jobs/<job-id>",
+// "source": "<source>", "folder_id": "<folder>", "fix": bool,
+// "dry_run": bool}. Caller polls status_url for results.
+//
+// Status codes:
+//   200 — durable job enqueued.
+//   400 — invalid JSON body OR invalid source.
+//   500 — service error (enqueue failure).
+//   503 — clip ops service not wired (composition bug).
+//   503 with body.code == "RECONCILE_QUEUE_UNAVAILABLE" — broker
+//        unwired (JobsServicePort nil at composition time).
 func (h *Handler) Reconcile(c *gin.Context) {
 	source := c.Param("source")
-	var req struct {
-		FolderID string `json:"folder_id"`
-		Fix      bool   `json:"fix"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+	var req reconcileRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !isEmptyJSONErr(err) {
+		apiutil.BadRequest(c, "invalid request body: "+err.Error())
 		return
 	}
+	cmd := req.toCommand(source)
+
 	if h.clipOpsService == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
 		return
 	}
-	h.clipOpsService.Reconcile(c.Request.Context(), source, req.FolderID)
+	started, err := h.clipOpsService.Reconcile(c.Request.Context(), cmd)
+	if err != nil {
+		mapClipOpsError(c, err)
+		return
+	}
 	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"source":  source,
-		"message": "reconciliation started (catalogSync is configured on SourcesHandler, not clips.Handler)",
+		"ok":         true,
+		"status":     "queued",
+		"job_id":     started.JobID,
+		"status_url": "/api/jobs/" + started.JobID,
+		"source":     cmd.Source,
+		"folder_id":  cmd.FolderID,
+		"fix":        cmd.Fix,
+		"dry_run":    cmd.DryRun,
 	})
 }
 
 // ── Response helpers ────────────────────────────────────────────────────────
 
-// buildCleanupResponse converts a *CleanupReport into a gin.H
-// response. Field set matches the pre-PR2 keys verbatim (the
+// buildCleanupResponse converts the prev-PR5 *CleanupReport into a
+// gin.H response. PR 5 retired the synchronous-return path; this
+// helper is kept for any in-tree callers that still hold a *CleanupReport
+// (e.g. queued-only deep paths that load the final report via the
+// jobs Service). Field set matches the pre-PR2 keys verbatim (the
 // historical client contract).
 func buildCleanupResponse(report *appclips.CleanupReport) gin.H {
 	if report == nil {
@@ -170,6 +230,32 @@ func buildCleanupResponse(report *appclips.CleanupReport) gin.H {
 		"summary":     report.Summary,
 		"message":     report.Message,
 		"items":       items,
+	}
+}
+
+// buildCleanupQueuedResponse converts a *CleanupStarted into the
+// PR 5 cleanup-shape queued response. Echoes the request flags
+// back so callers can confirm the queued payload matches their
+// intent. status_url is the literal "/api/jobs/<job-id>" path
+// the application services stay URL-agnostic by handing the
+// job_id up to the handler.
+func buildCleanupQueuedResponse(source string, in appclips.CleanupInput, started *appclips.CleanupStarted) gin.H {
+	if started == nil {
+		return gin.H{"ok": false, "status": "error", "source": source, "message": "cleanup: nil started"}
+	}
+	return gin.H{
+		"ok":          true,
+		"status":      "queued",
+		"job_id":      started.JobID,
+		"status_url":  "/api/jobs/" + started.JobID,
+		"active_key":  started.ActiveKey,
+		"source":      source,
+		"dry_run":     in.DryRun,
+		"check_local": in.CheckLocal,
+		"check_drive": in.CheckDrive,
+		"repair":      in.Repair,
+		"delete":      in.Delete,
+		"batch_size":  started.BatchSize,
 	}
 }
 
@@ -211,15 +297,22 @@ func buildVerifyResponse(report *appclips.VerifyReport) gin.H {
 // ── Error mapping ────────────────────────────────────────────────────────────
 
 // mapClipOpsError translates a ClipOps domain error into the
-// corresponding HTTP response. The "invalid source" sentinel is
-// promoted to 400 Bad Request; everything else is 500. PR 4 will
-// add the 503 + RECONCILE_QUEUE_UNAVAILABLE mapping when
-// ClipOpsService.Reconcile returns ErrQueueUnavailable.
+// corresponding HTTP response. Used by both Cleanup + Reconcile
+// handlers. The typed-sentinel errors are preferred over
+// string-matching (PR 4, June 2026).
 func mapClipOpsError(c *gin.Context, err error) {
 	if err == nil {
 		return
 	}
-	if strings.Contains(err.Error(), "invalid source") {
+	if errors.Is(err, appclips.ErrQueueUnavailable) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"ok":      false,
+			"code":    "RECONCILE_QUEUE_UNAVAILABLE",
+			"message": err.Error(),
+		})
+		return
+	}
+	if errors.Is(err, appclips.ErrInvalidSource) {
 		apiutil.BadRequest(c, "invalid source: "+err.Error())
 		return
 	}

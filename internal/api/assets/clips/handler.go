@@ -329,6 +329,30 @@ func (a *cumulativeDriveAdapter) GetFileMeta(ctx context.Context, id string) (*a
 	return nil, fmt.Errorf("cumulativeDriveAdapter: GetFileMeta not implemented")
 }
 
+// FileIsNotTrashed (PR 5, June 2026 - codex/clips-cleanup-job):
+// the cumulative metadata adapter doesn't exercise the trash path
+// directly, but the compile-time `var _` assertion against
+// appclips.ClipDriveUploaderPort requires the method. Returns
+// (false, nil) so a stale file flags as trashed for the cleanup
+// pipeline; the canonical *clipsDriveAdapter in
+// internal/app/clips_adapters_drive.go provides the real lookup.
+func (a *cumulativeDriveAdapter) FileIsNotTrashed(ctx context.Context, id string) (bool, error) {
+	if a.up == nil {
+		return false, fmt.Errorf("cumulativeDriveAdapter: uploader not wired")
+	}
+	if a.up.Service == nil {
+		return true, nil
+	}
+	f, err := a.up.Service.Files.Get(id).Context(ctx).Fields("trashed").Do()
+	if err != nil {
+		return false, err
+	}
+	if f == nil {
+		return false, nil
+	}
+	return !f.Trashed, nil
+}
+
 // updateCumulativeMetadataJSON is a thin bridge that wraps the concrete
 // *drive.Uploader into a ClipDriveUploaderPort and delegates to the
 // canonical application-layer UpdateCumulativeMetadataJSON. W14 PR2

@@ -125,6 +125,7 @@ const (
 	TypeCatalogSync         = "catalog.sync"
 	TypeArtlistRun          = "media.artlist"
 	TypeSystemCleanup       = "system.cleanup"
+	TypeAssetsCleanup       = "assets.cleanup"
 	TypeMediaGenerate       = "media.generate_missing_asset"
 	TypeVideoGenerate       = "video.generate"
 	TypeBooksProcess        = "books.process"
@@ -178,6 +179,11 @@ func Compose() *Registry {
 
 	// ── System ──
 	r.Register(RegistryEntry{Type: TypeSystemCleanup, Description: "System cleanup", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
+	// PR 5 (June 2026 — codex/clips-cleanup-job): paginated async
+	// cleanup handler that replaces the pre-PR5 synchronous
+	// ListClipsPaged-10K scan. Long timeout because a real cleanup
+	// can span many hours (250-row batches × N sources).
+	r.Register(RegistryEntry{Type: TypeAssetsCleanup, Description: "Assets cleanup (paginated async)", Timeout: 4 * time.Hour, DefaultMaxRetries: 1})
 
 	return r
 }

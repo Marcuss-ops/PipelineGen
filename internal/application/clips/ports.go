@@ -191,6 +191,10 @@ type ClipDriveUploaderPort interface {
 	GetFileMeta(ctx context.Context, fileID string) (*ClipDriveFileMetaDTO, error)
 	TrashFile(ctx context.Context, fileID string) error
 	ListFiles(ctx context.Context, query string) ([]ClipDriveFileDTO, error)
+	// PR 5 (June 2026 — codex/clips-cleanup-job): added for the
+	// assets.cleanup handler's classify-coherent verification. Returns
+	// true when the Drive file is not in the user's trash.
+	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
 }
 
 // ClipMetaWriterPort is the canonical narrow surface of
@@ -289,3 +293,89 @@ type ClipTreeBuilderPort interface {
 type ClipIndexDispatcherPort interface {
 	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error
 }
+
+// ── PR 5 (codex/clips-cleanup-job): cleanup-projection DTOs + port extensions ────
+
+// CleanupClip is the cleaner-side projection of *asset.Asset with
+// only the fields the assets.cleanup handler inspects (LocalPath,
+// DriveFileID, DriveLink, DownloadLink, FileHash, FolderID,
+// FolderPath). The cleaner.go in internal/application/assets/cleanup
+// uses this projection so it does NOT import internal/domain/asset
+// directly — the composition root's adapter
+// (internal/app/cleanup_adapters.go) converts at the infra seam.
+//
+// CleaneupClip is intentionally a value-type alias rather than a
+// pointer so a single batch can be held contiguously without escape
+// analysis noise. The composition root's ListClipsPaged adapter
+// produces these values from *asset.Asset.
+type CleanupClip struct {
+	ID           string
+	Source       string
+	Name         string
+	LocalPath    string
+	DriveFileID  string
+	DriveLink    string
+	DownloadLink string
+	FileHash     string
+	FolderID     string
+	FolderPath   string
+}
+
+// ClipAsset is the legacy alias for CleanupClip kept for compatibility
+// with cleaner.go's existing type references. Tests that already
+// declared local types should switch to CleanupClip over time.
+type ClipAsset = CleanupClip
+
+// CleanupVoiceoverRecord is the cleaner-side projection of
+// ClipVoiceoverRecordDTO with only the fields the voiceover path of
+// the cleanup scan needs (no Metadata/Strategy/Status/Error — those
+// are bookkeeping-only).
+type CleanupVoiceoverRecord struct {
+	ID           string
+	Filename     string
+	LocalPath    string
+	DriveLink    string
+	DriveFileID  string
+	DownloadLink string
+	FileHash     string
+	FolderID     string
+	FolderPath   string
+}
+
+// CleanupStarted is the application-side response shape for
+// ClipOpsService.Cleanup returning the durable job handle (similar
+// to ReconcileStarted from PR 4). The HTTP handler composes the
+// StatusURL (literal "/api/jobs/{id}") so the service stays
+// URL-agnostic.
+type CleanupStarted struct {
+	JobID     string
+	ActiveKey string
+	BatchSize int
+}
+
+// CleanupJobResponse is wire-shape used by api/assets/clips handler
+// when it responds to the caller. JSON keys mirror the spec's
+// cleanup-shape verbatim: job_id + status_url + status + the
+// echo of the request flags.
+type CleanupJobResponse struct {
+	OK         bool   `json:"ok"`
+	Status     string `json:"status"`
+	JobID      string `json:"job_id"`
+	StatusURL  string `json:"status_url"`
+	Source     string `json:"source"`
+	DryRun     bool   `json:"dry_run,omitempty"`
+	CheckLocal bool   `json:"check_local,omitempty"`
+	CheckDrive bool   `json:"check_drive,omitempty"`
+	Repair     bool   `json:"repair,omitempty"`
+	Delete     bool   `json:"delete,omitempty"`
+}
+
+// ── PR 5 port extension: removed duplicate ClipDriveUploaderPort declaration ────
+//
+// FileIsNotTrashed was added to the canonical ClipDriveUploaderPort
+// declaration above (line ~190 in the original file). The previous
+// duplicate declaration created a redeclaration compile error; this
+// block keeps the canonical type comments only. The cleaner.go in
+// internal/application/assets/cleanup calls FileIsNotTrashed on clips
+// whose flags include CheckDrive to flag trashed files as orphan
+// candidates for the delete phase.

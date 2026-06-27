@@ -137,6 +137,24 @@ func (a *clipsDriveAdapter) ListFiles(ctx context.Context, query string) ([]clip
 	return out, nil
 }
 
+// FileIsNotTrashed returns true when the Drive file is NOT in the
+// user's trash. PR 5 (June 2026 — codex/clips-cleanup-job) added
+// this for the assets.cleanup handler's classify-coherent
+// verification. Maps to drive.Service.Files.Get(fileID).Fields("trashed").
+func (a *clipsDriveAdapter) FileIsNotTrashed(ctx context.Context, fileID string) (bool, error) {
+	if a.up == nil || a.up.Service == nil {
+		return false, fmt.Errorf("clipsDriveAdapter: uploader not wired")
+	}
+	f, err := a.up.Service.Files.Get(fileID).Context(ctx).Fields("trashed").Do()
+	if err != nil {
+		return false, err
+	}
+	if f == nil {
+		return false, nil
+	}
+	return !f.Trashed, nil
+}
+
 // driveUploadToDTO is the projection helper that maps drive.UploadResult
 // onto the narrower clips.ClipUploadResultDTO. Drop any field the
 // HTTP transport doesn't consume (Pattern 0 minimal projection).

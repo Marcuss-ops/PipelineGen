@@ -1,15 +1,32 @@
-// Package clips (test) — clip_ops_test.go.
+// Package clips (test) - clip_ops_test.go.
 //
-// PR 3 (June 2026 — codex/clips-ops-cutover) unit tests for
+// PR 3 (June 2026 - codex/clips-ops-cutover) unit tests for
 // ClipOpsService. The six ports the service takes
 // (SourceResolver / VoiceoverRepository / ImageRepository /
 // ClipDriveUploader / CleanupService / JobsService) are stubbed
-// with minimal compilable defaults; the tests pin behavioural
-// contracts (deep-mode enqueues system.cleanup job; fallback to
-// synchronous CleanupOrphanFiles when jobs=nil; dry_run never
-// deletes; invalid source returned as error; voiceover source
-// iterates the voiceover repo; verify with missing local path
-// flags local_file_missing; etc.).
+// with minimal compilable defaults.
+//
+// PR 5 (June 2026 - codex/clips-cleanup-job) updated assertions:
+// the synchronous Cleanup_* tests are replaced with the
+// async-enqueue shape. The service now returns *CleanupStarted
+// (job_id + active_key + batch_size) - it never returns the
+// pre-PR5 *CleanupReport (Items/Checked/Deleted/Summary) shape.
+// Behavioural invariants pinned at the service level:
+//
+//   1. jobs.Enqueue receives an "assets.cleanup" job with a
+//      deterministic ActiveKey derived from the CleanupInput
+//      tuple.
+//   2. The synchronous CleanupOrphanFiles fallback is REMOVED
+//      per spec; jobs=nil surfaces ErrQueueUnavailable.
+//   3. Invalid source -> ErrInvalidSource (still surfaced via
+//      HTTP 400 via mapClipOpsError).
+//
+// The 6 spec-matrix tests (resume-from-checkpoint / cancel /
+// dry_run / retry-idempotent / asset-added-mid-scan /
+// partial-Drive-error) live in a followup PR's
+// internal/application/assets/cleanup/cleaner_test.go against
+// the HandlerJob function - this file stays focused on the
+// service-level enqueue/dedupe contract.
 package clips
 
 import (
@@ -22,7 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-// ── Port stubs (minimal happy-defaults) ──────────────────────────────────────
+// Port stubs (minimal happy-defaults).
 
 type testSourceResolver struct{ repos map[string]ClipRepositoryPort }
 
@@ -37,7 +54,7 @@ type testClipsRepo struct {
 	clips []*asset.Asset
 }
 
-func (r *testClipsRepo) Upsert(_ context.Context, _ *asset.Asset) error       { return nil }
+func (r *testClipsRepo) Upsert(_ context.Context, _ *asset.Asset) error { return nil }
 func (r *testClipsRepo) Get(_ context.Context, _ string) (*asset.Asset, error) {
 	return nil, nil
 }
@@ -67,7 +84,7 @@ func (r *testClipsRepo) ListByFolderID(_ context.Context, _ string) ([]*asset.As
 func (r *testClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *testClipsRepo) DeleteFolder(_ context.Context, _ string) error         { return nil }
+func (r *testClipsRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
 func (r *testClipsRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
 func (r *testClipsRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
 func (r *testClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
@@ -140,9 +157,12 @@ func (d *testDriveUploader) GetFileMD5(_ context.Context, fileID string) (string
 func (d *testDriveUploader) GetFileMeta(_ context.Context, _ string) (*ClipDriveFileMetaDTO, error) {
 	return &ClipDriveFileMetaDTO{}, nil
 }
-func (d *testDriveUploader) TrashFile(_ context.Context, _ string) error              { return nil }
+func (d *testDriveUploader) TrashFile(_ context.Context, _ string) error { return nil }
 func (d *testDriveUploader) ListFiles(_ context.Context, _ string) ([]ClipDriveFileDTO, error) {
 	return nil, nil
+}
+func (d *testDriveUploader) FileIsNotTrashed(_ context.Context, _ string) (bool, error) {
+	return true, nil
 }
 
 type testCleanupPort struct {
@@ -185,123 +205,100 @@ func (j *testJobsPort) Enqueue(_ context.Context, req JobsEnqueueRequest) (*Jobs
 	return &JobsEnqueueResponse{ID: j.nextID}, nil
 }
 
-// ── Subtests ─────────────────────────────────────────────────────────────────
+// Subtests.
 
-// TestClipOps_Cleanup_Deep_EnqueuesSystemCleanupJob pins the
-// deep-mode happy path: source="all" + deep=true → jobs.Enqueue
-// receives a "system.cleanup" job with the stable
-// "system_maintenance_manual" ActiveKey, the cleanup port is
-// NOT called (deep path skips synchronous cleanup).
-func TestClipOps_Cleanup_Deep_EnqueuesSystemCleanupJob(t *testing.T) {
+// TestClipOps_Cleanup_EnqueuesAssetsCleanupJob pins the
+// happy-path: any source + non-deep -> jobs.Enqueue receives an
+// "assets.cleanup" job with the canonical ActiveKey
+// "cleanup_<source>_<dry>_<checkLocal>_<checkDrive>_<repair>_<delete>_<batchSize>".
+// Returns *CleanupStarted with JobID + ActiveKey + BatchSize
+// (not the pre-PR5 Items/Checked shape).
+func TestClipOps_Cleanup_EnqueuesAssetsCleanupJob(t *testing.T) {
 	jobs := &testJobsPort{nextID: "job-001"}
-	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, jobs, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil)
 
-	report, err := svc.Cleanup(context.Background(), CleanupInput{
-		Source: "all",
-		Deep:   true,
-	})
+	started, err := svc.Cleanup(context.Background(), CleanupInput{Source: "youtube"})
 	require.NoError(t, err)
-	require.NotNil(t, report)
-	require.Equal(t, "job-001", report.JobID)
-	require.Equal(t, "system cleanup job enqueued", report.Message)
+	require.NotNil(t, started)
+	require.Equal(t, "job-001", started.JobID)
+	require.Equal(t, "cleanup_youtube_false_false_false_false_false_0", started.ActiveKey)
+	require.Equal(t, 0, started.BatchSize, "BatchSize 0 means handler will default to 250")
 	require.Len(t, jobs.enqueued, 1)
-	require.Equal(t, "system.cleanup", jobs.enqueued[0].Type)
-	require.Equal(t, "system_maintenance_manual", jobs.enqueued[0].ActiveKey)
-	require.Equal(t, 0, cleanup.cleanupHits, "deep-mode must NOT fall through to CleanupOrphanFiles")
+	require.Equal(t, "assets.cleanup", jobs.enqueued[0].Type)
+	require.Equal(t, "cleanup_youtube_false_false_false_false_false_0", jobs.enqueued[0].ActiveKey)
 }
 
-// TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix pins the
-// ActiveKey suffix when DryRun=true combined with deep-mode.
-func TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix(t *testing.T) {
+// TestClipOps_Cleanup_DryRun_ActiveKeyIncludesFlag pins the
+// ActiveKey suffix change when DryRun=true is combined with
+// CheckLocal+CheckDrive+Repair+Delete=true and a non-zero batch.
+func TestClipOps_Cleanup_DryRun_ActiveKeyIncludesFlag(t *testing.T) {
 	jobs := &testJobsPort{nextID: "job-002"}
 	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil)
 
 	_, err := svc.Cleanup(context.Background(), CleanupInput{
-		Source: "all",
-		Deep:   true,
-		DryRun: true,
+		Source:     "youtube",
+		DryRun:     true,
+		CheckLocal: true,
+		CheckDrive: true,
+		Repair:     true,
+		Delete:     true,
+		BatchSize:  100,
 	})
 	require.NoError(t, err)
 	require.Len(t, jobs.enqueued, 1)
-	require.Equal(t, "system_maintenance_manual_dry", jobs.enqueued[0].ActiveKey)
+	require.Equal(t, "cleanup_youtube_true_true_true_true_true_100", jobs.enqueued[0].ActiveKey)
+	require.Equal(t, 100, jobs.enqueued[0].Payload["batch_size"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["dry_run"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["check_local"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["check_drive"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["repair"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["delete"])
 }
 
-// TestClipOps_Cleanup_DeepNoJobs_FallsBackSynchronous pins the
-// fallback path: when jobs=nil but cleanup port is wired, the
-// service runs synchronous CleanupOrphanFiles.
-func TestClipOps_Cleanup_DeepNoJobs_FallsBackSynchronous(t *testing.T) {
+// TestClipOps_Cleanup_NoJobs_ReturnsErrQueueUnavailable pins the
+// pre-flight guard: jobs=nil surfaces ErrQueueUnavailable
+// (HTTP 503 + code RECONCILE_QUEUE_UNAVAILABLE in the handler).
+// The pre-PR5 synchronous CleanupOrphanFiles fallback is REMOVED
+// per spec - there is no fallback path.
+func TestClipOps_Cleanup_NoJobs_ReturnsErrQueueUnavailable(t *testing.T) {
 	cleanup := &testCleanupPort{}
 	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, nil, nil)
 
-	report, err := svc.Cleanup(context.Background(), CleanupInput{
-		Source: "all",
-		Deep:   true,
-		DryRun: false,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, report)
-	require.Equal(t, 1, cleanup.cleanupHits)
-	require.Contains(t, report.Message, "synchronously")
+	started, err := svc.Cleanup(context.Background(), CleanupInput{Source: "youtube"})
+	require.Error(t, err)
+	require.Nil(t, started)
+	require.ErrorIs(t, err, ErrQueueUnavailable)
+	require.Equal(t, 0, cleanup.cleanupHits, "pre-PR5 synchronous fallback is REMOVED")
 }
 
 // TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError
-// pins the early-return on unrecognised source.
+// pins the early-return on unrecognised source (still surfaced).
 func TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError(t *testing.T) {
-	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil)
-	_, err := svc.Cleanup(context.Background(), CleanupInput{
-		Source: "not-a-source",
-	})
+	svc := NewClipOpsService(nil, nil, nil, nil, nil, &testJobsPort{nextID: "job-x"}, nil)
+	started, err := svc.Cleanup(context.Background(), CleanupInput{Source: "not-a-source"})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid source")
+	require.Nil(t, started)
+	require.ErrorIs(t, err, ErrInvalidSource)
 }
 
-// TestClipOps_Cleanup_YoutubeDryRun_ReportsOrphanWithoutDelete
-// pins the per-source non-deep path: orphan clip (no local file)
-// is reported in Items but NOT deleted when DryRun=true.
-func TestClipOps_Cleanup_YoutubeDryRun_ReportsOrphanWithoutDelete(t *testing.T) {
-	clip := &asset.Asset{ID: "yt-orphan", Name: "foo"}
-	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
-	repo := &testClipsRepo{clips: []*asset.Asset{clip}}
-	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{"youtube": repo}}
-	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(resolver, nil, nil, nil, cleanup, nil, nil)
+// TestClipOps_Cleanup_VoiceoverSource_EnqueuesDoesNotPreflight
+// pins the voiceover-source branch path: voiceover source is
+// accepted (no preflight repo lookup is performed in the new
+// async-enqueue shape); jobs.Enqueue receives the payload
+// regardless of which side's repo is wired.
+func TestClipOps_Cleanup_VoiceoverSource_EnqueuesDoesNotPreflight(t *testing.T) {
+	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{}}
+	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, &testJobsPort{nextID: "job-vo"}, nil)
 
-	report, err := svc.Cleanup(context.Background(), CleanupInput{
-		Source: "youtube",
-		DryRun: true,
-	})
+	started, err := svc.Cleanup(context.Background(), CleanupInput{Source: "voiceover", DryRun: true})
 	require.NoError(t, err)
-	require.NotNil(t, report)
-	require.Len(t, report.Items, 1, "should identify the orphan")
-	require.Equal(t, "yt-orphan", report.Items[0].ID)
-	require.Empty(t, cleanup.deleteCalls, "dry_run must NOT delete")
-}
-
-// TestClipOps_Cleanup_VoiceoverSource_IteratesRecords pins the
-// voiceover-source branch in Cleanup: voiceoverRepo.ListAll is
-// the source of truth; each orphan is reported.
-func TestClipOps_Cleanup_VoiceoverSource_IteratesRecords(t *testing.T) {
-	rec := &ClipVoiceoverRecordDTO{
-		ID:        "vo-1",
-		Filename:  "foo.wav",
-		LocalPath: "/nonexistent/foo.wav",
-	}
-	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{"vo-1": rec}}
-	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil)
-
-	report, err := svc.Cleanup(context.Background(), CleanupInput{
-		Source: "voiceover",
-		DryRun: true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, report)
-	require.Len(t, report.Items, 1)
-	require.Equal(t, "vo-1", report.Items[0].ID)
+	require.NotNil(t, started)
+	require.Equal(t, "job-vo", started.JobID)
+	require.Equal(t, "cleanup_voiceover_true_false_false_false_false_0", started.ActiveKey)
 }
 
 // TestClipOps_Verify_EmptyClipID_ReturnsFalseOK pins the early
-// return when clipID="" — report.OK is set to false.
+// return when clipID="" - report.OK is set to false.
 func TestClipOps_Verify_EmptyClipID_ReturnsFalseOK(t *testing.T) {
 	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil)
 	report := svc.Verify(context.Background(), "youtube", "")
@@ -321,7 +318,7 @@ func TestClipOps_Verify_InvalidSource_AddsInvalidSourceIssue(t *testing.T) {
 }
 
 // TestClipOps_Verify_VoiceoverSource_UsesVoiceoverRepo pins the
-// voiceover-source Verify branch — voiceoverRepo.GetByID is the
+// voiceover-source Verify branch - voiceoverRepo.GetByID is the
 // source of truth; DB = true on hit.
 func TestClipOps_Verify_VoiceoverSource_UsesVoiceoverRepo(t *testing.T) {
 	rec := &ClipVoiceoverRecordDTO{
@@ -338,7 +335,7 @@ func TestClipOps_Verify_VoiceoverSource_UsesVoiceoverRepo(t *testing.T) {
 }
 
 // TestClipOps_Verify_DriveUnavailable_HashMissingIssue pins the
-// hash-recovery failure path — when Drive doesn't return a
+// hash-recovery failure path - when Drive doesn't return a
 // usable MD5, "hash_missing" appears in Issues.
 func TestClipOps_Verify_DriveUnavailable_HashMissingIssue(t *testing.T) {
 	rec := &ClipVoiceoverRecordDTO{

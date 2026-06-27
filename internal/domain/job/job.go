@@ -77,6 +77,14 @@ const (
 	TypeBulkUploadYouTubeClips = "media.bulk_upload_youtube_clips"
 	TypeDriveFolderSync        = "drive.folder.sync"
 	TypeMediaCurate            = "media.curate"
+	// PR 5 (June 2026 — codex/clips-cleanup-job):
+	// assets.cleanup is the canonical paginated async cleanup job. It
+	// replaces the previous synchronous ListClipsPaged(..., 10000, 0, "")
+	// scan in ClipOpsService.Cleanup with a batch=250 paginated loop
+	// that persists its cursor in j.Payload cursor and emits progress
+	// per batch. Resume is achieved by re-enqueueing with the same
+	// ActiveKey (FindActiveByKey filter excludes terminal jobs).
+	TypeAssetsCleanup = "assets.cleanup"
 )
 
 // Job is the canonical domain entity for a job in the system.
