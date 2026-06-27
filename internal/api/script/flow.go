@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── Type aliases (back-compat, zero churn) ─────────────────────────────────
@@ -84,20 +83,6 @@ func (b *ScriptInsightBuilder) Build(ctx context.Context, title, script, entitie
 
 func ResolveRecommendedDriveFolder(ctx context.Context, svc scripts.ClipServices, title, script string, insights ScriptInsights) *ScriptDriveFolderSuggestion {
 	return scripts.ResolveRecommendedDriveFolder(ctx, svc, title, script, insights)
-}
-
-// ── buildTextOnlyScriptPlan ─────────────────────────────────────────────────
-
-func buildTextOnlyScriptPlan(
-	topic, sourceText, guidelines, title, language, tone, model string,
-	forceRefresh, saveToDB bool, targetWords int,
-	promptVersion, editorPromptVersion, qaPromptVersion string,
-) *scriptpkg.ScriptGenerationPlan {
-	return scripts.BuildTextOnlyScriptPlan(
-		topic, sourceText, guidelines, title, language, tone, model,
-		forceRefresh, saveToDB, targetWords,
-		promptVersion, editorPromptVersion, qaPromptVersion,
-	)
 }
 
 // ── resolveDriveFolderID (ScriptFlowHandler method) ─────────────────────────

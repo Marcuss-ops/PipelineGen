@@ -15,7 +15,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
@@ -645,41 +644,6 @@ func ExtractScriptEntities(ctx context.Context, extractor EntityScriptExtractor,
 		return "", err
 	}
 	return string(data), nil
-}
-
-// ── BuildTextOnlyScriptPlan ─────────────────────────────────────────────────
-
-// BuildTextOnlyScriptPlan builds a plan for text-only script generation.
-func BuildTextOnlyScriptPlan(
-	topic, sourceText, guidelines, title, language, tone, model string,
-	forceRefresh, saveToDB bool, targetWords int,
-	promptVersion, editorPromptVersion, qaPromptVersion string,
-) *scriptpkg.ScriptGenerationPlan {
-	if topic == "" {
-		topic = sourceText
-	}
-	if title == "" {
-		title = topic
-	}
-
-	plan := &scriptpkg.ScriptGenerationPlan{
-		Title:               title,
-		Topic:               topic,
-		Language:            language,
-		Tone:                tone,
-		Model:               model,
-		Mode:                "generate",
-		UseMemory:           !forceRefresh,
-		SaveToDB:            saveToDB,
-		TargetWords:         targetWords,
-		Prompt:              topic,
-		SourceText:          sourceText,
-		Guidelines:          guidelines,
-		PromptVersion:       promptVersion,
-		EditorPromptVersion: editorPromptVersion,
-		QAPromptVersion:     qaPromptVersion,
-	}
-	return plan
 }
 
 // ── ResolveRecommendedDriveFolder ────────────────────────────────────────────
