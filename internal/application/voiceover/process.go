@@ -197,7 +197,6 @@ func (s *Service) processLanguage(
 	if result.VoiceProfile != "" {
 		item.Voice = result.VoiceProfile
 	}
-	}
 	item.Status = result.Status
 
 	if result.Status == "" {
@@ -271,9 +270,18 @@ func (s *Service) processLanguage(
 		DownloadLink: item.DownloadLink,
 		FileHash:     item.FileHash,
 		Metadata:     string(metaJSON),
+		// fix/voiceover-require-drive-on-intent: Drive is required when the
+		// caller expressed intent to write (explicit dest.FolderID or
+		// config-level voiceover folder) — independent of whether a
+		// previous upload populated item.DriveLink. The previous formula
+		// OR'd `item.DriveLink != ""`, which silently demoted Drive from
+		// required to optional on a failed re-upload and let the
+		// lifecycle finalizer complete locally without surfacing the
+		// failure. Intent is set at the request boundary, not derived
+		// from the upload result.
 		RequireLocal: false,
 		RequireHash:  false,
-		RequireDrive: dest.FolderID != "" || s.cfg.Drive.VoiceoverFolder() != "" || item.DriveLink != "",
+		RequireDrive: dest.FolderID != "" || s.cfg.Drive.VoiceoverFolder() != "",
 		VerifyDB:     true,
 	}
 
