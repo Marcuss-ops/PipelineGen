@@ -141,23 +141,42 @@ func TestMediaFinalizerVerifiesDriveFile(t *testing.T) {
 	t.Log("Drive file verification test passed")
 }
 
+// fix/voiceover-require-drive-on-intent: when the caller expressed
+// intent to write to Drive (RequireDrive=true) but the upload attempt
+// produced no DriveLink (e.g. previous run failed, network blip, quota
+// exceeded), the finalizer must FAIL EXPLICITLY — not complete OK
+// locally and silently demote Drive from required to optional. Without
+// this pin a regression in the voiceover/lifecycle setpoint can let
+// the lifecycle chain complete with a local-only record and no error
+// surfaced to the API caller.
+//
+// Verifies the strict-fail branch at finalizer.go line 77: with
+// RequireLocal+RequireHash satisfied and a real temp file, the
+// RequireDrive check fires first, returns early with
+// Error="missing drive link after upload", Status="failed", OK=false,
+// and crucially NO DB row is written.
 func TestMediaFinalizerFailsWhenDriveFileMissing(t *testing.T) {
 	ctx := context.Background()
 	logger, _ := zap.NewDevelopment()
 
-	// Create mock services - drive file does NOT exist
 	driveVerifier := &mockDriveVerifier{shouldExist: false}
 	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
 
-	// Create finalizer
 	finalizer := NewFinalizer(registry, driveVerifier, logger)
 
-	// Test record with drive link that doesn't exist
+	// Real temp file so we don't trip the "local file does not exist"
+	// branch (which fires BEFORE the RequireDrive check) — the
+	// intent of this test is to reach the RequireDrive branch only.
+	tmpFile := filepath.Join(t.TempDir(), "no_drive_link.mp3")
+	if err := os.WriteFile(tmpFile, []byte("audio"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
 	rec := &MediaRecord{
 		ID:        "test_media_002",
-		Name:      "Test Media Missing Drive",
-		DriveLink: "https://drive.google.com/file/d/missing/view",
-		LocalPath: "/tmp/test.mp4",
+		Name:      "Drive intent set, upload failed",
+		DriveLink: "", // upload attempt failed → no link produced
+		LocalPath: tmpFile,
 		FileHash:  "hash123",
 		Status:    "processed",
 	}
@@ -165,19 +184,31 @@ func TestMediaFinalizerFailsWhenDriveFileMissing(t *testing.T) {
 	opts := FinalizeOptions{
 		RequireLocal: true,
 		RequireHash:  true,
-		RequireDrive: true,
-		VerifyDB:     true,
+		RequireDrive: true,  // intent-driven: dest.FolderID was set upstream
+		VerifyDB:     false, // strict-fail path is what we're pinning (no DB write before the fail)
 	}
 
 	result, err := finalizer.Finalize(ctx, rec, opts)
 	if err != nil {
-		t.Errorf("Finalize failed: %v", err)
+		t.Fatalf("Finalize returned a Go error (finalizer surfaces failures via result, not err): %v", err)
 	}
 
-	// When drive file is missing, the finalizer may still succeed if RequireDrive is false
-	// or if the verifier returns false
-	t.Logf("Result: OK=%v, Status=%s, Error=%s, DriveUploaded=%v",
-		result.OK, result.Status, result.Error, result.DriveUploaded)
+	// Strict-fail: the lifecycle chain must NOT complete OK locally.
+	if result.OK {
+		t.Errorf("OK must be false when RequireDrive=true and DriveLink=\"\" — regression: drive silently demoted to optional")
+	}
+	if result.Status != "failed" {
+		t.Errorf("Status must be %q, got %q", "failed", result.Status)
+	}
+	if result.Error != "missing drive link after upload" {
+		t.Errorf("Error must be %q, got %q", "missing drive link after upload", result.Error)
+	}
+
+	// No DB row should be written — the RequireDrive check returns
+	// early BEFORE UpsertMedia, so the registry stays empty.
+	if len(registry.savedRecords) != 0 {
+		t.Errorf("no DB row should be written on a RequireDrive fail; got %d records in registry.savedRecords", len(registry.savedRecords))
+	}
 }
 
 func TestMediaFinalizerRequiresLocalPath(t *testing.T) {

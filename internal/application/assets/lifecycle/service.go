@@ -149,10 +149,18 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			Subfolder:    input.Subfolder,
 		}
 
+		// fix/voiceover-require-drive-on-intent: honour the caller's
+		// RequireDrive intent (set at the request boundary, e.g. the
+		// voiceover process passes true whenever dest.FolderID or the
+		// cfg-level voiceover folder is set). The legacy
+		// `driveLink != ""` fallback is preserved as an OR so callers
+		// that haven't yet started setting input.RequireDrive keep
+		// their existing behaviour. Once every entrypoint sets the
+		// field explicitly, the OR can drop.
 		finalizeOpts := artifacts.FinalizeOptions{
 			RequireLocal: false,
 			RequireHash:  false,
-			RequireDrive: driveLink != "",
+			RequireDrive: input.RequireDrive || driveLink != "",
 			VerifyDB:     true,
 		}
 
