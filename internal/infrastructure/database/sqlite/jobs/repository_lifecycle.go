@@ -9,6 +9,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -54,7 +55,7 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		}
 		return fmt.Errorf("complete: select: %w", err)
 	}
-	if err := validateOwnership(id, status, curWorkerID, curLeaseID, revision,
+	if err := validateOwnership(id, "complete", status, curWorkerID, curLeaseID, revision,
 		workerID, leaseID, int64(expectedRevision), job.StatusRunning); err != nil {
 		return err
 	}
@@ -71,6 +72,14 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		return fmt.Errorf("complete: update: %w", err)
 	}
 	if mustRowsAffected(res) == 0 {
+		// Race-after-validateOwnership (i.e. validateOwnership passed but a
+		// concurrent transaction committed before our UPDATE). The earlier
+		// validateOwnership-mismatch case is already counted via the bump
+		// inside validateOwnership itself when method="complete". This second
+		// bump covers the race window — never a double-count in practice
+		// because validateOwnership only bumps on FAILURE (early return),
+		// so by the time we reach here, validateOwnership has already passed.
+		observability.JobTransitionConflictTotal.WithLabelValues("complete").Inc()
 		return ErrTransitionConflict
 	}
 
@@ -109,7 +118,7 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		}
 		return fmt.Errorf("fail: select: %w", err)
 	}
-	if err := validateOwnership(id, status, curWorkerID, curLeaseID, revision,
+	if err := validateOwnership(id, "fail", status, curWorkerID, curLeaseID, revision,
 		workerID, leaseID, int64(expectedRevision), job.StatusRunning); err != nil {
 		return err
 	}
@@ -125,6 +134,11 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		return fmt.Errorf("fail: update: %w", err)
 	}
 	if mustRowsAffected(res) == 0 {
+		// Same race-window rationale as Complete's CAS-fence bump above:
+		// validateOwnership would have early-returned on its own mismatch,
+		// so we never double-count. See the comment block at Complete's
+		// CAS fence for the full invariant.
+		observability.JobTransitionConflictTotal.WithLabelValues("fail").Inc()
 		return ErrTransitionConflict
 	}
 
@@ -174,6 +188,14 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 		return fmt.Errorf("scheduleRetry: update: %w", err)
 	}
 	if mustRowsAffected(res) == 0 {
+		// PR-F: ScheduleRetry does NOT route through validateOwnership
+		// (its fenced UPDATE carries the CAS check inline). Bump here on
+		// the routed ErrTransitionConflict return. Distinct from the
+		// err-typed branch above (which returns a wrapped error, not
+		// ErrTransitionConflict) and from Retry's "max retries exhausted"
+		// recursion into Fail (which uses method="fail" via the
+		// validateOwnership path).
+		observability.JobTransitionConflictTotal.WithLabelValues("schedule_retry").Inc()
 		return ErrTransitionConflict
 	}
 
@@ -208,6 +230,11 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 		if j != nil && j.IsTerminal() {
 			return nil
 		}
+		// PR-F: Cancel does not route through validateOwnership; bump
+		// here before returning ErrTransitionConflict. The terminal-state
+		// short-circuit above (return nil) is NOT a conflict and
+		// intentionally not counted.
+		observability.JobTransitionConflictTotal.WithLabelValues("cancel").Inc()
 		return ErrTransitionConflict
 	}
 
@@ -261,6 +288,11 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 		return nil, fmt.Errorf("retry: %w", err)
 	}
 	if mustRowsAffected(res) == 0 {
+		// PR-F: Retry does not route through validateOwnership; bump
+		// here before returning ErrTransitionConflict. Distinct from
+		// the inner c.ErrPath branches (retries-exhausted / invalid
+		// status) which return pre-wrapped errors.
+		observability.JobTransitionConflictTotal.WithLabelValues("retry").Inc()
 		return nil, ErrTransitionConflict
 	}
 
@@ -317,7 +349,20 @@ func (r *SQLiteStore) AddEvent(ctx context.Context, id string, eventType, messag
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-func validateOwnership(jobID string, currentStatus job.Status,
+// validateOwnership checks that the current row matches the worker's
+// expected lease + revision + status before any fenced UPDATE proceeds.
+// PR-F / ADR-0002 §D6.7 (June 2026): the function takes a `method` arg
+// so ErrTransitionConflict returns can bump the canonical
+// job_transition_conflict_total{method=<name>} counter. The two
+// non-TransitionConflict paths (ErrInvalidState, ErrLeaseLost) do NOT
+// bump the counter — they're distinct signals
+// (worker-called-wrong-transition vs different-worker-on-same-row) and
+// merging them under "transition_conflict" would corrupt dashboard
+// semantics. The method label is bounded by the 2 callers that route
+// through this function (complete / fail); the other 3 fenced-UPDATE
+// paths (schedule_retry / cancel / retry) bump at their own CAS-fence
+// sites because they DO NOT pass through validateOwnership.
+func validateOwnership(jobID string, method string, currentStatus job.Status,
 	currentWorker, currentLease string, currentRevision int,
 	expectedWorker, expectedLease string, expectedRevision int64,
 	expectedStatus job.Status) error {
@@ -331,6 +376,7 @@ func validateOwnership(jobID string, currentStatus job.Status,
 		return fmt.Errorf("%w: lease mismatch", ErrLeaseLost)
 	}
 	if int64(currentRevision) != expectedRevision {
+		observability.JobTransitionConflictTotal.WithLabelValues(method).Inc()
 		return fmt.Errorf("%w: revision %d, expected %d", ErrTransitionConflict, currentRevision, expectedRevision)
 	}
 	return nil
