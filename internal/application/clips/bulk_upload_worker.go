@@ -368,7 +368,7 @@ func (w *BulkUploadWorker) processOneClip(
 		Category:       category,
 		MediaType:      asset.MediaType("video"),
 		SearchText:     deriveSearchText(cand),
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		Duration:       time.Duration(extractIntFromManifest(cand.Manifest, "duration_sec")) * time.Second,
 		CreatedAt:      now,
 		UpdatedAt:      now,

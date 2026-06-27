@@ -245,7 +245,7 @@ func TestIndexDeleteHandler_AlreadyDeletedLegacySuccess(t *testing.T) {
 	assets := &mockAssetDeleter{
 		getResult: &asset.Asset{
 			ID:             "clip-legacy-gone",
-			LifecycleState: asset.LifecycleState("deleted"),
+			LifecycleState: asset.LifecycleState("DELETED"),
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
@@ -267,7 +267,7 @@ func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 	assets := &mockAssetDeleter{
 		getResult: &asset.Asset{
 			ID:             "clip-to-delete",
-			LifecycleState: asset.StateReady,
+			LifecycleState: asset.StateActive,
 		},
 	}
 	qdrant := &mockQdrantDeleter{}
@@ -298,7 +298,7 @@ func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 // happened-before would be wrong.
 func TestIndexDeleteHandler_QdrantErrorPropagatesAsRetryable(t *testing.T) {
 	assets := &mockAssetDeleter{
-		getResult: &asset.Asset{ID: "clip-x", LifecycleState: asset.StateReady},
+		getResult: &asset.Asset{ID: "clip-x", LifecycleState: asset.StateActive},
 	}
 	qdrant := &mockQdrantDeleter{err: errors.New("qdrant 503")}
 	h := outboxhandlers.NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
@@ -322,7 +322,7 @@ func TestIndexDeleteHandler_QdrantErrorPropagatesAsRetryable(t *testing.T) {
 // time).
 func TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable(t *testing.T) {
 	assets := &mockAssetDeleter{
-		getResult: &asset.Asset{ID: "clip-y", LifecycleState: asset.StateReady},
+		getResult: &asset.Asset{ID: "clip-y", LifecycleState: asset.StateActive},
 		softErr:   errors.New("sqlite: database is locked"),
 	}
 	qdrant := &mockQdrantDeleter{}

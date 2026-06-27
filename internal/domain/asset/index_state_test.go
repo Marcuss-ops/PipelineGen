@@ -14,7 +14,7 @@ func TestIndexState_ValidAcceptsCanonicalSeven(t *testing.T) {
 		StateIndexing,
 		StateIndexed,
 		StateIndexFailed,
-		StateDeletePending,
+		StateIndexDeletePending,
 		StateDELETED,
 	}
 	for _, s := range canonical {
@@ -85,7 +85,7 @@ func TestIndexState_IsTerminal(t *testing.T) {
 	}
 
 	nonTerminal := []IndexState{
-		StateDiscovered, StateIndexPending, StateIndexing, StateDeletePending,
+		StateDiscovered, StateIndexPending, StateIndexing, StateIndexDeletePending,
 	}
 	for _, s := range nonTerminal {
 		t.Run(string(s)+"_not_terminal", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestIndexState_IsFailedTerminal(t *testing.T) {
 	}
 	for _, s := range []IndexState{
 		StateIndexed, StateDELETED, // successful terminals
-		StateDiscovered, StateIndexPending, StateIndexing, StateDeletePending, // non-terminal
+		StateDiscovered, StateIndexPending, StateIndexing, StateIndexDeletePending, // non-terminal
 	} {
 		t.Run(string(s)+"_not_failed_terminal", func(t *testing.T) {
 			if s.IsFailedTerminal() {
@@ -124,7 +124,7 @@ func TestIndexState_IsFailedTerminal(t *testing.T) {
 // idempotency_state check (not yet wired in PR6 but planned for
 // QDRANT-005 followup) treats both as "deletion already engaged".
 func TestIndexState_IsDeletedCanonical(t *testing.T) {
-	deleted := []IndexState{StateDeletePending, StateDELETED}
+	deleted := []IndexState{StateIndexDeletePending, StateDELETED}
 	for _, s := range deleted {
 		t.Run(string(s)+"_is_deleted", func(t *testing.T) {
 			if !s.IsDeletedCanonical() {
@@ -161,7 +161,7 @@ func TestIndexState_StringLiteralValues(t *testing.T) {
 		{StateIndexing, "INDEXING"},
 		{StateIndexed, "INDEXED"},
 		{StateIndexFailed, "INDEX_FAILED"},
-		{StateDeletePending, "DELETE_PENDING"},
+		{StateIndexDeletePending, "DELETE_PENDING"},
 		{StateDELETED, "DELETED"},
 	}
 	for _, c := range cases {

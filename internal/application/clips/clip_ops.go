@@ -75,7 +75,34 @@ var (
 	// "service unconfigured" (this) from "transient dispatcher
 	// reject" (the dispatcher's own runtime errors).
 	ErrJobsUnavailable = errors.New("cleanup requires jobs service (no sync pagination fallback — use POST /:source/cleanup)")
+
+	// ErrReconcileQueueUnavailable is the typed sentinel returned by
+	// Reconcile when s.jobs is nil OR the broker-side enqueue fails.
+	// PR-3 (June 2026): the previous log-only stub has been removed;
+	// every Reconcile call must enqueue a durable catalog.sync job.
+	// The HTTP handler maps this to
+	//   503 Service Unavailable + body {"ok": false,
+	//   "error": "RECONCILE_QUEUE_UNAVAILABLE", ...}
+	// so callers can detect "broker missing" distinctly from
+	// "transient broker reject" (the latter surfaces with a wrapped
+	// error from the underlying enqueue call).
+	//
+	// Prefix "RECONCILE_QUEUE_UNAVAILABLE:" is canonical so log
+	// greps + JSON-shape assertions can detect it without parsing
+	// the human-readable message.
+	ErrReconcileQueueUnavailable = errors.New("RECONCILE_QUEUE_UNAVAILABLE: reconcile requires jobs service (catalog.sync broker missing)")
 )
+
+// ── Reconcile result (PR-3, June 2026) ──────────────────────────────
+//
+// ReconcileResult is the typed reply of Reconcile. JobID is the
+// canonical catalog.sync broker-assigned id; callers poll
+// GetJobStatus(JobID) to track progress. Field kept minimal —
+// clients that need more detail pivot on GetJobStatus + the
+// full job record.
+type ReconcileResult struct {
+	JobID string
+}
 
 // (CleanupServicePort + JobsServicePort live below as interfaces that the
 // composition root will adapt to *deletion.DeletionService and
@@ -184,16 +211,74 @@ func NewClipOpsService(
 	}
 }
 
-// Reconcile reconciles database with Drive files. The api-side
-// behavior is preserved: returns "stub-ok" since catalogSync lives on
-// a separate path; callers wanting the orchestration path should hit
-// the route's alternative handler.
-func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string) {
-	if s.log != nil {
-		s.log.Info("Starting reconciliation",
-			zap.String("source", source),
-			zap.String("folder", folderID))
+// Reconcile reconciles database with Drive files via a real
+// catalog.sync job. PR-3 (June 2026): the previous log-only stub
+// has been removed — every Reconcile call now enqueues a durable
+// catalog.sync job that a worker consumes from the broker pool.
+// Fail-closed: every non-success path returns the typed sentinel
+// ErrReconcileQueueUnavailable so the HTTP handler can map it to
+// 503 + RECONCILE_QUEUE_UNAVAILABLE instead of presenting a fake
+// "ok" response. Specifically:
+//   - s.jobs is nil (broker port never wired) → sentinel
+//   - s.jobs.Enqueue returns ANY error (broker reachable but
+//     rejects — queue full, dispatcher down, malformed payload,
+//     context cancelled against the broker, etc.) → sentinel
+//
+// The user's fail-closed contract is "broker non disponibile →
+// 503 invece di mentire". Both "not wired" and "rejecting" count
+// as "broker unavailable" from the caller's perspective: a 500
+// would force clients to retry on the same idempotency they used
+// for the original call, while a 503 lets clients treat both as a
+// transient infrastructure signal and back off. The wrapped error
+// still carries the underlying broker message for operator log
+// forensics.
+//
+// Payload shape: matches the canonical
+// `internal/application/jobs/payloads.CatalogSyncPayload{}` JSON
+// fields verbatim (Source, FolderID, ForceFull — see
+// Payload: `source` JSON key, `Payload: `folder_id` JSON key,
+// `Payload: `force_full` JSON key). The composition-root adapter
+// converts the map[string]any into the typed payload on the way
+// into the broker, so the consumer
+// `catalogsync.Service.HandleJob` unmarshals it as the canonical
+// struct. Field naming MUST stay in lockstep with
+// application/jobs/payloads.go::CatalogSyncPayload — drift here
+// surfaces as a silent zero-value payload on the worker side.
+//
+// ActiveKey is empty: each Reconcile call produces a distinct
+// broker job_id even when source+folderID repeat. Reconciling the
+// same folder twice SHOULD land twice in the broker — duplicates
+// here are operator intent, not a deduplication surface. The folder
+// scope travels in the payload, not in ActiveKey.
+func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string) (*ReconcileResult, error) {
+	if s.jobs == nil {
+		return nil, ErrReconcileQueueUnavailable
 	}
+	resp, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
+		Type: job.TypeCatalogSync,
+		Payload: map[string]any{
+			"source":     source,
+			"folder_id":  folderID,
+			"force_full": true,
+		},
+		Priority: 5,
+	})
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("reconcile: enqueue catalog.sync failed (broker unreachable / rejected)",
+				zap.String("source", source),
+				zap.String("folder_id", folderID),
+				zap.Error(err))
+		}
+		return nil, fmt.Errorf("%w: %v", ErrReconcileQueueUnavailable, err)
+	}
+	if s.log != nil {
+		s.log.Info("reconcile: catalog.sync job enqueued",
+			zap.String("source", source),
+			zap.String("folder_id", folderID),
+			zap.String("job_id", resp.ID))
+	}
+	return &ReconcileResult{JobID: resp.ID}, nil
 }
 
 // CleanupInput captures the request shape for Cleanup. The HTTP

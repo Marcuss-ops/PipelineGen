@@ -82,7 +82,7 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 			MediaType:      asset.MediaType("video"),
 			Source:         asset.Source("nvidia-animation"),
 			CreatedAt:      time.Now(),
-			LifecycleState: asset.StateReady,
+			LifecycleState: asset.StateActive,
 		}
 		clip.SetDriveFileID(driveVideoID)
 		clip.SetDriveLink(driveLink)

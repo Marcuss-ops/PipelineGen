@@ -124,7 +124,7 @@ func TestEnqueueAndDelete_EmitsV1Envelope(t *testing.T) {
 	if stateLog.ID != assetID {
 		t.Errorf("SetIndexStateTx id: want %q got %q", assetID, stateLog.ID)
 	}
-	if stateLog.State != asset.StateDeletePending {
+	if stateLog.State != asset.StateIndexDeletePending {
 		t.Errorf("SetIndexStateTx state: want DELETE_PENDING got %q", stateLog.State)
 	}
 

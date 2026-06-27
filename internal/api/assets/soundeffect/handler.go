@@ -270,7 +270,7 @@ func (h *Handler) Generate(c *gin.Context) {
 		MediaType:      asset.MediaType("sound_effect"),
 		Source:         asset.Source("sound_effect"),
 		Duration:       time.Duration(duration) * time.Second,
-		LifecycleState: asset.StateReady,
+		LifecycleState: asset.StateActive,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 		Tags:           tags,

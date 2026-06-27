@@ -485,7 +485,7 @@ func TestE2E_TransactionalAtomicity_DeleteFlow(t *testing.T) {
 		t.Fatalf("expected 1 SetIndexStateTx call, got %d", len(clips.stateLog))
 	}
 	st := clips.stateLog[0]
-	if st.State != asset.StateDeletePending {
+	if st.State != asset.StateIndexDeletePending {
 		t.Errorf("SetIndexStateTx state: want DELETE_PENDING got %q", st.State)
 	}
 	if st.ID != assetID {

@@ -260,7 +260,7 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 	// re-write of DELETE_PENDING on retry is itself idempotent
 	// (column already holds DELETE_PENDING) so no transition noise.
 	if h.assetDeleter != nil {
-		if err := h.assetDeleter.SetIndexState(ctx, req.AssetID, asset.StateDeletePending); err != nil {
+		if err := h.assetDeleter.SetIndexState(ctx, req.AssetID, asset.StateIndexDeletePending); err != nil {
 			// SetIndexState failure is retryable — same backoff path
 			// as Qdrant errors. The retry re-runs SetIndexState →
 			// Qdrant → SoftDelete → SetIndexState(DELETED). The only

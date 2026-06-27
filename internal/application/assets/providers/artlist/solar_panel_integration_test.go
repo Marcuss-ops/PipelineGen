@@ -127,7 +127,7 @@ func TestSolarPanelSearch(t *testing.T) {
 			SourceURL:      c.url,
 			ClipPageURL:    c.page,
 			Source:         "artlist",
-			LifecycleState: asset.StateReady,
+			LifecycleState: asset.StateActive,
 			Tags:           []string{"solar", "panel"},
 		}
 		clip.SetDownloadLink(c.url)

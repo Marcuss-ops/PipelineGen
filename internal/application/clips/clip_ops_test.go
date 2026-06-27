@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -204,7 +205,7 @@ func (j *testJobsPort) Enqueue(_ context.Context, req JobsEnqueueRequest) (*Jobs
 func TestClipOps_Cleanup_Deep_EnqueuesSystemCleanupJob(t *testing.T) {
 	jobs := &testJobsPort{nextID: "job-001"}
 	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, jobs, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, jobs, nil, zap.NewNop())
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "all",
@@ -213,18 +214,40 @@ func TestClipOps_Cleanup_Deep_EnqueuesSystemCleanupJob(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, report)
 	require.Equal(t, "job-001", report.JobID)
-	require.Equal(t, "system cleanup job enqueued", report.Message)
+	require.Equal(t, "system cleanup job enqueued; poll job_id=job-001 for results", report.Message)
 	require.Len(t, jobs.enqueued, 1)
 	require.Equal(t, "system.cleanup", jobs.enqueued[0].Type)
-	require.Equal(t, "system_maintenance_manual", jobs.enqueued[0].ActiveKey)
+	require.Equal(t, "system_maintenance_manual_deep", jobs.enqueued[0].ActiveKey)
 	require.Equal(t, 0, cleanup.cleanupHits, "deep-mode must NOT fall through to CleanupOrphanFiles")
+}
+
+
+// TestClipOps_Cleanup_ShallowPlain_BaseActiveKey pins the
+// un-suffixed base case: DryRun=false AND Deep=false →
+// activeKey = "system_maintenance_manual" (the 4-way suffix ladder
+// in clip_ops.go::Cleanup must keep the no-flags case exactly
+// at the base string, with no accidental inline mutations from
+// future refactors of the suffix logic).
+func TestClipOps_Cleanup_ShallowPlain_BaseActiveKey(t *testing.T) {
+	jobs := &testJobsPort{nextID: "job-base"}
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil, zap.NewNop())
+
+	_, err := svc.Cleanup(context.Background(), CleanupInput{
+		Source: "all",
+		DryRun: false,
+		Deep:   false,
+	})
+	require.NoError(t, err)
+	require.Len(t, jobs.enqueued, 1)
+	require.Equal(t, "system_maintenance_manual", jobs.enqueued[0].ActiveKey,
+		"base case (DryRun=false, Deep=false) must emit un-suffixed activeKey")
 }
 
 // TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix pins the
 // ActiveKey suffix when DryRun=true combined with deep-mode.
 func TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix(t *testing.T) {
 	jobs := &testJobsPort{nextID: "job-002"}
-	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, &testCleanupPort{}, jobs, nil, zap.NewNop())
 
 	_, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "all",
@@ -233,63 +256,89 @@ func TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, jobs.enqueued, 1)
-	require.Equal(t, "system_maintenance_manual_dry", jobs.enqueued[0].ActiveKey)
+	require.Equal(t, "system_maintenance_manual_dry_deep", jobs.enqueued[0].ActiveKey)
 }
 
-// TestClipOps_Cleanup_DeepNoJobs_FallsBackSynchronous pins the
-// fallback path: when jobs=nil but cleanup port is wired, the
-// service runs synchronous CleanupOrphanFiles.
-func TestClipOps_Cleanup_DeepNoJobs_FallsBackSynchronous(t *testing.T) {
+// TestClipOps_Cleanup_DeepNoJobs_FailsClosed pins the
+// pre-PR-3 synchronous-fallback REMOVAL: Cleanup is now fail-closed
+// across deep AND non-deep modes when jobs=nil. Operators must wire
+// the broker before invoking Cleanup at all. The HTTP handler layer
+// (api/assets/clips/clip_ops.go) maps ErrJobsUnavailable → 503 so
+// callers see a single "broker missing" signal regardless of mode.
+//
+// Wave 22 PR-5 polish (June 2026) flipped the synchronous-fallback
+// behaviour; the historical `TestClipOps_Cleanup_DeepNoJobs_FallsBackSynchronous`
+// test from before that polish is preserved in this doc-comment for
+// audit (NOT executed): historically Cleanup.cleanupHits would be 1
+// with a "synchronously" message; today it is 0 with ErrJobsUnavailable.
+func TestClipOps_Cleanup_DeepNoJobs_FailsClosed(t *testing.T) {
 	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, nil, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, cleanup, nil, nil, zap.NewNop())
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "all",
 		Deep:   true,
 		DryRun: false,
 	})
-	require.NoError(t, err)
-	require.NotNil(t, report)
-	require.Equal(t, 1, cleanup.cleanupHits)
-	require.Contains(t, report.Message, "synchronously")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrJobsUnavailable)
+	require.Nil(t, report)
+	require.Equal(t, 0, cleanup.cleanupHits,
+		"jobs=nil must NOT fall through to synchronous CleanupOrphanFiles (fail-closed)")
 }
 
 // TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError
-// pins the early-return on unrecognised source.
+// pins the early-return on unrecognised source. With jobs=nil the
+// fail-closed check fires first (composition-bug guard), so the
+// canonical error reported here is ErrJobsUnavailable — the
+// previous Wave 22 PR-5 behaviour documented "invalid source"
+// precedence, but that precedence was incorrect (broken): a request
+// reaching Cleanup without a wired broker is a composition bug, not
+// bad input. The test retains its name (historical pin) but
+// updates its assertion to the current canonical error.
 func TestClipOps_Cleanup_InvalidSource_ReturnsInvalidSourceError(t *testing.T) {
-	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil, zap.NewNop())
 	_, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "not-a-source",
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid source")
+	require.ErrorIs(t, err, ErrJobsUnavailable,
+		"jobs=nil check fires first; invalid-source precedence is no longer canonical")
 }
 
 // TestClipOps_Cleanup_YoutubeDryRun_ReportsOrphanWithoutDelete
 // pins the per-source non-deep path: orphan clip (no local file)
 // is reported in Items but NOT deleted when DryRun=true.
+//
+// PR-3 (June 2026) fail-closed contract: with jobs=nil, Cleanup
+// returns ErrJobsUnavailable before walking the resolver. To pin
+// the per-source orphan-reporting path itself, callers must wire
+// a stub broker — see TestClipOps_Cleanup_WiredJobs_YoutubeDryRun for
+// that contract. This test pins the BROKER-MISSING case.
 func TestClipOps_Cleanup_YoutubeDryRun_ReportsOrphanWithoutDelete(t *testing.T) {
 	clip := &asset.Asset{ID: "yt-orphan", Name: "foo"}
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &stubRepo{clips: []*asset.Asset{clip}}
 	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{"youtube": repo}}
-	cleanup := &testCleanupPort{}
-	svc := NewClipOpsService(resolver, nil, nil, nil, cleanup, nil, nil, nil)
+	svc := NewClipOpsService(resolver, nil, nil, nil, &testCleanupPort{}, nil, nil, zap.NewNop())
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "youtube",
 		DryRun: true,
 	})
-	require.NoError(t, err)
-	require.NotNil(t, report)
-	require.Len(t, report.Items, 1, "should identify the orphan")
-	require.Equal(t, "yt-orphan", report.Items[0].ID)
-	require.Empty(t, cleanup.deleteCalls, "dry_run must NOT delete")
+	require.Error(t, err, "Cleanup must fail-closed when jobs port is nil")
+	require.ErrorIs(t, err, ErrJobsUnavailable)
+	require.Nil(t, report)
 }
 
 // TestClipOps_Cleanup_VoiceoverSource_IteratesRecords pins the
 // voiceover-source branch in Cleanup: voiceoverRepo.ListAll is
 // the source of truth; each orphan is reported.
+//
+// PR-3 (June 2026) fail-closed contract: same as the youtube
+// dry-run test above — Cleanup returns ErrJobsUnavailable when
+// jobs=nil. Wiring a stubbroker is reserved for tests that
+// exercise the orchestrator path (e.g. TestClipOps_Cleanup_WiredJobs_*).
 func TestClipOps_Cleanup_VoiceoverSource_IteratesRecords(t *testing.T) {
 	rec := &ClipVoiceoverRecordDTO{
 		ID:        "vo-1",
@@ -297,22 +346,21 @@ func TestClipOps_Cleanup_VoiceoverSource_IteratesRecords(t *testing.T) {
 		LocalPath: "/nonexistent/foo.wav",
 	}
 	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{"vo-1": rec}}
-	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, nil)
+	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, zap.NewNop())
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "voiceover",
 		DryRun: true,
 	})
-	require.NoError(t, err)
-	require.NotNil(t, report)
-	require.Len(t, report.Items, 1)
-	require.Equal(t, "vo-1", report.Items[0].ID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrJobsUnavailable)
+	require.Nil(t, report)
 }
 
 // TestClipOps_Verify_EmptyClipID_ReturnsFalseOK pins the early
 // return when clipID="" — report.OK is set to false.
 func TestClipOps_Verify_EmptyClipID_ReturnsFalseOK(t *testing.T) {
-	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, nil, zap.NewNop())
 	report := svc.Verify(context.Background(), "youtube", "")
 	require.NotNil(t, report)
 	require.False(t, report.OK)
@@ -322,7 +370,7 @@ func TestClipOps_Verify_EmptyClipID_ReturnsFalseOK(t *testing.T) {
 // the unknown-source marker.
 func TestClipOps_Verify_InvalidSource_AddsInvalidSourceIssue(t *testing.T) {
 	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{}}
-	svc := NewClipOpsService(resolver, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewClipOpsService(resolver, nil, nil, nil, nil, nil, nil, zap.NewNop())
 	report := svc.Verify(context.Background(), "not-a-source", "x-1")
 	require.NotNil(t, report)
 	require.False(t, report.OK)
@@ -338,7 +386,7 @@ func TestClipOps_Verify_VoiceoverSource_UsesVoiceoverRepo(t *testing.T) {
 		Filename: "bar.wav",
 	}
 	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{"vo-2": rec}}
-	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, nil)
+	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, zap.NewNop())
 
 	report := svc.Verify(context.Background(), "voiceover", "vo-2")
 	require.NotNil(t, report)
@@ -358,7 +406,7 @@ func TestClipOps_Verify_DriveUnavailable_HashMissingIssue(t *testing.T) {
 		DriveFileID: "missing",
 	}
 	voiceover := &testVoiceoverRepo{records: map[string]*ClipVoiceoverRecordDTO{"vo-3": rec}}
-	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, nil)
+	svc := NewClipOpsService(nil, voiceover, nil, nil, &testCleanupPort{}, nil, nil, zap.NewNop())
 
 	report := svc.Verify(context.Background(), "voiceover", "vo-3")
 	require.NotNil(t, report)

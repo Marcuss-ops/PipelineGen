@@ -214,7 +214,7 @@ func TestHandler_Cleanup_200_ReportsOrphan(t *testing.T) {
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &handlerClipsRepo{clips: []*asset.Asset{clip}}
 	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{"youtube": repo}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -239,7 +239,7 @@ func TestHandler_Cleanup_200_ReportsOrphan(t *testing.T) {
 // Handler 200 + jobs.Enqueue receives a system.cleanup request.
 func TestHandler_Cleanup_200_DeepEnqueue(t *testing.T) {
 	jobs := &handlerJobsPort{nextID: "job-xyz"}
-	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -263,7 +263,7 @@ func TestHandler_Cleanup_200_DeepEnqueue(t *testing.T) {
 // param promotes the request to deep-mode.
 func TestHandler_Cleanup_200_QueryDeepOverridesBody(t *testing.T) {
 	jobs := &handlerJobsPort{nextID: "job-from-query"}
-	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -283,7 +283,7 @@ func TestHandler_Cleanup_200_QueryDeepOverridesBody(t *testing.T) {
 // handler maps to 400 via mapClipOpsError.
 func TestHandler_Cleanup_400_InvalidSource(t *testing.T) {
 	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -299,7 +299,7 @@ func TestHandler_Cleanup_400_InvalidSource(t *testing.T) {
 // TestHandler_Cleanup_400_MalformedJSON pins the bind-error
 // path: handler maps JSON parse errors to 400 Bad Request.
 func TestHandler_Cleanup_400_MalformedJSON(t *testing.T) {
-	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, &handlerJobsPort{}, zap.NewNop())
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, &handlerJobsPort{}, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -334,7 +334,7 @@ func TestHandler_Cleanup_VoiceoverSource_ReportsOrphan(t *testing.T) {
 		LocalPath: "/nonexistent/foo.wav",
 	}
 	voiceover := &handlerVoiceoverRepo{records: map[string]*appclips.ClipVoiceoverRecordDTO{"vo-1": rec}}
-	svc := appclips.NewClipOpsService(nil, voiceover, nil, nil, &handlerCleanupPort{}, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(nil, voiceover, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -361,7 +361,7 @@ func TestHandler_VerifyClip_200_ResponseShape(t *testing.T) {
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &handlerClipsRepo{clips: []*asset.Asset{clip}}
 	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{"youtube": repo}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
