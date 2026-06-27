@@ -44,6 +44,37 @@ type SystemCleanupPayload struct {
 	DryRun bool `json:"dry_run"`
 }
 
+// AssetsCleanupPayload is sent with JobTypeAssetsCleanup.
+//
+// PR 5 (June 2026 — codex/clips-cleanup-job): paginated async
+// cleanup handler payload. Field set mirrors the spec list
+// verbatim (source, dry_run, check_local, check_drive, repair,
+// delete, batch_size) plus a cursor field for resume semantics.
+// The handler iterates in batches of 250 (configurable via
+// BatchSize, capped at 250 by NewCleaner) and persists the
+// cursor inside the payload — operators can pre-populate the
+// cursor.LastOffset to resume from a checkpoint via the jobs
+// Service Get → patch Payload → Enqueue (same ActiveKey) flow.
+type AssetsCleanupPayload struct {
+	Source     string                `json:"source"`
+	DryRun     bool                  `json:"dry_run,omitempty"`
+	CheckLocal bool                  `json:"check_local,omitempty"`
+	CheckDrive bool                  `json:"check_drive,omitempty"`
+	Repair     bool                  `json:"repair,omitempty"`
+	Delete     bool                  `json:"delete,omitempty"`
+	BatchSize  int                   `json:"batch_size,omitempty"`
+	Cursor     AssetsCleanupCursor   `json:"cursor"`
+}
+
+// AssetsCleanupCursor is the per-batch pagination checkpoint
+// for the assets.cleanup handler. Persisted inside the payload
+// JSON; advanced by the handler after every completed batch.
+type AssetsCleanupCursor struct {
+	Source     string `json:"source,omitempty"`
+	BatchSize  int    `json:"batch_size,omitempty"`
+	LastOffset int    `json:"last_offset,omitempty"`
+}
+
 // VoiceoverBatchPayload is sent with JobTypeVoiceoverBatch.
 type VoiceoverBatchPayload struct {
 	Project     string   `json:"project"`
@@ -122,7 +153,7 @@ type DriveFolderSyncPayload struct {
 type TypedPayload interface {
 	MediaStockPayload | YouTubeClipExtractPayload |
 		CatalogSyncPayload |
-		SystemCleanupPayload | VoiceoverBatchPayload |
+		SystemCleanupPayload | AssetsCleanupPayload | VoiceoverBatchPayload |
 		BooksProcessPayload | LessonsProcessPayload |
 		MediaReindexPayload | ArtlistRunPayload | BulkUploadYouTubeClipsPayload |
 		DriveFolderSyncPayload

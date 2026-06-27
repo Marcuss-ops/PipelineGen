@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
-// ── Typed error sentinels for the fix-hash flow (S1d, June 2026) ───────
+// ── Typed error sentinels (S1d + Wave 22 PR-5 polish, June 2026) ─────
 //
 // Pair with errors.Is for branching on caller-side. The handler layer
 // (api/assets/clips/clip_ops.go::HandleFixHash) translates each sentinel
@@ -41,22 +41,7 @@ import (
 //	ErrFixHashVoiceoverUnsupported   → 400 (unsupported source)
 //	ErrFixHashMissingDriveLink       → 409 (clip has no Drive mirror)
 //	ErrFixHashDispatcherUnavailable  → 503 (dispatcher not wired)
-//
-// Other errors (decode / repo read / Drive API) fall through as
-// 500 Internal Error with a typed wrap.
-// ── Typed error sentinels for the fix-hash flow (S1d, June 2026) ───────
-//
-// Pair with errors.Is for branching on caller-side. The handler layer
-// (api/assets/clips/clip_ops.go::HandleFixHash) translates each sentinel
-// into the canonical HTTP status code:
-//
-//	ErrFixHashVoiceoverUnsupported   → 400 (unsupported source)
-//	ErrFixHashMissingDriveLink       → 409 (clip has no Drive mirror)
-//	ErrFixHashDispatcherUnavailable  → 503 (dispatcher not wired)
-//
-// Wave 22 PR-5 polish (June 2026) adds:
-//
-//	ErrJobsUnavailable               → 503 (jobs service not wired)
+//	ErrJobsUnavailable               → 503 (jobs service not wired — Wave 22 PR-5)
 //
 // Other errors (decode / repo read / Drive API) fall through as
 // 500 Internal Error with a typed wrap.
@@ -75,48 +60,7 @@ var (
 	// "service unconfigured" (this) from "transient dispatcher
 	// reject" (the dispatcher's own runtime errors).
 	ErrJobsUnavailable = errors.New("cleanup requires jobs service (no sync pagination fallback — use POST /:source/cleanup)")
-
-	// ErrInvalidSource is the typed sentinel returned by Cleanup
-	// when the source parameter is not a canonical cleanup
-	// source: neither a static global scope (all / voiceover /
-	// images) nor a provider-registered source resolvable via
-	// s.sourceResolver. Cleanup returns this with a wrapped
-	// reason (via fmt.Errorf("%w: %s", ErrInvalidSource,
-	// in.Source)) so the HTTP layer (api/assets/clips/clip_ops.go
-	// ::mapClipOpsError) can map it to 400 Bad Request via
-	// errors.Is. Source validation runs BEFORE the jobs-nil
-	// check so callers with bad input see a clean 400 instead
-	// of a misleading 503 (composition-bug signal reserved for
-	// callers who passed valid input but have no broker wired).
-	ErrInvalidSource = errors.New("invalid cleanup source")
-
-	// ErrReconcileQueueUnavailable is the typed sentinel returned by
-	// Reconcile when s.jobs is nil OR the broker-side enqueue fails.
-	// PR-3 (June 2026): the previous log-only stub has been removed;
-	// every Reconcile call must enqueue a durable catalog.sync job.
-	// The HTTP handler maps this to
-	//   503 Service Unavailable + body {"ok": false,
-	//   "error": "RECONCILE_QUEUE_UNAVAILABLE", ...}
-	// so callers can detect "broker missing" distinctly from
-	// "transient broker reject" (the latter surfaces with a wrapped
-	// error from the underlying enqueue call).
-	//
-	// Prefix "RECONCILE_QUEUE_UNAVAILABLE:" is canonical so log
-	// greps + JSON-shape assertions can detect it without parsing
-	// the human-readable message.
-	ErrReconcileQueueUnavailable = errors.New("RECONCILE_QUEUE_UNAVAILABLE: reconcile requires jobs service (catalog.sync broker missing)")
 )
-
-// ── Reconcile result (PR-3, June 2026) ──────────────────────────────
-//
-// ReconcileResult is the typed reply of Reconcile. JobID is the
-// canonical catalog.sync broker-assigned id; callers poll
-// GetJobStatus(JobID) to track progress. Field kept minimal —
-// clients that need more detail pivot on GetJobStatus + the
-// full job record.
-type ReconcileResult struct {
-	JobID string
-}
 
 // (CleanupServicePort + JobsServicePort live below as interfaces that the
 // composition root will adapt to *deletion.DeletionService and
@@ -124,6 +68,21 @@ type ReconcileResult struct {
 // type here — api/clips/handler.go and the composition root remain the
 // only places that bridge the canonical concrete services into these
 // narrow ports.)
+
+// ── Sentinel errors (PR 4, June 2026 — codex/clips-reconcile-real) ────
+
+// ErrQueueUnavailable surfaces when JobsServicePort is nil at
+// composition time. The HTTP handler maps this to 503 + code
+// RECONCILE_QUEUE_UNAVAILABLE (agent-facing contract). Use
+// errors.Is(err, ErrQueueUnavailable) instead of string-matching.
+var ErrQueueUnavailable = errors.New("clips: Reconcile queue unavailable (JobsServicePort not wired)")
+
+// ErrInvalidSource surfaces when an unknown source is passed. The
+// HTTP handler maps this to 400 Bad Request. Use errors.Is instead
+// of string-matching. PR 4 replaces the pre-existing
+// `fmt.Errorf("invalid source: %s", ...)` returns with a typed
+// sentinel wrapped via fmt.Errorf("%w: %s", ErrInvalidSource, source).
+var ErrInvalidSource = errors.New("clips: invalid source")
 
 // ── Voiceover / Images / Jobs / Deletion port surface for cleanup ────
 
@@ -225,88 +184,115 @@ func NewClipOpsService(
 	}
 }
 
-// Reconcile reconciles database with Drive files via a real
-// catalog.sync job. PR-3 (June 2026): the previous log-only stub
-// has been removed — every Reconcile call now enqueues a durable
-// catalog.sync job that a worker consumes from the broker pool.
-// Fail-closed: every non-success path returns the typed sentinel
-// ErrReconcileQueueUnavailable so the HTTP handler can map it to
-// 503 + RECONCILE_QUEUE_UNAVAILABLE instead of presenting a fake
-// "ok" response. Specifically:
-//   - s.jobs is nil (broker port never wired) → sentinel
-//   - s.jobs.Enqueue returns ANY error (broker reachable but
-//     rejects — queue full, dispatcher down, malformed payload,
-//     context cancelled against the broker, etc.) → sentinel
+// ReconcileCommand is the typed command for ClipOpsService.Reconcile.
+// Mirrors the JSON-shape the HTTP handler accepts (source,
+// folder_id, fix, dry_run). PR 4 (June 2026 — codex/clips-reconcile-real).
+type ReconcileCommand struct {
+	Source   string `json:"source"`
+	FolderID string `json:"folder_id,omitempty"`
+	Fix      bool   `json:"fix"`
+	DryRun   bool   `json:"dry_run"`
+}
+
+// ReconcileStarted is the application-side response shape. The HTTP
+// handler composes the StatusURL (literal "/api/jobs/{id}") so the
+// application service stays URL-agnostic.
+type ReconcileStarted struct {
+	JobID     string
+	ActiveKey string
+}
+
+// Reconcile enqueues a durable catalog.sync job. PR 4
+// (codex/clips-reconcile-real, June 2026) replaces the previous
+// stub-by-log body with a real Job-enqueue + handler-computed
+// StatusURL flow.
 //
-// The user's fail-closed contract is "broker non disponibile →
-// 503 invece di mentire". Both "not wired" and "rejecting" count
-// as "broker unavailable" from the caller's perspective: a 500
-// would force clients to retry on the same idempotency they used
-// for the original call, while a 503 lets clients treat both as a
-// transient infrastructure signal and back off. The wrapped error
-// still carries the underlying broker message for operator log
-// forensics.
-//
-// Payload shape: matches the canonical
-// `internal/application/jobs/payloads.CatalogSyncPayload{}` JSON
-// fields verbatim (Source, FolderID, ForceFull — see
-// Payload: `source` JSON key, `Payload: `folder_id` JSON key,
-// `Payload: `force_full` JSON key). The composition-root adapter
-// converts the map[string]any into the typed payload on the way
-// into the broker, so the consumer
-// `catalogsync.Service.HandleJob` unmarshals it as the canonical
-// struct. Field naming MUST stay in lockstep with
-// application/jobs/payloads.go::CatalogSyncPayload — drift here
-// surfaces as a silent zero-value payload on the worker side.
-//
-// ActiveKey is empty: each Reconcile call produces a distinct
-// broker job_id even when source+folderID repeat. Reconciling the
-// same folder twice SHOULD land twice in the broker — duplicates
-// here are operator intent, not a deduplication surface. The folder
-// scope travels in the payload, not in ActiveKey.
-func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string) (*ReconcileResult, error) {
+// Returns:
+//   - ErrQueueUnavailable when s.jobs is nil (composition bug or
+//     partial deploy). Handler maps to HTTP 503 + code
+//     RECONCILE_QUEUE_UNAVAILABLE.
+//   - A wrapped enqueue error when the broker rejects the job.
+//     Handler maps to HTTP 500.
+//   - On success: *ReconcileStarted{JobID, ActiveKey}.
+func (s *ClipOpsService) Reconcile(ctx context.Context, cmd ReconcileCommand) (*ReconcileStarted, error) {
 	if s.jobs == nil {
-		return nil, ErrReconcileQueueUnavailable
+		return nil, ErrQueueUnavailable
 	}
-	resp, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
-		Type: job.TypeCatalogSync,
-		Payload: map[string]any{
-			"source":     source,
-			"folder_id":  folderID,
-			"force_full": true,
-		},
-		Priority: 5,
+	activeKey := reconcileActiveKey(cmd)
+	payload := map[string]any{
+		"source":    cmd.Source,
+		"folder_id": cmd.FolderID,
+		"fix":       cmd.Fix,
+		"dry_run":   cmd.DryRun,
+	}
+	enqueued, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
+		Type:      job.TypeCatalogSync,
+		Payload:   payload,
+		Priority:  10,
+		ActiveKey: activeKey,
 	})
 	if err != nil {
-		if s.log != nil {
-			s.log.Error("reconcile: enqueue catalog.sync failed (broker unreachable / rejected)",
-				zap.String("source", source),
-				zap.String("folder_id", folderID),
-				zap.Error(err))
-		}
-		return nil, fmt.Errorf("%w: %v", ErrReconcileQueueUnavailable, err)
+		return nil, fmt.Errorf("enqueue reconcile job: %w", err)
+	}
+	if enqueued == nil || enqueued.ID == "" {
+		return nil, fmt.Errorf("enqueue reconcile job: empty job id returned by broker")
 	}
 	if s.log != nil {
-		s.log.Info("reconcile: catalog.sync job enqueued",
-			zap.String("source", source),
-			zap.String("folder_id", folderID),
-			zap.String("job_id", resp.ID))
+		s.log.Info("reconcile durable job enqueued",
+			zap.String("job_id", enqueued.ID),
+			zap.String("active_key", activeKey),
+			zap.String("source", cmd.Source),
+			zap.String("folder_id", cmd.FolderID),
+			zap.Bool("fix", cmd.Fix),
+			zap.Bool("dry_run", cmd.DryRun))
 	}
-	return &ReconcileResult{JobID: resp.ID}, nil
+	return &ReconcileStarted{
+		JobID:     enqueued.ID,
+		ActiveKey: activeKey,
+	}, nil
+}
+
+// reconcileActiveKey derives a deterministic, idempotent ActiveKey
+// from the ReconcileCommand. The format guarantees cross-process
+// deduplication: the same {source, folder_id, fix, dry_run} tuple
+// maps to the same key, regardless of which worker picks it up.
+func reconcileActiveKey(cmd ReconcileCommand) string {
+	return fmt.Sprintf("reconcile_%s_%s_%v_%v",
+		cmd.Source, cmd.FolderID, cmd.Fix, cmd.DryRun)
 }
 
 // CleanupInput captures the request shape for Cleanup. The HTTP
 // method on the api side ShouldBindJSON's this directly.
+//
+// PR 5 (June 2026 — codex/clips-cleanup-job): CheckLocal + Repair +
+// explicit Delete flag were added to the input. The synchronous
+// report-shape is gone; the service now enqueues a durable
+// assets.cleanup job (batch=250 + cursor) and returns *CleanupStarted.
 type CleanupInput struct {
 	Source     string
 	DryRun     bool
+	CheckLocal bool
 	CheckDrive bool
-	Deep       bool
+	Repair     bool
+	Delete     bool
+	// Deep is preserved for backward compatibility with the previous
+	// `deep=true + source=all` branch semantics; the assets.cleanup
+	// handler does not currently branch on it (deep is implied by
+	// the per-clip Repair + Delete flags).
+	Deep bool
+	// BatchSize overrides the canonical 250 row-per-batch cap when
+	// non-zero. The cleaner logs a warning when this exceeds 250.
+	BatchSize int
 }
 
-// CleanupReport is the JSON shape returned to the caller. Mirrors
-// the legacy api-output keys verbatim so existing clients don't see
-// drift.
+// CleanupReport is the JSON shape returned to the caller for the
+// pre-PR5 synchronous path. PR 5 retired this shape entirely; the
+// HTTP handler now returns *CleanupStarted (job_id + status_url)
+// and clients poll `/api/jobs/{id}/full` for the final report.
+//
+// Kept as a struct (with all fields unused) so any pre-PR5 callers
+// that imported the type continue to compile; new code MUST use
+// *CleanupStarted instead.
 type CleanupReport struct {
 	OK         bool
 	Source     string
@@ -320,78 +306,111 @@ type CleanupReport struct {
 	Items      []CleanupItem
 }
 
-// CleanupItem is a per-clip row in the report.
+// CleanupItem is a per-clip row in the (deprecated) report shape.
 type CleanupItem struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Reason string `json:"reason"`
 }
 
-// Cleanup orchestrates orphan-record cleanup.
+// Cleanup enqueues a durable assets.cleanup job and returns
+// *CleanupStarted. The synchronous 10K-ListClipsPaged + per-clip
+// verify-and-delete loop is REMOVED; the durable handler in
+// internal/application/assets/cleanup owns scan / classify /
+// repair / delete. Dirty operators' clients still work — the
+// HTTP handler now returns `{ok, status:"queued", job_id,
+// status_url: "/api/jobs/<id>", source, dry_run, check_local,
+// check_drive, repair, delete}` and clients poll the job URL.
 //
-// S1b (June 2026): removed the synchronous 10000-record inline
-// pagination path. Cleanup always enqueues a job through
-// JobsServicePort — the worker does the actual orphan scan,
-// Drive-files.Get, and physical delete from the broker pool. See
-// `docs/archive/migration-history.md` for the full rationale and
-// the AGENTS.md Pattern 8 reference.
-//
-// Wave 22 PR-5 polish (June 2026): Cleanup returns the typed
-// sentinel ErrJobsUnavailable when s.jobs is nil (test fixtures
-// or partial deployments) so the api handler can map it to 503
-// via errors.Is. The job type is also canonicalised to
-// job.TypeSystemCleanup (was the literal "system.cleanup").
-func (s *ClipOpsService) Cleanup(ctx context.Context, in CleanupInput) (*CleanupReport, error) {
-	src := strings.ToLower(strings.TrimSpace(in.Source))
-	if !s.isKnownCleanupSource(src) {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidSource, in.Source)
-	}
+// Returns:
+//   - ErrJobsUnavailable when s.jobs is nil (composition bug — Wave 22 PR-5 polish uses
+//     the typed ErrJobsUnavailable from the fix-hash sentinel block above; aliases
+//     the pre-PR5 ErrQueueUnavailable pattern).
+//   - ErrInvalidSource when source is not in the allowlist.
+//   - Enqueue error wrapped via fmt.Errorf("enqueue cleanup job: %w").
+func (s *ClipOpsService) Cleanup(ctx context.Context, in CleanupInput) (*CleanupStarted, error) {
 	if s.jobs == nil {
 		return nil, ErrJobsUnavailable
 	}
-
-	deep := in.Deep
-	report := &CleanupReport{
-		OK:         true,
-		Source:     src, // normalized so report.Source == payload["source"] (worker routing key alignment)
-		DryRun:     in.DryRun,
-		CheckDrive: in.CheckDrive,
-		Items:      []CleanupItem{},
+	source := strings.ToLower(strings.TrimSpace(in.Source))
+	if source == "" {
+		return nil, fmt.Errorf("%w: empty source", ErrInvalidSource)
 	}
-
-	activeKey := "system_maintenance_manual"
-	if in.DryRun {
-		activeKey += "_dry"
+	// PR 5 (June 2026 - codex/clips-cleanup-job): replaced the
+	// pre-PR5 synchronous repo-resolve preflight (which violated the
+	// "drop the synchronous scan" spec clause) with a static
+	// allowlist of canonical sources. The async assets.cleanup
+	// handler owns source resolution + iteration; this gate only
+	// ensures the caller named a recognised source before enqueue
+	// (returns 400 + ErrInvalidSource otherwise).
+	knownSources := map[string]bool{
+		"youtube":   true,
+		"artlist":   true,
+		"stock":     true,
+		"voiceover": true,
+		"images":    true,
+		"all":       true,
 	}
-	if deep {
-		activeKey += "_deep"
+	if !knownSources[source] {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidSource, in.Source)
 	}
-
-	// The composition-root adapter converts our minimal DTO into
-	// the canonical *domain/job.EnqueueRequest shape; this keeps
-	// ports.go zero-infra per the canonical port-segregation rule.
-	job, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
-		Type: job.TypeSystemCleanup,
-		Payload: map[string]any{
-			"deep":        deep,
-			"dry_run":     in.DryRun,
-			"check_drive": in.CheckDrive,
-			"source":      src, // normalized so worker receives payload["source"] matching resolver-registered keys (case-insensitive dependency)
-		},
+	activeKey := cleanupActiveKey(in)
+	payload := cleanupJobPayload(in)
+	jobResp, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
+		Type:      job.TypeAssetsCleanup,
+		Payload:   payload,
 		Priority:  10,
 		ActiveKey: activeKey,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("enqueue cleanup job: %w", err)
 	}
-	report.JobID = job.ID
-	report.Message = fmt.Sprintf("system cleanup job enqueued; poll job_id=%s for results", job.ID)
-	report.Summary = fmt.Sprintf("enqueued (job_id=%s)", job.ID)
-	// S1b keeps the legacy CleanupItem slice in the report so old
-	// callers that iterate the union shape continue to render
-	// without null-deref. New callers pivot on JobID.
-	report.Items = []CleanupItem{}
-	return report, nil
+	if jobResp == nil || jobResp.ID == "" {
+		return nil, fmt.Errorf("enqueue cleanup job: empty job id returned by broker")
+	}
+	if s.log != nil {
+		s.log.Info("cleanup durable job enqueued",
+			zap.String("job_id", jobResp.ID),
+			zap.String("active_key", activeKey),
+			zap.String("source", in.Source),
+			zap.Bool("dry_run", in.DryRun),
+			zap.Bool("check_local", in.CheckLocal),
+			zap.Bool("check_drive", in.CheckDrive),
+			zap.Bool("repair", in.Repair),
+			zap.Bool("delete", in.Delete))
+	}
+	return &CleanupStarted{
+		JobID:     jobResp.ID,
+		ActiveKey: activeKey,
+		BatchSize: in.BatchSize,
+	}, nil
+}
+
+// cleanupActiveKey derives a deterministic, idempotent ActiveKey
+// from the CleanupInput. Cross-process deduplication: the same
+// {source, dry_run, check_local, check_drive, repair, delete, batch}
+// tuple maps to the same key.
+func cleanupActiveKey(in CleanupInput) string {
+	return fmt.Sprintf("cleanup_%s_%v_%v_%v_%v_%v_%d",
+		in.Source, in.DryRun, in.CheckLocal, in.CheckDrive, in.Repair, in.Delete, in.BatchSize)
+}
+
+// cleanupJobPayload builds the JSON-shaped payload passed to the
+// assets.cleanup handler. Mirrors the spec list verbatim.
+//
+// PR 5 additions: CheckLocal + Repair + BatchSize (configurable
+// cap; cleaner logs warn when it exceeds 250).
+func cleanupJobPayload(in CleanupInput) map[string]any {
+	p := map[string]any{
+		"source":      in.Source,
+		"dry_run":     in.DryRun,
+		"check_local": in.CheckLocal,
+		"check_drive": in.CheckDrive,
+		"repair":      in.Repair,
+		"delete":      in.Delete,
+		"batch_size":  in.BatchSize,
+	}
+	return p
 }
 
 // VerifyInput captures the request shape for VerifyClip.
@@ -528,12 +547,8 @@ type VerifyReport struct {
 // today to avoid the silent drift hazard (a future maintainer
 // writing a test that asserts `HashInfo.Recovered == true` after
 // fix-hash would always fail). Recovery status is authoritative
-// on two parallel surfaces (the names mirror each other):
-//   - api-side:    Handler.HandleFixHash -> response {"reindexed": true}
-//   - service-side: FixHashReport.{OK, Reindexed, DispatcherOK}
-//
-// Both intentionally live on FixHashReport (not HashInfo) so
-// HashInfo remains the strictly informational channel.
+// on FixHashReport.OK / FixHashReport.Reindexed (independent
+// surface, intentionally separate from HashInfo).
 type HashInfo struct {
 	// Recoverable is true when Drive supplied a non-empty MD5 for
 	// the local clip row that had no FileHash. Same semantic as
@@ -592,33 +607,6 @@ func (s *ClipOpsService) Verify(ctx context.Context, source, clipID string) *Ver
 		return report
 	}
 	return s.verifyClip(ctx, source, repo, clip)
-}
-
-// isKnownCleanupSource returns true when src (already
-// lowercase-normalized by the caller) matches one of the
-// canonical static global cleanup scopes or resolves via
-// s.sourceResolver to a registered clip repo. This is the
-// single source of truth for "what's a valid cleanup source";
-// the HTTP layer relies on errors.Is(err, ErrInvalidSource)
-// to translate the negative answer into a 400 Bad Request.
-//
-// Static scopes (per AGENTS.md + pre-PR-3 handler contract):
-//   - "all"      — wildcard (cleanup every source)
-//   - "voiceover" — voiceover-source cleanup (separate voiceovers table;
-//     AssetMutationDispatcher does not write to it)
-//   - "images"   — images-source cleanup
-//
-// Dynamic scopes (provider-registered: youtube / artlist /
-// stock / etc.) come from s.sourceResolver.ResolveRepo(src).
-// Co-existence with the resolver delegate prevents hardcoding
-// the full provider register while still keeping the
-// global-scope validation self-contained.
-func (s *ClipOpsService) isKnownCleanupSource(src string) bool {
-	switch src {
-	case "all", "voiceover", "images":
-		return true
-	}
-	return s.sourceResolver != nil && s.sourceResolver.ResolveRepo(src) != nil
 }
 
 // verifyClip is the private verifier. Mirrors the legacy verifyClip

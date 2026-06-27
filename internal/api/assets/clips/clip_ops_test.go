@@ -1,16 +1,16 @@
-// Package clips (test) — clip_ops_test.go.
+// Package clips (test) - clip_ops_test.go.
 //
-// PR 3 (June 2026 — codex/clips-ops-cutover) handler-side tests
+// PR 3 (June 2026 - codex/clips-ops-cutover) handler-side tests
 // for the three clip_ops endpoints. The handler is real; only
-// the application-side ClipOpsService is replaced with stubs
-// (the service is a concrete struct, so we satisfy each of its
-// 6 ports with minimal stubs). Each subtest exercises one of
-// the documented contracts in the spec:
-//   - test handler con fake service  (each test below)
-//   - test invalid source            (TestHandler_Cleanup_InvalidSource_Returns400,
-//     TestHandler_VerifyClip_NoService_503)
-//   - test voiceover                 (TestHandler_Cleanup_VoiceoverSource_ReportsOrphan)
-//   - test Drive non disponibile     (Stub Drive returned empty MD5 + orphan path)
+// the application-side ClipOpsService is replaced with stubs.
+//
+// PR 5 (June 2026 - codex/clips-cleanup-job) updated the Cleanup
+// subtests: the pre-PR5 synchronous shape (Items / Message /
+// system.cleanup deep-mode) is replaced with the async-enqueue
+// shape (job_id / status_url / status="queued" / assets.cleanup
+// regardless of Deep / source). Verify auto-tests remain
+// unchanged because Verify is unchanged in the application
+// service. Service-unavailable guards stay identical.
 package clips
 
 import (
@@ -30,11 +30,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-// ── Local port stubs (different package from application/clips) ───────────────
+// Local port stubs (different package from application/clips).
 
-type handlerSourceResolver struct {
-	repos map[string]appclips.ClipRepositoryPort
-}
+type handlerSourceResolver struct{ repos map[string]appclips.ClipRepositoryPort }
 
 func (r *handlerSourceResolver) ResolveRepo(s string) appclips.ClipRepositoryPort {
 	if r == nil {
@@ -75,7 +73,7 @@ func (r *handlerClipsRepo) ListByFolderID(_ context.Context, _ string) ([]*asset
 func (r *handlerClipsRepo) ListByFolderPath(_ context.Context, _ string) ([]*asset.Asset, error) {
 	return nil, nil
 }
-func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error        { return nil }
+func (r *handlerClipsRepo) DeleteFolder(_ context.Context, _ string) error { return nil }
 func (r *handlerClipsRepo) BulkAddTags(_ context.Context, _, _ []string) error    { return nil }
 func (r *handlerClipsRepo) BulkRemoveTags(_ context.Context, _, _ []string) error { return nil }
 func (r *handlerClipsRepo) ListClipsPaged(_ context.Context, _ string, _, _ int, _ string) ([]*asset.Asset, error) {
@@ -89,9 +87,7 @@ func (r *handlerClipsRepo) FindClipsByHash(_ context.Context, _ string) ([]*asse
 	return nil, nil
 }
 
-type handlerVoiceoverRepo struct {
-	records map[string]*appclips.ClipVoiceoverRecordDTO
-}
+type handlerVoiceoverRepo struct{ records map[string]*appclips.ClipVoiceoverRecordDTO }
 
 func (r *handlerVoiceoverRepo) GetByID(_ context.Context, id string) (*appclips.ClipVoiceoverRecordDTO, error) {
 	if r == nil {
@@ -154,6 +150,9 @@ func (d *handlerDriveUploader) TrashFile(_ context.Context, _ string) error { re
 func (d *handlerDriveUploader) ListFiles(_ context.Context, _ string) ([]appclips.ClipDriveFileDTO, error) {
 	return nil, nil
 }
+func (d *handlerDriveUploader) FileIsNotTrashed(_ context.Context, _ string) (bool, error) {
+	return true, nil
+}
 
 type handlerCleanupPort struct{}
 
@@ -180,7 +179,7 @@ func (j *handlerJobsPort) Enqueue(_ context.Context, req appclips.JobsEnqueueReq
 	return &appclips.JobsEnqueueResponse{ID: j.nextID}, nil
 }
 
-// ── Test helpers ──────────────────────────────────────────────────────────────
+// Test helpers.
 
 func newOpsHandler(t *testing.T, svc *appclips.ClipOpsService) *Handler {
 	t.Helper()
@@ -208,24 +207,20 @@ func decodeBody(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	return resp
 }
 
-// ── Subtests ─────────────────────────────────────────────────────────────────
+// Subtests.
 
-// TestHandler_Cleanup_200_ReportsOrphan pins the happy-path
-// transport: jobs port wired + Cleanup succeeds → handler
-// marshals 200 + job_id + empty items slice (S1b post-cutover
-// shape; per-clip orphan records live in the worker output
-// downstream of the broker poll, not the synchronous response).
-func TestHandler_Cleanup_200_ReportsOrphan(t *testing.T) {
-	clip := &asset.Asset{ID: "yt-orphan-1", Name: "foo"}
-	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
-	repo := &handlerClipsRepo{clips: []*asset.Asset{clip}}
-	jobsRP := &handlerJobsPort{nextID: "job-rp"}
-	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{"youtube": repo}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, jobsRP, nil, zap.NewNop())
+// TestHandler_Cleanup_200_EnqueuesAssetsCleanup pins the PR 5
+// happy-path transport: any source + dry_run=true + check_drive=false
+// -> jobs.Enqueue receives an "assets.cleanup" job with the
+// deterministic ActiveKey. Response carries job_id + status_url +
+// status="queued" (no more Items / Message / system.cleanup shape).
+func TestHandler_Cleanup_200_EnqueuesAssetsCleanup(t *testing.T) {
+	jobs := &handlerJobsPort{nextID: "job-100"}
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
-	body := `{"dry_run": true, "deep": false, "check_drive": false}`
+	body := `{"dry_run": true, "check_drive": false}`
 	req := httptest.NewRequest("POST", "/api/clips/youtube/cleanup", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -234,22 +229,25 @@ func TestHandler_Cleanup_200_ReportsOrphan(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	resp := decodeBody(t, w)
 	require.Equal(t, true, resp["ok"])
+	require.Equal(t, "queued", resp["status"])
+	require.Equal(t, "job-100", resp["job_id"])
+	require.Equal(t, "/api/jobs/job-100", resp["status_url"])
 	require.Equal(t, "youtube", resp["source"])
 	require.Equal(t, true, resp["dry_run"])
-	require.Equal(t, "job-rp", resp["job_id"])
-	items, ok := resp["items"].([]any)
-	require.True(t, ok)
-	require.Len(t, items, 0, "S1b cleanup enqueues a job; per-clip items live in worker output, not the handler response")
-	require.Len(t, jobsRP.enqueued, 1)
-	require.Equal(t, "system.cleanup", jobsRP.enqueued[0].Type)
-	require.Equal(t, "youtube", jobsRP.enqueued[0].Payload["source"])
+	require.Len(t, jobs.enqueued, 1)
+	require.Equal(t, "assets.cleanup", jobs.enqueued[0].Type)
+	require.Equal(t, "cleanup_youtube_true_false_false_false_false_0", jobs.enqueued[0].ActiveKey)
 }
 
-// TestHandler_Cleanup_200_DeepEnqueue pins the deep-mode path:
-// Handler 200 + jobs.Enqueue receives a system.cleanup request.
-func TestHandler_Cleanup_200_DeepEnqueue(t *testing.T) {
-	jobs := &handlerJobsPort{nextID: "job-xyz"}
-	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, nil, zap.NewNop())
+// TestHandler_Cleanup_200_DeepEnqueuesAssetsCleanup pins the
+// deep-mode promote-to-all-flags path: deep=true via body ->
+// service enqueues "assets.cleanup" with the promoted
+// CheckLocal+CheckDrive+Repair+Delete=true flags. The pre-PR5
+// "system.cleanup" job type is REMOVED; assets.cleanup covers
+// every cleanup pass regardless of deep.
+func TestHandler_Cleanup_200_DeepEnqueuesAssetsCleanup(t *testing.T) {
+	jobs := &handlerJobsPort{nextID: "job-deep"}
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -262,18 +260,23 @@ func TestHandler_Cleanup_200_DeepEnqueue(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	resp := decodeBody(t, w)
 	require.Equal(t, true, resp["ok"])
-	require.Equal(t, "job-xyz", resp["job_id"])
-	require.Equal(t, "system cleanup job enqueued; poll job_id=job-xyz for results", resp["message"])
+	require.Equal(t, "queued", resp["status"])
+	require.Equal(t, "job-deep", resp["job_id"])
 	require.Len(t, jobs.enqueued, 1)
-	require.Equal(t, "system.cleanup", jobs.enqueued[0].Type)
+	require.Equal(t, "assets.cleanup", jobs.enqueued[0].Type)
+	require.Equal(t, true, jobs.enqueued[0].Payload["check_local"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["check_drive"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["repair"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["delete"])
 }
 
 // TestHandler_Cleanup_200_QueryDeepOverridesBody pins the
 // "?deep=true" override path. Body says deep=false but the query
-// param promotes the request to deep-mode.
+// param promotes to deep-mode; same assets.cleanup job type, with
+// promoted flags via the same toCommand helper.
 func TestHandler_Cleanup_200_QueryDeepOverridesBody(t *testing.T) {
-	jobs := &handlerJobsPort{nextID: "job-from-query"}
-	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, nil, zap.NewNop())
+	jobs := &handlerJobsPort{nextID: "job-query"}
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -285,25 +288,18 @@ func TestHandler_Cleanup_200_QueryDeepOverridesBody(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, jobs.enqueued, 1, "?deep=true must override body's deep=false")
-	require.Equal(t, "system.cleanup", jobs.enqueued[0].Type)
+	require.Equal(t, "assets.cleanup", jobs.enqueued[0].Type)
+	require.Equal(t, "all", jobs.enqueued[0].Payload["source"])
+	require.Equal(t, true, jobs.enqueued[0].Payload["check_local"])
 }
 
 // TestHandler_Cleanup_400_InvalidSource pins the early return
-// for unknown source. Service returns the typed
-// appclips.ErrInvalidSource sentinel via errors.Is; handler
-// maps to 400 via mapClipOpsError. Jobs port is wired so the
-// source-validation branch (which runs BEFORE the jobs-nil check
-// per the service implementation, per source-first precedence)
-// is the one triggered; without wiring the test would fail
-// earlier with a 503.
-//
-// Spec contract: POST /api/clips/:source/cleanup with an
-// unrecognised :source must return 400 (handler-layer
-// bad-request signal), not 500 or 503. The S1b post-cutover
-// layer routes the typed ErrInvalidSource sentinel into 400.
+// for unknown source. Service returns ErrInvalidSource sentinel
+// (after the PR 5 static-allowlist preflight); handler maps to
+// 400 via mapClipOpsError.
 func TestHandler_Cleanup_400_InvalidSource(t *testing.T) {
 	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, &handlerJobsPort{}, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, &handlerJobsPort{}, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -319,7 +315,7 @@ func TestHandler_Cleanup_400_InvalidSource(t *testing.T) {
 // TestHandler_Cleanup_400_MalformedJSON pins the bind-error
 // path: handler maps JSON parse errors to 400 Bad Request.
 func TestHandler_Cleanup_400_MalformedJSON(t *testing.T) {
-	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, &handlerJobsPort{}, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, &handlerJobsPort{}, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -332,7 +328,7 @@ func TestHandler_Cleanup_400_MalformedJSON(t *testing.T) {
 }
 
 // TestHandler_Cleanup_503_NoService pins the composition-bug
-// guard: clipOpsService == nil → 503 Service Unavailable.
+// guard: clipOpsService == nil -> 503 Service Unavailable.
 func TestHandler_Cleanup_503_NoService(t *testing.T) {
 	h := NewHandler(Deps{Log: zap.NewNop()}, nil)
 	r := newOpsRouter(t, h)
@@ -345,21 +341,15 @@ func TestHandler_Cleanup_503_NoService(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-// TestHandler_Cleanup_VoiceoverSource_ReportsOrphan pins the
-// voiceover-source branch (spec: test voiceover). S1b
-// post-cutover: the canonical Cleanup response is empty items +
-// broker-assigned job_id; per-record items live in the worker
-// output downstream of broker poll (the voiceover cleanup
-// operates on the separate voiceovers table).
-func TestHandler_Cleanup_VoiceoverSource_ReportsOrphan(t *testing.T) {
-	rec := &appclips.ClipVoiceoverRecordDTO{
-		ID:        "vo-1",
-		Filename:  "foo.wav",
-		LocalPath: "/nonexistent/foo.wav",
-	}
-	jobsVO := &handlerJobsPort{nextID: "job-vo"}
-	voiceover := &handlerVoiceoverRepo{records: map[string]*appclips.ClipVoiceoverRecordDTO{"vo-1": rec}}
-	svc := appclips.NewClipOpsService(nil, voiceover, nil, nil, &handlerCleanupPort{}, jobsVO, nil, zap.NewNop())
+// TestHandler_Cleanup_VoiceoverSource_Enqueues pins the
+// voiceover-source branch (spec: test voiceover). PR 5: voiceover
+// is one of the static-allowlist sources — the handler enqueues
+// without pre-flight repo lookup. The async handler in
+// internal/application/assets/cleanup owns the actual voiceover
+// iteration.
+func TestHandler_Cleanup_VoiceoverSource_Enqueues(t *testing.T) {
+	jobs := &handlerJobsPort{nextID: "job-vo"}
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerCleanupPort{}, jobs, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -371,14 +361,13 @@ func TestHandler_Cleanup_VoiceoverSource_ReportsOrphan(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	resp := decodeBody(t, w)
+	require.Equal(t, "queued", resp["status"])
 	require.Equal(t, "voiceover", resp["source"])
+	require.Equal(t, true, resp["dry_run"])
 	require.Equal(t, "job-vo", resp["job_id"])
-	items, ok := resp["items"].([]any)
-	require.True(t, ok)
-	require.Len(t, items, 0, "S1b voiceover cleanup enqueues a job; per-record items live in worker output, not the handler response")
-	require.Len(t, jobsVO.enqueued, 1)
-	require.Equal(t, "system.cleanup", jobsVO.enqueued[0].Type)
-	require.Equal(t, "voiceover", jobsVO.enqueued[0].Payload["source"])
+	require.Len(t, jobs.enqueued, 1)
+	require.Equal(t, "assets.cleanup", jobs.enqueued[0].Type)
+	require.Equal(t, "voiceover", jobs.enqueued[0].Payload["source"])
 }
 
 // TestHandler_VerifyClip_200_ResponseShape pins the
@@ -389,7 +378,7 @@ func TestHandler_VerifyClip_200_ResponseShape(t *testing.T) {
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &handlerClipsRepo{clips: []*asset.Asset{clip}}
 	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{"youtube": repo}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerCleanupPort{}, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
