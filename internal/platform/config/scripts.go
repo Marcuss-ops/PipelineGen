@@ -79,7 +79,7 @@ type ScriptsConfig struct {
 	ClipSearchMinScore float64 `yaml:"clip_search_min_score" env:"VELOX_SCRIPTS_CLIP_SEARCH_MIN_SCORE" default:"0.7"`
 
 	// SaveTimeoutSeconds is the context timeout for DB persistence operations
-	// in engine.WriteScript. These run in a background context so they survive
+	// in engine.Generate. These run in a background context so they survive
 	// HTTP disconnection.
 	SaveTimeoutSeconds int `yaml:"save_timeout_seconds" env:"VELOX_SCRIPTS_SAVE_TIMEOUT" default:"30"`
 }

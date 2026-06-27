@@ -14,7 +14,7 @@
 //     prompt versions, ChannelID, drive folder)
 //   - pipeline_handlers.go::handleClipPathTextOnly (min words, model,
 //     language defaults)
-//   - engine.go::WriteScript (language, tone fallbacks)
+//   - engine.go::Generate (language, tone fallbacks)
 //   - ollama/types/defaults.go (DefaultLanguage, DefaultTone,
 //     DefaultDuration constants)
 package scripts
