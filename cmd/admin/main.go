@@ -60,6 +60,7 @@ var availableCommands = []string{
 	"reindex-qdrant",
 	"reconcile-qdrant",
 	"reset-video-ai",
+	"qdrant-readiness",
 	"seed-channels",
 	"stock-reset",
 	"stock-subfolders-reset",
@@ -69,6 +70,7 @@ var availableCommands = []string{
 	"test-youtube",
 	"unify-catalogs",
 	"upload-t5pre",
+	"backfill-visual-embeddings",
 	"verify-artlist-pipeline",
 }
 
@@ -86,6 +88,8 @@ func main() {
 	// ── AGENT-1 owned subcommands (cmd/admin/<file>.go) ─────────────
 	case "backfill-artlist-media-type":
 		err = runBackfillArtlistMediaType(args)
+	case "backfill-visual-embeddings":
+		err = runBackfillVisualEmbeddings(args)
 	case "benchmark":
 		err = runBenchmark(args)
 	case "clean-qdrant-locators":
@@ -108,6 +112,8 @@ func main() {
 		err = runReconcileQdrant(args)
 	case "reset-video-ai":
 		err = runResetVideoAI(args)
+	case "qdrant-readiness":
+		err = runQdrantReadiness(args)
 	case "sync-all-drive":
 		err = runSyncAllDrive(args)
 	case "test-youtube":

@@ -28,7 +28,9 @@ func NewSQLiteAssetStore(db *sql.DB) *SQLiteAssetStore {
 }
 
 // Compile-time assertion: SQLiteAssetStore satisfies AssetStore.
-var _ AssetStore = (*SQLiteAssetStore)(nil)// FetchAsset reads one row from media_assets and populates an AssetData.
+var _ AssetStore = (*SQLiteAssetStore)(nil)
+
+// FetchAsset reads one row from media_assets and populates an AssetData.
 //
 // QDRANT-005 closure (June 2026): AssetData gains a LifecycleState
 // field sourced from media_assets.lifecycle_state (the canonical
@@ -55,7 +57,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 		SELECT
 			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
 			COALESCE(status, 'ACTIVE'),
-			COALESCE(lifecycle_state, 'ready'),
+			COALESCE(NULLIF(lifecycle_state, ''), COALESCE(NULLIF(status, ''), 'ACTIVE')),
 			COALESCE(tags, '[]'),
 			COALESCE(search_text, ''),
 			COALESCE(drive_link, ''),
@@ -207,7 +209,6 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 	}
 	return ids, rows.Err()
 }
-
 
 // ListAssetsForReconcile returns the minimum asset payload needed by the admin-side
 // `cmd/admin/reconcile_qdrant.go` reconcile dry-run. Originally stubbed at QDRANT-005

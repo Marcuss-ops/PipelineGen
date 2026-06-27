@@ -12,8 +12,9 @@ package storage
 //     created_at, metadata_json, drive_folder_id, visual_embedding,
 //     transcript_embedding, updated_at).
 //
-//  2. Seven legacy-promoted columns (drive_link, download_link,
-//     drive_file_id, file_hash, local_path, status, media_type)
+//  2. Nine legacy-promoted columns (drive_link, download_link,
+//     drive_file_id, file_hash, local_path, status, media_type,
+//     audio_embedding, language)
 //     plus image dimensions (width, height) — already-existed columns
 //     whose JSON mirror was deleted by migration 059's json_remove.
 //
@@ -63,6 +64,8 @@ CREATE TABLE IF NOT EXISTS media_assets (
     drive_link TEXT,
     download_link TEXT,
     file_hash TEXT,
+    audio_embedding TEXT NOT NULL DEFAULT '[]',
+    language TEXT NOT NULL DEFAULT '',
     width INTEGER NOT NULL DEFAULT 0,
     height INTEGER NOT NULL DEFAULT 0,
     lifecycle_state TEXT NOT NULL DEFAULT 'ready',

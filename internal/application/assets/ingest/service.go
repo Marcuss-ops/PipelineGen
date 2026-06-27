@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,9 +14,9 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 type Pipeline struct {
@@ -69,6 +70,13 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 	}
 	if cleanup != nil {
 		defer cleanup()
+	}
+
+	if shouldRejectAssetInput(req.Filename) || shouldRejectAssetInput(localPath) {
+		return nil, fmt.Errorf("unsupported non-media ingest input: %q", strings.TrimSpace(req.Filename))
+	}
+	if info, statErr := os.Stat(localPath); statErr == nil && info.IsDir() {
+		return nil, fmt.Errorf("unsupported directory ingest input: %q", localPath)
 	}
 
 	if kind == KindImage {

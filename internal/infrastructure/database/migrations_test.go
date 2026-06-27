@@ -208,6 +208,7 @@ func TestMigrations_Smoke(t *testing.T) {
 			t.Fatalf("PRAGMA journal_mode = %q (expected 'wal' per storage.OpenSQLiteDB contract)", mode)
 		}
 	})
+
 }
 
 // itoa is a tiny stdlib-free formatter used to keep foreign_key_check
