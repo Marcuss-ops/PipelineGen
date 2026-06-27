@@ -8,15 +8,15 @@
 //   - 9 classification categories (see
 //     internal/application/qdrant/reconciler/types.go).
 //   - Repair routes are canonical:
-//       - missing / version_stale / payload_incomplete /
-//         lifecycle_mismatch / workspace_mismatch /
-//         non_canonical_point_id → outbox_events UPSERT event
-//         (routed via an inline adapter; see outboxRepairAdapter
-//         below for rationale on bypassing outbox.Dispatcher).
-//       - orphan → outbox_events DELETE event.
-//       - lifecycle_key_legacy / locator_legacy →
-//         qdrant.Client.DeletePayloadKeys (canonical for legacy key
-//         stripping; no outbox primitive for partial payload mutation).
+//   - missing / version_stale / payload_incomplete /
+//     lifecycle_mismatch / workspace_mismatch /
+//     non_canonical_point_id → outbox_events UPSERT event
+//     (routed via an inline adapter; see outboxRepairAdapter
+//     below for rationale on bypassing outbox.Dispatcher).
+//   - orphan → outbox_events DELETE event.
+//   - lifecycle_key_legacy / locator_legacy →
+//     qdrant.Client.DeletePayloadKeys (canonical for legacy key
+//     stripping; no outbox primitive for partial payload mutation).
 //
 // Usage:
 //
@@ -42,11 +42,13 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
 )
+
+// (database/sql is required for sql.ErrNoRows in PR 11 fail-closed branch of outboxRepairAdapter.EnqueueReindex)
 
 // reconcileQdrantDeps holds the parsed flags for runReconcileQdrant.
 type reconcileQdrantDeps struct {
@@ -186,8 +188,8 @@ func runReconcileQdrant(args []string) error {
 	payloadAdapter := &qdrantPayloadAdapter{client: client}
 	outboxEventsRepo := outboxevents.NewRepository(sqliteDB.DB)
 	outboxAdapter := &outboxRepairAdapter{
-		db:         sqliteDB.DB,
-		outboxRepo: outboxEventsRepo,
+		db:            sqliteDB.DB,
+		outboxRepo:    outboxEventsRepo,
 		schemaVersion: schema.Version,
 	}
 	sqliteAdapter := &reconcileReaderAdapter{store: assetStore}
@@ -328,7 +330,7 @@ func (a *qdrantPayloadAdapter) DeletePayloadKeys(ctx context.Context, collection
 // Rationale (vs. going through outbox.Dispatcher):
 //   - Dispatcher.EnqueueAndIndex demands a fully-populated *asset.Asset
 //     and constructs an event_key derived from clipindexer package vars
-//     + a content_hash supplied by the caller. Calling it from
+//   - a content_hash supplied by the caller. Calling it from
 //     reconcile-repair would require synthesising an Asset and choosing
 //     a content hash that varies per reconcile run — both undesirable.
 //   - Reconcile-repair does NOT need the metadata-write side-effect of
@@ -351,15 +353,18 @@ func (a *qdrantPayloadAdapter) DeletePayloadKeys(ctx context.Context, collection
 //     tracing (required by IndexDeleteHandler) and is NOT used in
 //     the event_key.
 //
-//   - Reindex (EnqueueReindex): event_key is uuid-suffixed
-//     ("reconcile:reindex:<assetID>:<eventID>") via
-//     outboxevents.BuildReindexEnvelopeV1 — see the canonical
-//     envelope builder. This is intentional: every --apply run
-//     enqueues a fresh reindex event, and the worker's supersede
-//     gate (source_version from metadata_json.$.content_hash)
-//     collapses redundant fix-up work at execution time. Idempotency
-//     for reindex is enforced downstream, not at the outbox-enqueue
-//     layer.
+//   - Reindex (EnqueueReindex): event_key is deterministic per
+//     (assetID, target_schema_version, full_content_hash) tuple,
+//     built via outboxevents.BuildReindexEnvelopeV1 — the canonical
+//     envelope builder. PR 11 (June 2026) replaces the prior
+//     uuid-suffixed key with this deterministic shape so two
+//     consecutive `reconcile-qdrant --apply` runs on the same
+//     asset (no content change) collapse to a single outbox_events
+//     row via ON CONFLICT (event_key) DO NOTHING. A hash change
+//     produces a fresh row and the worker downstream re-evaluates
+//     against the new source_version (supersede gate still owns
+//     the "is the event actually still current?" question at
+//     execution time).
 type outboxRepairAdapter struct {
 	db            *sql.DB
 	outboxRepo    *outboxevents.Repository
@@ -367,11 +372,38 @@ type outboxRepairAdapter struct {
 }
 
 // EnqueueReindex inserts an asset.index.requested.v1 outbox event for
-// the supplied assetID. The event_key is uuid-suffixed (fresh per
-// call) via outboxevents.BuildReindexEnvelopeV1 — see the canonical
-// envelope builder for the seam. Idempotency is enforced downstream
-// (worker supersede gate on source_version) rather than at the
-// outbox-enqueue layer.
+// the supplied assetID. The event_key is deterministic per
+// (assetID, target_schema_version, full_content_hash) tuple, built via
+// outboxevents.BuildReindexEnvelopeV1 (the canonical envelope
+// builder) — see that function's idempotency invariants in PR 11
+// (June 2026). Two consecutive reconciler --apply runs on the same
+// asset (no content change) collapse to a single outbox_events row
+// via ON CONFLICT (event_key) DO NOTHING.
+//
+// The content_hash lookup happens INSIDE the producer tx so the
+// captured value is exactly the row-state at the moment we commit
+// (Snapshot isolation: the row is read through the same tx that
+// stamps updated_at + inserts the outbox row). Empty content_hash
+// is fail-closed — without a fingerprint we cannot derive a
+// deterministic event_key, so we abort rather than emit a
+// silently-collapsing event that the worker could never route
+// (the worker compares payload.source_version against
+// metadata_json.$.content_hash; an empty source_version matches
+// every empty row, which would silently no-op at execution time).
+//
+// The hash priority mirrors the consumer-side readSourceVersion
+// priority list in application/jobs/outbox/indexing.go so the
+// producer and the worker agree on what counts as "the current
+// fingerprint" without a JOIN round-trip:
+//
+//  1. metadata_json.$.content_hash  ← dispatcher atomic write
+//  2. metadata_json.$.file_hash     ← non-dispatcher ingest fallback
+//  3. media_assets.file_hash        ← legacy top-level column
+//
+// This list is duplicated here (vs imported) so the cmd/admin
+// package does not pick up the indexing.go dependency for what is
+// really a 3-line COALESCE pattern; if the priority changes,
+// the change propagates here + there.
 func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string) error {
 	if assetID == "" {
 		return errors.New("outboxRepairAdapter.EnqueueReindex: assetID must not be empty")
@@ -381,6 +413,31 @@ func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // standard commit-or-rollback idiom
+
+	// PR 11 (June 2026): atomic content_hash capture INSIDE the tx.
+	// Mirrors consumer-side readSourceVersion so the producer and
+	// worker agree on the fingerprint without a JOIN. Empty result
+	// → fail-closed (deterministic event_key cannot be derived
+	// without a fingerprint; emitting a placeholder key would
+	// mask real content drift between reconcile runs).
+	var contentHash string
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(
+			json_extract(metadata_json, '$.content_hash'),
+			json_extract(metadata_json, '$.file_hash'),
+			file_hash,
+			''
+		) FROM media_assets WHERE id = ?
+	`, assetID).Scan(&contentHash)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("outboxRepairAdapter.EnqueueReindex: asset %s not found in media_assets (PR 11 — fail-closed: cannot derive deterministic event_key for a missing row)", assetID)
+	}
+	if err != nil {
+		return fmt.Errorf("read content_hash for %s: %w", assetID, err)
+	}
+	if contentHash == "" {
+		return fmt.Errorf("outboxRepairAdapter.EnqueueReindex: asset %s has empty content_hash fallback chain (metadata_json.$.content_hash / metadata_json.$.file_hash / media_assets.file_hash all empty — PR 11 fail-closed: deterministic event_key requires a fingerprint)", assetID)
+	}
 
 	// Light parity bump: refresh updated_at so monitors can see the
 	// reconcile-repair touched the row. We do NOT mutate source_version
@@ -393,7 +450,7 @@ func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string
 		return fmt.Errorf("update updated_at %s: %w", assetID, err)
 	}
 
-	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(assetID, a.schemaVersion, time.Now())
+	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(assetID, a.schemaVersion, contentHash, time.Now())
 	if err != nil {
 		return fmt.Errorf("build reindex envelope: %w", err)
 	}
