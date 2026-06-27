@@ -198,10 +198,20 @@ type ResolvedSource struct {
 // resolver. It is the canonical shape passed from any clip-based
 // source (clips, catalog, search) to the engine.
 type ClipEvidence struct {
-	// ClipIDs is the final list of clip IDs used.
+	// ClipIDs is the final list of clip IDs effectively resolved by
+	// the lookup chain (GetClip → fallback to GetByDriveFileID).
+	// PR 5 (June 2026): only IDs whose target clip has BOTH a row
+	// in the clips table AND a non-empty DriveLink populate this
+	// field. Requested-but-unresolved IDs surface in MissingClipIDs
+	// (below) instead, with a structured reason. Downstream
+	// consumers (engine grounding, spec-scene validator,
+	// clip-bindings processor, HTML rendering) read this set as
+	// the canonical "scene input" and bind only to it.
 	ClipIDs []string `json:"clip_ids"`
 
-	// ClipCount is len(ClipIDs).
+	// ClipCount is len(ClipIDs). Kept as a typed field for
+	// monitoring and operator dashboards so a missing/empty array
+	// cannot accidentally appear as 0-without-explanation.
 	ClipCount int `json:"clip_count"`
 
 	// AssembledText is the concatenated transcript/description text
@@ -217,6 +227,16 @@ type ClipEvidence struct {
 	// ExcludedClipIDs lists clips that were filtered out (quality,
 	// transcript length) with reasons.
 	Excluded []ExcludedClip `json:"excluded,omitempty"`
+
+	// MissingClipIDs lists requested clip IDs that could not be
+	// resolved into Drive-backed clip evidence (PR 5, June 2026).
+	// nil when all requested IDs resolved. Each entry carries an
+	// ID + structured reason so an operator dashboard can surface
+	// "X client-asked clips, Y resolved, Z with broken Drive link,
+	// W not found at all". Distinct from Excluded (which is a
+	// post-resolution quality/filtering step): MissingClipIDs
+	// records lookup outcomes; Excluded records filter outcomes.
+	MissingClipIDs []MissingClipID `json:"missing_clip_ids,omitempty"`
 }
 
 // ExcludedClip records a clip that was filtered out during resolution
@@ -225,6 +245,43 @@ type ExcludedClip struct {
 	ClipID string `json:"clip_id"`
 	Reason string `json:"reason"`
 }
+
+// MissingClipID records a requested clip ID that could not be
+// resolved into Drive-backed clip evidence (PR 5, June 2026).
+// Reason values are bounded by MissingClipReasonNotFound and
+// MissingClipReasonDriveNotFound — any other string is treated
+// as the empty reason (consumers should ignore it for dashboards).
+//
+// Distinct from ExcludedClip: this struct captures LOOKUP
+// outcomes (the ID didn't make it through the resolver's
+// GetClip / GetByDriveFileID chain), while ExcludedClip captures
+// POST-RESOLUTION quality/filter outcomes (the ID resolved but
+// was dropped by the resolver's quality gate).
+type MissingClipID struct {
+	ClipID string `json:"clip_id"`
+	Reason string `json:"reason"`
+}
+
+// Canonical reasons for MissingClipID.Reason (PR 5, June 2026).
+// Adding a new reason requires a deprecation record per
+// architecture/godlike/07_ZERO_LEGACY_POLICY.md before it
+// can ship in production.
+const (
+	// MissingClipReasonNotFound means neither GetClip nor
+	// GetByDriveFileID returned a usable row for the requested ID.
+	// Caller asked for an ID that is not present in the clips
+	// table at all (typo, deleted asset, wrong source).
+	MissingClipReasonNotFound = "not_found"
+
+	// MissingClipReasonDriveNotFound means the requested ID
+	// resolved to a clips-table row BUT the row's DriveLink
+	// metadata is empty (the asset exists locally with no Drive
+	// backing, or the Drive file was orphaned). The clip is
+	// therefore present but unrenderable via Drive, and is
+	// excluded from the resolved set by cli's DriveLink-empty
+	// filter.
+	MissingClipReasonDriveNotFound = "drivenotfound"
+)
 
 // SearchResultItem is a single search result returned by a catalog
 // or semantic search resolver.

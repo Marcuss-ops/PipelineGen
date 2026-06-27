@@ -357,36 +357,33 @@ func buildGenerationResult(
 	// Populate Source trace.
 	var sourceTrace scriptpkg.SourceTrace
 
-	// PR 1: preserve the model-emitted SpecScene verbatim. Clip
-	// evidence may only ENRICH missing Clip bindings — never
-	// replaces existing model-authored text, IDs, or kind tags.
-	// If the model emitted no scenes (pure prose generation), we
-	// still carry the empty struct so consumers see a consistent
-	// SpecSceneOutput shape across all generation flows.
+	// PR 7 (June 2026): the model-emitted SpecScene goes through
+	// the post-processor walk BEFORE this function is called. The
+	// walkway runs ClipBindingsProcessor (when "clip_bindings" is
+	// in plan.Postprocessors, which buildPostprocessorList always
+	// inserts) which assigns `scene.Bindings.Clip = &ClipBinding{
+	// ClipID: canonical, DriveLink: canonical_url }` UNCONDITIONALLY
+	// for every scene. The slice header of
+	// `result.Output.SpecScene.Scenes` is shared with the caller's
+	// `engineResult.Output.SpecScene.Scenes` and `procInput.SpecScene
+	// .Scenes`, so the mutations propagate to:
+	//   1. DocumentProcessor when it builds the Google Doc HTML
+	//      body (consumes the post-walk SpecScene).
+	//   2. buildGenerationResult's `result.Output.SpecScene.Scenes`
+	//      (consumed by the JSON response writer downstream).
+	// Both paths now read the SAME final binding set; the pre-PR-7
+	// duplicate loop that did "fill empty only" against a different
+	// source-of-truth (engineResult.ClipEvidence) is REMOVED.
+	//
+	// PR 1 (June 2026): preserve the model-emitted SpecScene verbatim
+	// for kind/text/id — the postprocessor walk never mutates those
+	// fields. The binder only touches `scene.Bindings.Clip`.
 	if engineResult.ClipEvidence != nil {
 		clipIDs := engineResult.ClipEvidence.ClipIDs
 		if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
 			clipIDs = clipIDs[:plan.NumClips]
 		}
 		sourceTrace.AcceptedClipIDs = append([]string(nil), clipIDs...)
-
-		scenes := result.Output.SpecScene.Scenes
-		for i, id := range clipIDs {
-			if i >= len(scenes) {
-				break
-			}
-			sc := &scenes[i]
-			if sc.Bindings.Clip == nil {
-				sc.Bindings.Clip = &scriptpkg.ClipBinding{}
-			}
-			// Only fill empty fields — never overwrite.
-			if sc.Bindings.Clip.ClipID == "" {
-				sc.Bindings.Clip.ClipID = id
-			}
-			if sc.Bindings.Clip.DriveLink == "" && engineResult.ClipEvidence.DriveLinks != nil {
-				sc.Bindings.Clip.DriveLink = engineResult.ClipEvidence.DriveLinks[id]
-			}
-		}
 	}
 
 	// Merge postprocessor results into canonical Artifacts.

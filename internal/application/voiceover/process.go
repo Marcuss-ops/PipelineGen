@@ -192,9 +192,11 @@ func (s *Service) processLanguage(
 	item.FileHash = result.FileHash
 	item.DriveLink = result.DriveLink
 	item.DriveFileID = result.DriveFileID
-	item.Voice = result.Voice
-	if item.Voice == "" {
-		item.Voice = language // fallback to language code if voice not parsed
+	item.Voice = language
+	// Use the actual voice profile from the TTS processor instead of language code
+	if result.VoiceProfile != "" {
+		item.Voice = result.VoiceProfile
+	}
 	}
 	item.Status = result.Status
 
@@ -271,7 +273,7 @@ func (s *Service) processLanguage(
 		Metadata:     string(metaJSON),
 		RequireLocal: false,
 		RequireHash:  false,
-		RequireDrive: item.DriveLink != "",
+		RequireDrive: dest.FolderID != "" || s.cfg.Drive.VoiceoverFolder() != "" || item.DriveLink != "",
 		VerifyDB:     true,
 	}
 
