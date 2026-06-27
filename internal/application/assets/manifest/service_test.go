@@ -298,6 +298,69 @@ func TestService_UpsertRemote_Concurrent_DifferentFolders(t *testing.T) {
 	}
 }
 
+// ── 4b. Concurrent SAME-folder, SAME-AssetID writes: merge-by-ID
+//     under per-folder serialisation must collapse to 1 entry. ────────────
+//
+// The cross-folder test (#4) uses unique AssetIDs per goroutine, so the
+// per-folder lock is exercised but the merge-by-AssetID dedupe is never
+// hit. Real callers (e.g. semantic_enricher retried after a partial
+// Drive error) enqueue concurrent writes that share an AssetID; this
+// test pins the full invariant — same folder + same AssetID × N
+// goroutines → final state has exactly 1 entry.
+func TestService_UpsertRemote_Concurrent_SameFolder_SameAssetID(t *testing.T) {
+	adapter := newFakeDriveAdapter()
+	svc := New(adapter, zap.NewNop())
+	ctx := context.Background()
+
+	const goroutines = 20
+	const assetID = "A1-shared"
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+	// Each goroutine uses a different Name so we can verify last-
+	// writer-wins unpredictably applies (we don't assert WHICH name
+	// wins, only that exactly 1 entry survives).
+	for i := 0; i < goroutines; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			entry := newTestEntry(assetID, fmt.Sprintf("writer-%02d", i))
+			entry.DriveFileID = fmt.Sprintf("drive-%02d", i)
+			if err := svc.UpsertRemote(ctx, "folder-shared", entry); err != nil {
+				errCh <- fmt.Errorf("writer %d: %w", i, err)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatalf("concurrent same-folder upsert failed: %v", err)
+	}
+
+	entries := decodeEntries(t, adapter.getOrFatal(t, "folder-shared"))
+	if len(entries) != 1 {
+		t.Fatalf("concurrent same-folder writes must collapse to 1 entry (got %d): %v",
+			len(entries), entries)
+	}
+	if entries[0].AssetID != assetID {
+		t.Fatalf("assetID drift under concurrency: got %q want %q",
+			entries[0].AssetID, assetID)
+	}
+	// Every goroutine issued a ReplaceManifest call — per-folder
+	// serialisation proves every writer saw a fresh download/merge
+	// cycle, so the Assertion `len == 1` is load-bearing (not
+	// coincidental from "lock held by first writer").
+	if adapter.replaceCount != goroutines {
+		t.Fatalf("expected %d ReplaceManifest calls (one per writer), got %d",
+			goroutines, adapter.replaceCount)
+	}
+	if adapter.downloadCount != goroutines {
+		t.Fatalf("expected %d DownloadManifest calls (one per writer), got %d",
+			goroutines, adapter.downloadCount)
+	}
+}
+
 // ── 5. Upload error (graceful degradation via ErrRemoteWrite wrap) ────────
 
 func TestService_UpsertRemote_UploadError_Returns(t *testing.T) {
