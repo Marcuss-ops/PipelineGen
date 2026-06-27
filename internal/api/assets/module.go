@@ -66,10 +66,10 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.Clips.RegisterRoutes(r)
 	}
 
-	// Voiceover operations (/voiceover/*)
+	// Voiceover operations (POST /voiceovers)
 	if m.deps.Voiceover != nil {
-		voiceover := r.Group("/voiceover")
-		m.deps.Voiceover.RegisterRoutes(voiceover)
+		voiceovers := r.Group("/voiceovers")
+		m.deps.Voiceover.RegisterRoutes(voiceovers)
 	}
 
 	// SoundEffect operations (/sound_effect/*)

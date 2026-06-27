@@ -278,22 +278,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		log.Warn("diagnostics and/or search services NOT fully wired — some routes will return 503")
 	}
 
-	// ── PR 4 (June 2026): extract voiceover, soundeffect, register ─
-	// Voiceover: GroupsResolver is built here for the standalone handler.
-	var groupsResolver *voiceoverpkg.GroupsResolver
-	if bundle.AssetTreeService != nil {
-		gr, grErr := voiceoverpkg.NewGroupsResolver(bundle.AssetTreeService, log)
-		if grErr != nil {
-			log.Warn("voiceover groups_resolver not initialized (PR4)", zap.Error(grErr))
-		} else {
-			groupsResolver = gr
-		}
-	}
-	defaultVoiceoverRoot := cfg.Drive.VoiceoverRootFolder
-	if defaultVoiceoverRoot != "" {
-		log.Info("voiceover groups_resolver enabled (PR4)", zap.String("root", defaultVoiceoverRoot))
-	}
-	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
+	// ── PR 4 (June 2026): voiceover handler — single POST /api/media/voiceovers.
+	// Always async; GroupsResolver and sync service no longer wired at handler level.
+	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, jobs.Facade, log)
 
 	// SoundEffect: wrapped repos + uploader + metaWriter via sfxports
 	// adapters. PG-003 (June 2026) replaces the four concrete
