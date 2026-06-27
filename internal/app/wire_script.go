@@ -322,7 +322,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		handler,
 		log,
 	)
-	return tryRegisterModule(registry, log, mod)
+	return tryRegisterModuleStrict(registry, log, mod)
 }
 
 // ── Adapters ────────────────────────────────────────────────────────────────

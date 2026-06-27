@@ -56,38 +56,6 @@ func (r *Registry) Register(m Module) error {
 	return nil
 }
 
-// Has reports whether a module with the given name is already registered.
-// Used by composition-time coalesce on duplicate slot publications
-// (PR17, June 2026): when DescriptorJobs and DescriptorProviders both
-// publish the same capability name through a shared Descriptor, the
-// second Register call should coalesce silently rather than fail.
-//
-// IMPORTANT — SCOPE OF COALESCE: any matching name coalesces silently,
-// including between distinct capability instances. The composition-time
-// invariant is that capability names are unique; if two unrelated
-// Descriptors report the same Name(), the second is dropped on the floor
-// here and the duplicate-bug goes undiagnosed. Defensive checks against
-// this scenario belong in the composition root (registry.go::WireRegistry
-// logging + a pre-flight deduplication audit) — NOT in this primitive.
-//
-// Frozen edge case: if the registry is FROZEN and a caller invokes
-// Register for an already-present name, this primitive does NOT short-
-// circuit on freeze — Compose callers that want freeze-respecting
-// idempotency should check r.Frozen separately. In the current
-// architecture WireRegistry is the only composition root and freezes
-// only after every Register call has completed, so this edge is
-// unreachable in practice.
-func (r *Registry) Has(name string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, existing := range r.modules {
-		if existing.Name() == name {
-			return true
-		}
-	}
-	return false
-}
-
 // Freeze prevents any further module registration. Safe to call concurrently
 // with Register — but should be called once, before StartAll.
 func (r *Registry) Freeze() {
