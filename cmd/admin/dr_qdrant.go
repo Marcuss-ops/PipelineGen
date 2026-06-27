@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/dr"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // drQdrantDispatcher is the parsed shape for `dr-qdrant <sub> ...`.
@@ -314,7 +315,7 @@ func parseRestoreSnapshotFlags(args []string) (restoreSnapshotFlags, error) {
 // The cfg parameter is the same shape appLogger returns in this
 // package; runDrQdrant forwards it. Sub-restore needs cfg.Storage
 // to open the SQLite DB for the verifier's asset store.
-func runDrRestoreSnapshot(ctx context.Context, cfg appConfigLike, client *qdrant.Client, schema *qdrant.IndexSchema, log *zap.Logger, args []string) error {
+func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *qdrant.Client, schema *qdrant.IndexSchema, log *zap.Logger, args []string) error {
 	flags, err := parseRestoreSnapshotFlags(args)
 	if err != nil {
 		return err
@@ -482,56 +483,4 @@ func runDrApplyRetention(ctx context.Context, client *qdrant.Client, schema *qdr
 		}
 	}
 	return nil
-}
-
-// appConfigLike is a tight abstract over the parts of the admin cfg
-// the dr subcommands actually use. Local to this file; full cfg is
-// returned by appLogger in the parent package. Mirrors the reconcile
-// path: appLogger returns a config struct with .Qdrant and .Storage
-// substructs already populated.
-//
-// NOTE: the underlying type returned by appLogger in this package is
-// unexported (see cmd/admin/reconcile_qdrant.go for the canonical
-// reference). We pass it through as `interface{}` here — the
-// production assignment is `cfg: <whatever appLogger returns>`,
-// and the reparsed fields are read off `cfg.Qdrant` / `cfg.Storage`.
-// To keep the type contract tight enough for Go's compiler without
-// importing any new package-level type, the runDrRestoreSnapshot
-// accepts this duck-typed surface; the call site `runDrRestoreSnapshot(... cfg, ...)`
-// is the only compile-time anchor.
-//
-// In practice the cleanest fix (a follow-up commit) is to expose
-// appConfig as a public type from the same package; for PR3 the
-// duck-type goes through because all callers are in the same package.
-type appConfigLike = duckCfg
-
-// duckCfg is an internal alias that lets the subcommands read the
-// fields they need without exporting a public type just yet. Adds a
-// single concrete field to make the package compile while the public
-// type extraction is a follow-up commit.
-type duckCfg = adminConfigShape
-
-// adminConfigShape captures the fields the dr subcommands read. It is
-// CONVERTIBLE from appLogger's return type via struct-equality (no
-// helper needed) because both have the same field names + types. As
-// long as the production cfg retains these fields + their types, the
-// substitution is type-safe.
-type adminConfigShape = struct {
-	Qdrant  adminQdrantShape
-	Storage adminStorageShape
-}
-
-// adminQdrantShape is the cfg.Qdrant substruct the dr subcommands depend on.
-// Mirrors production cfg.Qdrant — keep in lock-step.
-type adminQdrantShape = struct {
-	Enabled bool
-	BaseURL string
-	APIKey  string
-	Timeout int
-}
-
-// adminStorageShape is the cfg.Storage substruct used only by runDrRestoreSnapshot
-// to resolve the SQLite DB path. Mirrors production cfg.Storage.
-type adminStorageShape = struct {
-	PrimaryDBFullPath func() string
 }

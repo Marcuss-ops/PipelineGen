@@ -19,6 +19,11 @@
 // (4 resolvers), Pipeline (post-generation), GenerateOneUseCase,
 // GenerateManyUseCase, GenerateJobHandler registered for
 // script.generate. Replaces the deleted PipelineUseCase block.
+//
+// PR 13 (June 2026): unified pipeline construction moved before handler —
+// MediaCurator now depends on GenerateOneUseCase, which requires normCfg /
+// sourceReg / ppReg to already exist. The handler receives a fully-populated
+// mediaCurator instead of nil.
 
 package app
 
@@ -84,11 +89,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// ── Media curator ──────────────────────────────────────────────────
+	// ── Media curator (deferred: needs oneUC) ────────────────────────
+	// PR 13 (June 2026): mediaCurator is constructed after the unified
+	// pipeline is wired (normCfg, sourceReg, ppReg, oneUC) so it can
+	// receive *GenerateOneUseCase instead of the now-removed *Engine.
 	var mediaCurator *scripts.MediaCurator
-	if root.Repos.ClipsRepo != nil && engine != nil {
-		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, engine, log)
-	}
 
 	// ── Harvest service ────────────────────────────────────────────────
 	var _ = artlistpkg.LoadPresets
@@ -122,13 +127,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		driveFolderID: cfg.Drive.ScriptsGenFolder(),
 	}
 
-	// ── Curation job service (PR 11: migrated to unified pipeline) ────
-	// curationJobSvc is no longer registered as a job handler — curation
-	// now flows through script.generate via the unified pipeline.
-	// The CurationJobServiceImpl type and HandleCurateJob remain in the
-	// codebase for any in-flight media.curate jobs that were enqueued
-	// before the migration. They are wired below after oneUC is constructed.
-
 	// ── Admin token ────────────────────────────────────────────────────
 	adminToken := ""
 	if cfg != nil {
@@ -144,44 +142,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		gen, memorySvc, log,
 	)
 
-	// ── Construct handler ──────────────────────────────────────────────
-	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
-		Engine:                engine,
-		Section:               sectionRegen,
-		CacheEviction:         cacheEvictionUC,
-		Image:                 root.Domains.ImageService,
-		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
-		// typed ports — `scripts.RealtimeSearchService` and
-		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +
-		// AssocService fields (typed in Wave 15 Onda 3) feed them
-		// directly — typed-to-typed assignment, no auto-bridge.
-		Realtime:              root.Domains.RealtimeSearch,
-		Association:           root.Domains.AssocService,
-		Voiceover:             root.Domains.VoiceoverService,
-		AssetTree:             root.Search.AssetTreeService,
-		ClipSourceBuilder:     clipSourceBuilder,
-		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
-		ScriptsRepo:           scriptsRepoAdapter,
-		Memory:                memorySvc,
-		Jobs:                  root.Jobs.Facade,
-		AdminToken:            adminToken,
-		DriveFolderClient:     driveFolderClient,
-		DocumentCreator:       documentCreator,
-		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
-		ClipServices:          clipServices,
-		Log:                   log,
-	})
-
-	// ── Register job handlers at composition time ──────────────────────
-	// PR 11 (June 2026): media.curate registration removed — curation
-	// now flows through script.generate via the unified pipeline.
-	// GenerateOneUseCase is wired below; the old MediaCurator path is
-	// superseded.
-
 	// ── Unified generation pipeline (PR8, June 2026) ───────────────────
-	// Constructs the canonical generation stack:
-	//   SourceRegistry (4 resolvers) → Pipeline (post-gen) →
+	// Constructed BEFORE the handler so mediaCurator can consume oneUC.
+	//   SourceRegistry (4 resolvers) → PostProcessorRegistry →
 	//   GenerateOneUseCase → GenerateManyUseCase → GenerateJobHandler
 	// Registered for script.generate — replaces the deleted
 	// PipelineUseCase.RegisterJobs block removed in PR7.
@@ -260,12 +223,16 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Freeze the source registry — no more resolvers after composition.
 	sourceReg.Freeze()
-
 	ppReg.Freeze()
 
 	// Use cases: one → many → job handler.
 	oneUC := scripts.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
 	manyUC := scripts.NewGenerateManyUseCase(oneUC, log)
+
+	// ── Media curator (PR 13: uses oneUC) ──────────────────────────
+	if root.Repos.ClipsRepo != nil && engine != nil {
+		mediaCurator = scripts.NewMediaCurator(cfg.ClipIndexer.ServerURL, root.Repos.ClipsRepo, clipSourceBuilder, oneUC, log)
+	}
 
 	genJobHandler := scripts.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
 	if root.Jobs.Service != nil {
@@ -280,6 +247,35 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if gen != nil {
 		gen.SetMetadataModel(metaModel)
 	}
+
+	// ── Construct handler ──────────────────────────────────────────────
+	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
+		Engine:                engine,
+		Section:               sectionRegen,
+		CacheEviction:         cacheEvictionUC,
+		Image:                 root.Domains.ImageService,
+		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
+		// typed ports — `scripts.RealtimeSearchService` and
+		// `scripts.AssocSearchService`. DomainBundle.RealtimeSearch +
+		// AssocService fields (typed in Wave 15 Onda 3) feed them
+		// directly — typed-to-typed assignment, no auto-bridge.
+		Realtime:              root.Domains.RealtimeSearch,
+		Association:           root.Domains.AssocService,
+		Voiceover:             root.Domains.VoiceoverService,
+		AssetTree:             root.Search.AssetTreeService,
+		ClipSourceBuilder:     clipSourceBuilder,
+		MediaCurator:          mediaCurator,
+		Harvest:               harvestSvc,
+		ScriptsRepo:           scriptsRepoAdapter,
+		Memory:                memorySvc,
+		Jobs:                  root.Jobs.Facade,
+		AdminToken:            adminToken,
+		DriveFolderClient:     driveFolderClient,
+		DocumentCreator:       documentCreator,
+		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
+		ClipServices:          clipServices,
+		Log:                   log,
+	})
 
 	// ── Register HTTP module ───────────────────────────────────────────
 	mod := module.NewRouteModule(

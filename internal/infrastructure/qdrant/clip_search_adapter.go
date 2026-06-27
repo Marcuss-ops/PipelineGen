@@ -6,7 +6,7 @@
 // PJ-CURATE-1 (June 2026): the previous MediaCurator fell back to
 // text-only whenever req.HintClipIDs was empty. This adapter
 // reinstates an opt-in semantic-search leg (caller passes
-// Search=true in JobPayloadCurate) so the curate path can produce
+// allows the curate path to produce
 // curated clip IDs without caller-side seeding.
 //
 // Per AGENTS.md Pattern 0, this is the ONLY place that imports

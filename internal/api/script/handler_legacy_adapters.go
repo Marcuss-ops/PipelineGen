@@ -300,7 +300,7 @@ func (r *LegacyGenerateBatchRequest) toEnvelope() domainScript.GenerationEnvelop
 // ── Legacy curate adapter ───────────────────────────────────────────────
 
 // LegacyCurateRequest is the deprecated request for
-// POST /api/script/curate. Mirrors JobPayloadCurate's JSON shape.
+// POST /api/script/curate.
 type LegacyCurateRequest struct {
 	Query             string   `json:"query"`
 	Title             string   `json:"title"`

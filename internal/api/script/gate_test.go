@@ -20,7 +20,6 @@ import (
 var prohibitedPatterns = []gate.Prohibition{
 	{Name: "scriptGenSem channel", Pattern: "scriptGenSem"},
 	{Name: "RegisterJobHandlers in API", Pattern: "RegisterJobHandlers"},
-	{Name: "CurationJobServiceImpl alias", Pattern: "CurationJobServiceImpl"},
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
 	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
 	{Name: "NewScenesService in API", Pattern: "NewScenesService"},

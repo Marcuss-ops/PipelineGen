@@ -5,8 +5,7 @@
 // "clip search optional" path. The previous MediaCurator only
 // consumed req.HintClipIDs (caller-seeded) and silently fell back
 // to text-only if none were supplied. This port lets the worker
-// invoke Qdrant on demand (opt-in via Search=true in
-// CurateRequest/JobPayloadCurate) without coupling the
+// invoke Qdrant on demand (opt-in via Search=true in CurateRequest)
 // application/scripts package to Qdrant-specific payload types.
 //
 // Port shape is intentionally narrow (assetID + score + name) so
@@ -33,8 +32,7 @@ type ClipSearchPort interface {
 	// no filter on that axis.
 	//
 	// minScore defaults to 0.5 if zero (matches the legacy
-	// MediaCurator.Curate threshold; operators can tighten/loosen
-	// via JobPayloadCurate).
+	// MediaCurator.Curate threshold).
 	//
 	// An empty Query returns an empty hit slice with nil error.
 	// Adapter errors propagate to the worker, which surfaces them

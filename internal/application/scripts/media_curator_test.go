@@ -71,10 +71,10 @@ func TestMediaCurator_Curate_HintClipIDs_PassesGate_Pins_NonCurateError(t *testi
 	t.Parallel()
 
 	m := &MediaCurator{
-		log:         zap.NewNop(),
-		engine:      nil, // intentional: forces the engine-not-configured path
-		clipBuilder: nil, // intentional: skips BuildClipContext
-		clipSearch:  nil, // intentional: HintClipIDs-only legacy path
+		log:           zap.NewNop(),
+		generateOneUC: nil, // intentional: forces the generateOneUC-not-configured path
+		clipBuilder:   nil, // intentional: skips BuildClipContext
+		clipSearch:    nil, // intentional: HintClipIDs-only legacy path
 	}
 
 	_, err := m.Curate(context.Background(), CurateRequest{
@@ -84,15 +84,15 @@ func TestMediaCurator_Curate_HintClipIDs_PassesGate_Pins_NonCurateError(t *testi
 	})
 
 	if err == nil {
-		t.Fatal("expected engine-not-configured error (engine is nil), got nil")
+		t.Fatal("expected generateOneUC-not-configured error (generateOneUC is nil), got nil")
 	}
 	if errors.Is(err, ErrCurateNoClips) {
 		t.Fatalf("HintClipIDs-resolved path MUST NOT surface ErrCurateNoClips; got err=%v", err)
 	}
-	// The downstream error must be the documented "engine not configured"
+	// The downstream error must be the documented "generateOneUC not configured"
 	// path. This is the negative gate contract: the typed-error gate
 	// only fires when clipIDs == 0 AND !AllowTextOnly.
-	if got, want := err.Error(), "media curator: engine not configured"; !strings.Contains(got, want) {
-		t.Errorf("expected error %q to contain %q (engine-not-configured path), got %q", got, want, got)
+	if got, want := err.Error(), "media curator: generateOneUC not configured"; !strings.Contains(got, want) {
+		t.Errorf("expected error %q to contain %q (generateOneUC-not-configured path), got %q", got, want, got)
 	}
 }

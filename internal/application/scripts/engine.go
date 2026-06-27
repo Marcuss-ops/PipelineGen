@@ -7,13 +7,13 @@
 // implementation stores typed fields and calls ollama.Generator
 // .GenerateScript.
 //
-// PG-029 (June 2026): Engine struct + WriteScriptRequest consolidated
-// here from the now-deleted types.go.
+// PG-029 (June 2026): Engine struct consolidated here from the
+// now-deleted types.go.
 //
-// PR 6 (June 2026): canonical Generate(ctx, plan) method added. It
-// accepts a ResolvedGenerationPlan directly and returns a typed
-// EngineResult. WriteScript is deprecated — new callers MUST use
-// Generate. The only permitted caller of Generate is
+// PR 6 (June 2026): canonical Generate(ctx, plan) method — the ONLY
+// engine entry point. Accepts a ResolvedGenerationPlan and returns
+// a typed EngineResult. The deprecated WriteScript(path) was removed
+// in PR 13 (June 2026) after media_curator.go migrated to
 // GenerateOneUseCase.
 //
 // The Engine owns:
@@ -82,50 +82,6 @@ type EngineResult struct {
 	// ClipEvidence echoes the resolved clip evidence from the plan
 	// so downstream (ResultBuilder) doesn't re-derive it.
 	ClipEvidence *scriptpkg.ClipEvidence `json:"clip_evidence,omitempty"`
-}
-
-// DeprecatedWriteScriptRequest carries the inputs for the deprecated
-// WriteScript method. It exists only for compatibility with
-// media_curator.go during the migration window.
-//
-// Deprecated: use Engine.Generate(ctx, plan) instead.
-// Removal: PR 11 (legacy adapter cutover) or PR 12 (CONTRACT).
-type DeprecatedWriteScriptRequest struct {
-	Plan        interface{} // *scriptpkg.ScriptGenerationPlan
-	Topic       string
-	Title       string
-	Language    string
-	Tone        string
-	Model       string
-	Mode        string
-	SourceText  string
-	MinWords    int
-	MaxChars    int
-	Prompt      string
-	UseMemory   bool
-	SaveToDB    bool
-	SaveTimeout int
-	ClipPack    interface{}
-}
-
-// WriteScriptRequest is a backward-compatibility alias for
-// DeprecatedWriteScriptRequest.
-//
-// Deprecated: use Engine.Generate(ctx, plan) instead.
-type WriteScriptRequest = DeprecatedWriteScriptRequest
-
-// WriteScriptResult is a backward-compatibility type alias.
-// Deprecated: use EngineResult instead.
-type WriteScriptResult struct {
-	Script      string
-	WordCount   int
-	Model       string
-	Prompt      string
-	CacheStatus string
-	CacheHit    bool
-	WasCached   bool
-	EstDuration int
-	ScriptID    int64
 }
 
 // NewEngine constructs a real Engine backed by the canonical
@@ -314,83 +270,4 @@ func extractPlanClipIDs(plan *scriptpkg.ResolvedGenerationPlan) []string {
 	return plan.ClipEvidence.ClipIDs
 }
 
-// ── Deprecated compatibility path ─────────────────────────────────
 
-// WriteScript generates a script via ollama.Generator. It converts
-// the legacy WriteScriptRequest to a ResolvedGenerationPlan and
-// delegates to Generate.
-//
-// Deprecated: use Engine.Generate(ctx, plan) instead.
-// Removal: PR 11 or PR 12 once media_curator.go is migrated.
-func (e *Engine) WriteScript(ctx context.Context, req WriteScriptRequest) (*WriteScriptResult, error) {
-	// Build a minimal ResolvedGenerationPlan from the legacy request.
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:      req.Title,
-		Topic:      req.Topic,
-		Language:   req.Language,
-		Tone:       req.Tone,
-		Model:      req.Model,
-		Mode:       req.Mode,
-		SourceText: req.SourceText,
-		TargetWords: req.MinWords,
-		MaxChars:   req.MaxChars,
-		Prompt:     req.Prompt,
-		UseMemory:  req.UseMemory,
-		SaveToDB:   req.SaveToDB,
-	}
-	if req.Plan != nil {
-		if oldPlan, ok := req.Plan.(*scriptpkg.ScriptGenerationPlan); ok {
-			plan.Title = oldPlan.Title
-			plan.Topic = oldPlan.Topic
-			plan.Language = oldPlan.Language
-			plan.Tone = oldPlan.Tone
-			plan.Model = oldPlan.Model
-			plan.Mode = oldPlan.Mode
-			plan.SourceText = oldPlan.SourceText
-			plan.Prompt = oldPlan.Prompt
-			plan.TargetWords = oldPlan.TargetWords
-			plan.UseMemory = oldPlan.UseMemory
-			plan.SaveToDB = oldPlan.SaveToDB
-		}
-	}
-
-	// Extract clip evidence from legacy ClipPack.
-	if clipIDs := extractClipIDs(req.ClipPack); len(clipIDs) > 0 {
-		plan.ClipEvidence = &scriptpkg.ClipEvidence{
-			ClipIDs:   clipIDs,
-			ClipCount: len(clipIDs),
-		}
-	}
-
-	result, err := e.Generate(ctx, plan)
-	if err != nil {
-		return nil, err
-	}
-
-	return &WriteScriptResult{
-		Script:      result.Script,
-		WordCount:   result.WordCount,
-		Model:       result.Model,
-		Prompt:      result.Prompt,
-		CacheStatus: result.CacheStatus,
-		CacheHit:    result.CacheStatus == "exact_hit",
-		WasCached:   result.CacheStatus == "exact_hit",
-		EstDuration: result.EstDuration,
-		ScriptID:    result.ScriptID,
-	}, nil
-}
-
-// extractClipIDs pulls the clip_ids slice from the ClipPack map
-// (legacy compatibility path only).
-func extractClipIDs(pack interface{}) []string {
-	m, ok := pack.(map[string]any)
-	if !ok || m == nil {
-		return nil
-	}
-	raw, ok := m["clip_ids"]
-	if !ok {
-		return nil
-	}
-	ids, _ := raw.([]string)
-	return ids
-}

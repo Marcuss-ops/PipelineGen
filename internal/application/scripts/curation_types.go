@@ -18,12 +18,12 @@ type MediaCurator struct {
 	// the optional semantic-search leg. nil → curator consumes only
 	// req.HintClipIDs. Set via SetClipSearchPort from the composition
 	// root when Qdrant is enabled.
-	serverURL   string
-	clipsRepo   interface{} // *assets.ClipsRepository (avoid import cycle)
-	clipBuilder *ClipSourceBuilder
-	engine      *Engine
-	clipSearch  ClipSearchPort
-	log         *zap.Logger
+	serverURL     string
+	clipsRepo     interface{} // *assets.ClipsRepository (avoid import cycle)
+	clipBuilder   *ClipSourceBuilder
+	generateOneUC *GenerateOneUseCase
+	clipSearch    ClipSearchPort
+	log           *zap.Logger
 }
 
 // ── CurateRequest / CurateResult ─────────────────────────────────────────
@@ -117,55 +117,6 @@ type NarrativeSection struct {
 	Purpose    string `json:"purpose"`
 	WordBudget int    `json:"word_budget"`
 	KeyPoints  string `json:"key_points"`
-}
-
-// ── Job payloads ─────────────────────────────────────────────────────────
-
-// JobPayloadCurate holds the payload for a curation job.
-//
-// PJ-CURATE-1 (June 2026) additions vs the previous shape:
-//
-//   - title          — mirrored from CurateRequest.Title so the worker
-//     can name the generated document deterministically. Previously
-//     worker fell back to the legacy `query || voiceover_group` heuristic.
-//   - type           — mirrors CurateRequest.Type for the worker to know
-//     whether the result is meant to be exported as voiceover script.
-//   - hint_clip_ids  — caller-seeded clip IDs (parity with CurateRequest).
-//     Previously MISSING → CurateRequest.HintClipIDs was always empty
-//     on the worker side even when the client supplied a hint, causing
-//     MediaCurator to silently fall back to text-only.
-//   - search         — opt-in to the semantic-search leg via the
-//     ClipSearchPort wired into MediaCurator. Defaults to false
-//     (HintClipIDs-only legacy behaviour).
-//   - allow_text_only — explicit opt-in to the legacy text-only
-//     fallback when no clips resolve. Defaults to false; the worker
-//     MUST surface ErrCurateNoClips when both ports and hints are
-//     empty AND allow_text_only=false.
-type JobPayloadCurate struct {
-	Query             string   `json:"query"`
-	Title             string   `json:"title"`
-	Type              string   `json:"type"`
-	Languages         []string `json:"languages,omitempty"`
-	Language          string   `json:"language"`
-	Tone              string   `json:"tone"`
-	Model             string   `json:"model"`
-	MaxClips          int      `json:"max_clips"`
-	SelectableClips   int      `json:"selectable_clips"`
-	TargetWords       int      `json:"target_words"`
-	MaxCharsPerScene  int      `json:"max_chars_per_scene"`
-	MinScore          float64  `json:"min_score"`
-	Source            string   `json:"source"`
-	MediaType         string   `json:"media_type"`
-	Style             string   `json:"style"`
-	StyleInstructions string   `json:"style_instructions"`
-	ForceRefresh      bool     `json:"force_refresh"`
-	GenerateVoiceover bool     `json:"generate_voiceover"`
-	VoiceoverFolderID string   `json:"voiceover_folder_id"`
-	VoiceoverGroup    string   `json:"voiceover_group"`
-	// PJ-CURATE-1: clip source-control (see header above).
-	HintClipIDs   []string `json:"hint_clip_ids"`
-	Search        bool     `json:"search"`
-	AllowTextOnly bool     `json:"allow_text_only"`
 }
 
 // ── Curate error contract ────────────────────────────────────────────────

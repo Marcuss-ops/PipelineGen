@@ -3,11 +3,9 @@
 // (single or batch item) produces exactly one GenerationResult.
 //
 // PR 9 (June 2026): canonical nested shape added — Output, Source,
-// Cache, Artifacts replace the old flat fields. The old fields
-// (Script, ClipScenes, EntitiesJSON, etc.) remain present during
-// the migration window so existing consumers don't break. All
-// new code MUST populate the nested fields; old flat fields are
-// DEPRECATED and will be removed in PR 12 (CONTRACT).
+// Cache, Artifacts replace the old flat fields.
+// PR 13 (June 2026): deprecated flat fields removed — all consumers
+// now use the nested canonical fields exclusively.
 //
 // No durable field uses interface{}, any, or map[string]any.
 package script
@@ -49,38 +47,6 @@ type GenerationResult struct {
 	// ── Canonical artifacts (PR 9) ────────────────────────────────────
 	// Artifacts holds postprocessor outputs in one typed bundle.
 	Artifacts ArtifactResult `json:"artifacts,omitempty"`
-
-	// ── Deprecated flat fields (migration window only) ────────────────
-	// All fields below are DEPRECATED. Use the nested Output, Source,
-	// Cache, and Artifacts structs instead. Removal: PR 12 (CONTRACT).
-
-	// Deprecated: use Output.Text.
-	Script string `json:"script"`
-	// Deprecated: use Output.WordCount.
-	WordCount int `json:"word_count"`
-	// Deprecated: use Cache.Status.
-	CacheStatus string `json:"cache_status,omitempty"`
-	// Deprecated: use Cache.Hit.
-	CacheHit bool `json:"cache_hit,omitempty"`
-	// Deprecated: use Artifacts.EntitiesJSON.
-	EntitiesJSON string `json:"entities_json,omitempty"`
-	// Deprecated: use Artifacts.Metadata.
-	Metadata []VideoMetadata `json:"metadata,omitempty"`
-	// Deprecated: use Output.SpecScene + Bindings.Voiceover.
-	Voiceovers []VoiceoverResult `json:"voiceovers,omitempty"`
-	// Deprecated: use Output.SpecScene + Bindings.Image.
-	SceneImages []SceneImageResult `json:"scene_images,omitempty"`
-	// Deprecated: use Output.SpecScene.
-	ScenesJSON string `json:"scenes_json,omitempty"`
-	// Deprecated: use Output.SpecScene + Bindings.Clip.
-	ClipScenes []ClipSceneResult `json:"clip_scenes,omitempty"`
-	// Deprecated: use Artifacts.DocLink / Artifacts.DocID.
-	DocLink string `json:"doc_link,omitempty"`
-	DocID   string `json:"doc_id,omitempty"`
-	// Deprecated: use Source.SearchResults.
-	SearchResults []SearchResultItem `json:"search_results,omitempty"`
-	// Deprecated: use Source.AcceptedClipIDs.
-	AcceptedClipIDs []string `json:"accepted_clip_ids,omitempty"`
 
 	// ── Timings ───────────────────────────────────────────────────────
 	Timings GenerationTimings `json:"timings,omitempty"`
