@@ -69,31 +69,98 @@ type RegistryWiring struct {
 	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 }
 
-// tryRegisterModuleStrict is the strict-fail variant. Every WireRegistry
-// call site uses this helper; the previous coalescing tryRegisterModule
-// wrapper was deleted in PR 1 (June 2026) so duplicate module
-// publication surfaces as a hard error instead of silently dropping
-// the duplicate on a Debug log. Cross-slot publication (DescriptorJobs /
-// DescriptorProviders publishing the same capability name through a
-// shared Descriptor) registers to DISTINCT registries (module.Registry
-// vs Jobs.Service vs providers.Registry), so the strict path is safe.
+// strictOption is the composition-site metadata tag passed to
+// tryRegisterModuleStrict via WithRegistrationPoint. The tag is
+// surfaced in error messages so an operator can pin the exact
+// WireRegistry block responsible for a duplicate/register/freeze
+// failure. Composition sites that omit the tag default to "unknown".
+type strictOption func(*strictRegCtx)
+
+type strictRegCtx struct {
+	point string
+}
+
+// WithRegistrationPoint tags the next tryRegisterModuleStrict call with
+// the composition site in WireRegistry that issued it (e.g.,
+// "register.Generation", "register.Assets"). The tag is surfaced in
+// error messages so an operator can pin the exact call site that
+// emitted a duplicate or freeze failure. Composition sites that don't
+// tag default to "unknown".
+func WithRegistrationPoint(point string) strictOption {
+	return func(c *strictRegCtx) {
+		if point != "" {
+			c.point = point
+		}
+	}
+}
+
+func collectRegPoint(opts []strictOption) string {
+	var c strictRegCtx
+	for _, o := range opts {
+		if o != nil {
+			o(&c)
+		}
+	}
+	if c.point == "" {
+		return "unknown"
+	}
+	return c.point
+}
+
+// tryRegisterModuleStrict is the composition-time registration path.
+// It is the ONLY composition-time helper for publishing a Module into
+// the api.Registry; the previous permissive tryRegisterModule was
+// deleted in PR 1 (commit 81e79728) so duplicate module publication
+// surfaces as a hard error instead of silently dropping the duplicate
+// on a Debug log.
 //
-// The "compose:" prefix on the wrapped error is pinned by
+// Cross-slot publication (DescriptorJobs / DescriptorProviders
+// publishing the same capability name through a shared Descriptor)
+// registers to DISTINCT registries (module.Registry vs Jobs.Service
+// vs providers.Registry), so the strict path is safe.
+//
+// PR 2 (June 2026 — codex/registry-strict-uniqueness) invariant set:
+//   - nil module → explicit error (was NPE before PR 2).
+//   - empty module name → explicit error ("module name is empty").
+//   - post-freeze → existing sentinel ("registry is frozen").
+//   - same instance, same name → silent no-op (composition-time
+//     idempotency; PR 2 contract pinned by
+//     TestRegisterSameInstanceMultipleSlots_NoError).
+//   - different instance, same name → explicit error ("already registered").
+//
+// The composed error carries three composition-level fields required by
+// the branch spec ("Inserire nel messaggio: nome capability; tipo
+// descriptor; punto di registrazione"):
+//
+//	compose: capability=%q, descriptor-type=%T, registration-point=%s: <inner>
+//
+// The "compose:" prefix is pinned by
 // TestTryRegisterModule_ErrorContainsSpecMarker in
 // internal/app/registry_failfast_test.go; do not change without updating
 // the test marker.
-func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod module.Module) error {
+func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod module.Module, opts ...strictOption) error {
+	if registry == nil {
+		// Composition-bug guard: a nil registry is never expected at
+		// composition time. Surface the bug here so WireRegistry fails
+		// fast with a clear operator message.
+		return fmt.Errorf("compose: nil api.Registry passed to strict-register (registration-point=%s)", collectRegPoint(opts))
+	}
+	if mod == nil {
+		return fmt.Errorf("compose: nil module passed (registration-point=%s)", collectRegPoint(opts))
+	}
 	if err := registry.Register(mod); err != nil {
-		// Guarded nil-log path for the failfast test contract
-		// (registry_failfast_test.go::TestTryRegisterModule_DuplicateFails
-		// passes `nil` for the logger to keep the assertion pure). Production
-		// call sites always wire a real *zap.Logger from WireRegistry's
-		// zap parameter — the Warn at the duplicate-name site keeps
-		// observability intact there.
 		if log != nil {
-			log.Warn("failed to register module", zap.String("module", mod.Name()), zap.Error(err))
+			log.Warn("strict-register failed",
+				zap.String("module", mod.Name()),
+				zap.String("registration-point", collectRegPoint(opts)),
+				zap.Error(err))
 		}
-		return fmt.Errorf("compose: module=%q already registered: %w", mod.Name(), err)
+		// Pin "compose:" prefix; spec fields = capability + descriptor-type +
+		// registration-point. Inner %w preserves the sentinel substrings
+		// pinned by failfast tests ("already registered", "frozen",
+		// "module name is empty").
+		return fmt.Errorf("compose: capability=%q, descriptor-type=%T, registration-point=%s: %w",
+			mod.Name(), mod, collectRegPoint(opts), err)
 	}
 	return nil
 }
@@ -126,7 +193,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
 		newDriveAdminAdapter(driveUploaderAdapter, log),
 		&noopReconciler{},
-	)); err != nil {
+	), WithRegistrationPoint("register.System")); err != nil {
 		return nil, fmt.Errorf("wire registry: system module: %w", err)
 	}
 
@@ -146,7 +213,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
 	} else {
-		if err := tryRegisterModuleStrict(registry, log, aw.Module); err != nil {
+		if err := tryRegisterModuleStrict(registry, log, aw.Module, WithRegistrationPoint("register.Artlist")); err != nil {
 			return nil, fmt.Errorf("wire registry: artlist: %w", err)
 		}
 		wiring.ArtlistSvc = aw
@@ -173,7 +240,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, root.Search.ProviderRegistry, toolCheckerAdapter, idemHandler); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
-		if err := tryRegisterModuleStrict(registry, log, yw.Module); err != nil {
+		if err := tryRegisterModuleStrict(registry, log, yw.Module, WithRegistrationPoint("register.YouTubeClip")); err != nil {
 			return nil, fmt.Errorf("wire registry: youtube: %w", err)
 		}
 		wiring.YouTubeClip = yw
@@ -205,7 +272,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			log,
 		)
 		log.Info("created Jobs module")
-		if err := tryRegisterModuleStrict(registry, log, jobsMod); err != nil {
+		if err := tryRegisterModuleStrict(registry, log, jobsMod, WithRegistrationPoint("register.Jobs")); err != nil {
 			return nil, fmt.Errorf("wire registry: jobs: %w", err)
 		}
 	}
@@ -225,7 +292,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			log,
 		)
 		log.Info("created Images module")
-		if err := tryRegisterModuleStrict(registry, log, imagesMod); err != nil {
+		if err := tryRegisterModuleStrict(registry, log, imagesMod, WithRegistrationPoint("register.Images")); err != nil {
 			return nil, fmt.Errorf("wire registry: images: %w", err)
 		}
 	}
@@ -248,7 +315,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if mediaIngestErr != nil {
 			log.Warn("failed to wire module", zap.String("module", "MediaIngest"), zap.Error(mediaIngestErr))
 		} else if mediaIngestW != nil && mediaIngestW.Module != nil {
-			if err := tryRegisterModuleStrict(registry, log, mediaIngestW.Module); err != nil {
+			if err := tryRegisterModuleStrict(registry, log, mediaIngestW.Module, WithRegistrationPoint("register.MediaIngest")); err != nil {
 				return nil, fmt.Errorf("wire registry: media-ingest: %w", err)
 			}
 		}
@@ -265,7 +332,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			log,
 		)
 		log.Info("created Scraper module")
-		if err := tryRegisterModuleStrict(registry, log, scraperMod); err != nil {
+		if err := tryRegisterModuleStrict(registry, log, scraperMod, WithRegistrationPoint("register.Scraper")); err != nil {
 			return nil, fmt.Errorf("wire registry: scraper: %w", err)
 		}
 	}
@@ -277,7 +344,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if fullImagesErr != nil {
 			log.Warn("failed to wire module", zap.String("module", "FullImages"), zap.Error(fullImagesErr))
 		} else if fullImagesW != nil && fullImagesW.Module != nil {
-			if err := tryRegisterModuleStrict(registry, log, fullImagesW.Module); err != nil {
+			if err := tryRegisterModuleStrict(registry, log, fullImagesW.Module, WithRegistrationPoint("register.FullImages")); err != nil {
 				return nil, fmt.Errorf("wire registry: full-images: %w", err)
 			}
 		}
@@ -300,7 +367,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if stockErr != nil {
 			log.Warn("failed to wire module", zap.String("module", "StockPipeline"), zap.Error(stockErr))
 		} else if stockW != nil && stockW.Module != nil {
-			if err := tryRegisterModuleStrict(registry, log, stockW.Module); err != nil {
+			if err := tryRegisterModuleStrict(registry, log, stockW.Module, WithRegistrationPoint("register.StockPipeline")); err != nil {
 				return nil, fmt.Errorf("wire registry: stock-pipeline: %w", err)
 			}
 		}
@@ -331,7 +398,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			"",
 			assetsapi.NewRealtimeMatchHandler(matcher, log),
 			log,
-		)); err != nil {
+		), WithRegistrationPoint("register.Realtime")); err != nil {
 			return nil, fmt.Errorf("wire registry: realtime module: %w", err)
 		}
 	}
@@ -377,11 +444,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			log,
 			middleware.FeatureFlagChecker("Script", scriptHistoryEnabled),
 			scriptHistoryEnabled,
-		)); err != nil {
+		), WithRegistrationPoint("register.ScriptHistory")); err != nil {
 			return nil, fmt.Errorf("wire registry: script-history module: %w", err)
 		}
 	}
-	if err := tryRegisterModuleStrict(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility)); err != nil {
+	if err := tryRegisterModuleStrict(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility), WithRegistrationPoint("register.Utility")); err != nil {
 		return nil, fmt.Errorf("wire registry: utility module: %w", err)
 	}
 
@@ -417,7 +484,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// (typed-to-typed, no auto-bridge required).
 	if aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher); err == nil && aw != nil {
 		wiring.Assets = aw
-		if err := tryRegisterModuleStrict(registry, log, aw.Module); err != nil {
+		if err := tryRegisterModuleStrict(registry, log, aw.Module, WithRegistrationPoint("register.Assets")); err != nil {
 			return nil, fmt.Errorf("wire registry: assets module: %w", err)
 		}
 		if maintenanceSvc != nil && aw.DeletionSvc != nil {
@@ -567,7 +634,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if scErr != nil {
 			log.Warn("failed to wire module", zap.String("module", "script-assets"), zap.Error(scErr))
 		} else {
-			if err := tryRegisterModuleStrict(registry, log, scDesc); err != nil {
+			if err := tryRegisterModuleStrict(registry, log, scDesc, WithRegistrationPoint("register.ScriptAssets")); err != nil {
 				return nil, fmt.Errorf("wire registry: script-assets: %w", err)
 			}
 			// *ScriptAssetsDescriptor satisfies api.Descriptor via the three
@@ -646,7 +713,7 @@ func registerGenerationCapability(registry *module.Registry, log *zap.Logger, cf
 		log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
 		return nil
 	}
-	if err := tryRegisterModuleStrict(registry, log, genDesc); err != nil {
+	if err := tryRegisterModuleStrict(registry, log, genDesc, WithRegistrationPoint("register.Generation")); err != nil {
 		return fmt.Errorf("wire registry: generation: %w", err)
 	}
 	// PublishSlots (api.DescriptorJobs). RegisterJobHandlers is the
@@ -676,7 +743,7 @@ func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root
 		log.Warn("failed to wire module", zap.String("module", "channels"), zap.Error(err))
 		return nil
 	}
-	if err := tryRegisterModuleStrict(registry, log, d); err != nil {
+	if err := tryRegisterModuleStrict(registry, log, d, WithRegistrationPoint("register.Channels")); err != nil {
 		return fmt.Errorf("wire registry: channels: %w", err)
 	}
 	return nil
@@ -696,7 +763,7 @@ func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger,
 		"/search-queries",
 		assetsapi.NewSearchQueriesHandler(searchqueriesuc.NewUseCase(assets.NewSearchQueriesRepository(root.DB.DB)), log),
 		log,
-	)); err != nil {
+	), WithRegistrationPoint("register.SearchQueries")); err != nil {
 		return fmt.Errorf("wire registry: search_queries module: %w", err)
 	}
 	return nil
