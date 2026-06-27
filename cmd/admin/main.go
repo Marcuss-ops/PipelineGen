@@ -51,6 +51,7 @@ var availableCommands = []string{
 	"db",
 	"delete-specific-folders",
 	"gen-api-docs",
+	"hard-delete",
 	"list-drive-folder",
 	"list-styles",
 	"reindex-qdrant",
@@ -93,6 +94,13 @@ func main() {
 		err = runCleanupStockOrphans(args)
 	case "delete-specific-folders":
 		err = runDeleteSpecificFolders(args)
+	case "hard-delete":
+		// TODO 5 (QDRANT-002-B, June 2026): admin-only physical
+		// purge of media_assets; gates on AssetVerifier
+		// (lifecycle_state DELETED + Qdrant absent + zero pending
+		// outbox). HTTP route /:source/clips/:id/hard-delete was
+		// demoted to 410 Gone — see cmd/admin/hard_delete.go header.
+		err = runHardDelete(args)
 	case "list-drive-folder":
 		err = runListDriveFolder(args)
 	case "reindex-qdrant":
