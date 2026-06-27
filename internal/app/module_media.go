@@ -175,6 +175,31 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		newClipsCfgAdapter(cfg),
 		log,
 	)
+	// PR 2 (June 2026): construct the application-layer ClipOpsService so
+	// the HTTP handler can delegate Reconcile / Cleanup / VerifyClip to a
+	// single canonical service instead of duplicating the business logic
+	// locally. The clipsAdapterBundle exposes typed ports for every dep
+	// the service takes; the new clipsJobsPortAdapter bridges
+	// domain/job.Service.Enqueue into the service's narrowed DTO. The
+	// cleanup port is a thin pass-through over deletionSvc (signatures
+	// already match the clips.CleanupServicePort contract).
+	clipsOpsPorts := newClipsAdapterBundle(
+		cfg, log,
+		bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo,
+		bundle.VoiceoverRepo, bundle.ImageRepo,
+		driveUploader, metaWriter, bundle.ClipIndexerService,
+		folderMemSvc, bundle.AssetTreeService,
+		nil, // vectorSvc removed PG-034
+	)
+	clipOpsSvc := appclips.NewClipOpsService(
+		clipsOpsPorts.SourceResolver,
+		clipsOpsPorts.VoiceoverRepo,
+		clipsOpsPorts.ImagesRepo,
+		clipsOpsPorts.DriveUploader,
+		newClipsCleanupPortAdapter(deletionSvc),
+		newClipsJobsPortAdapter(jobs.Facade),
+		log,
+	)
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
@@ -201,6 +226,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		ProcessRunner:   processRunnerAdapter,
 		Dispatcher:      clipsDispatcherPort,
 		BulkUploadWorker: bulkUploadWorker,
+		ClipOpsService:   clipOpsSvc,
 	}, idemHandler)
 	var drivePort appstorage.DrivePort
 	if driveUploader != nil {

@@ -86,6 +86,15 @@ type Deps struct {
 	// that previously lived in api/assets/clips/bulk_upload_worker.go.
 	// Nil-tolerated so test fixtures can opt out.
 	BulkUploadWorker *appclips.BulkUploadWorker
+
+	// ClipOpsService owns the orchestration behind the HTTP verbs
+	// Reconcile / Cleanup / VerifyClip. PR 2 (June 2026) cutover: the
+	// three handlers in clip_ops.go now delegate here instead of
+	// duplicating the business logic locally. Nil-tolerated for
+	// legacy fixtures that exercise only UploadVideoClip / Search /
+	// Upload-Bulk routes (those tests do not touch Reconcile /
+	// Cleanup / VerifyClip in their surface).
+	ClipOpsService *appclips.ClipOpsService
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -135,6 +144,7 @@ type Handler struct {
 	bulkTagsUC      *appclips.BulkTagsUseCase
 	enrichUC        *appclips.EnrichUseCase
 	bulkUploadWorker *appclips.BulkUploadWorker
+	clipOpsService   *appclips.ClipOpsService
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -174,6 +184,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		processRunner:  d.ProcessRunner,
 		dispatcher:     d.Dispatcher,
 		bulkUploadWorker: d.BulkUploadWorker,
+		clipOpsService:   d.ClipOpsService,
 
 		// Initialize use cases
 		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
