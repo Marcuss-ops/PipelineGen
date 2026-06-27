@@ -25,9 +25,9 @@ type GenerateResponse struct {
 	CacheHit    bool   `json:"cache_hit,omitempty"`
 
 	// Sync multi-item fields — populated for synchronous batch generation.
-	Count    int                `json:"count,omitempty"`
-	Total    int                `json:"total,omitempty"`
-	Results  []GenerateResponse `json:"results,omitempty"`
+	Count   int                `json:"count,omitempty"`
+	Total   int                `json:"total,omitempty"`
+	Results []GenerateResponse `json:"results,omitempty"`
 
 	// Postprocessor output.
 	EntitiesJSON string `json:"entities_json,omitempty"`

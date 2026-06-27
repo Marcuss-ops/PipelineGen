@@ -15,9 +15,6 @@ import (
 
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
