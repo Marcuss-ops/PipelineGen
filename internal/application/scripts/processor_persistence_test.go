@@ -25,6 +25,12 @@
 // the Process signature changed to take the canonical typed model.
 // WordCount, ModelUsed, CacheStatus live on ModelScriptOutputV1 as
 // engine-stamped provenance fields.
+//
+// PR 6 (June 2026) follow-up: the test asserts against the dedicated
+// ScriptRecord.IdempotencyKey + ScriptRecord.SpecScene fields instead
+// of the pre-PR-6 dual-purpose Template / TimelineJSON slots. The
+// Template slot is left empty by the processor (no longer the idem
+// key carrier); TimelineJSON is no longer the SpecScene carrier.
 package scripts
 
 import (
@@ -100,6 +106,14 @@ func (f *idemFakeRepo) ListScripts(_ context.Context, _ ScriptListFilter) ([]*Sc
 // FindScriptByIdempotencyKey returns the seeded record only when the
 // supplied idem hash matches the seedHash. Otherwise nil, false (the
 // caller treats it as "fresh insert").
+//
+// PR 6: the application-layer FindScriptByIdempotencyKey contract takes the
+// full reconciliation tuple (itemID, cacheKey, promptVersion, targetWords,
+// language) — the application-side adapter computeAdapterIdempotencyKey
+// reduces them to the 16-hex hash before the SQLite concrete repo's
+// FindByIdempotencyKey matches against the dedicated idempotency_key
+// column. The fake accepts the tuple but only matches against the
+// pre-computed seedHash set during fixture construction.
 func (f *idemFakeRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ string, _ int, _ string) (*ScriptRecord, bool, error) {
 	if f.seedHash == "" || f.seedRec == nil {
 		return nil, false, nil
@@ -225,7 +239,12 @@ func TestPersistence_FreshInsert(t *testing.T) {
 	assert.Equal(t, int32(1), repo.saveCalls.Load())
 
 	require.NotNil(t, repo.lastRec)
-	assert.Len(t, repo.lastRec.Template, 16, "Template slot must carry the idem key (16 hex chars)")
+	// PR 6: the idempotency key lives on the dedicated
+	// IdempotencyKey field of ScriptRecord (no longer stuffed into
+	// the multi-purpose Template slot — Template is reserved for
+	// semantic values like "book" / "lesson").
+	assert.Len(t, repo.lastRec.IdempotencyKey, 16, "IdempotencyKey field must carry the idem-key (16 hex chars)")
+	assert.Empty(t, repo.lastRec.Template, "Template slot must remain empty under PR 6 (was the pre-PR-6 idem carrier)")
 }
 
 // TestPersistence_ReplayNoInsert asserts that when the repository
@@ -235,13 +254,16 @@ func TestPersistence_FreshInsert(t *testing.T) {
 // absence is enforced by compile-time: the PostProcessArtifact
 // struct in postprocessor_registry.go has no AlreadyPersisted
 // field, so the test cannot reference one even by accident.
+//
+// PR 6: the seed record's idempotency key is set on the dedicated
+// IdempotencyKey field (not the pre-PR-6 Template slot).
 func TestPersistence_ReplayNoInsert(t *testing.T) {
 	t.Parallel()
 	plan := basePlanForIdem()
 	seedHash := computeIdempotencyKey(plan)
 	repo := &idemFakeRepo{
 		seedHash: seedHash,
-		seedRec:  &ScriptRecord{ID: 99, Title: plan.Title, Template: seedHash},
+		seedRec:  &ScriptRecord{ID: 99, Title: plan.Title, IdempotencyKey: seedHash},
 	}
 	proc := NewPersistenceProcessor(repo, zap.NewNop())
 
@@ -280,8 +302,10 @@ func TestPersistence_NilRepoRejected(t *testing.T) {
 }
 
 // TestPersistence_PersistsSpecSceneJSON asserts that the canonical
-// SpecScene flows to the record on SaveScript. PR 5/3 stores the
-// SpecScene JSON in the existing TimelineJSON slot.
+// SpecScene flows to the dedicated SpecScene field on the record.
+// PR 6: the processor writes SpecScene JSON directly into the
+// `specscene` ScriptRecord field; the pre-PR-6 accommodation of
+// storing SpecScene in the TimelineJSON slot is fully retired.
 func TestPersistence_PersistsSpecSceneJSON(t *testing.T) {
 	t.Parallel()
 	repo := &idemFakeRepo{}
@@ -300,9 +324,10 @@ func TestPersistence_PersistsSpecSceneJSON(t *testing.T) {
 	require.NotNil(t, repo.lastRec)
 	// SpecSceneOutput uses lowercase json tags ("version", "scenes")
 	// — assert on the canonical lowercase keys.
-	assert.Contains(t, repo.lastRec.TimelineJSON, "scene-0")
-	assert.Contains(t, repo.lastRec.TimelineJSON, `"version":1`)
-	assert.Contains(t, repo.lastRec.TimelineJSON, `"scenes":`)
+	assert.Contains(t, repo.lastRec.SpecScene, "scene-0")
+	assert.Contains(t, repo.lastRec.SpecScene, `"version":1`)
+	assert.Contains(t, repo.lastRec.SpecScene, `"scenes":`)
+	assert.Empty(t, repo.lastRec.TimelineJSON, "TimelineJSON slot must remain empty under PR 6")
 }
 
 // TestPersistence_PropagatesWordCountAndModelUsed asserts the engine

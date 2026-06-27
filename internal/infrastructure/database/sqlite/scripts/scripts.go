@@ -16,6 +16,34 @@ func NewScriptRepository(db *sql.DB) *ScriptRepository {
 	return &ScriptRepository{db: db}
 }
 
+// scriptsSelectColumns is the canonical column projection used by every
+// SELECT in this file (GetScriptByID, FindByTopic, ListScripts,
+// FindByIdempotencyKey). Centralising the projection + scan target list in
+// one place guarantees that all 4 queries stay in lock-step when a new
+// column lands in PR 6 / 7 / 8. The Scan target order must match this
+// projection exactly — see scanScriptRecord below.
+//
+// PR 6 (June 2026) — added `idempotency_key` + `specscene` to the
+// projection. See migrations/sqlite/100_add_idempotency_key_and_specscene_columns.sql.
+const scriptsSelectColumns = `id, topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, idempotency_key, specscene, created_at, updated_at, version, parent_script_id, is_deleted`
+
+// scanScriptRecord performs the canonical scan over a SELECT row matching
+// scriptsSelectColumns. The argument type is satisfied by *sql.Row (single
+// row from QueryRow) and *sql.Rows (iter-row from Query loop) — both expose
+// the `Scan(...any)` method. Centralising the scan guarantees structural
+// alignment with the column projection.
+func scanScriptRecord(s interface{ Scan(...any) error }, dst *ScriptRecord) error {
+	return s.Scan(
+		&dst.ID, &dst.Topic, &dst.Title, &dst.Duration, &dst.Language,
+		&dst.Template, &dst.Mode, &dst.Tone, &dst.TargetWords, &dst.FinalWordCount,
+		&dst.Status, &dst.NarrativeText, &dst.TimelineJSON, &dst.EntitiesJSON,
+		&dst.MetadataJSON, &dst.FullDocument, &dst.ModelUsed, &dst.OllamaBaseURL,
+		&dst.IdempotencyKey, &dst.SpecScene,
+		&dst.CreatedAt, &dst.UpdatedAt, &dst.Version, &dst.ParentScriptID,
+		&dst.IsDeleted,
+	)
+}
+
 func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord, sections []ScriptSectionRecord, stockMatches []ScriptStockMatchRecord) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -29,9 +57,9 @@ func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord,
 	}
 
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO scripts (topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, version, parent_script_id, is_deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, script.Topic, script.Title, script.Duration, script.Language, script.Template, script.Mode, script.Tone, script.TargetWords, script.FinalWordCount, script.Status, script.NarrativeText, script.TimelineJSON, script.EntitiesJSON, script.MetadataJSON, script.FullDocument, script.ModelUsed, script.OllamaBaseURL, version, script.ParentScriptID, script.IsDeleted)
+		INSERT INTO scripts (topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, version, parent_script_id, is_deleted, idempotency_key, specscene)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, script.Topic, script.Title, script.Duration, script.Language, script.Template, script.Mode, script.Tone, script.TargetWords, script.FinalWordCount, script.Status, script.NarrativeText, script.TimelineJSON, script.EntitiesJSON, script.MetadataJSON, script.FullDocument, script.ModelUsed, script.OllamaBaseURL, version, script.ParentScriptID, script.IsDeleted, script.IdempotencyKey, script.SpecScene)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert script: %w", err)
 	}
@@ -70,10 +98,13 @@ func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord,
 
 func (r *ScriptRepository) GetScriptByID(id int64) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error) {
 	var script ScriptRecord
-	err := r.db.QueryRow(`
-		SELECT id, topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, created_at, updated_at, version, parent_script_id, is_deleted
-		FROM scripts WHERE id = ? AND is_deleted = 0
-	`, id).Scan(&script.ID, &script.Topic, &script.Title, &script.Duration, &script.Language, &script.Template, &script.Mode, &script.Tone, &script.TargetWords, &script.FinalWordCount, &script.Status, &script.NarrativeText, &script.TimelineJSON, &script.EntitiesJSON, &script.MetadataJSON, &script.FullDocument, &script.ModelUsed, &script.OllamaBaseURL, &script.CreatedAt, &script.UpdatedAt, &script.Version, &script.ParentScriptID, &script.IsDeleted)
+	err := scanScriptRecord(
+		r.db.QueryRow(`
+			SELECT `+scriptsSelectColumns+`
+			FROM scripts WHERE id = ? AND is_deleted = 0
+		`, id),
+		&script,
+	)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get script: %w", err)
 	}
@@ -130,7 +161,7 @@ func (r *ScriptRepository) ListScripts(limit, offset int, language, template str
 
 	args = append(args, limit, offset)
 	rows, err := r.db.Query(`
-		SELECT id, topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, created_at, updated_at, version, parent_script_id, is_deleted
+		SELECT `+scriptsSelectColumns+`
 		FROM scripts `+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?
 	`, args...)
 	if err != nil {
@@ -141,7 +172,7 @@ func (r *ScriptRepository) ListScripts(limit, offset int, language, template str
 	var scripts []ScriptRecord
 	for rows.Next() {
 		var s ScriptRecord
-		if err := rows.Scan(&s.ID, &s.Topic, &s.Title, &s.Duration, &s.Language, &s.Template, &s.Mode, &s.Tone, &s.TargetWords, &s.FinalWordCount, &s.Status, &s.NarrativeText, &s.TimelineJSON, &s.EntitiesJSON, &s.MetadataJSON, &s.FullDocument, &s.ModelUsed, &s.OllamaBaseURL, &s.CreatedAt, &s.UpdatedAt, &s.Version, &s.ParentScriptID, &s.IsDeleted); err != nil {
+		if err := scanScriptRecord(rows, &s); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan script: %w", err)
 		}
 		scripts = append(scripts, s)
@@ -150,25 +181,36 @@ func (r *ScriptRepository) ListScripts(limit, offset int, language, template str
 	return scripts, total, nil
 }
 
-// FindByIdempotencyKey (PR 5, June 2026) looks up an existing script
-// row whose stored idempotency key (currently on the `template` slot —
-// PR 6 introduces a dedicated column) matches the supplied hash.
+// FindByIdempotencyKey (PR 5/6, June 2026) looks up an existing script
+// row whose stored idempotency key matches the supplied hash.
+//
+// PR 6 (June 2026): the lookup switched from `template = ?` (the
+// pre-PR-6 dual-purpose slot) to the dedicated `idempotency_key = ?`
+// column introduced in
+// migrations/sqlite/100_add_idempotency_key_and_specscene_columns.sql.
+// Pre-PR-6 rows had the idem key backfilled by that migration's GLOB
+// predicate on `template`, so the lookup still resolves existing
+// rows without operator intervention.
+//
 // Returns the most recently inserted matching row (ORDER BY id DESC
 // LIMIT 1) so that newer replays shadow older ones when collisions
-// occur.
+// occur. The composite index idx_scripts_idempotency_key
+// (idempotency_key, language) backs the WHERE clause.
 //
 // On no match, returns (nil, nil) — the caller treats this as
 // "fresh insert", not an error. SQL errors are surfaced so the
 // caller can decide whether to fall through to insert or fail-closed.
 func (r *ScriptRepository) FindByIdempotencyKey(ctx context.Context, idemKey, language string) (*ScriptRecord, error) {
 	var script ScriptRecord
-	err := r.db.QueryRowContext(ctx,
-		`SELECT id, topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, created_at, updated_at, version, parent_script_id, is_deleted
-		 FROM scripts
-		 WHERE template = ? AND language = ? AND is_deleted = 0
-		 ORDER BY id DESC LIMIT 1`,
-		idemKey, language,
-	).Scan(&script.ID, &script.Topic, &script.Title, &script.Duration, &script.Language, &script.Template, &script.Mode, &script.Tone, &script.TargetWords, &script.FinalWordCount, &script.Status, &script.NarrativeText, &script.TimelineJSON, &script.EntitiesJSON, &script.MetadataJSON, &script.FullDocument, &script.ModelUsed, &script.OllamaBaseURL, &script.CreatedAt, &script.UpdatedAt, &script.Version, &script.ParentScriptID, &script.IsDeleted)
+	err := scanScriptRecord(
+		r.db.QueryRowContext(ctx, `
+			SELECT `+scriptsSelectColumns+`
+			FROM scripts
+			WHERE idempotency_key = ? AND language = ? AND is_deleted = 0
+			ORDER BY id DESC LIMIT 1
+		`, idemKey, language),
+		&script,
+	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -180,11 +222,13 @@ func (r *ScriptRepository) FindByIdempotencyKey(ctx context.Context, idemKey, la
 
 func (r *ScriptRepository) FindByTopic(ctx context.Context, topic, language string) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error) {
 	var script ScriptRecord
-	err := r.db.QueryRowContext(ctx,
-		`SELECT id, topic, title, duration, language, template, mode, tone, target_words, final_word_count, status, narrative_text, timeline_json, entities_json, metadata_json, full_document, model_used, ollama_base_url, created_at, updated_at, version, parent_script_id, is_deleted
-		FROM scripts WHERE topic = ? AND language = ? AND is_deleted = 0 ORDER BY created_at DESC LIMIT 1`,
-		topic, language,
-	).Scan(&script.ID, &script.Topic, &script.Title, &script.Duration, &script.Language, &script.Template, &script.Mode, &script.Tone, &script.TargetWords, &script.FinalWordCount, &script.Status, &script.NarrativeText, &script.TimelineJSON, &script.EntitiesJSON, &script.MetadataJSON, &script.FullDocument, &script.ModelUsed, &script.OllamaBaseURL, &script.CreatedAt, &script.UpdatedAt, &script.Version, &script.ParentScriptID, &script.IsDeleted)
+	err := scanScriptRecord(
+		r.db.QueryRowContext(ctx, `
+			SELECT `+scriptsSelectColumns+`
+			FROM scripts WHERE topic = ? AND language = ? AND is_deleted = 0 ORDER BY created_at DESC LIMIT 1
+		`, topic, language),
+		&script,
+	)
 	if err != nil {
 		return nil, nil, nil, err
 	}

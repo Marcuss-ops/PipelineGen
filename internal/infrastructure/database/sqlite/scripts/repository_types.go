@@ -1,6 +1,16 @@
 package scripts
 
-// ScriptRecord represents a script record in the database
+// ScriptRecord represents a script record in the database.
+//
+// PR 6 (June 2026): dedicated IdempotencyKey + SpecScene columns
+// replace the pre-PR-6 dual-purpose Template / TimelineJSON slots.
+// Both new fields are nullable TEXT in SQLite (defaulted to ” so the
+// mat NOT NULL constraint is honored). PersistenceProcessor is the
+// only writer of these fields; the engine no longer touches them.
+// Semantic-history preservation: Template is still populated for
+// ListScripts filters and remains filterable as `WHERE template = ?`
+// (the column was repurposed for the idem key under PR 5; existing
+// rows that used it as semantic-template-value are still queryable).
 type ScriptRecord struct {
 	ID             int64
 	Topic          string
@@ -25,6 +35,19 @@ type ScriptRecord struct {
 	Version        int
 	ParentScriptID *int64
 	IsDeleted      bool
+
+	// IdempotencyKey is the 16-hex-char SHA-256 prefix of
+	// (item_id|cache_key|prompt_version|target_words|language) for the
+	// canonical reconciliation tuple. PR 6 stored in a dedicated
+	// `idempotency_key TEXT NOT NULL DEFAULT ''` column (see
+	// migrations/sqlite/100_add_idempotency_key_and_specscene_columns.sql).
+	IdempotencyKey string
+
+	// SpecScene is the JSON-serialised SpecSceneOutput emitted by the
+	// engine (canonical MSOV1 contract). PR 6 stored in a dedicated
+	// `specscene TEXT NOT NULL DEFAULT ''` column; the pre-PR-6 slot
+	// was `timeline_json` which has overlapping but distinct semantics.
+	SpecScene string
 }
 
 // ScriptSectionRecord represents a section of a script
