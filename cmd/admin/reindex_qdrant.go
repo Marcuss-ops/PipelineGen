@@ -117,30 +117,53 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 	return deps, nil
 }
 
-// timestampedTargetCollection (PR 13, June 2026) — builds the
-// canonical blue-green target name from the schema's PhysicalName
-// base + a UTC timestamp suffix. The schema's PhysicalName is the
-// "logical" name (e.g. media_assets_v3_e5_768_siglip_768); the
-// timestamped variant is the immutable physical collection the
+// timestampedTargetCollection (PR 13, June 2026 + follow-up, June 2026) —
+// builds the canonical blue-green target name from the schema's
+// PhysicalName base + a UTC nanosecond timestamp suffix. The schema's
+// PhysicalName is the "logical" name (e.g. media_assets_v3_e5_768_siglip_768);
+// the timestamped variant is the immutable physical collection the
 // apply flow writes into.
 //
-// Format: <base>_<UTC-YYYYMMDD-HHMMSS>
+// Format: <base>_<UTC-YYYYMMDD-HHMMSS-nnnnnnnnn>
+//
+// Follow-up history (June 2026): the seconds-resolution suffix
+// (`YYYYMMDD_HHMMSS`) collided on concurrent --apply invocations in the
+// same UTC second — two processes with aligned `time.Now()` produced
+// the same target name and the second EnsureSchema call surfaced a
+// duplicate-collection error from Qdrant. Pure nanosecond precision
+// (`20060102_150405_000000000`) resolves the collision while keeping
+// the helper pure and the tests fully deterministic against a
+// frozen `now time.Time` parameter.
 //
 // Notes:
 //
 //   - Deterministically derived from `now time.Time` so tests can
-//     assert against a frozen clock.
+//     assert against a frozen clock. Nanosecond resolution via
+//     time.Now()'s monotonic clock source on Linux/macOS gives
+//     sub-microsecond uniqueness for sequential calls; this
+//     resolves the human-driven blue-green collision case (the
+//     user spec).
+//   - Accepts the Linux/macOS monotonic-clock guarantee. Known
+//     residual risk: hosts with coarser clock resolution
+//     (Windows' 15ms tick clock, edge embedded devices) MAY
+//     still surface collisions if multiple --apply invocations
+//     land on the same monotonic-clock bucket. The production
+//     deployment target (cfg.Qdrant.Timeout + Linux container
+//     host) is NOT affected; the residual is a developer-machine
+//   - CI-on-Windows concern and a future hardening could mix
+//     in a small `crypto/rand` nonce if it surfaces.
 //   - Returns a string that — by construction — does NOT equal
 //     schema.PhysicalName (the suffix is non-empty). PR 13's
 //     `new != active` invariant is structurally guaranteed.
-//   - UTC token (Z suffix) keeps the format operator-friendly
-//     across timezones; the Production clock source is
+//   - UTC token keeps the format operator-friendly across timezones
+//     so `ls media_assets_v3_*` produces a chronologically sort-
+//     friendly sequence; the Production clock source is
 //     time.Now().UTC() to avoid local-tz drift in the suffix.
 func timestampedTargetCollection(base string, now time.Time) string {
 	if base == "" {
 		base = "media_assets_v3"
 	}
-	return fmt.Sprintf("%s_%s", base, now.UTC().Format("20060102_150405"))
+	return fmt.Sprintf("%s_%s", base, now.UTC().Format("20060102_150405_000000000"))
 }
 
 // runReindexQdrant is the entry point registered in cmd/admin/main.go.
