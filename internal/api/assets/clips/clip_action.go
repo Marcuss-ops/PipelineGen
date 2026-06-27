@@ -9,8 +9,6 @@ import (
 	"time"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/gin-gonic/gin"
@@ -215,7 +213,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	// Update clip with new Drive link
 	driveLinkVal := result.DownloadLink
 	if driveLinkVal == "" && result.FileID != "" {
-		driveLinkVal = driveutil.FileURLFromID(result.FileID)
+		driveLinkVal = "https://drive.google.com/file/d/" + result.FileID + "/view"
 	}
 	clip.SetDriveLink(driveLinkVal)
 
@@ -272,7 +270,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	}
 
 	duplicates := []gin.H{}
-	repos := map[string]*assets.ClipsRepository{
+	repos := map[string]appclips.ClipRepositoryPort{
 		"artlist": h.artlistRepo,
 		"youtube": h.clipsRepo,
 		"stock":   h.stockRepo,

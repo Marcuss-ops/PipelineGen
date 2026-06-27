@@ -82,11 +82,8 @@
 #   folder_tree.go    :: Handler.GetFolderChildren + Handler.GetTree
 # (Line-number citations deliberately omitted: the gate tokenizes on
 # file paths only, while comment-side line numbers drift on edit.)
-# Remaining PR2 grandfathered entries: 4.
-internal/api/assets/clips/clip_action.go
-internal/api/assets/clips/clip_ops.go
+# Remaining PR2 grandfathered entries: 1.
 internal/api/assets/clips/handler.go
-internal/api/assets/clips/upload_helpers.go
 
 # ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/assets/soundeffect/handler.go +
