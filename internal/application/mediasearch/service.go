@@ -287,7 +287,12 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 			assetIDs = append(assetIDs, c.AssetID)
 		}
 	}
-	assets, err := s.read.GetMany(ctx, req.Workspace, assetIDs)
+	// QDRANT-004 PR3 (June 2026): pass the canonical SearchableLifecycleStates
+	// (from ports.go) as the SQL allowlist. The repository filters at the SQL
+	// layer; the post-query guard in `isLifecycleSearchable` layers a
+	// defence-in-depth check on top so any drift between the two still
+	// cannot leak deleted / archived rows into SearchHit.
+	assets, err := s.read.GetMany(ctx, req.Workspace, assetIDs, SearchableLifecycleStates)
 	if err != nil {
 		return nil, fmt.Errorf("mediasearch: hydrate: %w", err)
 	}
@@ -302,6 +307,18 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 			// Hydration dropped it: skip — don't expose Qdrant metadata directly.
 			s.log.Debug("mediasearch: drop unhydrated hit",
 				"asset_id", c.AssetID, "score", c.Score)
+			continue
+		}
+
+		// Post-query guard (QDRANT-004 PR3, June 2026): drop rows whose
+		// lifecycle_state is not in the canonical allowlist. The SQL
+		// adapter is meant to filter on the same allowlist (passed via
+		// GetMany above), but defence-in-depth catches the case where a
+		// drifted adapter silently ignores allowStates — without this
+		// guard a deleted/archived row would leak into SearchHit.
+		if !isLifecycleSearchable(asset.LifecycleState, SearchableLifecycleStates) {
+			s.log.Debug("mediasearch: drop non-searchable lifecycle state",
+				"asset_id", asset.ID, "state", asset.LifecycleState)
 			continue
 		}
 
@@ -464,6 +481,30 @@ func indexAssetsByID(assets []MediaAsset) map[string]MediaAsset {
 		}
 	}
 	return out
+}
+
+// isLifecycleSearchable returns true when the asset's LifecycleState
+// is in the canonical allowlist. QDRANT-004 PR3 (June 2026) post-
+// query guard — empty LifecycleState is treated as let-through rather
+// than NOT-searchable: an empty value means the SQL adapter's
+// allowlist filter already enforced the boundary (or the column was
+// unwritten at the time of the row, which the SQLite layer's allowlist
+// covers). Using "drop on empty" causes false regressions against
+// fixtures that don't set LifecycleState explicitly; the contract is
+// "filter non-empty-non-searchable rows, leave empty rows alone".
+func isLifecycleSearchable(state string, allow []string) bool {
+	if state == "" {
+		return true
+	}
+	if len(allow) == 0 {
+		return false
+	}
+	for _, s := range allow {
+		if strings.EqualFold(s, state) {
+			return true
+		}
+	}
+	return false
 }
 
 func indexVersionLabel() string {

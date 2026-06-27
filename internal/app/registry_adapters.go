@@ -47,10 +47,40 @@ type mediasearchReadAdapter struct {
 	clips *assets.ClipsRepository
 }
 
-func (a *mediasearchReadAdapter) GetMany(ctx context.Context, workspace mediasearch.WorkspaceContext, assetIDs []string) ([]mediasearch.MediaAsset, error) {
+// GetMany implements the 4-arg mediasearch.MediaReadRepository contract
+// (QDRANT-004 PR3, June 2026). The allowStates list is honoured at the
+// memory layer because asset.Filter does not currently expose a
+// lifecycle_state IN (...) predicate; a future wave that adds it should
+// push this filter into SQL so cross-tenant + cross-lifecycle reads are
+// blocked at the database layer (defence-in-depth).
+//
+// TODO(QDRANT-004 follow-up): push allowStates into asset.Filter once
+// ClipsRepository.List supports lifecycle_state IN (...) so the SQL layer
+// enforces the lifecycle boundary alongside the existing workspace_id
+// filter (defence-in-depth at the database; the current implementation
+// only guarantees the boundary at the memory layer after List returns).
+//
+// Empty LifecycleState rows are let through regardless of allowStates:
+// the service's post-query guard `isLifecycleSearchable` treats empty
+// state as let-through (SQL adapter has already filtered, or column is
+// unwritten). Honour the same contract here so the two layers agree.
+func (a *mediasearchReadAdapter) GetMany(ctx context.Context, workspace mediasearch.WorkspaceContext, assetIDs []string, allowStates []string) ([]mediasearch.MediaAsset, error) {
 	if a.clips == nil || len(assetIDs) == 0 {
 		return nil, nil
 	}
+	// Normalise the allowlist to lower-case once so the per-row filter
+	// below doesn't need to repeat the ToLower conversion (and can't
+	// drift on case). Empty entries are dropped. Empty allowStates →
+	// no per-row lifecycle filter beyond the existing soft-delete
+	// exclusion (preserves pre-PR3 behaviour for callers that pass
+	// nil/empty).
+	allowSet := make(map[string]struct{}, len(allowStates))
+	for _, s := range allowStates {
+		if s = strings.ToLower(strings.TrimSpace(s)); s != "" {
+			allowSet[s] = struct{}{}
+		}
+	}
+
 	// Batch query via ClipsRepository.List with filter.IDs — single
 	// SQL statement with WHERE id IN (?, ?, ...).
 	// QDRANT-001 (June 2026) closure: the workspace_id predicate is
@@ -77,6 +107,18 @@ func (a *mediasearchReadAdapter) GetMany(ctx context.Context, workspace mediasea
 		ls := strings.ToLower(string(clip.LifecycleState))
 		if ls == "deleted" {
 			continue
+		}
+		// QDRANT-004 PR3 lifecycle allowlist: when the service passes
+		// a non-empty allowStates list AND the row's LifecycleState
+		// is non-empty, drop any row whose state is NOT in the
+		// allowlist. Empty LifecycleState is let through (matches
+		// the post-query guard `isLifecycleSearchable` contract).
+		// When allowStates is empty, the soft-delete exclusion above
+		// is the only lifecycle gate (preserves pre-PR3 behaviour).
+		if clip.LifecycleState != "" && len(allowSet) > 0 {
+			if _, ok := allowSet[ls]; !ok {
+				continue
+			}
 		}
 		lang, _ := clip.Metadata["language"].(string)
 		width, _ := clip.Metadata["width"].(float64)

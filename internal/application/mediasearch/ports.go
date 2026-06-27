@@ -65,20 +65,63 @@ var ErrMissingWorkspace = errors.New("mediasearch: workspace context required")
 // populated sparse vector — at different layers of the call stack.
 var ErrHybridRequiresSparse = errors.New("mediasearch: hybrid mode requires a configured sparse vector channel and a BM25-tokenizable query")
 
+// SearchableLifecycleStates is the canonical allowlist of
+// lifecycle_state values that survive the hydration phase
+// (QDRANT-004 PR3, June 2026). Anything outside this set — deleted,
+// archived, pending_index, error, drive_missing, etc. — MUST be
+// filtered both in SQL (primary) and in the post-query guard
+// (defence-in-depth). The orchestrator (mediasearch.Service) sends
+// this list to MediaReadRepository.GetMany as the default
+// allowStates argument unless an explicit caller override is
+// supplied via MediaSearchFilter.States.
+var SearchableLifecycleStates = []string{"active", "searchable"}
+
+// AllNonSearchableLifecycleStates is the explicit deny-list used
+// for the post-query defence layer. If the SQL filter ever drifts
+// to allow one of these (a real risk after migrations), the
+// post-query guard catches it before the row exits the seam.
+var AllNonSearchableLifecycleStates = []string{
+	"deleted",
+	"DELETED",
+	"archived",
+	"pending",
+	"pending_index",
+	"error",
+	"drive_missing",
+	"INDEX_FAILED",
+	"DELETE_PENDING",
+}
+
 // MediaReadRepository fetches canonical asset metadata from SQLite.
+//
+// QDRANT-004 PR3 (June 2026): the interface now takes an
+// allowStates []string argument so hydration can apply the
+// lifecycle_state allowlist at the SQL layer (primary defence).
+// The post-query guard in mediasearch.Service layers a defence-
+// in-depth filter on top, so a SQL drift or a test adapter that
+// ignores allowStates still does not leak deleted/archived/pending
+// rows into SearchHit responses.
 //
 // The implementation MUST:
 //   - accept the workspace_id from the auth context (defence-in-depth
 //     against cross-tenant reads; future-proof for the
 //     media_assets.workspace_id column from QDRANT-001);
 //   - batch by IDs (no N+1 — single SQL statement per call);
-//   - exclude soft-deleted rows (lifecycle_state == 'deleted');
+//   - filter by lifecycle_state IN (allowStates) when allowStates
+//     is non-empty (forward-compatible — if the concrete adapter is
+//     not yet wired to honour this argument, the post-query guard
+//     still enforces the same allowlist);
 //   - return rows in the same order as the input where possible.
 //
 // The service is the only owner of the local-path field; it MUST NOT
 // surface local_path to callers (see Service.toSafeHit).
 type MediaReadRepository interface {
-	GetMany(ctx context.Context, workspace WorkspaceContext, assetIDs []string) ([]MediaAsset, error)
+	GetMany(
+		ctx context.Context,
+		workspace WorkspaceContext,
+		assetIDs []string,
+		allowStates []string,
+	) ([]MediaAsset, error)
 }
 
 // AssetDeliveryService mints short-lived signed URLs that authorise a
@@ -131,16 +174,23 @@ const (
 // MediaAsset is the canonical asset shape served to clients. It
 // deliberately does NOT carry LocalPath or any other server-internal
 // locator — those fields are runtime-only and never serialised.
+//
+// QDRANT-004 PR3 (June 2026): LifecycleState is added so the
+// post-query hydration guard can drop rows whose state is not in
+// the canonical allowlist. It is json:"-" because clients have no
+// business knowing internal lifecycle semantics — if a row reaches
+// SearchHit, it is by definition searchable.
 type MediaAsset struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Source     string   `json:"source"`
-	MediaType  string   `json:"media_type"`
-	Category   string   `json:"category"`
-	Tags       []string `json:"tags,omitempty"`
-	Language   string   `json:"language,omitempty"`
-	DurationMs int      `json:"duration_ms,omitempty"`
-	Width      int      `json:"width,omitempty"`
-	Height     int      `json:"height,omitempty"`
-	SearchText string   `json:"search_text,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Source         string   `json:"source"`
+	MediaType      string   `json:"media_type"`
+	Category       string   `json:"category"`
+	Tags           []string `json:"tags,omitempty"`
+	Language       string   `json:"language,omitempty"`
+	DurationMs     int      `json:"duration_ms,omitempty"`
+	Width          int      `json:"width,omitempty"`
+	Height         int      `json:"height,omitempty"`
+	SearchText     string   `json:"search_text,omitempty"`
+	LifecycleState string   `json:"-"`
 }
