@@ -44,6 +44,14 @@ type Server struct {
 	appRouter  *Router // reference to the Router for cleanup
 	httpServer *http.Server
 	lifecycle  LifecycleManager
+
+	// setupDone guards against post-construction calls to deprecated
+	// setters (SetOutboxHandler, SetMediasearchHandler). After the
+	// constructor runs Setup(), the gin engine is already built —
+	// re-wiring handlers via setters would silently fail to register
+	// routes. setupDone is set to true at the end of every
+	// NewServerWithHealth return path.
+	setupDone bool
 }
 
 // NewServer creates a new HTTP server with module registry support.
@@ -155,6 +163,7 @@ func NewServerWithHealth(
 			router:    r,
 			appRouter: router,
 			lifecycle: lifecycle,
+			setupDone: true,
 			httpServer: &http.Server{
 				Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 				Handler:           r,
@@ -193,6 +202,7 @@ func NewServerWithHealth(
 		router:    r,
 		appRouter: router,
 		lifecycle: lifecycle,
+		setupDone: true,
 		httpServer: &http.Server{
 			Addr:         ":0",
 			Handler:      r,
@@ -307,26 +317,34 @@ func (s *Server) SetInternalMediaHandler(h MediaInternalRouter) {
 // the WorkerAuth-protected /internal/v1/outbox/* group.
 // Delegates to Router.SetOutboxHandler.
 //
-// Deprecated (QDRANT-002 fix, June 2026): use the NewServerWithHealth
-// constructor to wire outboxHandler BEFORE Setup() runs. This setter
-// updates the Router struct field but the gin engine was already built
-// during construction — routes are NOT re-registered. Kept for test
-// compatibility only.
-func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
+// QDRANT-002 + QDRANT-005 (TODO 7, June 2026): this setter is FAIL-CLOSED
+// after the constructor runs. NewServerWithHealth invokes router.Setup()
+// internally; if a caller invokes SetOutboxHandler AFTER construction,
+// the gin engine is already built with no outbox routes registered —
+// returning an explicit error rather than silently failing surfaces the
+// wiring bug at the source. Production wiring MUST pass outboxHandler
+// through NewServerWithHealth (deps.OutboxHandler via cmd/server/main.go).
+func (s *Server) SetOutboxHandler(h InternalOutboxRouter) error {
+	if s.setupDone {
+		return fmt.Errorf("SetOutboxHandler: cannot wire handler after server construction — the gin engine was already built during NewServerWithHealth and new routes will NOT be registered. Pass outboxHandler through the constructor instead")
+	}
 	s.appRouter.SetOutboxHandler(h)
+	return nil
 }
 
 // SetMediasearchHandler wires the QDRANT-004 mediasearch handler onto
 // the WorkerAuth-protected /internal/v1/media/search route.
 // Delegates to Router.SetMediasearchHandler.
 //
-// Deprecated (QDRANT-002 fix, June 2026): use the NewServerWithHealth
-// constructor to wire mediasearchHandler BEFORE Setup() runs. This
-// setter updates the Router struct field but the gin engine was already
-// built during construction — routes are NOT re-registered. Kept for
-// test compatibility only.
-func (s *Server) SetMediasearchHandler(h InternalMediaSearchRouter) {
+// QDRANT-002 + QDRANT-005 (TODO 7, June 2026): see SetOutboxHandler.
+// Setters fail-closed post-construction; production wiring MUST supply
+// mediasearchHandler through NewServerWithHealth.
+func (s *Server) SetMediasearchHandler(h InternalMediaSearchRouter) error {
+	if s.setupDone {
+		return fmt.Errorf("SetMediasearchHandler: cannot wire handler after server construction — the gin engine was already built during NewServerWithHealth and new routes will NOT be registered. Pass mediasearchHandler through the constructor instead")
+	}
 	s.appRouter.SetMediasearchHandler(h)
+	return nil
 }
 
 // GetRouter returns the gin router (for testing)
