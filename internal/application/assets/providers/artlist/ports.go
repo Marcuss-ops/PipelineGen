@@ -41,6 +41,18 @@ var (
 	ErrEmptyResult       = errors.New("artlist: empty result")
 	ErrNotFound          = errors.New("artlist: not found")
 	ErrTransportFallback = errors.New("artlist: transport failure, fall back to next searcher")
+
+	// ErrMutationDispatcherUnavailable (QDRANT-004 close-out, June 2026):
+	// sentinel returned by SearchService.NewSearchService /
+	// SearchLiveAndSave / UpsertClip when the outbox Dispatcher is nil.
+	// Fail-closed contract: callers MUST branch on this sentinel
+	// instead of string-matching the message. The legacy `if
+	// dispatcher != nil { EnqueueAndIndex } else { assetStore.Upsert }`
+	// dual-path was retired (see TODO 4 / QDRANT-004); there is no
+	// canonical way to ingest a clip without an outbox event, so any
+	// nil dispatcher is a wiring bug caught at construction time and
+	// again at the SearchLiveAndSave / UpsertClip entry points.
+	ErrMutationDispatcherUnavailable = errors.New("artlist: mutation dispatcher unavailable — outbox write path is required (TODO 4 / QDRANT-004 fail-closed)")
 )
 
 // Candidate is the application-level representation of a search hit.

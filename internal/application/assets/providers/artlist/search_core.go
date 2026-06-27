@@ -41,13 +41,17 @@ func (ss *SearchService) SetAssetRepo(r asset.Repository) {
 
 // NewSearchService creates a new SearchService wired to the Service.
 //
-// QDRANT-002 close-out (June 2026): dispatcher is REQUIRED. The legacy
-// nil-dispatcher-equals-legacy-Upsert fallback has been REMOVED. Every
-// caller must wire the canonical outbox dispatcher; production wiring
-// lives in BuildProcessBundle → BuildOutboxBundle → artlist.NewService.
+// QDRANT-004 close-out (June 2026, TODO 4): dispatcher is REQUIRED.
+// The legacy `if dispatcher != nil { EnqueueAndIndex } else { raw
+// assetStore.Upsert }` dual-path has been REMOVED. Every caller must
+// wire the canonical outbox dispatcher; production wiring lives in
+// BuildProcessBundle → BuildOutboxBundle → artlist.NewService. A nil
+// dispatcher produces the typed sentinel error
+// ErrMutationDispatcherUnavailable so callers can branch on intent
+// rather than string-matching the message.
 func NewSearchService(s *Service, dispatcher Dispatcher) (*SearchService, error) {
 	if dispatcher == nil {
-		return nil, fmt.Errorf("artlist.NewSearchService: dispatcher is required (QDRANT-002 close-out — every write must route through outbox.Dispatcher.EnqueueAndIndex)")
+		return nil, fmt.Errorf("artlist.NewSearchService: %w", ErrMutationDispatcherUnavailable)
 	}
 	return &SearchService{service: s, dispatcher: dispatcher}, nil
 }
@@ -95,18 +99,19 @@ func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int)
 
 // SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.
 //
-// QDRANT-002 close-out: dispatcher is REQUIRED. Saved candidates are
-// persisted via dispatcher.EnqueueAndIndex so the media_assets UPSERT
-// and the outbox_events INSERT commit in a single atomic tx. The
-// previous `if ss.dispatcher != nil { EnqueueAndIndex } else { raw
-// assetStore.Upsert }` dual-path has been eliminated — there is no
-// canonical way to ingest a clip without the outbox event, so any
-// caller that somehow shows up with a nil dispatcher is a wiring bug
-// caught at construction time (NewSearchService returns an error
-// instead of producing a zero-dispatcher instance).
+// QDRANT-004 close-out (June 2026, TODO 4): dispatcher is REQUIRED.
+// Saved candidates are persisted via dispatcher.EnqueueAndIndex so the
+// media_assets UPSERT and the outbox_events INSERT commit in a single
+// atomic tx. The previous dual-path (raw write when dispatcher was
+// nil) has been eliminated — there is no canonical way to ingest a
+// clip without the outbox event, so any caller that somehow shows up
+// with a nil dispatcher is a wiring bug caught at construction time
+// (NewSearchService returns the typed sentinel
+// ErrMutationDispatcherUnavailable) and again here as a
+// defence-in-depth fail-closed check.
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm string, limit int) (*SearchResponse, error) {
 	if ss.dispatcher == nil {
-		return nil, fmt.Errorf("artlist.SearchLiveAndSave: dispatcher is nil — invariant broken (NewSearchService must reject nil at construction; this is defensive only)")
+		return nil, fmt.Errorf("artlist.SearchLiveAndSave: %w", ErrMutationDispatcherUnavailable)
 	}
 	s := ss.service
 	normalizedTerm := normalizeSearchTerm(originalTerm)
@@ -162,9 +167,8 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		}
 
 		// QDRANT-002 close-out: dispatcher is the canonical write path.
-		// No legacy fallback to s.assetStore.Upsert — every ingest
-		// MUST emit an asset.index.requested.v1 outbox event so
-		// IndexClip runs via the outbox pool (atomic + retry-safe).
+		// Every ingest MUST emit an asset.index.requested.v1 outbox
+		// event so IndexClip runs via the outbox pool (atomic + retry-safe).
 		contentHash := clip.FileHash()
 		if contentHash == "" {
 			contentHash = clip.ID
@@ -272,7 +276,7 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 // event_key column is never empty (event_key has UNIQUE constraint).
 func (ss *SearchService) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	if ss.dispatcher == nil {
-		return fmt.Errorf("artlist.UpsertClip: dispatcher is nil — invariant broken (NewSearchService must reject nil at construction)")
+		return fmt.Errorf("artlist.UpsertClip: %w", ErrMutationDispatcherUnavailable)
 	}
 	if clip == nil {
 		return fmt.Errorf("artlist.UpsertClip: clip is nil")
