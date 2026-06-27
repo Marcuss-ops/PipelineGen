@@ -281,6 +281,40 @@ func TestEngineGenerate_WithClips(t *testing.T) {
 	assert.Equal(t, "https://drive.google.com/a", result.ClipEvidence.DriveLinks["clip-a"])
 }
 
+func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:          "Clip Grounding",
+		Topic:          "Jackie Chan",
+		Language:       "en",
+		Tone:           "documentary",
+		Model:          "llama3:8b",
+		Mode:           "clip_to_script",
+		RenderedPrompt: "Write about the supplied clips.",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipIDs:   []string{"clip-1", "clip-2"},
+			ClipCount: 2,
+			DriveLinks: map[string]string{
+				"clip-1": "https://drive.google.com/file/d/clip-1/view",
+				"clip-2": "https://drive.google.com/file/d/clip-2/view",
+			},
+		},
+	}
+
+	_, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+
+	captured := gen.capturedReq.Load()
+	require.NotNil(t, captured)
+	assert.Contains(t, captured.Prompt, "CLIP-GROUNDED WRITING RULES:")
+	assert.Contains(t, captured.Prompt, "clip-1, clip-2")
+	assert.Contains(t, captured.Prompt, "describe what is happening in the clips")
+	assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]")
+}
+
 func TestEngineGenerate_MemoryGateHit(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}

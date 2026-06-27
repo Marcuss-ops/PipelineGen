@@ -41,6 +41,7 @@ package scripts
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/compat"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
@@ -304,7 +305,14 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// native json mode guarantees syntactically valid JSON; the
 	// suffix enforces the V1 schema shape and forbids prose that
 	// would otherwise sneak into the output around the JSON object).
-	builtPrompt := renderedPrompt + v1OutputInstruction
+	builtPrompt := renderedPrompt
+	if clipRules := buildClipGroundingInstructions(plan); clipRules != "" {
+		if builtPrompt != "" {
+			builtPrompt += "\n\n"
+		}
+		builtPrompt += clipRules
+	}
+	builtPrompt += v1OutputInstruction
 
 	ollamaReq := ollamatypes.TextGenerationRequest{
 		Language:    language,
@@ -387,6 +395,28 @@ func extractPlanClipIDs(plan *scriptpkg.ResolvedGenerationPlan) []string {
 		return nil
 	}
 	return plan.ClipEvidence.ClipIDs
+}
+
+// buildClipGroundingInstructions adds clip-specific prompt guidance
+// when the plan carries clip evidence. The goal is to keep the model
+// anchored to the supplied clips instead of drifting into generic
+// biography.
+func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil || !plan.HasClips() {
+		return ""
+	}
+
+	clipIDs := strings.Join(plan.ClipEvidence.ClipIDs, ", ")
+
+	return strings.Join([]string{
+		"CLIP-GROUNDED WRITING RULES:",
+		"1. Treat the supplied clip evidence as the primary source.",
+		"2. Every scene must describe what is happening in the clips: action, movement, setting, objects, reactions, and immediate consequences.",
+		"3. Stay anchored to the clip sequence and the listed clip IDs: " + clipIDs + ". Do not drift into generic biography unless it directly explains the clip.",
+		"4. If a clip contains multiple beats, narrate those beats in order instead of abstracting them away.",
+		"5. Do not invent events, dialogue, or transitions that are not supported by the clip evidence.",
+		"6. Keep drive links out of the spoken script; they are reference metadata only.",
+	}, "\n")
 }
 
 // decodeModelPayload parses a raw model payload into the canonical
