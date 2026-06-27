@@ -219,3 +219,12 @@ ci_full_output.txt
 # orphaned on disk. gitignore it so subsequent CI + local pre-commit
 # runs do not see it as an unintended violation.
 internal/api/_dummy_archcheck_regression.go
+
+# Wave staging artefacts: temp splice blocks + python runners used by an
+# operator-only pipeline (e.g. `.wave23_piper.py`) to register a wave
+# entry on origin/main. The artefacts are single-use per wave and SHOULD
+# NOT be committed — `.wave23_*` glob catches the canonical pre-commit
+# state. Was leak-prone in June 2026 when these landed in the working
+# tree between the fast-forward and the conditional cleanup; this entry
+# closes the gap (housekeeping precondition for the next wave).
+.wave23_*
