@@ -675,18 +675,4 @@ var (
 		Help: "Monotonic counter for the deprecated MediaCurator.Curate entry point (DL-CURATIONTYPES-001). Spec name: curate_legacy_invocations_per_day — derive via increase(...[1d]). Removal gate: 0 for 30 consecutive days. Source label: provider/source string, bounded by static caller set.",
 	}, []string{"source"})
 
-	// LegacyArrayToOutputInvocations counts every successful invocation
-	// of compat.LegacyArrayToOutput inside Engine.decodeModelPayload
-	// (the legacy array-shape fallback for pre-V1 cache rows). New cache
-	// writes MUST emit canonical V1; this counter should trend to 0
-	// once all pre-V1 cache entries are evicted.
-	//
-	// Source label values (bounded): "cache" (memory-gate cache hit
-	// path — only path where legacy is legitimately expected) |
-	// "fresh" (ollama direct decode — should ALWAYS be zero; non-zero
-	// indicates a V1 contract regression on the model side).
-	LegacyArrayToOutputInvocationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "legacy_array_to_output_invocations_total",
-		Help: "Monotonic counter for compat.LegacyArrayToOutput invocations (DL-COMPAT-LEGACYDECODER-001). Spec name: legacy_array_to_output_invocations_per_day — derive via increase(...[1d]). Removal gate: 0 for 60 consecutive days. Source label: 'cache' for memory-gate replay path (legitimate pre-V1 rows); 'fresh' for ollama-direct path (must be zero in steady state; non-zero indicates V1 contract regression).",
-	}, []string{"source"})
 )

@@ -156,6 +156,7 @@ eval_results.json
 # Scratch / Temp Files
 # ============================================
 scratch/
+.tmp-diag/
 
 # ============================================
 # Cache and Book Generation

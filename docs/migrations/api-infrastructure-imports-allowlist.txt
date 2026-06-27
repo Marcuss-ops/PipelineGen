@@ -57,6 +57,14 @@
 # Once the corresponding PR lands, the file path here MUST be REMOVED in
 # the same PR (or in a followup) so the gate starts enforcing zero leaks
 # for that file.
+#
+# CURRENT STATE (P0.6, June 2026): ZERO active entries.
+# The internal/api/ layer is now clean of infrastructure imports — every
+# file that previously had one was migrated to typed ports during Wave 14
+# (PR2-PR5, June 2026) and the P0.4+P0.5 SearchAggregator/ReuploadUseCase
+# extraction. Check 19 now enforces zero-baseline: any new infrastructure
+# import in internal/api/ fails the gate. Additions to this file require
+# explicit owner + deadline per AGENTS.md §8.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Wave 14 grandfathered: api/assets/artlist handlers (PR2 — CLEANED, June 2026) ──
@@ -83,7 +91,11 @@
 # (Line-number citations deliberately omitted: the gate tokenizes on
 # file paths only, while comment-side line numbers drift on edit.)
 # Remaining PR2 grandfathered entries: 1.
-internal/api/assets/clips/handler.go
+# internal/api/assets/clips/handler.go     ← removed from allowlist (P0.6, June 2026)
+#                                            handler.go was cleaned of all
+#                                            infrastructure imports during the
+#                                            P0.4+P0.5 ReuploadUseCase extraction +
+#                                            SearchAggregator mandatory migration.
 
 # ── Wave 14 grandfathered: api/assets/soundeffect + youtube handlers (PR2 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/assets/soundeffect/handler.go +

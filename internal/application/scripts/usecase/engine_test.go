@@ -128,7 +128,7 @@ func (f *fakeScriptRepo) ListScripts(_ context.Context, _ ScriptListFilter) ([]*
 
 // v1CanonicalFixtureText is the prose used as the default V1 `text`
 // field across fake ollama results. Tests assert on this exact text.
-// PR 1: any non-V1 payload now fails DecodeModelOutput with
+// PR 1: any non-V1 payload now fails the fresh-path decode with
 // ErrModelOutputMalformed, so defaultFakeResult must emit canonical
 // JSON.
 const v1CanonicalFixtureText = "This is a generated script with multiple sentences and narrative depth."
@@ -455,9 +455,9 @@ func TestEngineGenerate_DecodeFailure(t *testing.T) {
 }
 
 // TestEngineGenerate_CacheLegacyHit verifies that pre-V1 legacy-array
-// cache rows are promoted to V1 by decodeModelPayload's compat
-// fallback. Operators upgrading from the legacy decoder see the cache
-// continue working without manual intervention.
+// cache rows are promoted to V1 by the jsonextract.Scanner
+// ModeCompatibility fallback. Operators upgrading from the legacy
+// decoder see the cache continue working without manual intervention.
 func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
@@ -485,7 +485,7 @@ func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 	assert.Equal(t, "exact_hit", result.CacheStatus)
 	assert.Equal(t, 1, result.Output.SchemaVersion)
 	require.Len(t, result.Output.SpecScene.Scenes, 1)
-	// compat.LegacyArrayToOutput prefixes promoted IDs with "legacy-"
+	// jsonextract.Scanner prefixes promoted IDs with "legacy-"
 	// to flag rows promoted from the pre-V1 cache.
 	assert.Equal(t, "legacy-scene-0", result.Output.SpecScene.Scenes[0].ID)
 	assert.Equal(t, "Legacy cached scene.", result.Output.SpecScene.Scenes[0].Text)
@@ -493,8 +493,13 @@ func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 }
 
 // TestEngineGenerate_CacheProseHit verifies that an unparseable cache
-// row (legacy prose, perhaps from before the V1 rollout) surfaces as
-// a typed ErrModelOutputMalformed rather than a silent cache miss.
+// row (legacy prose, perhaps from before the V1 rollout) is wrapped as
+// plain-text V1 in ModeCompatibility (declared fallback with
+// Prometheus metric) rather than silently erroring.
+//
+// P0.8 (June 2026): changed from error to success — ModeCompatibility
+// wraps plain text as a synthetic V1 with empty scenes, bumping
+// jsonextract_plain_text_fallback_total.
 func TestEngineGenerate_CacheProseHit(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
@@ -514,9 +519,15 @@ func TestEngineGenerate_CacheProseHit(t *testing.T) {
 		UseMemory: true,
 	}
 
-	_, err := e.Generate(context.Background(), plan)
-	require.Error(t, err)
-	require.ErrorIs(t, err, scriptpkg.ErrModelOutputMalformed)
+	result, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, int32(0), gen.calls.Load(), "ollama must NOT be called on cache hit")
+	assert.Equal(t, "exact_hit", result.CacheStatus)
+	// P0.8: ModeCompatibility wraps plain text as a synthetic V1.
+	assert.Equal(t, "This is not JSON, just prose paragraphs.", result.Output.Text)
+	assert.Equal(t, 1, result.Output.SchemaVersion)
+	assert.Empty(t, result.Output.SpecScene.Scenes, "plain-text wrapped output has empty scenes")
 }
 
 // TestEngineGenerate_ModelScenesPreserved verifies that the engine's
@@ -654,9 +665,8 @@ func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
 
 	// Cache miss (nil result, nil err): engine proceeds to fresh
 	// generation path. The capture still happens at the request
-	// build above. The fresh path requires DecodeModelOutput to
-	// succeed — use a default V1 canonical result so the test
-	// succeeds end-to-end (and so we don't incidentally regress
+	// build above. The fresh path needs a V1 canonical result so
+	// the test succeeds end-to-end (and so we don't incidentally regress
 	// PR 1).
 	_, err := e.Generate(context.Background(), plan)
 	require.NoError(t, err)

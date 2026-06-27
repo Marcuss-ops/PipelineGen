@@ -30,6 +30,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,6 +140,12 @@ func runFocusedChecks() Report {
 	checks["python_legacy_writer_violations"] = pythonWriterViolations
 	violations = append(violations, pythonWriterFindings...)
 
+	depStats, depViolations := checkDeprecations()
+	for k, v := range depStats {
+		checks[k] = v
+	}
+	violations = append(violations, depViolations...)
+
 	// Wave 19 (PR1 — observation only): surface capability-direction
 	// edge counts. NO violations emitted (would break the active
 	// Wave 14-18 ratchet until the baseline is agreed). PR2+ will
@@ -188,6 +197,12 @@ func runRatchetChecks() Report {
 	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
 	checks["python_legacy_writer_violations"] = pythonWriterViolations
 	violations = append(violations, pythonWriterFindings...)
+
+	depStats, depViolations := checkDeprecations()
+	for k, v := range depStats {
+		checks[k] = v
+	}
+	violations = append(violations, depViolations...)
 
 	// Wave 19 (PR1 — observation only). See runFocusedChecks for rationale.
 	atiStats, atiViolations := checkApplicationToInfrastructure()
@@ -893,37 +908,165 @@ func runPhase0Checks() (map[string]int, []string) {
 
 // ── Phase 0 rule 1: interface{} growth ────────────────────────────────────
 
-// checkInterfaceBraceGrowth counts production-code occurrences of
-// bare `interface{}` and broad `any` declared as a type on its own
-// (NOT inside a generic instantiation like `List[T any]`). The regex
-// is conservative: matches `\b\w+\s+(interface\{\}|any)\b` so it
-// catches field declarations, parameter types, and return types, but
-// ignores `any` as an english-prose token (the `\b\w+\s+` prefix
-// requires a Go identifier immediately before).
+// checkInterfaceBraceGrowth uses go/parser + go/ast to count only
+// actual field/parameter/return types declared as `interface{}` or
+// `any` (NOT comment prose, NOT generic type parameters like
+// `[T any]`). The previous regex-based approach caught english-prose
+// tokens ("under any allowed base path", "without touching any
+// dependency") and prompt strings, inflating the baseline with false
+// positives. Post-AST-rewrite, the baseline shrinks to real type usages
+// only, and stale entries (paths no longer in the codebase, e.g.
+// internal/api/helpers.go) are surfaced as violations.
 func checkInterfaceBraceGrowth(baseline []string) (actual []string, violations []string, stats map[string]int) {
 	stats = map[string]int{
 		"phase0_interface_braces_actual":      0,
 		"phase0_interface_braces_baseline":    len(baseline),
 		"phase0_interface_braces_regressions": 0,
+		"phase0_interface_braces_stale":       0,
 	}
-	out, err := exec.Command("rg", "-n",
-		`\b\w+\s+(interface\{\}|any)\b`,
-		"internal", "pkg",
-		"--type", "go",
-		"--glob", "!*_test.go",
-	).Output()
-	if err != nil && !execErrIsNoMatch(err) {
-		return actual, []string{fmt.Sprintf("checkInterfaceBraceGrowth: rg failed: %v", err)}, stats
-	}
-	actual = splitNonEmpty(strings.TrimRight(string(out), "\n"))
+
+	actual = walkASTForInterfaceAny()
 	stats["phase0_interface_braces_actual"] = len(actual)
+
+	// Regressions: entries in actual that are NOT in the baseline.
 	added := subtractSet(actual, baseline)
 	stats["phase0_interface_braces_regressions"] = len(added)
 	for _, line := range added {
 		violations = append(violations, "phase0 interface{}/any growth: "+line)
 	}
+
+	// Stale: entries in the baseline that no longer appear in the code.
+	stale := subtractSet(baseline, actual)
+	stats["phase0_interface_braces_stale"] = len(stale)
+	for _, entry := range stale {
+		violations = append(violations, "phase0 interface{} baseline stale (path or type no longer present): "+entry)
+	}
+
 	sort.Strings(violations)
 	return actual, violations, stats
+}
+
+// walkASTForInterfaceAny walks all production Go files under internal/
+// and pkg/ (excluding *_test.go) and returns every line where a
+// field, parameter, or return type is declared as bare `interface{}`
+// or the predeclared identifier `any`. Generic type parameters
+// (`[T any]`) are explicitly excluded by matching on the parent AST
+// node types (*ast.FuncType, *ast.StructType, *ast.InterfaceType)
+// and processing only Params/Results/Fields/Methods — never TypeParams.
+// The output format matches the legacy rg shape: "path:line: text" so
+// existing baseline entries that survive the AST filter can still be
+// compared.
+func walkASTForInterfaceAny() []string {
+	var results []string
+	fset := token.NewFileSet()
+
+	processFields := func(fl *ast.FieldList, filePath string) {
+		if fl == nil {
+			return
+		}
+		for _, field := range fl.List {
+			if field.Type == nil || !isBareInterfaceOrAny(field.Type) {
+				continue
+			}
+			pos := fset.Position(field.Type.Pos())
+			normPath := filepath.ToSlash(filePath)
+			results = append(results, fmt.Sprintf("%s:%d: %s",
+				normPath, pos.Line, renderTypeLine(field)))
+		}
+	}
+
+	for _, root := range []string{"internal", "pkg"} {
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+
+			file, parseErr := parser.ParseFile(fset, path, nil, parser.ParseComments)
+			if parseErr != nil {
+				return nil
+			}
+
+			// Only visit FuncType (Params + Results), StructType (Fields),
+			// and InterfaceType (Methods). TypeParams is explicitly
+			// skipped — generic type parameters like [T any] are NOT
+			// field/parameter/return declarations.
+			ast.Inspect(file, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.FuncType:
+					processFields(x.Params, path)
+					processFields(x.Results, path)
+				case *ast.StructType:
+					processFields(x.Fields, path)
+				case *ast.InterfaceType:
+					processFields(x.Methods, path)
+				}
+				return true
+			})
+			return nil
+		})
+	}
+	sort.Strings(results)
+	return results
+}
+
+// isBareInterfaceOrAny returns true when the expression node is exactly
+// `interface{}` (ast.InterfaceType with zero methods) or the predeclared
+// identifier `any`. Generic type-parameter usages ([T any]) reach us via
+// a different AST path (TypeParams field list), so they are excluded.
+func isBareInterfaceOrAny(expr ast.Expr) bool {
+	switch t := expr.(type) {
+	case *ast.InterfaceType:
+		return t.Methods == nil || t.Methods.NumFields() == 0
+	case *ast.Ident:
+		return t.Name == "any"
+	default:
+		return false
+	}
+}
+
+// renderTypeLine returns a canonical text representation of the
+// field containing the interface{}/any type. Uses AST names + type
+// string rather than re-reading the source file, so the output is
+// deterministic regardless of source formatting.
+func renderTypeLine(field *ast.Field) string {
+	names := fieldNames(field)
+	typeStr := typeString(field.Type)
+	if names == "" {
+		return typeStr
+	}
+	return names + " " + typeStr
+}
+
+// fieldNames returns the comma-separated names of a field, or "" if
+// the field is anonymous (embedded).
+func fieldNames(field *ast.Field) string {
+	if len(field.Names) == 0 {
+		return ""
+	}
+	parts := make([]string, len(field.Names))
+	for i, n := range field.Names {
+		parts[i] = n.Name
+	}
+	return strings.Join(parts, ", ")
+}
+
+// typeString returns a canonical string representation of an ast.Expr
+// used as a type. Covers the two cases we care about: interface{} and any.
+func typeString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.InterfaceType:
+		return "interface{}"
+	case *ast.Ident:
+		return t.Name
+	default:
+		return fmt.Sprintf("%T", expr)
+	}
 }
 
 // ── Phase 0 rule 2: setter detector ────────────────────────────────────────

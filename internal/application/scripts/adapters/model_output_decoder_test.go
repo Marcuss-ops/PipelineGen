@@ -1,7 +1,12 @@
 // Package scripts_test — model_output_decoder_test.go exercises the
-// canonical DecodeModelOutput and the compatibility
-// LegacyArrayToOutput decoder.
-package adapters_test
+// unified jsonextract.Scanner in both ModeStrict and ModeCompatibility.
+//
+// P0.8 (June 2026): merged the old DecodeModelOutput (canonical decoder)
+// and compat.LegacyArrayToOutput (legacy array decoder) tests into a
+// single test surface that exercises jsonextract.Scanner in the
+// appropriate mode. ModeStrict rejects bare prose; ModeCompatibility
+// wraps it (declared fallback, Prometheus-measured).
+package scripts_test
 
 import (
 	"encoding/json"
@@ -9,18 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	compatpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-
-	"go.uber.org/zap"
 )
 
-var testLog = zap.NewNop()
+// ── ModeStrict: valid object accepted ───────────────────────────────
 
-// ── Canonical decoder: valid object accepted ──────────────────────
-
-func TestDecodeModelOutputValidObject(t *testing.T) {
+func TestScannerStrictValidObject(t *testing.T) {
 	raw := []byte(`{
 		"schema_version": 1,
 		"text": "Complete script text.",
@@ -48,7 +48,7 @@ func TestDecodeModelOutputValidObject(t *testing.T) {
 		}
 	}`)
 
-	output, err := scripts.DecodeModelOutput(raw, testLog)
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err != nil {
 		t.Fatalf("expected valid decode, got: %v", err)
 	}
@@ -72,9 +72,9 @@ func TestDecodeModelOutputValidObject(t *testing.T) {
 	}
 }
 
-// ── Canonical decoder: valid object with empty scenes ──────────────
+// ── ModeStrict: valid object with empty scenes ──────────────────────
 
-func TestDecodeModelOutputValidEmptyScenes(t *testing.T) {
+func TestScannerStrictValidEmptyScenes(t *testing.T) {
 	raw := []byte(`{
 		"schema_version": 1,
 		"text": "Pure prose.",
@@ -84,7 +84,7 @@ func TestDecodeModelOutputValidEmptyScenes(t *testing.T) {
 		}
 	}`)
 
-	output, err := scripts.DecodeModelOutput(raw, testLog)
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err != nil {
 		t.Fatalf("expected valid decode with empty scenes, got: %v", err)
 	}
@@ -93,12 +93,12 @@ func TestDecodeModelOutputValidEmptyScenes(t *testing.T) {
 	}
 }
 
-// ── Canonical decoder: fenced JSON accepted ────────────────────────
+// ── ModeStrict: fenced JSON accepted ────────────────────────────────
 
-func TestDecodeModelOutputFencedJSON(t *testing.T) {
+func TestScannerStrictFencedJSON(t *testing.T) {
 	raw := []byte("```json\n{\n  \"schema_version\": 1,\n  \"text\": \"Fenced output.\",\n  \"specscene\": { \"version\": 1, \"scenes\": [] }\n}\n```")
 
-	output, err := scripts.DecodeModelOutput(raw, testLog)
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err != nil {
 		t.Fatalf("expected valid decode for fenced JSON, got: %v", err)
 	}
@@ -107,12 +107,12 @@ func TestDecodeModelOutputFencedJSON(t *testing.T) {
 	}
 }
 
-// ── Canonical decoder: fenced JSON with leading instruction ────────
+// ── ModeStrict: fenced JSON with leading instruction ────────────────
 
-func TestDecodeModelOutputFencedWithLeadingText(t *testing.T) {
+func TestScannerStrictFencedWithLeadingText(t *testing.T) {
 	raw := []byte("Here is the generated script output:\n\n```json\n{\n  \"schema_version\": 1,\n  \"text\": \"Output with lead-in.\",\n  \"specscene\": { \"version\": 1, \"scenes\": [] }\n}\n```")
 
-	output, err := scripts.DecodeModelOutput(raw, testLog)
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err != nil {
 		t.Fatalf("expected valid decode with leading text, got: %v", err)
 	}
@@ -121,29 +121,23 @@ func TestDecodeModelOutputFencedWithLeadingText(t *testing.T) {
 	}
 }
 
-// ── Canonical decoder: bare prose falls back to text-only output ────
+// ── ModeStrict: bare prose is an error (no hidden fallback) ─────────
 
-func TestDecodeModelOutputBareProse(t *testing.T) {
+func TestScannerStrictBareProse(t *testing.T) {
 	raw := []byte("This is just plain prose, no JSON at all.")
 
-	output, err := scripts.DecodeModelOutput(raw, testLog)
-	if err != nil {
-		t.Fatalf("expected text fallback, got: %v", err)
+	_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
+	if err == nil {
+		t.Fatal("ModeStrict: bare prose must produce an error (no hidden fallback)")
 	}
-	if output.Text != "This is just plain prose, no JSON at all." {
-		t.Fatalf("unexpected text fallback: %q", output.Text)
-	}
-	if output.SchemaVersion != 1 {
-		t.Fatalf("unexpected schema version: %d", output.SchemaVersion)
-	}
-	if len(output.SpecScene.Scenes) != 0 {
-		t.Fatalf("expected empty specscene, got %d scenes", len(output.SpecScene.Scenes))
+	if !errors.Is(err, scriptpkg.ErrModelOutputMalformed) {
+		t.Errorf("expected ErrModelOutputMalformed, got %v", err)
 	}
 }
 
-// ── Canonical decoder: malformed JSON rejected ─────────────────────
+// ── ModeStrict: malformed JSON rejected ─────────────────────────────
 
-func TestDecodeModelOutputMalformedJSON(t *testing.T) {
+func TestScannerStrictMalformedJSON(t *testing.T) {
 	tests := []struct {
 		name string
 		raw  []byte
@@ -154,20 +148,20 @@ func TestDecodeModelOutputMalformedJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := scripts.DecodeModelOutput(tt.raw, testLog)
+			_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(tt.raw, "test")
 			if err == nil {
-				t.Fatal("expected error for malformed JSON")
+				t.Fatal("expected error for malformed JSON in ModeStrict")
 			}
 		})
 	}
 }
 
-// ── Canonical decoder: unsupported schema_version rejected ─────────
+// ── ModeStrict: unsupported schema_version rejected ─────────────────
 
-func TestDecodeModelOutputUnsupportedVersion(t *testing.T) {
+func TestScannerStrictUnsupportedVersion(t *testing.T) {
 	raw := []byte(`{"schema_version": 99, "text": "New format", "specscene": {"version": 1, "scenes": []}}`)
 
-	_, err := scripts.DecodeModelOutput(raw, testLog)
+	_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err == nil {
 		t.Fatal("expected error for unsupported schema_version")
 	}
@@ -176,20 +170,20 @@ func TestDecodeModelOutputUnsupportedVersion(t *testing.T) {
 	}
 }
 
-// ── Canonical decoder: missing text rejected ───────────────────────
+// ── ModeStrict: missing text rejected ───────────────────────────────
 
-func TestDecodeModelOutputMissingText(t *testing.T) {
+func TestScannerStrictMissingText(t *testing.T) {
 	raw := []byte(`{"schema_version": 1, "text": "", "specscene": {"version": 1, "scenes": []}}`)
 
-	_, err := scripts.DecodeModelOutput(raw, testLog)
+	_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err == nil {
 		t.Fatal("expected error for missing text")
 	}
 }
 
-// ── Canonical decoder: duplicate scene IDs rejected ────────────────
+// ── ModeStrict: duplicate scene IDs rejected ────────────────────────
 
-func TestDecodeModelOutputDuplicateSceneIDs(t *testing.T) {
+func TestScannerStrictDuplicateSceneIDs(t *testing.T) {
 	raw := []byte(`{
 		"schema_version": 1,
 		"text": "Text.",
@@ -202,7 +196,7 @@ func TestDecodeModelOutputDuplicateSceneIDs(t *testing.T) {
 		}
 	}`)
 
-	_, err := scripts.DecodeModelOutput(raw, testLog)
+	_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err == nil {
 		t.Fatal("expected error for duplicate scene IDs")
 	}
@@ -211,22 +205,22 @@ func TestDecodeModelOutputDuplicateSceneIDs(t *testing.T) {
 	}
 }
 
-// ── Canonical decoder: empty input rejected ────────────────────────
+// ── ModeStrict: empty input rejected ────────────────────────────────
 
-func TestDecodeModelOutputEmpty(t *testing.T) {
-	_, err := scripts.DecodeModelOutput(nil, testLog)
+func TestScannerStrictEmpty(t *testing.T) {
+	_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(nil, "test")
 	if err == nil {
 		t.Fatal("expected error for nil input")
 	}
-	_, err = scripts.DecodeModelOutput([]byte{}, testLog)
+	_, err = jsonextract.NewScanner(jsonextract.ModeStrict).Scan([]byte{}, "test")
 	if err == nil {
 		t.Fatal("expected error for empty input")
 	}
 }
 
-// ── Fuzz: decode doesn't panic on garbage ──────────────────────────
+// ── Fuzz: scanner doesn't panic on garbage ──────────────────────────
 
-func TestDecodeModelOutputFuzz(t *testing.T) {
+func TestScannerFuzz(t *testing.T) {
 	inputs := [][]byte{
 		nil,
 		{},
@@ -246,25 +240,25 @@ func TestDecodeModelOutputFuzz(t *testing.T) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					t.Errorf("input %d: DecodeModelOutput panicked: %v", i, r)
+					t.Errorf("input %d: Scanner panicked: %v", i, r)
 				}
 			}()
-			_, _ = scripts.DecodeModelOutput(input, testLog)
+			_, _ = jsonextract.NewScanner(jsonextract.ModeStrict).Scan(input, "test")
 		}()
 	}
 }
 
-// ── Legacy decoder: valid array accepted ───────────────────────────
+// ── ModeCompatibility: valid legacy array accepted ──────────────────
 
-func TestLegacyArrayToOutputValid(t *testing.T) {
+func TestScannerCompatLegacyArrayValid(t *testing.T) {
 	raw := []byte(`[
 		{"index": 0, "text": "First scene.", "kind": "narration"},
 		{"index": 1, "text": "Second scene.", "kind": "clip", "clip_id": "clip-123"}
 	]`)
 
-	output, err := compatpkg.LegacyArrayToOutput(raw)
+	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
 	if err != nil {
-		t.Fatalf("expected valid legacy array decode, got: %v", err)
+		t.Fatalf("expected valid legacy array decode in compatibility mode, got: %v", err)
 	}
 	if output.SchemaVersion != 1 {
 		t.Errorf("schema_version: %d", output.SchemaVersion)
@@ -282,7 +276,6 @@ func TestLegacyArrayToOutputValid(t *testing.T) {
 		t.Fatalf("expected 2 scenes, got %d", len(output.SpecScene.Scenes))
 	}
 
-	// Scene 0: narration, no bindings.
 	s0 := output.SpecScene.Scenes[0]
 	if s0.ID != "legacy-scene-0" {
 		t.Errorf("scene 0 id: %s", s0.ID)
@@ -294,7 +287,6 @@ func TestLegacyArrayToOutputValid(t *testing.T) {
 		t.Errorf("scene 0 kind: %s", s0.Kind)
 	}
 
-	// Scene 1: clip binding.
 	s1 := output.SpecScene.Scenes[1]
 	if s1.ID != "legacy-scene-1" {
 		t.Errorf("scene 1 id: %s", s1.ID)
@@ -310,9 +302,9 @@ func TestLegacyArrayToOutputValid(t *testing.T) {
 	}
 }
 
-// ── Legacy decoder: valid array with alternate fields ──────────────
+// ── ModeCompatibility: valid legacy array with alternate fields ─────
 
-func TestLegacyArrayToOutputAlternateFields(t *testing.T) {
+func TestScannerCompatLegacyArrayAlternateFields(t *testing.T) {
 	raw := []byte(`[
 		{
 			"index": 0,
@@ -324,7 +316,7 @@ func TestLegacyArrayToOutputAlternateFields(t *testing.T) {
 		}
 	]`)
 
-	output, err := compatpkg.LegacyArrayToOutput(raw)
+	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
 	if err != nil {
 		t.Fatalf("expected valid legacy decode: %v", err)
 	}
@@ -336,8 +328,8 @@ func TestLegacyArrayToOutputAlternateFields(t *testing.T) {
 	if scene.Title != "My Scene" {
 		t.Errorf("title: %s", scene.Title)
 	}
+	// "voice" → SceneNarration
 	if scene.Kind != scriptpkg.SceneNarration {
-		// "voice" → SceneNarration
 		t.Errorf("kind 'voice' should map to narration, got %s", scene.Kind)
 	}
 	if scene.Bindings.Image == nil {
@@ -348,49 +340,53 @@ func TestLegacyArrayToOutputAlternateFields(t *testing.T) {
 	}
 }
 
-// ── Legacy decoder: empty array rejected ───────────────────────────
+// ── ModeCompatibility: empty array is plain-text wrapped ────────────
+// P0.8: empty legacy array no longer errors — ModeCompatibility falls
+// through to the plain-text wrapper (declared fallback).
 
-func TestLegacyArrayToOutputEmpty(t *testing.T) {
-	_, err := compatpkg.LegacyArrayToOutput([]byte(`[]`))
+func TestScannerCompatLegacyArrayEmpty(t *testing.T) {
+	raw := []byte(`[]`)
+	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
+	if err != nil {
+		t.Fatalf("ModeCompatibility: empty array should fall through to plain-text wrapper, got: %v", err)
+	}
+	if output.Text != "[]" {
+		t.Errorf("expected plain-text wrapped '[]', got: %q", output.Text)
+	}
+	if len(output.SpecScene.Scenes) != 0 {
+		t.Errorf("expected 0 scenes, got %d", len(output.SpecScene.Scenes))
+	}
+}
+
+// ── ModeCompatibility: non-array, non-V1 JSON is plain-text wrapped ─
+// P0.8: `{"key":"value"}` is not valid V1 and not a legacy array;
+// ModeCompatibility falls through to the plain-text wrapper (declared
+// fallback with Prometheus metric).
+
+func TestScannerCompatNotArray(t *testing.T) {
+	raw := []byte(`{"key": "value"}`)
+	output, err := jsonextract.NewScanner(jsonextract.ModeCompatibility).Scan(raw, "test")
+	if err != nil {
+		t.Fatalf("ModeCompatibility: non-V1, non-array JSON should fall through to plain-text wrapper, got: %v", err)
+	}
+	if output.Text != `{"key": "value"}` {
+		t.Errorf("expected plain-text wrapped, got: %q", output.Text)
+	}
+}
+
+// ── ModeStrict: non-V1 JSON is an error ─────────────────────────────
+
+func TestScannerStrictNonV1JSON(t *testing.T) {
+	raw := []byte(`{"key": "value"}`)
+	_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
 	if err == nil {
-		t.Fatal("expected error for empty legacy array")
+		t.Fatal("ModeStrict: non-V1 JSON must error")
 	}
 }
 
-// ── Legacy decoder: not an array rejected ──────────────────────────
+// ── JSON round-trip through scanner ─────────────────────────────────
 
-func TestLegacyArrayToOutputNotArray(t *testing.T) {
-	_, err := compatpkg.LegacyArrayToOutput([]byte(`{"key": "value"}`))
-	if err == nil {
-		t.Fatal("expected error for non-array input")
-	}
-}
-
-// ── IsLegacyArrayOutput heuristic ───────────────────────────────────
-
-func TestIsLegacyArrayOutput(t *testing.T) {
-	tests := []struct {
-		raw      []byte
-		expected bool
-	}{
-		{[]byte(`[{"index":0}]`), true},
-		{[]byte(`  [  ]`), true},
-		{[]byte(`{"schema_version":1}`), false},
-		{[]byte(`prose`), false},
-		{[]byte{}, false},
-		{nil, false},
-	}
-	for i, tt := range tests {
-		if got := compatpkg.IsLegacyArrayOutput(tt.raw); got != tt.expected {
-			t.Errorf("input %d: IsLegacyArrayOutput(%q) = %v, want %v",
-				i, string(tt.raw), got, tt.expected)
-		}
-	}
-}
-
-// ── JSON round-trip through both decoders ──────────────────────────
-
-func TestDecodeRoundTripCanonical(t *testing.T) {
+func TestScannerRoundTripCanonical(t *testing.T) {
 	canonical := scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
 		Text:          "Round-trip test.",
@@ -400,13 +396,12 @@ func TestDecodeRoundTripCanonical(t *testing.T) {
 		},
 	}
 
-	// Marshal to JSON, then decode.
 	encoded, err := json.Marshal(canonical)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	decoded, err := scripts.DecodeModelOutput(encoded, testLog)
+	decoded, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(encoded, "test")
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
