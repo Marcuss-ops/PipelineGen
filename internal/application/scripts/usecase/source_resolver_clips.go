@@ -96,3 +96,16 @@ func computeSourceFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEviden
 		Source: src,
 	})
 }
+
+// BuildItemIdentity constructs an identity string for a generation item.
+// Phase 1b stub — full implementation lands when the canonical
+// model-output contract consolidates (godlike/06 §metadata, see
+// internal/application/scripts/usecase/clip_evidence_builder.go for
+// the parallel construction pattern). The current stub returns an
+// empty string so callers receive a stable key surface even before
+// the canonical algorithm is wired; downstream cache-lookup is
+// expected to short-circuit on empty key.
+func BuildItemIdentity(item scriptpkg.GenerationItemV2) string {
+	_ = item
+	return ""
+}

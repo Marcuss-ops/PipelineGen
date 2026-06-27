@@ -38,6 +38,8 @@ import (
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -293,6 +295,28 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Use cases: one → many → job handler.
 	oneUC := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	// fix/voiceover-group-resolver (June 2026): wire the
+	// VoiceoverGroupResolver port so the use case resolves
+	// VoiceoverGroup → VoiceoverFolderID BEFORE BuildPlan. The
+	// adapter wraps the concrete *voiceover.GroupsResolver (built
+	// inline here, mirroring the construction in
+	// internal/api/script/handler_flow.go and
+	// internal/app/module_media.go::WireAssets). When the voiceover
+	// root is not configured OR the asset tree service is missing,
+	// the resolver stays nil and the use case short-circuits to a
+	// no-op — preserving behaviour parity with pre-PR scripts.
+	voRootID := strings.TrimSpace(cfg.Drive.VoiceoverFolder())
+	if voRootID != "" && root.Search != nil && root.Search.AssetTreeService != nil {
+		if gr, grErr := voiceover.NewGroupsResolver(root.Search.AssetTreeService, log); grErr == nil {
+			voAdapter := scriptports.NewVoiceoverGroupsAdapter(gr)
+			oneUC.SetVoiceoverRouting(voAdapter, voRootID)
+			log.Info("wireScriptFlow: voiceover_group → folder_id resolver wired (fix/voiceover-group-resolver)",
+				zap.String("voiceover_root", voRootID))
+		} else {
+			log.Warn("wireScriptFlow: failed to build voiceover groups resolver — voiceover_group routing disabled",
+				zap.Error(grErr))
+		}
+	}
 	manyUC := usecase.NewGenerateManyUseCase(oneUC, log)
 
 	// ── Media curator ───────────────────────────────────────────────
