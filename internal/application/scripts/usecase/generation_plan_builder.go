@@ -132,7 +132,27 @@ func modeForSource(st scriptpkg.SourceType) string {
 
 // buildPostprocessorList derives the ordered list of postprocessors
 // from OutputSpec flags. Order: entities → metadata → voiceover →
-// images → document → persistence.
+// images → clip_bindings → document → persistence.
+//
+// PR 7 (June 2026): inserted "clip_bindings" BEFORE "document". The
+// ordering is critical: DocumentProcessor (processor_document.go
+// line 49-62) renders SpecScene.Scenes into the Google Doc HTML body
+// and READS `scene.Bindings.Clip.DriveLink` per scene. If clip_bindings
+// ran AFTER document, the doc would render the empty-bindings version
+// of the SpecScene and miss the canonical drive links injected by the
+// binder. Same logic applies to the JSON response writer path: result
+// is built AFTER ppReg.Run returns, and `buildGenerationResult` reads
+// the post-walk SpecScene — the binder must run during the walk so
+// both paths see the same final binding set.
+//
+// clip_bindings is unconditional (no operator flag) because:
+//   - It is BestEffort, so composition never fails on its absence.
+//   - It is a no-op when plan.ClipEvidence is nil/empty (pure-text
+//     generation paths), so including it in every plan is cheap.
+//   - Conditional inclusion would expose a subtle drift: a plan with
+//     clip evidence might skip the binder while one without it would
+//     run it; both diverge silently. Unconditional inclusion makes
+//     centralization tautological.
 func buildPostprocessorList(out scriptpkg.OutputSpec) []string {
 	var pp []string
 	if out.ExtractEntities {
@@ -147,6 +167,9 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []string {
 	if out.GenerateSceneImages {
 		pp = append(pp, "images")
 	}
+	// PR 7: clip_bindings MUST run before document so the doc
+	// builder sees the canonical bindings (see comment above).
+	pp = append(pp, "clip_bindings")
 	if out.GenerateDocument {
 		pp = append(pp, "document")
 	}

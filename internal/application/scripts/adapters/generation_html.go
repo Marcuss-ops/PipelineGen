@@ -280,12 +280,21 @@ func BuildClipSpecSceneDocumentHTML(
 		Scenes:  make([]sceneDoc, 0, len(model.SpecScene.Scenes)),
 	}
 
-	clipIDs := sortedClipIDs(evidence)
+	clipIDs := canonicalClipIDs(evidence)
+	totalScenes := len(model.SpecScene.Scenes)
 	for i := range model.SpecScene.Scenes {
 		scene := model.SpecScene.Scenes[i]
 		var links []string
 		var desc string
-		if len(clipIDs) > 0 && evidence != nil {
+
+		if scene.Bindings.Clip != nil && scene.Bindings.Clip.DriveLink != "" {
+			links = append(links, scene.Bindings.Clip.DriveLink)
+			if evidence != nil && scene.Bindings.Clip.ClipID != "" {
+				if name := strings.TrimSpace(evidence.ClipNames[scene.Bindings.Clip.ClipID]); name != "" {
+					desc = name
+				}
+			}
+		} else if len(clipIDs) > 0 && evidence != nil {
 			clipID := clipIDs[i%len(clipIDs)]
 			if link := strings.TrimSpace(evidence.DriveLinks[clipID]); link != "" {
 				links = append(links, link)
@@ -294,10 +303,14 @@ func BuildClipSpecSceneDocumentHTML(
 				desc = name
 			}
 		}
+
 		kind := string(scene.Kind)
 		if i == 0 && (kind == "" || kind == "clip" || kind == "narration") {
 			kind = "intro"
+		} else if i == totalScenes-1 && (kind == "" || kind == "clip" || kind == "narration") {
+			kind = "outro"
 		}
+
 		doc.Scenes = append(doc.Scenes, sceneDoc{
 			ID:          scene.ID,
 			Index:       scene.Index,
@@ -324,9 +337,12 @@ func BuildClipSpecSceneDocumentHTML(
 	return b.String()
 }
 
-func sortedClipIDs(evidence *scriptpkg.ClipEvidence) []string {
-	if evidence == nil || len(evidence.DriveLinks) == 0 {
+func canonicalClipIDs(evidence *scriptpkg.ClipEvidence) []string {
+	if evidence == nil {
 		return nil
+	}
+	if len(evidence.ClipIDs) > 0 {
+		return evidence.ClipIDs
 	}
 	clipIDs := make([]string, 0, len(evidence.DriveLinks))
 	for id := range evidence.DriveLinks {

@@ -15,12 +15,13 @@ type AudioInput struct {
 }
 
 type AudioResult struct {
-	LocalPath   string
-	CleanedPath string
-	FileHash    string
-	DriveLink   string
-	DriveFileID string
-	Voice       string // the actual TTS voice used (e.g. "en-US-RogerNeural")
-	Status      string
-	Error       string
+	LocalPath     string
+	CleanedPath   string
+	FileHash      string
+	DriveLink     string
+	DriveFileID   string
+	Status        string
+	Error         string
+	Voice         string // backward-compat: actual TTS voice (e.g. "en-US-RogerNeural") — used by ae20d7bf voiceover
+	VoiceProfile  string // Voice profile returned from tts_edge.py (e.g., "en-US-RogerNeural")
 }

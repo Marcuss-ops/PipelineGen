@@ -278,6 +278,24 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: failed to register metadata processor")
 	}
 
+	// PR 7 (June 2026): register ClipBindingsProcessor so the
+	// postprocessor walk produces ONE canonical set of scene-clip
+	// bindings consumed by both the Google Doc builder (via
+	// DocumentProcessor) AND the JSON response writer (via
+	// result.Output.SpecScene.Scenes). BestEffort policy means a
+	// missing-registered observation is a warning, not a hard
+	// fail; the processor is a no-op when plan.ClipEvidence is
+	// nil/empty so text-only paths are unaffected. The previous
+	// pre-PR-7 registration was dropped because the processor's
+	// signature `(ctx, plan, model, *PostProcessArtifact)` drifted
+	// from the canonical PostProcessor interface and could not
+	// satisfy `ppReg.Register`. The new signature is
+	// `(ctx, plan, input ProcessInput) (*PostProcessResult, error)`
+	// and the processor is the canonical single-owned binding assigner.
+	if !ppReg.Register(scripts.NewClipBindingsProcessor(log)) {
+		return fmt.Errorf("wireScriptFlow: failed to register clip_bindings processor (composition bug or duplicate name)")
+	}
+
 	// Freeze the source registry — no more resolvers after composition.
 	sourceReg.Freeze()
 	ppReg.Freeze()
