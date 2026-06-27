@@ -44,8 +44,9 @@ type SourceSpec struct {
 	Guidelines string `json:"guidelines,omitempty"`
 
 	// ── Clips source ──────────────────────────────────────────────────
-	ClipIDs  []string `json:"clip_ids,omitempty"`
-	NumClips int      `json:"num_clips,omitempty"`
+	ClipIDs      []string `json:"clip_ids,omitempty"`
+	IntroClipIDs []string `json:"intro_clip_ids,omitempty"`
+	NumClips     int      `json:"num_clips,omitempty"`
 
 	// ── Catalog / Search source ───────────────────────────────────────
 	Query              string   `json:"query,omitempty"`
@@ -209,6 +210,9 @@ type ClipEvidence struct {
 
 	// DriveLinks maps clip_id → Drive URL for downstream rendering.
 	DriveLinks map[string]string `json:"drive_links,omitempty"`
+
+	// ClipNames maps clip_id → clip title/description.
+	ClipNames map[string]string `json:"clip_names,omitempty"`
 
 	// ExcludedClipIDs lists clips that were filtered out (quality,
 	// transcript length) with reasons.

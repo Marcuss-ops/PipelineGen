@@ -27,6 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
@@ -268,23 +269,17 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// wired) without panicking on a nil decorator.
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
+	var searchAgg *providers.SearchAggregator
 	if root.Search != nil && root.Search.ProviderRegistry != nil {
-		searchFanOut, _ = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
+		searchFanOut, searchBackends, _ = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
 			Logger:      log,
 			ProviderReg: root.Search.ProviderRegistry,
 			ClipsRepo:   root.Repos.ClipsRepo,
 		})
-		// Diagnostic surfaces: the bare registry is consumed by
-		// future Health probes / dashboard routes via
-		// wiring.Assets.SearchBackendRegistry. We pull it back
-		// out of the SearchFanOut's decorator by re-running the
-		// build — the noopFanOut case leaves searchBackends nil.
-		if sf, ok := searchFanOut.(*searchSearchFanOutAccessor); ok {
-			searchBackends = sf.Backends()
-		}
+		searchAgg = providers.NewSearchAggregator(root.Search.ProviderRegistry)
 		log.Info("PR-2: canonical SearchFanOut wired against root.Search.ProviderRegistry (single shared instance)")
 	}
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchFanOut); err != nil {
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchAgg); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		if err := tryRegisterModuleStrict(registry, log, yw.Module, WithRegistrationPoint("register.YouTubeClip")); err != nil {
