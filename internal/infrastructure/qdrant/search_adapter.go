@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
 )
 
@@ -74,14 +75,19 @@ func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 				"key": "workspace_id", "match": map[string]interface{}{"value": req.WorkspaceID},
 			})
 		}
-		// QDRANT-004: status filter — only return points whose
-		// lifecycle_state is searchable or active. Non-searchable
-		// states (deleted, archived, pending, error) are excluded
-		// at the vector-store level so they never reach hydration.
+		// TODO 3 close-out (June 2026): lifecycle_state is the SSOT
+		// for the canonical lifecycle vocabulary (uppercase). Only
+		// "ACTIVE" is searchable now — DELETED / DELETE_PENDING /
+		// ERROR / STAGING / PROCESSING are excluded at the vector
+		// store so they never reach hydration. The previous lowercase
+		// `["active", "searchable"]` filter is retired (legacy points
+		// pre-TODO 3 still carry uppercase ACTIVE; a future reindex
+		// campaign would normalise any stragglers — tracked in the
+		// commit body as a one-shot followup).
 		must = append(must, map[string]interface{}{
 			"key": "lifecycle_state",
 			"match": map[string]interface{}{
-				"any": []string{"active", "searchable"},
+				"any": []string{string(assetpkg.StateActive)},
 			},
 		})
 		filter = map[string]interface{}{"must": must}
@@ -142,12 +148,13 @@ func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 				"key": "workspace_id", "match": map[string]interface{}{"value": req.WorkspaceID},
 			})
 		}
-		// QDRANT-004: status filter — only return points whose
-		// lifecycle_state is searchable or active (shared with Search).
+		// TODO 3 close-out (June 2026): shared filter with Search.
+		// See Search() above for the rationale — only canonical
+		// ACTIVE is searchable now, lowercase aliases are retired.
 		must = append(must, map[string]interface{}{
 			"key": "lifecycle_state",
 			"match": map[string]interface{}{
-				"any": []string{"active", "searchable"},
+				"any": []string{string(assetpkg.StateActive)},
 			},
 		})
 		filter = map[string]interface{}{"must": must}

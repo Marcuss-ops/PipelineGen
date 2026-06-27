@@ -2,6 +2,7 @@ package asset
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -20,26 +21,152 @@ type Source string
 type Metadata map[string]any
 
 // LifecycleState tracks where an asset is in its lifecycle.
+//
+// TODO 3 close-out (June 2026): the lifecycle vocabulary is now SSOT.
+// New writes (Qdrant payload, media_assets columns, ingest paths)
+// MUST use only the canonical uppercase constants below. The legacy
+// lowercase `StateReady`/`StatePending` constants are retained as
+// read-only aliases so existing in-memory references in the codebase
+// continue to compile, but they are NOT valid states (`Valid()` returns
+// false for them) and the SSOT canonicalisers `canonicalLifecycleState`
+// / `NormalizeLegacyLifecycle` map them to canonical uppercase form
+// on read. After followup ingest-path migration (TODO 3 followup),
+// the legacy constants will be removed.
+//
+// Vocabulary (canonical, uppercase, SSOT):
+//
+//	StateStaging         "STAGING"        — created, not yet indexed
+//	StateProcessing      "PROCESSING"     — ingestion in progress
+//	StateActive          "ACTIVE"         — live and queryable
+//	LcStateDeletePending   "DELETE_PENDING" — delete acknowledged, reconciler
+//	                                       cleanup pending
+//	StateDeleted         "DELETED"        — terminal, excluded from search
+//	StateError           "ERROR"          — index failed; not queryable
 type LifecycleState string
 
 const (
-	StateStaging    LifecycleState = "STAGING"
-	StateProcessing LifecycleState = "PROCESSING"
-	StateActive     LifecycleState = "ACTIVE"
-	StateDeleted    LifecycleState = "DELETED"
+	// Canonical vocabulary — always uppercase, always valid.
+	StateStaging       LifecycleState = "STAGING"
+	StateProcessing    LifecycleState = "PROCESSING"
+	StateActive        LifecycleState = "ACTIVE"
+	LcStateDeletePending LifecycleState = "DELETE_PENDING"
+	StateDeleted       LifecycleState = "DELETED"
+	StateError         LifecycleState = "ERROR"
 
-	// Legacy compatibility values.
+	// Legacy bits retained for compile compatibility ONLY. Do NOT
+	// introduce new writes using these — they are mapped to canonical
+	// forms by NormalizeLegacyLifecycle / canonicalLifecycleState.
+	// Canonical writes use StateActive / StateStaging.
+	// Remove in a followup once all ingest paths migrate.
 	StateReady   LifecycleState = "ready"
 	StatePending LifecycleState = "pending"
 )
 
-// Valid returns true if s is a known lifecycle state.
+// Valid returns true if s is a CANONICAL lifecycle state. Legacy
+// lowercase values (StateReady, StatePending) and any unknown value
+// return false — canonicalLifecycleState is the only legal path for
+// materialising a lifecycle_state payload value.
+//
+// TODO 3 close-out (June 2026): post-migration, Valid becomes the
+// single gate for SSOT compliance. Anything that reaches a write
+// without passing through canonicalLifecycleState fails this gate.
 func (s LifecycleState) Valid() bool {
 	switch s {
-	case StateStaging, StateProcessing, StateActive, StateDeleted, StateReady, StatePending:
+	case StateStaging, StateProcessing, StateActive,
+		LcStateDeletePending, StateDeleted, StateError:
 		return true
 	}
 	return false
+}
+
+// NormalizeLegacyLifecycle maps any raw status value (uppercase,
+// lowercase, or mixed-case) to the canonical uppercase LifecycleState.
+// Exposed for callers reading legacy data where lowercase values
+// like "ready"/"pending" may persist in SQLite status columns,
+// incoming payload fields from older Qdrant points, or external
+// importers.
+//
+// Mapping contract:
+//
+//	"", unknown                       → StateActive (canonical default)
+//	"ACTIVE", "active", "ready",     → StateActive
+//	"SEARCHABLE", "searchable"       → StateActive (legacy alias)
+//	"STAGING", "staging", "pending"  → StateStaging
+//	"PENDING", "pending"             → StateStaging (legacy alias)
+//	"PROCESSING", "processing"       → StateProcessing
+//	"DELETE_PENDING", "delete_pending" → LcStateDeletePending
+//	"DELETED", "deleted"             → StateDeleted
+//	"ERROR", "error"                 → StateError
+//
+// Whitespace is trimmed and case is folded upper before lookup, so
+// "  Ready ", "READY", "ready" all collapse to StateActive.
+func NormalizeLegacyLifecycle(raw string) LifecycleState {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "STAGING", "PENDING":
+		return StateStaging
+	case "PROCESSING":
+		return StateProcessing
+	case "ACTIVE", "READY", "SEARCHABLE":
+		return StateActive
+	case "DELETE_PENDING":
+		return LcStateDeletePending
+	case "DELETED":
+		return StateDeleted
+	case "ERROR":
+		return StateError
+	case "":
+		return StateActive
+	default:
+		return StateActive
+	}
+}
+
+// CanonicalLifecycleState resolves a primary (preferred) lifecycle value
+// to the canonical uppercase LifecycleState, with optional fallback to
+// a legacy status string.
+//
+// The rule (TODO 3 close-out, June 2026):
+//
+//  1. primary non-empty → NormalizeLegacyLifecycle(primary).
+//     This handles canonical pass-through as well as legacy lowercase
+//     values like "ready"/"pending" pre-existing in the codebase.
+//  2. primary empty → fallback through NormalizeLegacyLifecycle.
+//     Used by callers that distinguish between an explicit lifecycle
+//     column and a legacy status column (asset_store.go::FetchAsset).
+//  3. Both empty / unknown → StateActive (canonical default).
+//
+// This is the SSOT canonicaliser for the Qdrant payload `lifecycle_state`
+// key, the media_assets.lifecycle_state column, and any in-memory
+// LifecycleState value. Callers MUST NOT bypass it — see
+// payload_mapper.go::BuildPayload and asset_store.go::FetchAsset in
+// internal/infrastructure/qdrant, as well as any domain code that
+// produces a canonical value from a raw string.
+//
+// Exported (uppercase C) because infrastructure callers import it; the
+// domain-internal wrapper on *Asset below is kept as a convenience for
+// callers that already hold an *Asset reference.
+func CanonicalLifecycleState(primary string, fallback string) LifecycleState {
+	if primary != "" {
+		return NormalizeLegacyLifecycle(primary)
+	}
+	if fallback != "" {
+		return NormalizeLegacyLifecycle(fallback)
+	}
+	return StateActive
+}
+
+// canonicalLifecycleState is the domain-internal wrapper that
+// resolves an Asset's LifecycleState to the canonical form. Infrastructure
+// callers (qdrant payload_mapper, qdrant asset_store) use the
+// exported CanonicalLifecycleState(primary, fallback); this
+// pointer-based variant exists for domain code that already holds
+// an *Asset reference and wants the SSOT canonicalisation without
+// the fallback indirection. nil → StateActive (defensive default).
+func canonicalLifecycleState(a *Asset) LifecycleState {
+	if a == nil {
+		return StateActive
+	}
+	return CanonicalLifecycleState(string(a.LifecycleState), "")
 }
 
 // Asset is the canonical domain model for a media asset in PipelineGen.

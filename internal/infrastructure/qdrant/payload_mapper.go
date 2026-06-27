@@ -7,6 +7,8 @@ import (
 	"math"
 
 	"go.uber.org/zap"
+
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // PayloadMapper converts internal AssetData to Qdrant Point representations.
@@ -157,13 +159,26 @@ func (m *PayloadMapper) getVectorForChannel(asset *AssetData, channel string) []
 // BuildPayload constructs the Qdrant payload from an AssetData and schema.
 // It includes only data necessary for filtering, ranking, and hydration.
 // No tokens, secrets, or physical paths are stored directly.
+//
+// TODO 3 close-out (June 2026): the `status` payload key is REMOVED.
+// Single source of truth for lifecycle is `lifecycle_state`, and the
+// value is canonicalised via assetpkg.canonicalLifecycleState. This
+// is the only place a Qdrant point acquires a lifecycle payload key;
+// all other write paths funnel through here. The asset.Status field
+// is retained on AssetData for legacy reader compatibility but is no
+// longer emitted to the payload.
 func BuildPayload(asset *AssetData, schema *IndexSchema) map[string]interface{} {
 	payload := map[string]interface{}{
 		"asset_id":   asset.ID,
-		"status":     asset.Status,
 		"source":     asset.Source,
 		"media_type": asset.MediaType,
 	}
+
+	// TODO 3 (June 2026): lifecycle_state is the SSOT for lifecycle.
+	// Single canonical call delegates the priority + fallback dance to
+	// assetpkg.CanonicalLifecycleState; BuildPayload itself has no
+	// branching, so the SSOT gate lives in exactly one place.
+	payload["lifecycle_state"] = string(assetpkg.CanonicalLifecycleState(asset.LifecycleState, asset.Status))
 
 	if asset.WorkspaceID != "" {
 		payload["workspace_id"] = asset.WorkspaceID

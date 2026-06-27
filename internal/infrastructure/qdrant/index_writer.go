@@ -295,16 +295,28 @@ func ValidatePoint(point *Point, schema *IndexSchema) error {
 // AssetData is the canonical asset representation used by PayloadMapper.
 // It mirrors the media_assets table columns needed for Qdrant points.
 type AssetData struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Source     string   `json:"source"`
-	MediaType  string   `json:"media_type"`
-	Status     string   `json:"status"`
-	Language   string   `json:"language,omitempty"`
-	Category   string   `json:"category,omitempty"`
-	Style      string   `json:"style,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	SearchText string   `json:"search_text,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Source    string `json:"source"`
+	MediaType string `json:"media_type"`
+	Status    string `json:"status"`
+	// LifecycleState is the CANONICAL lifecycle_state for this asset
+	// (QDRANT-003 SSOT). Populated by the AssetStore at read time
+	// from media_assets.lifecycle_state when available, otherwise
+	// canonicalised from the legacy Status column via
+	// asset.NormalizeLegacyLifecycle. Always uppercase when populated
+	// here — payload_mapper.BuildPayload reads it as-is without
+	// further canonicalisation, so any writer that constructs an
+	// AssetData from non-Sqlite sources MUST run the value through
+	// canonicalLifecycleState(assetpkg.Convert(*AssetData)) before
+	// passing it to BuildPayload. New ingest paths should write the
+	// canonical value directly (no Status-only path).
+	LifecycleState string   `json:"lifecycle_state,omitempty"`
+	Language       string   `json:"language,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	Style          string   `json:"style,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	SearchText     string   `json:"search_text,omitempty"`
 	// DriveLink is the Drive web-view link for non-Qdrant legacy
 	// callers. QDRANT-001 (June 2026): intentionally NOT emitted by
 	// payload_mapper.BuildPayload — clients obtain a short-TTL

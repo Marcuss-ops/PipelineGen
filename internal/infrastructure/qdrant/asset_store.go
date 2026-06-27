@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // SQLiteAssetStore implements AssetStore backed by the media_assets table.
@@ -41,11 +43,13 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	var language, category, style, channelID, lic sql.NullString
 	var workspaceID, youtubeVideoID, youtubeURL, startTime, endTime sql.NullString
 	var createdAt, updatedAt, deletedAt sql.NullString
+	var lifecycleColumn sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
 			COALESCE(status, 'ACTIVE'),
+			COALESCE(NULLIF(lifecycle_state, ''), ''),
 			COALESCE(tags, '[]'),
 			COALESCE(search_text, ''),
 			COALESCE(drive_link, ''),
@@ -67,6 +71,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	`, assetID).Scan(
 		&a.ID, &a.Name, &a.Source, &a.MediaType,
 		&a.Status,
+		&lifecycleColumn,
 		&tagsJSON,
 		&a.SearchText,
 		&a.DriveLink,
@@ -165,6 +170,22 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	if deletedAt.Valid {
 		a.DeletedAt = deletedAt.String
 	}
+
+	// TODO 3 close-out (June 2026): canonicalise the lifecycle state
+	// at read time so downstream callers (BuildPayload, search_adapter)
+	// can rely on a.LifecycleState being canonical uppercase. The
+	// canonical media_assets.lifecycle_state column wins when present;
+	// otherwise we fall back to NormalizeLegacyLifecycle on the legacy
+	// Status column (which carries lowercase values like "ready" /
+	// "pending" pre-migration that downstream sites still emit). Empty
+	// / missing both → StateActive so BuildPayload never emits an empty
+	// lifecycle_state key. Single CanonicalLifecycleState call replaces
+	// the prior inline switch — keep the SSOT gate in one place.
+	lifecycleVal := ""
+	if lifecycleColumn.Valid {
+		lifecycleVal = lifecycleColumn.String
+	}
+	a.LifecycleState = string(assetpkg.CanonicalLifecycleState(lifecycleVal, a.Status))
 
 	return a, nil
 }
