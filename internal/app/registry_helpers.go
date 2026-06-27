@@ -16,7 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
@@ -63,25 +63,15 @@ func (d *DriveDestinations) ImagesFolder() string { return d.imagesFolder }
 // unchanged while letting the composition layer stop holding a raw
 // sqlite handle in signatures.
 //
-// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
-// is the 8th positional arg so the embedded artifacts.NewClipsRegistry
-// routes its media_assets UPSERT through the canonical outbox+tx
-// writer. The PR-7 deferred-hydration strategy (hydrateMediaProcessor +
-// MediaProcessor=nil) is gone; BuildProcessBundle now consumes
-// outbox.OutboxBundle inline and constructs MediaProcessor directly
-// (see composition.go::buildQdrantDeps + BuildProcessBundle for the
-// strict-DAG shape: qdrantDeps -> outbox -> process).
-//
-// Fail-closed at the composition root: BuildProcessBundle returns
-// MediaProcessor=nil if outbox.Dispatcher is nil so worker / reprocess
-// / ingest paths surface the missing dep rather than silently defaulting
-// to the legacy path.
-func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, driveUploader *driveup.Uploader) asset.Processor {
+// PR 7 cutover: manifestSvc is threaded through so the per-asset metadata
+// write inside Process() routes through the canonical manifest.Service
+// (atomic temp+fsync+rename local, per-folder-locked Drive replace).
+func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, log *zap.Logger, driveUploader *driveup.Uploader, manifestSvc manifest.Service) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
-	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing, mutationsDisp)
-	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpegtypes.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader)
+	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing)
+	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpegtypes.DefaultNormalizeOptions(cfg), ScraperServerURL: cfg.External.ArtlistScraperServerURL, EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, driveUploader, manifestSvc)
 }
 
 // ── Sync target building ────────────────────────────────────────────────────

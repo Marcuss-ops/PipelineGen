@@ -105,8 +105,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	// so callers (semantic_enricher as well as anyone reading
 	// Service.driveFolderManager) never see SDK types. When
 	// bundle.DriveClient is nil (e.g. test fixtures), the adapter
-	// stays nil and the enricher's updateCumulativeMetadataJSON is
-	// a no-op (dropDriveManager nil-tolerance path).
+	// stays nil and the enricher routes through manifest.Service only.
 	var driveManager artlistPkg.DriveFolderManager
 	if bundle.DriveClient != nil {
 		driveManager = drive.NewDriveFolderManagerAdapter(bundle.DriveClient, log)
@@ -118,12 +117,8 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	// afterwards — the enricher is passed via ServiceDeps.MetadataWriter.
 	// PR2.7: the enricher now takes the DriveFolderManager port
 	// (driveManager) instead of the narrow *drive.Uploader concrete.
-	// PR2.5: build the SemanticEnricher BEFORE NewService so its
-	// Dispatcher constructor argument captures the canonical
-	// outbox.Dispatcher at composition time. No setter is called
-	// afterwards — the enricher is passed via ServiceDeps.MetadataWriter.
-	// PR2.7: the enricher now takes the DriveFolderManager port
-	// (driveManager) instead of the narrow *drive.Uploader concrete.
+	// PR 7 cutover: enricher also receives the canonical manifest.Service
+	// for per-folder / per-local manifest upsert (single source of truth).
 	// Dispatcher is the canonical media_index_outbox dispatcher from
 	// root.Outbox (already built by BuildOutboxBundle before WireRegistry
 	// runs).
@@ -142,8 +137,8 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 	var enricher artlistPkg.MetadataWriter
 	if bundle.ClipsRepo != nil {
 		metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, driveManager, dispatcher, log)
-		log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active (QDRANT-002 PR7)")
+		enricher = artlistPkg.NewSemanticEnricher(bundle.ClipsRepo, clipIndexerSvc, metaWriter, driveManager, dispatcher, bundle.ManifestService, log)
+		log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher + canonical manifest.Service — single-source-of-truth per-asset metadata")
 	}
 
 	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, enricher, driveManager, dispatcher, log)

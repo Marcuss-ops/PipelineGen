@@ -43,7 +43,7 @@ import (
 //
 // PR2.7: introduced alongside the artlist.DriveFolderManager port to
 // retire the raw SDK reach-through previously done in
-// semantic_enricher.go::updateCumulativeMetadataJSON.
+// semantic_enricher.go::enrich post-write path (pre-cutover).
 type DriveFolderManagerAdapter struct {
 	svc *driveapi.Service
 	log *zap.Logger

@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
@@ -137,6 +138,13 @@ type ProcessBundle struct {
 	// wire_script.go can construct ClipSearchPort adapters without
 	// importing qdrant infrastructure directly.
 	QdrantSearcher *qdrant.Searcher
+
+	// PR 7 cutover: the canonical manifest.Service is constructed
+	// ONCE in BuildProcessBundle and exposed here so WireRegistry
+	// threads it into ArtlistBundle + AssetsBundle. Single source of
+	// truth for per-asset metadata writes; per-path locks
+	// (drive:<folderID> + abspath) shared across all consumers.
+	ManifestService manifest.Service
 }
 
 // QdrantDeps is the tiny pre-phase bundle of canonical Qdrant adapters

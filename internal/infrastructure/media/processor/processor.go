@@ -1,28 +1,44 @@
+// Package processor — media download / process / Drive upload
+// orchestrator. PR 7 (codex/asset-manifest-cutover, June 2026):
+// per-asset metadata writes no longer go through a private merge
+// method under a global shared sync.Mutex; instead the Processor
+// calls into internal/application/assets/manifest.Service which owns
+// the per-path lock + atomic merge-by-AssetID semantics.
+//
+// Pre-cutover symbols removed in this file:
+//   - the package-level shared mutex (removed)
+//   - the (p *Processor) private metadata merge method (removed)
+//
+// Pre-cutover imports cleaned up:
+//   - encoding/json (no longer needed; manifest owns marshaling)
+//   - sync (no longer needed; manifest owns locking)
+//   - os (no longer needed for direct WriteFile; manifest writes atomic)
 package processor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-var driveMetaMu sync.Mutex
-
 // Processor orchestrates download via yt-dlp or HTTP, optional ffmpeg
 // normalization, perceptual deduplication, file hashing, and Drive upload.
 // It implements the canonical core/asset.Processor contract directly.
+//
+// PR 7: per-asset metadata is delegated to manifest.Service.
+// manifestSvc may be nil for Drive-less fixtures (where the
+// step-4 cascade is best-effort); in production it is always wired.
 type Processor struct {
 	dl            YTDLP
 	httpDL        HTTPDownloader
@@ -35,6 +51,7 @@ type Processor struct {
 	embeddingURL  string
 	registry      artifacts.Registry
 	driveUploader *drive.Uploader
+	manifestSvc   manifest.Service
 }
 
 var _ asset.Processor = (*Processor)(nil)
@@ -49,6 +66,11 @@ type ProcessorConfig struct {
 }
 
 // NewProcessor creates a new media processor with the given dependencies.
+//
+// PR 7: manifestSvc added as a required parameter. Production wiring
+// (composition root) passes the canonical *manifest.Service instance.
+// Pass nil to opt out of metadata-side-effects (Drive-less test
+// fixtures).
 func NewProcessor(
 	dl YTDLP,
 	httpDL HTTPDownloader,
@@ -57,6 +79,7 @@ func NewProcessor(
 	cfg ProcessorConfig,
 	registry artifacts.Registry,
 	driveUploader *drive.Uploader,
+	manifestSvc manifest.Service,
 ) *Processor {
 	scraperURL := cfg.ScraperServerURL
 	if scraperURL == "" {
@@ -78,12 +101,17 @@ func NewProcessor(
 		embeddingURL:  embeddingURL,
 		registry:      registry,
 		driveUploader: driveUploader,
+		manifestSvc:   manifestSvc,
 	}
 }
 
 // Process orchestrates the full pipeline: download, process, hash, and upload.
 // It validates inputs, downloads the asset, optionally normalizes via ffmpeg,
 // checks for perceptual duplicates, computes the file hash, and returns metadata.
+//
+// PR 7: step 4's "Maintain a single metadata.json locally + on Drive"
+// block is REMOVED; replaced with a single manifest.Service.UpsertLocal
+// + UpsertRemote call. The package-level shared mutex is gone.
 func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	if input == nil {
 		err := fmt.Errorf("asset.ProcessInput is required")
@@ -95,7 +123,6 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		Status: "failed",
 	}
 
-	// Validate required inputs.
 	if input.ID == "" {
 		return result, fmt.Errorf("ProcessInput.ID is required")
 	}
@@ -109,12 +136,10 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		return result, fmt.Errorf("Processor.dl (YTDLP) is nil - cannot download")
 	}
 
-	// Setup paths.
 	tmpDir, saveDir := p.setupDirectories(input)
 	finalFilename := textutil.SafeName(input.Name) + " " + input.ID + ".mp4"
 	processedPath := OutputPath(saveDir, finalFilename)
 
-	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly).
 	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s", input.ID))
 	actualRawPath, err := p.downloadStep(ctx, input, rawPath)
 	if err != nil {
@@ -122,7 +147,6 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		return result, err
 	}
 
-	// Step 2: Process/Normalize.
 	processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
 	if err != nil {
 		_ = os.Remove(actualRawPath)
@@ -130,7 +154,6 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		return result, err
 	}
 
-	// Perceptual deduplication.
 	duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
 	if duplicateID != "" {
 		p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
@@ -140,17 +163,13 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			result.DriveFileID = existing.DriveFileID
 			result.DownloadLink = existing.DownloadLink
 			result.Status = "duplicate"
-
-			// Clean up local files to avoid duplicate drive.
 			_ = os.Remove(actualRawPath)
 			_ = os.Remove(processedPath)
-
 			p.log.Info("Reusing Drive details from duplicate asset", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
 			return result, nil
 		}
 	}
 
-	// Step 3: Hash.
 	fileHash, err := p.hashStep(ctx, processedPath)
 	if err != nil {
 		_ = os.Remove(actualRawPath)
@@ -162,7 +181,6 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	result.LocalPath = processedPath
 	result.Filename = filepath.Base(processedPath)
 
-	// Step 4: Upload to Google Drive (if configured).
 	if p.driveUploader != nil && input.FolderID != "" {
 		uploadResult, uploadErr := p.driveUploader.UploadFile(ctx, processedPath, input.FolderID, result.Filename)
 		if uploadErr != nil {
@@ -181,66 +199,53 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			)
 		}
 
-		sourceVal := "artlist"
-		if s, ok := input.Metadata["source"].(string); ok {
-			sourceVal = s
-		}
+		// PR 7 cutover: per-asset metadata write is delegated to
+		// the canonical manifest.Service. The pre-cutover "marshal +
+		// in-place replace" + global shared-lock dance is gone.
+		if p.manifestSvc != nil {
+			sourceVal := "artlist"
+			if s, ok := input.Metadata["source"].(string); ok {
+				sourceVal = s
+			}
+			extras := map[string]any{
+				"term":          input.Term,
+				"filename":      result.Filename,
+				"duration_sec":  input.Duration,
+				"created_at":    time.Now().UTC().Format(time.RFC3339),
+				"download_link": result.DownloadLink,
+				"clip_page_url": input.ClipPageURL,
+				"source_url":    input.SourceURL,
+				"duplicate_of":  result.DuplicateOf,
+			}
+			entry := manifest.AssetToEntry(&asset.Asset{
+				ID:         input.ID,
+				Name:       input.Name,
+				Filename:   result.Filename,
+				Source:     asset.Source(sourceVal),
+				Tags:       []string{},
+				CreatedAt:  time.Now().UTC(),
+				UpdatedAt:  time.Now().UTC(),
+				Duration:   time.Duration(input.Duration) * time.Second,
+			}, sourceVal, input.Term, extras)
+			entry.LocalPath = processedPath
+			entry.DriveFileID = result.DriveFileID
+			entry.DriveLink = result.DriveLink
+			entry.FileHash = result.FileHash
 
-		metaData := map[string]any{
-			"clip_id":       input.ID,
-			"name":          input.Name,
-			"source":        sourceVal,
-			"term":          input.Term,
-			"filename":      result.Filename,
-			"file_hash":     result.FileHash,
-			"duration_sec":  input.Duration,
-			"created_at":    time.Now().UTC().Format(time.RFC3339),
-			"drive_file_id": result.DriveFileID,
-			"drive_link":    result.DriveLink,
-			"download_link": result.DownloadLink,
-			"clip_page_url": input.ClipPageURL,
-			"source_url":    input.SourceURL,
-			"duplicate_of":  result.DuplicateOf,
-		}
-		// Merge any extra metadata provided in the input.
-		for k, v := range input.Metadata {
-			if _, exists := metaData[k]; !exists {
-				metaData[k] = v
+			// 1) Local manifest (atomic temp+fsync+rename).
+			if dirErr := p.manifestSvc.UpsertLocal(ctx, filepath.Dir(processedPath), entry); dirErr != nil {
+				p.log.Warn("manifest: local upsert failed",
+					zap.String("id", input.ID), zap.Error(dirErr))
+			}
+			// 2) Drive manifest (per-folder locked replace).
+			if remErr := p.manifestSvc.UpsertRemote(ctx, input.FolderID, entry); remErr != nil {
+				p.log.Warn("manifest: remote upsert failed",
+					zap.String("id", input.ID), zap.Error(remErr))
 			}
 		}
-
-		// Maintain a single metadata.json locally under lock to avoid concurrency races.
-		driveMetaMu.Lock()
-		localMetaPath := filepath.Join(filepath.Dir(processedPath), "metadata.json")
-		var localExisting []map[string]any
-		if data, err := os.ReadFile(localMetaPath); err == nil {
-			_ = json.Unmarshal(data, &localExisting)
-		}
-		foundLocal := false
-		for i, entry := range localExisting {
-			if id, ok := entry["clip_id"].(string); ok && id == input.ID {
-				localExisting[i] = metaData
-				foundLocal = true
-				break
-			}
-		}
-		if !foundLocal {
-			localExisting = append(localExisting, metaData)
-		}
-		if data, err := json.MarshalIndent(localExisting, "", "  "); err == nil {
-			if writeErr := os.WriteFile(localMetaPath, data, 0o644); writeErr != nil {
-				p.log.Warn("failed to write metadata JSON locally", zap.String("id", input.ID), zap.Error(writeErr))
-			}
-		}
-
-		// Maintain and upload a single cumulative metadata.json to Google Drive.
-		p.updateCumulativeMetadataJSON(ctx, input.FolderID, input.ID, metaData)
-		driveMetaMu.Unlock()
 	}
 
-	// Cleanup raw file after processing.
 	_ = os.Remove(actualRawPath)
-
 	result.Status = "processed"
 	return result, nil
 }
@@ -263,59 +268,4 @@ func (p *Processor) setupDirectories(input *asset.ProcessInput) (tmpDir, saveDir
 	}
 
 	return tmpDir, saveDir
-}
-
-// updateCumulativeMetadataJSON maintains a single metadata.json per folder on Google Drive.
-func (p *Processor) updateCumulativeMetadataJSON(ctx context.Context, folderID, clipID string, newEntry map[string]any) {
-	const metaFilename = "metadata.json"
-
-	var existing []map[string]any
-	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
-	list, err := p.driveUploader.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
-	if err != nil {
-		p.log.Warn("failed to list metadata.json", zap.Error(err))
-	} else if len(list.Files) > 0 {
-		existingFileID := list.Files[0].Id
-		body, _, dlErr := p.driveUploader.DownloadFile(ctx, existingFileID)
-		if dlErr == nil && body != nil {
-			defer body.Close()
-			var raw []map[string]any
-			if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
-				existing = raw
-			}
-		}
-		if err := p.driveUploader.TrashFile(ctx, existingFileID); err != nil {
-			p.log.Warn("failed to trash old metadata.json", zap.Error(err))
-		}
-	}
-
-	found := false
-	for i, entry := range existing {
-		if id, ok := entry["clip_id"].(string); ok && id == clipID {
-			existing[i] = newEntry
-			found = true
-			break
-		}
-	}
-	if !found {
-		existing = append(existing, newEntry)
-	}
-
-	jsonBytes, err := json.MarshalIndent(existing, "", "  ")
-	if err != nil {
-		p.log.Warn("failed to marshal cumulative metadata json", zap.Error(err))
-		return
-	}
-	metaTempPath := filepath.Join(os.TempDir(), fmt.Sprintf("meta_%s_%d.json", clipID, time.Now().UnixNano()))
-	if err := os.WriteFile(metaTempPath, jsonBytes, 0o644); err != nil {
-		p.log.Warn("failed to write metadata json temp file", zap.Error(err))
-		return
-	}
-	defer os.Remove(metaTempPath)
-
-	if _, err := p.driveUploader.UploadFile(ctx, metaTempPath, folderID, metaFilename); err != nil {
-		p.log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
-	} else {
-		p.log.Info("uploaded cumulative metadata.json to Drive", zap.Int("entries", len(existing)))
-	}
 }

@@ -25,14 +25,13 @@ import (
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	searchqueriesuc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -40,7 +39,7 @@ import (
 
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	generation "github.com/Marcuss-ops/PipelineGen/internal/application/generation"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -221,6 +220,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		MediaProcessor:     root.Process.MediaProcessor,
 		Jobs:               root.Jobs,
 		CatalogSyncService: root.Sync.CatalogSync,
+		ManifestService:    root.Process.ManifestService,
 	}
 	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
@@ -249,37 +249,24 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// clips + register handlers.
 	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
 	idemHandler := idemPlus.Handler()
-
-	// PR-2 (June 2026): single canonical SearchFanOut constructed
-	// in WireRegistry and SHARED between WireYouTubeClip +
-	// WireAssets. The pre-PR-2 parallel
-	// `providers.NewSearchAggregator` is gone (git-rm'd in this
-	// PR); the canonical *search.Aggregator lives behind the
-	// SearchFanOut decorator which exposes the user-spec
-	// Option{Hits, Latencies} Stats surface. Composition-stable
-	// failure mode: a BuildCanonicalSearchFanOut error aborts
-	// boot so a misconfigured backend set is visible at startup
-	// rather than silently degrading to partial coverage.
+	// S3d (June 2026): construct the canonical SearchAggregator
+	// against the post-Freeze ProviderRegistry. The SearchAggregator
+	// shares the registry with the providers fan-out; construction
+	// here so by the time YouTubeClip is wired, both the
+	// ProviderRegistry and the SearchAggregator point at the same
+	// frozen state.
 	//
-	// Note: when root.Search.ProviderRegistry is nil (registry
-	// not built — e.g. test fixtures or partial deploys), the
-	// fan-out is set to a noopFanOut that surfaces
-	// ErrAggregatorNil on every Search and returns the empty
-	// map on Stats. Handlers map this to 503 (services not
-	// wired) without panicking on a nil decorator.
-	var searchFanOut search.SearchFanOut
-	var searchBackends *search.BackendRegistry
-	var searchAgg *providers.SearchAggregator
+	// Note: when root.Search.ProviderRegistry is nil (registry not
+	// built — e.g. test fixtures or partial deploys), we pass the
+	// aggregator as nil. WireYouTubeClip forwards nil to
+	// NewYouTubeClipHandler; the handler's SearchAdvanced + Stats
+	// then return 503 (services not wired).
+	var searchAggregator *providers.SearchAggregator
 	if root.Search != nil && root.Search.ProviderRegistry != nil {
-		searchFanOut, searchBackends, _ = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
-			Logger:      log,
-			ProviderReg: root.Search.ProviderRegistry,
-			ClipsRepo:   root.Repos.ClipsRepo,
-		})
-		searchAgg = providers.NewSearchAggregator(root.Search.ProviderRegistry)
-		log.Info("PR-2: canonical SearchFanOut wired against root.Search.ProviderRegistry (single shared instance)")
+		searchAggregator = providers.NewSearchAggregator(root.Search.ProviderRegistry)
+		log.Info("S3d: constructed providers.SearchAggregator against root.Search.ProviderRegistry")
 	}
-	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchAgg); err != nil {
+	if yw, err := WireYouTubeClip(cfg, log, root.Domains.YoutubeClipService, root.Jobs.Facade, root.Jobs.Service, root.Repos.ClipsRepo, toolCheckerAdapter, idemHandler, searchAggregator); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
 	} else {
 		if err := tryRegisterModuleStrict(registry, log, yw.Module, WithRegistrationPoint("register.YouTubeClip")); err != nil {
@@ -305,15 +292,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 
 	// 1) Jobs — thin wrapper, no bundle deps.
 	{
-		// PR-0 (June 2026): NewJobsHandler signature is now
-		// (job.Service, JobStatsReader, *zap.Logger). *root.Jobs.Service
-		// satisfies both interfaces — it implements the canonical domain
-		// job.Service (orchestrator) AND the JobStatsReader port (via the
-		// runtime type-assertion GetStats helper). When a future stats source
-		// is bindable without the orchestrator's mutation surface, pass that
-		// reader to h.stats and let h.service continue carrying the
-		// orchestrator.
-		jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
+		jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, log)
 		jobsMod := module.NewRouteModule(
 			"jobs",
 			func() bool { return true },
@@ -359,12 +338,6 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 			ClipsRepo:         root.Repos.ClipsRepo,
 			AssetIndexService: root.Search.AssetIndexService,
 			PrebuiltService:   root.Domains.IngestService,
-			// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed):
-			// roots the canonical outbox.Dispatcher into
-			// WireMediaIngest so the 4 NewClipStoreAdapter +
-			// NewClipsRegistry ctor calls in module_media.go get a
-			// non-nil mutations SSOT (production canonical path).
-			Dispatcher: root.Outbox.Dispatcher,
 		}
 		mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, ingestBundle, idemHandler)
 		wiring.MediaIngest = mediaIngestW
@@ -496,7 +469,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		// feature is enabled.
 		scriptHistoryEnabled := anyScriptFeatureEnabled(cfg)
 		if err := tryRegisterModuleStrict(registry, log, scriptapi.NewScriptHistoryModule(
-			scriptapi.NewScriptHistoryHandler(adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
+			scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 			log,
 			middleware.FeatureFlagChecker("Script", scriptHistoryEnabled),
 			scriptHistoryEnabled,
@@ -533,13 +506,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		ClipIndexerService:      root.Process.ClipIndexerService,
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
-		// PR-2 (June 2026): the canonical SearchFanOut is stamped
-		// onto the bundle BEFORE WireAssets runs. WireAssets
-		// consumes the pre-built slot rather than constructing
-		// its own (single shared instance invariant — see
-		// AssetsBundle package doc).
-		SearchFanOut:          searchFanOut,
-		SearchBackendRegistry: searchBackends,
+		ManifestService:         root.Process.ManifestService,
 	}
 	// Wave 16 (June 2026): WireAssets realtimeSvc is typed
 	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
@@ -703,9 +670,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if wiring.Assets != nil && wiring.Assets.Module != nil {
 			log.Info("providers.Registry wired into Assets module via constructor")
 		}
-		if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
-			log.Info("YouTubeClipHandler wired transport-only (PR-CLIP-YT-REGISTRY-CLEANUP: providers.Registry dispatch published via youtubeadapter.NewAdapter above; handler no longer takes providerRegistry)")
-		}
+	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
+		log.Info("YouTubeClipHandler wired transport-only (PR-CLIP-YT-REGISTRY-CLEANUP: providers.Registry dispatch published via youtubeadapter.NewAdapter above; handler no longer takes providerRegistry)")
+	}
 	}
 
 	return wiring, nil
