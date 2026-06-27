@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -137,11 +137,6 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 		return
 	}
 
-	if h.jobsSvc == nil {
-		apiutil.InternalError(c, fmt.Errorf("jobs service not available"))
-		return
-	}
-
 	// Resolve target Drive folder once so the worker doesn't have to.
 	targetDriveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if targetDriveFolderID == "" {
@@ -184,7 +179,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 
 	// Enqueue the job
 	activeKey := fmt.Sprintf("bulk_upload_yt:%s", abs)
-	job, err := h.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
 		Type:    "bulk_upload_youtube_clips",
 		Project: "media",
 		Payload: map[string]any{
@@ -203,20 +198,10 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 			"skip_patterns":          req.SkipPatterns,
 		},
 		ActiveKey: activeKey,
-	})
-	if err != nil {
-		log.Error("failed to enqueue bulk upload job", zap.Error(err))
-		apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+	}, fmt.Sprintf("bulk upload job enqueued (%d candidates)", len(candidates))); ok {
 		return
 	}
-
-	apiutil.OK(c, BulkUploadYouTubeClipsResponse{
-		OK:         true,
-		JobID:      job.ID,
-		StatusURL:  "/api/jobs/" + job.ID + "/full",
-		Message:    fmt.Sprintf("bulk upload job enqueued (%d candidates)", len(candidates)),
-		LocalFound: len(candidates),
-	})
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
 // ─── Job processing ────────────────────────────────────────────────────────────

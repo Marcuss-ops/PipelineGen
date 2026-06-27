@@ -21,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -171,36 +172,24 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		}
 	}
 
-	if h.jobsSvc != nil {
-		payloadBytes, err := json.Marshal(req)
-		if err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
-			return
-		}
-		var payloadMap map[string]any
-		if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
-			return
-		}
-
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    "youtube_clip.extract",
-			Payload: payloadMap,
-		})
-		if err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
-			return
-		}
-
-		apiutil.OK(c, gin.H{
-			"job_id":     job.ID,
-			"message":    "YouTube clip extraction job enqueued",
-			"status_url": "/api/jobs/" + job.ID + "/full",
-		})
+	payloadBytes, err := json.Marshal(req)
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
+		return
+	}
+	var payloadMap map[string]any
+	if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
+		apiutil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
 		return
 	}
 
-	apiutil.InternalError(c, fmt.Errorf("jobs service not available"))
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type:    "youtube_clip.extract",
+		Payload: payloadMap,
+	}, "YouTube clip extraction job enqueued."); ok {
+		return
+	}
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
 // Diagnostics returns YouTube clip module health and dependency status.

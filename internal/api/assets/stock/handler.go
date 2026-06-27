@@ -2,12 +2,12 @@ package stock
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -115,56 +115,7 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		searchQueries[i] = q.Q
 	}
 
-	if h.jobsSvc != nil {
-		// Delegate to job system: the existing media.stock handler
-		// (stockpipeline.Service.HandleJob) receives SearchQueries and
-		// resolves them via resolveQuery (yt-dlp) internally, then runs
-		// the full stock pipeline — no goroutines needed in the handler.
-		payload := &stockpipeline.StockRunPayload{
-			SearchQueries: searchQueries,
-			TotalMinutes:  req.TotalMinutes,
-			ChunkDuration: req.ChunkDuration,
-			ClipDuration:  req.ClipDuration,
-			NoAudio:       req.NoAudio,
-			NoEffects:     req.NoEffects,
-			NoTransitions: req.NoTransitions,
-			MaxVideos:     req.MaxVideos,
-			Subfolder:     req.Subfolder,
-			FolderName:    req.FolderName,
-			FolderID:      req.FolderID,
-		}
-		if req.Metadata != nil {
-			payload.Metadata = &stockpipeline.StockRunPayloadMetadata{
-				Title:       req.Metadata.Title,
-				Description: req.Metadata.Description,
-				Tags:        req.Metadata.Tags,
-				Category:    req.Metadata.Category,
-				Author:      req.Metadata.Author,
-				Extra:       req.Metadata.Extra,
-			}
-		}
-
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    "media.stock",
-			Payload: stockPayloadToMap(payload),
-		})
-		if err != nil {
-			h.log.Error("failed to enqueue stock pipeline job", zap.Error(err))
-			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
-			return
-		}
-
-		apiutil.Accepted(c, gin.H{
-			"job_id":     job.ID,
-			"message":    "Stock search-and-run job enqueued",
-			"status_url": "/api/jobs/" + job.ID + "/full",
-		})
-		return
-	}
-
-	// Fallback: run synchronously — stockpipeline.Run handles SearchQueries
-	// via resolveQuery (yt-dlp) internally, no goroutine needed.
-	input := &stockpipeline.RunInput{
+	payload := &stockpipeline.StockRunPayload{
 		SearchQueries: searchQueries,
 		TotalMinutes:  req.TotalMinutes,
 		ChunkDuration: req.ChunkDuration,
@@ -176,25 +127,25 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		Subfolder:     req.Subfolder,
 		FolderName:    req.FolderName,
 		FolderID:      req.FolderID,
-		Metadata:      req.Metadata,
+	}
+	if req.Metadata != nil {
+		payload.Metadata = &stockpipeline.StockRunPayloadMetadata{
+			Title:       req.Metadata.Title,
+			Description: req.Metadata.Description,
+			Tags:        req.Metadata.Tags,
+			Category:    req.Metadata.Category,
+			Author:      req.Metadata.Author,
+			Extra:       req.Metadata.Extra,
+		}
 	}
 
-	result, err := h.service.Run(c.Request.Context(), input)
-	if err != nil {
-		h.log.Error("stock pipeline failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, StockPipelineResponse{
-			Status: "failed",
-			Error:  err.Error(),
-		})
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type:    "media.stock",
+		Payload: stockPayloadToMap(payload),
+	}, "Stock search-and-run job enqueued."); ok {
 		return
 	}
-
-	c.JSON(http.StatusOK, StockPipelineResponse{
-		Status:      "completed",
-		TotalClips:  result.TotalClips,
-		TotalChunks: result.TotalChunks,
-		Chunks:      result.Chunks,
-	})
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
 func (h *Handler) RunStockPipeline(c *gin.Context) {
@@ -235,64 +186,11 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		return
 	}
 
-	if h.jobsSvc != nil {
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    "media.stock",
-			Payload: stockPayloadToMap(&req),
-		})
-		if err != nil {
-			h.log.Error("failed to enqueue stock pipeline job", zap.Error(err))
-			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
-			return
-		}
-
-		apiutil.Accepted(c, gin.H{
-			"job_id":     job.ID,
-			"message":    "Stock pipeline job enqueued",
-			"status_url": "/api/jobs/" + job.ID + "/full",
-		})
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type:    "media.stock",
+		Payload: stockPayloadToMap(&req),
+	}, "Stock pipeline job enqueued."); ok {
 		return
 	}
-
-	input := &stockpipeline.RunInput{
-		SearchQueries: req.SearchQueries,
-		DirectURLs:    req.DirectURLs,
-		TotalMinutes:  req.TotalMinutes,
-		ChunkDuration: req.ChunkDuration,
-		ClipDuration:  req.ClipDuration,
-		NoAudio:       req.NoAudio,
-		NoEffects:     req.NoEffects,
-		NoTransitions: req.NoTransitions,
-		MaxVideos:     req.MaxVideos,
-		Subfolder:     req.Subfolder,
-		FolderName:    req.FolderName,
-		FolderID:      req.FolderID,
-	}
-	if req.Metadata != nil {
-		input.Metadata = &stockpipeline.ChunkMetadataInput{
-			Title:       req.Metadata.Title,
-			Description: req.Metadata.Description,
-			Tags:        req.Metadata.Tags,
-			Category:    req.Metadata.Category,
-			Author:      req.Metadata.Author,
-			Extra:       req.Metadata.Extra,
-		}
-	}
-
-	result, err := h.service.Run(c.Request.Context(), input)
-	if err != nil {
-		h.log.Error("stock pipeline failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, StockPipelineResponse{
-			Status: "failed",
-			Error:  err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, StockPipelineResponse{
-		Status:      "completed",
-		TotalClips:  result.TotalClips,
-		TotalChunks: result.TotalChunks,
-		Chunks:      result.Chunks,
-	})
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }

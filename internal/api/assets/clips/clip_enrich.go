@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
@@ -165,42 +165,16 @@ func (h *Handler) BatchReindex(c *gin.Context) {
 	}
 
 	// Enqueue as a job so callers can poll progress via GET /api/jobs/:id/full
-	if h.jobsSvc != nil {
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type: "media.reindex",
-			Payload: map[string]any{
-				"source":     req.Source,
-				"media_type": req.MediaType,
-				"limit":      req.Limit,
-			},
-			ActiveKey: fmt.Sprintf("batch_reindex_%s_%s", req.Source, req.MediaType),
-		})
-		if err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-		apiutil.OK(c, gin.H{
-			"ok":         true,
-			"action":     "batch_reindex_enqueued",
-			"job_id":     job.ID,
-			"status_url": "/api/jobs/" + job.ID + "/full",
-			"message":    "Batch reindex job enqueued",
-		})
+	if ok := common.EnqueueAsync(c, h.jobsSvc, &common.EnqueueInput{
+		Type: "media.reindex",
+		Payload: map[string]any{
+			"source":     req.Source,
+			"media_type": req.MediaType,
+			"limit":      req.Limit,
+		},
+		ActiveKey: fmt.Sprintf("batch_reindex_%s_%s", req.Source, req.MediaType),
+	}, "Batch reindex job enqueued."); ok {
 		return
 	}
-
-	// Fallback: fire-and-forget goroutine if jobs service not available
-	ctx := c.Request.Context()
-	result, err := h.clipIndexer.BatchReindex(ctx, req.Source, req.MediaType, req.Limit)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"action":  "batch_reindex_started",
-		"total":   result.Total,
-		"message": fmt.Sprintf("%d assets queued for re-indexing (background)", result.Total),
-	})
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
