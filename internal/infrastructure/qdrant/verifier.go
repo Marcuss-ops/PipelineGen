@@ -1,17 +1,48 @@
-// Package qdrant — QDRANT-003 reindex verification (June 2026).
+// Package qdrant — QDRANT-003 + PR 12 (June 2026) reindex verification.
 //
-// VerifyReindex is the post-reindex validation gate. It replaces the
-// previous buildSwitchReport placeholder (which had TODO zero-values for
-// missing/orphan/dead-letter/golden-query/filter fields). The new verifier:
+// VerifyReindex is the post-reindex validation gate. Replaces the
+// previous buildSwitchReport placeholder (QDRANT-003) AND the lax
+// sample-based gates (PR 12).
 //
-//  1. Counts points in the target collection — hard error on mismatch.
-//  2. Scrolls all points and compares IDs against SQLite (missing/orphan).
-//  3. Validates payload minimum on every point (asset_id, name, source).
-//  4. Checks embedding_version on sampled points for consistency.
-//  5. Optionally checks dead-letter count via DeadLetterChecker.
+// PR 12 hardening — strict verifier (the user spec:
+// "Verifier severo"):
 //
-// Ready is true ONLY when all gates pass: counts match, zero missing, zero
-// orphan, zero payload issues, zero version mismatches, zero dead letters,
+//  1. ActualPoints == ExpectedPoints (strict equality, NOT >= — the
+//     previous >= accepted over-counting, which masked failed
+//     partial reindexes).
+//  2. Full per-channel scan on EVERY scrolled page (was: first 2
+//     pages = 1000-point sample only). Every channel-declared key
+//     MUST be present on every point.
+//  3. EVERY scroll page error is fatal — the previous
+//     `break; partial data is better than nothing` is gone. The
+//     verifier returns a partial report + non-nil err so the
+//     caller (reindex_qdrant.go) refuses the alias switch.
+//  4. maxScrolls page cap is BLOCKING (was a logged warning). A
+//     collection larger than the cap cannot complete its scan
+//     and the operator MUST raise the cap on the production
+//     deployment — silently truncating was the original hazard.
+//  5. pt.ID MUST equal AssetIDToQdrantPointID(payload["asset_id"])
+//     EXACTLY. The previous uuid.Parse(pt.ID) accepted ANY
+//     UUID-form string, which silently lost the reverse-mapping
+//     when the canonical asset_id was different from the
+//     authored point ID (a write path this codebase no longer
+//     has but legacy collections may carry).
+//
+// Cross-PR invariants the verifier keeps paying attention to:
+//
+//   - QDRANT-005 closure: the global embedding_version rescue
+//     path was DELETED. Points missing per-channel keys ALWAYS
+//     bump the per-channel counter; no legacy fallback path.
+//   - PR 10 fail-closed vocabulary: CompleteScan bool, Report.Errors,
+//     terminal-vs-noop terminology. SwitchReport now exposes
+//     CompleteScan + TotalScrolled so the operator can audit the
+//     verifier's footprint the same way they audit the
+//     reconciler's.
+//
+// Ready is true ONLY when all gates pass: counts match exactly,
+// CompleteScan=true, zero missing, zero orphan, zero payload
+// issues, zero per-channel mismatches, zero non-canonical point
+// IDs, zero dead letters, golden-query and filter smokes pass,
 // and no errors occurred during verification.
 package qdrant
 
@@ -19,7 +50,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -27,10 +57,10 @@ import (
 type ReindexVerifier struct {
 	client        *Client
 	assetStore    AssetStore
-	deadLetter    DeadLetterChecker        // nil = skip dead-letter check
-	schema        *IndexSchema             // canonically the schema under reindex; nil = skip per-channel version check
+	deadLetter    DeadLetterChecker // nil = skip dead-letter check
+	schema        *IndexSchema      // canonically the schema under reindex; nil = skip per-channel version check
 	log           *zap.Logger
-	goldenQueries GoldenQueryRunner        // nil = skip golden-query gate (QDRANT-005)
+	goldenQueries GoldenQueryRunner // nil = skip golden-query gate (QDRANT-005)
 }
 
 // NewReindexVerifier creates a verifier. deadLetter may be nil (legacy
@@ -40,10 +70,10 @@ type ReindexVerifier struct {
 // schema so the per-channel version check fires.
 //
 // QDRANT-003 (June 2026) closure — second-pass extension: per-channel
-// embedding version check. The schema's EmbeddingSpec.ModelVersion is
-// the canonical per-channel target; the verifier surfaces mismatches in
-// report.VersionMismatchPerChannel so operators can see which channel's
-// model output drifted from the manifest.
+// embedding version check. PR 12 (June 2026) subsequently tightened:
+// the per-channel check now runs on EVERY scrolled page (not the
+// first-1000-point sample), and a missing per-channel key on ANY
+// point is blocking.
 //
 // Breaking signature change: the production caller is
 // internal/cmd/admin/reindex_qdrant.go (single callsite as of June
@@ -64,19 +94,33 @@ func NewReindexVerifier(client *Client, assetStore AssetStore, deadLetter DeadLe
 //
 // expectedPoints is the count reported by ReindexAll (IndexedAssets).
 //
+// PR 12 (June 2026) hardened:
+//   - Strict point-count equality.
+//   - Any scroll page error returns (report, err) with Ready=false;
+//     the caller MUST refuse the alias switch.
+//   - maxScrolls cap → CompleteScan=false + Errors appended.
+//   - pt.ID canonicality is checked literally against the
+//     AssetIDToQdrantPointID boundary — non-canonical IDs are
+//     blocking (NonCanonicalPointCount > 0 → Ready=false).
+//   - Per-channel embedding_version_<channel> checked on EVERY
+//     scrolled page; missing key on ANY point bumps the
+//     per-channel counter and blocks.
+//
 // QDRANT-003 closed (June 2026): every gate that was previously a TODO
 // placeholder is now implemented. The caller checks `report.Ready` before
 // calling SwitchAlias; a false Ready MUST block the alias switch.
 func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection string, expectedPoints int) (*SwitchReport, error) {
 	report := &SwitchReport{
-		TargetCollection: targetCollection,
-		ExpectedPoints:   expectedPoints,
-		GoldenQueriesOK:  false,
-		FiltersOK:        false,
+		TargetCollection:          targetCollection,
+		ExpectedPoints:            expectedPoints,
+		CompleteScan:              false, // PR 12: starts "incomplete"; flipped true on clean scroll-lopp exit.
+		GoldenQueriesOK:           false,
+		FiltersOK:                 false,
 		VersionMismatchPerChannel: make(map[string]int),
+		NonCanonicalPointIDs:      nil,
 	}
 
-	// ── Gate 1: Point count parity ────────────────────────────────
+	// ── Gate 1: Point count parity — PR 12 STRICT equality ────────
 	actualPoints, err := v.client.CountPoints(ctx, targetCollection)
 	if err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("count points: %v", err))
@@ -85,19 +129,19 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	}
 	report.ActualPoints = actualPoints
 
-	// QDRANT-003 (June 2026): count mismatch is a HARD error that blocks
-	// the Ready gate, not a logged warning. The previous implementation
-	// logged a warning and continued; the new implementation sets Ready=false
-	// and returns a detailed report.
-	if actualPoints < expectedPoints {
+	// PR 12: strict equality (was: actual < expected). Both branches
+	// of inequality are blocking — over-counting is just as suspect
+	// as under-counting (a partially-cancelled writer can produce
+	// extra points that don't round-trip through any SQLite row).
+	if actualPoints != expectedPoints {
 		report.Errors = append(report.Errors,
-			fmt.Sprintf("point count mismatch: expected %d, actual %d (delta %d)",
-				expectedPoints, actualPoints, expectedPoints-actualPoints))
+			fmt.Sprintf("PR 12 point count mismatch (strict): expected %d, actual %d (delta %+d)",
+				expectedPoints, actualPoints, actualPoints-expectedPoints))
 		// Do NOT return early. Continue gathering diagnostics so the
 		// operator gets a full report. Ready will be false.
 	}
 
-	// ── Gate 2: Scroll + missing/orphan/payload/version ──────────
+	// ── Gate 2: Scroll + missing/orphan/payload/version/canonical ───
 	sqliteIDs, err := v.assetStore.ListAllAssetIDs(ctx)
 	if err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("list SQLite asset IDs: %v", err))
@@ -114,25 +158,30 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	qdrantIDs := make(map[string]bool)
 	var offset string
 	scrollPage := 500
-	const maxScrolls = 400 // safety cap: 200k points max
+	const maxScrolls = 400 // PR 12: cap was a logged warning — now BLOCKING (gate 4 below).
 	pointsScrolled := 0
+	scrollAborted := false
 
 	for iteration := 0; iteration < maxScrolls; iteration++ {
-		result, err := v.client.ScrollPoints(ctx, targetCollection, offset, scrollPage, nil)
-		if err != nil {
-			report.Errors = append(report.Errors, fmt.Sprintf("scroll page %d: %v", iteration, err))
-			break // partial data is better than nothing
+		result, serr := v.client.ScrollPoints(ctx, targetCollection, offset, scrollPage, nil)
+		if serr != nil {
+			// PR 12: ANY page error is FATAL. The QDRANT-003-era
+			// "break; partial data is better than nothing" comment is
+			// gone — partial data on a partial scan is exactly what
+			// the user-spec wanted to prevent (Verifier severo).
+			report.Errors = append(report.Errors, fmt.Sprintf("PR 12 scroll page %d: %v (fatal)", iteration, serr))
+			scrollAborted = true
+			break
 		}
 
 		pointsScrolled += len(result.Points)
-		for _, pt := range result.Points {
-			// Read canonical asset_id directly from point payload
-			// (UUID v5 hashes are one-way).
-			// Comma-ok is required: a missing or non-string asset_id must NOT
-			// pollute qdrantIDs with an empty key, which would silently mask a
-			// SQLite row whose own asset_id is the empty string (MissingIDs).
-			// validatePayloadMinimum below continues to surface the missing-field
-			// case via PayloadIssues, so the Ready gate still trips correctly.
+		for idx, pt := range result.Points {
+			// Read canonical asset_id directly from point payload.
+			// Comma-ok is required: a missing or non-string asset_id
+			// MUST NOT pollute qdrantIDs with an empty key (would
+			// silently mask a SQLite row whose own asset_id is the
+			// empty string in MissingIDs). PayloadIssues still
+			// surfaces the missing-field case below.
 			assetID, assetIDOK := pt.Payload["asset_id"].(string)
 			if assetIDOK && assetID != "" {
 				qdrantIDs[assetID] = true
@@ -146,82 +195,90 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 				}
 			}
 
-			// Gate 3b: QDRANT-005 UUID point ID validation.
-			// A point whose pt.ID is not a canonical UUID string
-			// (and carries a non-empty payload.asset_id) is
-			// BLOCKING — the canonical AssetIDToQdrantPointID
-			// function always produces UUID v5 hashes; a
-			// non-UUID ID means the point was written by a
-			// legacy code path that used raw asset IDs.
-			if _, uuidErr := uuid.Parse(pt.ID); uuidErr != nil && assetID != "" {
-				report.PayloadIssues++
-				if len(report.Errors) < 20 {
-					report.Errors = append(report.Errors,
-						fmt.Sprintf("point %s: UUID missing/mismatch — pt.ID %q is not a canonical UUID v5 (payload asset_id=%q)",
-							pt.ID, pt.ID, assetID))
+			// Gate 3b (PR 12 — strict canonical pt.ID): a point whose
+			// UUID-form id does NOT match AssetIDToQdrantPointID(asset_id)
+			// is BLOCKING. The previous uuid.Parse(pt.ID) accept-anything-
+			// UUID-form mask is gone — a generic UUID string used to be
+			// accepted because uuid.Parse returned nil err for any
+			// canonical-form string, which silently lost the reverse-
+			// mapping lookup that the canonical boundary is the only
+			// authority for.
+			//
+			// Empty asset_id path: we still surface this case via
+			// PayloadIssues above (asset_id missing in payload); the
+			// canonical check is skipped because AssetIDToQdrantPointID("")
+			// returns "" and a literal compare would mask the diagnosis.
+			if assetIDOK && assetID != "" {
+				canonical := AssetIDToQdrantPointID(assetID)
+				if pt.ID != canonical {
+					report.NonCanonicalPointCount++
+					// Cap the per-error append, but the total count
+					// keeps growing so Ready stays false until the
+					// collection is fully re-emitted from a canonical
+					// writer. The companion NonCanonicalTruncated flag
+					// is set when the cap is reached so JSON consumers
+					// can tell the count is the truth, the slice is a
+					// sample of the first 20 entries.
+					if len(report.NonCanonicalPointIDs) < 20 {
+						report.NonCanonicalPointIDs = append(report.NonCanonicalPointIDs, pt.ID)
+					} else {
+						report.NonCanonicalTruncated = true
+					}
+					if len(report.Errors) < 20 {
+						report.Errors = append(report.Errors,
+							fmt.Sprintf("PR 12 non-canonical pt.ID: pt.ID=%q, AssetIDToQdrantPointID(%q)=%q (point #%d on page %d)",
+								pt.ID, assetID, canonical, idx, iteration))
+					}
 				}
 			}
 
-			// Gate 4: Embedding version check (sample-based: first 1000 points).
-			// Full-scan would be O(n) per field; the first two pages (1000 pts)
-			// give a representative sample for fast feedback.
-			//
-			// QDRANT-003 (June 2026) per-channel closure: the global
-			// embedding_version check (legacy schema-version emission) AND
-			// the per-channel embedding_version_<channel> check
-			// (payload_mapper.go writes from EmbeddingSpec.ModelVersion)
-			// share a single pointMismatched latch — a single point that
-			// fails either check bumps VersionMismatch EXACTLY once.
-			// Per-channel counter increments per channel normally; the
-			// global gate stays a per-point count semantics.
-			if iteration < 2 {
-				pointMismatched := false
+			// Gate 4 (PR 12 — full per-channel scan, every page).
+			// The QDRANT-005 "if iteration < 2" sample block is
+			// GONE. We run the per-channel check on EVERY scrolled
+			// point. A point missing a per-channel key always bumps
+			// the per-channel counter (QDRANT-005 closure kept); a
+			// mismatched value bumps it the same way.
+			pointMismatched := false
 
-				// (a) Legacy global check: if the point carries a
-				// global embedding_version and it disagrees with
-				// CurrentEmbeddingVersion, the point is mismatched.
-				// Absence here is neutral — the per-channel loop below
-				// owns legacy-fallback semantics.
-				if gv, ok := pt.Payload["embedding_version"].(string); ok && gv != "" && gv != CurrentEmbeddingVersion {
-					pointMismatched = true
-				}
+			// Legacy global check: if the point carries a
+			// global embedding_version and it disagrees with
+			// CurrentEmbeddingVersion, the point is mismatched.
+			// Absence here is neutral — the per-channel loop below
+			// owns the surface.
+			if gv, ok := pt.Payload["embedding_version"].(string); ok && gv != "" && gv != CurrentEmbeddingVersion {
+				pointMismatched = true
+			}
 
-				// (b) Per-channel check: each channel's payload
-				// ["embedding_version_<channel>"] must equal the
-				// schema's EmbeddingSpec.ModelVersion. Channels
-				// without a per-channel key on the point fall back to
-				// the legacy global embedding_version — accept the
-				// point if the global matches CurrentEmbeddingVersion,
-				// otherwise mark the channel-mismatch.
-				if v.schema != nil {
-					for _, spec := range v.schema.DenseVectors {
-						if spec.ModelVersion == "" {
-							// Channel has no canonical model version in
-							// the schema; cannot compare. Skip.
-							continue
-						}
-						key := fmt.Sprintf("embedding_version_%s", spec.Channel)
-						actual, present := pt.Payload[key].(string)
-				if !present {
-					// QDRANT-005 closure: the global embedding_version
-					// rescue path was DELETED. A point missing its
-					// per-channel key always bumps the per-channel
-					// mismatch counter, regardless of whether the
-					// global embedding_version matches.
-					report.VersionMismatchPerChannel[spec.Channel]++
-					pointMismatched = true
-					continue
-				}
-						if actual != spec.ModelVersion {
-							report.VersionMismatchPerChannel[spec.Channel]++
-							pointMismatched = true
-						}
+			if v.schema != nil {
+				for _, spec := range v.schema.DenseVectors {
+					if spec.ModelVersion == "" {
+						// Channel has no canonical model version in
+						// the schema; cannot compare. Skip — but the
+						// point still must satisfy the OTHER channels
+						// and the legacy global (above).
+						continue
+					}
+					key := fmt.Sprintf("embedding_version_%s", spec.Channel)
+					actual, present := pt.Payload[key].(string)
+					if !present {
+						// QDRANT-005 closure: the global embedding_version
+						// rescue path was DELETED. A point missing its
+						// per-channel key always bumps the per-channel
+						// mismatch counter, regardless of whether the
+						// global embedding_version matches.
+						report.VersionMismatchPerChannel[spec.Channel]++
+						pointMismatched = true
+						continue
+					}
+					if actual != spec.ModelVersion {
+						report.VersionMismatchPerChannel[spec.Channel]++
+						pointMismatched = true
 					}
 				}
+			}
 
-				if pointMismatched {
-					report.VersionMismatch++
-				}
+			if pointMismatched {
+				report.VersionMismatch++
 			}
 		}
 
@@ -231,24 +288,45 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 		offset = result.NextOffset
 
 		if iteration == maxScrolls-1 {
-			// QDRANT-003: iteration cap reached — this is a safety limit,
-			// NOT a data-quality gate. Log it but do NOT block Ready.
-			// Operators with >200k assets should increase maxScrolls.
-			v.log.Warn("scroll iteration limit reached; verification of remaining points skipped",
-				zap.Int("limit", maxScrolls),
-				zap.Int("scrolled", pointsScrolled))
+			// PR 12: cap reached with trailing NextOffset is BLOCKING.
+			// The QDRANT-003-era "log.Warn and continue" path is gone —
+			// the operator MUST raise the cap on the production
+			// deployment, not silently truncate. CompleteScan=false;
+			// Ready will be false at the gate below.
+			report.Errors = append(report.Errors,
+				fmt.Sprintf("PR 12 scroll iteration cap %d reached with NextOffset=%q trailing (BLOCKING — raise the cap on the production deployment; the remaining %d+ points were never scanned, the collection is unverified)",
+					maxScrolls, offset, 0))
+			scrollAborted = true
 		}
 	}
 
-	// Guard: if zero points were scrolled (first-page failure or empty
+	report.TotalScrolled = pointsScrolled
+
+	// PR 12: CompleteScan true ONLY when the scan finished cleanly.
+	// False on any page error or cap-hit. Mirrors PR 10's
+	// ScannedTotals.CompleteScan vocabulary.
+	//
+	// Strict equality vs the count endpoint: the verifier scans the
+	// SAME collection the count endpoint reported (CountPoints → HTTP
+	// GET /collections/<name>). A scroll that returns MORE points
+	// than CountPoints indicates a duplicate-anomaly inside the
+	// verifier's scroll state (rare — typically a faulty test mock
+	// or a Qdrant bug under concurrent writes) and is treated as an
+	// incomplete scan. A scroll that returns FEWER points means the
+	// cap was hit or premature termination; incomplete.
+	if !scrollAborted && pointsScrolled == report.ActualPoints {
+		report.CompleteScan = true
+	}
+
+	// Guard: if no points were scrolled (first-page failure or empty
 	// collection), skip the missing/orphan computation — the qdrantIDs
 	// set is empty and would produce catastrophic false positives.
 	if pointsScrolled == 0 {
 		report.Errors = append(report.Errors,
-			"QDRANT-003: zero points scrolled — cannot compute missing/orphan IDs. "+
+			"PR 12: zero points scrolled — cannot compute missing/orphan IDs. "+
 				"Check collection exists and scroll API is reachable.")
 	} else {
-		// ── Compute missing / orphan from ID sets ────────────────────
+		// ── Compute missing / orphan from ID sets ────────────────
 		for sqliteID := range sqliteSet {
 			if !qdrantIDs[sqliteID] {
 				report.MissingIDs = append(report.MissingIDs, sqliteID)
@@ -273,11 +351,6 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	}
 
 	// ── Gate 6: Golden‑query smoke ─────────────────────────────
-	// QDRANT-005 (June 2026): replaces the hardcoded-true placeholder.
-	// Scrolls a small sample and verifies the collection is queryable
-	// with well-formed payloads. Failure blocks the Ready gate and
-	// appends a diagnostic to report.Errors so the JSON report is
-	// self-diagnosable without tailing logs.
 	report.GoldenQueriesOK = v.runGoldenQuerySmoke(ctx, targetCollection)
 	if !report.GoldenQueriesOK {
 		report.Errors = append(report.Errors,
@@ -285,46 +358,70 @@ func (v *ReindexVerifier) VerifyReindex(ctx context.Context, targetCollection st
 	}
 
 	// ── Gate 7: Filter smoke ───────────────────────────────────
-	// QDRANT-005 (June 2026): validates that Qdrant payload indexes
-	// work correctly. Discovers a source value from an unfiltered
-	// scroll, then scrolls with a source filter and verifies every
-	// returned point matches. Filter failure blocks the Ready gate
-	// and appends a diagnostic to report.Errors.
 	report.FiltersOK = v.runFilterSmoke(ctx, targetCollection)
 	if !report.FiltersOK {
 		report.Errors = append(report.Errors,
 			"QDRANT-005: filter smoke failed — payload index or filtering broken")
 	}
 
-	// ── Ready gate: ALL conditions must pass ─────────────────────
-	report.Ready = report.ActualPoints >= report.ExpectedPoints &&
+	// ── Ready gate: ALL conditions must pass (PR 12 strict) ───────
+	//
+	// PR 12 additions vs QDRANT-003:
+	//   - CompleteScan must be true (no truncating scroll error / cap hit).
+	//   - ActualPoints == ExpectedPoints (strict equality).
+	//   - NonCanonicalPointCount == 0 (pt.ID == AssetIDToQdrantPointID(asset_id)).
+	//   - Per-channel totals must collapse to zero across the entire
+	//     scan (the global counter is unnecessary — channel totals
+	//     sum to it; Ready gates on the channels directly to avoid
+	//     the latch-leak footgun in QDRANT-003's pointMismatched
+	//     per-point counter).
+	channelTotal := 0
+	for _, c := range report.VersionMismatchPerChannel {
+		channelTotal += c
+	}
+	report.Ready = report.CompleteScan &&
+		report.ActualPoints == report.ExpectedPoints &&
 		report.ExpectedPoints > 0 &&
 		report.MissingCount == 0 &&
 		report.OrphanCount == 0 &&
 		report.PayloadIssues == 0 &&
-		report.VersionMismatch == 0 &&
+		channelTotal == 0 &&
+		report.NonCanonicalPointCount == 0 &&
 		report.DeadLetterOpen == 0 &&
 		report.GoldenQueriesOK &&
 		report.FiltersOK &&
 		len(report.Errors) == 0
 
 	if !report.Ready {
-		v.log.Warn("QDRANT-003: reindex verification FAILED",
+		v.log.Warn("PR 12 reindex verification FAILED",
 			zap.String("target", targetCollection),
+			zap.Bool("complete_scan", report.CompleteScan),
 			zap.Int("expected", report.ExpectedPoints),
 			zap.Int("actual", report.ActualPoints),
+			zap.Int("scrolled", report.TotalScrolled),
 			zap.Int("missing", report.MissingCount),
 			zap.Int("orphan", report.OrphanCount),
 			zap.Int("payload_issues", report.PayloadIssues),
 			zap.Int("version_mismatch", report.VersionMismatch),
+			zap.Int("non_canonical_point_count", report.NonCanonicalPointCount),
 			zap.Int("dead_letter_open", report.DeadLetterOpen),
 			zap.Int("errors", len(report.Errors)))
 	} else {
-		v.log.Info("QDRANT-003: reindex verification PASSED — all gates green",
+		v.log.Info("PR 12 reindex verification PASSED — all gates green",
 			zap.String("target", targetCollection),
-			zap.Int("points", report.ActualPoints))
+			zap.Int("points", report.ActualPoints),
+			zap.Int("scanned", report.TotalScrolled))
 	}
 
+	// PR 12: when ANY scroll gate fires (page error OR cap hit),
+	// return a non-nil error so the caller (reindex_qdrant.go) can
+	// distinguish "verifier ran clean" from "verifier aborted mid-
+	// scan". The report itself still carries the diagnostics; the
+	// cmd-level caller maps the err into the ErrAliasSwitchNotReady
+	// contract that the alias switch gate honours.
+	if scrollAborted {
+		return report, fmt.Errorf("PR 12: scroll aborted mid-scan (see report.Errors — alias switch BLOCKED)")
+	}
 	return report, nil
 }
 

@@ -98,16 +98,16 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 //  3. Dry-run: list all asset IDs via mapper.ListAllAssetIDs, print count
 //  4. Apply: ensure schema → reindex → verify (QDRANT-003 gates) → switch alias
 //     - CollectionManager.EnsureSchema guarantees the target collection exists
-//       with matching vector config and payload indexes
+//     with matching vector config and payload indexes
 //     - IndexWriter.ReindexAll writes all assets into the target collection
 //     - ReindexVerifier.VerifyReindex runs the full validation suite:
-//         * Point count parity (hard gate)
-//         * Missing/orphan ID detection (scroll + SQLite compare)
-//         * Payload minimum validation (asset_id, name, source)
-//         * Embedding version check
-//         * Dead-letter count (optional, when wired)
+//     * Point count parity (hard gate)
+//     * Missing/orphan ID detection (scroll + SQLite compare)
+//     * Payload minimum validation (asset_id, name, source)
+//     * Embedding version check
+//     * Dead-letter count (optional, when wired)
 //     - Only when SwitchReport.Ready==true: CollectionManager.SwitchAlias
-//       atomically promotes the new collection
+//     atomically promotes the new collection
 //
 // QDRANT-003 closed (June 2026): count mismatch is now a HARD error
 // (detected by the verifier, blocks Ready). The previous implementation
@@ -234,31 +234,32 @@ func runReindexQdrant(args []string) error {
 		return fmt.Errorf("reindex failed after %d indexed / %d failed: %w", indexed, failed, err)
 	}
 
-	// Phase 3: Post-reindex verification (QDRANT-003 gates).
-	// The verifier runs the full suite: point count parity, missing/orphan
-	// ID detection, payload minimum, embedding version, and dead-letter
-	// check. Ready==true only when all gates pass.
+	// Phase 3: Post-reindex verification (QDRANT-003 + PR 12 gates).
+	// The verifier runs the full suite: strict point count parity,
+	// missing/orphan ID detection, payload minimum, FULL per-channel
+	// embedding version, dead-letter check, and PR 12's
+	// non-canonical-pt.ID gate. Ready==true only when all gates pass.
 	//
-	// QDRANT-003 closed (June 2026): the verifier replaced the
-	// buildSwitchReport placeholder. The count mismatch — previously a
-	// logged warning — is now a HARD gate: Ready stays false and the
-	// report captures the specific error.
-	//
-	// QDRANT-026 (June 2026) closure: NewReindexVerifier gained a 5th
-	// `schema` argument so the per-channel embedding version check
-	// (`report.VersionMismatchPerChannel`) fires against the manifest. The
-	// dead-letter adapter (qdrant.NewOutboxEventsDeadLetterAdapter) is
-	// the production wiring for `report.DeadLetterOpen` — until this
-	// closure the admin CLI passed `nil`, so the dead-letter gate was
-	// trivially satisfied (any count === 0 → Ready=true).
+	// QDRANT-003 closed (June 2026): count mismatch is a HARD gate.
+	// PR 12 (June 2026): STICT equality (was `>=`); per-channel scan
+	// runs on EVERY scrolled page; ANY scroll error or max-pages cap
+	// hit returns non-nil err + CompleteScan=false + Ready=false; pt.ID
+	// MUST equal AssetIDToQdrantPointID(payload["asset_id"]) literally
+	// (not just uuid-parseable).
 	deadLetter := qdrant.NewOutboxEventsDeadLetterAdapter(outboxevents.NewRepository(sqliteDB.DB))
 	verifier := qdrant.NewReindexVerifier(client, assetStore, deadLetter, schema, nil, log)
 	report, verifyErr := verifier.VerifyReindex(ctx, targetCollection, reindexResult.IndexedAssets)
 	if verifyErr != nil {
-		// The verifier returns an error when critical infrastructure
-		// (count / scroll / SQLite) fails entirely. In that case the
-		// report is still populated with whatever was gathered.
-		log.Error("QDRANT-003: verification infrastructure failure", zap.Error(verifyErr))
+		// PR 12 hardening: a non-nil verifyErr implies scrollAborted or
+		// another fatal infrastructure failure (page error, cap hit).
+		// It is defence-in-depth to surface the err AND keep the
+		// alias-switch gate fired — the Ready=false path below is
+		// already correct because CompleteScan=false ⇒ Ready=false,
+		// but explicit log + return guards against a future Ready-gate
+		// weakening that might pass on a fatal infrastructure failure.
+		log.Error("PR 12: verification infrastructure failure (no alias mutation will follow)",
+			zap.String("target", targetCollection),
+			zap.Error(verifyErr))
 	}
 	if deps.JSON {
 		b, _ := json.Marshal(report)
@@ -269,7 +270,21 @@ func runReindexQdrant(args []string) error {
 			zap.String("target", targetCollection),
 			zap.Int("expected_points", report.ExpectedPoints),
 			zap.Int("actual_points", report.ActualPoints),
+			zap.Bool("complete_scan", report.CompleteScan),
+			zap.Int("scrolled", report.TotalScrolled),
 			zap.Strings("errors", report.Errors))
+		return &qdrant.ErrAliasSwitchNotReady{Report: report}
+	}
+	if verifyErr != nil {
+		// Belt-and-braces: Ready could be true while an unrecoverable
+		// infrastructure failure (scrollAborted/cap-binding) is reported
+		// via non-nil err. The cmd path refuses the switch in that
+		// pathological case as well — surface the err in the report
+		// and exit ErrAliasSwitchNotReady so the operator sees the
+		// block in the JSON report and log line.
+		log.Error("PR 12: verifyErr is non-nil while Ready=true (defence-in-depth block)",
+			zap.String("target", targetCollection),
+			zap.Error(verifyErr))
 		return &qdrant.ErrAliasSwitchNotReady{Report: report}
 	}
 	log.Info("switch gate PASSED (Ready=true)",

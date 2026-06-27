@@ -15,22 +15,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestReindexVerifier_PerChannelVersionMismatch_PresentMismatch installs
-// a mock Qdrant backend and asserts that a point whose per-channel
-// payload["embedding_version_text"] does NOT match the schema's
-// EmbeddingSpec.ModelVersion trips BOTH the global VersionMismatch AND
-// the channel-level VersionMismatchPerChannel["text"] counter.
-//
-// QDRANT-003 (June 2026) — per-channel check round-trip.
-func TestReindexVerifier_PerChannelVersionMismatch_PresentMismatch(t *testing.T) {
-	t.Parallel()
+// ─── PR 12 strict-count tests (ActualPoints == ExpectedPoints) ────────
 
-	// One point, payload carries embedding_version_text but with
-	// the wrong model version string ("wrong-version" instead of
-	// "2026-06-16-v1"). The verifier must surface this as a
-	// mismatch on the "text" channel. pt.ID is the canonical UUID
-	// v5 derived from asset_id so the non-UUID gate (QDRANT-005)
-	// does NOT trip on this happy path.
+// TestReindexVerifier_PointCountStrict_UnderCountBlocks — actual
+// (=CountPoints) below expected blocks Ready. The QDRANT-003
+// `actualPoints < expectedPoints` strict-inequality is preserved;
+// PR 12 adds the symmetric over-count block from the user's spec.
+func TestReindexVerifier_PointCountStrict_UnderCountBlocks(t *testing.T) {
+	t.Parallel()
 	canonicalID := AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
@@ -38,43 +30,6 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMismatch(t *testing.T)
 			"asset_id": "asset-1",
 			"name": "a1",
 			"source": "youtube",
-			"embedding_version": "v3",
-			"embedding_version_text": "wrong-version",
-			"embedding_version_transcript": "2026-06-16-v1",
-			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
-		}
-	}`, canonicalID)
-	srv := mockQdrantForVerifier(t, []string{payload})
-	defer srv.Close()
-
-	schema := DefaultV3Schema() // ModelVersion=2026-06-16-v1 for text+transcript+visual+audio
-	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
-
-	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
-	require.NoError(t, err)
-	assert.Equal(t, 1, report.VersionMismatch, "global VersionMismatch bumps ONCE per point regardless of channel count")
-	assert.Equal(t, 1, report.VersionMismatchPerChannel["text"], "per-channel counter surfaces which channel drifted")
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["transcript"], "transcript matches canonical")
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["visual"], "visual matches canonical")
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["audio"], "audio matches canonical")
-	assert.False(t, report.Ready, "Ready=false on any per-channel mismatch")
-}
-
-// TestReindexVerifier_PerChannelVersionMismatch_PresentMatch asserts a
-// point with the correct per-channel key passes VersionMismatch = 0.
-func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
-	t.Parallel()
-
-	canonicalID := AssetIDToQdrantPointID("asset-1")
-	payload := fmt.Sprintf(`{
-		"id": %q,
-		"payload": {
-			"asset_id": "asset-1",
-			"name": "a1",
-			"source": "youtube",
-			"embedding_version": "v3",
 			"embedding_version_text": "2026-06-16-v1",
 			"embedding_version_transcript": "2026-06-16-v1",
 			"embedding_version_visual": "2026-06-16-v1",
@@ -83,156 +38,31 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
 	}`, canonicalID)
 	srv := mockQdrantForVerifier(t, []string{payload})
 	defer srv.Close()
-
 	schema := DefaultV3Schema()
 	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
 	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
-
-	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
+	// expectedPoints=2 → actual is 1 → strict mismatch blocks Ready.
+	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 2)
 	require.NoError(t, err)
-	assert.Equal(t, 0, report.VersionMismatch)
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["text"])
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["transcript"])
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["visual"])
-	assert.Equal(t, 0, report.VersionMismatchPerChannel["audio"])
-	assert.True(t, report.Ready)
-}
-
-// TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail
-// covers the "migration window penalty" path: a point without the
-// per-channel key AND without the global embedding_version key (a
-// legacy point that did not even write the schema-version field) trips
-// the per-channel mismatch counter.
-//
-// QDRANT-005 closure (June 2026): the global embedding_version
-// rescue path was DELETED. A point that carries ONLY the global key
-// (regardless of value) now BLOCKS the per-channel check — every
-// declared channel with ModelVersion populated bumps the per-channel
-// mismatch counter because the per-channel key is absent. This is
-// the desired behaviour: a legacy point that hasn't been re-emitted
-// with the per-channel key must be visible to operators as drift,
-// not silently accepted via a fallback.
-func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail(t *testing.T) {
-	t.Parallel()
-
-	canonicalID := AssetIDToQdrantPointID("asset-1")
-	payload := fmt.Sprintf(`{
-		"id": %q,
-		"payload": {
-			"asset_id": "asset-1",
-			"name": "a1",
-			"source": "youtube",
-			"embedding_version": "v3"
-		}
-	}`, canonicalID)
-	srv := mockQdrantForVerifier(t, []string{payload})
-	defer srv.Close()
-
-	schema := DefaultV3Schema()
-	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
-
-	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
-	require.NoError(t, err)
-	// QDRANT-005: NO global fallback. Per-channel counter bumps for
-	// every declared channel whose ModelVersion is non-empty (text,
-	// transcript, visual) — audio has spec.ModelVersion="2026-06-16-v1"
-	// too. Each bumps per-channel + global counter exactly once.
-	//
-	// Global counter invariant: pointMismatched latch is one bump per
-	// point regardless of how many channels fail.
-	assert.Equal(t, 1, report.VersionMismatch, "QDRANT-005: NO global fallback — a point with only legacy `embedding_version` blocks")
-	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["text"], 1, "per-channel text bump expected")
-	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["transcript"], 1, "per-channel transcript bump expected")
-	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["visual"], 1, "per-channel visual bump expected")
-	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["audio"], 1, "per-channel audio bump expected")
-	assert.False(t, report.Ready, "QDRANT-005: Ready=false on absent per-channel keys (NO global rescue)")
-}
-
-// TestReindexVerifier_AbsentEverything_PerChannelPenalty covers the
-// pre-existing pre-QDRANT-005 invariant: a point WITHOUT per-channel
-// keys AND WITHOUT the global embedding_version key (a true legacy
-// point that never wrote the version field) still trips per-channel
-// mismatch. The closure keeps this existing test coverage to ensure
-// the per-channel counter never silently regresses.
-func TestReindexVerifier_AbsentEverything_PerChannelPenalty(t *testing.T) {
-	t.Parallel()
-
-	canonicalID := AssetIDToQdrantPointID("asset-1")
-	payload := fmt.Sprintf(`{
-		"id": %q,
-		"payload": {
-			"asset_id": "asset-1",
-			"name": "a1",
-			"source": "youtube"
-		}
-	}`, canonicalID)
-	srv := mockQdrantForVerifier(t, []string{payload})
-	defer srv.Close()
-
-	schema := DefaultV3Schema()
-	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
-
-	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
-	require.NoError(t, err)
-	assert.Equal(t, 1, report.VersionMismatch)
-	assert.Equal(t, 1, report.VersionMismatchPerChannel["text"], "absent per-channel → failure surfaces in text channel")
 	assert.False(t, report.Ready)
-}
-
-// TestReindexVerifier_NonUUIDPointBlocking asserts QDRANT-005
-// hardening: a point whose pt.ID is NOT a UUID v5 string and that
-// carries a non-empty payload.asset_id is BLOCKING (Ready=false).
-// The previous behaviour silently skipped non-UUID points via
-// isUUIDForm, masking legacy point IDs that the canonical
-// AssetIDToQdrantPointID boundary could never locate.
-func TestReindexVerifier_NonUUIDPointBlocking(t *testing.T) {
-	t.Parallel()
-
-	const payload = `{
-		"id": "asset:legacy-prefix:asset-1",
-		"payload": {
-			"asset_id": "asset-1",
-			"name": "a1",
-			"source": "youtube",
-			"embedding_version_text": "2026-06-16-v1",
-			"embedding_version_transcript": "2026-06-16-v1",
-			"embedding_version_visual": "2026-06-16-v1",
-			"embedding_version_audio": "2026-06-16-v1"
-		}
-	}`
-	srv := mockQdrantForVerifier(t, []string{payload})
-	defer srv.Close()
-
-	schema := DefaultV3Schema()
-	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
-	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
-
-	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
-	require.NoError(t, err)
-	// QDRANT-005: pt.ID is not a UUID form → blocking payload issue.
-	assert.False(t, report.Ready, "QDRANT-005: non-UUID pt.ID with non-empty payload.asset_id MUST block Ready")
-	assert.GreaterOrEqual(t, report.PayloadIssues, 1, "non-UUID pt.ID must bump PayloadIssues")
+	assert.Equal(t, 1, report.ActualPoints)
+	assert.Equal(t, 2, report.ExpectedPoints)
 	found := false
 	for _, e := range report.Errors {
-		if strings.Contains(e, "UUID missing") || strings.Contains(e, "UUID mismatch") {
+		if strings.Contains(e, "point count mismatch") {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "non-UUID regression must be surfaced in Errors with the UUID missing/mismatch marker")
+	assert.True(t, found, "strict mismatch must surface 'point count mismatch'")
 }
 
-// TestReindexVerifier_PerChannelCounter_BumpsOncePerPoint asserts the
-// per-point-vs-per-channel invariant: a point whose 3 channels all
-// mismatch bumps VersionMismatch ONCE (not 3 times) but the per-channel
-// map shows all three channels.
-//
-// QDRANT-003 (June 2026) — points-out-of-per-channel-multi-fail counter.
-func TestReindexVerifier_PerChannelCounter_BumpsOncePerPoint(t *testing.T) {
+// TestReindexVerifier_PointCountStrict_OverCountBlocks — symmetric
+// PR 12 hardening: actual > expected blocks Ready (e.g. a partially-
+// cancelled writer that produced duplicate points that don't round-
+// trip through any SQLite row).
+func TestReindexVerifier_PointCountStrict_OverCountBlocks(t *testing.T) {
 	t.Parallel()
-
 	canonicalID := AssetIDToQdrantPointID("asset-1")
 	payload := fmt.Sprintf(`{
 		"id": %q,
@@ -240,55 +70,274 @@ func TestReindexVerifier_PerChannelCounter_BumpsOncePerPoint(t *testing.T) {
 			"asset_id": "asset-1",
 			"name": "a1",
 			"source": "youtube",
-			"embedding_version_text": "wrong",
-			"embedding_version_visual": "wrong",
-			"embedding_version_transcript": "wrong",
-			"embedding_version_audio": "wrong"
+			"embedding_version_text": "2026-06-16-v1",
+			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_visual": "2026-06-16-v1",
+			"embedding_version_audio": "2026-06-16-v1"
 		}
 	}`, canonicalID)
 	srv := mockQdrantForVerifier(t, []string{payload})
 	defer srv.Close()
-
 	schema := DefaultV3Schema()
 	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
 	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
-
-	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
+	// actual=1, expected=0 → strict inequality blocks Ready (was
+	// accepted by >=).
+	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 0)
 	require.NoError(t, err)
-	// The verifier sample window is iteration<2, so the very first page
-	// (where this single point lives) fires all three per-channel checks.
-	// Per-channel counter is independent of the global gate.
-	if report.VersionMismatch > 0 {
-		assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["text"], 1)
-		assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["visual"], 1)
-		assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["transcript"], 1)
-		// CRITICAL invariant: global counter is bounded to 1 per point.
-		// (Bumped once via the pointMismatched latch in the loop.)
-		assert.Equal(t, 1, report.VersionMismatch, "global VersionMismatch must bump AT MOST once per point regardless of channel failures")
-	}
+	assert.False(t, report.Ready)
+	assert.Equal(t, 1, report.ActualPoints)
 }
 
-// ── helpers ──────────────────────────────────────────────────────────
+// ─── PR 12 scroll-error-is-fatal test ───────────────────────────────
 
-// mockQdrantForVerifier installs an httptest server that mimics the
-// Qdrant REST surface used by ReindexVerifier.VerifyReindex:
-// /collections/<name> (point count), /collections/<name>/points/scroll
-// (chunked payload delivery).
+// TestReindexVerifier_ScrollErrorIsFatal_MidwayAbort — the second
+// scroll page returns an error. PR 12 demands: returns non-nil err,
+// Ready=false, CompleteScan=false, Errors include "PR 12 scroll page".
 //
-// QDRANT-005 closure (June 2026): the mock is now a THIN pass-through
-// for the id field. Tests that exercise the canonical-UUID path
-// supply `id: AssetIDToQdrantPointID(asset_id)` in the payload JSON
-// (computed at test time via fmt.Sprintf + AssetIDToQdrantPointID);
-// tests that exercise the non-UUID blocking path supply an explicit
-// non-UUID literal (e.g. \"asset:legacy-prefix:asset-1\"). The mock
-// does NOT auto-inject or transform ids because the audit gate
-// behaviour depends on whether the test authoring surface is
-// detectable as canonical or legacy.
-func mockQdrantForVerifier(t *testing.T, payloadJSONs []string) *httptest.Server {
+// The test installs a mock that returns ok on page 0 and a 500 on
+// page 1.
+func TestReindexVerifier_ScrollErrorIsFatal_MidwayAbort(t *testing.T) {
+	t.Parallel()
+	srv := mockQdrantForVerifierWithHooks(t, mockQdrantHooks{
+		PagePayloads: []string{
+			canonicalPointPayload("asset-1"),
+		},
+		// One clean page, then a non-empty NextOffset, then 500.
+		PageNextOffsets: []string{"offset-1"},
+		ErrorAfterPage:  1, // page 1 (=iteration 1) errors
+	})
+	defer srv.Close()
+	schema := DefaultV3Schema()
+	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
+	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
+	require.Error(t, err, "PR 12: any scroll page error returns non-nil err")
+	assert.False(t, report.Ready)
+	assert.False(t, report.CompleteScan, "PR 12: CompleteScan=false on fatal page error")
+	found := false
+	for _, e := range report.Errors {
+		if strings.Contains(e, "PR 12 scroll page") && strings.Contains(e, "fatal") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Errors must surface the PR 12 fatal scroll marker")
+}
+
+// ─── PR 12 maxScrolls-cap-is-blocking test ───────────────────────────
+
+// TestReindexVerifier_MaxPagesCapBlocking — the mock always returns
+// a non-empty NextOffset, never terminating the loop. After
+// maxScrolls (400 in verifier.go) pages, the cap is hit and the
+// verifier must abort with non-nil err + CompleteScan=false.
+func TestReindexVerifier_MaxPagesCapBlocking(t *testing.T) {
+	t.Parallel()
+	// Single page payload; cap-binding occurs because NextOffset
+	// never returns empty.
+	srv := mockQdrantForVerifierWithHooks(t, mockQdrantHooks{
+		InfiniteOffset: true,
+		PagePayloads:   []string{canonicalPointPayload("asset-1")},
+	})
+	defer srv.Close()
+	schema := DefaultV3Schema()
+	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
+	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
+	require.Error(t, err, "PR 12: cap hit with trailing NextOffset returns non-nil err")
+	assert.False(t, report.Ready)
+	assert.False(t, report.CompleteScan, "PR 12: CompleteScan=false on cap-block")
+	found := false
+	for _, e := range report.Errors {
+		if strings.Contains(e, "PR 12 scroll iteration cap") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Errors must surface the PR 12 cap-block marker")
+}
+
+// ─── PR 12 non-canonical pt.ID strict-mismatch test ──────────────────
+
+// TestReindexVerifier_NonCanonicalPointIDBlocking — a point whose
+// pt.ID is a generic UUID (parseable but NOT equal to
+// AssetIDToQdrantPointID(asset_id)) is BLOCKING. The previous
+// uuid.Parse(pt.ID) accept-anything-UUID mask is gone.
+func TestReindexVerifier_NonCanonicalPointIDBlocking(t *testing.T) {
+	t.Parallel()
+	const nonCanonicalUUID = "00000000-0000-0000-0000-000000000001"
+	canonical := AssetIDToQdrantPointID("asset-1")
+	if nonCanonicalUUID == canonical {
+		t.Fatalf("test setup invariant: non-canonical UUID must differ from canonical")
+	}
+	payload := fmt.Sprintf(`{
+		"id": %q,
+		"payload": {
+			"asset_id": "asset-1",
+			"name": "a1",
+			"source": "youtube",
+			"embedding_version_text": "2026-06-16-v1",
+			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_visual": "2026-06-16-v1",
+			"embedding_version_audio": "2026-06-16-v1"
+		}
+	}`, nonCanonicalUUID)
+	srv := mockQdrantForVerifier(t, []string{payload})
+	defer srv.Close()
+	schema := DefaultV3Schema()
+	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
+	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
+	require.NoError(t, err)
+	assert.False(t, report.Ready, "PR 12: non-canonical pt.ID must block Ready")
+	assert.Equal(t, 1, report.NonCanonicalPointCount,
+		"PR 12: NonCanonicalPointCount must bump on literal mismatch")
+	assert.Contains(t, report.NonCanonicalPointIDs, nonCanonicalUUID,
+		"non-canonical pt.ID must be reported in NonCanonicalPointIDs")
+	found := false
+	for _, e := range report.Errors {
+		if strings.Contains(e, "PR 12 non-canonical pt.ID") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Errors must surface the PR 12 non-canonical marker")
+}
+
+// ─── PR 12 per-channel check runs on EVERY page ──────────────────────
+
+// TestReindexVerifier_PerChannelCheckEveryPage_SampleRemoved —
+// a point on page 3 (iteration=3) is missing the per-channel
+// embedding_version_text key. The previous QDRANT-003 implementation
+// only sampled the first 2 pages; PR 12 runs the gate on EVERY
+// page. The mismatched channel must bump the per-channel counter
+// AND block Ready.
+func TestReindexVerifier_PerChannelCheckEveryPage_SampleRemoved(t *testing.T) {
+	t.Parallel()
+	// asset-on-page-0 is clean; asset-on-page-2 (iteration=2) is
+	// missing embedding_version_text.
+	page0 := canonicalPointPayload("asset-0")
+	page1 := canonicalPointPayload("asset-2-missing-channel")
+	// Strip the per-channel key for asset-2 so the test point is
+	// valid except for the missing-channel vector.
+	page1MissingChannel := strings.Replace(page1, `"embedding_version_text": "2026-06-16-v1",`, "", 1)
+	srv := mockQdrantForVerifierWithHooks(t, mockQdrantHooks{
+		PagePayloads: []string{
+			canonicalPointPayload("asset-1"), // page 0
+			page0,                            // page 1
+			page1MissingChannel,              // page 2 — point on iteration=2
+		},
+		// 3 pages then empty offset.
+		PageNextOffsets: []string{"offset-1", "offset-2", ""},
+	})
+	defer srv.Close()
+	schema := DefaultV3Schema()
+	assetStore := &stubAssetStore{ids: []string{"asset-1", "asset-0", "asset-2-missing-channel"}}
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
+	// Total points = 3 (one per page). Cap the call to 3.
+	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 3)
+	// Note: page sequencing pulls asset-1 on iteration=0, asset-0 on
+	// iteration=1, asset-2-missing-channel on iteration=2. Different
+	// asset IDs but same payload shape.
+	_ = page0
+	require.NoError(t, err)
+	assert.False(t, report.Ready, "PR 12: missing per-channel on iteration=2 must block (no sample-only!")
+	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["text"], 1,
+		"PR 12: text channel bump on iteration >= 2 (was sample-skipped before)")
+}
+
+// ─── PR 12 happy-path strict-equality pass ────────────────────────────
+
+// TestReindexVerifier_PR12_HappyPath_AllGatesGreen — all PR 12
+// gates green: counts match, CompleteScan=true, no missing/orphan/
+// payload issues/version mismatches/non-canonical point IDs.
+func TestReindexVerifier_PR12_HappyPath_AllGatesGreen(t *testing.T) {
+	t.Parallel()
+	canonicalID := AssetIDToQdrantPointID("asset-1")
+	payload := fmt.Sprintf(`{
+		"id": %q,
+		"payload": {
+			"asset_id": "asset-1",
+			"name": "a1",
+			"source": "youtube",
+			"embedding_version": "v3",
+			"embedding_version_text": "2026-06-16-v1",
+			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_visual": "2026-06-16-v1",
+			"embedding_version_audio": "2026-06-16-v1"
+		}
+	}`, canonicalID)
+	srv := mockQdrantForVerifier(t, []string{payload})
+	defer srv.Close()
+	schema := DefaultV3Schema()
+	assetStore := &stubAssetStore{ids: []string{"asset-1"}}
+	v := NewReindexVerifier(newClientAt(srv.URL), assetStore, nil, schema, nil, zap.NewNop())
+	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
+	require.NoError(t, err)
+	assert.True(t, report.CompleteScan, "PR 12: CompleteScan=true on clean exit")
+	assert.True(t, report.Ready, "PR 12: ready when every gate green (strict equality)")
+	assert.Equal(t, 0, report.NonCanonicalPointCount)
+	assert.Equal(t, 0, report.PayloadIssues)
+	channelTotal := 0
+	for _, c := range report.VersionMismatchPerChannel {
+		channelTotal += c
+	}
+	assert.Equal(t, 0, channelTotal, "PR 12 happy path: per-channel total == 0")
+}
+
+// ─── helpers (extended for PR 12 tests) ──────────────────────────────
+
+// canonicalPointPayload builds a Qdrant-shaped payload JSON for a
+// single asset_id with the canonical pt.ID and all per-channel
+// embedding_version_<channel> keys at the schema's ModelVersion.
+// Used by PR 12 tests that need a happy-path point without per-test
+// fmt.Sprintf boilerplate.
+func canonicalPointPayload(assetID string) string {
+	canonicalID := AssetIDToQdrantPointID(assetID)
+	return fmt.Sprintf(`{
+		"id": %q,
+		"payload": {
+			"asset_id": %q,
+			"name": "n",
+			"source": "youtube",
+			"embedding_version_text": "2026-06-16-v1",
+			"embedding_version_transcript": "2026-06-16-v1",
+			"embedding_version_visual": "2026-06-16-v1",
+			"embedding_version_audio": "2026-06-16-v1"
+		}
+	}`, canonicalID, assetID)
+}
+
+// mockQdrantHooks configures a richer mock with multi-page support
+// and per-page error injection. Used by PR 12 tests that need to
+// drive the scroll loop past the first page or inject a fatal error.
+type mockQdrantHooks struct {
+	// PagePayloads is the list of payloads returned per-page, in order.
+	PagePayloads []string
+	// PageNextOffsets controls the NextOffset per page. Empty trailing
+	// string terminates the loop. Defaults: alternating non-empty
+	// strings until PagePayloads exhausted, then "".
+	PageNextOffsets []string
+	// InfiniteOffset makes every page return a non-empty NextOffset
+	// (used to drive the verifier's maxScrolls cap path).
+	InfiniteOffset bool
+	// ErrorAfterPage: scroll returns HTTP 500 from page N onward
+	// (0-indexed). 0 = no error.
+	ErrorAfterPage int
+}
+
+// mockQdrantForVerifierWithHooks installs an httptest server with
+// the richer behaviour described by hooks. Backwards compatible
+// with the simple mockQdrantForVerifier: passing only PagePayloads
+// behaves the same.
+func mockQdrantForVerifierWithHooks(t *testing.T, hooks mockQdrantHooks) *httptest.Server {
 	t.Helper()
+	if len(hooks.PagePayloads) == 0 {
+		t.Fatalf("mockQdrantForVerifierWithHooks: PagePayloads must be non-empty")
+	}
 
 	var mu sync.Mutex
-	payloadIdx := 0
+	pageIdx := 0
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -296,41 +345,43 @@ func mockQdrantForVerifier(t *testing.T, payloadJSONs []string) *httptest.Server
 
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3":
-			// CountPoints
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
-					"points_count": len(payloadJSONs),
+					"points_count": len(hooks.PagePayloads),
 					"status":       "green",
 				},
 			})
 		case r.Method == http.MethodPost && r.URL.Path == "/collections/media_assets_v3/points/scroll":
-			if payloadIdx >= len(payloadJSONs) {
+			if hooks.ErrorAfterPage > 0 && pageIdx >= hooks.ErrorAfterPage {
+				http.Error(w, "injected PR 12 scroll-fatal error", http.StatusInternalServerError)
+				return
+			}
+			if pageIdx >= len(hooks.PagePayloads) {
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
 				return
 			}
-			body := payloadJSONs[payloadIdx]
-			payloadIdx++
-			// Pass through raw JSON for the point's payload so the
-			// verifier sees the embedding_version_<channel> keys as
-			// authored by the test.
+			body := hooks.PagePayloads[pageIdx]
+			pageIdx++
 			var wrapper map[string]interface{}
 			_ = json.Unmarshal([]byte(body), &wrapper)
-			// Re-encode to ensure the test payload shape is preserved
-			// verbatim (Qdrant would normally re-pack it).
 			raw, _ := json.Marshal(wrapper["payload"])
-			// Pass the test author's id field through verbatim.
-			// See mockQdrantForVerifier doc \u2014 the audit gate
-			// behaviour depends on whether the authored id is the
-			// canonical UUID form or a non-UUID literal; the mock
-			// must not transform either side unilaterally.
 			id, _ := wrapper["id"].(string)
 			pt := map[string]interface{}{
 				"id":      id,
 				"payload": json.RawMessage(raw),
 			}
+			var nextOffset string
+			if hooks.InfiniteOffset {
+				nextOffset = fmt.Sprintf("offset-%d", pageIdx)
+			} else if pageIdx-1 < len(hooks.PageNextOffsets) {
+				nextOffset = hooks.PageNextOffsets[pageIdx-1]
+			} else {
+				nextOffset = ""
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{
-					"points": []interface{}{pt},
+					"points":      []interface{}{pt},
+					"next_offset": nextOffset,
 				},
 			})
 		default:
@@ -339,11 +390,21 @@ func mockQdrantForVerifier(t *testing.T, payloadJSONs []string) *httptest.Server
 	}))
 }
 
-// wrapperJSON encodes the payload to a JSON string for re-parse in
-// the mock helper. Trivial indirection kept inside the test file.
-func wrapperJSON(v interface{}) string {
-	b, _ := json.Marshal(v)
-	return string(b)
+// ─── QDRANT-003-era tests (kept for regression coverage) ─────────────
+
+// mockQdrantForVerifier installs an httptest server that mimics the
+// Qdrant REST surface used by ReindexVerifier.VerifyReindex:
+// /collections/<name> (point count), /collections/<name>/points/scroll
+// (chunked payload delivery).
+//
+// QDRANT-005 closure (June 2026): the mock is now a THIN pass-through
+// for the id field. PR 12 (June 2026) preserves this — the canonical
+// boundary is the only authority for pt.ID; the mock does not transform.
+func mockQdrantForVerifier(t *testing.T, payloadJSONs []string) *httptest.Server {
+	return mockQdrantForVerifierWithHooks(t, mockQdrantHooks{
+		PagePayloads:    payloadJSONs,
+		PageNextOffsets: []string{""}, // single-page → empty offset on the only iteration
+	})
 }
 
 // stubAssetStore is an inline AssetStore implementation. The verifier
