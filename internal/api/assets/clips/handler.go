@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -81,6 +82,13 @@ type Deps struct {
 	// (`internal/app`) wires a clipsDispatcherAdapter that wraps
 	// the concrete *outbox.Dispatcher.
 	Dispatcher appclips.ClipIndexDispatcherPort
+	// MutationsDispatcher is the canonical mutations.AssetMutationDispatcher
+	// SSOT (QDRANT-002 PR7). When non-nil, ReprocessUseCase routes its
+	// post-process media_assets UPSERT through port.EnqueueAndIndex.
+	// Nil-tolerated for test fixtures and partial deploys (strict
+	// fail-closed at composition root surfaces a 503 if production
+	// wiring accidentally supplies nil).
+	MutationsDispatcher mutations.AssetMutationDispatcher
 	// SearchAggregator (S3d, June 2026): when non-nil,
 	// FindDuplicates routes through the aggregator's HashQuery
 	// path keyed by fanned-out ClipHashSource adapters. When
@@ -146,6 +154,10 @@ type Handler struct {
 	// type, see ClipIndexDispatcherPort for the rationale). Nil-
 	// tolerated for test fixtures and partial deployments.
 	dispatcher appclips.ClipIndexDispatcherPort
+	// mutationsDispatcher mirrors Deps.MutationsDispatcher. PR 7
+	// (June 2026): the canonical SSOT for the ReprocessUseCase
+	// media_assets write.
+	mutationsDispatcher mutations.AssetMutationDispatcher
 	// searchAggregator mirrors Deps.SearchAggregator (S3d, June 2026).
 	searchAggregator *providers.SearchAggregator
 	// bulkUploadWorker handles the bulk_upload_youtube_clips job.
@@ -196,12 +208,17 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		searchSvc:        d.SearchSvc,
 		processRunner:    d.ProcessRunner,
 		dispatcher:       d.Dispatcher,
+		mutationsDispatcher: d.MutationsDispatcher,
 		searchAggregator: d.SearchAggregator,
 		bulkUploadWorker: d.BulkUploadWorker,
 		clipOpsService:   d.ClipOpsService,
 
 		// Initialize use cases
-		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor),
+		// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): pass the
+		// SSOT mutations dispatcher to ReprocessUseCase so the
+		// post-process media_assets UPSERT routes through the canonical
+		// outbox+tx writer (QDRANT-002 atomicity invariant).
+		reprocessUC: appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, d.MutationsDispatcher),
 		downloadUC:  appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo),
 		bulkTagsUC:  appclips.NewBulkTagsUseCase(d.SourceResolver, d.AssetTreeSvc),
 		// S1a (June 2026): when the composition root supplies a

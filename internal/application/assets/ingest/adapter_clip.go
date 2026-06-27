@@ -3,12 +3,14 @@ package ingest
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -21,18 +23,37 @@ type clipStoreAdapter struct {
 	// migration (sed's `\bassets\.` pattern matched the receiver
 	// field `a.assets.Upsert`, producing broken `a.asset.Upsert`
 	// references).
+	//
+	// repo is retained for the post-dispatch SoftDelete path
+	// (DeleteAssetRecord). The pre-dispatcher media_assets UPSERT
+	// (where `a.repo.Upsert(...)` was previously called) now routes
+	// through `dispatcher.EnqueueAndIndex` (PR 7, June 2026,
+	// codex/qdrant-app-writers-fail-closed).
+	//
+	// Pure-narrow write — the locations + processing writes below
+	// stay on their respective narrow typed ports (asset_locations +
+	// asset processing) and are NOT subject to the dispatcher SSOT.
 	repo       asset.Repository
 	querySvc   *asset.Service
 	locations  asset.LocationRepository
 	processing asset.ProcessingRepository
+	dispatcher mutations.AssetMutationDispatcher
 }
 
+// NewClipStoreAdapter is the canonical AssetRecordStore ctor. PR 7
+// (June 2026) added a 6th positional `dispatcher` arg so the
+// Upsert path enforces the canonical outbox+tx writer (QDRANT-002
+// atomicity invariant). Composition-root pre-rejection lives in
+// the wiring site (internal/app/module_media.go::WireMediaIngest
+// + internal/app/build_bundles_domain.go::buildIngestService) which
+// surfaces a configure-time error if the dispatcher is nil.
 func NewClipStoreAdapter(
 	db *sql.DB,
 	repo asset.Repository,
 	querySvc *asset.Service,
 	locations asset.LocationRepository,
 	processing asset.ProcessingRepository,
+	dispatcher mutations.AssetMutationDispatcher,
 ) lifecycle.AssetRecordStore {
 	return &clipStoreAdapter{
 		db:         db,
@@ -40,6 +61,7 @@ func NewClipStoreAdapter(
 		querySvc:   querySvc,
 		locations:  locations,
 		processing: processing,
+		dispatcher: dispatcher,
 	}
 }
 
@@ -70,8 +92,20 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 		m.LifecycleState = asset.StateDeleted
 	}
 
-	if err := a.repo.Upsert(ctx, m); err != nil {
-		return err
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
+	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
+	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
+	// INSERT in one tx) applies uniformly to ingest-driven write paths.
+	//
+	// Strict fail-closed: a nil dispatcher returns mutations.ErrDispatcherUnavailable
+	// wrapped with context so the ingest pipeline fails loudly (operator-visible
+	// via the lifecycle adapter's error propagation), not as a half-written
+	// asset row.
+	if a.dispatcher == nil {
+		return fmt.Errorf("clip store adapter dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+	}
+	if err := a.dispatcher.EnqueueAndIndex(ctx, m, rec.FileHash); err != nil {
+		return fmt.Errorf("dispatcher enqueue: %w", err)
 	}
 
 	// Write locations

@@ -205,10 +205,25 @@ var (
 // QDRANT-003 (June 2026): Qdrant vector-store capability reintroduced.
 // IndexWriter is created and wired as the clipindexer's VectorStoreIndexer.
 // EnsureSchema is deferred to wire_services.go startup plan (startup-time).
+//
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): MediaProcessor
+// is intentionally left nil on return. initMediaProcessor requires
+// outbox.Dispatcher for the canonical mutations.AssetMutationDispatcher
+// SSOT (QDRANT-002), but BuildOutboxBundle reads process.QdrantDeleter
+// — the composition graph is a ring between ProcessBundle and Outbox.
+// Breaking the ring: BuildProcessBundle returns MediaProcessor=nil here;
+// composition.go::NewComposition calls hydrateMediaProcessor(p, outbox)
+// after BuildOutboxBundle. The hydrate is fail-closed: a nil dispatcher
+// leaves MediaProcessor=nil so worker / reprocess / ingest paths surface
+// the missing dep rather than silently defaulting to the legacy path.
 func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader) (*ProcessBundle, error) {
 	_ = ctx
-	mediaProcessor := initMediaProcessor(cfg, dbs.main, repos.Assets.Repository(), repos.Assets,
-		repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), log, driveUploader)
+	_ = cfg
+	_ = repos
+	_ = driveUploader
+	// PR 7: MediaProcessor construction deferred to hydrateMediaProcessor
+	// after BuildOutboxBundle. See function doc comment for the rationale.
+	var mediaProcessor asset.Processor // intentionally nil — hydrated post-Outbox
 
 	vlmClient := vlm.NewClient(vlm.Config{
 		Enabled:   cfg.VLM.Enabled,

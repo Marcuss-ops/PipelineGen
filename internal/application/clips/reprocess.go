@@ -5,19 +5,35 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // ReprocessUseCase re-downloads, re-processes, and re-uploads a clip.
+//
+// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): dispatcher
+// field added so the use case's media_assets UPSERT (post-reprocess)
+// routes through the canonical outbox+tx writer (QDRANT-002 atomicity
+// invariant). Strict fail-closed: nil dispatcher surfaces explicitly
+// via mutations.ErrDispatcherUnavailable wrap, NOT as a half-written
+// asset row that would orphan Qdrant. See
+// internal/app/registry_adapters.go::newMutationsDispatcherAdapter.
 type ReprocessUseCase struct {
-	assetRepo asset.Repository
-	processor asset.Processor
+	assetRepo  asset.Repository
+	processor  asset.Processor
+	dispatcher mutations.AssetMutationDispatcher
 }
 
 // NewReprocessUseCase constructs the use case.
-func NewReprocessUseCase(repo asset.Repository, proc asset.Processor) *ReprocessUseCase {
-	return &ReprocessUseCase{assetRepo: repo, processor: proc}
+//
+// PR 7 (June 2026): added `dispatcher` as the 3rd positional arg
+// (after proc) so media_assets writes enforce the canonical outbox
+// path. Composition-root pre-rejection lives in the wiring site
+// (internal/api/assets/clips/handler.go NewHandler) which surfaces
+// a configure-time error if dispatcher is nil.
+func NewReprocessUseCase(repo asset.Repository, proc asset.Processor, dispatcher mutations.AssetMutationDispatcher) *ReprocessUseCase {
+	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher}
 }
 
 // ReprocessRequest contains the input for reprocessing a clip.
@@ -87,8 +103,21 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	}
 	clip.UpdatedAt = time.Now()
 
-	if err := uc.assetRepo.Upsert(ctx, clip); err != nil {
-		return nil, fmt.Errorf("failed to update clip: %w", err)
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
+	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
+	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
+	// INSERT in one tx) applies uniformly to reprocess flows.
+	//
+	// Strict fail-closed: nil dispatcher surfaces an explicit error
+	// (the POST /clips/{id}/reprocess call returns 503-equivalent),
+	// NOT a half-written asset row. contentHash is the post-reprocess
+	// fingerprint from result.FileHash; mirrors the v1 supersede-gate
+	// semantics (QDRANT-002 item F: source_version on index.requested.v1).
+	if uc.dispatcher == nil {
+		return nil, fmt.Errorf("reprocess dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+	}
+	if err := uc.dispatcher.EnqueueAndIndex(ctx, clip, result.FileHash); err != nil {
+		return nil, fmt.Errorf("dispatcher enqueue: %w", err)
 	}
 
 	return &ReprocessResult{

@@ -137,14 +137,31 @@ internal/api/assets/clips/clip_ops.go
 #   internal/api/assets/soundeffect/handler.go (Generate method only)
 
 # task 2 (application-layer workers)
-internal/application/clips/bulk_upload_worker.go
 internal/application/clips/clip_ops.go
 internal/application/clips/enrich.go
-internal/application/clips/reprocess.go
 # MIXED: L73/L229 clip → dispatcher; L86/L100 locations → asset_locations narrow port
 internal/application/assets/ingest/adapter_clip.go
 # MIXED: L62 clip → dispatcher; L75/L89 locations → asset_locations narrow port
 internal/application/assets/artifacts/clips_adapter.go
+
+# PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): the two
+# already-migrated application workers below were removed from this
+# list atomically with the migration commit. PR 7 verification per
+# the migration invariants (mirrors PR 6 below):
+#   - dispatcher nil → ErrDispatcherUnavailable wrapped (worker fails
+#     loudly, no half-written media_assets row)
+#   - dispatcher present → exactly one media_assets UPSERT + exactly
+#     one outbox_events insert in the same tx
+#   - BuildProcessBundle deferred hydration (composition-order fix
+#     for the ProcessBundle ↔ OutboxBundle ring)
+# PR 7 migrated (removed): the two fully-migrated application-worker
+# entries that were listed under "task 2 (application-layer workers)":
+#   internal/application/clips/bulk_upload_worker.go
+#   internal/application/clips/reprocess.go
+# MIXED entries (ingest/adapter_clip.go + artifacts/clips_adapter.go)
+# remain on the list because their L86/L100 and L75/L89 locations.Upsert
+# calls still use the asset_locations narrow port; those migrations land
+# in a future wave, not PR 7.
 
 # task 3 (media-curate + youtube + ai)
 internal/application/assets/providers/artlist/semantic_enricher.go

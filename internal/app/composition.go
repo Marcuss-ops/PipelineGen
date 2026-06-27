@@ -306,6 +306,20 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
 
+	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed):
+	// deferred hydration of MediaProcessor. BuildProcessBundle returns
+	// MediaProcessor=nil because BuildOutboxBundle reads
+	// process.QdrantDeleter. initMediaProcessor needs the outbox
+	// dispatcher for the canonical mutations.AssetMutationDispatcher
+	// SSOT. Breaking the ring by hydrating here (post-Outbox,
+	// pre-Domains) keeps the strict fail-closed invariant: a nil
+	// outbox.Dispatcher leaves MediaProcessor=nil so worker /
+	// reprocess / ingest paths surface the missing dep rather than
+	// silently defaulting.
+	if err := hydrateMediaProcessor(process, cfg, dbs, repos, driveBundle.DriveUploader, outbox, log); err != nil {
+		return nil, fmt.Errorf("compose media processor (PR 7 hydration): %w", err)
+	}
+
 	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: %w", err)

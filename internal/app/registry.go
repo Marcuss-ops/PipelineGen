@@ -364,6 +364,12 @@ jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 			ClipsRepo:         root.Repos.ClipsRepo,
 			AssetIndexService: root.Search.AssetIndexService,
 			PrebuiltService:   root.Domains.IngestService,
+			// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed):
+			// roots the canonical outbox.Dispatcher into
+			// WireMediaIngest so the 4 NewClipStoreAdapter +
+			// NewClipsRegistry ctor calls in module_media.go get a
+			// non-nil mutations SSOT (production canonical path).
+			Dispatcher:    root.Outbox.Dispatcher,
 		}
 		mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, ingestBundle, idemHandler)
 		wiring.MediaIngest = mediaIngestW
