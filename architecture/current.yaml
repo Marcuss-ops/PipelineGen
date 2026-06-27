@@ -983,6 +983,271 @@
     cross_cap_imports: "internal/application/search/* stdlib-only; search_backends.go is single composition bridge"
 
 
+
+# ── Wave 23 — Runtime Configuration & Hardcode Elimination (in_progress, June 2026) ──
+- id: 23
+  title: "Runtime Configuration & Hardcode Elimination"
+  status: in_progress
+  verified_zero: false
+  description: |
+    Eliminates the 7 remaining runtime-configuration hardcode sites
+    (HC-1..HC-7) and registers the 4 cross-cutting drift patterns
+    (DRIFT-23-1..DRIFT-23-4) accumulated during the Wave 16/19/20/21
+    pre-baseline. Ordered strictly by blocked_by chain so the
+    foundational fixes (defaults SSOT, JobPolicy consolidation) ship
+    first; media-ingestion profiles (HC-4/5/6) can only be safe to
+    land atop the consolidated defaults; HC-2 (Asset Source
+    Registry) lands last because it depends on the W14-PR2 clip-
+    search consolidation slices 2..8 closing first.
+
+    Upstream-DONE acknowledgements:
+      * DRIFT-23-3 (dual search subsystem) was eliminated upstream
+        by feat(W21 PR 10) CUTOVER (commit 9f7149d4, June 2026).
+        Kept in the wave entry as audit documentation with
+        superseded_by: 9f7149d4; no Wave 23 PR needs to reship
+        that work.
+      * HC-2's "Discovery search unification" acceptance criterion
+        is annotated [DONE in 9f7149d4]. Residual scope covers
+        the source-alias map and the resolveRepo factory in
+        internal/application/assets/artifacts/source_resolver.go.
+  rule: |
+    Runtime configuration values MUST trace to exactly ONE of the
+    following four canonical surfaces (the "4-Destination Rule"
+    extending godlike/06 §"Configuration" to runtime values):
+      (1) Consumer DTO — a typed struct field read by the consumer
+          (e.g. `req.Timeout`, `cfg.DefaultVideo.Title`).
+      (2) Operator config — the YAML config surface read by the
+          composition root before services boot.
+      (3) Capability registry — a typed registry (JobPolicy
+          Registry, SourceAliasMap, VoiceoverProfileRegistry).
+      (4) Typed invariant — a typed constant in the canonical
+          constants file (e.g. `types.WordsPerMinute`).
+    All other surfaces — fallback chains, per-call literal
+    overrides, copy-paste duplications across packages — are
+    FORBIDDEN per godlike/07 §"Forbidden compatibility techniques".
+  blocked_by: ["16", "19"]
+  target_metrics:
+    hardcoded_timeouts_in_capability_code: 0
+    hardcoded_search_limits_in_capability_code: 0
+    hardcoded_default_scripts_in_capability_code: 0
+    hardcoded_voiceover_profiles_in_capability_code: 0
+    hardcoded_youtube_extraction_policy_in_capability_code: 0
+    hardcoded_chunk_duration_in_capability_code: 0
+    hardcoded_identifier_overrides_in_capability_code: 0
+    dual_search_subsystem_references: 0
+  schema_deviation_log:
+    - key: drift_register
+      rationale: "godlike/06 §'Configuration' extends 'one owner per fact' to runtime facts; EXPAND-side audit per godlike/07 §'Migration sequence' step 1."
+      owns: wave
+      substitution_path: docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md §"Configuration"
+    - key: superseded_by
+      rationale: "godlike/07 §'deprecation records must carry introduction_date+removal_deadline+tracking_issue' is extended with superseded_by for entries that were eliminated UPSTREAM (before the wave's PR sequence began)."
+      owns: drift entry
+      substitution_path: docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md §"Temporary deprecation record"
+    - key: traffic_light_severity
+      rationale: "Severity is CRITICAL/HIGH/MEDIUM per godlike/08 wave-entry convention."
+      owns: drift entry
+      substitution_path: docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+  exit_gate: |
+    * All target_metrics reach zero (or are documented as
+      upstream-eliminated with superseded_by pointer).
+    * Each sub_task's `acceptance` array is satisfied.
+    * go vet + go build ./... clean (no stale references).
+    * Archcheck ratchet Checks["hardcoded_runtime_values"] counter is zero.
+  ci_impact_at_landing: |
+    CI is GREEN until the gate flips to enforcement at exit_gate.
+  component_checks:
+    hardcoded_runtime_values_counter: 'exit 0 + "hardcoded_runtime_values: 0"'
+    job_policy_rg: "rg 'Timeout: ?[0-9]+ \\* ?time\\.(Minute|Hour|Second)' internal/application internal/api/ returns zero outside the canonical JobPolicy registry."
+    defaults_ssot_rg: "rg 'WordsPerMinute|VisualChunkDuration|DefaultSearchLimit|SentencesPerImage|DefaultVoiceoverProfile' internal/ cmd/ returns zero outside the canonical Defaults surface."
+    source_alias_rg: "rg 'switch.*source.*case|canonicalSource' internal/ returns zero outside source_resolver.go StandardSources."
+    registered_subsystem_test: "go test ./pkg/defaults/... ./internal/application/jobs/... -short pass cleanly with the new SSOT."
+  transitional_baselines:
+    note: "Per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md §'Zero-baseline rule', the final metric count is zero per target_metrics above."
+    hardcoded_timeouts_total: 6
+    hardcoded_search_limits_total: 2
+    hardcoded_default_scripts_total: 4
+    hardcoded_voiceover_profiles_total: 13
+    hardcoded_youtube_extraction_policy_total: 4
+    hardcoded_chunk_duration_total: 2
+    hardcoded_identifier_overrides_total: 1
+    drift_locations_total: 7
+    p0_priority_leak_sites: 4
+    dual_search_already_zero_via: "upstream commit 9f7149d4 (W21 PR 10 CUTOVER on origin/main)"
+    owner: wave-23-ratchet owner (HC-7 lead)
+    deadline: 2026-07-15
+  sub_tasks:
+    - id: HC-7
+      title: "Video config defaults SSOT + parent_id conditional data loss fix"
+      status: pending
+      target: |
+        - pkg/defaults.DefaultVideoConfig() — new SSOT.
+        - internal/application/scripts/video.go — replace ChunkDuration: 25 with defaults.
+        - internal/api/script/helpers.go::ListScripts — replace `"parent_id": ""` with `s.ParentScriptID`.
+      acceptance:
+        - "rg 'ChunkDuration: ?25' internal/application/ returns zero outside canonical DefaultVideoConfig."
+        - "rg '\"parent_id\": ?\"\"' internal/api/ returns zero."
+        - "DefaultVideoConfig() test round-trips current behaviour."
+      blocked_by: []
+    - id: HC-1
+      title: "JobPolicy Registry: collapse 2-job-timeout registries + Bulk Upload dual"
+      status: pending
+      target: |
+        - internal/application/jobs/registry.go::Compose — type-keyed TimeoutMap.
+        - internal/application/jobs/worker.go::jobTimeoutRegistry — REMOVED.
+        - internal/application/clips/bulk_upload_worker.go — converts `2*time.Hour` to `w.cfg.JobTimeout(...)` typed config-port.
+      acceptance:
+        - "rg 'Timeout: ?[0-9]+ ?\\* ?time\\.(Minute|Hour)' internal/application/jobs/registry.go returns EXACTLY hits inside TimeoutMap; zero hits elsewhere."
+        - "rg '^var jobTimeoutRegistry' internal/application/jobs/worker.go returns zero."
+        - "rg 'context\\.WithTimeout\\(ctx, ?2\\*time\\.Hour\\)' internal/application/clips/bulk_upload_worker.go returns zero."
+        - "Exactly ONE source remains (canonical typed config-port)."
+      blocked_by: ["HC-7"]
+    - id: HC-3
+      title: "Script defaults: language/tone/WPM/ChunkIntoImages SSOT + drift fix"
+      status: pending
+      target: |
+        - internal/infrastructure/ai/ollama/types/constants.go::WordsPerMinute (= 140) canonical SSOT.
+        - internal/application/scripts/engine.go::Generate — replace `/150` with typed `constants.WordsPerMinute`.
+        - internal/application/scripts/engine.go — tone/language fallbacks via defaults.DefaultScriptConfig().
+        - internal/application/scripts/processor_images.go — sentences_per_image via defaults.
+        - internal/application/scripts/processor_voiceover.go — same pattern.
+        - internal/application/scripts/section_regen.go — typed WPM constant.
+      acceptance:
+        - "rg '/ ?150' internal/application/scripts/ returns zero."
+        - "rg 'tone ?== ?\"\"' AND rg 'language ?== ?\"\"' internal/application/scripts/engine.go return zero — fallbacks are typed."
+        - "engine.go::Generate uses typed WPM constant in BOTH cache-hit path AND post-generation path."
+      blocked_by: ["HC-1"]
+    - id: HC-4
+      title: "Media Profiles: ChunkDuration + EffectsDir SSOT"
+      status: pending
+      target: |
+        - pkg/defaults.DefaultMediaConfig() — new SSOT.
+        - internal/application/images/stockpipeline/service.go — replace EffectsDir literal.
+        - internal/application/images/videos/video.go::WithDefaults — replace ChunkDuration: 25.
+      acceptance:
+        - "rg 'EffectsDir = \"vfx\"' cmd/ internal/ returns zero outside pkg/defaults.DefaultMediaConfig()."
+        - "rg 'ChunkDuration: ?25' internal/ returns zero outside canonical DefaultMediaConfig."
+      blocked_by: ["HC-3"]
+    - id: HC-5
+      title: "YouTube Extraction Policy SSOT (ChannelGroup + clipfolder_youtube_* + yt_* + DefaultGroup)"
+      status: pending
+      target: |
+        - pkg/defaults.DefaultYouTubeExtractionPolicy() — new SSOT.
+        - internal/application/channels/service.go — replace MaxSegments default = 2.
+        - internal/application/assets/providers/youtube/manifest_mgr.go + clipfolder.go + yt_* siblings.
+      acceptance:
+        - "rg 'DefaultGroup ?= ?\"general\"' internal/application/channels/ returns zero outside SSOT."
+        - "rg 'clipfolder_youtube' internal/application/youtube/ returns zero outside SSOT."
+        - "rg 'MaxSegments ?: ?= ?2' internal/application/channels/ returns zero outside SSOT."
+      blocked_by: ["HC-3"]
+    - id: HC-6
+      title: "Voiceover Profiles SSOT (parent_id root + 13-language JSON externalization)"
+      status: pending
+      target: |
+        - pkg/defaults.DefaultVoiceoverRoot() — new SSOT.
+        - internal/application/voiceover/service.go — replace literal with defaults.
+        - config/voiceovers/voices.json — moved from internal hardcoded JSON to operator-config surface.
+      acceptance:
+        - "rg 'defaultVoiceoverRoot ?= ?\"' internal/application/voiceover/ returns zero outside SSOT."
+        - "13-language voiceover profile map loaded from operator-config file, NOT hardcoded."
+        - "Composition root validates profiles file at boot and panics on malformed JSON."
+      blocked_by: ["HC-3"]
+    - id: HC-2
+      title: "Asset Source Registry: clip-alias SSOT + ResolveRepo factory cleanup"
+      status: pending
+      target: |
+        - internal/application/assets/artifacts/source_resolver.go — StandardSources + sourceAliasMap + ResolveRepo (already canonical SSOT).
+        - Remove ALL remaining switch-on-source statements across internal/application/.
+      acceptance:
+        - "rg 'switch.*source.*{|switch.*alias' internal/application/ returns zero outside source_resolver.go."
+        - "[DONE in 9f7149d4] clipssearch v1 / mediasearch v2 unification — upstream W21 PR 10."
+        - "[DONE in 9f7149d4] Assets.ClipsRepository 'all sources' unification — upstream W21 PR 10."
+        - "Residual scope: source_alias_map + ResolveRepo switch is the SOLE source->repo factory."
+      blocked_by: ["HC-4", "HC-5", "HC-6", "W14-PR2"]
+  blocked_by_external_wave_status:
+    W14_PR2_slices_2_through_8_required_slices:
+      note: |
+        HC-2 carries blocked_by: ["W14-PR2"] because the
+        clip-search consolidation slice must close BEFORE the
+        ResolveRepo migration is safe.
+      required_slices_closed_before_HC2:
+        - {id: slice-2, title: "bulk_upload_helpers extracted to application layer", status: pending_verification, tracked_in: internal/application/clips/bulk_upload_helpers.go}
+        - {id: slice-3, title: "bulk_upload_worker extracted to application layer", status: pending_verification, tracked_in: internal/application/clips/bulk_upload_worker.go}
+        - {id: slice-4, title: "clip_upload split helpers extracted", status: pending_verification, tracked_in: internal/api/assets/clips/clip_upload.go}
+        - {id: slice-5, title: "clip_action split helpers extracted", status: pending_verification, tracked_in: internal/api/assets/clips/clip_action.go}
+        - {id: slice-6, title: "clip_ops split helpers extracted", status: pending_verification, tracked_in: internal/api/assets/clips/clip_ops.go}
+        - {id: slice-7, title: "upload_helpers extracted to application layer", status: pending_verification, tracked_in: internal/application/clips/upload_helpers.go}
+        - {id: slice-8, title: "final ci-architectural-checks polish; required for HC-2 per operator spec", status: pending_verification, tracked_in: scripts/ci-architectural-checks.sh}
+  drift_register:
+    - id: DRIFT-23-1
+      severity: HIGH
+      title: "WPM (WordsPerMinute) dual-source: 140 vs /150"
+      description: |
+        Two sources of truth for the words-per-minute constant used to
+        estimate script spoken duration:
+          * internal/infrastructure/ai/ollama/types/constants.go:5
+            WordsPerMinute = 140 (the typed invariant).
+          * internal/application/scripts/engine.go:240
+            (result.WordCount * 60) / 150 (the engine's hardcoded fallback).
+      locations:
+        - {file: internal/infrastructure/ai/ollama/types/constants.go, line: 5, role: typed invariant (canonical)}
+        - {file: internal/application/scripts/engine.go, line: 240, role: hardcoded fallback (drift)}
+      eliminated_by: HC-3
+      status: active
+    - id: DRIFT-23-2
+      severity: CRITICAL
+      title: "Bulk Upload dual timeout: 2h verbatim vs registry 120m"
+      description: |
+        Two sources of truth for the bulk-upload-youtube-clips job timeout.
+      locations:
+        - {file: internal/application/jobs/worker.go, line: 33, role: legacy global registry (drift)}
+        - {file: internal/application/clips/bulk_upload_worker.go, line: 95, role: verbatim override (drift)}
+      eliminated_by: HC-1
+      status: active
+    - id: DRIFT-23-3
+      severity: HIGH
+      title: "Dual search subsystem (clipssearch + mediasearch + source alias)"
+      description: |
+        Two legacy search subsystems coexisted in the application layer
+        before Wave 21 PR 8/9/10 (commit 9f7149d4):
+          * internal/application/assets/clipssearch/service.go:31
+          * internal/application/mediasearch/ package
+        Resolution: upstream CUTOVER (commit 9f7149d4, feat(W21 PR 10))
+        replaced both with a canonical SearchAggregator.
+      locations:
+        - {file: internal/application/assets/clipssearch/service.go, line: 31, role: legacy subsystem (UPSTREAM-DELETED)}
+        - {file: internal/application/mediasearch/types.go, line: 80, role: legacy subsystem (UPSTREAM-DELETED)}
+      wave_residual_owner: HC-2
+      superseded_by: 9f7149d4
+      status: eliminated
+    - id: DRIFT-23-4
+      severity: CRITICAL
+      title: "parent_id conditional data loss in ListScripts"
+      description: |
+        The script-history HTTP transport's ListScripts handler
+        unconditionally sends "parent_id": "" in every row of its
+        response (internal/api/script/helpers.go:121), while the
+        GetScriptByID handler correctly reads scriptRec.ParentScriptID
+        from the database.
+      locations:
+        - {file: internal/api/script/helpers.go, line: 121, role: data-loss bug (drift)}
+      eliminated_by: HC-7
+      status: active
+  cross_refs:
+    wave: architecture/current.yaml#id-23
+    deprecations_manifest: architecture/deprecations.yaml
+    godlike_06: docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md §"Configuration"
+    godlike_07: docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md §"Temporary deprecation record"
+    godlike_08: docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md §"Zero-baseline rule"
+    upstream_done_drift_docs:
+      - {commit: 9f7149d4, message: "feat(W21 PR 10): CUTOVER — three legacy search subsystems replaced by canonical search.Aggregator", wave: 21, confirms_drift_elimination: DRIFT-23-3}
+  registration_record: |
+    Wave 23 entry (architecture/current.yaml#id-23) registered on
+    origin/main per the EXPAND-side audit pattern from
+    docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md §"Migration
+    sequence". Operator-owned PR landings migrate code site-by-site
+    with cross-reference back to this entry's sub_task IDs.
+
 ---
 # ── Document #2/3: Post-cascade operational followups (June 2026) ─────────
 post_cascade_followups:
