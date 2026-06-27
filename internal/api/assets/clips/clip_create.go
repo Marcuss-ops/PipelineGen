@@ -1,10 +1,12 @@
 package clips
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -12,14 +14,32 @@ import (
 	"go.uber.org/zap"
 )
 
+// errClipDispatcherUnavailable is the fail-closed sentinel surfaced by
+// every clips API writer in PR 6 (codex/qdrant-api-writers-fail-closed):
+// when the canonical AssetMutationDispatcher is not wired at composition
+// time (test fixtures, partial deploys), the four write endpoints
+// (CreateClip, UploadVideoClip, ClipAction::ReuploadClip, sound_effect
+// Generate) return HTTP 503 with this message instead of silently
+// falling back to a raw h.assetRepo.Upsert write that would corrupt
+// Qdrant semantics.
+//
+// Operational response: the operator should investigate why the
+// composition root did not inject the dispatcher. The Wave 22 task-2
+// (PR-6) gate `scripts/ci-bypass-audit.sh` ratchets this counter to
+// zero — any new caller that bypasses AssetMutationDispatcher fails CI.
+var errClipDispatcherUnavailable = errors.New("clips API write unavailable: AssetMutationDispatcher not wired (QDRANT-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via clipsDispatcherAdapter)")
+
 // CreateClip creates a new clip and triggers semantic enrichment + vector indexing
 // so the clip becomes immediately searchable via semantic search endpoints.
 //
-// The enrichment pipeline runs asynchronously via goroutine:
-//  1. Save clip to DB + Asset Tree
-//  2. Call semantic tagger (LLM) to generate search_text, tags, subjects
-//  3. Upsert to clip indexer (embedding computation)
-//  4. Upsert to Qdrant vector store
+// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the synchronous
+// SQLite UPSERT step now routes through dispatcher.EnqueueAndIndex —
+// atomic UPSERT media_assets + INSERT outbox_events in a single
+// transaction. A nil dispatcher is treated as a wiring error (HTTP 503),
+// not as a fallback trigger to h.assetRepo.Upsert. The downstream async
+// enrichment path (media.enrich job enqueue) is preserved — it covers
+// semantic enrichment (LLM tags) and is a separate concern from the
+// Qdrant indexing path that the outbox event already triggers.
 func (h *Handler) CreateClip(c *gin.Context) {
 	source := c.Param("source")
 
@@ -29,8 +49,15 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		return
 	}
 
-	if h.assetRepo == nil {
-		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+	if h.dispatcher == nil {
+		// Fail-closed: PR 6 replaces the legacy
+		// `if h.assetRepo != nil { h.assetRepo.Upsert }` path with an
+		// explicit error. The composition root must always wire the
+		// canonical *outbox.Dispatcher (via clipsDispatcherAdapter) in
+		// production; reaching this branch means a wiring regression.
+		h.log.Error("CreateClip: dispatcher not wired \u2014 atomic UPSERT + outbox enqueue refused",
+			zap.String("source", source))
+		apiutil.Error(c, 503, errClipDispatcherUnavailable.Error())
 		return
 	}
 
@@ -50,23 +77,29 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 1. Save to DB via canonical asset.Repository (no converter needed).
-	//    PR 2 (Wave 22 PR-2 — clip thin transport): route through
-	//    appclips.ClipIndexDispatcherPort when wired (QDRANT-002 single-tx
-	//    upsert + outbox enqueue). Falls back to h.assetRepo.Upsert when
-	//    nil — preserves the documented "nil dispatcher = tests / partial
-	//    deployments" semantics in
-	//    internal/application/clips/ports.go::ClipIndexDispatcherPort.
-	if h.dispatcher != nil {
-		if err := h.dispatcher.EnqueueAndIndex(ctx, &clip, ""); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("clip dispatcher enqueue failed (create): %w", err))
+	// 1. Atomic UPSERT + outbox event via the canonical dispatcher.
+	// The dispatcher's supersede-gate dedup uses the contentHash; fall
+	// back to clip.ID when the bind-time payload omits it (the dispatcher
+	// rejects empty asset.ID via the EnqueueAndIndex NewDispatcher wiring
+	// pre-flight at outbox/repository.go:243-246).
+	contentHash := clip.FileHash()
+	if contentHash == "" {
+		contentHash = clip.ID
+	}
+	if err := h.dispatcher.EnqueueAndIndex(ctx, &clip, contentHash); err != nil {
+		// Surface mutations.ErrDispatcherUnavailable verbatim so the
+		// API caller can correlate with the upstream sentinel without
+		// wrapping; any other error means the SQLite tx failed or the
+		// outbox publish raced a malformed envelope — propagate.
+		if errors.Is(err, mutations.ErrDispatcherUnavailable) {
+			h.log.Error("CreateClip: dispatcher unavailable", zap.String("clip_id", clip.ID), zap.Error(err))
+			apiutil.Error(c, 503, errClipDispatcherUnavailable.Error())
 			return
 		}
-	} else if h.assetRepo != nil {
-		if err := h.assetRepo.Upsert(ctx, &clip); err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
+		h.log.Error("CreateClip: dispatcher.EnqueueAndIndex failed",
+			zap.String("clip_id", clip.ID), zap.Error(err))
+		apiutil.InternalError(c, fmt.Errorf("dispatcher.EnqueueAndIndex: %w", err))
+		return
 	}
 
 	// 2. Update Asset Tree
@@ -88,7 +121,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 	// before this point so a failed enqueue does NOT roll back the HTTP
 	// write — we log a WARN and let the operator re-trigger via
 	// `POST /:source/clips/:id/reindex`.
-	indexed := false
+	indexed := true
 	if h.enrichUC != nil && h.jobsSvc != nil {
 		_, err := h.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type: jobservice.TypeMediaEnrich,
@@ -101,20 +134,18 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		if err != nil {
 			h.log.Warn("failed to enqueue media.enrich job (clip is saved; reactive re-index required)",
 				zap.String("clip_id", clip.ID), zap.Error(err))
-		} else {
-			indexed = true
+			indexed = false
 		}
 	} else if h.enrichUC != nil {
 		// S1a (June 2026): jobs service NOT wired but enrichment deps
-		// are. Pre-lift behaviour claimed `indexed: true` while
-		// doing nothing — that was misleading. Truthful signal:
-		// leave `indexed: false`. Production always wires jobsSvc;
-		// a missing jobsSvc in test fixtures is the test author's
-		// responsibility (use a mock jobsSvc that no-ops
-		// Enqueue, or wire a real one). Logged at WARN so test
-		// authors see the drift in repo logs.
-		h.log.Warn("CreateClip: enrichment deps wired but jobsSvc nil — clip saved; index will lag until reactive re-index",
+		// are. Pre-lift behaviour claimed `indexed: true` while doing
+		// nothing — that was misleading. Truthful signal:
+		// leave `indexed: false`. Production always wires jobsSvc; a
+		// missing jobsSvc in test fixtures is the test author's
+		// responsibility.
+		h.log.Warn("CreateClip: enrichment deps wired but jobsSvc nil \u2014 clip saved; index will lag until reactive re-index",
 			zap.String("clip_id", clip.ID), zap.String("source", source))
+		indexed = false
 	}
 
 	apiutil.OK(c, gin.H{

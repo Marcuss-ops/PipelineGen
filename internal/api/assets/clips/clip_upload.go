@@ -3,6 +3,7 @@ package clips
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -247,26 +249,36 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		probeDuration(ctx, localPath, clip, log, h.processRunner)
 	}
 
-	// 10. Save to database. PR 2 (Wave 22 PR-2 — clip thin transport):
-	//     route through appclips.ClipIndexDispatcherPort when wired;
-	//     pass fileHash as the contentHash dedup-supersede gate key.
-	//     Falls back to h.assetRepo.Upsert when nil — same documented
-	//     semantics as CreateClip.
-	if h.dispatcher != nil {
-		if err := h.dispatcher.EnqueueAndIndex(ctx, clip, fileHash); err != nil {
-			log.Error("clip dispatcher enqueue failed (upload)", zap.Error(err))
-			apiutil.InternalError(c, fmt.Errorf("failed to dispatch clip: %w", err))
-			return
-		}
-		log.Info("dispatched clip via index dispatcher", zap.String("clip_id", clip.ID))
-	} else if h.assetRepo != nil {
-		if err := h.assetRepo.Upsert(ctx, clip); err != nil {
-			log.Error("failed to save clip to DB", zap.Error(err))
-			apiutil.InternalError(c, fmt.Errorf("failed to save clip: %w", err))
-			return
-		}
-		log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
+	// 10. Save to database via canonical asset.Repository
+	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the legacy
+	// soft-fallback `if h.assetRepo != nil { h.assetRepo.Upsert }` is
+	// removed — a wiring regression that bypasses the outbox MUST NOT
+	// silently succeed. The dispatcher's EnqueueAndIndex atomically
+	// UPSERTs media_assets + emits asset.index.requested so Qdrant
+	// semantics stay correct.
+	if h.dispatcher == nil {
+		log.Error("UploadVideoClip: dispatcher not wired — atomic UPSERT + outbox enqueue refused",
+			zap.String("clip_id", clip.ID))
+		apiutil.Error(c, 503, errClipDispatcherUnavailable.Error())
+		return
 	}
+	contentHash := clip.FileHash()
+	if contentHash == "" {
+		contentHash = fileHash
+	}
+	if err := h.dispatcher.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
+		if errors.Is(err, mutations.ErrDispatcherUnavailable) {
+			log.Error("UploadVideoClip: dispatcher unavailable", zap.String("clip_id", clip.ID), zap.Error(err))
+			apiutil.Error(c, 503, errClipDispatcherUnavailable.Error())
+			return
+		}
+		log.Error("UploadVideoClip: dispatcher.EnqueueAndIndex failed",
+			zap.String("clip_id", clip.ID), zap.Error(err))
+		apiutil.InternalError(c, fmt.Errorf("dispatcher.EnqueueAndIndex: %w", err))
+		return
+	}
+	log.Info("saved clip via dispatcher (atomic UPSERT + outbox event)",
+		zap.String("clip_id", clip.ID), zap.String("content_hash", contentHash))
 
 	// 11. Update Asset Tree
 	if h.assetTreeSvc != nil {

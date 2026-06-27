@@ -117,26 +117,24 @@ internal/api/assets/handler_searchqueries.go
 #     passthrough in sourcing and YouTube metadata to a single
 #     AssetMutationDispatcher consumer.
 
-# task 2 (handlers) — RESOLVED by PR 2 (Wave 22 PR-2, June 2026)
-# Routes through appclips.ClipIndexDispatcherPort.EnqueueAndIndex when
-# wired. Falls back to legacy .Upsert( when nil dispatcher — see the
-# "Nil semantics" doc in
-# internal/application/clips/ports.go::ClipIndexDispatcherPort.
-# Entries below stay allowlisted because the rg-gate must silence the
-# documented fallback-branch hits (comm -13 parses bare-path tokens only).
+# task 2 (handlers)
+internal/api/assets/clips/bulk_upload_worker.go
+# MIXED: L296 clip → dispatcher, L305/L440 voiceover → voiceover narrow port
+internal/api/assets/clips/clip_ops.go
 
-# PR 2: dispatcher-or-fallback (when h.dispatcher != nil → EnqueueAndIndex; else h.assetRepo.Upsert)
-internal/api/assets/clips/clip_create.go
-# PR 2: dispatcher-or-fallback (fileHash as contentHash dedup key for EnqueueAndIndex)
-internal/api/assets/clips/clip_upload.go
-# PR 2: dispatcher-or-fallback (clip.FileHash() as contentHash dedup key; inside ReuploadClip)
-internal/api/assets/clips/clip_action.go
-# PR 2: dispatcher-or-fallback via SetDispatcher late-binding (typed-port fallback via clipsRepo.Upsert)
-internal/api/assets/soundeffect/handler.go
-
-# Stale-removed in PR 2 audit (DO NOT re-add; rg gate would false-positive):
-#   internal/api/assets/clips/bulk_upload_worker.go      ← file no longer exists
-#   internal/api/assets/clips/clip_ops.go:296            ← no Upsert call (delegate shells only)
+# PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the four
+# migrated API writers below were removed from this list atomically with
+# the migration commit. PR 6 verification:
+#   - dispatcher nil → HTTP 503 (zero media_assets/outbox_events rows)
+#   - dispatcher present → exactly one outbox_events row inserted atomically
+#   - dispatcher error → propagated to HTTP 500
+#   - allowlist line removed atomically with code migration (this comment
+#     replaces the previous 4 entries below).
+# PR 6 migrated (removed):
+#   internal/api/assets/clips/clip_create.go
+#   internal/api/assets/clips/clip_upload.go
+#   internal/api/assets/clips/clip_action.go (ReuploadClip method only)
+#   internal/api/assets/soundeffect/handler.go (Generate method only)
 
 # task 2 (application-layer workers)
 internal/application/clips/bulk_upload_worker.go

@@ -97,3 +97,28 @@ type SemanticMetadataWriterPort interface {
 type DestinationResolverPort interface {
 	Resolve(req AssetDestinationRequest) (ResolvedDest, error)
 }
+
+// DispatcherPort is the canonical narrow surface of
+// mutations.AssetMutationDispatcher consumed by the sfx HTTP handler.
+// The implementation atomically UPSERTs the sfx asset row in
+// media_assets AND emits a corresponding asset.index.requested outbox
+// event in a single transaction — the canonical QDRANT-002 pattern
+// that closes the SQLite → Qdrant indexing gap and prevents orphan
+// media_assets rows that never reach the vector store.
+//
+// contentHash is the ingest-time content fingerprint used by the
+// dispatcher's supersede-gate dedup. Sfx consumers pass the MD5
+// hash computed in step 2 of Generate; the dispatcher falls back to
+// clip.ID when contentHash is empty (mirroring clip_update.go's
+// pattern).
+//
+// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): narrow
+// 1-method port mirroring appclips.ClipIndexDispatcherPort. Future
+// PR 7/8 will promote the sfx consumer to the canonical
+// mutations.AssetMutationDispatcher SSOT (3 methods) atomically
+// alongside the application-layer migration. The adapter lives in
+// internal/app/adapters_infra.go::sfxDispatcherAdapter (single
+// composition bridge).
+type DispatcherPort interface {
+	EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error
+}
