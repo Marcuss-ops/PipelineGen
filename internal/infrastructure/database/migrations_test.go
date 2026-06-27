@@ -24,19 +24,14 @@ const migrationsDirFrom = "../../../migrations/sqlite"
 const smokeDBConnString = "_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000"
 
 // essentialTables is the list of tables the smoke test asserts must be
-// present after first apply — IF the current schema predicts them.
+// present after first apply. Each entry MUST be backed by a real
+// migration in migrations/sqlite/ — adding a new entry here without a
+// corresponding CREATE TABLE migration will fail the EssentialTablesPresent
+// subtest on every CI run.
 //
-// The user's spec asks for: jobs, scripts, media_assets, outbox_events
-// (the last "se prevista dallo schema corrente"). At June 2026 HEAD,
-// `outbox_events` is NOT predicted by any migration (no CREATE TABLE for
-// it in migrations/sqlite/) — so it is omitted as a required assertion.
-// The test will dynamically skip any essential table that the migration
-// set does not actually create (tableNotPredicted).
-//
-// Match against the current schema in migrations/sqlite/ — any which
-// IS predicted but missing in sqlite_master after the apply means a
-// regression on the migration chain.
-var essentialTables = []string{"jobs", "scripts", "media_assets"}
+// At June 2026 HEAD: jobs (001), scripts (003), media_assets (059),
+// outbox_events (092).
+var essentialTables = []string{"jobs", "scripts", "media_assets", "outbox_events"}
 
 // openSmokeDB opens a fresh sql.DB handle on path with the smoke DSN
 // and pings it; failures fail the caller. Caller is responsible for
@@ -79,12 +74,28 @@ func openSmokeDB(t *testing.T, path string) *sql.DB {
 //	                             future agent can grep `INFORMATIONAL/TODO`
 //	                             in CI verbose logs for follow-up triage).
 //	(e) EssentialTables         — jobs, scripts, media_assets, outbox_events
-//	                             are present (silently omitted if not
-//	                             schema-predicated — outbox_events removed
-//	                             in a future migration should drop from
-//	                             essentialTables).
+//	                             are present after the first apply (each
+//	                             backed by a real migration: 001, 003, 059,
+//	                             092). Adding an entry without a matching
+//	                             migration immediately breaks CI.
 //	(f) JournalModeIsWAL        — PRAGMA journal_mode is WAL per the
 //	                             storage.OpenSQLiteDB contract.
+//	(g) QdrantAssetColumnsPresent — PRAGMA table_info(media_assets) lists
+//	                               the 9 columns added by migration 099
+//	                               (youtube_video_id, youtube_url,
+//	                               start_time, end_time, workspace_id,
+//	                               channel_id, license, source_version,
+//	                               style). Mirrors the
+//	                               CanonicalMediaAssetsSchema in canonical.go.
+//	(h) QdrantAssetColumnsRoundTrip — raw-SQL round-trip on a fresh DB:
+//	                                 insert a media_assets row with all 9
+//	                                 new columns populated, select it back,
+//	                                 assert each column survives. Covers the
+//	                                 user's "FetchAsset works on fixture
+//	                                 in-memory" requirement at the schema
+//	                                 layer (TestSQLiteAssetStore_FetchAsset
+//	                                 AfterMigrations in the qdrant package
+//	                                 covers the typed FetchAsset path).
 //
 // The test uses t.TempDir() throughout and never references the
 // production DBs under data/, so it is safe to run concurrently with
@@ -195,6 +206,109 @@ func TestMigrations_Smoke(t *testing.T) {
 			}
 			if count != 1 {
 				t.Fatalf("essential table %q missing in sqlite_master (count=%d)", tbl, count)
+			}
+		}
+	})
+
+	t.Run("QdrantAssetColumnsPresent", func(t *testing.T) {
+		// TODO 15 (June 2026): CanonicalMediaAssetsSchema in canonical.go
+		// must list the 9 columns added by migration 099
+		// (migrations/sqlite/099_qdrant_asset_columns.sql). Fresh in-memory
+		// DBs created from canonical.go must have identical column names
+		// to what 099 produces on a legacy DB. This subtest asserts the
+		// column names are present via PRAGMA table_info(media_assets).
+		required := []string{
+			"youtube_video_id",
+			"youtube_url",
+			"start_time",
+			"end_time",
+			"workspace_id",
+			"channel_id",
+			"license",
+			"source_version",
+			"style",
+		}
+		rows, err := db.Query(`PRAGMA table_info(media_assets)`)
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(media_assets): %v", err)
+		}
+		defer rows.Close()
+		seen := make(map[string]struct{}, 64)
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dfltValue sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				t.Fatalf("scan table_info row: %v", err)
+			}
+			seen[name] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate table_info: %v", err)
+		}
+		for _, col := range required {
+			if _, ok := seen[col]; !ok {
+				t.Errorf("media_assets missing column %q (added by migration 099_qdrant_asset_columns.sql; canonical.go must mirror it)", col)
+			}
+		}
+	})
+
+	t.Run("QdrantAssetColumnsRoundTrip", func(t *testing.T) {
+		// TODO 15 (June 2026): raw-SQL round-trip on a fresh DB to
+		// verify the 9 new columns added by migration 099 survive an
+		// insert + select. The schema-layer test covers the user's
+		// "FetchAsset works on fixture in-memory" requirement; the
+		// qdrant-package TestSQLiteAssetStore_FetchAssetAfterMigrations
+		// covers the typed FetchAsset path explicitly.
+		_, err := db.Exec(`
+			INSERT INTO media_assets (
+				id, source, name, tags, media_type, lifecycle_state,
+				youtube_video_id, youtube_url, start_time, end_time,
+				workspace_id, channel_id, license, source_version, style
+			) VALUES (?, 'artlist', 'round-trip smoke', '[]', 'video', 'ACTIVE',
+			          'yt-123', 'https://www.youtube.com/watch?v=yt-123',
+			          '10.0', '20.0',
+			          'ws-1', 'chan-9', 'standard', 'src-v1', 'cinematic')
+		`, "rt-asset-1")
+		if err != nil {
+			t.Fatalf("insert round-trip asset: %v", err)
+		}
+		var youtubeVideoID, youtubeURL, startTime, endTime string
+		var workspaceID, channelID, lic, sourceVersion, styleStr string
+		err = db.QueryRow(`
+			SELECT youtube_video_id, youtube_url, start_time, end_time,
+			       workspace_id, channel_id, license, source_version, style
+			FROM media_assets WHERE id = ?
+		`, "rt-asset-1").Scan(&youtubeVideoID, &youtubeURL, &startTime, &endTime,
+			&workspaceID, &channelID, &lic, &sourceVersion, &styleStr)
+		if err != nil {
+			t.Fatalf("select round-trip asset: %v", err)
+		}
+		expectations := map[string]string{
+			"youtube_video_id": youtubeVideoID,
+			"youtube_url":      youtubeURL,
+			"start_time":       startTime,
+			"end_time":         endTime,
+			"workspace_id":     workspaceID,
+			"channel_id":       channelID,
+			"license":          lic,
+			"source_version":   sourceVersion,
+			"style":            styleStr,
+		}
+		want := map[string]string{
+			"youtube_video_id": "yt-123",
+			"youtube_url":      "https://www.youtube.com/watch?v=yt-123",
+			"start_time":       "10.0",
+			"end_time":         "20.0",
+			"workspace_id":     "ws-1",
+			"channel_id":       "chan-9",
+			"license":          "standard",
+			"source_version":   "src-v1",
+			"style":            "cinematic",
+		}
+		for col, got := range expectations {
+			if got != want[col] {
+				t.Errorf("round-trip %s = %q, want %q", col, got, want[col])
 			}
 		}
 	})

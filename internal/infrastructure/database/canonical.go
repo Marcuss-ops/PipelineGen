@@ -96,5 +96,20 @@ CREATE TABLE IF NOT EXISTS media_assets (
     visual_embedding_json TEXT NOT NULL DEFAULT '',
     mime_type TEXT NOT NULL DEFAULT '',
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
-    project TEXT NOT NULL DEFAULT ''
+    project TEXT NOT NULL DEFAULT '',
+    -- Migration 099 (June 2026) — QDRANT asset column alignment.
+    -- Types MUST match migrations/sqlite/099_qdrant_asset_columns.sql
+    -- so the canonical CREATE TABLE reproduces what the migration chain
+    -- produces on a fresh DB. start_time / end_time are stored as TEXT
+    -- (not REAL) per the migration — that decision is the source of
+    -- truth; this constant mirrors it.
+    youtube_video_id TEXT NOT NULL DEFAULT '',
+    youtube_url TEXT NOT NULL DEFAULT '',
+    start_time TEXT NOT NULL DEFAULT '',
+    end_time TEXT NOT NULL DEFAULT '',
+    workspace_id TEXT NOT NULL DEFAULT '',
+    channel_id TEXT NOT NULL DEFAULT '',
+    license TEXT NOT NULL DEFAULT '',
+    source_version TEXT NOT NULL DEFAULT '',
+    style TEXT NOT NULL DEFAULT ''
 );`
