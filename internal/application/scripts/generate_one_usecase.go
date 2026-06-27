@@ -20,7 +20,6 @@ package scripts
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -214,8 +213,11 @@ func (uc *GenerateOneUseCase) Execute(
 //     ppReg.Run. The same struct is referenced through
 //     engineResult.Output.SpecScene.Scenes, so result.Output already
 //     carries the populated bindings.
-//   - The pre-PR-3 split-ProC-Result / VideoMetadata merge loops
+//   - The pre-PR-3 split-PostProcessResult / VideoMetadata merge loops
 //     are gone — replaced by the canonical aggregate read.
+//
+// PR D.2: ScriptID is sourced from postArtifact.ScriptID (set by
+// PersistenceProcessor). The engine no longer saves directly.
 func buildGenerationResult(
 	item scriptpkg.GenerationItemV2,
 	plan scriptpkg.ResolvedGenerationPlan,
@@ -225,8 +227,8 @@ func buildGenerationResult(
 ) *scriptpkg.GenerationResult {
 	cacheHit := engineResult.CacheStatus == "exact_hit"
 
-	// PR 3: ScriptID is sourced from postArtifact.ScriptID (set by
-	// PersistenceProcessor when its plan runs). When persistence is
+	// ScriptID is sourced from postArtifact.ScriptID (set by
+	// PersistenceProcessor when persistence runs). When persistence is
 	// disabled, ScriptID is zero.
 	scriptIDFromArtifact := int64(0)
 	if postArtifact != nil {
@@ -262,8 +264,6 @@ func buildGenerationResult(
 		sourceTrace.AcceptedClipIDs = engineResult.ClipEvidence.ClipIDs
 	}
 	// PR 3: the pre-PR-3 overwriting loop that enriched
-	}
-	// PR 3: the pre-PR-3 overwriting loop that enriched
 	// scene.Bindings.Clip.ClipID/DriveLink from
 	// engineResult.ClipEvidence is gone. Clip bindings are now
 	// model-emitted authors of the canonical V1 contract; if the
@@ -278,9 +278,6 @@ func buildGenerationResult(
 			result.Artifacts.Document = postArtifact.Document
 		}
 		if len(postArtifact.Metadata) > 0 {
-			// Convert applyapplication.VideoMetadata to
-			// domain/script.VideoMetadata (typed destination —
-			// same shape).
 			meta := make([]scriptpkg.VideoMetadata, len(postArtifact.Metadata))
 			for i, m := range postArtifact.Metadata {
 				meta[i] = scriptpkg.VideoMetadata{

@@ -29,6 +29,12 @@ const (
 	// associated visual asset.
 	SceneNarration SceneKind = "narration"
 
+	// SceneIntro — introductory narration for the video.
+	SceneIntro SceneKind = "intro"
+
+	// SceneOutro — concluding narration / call-to-action for the video.
+	SceneOutro SceneKind = "outro"
+
 	// SceneClip — the scene is anchored to a selected YouTube clip.
 	SceneClip SceneKind = "clip"
 
@@ -43,7 +49,7 @@ const (
 // Valid reports whether k is a known scene kind.
 func (k SceneKind) Valid() bool {
 	switch k {
-	case SceneNarration, SceneClip, SceneImage, SceneMixed:
+	case SceneNarration, SceneIntro, SceneOutro, SceneClip, SceneImage, SceneMixed:
 		return true
 	}
 	return false
