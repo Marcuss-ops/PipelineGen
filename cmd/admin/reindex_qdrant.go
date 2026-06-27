@@ -154,6 +154,7 @@ func runReindexQdrant(args []string) error {
 	mapper := qdrant.NewPayloadMapper(assetStore, log)
 	client := qdrant.NewClient(&qdrant.Config{
 		BaseURL: cfg.Qdrant.BaseURL,
+		APIKey:  cfg.Qdrant.APIKey,
 		Timeout: cfg.Qdrant.Timeout,
 	}, log)
 	writer := qdrant.NewIndexWriter(client, schema, mapper, log)
