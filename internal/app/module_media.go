@@ -163,6 +163,18 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	if dispatcher != nil {
 		clipsDispatcherPort = &clipsDispatcherAdapter{disp: dispatcher}
 	}
+	// W14 PR2 slice 3 (June 2026): construct the BulkUploadWorker
+	// from typed ports so the handler never imports infra for the
+	// bulk-upload job path. The concrete adapters already exist in
+	// clips_adapters_index.go.
+	bulkUploadWorker := appclips.NewBulkUploadWorker(
+		newClipsDriveAdapter(driveUploader),
+		newClipsRepoAdapter(bundle.ClipsRepo),
+		newClipsIndexerAdapter(bundle.ClipIndexerService),
+		newClipsHashAdapter(),
+		newClipsCfgAdapter(cfg),
+		log,
+	)
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
 		SourceResolver: artifacts.NewSourceResolver(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo),
 		AssetRepo:      assetRepo,
@@ -186,8 +198,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 			"artlist": bundle.ClipsRepo,
 			"stock":   bundle.ClipsRepo,
 		}),
-		ProcessRunner: processRunnerAdapter,
-		Dispatcher:    clipsDispatcherPort,
+		ProcessRunner:   processRunnerAdapter,
+		Dispatcher:      clipsDispatcherPort,
+		BulkUploadWorker: bulkUploadWorker,
 	}, idemHandler)
 	var drivePort appstorage.DrivePort
 	if driveUploader != nil {
