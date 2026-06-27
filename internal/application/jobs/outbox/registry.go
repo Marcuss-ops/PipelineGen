@@ -29,76 +29,68 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-) // Deps bundles the optional dependencies RegisterAll forwards to the
+)
+
+// Deps bundles the optional dependencies RegisterAll forwards to the
 // real outbox event handlers. Each field is optional; a nil field
 // means the corresponding handler is skipped from registration.
 //
-//	DB            : *sql.DB backing store. Required for the
-//	                                 MetadataExportHandler (snapshot reads
-//	                                 across media_assets / voiceover /
+// DB: *sql.DB backing store. Required for the MetadataExportHandler
+// (snapshot reads across media_assets / voiceover / image /
+// delivery_log) and for the DeliveryHandler (delivery_log writes).
+// Also feeds the ProviderSyncHandler fallback paths when jobs is nil.
 //
-// //	                                 image / delivery_log) and for the
+// HTTPClient: *http.Client used by DeliveryHandler for outbound POSTs.
+// Defaults to 30s-timeout client if nil.
 //
-//	                                 DeliveryHandler (delivery_log
-//	                                 writes). Also feeds the
-//	                                 ProviderSyncHandler fallback paths
-//	                                 when jobs is nil.
+// MetadataDir: absolute path to the sidecar JSON output directory
+// (typically cfg.Storage.FullPath("asset_metadata")). Required for
+// MetadataExportHandler to be wired.
 //
-//	HTTPClient    : *http.Client used by DeliveryHandler for outbound
-//	                  POSTs. Defaults to 30s-timeout client if nil.
+// HMACSecrets: rotated keys (current first, previous second). Required
+// for ProductionDeliveryHandler to wire real outbound signing. nil +
+// insecureDev=false causes the registration to SKIP the delivery
+// handler (no permanent stub: a missing secret registers a loud
+// "refuse-everything" handler).
 //
-//	MetadataDir   : absolute path to the sidecar JSON output directory
-//	                  (typically cfg.Storage.FullPath("asset_metadata")).
-//	                  Required for MetadataExportHandler to be wired.
+// InsecureDev: boolean flag for VELOX_ALLOW_INSECURE_DEV=true. When
+// true the DeliveryHandler emits unsigned POSTs with an unmistakable
+// warning per call. Never meant for production.
 //
-//	HMACSecrets   : rotated keys (current first, previous second).
-//	                  Required for ProductionDeliveryHandler to wire
-//	                  real outbound signing. nil + insecureDev=false
-//	                  causes the registration to SKIP the delivery
-//	                  handler (no permanent stub: a missing secret
-//	                  registers a loud "refuse-everything" handler).
+// Jobs: JobsEnqueuer for the ProviderSyncHandler (real dispatch onto
+// jobs.Service for drive|youtube). nil → drive|youtube events
+// fail-open as retryable errors so the outbox pool retries — no
+// silent ack.
 //
-//	InsecureDev   : boolean flag for VELOX_ALLOW_INSECURE_DEV=true.
-//	                  When true the DeliveryHandler emits unsigned POSTs
-//	                  with an unmistakable warning per call. Never meant
-//	                  for production.
+// QdrantDeleter: QdrantDeleter for the IndexDeleteHandler (real
+// DELETE-points onto Qdrant via the canonical *qdrant.Service). nil
+// → IndexDeleteHandler is skipped; events then dead-letter with "no
+// handler for event type X" in the pool's pool log.
 //
-//	Jobs          : JobsEnqueuer for the ProviderSyncHandler (real
-//	                  dispatch onto jobs.Service for drive|youtube).
-//	                  nil → drive|youtube events fail-open as retryable
-//	                  errors so the outbox pool retries — no silent ack.
+// AssetDeleter: AssetDeleter for the IndexDeleteHandler (real
+// media_assets soft-delete via *assets.ClipsRepository). nil →
+// IndexDeleteHandler is skipped (same effect as QdrantDeleter nil).
 //
-//	QdrantDeleter : QdrantDeleter for the IndexDeleteHandler (real
-//	                  DELETE-points onto Qdrant via the canonical
-//	                  *qdrant.Service). nil → IndexDeleteHandler is
-//	                  skipped; events then dead-letter with "no
-//	                  handler for event type X" in the pool's pool log.
-//
-//	AssetDeleter  : AssetDeleter for the IndexDeleteHandler (real
-//	                  media_assets soft-delete via
-//	                  *assets.ClipsRepository). nil → IndexDeleteHandler
-//	                  is skipped (same effect as QdrantDeleter nil).
-//
-//	AssetSourceChecker : AssetSourceChecker for the IndexingHandler
-//	                  pre-flight supersede gate (real
-//	                  media_assets GET via *assets.ClipsRepository).
-//	                  Same concrete as AssetDeleter in production
-//	                  (both expose GetClip as the load-bearing method);
-//	                  declared as a separate field so the gating decision
-//	                  is explicit at every composition call site. nil →
-//	                  IndexingHandler is wired WITHOUT the
-//	                  source_version supersede gate (works, just leaves
-//	                  stale-event short-circuit on the IndexClip layer).
+// SourceVersionQuerier: SourceVersionQuerier for the IndexingHandler
+// pre-flight supersede gate (real media_assets source_version via
+// *assets.ClipsRepository.SourceVersionFor, which delegates to the
+// canonical SQL helper in
+// internal/infrastructure/database/sqlite/assets/source_version.go).
+// PR 11 follow-up (June 2026) replaced the legacy AssetSourceChecker
+// port — both the producer-side (cmd/admin/reconcile_qdrant.go) and
+// consumer-side (this handler) priority chains now share that single
+// function so future drift is structurally impossible. nil →
+// IndexingHandler is wired WITHOUT the source_version supersede gate.
 type Deps struct {
-	DB                 *sql.DB
-	HTTPClient         *http.Client
-	MetadataDir        string
-	HMACSecrets        [][]byte
-	InsecureDev        bool
-	Jobs               JobsEnqueuer
-	QdrantDeleter      QdrantDeleter
-	AssetDeleter       AssetDeleter
-	AssetSourceChecker AssetSourceChecker
+	DB                   *sql.DB
+	HTTPClient           *http.Client
+	MetadataDir          string
+	HMACSecrets          [][]byte
+	InsecureDev          bool
+	Jobs                 JobsEnqueuer
+	QdrantDeleter        QdrantDeleter
+	AssetDeleter         AssetDeleter
+	SourceVersionQuerier SourceVersionQuerier
 }
 
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
@@ -130,7 +122,7 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 	}
 
 	// IndexClipper-backed IndexingHandler is optional (gated on
-	// indexer != nil). AssetSourceChecker is wired best-effort when
+	// indexer != nil). SourceVersionQuerier is wired best-effort when
 	// non-nil so the source_version supersede gate activates — nil
 	// is acceptable in tests + partial wiring windows; pool will
 	// simply skip the supersede gate (IndexClip's own internal
@@ -138,7 +130,7 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 	if indexer != nil {
 		realHandlers = append(realHandlers, &IndexingHandler{
 			indexer:       indexer,
-			sourceChecker: depsOrNil(deps).AssetSourceChecker,
+			sourceQuerier: depsOrNil(deps).SourceVersionQuerier,
 			log:           log,
 		})
 	}
@@ -182,11 +174,12 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 	}
 
 	log.Info("outbox handlers registered (real handlers only — no stubs)",
-		zap.Int("real", len(realHandlers)),
+		zap.Int("registered", len(realHandlers)),
 		zap.Bool("delivery_wired", deps != nil && (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev)),
 		zap.Bool("metadata_export_wired", deps != nil && deps.DB != nil && deps.MetadataDir != ""),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs != nil),
 		zap.Bool("index_delete_wired", deps != nil && deps.QdrantDeleter != nil && deps.AssetDeleter != nil),
+		zap.Bool("index_supersede_wired", deps != nil && deps.SourceVersionQuerier != nil),
 	)
 	return nil
 }

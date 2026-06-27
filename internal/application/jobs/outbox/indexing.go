@@ -44,13 +44,14 @@ package outbox
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
@@ -77,20 +78,29 @@ type IndexClipper interface {
 	IndexClip(ctx context.Context, clipID string) error
 }
 
-// AssetSourceChecker is the pre-flight idempotency surface needed
-// for the source_version supersede gate (QDRANT-002 item F). Same
-// shape as AssetDeleter.GetClip in index_delete.go — production
-// concrete is *assets.ClipsRepository from
-// internal/infrastructure/database/sqlite/assets, which already
-// satisfies both IndexingHandler + IndexDeleteHandler contracts.
+// SourceVersionQuerier is the pre-flight idempotency surface needed
+// for the source_version supersede gate (QDRANT-002 item F).
 //
-// We expose a focused one-method interface here (rather than reusing
-// AssetDeleter) so the semantics are explicit at every call site:
-// "I need to read the current aggregate state to compare source
-// versions" vs. "I need to soft-delete the aggregate". Tests pass a
-// stub that returns a pre-built *asset.Asset.
-type AssetSourceChecker interface {
-	GetClip(ctx context.Context, id string) (*asset.Asset, error)
+// PR 11 follow-up (June 2026): the previous AssetSourceChecker
+// interface exposed `GetClip(ctx, id) (*asset.Asset, error)` so this
+// handler could load the full aggregate and walk Go accessors over
+// it. That pattern DRIFTED against the producer-side SQL helper in
+// cmd/admin/reconcile_qdrant.go — the producer walked a 3-tier
+// COALESCE chain (content_hash → metadata.file_hash → top-level
+// file_hash column) while the consumer walked *asset.Asset
+// accessor methods whose FileHash() returns the SAME metadata slot
+// as the JSON file_hash tier. To unify the two, the upstream port
+// is replaced by SourceVersionQuerier which is a direct, narrow
+// method that returns the same value the producer computes.
+//
+// Production concrete is *assets.ClipsRepository from
+// internal/infrastructure/database/sqlite/assets, which delegates
+// to assets.SourceVersionFor (the canonical SQL helper — same
+// function cmd/admin/reconcile_qdrant.go imports). A single
+// function owns the priority chain semantics so future drift is
+// structurally impossible.
+type SourceVersionQuerier interface {
+	SourceVersionFor(ctx context.Context, id string) (string, error)
 }
 
 // indexRequestV1 is the canonical v1 envelope for
@@ -140,7 +150,7 @@ type indexRequestV1 struct {
 // IndexingHandler is the canonical handler for asset.index.requested.v1.
 //
 // indexer is required for production wiring (BuildOutboxBundle
-// populates it from *clipindexer.Service). sourceChecker is required
+// populates it from *clipindexer.Service). sourceQuerier is required
 // for the supersede gate; nil is allowed in tests that exercise only
 // the parse-time / schema-validation branch.
 //
@@ -149,20 +159,20 @@ type indexRequestV1 struct {
 // than crashing — but production callers MUST wire both.
 type IndexingHandler struct {
 	indexer       IndexClipper
-	sourceChecker AssetSourceChecker
+	sourceQuerier SourceVersionQuerier
 	log           *zap.Logger
 }
 
 // NewIndexingHandler wires the producer-side dependencies. log nil →
-// nop logger. Both indexer and sourceChecker may be nil in tests; the
+// nop logger. Both indexer and sourceQuerier may be nil in tests; the
 // real wire path (BuildOutboxBundle) passes non-nil for both.
-func NewIndexingHandler(indexer IndexClipper, sourceChecker AssetSourceChecker, log *zap.Logger) *IndexingHandler {
+func NewIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier, log *zap.Logger) *IndexingHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &IndexingHandler{
 		indexer:       indexer,
-		sourceChecker: sourceChecker,
+		sourceQuerier: sourceQuerier,
 		log:           log.Named("index"),
 	}
 }
@@ -304,65 +314,57 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 
 	// Source-version supersede gate (QDRANT-002 item F — "Se l'evento
 	// è obsoleto, marcarlo SUPERSEDED senza indicizzare dati vecchi").
-	// Read the current asset via sourceChecker; compare its source
-	// fingerprint against the event's source_version. If they differ,
-	// another (newer) ingest already covered this aggregate; we MUST
-	// NOT burn a Qdrant upsert on stale data.
+	// Read the current asset's source fingerprint via the
+	// SourceVersionQuerier port (PR 11 follow-up: this replaced the
+	// previous AssetSourceChecker.GetClip pattern, which had a
+	// producer-/consumer-side priority-chain drift — see
+	// internal/infrastructure/database/sqlite/assets/source_version.go
+	// for the canonical priority list and the regression test that
+	// pins it).
 	//
-	// Source-version key priority (handler-side defense in depth):
-	//   1. metadata_json.$.content_hash  ← primarily written by the
-	//                                      Dispatcher inside the same
-	//                                      tx as the outbox event, so
-	//                                      atomic with the producer-side
-	//                                      source_version stamp.
-	//   2. metadata_json.$.file_hash     ← ingest.service fallback for
-	//                                      sources that write a different
-	//                                      key (an asset that arrived via
-	//                                      a path the Dispatcher did NOT
-	//                                      touch, e.g. direct CLI command).
-	//   3. media_assets.file_hash        ← legacy top-level column,
-	//                                      populated by older ingest
-	//                                      paths.
-	// The dispatcher writes key #1 atomically inside EnqueueAndIndex,
-	// so the gate is reliable for canonical ingest paths; keys #2 and
-	// #3 keep the gate meaningful for non-canonical ingest paths.
+	// Three outcomes from the helper:
+	//   (a) (value, nil)             — fingerprint present. If differs
+	//                                  from the event's source_version,
+	//                                  return *SupersedeError so the
+	//                                  pool routes the row to
+	//                                  MarkSuperseded without burning
+	//                                  a Qdrant upsert.
+	//   (b) ("", nil)                — row exists but no fingerprint;
+	//                                  fall through to IndexClip.
+	//   (c) ("", sql.ErrNoRows)      — row missing; fall through to
+	//                                  IndexClip (its own idempotency
+	//                                  check handles the ghost case).
+	// All OTHER errors are SQL failures (lock, I/O, drift) — retryable.
 	//
-	// When MULTIPLE keys are populated and DISAGREE, content_hash wins
-	// (it represents the same write boundary as the event's
-	// source_version stamp so the two are guaranteed to be consistent
-	// within a single ingest). DO NOT reorder these keys without
-	// thinking it through — see readSourceVersion for the load-bearing
-	// rules.
-	//
-	// The gate is skipped when sourceChecker is nil (test path only)
+	// The gate is skipped when sourceQuerier is nil (test path only)
 	// so we don't break tests that wire only the indexer.
-	if h.sourceChecker != nil {
-		current, gerr := h.sourceChecker.GetClip(ctx, p.AssetID)
-		if gerr != nil {
-			// GetClip failure is retryable — it could be a transient
-			// SQLite lock or a network blip on a remote DB.
-			log.Warn("asset.index.requested: GetClip for supersede gate failed (retryable)",
-				append(reqLog, zap.Error(gerr))...,
+	if h.sourceQuerier != nil {
+		curVersion, qerr := h.sourceQuerier.SourceVersionFor(ctx, p.AssetID)
+		if qerr != nil && !errors.Is(qerr, sql.ErrNoRows) {
+			// Generic SQL failure (lock, network blip, schema
+			// drift) is retryable — the pool's exponential backoff
+			// retries per its config.
+			log.Warn("asset.index.requested: SourceVersionFor failed (retryable)",
+				append(reqLog, zap.Error(qerr))...,
 			)
 			outcome = "retryable"
-			return fmt.Errorf("asset.index.requested GetClip(%s): %w", p.AssetID, gerr)
+			return fmt.Errorf("asset.index.requested SourceVersionFor(%s): %w", p.AssetID, qerr)
 		}
-		if current != nil {
-			curVersion := readSourceVersion(current)
-			if curVersion != "" && curVersion != p.SourceVersion {
-				// Stamp the metric before returning so dashboards
-				// surface the supersede delta even when the handler
-				// short-circuits before the duration observation
-				// captures the rest of the path.
-				metrics.MediaIndexSupersededTotal.WithLabelValues(evt.EventType).Inc()
-				outcome = "superseded"
-				log.Info("asset.index.requested: event superseded by newer aggregate version",
-					append(reqLog,
-						zap.String("current_source_version", curVersion),
-					)...,
-				)
-				return outboxevents.NewSupersede(p.AssetID, curVersion, p.SourceVersion)
-			}
+		// sql.ErrNoRows (row missing) — fall through.
+		// (value, nil) — proceed; supersede if value differs.
+		if qerr == nil && curVersion != "" && curVersion != p.SourceVersion {
+			// Stamp the metric before returning so dashboards
+			// surface the supersede delta even when the handler
+			// short-circuits before the duration observation
+			// captures the rest of the path.
+			metrics.MediaIndexSupersededTotal.WithLabelValues(evt.EventType).Inc()
+			outcome = "superseded"
+			log.Info("asset.index.requested: event superseded by newer aggregate version",
+				append(reqLog,
+					zap.String("current_source_version", curVersion),
+				)...,
+			)
+			return outboxevents.NewSupersede(p.AssetID, curVersion, p.SourceVersion)
 		}
 	}
 
@@ -392,45 +394,17 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 	return nil
 }
 
-// readSourceVersion returns the asset's current source_version
-// fingerprint by walking a deterministic priority list of fields
-// (see the IndexingHandler source_version key-priority comment for
-// the canonical-vs-fallback rationale).
+// NOTE (PR 11 follow-up, June 2026): the previous readSourceVersion
+// helper above was REMOVED. Both the producer-side
+// (cmd/admin/reconcile_qdrant.go) and this consumer-side handler now
+// route through assets.SourceVersionFor in
+// internal/infrastructure/database/sqlite/assets/source_version.go.
+// The legacy reader walked *Asset accessor methods, which DROPPED
+// tier 3 (legacy top-level media_assets.file_hash column) — the new
+// SQL helper honours all three tiers so backfilled rows from
+// pre-metadata-json tooling are correctly fingerprinted.
 //
-// Priority invariants — these are load-bearing, do NOT reorder:
-//
-//  1. metadata_json.$.content_hash is the dispatcher-aware write
-//     boundary (the Dispatcher writes it atomically inside the same
-//     tx as the outbox event). When MULTIPLE keys are populated and
-//     DISAGREE, content_hash wins — it represents the same write
-//     boundary as the event's source_version stamp so the two are
-//     guaranteed to be consistent within a single ingest.
-//
-//  2. metadata_json.$.file_hash is a fallback for non-dispatcher
-//     ingest paths (e.g. CLI direct upserts, older YouTube sync
-//     paths) where the Dispatcher was not in the write path.
-//
-//  3. Asset.FileHash() is the legacy top-level column; populated by
-//     pre-metadata-json ingest tooling.
-//
-// Returns "" when none of the candidate keys are populated — the
-// handler treats empty as "no current fingerprint to compare
-// against", so the gate is BYPASSED (IndexClip's own internal
-// indexed_content_hash check still runs as a fallback).
-func readSourceVersion(a *asset.Asset) string {
-	if a == nil {
-		return ""
-	}
-	if v := a.GetMetadataString("content_hash"); v != "" {
-		return v
-	}
-	if v := a.GetMetadataString("file_hash"); v != "" {
-		return v
-	}
-	// Top-level file_hash column on the Asset struct; populated
-	// by older ingest paths that did not write metadata_json.file_hash.
-	if v := a.FileHash(); v != "" {
-		return v
-	}
-	return ""
-}
+// The migration path for any future reader that needs to operate on
+// a pre-loaded *Asset should call into a thin adapter rather than
+// re-creating the priority chain — see the doc-comment on the
+// upstream package-level function for the canonical rules.

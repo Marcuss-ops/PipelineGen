@@ -14,19 +14,32 @@ import (
 	"go.uber.org/zap"
 )
 
-// Compile-time assertion (Wave 16, June 2026): *ClipsRepository
-// statically implements jobsoutbox.AssetSourceChecker (pre-flight
-// idempotency surface for the source_version supersede gate in
-// IndexingHandler). Per AGENTS.md Pattern 0, the assertion lives
-// at the adapter (infrastructure) home so port-drift bugs surface
-// at compile time, not at the first index.requested replay.
+// Compile-time assertion (Wave 16, June 2026; PR 11 followup
+// June 2026): *ClipsRepository statically implements
+// jobsoutbox.SourceVersionQuerier (pre-flight idempotency surface
+// for the source_version supersede gate in IndexingHandler). Per
+// AGENTS.md Pattern 0, the assertion lives at the adapter
+// (infrastructure) home so port-drift bugs surface at compile
+// time, not at the first index.requested replay.
 //
-// Two-method-or-more port: AssetSourceChecker currently exposes
-// only GetClip; adding a second method to the upstream port will
-// trip this assertion and force the concrete to implement the new
-// method. The same pattern as qdrant/search_adapter.go::var _
-// appsearch.VectorStorePort = ...
-var _ jobsoutbox.AssetSourceChecker = (*ClipsRepository)(nil)
+// PR 11 follow-up: AssetSourceChecker interface (which exposed
+// GetClip(ctx, id) (*asset.Asset, error)) was replaced with the
+// narrower SourceVersionQuerier (SourceVersionFor(ctx, id)
+// (string, error)). The replacement eliminates the producer-side
+// ↔ consumer-side priority-chain drift that pre-PR-11-followup
+// code carried (producer scanned via inline COALESCE; consumer
+// walked the Asset struct — different chains, same name). Both
+// sides now route through SourceVersionFor from
+// source_version.go above, which is the single source of truth.
+//
+// Two-method-or-more port guidance (now vacated): the legacy note
+// referenced the GetClip-only interface, but SourceVersionQuerier
+// also has a single method. Adding a second method to the
+// upstream port will trip this assertion and force the concrete
+// to implement the new method — same compile-time behaviour under
+// the new name. The same pattern as
+// qdrant/search_adapter.go::var _ appsearch.VectorStorePort = ...
+var _ jobsoutbox.SourceVersionQuerier = (*ClipsRepository)(nil)
 
 const mediaAssetColumns = `
 	id,
@@ -116,6 +129,27 @@ func (r *ClipsRepository) Get(ctx context.Context, id string) (*asset.Asset, err
 
 func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
 	return r.Get(ctx, id)
+}
+
+// SourceVersionFor is the PR 11 follow-up narrow port implementation
+// consumed by the IndexingHandler source_version supersede gate.
+// Delegates to the package-level helper (source_version.go) so the
+// priority-chain semantics are owned by ONE function even though two
+// upstream callers (this method + cmd/admin inline) flow through it.
+//
+// Returns sql.ErrNoRows unchanged so the upstream consumer can
+// distinguish "row missing" from "row exists but empty fingerprint".
+// Both paths fall through to "skip the gate, let IndexClip decide";
+// the diagnostic value of distinguishing them lives in tests
+// (TestSourceVersionFor_AssetNotFoundReturnsErrNoRows).
+//
+// Note: GetClip (above) remains because IndexDeleteHandler keeps it
+// via the AssetDeleter interface — that's a separate concern
+// (deletion rather than version lookup). Removing GetClip would
+// trigger a separate refactor (AssetDeleter → AssetMutator) which
+// is out of scope for the PR 11 followup.
+func (r *ClipsRepository) SourceVersionFor(ctx context.Context, id string) (string, error) {
+	return SourceVersionFor(ctx, r.db, id)
 }
 
 func (r *ClipsRepository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
@@ -297,23 +331,25 @@ func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sq
 // QDRANT-asset-mutation isolation (June 2026): //nolint:production.
 // Production callers (internal/application/**, internal/api/**)
 // MUST NOT call this directly. The legitimate callers are:
-//   1. The dispatcher itself, which wraps this call inside an
-//      outbox transaction via UpsertClipTx + emits an outbox event
-//      in the same tx (the canonical QDRANT-002 path).
-//   2. The admin tool's InternalAdminPurge adapter, when
-//      back-filling a row in a scenario where the worker pool is
-//      offline; the admin path uses `assets.ClipsRepository.Upsert`
-//      rather than this method (which is dispatcher-only).
-//   3. Tests via the dispatcher stub or a bare `&Service{}` fixture
-//      (test code paths are explicitly allowlisted by the CI lint).
+//  1. The dispatcher itself, which wraps this call inside an
+//     outbox transaction via UpsertClipTx + emits an outbox event
+//     in the same tx (the canonical QDRANT-002 path).
+//  2. The admin tool's InternalAdminPurge adapter, when
+//     back-filling a row in a scenario where the worker pool is
+//     offline; the admin path uses `assets.ClipsRepository.Upsert`
+//     rather than this method (which is dispatcher-only).
+//  3. Tests via the dispatcher stub or a bare `&Service{}` fixture
+//     (test code paths are explicitly allowlisted by the CI lint).
 //
 // Removed from public API surfaces:
 //   - artlist.AssetStore (search_core_test only)
 //   - clips.ClipRepositoryPort (clip_ops.go only)
 //   - sourcing.ClipStorePort (sourcing/service.go only)
+//
 // Per the user's verify-the-rg-test contract:
-//   `rg 'UpsertClip\(' internal/application internal/api` returns
-//   ZERO production hits (test hits allowed).
+//
+//	`rg 'UpsertClip\(' internal/application internal/api` returns
+//	ZERO production hits (test hits allowed).
 func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	return r.Upsert(ctx, clip)
 }

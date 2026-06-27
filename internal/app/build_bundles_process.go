@@ -31,12 +31,12 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -375,36 +375,39 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		hmacSecrets = append(hmacSecrets, []byte(prev))
 	}
 
-	// AssetSourceChecker is the load-bearing GetClip port used by
-	// the IndexingHandler source_version supersede gate (QDRANT-002
-	// item F). The production concrete is the same ClipsRepository
-	// already wired into the dispatcher's MultiClipsUpserter; both
-	// expose GetClip, so a single instance satisfies the interface.
-	// nil ClipsRepo → nil AssetSourceChecker → IndexingHandler skips
-	// the supersede gate (acceptable in test dbs; production always
-	// wires non-nil).
+	// SourceVersionQuerier is the narrow port consumed by the
+	// IndexingHandler source_version supersede gate (PR 11 follow-up,
+	// June 2026). The production concrete is *assets.ClipsRepository
+	// (already wired into the dispatcher's MultiClipsUpserter; same
+	// instance also implements SourceVersionQuerier via a thin
+	// delegating method). nil ClipsRepo → nil SourceVersionQuerier →
+	// IndexingHandler skips the supersede gate (acceptable in test
+	// dbs; production always wires non-nil).
 	//
 	// Wave 16 (June 2026): typed-port direct assignment per
-	// AGENTS.md Pattern 0. The previous `interface{}(repos.ClipsRepo)
-	// .(jobsoutbox.AssetSourceChecker)` raw cast is replaced because
-	// *assets.ClipsRepository statically implements the port
-	// (compile-time assertion at
+	// AGENTS.md Pattern 0. The previous
+	// `interface{}(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker)`
+	// raw cast is replaced because *assets.ClipsRepository
+	// statically implements the port (compile-time assertion at
 	// internal/infrastructure/database/sqlite/assets/clips_repository.go).
 	// Dropping the `, ok` form is safe: the assertion fails the build
 	// if port drift ever breaks the static implementation contract.
-	var assetSourceChecker jobsoutbox.AssetSourceChecker
+	// PR 11 follow-up extends the assertion to SourceVersionQuerier
+	// (single-method port) — the previous AssetSourceChecker port
+	// (GetClip → walk Asset) is removed entirely.
+	var sourceQuerier jobsoutbox.SourceVersionQuerier
 	if repos.ClipsRepo != nil {
-		assetSourceChecker = repos.ClipsRepo
+		sourceQuerier = repos.ClipsRepo
 	}
 
 	outboxDeps := &jobsoutbox.Deps{
-		DB:                 dbs.main.DB,
-		HTTPClient:         httpClient,
-		MetadataDir:        cfg.Storage.FullPath("asset_metadata"),
-		HMACSecrets:        hmacSecrets,
-		InsecureDev:        cfg.Security.DeliveryInsecureDev,
-		Jobs:               jobs.Service,
-		AssetSourceChecker: assetSourceChecker,
+		DB:                   dbs.main.DB,
+		HTTPClient:           httpClient,
+		MetadataDir:          cfg.Storage.FullPath("asset_metadata"),
+		HMACSecrets:          hmacSecrets,
+		InsecureDev:          cfg.Security.DeliveryInsecureDev,
+		Jobs:                 jobs.Service,
+		SourceVersionQuerier: sourceQuerier,
 	}
 	// QDRANT-003 PR8: wire qd.QdrantDeleter (IndexWriter built by
 	// composition.go::buildQdrantDeps) as outbox.Deps.QdrantDeleter for
