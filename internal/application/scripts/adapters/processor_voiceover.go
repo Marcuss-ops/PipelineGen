@@ -158,7 +158,15 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			zap.Strings("warnings", warnings))
 	}
 
-	return &PostProcessResult{Voiceovers: voiceovers}, nil
+	// fix/voiceover-propagate-warnings (June 2026): propagate per-scene
+	// failures to PostProcessResult.Warnings so the canonical
+	// GenerationResult.Warnings envelope in the API response reports
+	// them. The zap log above stays — it serves operator tail/grep,
+	// while the envelope is the client-facing canonical surface.
+	return &PostProcessResult{
+		Voiceovers: voiceovers,
+		Warnings:   warnings,
+	}, nil
 }
 
 // extractVoiceoverPaths extracts DriveLink and Path from a voiceover
