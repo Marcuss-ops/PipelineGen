@@ -3,6 +3,13 @@
 // canonical PostGenUseCase (via PostGenFunc callback) and packs
 // the extracted entity blob into a typed *script.EntityResult.
 //
+// PR 7 (June 2026): the postgen LLM JSON is now parsed into the
+// typed Persons / Places / Concepts slots via ParseEntities. The
+// Raw field on EntityResult still preserves the original JSON
+// for read-compat + debug visibility. Consumers can now read
+// result.Artifacts.Entities.Persons directly without falling back
+// to Raw.
+//
 // PR 3 (June 2026): EntitiesJSON (the pre-PR-3 free-form string
 // returned into the aggregate) is replaced with the typed
 // *script.EntityResult. The Raw field on EntityResult preserves
@@ -74,7 +81,11 @@ func (p *EntitiesProcessor) Process(
 		return nil, fmt.Errorf("%w: entities processor: postGen callback failed: %w", scriptpkg.ErrPostprocessFailed, err)
 	}
 
-	return entitiesOnlyArtifact(&scriptpkg.EntityResult{Raw: entitiesJSON}), nil
+	// PR 7 (June 2026): ParseEntities pops the typed Persons /
+	// Places / Concepts into the typed slots. The Raw field still
+	// carries the original postgen JSON string for backward
+	// read-compat with pre-PR-7 rows + debug visibility.
+	return entitiesOnlyArtifact(ParseEntities(entitiesJSON)), nil
 }
 
 // entitiesOnlyArtifact returns a *PostProcessArtifact with only
