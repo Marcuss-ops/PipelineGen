@@ -27,6 +27,7 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -202,13 +203,22 @@ var (
 // BuildProcessBundle builds media-processing adapters. driveUploader
 // passed in directly.
 //
+// PR 7 cutover: the canonical manifest.Service is constructed ONCE here
+// and exposed on ProcessBundle.ManifestService. The SAME instance is
+// threaded through initMediaProcessor (Processor), WireArtlist
+// (SemanticEnricher), and WireAssets (newAssetRegisterService +
+// clipsHandler.Deps) so concurrent writers to the same Drive folder
+// serialize through the same per-folder lock.
+//
 // QDRANT-003 (June 2026): Qdrant vector-store capability reintroduced.
 // IndexWriter is created and wired as the clipindexer's VectorStoreIndexer.
 // EnsureSchema is deferred to wire_services.go startup plan (startup-time).
 func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, driveUploader *drive.Uploader) (*ProcessBundle, error) {
 	_ = ctx
+	// PR 7: build the canonical manifest.Service ONCE. Composite root.
+	manifestSvc := manifest.New(newManifestDriveAdapter(driveUploader, log), log)
 	mediaProcessor := initMediaProcessor(cfg, dbs.main, repos.Assets.Repository(), repos.Assets,
-		repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), log, driveUploader)
+		repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), log, driveUploader, manifestSvc)
 
 	vlmClient := vlm.NewClient(vlm.Config{
 		Enabled:   cfg.VLM.Enabled,
@@ -297,6 +307,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		QdrantHealthProbe:  qdrantHealthProbe,
 		LocatorCleaner:     locatorCleaner,
 		QdrantSearcher:     qdrantSearcher,
+		ManifestService:    manifestSvc,
 	}, nil
 }
 

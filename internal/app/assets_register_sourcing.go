@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -35,6 +35,7 @@ func newAssetRegisterService(
 	providerRegistry *providers.Registry,
 	clipsHandler *clipsapi.Handler,
 	dispatcher *outbox.Dispatcher,
+	manifestSvc manifest.Service,
 ) *sourcing.Service {
 	var indexDisp sourcing.IndexDispatcherPort
 	if dispatcher != nil {
@@ -52,7 +53,7 @@ func newAssetRegisterService(
 		&sourcingSearchAdapter{registry: providerRegistry},
 		&sourcingConfigAdapter{cfg: cfg},
 		&sourcingEnrichmentAdapter{handler: clipsHandler},
-		&sourcingMetadataAdapter{cfg: cfg, uploader: driveUploader, log: log},
+		&sourcingMetadataAdapter{cfg: cfg, uploader: driveUploader, log: log, manifestSvc: manifestSvc},
 		indexDisp,
 		&zapSourcingLogger{log: log},
 	)
@@ -325,16 +326,84 @@ func (a *sourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, 
 }
 
 type sourcingMetadataAdapter struct {
-	cfg      *config.Config
-	uploader *driveutil.Uploader
-	log      *zap.Logger
+	cfg         *config.Config
+	uploader    *driveutil.Uploader
+	log         *zap.Logger
+	manifestSvc manifest.Service
 }
 
+// UpdateCumulativeJSON preserves the MetadataPort contract signature
+// for sourcing.Service callers but routes the write through the
+// canonical manifest.Service (PR 7 cutover). Field projection: known
+// manifest.Entry fields (Name/Source/DriveFileID/DriveLink/FileHash/
+// LocalPath/DurationSec) are pulled out of the opaque `entry` map;
+// the remainder is dumped into Entry.Metadata so the on-disk schema
+// stays a flat flat JSON (not nested under a "metadata" key).
 func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
-	if a.uploader == nil || a.cfg == nil {
+	if a.manifestSvc == nil {
 		return nil
 	}
-	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.uploader), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
+	if folderID == "" || clipID == "" {
+		return nil
+	}
+	out := manifest.Entry{
+		AssetID:   clipID,
+		UpdatedAt: time.Now().UTC(),
+	}
+	if v, ok := entry["name"].(string); ok {
+		out.Name = v
+	}
+	if v, ok := entry["source"].(string); ok {
+		out.Source = v
+	}
+	if v, ok := entry["drive_file_id"].(string); ok {
+		out.DriveFileID = v
+	}
+	if v, ok := entry["drive_link"].(string); ok {
+		out.DriveLink = v
+	}
+	if v, ok := entry["file_hash"].(string); ok {
+		out.FileHash = v
+	}
+	if v, ok := entry["local_path"].(string); ok {
+		out.LocalPath = v
+	}
+	if v, ok := entry["duration_sec"].(float64); ok {
+		out.DurationSec = v
+	}
+	if v, ok := entry["tags"].([]string); ok {
+		out.Tags = append([]string(nil), v...)
+	}
+	if v, ok := entry["search_terms"].([]string); ok {
+		out.SearchTerms = append([]string(nil), v...)
+	}
+	out.Metadata = make(map[string]any, len(entry))
+	for k, v := range entry {
+		switch k {
+		case "name", "source", "drive_file_id", "drive_link", "file_hash", "local_path", "duration_sec", "tags", "search_terms":
+			continue
+		default:
+			out.Metadata[k] = v
+		}
+	}
+	if herr := a.manifestSvc.UpsertRemote(ctx, folderID, out); herr != nil {
+		if a.log != nil {
+			a.log.Warn("sourcing: manifest.UpsertRemote failed",
+				zap.String("clip_id", clipID),
+				zap.String("folder_id", folderID),
+				zap.Error(herr))
+		}
+	}
+	if tempDir != "" {
+		if lerr := a.manifestSvc.UpsertLocal(ctx, tempDir, out); lerr != nil {
+			if a.log != nil {
+				a.log.Warn("sourcing: manifest.UpsertLocal failed",
+					zap.String("clip_id", clipID),
+					zap.String("temp_dir", tempDir),
+					zap.Error(lerr))
+			}
+		}
+	}
 	return nil
 }
 

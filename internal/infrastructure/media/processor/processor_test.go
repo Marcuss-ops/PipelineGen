@@ -64,7 +64,7 @@ func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, tim
 }
 
 func TestProcessorHandlesNilInput(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, zap.NewNop(), ProcessorConfig{}, nil, nil)
+	p := NewProcessor(nil, nil, nil, zap.NewNop(), ProcessorConfig{}, nil, nil, nil)
 
 	result, err := p.Process(context.Background(), nil)
 
@@ -88,6 +88,7 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 			TempDir:  "tmp",
 			VideoCfg: ffmpeg.NormalizeOptions{},
 		},
+		nil,
 		nil,
 		nil,
 	)
@@ -121,6 +122,7 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 			TempDir:  "tmp",
 			VideoCfg: ffmpeg.NormalizeOptions{},
 		},
+		nil,
 		nil,
 		nil,
 	)
@@ -159,6 +161,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 				FPS:    30,
 			},
 		},
+		nil,
 		nil,
 		nil,
 	)

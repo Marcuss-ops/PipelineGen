@@ -10,6 +10,7 @@ import (
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -35,18 +36,11 @@ type UploadVideoClipResponse struct {
 	Duration    int      `json:"duration,omitempty"`
 }
 
-// UploadVideoClip handles POST /api/media/upload-video
-// Accepts multipart form data with a video file and metadata fields.
-//
-// Form fields:
-//   - file:       (required) the video file
-//   - name:       clip name (defaults to filename without extension)
-//   - description: description / search text for Qdrant indexing
-//   - tags:       JSON array of tags, e.g. ["funny","interview"]
-//   - source:     source identifier (default "manual")
-//   - category:   category
-//   - group:      Drive subfolder group name
-//   - folder_id:  Drive folder ID (if omitted, uses configured default root)
+// UploadVideoClip handles POST /api/media/upload-video.
+// PR 7 (codex/asset-manifest-cutover): per-asset metadata write
+// routes through h.manifestService (manifest.Service) — the legacy
+// h.updateCumulativeMetadataJSON call (which wrapped a manual
+// []map[string]any merge + global mutex dance) is REMOVED.
 func (h *Handler) UploadVideoClip(c *gin.Context) {
 	// 1. Parse multipart form (max 500MB)
 	if err := c.Request.ParseMultipartForm(500 << 20); err != nil {
@@ -70,7 +64,6 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	group := strings.TrimSpace(c.PostForm("group"))
 	folderID := strings.TrimSpace(c.PostForm("folder_id"))
 
-	// Parse tags as JSON array (fallback: comma-separated)
 	var tags []string
 	if tagsStr := c.PostForm("tags"); tagsStr != "" {
 		if err := json.Unmarshal([]byte(tagsStr), &tags); err != nil {
@@ -96,10 +89,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		zap.String("name", name),
 	)
 
-	// 4. Stream uploaded file through artifact service (content-addressed storage)
-	// This replaces os.Create + io.Copy + hashutil.MD5File with a single
-	// Stage→Verify→Promote flow that computes SHA-256 and stores the blob
-	// at a canonical content-addressed path.
+	// 4. Stream uploaded file through artifact service.
 	if h.artifactSvc == nil {
 		apiutil.InternalError(c, fmt.Errorf("artifact service not available"))
 		return
@@ -132,24 +122,20 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		zap.String("sha256", artifact.SHA256),
 		zap.Int64("bytes", artifact.SizeBytes))
 
-	// 5. Resolve local path for Drive upload and duration probing
+	// 5. Resolve local path for Drive upload and duration probing.
 	fileHash := artifact.SHA256
-	// Re-derive clipID from content hash to preserve dedup-by-content behavior:
-	// uploading the same file twice gets the same clip ID → upsert instead of insert.
 	clipID = "manual_" + fileHash[:12]
 	localPath, err := h.artifactSvc.LocalPath(ctx, artifact.ID)
 	if err != nil {
 		log.Warn("could not resolve local path for artifact",
 			zap.String("id", artifact.ID),
 			zap.Error(err))
-		// Fallback: use the artifact ID for Drive-less flows
 		localPath = ""
 	}
 
-	// 6. Resolve Drive target folder
+	// 6. Resolve Drive target folder.
 	targetFolderID := appclips.ExtractDriveFolderID(folderID)
 	if targetFolderID == "" {
-		// Use the MediaRootFolder as default root
 		targetFolderID = h.cfg.Drive.RootFolder()
 		if group != "" && targetFolderID != "" {
 			dirID, err := h.driveUploader.GetOrCreateFolder(ctx, group, targetFolderID)
@@ -161,7 +147,6 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 			}
 		}
 	} else if group != "" {
-		// Check if the target folder already IS the group folder (avoid nested duplicates)
 		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && appclips.CleanFolderName(existingName) == appclips.CleanFolderName(group) {
 			log.Info("folder_id already points to group folder, reusing it",
 				zap.String("folder_id", targetFolderID),
@@ -177,7 +162,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		}
 	}
 
-	// 7. Upload file to Google Drive
+	// 7. Upload file to Google Drive.
 	driveFilename := fmt.Sprintf("%s%s", name, ext)
 	var uploadResult *DriveUploadResult
 	if h.driveUploader != nil && localPath != "" {
@@ -198,25 +183,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		}
 	}
 
-	// 7b. Upload cumulative metadata.json to Drive alongside the video
-	if h.driveUploader != nil && targetFolderID != "" {
-		clipEntry := map[string]interface{}{
-			"clip_id":     clipID,
-			"name":        name,
-			"description": description,
-			"category":    category,
-			"source":      source,
-			"tags":        tags,
-			"created_at":  time.Now().UTC().Format(time.RFC3339),
-		}
-		if uploadResult != nil {
-			clipEntry["drive_file_id"] = uploadResult.FileID
-			clipEntry["drive_link"] = uploadResult.WebViewLink
-		}
-		h.updateCumulativeMetadataJSON(ctx, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
-	}
-
-	// 8. Build the MediaAsset record
+	// 8. Build the MediaAsset record.
 	now := time.Now().UTC()
 	clip := &asset.Asset{
 		ID:         clipID,
@@ -242,12 +209,12 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		clip.SetDriveFileID(uploadResult.FileID)
 	}
 
-	// 9. Probe video duration from local file
+	// 9. Probe video duration from local file.
 	if localPath != "" {
 		probeDuration(ctx, localPath, clip, log, h.processRunner)
 	}
 
-	// 10. Save to database via canonical asset.Repository
+	// 10. Save to database via canonical asset.Repository.
 	if h.assetRepo != nil {
 		if err := h.assetRepo.Upsert(ctx, clip); err != nil {
 			log.Error("failed to save clip to DB", zap.Error(err))
@@ -257,7 +224,36 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
 	}
 
-	// 11. Update Asset Tree
+	// 10b. PR 7 cutover: per-asset metadata write via manifest.Service.
+	// Replaces the pre-cutover in-handler helper method that lived
+	// at step 7b pre-PR7. The same AssetToEntry mapper is used here
+	// (pre-enrichment); the semantic enrichment flow invokes the same
+	// mapper post-enrichment (artlist/semantic_enricher.go::Enrich).
+	if h.manifestService != nil {
+		entry := manifest.AssetToEntry(clip, source, "", map[string]any{
+			"description": description,
+			"created_at":  now.Format(time.RFC3339),
+		})
+		// Drive-side: per-folder locked replace.
+		if targetFolderID != "" {
+			if err := h.manifestService.UpsertRemote(ctx, targetFolderID, entry); err != nil {
+				log.Warn("manifest: remote upsert failed",
+					zap.String("clip_id", clip.ID), zap.Error(err))
+			}
+		}
+		// Local-side: atomic temp+fsync+rename in the directory containing
+		// the canonical metadata.json.
+		if localPath != "" {
+			if dir := filepath.Dir(localPath); dir != "" {
+				if err := h.manifestService.UpsertLocal(ctx, dir, entry); err != nil {
+					log.Warn("manifest: local upsert failed",
+						zap.String("clip_id", clip.ID), zap.Error(err))
+				}
+			}
+		}
+	}
+
+	// 11. Update Asset Tree.
 	if h.assetTreeSvc != nil {
 		node := appclips.ClipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
@@ -265,17 +261,17 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		}
 	}
 
-	// 12. Trigger async enrichment + Qdrant indexing (reuses the existing pipeline)
+	// 12. Trigger async enrichment + Qdrant indexing (reuses the existing pipeline).
 	hasIndexer := h.clipIndexer != nil || h.enrichUC != nil || h.metaWriter != nil
 	if hasIndexer {
-		temp := *clip // dereference for goroutine-safe struct copy
+		temp := *clip
 		concurrent.SafeGo("upload-video-enrich", func() {
 			h.EnrichAndIndexClip(context.WithoutCancel(ctx), &temp, source)
 		})
 		log.Info("triggered async enrichment + Qdrant indexing", zap.String("clip_id", clip.ID))
 	}
 
-	// 13. Return success response
+	// 13. Return success response.
 	apiutil.OK(c, UploadVideoClipResponse{
 		OK:          true,
 		ClipID:      clip.ID,
@@ -309,14 +305,12 @@ func probeDuration(ctx context.Context, localPath string, clip *asset.Asset, log
 		return
 	}
 
-	// Try ffprobe
 	probe := probeFFprobe(ctx, localPath, runner)
 	if probe != nil && probe.Duration > 0 {
 		clip.Duration = time.Duration(probe.Duration * float64(time.Second))
 		return
 	}
 
-	// Fallback: try mediainfo if available
 	dur := probeMediaInfo(ctx, localPath, runner)
 	if dur > 0 {
 		clip.Duration = time.Duration(dur) * time.Second
@@ -393,4 +387,3 @@ func execCmd(ctx context.Context, name string, args []string, runner appassets.P
 	}
 	return strings.TrimSpace(result.Output), nil
 }
-

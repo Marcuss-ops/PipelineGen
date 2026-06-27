@@ -26,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearchsvc "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/manifest"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -92,6 +93,12 @@ type AssetsBundle struct {
 	ClipIndexerService      *clipindexer.Service
 	IdempotencyStore        middleware.IdempotencyStore
 	IdempotencyStoreHandler gin.HandlerFunc
+	// PR 7 cutover: canonical manifest.Service instance shared
+	// across clipsHandler.Deps.ManifestService + register handlers
+	// (newAssetRegisterService). The same instance is constructed
+	// once in BuildProcessBundle and threaded into ArtlistBundle +
+	// AssetsBundle via WireRegistry.
+	ManifestService manifest.Service
 }
 
 // AssetsWiring holds the Assets module wiring.
@@ -215,6 +222,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		JobsSvc:        jobs.Facade,
 		Cfg:            cfg,
 		Log:            log,
+		ManifestService: bundle.ManifestService,
 		VoiceoverRepo:  bundle.VoiceoverRepo,
 		ImagesRepo:     bundle.ImageRepo,
 		FolderMemSvc:   folderMemSvc,
@@ -299,7 +307,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
-	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher)
+	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher, bundle.ManifestService)
 	// PR8: register receives the same shared idempotency handler as clips.
 	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
 

@@ -142,6 +142,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		MediaProcessor:     root.Process.MediaProcessor,
 		Jobs:               root.Jobs,
 		CatalogSyncService: root.Sync.CatalogSync,
+		ManifestService:    root.Process.ManifestService,
 	}
 	if aw, err := WireArtlist(ctx, cfg, log, artlistBundle, root.Outbox.Dispatcher); err != nil {
 		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
@@ -410,6 +411,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		ClipIndexerService:      root.Process.ClipIndexerService,
 		IdempotencyStore:        root.Repos.IdempotencyStore,
 		IdempotencyStoreHandler: idemHandler,
+		ManifestService:         root.Process.ManifestService,
 	}
 	// Wave 16 (June 2026): WireAssets realtimeSvc is typed
 	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).

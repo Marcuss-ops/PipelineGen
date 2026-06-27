@@ -16,8 +16,20 @@ import (
 func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("handling catalog.sync job", zap.String("job_id", job.ID))
 
+	// PR 4 (June 2026 — codex/clips-reconcile-real) extended the
+	// catalog.sync payload with FolderID + Fix + DryRun so the same
+	// job type covers three sync granularities:
+	//   - FolderID != ""  → sync one specific Drive folder under Source.
+	//   - Source != ""    → sync all folders under one source.
+	//   - both empty      → sync all configured sources.
+	// Fix and DryRun are propagated into the result map as hints but
+	// the underlying SyncFolderID/SyncSource/SyncAll dispatchers do
+	// not yet honour them — that's a follow-up ticket.
 	var payload struct {
-		Source string `json:"source"`
+		Source   string `json:"source"`
+		FolderID string `json:"folder_id,omitempty"`
+		Fix      bool   `json:"fix,omitempty"`
+		DryRun   bool   `json:"dry_run,omitempty"`
 	}
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
@@ -30,7 +42,38 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 	}
 
 	var result map[string]any
-	if payload.Source != "" {
+	switch {
+	case payload.FolderID != "":
+		s.log.Info("syncing specific folder",
+			zap.String("folder_id", payload.FolderID),
+			zap.String("source", payload.Source),
+			zap.Bool("fix", payload.Fix),
+			zap.Bool("dry_run", payload.DryRun))
+		// resolveRepo falls back to defaultClipsRepo ("drive") for
+		// ad-hoc source names — see resolveRepo docstring for the
+		// source-lookup precedence rules.
+		repo := s.resolveRepo(payload.Source)
+		if repo == nil {
+			return nil, fmt.Errorf("no repository configured for source=%q (folder_id=%q)",
+				payload.Source, payload.FolderID)
+		}
+		summary, err := s.SyncFolderID(ctx, payload.FolderID, payload.Source, "", "clip", repo)
+		if err != nil {
+			return nil, err
+		}
+		result = map[string]any{
+			"ok":              true,
+			"drive_folder_id": payload.FolderID,
+			"source":          payload.Source,
+			"name":            summary.Name,
+			"root_folder_id":  summary.RootFolderID,
+			"requested":       summary.Requested,
+			"synced":          summary.Synced,
+			"failed":          summary.Failed,
+			"fix":             payload.Fix,
+			"dry_run":         payload.DryRun,
+		}
+	case payload.Source != "":
 		s.log.Info("syncing specific source", zap.String("source", payload.Source))
 		summary, err := s.SyncSource(ctx, payload.Source)
 		if err != nil {
@@ -42,18 +85,22 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 			"requested": summary.Requested,
 			"synced":    summary.Synced,
 			"failed":    summary.Failed,
+			"fix":       payload.Fix,
+			"dry_run":   payload.DryRun,
 		}
-	} else {
+	default:
 		s.log.Info("syncing all sources")
 		summary, err := s.SyncAll(ctx)
 		if err != nil {
 			return nil, err
 		}
 		result = map[string]any{
-			"ok":     summary.OK,
-			"synced": summary.Synced,
-			"failed": summary.Failed,
-			"roots":  summary.Roots,
+			"ok":      summary.OK,
+			"synced":  summary.Synced,
+			"failed":  summary.Failed,
+			"roots":   summary.Roots,
+			"fix":     payload.Fix,
+			"dry_run": payload.DryRun,
 		}
 	}
 
