@@ -1,0 +1,69 @@
+# docs/architecture/godlike/duplicate-types-allowlist.txt
+# ─────────────────────────────────────────────────────────────────
+# Per-package allowlist consumed by scripts/ci-architectural-checks.sh
+# Check 5 (same-package duplicate-type-declarations lint, June 2026).
+#
+# FORMAT
+# ──────
+# One entry per non-comment, non-blank line, in the form:
+#
+#     <package>:<TypeName>   # rationale (owner + deadline)
+#
+# Example (illustrative — currently NO entries are allowed):
+#
+#     qdrant:SnapshotDescription   # wire-mirror OK during PR3 ramp; remove Q3-2026 (owner: codebuff)
+#
+# Each package name is the literal Go `package X` declaration; each
+# TypeName is the exported identifier declared as `^type X ...`.
+# Type aliases (`type X = ...`) and generic instantiations
+# (`type X[T any] struct{}`) are not allowed.
+#
+# INVARIANT (zero-baseline rule, AGENTS.md §8 ARCHITECTURE-CI_GATES)
+# ─────────────────────────────────────────────────────────────────
+# Every entry requires explicit owner + deadline. The allowlist is
+# checked in at code-review time per the same gate that produces
+# the QDRANT-RECOVERY-001 ticket on intended misuse. Transitional
+# baselines default-block the lint (an absent entry for a redeclared
+# type FAILS the gate). Entries here are intentional carve-outs,
+# not background noise — when a redeclaration is genuinely needed,
+# remove it from the codebase instead of allowing it here.
+#
+# WHEN TO ADD AN ENTRY
+# ────────────────────
+# Almost never. When you think you need a same-package redeclaration,
+# prefer the cross-package pattern instead:
+#
+#   - canonical type → application-layer package (e.g. dr/)
+#   - wire-only mirror → infrastructure package (e.g. qdrant/)
+#   - dr_adapter.go → translates at the seam, breaking any import cycle
+#
+# The cross-package pattern is NOT seen by Check 5 (Check 5 is
+# per-package; cross-package mirror of `X` in package `p1` and `X`
+# in package `p2` are different identifiers per the Go compiler's
+# per-package symbol table). So the wire-mirror + canonical-in-application
+# exception does NOT need an entry here.
+#
+# Cases that DO legitimately need an entry:
+#
+#   1. Transitional state during a planned removal: the type is declared
+#      twice for one minor cycle, with a tracked removal deadline.
+#      Owner MUST be the captain of the wave that introduced the dup.
+#   2. Test fixture convenience: production code should be free of
+#      redeclarations; *_test.go is excluded from Check 5 by design.
+#
+# DOCS REFERENCED FROM THIS FILE
+# ──────────────────────────────
+#   - AGENTS.md §8 ARCHITECTURE-CI_GATES  → zero-baseline rule
+#   - docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md  → deprecation records
+#   - docs/operations/05-qdrant-redeclaration-recovery.md → canonical case study
+#   - docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md §15.8
+#       → "Architecture tests" gates the analogous pattern for script
+#       generation (duplicate resolver or processor keys); Check 5 is the
+#       data-model twin.
+#
+# TRACKING TICKET
+# ───────────────
+# QDRANT-RECOVERY-001 — first instantiation of the pattern Check 5
+# defends against. Recovery commits (no entry needed): 2b67d701 + 38187ded.
+#
+# Current baseline (origin/main, June 2026): zero entries.
