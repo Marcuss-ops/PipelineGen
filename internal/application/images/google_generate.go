@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -247,4 +248,83 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 	default:
 		return ""
 	}
+}
+
+type BatchImageItem struct {
+	Subject   string
+	Topic     string
+	Style     string
+	Prompts   []string
+	Tags      []string
+	Width     int
+	Height    int
+	Model     string
+	SkipDrive bool
+	Account   string
+	ProjectID string
+}
+
+// GenerateSmartImageBatchParallel generates multiple Google Slides images concurrently with worker parallelism limit.
+func (s *Service) GenerateSmartImageBatchParallel(
+	ctx context.Context,
+	items []BatchImageItem,
+	concurrency int,
+) ([]*asset.ImageAsset, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	if concurrency <= 0 {
+		concurrency = 4
+	}
+
+	results := make([]*asset.ImageAsset, len(items))
+	errs := make([]error, len(items))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for i, item := range items {
+		wg.Add(1)
+		go func(idx int, itm BatchImageItem) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				errs[idx] = ctx.Err()
+				return
+			}
+
+			img, err := s.GenerateSmartImageWithAccount(
+				ctx,
+				itm.Subject,
+				itm.Topic,
+				itm.Style,
+				itm.Prompts,
+				itm.Tags,
+				itm.Width,
+				itm.Height,
+				itm.Model,
+				itm.SkipDrive,
+				itm.Account,
+				itm.ProjectID,
+			)
+			if err != nil {
+				errs[idx] = err
+			} else {
+				results[idx] = img
+			}
+		}(i, item)
+	}
+
+	wg.Wait()
+
+	var firstErr error
+	for _, err := range errs {
+		if err != nil {
+			firstErr = err
+			break
+		}
+	}
+
+	return results, firstErr
 }

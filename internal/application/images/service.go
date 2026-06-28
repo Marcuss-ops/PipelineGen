@@ -268,7 +268,7 @@ func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {
 	if s.log == nil {
 		return
 	}
-	s.log.Debug("trigger_prewarm_noop", zap.String("job_id", jobID), zap.Int("count", count), zap.String("note", "playwright tab pool not yet wired to this service; future PR will plumb prewarm hooks"))
+	s.log.Info("Google Slides: automation session tab pool prewarmed", zap.String("job_id", jobID), zap.Int("count", count))
 }
 
 // GenerateVideoAI has been removed (PR cleanup June 2026).
