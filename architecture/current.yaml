@@ -1300,11 +1300,31 @@
         - Asset-lifecycle completeness: each LifecycleState (pending/processing/published/failed/deleted) maps to a monitored action in monitor package
         - monitored_sources-table references fully removed; all state routes through category_channels canonical table per ownership.yaml
         - BUILD-CLEAN: go build ./internal/application/assets/monitor/... exits 0
-      notes: AUDIT scope, NOT compile-recovery. assets/monitor builds clean as of 2026-06-28 (wave-tracker Step 4 diagnostic confirms GREEN state); audit registers the Wave 19 contract for future regression detection. Replaces literal-spec PR-ASSETS-MONITOR-COMPILE-RECOVERY (no-op) per godlike/07 zero-fake-availability policy.
+      notes: 'AUDIT scope, NOT compile-recovery. assets/monitor builds clean as of 2026-06-28 (wave-tracker Step 4 diagnostic confirms GREEN state); audit registers the Wave 19 contract for future regression detection. Replaces literal-spec PR-ASSETS-MONITOR-COMPILE-RECOVERY (no-op) per godlike/07 zero-fake-availability policy.'
       cross_refs:
         godlike_data_ownership: architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP (table capability rules)
         wave_21_pr_g2: architecture/current.yaml id-21 wave_21 exit_gate PR-G.2 BACKFILL window
         ownership_canonical: architecture/ownership.yaml internal/application/assets/monitor
+
+    # Wave 21 / PR-MIGRATIONS-PREFIX-AUDIT-2026-06-28 - Audit migrations/sqlite/ prefix uniqueness + sequential integrity
+    - id: PR-MIGRATIONS-PREFIX-AUDIT-2026-06-28
+      title: Audit migrations/sqlite/ prefix uniqueness + sequential integrity (Check 6 enforcement + drift detection)
+      owner: scripts/archcheck + sqlite-migrations maintainer
+      owner_capability: internal/infrastructure/database/sqlite
+      target: Wave 21 PR-G.2 BACKFILL readiness check (drift detector + sequential integrity audit)
+      deadline: 2026-07-10
+      status: pending
+      tracking_issue: migrations/sqlite/ directory + scripts/ci-architectural-checks.sh Check 6 (Migration version uniqueness lint)
+      acceptance:
+        - Check 6 (prefix-uniqueness): all migrations/sqlite/*.sql files have unique 3-digit numeric prefix (no duplicates)
+        - Sequential integrity: 100-111 block verified (no gaps in 100-200 range)
+        - Drift detector: running bash scripts/ci-architectural-checks.sh exits 0 on prefix-uniqueness check; non-prefix failures must be in other Check N (not Check 6)
+        - CONTRACT: never edit a migration file after merge; new migrations append with sequential 3-digit prefix
+      notes: 'AUDIT scope, NOT conflict-resolution. migrations/sqlite/ verified GREEN as of 2026-06-28 (Step 5 diagnostic: 74 files, no duplicates, no gaps in 100-111 range, Check 6 OK reporting "no duplicate migration version prefixes"). Replaces literal-spec PR-MIGRATIONS-PREFIX-CONFLICT-RESOLUTION (no-op) per godlike/07 zero-fake-availability policy.'
+      cross_refs:
+        check_6_lint: scripts/ci-architectural-checks.sh Check 6 (Migration version uniqueness lint)
+        wave_21_pr_g2: architecture/current.yaml id-21 wave_21 exit_gate PR-G.2 BACKFILL window
+        ownership_canonical: architecture/ownership.yaml internal/infrastructure/database/sqlite
   cross_refs:
     ownership: architecture/ownership.yaml (application_scripts.target_subdirs)
     policy: architecture/policy.yaml::max_files_per_package=40
