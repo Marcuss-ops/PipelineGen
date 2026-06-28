@@ -38,7 +38,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
+	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
@@ -182,7 +184,23 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	}
 	parentSvc = svc // satisfy job.Service interface
 
-	handler := NewScriptFlowHandler(ScriptFlowDeps{Jobs: parentSvc})
+	// Issue 9 / P2 (June 2026): the script route
+	// /api/script/jobs/:job_id/full now delegates to the
+	// canonical JobsHandler.GetFull via the JobFullStatus
+	// port. The wiring must point at the SAME service the
+	// test cannedJobService provides, so a real JobsHandler
+	// is constructed with `svc` for both service + stats
+	// reader (svc satisfies domainjob.Service AND
+	// appjobs.JobStatsReader structurally). The pre-Issue-9
+	// test asserted on the script response shape
+	// (`job_id`, `priority`, `retry_count`, …); after the
+	// collapse the assertion must be on the canonical
+	// JobsHandler shape (`id`, `type`, `status`, …).
+	jobsHandler := jobsapi.NewJobsHandler(svc, svc, zap.NewNop())
+	handler := NewScriptFlowHandler(ScriptFlowDeps{
+		Jobs:          parentSvc,
+		JobFullStatus: jobsHandler,
+	})
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -239,26 +257,35 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	require.NoError(t, err)
 
 	// ── Assert: job shell ───────────────────────────────────────
+	// Issue 9 / P2 (June 2026): the script route
+	// /api/script/jobs/:job_id/full now delegates to the
+	// canonical JobsHandler.GetFull. The pre-Issue-9 script
+	// response shape had `job_id` (script-local snake-case);
+	// the JobsHandler.GetFull response shape has `id`
+	// (the canonical wire name, also used by
+	// /api/jobs/:id/full). The legacy assertion below
+	// reads the canonical field name.
 	var jobShell struct {
 		OK     bool            `json:"ok"`
-		JobID  string          `json:"job_id"`
+		ID     string          `json:"id"`
 		Type   string          `json:"type"`
 		Status string          `json:"status"`
 		Result json.RawMessage `json:"result"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &jobShell))
-	require.Equal(t, async.JobID, jobShell.JobID)
+	require.Equal(t, async.JobID, jobShell.ID)
 	assert.Equal(t, "script.generate", jobShell.Type)
 	// Canonical job-status enum string from internal/domain/job/job.go:
 	// StatusSucceeded = "SUCCEEDED". The cannedJobService.Get returns
-	// jobservice.StatusSucceeded and GetJobFullStatus writes job.Status
-	// verbatim into the JSON shell, so the wire-level status is
-	// "SUCCEEDED". Pre-canonicalisation handlers used the lowercase
-	// "completed" string — that legacy spelling is no longer emitted
-	// from this endpoint. The veloxclient surface (pkg/veloxclient/types.go
-	// StatusCompleted) still uses "completed" for client-side comparison,
-	// but the /api/script/jobs/:job_id/full wire shape carries the
-	// canonical "SUCCEEDED".
+	// jobservice.StatusSucceeded; JobsHandler.GetFull writes
+	// job.Status verbatim into the JSON shell, so the wire-level
+	// status is "SUCCEEDED". Pre-canonicalisation handlers used the
+	// lowercase "completed" string — that legacy spelling is no
+	// longer emitted from this endpoint. The veloxclient surface
+	// (pkg/veloxclient/types.go StatusCompleted) still uses
+	// "completed" for client-side comparison, but the
+	// /api/script/jobs/:job_id/full wire shape carries the
+	// canonical "SUCCEEDED" (delegated to JobsHandler.GetFull).
 	assert.Equal(t, "SUCCEEDED", jobShell.Status)
 
 	// ── Assert: result.items[0].spec_scene.scenes[*].bindings.stock ─

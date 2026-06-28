@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -418,6 +419,20 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		gen.SetMetadataModel(metaModel)
 	}
 
+	// Issue 9 / P2 (June 2026): construct a *jobsapi.JobsHandler
+	// so the script route /api/script/jobs/:job_id/full can
+	// delegate to JobsHandler.GetFull via the JobFullStatus port.
+	// The same constructor pattern is used in registerJobs
+	// (registry_public_modules.go); we duplicate the pointer here
+	// so the script handler has a stable reference WITHOUT a
+	// cross-module import (the script module consumes the
+	// handler through a narrow port interface, not via a
+	// direct import of internal/api/jobs). Admin-token gate is
+	// preserved because the script route group runs
+	// RequireAdminToken(h) before this handler — see
+	// internal/api/script/handler_flow.go::GetJobFullStatus.
+	jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
+
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:        engine,
@@ -439,6 +454,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		ScriptsRepo:           scriptsRepoAdapter,
 		Memory:                memorySvc,
 		Jobs:                  root.Jobs.Facade,
+		// Issue 9 / P2 (June 2026): narrow port for the
+		// /api/script/jobs/:job_id/full delegator. The
+		// JobsHandler.GetFull method is the canonical
+		// implementation; the script route forwards to
+		// it via the port (no logic duplication, no
+		// cross-module import).
+		JobFullStatus:         jobsHandler,
 		// Issue 4 (June 2026, P1): wire the canonical job-type Registry
 		// so EnqueueGenerationJob sources MaxRetries from
 		// registry.DefaultMaxRetries(script.generate) instead of the
