@@ -28,9 +28,11 @@ def main():
     with sync_playwright() as p:
         # Open browser with persistent context
         print(f"Launching browser with profile: {profile_dir} ...")
+        storage_path = "data/google_slides_storage.json"
         kwargs = {
             "user_data_dir": profile_dir,
             "headless": not args.headful,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
@@ -40,6 +42,8 @@ def main():
             ],
             "no_viewport": True,
         }
+        if os.path.exists(storage_path):
+            kwargs["storage_state"] = storage_path
         if channel:
             kwargs["channel"] = channel
         context = p.chromium.launch_persistent_context(**kwargs)
@@ -69,6 +73,10 @@ def main():
                             print(f"Login successful! Detected on tab: {p_page.url}")
                             page = p_page
                             login_success = True
+                            try:
+                                context.storage_state(path="data/google_slides_storage.json")
+                            except Exception:
+                                pass
                             break
                     except Exception:
                         pass
