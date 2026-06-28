@@ -230,47 +230,10 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 	})
 }
 
-// Animate crea un video zoom-out da un'immagine esistente
+// Animate crea un video zoom-out da un'immagine esistente (NVIDIA capability removed)
 func (h *ImagesHandler) Animate(c *gin.Context) {
-	var req AnimateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
-		return
-	}
-
-	if req.Duration <= 0 {
-		req.Duration = 7
-	}
-
-	// Truthful capability gate (fix(images): expose truthful capability
-	// availability). AnimateImage is supplied by nvidia_animate.go and
-	// requires the NVIDIA pipeline (NVENC + the per-frame warp).
-	nvidiaStatus := h.service.CapabilityResolution(imgservice.CapImageGenNvidia)
-	if nvidiaStatus == imgservice.StatusNotImplemented {
-		c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
-			"error": "image animation capability not implemented",
-		})
-		return
-	}
-	if nvidiaStatus != imgservice.StatusAvailable {
-		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
-			"error":         "image animation requires NVIDIA_API_KEY (NVENC per-frame warp)",
-			"nvidia_status": nvidiaStatus,
-		})
-		return
-	}
-
-	outputPath, err := h.service.AnimateImage(c.Request.Context(), req.ImageHash, req.Duration)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"image_hash":  req.ImageHash,
-		"duration":    req.Duration,
-		"output_path": outputPath,
-		"message":     "Animation created successfully",
+	c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
+		"error": "image animation capability not implemented (NVIDIA capability removed)",
 	})
 }
 

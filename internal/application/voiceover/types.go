@@ -4,6 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"time"
+
+	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 )
 
 type BatchRequest struct {
@@ -92,53 +95,33 @@ type ResolvedDestination struct {
 	DriveLink  string
 }
 
-// PromoRequest represents a promotional voiceover request that translates
-// text to multiple languages then generates voiceovers for each.
-type PromoRequest struct {
-	Text          string   `json:"text" binding:"required"`
-	DriveFolderID string   `json:"drive_folder_id,omitempty"`
-	DryRun        bool     `json:"dry_run,omitempty"`
-	Languages     []string `json:"languages,omitempty"` // override default 13 languages
-}
+// Promo types moved to workflow/promo (PR 6, June 2026).
+// Type aliases preserve backward compatibility.
+
+// PromoRequest is the promo workflow request.
+// Deprecated: use promo.Request directly.
+type PromoRequest = promoTypes.Request
 
 // DefaultPromoLanguages returns the 13 promo voiceover languages.
-func DefaultPromoLanguages() []LanguageTarget {
-	return []LanguageTarget{
-		{"en-US", "English"}, {"es-ES", "Spanish"}, {"fr-FR", "French"},
-		{"de-DE", "German"}, {"it-IT", "Italian"}, {"pt-BR", "Portuguese"},
-		{"pl-PL", "Polish"}, {"nl-NL", "Dutch"}, {"ja-JP", "Japanese"},
-		{"ko-KR", "Korean"}, {"ru-RU", "Russian"}, {"tr-TR", "Turkish"},
-		{"id-ID", "Indonesian"},
-	}
-}
+// Deprecated: use translation.DefaultPromoLanguages directly.
+var DefaultPromoLanguages = translation.DefaultPromoLanguages
 
 // LanguageTarget pairs a BCP-47 language code with a human-readable name.
-type LanguageTarget struct {
-	Code string
-	Name string
-}
+// Deprecated: use translation.LanguageTarget directly.
+type LanguageTarget = translation.LanguageTarget
 
 // PromoResult holds the result of a single promo voiceover generation.
-type PromoResult struct {
-	OK          bool   `json:"ok"`
-	Language    string `json:"language"`
-	Translated  string `json:"translated,omitempty"`
-	DriveLink   string `json:"drive_link,omitempty"`
-	DriveFileID string `json:"drive_file_id,omitempty"`
-	Error       string `json:"error,omitempty"`
-}
+// Deprecated: use promo.Result directly.
+type PromoResult = promoTypes.Result
 
 // PromoResponse aggregates all promo voiceover results.
-type PromoResponse struct {
-	OK      bool          `json:"ok"`
-	Total   int           `json:"total"`
-	Success int           `json:"success"`
-	Failed  int           `json:"failed"`
-	Results []PromoResult `json:"results"`
-}
+// Deprecated: use promo.Response directly.
+type PromoResponse = promoTypes.Response
 
-// PayloadMap serialises PromoRequest into a map for the job system.
-func (r *PromoRequest) PayloadMap() map[string]any {
+// PromoRequestPayloadMap serialises a PromoRequest into a map for the job system.
+// PromoRequest is a type alias (workflow/promo.Request) so methods cannot be
+// defined on it — use this standalone function instead.
+func PromoRequestPayloadMap(r *PromoRequest) map[string]any {
 	if r == nil {
 		return map[string]any{}
 	}

@@ -197,5 +197,3 @@ func (m *ChannelMonitor) isVideoAlreadyProcessed(ctx context.Context, videoID st
 	return false
 }
 
-// loadDBChannels loads per-category channels from the database.
-// Queries the category_channels table directly with a simple query.
