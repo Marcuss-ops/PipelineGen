@@ -287,6 +287,7 @@ const (
 // or semantic search resolver.
 type SearchResultItem struct {
 	ClipID    string  `json:"clip_id"`
+	AssetID   string  `json:"asset_id,omitempty"`
 	Name      string  `json:"name"`
 	Score     float64 `json:"score"`
 	Source    string  `json:"source"`
