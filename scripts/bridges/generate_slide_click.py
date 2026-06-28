@@ -106,78 +106,40 @@ def main():
         print("Waiting for presentation to load...")
         page.wait_for_selector("#docs-file-menu", timeout=30000)
 
-        # Trigger AI Image Generation via Nano Banana Pro modal card or side panel
-        print("Opening AI Image generation panel (Nano Banana Pro / Gemini)...")
-        panel_opened = False
+        # Dismiss any Gemini / getting started modal popups that intercept clicks
+        time.sleep(1)
         try:
-            card = page.locator('div:has-text("Nano Banana Pro"), div:has-text("studio-quality visuals"), div:has-text("Images")').last
-            card.wait_for(state="visible", timeout=3000)
-            card.click()
-            panel_opened = True
-            time.sleep(2)
+            page.keyboard.press("Escape")
+            time.sleep(0.5)
+            close_btn = page.locator('.goog-modalpopup [aria-label="Chiudi"], .goog-modalpopup [aria-label="Close"], .goog-modalpopup-close').first
+            if close_btn.is_visible():
+                print("Dismissing Gemini / Getting Started modal popup...")
+                close_btn.click()
         except Exception:
             pass
 
-        if not panel_opened:
-            # Dismiss any blocking popups if Nano Banana Pro card was not present
-            try:
-                page.keyboard.press("Escape")
-                time.sleep(0.5)
-            except Exception:
-                pass
-
-            try:
-                labs_btn = page.locator('#workspace-labs-button, [aria-label*="Gemini"], [aria-label*="visualize"], [title*="Gemini"]').first
-                labs_btn.wait_for(state="visible", timeout=3000)
-                labs_btn.click()
-                panel_opened = True
+        # Trigger AI Image Generation via Nano Banana Pro modal card or side panel
+        print("Opening AI Image generation panel (Nano Banana Pro / Gemini)...")
+        try:
+            card = page.locator('div:has-text("Nano Banana Pro"), div:has-text("studio-quality visuals"), div:has-text("Images")').last
+            if card.is_visible():
+                card.click()
                 time.sleep(2)
-            except Exception:
-                pass
-
-        if not panel_opened:
-            try:
-                insert_menu = page.locator("#docs-insert-menu")
-                insert_menu.click()
-                time.sleep(0.5)
-                img_item = page.locator('.apps-menuitem:has-text("Immagine"), .apps-menuitem:has-text("Image")').first
-                img_item.hover()
-                time.sleep(0.5)
-                ai_item = page.locator('.apps-menuitem:has-text("Gemini"), .apps-menuitem:has-text("IA"), .apps-menuitem:has-text("Crea")').first
-                ai_item.click()
-                time.sleep(2)
-            except Exception as e:
-                print(f"Note opening insert menu AI: {e}")
+        except Exception as e:
+            print(f"Note clicking AI card: {e}")
 
         # Enter prompt in AI generator panel textarea/input
         print(f"Entering AI image prompt: '{args.prompt}'...")
-        try:
-            prompt_input = page.locator('textarea[placeholder*="Descrivi la tua idea"], textarea[placeholder*="Describe your idea"], textarea').first
-            prompt_input.wait_for(state="visible", timeout=10000)
+        prompt_input = page.locator('textarea[placeholder*="Descrivi la tua idea"], textarea[placeholder*="Describe your idea"], textarea[placeholder*="Crea"], textarea').first
+        if prompt_input.is_visible():
             prompt_input.click()
             prompt_input.fill(args.prompt)
             time.sleep(0.5)
 
-            # Select 16:9 aspect ratio if available
-            print("Selecting 16:9 aspect ratio...")
-            try:
-                aspect_btn = page.locator('button:has-text("16:9"), [aria-label*="16:9"], div:has-text("16:9"), span:has-text("16:9")').first
-                if aspect_btn.is_visible():
-                    aspect_btn.click()
-                    time.sleep(0.5)
-            except Exception as e:
-                print(f"Note selecting 16:9 aspect ratio: {e}")
-
-            # Click Create / Genera button or press Enter
-            print("Submitting prompt (Clicking Create/Genera & pressing Enter)...")
-            try:
-                create_btn = page.locator('button:has-text("Crea"), button:has-text("Create"), button:has-text("Genera")').last
-                if create_btn.is_visible():
-                    create_btn.click()
-                else:
-                    prompt_input.press("Enter")
-            except Exception:
-                prompt_input.press("Enter")
+            # Click Create / Genera button
+            print("Clicking Create/Genera button...")
+            create_btn = page.locator('button:has-text("Crea"), button:has-text("Create"), button:has-text("Genera")').last
+            create_btn.click()
 
             print("Waiting for AI image generation to complete (15s)...")
             time.sleep(15)
@@ -194,8 +156,8 @@ def main():
                         break
                 except Exception:
                     pass
-        except Exception as e:
-            print(f"AI prompt input wait note ({e}). Typing prompt into slide...")
+        else:
+            print("AI prompt input not found directly. Typing prompt into slide...")
             page.keyboard.type(args.prompt)
 
         time.sleep(1)
