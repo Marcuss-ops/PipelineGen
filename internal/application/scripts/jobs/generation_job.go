@@ -16,6 +16,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -85,6 +86,27 @@ func NewGenerateJobHandler(
 // Retry never kicked in because dispatchErr==nil. The fix wraps
 // the typed envelope result with a Go error so the broker sees
 // dispatch failure and routes the job through the FAILED path.
+// checkPipelineCtx returns a typed cancel-error when the pipeline
+// ctx has been cancelled. The label is logged via Warn so operators
+// can audit which phase the cancel was observed at. Issue 6
+// (June 2026, P1) propagates ctx.Err() across the 5 user-visible
+// pipeline phases: source resolver, Ollama, postprocessors,
+// voiceover scenes, image generation -- each phase boundary in
+// the unified Handle below calls this helper. The labelling is
+// for operator audit; the underlying ctx.Err() is wrapped with
+// %w so errors.Is(err, context.Canceled) remains reliable.
+func (h *GenerateJobHandler) checkPipelineCtx(ctx context.Context, phase string) error {
+	if err := ctx.Err(); err != nil {
+		if h.log != nil {
+			h.log.Warn("script.generate: cancelled at phase boundary",
+				zap.String("job_id_or_phase", phase),
+				zap.Error(err))
+		}
+		return fmt.Errorf("script.generate cancelled at %s: %w", phase, err)
+	}
+	return nil
+}
+
 func (h *GenerateJobHandler) Handle(
 	ctx context.Context,
 	j *scriptpkg.Job,
@@ -92,6 +114,16 @@ func (h *GenerateJobHandler) Handle(
 ) (map[string]any, error) {
 	if h == nil {
 		return nil, fmt.Errorf("generate job handler: not constructed")
+	}
+
+	// Issue 6 (P1): Phase 0 / handler-entry cancellation short-circuit.
+	// The user-press-cancel watcher in worker_execution.go flips
+	// jobCtx.Done() in <=2 seconds; handlers must propagate that
+	// signal into the pipeline so source resolver / Ollama /
+	// postprocessors / voiceover scenes / image generation all
+	// bail out instead of running for the full 60-min job timeout.
+	if err := h.checkPipelineCtx(ctx, "handler-entry"); err != nil {
+		return nil, err
 	}
 
 	// Decode the envelope.
@@ -122,9 +154,35 @@ func (h *GenerateJobHandler) Handle(
 		// typed failure envelope AND a wrapped Go error. The
 		// worker treats dispatchErr != nil as FAILED → triggers
 		// retry and never marks the job COMPLETED with ok=false.
+		//
+		// Issue 6 (P1): Phase 1B / single-item pipeline gate.
+		// Generous use case = source resolver (Phase 1A) →
+		// Ollama (Phase 1B) → postprocessors (Phase 1C) →
+		// voiceover (Phase 1D) → image generation (Phase 1E);
+		// the use case internally re-checks ctx.Err() at each
+		// phase boundary, but this top-level check ensures the
+		// signal is observed BEFORE we hand off to the use
+		// case so e.g. a cancel mid-BuildPlan doesn't waste an
+		// Ollama round-trip.
+		if err := h.checkPipelineCtx(ctx, "single-item-pre-execute"); err != nil {
+			return nil, err
+		}
 		tracker := usecase.NewProgressTracker(progressFn, env.Items[0].ID)
 		single, err := h.one.Execute(ctx, env.Items[0], env.Preset, tracker)
 		if err != nil {
+			// Issue 6 (P1): Phase 1F / single-item post-cancel.
+			// If the failure was a context.Canceled signal
+			// (versus an infra error), surface it as the cancel
+			// so the worker does not retry a job the user
+			// already pressed cancel on.
+			if errors.Is(err, context.Canceled) {
+				if h.log != nil {
+					h.log.Warn("script.generate: single-item cancelled mid-run",
+						zap.String("job_id", j.ID),
+						zap.Error(err))
+				}
+				return nil, fmt.Errorf("script.generate cancelled mid-single-item: %w", err)
+			}
 			if h.log != nil {
 				h.log.Error("script.generate: single-item failed",
 					zap.String("job_id", j.ID),
@@ -158,7 +216,29 @@ func (h *GenerateJobHandler) Handle(
 	// old `if err != nil { return manyResult-or-err }` shape, which
 	// caused the worker to mark the job COMPLETED with summary.failed
 	// == summary.total.
+	//
+	// Issue 6 (P1): Phase 2B / multi-item pipeline gate.
+	if err := h.checkPipelineCtx(ctx, "multi-item-pre-execute"); err != nil {
+		return nil, err
+	}
 	manyResult, err := h.many.Execute(ctx, env, h.cfg, progressFn)
+
+	// Issue 6 (P1): Phase 2C / multi-item post-cancel.
+	// If the use case observed a ctx.Canceled signal and returned
+	// it via err while still producing a partial-or-full result,
+	// surface the cancel rather than swallowing it as a partial
+	// success -- the user pressed cancel; we honour the signal
+	// and the worker does not retry.
+	if manyResult != nil && errors.Is(err, context.Canceled) {
+		if h.log != nil {
+			h.log.Warn("script.generate: multi-item cancelled mid-run",
+				zap.String("job_id", j.ID),
+				zap.Int("succeeded", manyResult.Summary.Succeeded),
+				zap.Int("failed", manyResult.Summary.Failed),
+				zap.Error(err))
+		}
+		return nil, fmt.Errorf("script.generate cancelled mid-multi-item: %w", err)
+	}
 
 	// Case (a): pure infra failure. manyResult is nil when the use
 	// case could not even produce aggregate counts (defensive
