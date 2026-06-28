@@ -1,18 +1,25 @@
-// Package outbox — typed application-layer port for the read-only outbox
-// events monitoring HTTP handler (QDRANT-002).
+// Package outbox — typed application-layer ports for the outbox subsystem.
 //
-// Wave 14 (June 2026): this port replaces the previous direct dependency
-// from internal/api/outbox/handler.go on the concrete
-// *outboxevents.Repository. Per AGENTS.md Pattern 0 + Pattern 8 ("API
-// package: thin transport only"), the handler now depends on this
-// interface; the concrete adapter that wraps *outboxevents.Repository
-// lives in internal/app/outbox_monitor_adapter.go with a compile-time
-// `var _ outbox.MonitorPort = (*outboxMonitorAdapter)(nil)` assertion.
+// Two ports live here:
 //
-// The EventDTO mirrors the JSON-relevant subset of outboxevents.Event.
-// Field names match the unexported-tag default JSON encoding
-// (PascalCase keys) so wire-format compatibility is preserved bit-for-bit
-// when the handler is migrated from the concrete repo to the port.
+//   - MonitorPort — Wave 14 (June 2026) addition; narrow read-only
+//     surface consumed by the outbox-events HTTP handler
+//     (internal/api/outbox/handler.go). Production adapter:
+//     outboxMonitorAdapter (internal/app/outbox_monitor_adapter.go)
+//     wraps *outboxevents.Repository. Pre-existing before PR 4.
+//
+//   - VectorPointDeleter — PR 4 (June 2026, refactor/single-qdrant-runtime)
+//     addition; narrow single-method port consumed by IndexDeleteHandler
+//     for the Qdrant side of the asset.index.delete_requested.v1 flow.
+//     Production concrete: *qdrant.IndexWriter via the compile-time
+//     assertion at internal/infrastructure/qdrant/index_writer.go.
+//     Replaces the previous pair of duplicated `QdrantDeleter`
+//     interfaces (one in infra/qdrant/types.go, one local to
+//     outbox/index_delete.go) — there is now ONE VectorPointDeleter
+//     per the PR 4 acceptance criterion.
+//
+// AGENTS.md Pattern 0: ports live in internal/application/.../ports.go
+// — never in internal/infrastructure/.
 package outbox
 
 import (
@@ -64,4 +71,35 @@ type EventDTO struct {
 	CompletedAt   *time.Time `json:"CompletedAt"`
 	CreatedAt     string     `json:"CreatedAt"`
 	UpdatedAt     string     `json:"UpdatedAt"`
+}
+
+// VectorPointDeleter is the canonical application-layer port consumed
+// by the outbox IndexDeleteHandler (asset.index.delete_requested.v1
+// events). The production concrete is *qdrant.IndexWriter — see
+// internal/infrastructure/qdrant/index_writer.go for the compile-time
+// assertion `var _ outbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`.
+//
+// PR 4 (June 2026, refactor/single-qdrant-runtime) — section #6 of the
+// verdict Qdrant consolidates the previous pair of duplicated
+// `QdrantDeleter` interfaces into this single port:
+//
+//   - Removed: internal/infrastructure/qdrant/types.go::QdrantDeleter
+//     (was used by infra-side writers and tests, but the application
+//     layer never imports infra — duplication was unidirectional drift).
+//
+//   - Removed: internal/application/jobs/outbox/index_delete.go::QdrantDeleter
+//     (was a private replica; merging into VectorPointDeleter keeps
+//     the application-layer surface canonical).
+//
+//   - This interface (`VectorPointDeleter`): the new home. Renamed
+//     to make the application-layer intent explicit
+//     (vector-store-point deletion) rather than the previous
+//     infra-sounding name.
+//
+// The wiring at composition.go::NewComposition is now:
+//   outboxDeps.VectorPointDeleter = qd.Runtime.Writer
+// — direct field assignment, no runtime type assertion: the
+// compile-time `var _` above guarantees QdrantRuntime.Writer fits.
+type VectorPointDeleter interface {
+	DeletePoints(ctx context.Context, assetIDs []string) error
 }

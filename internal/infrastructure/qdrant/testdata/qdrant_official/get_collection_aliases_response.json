@@ -1,0 +1,12 @@
+{
+  "result": {
+    "aliases": [
+      {
+        "alias_name": "media_assets_current",
+        "collection_name": "media_assets_v3_e5_768_siglip_768"
+      }
+    ]
+  },
+  "status": "ok",
+  "time": 0.000123
+}

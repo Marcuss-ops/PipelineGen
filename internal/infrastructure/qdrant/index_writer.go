@@ -6,10 +6,16 @@ import (
 	"math"
 
 	"go.uber.org/zap"
+
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 )
 
 // IndexWriter handles point upsert and deletion for Qdrant collections.
-// It implements clipindexer.VectorStoreIndexer and outbox.QdrantDeleter.
+// It implements clipindexer.VectorStoreIndexer and
+// outbox.VectorPointDeleter (PR 4, June 2026,
+// refactor/single-qdrant-runtime — the previous local
+// `qdrant.QdrantDeleter` interface was deleted in favour of the
+// canonical application-layer port).
 //
 // All writes go through the runtime alias so callers never need to know
 // the physical collection name.
@@ -22,11 +28,16 @@ type IndexWriter struct {
 
 // NewIndexWriter creates an IndexWriter.
 //
-// Compile-time assertions: IndexWriter satisfies both the generic IndexWriterPort
-// (used by clipindexer) and QdrantDeleter (used by outbox).
+// Compile-time assertions: IndexWriter satisfies the generic
+// IndexWriterPort (used by clipindexer) and the application-layer
+// outbox.VectorPointDeleter port (consumed by IndexDeleteHandler).
+// PR 4 consolidated the previously-duplicated `QdrantDeleter`
+// interfaces (one in infra, one in outbox) into the single
+// outbox.VectorPointDeleter port that lives in
+// internal/application/jobs/outbox/ports.go per AGENTS.md Pattern 0.
 var (
-	_ IndexWriterPort = (*IndexWriter)(nil)
-	_ QdrantDeleter   = (*IndexWriter)(nil)
+	_ IndexWriterPort             = (*IndexWriter)(nil)
+	_ jobsoutbox.VectorPointDeleter = (*IndexWriter)(nil)
 )
 
 func NewIndexWriter(client *Client, schema *IndexSchema, mapper *PayloadMapper, log *zap.Logger) *IndexWriter {
@@ -81,21 +92,25 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 		return nil
 	}
 
-	collection, err := w.client.GetAliasTarget(ctx, w.schema.RuntimeAlias)
-	if err != nil {
-		return fmt.Errorf("resolve alias target: %w", err)
-	}
-	if collection == "" {
-		return fmt.Errorf("runtime alias %q has no target", w.schema.RuntimeAlias)
-	}
-
-	if err := w.client.UpsertPoints(ctx, collection, points); err != nil {
-		return fmt.Errorf("upsert %d points to %q: %w", len(points), collection, err)
+	// PR 5 (June 2026, fix/qdrant-tenant-scope): write through the
+	// runtime alias directly. Qdrant accepts an alias as the
+	// collection name in PUT/POST /points requests and the
+	// resulting write is atomic — no mid-flight alias-switch race,
+	// no extra round-trip. Pre-PR5 the writer called
+	// GetAliasTarget per upsert/delete batch, paying one HTTP call
+	// AND opening a window where a blue-green switch could land the
+	// batch in the wrong physical collection.
+	//
+	// GetAliasTarget's legitimate uses (admin reconcile, DR, ensure
+	// schema, snapshot) are unaffected — only the writer hot path
+	// is changed.
+	if err := w.client.UpsertPoints(ctx, w.schema.RuntimeAlias, points); err != nil {
+		return fmt.Errorf("upsert %d points to %q: %w", len(points), w.schema.RuntimeAlias, err)
 	}
 
 	w.log.Info("upserted points to qdrant",
 		zap.Int("count", len(points)),
-		zap.String("collection", collection))
+		zap.String("collection", w.schema.RuntimeAlias))
 
 	if len(failed) > 0 {
 		return fmt.Errorf("upserted %d points but %d assets failed mapping", len(points), len(failed))
@@ -104,7 +119,7 @@ func (w *IndexWriter) UpsertFromClips(ctx context.Context, clipIDs []string) err
 }
 
 // DeletePoints deletes points from the active collection by asset ID.
-// Implements outbox.QdrantDeleter.
+// Implements outbox.VectorPointDeleter (PR 4).
 //
 // QDRANT-001 closure (June 2026): each asset ID is canonicalised via
 // AssetIDToQdrantPointID before being sent to the Qdrant client. The
@@ -133,21 +148,18 @@ func (w *IndexWriter) DeletePoints(ctx context.Context, ids []string) error {
 		return nil
 	}
 
-	collection, err := w.client.GetAliasTarget(ctx, w.schema.RuntimeAlias)
-	if err != nil {
-		return fmt.Errorf("resolve alias target: %w", err)
-	}
-	if collection == "" {
-		return fmt.Errorf("runtime alias %q has no target", w.schema.RuntimeAlias)
-	}
-
-	if err := w.client.DeletePoints(ctx, collection, pointIDs); err != nil {
-		return fmt.Errorf("delete points from %q: %w", collection, err)
+	// PR 5 (June 2026, fix/qdrant-tenant-scope): same write-through-
+	// alias rationale as UpsertFromClips above. The previous
+	// alias-resolution round-trip is dropped; the alias name is
+	// used directly as the Qdrant collection name in the delete
+	// payload.
+	if err := w.client.DeletePoints(ctx, w.schema.RuntimeAlias, pointIDs); err != nil {
+		return fmt.Errorf("delete points from %q: %w", w.schema.RuntimeAlias, err)
 	}
 
 	w.log.Info("deleted points from qdrant",
 		zap.Int("count", len(pointIDs)),
-		zap.String("collection", collection))
+		zap.String("collection", w.schema.RuntimeAlias))
 	return nil
 }
 

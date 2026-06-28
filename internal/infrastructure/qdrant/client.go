@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -57,6 +58,15 @@ func (c *Client) APIKey() string {
 // ── Collection API ───────────────────────────────────────────────────
 
 // GetCollection fetches collection info from Qdrant.
+//
+// PR1 — fix/qdrant-wire-contracts: the wire envelope is the canonical
+// Qdrant `{"result": {...}}` shape. CollectionInfo.UnmarshalJSON knows
+// how to decode that nested envelope AND the legacy flat shape used
+// in pre-PR1 test mocks; see types.go::CollectionInfo.UnmarshalJSON
+// godoc for the discriminator heuristic. The decoder failure surfaces
+// as a typed *APIError carrying the failing operation name so callers
+// (CollectionManager.CompareActiveCollection, CompareSchema) can route
+// diagnostics without parsing the error string.
 func (c *Client) GetCollection(ctx context.Context, name string) (*CollectionInfo, error) {
 	url := fmt.Sprintf("%s/collections/%s", c.baseURL, name)
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
@@ -69,16 +79,19 @@ func (c *Client) GetCollection(ctx context.Context, name string) (*CollectionInf
 		return nil, &ErrCollectionNotFound{Name: name}
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, c.parseError(resp)
+		return nil, c.parseErrorWith(opGetCollection, resp)
 	}
 
-	var result struct {
-		Result CollectionInfo `json:"result"`
+	var info CollectionInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, &APIError{
+			Operation: opGetCollection,
+			Status:    http.StatusOK,
+			Message:   fmt.Sprintf("invalid collection response: %v", err),
+			Retryable: false,
+		}
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode collection info: %w", err)
-	}
-	return &result.Result, nil
+	return &info, nil
 }
 
 // CreateCollection creates a new collection with the given vector parameters.
@@ -155,6 +168,18 @@ func (c *Client) ListCollections(ctx context.Context) ([]string, error) {
 // ── Alias API ────────────────────────────────────────────────────────
 
 // GetAliasTarget returns the collection name an alias points to, or empty string.
+//
+// PR1 — fix/qdrant-wire-contracts: the Qdrant /collections/{alias}/aliases
+// endpoint returns the canonical `{"result": {"aliases": [{alias_name,
+// collection_name}, ...]}}` envelope (see https://api.qdrant.tech/api-reference/aliases/get-collection-aliases).
+// The pre-PR1 decoder treated `result` as a top-level array (the
+// /collections output shape, not /aliases), silently returning empty
+// whenever the alias actually existed. The fix has two pieces:
+//
+//  1. Decode `result.aliases[]` instead of `result[]` here.
+//  2. Accept the legacy flat shape during the migration window so
+//     callers using cached/raw payloads are not broken — controlled
+//     by aliasesEnv.probeShape envelope detector.
 func (c *Client) GetAliasTarget(ctx context.Context, alias string) (string, error) {
 	url := fmt.Sprintf("%s/collections/%s/aliases", c.baseURL, alias)
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
@@ -167,19 +192,45 @@ func (c *Client) GetAliasTarget(ctx context.Context, alias string) (string, erro
 		return "", &ErrCollectionNotFound{Name: alias}
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", c.parseError(resp)
+		return "", c.parseErrorWith("GetAliasTarget", resp)
 	}
 
-	var result struct {
-		Result []struct {
-			AliasName      string `json:"alias_name"`
-			CollectionName string `json:"collection_name"`
+	type aliasEntry struct {
+		AliasName      string `json:"alias_name"`
+		CollectionName string `json:"collection_name"`
+	}
+
+	// Re-read the body so we can probe the envelope before decoding.
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodyBytes))
+	var env struct {
+		Result struct {
+			Aliases []aliasEntry `json:"aliases"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode aliases: %w", err)
+	if err := json.Unmarshal(bodyBytes, &env); err == nil && len(env.Result.Aliases) > 0 {
+		for _, a := range env.Result.Aliases {
+			if a.AliasName == alias {
+				return a.CollectionName, nil
+			}
+		}
+		return "", nil
 	}
-	for _, a := range result.Result {
+
+	// Fallback: pre-PR1 / legacy flat shape — `{"result": [...]}`.
+	// Remove once all fixtures and cached payloads have been validated
+	// against the canonical Qdrant envelope.
+	var legacy struct {
+		Result []aliasEntry `json:"result"`
+	}
+	if err := json.Unmarshal(bodyBytes, &legacy); err != nil {
+		return "", &APIError{
+			Operation: "GetAliasTarget",
+			Status:    http.StatusOK,
+			Message:   fmt.Sprintf("invalid alias response: %v", err),
+			Retryable: false,
+		}
+	}
+	for _, a := range legacy.Result {
 		if a.AliasName == alias {
 			return a.CollectionName, nil
 		}
@@ -282,6 +333,17 @@ func (c *Client) DeletePoints(ctx context.Context, collection string, ids []stri
 }
 
 // CountPoints returns the number of points in a collection.
+//
+// PR1 — fix/qdrant-wire-contracts: the canonical Qdrant envelope for
+// /collections/{name} returns `{"result": {"points_count": N, ...}}`.
+// Pre-PR1 the decoder read `result` as a top-level map which silently
+// returned 0 against real Qdrant (because `points_count` was one
+// level too shallow). The fix mirrors the GetCollection envelope: we
+// decode the full CollectionInfo value so the points_count source
+// path stays consistent with the readiness / collection-manager
+// consumers, and we read the count off .PointTotal (which is mapped
+// from `result.points_count`). See types.go::CollectionInfo for the
+// envelope contract.
 func (c *Client) CountPoints(ctx context.Context, collection string) (int, error) {
 	url := fmt.Sprintf("%s/collections/%s", c.baseURL, collection)
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
@@ -294,23 +356,19 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 		return 0, &ErrCollectionNotFound{Name: collection}
 	}
 	if resp.StatusCode != http.StatusOK {
-		return 0, c.parseError(resp)
+		return 0, c.parseErrorWith(opCountPoints, resp)
 	}
 
-	var result struct {
-		Result map[string]json.RawMessage `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, fmt.Errorf("decode count: %w", err)
-	}
-	var count int
-	pointKey := "points" + "_count"
-	if payload, ok := result.Result[pointKey]; ok {
-		if err := json.Unmarshal(payload, &count); err != nil {
-			return 0, fmt.Errorf("decode count field: %w", err)
+	var info CollectionInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return 0, &APIError{
+			Operation: opCountPoints,
+			Status:    http.StatusOK,
+			Message:   fmt.Sprintf("invalid collection response: %v", err),
+			Retryable: false,
 		}
 	}
-	return count, nil
+	return info.PointTotal, nil
 }
 
 // ScrollPoints iterates over all points in a collection using the Qdrant
@@ -457,14 +515,22 @@ func (c *Client) SearchPoints(ctx context.Context, collection string, req Search
 // remains as a safety net so dense-only can never be silently labelled as
 // hybrid again.
 func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req HybridSearchRequest) ([]SearchResult, error) {
-	if req.SparseVectorName != "" && req.SparseQueryVector == nil {
+	// PR2 (fix/qdrant-bm25-indexing): the live retrieval path hands
+	// raw query text + model through SparseText/SparseModel and lets
+	// Qdrant run the BM25 inference server-side; the legacy raw
+	// SparseQueryVector is reserved for diagnostic / bulk-from-csv
+	// flows. Rejection logic must therefore accept a hybrid request
+	// when EITHER (a) SparseQueryVector is set (pre-PR2 path) OR
+	// (b) SparseText is set (PR2 server-side path). A hybrid request
+	// with neither source still fails closed with ErrSparseRequired.
+	if req.SparseVectorName != "" && req.SparseQueryVector == nil && req.SparseText == "" {
 		return nil, &ErrSparseRequired{Channel: req.SparseVectorName}
 	}
 	if req.DenseVector == nil {
 		return nil, fmt.Errorf("hybrid search: dense vector must not be nil")
 	}
-	if req.SparseQueryVector == nil {
-		return nil, fmt.Errorf("hybrid search: sparse query vector must not be nil — use SearchPoints for ANN-only retrieval")
+	if req.SparseQueryVector == nil && req.SparseText == "" {
+		return nil, fmt.Errorf("hybrid search: sparse query vector or text must not be empty — use SearchPoints for ANN-only retrieval")
 	}
 	if req.SparseVectorName == "" {
 		return nil, fmt.Errorf("hybrid search: sparse vector name must be set (e.g. \"bm25_text\")")
@@ -483,14 +549,50 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 			"using": req.DenseVectorName,
 			"limit": overfetch,
 		},
-		{
+	}
+
+	// PR2 (fix/qdrant-bm25-indexing, June 2026): server-side BM25
+	// inference is the canonical path. When the orchestrator supplies
+	// SparseText we project it through the inference model on the
+	// server (no client-side tokenizer); when SparseText is empty
+	// we fall through to the legacy raw-vector path so the diagnostic
+	// and bulk-from-csv callers can still send a pre-computed sparse
+	// vector. The model defaults to DefaultSparseModel when empty.
+	//
+	// Precedence: when BOTH SparseText AND SparseQueryVector are set
+	// (unexpected but legal), SparseText wins and SparseQueryVector is
+	// silently discarded. Server-side BM25 is the live strategy; the
+	// raw vector is reserved for diagnostic / bulk-from-csv so the
+	// live path never depends on the legacy fallback.
+	model := req.SparseModel
+	// inference is the canonical path. When the orchestrator supplies
+	// SparseText we project it through the inference model on the
+	// server (no client-side tokenizer); when SparseText is empty
+	// we fall through to the legacy raw-vector path so the diagnostic
+	// and bulk-from-csv callers can still send a pre-computed sparse
+	// vector. The model defaults to DefaultSparseModel when empty.
+	model := req.SparseModel
+	if model == "" {
+		model = DefaultSparseModel
+	}
+	if req.SparseText != "" {
+		prefetch = append(prefetch, map[string]interface{}{
+			"query": map[string]interface{}{
+				"text":  req.SparseText,
+				"model": model,
+			},
+			"using": req.SparseVectorName,
+			"limit": overfetch,
+		})
+	} else if req.SparseQueryVector != nil {
+		prefetch = append(prefetch, map[string]interface{}{
 			"query": map[string]interface{}{
 				"indices": req.SparseQueryVector.Indices,
 				"values":  req.SparseQueryVector.Values,
 			},
 			"using": req.SparseVectorName,
 			"limit": overfetch,
-		},
+		})
 	}
 
 	// Optional transcript channel — only included when a dedicated transcript
@@ -586,9 +688,30 @@ func (c *Client) CreatePayloadIndex(ctx context.Context, collection, field, fiel
 		return c.parseError(resp)
 	}
 	return nil
-}
+}// ── HTTP helpers ─────────────────────────────────────────────────
 
-// ── HTTP helpers ─────────────────────────────────────────────────────
+// Operation names used as APIError.Operation discriminator.
+// Keep in sync with parseErrorWith call sites; the labels flow
+// into log lines (`qdrant.GetCollection: HTTP 404: …`) so per-method
+// operators can grep them without parsing the underlying message.
+const (
+	opGetCollection    = "GetCollection"
+	opListCollections  = "ListCollections"
+	opCreateCollection = "CreateCollection"
+	opDeleteCollection = "DeleteCollection"
+	opGetAliasTarget   = "GetAliasTarget"
+	opUpdateAliases    = "UpdateAliases"
+	opUpsertPoints     = "UpsertPoints"
+	opDeletePoints     = "DeletePoints"
+	opCountPoints      = "CountPoints"
+	opScrollPoints     = "ScrollPoints"
+	opSearchPoints     = "SearchPoints"
+	opHybridSearch     = "HybridSearchPoints"
+	opDeletePayloadKey = "DeletePayloadKeys"
+	opCreatePayloadIdx = "CreatePayloadIndex"
+)
+
+────
 
 func (c *Client) doJSON(ctx context.Context, method, url string, body interface{}) (*http.Response, error) {
 	data, err := json.Marshal(body)
@@ -598,7 +721,16 @@ func (c *Client) doJSON(ctx context.Context, method, url string, body interface{
 	return c.doRequest(ctx, method, url, bytes.NewReader(data))
 }
 
-func (c *Client) doRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
+// prepareRequest is the single source of truth for request headers
+// (Content-Type + api-key) — every outbound Qdrant request flows
+// through here so the auth contract cannot drift across call sites.
+//
+// PR1 fix (reviewer feedback): previously `doRequest` and
+// `DoWithHTTPClient` each inlined the Content-Type / api-key
+// injection, which meant any drift in the auth contract would have
+// to be remembered in both places. The helper is internal-only to
+// avoid widening the public Client surface.
+func (c *Client) prepareRequest(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -606,7 +738,49 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// PR1 — fix/qdrant-wire-contracts (P0.1):
+	//   the API key is now injected by the single shared transport
+	//   so the probe (health.go) and every CRUD endpoint carry the
+	//   same header. Health no longer reaches around and sets
+	//   X-Api-Key by hand.
+	//
+	// Qdrant accepts both `api-key` and `X-Api-Key` (HTTP headers
+	// are case-insensitive). The canonical lowercase form is what
+	// the Qdrant docs reference, so we use that.
+	//
+	// Trimming: a config-side trailing newline or whitespace would
+	// otherwise pass the empty-check and send a polluted header
+	// (auth failures with no loggable cause). Trim before comparison
+	// and before setting.
+	if key := strings.TrimSpace(c.apiKey); key != "" {
+		req.Header.Set("api-key", key)
+	}
+	return req, nil
+}
+
+func (c *Client) doRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
+	req, err := c.prepareRequest(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
 	return c.httpClient.Do(req)
+}
+
+// DoWithHTTPClient performs a request through a caller-supplied
+// *http.Client. The api-key header is still injected by this Client
+// so the auth contract stays centralised (PR1 — fix/qdrant-wire-contracts,
+// P0.1). Used by HealthProbe.Probe so the probe can keep its own
+// per-call Timeout ceiling for defense-in-depth even when Config.Timeout
+// is large or unset.
+func (c *Client) DoWithHTTPClient(ctx context.Context, hc *http.Client, method, url string, body io.Reader) (*http.Response, error) {
+	if hc == nil {
+		hc = c.httpClient
+	}
+	req, err := c.prepareRequest(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	return hc.Do(req)
 }
 
 // decodeSearchResults is the shared result decoder for the Qdrant
@@ -614,11 +788,19 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 // contract) the legacy Search API (/points/search) is no longer
 // hit from this client — SearchPoints and HybridSearchPoints both
 // route through executeQuery, so the decoder narrows its docstring
-// to a single endpoint while remaining byte-compatible with the
-// pre-PR2 decoder shape.
+// to a single endpoint.
+//
+// PR1 — fix/qdrant-wire-contracts (P0.2): the /points/query endpoint
+// returns `{"result": {"points": [...], "next_page_offset": ...}}`,
+// NOT the legacy /points/search flat `{"result": [...]}`. The pre-PR1
+// decoder read `result` as a top-level array, which silently broke
+// every query call against any Qdrant 1.10+ deployment (Qdrant has
+// rolled out /points/query as the canonical search surface). This
+// decoder reads the canonical envelope and falls back to the flat
+// shape only during the migration window for cached/legacy fixtures.
 func (c *Client) decodeSearchResults(resp *http.Response) ([]SearchResult, error) {
 	if resp.StatusCode != http.StatusOK {
-		return nil, c.parseError(resp)
+		return nil, c.parseErrorWith("decodeSearchResults", resp)
 	}
 
 	type pointEntry struct {
@@ -627,15 +809,61 @@ func (c *Client) decodeSearchResults(resp *http.Response) ([]SearchResult, error
 		Payload map[string]interface{} `json:"payload,omitempty"`
 		Version int64                  `json:"version,omitempty"`
 	}
-	var result struct {
-		Result []pointEntry `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode search results: %w", err)
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodyBytes))
+
+	// PR1 fix (reviewer feedback): a presence-based discriminator is
+	// required because the canonical envelope can legitimately
+	// return an empty `points` array (no-match ANN). Using
+	// `len(envelope.Result.Points) > 0` would misroute a correct
+	// empty response to the legacy fallback. We probe the byte
+	// stream for the `["points"]` substring inside the `result`
+	// envelope scope — a strict substring match against the Qdrant
+	// payload shape, evaluated without re-decoding.
+	//
+	// Empty result arrays stay on the canonical envelope; only
+	// payloads without the `result.points` shape fall through.
+	if envelopeContainsPoints(body) {
+		var envelope struct {
+			Result struct {
+				Points         []pointEntry `json:"points"`
+				NextPageOffset *string      `json:"next_page_offset,omitempty"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(body, &envelope); err != nil {
+			return nil, &APIError{
+				Operation: "decodeSearchResults",
+				Status:    http.StatusOK,
+				Message:   fmt.Sprintf("invalid canonical envelope: %v", err),
+				Retryable: false,
+			}
+		}
+		results := make([]SearchResult, len(envelope.Result.Points))
+		for i, r := range envelope.Result.Points {
+			results[i] = SearchResult{
+				ID:      r.ID,
+				Score:   r.Score,
+				Payload: r.Payload,
+				Version: r.Version,
+			}
+		}
+		return results, nil
 	}
 
-	results := make([]SearchResult, len(result.Result))
-	for i, r := range result.Result {
+	// Legacy flat shape (`{"result": [...]}`).
+	var legacy struct {
+		Result []pointEntry `json:"result"`
+	}
+	if err := json.Unmarshal(body, &legacy); err != nil {
+		return nil, &APIError{
+			Operation: "decodeSearchResults",
+			Status:    http.StatusOK,
+			Message:   fmt.Sprintf("invalid search results envelope: %v", err),
+			Retryable: false,
+		}
+	}
+	results := make([]SearchResult, len(legacy.Result))
+	for i, r := range legacy.Result {
 		results[i] = SearchResult{
 			ID:      r.ID,
 			Score:   r.Score,
@@ -644,6 +872,36 @@ func (c *Client) decodeSearchResults(resp *http.Response) ([]SearchResult, error
 		}
 	}
 	return results, nil
+}
+
+// envelopeContainsPoints detects the canonical Qdrant /points/query
+// envelope by structural probe: it parses the response body into a
+// minimal struct that selects only the `result.points` keys we care
+// about. Returns true iff the body has a `result` JSON object and
+// that object contains a `points` key (including an empty array —
+// which is the no-match ANN case).
+//
+// Why a structural probe (not a byte-scan for the substring
+// "points"): a byte-scan would misroute a legacy flat-shape
+// response whose payload contains a field named "points" into the
+// canonical decoder. The structural probe is safe against payload-
+// field collisions because json.Unmarshal keys off the structural
+// path `result.<key>`, not the substring. Cost is one unmarshal + a
+// RawMessage allocation; negligible against Qdrant's network I/O.
+//
+// PR1 second-review fix (replaces a bytes.Contains substring scan
+// that was vulnerable to false positives on payloads containing
+// "points"-named fields).
+func envelopeContainsPoints(body []byte) bool {
+	var probe struct {
+		Result struct {
+			Points json.RawMessage `json:"points"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return false
+	}
+	return probe.Result.Points != nil
 }
 
 // executeQuery sends a request to the Qdrant Query API (/points/query)
@@ -664,7 +922,36 @@ func (c *Client) executeQuery(ctx context.Context, collection string, body map[s
 	return c.decodeSearchResults(resp)
 }
 
+// parseError converts a non-2xx Qdrant response into a typed *APIError.
+//
+// PR1 — fix/qdrant-wire-contracts: this is the single canonical entry
+// for every wire-level error the client surfaces. Callers MUST use
+// the typed value (errors.As) rather than parsing the message string
+// downstream. Use parseErrorWith when the call site knows which method
+// the request came from so the operation label is meaningful in logs.
 func (c *Client) parseError(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
-	return fmt.Errorf("qdrant HTTP %d: %s", resp.StatusCode, string(body))
+	return c.parseErrorWith("qdrant", resp)
+}
+
+// parseErrorWith is parseError + an explicit operation label. All
+// Client public methods that issue HTTP requests SHOULD pass their
+// op* constant so the labelled error indicates which endpoint
+// failed.
+func (c *Client) parseErrorWith(op string, resp *http.Response) error {
+	if resp == nil {
+		return &APIError{
+			Operation: op,
+			Status:    0,
+			Message:   "nil response",
+			Retryable: true,
+		}
+	}
+	body := readAPIBody(resp.Body)
+	return &APIError{
+		Operation: op,
+		Status:    resp.StatusCode,
+		Message:   fmt.Sprintf("HTTP %d: %s", resp.StatusCode, body),
+		Body:      body,
+		Retryable: classifyRetryability(resp.StatusCode),
+	}
 }

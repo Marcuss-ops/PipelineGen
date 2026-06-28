@@ -7,6 +7,16 @@
 // (VectorSearchRequest, HybridSearchRequest, VectorSearchResult) into the
 // canonical qdrant types (SearchRequest, HybridSearchRequest, SearchResult)
 // and back.
+//
+// PR 5 (June 2026, fix/qdrant-tenant-scope): both Search and HybridSearch
+// route their filter construction through the canonical
+// CompileQdrantFilter (declared in filter_compiler.go). The previous
+// inline `buildLifecycleAwareFilter` helper was DELETED because both
+// callers migrated to CompileQdrantFilter in this same PR and the
+// pre-PR5 hand-rolled logic was the source of the curate-path
+// workspace-omission drift the verdict §8 flagged. The deletion is
+// the "Code Hygiene: remove unused variables, functions, and files
+// as a result of your changes" rule from AGENTS.md applied.
 package qdrant
 
 import (
@@ -37,6 +47,11 @@ var _ appsearch.VectorStorePort = (*searchAdapter)(nil)
 // Search converts an application-level VectorSearchRequest into a qdrant
 // SearchRequest, delegates to the Searcher, and converts results back.
 //
+// PR 5 (June 2026, fix/qdrant-tenant-scope): filter construction routes
+// through CompileQdrantFilter so the workspace + lifecycle invariants
+// cannot drift between Search and HybridSearch. The previous inline
+// `buildLifecycleAwareFilter` was deleted.
+//
 // PR 1 (June 2026, Lifecycle state SSOT): the canonical lifecycle_state
 // filter is {\"ACTIVE\"} only. Pre-PR1 the waterfall was {\"active\",
 // \"searchable\"} — both legacy values are pruned by migration 101 and
@@ -46,7 +61,18 @@ func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 		return nil, fmt.Errorf("qdrant searcher not configured")
 	}
 
-	filter := buildLifecycleAwareFilter(req.Source, req.Category, req.MediaType, req.Language, req.WorkspaceID)
+	filter, err := CompileQdrantFilter(
+		appsearch.SearchScope{WorkspaceID: req.WorkspaceID},
+		appsearch.AssetFilter{
+			Source:    req.Source,
+			Category:  req.Category,
+			MediaType: req.MediaType,
+			Language:  req.Language,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("qdrant search: compile filter: %w", err)
+	}
 
 	qReq := SearchRequest{
 		QueryVector: req.QueryVector,
@@ -67,6 +93,21 @@ func (a *searchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 // HybridSearch converts an application-level HybridSearchRequest into a
 // qdrant HybridSearchRequest, delegates to the Searcher, and converts back.
 //
+// PR 5 (June 2026, fix/qdrant-tenant-scope): filter construction routes
+// through the SAME CompileQdrantFilter call as Search, so the workspace +
+// lifecycle invariants are uniform across both retrieval paths. The
+// pre-PR5 curate-path bug (silent workspace-omission) was inherited by
+// hybrid because the curate path was the diagnostic surface that first
+// surfaced the issue; canonicalising both on CompileQdrantFilter closes
+// the inheritance gap.
+//
+// PR 2 (June 2026, fix/qdrant-bm25-indexing): live retrieval hands the
+// raw query text via SparseText; Qdrant server-side BM25 inference
+// handles tokenization + projection. The deprecated client-side raw
+// vector (SparseVector) is kept ONLY for diagnostic / bulk-from-csv
+// paths. The adapter threads both fields straight through to the
+// infra-level HybridSearchRequest envelope.
+//
 // PR 1 (June 2026, Lifecycle state SSOT): same canonical ACTIVE-only
 // filter as Search() so hybrid results never include DELETED/STAGING/
 // PROCESSING/DELETE_PENDING/ERROR points.
@@ -75,16 +116,19 @@ func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		return nil, fmt.Errorf("qdrant searcher not configured")
 	}
 
-	filter := buildLifecycleAwareFilter(req.Source, req.Category, req.MediaType, req.Language, req.WorkspaceID)
+	filter, err := CompileQdrantFilter(
+		appsearch.SearchScope{WorkspaceID: req.WorkspaceID},
+		appsearch.AssetFilter{
+			Source:    req.Source,
+			Category:  req.Category,
+			MediaType: req.MediaType,
+			Language:  req.Language,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("qdrant hybrid search: compile filter: %w", err)
+	}
 
-	// QDRANT-004 PR1 (June 2026): the orchestrator now owns BM25
-	// tokenization (mediasearch.Service builds the *bm25.SparseVector
-	// and sets HybridSearchRequest.SparseVector). The adapter becomes
-	// a pure DTO → Qdrant mapper: project Fields{Indices, Values} into
-	// the infrastructure-level SparseQueryVector. Any nil vector here
-	// means the orchestrator failed to enforce fail-closed — the
-	// downstream qdrant.Searcher.HybridSearch will reject with
-	// ErrSparseRequired as defence-in-depth.
 	var sparseVec *SparseQueryVector
 	if req.SparseVector != nil {
 		sparseVec = &SparseQueryVector{
@@ -97,6 +141,8 @@ func (a *searchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		DenseVector:       req.DenseVector,
 		DenseVectorName:   req.DenseVectorName,
 		SparseVectorName:  req.SparseVectorName,
+		SparseText:        req.SparseText,
+		SparseModel:       req.SparseModel,
 		SparseQueryVector: sparseVec,
 		Limit:             req.Limit,
 		MinScore:          req.MinScore,
@@ -184,71 +230,4 @@ func payloadString(payload map[string]interface{}, key string) string {
 	default:
 		return fmt.Sprint(v)
 	}
-}
-
-// buildLifecycleAwareFilter is the canonical filter builder for Qdrant
-// search + hybrid search (PR 1 — Lifecycle state SSOT, June 2026).
-//
-// The function ALWAYS appends the lifecycle_state must-clause even when
-// all caller-side filters are empty — a vector query without a
-// lifecycle filter could return TOMBSTONE rows (DELETE_PENDING/DELETED/
-// ERROR/STAGING/PROCESSING) to the application layer, which would be a
-// "no fake availability" invariant violation. Defence-in-depth: the
-// post-query guard in mediasearch/service.go drops rows whose
-// lifecycle_state is not in SearchableLifecycleStates, but enforcing
-// the constraint at the Qdrant boundary keeps the user-visible surface
-// (SearchHit) immune to a future orchestrator that forgets the
-// defence-in-depth layer.
-//
-// The canonical value is "ACTIVE". Pre-PR1 the filter was a 2-value
-// waterfall {"active", "searchable"}; both legacy values were pruned
-// by migration 101 so a single-string match is enough. Hybrid and
-// pure ANN share this builder — the no-filter-vs-with-filter split is
-// gone so a Searcher wiring that sets QueryVector but forgets a
-// Filter arg can no longer silently bypass the lifecycle clause.
-//
-// Parameters mirror the previous inline builder exactly so the wire
-// shape of the Qdrant filter is byte-identical between callers (the
-// only difference from the pre-PR1 inline builder is the lifecycle
-// filter value-list).
-func buildLifecycleAwareFilter(source, category, mediaType, language, workspaceID string) map[string]interface{} {
-	must := make([]map[string]interface{}, 0, 6)
-	if source != "" {
-		must = append(must, map[string]interface{}{
-			"key": "source", "match": map[string]interface{}{"value": source},
-		})
-	}
-	if category != "" {
-		must = append(must, map[string]interface{}{
-			"key": "category", "match": map[string]interface{}{"value": category},
-		})
-	}
-	if mediaType != "" {
-		must = append(must, map[string]interface{}{
-			"key": "media_type", "match": map[string]interface{}{"value": mediaType},
-		})
-	}
-	if language != "" {
-		must = append(must, map[string]interface{}{
-			"key": "language", "match": map[string]interface{}{"value": language},
-		})
-	}
-	// QDRANT-004 §workspace_id isolation — vector/hybrid search must
-	// only return points belonging to the caller's workspace.
-	if workspaceID != "" {
-		must = append(must, map[string]interface{}{
-			"key": "workspace_id", "match": map[string]interface{}{"value": workspaceID},
-		})
-	}
-	// Canonical lifecycle filter (PR 1, June 2026): single value
-	// {\"ACTIVE\"} replaces the legacy {\"active\", \"searchable\"}
-	// waterfall. The lifecycle_state payload key is SSOT (QDRANT-004
-	// PR2); the previous \"status\" payload key was retired in this
-	// same commit and any pre-PR1 point that wrote it is repaired
-	// by the reconciler's KindLifecycleKeyLegacy classification.
-	must = append(must, map[string]interface{}{
-		"key":   "lifecycle_state",
-		"match": map[string]interface{}{"value": string("ACTIVE")},
-	})
-	return map[string]interface{}{"must": must}
 }

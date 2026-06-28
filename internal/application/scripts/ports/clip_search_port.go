@@ -51,6 +51,20 @@ type ClipSearchQuery struct {
 	Category string
 	// MediaType restricts to image|video. Empty = any.
 	MediaType string
+	// WorkspaceID is REQUIRED for user-facing traffic. The adapter
+	// applies it as a server-side workspace isolation clause (PR 5,
+	// June 2026, fix/qdrant-tenant-scope). An empty workspace means
+	// "background/system path" — the adapter then REJECTS the call
+	// unless IsSystem=true is set explicitly. The matching rule
+	// mirrors mediasearch.Service::Search's ErrMissingWorkspace
+	// rejection: a workspace derived from the auth middleware is the
+	// contract, an empty workspace is a programming error.
+	WorkspaceID string
+	// IsSystem opts out of the workspace isolation clause. Only
+	// admin / reconcile / DR paths set this. Callers MUST NOT infer
+	// it from the request body — the handler should pass it through
+	// from an authenticated "is_admin" principal check.
+	IsSystem bool
 	// Limit is the max number of hits. Zero = 20 (legacy default).
 	Limit int
 	// MinScore is the cosine-similarity threshold. Zero = 0.5.
