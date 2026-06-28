@@ -19,10 +19,12 @@ rg_n() {
     { rg -n "$@" 2>/dev/null; } || true
 }
 
-# rg_strip_full_line_comments <pattern> [rg_args...]
-# rg plus awk that drops any hit whose content line starts with "//"
-# (a Go comment). Used by Checks 0, 1, 2, 3, 10, 11, etc. that don't
-# need marker-window tolerance.
+# rg_strip_full_line_comments [rg_args...]
+# Standard rg -n invocation. Pattern can be a positional or via -e flags
+# (multiple patterns supported). All hits whose content line starts with
+# "//" (Go full-line comment) are stripped via the awk pre-pass.
+# Used by Checks 0, 1, 2, 3, 10, 11, etc. that don't need marker-window
+# tolerance.
 rg_strip_full_line_comments() {
     {
         rg -n "$@" 2>/dev/null \
@@ -36,7 +38,7 @@ rg_strip_full_line_comments() {
     } || true
 }
 
-# rg_window_allowlist <pattern> <marker> [rg_args...]
+# rg_window_allowlist <marker> [rg_args...]
 # rg plus awk pre-pass that:
 #   (a) collects marker lines ("ARCH-ALLOWLIST: <marker>") with their
 #       file + line number;
@@ -47,21 +49,20 @@ rg_strip_full_line_comments() {
 #       grouping), tolerating the canonical `marker\n\n<call site>`
 #       pattern with a 25-line scroll-window.
 #
-# The marker's <marker> arg is the EXACT token to match (e.g. admin-only
-# for Check 5, factory-only for Check 8 factory-only form, clips-ssot-only
-# for Check 10b, retention-created-at-mutable for Check 33).
+# Signature: marker is the FIRST positional arg, then all rg args
+# (including -e patterns, --glob filters, type flags, path args).
+# Multiple -e patterns are supported because rg resolves them natively.
+# This is the canonical helper for the 4 marker-using checks (5, 8, 10b, 33).
 #
-# Notes for callers:
-#   - The pattern positional arg is the LAST argument rg sees (rg -n
-#     "$@" pattern passes paths/globs THEN the pattern).
-#   - rg's exit 1 on "no matches" is harmless: the inner { ... } || true
-#     wrapper guarantees the function returns 0 always.
+# The marker's token (e.g. admin-only, factory-only, clips-ssot-only,
+# retention-created-at-mutable) is matched via runtime string equality
+# in the awk pre-pass, so the marker token can never leak into the awk
+# regex (which would risk special-char injection).
 rg_window_allowlist() {
-    local pattern="${1}"
-    local marker="${2}"
-    shift 2
+    local marker="${1}"
+    shift
     {
-        rg -n "$@" "${pattern}" 2>/dev/null \
+        rg -n "$@" 2>/dev/null \
             | awk -F: -v marker="${marker}" '
                 {
                     rest = ""
