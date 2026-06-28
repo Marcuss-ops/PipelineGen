@@ -817,37 +817,47 @@ func (a *clipsNameSearchAdapter) SearchByName(ctx context.Context, query string,
 	if a == nil || a.repo == nil {
 		return nil, nil
 	}
-	// List with a generous limit, then filter by name in Go.
-	// asset.Filter does not carry a Name/LIKE field (the canonical
-	// name search lives in FindByName which is an exact match),
-	// so the Go-side filter is the pragmatic bridge until a
-	// proper SQL LIKE method lands on ClipsRepository.
-	fetch := limit * 3
-	if fetch < 50 {
-		fetch = 50
+	ql := "%" + strings.ToLower(strings.TrimSpace(query)) + "%"
+	if limit <= 0 {
+		limit = 20
 	}
-	if fetch > 500 {
-		fetch = 500
+	if limit > 100 {
+		limit = 100
 	}
-	all, err := a.repo.List(ctx, asset.Filter{Limit: fetch})
+	// Direct SQL query avoids the MediaAssetColumns constant which
+	// references web_view_link (a column that lives in asset_locations,
+	// not in media_assets). Selecting only the 4 columns we need.
+	rows, err := a.repo.DB().QueryContext(ctx,
+		`SELECT id, COALESCE(name,'') AS name, COALESCE(source,'') AS source, COALESCE(drive_file_id,'') AS drive_file_id
+		 FROM media_assets
+		 WHERE LOWER(name) LIKE ? AND `+asset.SoftDeleteFilter()+`
+		 ORDER BY name
+		 LIMIT ?`,
+		ql, limit)
 	if err != nil {
 		return nil, err
 	}
-	ql := strings.ToLower(strings.TrimSpace(query))
+	defer rows.Close()
+
 	out := make([]scriptapi.ClipSearchHit, 0, limit)
-	for _, clip := range all {
-		if !strings.Contains(strings.ToLower(clip.Name), ql) {
-			continue
+	for rows.Next() {
+		var id, name, source, driveFileID string
+		if err := rows.Scan(&id, &name, &source, &driveFileID); err != nil {
+			return nil, err
+		}
+		driveLink := ""
+		if driveFileID != "" {
+			driveLink = "https://drive.google.com/file/d/" + driveFileID + "/view"
 		}
 		out = append(out, scriptapi.ClipSearchHit{
-			ID:        clip.ID,
-			Name:      clip.Name,
-			Source:    string(clip.Source),
-			DriveLink: clip.DriveLink(),
+			ID:        id,
+			Name:      name,
+			Source:    source,
+			DriveLink: driveLink,
 		})
-		if len(out) >= limit {
-			break
-		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
