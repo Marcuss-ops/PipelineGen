@@ -17,6 +17,150 @@
 
 deprecations:
 
+  # ── 0. PR-VOICEOVER-LEGACY-ENDPOINTS-410 — voiceover typed-port seam HTTP 410 surface removed ──
+  # Step 9 B-3 CUTOVER (commit 665ff194, June 2026) deleted the
+  # `voiceoverSvcAdapter` typed-port seam that was introduced during
+  # the V1..V7 typed-port chain. The seam's two methods
+  # (`Generate` / `GenerateWithDestination`) previously returned
+  # `(interface{}, error)` to mask the untyped wire shape; callers
+  # (processor_voiceover.go::Process) had to runtime-assert the result
+  # via the deleted `extractVoiceoverPaths(result interface{})` helper.
+  # This record ratchets the seam as a deprecation event so a future
+  # `interface{}`-returning voiceover wrapper cannot land without an
+  # explicit godlike/07 schema entry + compatibility test footprint.
+  # ──────────────────────────────────────────────────────────────────
+  - id: PR-VOICEOVER-LEGACY-ENDPOINTS-410
+    owner_capability: internal/application/voiceover
+    exact_symbol: |
+      voiceoverSvcAdapter struct + Generate(ctx, cmd) interface{} error +
+      GenerateWithDestination(ctx, cmd, dest) interface{} error +
+      extractVoiceoverPaths(result interface{}) (path, driveLink string, err error)
+      (the typed-port seam that bridged *voiceover.Service with the
+       scripts.VoiceoverService interface during the V1..V7 cutover window).
+    file: internal/app/wire_script.go + internal/application/scripts/adapters/processor_voiceover.go
+    file_line: "wire_script.go:265 (voAdapter call site), :577 (type decl), :584 (Generate method body), :591 (GenerateWithDestination method body); processor_voiceover.go:140 + :195 (comment-only historical references after extractVoiceoverPaths helper deletion). All four symbols were DELETED at commit 665ff194 (Step 9 B-3 CUTOVER, June 2026) — the line numbers above are anchor points at the pre-deletion commit (`git show 665ff194~1:<file>`)."
+    replacement: |
+      Direct typed call to *voiceover.Service (Step 9 B-3 CUTOVER).
+      adapters.VoiceoverService interface methods return
+      (*voiceover.VoiceoverResult, error) directly; no seam wrapper,
+      no interface{} return, no runtime type assertion at the
+      processor boundary. Compile-time assertion
+      `var _ adapters.VoiceoverService = (*voiceover.Service)(nil)`
+      at processor_voiceover.go locks the typed-port contract at
+      the consumption seam per AGENTS.md Pattern 0.
+    introduction_date: 2026-04
+    removal_date: 2026-06-28
+    tracking_issue: "PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 (architecture/current.yaml#id-21 follow_up_tickets.PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2, owner: internal/application/voiceover); sibling to PR-VOICEOVER-RECOVERY V1..V7 sequence (deadline 2026-07-10)"
+    compatibility_test: |
+      Triple-defence mirroring PR-CLIP-RAW-MUTATIONS:
+        (a) `voiceoverSvcAdapter` type removed from wire_script.go — any
+            stray reference is a go build failure (the seam literally
+            no longer compiles).
+        (b) `extractVoiceoverPaths` helper deleted from
+            processor_voiceover.go — reference is a go build failure.
+        (c) `var _ adapters.VoiceoverService = (*voiceover.Service)(nil)`
+            compile-time assertion at processor_voiceover.go is the
+            structural-conformance gate; it fails compilation if a
+            future refactor drifts the typed-port surface (e.g.
+            re-introducing an interface{} return on *voiceover.Service.Generate).
+        (d) `rg 'voiceoverSvcAdapter' internal/` returns zero live hits
+            (only the documentation comment in wire_script.go that
+            records the deletion — the comment-only fossil is the
+            godlike/07 §"Historical information" intentional footprint).
+        (e) `rg 'extractVoiceoverPaths' internal/` returns zero live hits
+            (only the 2 documentation comment-references in
+            processor_voiceover.go that record the prior helper —
+            the same historical footnote pattern).
+    usage_metric: |
+      Today (audit baseline, 2026-06-28, post-Step-9 B-3 CUTOVER):
+        - voiceoverSvcAdapter struct       : 0 callers (deleted).
+        - voiceoverSvcAdapter.Generate     : 0 callers (method body deleted).
+        - voiceoverSvcAdapter.GenerateWithDestination : 0 callers (deleted).
+        - extractVoiceoverPaths            : 0 callers (function deleted).
+        - *voiceover.Service.Generate direct call (replacement surface) : 1
+          (internal/app/wire_script.go::adapters.NewVoiceoverProcessor
+           receives root.Domains.VoiceoverService directly = typed-port
+           consumed in 1 composition root site + 1 compile-time assertion
+           site at processor_voiceover.go).
+      Pre-removal: 4 live sites (the adapter struct + 2 methods + the
+      extract helper); all 4 collapsed to 0 in the Step 9 B-3 CUTOVER
+      commit 665ff194 (June 2026). Post-removal metric: zero callers
+      of the adapter, zero callers of the helper, one production
+      typed-port consumer (= the canonical surface).
+    migration_phase: CONTRACT
+    status: removed
+    notes: |
+      Step 9 B-3 CUTOVER (commit 665ff194, June 2026) ships the
+      CONTRACT phase of this deprecation in a single direct-to-main
+      commit per AGENTS.md Git-Lesson-2. Pre-removal callers of the
+      typed-port seam were zero by Step 7 closure (commit 7c5c74a2,
+      the M2 typed-port remediation which flipped the
+      voiceoverSvcAdapter return types from `(interface{}, error)`
+      to `(*voiceover.VoiceoverResult, error)`); per godlike/07
+      §"Migration sequence", when the canonical replacement already
+      exists AND pre-removal callers are zero, the migration jumps
+      directly to CONTRACT.
+
+      The deleted seam's "legacy" classification: pre-Step-9 the
+      seam was a *typed* interface{}-returning seam whose only
+      purpose was to mask the untyped wire shape during the
+      V1..V7 cutover. The HTTP-route-level "endpoints 410" naming
+      in the ID reflects the seam's runtime behaviour: Process(ctx)
+      that consumed the seam's interface{} return while a 410 Gone
+      stub HTTP route held the placeholder. The 410 stub was the
+      gate that prevented CLI consumers from reaching the typed-port
+      service while the cutover window was open; Step 9 B-3 deleted
+      both the seam AND any 410 stub references in parallel.
+
+      Cross-refs (chain of closures):
+        - godlike/06 §"One owner per fact" : *voiceover.Service is the
+          canonical owner of the voiceover generation fact; this entry
+          mirrors that ownership boundary by deleting the seam that
+          used to bridge the typed-port surface with the scriptflow
+          adapter layer.
+        - godlike/07 §"No fake availability" : the Step 9 deletion
+          was a code removal event (not a "we'll handle it later"
+          entry); the seam literally no longer compiles.
+        - godlike/07 §"Migration sequence" : zero pre-removal callers
+          + canonical replacement exists → direct CONTRACT jump from
+          EXPAND/BACKFILL/CUTOVER was valid. This deprecation record
+          is the audit-footprint of that jump.
+
+      Cross-record delineation (sibling voiceover deprecations that overlap
+      with this entry — read each independently, do NOT collapse):
+
+        - PR-VO-C1 (record #14 above): /api/voiceover/generate-with-group
+          HTTP-ROUTE deprecation. 90-day Sunset window until 2026-09-26.
+          Status: in_progress. Covers the Handler.GenerateWithGroup +
+          RegisterRoutes entry at internal/api/assets/voiceover/handler.go.
+          Distinct surface from THIS record (which covers the Go-adapter
+          seam, NOT an HTTP route).
+
+        - PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 (architecture/current.yaml
+          #id-21 follow_up_tickets): WAVE-PROGRESS tracker entry recording
+          the B-2 BACKFILL → B-3 CUTOVER → B-4 CONTRACT sequence of the
+          voiceover typed-port recovery. This deprecation record is the
+          godlike/07 schema companion — godlike/07 owns deprecation-records,
+          wave-tracker owns wave-progress; the two are complementary, not
+          redundant (per AGENTS.md §Documentation Map).
+
+        - PR-VOICEOVER-RECOVERY (architecture/current.yaml #id-21
+          follow_up_tickets, sibling): V1..V7 typed-port chain (deadline
+          2026-07-10). Different scope — the V-chain is the deep typed-port
+          push through Go canonical types; this deprecation record is the
+          audit-footprint of the seam removal that the V-chain's CONTRACT
+          phase delivers.
+
+      Shipped-then-registered pattern: Step 9 B-3 CUTOVER (commit 665ff194)
+      landed the deletion FIRST. This manifest registration follows on
+      2026-06-28 (today). Per godlike/07 §"No fake availability", retroactive
+      registration of an already-removed surface is legitimate IF the
+      compatibility test footprint (compatibility_test + usage_metric) is
+      present — the gate checks the schema, not the registration-vs-landing
+      ordering. Future agents auditing "why does this record have
+      status=removed AND removal_date=2026-06-28 (today)?" should consult
+      this paragraph.
+
   # ── 1. PR-CLIP-RESTORE — alias method removed from sqlite/assets repository ──
   - id: PR-CLIP-RESTORE
     owner_capability: internal/infrastructure/database/sqlite/assets
@@ -563,17 +707,17 @@ open_questions:
 
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
 audit:
-  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation (June 2026)"
-  total_records: 13
+  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + audit-summary resync (June 2026)"
+  total_records: 15
   by_status:
     removed: 10
-    in_progress: 3
+    in_progress: 4
     keep: 1
   by_migration_phase:
-    CONTRACT: 8
-    CUTOVER: 1
+    CONTRACT: 9
+    CUTOVER: 2
     BACKFILL: 1
-    EXPAND: 1
+    EXPAND: 2
     not applicable: 1
   ci_gate_impact: |
     Records with removal_date in the past AND status != "removed" fail CI.
