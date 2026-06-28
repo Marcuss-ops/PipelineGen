@@ -125,3 +125,187 @@ known_grandfathered:
   - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
   - "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)"
   - "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
+
+# ── Governance entries moved from ownership.yaml (Step 5 Commit A) ──────
+# These three sections: cross_project_refs, lint_gates, wave_qdrant_005d_hygiene
+# are policy entries, not ownership mappings. They live next to the rest
+# of policy.yaml so a single read surfaces "all the rules". Per the
+# canonical 'One owner per fact' principle (godlike/06_DATA_AND_CONFIG_OWNERSHIP.md)
+# each rule family has exactly one owner and one location.
+
+# metric definitions stay in internal/infrastructure/observability.
+pkg_workerstats:
+  owner: pkg/workerstats
+  rule: |
+    pkg/workerstats MUST NOT define prometheus metric vars or import
+    prometheus/client_golang: the package is a leaf utility whose only
+    concern is Linux /proc polling + the canonical POJO shape. Metric
+    definitions (names, labels, help text, cardinality) live in
+    internal/infrastructure/observability/worker_metrics.go. The caller
+    (heartbeat handler) bridges the POJO into metric values
+    field-by-field.
+    Enforcement: phase-0 documentation-only; no Check 22 / archcheck gate
+    enforces this rule today. Promotion to an enforced gate (e.g. a
+    "pkg may not import prometheus/client_golang" check in
+    scripts/ci-architectural-checks.sh) is a future wave entry to be
+    tracked via architecture/current.yaml.
+  rationale: |
+    Linux /proc sampler (RW-PROD-013, June 2026). Provides
+    pkg/workerstats.Get(cfg) returning a *domain/job.WorkerHardwareStats
+    POJO sampled from /proc/stat, /proc/net/dev, syscall.Statfs, and
+    runtime.MemStats.
+
+    Three packages, three concerns:
+
+      | Surface       | Owner                                              |
+      |---------------|----------------------------------------------------|
+      | Sampling POJO | internal/domain/job.WorkerHardwareStats            |
+      | Sampling impl | pkg/workerstats.Get                                |
+      | Metric vars   | internal/infrastructure/observability.Worker*      |
+      | Metric emit   | heartbeat handler (caller-side bridge)             |
+
+    Aliasing metric vars into pkg/workerstats (the alternative
+    shim: define WorkerSessionActive inside the sampler, expose it
+    as workerstats.WorkerSessionActive, and let observability import
+    it) would conflate sampling (concern: /proc polling) with
+    emission (concern: prometheus registration), leak the
+    globally-stateful prometheus/client_golang dependency into the
+    leaf pkg layer, and force observability to re-import pkg/workerstats
+    purely to satisfy its own TestWorkerMetricsRegistered contract.
+    The TestWorkerMetricsRegistered test asserts the canonical
+    "the metric is registered with prometheus.DefaultGatherer"
+    invariant today via same-package access; an aliased re-export
+    would couple that test to a third-party /proc utility.
+
+    Units contract (forward-looking): when `WorkerHardwareStats` lands,
+    its godoc must preserve verbatim the units rule this sampler's own
+    godoc inherits (raw bytes / 0.0-1.0 ratios; no seconds-vs-bytes
+    confusion). The canonical POJO is the authoritative reference for
+    byte-vs-ratio semantics — the sampler and the metric emission site
+    (heartbeat caller's `observability.Worker*` projection) both refer
+    readers to the type's godoc rather than re-documenting the units
+    locally.    Drift between sampler's units docstring and POJO godoc is
+    a reading-order hazard for operators; both must agree.
+
+    File-name choice: the POJO landing PR author chooses between two
+    file names (`worker.go` existing vs `worker_hardware_stats.go`
+    new); both are acceptable per the directory-level cross_ref
+    (resolved at landing time).
+  cross_refs:
+    pojo:           internal/domain/job/WorkerHardwareStats
+    pojo_file_tbd:  true
+    sampler:        pkg/workerstats/stats.go::Get
+    metrics:        internal/infrastructure/observability/worker_metrics.go
+    test:           internal/infrastructure/observability/worker_metrics_test.go::TestWorkerMetricsRegistered
+    ticket:         docs/operations/04-remote-worker-production-readiness-tickets.md#rw-prod-013
+  current_drift: |
+    Package cannot currently compile (`go build ./pkg/workerstats/...`
+    fails with `undefined: job.WorkerHardwareStats`) — canonical POJO
+    does not yet exist on `main` HEAD; must land before sampler can
+    be wired into the heartbeat handler.
+
+cross_project_refs:
+  heyavatar:
+    kind: cross_project_reference
+    repo_path: C:/Users/pater/Pyt/Heyavatar
+    cleanup_wave_ref: architecture/migration.yaml#wave-18
+    todo_ref: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
+    cleanup_date: 2026-06-24
+    n_files_removed: 16
+    n_directories_removed: 2
+    no_pipelinegen_files_changed: true
+    canonical_owners_after_cleanup:
+      - heyavatar/providers/compositing/opencv_face/compositor.OpenCVFaceCompositor
+      - heyavatar/providers/musetalk/adapter/engine.MuseTalkAdapter
+      - heyavatar/providers/liveportrait/adapter/engine.LivePortraitAdapter
+      - heyavatar/src/application/render_cached_avatar.render_cached_avatar
+    contract_status_post_cleanup:
+      removed:
+        - heyavatar/contracts/lip_sync_engine (orphan)
+        - heyavatar/contracts/motion_repository (orphan)
+        - heyavatar/contracts/body_asset_provider (orphan -- precompute chain removed)
+      retained:
+        - heyavatar/contracts/avatar_engine (canonical)
+        - heyavatar/contracts/compositor (canonical)
+        - heyavatar/contracts/quality_checker (canonical)
+
+# ── Lint Gates (CI ratchet, Wave 20 cross-reference) ───────────────────────
+# Cross-reference: architecture/current.yaml::Wave 20 (QDRANT-005D hygiene).
+#
+# Each CI ratchet gate has exactly ONE owning script file. The ratchet
+# enforces:
+#   1. Every gate is exposed by scripts/ci-architectural-checks.sh.
+#   2. Every Check carries explicit exit semantics + structured log line
+#      + FAIL remediation text.
+#   3. Each gate's allowlist (where applicable) is a separate file under
+#      docs/architecture/godlike/ or docs/migrations/.
+#
+# Maintenance cadence: when a Check is added/modified, update this block
+# in the same commit (single-source-of-truth principle per
+# docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
+# §"One owner per fact").
+
+# §"One owner per fact").
+lint_gates:
+  - check: 5
+    name: same-package duplicate-type-declaration lint
+    owner_script: scripts/ci-architectural-checks.sh (Check 5 block — duplicate-types)
+    gate_maintainer: qdrant-hygiene work stream (RW-PROD-013 dependency chain)
+    allowlist: docs/architecture/godlike/duplicate-types-allowlist.txt
+    log_line_on_pass: "Check 5: 0 same-package type-redeclarations detected across internal/"
+    references_business_rule: QDRANT-RECOVERY-001 forward-prevention
+    references_ticket: docs/operations/05-qdrant-redeclaration-recovery.md
+    owner_wave: 20
+    rationale: |
+      Go cannot distinguish file-level types from package-level types —
+      two .go files in the SAME package declaring `type X struct{...}`
+      produces a build error: "<X> redeclared in this block". This
+      lint catches the pattern at pre-CI time so a new type
+      declaration cannot land with a colliding same-package symbol.
+      Historically observed as the SnapshotDescription / PointPayload
+      duplicate in internal/infrastructure/qdrant/types.go + types_dr.go,
+      fixed by commits 2b67d701 + 38187ded (see docs/operations/05).
+    documented_exceptions: |
+      The wire-mirror + canonical-in-application pattern (e.g.
+      qdrant.SnapshotDescription (wire in types_dr.go) +
+      dr.SnapshotDescription (canonical application-layer in
+      internal/application/qdrant/dr/types.go)) is NOT a same-package
+      redeclaration — Go's package = (directory, name) tuple
+      distinguishes them. The lint enforces zero; the allowlist
+      exists ONLY for transitional cases per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+      §"Zero-baseline rule".
+
+# ── Wave 20 owner (QDRANT-005D hygiene) ─────────────────────────────────────
+# Cross-reference: architecture/current.yaml::id-20.
+wave_qdrant_005d_hygiene:
+  owner: qdrant-hygiene work stream
+  owner_secondary: scripts/ci-architectural-checks.sh maintainer
+  rationale: |
+    Forward-prevention half of QDRANT-RECOVERY-001. Owns:
+      (a) Check 5 maintenance (scripts/ci-architectural-checks.sh same-
+          package duplicate-type-declaration lint block);
+      (b) docs/architecture/godlike/duplicate-types-allowlist.txt
+          population cadence (initial: empty; populated ONLY for
+          transitional cases per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+          §"Zero-baseline rule");
+      (c) the Go-side remediation that switches the AWK lens from
+          (package_name) only → the canonical Go-package identity
+          tuple (directory_path, package_name) to clear the
+          current_count of ~14 cross-directory same-package-NAME
+          false-positives;
+      (d) the canonical note append to
+          docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
+          explaining why Go cannot distinguish file-level type
+          from package-level type and the wire-mirror + canonical-
+          in-application cycle-break requires lint enforcement.
+  blocked_by: ["16"]
+  follow_up_ticket: docs/operations/05-qdrant-redeclaration-recovery.md
+  cross_refs:
+    wave: architecture/current.yaml#id-20
+    lint_gates_entry: lint_gates[check=5]
+  registration_record: |
+    Wave 20 entry (architecture/current.yaml#id-20) + this section +
+    the matching lint_gates entry were registered in the same commit
+    on origin/main per docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
+    §"One owner per fact" (owner registration and wave entry are
+    the same fact from two views).

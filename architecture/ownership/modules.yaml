@@ -1,0 +1,133 @@
+# PipelineGen — split ownership section: modules
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+# -----------------------------------------------------------------------------
+
+version: 2
+target_root: internal/
+
+# ── Module → Route Mount Map (SSOT for HTTP surface) ─────────────────────────
+# Each module below owns exactly one route prefix. The CI gate enforces:
+#   1. No duplicate METHOD + PATH across modules.
+#   2. Every module here has a corresponding Wire<Module> in internal/app/.
+#   3. Every Wire<Module> in registry.go is listed here.
+module_route_map:
+  - module: ScriptFlow
+    prefix: /api/script
+    owner: internal/app/wire_script.go
+    routes:
+      - POST /generate-from-clips
+      - POST /generate-with-images
+      - POST /generate-batch
+      - GET  /generate-batch/progress
+      - POST /generate-from-catalog
+      - POST /curate
+      - POST /cache/evict
+      - POST /:id/sections/:section_id/regenerate
+      - GET  /jobs/:job_id
+      - GET  /jobs/:job_id/full
+  - module: Assets
+    prefix: /api/media + /api/assets
+    owner: internal/app/module_media.go
+    routes:
+      - POST /media/search
+      - POST /media/upload
+      - GET  /media/stats
+      - POST /media/recommend
+      - POST /media/clips/enrich
+      - POST /media/voiceover/generate
+      - POST /media/sound-effect/generate
+      - GET  /media/realtime/search
+      - GET  /media/realtime/index-health
+      - POST /media/register
+      - POST /media/sync
+      - GET  /media/diagnostics
+      - POST /scraper/start
+      - POST /scraper/stop
+      - GET  /scraper/status
+      - POST /ingest/media
+      - POST /ingest/bulk
+  - module: Artlist
+    prefix: /api/artlist
+    owner: internal/app/module_sources.go
+    routes:
+      - POST /run
+      - GET  /runs/:run_id
+      - GET  /stats
+      - GET  /diagnostics
+      - POST /search
+      - POST /search/live
+      - POST /recommend
+      - POST /sync-catalogs
+  - module: Images
+    prefix: /api/images
+    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    routes:
+      - GET  /search
+      - GET  /diagnostics
+      - POST /upload
+      - POST /sync
+      - POST /generate
+      - POST /animate
+      - POST /webhook/remote
+      - POST /video/generate
+  - module: Jobs
+    prefix: /api/jobs + /api/internal
+    owner: internal/app/composition.go::BuildJobsBundle
+    routes:
+      - POST /
+      - GET  /
+      - GET  /stats
+      - GET  /:id
+      - GET  /:id/full
+      - POST /:id/cancel
+      - POST /:id/retry
+      - GET  /:id/events
+  - module: YouTube
+    prefix: /api/clips
+    owner: internal/app/composition.go::BuildDomainBundle
+    routes:
+      - POST /search
+      - POST /ingest
+      - GET  /stats
+      - POST /batch
+  - module: Channels
+    prefix: /api/channels
+    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    routes:
+      - GET  /
+      - POST /
+      - POST /:id/toggle
+  - module: Stock
+    prefix: stock pipeline routes
+    owner: internal/app/composition.go (consolidated; Build*Bundle)
+    routes: []  # registered via separate handler
+  - module: Content
+    prefix: /api/books + /api/lessons
+    owner: internal/app/registry.go (inline)
+    routes:
+      - POST /books/process
+      - POST /books/generate
+      - POST /books/process-from-drive
+      - GET  /books/jobs
+      - POST /lessons/generate
+      - GET  /lessons/jobs
+  - module: System
+    prefix: /api/system + /api/drive + /api/scripts
+    owner: internal/app/registry.go (inline)
+    routes:
+      - GET  /system/doctor
+      - POST /drive/reconcile
+      - POST /drive/cleanup
+      - POST /drive/folders
+      - POST /drive/move
+      - POST /drive/resolve-by-id
+      - GET  /scripts
+      - GET  /scripts/:id
+
+# ── Job Type → Handler Map (SSOT for background jobs) ────────────────────────
+# Each job type must have exactly ONE handler. The CI gate enforces:
+#   1. No job type is registered more than once.
