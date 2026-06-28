@@ -118,40 +118,47 @@ def main():
         except Exception:
             pass
 
-        # Trigger AI Image Generation via Gemini / Labs side panel or Insert menu
-        print("Opening AI Image generation panel (Gemini / Nano Banana Pro)...")
-        ai_panel_opened = False
-
-        # Try clicking toolbar AI image button first
+        # Trigger AI Image Generation via Nano Banana Pro modal card, toolbar button, or Insert menu
+        print("Opening AI Image generation panel (Nano Banana Pro / Gemini)...")
+        panel_opened = False
         try:
-            ai_btn = page.locator('[aria-label*="Crea immagine"], [aria-label*="Create image"], [aria-label*="visualize"], [title*="Crea immagine"]').first
-            if ai_btn.is_visible():
-                ai_btn.click()
-                ai_panel_opened = True
+            card = page.locator('div:has-text("Nano Banana Pro"), div:has-text("studio-quality visuals"), div:has-text("Images")').last
+            card.wait_for(state="visible", timeout=5000)
+            card.click()
+            panel_opened = True
+            time.sleep(2)
         except Exception:
             pass
 
-        # If not opened via toolbar, use Insert menu: Inserisci -> Immagine -> Crea immagine...
-        if not ai_panel_opened:
+        if not panel_opened:
+            try:
+                labs_btn = page.locator('#workspace-labs-button, [aria-label*="Gemini"], [aria-label*="visualize"], [title*="Gemini"]').first
+                labs_btn.wait_for(state="visible", timeout=5000)
+                labs_btn.click()
+                panel_opened = True
+                time.sleep(2)
+            except Exception:
+                pass
+
+        if not panel_opened:
             try:
                 insert_menu = page.locator("#docs-insert-menu")
                 insert_menu.click()
                 time.sleep(0.5)
-                img_menu_item = page.locator('.apps-menuitem:has-text("Immagine"), .apps-menuitem:has-text("Image")').first
-                img_menu_item.hover()
+                img_item = page.locator('.apps-menuitem:has-text("Immagine"), .apps-menuitem:has-text("Image")').first
+                img_item.hover()
                 time.sleep(0.5)
-                ai_img_item = page.locator('.apps-menuitem:has-text("Gemini"), .apps-menuitem:has-text("IA"), .apps-menuitem:has-text("Crea")').first
-                ai_img_item.click()
-                ai_panel_opened = True
+                ai_item = page.locator('.apps-menuitem:has-text("Gemini"), .apps-menuitem:has-text("IA"), .apps-menuitem:has-text("Crea")').first
+                ai_item.click()
+                time.sleep(2)
             except Exception as e:
-                print(f"Note opening AI menu: {e}")
-
-        time.sleep(2)
+                print(f"Note opening insert menu AI: {e}")
 
         # Enter prompt in AI generator panel textarea/input
         print(f"Entering AI image prompt: '{args.prompt}'...")
-        prompt_input = page.locator('textarea[placeholder*="Crea"], textarea[placeholder*="Create"], textarea[aria-label*="prompt"], textarea').first
-        if prompt_input.is_visible():
+        try:
+            prompt_input = page.locator('textarea[placeholder*="Descrivi la tua idea"], textarea[placeholder*="Describe your idea"], textarea').first
+            prompt_input.wait_for(state="visible", timeout=10000)
             prompt_input.click()
             prompt_input.fill(args.prompt)
             time.sleep(0.5)
@@ -177,17 +184,23 @@ def main():
             except Exception:
                 prompt_input.press("Enter")
 
-            print("Waiting for AI image generation to complete (approx 10-15s)...")
-            time.sleep(12)
+            print("Waiting for AI image generation to complete (15s)...")
+            time.sleep(15)
 
-            # Click on generated image thumbnail in side panel to insert into slide
+            # Click on generated image thumbnail to insert onto slide canvas
             print("Inserting generated AI image onto slide canvas...")
-            gen_img = page.locator('.side-panel img, .workspace-labs-side-panel img, [role="button"] img').first
-            if gen_img.is_visible():
-                gen_img.click()
-                time.sleep(2)
-        else:
-            print("AI prompt input not found directly. Typing prompt into slide...")
+            gen_imgs = page.locator('[role="button"] img, .goog-modalpopup img, div img').all()
+            for img in gen_imgs:
+                try:
+                    src = img.get_attribute("src") or ""
+                    if "blob:" in src or "googleusercontent" in src or "data:image" in src:
+                        img.click()
+                        time.sleep(2)
+                        break
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"AI prompt input wait note ({e}). Typing prompt into slide...")
             page.keyboard.type(args.prompt)
 
         time.sleep(1)
