@@ -301,12 +301,29 @@ func (h *GenerateJobHandler) Handle(
 
 // RegisterJobs registers the handler for TypeScriptGenerate with
 // the canonical ports.Broker port.
+//
+// Issue 7 / P1 (June 2026): the previous nil-tolerant
+// `if jobsSvc == nil { return nil }` shape silently swallowed a
+// missing broker, which let the composition root come up WITHOUT
+// registering the script.generate handler -- which then surfaced
+// as runtime "no handler for script.generate" the first time a
+// script.generate job was enqueued. Fail-fast at the lowest layer
+// instead: if the broker is nil, return a typed composition error
+// so the composition root aborts startup and the operator sees a
+// fail-fast message instead of a silent runtime regression.
+//
+// Note about test fixtures: RegisterJobs used to be idempotent in
+// the nil-broker case so unit tests could construct a handler for
+// validation without booting the broker. The new contract requires
+// callers to pass a real broker; tests that exercise the nil path
+// use TestRegisterJobs_FailsWhenBrokerMissing (generation_job_test.go)
+// or TestScriptGenerateHandler_FailFast (lifecycle_integration_test.go).
 func (h *GenerateJobHandler) RegisterJobs(jobsSvc ports.Broker) error {
 	if h == nil {
 		return fmt.Errorf("generate job handler: not constructed")
 	}
 	if jobsSvc == nil {
-		return nil
+		return fmt.Errorf("generate job handler: jobs broker is required")
 	}
 	if err := jobsSvc.RegisterHandler(scriptpkg.TypeScriptGenerate, h.Handle); err != nil {
 		return fmt.Errorf("generate job handler: register: %w", err)
