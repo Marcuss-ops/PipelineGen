@@ -122,6 +122,9 @@ type ScriptFlowHandler struct {
 	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
+	// PR-FIX (June 2026): lightweight clip-name searcher for
+	// GET /script/clips/search?q= discovery endpoint.
+	clipsSearcher     ClipSearcher
 	log               *zap.Logger
 }
 
@@ -160,13 +163,17 @@ type ScriptFlowDeps struct {
 	// the jobs module exposes at /api/jobs/:id/full.
 	// Optional (nil-tolerant for test fixtures; the
 	// GetJobFullStatus method keeps a no-op guard).
-	JobFullStatus JobFullStatusHandler
-	// Issue 4 (June 2026, P1): optional canonical job-type registry
-	// used by EnqueueGenerationJob to source MaxRetries from
-	// registry.DefaultMaxRetries(jType). Optional — nil preserves
-	// the legacy hard-coded 3-retry fallback path through the
-	// JobsService. Composition root will pass appjobs.Compose().
-	Registry *appjobs.Registry
+	JobFullStatus JobFullStatusHandler		// Issue 4 (June 2026, P1): optional canonical job-type registry
+		// used by EnqueueGenerationJob to source MaxRetries from
+		// registry.DefaultMaxRetries(jType). Optional — nil preserves
+		// the legacy hard-coded 3-retry fallback path through the
+		// JobsService. Composition root will pass appjobs.Compose().
+		Registry *appjobs.Registry
+
+		// PR-FIX (June 2026): optional clip-name searcher for
+		// GET /script/clips/search?q= discovery endpoint.
+		// Nil → endpoint returns 503.
+		ClipsSearcher ClipSearcher
 
 	AdminToken            string
 	DriveFolderClient     DriveFolderClient
@@ -215,6 +222,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		adminToken:        deps.AdminToken,
 		log:               log,
 		clipServices:      clipSvc,
+		clipsSearcher:     deps.ClipsSearcher,
 		insightBuilder:    NewScriptInsightBuilder(log, 12, clipSvc),
 		// Issue 4 (June 2026, P1): plumb the typed *appjobs.Registry
 		// through to the enqueue helpers so MaxRetries is sourced from
@@ -240,10 +248,20 @@ type AdminTokenProvider interface {
 // ── Route registration ──────────────────────────────────────────────────────
 
 func (h *ScriptFlowHandler) registerJobRoutes(r *gin.RouterGroup) {
+	// Issue 9 / P2 followup (June 2026): the /full route
+	// DELEGATES to JobsHandler.GetFull (which reads
+	// `c.Param("id")`). To keep the delegator a zero-rewrite
+	// forward, the route param here MUST be named "id" — the
+	// same name the Jobs module uses at /api/jobs/:id/full.
+	// Pre-Issue-9 the param was "job_id" which broke the
+	// delegator (empty "id" → JobsHandler.GetFull 404'd).
+	// The non-/full route is also aligned to "id" for the
+	// same reason (consistency + future-proofing if the
+	// non-/full route is also collapsed in a follow-up).
 	jobs := r.Group("")
 	jobs.Use(RequireAdminToken(h))
-	jobs.GET("/jobs/:job_id", h.GetJobStatus)
-	jobs.GET("/jobs/:job_id/full", h.GetJobFullStatus)
+	jobs.GET("/jobs/:id", h.GetJobStatus)
+	jobs.GET("/jobs/:id/full", h.GetJobFullStatus)
 }
 
 // RequireAdminToken wraps middleware.RequireAdminToken accepting the local
@@ -307,6 +325,8 @@ func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate-with-images", h.LegacyGenerateWithImages)
 	r.POST("/generate-batch", h.LegacyGenerateBatch)
 	r.POST("/curate", h.LegacyCurate)
+
+	r.GET("/clips/search", h.SearchClipsByName)
 
 	h.registerJobRoutes(r)
 	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
@@ -379,9 +399,14 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
 		return
 	}
-	jobID := strings.TrimSpace(c.Param("job_id"))
+	// Issue 9 / P2 followup (June 2026): the route is
+	// registered as /jobs/:id (see registerJobRoutes), so
+	// the param name is "id" not "job_id". Pre-Issue-9 the
+	// script route used :job_id; the rename aligns with the
+	// canonical JobsHandler route /api/jobs/:id contract.
+	jobID := strings.TrimSpace(c.Param("id"))
 	if jobID == "" {
-		apiutil.BadRequest(c, "job_id is required")
+		apiutil.BadRequest(c, "job id is required")
 		return
 	}
 	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)

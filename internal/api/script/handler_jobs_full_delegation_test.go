@@ -130,7 +130,12 @@ func TestScriptJobsFullEndpoint_DelegatesToJobsFull(t *testing.T) {
 
 	// ── Arrange: JobsHandler (canonical) + ScriptFlowHandler (delegator) ──
 	log := zap.NewNop()
-	jobsHandler := jobsapi.NewJobsHandler(svc, svc, log)
+	// `svc` (delegatorFakeService) implements only
+	// domainjob.Service methods (Get + ListEvents); pass
+	// stubJobStatsReader{} (defined in handler_test.go) for
+	// the stats-reader role. The GetFull path doesn't call
+	// GetStats so the no-op stub is sufficient.
+	jobsHandler := jobsapi.NewJobsHandler(svc, stubJobStatsReader{}, log)
 	handler := NewScriptFlowHandler(ScriptFlowDeps{
 		Jobs:          svc,
 		JobFullStatus: jobsHandler,
@@ -178,17 +183,23 @@ func TestScriptJobsFullEndpoint_DelegatesToJobsFull(t *testing.T) {
 	// that breaks the JobsHandler.GetFull shape itself also
 	// surfaces (the byte-equality above would silently pass
 	// if BOTH routes regressed to the same wrong shape).
+	// Note: apiutil.OK writes the data payload verbatim with
+	// no "ok" wrapper (see pkg/apiutil/apiutil.go::OK), so
+	// the canonical JobsHandler.GetFull response has top-level
+	// `id` / `type` / `status` / `progress` / `current_step`
+	// / `events` / `result` / `retryable` / `job` fields —
+	// NOT an "ok" field. The "ok" key that JSONEq checks
+	// below lives INSIDE the canned `result` payload, not at
+	// the response wrapper.
 	var shell struct {
-		OK     bool            `json:"ok"`
 		ID     string          `json:"id"`
 		Type   string          `json:"type"`
 		Status string          `json:"status"`
 		Result json.RawMessage `json:"result"`
 	}
 	require.NoError(t, json.Unmarshal(scriptBody, &shell))
-	assert.True(t, shell.OK, "JobsHandler.GetFull must return ok=true")
 	assert.Equal(t, "job-delegator-test", shell.ID, "canonical id field (NOT job_id)")
 	assert.Equal(t, "script.generate", shell.Type)
 	assert.Equal(t, "SUCCEEDED", shell.Status, "StatusSucceeded verbatim from job.Status")
-	assert.JSONEq(t, `{"ok":true,"items":[]}`, string(shell.Result), "result payload round-trips through JobsHandler.GetFull")
+	assert.JSONEq(t, `{"ok":true,"items":[]}`, string(shell.Result), "canned result payload round-trips through JobsHandler.GetFull")
 }

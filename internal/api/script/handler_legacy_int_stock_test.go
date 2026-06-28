@@ -187,16 +187,16 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	// Issue 9 / P2 (June 2026): the script route
 	// /api/script/jobs/:job_id/full now delegates to the
 	// canonical JobsHandler.GetFull via the JobFullStatus
-	// port. The wiring must point at the SAME service the
-	// test cannedJobService provides, so a real JobsHandler
-	// is constructed with `svc` for both service + stats
-	// reader (svc satisfies domainjob.Service AND
-	// appjobs.JobStatsReader structurally). The pre-Issue-9
-	// test asserted on the script response shape
-	// (`job_id`, `priority`, `retry_count`, …); after the
-	// collapse the assertion must be on the canonical
+	// port. A real JobsHandler is constructed with `svc`
+	// for the orchestrator role (Get + ListEvents) and
+	// stubJobStatsReader{} (defined in handler_test.go) for
+	// the stats-reader role — cannedJobService implements
+	// only domainjob.Service methods, NOT appjobs.JobStatsReader.
+	// The pre-Issue-9 test asserted on the script response
+	// shape (`job_id`, `priority`, `retry_count`, …); after
+	// the collapse the assertion must be on the canonical
 	// JobsHandler shape (`id`, `type`, `status`, …).
-	jobsHandler := jobsapi.NewJobsHandler(svc, svc, zap.NewNop())
+	jobsHandler := jobsapi.NewJobsHandler(svc, stubJobStatsReader{}, zap.NewNop())
 	handler := NewScriptFlowHandler(ScriptFlowDeps{
 		Jobs:          parentSvc,
 		JobFullStatus: jobsHandler,
