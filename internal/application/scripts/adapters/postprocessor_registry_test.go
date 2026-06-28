@@ -195,18 +195,23 @@ func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 }
 
 func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
+	// Issue 3 / P0 (June 2026): the per-processor error-isolation
+	// semantic now applies to BestEffort processors only — Required
+	// failures propagate as a Go error (the pipeline aborts even
+	// if other Required processors succeeded). The test uses
+	// BestEffort for both processors so the original "errors do
+	// NOT block other processors" assertion still holds.
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	doc := &countingProcessor{name: "document", err: errors.New("drive api down")}
-	// PR 2 (June 2026): persistence now returns a non-empty
-	// PostProcessResult (ScriptID > 0). The new "empty output counts
-	// as a required failure" semantic — see TODO §6 "Non considerare
-	// automaticamente riuscito un processor che restituisce output
-	// vuoto" — would otherwise count persistence as a second
-	// required-failure even though it succeeded, breaking the
-	// isolation contract this test was written to assert. We use
-	// docID="row-1" so mergePostProcessResult populates DocID +
-	// DocLink, producing a non-empty result.
-	persist := &countingProcessor{name: "persistence", docID: "row-1"}
+	doc := &countingProcessor{
+		name:   "document",
+		policy: adapterspkg.ProcessorBestEffort,
+		err:    errors.New("drive api down"),
+	}
+	persist := &countingProcessor{
+		name:   "persistence",
+		policy: adapterspkg.ProcessorBestEffort,
+		docID:  "row-1",
+	}
 	r.Register(doc)
 	r.Register(persist)
 
@@ -217,13 +222,90 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 
 	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
-		t.Fatalf("run should not fail on partial error: %v", err)
+		t.Fatalf("run should not fail on best-effort partial error: %v", err)
 	}
 	if doc.calls != 1 {
 		t.Errorf("document should have been attempted: %d", doc.calls)
 	}
 	if persist.calls != 1 {
 		t.Errorf("persistence should still run after document error: %d", persist.calls)
+	}
+}
+
+// TestRegistry_Run_RequiredFailureAlwaysFailsPipeline (Issue 3 /
+// P0, June 2026). A Required-class postprocessor that fails MUST
+// cause the pipeline to abort even if another Required-class
+// processor succeeds. Pre-Issue-3 the gate was `requiredRequested >
+// 0 && requiredSucceeded == 0` which let k-of-n partial-success
+// patterns slide through as overall success — exactly the opposite
+// of the ProcessorRequired contract.
+func TestRegistry_Run_RequiredFailureAlwaysFailsPipeline(t *testing.T) {
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
+	document := &countingProcessor{
+		name:   "document",
+		policy: adapterspkg.ProcessorRequired,
+		err:    errors.New("drive api down"),
+	}
+	persistence := &countingProcessor{
+		name:   "persistence",
+		policy: adapterspkg.ProcessorRequired,
+		docID:  "row-1", // non-empty success
+	}
+	r.Register(document)
+	r.Register(persistence)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:             "item-1",
+		Postprocessors: []string{"document", "persistence"},
+	}
+
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
+
+	// 1. err MUST be non-nil: one Required fail aborts the pipeline.
+	if err == nil {
+		t.Fatal("Issue 3 / P0: expected non-nil error when ANY Required postprocessor fails, got nil. " +
+			"Pre-fix: partial-success (one Required success + one Required fail) was incorrectly treated as overall success.")
+	}
+	// 2. err MUST wrap scriptpkg.ErrPostprocessFailed so the broker
+	//    can classify the retry decision (worker treats dispatchErr
+	//    != nil as FAILED per Issue 1 / P0's contract).
+	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
+		t.Errorf("error must wrap scriptpkg.ErrPostprocessFailed: %v", err)
+	}
+	// 3. err message should surface both failure names (document
+	//    failed; persistence succeeded but was on a Required list
+	//    so the gate fired anyway). The exact aggregate text is
+	//    pinned: "required postprocessor failure: … document …".
+	if !strings.Contains(err.Error(), "required postprocessor failure") {
+		t.Errorf("error message must use the canonical Issue 3 phrasing: %v", err)
+	}
+	if !strings.Contains(err.Error(), "document") {
+		t.Errorf("error message must name the failing Required processor (document): %v", err)
+	}
+	if !strings.Contains(err.Error(), "failed") {
+		t.Errorf("error message must classify the failure type: %v", err)
+	}
+	// 4. result MUST be non-nil (carries partial state + warnings).
+	if result == nil {
+		t.Error("result must be non-nil (warnings + partial PipelineResult)")
+	}
+	// 5. Persistence result fields should have been merged before
+	//    error return — operators reading the (nil, partial-result)
+	//    wire shape see what succeeded.
+	if persistence.calls != 1 {
+		t.Errorf("persistence should still be invoked before the gate fires: got %d calls", persistence.calls)
+	}
+	if result != nil && result.DocID != "row-1" {
+		t.Errorf("persistence's success DocID should be in result: got %q", result.DocID)
+	}
+	// 6. Both processors were attempted exactly once — the new gate
+	//    fires AT THE END after the loop, not per-processor.
+	if document.calls != 1 {
+		t.Errorf("document should have been attempted: got %d calls", document.calls)
+	}
+	// 7. Warnings surfaced: the failure must be visible.
+	if result != nil && len(result.Warnings) == 0 {
+		t.Error("At least one warning expected for the document failure")
 	}
 }
 
