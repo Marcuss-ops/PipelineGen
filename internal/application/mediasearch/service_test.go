@@ -572,8 +572,6 @@ func TestSearch_TagFilterAND(t *testing.T) {
 
 // storeFn is sugar for `fakeVector{storeFn: func() { return store }}` that
 // keeps the test bodies compact and uniform. Lives in test code only.
-type vectorBuilder = fakeVector
-
 func storeFn(v *fakeVector, s search.VectorStorePort) *fakeVector {
 	v.storeFn = func() search.VectorStorePort { return s }
 	return v
