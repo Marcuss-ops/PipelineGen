@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -183,15 +183,16 @@ artlist:
 dev:
 	air
 
-# Run Google Accounting service
-# Usage: make google-accounting-run
-google-accounting-run:
-	cd google-accounting && uvicorn main:app --reload --port 8000
-
-# Run Comic Video Maker service
-# Usage: make comic-video-maker-run
-comic-video-maker-run:
-	cd comic-video-maker && npm run dev
+# Phase 5 (chore/repository-cleanup, June 2026) removed the
+# `google-accounting-run` and `comic-video-maker-run` targets —
+# neither `google-accounting/` nor `comic-video-maker/` exists in
+# the repository tree (the sidecar code now lives outside the Go
+# monorepo, and `comic-video-maker` is a separate project). Operators
+# running the VLM sidecar today do so via docker-compose or a
+# dedicated process supervisor; the dead Makefile targets are gone.
+# `web-admin` was never a Makefile target (only a .gitignore entry
+# for an absent frontend project) and was also dropped in the
+# .gitignore cleanup.
 
 # Install dependencies (download only, no go.mod modification)
 deps:

@@ -35,7 +35,6 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -64,8 +63,25 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// wired. The gate that previously aborted whole ScriptFlow when
 	// ImageService was missing prevented operators from running a
 	// bare script generation request.
-	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil {
-		return nil
+	//
+	// Phase 5 (chore/repository-cleanup, June 2026) — fail-closed at
+	// composition: if the BUNDLE containers (root.AI, root.AI.ScriptGen,
+	// root.Domains) are nil, OR if the specific AIBundle services
+	// (memorySvc, engine) are nil, the function returns an explicit
+	// error instead of silently skipping ScriptFlow registration.
+	// The pre-Phase-5 silent skip meant a misconfigured composition
+	// would start a server WITHOUT script processing; the fail-closed
+	// design surfaces the misconfiguration to the operator at boot.
+	// Extract booleans BEFORE the format-arg evaluation in
+	// fmt.Errorf — if root.AI is nil, dereferencing root.AI.ScriptGen
+	// inside the format-arg list would panic (Go strict evaluation),
+	// defeating the fail-closed design. Phase 5 H1 fix (June 2026,
+	// post-code-reviewer).
+	rootAINil := root.AI == nil
+	scriptGenNil := !rootAINil && root.AI.ScriptGen == nil
+	domainsNil := root.Domains == nil
+	if rootAINil || scriptGenNil || domainsNil {
+		return fmt.Errorf("wireScriptFlow: required AIBundle not initialized (root.AI=%v, root.AI.ScriptGen=%v, root.Domains=%v) — refusing to wire ScriptFlow in a fail-closed composition", rootAINil, scriptGenNil, domainsNil)
 	}
 
 	memorySvc := root.AI.MemoryService
@@ -73,8 +89,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	gen := root.AI.ScriptGen
 
 	if memorySvc == nil || engine == nil {
-		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
-		return nil
+		return fmt.Errorf("wireScriptFlow: required AIBundle services not fully initialized (memorySvc=%v, engine=%v) — refusing to wire ScriptFlow in a fail-closed composition", memorySvc == nil, engine == nil)
 	}
 
 	scriptsRepoAdapter := adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo)
@@ -99,12 +114,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// pipeline is wired (normCfg, sourceReg, ppReg, oneUC) so it can
 	// receive *GenerateOneUseCase instead of the now-removed *Engine.
 	var mediaCurator *scriptdto.MediaCurator
-
-	// ── Harvest service ────────────────────────────────────────────────
-	var _ = artlistpkg.LoadPresets
-	var _ = cfg.Drive.ArtlistFolder()
-	var harvestSvc scriptapi.AutoHarvestService
-	harvestSvc = nil // clipresolver.NewJobHarvestService removed (commit d61068b3)
 
 	// ── Pre-built ClipServices (avoids infrastructure imports in api/script) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
@@ -398,7 +407,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		AssetTree:             root.Search.AssetTreeService,
 		ClipSourceBuilder:     clipSourceBuilder,
 		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
 		ScriptsRepo:           scriptsRepoAdapter,
 		Memory:                memorySvc,
 		Jobs:                  root.Jobs.Facade,

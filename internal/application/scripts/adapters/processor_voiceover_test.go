@@ -43,6 +43,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 )
 
 // stubVoiceoverService is a VoiceoverService implementation

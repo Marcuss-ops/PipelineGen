@@ -12,9 +12,9 @@ import (
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	mutations "github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
@@ -45,7 +45,12 @@ import (
 // ArtlistWiring holds the Artlist module wiring.
 //
 // PR4d-chunk2 (June 2026): Resolver field removed. clipresolver.Service
-// does not implement script.AutoHarvestService (no EnqueueHarvest method),
+// does not implement the (Phase-5-removed) script.AutoHarvestService — the concrete
+// that previously satisfied it (clipresolver.NewJobHarvestService) was removed in
+// commit d61068b3, leaving the interface unimpl at the Phase-5 cut time; the
+// interface itself was then deleted from internal/api/script/handler_flow.go in
+// Phase 5 (June 2026, chore/repository-cleanup). The historical "no EnqueueHarvest
+// method" comment is preserved above for audit traceability.
 // so the harvest service is constructed locally in WireRegistry from
 // root.Jobs.Facade (the same path used pre-PR4d). WireArtlist remains the
 // canonical owner of the clipresolver construction; ArtlistWiring no longer

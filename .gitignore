@@ -4,7 +4,6 @@
 vendor/
 node_modules/
 **/node_modules/
-web-admin/node_modules/
 
 # ============================================
 # Logs and temp files
@@ -60,7 +59,6 @@ build/
 coverage.out
 coverage.html
 *.test
-web-admin/dist/
 
 # ============================================
 # Runtime output directories (test fixtures, worker downloads)
@@ -84,15 +82,6 @@ config/youtube_cookies.txt
 *.db.sqlite-shm
 
 # ============================================
-# Google Accounting local state
-# ============================================
-google-accounting/sessions/
-google-accounting/logs/
-google-accounting/deliverables/
-sessions/
-deliverables/
-
-# ============================================
 # Screenshots (moved to docs/screenshots/)
 # ============================================
 docs/screenshots/
@@ -103,9 +92,6 @@ docs/screenshots/
 *.bak
 pipelinegen.bak
 config.yaml.server.bak
-final_videoTEMP_MPY_wvf_snd.mp4
-cookies_fresh.txt
-cookies_fresh2.txt
 .qdrant-initialized
 server_debug.log
 monitor.log
@@ -119,17 +105,6 @@ Epica Medievale/
 Notte Gotica/
 Rosone Cattedrale/
 
-# Google Accounting debug/generated files
-google-accounting/debug_*.py
-google-accounting/debug_*.html
-google-accounting/dump_*.py
-google-accounting/login_checker*.py
-google-accounting/test_image_gen.py
-google-accounting/run_direct_generation.py
-google-accounting/docs/generated/
-
-# Google session cookies (contain auth tokens - DO NOT COMMIT)
-google-accounting/sessions/*.json
 # Python cache
 *.pyc
 __pycache__/
@@ -139,14 +114,12 @@ __pycache__/
 **/*.sqlite.bak
 **/*.db.bak
 **/*.db.sqlite.bak
-google-accounting/profiles/
 
 # Local state and data
 storage/
 !internal/storage/
 !internal/application/assets/storage/
 !internal/api/assets/storage/
-.qdrant-initialized
 cookies.txt
 debug_output.txt
 eval_results.json
@@ -179,11 +152,9 @@ scratch/
 # Local generated docs/scripts
 docs/generated/
 
-
 # Chrome profiles (browser cache, cookies, etc.)
 profiles/
 .blackboxcli/
-comic-video-maker/
 .env
 local.env
 
@@ -229,3 +200,13 @@ internal/api/_dummy_archcheck_regression.go
 # tree between the fast-forward and the conditional cleanup; this entry
 # closes the gap (housekeeping precondition for the next wave).
 .wave23_*
+
+# Phase 5 (chore/repository-cleanup, June 2026) — removed the following
+# dead entries that pointed at non-existent directories:
+#   * web-admin/{node_modules,dist}/              (web-admin/ absent)
+#   * google-accounting/{sessions,logs,deliverables}/ + debug_* (dir absent)
+#   * google-accounting/profiles/, sessions/*.json (dir absent)
+#   * comic-video-maker/                          (dir absent)
+# The VLM sidecar code is now external to the Go monorepo; if a future
+# PR re-introduces `google-accounting/` or `comic-video-maker/` at the
+# repo root, the corresponding entries can be re-added (PR1 pattern).

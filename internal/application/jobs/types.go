@@ -8,7 +8,6 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"go.uber.org/zap"
 )
 
@@ -139,7 +138,15 @@ type RunnerConfig struct {
 	// notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)).
 	// Composition root wires the in-process *SQLiteStore today; a
 	// future postgres adapter (LISTEN/NOTIFY) plugs in here via Deps.
-	Notifier sqljobs.QueueNotifier
+	//
+	// Phase 5 (June 2026): field type is the application-tier
+	// jobs.QueueNotifier interface (the typed-port canonical home per
+	// AGENTS.md Pattern 0). The previous `sqljobs.QueueNotifier` alias
+	// created an inverted application→infrastructure import for what
+	// is properly a hexagonal port; the field type now uses the
+	// application-local interface so the import is removed from this
+	// file.
+	Notifier QueueNotifier
 }
 
 // Runner manages a pool of Workers. Depends on the domain Repository

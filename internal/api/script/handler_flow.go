@@ -79,14 +79,9 @@ type ScriptFlowHandler struct {
 	jobsSvc           jobservice.Service
 	scriptsRepo       usecase.ScriptRepository
 	memorySvc         *adapters.Service
-	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	adminToken        string
 	log               *zap.Logger
-}
-
-type AutoHarvestService interface {
-	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
 // ScriptFlowDeps groups all constructor inputs.
@@ -107,7 +102,6 @@ type ScriptFlowDeps struct {
 
 	ClipSourceBuilder *usecase.ClipSourceBuilder
 	MediaCurator      *scriptdto.MediaCurator
-	Harvest           AutoHarvestService
 
 	ScriptsRepo usecase.ScriptRepository
 	Memory      *adapters.Service
@@ -154,7 +148,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		jobsSvc:           deps.Jobs,
 		scriptsRepo:       deps.ScriptsRepo,
 		memorySvc:         deps.Memory,
-		harvestSvc:        deps.Harvest,
 		driveFolderID:     deps.DriveScriptsGenFolder,
 		adminToken:        deps.AdminToken,
 		log:               log,
