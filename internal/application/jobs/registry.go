@@ -402,6 +402,7 @@ const (
 	TypeDriveFolderSync       = "drive.folder.sync"
 	TypeMediaCurate           = job.TypeMediaCurate
 	TypeVoiceoverPromo        = job.TypeVoiceoverPromo
+	TypeYouTubeChannelSync    = job.TypeYouTubeChannelSync
 	TypeImageGenerateGoogle   = "image.generate.google"
 )
 
@@ -440,6 +441,7 @@ func Compose() *Registry {
 	r.Register(JobPolicy{Type: TypeYouTubeUpload, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeYouTubeRebuildST, Description: "Rebuild YouTube search text", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Type: TypeYouTubeChannelSync, Description: "YouTube channel-level sync (metadata + video listings)", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── Voiceover / subtitles ──
 	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})

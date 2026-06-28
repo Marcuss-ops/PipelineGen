@@ -1,0 +1,55 @@
+feat(jobs): complete source + job policy registries + canonical enumeration test (Wave 19 / P1-9 finish)
+
+Two artefacts land in this commit, closing the final piece of P1-9:
+
+(1) Internal-backport fix (canonical missing-policy regression):
+    internal/domain/job/job.go declared TypeYouTubeChannelSync but
+    registry.go::Compose() never registered a JobPolicy for it. The
+    enumeration test catches this gap fail-fast now; the fix adds
+    the const-alias to registry.go's const block AND registers a
+    JobPolicy inline (Timeout 30min, DefaultMaxRetries 1,
+    RequiredCapabilities nil).
+
+(2) internal/application/jobs/registry_completeness_test.go — the
+    canonical enumeration test per user spec. Five test functions:
+
+  - TestRegistry_AllCanonicalJobTypesHavePolicy (BACKWARD drift)
+      Iterates canonicalJobTypes; asserts each has a Compose()
+      registration with non-empty Description, non-empty Queue
+      accessor, Concurrency >= 1, DefaultMaxRetries >= 1.
+  - TestRegistry_ApplyDefaultsIsIdempotent
+      Re-running applyDefaults() on a Compose()'d registry produces
+      a byte-identical map snapshot via reflect.DeepEqual on the
+      full RegistryEntry struct.
+  - TestRegistry_AllTypesAndQueueCoverage
+      AllTypes() non-empty + Queue() never empty for any registered
+      canonical Type.
+  - TestRegistry_NoForwardDrift (inverse of #1)
+      Every Type registered in Compose() IS in canonicalJobTypes +
+      cardinality symmetry between reg.AllTypes() and
+      canonicalTypesSet. Prevents the silent drift where a
+      contributor adds a new Compose() registration without
+      mirroring it into the test's canonicalJobTypes slice.
+  - TestRegistry_TimeoutAccessorFallback
+      Every registered Type has Timeout > 0; unregistered types
+      fall through to the canonical 10-minute default.
+
+canonicalJobTypes mirrors the 23 Type* const declarations in
+domain/job/job.go + 1 TypeImageGenerateGoogle from registry.go's
+const block (FASE 2 / June 2026 Chrome/Playwright AI image
+generation). canonicalTypesSet is a derived map[string]bool for
+O(1) forward-drift lookup.
+
+Code-quality fixes during the test rollout:
+  - Dropped a 12-line custom itoa helper that duplicated
+    strconv.Itoa. Replaced 3 sites with strconv.Itoa.
+  - Replaced hash-based idempotency check
+    (Concurrency * 1M + len(Queue)) which could collide between
+    adjacent states, with reflect.DeepEqual on the full entry
+    struct. The hash was brittle when Concurrency=1 + queue-len=1M
+    produced the same fingerprint as Concurrency=2 + queue-len=0.
+  - Added TestRegistry_NoForwardDrift as the symmetric inverse of
+    the existing backward-drift test (the pair forms the canonical
+    symmetric-drift invariant for the registry ingress).
+
+Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>
