@@ -260,10 +260,21 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// Voiceover processor — adapted from *voiceover.Service to usecase.VoiceoverService.
+	// Voiceover processor — direct inject *voiceover.Service into the
+	// scripts.VoiceoverService port. Step 9 / B-3 CUTOVER (June 2026)
+	// removes the previous voiceoverSvcAdapter seam: *voiceover.Service's
+	// Generate and GenerateWithDestination methods already satisfy the
+	// typed VoiceoverService interface structurally, so no wrapper is
+	// needed. The composing nil-check (root.Domains.VoiceoverService != nil)
+	// was historically preserved by the adapter's a == nil || a.svc == nil
+	// guards; direct injection keeps the same nil-safety contract because
+	// the nil-check precedes the NewVoiceoverProcessor call here. The
+	// typed-port contract is locked at compile time by
+	// `var _ adapters.VoiceoverService = (*voiceover.Service)(nil)` in
+	// internal/application/scripts/adapters/processor_voiceover.go
+	// (catches signature drift at build time, not runtime).
 	if root.Domains.VoiceoverService != nil {
-		voAdapter := &voiceoverSvcAdapter{svc: root.Domains.VoiceoverService}
-		if !ppReg.Register(adapters.NewVoiceoverProcessor(voAdapter, log)) {
+		if !ppReg.Register(adapters.NewVoiceoverProcessor(root.Domains.VoiceoverService, log)) {
 			return fmt.Errorf("wireScriptFlow: failed to register voiceover processor")
 		}
 	}
@@ -560,39 +571,6 @@ func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, descri
 
 func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error) {
 	return nil, fmt.Errorf("GenerateSmartImage not supported through ImageProcessor")
-}
-
-// voiceoverSvcAdapter adapts *voiceover.Service → scripts.VoiceoverService.
-// The wrapped concrete *voiceover.Service already exposes the canonical
-// typed return *voiceover.VoiceoverResult; this adapter is a thin
-// nil-tolerant seam that satisfies the scripts.VoiceoverService port
-// (preserving the wire-up registration at adapter construction time).
-//
-// PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28 / Step 7 M2 (June 2026):
-// returns are now typed (*voiceover.VoiceoverResult, error) matching the
-// canonical wire shape — no more interface{} magic-string passthrough.
-// extractVoiceoverPaths is gone (processor_voiceover.go); the typed result
-// reaches processor_voiceover.go::Process unboxed via direct struct
-// field reads (result.Path, result.DriveLink).
-type voiceoverSvcAdapter struct {
-	svc interface {
-		Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error)
-		GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error)
-	}
-}
-
-func (a *voiceoverSvcAdapter) Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error) {
-	if a == nil || a.svc == nil {
-		return nil, nil
-	}
-	return a.svc.Generate(ctx, text, language, filename)
-}
-
-func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
-	if a == nil || a.svc == nil {
-		return nil, nil
-	}
-	return a.svc.GenerateWithDestination(ctx, text, language, filename, dest)
 }
 
 // semanticSearchAdapter adapts scripts.RealtimeSearchService → scripts.SemanticSearchPort.
