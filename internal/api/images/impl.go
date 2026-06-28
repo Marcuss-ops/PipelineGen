@@ -47,12 +47,14 @@ type UploadRequest struct {
 }
 
 type GenerateNvidiaRequest struct {
-	Prompt string   `json:"prompt" binding:"required"`
-	Model  string   `json:"model"`
-	Width  int      `json:"width"`
-	Height int      `json:"height"`
-	Style  string   `json:"style" example:"medievale"`
-	Tags   []string `json:"tags"`
+	Prompt    string   `json:"prompt" binding:"required"`
+	Model     string   `json:"model"`
+	Width     int      `json:"width"`
+	Height    int      `json:"height"`
+	Style     string   `json:"style" example:"medievale"`
+	Tags      []string `json:"tags"`
+	Account   string   `json:"account,omitempty"`
+	ProjectID string   `json:"project_id,omitempty"`
 }
 
 type AnimateRequest struct {
@@ -196,7 +198,7 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 
 	// Always upload to Drive via the common pipeline
 	skipDrive := false
-	asset, err := h.service.GenerateSmartImage(
+	asset, err := h.service.GenerateSmartImageWithAccount(
 		ctx,
 		req.Prompt,           // subject
 		"",                   // topic (vuoto, usiamo solo il prompt)
@@ -207,6 +209,8 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 		req.Height,
 		req.Model,
 		skipDrive,
+		req.Account,
+		req.ProjectID,
 	)
 	if err != nil {
 		apiutil.InternalError(c, err)

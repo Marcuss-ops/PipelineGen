@@ -35,6 +35,23 @@ func (s *Service) GenerateSmartImage(
 	model string,
 	skipDrive bool,
 ) (*asset.ImageAsset, error) {
+	return s.GenerateSmartImageWithAccount(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive, "", "")
+}
+
+// GenerateSmartImageWithAccount generates an AI image exclusively via Google Slides with optional account and project metadata.
+func (s *Service) GenerateSmartImageWithAccount(
+	ctx context.Context,
+	subject string,
+	topic string,
+	style string,
+	prompts []string,
+	tags []string,
+	width, height int,
+	model string,
+	skipDrive bool,
+	account string,
+	projectID string,
+) (*asset.ImageAsset, error) {
 	cleanPrompt := pickImagePrompt(subject, topic, prompts)
 	if cleanPrompt == "" {
 		return nil, fmt.Errorf("missing image prompt")
@@ -88,7 +105,7 @@ func (s *Service) GenerateSmartImage(
 		return nil, fmt.Errorf("config not available")
 	}
 
-	s.log.Info("Google Slides: starting generation", zap.String("prompt", cleanPrompt))
+	s.log.Info("Google Slides: starting generation", zap.String("prompt", cleanPrompt), zap.String("account", account), zap.String("project_id", projectID))
 
 	// Get HTTP client from auth
 	httpClient, err := driveauth.NewGoogleHTTPClient(ctx, s.cfg.Paths.CredentialsFile, s.cfg.Paths.TokenFile, "https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/presentations")
