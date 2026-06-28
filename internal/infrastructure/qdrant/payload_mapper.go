@@ -304,11 +304,9 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *IndexSchema) *Inde
 			model = DefaultSparseModel
 		}
 		doc.Embeddings[channel] = EmbeddingArtifact{
-			Channel:       channel,
-			Model:         model,
-			ModelVersion:  spec.ModelVersion, // OBSERVED (write-only provenance; defaults to schema today)
-			PreprocessVer: spec.PreprocessVer,
-			Dimensions:    -1, // sparse: Qdrant infers server-side
+			Channel:    channel,
+			Model:      model,
+			Dimensions: -1, // sparse: Qdrant infers server-side
 		}
 	}
 

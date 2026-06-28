@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (m *ChannelMonitor) matchSemantically(ctx context.Context, videoURL string, semanticKeywords []string, minScore int, cfg *MonitorConfig) (int, string, error) {
+func (m *ChannelMonitor) matchSemantically(ctx context.Context, videoURL string, semanticKeywords []string, minScore int) (int, string, error) {
 	model := m.cfg.External.OllamaModel
 	if model == "" {
 		model = "gemma4:e2b"
@@ -52,7 +52,7 @@ func (m *ChannelMonitor) matchSemantically(ctx context.Context, videoURL string,
 		}
 		defer os.RemoveAll(tempDir)
 
-		subCmd := exec.CommandContext(ctx, cfg.YtdlpPath,
+		subCmd := exec.CommandContext(ctx, m.ytdlp.Path(),
 			"--write-auto-subs",
 			"--write-subs",
 			"--skip-download",

@@ -43,6 +43,62 @@ type YouTubeChapter struct {
 	EndTime   float64 `json:"end_time"`
 }
 
+// ListChannelVideosRequest configures a structured channel listing via
+// yt-dlp --flat-playlist --dump-json. PR 4 (June 2026).
+type ListChannelVideosRequest struct {
+	ChannelURL  string
+	DateAfter   string // YYYYMMDD format, optional
+	PlaylistEnd int    // 0 = all videos, >0 = limit
+}
+
+// ListChannelVideos lists videos from a channel using structured JSON output.
+// PR 4 (June 2026): replaces the text-based ListChannel with structured output.
+func (d *YTDLPDownloader) ListChannelVideos(ctx context.Context, req ListChannelVideosRequest) ([]VideoInfo, error) {
+	if err := security.ValidateDownloadURL(req.ChannelURL); err != nil {
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+
+	args := []string{
+		"--flat-playlist",
+		"--dump-json",
+	}
+
+	if req.PlaylistEnd > 0 {
+		args = append(args, "--playlist-end", fmt.Sprintf("%d", req.PlaylistEnd))
+	}
+	if req.DateAfter != "" {
+		args = append(args, "--dateafter", req.DateAfter)
+	}
+
+	args = append(args, req.ChannelURL)
+
+	result, err := process.Run(ctx, d.path, args, process.Options{
+		Timeout: 60 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("yt-dlp failed: %w", err)
+	}
+
+	output := result.Stdout
+	if output == "" {
+		output = result.Output
+	}
+	var videos []VideoInfo
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var info VideoInfo
+		if err := json.Unmarshal([]byte(line), &info); err == nil {
+			videos = append(videos, info)
+		}
+	}
+
+	return videos, nil
+}
+
 // GetVideoMetadata fetches full metadata for a YouTube video using yt-dlp --dump-json.
 func (d *YTDLPDownloader) GetVideoMetadata(ctx context.Context, videoURL string) (*YouTubeMetadata, error) {
 	if err := security.ValidateDownloadURL(videoURL); err != nil {

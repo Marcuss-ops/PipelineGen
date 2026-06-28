@@ -11,7 +11,8 @@
 // to be registered into the api.Registry.
 //
 // Used by the composition root at internal/app/registry.go::WireRegistry.
-// One-shot CLI callers (cmd/admin/seed_channels.go) bypass the
+// One-shot CLI callers
+// (cmd/admin/backfill_monitored_sources_to_category_channels.go) bypass the
 // registry and use NewService (service.go) directly — Build is the
 // registry path. The ChannelsDescriptor returned here exposes the
 // underlying Service so non-HTTP callers have a typed seam without
@@ -52,9 +53,8 @@ type Dependencies struct {
 // case layer.
 type ChannelsDescriptor struct {
 	Module api.Module
-	// Service is the canonical use-case orchestrator. Exposed so
-	// admin one-shot CLIs and future internal callers can drive
-	// the capability without going through HTTP.
+	// Service exposes the canonical use-case orchestrator to typed,
+	// non-HTTP callers registered by the composition root.
 	Service *Service
 }
 

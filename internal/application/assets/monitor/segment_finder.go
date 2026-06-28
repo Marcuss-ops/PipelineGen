@@ -19,7 +19,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL string, cfg *MonitorConfig, maxSegments int, segmentPrompt string) []youtubetypes.Segment {
+func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL string, maxSegments int, segmentPrompt string) []youtubetypes.Segment {
 	if maxSegments <= 0 {
 		maxSegments = 3 // default
 	}
@@ -38,7 +38,7 @@ func (m *ChannelMonitor) findSegmentsFromSubtitles(ctx context.Context, videoURL
 	}
 	defer os.RemoveAll(tempDir)
 
-	subCmd := exec.CommandContext(ctx, cfg.YtdlpPath,
+	subCmd := exec.CommandContext(ctx, m.ytdlp.Path(),
 		"--write-auto-subs", "--write-subs", "--skip-download",
 		"--sub-langs", "en", "--sub-format", "vtt",
 		"-o", filepath.Join(tempDir, "subs"),
@@ -319,11 +319,11 @@ Format:
 //  3. Returns nil (no segments — caller should skip this video)
 //
 // maxSegments and segmentPrompt come from the channel config for per-channel customization.
-func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL string, cfg *MonitorConfig, maxSegments int, segmentPrompt string) []youtubetypes.Segment {
+func (m *ChannelMonitor) findInterestingSegments(ctx context.Context, videoURL string, maxSegments int, segmentPrompt string) []youtubetypes.Segment {
 	// ── Priority 1: Subtitles + Gemma analysis ───────────────────────────
 	// The actual transcript content tells us what's really interesting,
 	// unlike chapter titles which can be wrong/misleading.
-	segments := m.findSegmentsFromSubtitles(ctx, videoURL, cfg, maxSegments, segmentPrompt)
+	segments := m.findSegmentsFromSubtitles(ctx, videoURL, maxSegments, segmentPrompt)
 	if len(segments) > 0 {
 		return segments
 	}

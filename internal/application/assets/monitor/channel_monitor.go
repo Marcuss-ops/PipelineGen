@@ -6,9 +6,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 
 	"go.uber.org/zap"
 )
@@ -68,15 +70,21 @@ type MonitorConfig struct {
 // ChannelMonitor handles periodic YouTube channel monitoring.
 // PR 2 (June 2026): removed db *sql.DB; channels are loaded from
 // channels.Service, which is the single canonical source.
+// DefaultPlaylistEnd is the global default for how many videos to
+// scan per channel check when no channel-level override is set.
+const DefaultPlaylistEnd = 50
+
 type ChannelMonitor struct {
 	cfg               *config.Config
 	clipsRepo         *assets.ClipsRepository
 	channelsSvc       *channels.Service
 	log               *zap.Logger
 	stopCh            chan struct{}
+	ytdlp             *downloader.YTDLPDownloader
 	youtubeSvc        *youtube.Service
 	searchQueriesRepo *assets.SearchQueriesRepository
 	ollamaClient      *client.Client
+	jobsSvc           *jobtools.Service
 	globalSem         chan struct{}
 	searchRateLimiter *tokenBucket
 }
@@ -95,10 +103,16 @@ func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, ch
 		channelsSvc:  channelsSvc,
 		log:          log,
 		stopCh:       make(chan struct{}),
+		ytdlp:        downloader.NewYTDLP(cfg),
 		youtubeSvc:   youtubeSvc,
 		ollamaClient: ollamaClient,
 		globalSem:    make(chan struct{}, maxChannels),
 	}
+}
+
+// SetJobsService wires the jobs service for async clip extraction.
+func (m *ChannelMonitor) SetJobsService(svc *jobtools.Service) {
+	m.jobsSvc = svc
 }
 
 func (m *ChannelMonitor) SetSearchQueriesRepo(repo *assets.SearchQueriesRepository) {

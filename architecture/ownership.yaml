@@ -424,16 +424,30 @@ application_assets:
     - assets/realtime
     - assets/association
 
-  # Wave CONFORMANCE-001 / id-24 (June 2026) — category_channels owns
-  # monitor-state. The internal/application/assets/monitor/ capability
-  # consumes channels.Service (ListEnabled / ClaimDue / MarkChecked /
-  # UpdateCursor) exclusively; per-video discovery state (the legacy
-  # discovery-state SQL surface) is CONTRACT-phase superseded by
-  # media_assets discovery columns (see the rationale doc linked below
-  # for the deployment chain); YouTube-side per-video discovery state
-  # migrates to media_assets. The canonical migration filenames retain
-  # the historical pointer strictly for audit traceability — body code
-  # in this file intentionally avoids the legacy table identifier.
+  # Wave CONFORMANCE-001 / id-24 (June 2026, owner PipelineGen Agent) —
+  # category_channels owns monitor-state. Day-1 ship landed via cherry-pick
+  # 1826d344 (forwarding 0907ec8a):
+  #   A1.3 — status=completed (cmd/admin/backfill_monitored_sources_to_
+  #          category_channels.go); one-shot backfill of legacy
+  #          `monitored_sources` rows into `category_channels` via
+  #          channels.Service.UpsertBulk + zero-drift cross-run assertion.
+  #   A2.1 — status=removed (seed-channels entrypoint + JSON config
+  #          removed; migration_phase=CONTRACT; synchronous-with-
+  #          backfill closure; replacement=channels.Service via canonical
+  #          POST /channels/bulk-upsert).
+  # The internal/application/assets/monitor/ capability consumes
+  # channels.Service (ListEnabled / ClaimDue / MarkChecked / UpdateCursor)
+  # exclusively; per-video discovery state (the legacy discovery-state
+  # SQL surface) is CONTRACT-phase superseded by media_assets discovery
+  # columns (see the rationale doc linked below for the deployment chain);
+  # YouTube-side per-video discovery state migrates to media_assets. The
+  # canonical migration filenames retain the historical pointer strictly
+  # for audit traceability — body code in this file intentionally avoids
+  # the legacy table identifier. Future closure: migration 110 ships
+  # atomically (deadline 2026-08-31, Wave CONFORMANCE-001 close); see
+  # architecture/current.yaml#id-24 follow_up_tickets for A1.3 / A2.1
+  # details + transitional baseline (2 ARCH-ALLOWLIST files per
+  # docs/migrations/monitored-sources-allowlist.txt).
   category_channels_owns_monitor_state: category_channels owns monitor-state
   monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
 

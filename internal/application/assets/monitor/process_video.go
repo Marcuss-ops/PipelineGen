@@ -55,20 +55,22 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 	}
 
 	// ── Keyword filter ─────────────────────────────────────────────────
-	if len(channel.Keywords) > 0 {
-		if !containsAny(title, channel.Keywords) {
+	keywords := decodeJSONStrings(channel.Keywords)
+	if len(keywords) > 0 {
+		if !containsAny(title, keywords) {
 			m.log.Debug("title keyword no match, skipping",
 				zap.String("video_id", videoID),
-				zap.Strings("keywords", channel.Keywords))
+				zap.Strings("keywords", keywords))
 			return
 		}
 		m.log.Debug("title keyword match", zap.String("video_id", videoID))
 	}
 
 	// ── Semantic filter ────────────────────────────────────────────────
-	if len(channel.SemanticKeywords) > 0 {
+	semanticKeywords := decodeJSONStrings(channel.SemanticKeywords)
+	if len(semanticKeywords) > 0 {
 		videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
-		score, matchedKeyword, err := m.matchSemantically(ctx, videoURL, channel.SemanticKeywords, channel.MinSemanticScore)
+		score, matchedKeyword, err := m.matchSemantically(ctx, videoURL, semanticKeywords, channel.MinSemanticScore)
 		if err != nil {
 			m.log.Warn("semantic matching failed, skipping video",
 				zap.String("video_id", videoID),
@@ -108,6 +110,21 @@ func (m *ChannelMonitor) processVideo(ctx context.Context, info downloader.Video
 	m.enqueueClipExtract(ctx, videoID, title, channel)
 }
 
+// decodeJSONStrings decodes a JSON-encoded string array (as stored in
+// the channels.Channel DTO's Keywords/SemanticKeywords fields) into a
+// Go []string. Returns nil if the input is empty or unparseable.
+func decodeJSONStrings(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 func semanticScoreThreshold(channelMin int) int {
 	if channelMin > 0 {
 		return channelMin
@@ -133,7 +150,7 @@ func (m *ChannelMonitor) enqueueClipExtract(ctx context.Context, videoID string,
 	if channel.DriveFolderID != "" && channel.Category != "" {
 		category = channel.Category
 	} else {
-		category = m.classifyCategory(ctx, title, channel.Category)
+		category = m.classifyCategory(ctx, title, channel.Category, nil)
 	}
 
 	channelHandle := extractChannelHandle(channel.ChannelURL)

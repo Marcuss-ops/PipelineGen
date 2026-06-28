@@ -10,9 +10,9 @@
 //
 // Handlers (internal/application/channels/handler.go) call Service
 // exclusively — they never reach into asset.CategoryChannel or
-// Repository directly. Admin one-shot CLIs (cmd/admin/seed_channels.go)
-// call NewService with the canonical adapters, bypassing the
-// registry path.
+// Repository directly. Admin one-shot CLIs
+// (cmd/admin/backfill_monitored_sources_to_category_channels.go) call
+// NewService with the canonical adapters, bypassing the registry path.
 //
 // Default policy is centralised here: the concrete SQLite repository
 // used to apply the same defaults as a defensive fallback inside its
@@ -247,6 +247,25 @@ func (s *Service) MarkChecked(ctx context.Context, cmd MarkCheckedCommand) error
 	return s.repo.MarkChecked(ctx, cmd)
 }
 
+// ClaimDue atomically claims channels that are due for checking.
+// PR 5 (June 2026): lease-based scheduling with ClaimDue/MarkChecked.
+func (s *Service) ClaimDue(ctx context.Context, cmd ClaimDueCommand) (ClaimDueResult, error) {
+	rows, err := s.repo.ClaimDue(ctx, cmd)
+	if err != nil {
+		return ClaimDueResult{}, err
+	}
+	return ClaimDueResult{Channels: fromDomainList(rows)}, nil
+}
+
+// UpdateCursor updates the incremental sync cursor for a channel.
+// PR 5 (June 2026): tracks the last video ID processed.
+func (s *Service) UpdateCursor(ctx context.Context, cmd UpdateCursorCommand) error {
+	if cmd.ID == "" {
+		return fmt.Errorf("channels.UpdateCursor: id is required")
+	}
+	return s.repo.UpdateCursor(ctx, cmd)
+}
+
 // Delete removes a single channel by ID. Returns the channel as it
 // existed before the delete so the HTTP handler can echo it back
 // without re-querying.
@@ -341,6 +360,7 @@ func fromDomain(ch *asset.CategoryChannel) Channel {
 		Enabled:          ch.Enabled,
 		NextCheckAt:      ch.NextCheckAt,
 		LastCheckedAt:    ch.LastCheckedAt,
+		ConsecutiveFailures: ch.ConsecutiveFailures,
 		CreatedAt:        ch.CreatedAt,
 		UpdatedAt:        ch.UpdatedAt,
 	}
@@ -410,5 +430,3 @@ func applyDefaultString(v, fallback string) string {
 	}
 	return v
 }
-
-

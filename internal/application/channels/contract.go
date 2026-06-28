@@ -46,6 +46,12 @@ type Repository interface {
 	// last_checked_at, last_error, last_success_at, consecutive_failures)
 	// after a channel-sync check completes. PR 3 (June 2026).
 	MarkChecked(ctx context.Context, cmd MarkCheckedCommand) error
+	// ClaimDue atomically claims channels that are due for checking.
+	// PR 5 (June 2026): lease-based scheduling.
+	ClaimDue(ctx context.Context, cmd ClaimDueCommand) ([]*asset.CategoryChannel, error)
+	// UpdateCursor updates the incremental sync cursor for a channel.
+	// PR 5 (June 2026).
+	UpdateCursor(ctx context.Context, cmd UpdateCursorCommand) error
 }
 
 // Channel is the result DTO returned by Service.List* /
@@ -76,6 +82,7 @@ type Channel struct {
 	Enabled          int    `json:"Enabled,omitempty"`
 	NextCheckAt      string `json:"NextCheckAt,omitempty"`
 	LastCheckedAt    string `json:"LastCheckedAt,omitempty"`
+	ConsecutiveFailures int    `json:"ConsecutiveFailures,omitempty"`
 	CreatedAt        string `json:"CreatedAt,omitempty"`
 	UpdatedAt        string `json:"UpdatedAt,omitempty"`
 }
@@ -149,6 +156,28 @@ type BulkUpsertResult struct {
 // handler return a meaningful response body without re-querying.
 type DeleteResult struct {
 	Deleted Channel `json:"deleted"`
+}
+
+// ClaimDueCommand claims channels that are due for checking.
+// PR 5 (June 2026): job-based sync with lease-based scheduling.
+type ClaimDueCommand struct {
+	Now        string
+	WorkerID   string
+	LeaseUntil string
+	Limit      int
+}
+
+// ClaimDueResult is the result of Service.ClaimDue.
+type ClaimDueResult struct {
+	Channels []Channel `json:"channels"`
+}
+
+// UpdateCursorCommand updates the incremental sync cursor for a channel.
+// PR 5 (June 2026): tracks the last video ID processed so the monitor
+// can resume from where it left off.
+type UpdateCursorCommand struct {
+	ID     string
+	Cursor string
 }
 
 // MarkCheckedCommand records the outcome of a channel-sync check.

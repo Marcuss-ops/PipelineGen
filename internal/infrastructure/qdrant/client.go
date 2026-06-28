@@ -571,7 +571,7 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 	// we fall through to the legacy raw-vector path so the diagnostic
 	// and bulk-from-csv callers can still send a pre-computed sparse
 	// vector. The model defaults to DefaultSparseModel when empty.
-	model := req.SparseModel
+	model = req.SparseModel
 	if model == "" {
 		model = DefaultSparseModel
 	}
@@ -710,8 +710,6 @@ const (
 	opDeletePayloadKey = "DeletePayloadKeys"
 	opCreatePayloadIdx = "CreatePayloadIndex"
 )
-
-────
 
 func (c *Client) doJSON(ctx context.Context, method, url string, body interface{}) (*http.Response, error) {
 	data, err := json.Marshal(body)

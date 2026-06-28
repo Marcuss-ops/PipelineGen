@@ -109,14 +109,49 @@ DELETE FROM schema_migrations WHERE version = 109;
 
 ## ACCEPTANCE CRITERIA (for graduation to CONTRACT 110)
 
+Graduation is split-phase per the Wave CONFORMANCE-001 / id-24 follow-up
+ticket ladder (`architecture/current.yaml#id-24 follow_up_tickets`):
+
+- **A1.3** — category_channels backfill CLI ships day-1 (BACKFILL phase).
+- **A2.1** — seed-channels entrypoint removal at CONTRACT phase (synchronous-
+  with-backfill; GC'd via cherry-pick 1826d344 forwarding 0907ec8a).
+- **Migration 110** — atomic close: git rm of the 2 ARCH-ALLOWLIST files +
+  media_assets backfill CLI + adapter ACL removal on the YouTube-side.
+
+**Count vs condition mapping** for the future verified_zero flip:
+the `current_count: 2` transitional baseline in `architecture/current.yaml#id-24`
+counts the 2 source files carrying the `// ARCH-ALLOWLIST:
+monitored-sources-readonly` marker; the 4 unchecked AC items below are
+QUALITATIVE close conditions (port rename, A2.1 media_assets backfill CLI,
+migration 110 atomic close, CI GREEN). Both the count and the 4 conditions
+must clear for migration 110 to flip `verified_zero: true` on the wave entry.
+
+The items below cover the migration_109 → migration_110 graduation:
+
 - [x] Migration 109 file applies cleanly (idempotent via IF NOT EXISTS).
 - [x] Ledger row inserted in `schema_migrations` with correct SHA256.
 - [x] All 4 columns + 3 indexes verified present.
 - [x] `MediaAssetDiscoveryRepository` written with QDRANT-002 bypass rationale.
 - [x] `IncrementProcessed` contract documented (filters on `id = ?` PK + `discovered_via != ''` scope).
+- [x] **A1.3 — category_channels backfill CLI shipped day-1** as part of W24
+      cherry-pick 1826d344 (cmd/admin/backfill_monitored_sources_to_category_
+      channels.go with cross-run zero-drift assertion; channels.Service.
+      UpsertBulk writes to category_channels; ledger row count drift
+      between Run-1 and Run-2 confirmed = 0).
+- [x] **A2.1 — seed-channels entrypoint removal at CONTRACT phase** (cmd/
+      admin/seed_channels.go + config/channel_monitor_config.json:
+      REMOVED by the same cherry-pick; `rg 'runSeedChannels|SeedChannels'
+      --glob '!*_test.go' .` returns ZERO hits; migration_phase=CONTRACT;
+      replacement=channels.Service via canonical POST /channels/
+      bulk-upsert; synchronous-with-backfill, no deprecation window).
 - [ ] Port rename + adapter + ServiceDeps + composition cleanup (open work — see followups).
-- [ ] Backfill CLI runs zero-drift on a DB snapshot.
-- [ ] Migration 110 lands atomically with `git rm` + allowlist deletion.
+- [ ] **A2.1 — Backfill CLI runs zero-drift on a DB snapshot** (the
+      media_assets backfill CLI per
+      cmd/admin/backfill_monitored_sources_to_media_assets.go —
+      future ship contract scoped in migration 110).
+- [ ] Migration 110 lands atomically with `git rm` + allowlist deletion
+      (`docs/migrations/monitored-sources-allowlist.txt` removed; the
+      2 transitional ARCH-ALLOWLIST sites un-marked).
 - [ ] `bash scripts/ci-architectural-checks.sh` returns GREEN except for the
       documented pre-existing Check 1 failure (`qdrant.NewIndexWriter` direct
       ctor in `internal/app/composition.go:323`).

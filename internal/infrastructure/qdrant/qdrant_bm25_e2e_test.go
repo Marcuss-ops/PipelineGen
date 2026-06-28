@@ -43,11 +43,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// fakeQdrantServer is a typed mock for the Qdrant REST API. It records
+// fakeBM25QdrantServer is a typed mock for the Qdrant REST API. It records
 // the upsert body (PUT /collections/{n}/points) and the query body
 // (POST /collections/{n}/points/query) so the test can assert the
 // exact wire shape the Client emits.
-type fakeQdrantServer struct {
+type fakeBM25QdrantServer struct {
 	mu          sync.Mutex
 	lastUpsert  []byte
 	lastQuery   []byte
@@ -56,7 +56,7 @@ type fakeQdrantServer struct {
 }
 
 // handler returns an http.Handler that routes /points and /points/query.
-func (f *fakeQdrantServer) handler() http.Handler {
+func (f *fakeBM25QdrantServer) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/collections/test/points", f.handleUpsert)
 	mux.HandleFunc("/collections/test/points/query", f.handleQuery)
@@ -64,7 +64,7 @@ func (f *fakeQdrantServer) handler() http.Handler {
 }
 
 // handleUpsert records the PUT body and acknowledges the upsert.
-func (f *fakeQdrantServer) handleUpsert(w http.ResponseWriter, r *http.Request) {
+func (f *fakeBM25QdrantServer) handleUpsert(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -83,7 +83,7 @@ func (f *fakeQdrantServer) handleUpsert(w http.ResponseWriter, r *http.Request) 
 
 // handleQuery records the POST body and returns a canned envelope
 // response with one hit so the test can assert score > baseline.
-func (f *fakeQdrantServer) handleQuery(w http.ResponseWriter, r *http.Request) {
+func (f *fakeBM25QdrantServer) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -113,7 +113,7 @@ func smallDenseVector() []float32 { return []float32{0.1, 0.2, 0.3, 0.4} }
 // {text, model}, using: "bm25_text"}; RRF fusion routes the result.
 // Asserts the round-trip succeeds and the hit score > baseline.
 func TestPR2_BM25_HybridEndToEnd_ServerSideText(t *testing.T) {
-	fake := &fakeQdrantServer{}
+	fake := &fakeBM25QdrantServer{}
 	srv := httptest.NewServer(fake.handler())
 	defer srv.Close()
 
@@ -210,7 +210,7 @@ func TestPR2_BM25_HybridEndToEnd_ServerSideText(t *testing.T) {
 // diagnostic + bulk-from-csv flows; the live path is the server-side
 // SparseText test above.
 func TestPR2_BM25_HybridEndToEnd_LegacyRawVector(t *testing.T) {
-	fake := &fakeQdrantServer{}
+	fake := &fakeBM25QdrantServer{}
 	srv := httptest.NewServer(fake.handler())
 	defer srv.Close()
 
@@ -275,7 +275,7 @@ func TestPR2_BM25_HybridEndToEnd_LegacyRawVector(t *testing.T) {
 // typed error rather than silently degrading to dense-only.
 // ErrSparseRequired is the canonical typed error.
 func TestPR2_BM25_HybridRejects_MissingBothSparseSources(t *testing.T) {
-	srv := httptest.NewServer((&fakeQdrantServer{}).handler())
+	srv := httptest.NewServer((&fakeBM25QdrantServer{}).handler())
 	defer srv.Close()
 
 	client := NewClient(&Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())

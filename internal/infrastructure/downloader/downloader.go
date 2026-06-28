@@ -38,6 +38,11 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 	}
 }
 
+// Path returns the configured yt-dlp binary path.
+func (d *YTDLPDownloader) Path() string {
+	return d.path
+}
+
 // addYouTubeArgs appends YouTube-specific args for fast, lightweight downloads.
 // The key optimizations:
 //   - Forces pre-muxed MP4 ≤1080p (avoids ffmpeg remuxing, ~1000x faster)

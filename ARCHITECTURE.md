@@ -387,7 +387,6 @@ go build -o admin ./cmd/admin/
 ./pipelinegen --mode workers     # workers only
 
 # Admin CLI
-./admin seed-channels
 ./admin db migrations  # codex/db-doctor-restore (W2, June 2026) — was ./admin migrate-status
 ./admin benchmark
 ./admin gen-api-docs

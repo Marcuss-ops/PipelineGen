@@ -24,10 +24,15 @@
 //   - test-youtube                (cmd/admin/cleanup.go)
 //   - upload-t5pre                (cmd/admin/upload_t5pre.go)
 //   - verify-artlist-pipeline     (cmd/admin/verify.go)
-//   - seed-channels, stock-reset, stock-subfolders-reset,
+//   - stock-reset, stock-subfolders-reset,
 //     summarize-book, sync-outros, unify-catalogs,
 //     list-styles, backfill-missing, db, gen-api-docs
 //     (pre-existing fleet).
+//   - backfill-monitored-sources-to-category-channels
+//     (cmd/admin/backfill_monitored_sources_to_category_channels.go — Wave
+//     CONFORMANCE-001 BACKFILL step into the canonical SoT; not part of
+//     availableCommands because it is a one-shot migration, not an active
+//     operator workflow).
 //
 // The contract enforced by `cmd/admin/admin_test.go::TestAdminCommands_AreRegistered`
 // is that every command documented below in `availableCommands` has a
@@ -64,7 +69,6 @@ var availableCommands = []string{
 	"reset-video-ai",
 	"qdrant-maintenance",
 	"qdrant-readiness",
-	"seed-channels",
 	"stock-reset",
 	"stock-subfolders-reset",
 	"summarize-book",
@@ -125,8 +129,6 @@ func main() {
 		err = runVerifyArtlistPipeline(args)
 
 	// ── Pre-existing fleet ─────────────────────────────────────────
-	case "seed-channels":
-		err = runSeedChannels(args)
 	case "stock-reset":
 		err = runResetStockDrive(args)
 	case "stock-subfolders-reset":

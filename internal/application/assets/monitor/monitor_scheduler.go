@@ -122,9 +122,9 @@ func (m *ChannelMonitor) checkDueChannels(ctx context.Context, chs []channels.Ch
 
 func (m *ChannelMonitor) nextCheckTime(ch channels.Channel, success bool) string {
 	if success {
-		interval := ch.CheckInterval
-		if interval <= 0 {
-			interval = 24 * time.Hour // default
+		interval, err := parseCheckInterval(ch.CheckInterval)
+		if err != nil {
+			interval = 24 * time.Hour
 		}
 		return time.Now().Add(interval).Format(time.RFC3339)
 	}

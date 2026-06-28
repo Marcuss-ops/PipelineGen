@@ -150,14 +150,13 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 					zap.Error(searchErr))
 			}
 		} else {
-			for _, h := range hits {
-				if _, dup := seen[h.AssetID]; dup {
+			for _, h := range hits {				if _, dup := seen[h.ClipID]; dup {
 					continue
 				}
-				seen[h.AssetID] = struct{}{}
-				clipIDs = append(clipIDs, h.AssetID)
-				searchResults = append(searchResults, scriptpkg.SearchResultItem{
-					ClipID: h.AssetID,
+					seen[h.ClipID] = struct{}{}
+					clipIDs = append(clipIDs, h.ClipID)
+					searchResults = append(searchResults, scriptpkg.SearchResultItem{
+						ClipID: h.ClipID,
 					Name:   h.Name,
 					Score:  h.Score,
 					Source: h.Source,

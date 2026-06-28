@@ -45,7 +45,7 @@
 //   ("monitored-import" by default). Per-kind category derivation
 //   ("monitored:<kind>") is a design-space trade-off; the current
 //   flat-bucket approach keeps the operator visible and easy to
-//   re-bucket via admin seed-channels if needed downstream.
+//   re-bucket via the channels HTTP bulk endpoint or direct SQL upsert.
 //
 // Out of scope:
 //   - Interpret metadata_json (no JSON schema asserted).
@@ -62,9 +62,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 func runBackfillMonitoredSourcesToCategoryChannels(args []string) error {

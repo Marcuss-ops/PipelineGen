@@ -29,6 +29,8 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+
+	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 )
 
 // RuntimeConfig is the bundle NewRuntime consumes. Avoiding a direct
@@ -77,9 +79,6 @@ type QdrantRuntime struct {
 	Writer *IndexWriter
 	// Searcher is the canonical ANN searcher.
 	Searcher *Searcher
-	// SearchAdapter wraps Searcher for the typed VectorStorePort
-	// surface consumed by mediasearch.
-	SearchAdapter *SearchAdapter
 	// Manager is the canonical CollectionManager (EnsureSchema +
 	// alias switch). Used by wire_services.go's qdrant-collection
 	// startup step.
@@ -95,6 +94,17 @@ type QdrantRuntime struct {
 	// Store is the canonical SQLiteAssetStore used by Mapper.
 	// nil when RuntimeConfig.DB was nil at NewRuntime call time.
 	Store *SQLiteAssetStore
+	// SearchAdapter is the canonical appsearch.VectorStorePort
+	// surface wired through NewSearchAdapter (in same-package
+	// search_adapter.go). Composition root reads this field via
+	// qd.Runtime.SearchAdapter to populate ProcessBundle.VectorSvc
+	// (build_bundles_process.go:290). The interface — not the
+	// concrete *searchAdapter — is the field type so the
+	// composition root gets a typed-port contract per
+	// AGENTS.md Pattern 0; the compile-time assertion at the
+	// bottom of search_adapter.go (`var _ appsearch.VectorStorePort
+	// = (*searchAdapter)(nil)`) pins the conformance.
+	SearchAdapter appsearch.VectorStorePort
 }
 
 // NewRuntime constructs the canonical QdrantRuntime. Each subsystem
@@ -143,10 +153,10 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 
 	writer := NewIndexWriter(client, schema, mapper, log)
 	searcher := NewSearcher(client, schema, log)
-	searchAdapter := NewSearchAdapter(searcher, log)
 	manager := NewCollectionManager(client, schema, log)
 	health := NewHealthProbe(client)
 	cleaner := NewLocatorCleaner(client, schema, log)
+	searchAdapter := NewSearchAdapter(searcher, log)
 
 	log.Info("QdrantRuntime constructed",
 		zap.String("schema_version", schema.Version),
@@ -159,12 +169,12 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 		Client:        client,
 		Writer:        writer,
 		Searcher:      searcher,
-		SearchAdapter: searchAdapter,
 		Manager:       manager,
 		Health:        health,
 		Cleaner:       cleaner,
 		Mapper:        mapper,
 		Store:         store,
+		SearchAdapter: searchAdapter,
 	}, nil
 }
 

@@ -31,10 +31,11 @@ import (
 // across compatibility-version boundaries. Production concrete:
 // *qdrant.SnapshotClient in internal/infrastructure/qdrant.
 type SnapshotStore interface {
-	CreateSnapshot(ctx context.Context, collection string) (qdrantdr.SnapshotDescription, error)
-	RestoreSnapshot(ctx context.Context, snapshotID, targetCollection string) error
-	ListSnapshots(ctx context.Context, collection string) ([]qdrantdr.SnapshotDescription, error)
-	DeleteSnapshot(ctx context.Context, snapshotID string) error
+	CreateSnapshot(ctx context.Context, collection string) (*SnapshotDescription, error)
+	RestoreSnapshot(ctx context.Context, collection, snapshotURL string) error
+	ListSnapshots(ctx context.Context, collection string) ([]SnapshotDescription, error)
+	DeleteSnapshot(ctx context.Context, collection, snapshotName string) error
+	GetSnapshotURL(ctx context.Context, collection, snapshotName string) (string, error)
 }
 
 // AliasSwitcher performs the blue-green atomic alias rotation that
@@ -42,8 +43,7 @@ type SnapshotStore interface {
 // internal/infrastructure/qdrant (manual admin path) +
 // internal/application/qdrant/reconciler::Service (programmatic).
 type AliasSwitcher interface {
-	Switch(ctx context.Context, fromCollection, toCollection string) error
-	CurrentTarget(ctx context.Context, alias string) (string, error)
+	SwitchAlias(ctx context.Context, alias, oldTarget, newTarget string) error
 }
 
 // CollectionCreator provisions a new physical collection matching
@@ -51,21 +51,21 @@ type AliasSwitcher interface {
 // with the same name + schema returns the existing collection's
 // descriptor on the second call.
 type CollectionCreator interface {
-	EnsureCollection(ctx context.Context, target string) error
-	DropCollection(ctx context.Context, target string) error
+	CreateCollection(ctx context.Context, name string) error
 }
 
 // Verifier is the read-only gate that decides whether an alias switch
 // is safe (QDRANT-002 PR10/11/12/13 invariants). Production concrete:
 // internal/infrastructure/qdrant/verifier.go.
 type Verifier interface {
-	Verify(ctx context.Context, target string) (qdrantdr.ReconcileReport, error)
+	VerifyReindex(ctx context.Context, targetCollection string, expectedPoints int) (*VerifyReport, error)
 }
 
 // DRMetrics emits the per-collection health + drift counters consumed
 // by the readiness barrier and the operator dashboard.
 type DRMetrics interface {
-	Report(ctx context.Context, collection string) (*qdrantdr.CollectionMetrics, error)
+	RecordAliasSwitch(action string, durationSeconds float64)
+	SetAliasCurrent(alias, collection string)
 }
 
 // CollectionAgeReader is the canonical typed port for per-collection
@@ -101,5 +101,5 @@ type CollectionAgeReader interface {
 // internal/infrastructure/qdrant (registered into outbox via
 // internal/application/jobs/outbox DriveHandler).
 type RetentionExecutor interface {
-	Apply(ctx context.Context, cfg qdrantdr.RetentionConfig) (qdrantdr.RetentionResult, error)
+	CleanupWithConfig(ctx context.Context, cfg qdrantdr.RetentionConfig) (*qdrantdr.RetentionResult, error)
 }

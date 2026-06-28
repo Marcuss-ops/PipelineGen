@@ -82,7 +82,7 @@ node-version-check:
 #                       `--mode all` so a single boot covers HTTP +
 #                       worker + scheduler + maintenance sweepers.
 #   - bin/admin       : one-shot CLI (cmd/admin) — subcommands include
-#                       gen-api-docs, seed-channels, etc.
+#                       gen-api-docs, db, etc.
 #   - bin/worker      : cross-host worker (cmd/worker) — registers
 #                       against an HTTP broker via VELOX_BROKER_URL for
 #                       users running the long-running worker on a
