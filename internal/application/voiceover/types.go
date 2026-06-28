@@ -3,11 +3,13 @@ package voiceover
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
 type BatchRequest struct {
@@ -55,6 +57,46 @@ type DestinationRequest struct {
 	FolderPath      string `json:"folder_path,omitempty"`
 	SubfolderName   string `json:"subfolder_name,omitempty"`
 	CreateSubfolder bool   `json:"create_subfolder,omitempty"`
+}
+
+// Validate runs the security-relevant bounds-checks on a request that
+// has been bound from JSON or constructed programmatically. Returns nil
+// when every slot is safe to consume downstream. Each check is
+// deliberately a no-op (returns nil) when the slot is empty so absence
+// stays a legitimate signal (e.g. SubfolderName empty == "do not
+// create subfolder").
+//
+// PR-VO-A4 (path-traversal fix, June 2026): the previous
+// DestinationRequest was unvalidated at the type layer, so any caller
+// that built it directly (the handler binding layer, the
+// jobs/scripts subsystem, the YouTube adapters) had to re-implement
+// the same checks per call site. The canonical Validate now lives
+// here so:
+//
+//   - handler binding can call d.Validate() right after c.ShouldBindJSON
+//     and return 400 instead of continuing into GenerateBatch;
+//   - service.GenerateBatch can call d.Validate() once at the boundary
+//     and fail-fast for the whole batch (rather than per-language);
+//   - voiceover.processLanguage's MkdirAll site is the last line of
+//     defense, calling SanitizeSubfolderSegment + EnsureWithinDir, so
+//     direct callers that bypass GenerateBatch still cannot pass
+//     path-traversal payloads to os.MkdirAll.
+//
+// The error returned wraps the canonical pkg/pathutil surface without
+// adding a duplicate prefix at this layer (callers wrap further upstream
+// if they want context-specific wording — e.g. voiceover.processLanguage
+// wraps as "path traversal rejected: %w" for operator audit).
+func (d *DestinationRequest) Validate() error {
+	if d == nil {
+		return nil
+	}
+	if d.SubfolderName == "" {
+		return nil
+	}
+	if _, err := pathutil.SanitizeSubfolderSegment(d.SubfolderName); err != nil {
+		return fmt.Errorf("subfolder_name: %w", err)
+	}
+	return nil
 }
 
 type BatchResponse struct {

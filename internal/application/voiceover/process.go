@@ -17,6 +17,7 @@ import (
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -64,6 +65,25 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 
 	if strings.TrimSpace(req.Text) == "" {
 		return nil, fmt.Errorf("text is required")
+	}
+
+	// PR-VO-A4 (path-traversal fix, June 2026): validate the destination
+	// at the request boundary so a path-traversal payload is rejected
+	// before any per-language work runs. DestinationRequest.Validate is
+	// nil-safe (an empty SubfolderName == "no subfolder" legitimate
+	// signal, not an error). One bad batch never reaches the MkdirAll
+	// site — fail-fast for the caller rather than corrupting the
+	// working tree with a sub-optimal fallback.
+	if err := req.Destination.Validate(); err != nil {
+		s.log.Warn("PR-VO-A4: rejecting batch with path-traversal payload in destination",
+			zap.String("subfolder_name", func() string {
+				if req.Destination != nil {
+					return req.Destination.SubfolderName
+				}
+				return ""
+			}()),
+			zap.Error(err))
+		return nil, fmt.Errorf("invalid destination: %w", err)
 	}
 
 	requestID := buildRequestID()
@@ -178,7 +198,37 @@ func (s *Service) processLanguage(
 
 	outputDir := s.outputDir
 	if req.Destination != nil && req.Destination.CreateSubfolder && req.Destination.SubfolderName != "" {
-		outputDir = filepath.Join(s.outputDir, req.Destination.SubfolderName)
+		// PR-VO-A4 (path-traversal fix, June 2026): even though
+		// DestinationRequest.Validate is called in GenerateBatch's
+		// fail-fast gate above, this is the leaf consumer that actually
+		// calls os.MkdirAll. processLanguage can be reached from callers
+		// that bypass GenerateBatch (e.g. the jobs/scripts subsystem
+		// building BatchItem directly), and a future direct-construction
+		// test could skip the boundary. Defense in depth: re-sanitize
+		// the segment here, then pin the post-join result with
+		// filepath.Rel. If either check trips, fail the per-language
+		// item loudly rather than letting an unsafe MkdirAll corrupt
+		// the working tree.
+		safeSub, subErr := pathutil.SanitizeSubfolderSegment(req.Destination.SubfolderName)
+		if subErr != nil {
+			s.log.Warn("PR-VO-A4: rejected path-traversal payload in subfolder_name",
+				zap.String("language", language),
+				zap.String("subfolder_name", req.Destination.SubfolderName),
+				zap.Error(subErr))
+			return item.fail("invalid_subfolder_name", fmt.Errorf("path traversal rejected: %w", subErr))
+		}
+		outputDir = filepath.Join(s.outputDir, safeSub)
+		if werr := pathutil.EnsureWithinDir(s.outputDir, outputDir); werr != nil {
+			// This should be unreachable given the sanitizer above
+			// (single safe segment + Join with a clean root). Logged at
+			// error level because reaching it indicates a future drift
+			// between the two helpers OR a corrupted root config.
+			s.log.Error("PR-VO-A4: filepath.Rel guard tripped (sanitizer and Rel disagree — investigate)",
+				zap.String("output_dir", outputDir),
+				zap.String("root", s.outputDir),
+				zap.Error(werr))
+			return item.fail("invalid_subfolder_name", fmt.Errorf("path escape rejected: %w", werr))
+		}
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			s.log.Warn("failed to create local subfolder for voiceover", zap.String("dir", outputDir), zap.Error(err))
 			outputDir = s.outputDir
@@ -527,6 +577,20 @@ func (s *Service) swapVoiceoverRow(ctx context.Context, row VoiceoverSwapRow) er
 func (s *Service) resolveDestination(ctx context.Context, dest *DestinationRequest) (*ResolvedDestination, error) {
 	if dest == nil {
 		return &ResolvedDestination{}, nil
+	}
+
+	// PR-VO-A4 (path-traversal fix, June 2026): defense in depth.
+	// resolveDestination is reached from processLanguage AND from any
+	// future direct caller (handler-side retry paths, jobs subsystem
+	// rebuilds, tests that construct *DestinationRequest directly). The
+	// segment is forwarded into asset.ResolveRequest — which feeds into
+	// the Drive hierarchy. Validate here so a path-traversal payload
+	// cannot escape even if the upstream caller forgot to call
+	// DestinationRequest.Validate. Pairs with the same check at the
+	// MkdirAll site and at the request boundary — three layers, one
+	// helper.
+	if err := dest.Validate(); err != nil {
+		return nil, err
 	}
 
 	resolved, err := s.assetDestResolver.Resolve(ctx, &asset.ResolveRequest{
