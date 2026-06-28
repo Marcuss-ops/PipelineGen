@@ -1,20 +1,23 @@
 package images
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
+	slides "google.golang.org/api/slides/v1"
+	"google.golang.org/api/option"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	driveauth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -80,41 +83,106 @@ func (s *Service) GenerateSmartImage(
 		}
 	}
 
-	// Real Google Slides click automation flow
-	s.log.Info("Google Slides: starting Playwright click automation", zap.String("prompt", cleanPrompt))
-
-	tempOut := filepath.Join(s.tempDir, fmt.Sprintf("slides_temp_%d.png", time.Now().Unix()))
-	// Ensure temp directory exists
-	if err := os.MkdirAll(s.tempDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.Remove(tempOut)
-
-	scriptPath := filepath.Join(s.scriptsDir, "bridges", "generate_slide_click.py")
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		scriptPath = "scripts/generate_slide_click.py" // fallback
+	// Real Google Slides Generation Flow
+	if s.cfg == nil {
+		return nil, fmt.Errorf("config not available")
 	}
 
-	profileDir := "data/google_slides_profile"
-	if s.cfg != nil {
-		profileDir = filepath.Join(s.cfg.Storage.DataDir, "google_slides_profile")
-	}
-	if abs, err := filepath.Abs(profileDir); err == nil {
-		profileDir = abs
-	}
+	s.log.Info("Google Slides: starting generation", zap.String("prompt", cleanPrompt))
 
-	cmd := exec.CommandContext(ctx, "python3", scriptPath, "--prompt", cleanPrompt, "--output", tempOut, "--profile-dir", profileDir)
-	output, err := cmd.CombinedOutput()
+	// Get HTTP client from auth
+	httpClient, err := driveauth.NewGoogleHTTPClient(ctx, s.cfg.Paths.CredentialsFile, s.cfg.Paths.TokenFile, "https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/presentations")
 	if err != nil {
-		s.log.Error("Google Slides click automation script failed", zap.Error(err), zap.String("output", string(output)))
-		return nil, fmt.Errorf("google slides automation failed: %w (output: %s)", err, string(output))
+		return nil, fmt.Errorf("failed to init google client: %w", err)
 	}
 
-	imgFile, err := os.Open(tempOut)
+	slidesSvc, err := slides.NewService(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
-		return nil, fmt.Errorf("failed to open generated slide image: %w", err)
+		return nil, fmt.Errorf("failed to init google slides service: %w", err)
 	}
-	defer imgFile.Close()
+
+	// 1. Create presentation
+	presentation, err := slidesSvc.Presentations.Create(&slides.Presentation{
+		Title: "Velox Image Gen Slide",
+	}).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create presentation: %w", err)
+	}
+
+	// Cleanup presentation on function exit (so we don't pollute user's Google Drive)
+	defer func() {
+		if s.driveSvc != nil {
+			s.log.Debug("Google Slides: cleaning up presentation", zap.String("id", presentation.PresentationId))
+			_ = s.driveSvc.Files.Delete(presentation.PresentationId).Do()
+		}
+	}()
+
+	if len(presentation.Slides) == 0 {
+		return nil, fmt.Errorf("created presentation has no slides")
+	}
+	slideID := presentation.Slides[0].ObjectId
+
+	// 2. Add text box to slide with the prompt
+	requests := []*slides.Request{
+		{
+			CreateShape: &slides.CreateShapeRequest{
+				ObjectId:  "textBoxId",
+				ShapeType: "TEXT_BOX",
+				ElementProperties: &slides.PageElementProperties{
+					PageObjectId: slideID,
+					Size: &slides.Size{
+						Height: &slides.Dimension{Magnitude: 400, Unit: "PT"},
+						Width:  &slides.Dimension{Magnitude: 600, Unit: "PT"},
+					},
+					Transform: &slides.AffineTransform{
+						ScaleX:     1,
+						ScaleY:     1,
+						TranslateX: 100,
+						TranslateY: 100,
+						Unit:       "PT",
+					},
+				},
+			},
+		},
+		{
+			InsertText: &slides.InsertTextRequest{
+				ObjectId: "textBoxId",
+				Text:     cleanPrompt,
+			},
+		},
+	}
+	_, err = slidesSvc.Presentations.BatchUpdate(presentation.PresentationId, &slides.BatchUpdatePresentationRequest{
+		Requests: requests,
+	}).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to add text to slide: %w", err)
+	}
+
+	// 3. Get Thumbnail URL of the slide
+	thumbnail, err := slidesSvc.Presentations.Pages.GetThumbnail(presentation.PresentationId, slideID).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get slide thumbnail: %w", err)
+	}
+
+	// 4. Download thumbnail image bytes
+	req, err := http.NewRequestWithContext(ctx, "GET", thumbnail.ContentUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download thumbnail: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("thumbnail download returned status %d", resp.StatusCode)
+	}
+
+	imgData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read thumbnail bytes: %w", err)
+	}
 
 	slug := textutil.Slugify(subject)
 	if slug == "" {
@@ -132,7 +200,7 @@ func (s *Service) GenerateSmartImage(
 		slug,
 		style,
 		"google-slides",
-		imgFile,
+		bytes.NewReader(imgData),
 		filename,
 		"google-slides",
 		description,
