@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -23,8 +24,8 @@ import (
 // with no missing IDs"; it is "no resolution happened, skip the
 // whole fidelity work".
 func TestBuildClipEvidence_NilPack_ReturnsNil(t *testing.T) {
-	if ev := BuildClipEvidence(nil, ""); ev != nil {
-		t.Fatalf("BuildClipEvidence(nil) = %+v, want nil", ev)
+	if ev := usecase.BuildClipEvidence(nil, ""); ev != nil {
+		t.Fatalf("usecase.BuildClipEvidence(nil) = %+v, want nil", ev)
 	}
 }
 
@@ -33,9 +34,9 @@ func TestBuildClipEvidence_NilPack_ReturnsNil(t *testing.T) {
 // nil so a downstream caller doesn't accidentally persist an empty
 // evidence record.
 func TestBuildClipEvidence_EmptyPack_ReturnsNil(t *testing.T) {
-	ev := BuildClipEvidence(map[string]any{}, "")
+	ev := usecase.BuildClipEvidence(map[string]any{}, "")
 	if ev != nil {
-		t.Fatalf("BuildClipEvidence(empty) = %+v, want nil", ev)
+		t.Fatalf("usecase.BuildClipEvidence(empty) = %+v, want nil", ev)
 	}
 }
 
@@ -52,7 +53,7 @@ func TestBuildClipEvidence_AllResolved_NoMissing(t *testing.T) {
 			"clip-b": "https://drive.google.com/b",
 		},
 	}
-	ev := BuildClipEvidence(pack, "CLIP clip-a: Clip A\n")
+	ev := usecase.BuildClipEvidence(pack, "CLIP clip-a: Clip A\n")
 	if ev == nil {
 		t.Fatal("ev = nil, want non-nil (resolved IDs present)")
 	}
@@ -90,7 +91,7 @@ func TestBuildClipEvidence_MixedResolvedAndMissing(t *testing.T) {
 			{ClipID: "missing-2", Reason: scriptpkg.MissingClipReasonDriveNotFound},
 		},
 	}
-	ev := BuildClipEvidence(pack, "")
+	ev := usecase.BuildClipEvidence(pack, "")
 	if ev == nil {
 		t.Fatal("ev = nil, want non-nil")
 	}
@@ -126,7 +127,7 @@ func TestBuildClipEvidence_AllMissing_ReturnsMissingOnly(t *testing.T) {
 			{ClipID: "missing-2", Reason: scriptpkg.MissingClipReasonDriveNotFound},
 		},
 	}
-	ev := BuildClipEvidence(pack, "  some source text  ")
+	ev := usecase.BuildClipEvidence(pack, "  some source text  ")
 	if ev == nil {
 		t.Fatal("ev = nil, want non-nil " +
 			"(all-missing path must keep MissingClipIDs visible)")
@@ -199,7 +200,7 @@ func TestBuildClipEvidence_DualShapeExtraction(t *testing.T) {
 				"clip_ids":         []string{"c", "d"}, // resolved-only
 				"missing_clip_ids": tc.raw,
 			}
-			ev := BuildClipEvidence(pack, "")
+			ev := usecase.BuildClipEvidence(pack, "")
 			if ev == nil {
 				t.Fatal("ev = nil, want non-nil")
 			}
@@ -229,7 +230,7 @@ func TestBuildClipEvidence_NilMissingIsOmitted(t *testing.T) {
 		"clip_ids": []string{"clip-a"},
 		// missing_clip_ids absent → nil
 	}
-	ev := BuildClipEvidence(pack, "")
+	ev := usecase.BuildClipEvidence(pack, "")
 	if ev == nil {
 		t.Fatal("ev = nil, want non-nil")
 	}
@@ -250,7 +251,7 @@ func TestBuildClipEvidence_EmptyMissingIsOmitted(t *testing.T) {
 			"clip_ids":         []string{"clip-a"},
 			"missing_clip_ids": []scriptpkg.MissingClipID{},
 		}
-		ev := BuildClipEvidence(pack, "")
+		ev := usecase.BuildClipEvidence(pack, "")
 		if ev == nil {
 			t.Fatal("ev = nil, want non-nil")
 		}
@@ -263,7 +264,7 @@ func TestBuildClipEvidence_EmptyMissingIsOmitted(t *testing.T) {
 			"clip_ids":         []string{"clip-a"},
 			"missing_clip_ids": []map[string]any{},
 		}
-		ev := BuildClipEvidence(pack, "")
+		ev := usecase.BuildClipEvidence(pack, "")
 		if ev == nil {
 			t.Fatal("ev = nil, want non-nil")
 		}
@@ -286,7 +287,7 @@ func TestBuildClipEvidence_MissingEntryWithEmptyID_Dropped(t *testing.T) {
 			{"clip_id": "real", "reason": "drivenotfound"},
 		},
 	}
-	ev := BuildClipEvidence(pack, "")
+	ev := usecase.BuildClipEvidence(pack, "")
 	if ev == nil {
 		t.Fatal("ev = nil, want non-nil")
 	}
@@ -337,7 +338,7 @@ func TestBuildClipEvidence_ClipCount_MatchesLenClipIDs(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			ev := BuildClipEvidence(tc.pack, "")
+			ev := usecase.BuildClipEvidence(tc.pack, "")
 			if ev == nil {
 				t.Fatal("ev = nil")
 			}
