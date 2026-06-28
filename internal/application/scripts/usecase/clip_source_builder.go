@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
@@ -140,6 +141,9 @@ func (c *ClipSourceBuilder) BuildClipContext(
 
 	clips := make([]*asset.Asset, 0, len(uniqueIDs))
 	clipNames := make([]string, 0, len(uniqueIDs))
+	canonicalIDs := make([]string, 0, len(uniqueIDs))
+	var missingClipIDs []scriptpkg.MissingClipID
+	clipToCanonical := make(map[string]string, len(uniqueIDs))
 	var sourceTextBuilder strings.Builder
 
 	for _, id := range uniqueIDs {
@@ -159,13 +163,23 @@ func (c *ClipSourceBuilder) BuildClipContext(
 						zap.String("clip_id", id),
 						zap.Error(err))
 				}
+				missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
+					ClipID: id,
+					Reason: scriptpkg.MissingClipReasonNotFound,
+				})
 				continue
 			}
 		}
 		if clip == nil {
+			missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
+				ClipID: id,
+				Reason: scriptpkg.MissingClipReasonNotFound,
+			})
 			continue
 		}
 		clips = append(clips, clip)
+		canonicalIDs = append(canonicalIDs, id)
+		clipToCanonical[clip.ID] = id
 		name := strings.TrimSpace(clip.Name)
 		if name == "" {
 			name = strings.TrimSpace(clip.Filename)
@@ -250,15 +264,25 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	clipDriveLinks := make(map[string]string, len(clips))
 	for _, clip := range clips {
 		if link := clip.DriveLink(); link != "" {
-			clipDriveLinks[clip.ID] = link
+			canonicalID := clipToCanonical[clip.ID]
+			if canonicalID == "" {
+				canonicalID = clip.ID
+			}
+			clipDriveLinks[canonicalID] = link
 		}
+	}
+	// PR 6: when clips resolved but ALL lack drive links, fail
+	// with a typed error so the caller can surface drivenotfound.
+	if len(clipDriveLinks) == 0 && len(clips) > 0 {
+		return nil, nil, "", fmt.Errorf("clip source builder: all resolved clips lack drive links")
 	}
 
 	// Build pack with clip data.
 	pack := map[string]any{
-		"clip_ids":         uniqueIDs,
+		"clip_ids":         canonicalIDs,
 		"clip_names":       clipNames,
 		"clip_drive_links": clipDriveLinks,
+		"missing_clip_ids": missingClipIDs,
 		"num_clips": func() int {
 			if opts != nil && opts.NumClips > 0 {
 				return opts.NumClips
