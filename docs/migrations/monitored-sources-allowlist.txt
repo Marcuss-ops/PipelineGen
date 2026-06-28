@@ -1,0 +1,121 @@
+# docs/migrations/monitored-sources-allowlist.txt
+# ──────────────────────────────────────────────────────────────────────────────
+# Per-source-file allowlist for the `// ARCH-ALLOWLIST: monitored-sources-readonly`
+# magic marker (post-CUTOVER, June 2026, Wave CONFORMANCE-001 id-24).
+#
+# HOW THIS FILE WORKS
+# ────────────────────
+# After the channel-monitor CUTOVER (id-24, Wave CONFORMANCE-001, June 2026),
+# the canonical monitor-state source-of-truth moved from `monitored_sources`
+# to `category_channels` via channels.Service (ListEnabled, ClaimDue,
+# MarkChecked, UpdateCursor). Two source files in
+# `internal/infrastructure/database/sqlite/assets/` still reach the
+# `monitored_sources` table for a SEPARATE purpose (per-video discovery
+# state, used by the YouTube-side MonitorsStoreAdapter), and they're
+# tagged with `// ARCH-ALLOWLIST: monitored-sources-readonly` to mark
+# that the CUTOVER is complete on the channel-monitor path while the
+# YouTube-side migration is still in flight.
+#
+# This allowlist documents the marker and tracks the removal plan; a
+# corresponding `scripts/ci-architectural-checks.sh` Check (e.g. Check 27)
+# MAY be added in a follow-up PR to enforce the marker presence in the
+# two listed source files + deny it elsewhere, using the same set-
+# arithmetic style as Check 19 (api-infrastructure-imports-allowlist.txt).
+#
+# FORMAT
+# ──────
+# One repo-root-relative path per line (matching the convention used by
+# `docs/migrations/api-infrastructure-imports-allowlist.txt` and
+# `docs/migrations/deps-struct-allowlist.txt`). Comments start with `#`
+# and are ignored. Section header comments (also starting with `#`) are
+# preserved for human navigation.
+#
+# POLICY
+# ──────
+# * Each entry MUST ship with a documented removal plan (CONTRACT phase).
+# * Removing an entry without removing the marker in the source file is
+#   a regression; the marker becomes an orphan and the file ships
+#   without provenance.
+# * Markers MAY persist across PRs as long as the corresponding
+#   migration is in flight (this file documents the "in flight" state).
+# * Per AGENTS.md §8 zero-baseline rule, the marker + this allowlist
+#   entry trend to ZERO: the marker is removed in the same PR that
+#   deletes the file or its last reader.
+#
+# CURRENT ENTRIES
+# ───────────────
+# Two files in `internal/infrastructure/database/sqlite/assets/` carry the
+# marker:
+#
+#   - monitors_repository.go   ← 5 public methods (UpsertSource,
+#                                GetByExternalURL, ListDue, MarkChecked,
+#                                IncrementProcessed) + the public ctor
+#                                NewMonitorsRepository + the exported
+#                                MonitorsRepository struct itself
+#   - monitors_types.go       ← MonitoredSourceRow DTO, ToDomain() method,
+#                                TableName() method, FromMonitoredSourceDomain
+#                                converter, ToMonitoredSourceDomainList +
+#                                FromMonitoredSourceDomainList mappers
+#
+# Reachable callers (verified at CUTOVER-closure time, id-24 / Wave
+# CONFORMANCE-001, June 2026):
+#
+#   - cmd/admin/backfill_monitored_sources_to_category_channels.go
+#       One-shot backfill CLI; SELECTs monitored_sources rows for
+#       diagnostic logging and creates UpsertChannelCommand values that
+#       channels.Service writes to category_channels.
+#
+#   - internal/app/build_bundles_core.go (composition root)
+#       Instantiates *assets.MonitorsRepository for the adapter layer.
+#
+#   - internal/app/build_bundles_domain.go (composition root)
+#       newMonitorsStoreAdapter(repos.MonitorsRepo) → wraps the
+#       concrete repo as a youtubeports.MonitorsStorePort.
+#
+#   - internal/app/youtube_adapters.go
+#       Defines MonitorsStoreAdapter struct { inner
+#       *assets.MonitorsRepository } + newMonitorsStoreAdapter().
+#
+#   - internal/application/youtube/adapters/manifest_mgr.go
+#       updateMonitoredSourceStatus(ctx, *asset.MonitoredSource, ...)
+#       on the YouTube service; this is the per-video discovery-state
+#       writer that survives the CUTOVER.
+#
+# NON-reachable callers (verified CUTOVER-complete):
+#
+#   - internal/application/assets/monitor/monitor_scheduler.go
+#   - internal/application/assets/monitor/channel_monitor.go
+#   - internal/application/assets/monitor/process_video.go
+#   - internal/application/assets/monitor/monitor_channel_check.go
+#   - internal/application/assets/monitor/job_handler.go
+#       All five files route through channels.Service exclusively
+#       (ListEnabled / ClaimDue / MarkChecked / UpdateCursor / GetByID).
+#       ZERO references to MonitorsRepository or monitored_sources SQL.
+#
+# REMOVAL PLAN (CONTRACT phase, per AGENTS.md §7
+# `07_ZERO_LEGACY_POLICY.md`)
+# ──────────────────────────────────────────────────────────────
+#   1. Migration 109 (add `media_assets: external_id, discovered_via,
+#      discovered_at, monitored_source_id`) — prerequisite identified
+#      by the A1.3 code review (June 2026).
+#   2. Migration 110 + backfill CLI
+#      (cmd/admin/backfill_monitored_sources_to_category_channels.go)
+#      copy rows from `monitored_sources` into `media_assets`;
+#      zero-drift assertion gates correctness end-to-end.
+#   3. CONTRACT: delete `monitors_repository.go` + `monitors_types.go`;
+#      remove the MonitorsStoreAdapter + newMonitorsStoreAdapter; reroute
+#      `internal/application/youtube/adapters/manifest_mgr.go::updateMonitoredSourceStatus`
+#      to write directly to `media_assets` via a new
+#      `updateMediaAssetDiscovery` typed port.
+#   4. Remove both entries from this allowlist file atomically with
+#      step 3 (atomic commit; the marker is deleted with the file).
+#
+# OWNER + DEADLINE
+# ────────────────
+# Owner:    PipelineGen Agent (Wave CONFORMANCE-001 / id-24)
+# Deadline: 2026-08-31 (Wave CONFORMANCE-001 close)
+# Tracking: architecture/current.yaml # id-24 follow_up_tickets
+# ──────────────────────────────────────────────────────────────────────────────
+
+internal/infrastructure/database/sqlite/assets/monitors_repository.go
+internal/infrastructure/database/sqlite/assets/monitors_types.go

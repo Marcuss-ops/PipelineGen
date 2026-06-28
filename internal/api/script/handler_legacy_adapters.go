@@ -538,8 +538,7 @@ func (h *ScriptFlowHandler) LegacyGenerateFromClips(c *gin.Context) {
 
 	if derived > 0 {
 		h.log.Info("legacy_adapter: derived clip_ids from clips array",
-			zap.Int("derived", derived),
-			zap.Int("total", len(clipIDs)),
+			zap.Int("derived", derived), zap.Int("total", len(clipIDs)),
 		)
 	}
 
