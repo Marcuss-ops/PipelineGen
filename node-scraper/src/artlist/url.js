@@ -10,9 +10,14 @@ export function extractClipId(url) {
 
 /**
  * Normalizes links by removing duplicates and trailing backslashes.
- * @param {string[]} values - Array of URLs
- * @returns {string[]} Normalized URLs
+ *
+ * Defensive against non-array input (returns `[]` for null /
+ * undefined / strings / numbers, matching `chunkArray`'s contract).
+ *
+ * @param {string[]} values - Array of URLs (anything else is treated as empty)
+ * @returns {string[]} Normalized URLs, preserving first-seen order.
  */
 export function normalizeLinks(values) {
+  if (!Array.isArray(values)) return [];
   return [...new Set(values.filter(Boolean).map((value) => String(value).trim().replace(/\\+$/, '')))];
 }
