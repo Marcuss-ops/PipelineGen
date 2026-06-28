@@ -14,6 +14,7 @@ import (
 
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -76,6 +77,27 @@ func newTestJobsService(t *testing.T) (job.Service, *fakeJobsService) {
 	return fake, fake
 }
 
+// stubJobStatsReader satisfies appjobs.JobStatsReader with a
+// no-op GetStats. Used in test wiring where the stats reader
+// is required by the JobsHandler ctor signature (Issue 9 / P2
+// delegator pattern, June 2026) but the test only exercises
+// the Get/Events paths that don't touch stats. Production
+// wiring passes *appjobs.Service which satisfies BOTH
+// domainjob.Service AND JobStatsReader structurally (see
+// internal/app/registry_public_modules.go::registerJobs).
+// Tests use this typed stub to avoid pulling a real SQLite
+// stats reader into the script package (which would otherwise
+// require a layered infrastructure import).
+type stubJobStatsReader struct{}
+
+// GetStats returns (nil, nil) so the JobsHandler ctor
+// accepts the stub. The Stats endpoint is the only consumer
+// of GetStats; tests that exercise the Stats endpoint pass
+// a real *appjobs.Service and bypass this stub.
+func (stubJobStatsReader) GetStats(_ context.Context) (*sqljobs.JobStats, error) {
+	return nil, nil
+}
+
 // ── Route compatibility ────────────────────────────────────────
 
 func TestScriptRoutes_Compatibility(t *testing.T) {
@@ -105,8 +127,8 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		{"POST", "/api/script/generate-with-images"},
 		{"POST", "/api/script/generate-batch"},
 		{"POST", "/api/script/curate"},
-		{"GET", "/api/script/jobs/:job_id"},
-		{"GET", "/api/script/jobs/:job_id/full"},
+		{"GET", "/api/script/jobs/:id"},
+		{"GET", "/api/script/jobs/:id/full"},
 		{"POST", "/api/script/:id/sections/:section_id/regenerate"},
 		{"POST", "/api/script/cache/evict"},
 	}
