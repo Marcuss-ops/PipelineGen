@@ -1285,6 +1285,26 @@
       tracking_issue: 'tests/fixtures/zero_legacy/'
       acceptance: 'go test tests/fixtures/... exit 0 (fixtures compilano e tests runnano) + minimal-diff atomic per check_*.go. Ciascun commit <=30 lines.'
       notes: 'Site-by-site compile break post-Option-X: check_14_buildpayload_status_key.go line 11 + check_12_payload_mapper_status.go line 11 assetShim redeclared in this block (cross-file same-package duplication, Wave 20 PR-I transitional baseline ~14 collisions); check_09_nil_dispatcher.go lines 11, 22 undefined context (manca import context); check_08_setter.go lines 19-20 s.SetOutboxHandler + s.SetMediasearchHandler undefined (campi mancanti su serverShim struct).'
+
+    # Wave 21 / PR-ASSETS-MONITOR-CONTRACT-AUDIT-2026-06-28 - Audit assets/monitor Wave 19 contract + asset-lifecycle completeness
+    - id: PR-ASSETS-MONITOR-CONTRACT-AUDIT-2026-06-28
+      title: Audit assets/monitor Wave 19 port-interface compliance + asset-lifecycle completeness
+      owner: scripts/archcheck + assets-monitor maintainer
+      owner_capability: internal/application/assets/monitor
+      target: Wave 19 PR1 port-interface compliance + Wave 21 PR-G.2 BACKFILL readiness check
+      deadline: 2026-07-10
+      status: pending
+      tracking_issue: internal/application/assets/monitor/ package (whole; see channel_monitor.go, monitor_scheduler.go, job_handler.go)
+      acceptance:
+        - Wave 19 port-interface compliance: zero direct imports of internal/infrastructure under internal/application/assets/monitor; cross-capability coupling routed via ports.go interfaces
+        - Asset-lifecycle completeness: each LifecycleState (pending/processing/published/failed/deleted) maps to a monitored action in monitor package
+        - monitored_sources-table references fully removed; all state routes through category_channels canonical table per ownership.yaml
+        - BUILD-CLEAN: go build ./internal/application/assets/monitor/... exits 0
+      notes: AUDIT scope, NOT compile-recovery. assets/monitor builds clean as of 2026-06-28 (wave-tracker Step 4 diagnostic confirms GREEN state); audit registers the Wave 19 contract for future regression detection. Replaces literal-spec PR-ASSETS-MONITOR-COMPILE-RECOVERY (no-op) per godlike/07 zero-fake-availability policy.
+      cross_refs:
+        godlike_data_ownership: architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP (table capability rules)
+        wave_21_pr_g2: architecture/current.yaml id-21 wave_21 exit_gate PR-G.2 BACKFILL window
+        ownership_canonical: architecture/ownership.yaml internal/application/assets/monitor
   cross_refs:
     ownership: architecture/ownership.yaml (application_scripts.target_subdirs)
     policy: architecture/policy.yaml::max_files_per_package=40
