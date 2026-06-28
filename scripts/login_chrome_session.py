@@ -59,7 +59,10 @@ def main():
 
         page = context.new_page()
         print("Navigating to Google Slides login...")
-        page.goto("https://slides.new", wait_until="networkidle")
+        try:
+            page.goto("https://slides.new", wait_until="domcontentloaded")
+        except Exception as e:
+            print(f"Navigation note ({e}), continuing to monitor login...")
 
         print("\n--> PLEASE LOG IN TO YOUR GOOGLE ACCOUNT IN THE BROWSER WINDOW <--")
         print("Waiting for successful login detection...\n")
@@ -114,7 +117,10 @@ def main():
         print(f" SUCCESS: Google Session exported to: {STORAGE_FILE}")
         print(" You can now run all automated image generation scripts headless!")
         print("==========================================================")
-        context.close()
+        try:
+            context.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()
