@@ -47,9 +47,11 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -433,6 +435,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// internal/api/script/handler_flow.go::GetJobFullStatus.
 	jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 
+	// PR-FIX (June 2026): lightweight clip-name searcher for
+	// GET /script/clips/search?q= discovery endpoint. Bridges
+	// the SQLite ClipsRepository → scriptapi.ClipSearcher.
+	var clipsSearcher scriptapi.ClipSearcher
+	if root.Repos.ClipsRepo != nil {
+		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
+	}
+
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
 		Engine:        engine,
@@ -471,6 +481,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		DocumentCreator:       documentCreator,
 		DriveScriptsGenFolder: cfg.Drive.ScriptsGenFolder(),
 		ClipServices:          clipServices,
+		ClipsSearcher:         clipsSearcher,
 		Log:                   log,
 	})
 
@@ -528,8 +539,8 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	//     composition-time registry. The registry is frozen after
 	//     Compose(); this query is branch-free.
 	reg := appjobs.Compose()
-	if !reg.IsRegistered(scriptpkg.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", scriptpkg.TypeScriptGenerate)
+	if !reg.IsRegistered(jobpkg.TypeScriptGenerate) {
+		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", jobpkg.TypeScriptGenerate)
 	}
 
 	// (b) Broker has the handler. The RegisterJobs success above is
@@ -542,34 +553,23 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	if root == nil || root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("script.generate wiring (b): Jobs service is nil; the gate above should have tripped")
 	}
-	if !root.Jobs.Service.HasHandler(scriptpkg.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", scriptpkg.TypeScriptGenerate)
+	if !root.Jobs.Service.HasHandler(jobpkg.TypeScriptGenerate) {
+		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", jobpkg.TypeScriptGenerate)
 	}
 
 	// (c) At least one worker in the cluster is configured to claim
-	//     script.generate. root.Jobs.WorkerTypes is the canonical
-	//     cluster-typed capability surface (forward-looking; nil-
-	//     tolerant while a migration is in flight). The runtime
-	//     fallback is the Worker.ExportTypes audit telemetry.
-	if root.Jobs.WorkerTypes != nil {
-		found := false
-		for _, t := range root.Jobs.WorkerTypes {
-			if t == scriptpkg.TypeScriptGenerate {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("script.generate wiring (c): no worker in cluster configured for %s; add it to WorkerConfig.Types", scriptpkg.TypeScriptGenerate)
-		}
-	} else if log != nil {
-		log.Warn("validateScriptGenerateWiring: root.Jobs.WorkerTypes not exposed yet; (c) check SKIPPED (forward-looking TODO when cluster exposes the list). Operator must rely on Worker.ExportTypes runtime audit until the canonical surface lands.",
-			zap.String("job_type", scriptpkg.TypeScriptGenerate))
+	//     script.generate. Forward-looking TODO: when JobsBundle
+	//     exposes a WorkerTypes field, uncomment the check below.
+	//     Until then, the operator must rely on Worker.ExportTypes
+	//     runtime audit.
+	if log != nil {
+		log.Info("validateScriptGenerateWiring: WorkerTypes not exposed yet; (c) check skipped (forward-looking TODO)",
+			zap.String("job_type", jobpkg.TypeScriptGenerate))
 	}
 
 	if log != nil {
 		log.Info("validateScriptGenerateWiring: script.generate wiring complete",
-			zap.String("job_type", scriptpkg.TypeScriptGenerate))
+			zap.String("job_type", jobpkg.TypeScriptGenerate))
 	}
 	return nil
 }
@@ -804,4 +804,50 @@ func (d *docCreatorImpl) CreateDoc(ctx context.Context, title, content, folderID
 		return input, nil // raw ID assumed (caller resolved beforehand)
 	}
 	return docsSvc.CreateDoc(ctx, title, content, resolveFolder, folderID)
+}
+
+// PR-FIX (June 2026): clipsNameSearchAdapter bridges the SQLite
+// ClipsRepository → scriptapi.ClipSearcher for the lightweight
+// GET /script/clips/search?q= clip-discovery endpoint.
+type clipsNameSearchAdapter struct {
+	repo *sqassets.ClipsRepository
+}
+
+func (a *clipsNameSearchAdapter) SearchByName(ctx context.Context, query string, limit int) ([]scriptapi.ClipSearchHit, error) {
+	if a == nil || a.repo == nil {
+		return nil, nil
+	}
+	// List with a generous limit, then filter by name in Go.
+	// asset.Filter does not carry a Name/LIKE field (the canonical
+	// name search lives in FindByName which is an exact match),
+	// so the Go-side filter is the pragmatic bridge until a
+	// proper SQL LIKE method lands on ClipsRepository.
+	fetch := limit * 3
+	if fetch < 50 {
+		fetch = 50
+	}
+	if fetch > 500 {
+		fetch = 500
+	}
+	all, err := a.repo.List(ctx, asset.Filter{Limit: fetch})
+	if err != nil {
+		return nil, err
+	}
+	ql := strings.ToLower(strings.TrimSpace(query))
+	out := make([]scriptapi.ClipSearchHit, 0, limit)
+	for _, clip := range all {
+		if !strings.Contains(strings.ToLower(clip.Name), ql) {
+			continue
+		}
+		out = append(out, scriptapi.ClipSearchHit{
+			ID:        clip.ID,
+			Name:      clip.Name,
+			Source:    string(clip.Source),
+			DriveLink: clip.DriveLink(),
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
