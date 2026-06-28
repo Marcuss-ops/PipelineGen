@@ -95,5 +95,5 @@ type ImageGenService interface {
 // PR 5 (June 2026): typed port — takes domain.GenerateVoiceoverCommand,
 // returns *domain.VoiceoverResult. No more interface{}.
 type VoiceoverService interface {
-	Generate(ctx context.Context, cmd domain.GenerateVoiceoverCommand) (*domain.VoiceoverResult, error)
+	Generate(ctx context.Context, cmd domain.GenerateVoiceoverCommand) (*domain.Result, error)
 }

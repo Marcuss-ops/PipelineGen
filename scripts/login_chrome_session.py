@@ -39,7 +39,7 @@ def main():
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(PROFILE_DIR),
                 headless=False,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
@@ -54,9 +54,10 @@ def main():
                 args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
             )
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
             )
 
+        context.add_init_script("delete navigator.__proto__.webdriver")
         page = context.new_page()
         print("Navigating to Google Slides login...")
         try:
