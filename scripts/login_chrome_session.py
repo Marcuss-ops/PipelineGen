@@ -69,8 +69,8 @@ def main():
             time.sleep(2)
             for p_page in context.pages:
                 try:
-                    url = p_page.url
-                    if "docs.google.com/presentation" in url or "slides.google.com" in url or "myaccount.google.com" in url:
+                    url_lower = url.lower()
+                    if ("docs.google.com" in url_lower or "slides.google.com" in url_lower or "drive.google.com" in url_lower or "myaccount.google.com" in url_lower or ("google.com" in url_lower and "signin" not in url_lower and "servicelogin" not in url_lower)):
                         print(f"SUCCESS! Login detected on tab: {url}")
                         login_success = True
                         break
