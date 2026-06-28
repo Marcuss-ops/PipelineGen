@@ -153,7 +153,7 @@
 | GET | `/api/media/:source/tree` | endpoint |
 | GET | `/api/media/:source/breadcrumb` | endpoint |
 | POST | `/api/media/voiceover/generate` | Generate voiceover |
-| POST | `/api/media/voiceover/generate-with-group` | endpoint |
+| POST | `/api/media/voiceover/generate-with-group` | **DEPRECATED** — sunset `Sat, 26 Sep 2026 00:00:00 GMT` (RFC 8594). Use `POST /api/media/voiceover/generate` with `destination: {kind: "group", group: "<topic>"}` instead (successor endpoint). See architecture/deprecations.yaml#PR-VO-C1. |
 | POST | `/api/media/voiceover/batch` | Batch generate voiceovers |
 | POST | `/api/media/voiceover/promo` | endpoint |
 | POST | `/api/media/voiceover/sync` | endpoint |

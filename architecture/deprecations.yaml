@@ -395,6 +395,84 @@ deprecations:
       layer only).
 
 
+  # ── 14. PR-VO-C1 — /api/voiceover/generate-with-group unification ──
+  # The legacy /generate-with-group endpoint is preserved for 90 days
+  # while new callers migrate to /generate with destination: {kind:
+  # "group", group: "..."}. RFC 8594 Sunset + RFC 9745 Deprecation
+  # headers are emitted on every legacy response; a Prometheus counter
+  # (legacy_voiceover_route_invocations_total{route="generate-with-group"})
+  # tracks usage so the CUTOVER/CONTRACT phase can verify zero callers
+  # before physically removing the route.
+  # ──────────────────────────────────────────────────────────────────
+  - id: PR-VO-C1
+    owner_capability: internal/api/assets/voiceover
+    exact_symbol: "Handler.GenerateWithGroup + POST /api/voiceover/generate-with-group"
+    file: internal/api/assets/voiceover/handler.go
+    file_line: 296
+    replacement: "Handler.Generate with destination: {kind: \"group\", group: \"<topic>\"} (canonical /generate endpoint)"
+    introduction_date: 2026-06-28
+    removal_date: 2026-09-26
+    tracking_issue: "PR-VO-C1 (Voiceover unification wave, June 2026)"
+    compatibility_test: |
+      Handler-level test pins the dual contract:
+      (a) POST /generate-with-group returns 200 with the canonical
+          payload AND emits `Deprecation: true` + `Sunset: Sat, 26 Sep
+          2026 00:00:00 GMT` + `Link: <docs/api/ACTIVE_API_GENERATED.md>;
+          rel="successor-version"` response headers.
+      (b) POST /generate with `destination: {kind: "group", group: "boxe"}`
+          returns 200 with the SAME payload shape AND emits NO deprecation
+          headers. Header grep: `rg 'Deprecation.*true' internal/api/assets/voiceover/handler_test.go|gate_test.go`
+          returns exactly 1 hit (the legacy endpoint test).
+      (c) The `legacy_voiceover_route_invocations_total` Prometheus
+          counter increments per call to /generate-with-group and does
+          NOT increment for /generate with destination.kind="group".
+    usage_metric: |
+      Metric: `legacy_voiceover_route_invocations_total{route="generate-with-group"}`.
+      Pre-removal: tbd by Capability on call to PR-VO-C1 sunset deadline.
+      Post-removal (zero verification): counter MUST trend to zero AND
+      `rg 'GenerateWithGroup' internal/api/assets/voiceover/` returns zero hits.
+    migration_phase: EXPAND
+    status: in_progress
+    notes: |
+      PR-VO-C1 introduces the canonical `destination.kind` field on
+      DestinationRequest (kind ∈ {"", "group", "explicit"}), where
+      "group" routes through GroupsResolver at handler boundary and
+      stamps FolderID back onto the destination.
+
+      The legacy /generate-with-group endpoint is preserved for 90
+      days per the Sunset header constant `voiceoverSunsetDate =
+      "Sat, 26 Sep 2026 00:00:00 GMT"` (matches docs/voiceover/p0-bundle-A1-A6.md
+      §"Deprecation contract (90-day Sunset, RFC 8594)").
+
+      Migration phases per godlike/07 §"Migration sequence":
+      - EXPAND (PR-VO-C1): new endpoint accepts destination.kind = "group"
+        + deprecation record registered + legacy endpoint emits RFC 8594
+        Sunset headers + Prometheus counter wired.
+      - BACKFILL (PR-VO-C2, ~2026-07): publish a migration guide in
+        docs/voiceover/migration.md targeting internal API consumers
+        (cli/voxy, scripts/, internal admin tools). Track per-team
+        adoption via the Prometheus counter tenant.
+      - CUTOVER (PR-VO-C3, 2026-09-01): flip the Prometheus counter into
+        alert-grade (zero-use observation for 7 days before removal).
+      - CONTRACT (PR-VO-C4, 2026-09-26): physical removal of
+        GenerateWithGroup handler + RegisterRoutes entry. CI gate:
+        scripts/archcheck/deprecations_validator.go flips the record to
+        `status: removed` on the removal commit.
+
+      Header shape (standard IETF, NOT the proprietary X-Deprecation
+      form used at handler_legacy_adapters.go):
+        - `Deprecation: true`                       (RFC 9745 draft standard)
+        - `Sunset: Sat, 26 Sep 2026 00:00:00 GMT`   (RFC 8594 IMF-fixdate)
+        - `Link: <docs/api url>; rel="successor-version"` (RFC 8288)
+
+      Backward-compat / silent-failure rules (per thinker-gemini design
+      2026-06-28):
+        - destination.kind == ""              : legacy auto-detect (FolderID > group > config).
+        - destination.kind == "group" + Group == "" : HARD 400 (fail-fast at handler boundary).
+        - destination.kind == "explicit" + FolderID == "" : HARD 400 (fail-fast).
+        - destination.kind == anything else   : legacy auto-detect (unrecognized values are valid).
+
+
 # ── Open Questions (read-write; voting-enabled; deferred naming/scope decisions) ──
 # Per AGENTS.md §8 zero-baseline rule, "open questions" carry owner + deadline + team-vote
 # outcome. Each entry cites evidence (file:line + comment quote) so future agents
