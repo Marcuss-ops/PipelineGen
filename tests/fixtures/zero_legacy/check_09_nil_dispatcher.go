@@ -7,6 +7,8 @@
 // regressions.
 package fixture
 
+import "context"
+
 type dispatcherShim interface {
 	EnqueueAndIndex(ctx context.Context, x any) error
 }

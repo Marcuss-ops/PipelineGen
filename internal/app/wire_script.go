@@ -40,6 +40,7 @@ import (
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
@@ -144,7 +145,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		root.Drive.DocClient, cfg, log,
 	)
 	cacheEvictionUC := usecase.NewCacheEvictionUseCase(
-		gen, memorySvc, log,
+		gen, usecase.NewMemoryCacheAdapter(memorySvc), log,
 	)
 
 	// ── Unified generation pipeline (PR8, June 2026) ───────────────────
@@ -173,17 +174,17 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Source registry: one resolver per source type.
 	sourceReg := adapters.NewSourceRegistry(log)
-	sourceReg.Register(scriptpkg.SourceText, adapters.NewTextSourceResolver())
+	sourceReg.Register(scriptpkg.SourceText, usecase.NewTextSourceResolver())
 
 	if clipSourceBuilder != nil {
-		sourceReg.Register(scriptpkg.SourceClips, adapters.NewClipsSourceResolver(clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceClips, usecase.NewClipsSourceResolver(clipSourceBuilder, log))
 	}
 
 	// Catalog resolver: reuse searchCatalogAdapter (assets_adapters.go)
 	// to bridge *catalog.Repository → appsearch.LocalCatalogPort.
 	if root.Repos.CatalogRepo != nil && clipSourceBuilder != nil {
 		catAdapter := &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}
-		sourceReg.Register(scriptpkg.SourceCatalog, adapters.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceCatalog, usecase.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
 	}
 
 	// Search resolver: wired via semanticSearchAdapter bridging
@@ -192,13 +193,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// resolve through Qdrant semantic search.
 	if root.Domains.RealtimeSearch != nil && clipSourceBuilder != nil {
 		searchAdapter := &semanticSearchAdapter{realtime: root.Domains.RealtimeSearch}
-		sourceReg.Register(scriptpkg.SourceSearch, adapters.NewSearchSourceResolver(searchAdapter, clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceSearch, usecase.NewSearchSourceResolver(searchAdapter, clipSourceBuilder, log))
 	}
 
 	// Curate resolver (PR E, June 2026): extracted from MediaCurator.
-	var curateResolver *adapters.CurateSourceResolver
+	var curateResolver *usecase.CurateSourceResolver
 	if clipSourceBuilder != nil {
-		curateResolver = adapters.NewCurateSourceResolver(clipSourceBuilder, log)
+		curateResolver = usecase.NewCurateSourceResolver(clipSourceBuilder, log)
 		sourceReg.Register(scriptpkg.SourceCurate, curateResolver)
 	}
 
@@ -214,7 +215,16 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 	if curateResolver != nil && clipSearchPort != nil {
-		curateResolver.SetClipSearchPort(clipSearchPort)
+		// clipSearchPort is the canonical ports.ClipSearchPort built by
+		// qdrant.NewClipSearchAdapter (returns []ports.ClipSearchHit).
+		// curateResolver.SetClipSearchPort wants the typed usecase.ClipSearchPort
+		// whose SearchClips returns []scriptpkg.SearchResultItem. The
+		// struct-field bridge at the bottom of this file maps
+		// AssetID → ClipID + threading Name/Score/Source. Without this
+		// adapter the curate resolver sees a wrong-typed port and the
+		// build breaks with the "wrong type for method SearchClips"
+		// mismatch.
+		curateResolver.SetClipSearchPort(&clipSearchPortAdapter{port: clipSearchPort})
 	}
 
 	// PostProcessorRegistry: individually-testable postprocessors
@@ -364,7 +374,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	genJobHandler := usecase.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
+	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
 	if root.Jobs.Service != nil {
 		if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
 			log.Warn("wireScriptFlow: failed to register script.generate job handler", zap.Error(err))
@@ -507,7 +517,23 @@ type imageGenSvcAdapter struct {
 	}
 }
 
-func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, description, query, language string, extra interface{}) (*asset.ImageAsset, error) {
+// SearchAndDownload bridges the concrete *imgservice.Service signature
+// (returns *asset.ImageAsset) to the canonical adapters.ImageGenService
+// interface (returns *adapters.ImageResult). ImageResult exposes only
+// SourceURL (see adapters/processor_images.go:31), so the bridge
+// copies that single field after a defensive nil-check on the
+// underlying asset.ImageAsset. A nil inner result becomes an EMPTY
+// ImageResult (SourceURL="") so the downstream ImageProcessor gets a
+// typed non-nil pointer — matching the existing processor code path
+// in processor_images.go::Process where `asset != nil { url = asset.SourceURL }`.
+//
+// TODO #8 (drift-fix PR, June 2026): the previous `(ctx, …) (*asset.ImageAsset, error)`
+// return shape satisfies the wrong interface — *adapters.ImageResult
+// is the canonical typed result for ImageGenService downstream of
+// the line-248 NewImageProcessor call. The bridge here is the
+// contained seam: any future schema drift on either side is caught
+// at this single method.
+func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, description, query, language string, extra interface{}) (*adapters.ImageResult, error) {
 	var tags []string
 	if extra != nil {
 		if t, ok := extra.([]string); ok {
@@ -517,7 +543,14 @@ func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, descri
 	if a == nil || a.svc == nil {
 		return nil, nil
 	}
-	return a.svc.SearchAndDownload(ctx, name, description, query, language, tags)
+	imgAsset, err := a.svc.SearchAndDownload(ctx, name, description, query, language, tags)
+	if err != nil {
+		return nil, err
+	}
+	if imgAsset == nil {
+		return &adapters.ImageResult{}, nil
+	}
+	return &adapters.ImageResult{SourceURL: imgAsset.SourceURL}, nil
 }
 
 func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error) {
@@ -573,6 +606,53 @@ type	semanticSearchAdapter struct {
 		}
 		return results, nil
 	}
+
+// ── ClipSearchPort type bridge (TODO #8 drift-fix, June 2026) ──────────
+//
+// The qdrant-backed `scriptports.ClipSearchPort` produced by
+// qdrant.NewClipSearchAdapter (used by clipSearchPort above) returns
+// `[]ports.ClipSearchHit`. The typed `usecase.ClipSearchPort` expected
+// by `curateResolver.SetClipSearchPort` (defined in
+// source_resolver_curate.go:50) returns `[]scriptpkg.SearchResultItem`.
+// Field mapping is: AssetID → ClipID (the only rename needed); Name,
+// Score, Source are 1:1; DriveLink has no source field so it's left
+// empty. The bridge lives here (composition root, not the qdrant
+// adapter) so the canonical infra package stays oblivious to the
+// usecase-typed SearchResultItem.
+//
+// Scope rationale (AGENTS.md Pattern 0): a single sealed bridge struct
+// at the seam is preferred over a typed port everywhere because only
+// TWO consumers exist (curateResolver + mediaCurator) and
+// mediaCurator accepts interface{} — so the search-rules interface{}
+// carrier already used by scriptdto.MediaCurator avoids second-bridge
+// copies.
+
+type clipSearchPortAdapter struct {
+	port scriptports.ClipSearchPort
+}
+
+func (a *clipSearchPortAdapter) SearchClips(ctx context.Context, q scriptports.ClipSearchQuery) ([]scriptpkg.SearchResultItem, error) {
+	if a == nil || a.port == nil {
+		return nil, nil
+	}
+	hits, err := a.port.SearchClips(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	if len(hits) == 0 {
+		return []scriptpkg.SearchResultItem{}, nil
+	}
+	out := make([]scriptpkg.SearchResultItem, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, scriptpkg.SearchResultItem{
+			ClipID: h.AssetID,
+			Name:   h.Name,
+			Score:  h.Score,
+			Source: h.Source,
+		})
+	}
+	return out, nil
+}
 
 // driveFolderAdapterImpl wraps *drive.Uploader as scriptapi.DriveFolderClient.
 type driveFolderAdapterImpl struct {

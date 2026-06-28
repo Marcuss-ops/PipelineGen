@@ -8,10 +8,10 @@
 // strings like `"status": "pending"` are not in scope.
 package fixture
 
-type assetShim struct {
-	Status         string
-	LifecycleState string
-}
+// assetShim is declared in check_12_payload_mapper_status.go (same
+// `fixture` package). It is intentionally NOT redeclared here so the
+// fixture compiles — only the badBuildPayload function below lives in
+// this file, and it consumes the canonical assetShim from check_12.
 
 // Forbidden: payload key "status" sourced from a struct field. The
 // canonical key is "lifecycle_state" sourced from asset.LifecycleState.

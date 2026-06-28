@@ -104,10 +104,10 @@ def main():
                 except Exception:
                     pass
                 print("==========================================================")
-                print(f" SUCCESS: Google Session exported to: {STORAGE_FILE}")
-                print(" You can now run all automated image generation scripts headless!")
+                print(f" WARNING: Browser closed before login detection succeeded.")
+                print(" Google Session might not be authenticated.")
                 print("==========================================================")
-                sys.exit(0)
+                sys.exit(1)
 
         # Save storage state on completion
         try:

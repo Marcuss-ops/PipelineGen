@@ -52,7 +52,7 @@ type MediaCurator struct {
 	// vectorStore field removed from this flow (PG-034, June 2026).
 	// PJ-CURATE-1 (June 2026): clipSearch is the typed port for
 	// the optional semantic-search leg. nil → curator consumes only
-	// req.HintClipIDs. Set via Setinterface{} from the composition
+	// req.HintClipIDs. Set via SetClipSearchPort from the composition
 	// root when Qdrant is enabled.
 	serverURL     string
 	clipsRepo     interface{} // *assets.ClipsRepository (avoid import cycle)
@@ -60,6 +60,41 @@ type MediaCurator struct {
 	generateOneUC interface{}
 	clipSearch    interface{}
 	log           *zap.Logger
+}
+
+// NewMediaCurator is the canonical constructor for the scriptdto
+// MediaCurator (wave-13 owner: internal/application/scripts).
+//
+// TODO #8 (drift-fix PR, June 2026): the constructor was previously
+// inferred removed by a parallel capability refactor — re-introduced
+// here as the minimal-scope fix to unblock wire_script.go's
+// `mediaCurator = scriptdto.NewMediaCurator(...)` call site, which is
+// gated on this symbol existing (the underlying struct fields are
+// unexported, so callers cannot construct an instance via `&MediaCurator{}`).
+// Field wiring matches the pre-drift shape exactly: serverURL,
+// clipsRepo, clipBuilder, log all set; generateOneUC + clipSearch are
+// late-bound via SetGenerateOneUC / SetClipSearchPort setters (the
+// composition root stamps them when those bundles are available).
+func NewMediaCurator(serverURL string, clipsRepo interface{}, clipBuilder interface{}, log *zap.Logger) *MediaCurator {
+	return &MediaCurator{
+		serverURL:   serverURL,
+		clipsRepo:   clipsRepo,
+		clipBuilder: clipBuilder,
+		log:         log,
+	}
+}
+
+// SetClipSearchPort attaches the optional semantic-search port
+// (clipSearch leg). Accepts interface{} so callers can pass any
+// concrete ClipSearchPort (qdrant.NewClipSearchAdapter, a
+// clipSearchPortAdapter bridge to usecase.ClipSearchPort, or a test
+// fake) without forcing MediaCurator to import the typed port
+// packages.
+func (m *MediaCurator) SetClipSearchPort(port interface{}) {
+	if m == nil {
+		return
+	}
+	m.clipSearch = port
 }
 
 // ── CurateRequest / CurateResult ─────────────────────────────────────────

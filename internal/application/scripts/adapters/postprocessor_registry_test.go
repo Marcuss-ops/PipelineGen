@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -23,7 +23,7 @@ type countingProcessor struct {
 	calls     int
 	docID     string
 	err       error
-	policy    scripts.ProcessorPolicy // PR 2 (June 2026): per-test override
+	policy    adapterspkg.ProcessorPolicy // PR 2 (June 2026): per-test override
 	warnings  []string                // PR 2 (June 2026): populated into PostProcessResult.Warnings
 	resultNil bool                    // PR 2 (June 2026): when true, returns (nil, nil) to exercise nil-handling
 	empty     bool                    // PR 2 (June 2026): when true, returns empty PostProcessResult
@@ -35,11 +35,11 @@ func (p *countingProcessor) Name() string { return p.name }
 // from the PostProcessor interface. Default is Required so tests
 // can exercise the required-fail-vs-best-effort-warn semantics
 // by overriding `policy` per test.
-func (p *countingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
+func (p *countingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapterspkg.ProcessorPolicy {
 	if p.policy != "" {
 		return p.policy
 	}
-	return scripts.ProcessorRequired
+	return adapterspkg.ProcessorRequired
 }
 
 // PR 5 (June 2026): signature now takes ProcessInput envelope.
@@ -47,7 +47,7 @@ func (p *countingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.
 // `empty`, and `warnings` so per-test variation can exercise the
 // registry's required-fail / best-effort-warn semantics from the
 // existing test suite without spawning new fakes per case.
-func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, _ scripts.ProcessInput) (*scripts.PostProcessResult, error) {
+func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, _ adapterspkg.ProcessInput) (*adapterspkg.PostProcessResult, error) {
 	p.calls++
 	if p.err != nil {
 		return nil, p.err
@@ -56,18 +56,18 @@ func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGene
 		return nil, nil
 	}
 	if p.empty {
-		return &scripts.PostProcessResult{Warnings: p.warnings}, nil
+		return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
 	}
 	if p.docID != "" {
-		return &scripts.PostProcessResult{DocID: p.docID, DocLink: "https://docs.example.com/" + p.docID, Warnings: p.warnings}, nil
+		return &adapterspkg.PostProcessResult{DocID: p.docID, DocLink: "https://docs.example.com/" + p.docID, Warnings: p.warnings}, nil
 	}
-	return &scripts.PostProcessResult{Warnings: p.warnings}, nil
+	return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
 }
 
 // ── Registration ───────────────────────────────────────────────────
 
 func TestRegistry_Register(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	ok := r.Register(&countingProcessor{name: "entities"})
 	if !ok {
 		t.Fatal("first register should succeed")
@@ -81,18 +81,18 @@ func TestRegistry_Register(t *testing.T) {
 }
 
 func TestRegistry_RegisterNil(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	if r.Register(nil) {
 		t.Error("nil processor should not register")
 	}
-	var nilReg *scripts.PostProcessorRegistry
+	var nilReg *adapterspkg.PostProcessorRegistry
 	if nilReg.Register(&countingProcessor{name: "x"}) {
 		t.Error("nil registry should not register")
 	}
 }
 
 func TestRegistry_RegisterDuplicate(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "doc"})
 	ok := r.Register(&countingProcessor{name: "doc"})
 	if ok {
@@ -106,7 +106,7 @@ func TestRegistry_RegisterDuplicate(t *testing.T) {
 // ── Freeze ────────────────────────────────────────────────────────
 
 func TestRegistry_Freeze(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "entities"})
 	r.Freeze()
 
@@ -130,7 +130,7 @@ func TestRegistry_Freeze(t *testing.T) {
 }
 
 func TestRegistry_FreezeNil(t *testing.T) {
-	var r *scripts.PostProcessorRegistry
+	var r *adapterspkg.PostProcessorRegistry
 	r.Freeze() // must not panic
 	if r.IsFrozen() {
 		t.Error("nil registry should not be frozen")
@@ -140,7 +140,7 @@ func TestRegistry_FreezeNil(t *testing.T) {
 // ── Run ────────────────────────────────────────────────────────────
 
 func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	doc := &countingProcessor{name: "document", docID: "doc-1"}
 	persist := &countingProcessor{name: "persistence"}
 	r.Register(doc)
@@ -152,7 +152,7 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 		Postprocessors: []string{"document", "persistence"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "Generated script text."})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "Generated script text."})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 }
 
 func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	doc := &countingProcessor{name: "document", docID: "d1"}
 	persist := &countingProcessor{name: "persistence"}
 	r.Register(doc)
@@ -182,7 +182,7 @@ func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 		Postprocessors: []string{"document"}, // persistence NOT requested
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 }
 
 func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	doc := &countingProcessor{name: "document", err: errors.New("drive api down")}
 	// PR 2 (June 2026): persistence now returns a non-empty
 	// PostProcessResult (ScriptID > 0). The new "empty output counts
@@ -215,7 +215,7 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 		Postprocessors: []string{"document", "persistence"},
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run should not fail on partial error: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 }
 
 func TestRegistry_RunProcessorNotRegistered(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "document"})
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
@@ -236,20 +236,20 @@ func TestRegistry_RunProcessorNotRegistered(t *testing.T) {
 		Postprocessors: []string{"voiceover"}, // not registered
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run should not fail on missing processor: %v", err)
 	}
 }
 
 func TestRegistry_RunNilRegistry(t *testing.T) {
-	var r *scripts.PostProcessorRegistry
+	var r *adapterspkg.PostProcessorRegistry
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Postprocessors: []string{"document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Errorf("nil registry should return empty result: %v", err)
 	}
@@ -269,13 +269,13 @@ func TestRegistry_RunEmptyRegistry(t *testing.T) {
 	// are requested". We swap the plan to a BestEffort name to
 	// preserve the spirit of the original test (empty registry
 	// does NOT block BestEffort requests).
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Postprocessors: []string{"voiceover"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Errorf("empty registry + best-effort plan should NOT error: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestRegistry_RunEmptyRegistry(t *testing.T) {
 }
 
 func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "document"})
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
@@ -311,7 +311,7 @@ func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
 		Postprocessors: nil,
 	}
 
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("empty postprocessors list should succeed: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
 // ── Merge ──────────────────────────────────────────────────────────
 
 func TestRegistry_MergeAllFields(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 
 	// Create processors that each return a different field.
 	entitiesProc := &countingProcessor{name: "entities"}
@@ -333,7 +333,7 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 		Postprocessors: []string{"entities", "document"},
 	}
 
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 // call. The Items[0] marker is best-effort — what matters is that
 // the Details list names the missing processor.
 func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	// Only "persistence" (required) is registered. The caller
 	// will request "document" — also required — but it is missing.
 	r.Register(&countingProcessor{name: "persistence"})
@@ -378,7 +378,7 @@ func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T
 // ValidateRequested MUST NOT error in that case — Run will warn at
 // runtime.
 func TestRegistry_ValidateRequested_BestEffortMissingTolerated(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "persistence"})
 	r.Register(&countingProcessor{name: "document"})
 	// "voiceover" / "images" not registered -> both BestEffort.
@@ -391,7 +391,7 @@ func TestRegistry_ValidateRequested_BestEffortMissingTolerated(t *testing.T) {
 // TestRegistry_ValidateRequested_NoProcessorsRequested covers TODO
 // §2. Empty / nil Postprocessors list passes preflight silently.
 func TestRegistry_ValidateRequested_NoProcessorsRequested(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "persistence"})
 
 	if err := r.ValidateRequested(nil); err != nil {
@@ -406,7 +406,7 @@ func TestRegistry_ValidateRequested_NoProcessorsRequested(t *testing.T) {
 // plan with a duplicated name. The preflight must not produce
 // duplicate errors.
 func TestRegistry_ValidateRequested_Deduplicates(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	err := r.ValidateRequested([]string{"document", "document", "document"})
 	if err == nil {
 		t.Fatal("missing document should still error after dedup")
@@ -423,7 +423,7 @@ func TestRegistry_ValidateRequested_Deduplicates(t *testing.T) {
 // composition wiring guarantees non-nil but tests must not depend
 // on that).
 func TestRegistry_ValidateRequested_NilRegistryIsSafe(t *testing.T) {
-	var r *scripts.PostProcessorRegistry
+	var r *adapterspkg.PostProcessorRegistry
 	if err := r.ValidateRequested([]string{"persistence"}); err != nil {
 		t.Errorf("nil registry should be no-op: %v", err)
 	}
@@ -433,17 +433,17 @@ func TestRegistry_ValidateRequested_NilRegistryIsSafe(t *testing.T) {
 // ProcessorRequired processor returning an error MUST cause Run to
 // return a non-nil error wrapping ErrPostprocessFailed.
 func TestRegistry_Run_RequiredFailureErrors(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:   "persistence",
-		policy: scripts.ProcessorRequired,
+		policy: adapterspkg.ProcessorRequired,
 		err:    errors.New("sqlite busy"),
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Postprocessors: []string{"persistence"},
 	}
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err == nil {
 		t.Fatal("required-fail must produce error")
 	}
@@ -460,17 +460,17 @@ func TestRegistry_Run_RequiredFailureErrors(t *testing.T) {
 // Run to error; the failure is folded into PipelineResult.Warnings
 // instead.
 func TestRegistry_Run_BestEffortFailureIsWarning(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:   "voiceover",
-		policy: scripts.ProcessorBestEffort,
+		policy: adapterspkg.ProcessorBestEffort,
 		err:    errors.New("edge tts down"),
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Postprocessors: []string{"voiceover"},
 	}
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("best-effort failure must NOT error: %v", err)
 	}
@@ -490,17 +490,17 @@ func TestRegistry_Run_BestEffortFailureIsWarning(t *testing.T) {
 // that is also empty (all canonical fields zero) MUST count as a
 // hard failure.
 func TestRegistry_Run_RequiredEmptyOutputCountsAsFailure(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:   "document",
-		policy: scripts.ProcessorRequired,
+		policy: adapterspkg.ProcessorRequired,
 		empty:  true, // returns PostProcessResult{} (empty)
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Postprocessors: []string{"document"},
 	}
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err == nil {
 		t.Fatal("required-empty must error")
 	}
@@ -512,17 +512,17 @@ func TestRegistry_Run_RequiredEmptyOutputCountsAsFailure(t *testing.T) {
 // TestRegistry_Run_BestEffortEmptyOutputIsWarning covers the
 // symmetric case: BestEffort + empty output = warning, not error.
 func TestRegistry_Run_BestEffortEmptyOutputIsWarning(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:   "images",
-		policy: scripts.ProcessorBestEffort,
+		policy: adapterspkg.ProcessorBestEffort,
 		empty:  true,
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Postprocessors: []string{"images"},
 	}
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("best-effort empty must NOT error: %v", err)
 	}
@@ -535,17 +535,17 @@ func TestRegistry_Run_BestEffortEmptyOutputIsWarning(t *testing.T) {
 // that violates its contract by returning (nil, nil) counts as a
 // hard failure for required-class processors.
 func TestRegistry_Run_RequiredNilResultCountsAsFailure(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:      "persistence",
-		policy:    scripts.ProcessorRequired,
+		policy:    adapterspkg.ProcessorRequired,
 		resultNil: true,
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Postprocessors: []string{"persistence"},
 	}
-	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err == nil {
 		t.Fatal("required nil-result must error")
 	}
@@ -555,10 +555,10 @@ func TestRegistry_Run_RequiredNilResultCountsAsFailure(t *testing.T) {
 // TODO §4. A processor that emits PostProcessResult.Warnings has
 // those warnings merged into PipelineResult.Warnings.
 func TestRegistry_Run_ProcessorWarningPropagatesToAggregate(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:     "images",
-		policy:   scripts.ProcessorBestEffort,
+		policy:   adapterspkg.ProcessorBestEffort,
 		docID:    "img-1",
 		warnings: []string{"alt text missing for scene 0"},
 	})
@@ -566,7 +566,7 @@ func TestRegistry_Run_ProcessorWarningPropagatesToAggregate(t *testing.T) {
 		ID:             "item-1",
 		Postprocessors: []string{"images"},
 	}
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -586,14 +586,14 @@ func TestRegistry_Run_ProcessorWarningPropagatesToAggregate(t *testing.T) {
 // check that Register() records the policy at register time and
 // LookupPolicy returns it on demand.
 func TestRegistry_LookupPolicy_ReflectsRegisteredPolicy(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
-	r.Register(&countingProcessor{name: "persistence", policy: scripts.ProcessorRequired})
-	r.Register(&countingProcessor{name: "voiceover", policy: scripts.ProcessorBestEffort})
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
+	r.Register(&countingProcessor{name: "persistence", policy: adapterspkg.ProcessorRequired})
+	r.Register(&countingProcessor{name: "voiceover", policy: adapterspkg.ProcessorBestEffort})
 
-	if got := r.LookupPolicy("persistence"); got != scripts.ProcessorRequired {
+	if got := r.LookupPolicy("persistence"); got != adapterspkg.ProcessorRequired {
 		t.Errorf("persistence policy: %v", got)
 	}
-	if got := r.LookupPolicy("voiceover"); got != scripts.ProcessorBestEffort {
+	if got := r.LookupPolicy("voiceover"); got != adapterspkg.ProcessorBestEffort {
 		t.Errorf("voiceover policy: %v", got)
 	}
 	if got := r.LookupPolicy("nonexistent"); got != "" {
