@@ -39,6 +39,15 @@
 //	0 — report printed (default; --strict off). Phase 0 mode.
 //	1 — violations present while --strict (Phase N mode).
 //	2 — load/walk/marshal error.
+//
+// FASE 1.C (June 2026) layout: main.go is the CLI dispatch + the
+// scan* function family. The data model + parser live in
+// `policy/{model,load}.go` and `report/model.go` (separate Go
+// packages). The PR1 split is structural-only — the JSON output
+// shape is byte-identical to pre-PR1 (verified by
+// `runner_test.go::TestSnapshot`). The PR2-PR4 refactors will move
+// the scan* functions into `scan/{packages,roots,documents,
+// constructors}.go` and the orchestration into `runner.go`.
 package main
 
 import (
@@ -49,300 +58,77 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
-
-// Policy is the parsed subset of architecture/policy.yaml used by the
-// scan. Unknown keys are ignored (forward-compat). Lists are parsed from
-// comma-separated values; multi-line YAML lists (e.g. known_grandfathered)
-// are doc-only and not consumed at runtime.
-//
-// `LegacyInternalRoots` is the current (Phase 0) layout — `internal/{api,
-// app, application, domain, infrastructure}`. `TargetInternalRoots` is
-// the migration target — `internal/{app, kernel, capabilities,
-// platform}`. The scan reports any first-level `internal/<x>` not in
-// either list as an unknown-root warning, so the migration progress is
-// visible in the JSON report over time.
-//
-// `Capabilities` and `PlatformSubzones` are targets for Phase 1+
-// enforcement of "expected zones exist" rules. For Phase 0 they are
-// declared in the policy so the report snapshot is forward-compatible,
-// but no enforcement logic runs against them yet.
-type Policy struct {
-	MaxFilesPerPackage    int
-	MaxLinesPerFile       int
-	CmdMainMaxLines       int
-	MaxConstructorDeps    int
-	ForbiddenTopLevelDirs []string
-	KernelSubzones        []string
-	Capabilities          []string
-	PlatformSubzones      []string
-	LegacyInternalRoots   []string
-	TargetInternalRoots   []string
-	// DataOwnershipDoc is the path (relative to root) of the canonical
-	// data/config ownership document whose authority the rule family
-	// scanOwnershipDoc enforces. Empty string opts out (Phase 0 only;
-	// Phase 1+ may treat absence as a violation). See docs/architecture/
-	// godlike/06_DATA_AND_CONFIG_OWNERSHIP.md for the contract.
-	DataOwnershipDoc string
-	// LegacyPolicyDoc, CIGatesDoc, AgentPlaybookDoc, RemovalDoc mirror
-	// the DataOwnershipDoc field for the four canonical-promoted Phase-1
-	// docs (07, 08, 11, 13 of the godlike/ program). Each is enforced by
-	// the corresponding scan<X>Doc() function below. Empty string opts
-	// out individually (Phase 0 only).
-	LegacyPolicyDoc  string
-	CIGatesDoc       string
-	AgentPlaybookDoc string
-	RemovalDoc       string
-	// KnownGrandfathered is exposed in the report header for traceability.
-	KnownGrandfathered []string
-	// StaleProseStems is the list of pre-Wave-16 path stems that must
-	// not appear as bare prose references in *.go source files (a
-	// "bare" reference is one whose stem is NOT followed by a literal
-	// '.', e.g. `module_jobs_test.go` or `compose_images bundle` —
-	// distinct from `compose_images.go` which is already covered by
-	// the user-regex gate). Enforced by scanStaleProsePaths. Empty
-	// list opts out (Phase 0 only). See architecture/policy.yaml::
-	// stale_prose_paths for the comment block + severity ladder.
-	StaleProseStems []string
-}
-
-// Violation is the JSON shape emitted per rule violation.
-type Violation struct {
-	Package      string `json:"package,omitempty"`
-	Directory    string `json:"directory,omitempty"`
-	File         string `json:"file,omitempty"`
-	Line         int    `json:"line,omitempty"`
-	ActualCount  int    `json:"actual_count,omitempty"`
-	AllowedCount int    `json:"allowed_count,omitempty"`
-	ActualLines  int    `json:"actual_lines,omitempty"`
-	MaxLines     int    `json:"max_lines,omitempty"`
-	MatchedRule  string `json:"matched_rule,omitempty"`
-	Rule         string `json:"rule"`
-	Severity     string `json:"severity"`
-	Note         string `json:"note,omitempty"`
-}
-
-// Summary groups violation counts by rule id.
-type Summary struct {
-	TotalViolations int            `json:"total_violations"`
-	ByReason        map[string]int `json:"by_reason"`
-	BySeverity      map[string]int `json:"by_severity"`
-}
-
-// Report is the JSON document printed on stdout.
-type Report struct {
-	Passed        bool        `json:"passed"`
-	Mode          string      `json:"mode"`
-	PolicyPath    string      `json:"policy_path"`
-	Root          string      `json:"scan_root"`
-	Phase         string      `json:"phase"`
-	Policy        *Policy     `json:"policy_snapshot"`
-	Summary       Summary     `json:"summary"`
-	Violations    []Violation `json:"violations"`
-	Grandfathered []string    `json:"grandfathered_known"`
-}
 
 func main() {
 	var (
 		root   = flag.String("root", ".", "Project root to scan (default: cwd)")
-		policy = flag.String("policy", "architecture/policy.yaml", "Path to policy YAML")
+		polstr = flag.String("policy", "architecture/policy.yaml", "Path to policy YAML")
 		strict = flag.Bool("strict", false, "Phase N gate: exit 1 if any violations present")
 		phase  = flag.String("phase", "0", "Phase label (printed in the report)")
 	)
 	flag.Parse()
 
-	pol, err := loadPolicy(*policy)
+	pol, err := policy.Load(*polstr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "archcheck: load policy %q: %v\n", *policy, err)
+		fmt.Fprintf(os.Stderr, "archcheck: load policy %q: %v\n", *polstr, err)
 		os.Exit(2)
 	}
 
-	report := Report{
+	r := &report.Report{
 		Mode:       "target-tree-dry-run",
-		PolicyPath: *policy,
+		PolicyPath: *polstr,
 		Root:       *root,
 		Phase:      *phase,
 		Policy:     pol,
-		Summary:    Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
+		Summary:    report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
 	}
 
 	// Phase 1 (June 2026): scan for New<X>(...) constructors whose
 	// parameter count exceeds policy.yaml max_constructor_deps. See
 	// docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md §"Complexity
 	// budgets" for the canonical rule definition.
-	scanConstructorDeps(*root, pol, &report)
+	scanConstructorDeps(*root, pol, r)
 
-	scanForbiddenDirs(*root, pol, &report)
-	scanKernelSubzoneHints(*root, pol, &report)
-	scanUnknownInternalRoots(*root, pol, &report)
-	scanOwnershipDoc(*root, pol, &report)
-	scanLegacyPolicyDoc(*root, pol, &report)
-	scanCIGatesDoc(*root, pol, &report)
-	scanAgentPlaybookDoc(*root, pol, &report)
-	scanRemovalDoc(*root, pol, &report)
-	scanStaleProsePaths(*root, pol, &report)
+	scanForbiddenDirs(*root, pol, r)
+	scanKernelSubzoneHints(*root, pol, r)
+	scanUnknownInternalRoots(*root, pol, r)
+	scanOwnershipDoc(*root, pol, r)
+	scanLegacyPolicyDoc(*root, pol, r)
+	scanCIGatesDoc(*root, pol, r)
+	scanAgentPlaybookDoc(*root, pol, r)
+	scanRemovalDoc(*root, pol, r)
+	scanStaleProsePaths(*root, pol, r)
 	fileLines := map[string]int{}
-	scanPackages(*root, pol, &report, fileLines)
-	scanCommandBinaries(*root, pol, &report, fileLines)
+	scanPackages(*root, pol, r, fileLines)
+	scanCommandBinaries(*root, pol, r, fileLines)
 
-	report.Summary.TotalViolations = len(report.Violations)
-	for _, v := range report.Violations {
-		report.Summary.ByReason[v.Rule]++
-		report.Summary.BySeverity[v.Severity]++
+	r.Summary.TotalViolations = len(r.Violations)
+	for _, v := range r.Violations {
+		r.Summary.ByReason[v.Rule]++
+		r.Summary.BySeverity[v.Severity]++
 	}
-	report.Passed = len(report.Violations) == 0
+	r.Passed = len(r.Violations) == 0
 
-	out, err := json.MarshalIndent(report, "", "  ")
+	out, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "archcheck: marshal report: %v\n", err)
 		os.Exit(2)
 	}
 	fmt.Println(string(out))
 
-	if *strict && len(report.Violations) > 0 {
+	if *strict && len(r.Violations) > 0 {
 		os.Exit(1)
 	}
 }
 
-// loadPolicy parses the flat key:value portions of architecture/policy.yaml.
-// Multi-line list values are exposed in the report header but not consumed
-// for enforcement in Phase 0.
-func loadPolicy(path string) (*Policy, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	p := &Policy{}
-	sc := bufio.NewScanner(f)
-	inGrandfathered := false
-	inStaleProse := false
-	for sc.Scan() {
-		line := sc.Text()
-		if idx := strings.Index(line, "#"); idx >= 0 {
-			line = line[:idx]
-		}
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		if inGrandfathered {
-			// collect indented bullets via the shared collectBullet
-			// helper (centralizes the indent + ASCII-quote trim; the
-			// inStaleProse path below uses the same helper).
-			if b, isBullet := collectBullet(line); isBullet {
-				p.KnownGrandfathered = append(p.KnownGrandfathered, b)
-				continue
-			}
-			inGrandfathered = false
-		}
-
-		if inStaleProse {
-			// collect indented bullets via the shared collectBullet()
-			// helper (handles the indent + ASCII-quote trim; see the
-			// helper doc for semantics). Mirrors the inGrandfathered
-			// path style.
-			if b, isBullet := collectBullet(line); isBullet {
-				p.StaleProseStems = append(p.StaleProseStems, b)
-				continue
-			}
-			inStaleProse = false
-		}
-
-		parts := strings.SplitN(trimmed, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
-		switch key {
-		case "max_files_per_package":
-			p.MaxFilesPerPackage = atoiOrDefault(val, 40)
-		case "max_lines_per_file":
-			p.MaxLinesPerFile = atoiOrDefault(val, 500)
-		case "cmd_main_max_lines":
-			p.CmdMainMaxLines = atoiOrDefault(val, 200)
-		case "max_constructor_deps":
-			p.MaxConstructorDeps = atoiOrDefault(val, 8)
-		case "forbidden_top_level_dirs":
-			p.ForbiddenTopLevelDirs = splitTrim(val)
-		case "kernel_subzones":
-			p.KernelSubzones = splitTrim(val)
-		case "capabilities":
-			p.Capabilities = splitTrim(val)
-		case "platform_subzones":
-			p.PlatformSubzones = splitTrim(val)
-		case "legacy_internal_roots":
-			p.LegacyInternalRoots = splitTrim(val)
-		case "target_internal_roots":
-			p.TargetInternalRoots = splitTrim(val)
-		case "data_ownership_doc":
-			p.DataOwnershipDoc = val
-		case "legacy_policy_doc":
-			p.LegacyPolicyDoc = val
-		case "ci_gates_doc":
-			p.CIGatesDoc = val
-		case "agent_playbook_doc":
-			p.AgentPlaybookDoc = val
-		case "removal_doc":
-			p.RemovalDoc = val
-		case "known_grandfathered":
-			if val == "" {
-				inGrandfathered = true
-			}
-		case "stale_prose_paths":
-			if val == "" {
-				inStaleProse = true
-			}
-		}
-	}
-	if err := sc.Err(); err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
-func atoiOrDefault(s string, def int) int {
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil {
-		return def
-	}
-	return n
-}
-
-func splitTrim(s string) []string {
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// collectBullet parses one YAML indented-bullet line into a clean
-// scalar, returning (bullet, true) when line is a bullet to append,
-// or ("", false) when line has returned to top-level (calling code
-// resets its in-list flag). Handles mixed quoted + unquoted YAML
-// inline scalars; mirrors the original inGrandfathered block's
-// semantics. Helper exists so two list-style keys don't duplicate
-// the indent + dash + quote trim logic.
-func collectBullet(line string) (string, bool) {
-	if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-		return "", false
-	}
-	b := strings.Trim(strings.TrimSpace(strings.TrimLeft(line, " \t-")), "\"'")
-	return b, b != ""
-}
-
 // scanForbiddenDirs reports internal/<x> first-level dirs whose name
 // matches a `forbidden_top_level_dirs` entry. Severity: warn.
-func scanForbiddenDirs(root string, pol *Policy, r *Report) {
+func scanForbiddenDirs(root string, pol *policy.Policy, r *report.Report) {
 	internalDir := filepath.Join(root, "internal")
 	entries, err := os.ReadDir(internalDir)
 	if err != nil {
@@ -355,7 +141,7 @@ func scanForbiddenDirs(root string, pol *Policy, r *Report) {
 		name := e.Name()
 		for _, forbidden := range pol.ForbiddenTopLevelDirs {
 			if name == forbidden {
-				r.Violations = append(r.Violations, Violation{
+				r.Violations = append(r.Violations, report.Violation{
 					Directory:   filepath.ToSlash(filepath.Join("internal", name)),
 					MatchedRule: "forbidden_top_level_dirs",
 					Rule:        "forbidden_dir",
@@ -370,7 +156,7 @@ func scanForbiddenDirs(root string, pol *Policy, r *Report) {
 // (e.g. asset) currently lives at internal/<x> rather than internal/kernel/<x>.
 // The hint is informational; the goal is to track the Phase 5 kernel split
 // progression.
-func scanKernelSubzoneHints(root string, pol *Policy, r *Report) {
+func scanKernelSubzoneHints(root string, pol *policy.Policy, r *report.Report) {
 	if !dirExists(filepath.Join(root, "internal", "kernel")) {
 		return
 	}
@@ -386,7 +172,7 @@ func scanKernelSubzoneHints(root string, pol *Policy, r *Report) {
 		name := e.Name()
 		for _, k := range pol.KernelSubzones {
 			if name == k {
-				r.Violations = append(r.Violations, Violation{
+				r.Violations = append(r.Violations, report.Violation{
 					Directory:   filepath.ToSlash(filepath.Join("internal", name)),
 					MatchedRule: "kernel_split_hint",
 					Rule:        "kernel_split_hint",
@@ -407,7 +193,7 @@ func scanKernelSubzoneHints(root string, pol *Policy, r *Report) {
 // Skipped dirs (Phase 0 hardcoded — moved to policy.go in Phase 1):
 //
 //	.git, vendor, node_modules, node-scraper, examples, scripts
-func scanPackages(root string, pol *Policy, r *Report, fileLines map[string]int) {
+func scanPackages(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int) {
 	pkgCounts := map[string]int{}
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
@@ -436,7 +222,7 @@ func scanPackages(root string, pol *Policy, r *Report, fileLines map[string]int)
 		if lerr == nil {
 			fileLines[path] = n
 			if n > pol.MaxLinesPerFile {
-				r.Violations = append(r.Violations, Violation{
+				r.Violations = append(r.Violations, report.Violation{
 					File:        filepath.ToSlash(filepath.Join(relDir, filepath.Base(path))),
 					ActualLines: n,
 					MaxLines:    pol.MaxLinesPerFile,
@@ -451,7 +237,7 @@ func scanPackages(root string, pol *Policy, r *Report, fileLines map[string]int)
 
 	for pkg, count := range pkgCounts {
 		if count > pol.MaxFilesPerPackage {
-			r.Violations = append(r.Violations, Violation{
+			r.Violations = append(r.Violations, report.Violation{
 				Package:      pkg,
 				ActualCount:  count,
 				AllowedCount: pol.MaxFilesPerPackage,
@@ -467,7 +253,7 @@ func scanPackages(root string, pol *Policy, r *Report, fileLines map[string]int)
 // not in `legacy_internal_roots` ∪ `target_internal_roots`. This catches
 // half-migrated zones (e.g. `internal/jobs` after we move `jobs/` into
 // `capabilities/jobs/`).
-func scanUnknownInternalRoots(root string, pol *Policy, r *Report) {
+func scanUnknownInternalRoots(root string, pol *policy.Policy, r *report.Report) {
 	internalDir := filepath.Join(root, "internal")
 	entries, err := os.ReadDir(internalDir)
 	if err != nil {
@@ -484,7 +270,7 @@ func scanUnknownInternalRoots(root string, pol *Policy, r *Report) {
 		if !e.IsDir() || known[e.Name()] {
 			continue
 		}
-		r.Violations = append(r.Violations, Violation{
+		r.Violations = append(r.Violations, report.Violation{
 			Directory:   filepath.ToSlash(filepath.Join("internal", e.Name())),
 			MatchedRule: "not_in_legacy_or_target_internal_roots",
 			Rule:        "unknown_internal_root",
@@ -509,7 +295,7 @@ func scanUnknownInternalRoots(root string, pol *Policy, r *Report) {
 //   - pol.DataOwnershipDoc == "" → opt out, no violations emitted.
 //   - filepath.Clean + ToSlash keep the JSON report OS-independent.
 //   - bufio.Scanner caps line length at 64K (sufficient for the doc).
-func scanOwnershipDoc(root string, pol *Policy, r *Report) {
+func scanOwnershipDoc(root string, pol *policy.Policy, r *report.Report) {
 	if pol.DataOwnershipDoc == "" {
 		return
 	}
@@ -517,7 +303,7 @@ func scanOwnershipDoc(root string, pol *Policy, r *Report) {
 	docPath := filepath.Join(root, pol.DataOwnershipDoc)
 	f, err := os.Open(docPath)
 	if err != nil {
-		r.Violations = append(r.Violations, Violation{
+		r.Violations = append(r.Violations, report.Violation{
 			File:        docRel,
 			MatchedRule: "data_ownership_doc",
 			Rule:        "data_ownership_doc_missing",
@@ -544,56 +330,56 @@ func scanOwnershipDoc(root string, pol *Policy, r *Report) {
 // mirror scanOwnershipDoc for the four Phase-1-canonical godlike/ docs
 // (07, 08, 11, 13). They share the C1 mechanism (file existence +
 // required H2-heading presence) via the scanDocSections helper.
-func scanLegacyPolicyDoc(root string, pol *Policy, r *Report) {
+func scanLegacyPolicyDoc(root string, pol *policy.Policy, r *report.Report) {
 	if pol.LegacyPolicyDoc == "" {
 		return
 	}
 	docRel := filepath.ToSlash(filepath.Clean(pol.LegacyPolicyDoc))
 	f, err := os.Open(filepath.Join(root, pol.LegacyPolicyDoc))
 	if err != nil {
-		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "legacy_policy_doc", Rule: "legacy_policy_doc_missing", Severity: "warn"})
+		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "legacy_policy_doc", Rule: "legacy_policy_doc_missing", Severity: "warn"})
 		return
 	}
 	defer f.Close()
 	scanDocSections(f, []string{"## Goal", "## What counts as legacy", "## Default rule", "## Temporary deprecation record", "## Forbidden compatibility techniques", "## Migration sequence", "## No fake availability", "## Historical information"}, docRel, "legacy_policy_doc", r)
 }
 
-func scanCIGatesDoc(root string, pol *Policy, r *Report) {
+func scanCIGatesDoc(root string, pol *policy.Policy, r *report.Report) {
 	if pol.CIGatesDoc == "" {
 		return
 	}
 	docRel := filepath.ToSlash(filepath.Clean(pol.CIGatesDoc))
 	f, err := os.Open(filepath.Join(root, pol.CIGatesDoc))
 	if err != nil {
-		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "ci_gates_doc", Rule: "ci_gates_doc_missing", Severity: "warn"})
+		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "ci_gates_doc", Rule: "ci_gates_doc_missing", Severity: "warn"})
 		return
 	}
 	defer f.Close()
 	scanDocSections(f, []string{"## Purpose", "## Mandatory checks", "## Boundary checks", "## Registry checks", "## Legacy checks", "## Contract checks", "## Data checks", "## Complexity budgets", "## Generated output", "## Zero-baseline rule"}, docRel, "ci_gates_doc", r)
 }
 
-func scanAgentPlaybookDoc(root string, pol *Policy, r *Report) {
+func scanAgentPlaybookDoc(root string, pol *policy.Policy, r *report.Report) {
 	if pol.AgentPlaybookDoc == "" {
 		return
 	}
 	docRel := filepath.ToSlash(filepath.Clean(pol.AgentPlaybookDoc))
 	f, err := os.Open(filepath.Join(root, pol.AgentPlaybookDoc))
 	if err != nil {
-		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "agent_playbook_doc", Rule: "agent_playbook_doc_missing", Severity: "warn"})
+		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "agent_playbook_doc", Rule: "agent_playbook_doc_missing", Severity: "warn"})
 		return
 	}
 	defer f.Close()
 	scanDocSections(f, []string{"## Preparation", "## Scope", "## Forbidden additions", "## Testing", "## Migration method", "## Final verification", "## Documentation"}, docRel, "agent_playbook_doc", r)
 }
 
-func scanRemovalDoc(root string, pol *Policy, r *Report) {
+func scanRemovalDoc(root string, pol *policy.Policy, r *report.Report) {
 	if pol.RemovalDoc == "" {
 		return
 	}
 	docRel := filepath.ToSlash(filepath.Clean(pol.RemovalDoc))
 	f, err := os.Open(filepath.Join(root, pol.RemovalDoc))
 	if err != nil {
-		r.Violations = append(r.Violations, Violation{File: docRel, MatchedRule: "removal_doc", Rule: "removal_doc_missing", Severity: "warn"})
+		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "removal_doc", Rule: "removal_doc_missing", Severity: "warn"})
 		return
 	}
 	defer f.Close()
@@ -609,7 +395,7 @@ func scanRemovalDoc(root string, pol *Policy, r *Report) {
 // package asserts ownership rules contradicting that doc"). Callers
 // MUST pass a non-empty `required` slice and keep it in sync with the
 // canonical doc's H2 headings; the helper does not validate this.
-func scanDocSections(f *os.File, required []string, docRel, rulePrefix string, r *Report) {
+func scanDocSections(f *os.File, required []string, docRel, rulePrefix string, r *report.Report) {
 	found := map[string]bool{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -624,7 +410,7 @@ func scanDocSections(f *os.File, required []string, docRel, rulePrefix string, r
 		if found[sec] {
 			continue
 		}
-		r.Violations = append(r.Violations, Violation{
+		r.Violations = append(r.Violations, report.Violation{
 			File:        docRel,
 			MatchedRule: rulePrefix,
 			Rule:        rulePrefix + "_incomplete",
@@ -645,9 +431,9 @@ func scanDocSections(f *os.File, required []string, docRel, rulePrefix string, r
 // / `compose_images bundle` family without false positives on existing
 // comment prose.
 //
-// (Above paragraph describes the original `(?<!\\w)<stem>(?!\\.)`
+// (Above paragraph describes the original `(?<!\w)<stem>(?!\.)`
 // regex design that Go's RE2 engine does NOT support. The runtime
-// implementation is now the alternation `\\b<stem>(?:\\w+|[^.])` --
+// implementation is now the alternation `\b<stem>(?:\w+|[^.])` --
 // see the inline comment at the regex compile site below for the
 // RE2-pivot rationale.)
 //
@@ -664,7 +450,7 @@ func scanDocSections(f *os.File, required []string, docRel, rulePrefix string, r
 //
 // Severity is `warn` so `--strict` promotes a stray reference to
 // os.Exit(1) — mirroring the user-contract on the doc-pointer family.
-func scanStaleProsePaths(root string, pol *Policy, r *Report) {
+func scanStaleProsePaths(root string, pol *policy.Policy, r *report.Report) {
 	if len(pol.StaleProseStems) == 0 {
 		return
 	}
@@ -727,7 +513,7 @@ func scanStaleProsePaths(root string, pol *Policy, r *Report) {
 			line := sc.Text()
 			for _, sr := range compiled {
 				if sr.re.MatchString(line) {
-					r.Violations = append(r.Violations, Violation{
+					r.Violations = append(r.Violations, report.Violation{
 						File:        relPath,
 						Line:        lineNum,
 						MatchedRule: "stale_prose_paths",
@@ -759,7 +545,7 @@ func scanStaleProsePaths(root string, pol *Policy, r *Report) {
 // Phase 1 (June 2026): implements the TODO formerly at the call site
 // per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md §"Complexity
 // budgets". Skipped dirs mirror scanPackages.
-func scanConstructorDeps(root string, pol *Policy, r *Report) {
+func scanConstructorDeps(root string, pol *policy.Policy, r *report.Report) {
 	if pol.MaxConstructorDeps <= 0 {
 		return
 	}
@@ -849,7 +635,7 @@ func scanConstructorDeps(root string, pol *Policy, r *Report) {
 				paramCount = count + 1
 			}
 			if paramCount > pol.MaxConstructorDeps {
-				r.Violations = append(r.Violations, Violation{
+				r.Violations = append(r.Violations, report.Violation{
 					File:         relPath,
 					Line:         lineNum - (strings.Count(sig, "\n")),
 					ActualCount:  paramCount,
@@ -945,7 +731,7 @@ func countTopLevelCommas(s string) int {
 // CmdMainMaxLines. Phase 0 reports; the proposal says command binaries
 // must be thin (root ctx + config load + compose call + mode select +
 // shutdown wait).
-func scanCommandBinaries(root string, pol *Policy, r *Report, fileLines map[string]int) {
+func scanCommandBinaries(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int) {
 	cmdDir := filepath.Join(root, "cmd")
 	entries, err := os.ReadDir(cmdDir)
 	if err != nil {
@@ -963,7 +749,7 @@ func scanCommandBinaries(root string, pol *Policy, r *Report, fileLines map[stri
 		}
 		if n > pol.CmdMainMaxLines {
 			rel, _ := filepath.Rel(root, mainPath)
-			r.Violations = append(r.Violations, Violation{
+			r.Violations = append(r.Violations, report.Violation{
 				File:        filepath.ToSlash(rel),
 				ActualLines: n,
 				MaxLines:    pol.CmdMainMaxLines,
