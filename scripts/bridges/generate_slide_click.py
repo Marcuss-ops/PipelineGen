@@ -118,24 +118,60 @@ def main():
         except Exception:
             pass
 
-        # Let's locate the default title textbox and click it
-        print("Locating title box...")
-        # In Google Slides, the default layouts have textboxes. Let's look for editables.
-        # Alternatively, we can insert a new text box or click on existing one.
-        # Let's try to click on the main title placeholder:
-        # Title placeholder often matches aria-label / role / text / class
-        title_box = page.locator('text="Fai clic per aggiungere un titolo"').first
-        if not title_box.is_visible():
-            title_box = page.locator('text="Click to add title"').first
+        # Trigger AI Image Generation via Gemini / Labs side panel or Insert menu
+        print("Opening AI Image generation panel (Gemini / Nano Banana Pro)...")
+        ai_panel_opened = False
 
-        if title_box.is_visible():
-            print("Found title placeholder box. Clicking and typing...")
-            title_box.click()
-            page.keyboard.type(args.prompt)
+        # Try clicking toolbar AI image button first
+        try:
+            ai_btn = page.locator('[aria-label*="Crea immagine"], [aria-label*="Create image"], [aria-label*="visualize"], [title*="Crea immagine"]').first
+            if ai_btn.is_visible():
+                ai_btn.click()
+                ai_panel_opened = True
+        except Exception:
+            pass
+
+        # If not opened via toolbar, use Insert menu: Inserisci -> Immagine -> Crea immagine...
+        if not ai_panel_opened:
+            try:
+                insert_menu = page.locator("#docs-insert-menu")
+                insert_menu.click()
+                time.sleep(0.5)
+                img_menu_item = page.locator('.apps-menuitem:has-text("Immagine"), .apps-menuitem:has-text("Image")').first
+                img_menu_item.hover()
+                time.sleep(0.5)
+                ai_img_item = page.locator('.apps-menuitem:has-text("Gemini"), .apps-menuitem:has-text("IA"), .apps-menuitem:has-text("Crea")').first
+                ai_img_item.click()
+                ai_panel_opened = True
+            except Exception as e:
+                print(f"Note opening AI menu: {e}")
+
+        time.sleep(2)
+
+        # Enter prompt in AI generator panel textarea/input
+        print(f"Entering AI image prompt: '{args.prompt}'...")
+        prompt_input = page.locator('textarea[placeholder*="Crea"], textarea[placeholder*="Create"], textarea[aria-label*="prompt"], textarea').first
+        if prompt_input.is_visible():
+            prompt_input.click()
+            prompt_input.fill(args.prompt)
+            time.sleep(0.5)
+
+            # Click Create / Genera button
+            print("Clicking Create/Genera button...")
+            create_btn = page.locator('button:has-text("Crea"), button:has-text("Create"), button:has-text("Genera")').first
+            create_btn.click()
+
+            print("Waiting for AI image generation to complete (approx 10-15s)...")
+            time.sleep(12)
+
+            # Click on generated image thumbnail in side panel to insert into slide
+            print("Inserting generated AI image onto slide canvas...")
+            gen_img = page.locator('.side-panel img, .workspace-labs-side-panel img, [role="button"] img').first
+            if gen_img.is_visible():
+                gen_img.click()
+                time.sleep(2)
         else:
-            print("Title placeholder box not visible. Inserting a textbox via shortcut or typing...")
-            # If no placeholder, we can select all and type or create textbox
-            page.keyboard.press("Control+a")
+            print("AI prompt input not found directly. Typing prompt into slide...")
             page.keyboard.type(args.prompt)
 
         time.sleep(1)
