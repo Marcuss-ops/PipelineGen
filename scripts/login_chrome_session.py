@@ -18,6 +18,15 @@ def main():
     os.makedirs(PROFILE_DIR, exist_ok=True)
     os.makedirs(DATA_DIR, exist_ok=True)
 
+    # Clean up stale chromium lock files to prevent Error code 32 (ProcessSingleton lock)
+    for lock_name in ["lockfile", "SingletonLock", "SingletonCookie", "SingletonSocket"]:
+        lock_path = PROFILE_DIR / lock_name
+        if lock_path.exists():
+            try:
+                os.remove(lock_path)
+            except Exception:
+                pass
+
     print("==========================================================")
     print("      PipelineGen Google Chrome Session Generator         ")
     print("==========================================================")
@@ -26,17 +35,27 @@ def main():
     print("\nLaunching browser for login...\n")
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=str(PROFILE_DIR),
-            headless=False,
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-            ],
-            no_viewport=True,
-        )
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(PROFILE_DIR),
+                headless=False,
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                ],
+                no_viewport=True,
+            )
+        except Exception as e:
+            print(f"Persistent context launch warning ({e}). Launching clean browser instance...")
+            browser = p.chromium.launch(
+                headless=False,
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+            )
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
 
         page = context.new_page()
         print("Navigating to Google Slides login...")
