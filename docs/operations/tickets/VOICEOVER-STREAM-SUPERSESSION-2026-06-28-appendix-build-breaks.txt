@@ -116,6 +116,8 @@ I seguenti package sono state diagnosticate GREEN dopo la tactical alias-unblock
   1. internal/application/qdrant/dr - compilazione EXIT_CODE=0, 0 errori. Step 3 diagnostic registra che qdrant/dr builds clean (ticket PR-QDRANT-DR-COMPILE-RECOVERY proposed ma rejected per godlike/07 zero-fake-availability).
   2. internal/application/assets/monitor - compilazione EXIT_CODE=0, 0 errori. Step 4 diagnostic (2026-06-28): 13 file canonical-owned in ownership.yaml, Wave 19 port-interface compliant (zero import diretto di internal/infrastructure), monitor state transitioned to category_channels. Literal-spec PR-ASSETS-MONITOR-COMPILE-RECOVERY (no-op) rimpiazzato con reframe PR-ASSETS-MONITOR-CONTRACT-AUDIT-2026-06-28 (audit scope), registrato Wave 21 follow_up_tickets come 6. entry.
 
-Questi due package si aggiungono al set voiceover/typed-port verde dopo Option-X alias unblock. La UNICA RED zone attuale (post-Option-X) resta PR-APP-BUNDLES-COMPILE-RECOVERY + PR-TEST-FIXTURES-RED-RECOVERY scope.
+Questi tre confini GREEN (qdrant/dr + assets/monitor + migrations) si aggiungono al set voiceover/typed-port verde dopo Option-X alias unblock.   3. migrations/sqlite/ - audit GREEN conferma zero migration prefix conflicts. Step 5 diagnostic (2026-06-28): 74 file totali, no duplicate prefix, no gap nel range 100-111, Check 6 (ci-architectural-checks.sh) riporta 'OK: no duplicate migration version prefixes'. Reframe: literal-spec PR-MIGRATIONS-PREFIX-CONFLICT-RESOLUTION (no-op, non c'è conflict da risolvere) rimpiazzato con PR-MIGRATIONS-PREFIX-AUDIT-2026-06-28 (audit scope + drift detection contract), registrato Wave 21 follow_up_tickets come 7. entry.
+
+La UNICA RED zone attuale (post-Option-X) resta PR-APP-BUNDLES-COMPILE-RECOVERY + PR-TEST-FIXTURES-RED-RECOVERY scope.
 
 Tracking: architecture/current.yaml#id-21 follow_up_tickets.PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28.
