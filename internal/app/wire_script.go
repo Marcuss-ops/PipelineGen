@@ -558,8 +558,17 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, descr
 }
 
 // voiceoverSvcAdapter adapts *voiceover.Service → scripts.VoiceoverService.
-// The concrete Generate/GenerateWithDestination return *voiceover.VoiceoverResult;
-// the interface returns interface{}. We bridge the return-type conversion.
+// The wrapped concrete *voiceover.Service already exposes the canonical
+// typed return *voiceover.VoiceoverResult; this adapter is a thin
+// nil-tolerant seam that satisfies the scripts.VoiceoverService port
+// (preserving the wire-up registration at adapter construction time).
+//
+// PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28 / Step 7 M2 (June 2026):
+// returns are now typed (*voiceover.VoiceoverResult, error) matching the
+// canonical wire shape — no more interface{} magic-string passthrough.
+// extractVoiceoverPaths is gone (processor_voiceover.go); the typed result
+// reaches processor_voiceover.go::Process unboxed via direct struct
+// field reads (result.Path, result.DriveLink).
 type voiceoverSvcAdapter struct {
 	svc interface {
 		Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error)
@@ -567,14 +576,14 @@ type voiceoverSvcAdapter struct {
 	}
 }
 
-func (a *voiceoverSvcAdapter) Generate(ctx context.Context, text, language, filename string) (interface{}, error) {
+func (a *voiceoverSvcAdapter) Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error) {
 	if a == nil || a.svc == nil {
 		return nil, nil
 	}
 	return a.svc.Generate(ctx, text, language, filename)
 }
 
-func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (interface{}, error) {
+func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
 	if a == nil || a.svc == nil {
 		return nil, nil
 	}
