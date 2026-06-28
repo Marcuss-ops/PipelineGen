@@ -49,6 +49,18 @@ func NewDocumentProcessor(docsSvc DocumentsService, resolveFolder FolderResolver
 	}
 }
 
+// Ready reports whether the document processor is fully configured
+// at composition time. PR ref fix/required-postprocessor-semantics
+// (audit #3, June 2026): a nil docsSvc means the canonical Google
+// Doc creator was never wired — failing closed at boot prevents
+// the runtime preflight from silently degrading document creation
+// to "not configured" warnings.
+//
+// Returns true when docsSvc is non-nil; false otherwise.
+func (p *DocumentProcessor) Ready() bool {
+	return p != nil && p.docsSvc != nil
+}
+
 func (p *DocumentProcessor) Name() string { return "document" }
 
 // Policy classifies document as ProcessorRequired: a missing-registered

@@ -2,6 +2,18 @@
 // the PostProcessorRegistry: freeze, duplicate rejection, nil
 // safety, skip disabled, fail when processor unavailable, and
 // per-processor error isolation.
+//
+// PR ref fix/required-postprocessor-semantics (June 2026):
+//   - 3-policy enum (RequiredAll / RequiredAtLeastOne / BestEffort)
+//     replaces the legacy two-value enum under the new semantic.
+//   - RequiredAll is the canonical "any failure = hard error"
+//     posture (audit #2 central call-out). The legacy
+//     "all required failed → error" gate is closed to the new
+//     strict-union semantic.
+//   - RequiredAtLeastOne is the canonical "at least one succeeds"
+//     posture (requires the legacy isolation test to migrate).
+//   - BestEffort is the canonical "never blocks" posture (warning
+//     folded into PipelineResult.Warnings).
 package adapters_test
 
 import (
@@ -23,18 +35,17 @@ type countingProcessor struct {
 	calls     int
 	docID     string
 	err       error
-	policy    scripts.ProcessorPolicy // PR 2 (June 2026): per-test override
-	warnings  []string                // PR 2 (June 2026): populated into PostProcessResult.Warnings
-	resultNil bool                    // PR 2 (June 2026): when true, returns (nil, nil) to exercise nil-handling
-	empty     bool                    // PR 2 (June 2026): when true, returns empty PostProcessResult
+	policy    scripts.ProcessorPolicy // per-test override (default: ProcessorRequired == RequiredAll)
+	warnings  []string                // populated into PostProcessResult.Warnings
+	resultNil bool                    // when true, returns (nil, nil) to exercise nil-handling
+	empty     bool                    // when true, returns empty PostProcessResult
 }
 
 func (p *countingProcessor) Name() string { return p.name }
 
-// PR 2 (June 2026): countingProcessor satisfies the Policy method
-// from the PostProcessor interface. Default is Required so tests
-// can exercise the required-fail-vs-best-effort-warn semantics
-// by overriding `policy` per test.
+// Policy classifies this fake. Default RequiredAll via the
+// ProcessorRequired alias so legacy tests that don't override policy
+// see the new RequiredAll semantic (any-failure-is-hard).
 func (p *countingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
 	if p.policy != "" {
 		return p.policy
@@ -42,11 +53,6 @@ func (p *countingProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.
 	return scripts.ProcessorRequired
 }
 
-// PR 5 (June 2026): signature now takes ProcessInput envelope.
-// PR 2 (June 2026): the body honours the test-only fields `resultNil`,
-// `empty`, and `warnings` so per-test variation can exercise the
-// registry's required-fail / best-effort-warn semantics from the
-// existing test suite without spawning new fakes per case.
 func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, _ scripts.ProcessInput) (*scripts.PostProcessResult, error) {
 	p.calls++
 	if p.err != nil {
@@ -194,19 +200,30 @@ func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 	}
 }
 
-func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
+// TestRegistry_Run_RequiredAtLeastOne_ErrorIsIsolated pins the
+// RequiredAtLeastOne policy's canonical fail-isolate contract:
+// when ONE processor in the cohort fails AND another in the cohort
+// succeeds, Run must NOT return an error (the gate fires only when
+// zero of the RequiredAtLeastOne processors succeeded).
+//
+// PR ref fix/required-postprocessor-semantics (June 2026, audit #2):
+// migrated from the legacy TestRegistry_RunProcessorErrorIsIsolated
+// whose "isolated failure tolerated" semantic only made sense under
+// the same RequiredAtLeastOne policy. Under RequiredAll, the
+// canonical "any failure = hard error" semantic from
+// TestRegistry_Run_RequiredAll_AnyFailureErrorsHard applies.
+func TestRegistry_Run_RequiredAtLeastOne_ErrorIsIsolated(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
-	doc := &countingProcessor{name: "document", err: errors.New("drive api down")}
-	// PR 2 (June 2026): persistence now returns a non-empty
-	// PostProcessResult (ScriptID > 0). The new "empty output counts
-	// as a required failure" semantic — see TODO §6 "Non considerare
-	// automaticamente riuscito un processor che restituisce output
-	// vuoto" — would otherwise count persistence as a second
-	// required-failure even though it succeeded, breaking the
-	// isolation contract this test was written to assert. We use
-	// docID="row-1" so mergePostProcessResult populates DocID +
-	// DocLink, producing a non-empty result.
-	persist := &countingProcessor{name: "persistence", docID: "row-1"}
+	doc := &countingProcessor{
+		name:   "document",
+		policy: scripts.RequiredAtLeastOne,
+		err:    errors.New("drive api down"),
+	}
+	persist := &countingProcessor{
+		name:   "persistence",
+		policy: scripts.RequiredAtLeastOne,
+		docID:  "row-1",
+	}
 	r.Register(doc)
 	r.Register(persist)
 
@@ -217,7 +234,7 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 
 	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
-		t.Fatalf("run should not fail on partial error: %v", err)
+		t.Fatalf("RequiredAtLeastOne: run should not fail when one of the cohort succeeded: %v", err)
 	}
 	if doc.calls != 1 {
 		t.Errorf("document should have been attempted: %d", doc.calls)
@@ -227,18 +244,150 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 	}
 }
 
-func TestRegistry_RunProcessorNotRegistered(t *testing.T) {
+// TestRegistry_Run_RequiredAtLeastOne_AllFailedErrorsHard pins the
+// complementary RequiredAtLeastOne path: zero successes across the
+// RequiredAtLeastOne cohort is a hard error. RequiredAtLeastOne is
+// the "tolerant" policy but only when at least one cohort member
+// succeeds; if every cohort member fails, the gate fires.
+func TestRegistry_Run_RequiredAtLeastOne_AllFailedErrorsHard(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
-	r.Register(&countingProcessor{name: "document"})
+	r.Register(&countingProcessor{
+		name:   "fallback_a",
+		policy: scripts.RequiredAtLeastOne,
+		err:    errors.New("service a down"),
+	})
+	r.Register(&countingProcessor{
+		name:   "fallback_b",
+		policy: scripts.RequiredAtLeastOne,
+		err:    errors.New("service b down"),
+	})
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"voiceover"}, // not registered
+		Postprocessors: []string{"fallback_a", "fallback_b"},
+	}
+
+	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	if err == nil {
+		t.Fatal("RequiredAtLeastOne with zero successes must produce a hard error")
+	}
+	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
+		t.Errorf("must wrap ErrPostprocessFailed: %v", err)
+	}
+}
+
+// TestRegistry_Run_RequiredAll_AnyFailureErrorsHard pins the
+// audit's central fix (PR ref fix/required-postprocessor-semantics,
+// June 2026, audit #2): under RequiredAll policy, ANY failure of a
+// RequiredAll processor in the cohort is a hard error — even when
+// another RequiredAll processor succeeded. The legacy
+// `if requiredRequested > 0 && requiredSucceeded == 0` gate
+// would silently mark the job successful if one stubborn required
+// processor succeeded despite real failures in the cohort.
+func TestRegistry_Run_RequiredAll_AnyFailureErrorsHard(t *testing.T) {
+	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	doc := &countingProcessor{
+		name:   "document",
+		policy: scripts.RequiredAll,
+		err:    errors.New("drive api down"),
+	}
+	persist := &countingProcessor{
+		name:   "persistence",
+		policy: scripts.RequiredAll,
+		docID:  "row-1",
+	}
+	r.Register(doc)
+	r.Register(persist)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:             "item-1",
+		Postprocessors: []string{"document", "persistence"},
+	}
+
+	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	if err == nil {
+		t.Fatal("RequiredAll: any failure in the cohort must produce a hard error (audit #2)")
+	}
+	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
+		t.Errorf("must wrap ErrPostprocessFailed: %v", err)
+	}
+	if !strings.Contains(err.Error(), "document") {
+		t.Errorf("error must name the failing processor: %v", err)
+	}
+}
+
+// TestRegistry_Run_BestEffortFailureIsWarning pins the BestEffort
+// canonical "never blocks" semantic: a BestEffort processor
+// returning an error MUST NOT cause Run to error; the failure is
+// folded into PipelineResult.Warnings.
+func TestRegistry_Run_BestEffortFailureIsWarning(t *testing.T) {
+	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r.Register(&countingProcessor{
+		name:   "voiceover",
+		policy: scripts.ProcessorBestEffort,
+		err:    errors.New("edge tts down"),
+	})
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:             "item-1",
+		Postprocessors: []string{"voiceover"},
+	}
+	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	if err != nil {
+		t.Fatalf("best-effort failure must NOT error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("result must be non-nil")
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatal("best-effort failure must surface a warning")
+	}
+	if !strings.Contains(result.Warnings[0], "voiceover") {
+		t.Errorf("warning must name the processor: %v", result.Warnings)
+	}
+}
+
+// TestRegistry_Run_BestEffort_NotRegisteredTolerated covers
+// audit #3 in conjunction: a BestEffort processor absent from the
+// registry is tolerated (warning, no error). RequiredAll/RequiredAtLeastOne
+// absent → hard error is covered by TestRegistry_Run_ProcessorNotRegistered_RequiredAllErrorsHard.
+func TestRegistry_Run_BestEffort_NotRegisteredTolerated(t *testing.T) {
+	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r.Register(&countingProcessor{name: "document", policy: scripts.ProcessorRequired})
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:             "item-1",
+		Postprocessors: []string{"voiceover"}, // BestEffort, not registered
 	}
 
 	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err != nil {
-		t.Fatalf("run should not fail on missing processor: %v", err)
+		t.Fatalf("missing-registered BestEffort must not fail: %v", err)
+	}
+}
+
+// TestRegistry_Run_ProcessorNotRegistered_RequiredAllErrorsHard
+// covers audit #3 (RequiredAll missing-registered = hard fail).
+// The plan requests a RequiredAll processor absent from the
+// registry; under the new semantic the missing registration is a
+// hard error so the operator sees the misconfig loudly.
+func TestRegistry_Run_ProcessorNotRegistered_RequiredAllErrorsHard(t *testing.T) {
+	r := scripts.NewPostProcessorRegistry(zap.NewNop())
+	r.Register(&countingProcessor{name: "document", policy: scripts.RequiredAll})
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:             "item-1",
+		Postprocessors: []string{"persistence"}, // not registered, default policy = RequiredAll
+	}
+
+	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
+	if err == nil {
+		t.Fatal("RequiredAll missing-registered must produce a hard error (audit #3)")
+	}
+	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
+		t.Errorf("must wrap ErrPostprocessFailed: %v", err)
+	}
+	if !strings.Contains(err.Error(), "persistence") {
+		t.Errorf("error must name the missing processor: %v", err)
 	}
 }
 
@@ -259,20 +408,11 @@ func TestRegistry_RunNilRegistry(t *testing.T) {
 }
 
 func TestRegistry_RunEmptyRegistry(t *testing.T) {
-	// PR 2 (June 2026): the test was originally written to assert
-	// "empty registry runs cleanly" with Postprocessors=["document"]
-	// (a Required-class name). Under the new ALL-required-failed
-	// semantic, an empty registry + Required-name request counts
-	// as a hard failure (the pre-flight gate's Runtime catch-all).
-	// The intent of this test is now better expressed as
-	// "empty registry tolerated when only BestEffort processors
-	// are requested". We swap the plan to a BestEffort name to
-	// preserve the spirit of the original test (empty registry
-	// does NOT block BestEffort requests).
+	// Empty registry + BestEffort plan → tolerated via warning.
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"voiceover"},
+		Postprocessors: []string{"voiceover"}, // BestEffort missing-registered
 	}
 
 	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
@@ -282,11 +422,6 @@ func TestRegistry_RunEmptyRegistry(t *testing.T) {
 	if result == nil {
 		t.Fatal("empty registry should return non-nil result")
 	}
-	// The BestEffort-missing-registered observation flows into
-	// PipelineResult.Warnings so operators can detect it. Verify
-	// BOTH presence AND that the warning names the missing
-	// processor — the production contract Run's emit-warnings path
-	// locks.
 	if len(result.Warnings) == 0 {
 		t.Fatal("missing-registered best-effort must surface a warning")
 	}
@@ -322,7 +457,6 @@ func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
 func TestRegistry_MergeAllFields(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 
-	// Create processors that each return a different field.
 	entitiesProc := &countingProcessor{name: "entities"}
 	docProc := &countingProcessor{name: "document", docID: "doc-merged"}
 	r.Register(entitiesProc)
@@ -345,24 +479,17 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 // ── PR 2: Policy / preflight behaviour ───────────────────────
 
 // TestRegistry_ValidateRequested_PreflightRejectsMissingRequired
-// covers TODO §6 + §7. A required-class processor is requested by
-// the plan but the registry did not register it (e.g. composition
-// time the docservice was nil). ValidateRequested MUST return a
-// typed error so the use case can short-circuit BEFORE the Ollama
-// call. The Items[0] marker is best-effort — what matters is that
-// the Details list names the missing processor.
+// covers a Required/RequiredAll processor requested by the plan
+// but absent from the registry. ValidateRequested returns a typed
+// *scriptpkg.PlanInvalidError with the missing processor name.
 func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
-	// Only "persistence" (required) is registered. The caller
-	// will request "document" — also required — but it is missing.
 	r.Register(&countingProcessor{name: "persistence"})
 
 	err := r.ValidateRequested([]string{"persistence", "document"})
 	if err == nil {
 		t.Fatal("ValidateRequested should reject missing-required processor")
 	}
-	// The error must wrap ErrPlanInvalid so the use case maps it
-	// to ErrPlanInvalid at the boundary.
 	var inv *scriptpkg.PlanInvalidError
 	if !errors.As(err, &inv) {
 		t.Fatalf("expected *scriptpkg.PlanInvalidError, got %T: %v", err, err)
@@ -373,23 +500,19 @@ func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T
 }
 
 // TestRegistry_ValidateRequested_BestEffortMissingTolerated covers
-// the policy asymmetry: a plan can request a best-effort processor
+// the policy asymmetry: a plan can request a BestEffort processor
 // that composition failed to register (e.g. ImageService was nil).
-// ValidateRequested MUST NOT error in that case — Run will warn at
-// runtime.
+// ValidateRequested MUST NOT error in that case.
 func TestRegistry_ValidateRequested_BestEffortMissingTolerated(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "persistence"})
 	r.Register(&countingProcessor{name: "document"})
-	// "voiceover" / "images" not registered -> both BestEffort.
 
 	if err := r.ValidateRequested([]string{"persistence", "document", "voiceover", "images"}); err != nil {
 		t.Fatalf("ValidateRequested must tolerate best-effort missing: %v", err)
 	}
 }
 
-// TestRegistry_ValidateRequested_NoProcessorsRequested covers TODO
-// §2. Empty / nil Postprocessors list passes preflight silently.
 func TestRegistry_ValidateRequested_NoProcessorsRequested(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "persistence"})
@@ -402,26 +525,17 @@ func TestRegistry_ValidateRequested_NoProcessorsRequested(t *testing.T) {
 	}
 }
 
-// TestRegistry_ValidateRequested_Deduplicates covers a malformed
-// plan with a duplicated name. The preflight must not produce
-// duplicate errors.
 func TestRegistry_ValidateRequested_Deduplicates(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	err := r.ValidateRequested([]string{"document", "document", "document"})
 	if err == nil {
 		t.Fatal("missing document should still error after dedup")
 	}
-	// Count occurrences of "document" in the error message — at
-	// most once (dedup guarantee).
 	if strings.Count(err.Error(), "document") > 2 {
 		t.Errorf("dedup failed: %v", err)
 	}
 }
 
-// TestRegistry_ValidateRequested_NilRegistryIsSafe ensures the
-// preflight gate is robust against a nil registry (defensive —
-// composition wiring guarantees non-nil but tests must not depend
-// on that).
 func TestRegistry_ValidateRequested_NilRegistryIsSafe(t *testing.T) {
 	var r *scripts.PostProcessorRegistry
 	if err := r.ValidateRequested([]string{"persistence"}); err != nil {
@@ -429,14 +543,14 @@ func TestRegistry_ValidateRequested_NilRegistryIsSafe(t *testing.T) {
 	}
 }
 
-// TestRegistry_Run_RequiredFailureErrors covers TODO §3. A
-// ProcessorRequired processor returning an error MUST cause Run to
-// return a non-nil error wrapping ErrPostprocessFailed.
-func TestRegistry_Run_RequiredFailureErrors(t *testing.T) {
+// TestRegistry_Run_RequiredAllFailureErrors pins the RequiredAll
+// single-processor hard-fail contract. RequiredAll == legacy
+// ProcessorRequired under the new alias.
+func TestRegistry_Run_RequiredAllFailureErrors(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:   "persistence",
-		policy: scripts.ProcessorRequired,
+		policy: scripts.RequiredAll,
 		err:    errors.New("sqlite busy"),
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
@@ -445,7 +559,7 @@ func TestRegistry_Run_RequiredFailureErrors(t *testing.T) {
 	}
 	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err == nil {
-		t.Fatal("required-fail must produce error")
+		t.Fatal("RequiredAll-fail must produce error")
 	}
 	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
 		t.Errorf("error must wrap ErrPostprocessFailed: %v", err)
@@ -455,46 +569,12 @@ func TestRegistry_Run_RequiredFailureErrors(t *testing.T) {
 	}
 }
 
-// TestRegistry_Run_BestEffortFailureIsWarning covers TODO §4. A
-// ProcessorBestEffort processor returning an error MUST NOT cause
-// Run to error; the failure is folded into PipelineResult.Warnings
-// instead.
-func TestRegistry_Run_BestEffortFailureIsWarning(t *testing.T) {
-	r := scripts.NewPostProcessorRegistry(zap.NewNop())
-	r.Register(&countingProcessor{
-		name:   "voiceover",
-		policy: scripts.ProcessorBestEffort,
-		err:    errors.New("edge tts down"),
-	})
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:             "item-1",
-		Postprocessors: []string{"voiceover"},
-	}
-	result, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
-	if err != nil {
-		t.Fatalf("best-effort failure must NOT error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("result must be non-nil")
-	}
-	if len(result.Warnings) == 0 {
-		t.Fatal("best-effort failure must surface a warning")
-	}
-	if !strings.Contains(result.Warnings[0], "voiceover") {
-		t.Errorf("warning must name the processor: %v", result.Warnings)
-	}
-}
-
-// TestRegistry_Run_RequiredEmptyOutputCountsAsFailure covers TODO
-// §6. A ProcessorRequired processor returning a non-nil result
-// that is also empty (all canonical fields zero) MUST count as a
-// hard failure.
-func TestRegistry_Run_RequiredEmptyOutputCountsAsFailure(t *testing.T) {
+func TestRegistry_Run_RequiredAllEmptyOutputCountsAsFailure(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:   "document",
-		policy: scripts.ProcessorRequired,
-		empty:  true, // returns PostProcessResult{} (empty)
+		policy: scripts.RequiredAll,
+		empty:  true,
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
@@ -502,15 +582,13 @@ func TestRegistry_Run_RequiredEmptyOutputCountsAsFailure(t *testing.T) {
 	}
 	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err == nil {
-		t.Fatal("required-empty must error")
+		t.Fatal("RequiredAll-empty must error")
 	}
 	if !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
 		t.Errorf("must wrap ErrPostprocessFailed: %v", err)
 	}
 }
 
-// TestRegistry_Run_BestEffortEmptyOutputIsWarning covers the
-// symmetric case: BestEffort + empty output = warning, not error.
 func TestRegistry_Run_BestEffortEmptyOutputIsWarning(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
@@ -531,14 +609,11 @@ func TestRegistry_Run_BestEffortEmptyOutputIsWarning(t *testing.T) {
 	}
 }
 
-// TestRegistry_Run_RequiredNilResultCountsAsFailure — a processor
-// that violates its contract by returning (nil, nil) counts as a
-// hard failure for required-class processors.
-func TestRegistry_Run_RequiredNilResultCountsAsFailure(t *testing.T) {
+func TestRegistry_Run_RequiredAllNilResultCountsAsFailure(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
 		name:      "persistence",
-		policy:    scripts.ProcessorRequired,
+		policy:    scripts.RequiredAll,
 		resultNil: true,
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
@@ -547,13 +622,10 @@ func TestRegistry_Run_RequiredNilResultCountsAsFailure(t *testing.T) {
 	}
 	_, err := r.Run(context.Background(), plan, scripts.ProcessInput{Text: "text"})
 	if err == nil {
-		t.Fatal("required nil-result must error")
+		t.Fatal("RequiredAll nil-result must error")
 	}
 }
 
-// TestRegistry_Run_ProcessorWarningPropagatesToAggregate covers
-// TODO §4. A processor that emits PostProcessResult.Warnings has
-// those warnings merged into PipelineResult.Warnings.
 func TestRegistry_Run_ProcessorWarningPropagatesToAggregate(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
@@ -582,15 +654,12 @@ func TestRegistry_Run_ProcessorWarningPropagatesToAggregate(t *testing.T) {
 	}
 }
 
-// TestRegistry_LookupPolicy_ReflectsRegisteredPolicy — sanity
-// check that Register() records the policy at register time and
-// LookupPolicy returns it on demand.
 func TestRegistry_LookupPolicy_ReflectsRegisteredPolicy(t *testing.T) {
 	r := scripts.NewPostProcessorRegistry(zap.NewNop())
-	r.Register(&countingProcessor{name: "persistence", policy: scripts.ProcessorRequired})
+	r.Register(&countingProcessor{name: "persistence", policy: scripts.RequiredAll})
 	r.Register(&countingProcessor{name: "voiceover", policy: scripts.ProcessorBestEffort})
 
-	if got := r.LookupPolicy("persistence"); got != scripts.ProcessorRequired {
+	if got := r.LookupPolicy("persistence"); got != scripts.RequiredAll {
 		t.Errorf("persistence policy: %v", got)
 	}
 	if got := r.LookupPolicy("voiceover"); got != scripts.ProcessorBestEffort {

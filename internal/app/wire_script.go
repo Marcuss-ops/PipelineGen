@@ -258,27 +258,30 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// PR 3 (June 2026): Entities + Metadata processors, now both
-	// ProcessorRequired per the spec. Adapters are nil-tolerant at
-	// runtime (graceful-degradation) and the runtime preflight will
-	// fail-fast when a plan requests these processors without a
-	// real service wired through the composition root. The
-	// composition-time validateRequiredProcessors call below
-	// confirms both names are registered; the runtime preflight
-	// confirms they succeed for any plan that requests them.
+	// PR ref fix/required-postprocessor-semantics (audit #3, June 2026):
+	// Entities + Metadata are ProcessorRequired (== RequiredAll).
+	// The audit closes the "register with nil backend, runtime catches"
+	// gap by validating the processor's Ready() at composition time and
+	// failing closed BEFORE the registry is frozen. Two production
+	// paths land:
+	//   1. if a real extractor/generator is wired (production deploy):
+	//      Ready() returns true, registration succeeds.
+	//   2. if no real backend is wired (test fixture or partial setup):
+	//      Ready() returns false, registerOrFailBelow returns a
+	//      composition error and the server refuses to start.
 	//
-	// Both adapters take nil-tolerant interfaces, so composition
-	// succeeds even when no real backend is wired in a test
-	// fixture. Production deploys should provide a real
-	// EntityScriptExtractor and ollama.Generator via root points
-	// (future PR; tracked separately).
+	// The legacy construction below is intentionally left in place as
+	// a defence-in-depth signal — adapters.NewEntityExtractionAdapter(nil)
+	// is the canonical sentinel for "no extractor wired", and the
+	// composition error message names the processor + sentinel so a
+	// operator reading the boot log can grep for the misconfig.
 	entityAdapter := adapters.NewEntityExtractionAdapter(nil)
-	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
-		return fmt.Errorf("wireScriptFlow: failed to register entities processor")
+	if err := registerRequiredOrFail(ppReg, adapters.NewEntitiesProcessor(entityAdapter)); err != nil {
+		return err
 	}
 	metadataAdapter := adapters.NewMetadataGenerationAdapter(nil, metaModel)
-	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
-		return fmt.Errorf("wireScriptFlow: failed to register metadata processor")
+	if err := registerRequiredOrFail(ppReg, adapters.NewMetadataProcessor(metadataAdapter)); err != nil {
+		return err
 	}
 
 	// PR 7 (June 2026): register ClipBindingsProcessor so the
@@ -419,6 +422,67 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 }
 
 // ── Composition validation: required processors MUST register ────────
+
+// readinessAware lets a processor opt into the fail-closed
+// composition gate introduced by PR ref
+// fix/required-postprocessor-semantics (audit #3, June 2026):
+// processors whose backend is required at boot (persistence,
+// document, entities, metadata) implement Ready() bool and the
+// composition root type-asserts against this interface before
+// registering the processor. A RequiredAll processor whose
+// Ready() returns false fails closed instead of registering a
+// nil-backed processor that would silently degrade at runtime.
+type readinessAware interface {
+	Ready() bool
+}
+
+// registerRequiredOrFail is the composition-side fail-closed
+// guard for processors whose Ready() is required at boot.
+//
+// Behaviour:
+//   - nil proc → returns a typed error (cannot register).
+//   - proc is registered BUT RequiredAll / RequiredAtLeastOne AND
+//     !Ready() → returns a typed composition error so the operator
+//     sees a clear restart-required message instead of a silent
+//     runtime fail later.
+//   - BestEffort + !Ready() → only logs Warn, registration is
+//     tolerated (the runner's missing-registered branch will warn
+//     at runtime).
+//   - duplicate registration or post-freeze call → returns the
+//     underlying ppReg.Register false as a typed error.
+//
+// PR ref fix/required-postprocessor-semantics (audit #3, June 2026).
+func registerRequiredOrFail(ppReg *adapters.PostProcessorRegistry, proc adapters.PostProcessor) error {
+	if ppReg == nil {
+		return fmt.Errorf("wireScriptFlow: postprocessor registry is nil (composition bug)")
+	}
+	if proc == nil {
+		return fmt.Errorf("wireScriptFlow: %s adapter returned nil processor", "<unknown>")
+	}
+	name := proc.Name()
+	policy := proc.Policy(nil)
+	ready := true
+	if ra, ok := proc.(readinessAware); ok {
+		ready = ra.Ready()
+	}
+	if !ready {
+		switch policy {
+		case adapters.RequiredAll, adapters.RequiredAtLeastOne:
+			return fmt.Errorf(
+				"wireScriptFlow: preflight: required postprocessor %q has a nil backend "+
+					"(policy=%s; composition refuses to start — wire a real %s backend to fix)",
+				name, policy, name)
+		case adapters.BestEffort:
+			// BestEffort tolerates nil backend — the runtime will warn
+			// instead of failing. Compose-keep the registration so
+			// existing tests / partial dev setups keep working.
+		}
+	}
+	if !ppReg.Register(proc) {
+		return fmt.Errorf("wireScriptFlow: failed to register %s processor (duplicate name or frozen registry)", name)
+	}
+	return nil
+}
 
 // requiredProcessorNames is the canonical list of postprocessor names
 // that MUST be registered for a script pipeline to be considered

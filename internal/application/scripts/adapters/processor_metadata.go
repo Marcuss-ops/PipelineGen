@@ -39,6 +39,20 @@ func NewMetadataProcessor(generator MetadataGenerator) *MetadataProcessor {
 	return &MetadataProcessor{generator: generator}
 }
 
+// Ready reports whether the metadata processor is fully configured
+// at composition time. PR ref fix/required-postprocessor-semantics
+// (audit #3): a nil generator means the canonical metadata
+// generator was never wired — failing closed at boot prevents the
+// runtime preflight from silently degrading metadata generation to
+// "not configured" warnings.
+//
+// Returns true when generator is non-nil; false otherwise.
+// Wraps the nil-receiver defensive check (panics on nil receiver
+// would defeat the purpose of the readiness probe).
+func (p *MetadataProcessor) Ready() bool {
+	return p != nil && p.generator != nil
+}
+
 func (p *MetadataProcessor) Name() string { return "metadata" }
 
 // Policy classifies metadata as ProcessorRequired. Static for now;

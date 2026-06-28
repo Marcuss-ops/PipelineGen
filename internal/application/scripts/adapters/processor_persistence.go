@@ -52,6 +52,19 @@ func NewPersistenceProcessor(repo ScriptRepository, log *zap.Logger) *Persistenc
 
 func (p *PersistenceProcessor) Name() string { return "persistence" }
 
+// Ready reports whether the persistence processor is fully configured
+// at composition time. PR ref fix/required-postprocessor-semantics
+// (audit #3): the composition root calls this via the readinessAware
+// type-assertion; a RequiredAll processor registering with a nil
+// backend triggers a fail-closed composition error BEFORE the registry
+// is frozen so operators see a clear restart-required message instead
+// of a runtime panic on the first plan that requested persistence.
+//
+// Returns true when repo is non-nil; false otherwise.
+func (p *PersistenceProcessor) Ready() bool {
+	return p != nil && p.repo != nil
+}
+
 // Policy classifies persistence as ProcessorRequired: a missing-registered
 // persistence or a runtime failure or empty ScriptID output is a hard
 // failure. Persistence is the SINGLE writer of script-table rows on

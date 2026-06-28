@@ -27,6 +27,15 @@ type SceneVoiceover = adapters.SceneVoiceover
 const (
 	ProcessorRequired   = adapters.ProcessorRequired
 	ProcessorBestEffort = adapters.ProcessorBestEffort
+	// RequiredAtLeastOne re-exported for callers (PR ref
+	// fix/required-postprocessor-semantics, June 2026). The legacy
+	// `ProcessorRequired` alias is kept so pre-PR 3 callers that
+	// referenced the two-value enum under the old "all failed → error"
+	// semantic still compile.
+	RequiredAtLeastOne = adapters.RequiredAtLeastOne
+	// RequiredAll re-exported for callers that want to assert the
+	// strict-union "any failure is hard" policy directly.
+	RequiredAll = adapters.RequiredAll
 )
 
 // ScriptRecord / ScriptSectionRecord — the native types are

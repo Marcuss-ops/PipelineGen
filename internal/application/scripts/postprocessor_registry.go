@@ -49,7 +49,12 @@ type (
 type PostProcessArtifact = dto.PostProcessArtifact
 
 // Const re-exports.
+// Phase 2 (June 2026): 3-policy enum re-exports added.
 const (
+	RequiredAll        = adapters.RequiredAll
+	RequiredAtLeastOne = adapters.RequiredAtLeastOne
+	BestEffort         = adapters.BestEffort
+	// Legacy aliases preserved for back-compat.
 	ProcessorRequired   = adapters.ProcessorRequired
 	ProcessorBestEffort = adapters.ProcessorBestEffort
 )

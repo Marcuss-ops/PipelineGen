@@ -41,6 +41,20 @@ func NewEntitiesProcessor(extractor EntityExtractor) *EntitiesProcessor {
 
 func (p *EntitiesProcessor) Name() string { return "entities" }
 
+// Ready reports whether the entities processor is fully configured
+// at composition time. PR ref fix/required-postprocessor-semantics
+// (audit #3): a nil extractor means the canonical entity extractor
+// was never wired — failing closed at boot prevents the runtime
+// preflight from silently degrading entity extraction to "not
+// configured" warnings.
+//
+// Returns true when extractor is non-nil; false otherwise.
+// Wraps the nil-receiver defensive check (panics on nil receiver
+// would defeat the purpose of the readiness probe).
+func (p *EntitiesProcessor) Ready() bool {
+	return p != nil && p.extractor != nil
+}
+
 // Policy classifies entities as ProcessorRequired. The plan arg is
 // accepted for interface uniformity but ignored for now — a future
 // PR can read plan.OutputSpec.ExtractEntities (or similar payload)
