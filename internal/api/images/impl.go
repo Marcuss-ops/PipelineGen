@@ -34,6 +34,7 @@ func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/upload", h.Upload)
 	r.POST("/sync", h.Sync)
 	r.POST("/generate", h.Generate)
+	r.POST("/generate-batch", h.GenerateBatch)
 	r.POST("/animate", h.Animate)
 	r.POST("/webhook/remote", h.ReceiveRemoteWebhook) // Webhook per immagini da remote Google Flow
 }
@@ -55,6 +56,11 @@ type GenerateNvidiaRequest struct {
 	Tags      []string `json:"tags"`
 	Account   string   `json:"account,omitempty"`
 	ProjectID string   `json:"project_id,omitempty"`
+}
+
+type GenerateBatchRequest struct {
+	Items       []GenerateNvidiaRequest `json:"items" binding:"required"`
+	Concurrency int                     `json:"concurrency"`
 }
 
 type AnimateRequest struct {
@@ -231,6 +237,57 @@ func (h *ImagesHandler) Generate(c *gin.Context) {
 			"drive_link":    h.service.FormatDriveLink(asset.DriveFileID),
 			"drive_file_id": asset.DriveFileID,
 		},
+	})
+}
+
+// GenerateBatch genera concorrentemente un batch di immagini AI in parallelismo su Chrome.
+func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
+	var req GenerateBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+	if len(req.Items) == 0 {
+		apiutil.BadRequest(c, "items list cannot be empty")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Minute)
+	defer cancel()
+
+	batchItems := make([]imgservice.BatchImageItem, len(req.Items))
+	for i, itm := range req.Items {
+		w := itm.Width
+		if w == 0 {
+			w = 1920
+		}
+		heightVal := itm.Height
+		if heightVal == 0 {
+			heightVal = 1080
+		}
+		batchItems[i] = imgservice.BatchImageItem{
+			Subject:   itm.Prompt,
+			Style:     itm.Style,
+			Prompts:   []string{itm.Prompt},
+			Tags:      itm.Tags,
+			Width:     w,
+			Height:    heightVal,
+			Model:     itm.Model,
+			SkipDrive: false,
+			Account:   itm.Account,
+			ProjectID: itm.ProjectID,
+		}
+	}
+
+	assets, err := h.service.GenerateSmartImageBatchParallel(ctx, batchItems, req.Concurrency)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"total":  len(assets),
+		"images": assets,
 	})
 }
 
