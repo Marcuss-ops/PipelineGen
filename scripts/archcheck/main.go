@@ -619,7 +619,6 @@ var databaseSQLLegacyBaseline = []string{
 	"internal/application/books/service.go",
 	"internal/application/images/google_generate.go",
 	"internal/application/jobs/outbox/delivery.go",
-	"internal/application/jobs/outbox/metadata_export.go",
 	"internal/application/jobs/outbox/registry.go",
 	"internal/application/jobs/service_test.go",
 	"internal/application/scripts/batch_persistence_test.go",
