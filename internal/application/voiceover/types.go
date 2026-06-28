@@ -164,6 +164,15 @@ type PromoResponse = promoTypes.Response
 // PromoRequestPayloadMap serialises a PromoRequest into a map for the job system.
 // PromoRequest is a type alias (workflow/promo.Request) so methods cannot be
 // defined on it — use this standalone function instead.
+//
+// PR-VO-A6 (strict translator failure, June 2026): the payload now
+// serialises AllowUntranslated so the async /promo path (where the
+// handler enqueues a voiceover.promo job and the worker re-runs
+// Generator.Generate via job_handler.go) preserves the original
+// strict/lenient intent across the job boundary. JSON name is
+// `allow_untranslated` (snake_case) to match the existing payload
+// shape; the field is omitempty so legacy callers (no flag set)
+// default to strict / fail-closed.
 func PromoRequestPayloadMap(r *PromoRequest) map[string]any {
 	if r == nil {
 		return map[string]any{}
@@ -175,6 +184,12 @@ func PromoRequestPayloadMap(r *PromoRequest) map[string]any {
 	}
 	if len(r.Languages) > 0 {
 		payload["languages"] = r.Languages
+	}
+	if r.AllowUntranslated {
+		// omitempty semantics: omit when false to preserve payload
+		// readability + keep pre-PR-VO-A6 jobs valid (the field is
+		// optional from the consumer's perspective).
+		payload["allow_untranslated"] = r.AllowUntranslated
 	}
 	return payload
 }
