@@ -66,6 +66,25 @@ func NewGenerateJobHandler(
 // same canonical envelope shape (Version + OK + Items + Summary).
 // The legacy `Single` field is gone; the boundary `toMap` is a
 // straight marshal/unmarshal cycle on the typed envelope.
+//
+// P0 (Issue 1, June 2026): contract clarification for the worker
+// dispatch boundary. Every failure path returns a non-nil Go
+// error so the worker treats the job as FAILED and triggers retry
+// instead of marking it COMPLETED with ok=false. The three
+// outcomes are:
+//
+//   (a) Single-item failure        → (mapped_envelope, wrapped_err)
+//   (b) Multi-item pure infra fail → (nil, err)
+//   (c) Multi-item all-failed      → (mapped_envelope, wrapped_err)
+//   (d) Multi-item partial/full    → (mapped_envelope, nil)
+//
+// Cases (a) and (c) used to return (mapped_envelope, nil) which
+// caused the worker to mark the job as COMPLETED on the
+// /api/script/jobs/:id/full wire even when the generation actually
+// failed (status="COMPLETED", result.ok=false, summary.failed>0).
+// Retry never kicked in because dispatchErr==nil. The fix wraps
+// the typed envelope result with a Go error so the broker sees
+// dispatch failure and routes the job through the FAILED path.
 func (h *GenerateJobHandler) Handle(
 	ctx context.Context,
 	j *scriptpkg.Job,
@@ -98,6 +117,11 @@ func (h *GenerateJobHandler) Handle(
 		// Single-item path (PR 7): even single-item runs emit the
 		// canonical envelope shape (Version=2, Items=[1], Summary
 		// counts). No special `Single` flattening.
+		//
+		// P0 (Issue 1): on per-item failure, return BOTH the
+		// typed failure envelope AND a wrapped Go error. The
+		// worker treats dispatchErr != nil as FAILED → triggers
+		// retry and never marks the job COMPLETED with ok=false.
 		tracker := usecase.NewProgressTracker(progressFn, env.Items[0].ID)
 		single, err := h.one.Execute(ctx, env.Items[0], env.Preset, tracker)
 		if err != nil {
@@ -106,27 +130,93 @@ func (h *GenerateJobHandler) Handle(
 					zap.String("job_id", j.ID),
 					zap.Error(err))
 			}
-			return toMap(buildSingleFailureEnvelope(env.Items[0].ID, err.Error()))
+			mapped, mapErr := toMap(buildSingleFailureEnvelope(env.Items[0].ID, err.Error()))
+			if mapErr != nil {
+				return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
+			}
+			return mapped, fmt.Errorf("script generation failed: %w", err)
 		}
 		return toMap(buildSingleSuccessEnvelope(env.Items[0].ID, single))
 	}
 
-	// Multi-item path.
+	// Multi-item path. Three outcomes (P0, Issue 1):
+	//
+	//   (a) Pure infra failure (e.g. use case not constructed,
+	//       envelope nil): return (nil, err). The worker sees
+	//       dispatchErr != nil and marks FAILED.
+	//   (b) All items failed (Summary.Failed == Summary.Total
+	//       and Total > 0): return (mapped_envelope, wrapped_err).
+	//       The worker still sees the partial envelope for
+	//       /api/script/jobs/:id/full reading, but the Go-level
+	//       error routes the job through FAILED + retry.
+	//   (c) Partial or full success: return (mapped_envelope, nil).
+	//       The envelope.ok=false still signals operator-visible
+	//       partial failure, but at least one item completed so
+	//       the job is treated as COMPLETED.
+	//
+	// (b) used to silently leak as (mapped_envelope, nil) under the
+	// old `if err != nil { return manyResult-or-err }` shape, which
+	// caused the worker to mark the job COMPLETED with summary.failed
+	// == summary.total.
 	manyResult, err := h.many.Execute(ctx, env, h.cfg, progressFn)
-	if err != nil {
+
+	// Case (a): pure infra failure. manyResult is nil when the use
+	// case could not even produce aggregate counts (defensive
+	// against future refactors that surface a nil result; current
+	// GenerateManyUseCase always returns a non-nil result).
+	if manyResult == nil {
 		if h.log != nil {
-			h.log.Error("script.generate: multi-item failed",
+			h.log.Error("script.generate: multi-item use-case failure",
 				zap.String("job_id", j.ID),
 				zap.Error(err))
 		}
-		// Return partial results even on error (some items may
-		// have succeeded before the aggregate failure).
-		if manyResult != nil {
-			return toMap(buildEnvelopeResult(manyResult))
+		if err == nil {
+			// Defensive: surface a synthesised error so the worker
+			// never silently marks an empty result COMPLETED.
+			return nil, fmt.Errorf("script generation: use case returned nil result without error")
 		}
 		return nil, err
 	}
-	return toMap(buildEnvelopeResult(manyResult))
+
+	envelope := buildEnvelopeResult(manyResult)
+	mapped, mapErr := toMap(envelope)
+	if mapErr != nil {
+		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
+	}
+
+	// Case (b): ALL items failed → wrap as a Go error so the worker
+	// marks FAILED + retry.
+	if envelope.Summary.Total > 0 && envelope.Summary.Failed == envelope.Summary.Total {
+		var wrapped error
+		if err != nil {
+			wrapped = fmt.Errorf("script generation: all %d items failed: %w", envelope.Summary.Total, err)
+		} else {
+			wrapped = fmt.Errorf("script generation: all %d items failed", envelope.Summary.Total)
+		}
+		if h.log != nil {
+			h.log.Error("script.generate: multi-item all-failed",
+				zap.String("job_id", j.ID),
+				zap.Int("total", envelope.Summary.Total),
+				zap.Int("failed", envelope.Summary.Failed),
+				zap.Error(wrapped))
+		}
+		return mapped, wrapped
+	}
+
+	// Case (c): partial or full success → (mapped, nil). err may
+	// still be non-nil (e.g. context cancelled mid-run, some
+	// items already completed); we deliberately don't propagate
+	// it as a Go-level error because at least one item succeeded
+	// and the envelope already carries the partial-failure signal
+	// via summary.failed > 0 + ok=false.
+	if err != nil && h.log != nil {
+		h.log.Warn("script.generate: multi-item partial completion with infra error",
+			zap.String("job_id", j.ID),
+			zap.Int("succeeded", envelope.Summary.Succeeded),
+			zap.Int("failed", envelope.Summary.Failed),
+			zap.Error(err))
+	}
+	return mapped, nil
 }
 
 // RegisterJobs registers the handler for TypeScriptGenerate with
