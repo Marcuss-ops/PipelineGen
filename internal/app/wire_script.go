@@ -36,6 +36,7 @@ import (
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -386,12 +387,30 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, normCfg, log)
-	if root.Jobs.Service != nil {
-		if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
-			log.Warn("wireScriptFlow: failed to register script.generate job handler", zap.Error(err))
-		} else {
-			log.Info("registered script.generate job handler (unified pipeline, PR8)")
-		}
+
+	// Issue 7 / P1 (June 2026): fail-fast when broker is missing or
+	// the registration fails on script.generate. The previous
+	// `if root.Jobs.Service != nil { log.Warn(...) }` shape silently
+	// swallowed broker-missing OR registration-errors, letting the
+	// server come up without a script.generate handler -- which then
+	// surfaced as a runtime "no handler for script.generate" on the
+	// first enqueue. Composition fails closed at this gate; the
+	// caller (bootstrap.go) aborts startup on non-nil error.
+	if root.Jobs == nil || root.Jobs.Service == nil {
+		return fmt.Errorf("wireScriptFlow: jobs broker is required for script.generate registration (Issue 7 / P1 fail-fast)")
+	}
+	if err := genJobHandler.RegisterJobs(root.Jobs.Service); err != nil {
+		return fmt.Errorf("wireScriptFlow: register script.generate job handler: %w", err)
+	}
+	log.Info("registered script.generate job handler (unified pipeline, PR8)")
+
+	// Issue 7 / P1 (June 2026): post-registration fail-fast on the
+	// 3 wiring invariants. Missing any of (a) Registry / (b) Broker
+	// / (c) worker-capable is a composition bug that must abort
+	// startup so the server does not come up with a non-functional
+	// pipeline.
+	if err := validateScriptGenerateWiring(root, log); err != nil {
+		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 
 	// ── Set metadata model ─────────────────────────────────────────────
@@ -442,6 +461,95 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		log,
 	)
 	return tryRegisterModule(registry, log, mod)
+}
+
+// ── Composition validation: script.generate wiring must be complete ───
+
+// validateScriptGenerateWiring enforces the 3 canonical invariants
+// for `script.generate` to be considered ready for production
+// traffic. Issues 7 / P1 (June 2026): the pre-Issue-7 wireScriptFlow
+// only log.Warn'd on missing broker / registration failure, which
+// silently let the server come up without a working
+// script.generate handler. Composition must fail closed so the
+// operator sees a clear restart-required message instead of a
+// runtime regression.
+//
+// The 3 invariants:
+//
+//	(a) Registry has the type. Looks up appjobs.Compose().IsRegistered
+//	    for script.generate -- the canonical job-type registry built
+//	    in module_media.go::BuildJobsBundle.
+//
+//	(b) Broker has the handler. The handler-registration itself is
+//	    the proof: RegisterJobs just successfully pushed the handler
+//	    into the broker. A nil Jobs service at this point means the
+//	    gate at line ~N (above) should have already tripped -- the
+//	    explicit re-check here is defense in depth.
+//
+//	(c) At least one worker in the cluster is configured to claim
+//	    script.generate jobs. The cluster may advertise the
+//	    worker-types list via root.Jobs.WorkerTypes (forward-looking
+//	    field; nil-tolerant while clusters in-flight don't expose
+//	    it). When the list is exposed and script.generate is missing,
+//	    the validator surfaces it; when the list is nil (legacy /
+//	    cluster not yet exposing WorkerTypes), the check is skipped
+//	    and operators must rely on the canonical worker.ExportTypes
+//	    audit at runtime.
+//
+// Returns the FIRST failing invariant as a typed wireScriptFlow
+// error so the composition root can wrap it consistently with the
+// other composition validators (validateRequiredProcessors,
+// etc.). Tests pin the fail-fast contract in
+// internal/application/scripts/jobs/generation_job_test.go.
+func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
+	// (a) Registry has the type. Direct query against the canonical
+	//     composition-time registry. The registry is frozen after
+	//     Compose(); this query is branch-free.
+	reg := appjobs.Compose()
+	if !reg.IsRegistered(scriptpkg.TypeScriptGenerate) {
+		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", scriptpkg.TypeScriptGenerate)
+	}
+
+	// (b) Broker has the handler. The RegisterJobs success above is
+	//     the primary proof; this explicit re-check via the canonical
+	//     broker query Service.HasHandler is the defence-in-depth
+	//     invariant for the composition root. If a future refactor
+	//     decouples RegisterJobs from the call site (or reorders the
+	//     two calls), this check still surfaces the "no handler for
+	//     script.generate" regression.
+	if root == nil || root.Jobs == nil || root.Jobs.Service == nil {
+		return fmt.Errorf("script.generate wiring (b): Jobs service is nil; the gate above should have tripped")
+	}
+	if !root.Jobs.Service.HasHandler(scriptpkg.TypeScriptGenerate) {
+		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", scriptpkg.TypeScriptGenerate)
+	}
+
+	// (c) At least one worker in the cluster is configured to claim
+	//     script.generate. root.Jobs.WorkerTypes is the canonical
+	//     cluster-typed capability surface (forward-looking; nil-
+	//     tolerant while a migration is in flight). The runtime
+	//     fallback is the Worker.ExportTypes audit telemetry.
+	if root.Jobs.WorkerTypes != nil {
+		found := false
+		for _, t := range root.Jobs.WorkerTypes {
+			if t == scriptpkg.TypeScriptGenerate {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("script.generate wiring (c): no worker in cluster configured for %s; add it to WorkerConfig.Types", scriptpkg.TypeScriptGenerate)
+		}
+	} else if log != nil {
+		log.Warn("validateScriptGenerateWiring: root.Jobs.WorkerTypes not exposed yet; (c) check SKIPPED (forward-looking TODO when cluster exposes the list). Operator must rely on Worker.ExportTypes runtime audit until the canonical surface lands.",
+			zap.String("job_type", scriptpkg.TypeScriptGenerate))
+	}
+
+	if log != nil {
+		log.Info("validateScriptGenerateWiring: script.generate wiring complete",
+			zap.String("job_type", scriptpkg.TypeScriptGenerate))
+	}
+	return nil
 }
 
 // ── Composition validation: required processors MUST register ────────

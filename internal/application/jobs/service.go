@@ -199,6 +199,35 @@ func (s *Service) RegisterHandler(jobType string, handler any) error {
 	return s.dispatcher.Register(jobType, wrapped)
 }
 
+// HasHandler reports whether the broker has a handler registered
+// for the given job type. Issue 7 / P1 (June 2026): added so the
+// composition root can fail-fast on a script.generate wiring gap
+// without leaking the Dispatcher type into the API surface.
+//
+// The query is branch-free -- the Dispatcher.AllHandlers() map is
+// the canonical record. Returns false when:
+//
+//   - the receiver is nil (defensive guard)
+//   - the dispatcher is nil (composition bug)
+//   - no handler is registered for jobType
+//
+// Nil-tolerant: this method never panics; nil-receiver callers get
+// false (so composition-root code can pass s.Service==nil through
+// the validateScriptGenerateWiring helper without pre-checking).
+func (s *Service) HasHandler(jobType string) bool {
+	if s == nil {
+		return false
+	}
+	if s.dispatcher == nil {
+		return false
+	}
+	if jobType == "" {
+		return false
+	}
+	_, ok := s.dispatcher.AllHandlers()[jobType]
+	return ok
+}
+
 // validateEnqueueRequest checks the domain EnqueueRequest for common errors.
 func validateEnqueueRequest(req *job.EnqueueRequest) error {
 	if req == nil {
