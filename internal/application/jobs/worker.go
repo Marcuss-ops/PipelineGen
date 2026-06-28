@@ -195,6 +195,26 @@ func (w *Worker) jobTimeoutFor(jobType string) time.Duration {
 	return 10 * time.Minute
 }
 
+// maxRetriesFor returns the default max-retry count for a job type,
+// sourced from the attached Registry. Falls back to the canonical
+// 3-retry default when the worker has no attached Registry or the
+// job type is not registered. Mirrors the timeout lookup pattern
+// (jobTimeoutFor).
+//
+// Issue 2 / P0 (June 2026): locks the Worker-side retry lookup so
+// the future Issue 4 (P1, Enqueue path) integration into runJob is
+// a one-line swap — pass effectiveRetries := w.maxRetriesFor(j.Type)
+// when j.MaxRetries == 0. The companion regression test
+// TestWorker_HonorsRegistryRetries (in registry_wiring_test.go)
+// pins this contract today so Issue 4 cannot accidentally regress
+// the lookup surface.
+func (w *Worker) maxRetriesFor(jobType string) int {
+	if w.reg != nil {
+		return w.reg.DefaultMaxRetries(jobType)
+	}
+	return 3
+}
+
 // Start runs the Worker poll loop until ctx is cancelled.
 //
 // State machine (PR-Polling / ADR §D6.5):
