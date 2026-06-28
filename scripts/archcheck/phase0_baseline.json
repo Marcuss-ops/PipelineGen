@@ -28,7 +28,6 @@
     "internal/application/generation/unified.go:57: raw any",
     "internal/application/generation/unified.go:93: any",
     "internal/application/images/nvidia_remote.go:295: v any",
-    "internal/application/jobs/outbox/metadata_export.go:401: any",
     "internal/application/jobs/service.go:82: handler any",
     "internal/application/jobs/types.go:44: Payload any",
     "internal/application/qdrant/reconciler/persistence.go:20: v interface{}",

@@ -29,12 +29,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -409,10 +412,24 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		sourceQuerier = repos.ClipsRepo
 	}
 
+	// Step 2 (June 2026): pre-build the canonical MetadataExportHandler
+	// via the new typed-port adapters. The composition root is the ONLY
+	// place infra concrete types meet application ports — the
+	// outbox.Deps struct no longer needs MetadataDir because the
+	// handler gets its output dir as part of HandlerDeps at wire time.
+	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.main.DB)
+	metadataExportWriter := &filesmetadataexport.FileWriter{}
+	metadataExportDeps := metadataexport.HandlerDeps{
+		Resolver:  metadataExportResolver,
+		Writer:    metadataExportWriter,
+		OutputDir: cfg.Storage.FullPath("asset_metadata"),
+		Log:       log,
+	}
+	metadataExportHandler := metadataexport.NewMetadataExportHandler(metadataExportDeps)
+
 	outboxDeps := &jobsoutbox.Deps{
 		DB:                   dbs.main.DB,
 		HTTPClient:           httpClient,
-		MetadataDir:          cfg.Storage.FullPath("asset_metadata"),
 		HMACSecrets:          hmacSecrets,
 		InsecureDev:          cfg.Security.DeliveryInsecureDev,
 		Jobs:                 jobs.Service,
@@ -461,7 +478,10 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// Optional handlers: best-effort. Missing deps here are logged
 	// and skipped; missing deps do NOT abort boot (delivery,
 	// metadata_export, provider_sync are non-essential at boot).
-	if err := jobsoutbox.RegisterOptionalHandlers(eventsRegistry, log, outboxDeps); err != nil {
+	// Step 2 (June 2026): the pre-built metadataexport.MetadataExportHandler
+	// (composition-root owned) is passed to RegisterOptionalHandlers via
+	// a new metadataExportHandler arg.
+	if err := jobsoutbox.RegisterOptionalHandlers(eventsRegistry, log, outboxDeps, metadataExportHandler); err != nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: register optional outbox handlers: %w", err)
 	}
 

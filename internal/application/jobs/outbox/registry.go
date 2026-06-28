@@ -35,17 +35,22 @@ import (
 // real outbox event handlers. Each field is optional; a nil field
 // means the corresponding handler is skipped from registration.
 //
-// DB: *sql.DB backing store. Required for the MetadataExportHandler
-// (snapshot reads across media_assets / voiceover / image /
-// delivery_log) and for the DeliveryHandler (delivery_log writes).
-// Also feeds the ProviderSyncHandler fallback paths when jobs is nil.
+// DB: *sql.DB backing store. Required for the DeliveryHandler
+// (delivery_log writes). Also feeds the ProviderSyncHandler fallback
+// paths when jobs is nil. The MetadataExportHandler (Step 2, June
+// 2026) no longer reaches through Deps.DB — the composition root
+// constructs the typed-port adapter (metadataexport.NewSQLiteAdapter)
+// and the FileWriter adapter (internal/infrastructure/files/
+// metadataexport), then passes the pre-built handler to
+// RegisterOptionalHandlers via the metadataExportHandler arg.
 //
 // HTTPClient: *http.Client used by DeliveryHandler for outbound POSTs.
 // Defaults to 30s-timeout client if nil.
 //
-// MetadataDir: absolute path to the sidecar JSON output directory
-// (typically cfg.Storage.FullPath("asset_metadata")). Required for
-// MetadataExportHandler to be wired.
+// MetadataDir: REMOVED (Step 2, June 2026). override MetadataDir via
+// the pre-built handler's HandlerDeps.OutputDir; the composition root
+// reads `cfg.Storage.FullPath("asset_metadata")` and stamps it onto
+// the HandlerDeps at wire time.
 //
 // HMACSecrets: rotated keys (current first, previous second). Required
 // for ProductionDeliveryHandler to wire real outbound signing. nil +
@@ -84,7 +89,6 @@ import (
 type Deps struct {
 	DB                   *sql.DB
 	HTTPClient           *http.Client
-	MetadataDir          string
 	HMACSecrets          [][]byte
 	InsecureDev          bool
 	Jobs                 JobsEnqueuer
@@ -109,19 +113,25 @@ type Deps struct {
 // (fix/qdrant-outbox-fail-closed) for the failure-mode context that
 // drove the split.
 //
+// Step 2 (June 2026) signature change: RegisterAll no longer
+// constructs MetadataExportHandler. The composition root builds the
+// metadataexport.MetadataExportHandler (with typed-port adapter) and
+// passes it via metadataExportHandler. Legacy RegisterAll callers
+// can pass nil — the handler is then skipped, matching the pre-Step-2
+// behaviour when deps.MetadataDir was empty.
+//
 // Parameters:
-//   - registry : the HandlerRegistry to populate.
-//   - log      : zap logger — nil-safe (handlers use zap.NewNop on nil).
-//   - indexer  : IndexClipper dependency for the IndexingHandler.
-//     Pass nil to skip the IndexingHandler (tests, partial wiring).
-//   - deps     : Deps bundle. Each field is optional; the
-//     corresponding handler is registered as long as its dependency
-//     is present.
+//   - registry               : the HandlerRegistry to populate.
+//   - log                    : zap logger — nil-safe.
+//   - indexer                : IndexClipper dependency for the IndexingHandler.
+//   - deps                   : Deps bundle (DB + HTTPClient + ...).
+//   - metadataExportHandler  : pre-built metadataexport.MetadataExportHandler
+//     (Step 2); nil → MetadataExportHandler skipped.
 //
 // Returns: the error from RegisterOptionalHandlers (core registration
 // errors are swallowed so legacy callers observe the original
 // "Warning-only" behaviour).
-func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps) error {
+func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps, metadataExportHandler outboxevents.Handler) error {
 	if registry == nil {
 		return fmtError("outbox RegisterAll: registry is nil")
 	}
@@ -143,7 +153,7 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 			return err
 		}
 	}
-	return RegisterOptionalHandlers(registry, log, deps)
+	return RegisterOptionalHandlers(registry, log, deps, metadataExportHandler)
 }
 
 // RegisterCoreHandlers wires handlers that MUST be present when
@@ -220,17 +230,27 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 //
 //   - WorkflowStepCompletedHandler / WorkflowStepFailedHandler (no
 //     deps; always wired).
-//   - MetadataExportHandler (deps.DB + deps.MetadataDir).
+//   - MetadataExportHandler (pre-built by composition root via the
+//     metadataexport package's typed-port adapter; passed in via
+//     metadataExportHandler; nil → skipped).
 //   - DeliveryHandler (deps.HTTPClient OR deps.DB; plus HMACSecrets
 //     OR InsecureDev).
 //   - ProviderSyncHandler (only Jobs — nil Jobs → drive|youtube events
 //     fail with retryable error inside the handler, never silently
 //     ack).
 //
+// Step 2 (June 2026) signature change: metadataExportHandler replaces
+// the pre-Step-2 deps.DB+deps.MetadataDir construction. The composition
+// root constructs the typed-port adapter (metadataexport.NewSQLiteAdapter
+// at internal/infrastructure/database/sqlite/metadataexport/ +
+// FileWriter at internal/infrastructure/files/metadataexport/) and
+// stamps HandlerDeps{Resolver, Writer, OutputDir} onto the handler at
+// wire time. The application package no longer touches *sql.DB or os.
+//
 // Returns: the first registration error. The handler list is NOT
 // registered on failure; this keeps semantics compatible with
 // RegisterCoreHandlers.
-func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, deps *Deps) error {
+func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, deps *Deps, metadataExportHandler outboxevents.Handler) error {
 	if registry == nil {
 		return fmtError("outbox RegisterOptionalHandlers: registry is nil")
 	}
@@ -238,10 +258,10 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		&WorkflowStepCompletedHandler{log: log},
 		&WorkflowStepFailedHandler{log: log},
 	}
+	if metadataExportHandler != nil {
+		optional = append(optional, metadataExportHandler)
+	}
 	if deps != nil {
-		if deps.DB != nil && deps.MetadataDir != "" {
-			optional = append(optional, NewMetadataExportHandler(log, deps.DB, deps.MetadataDir))
-		}
 		if (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev) {
 			optional = append(optional, NewDeliveryHandler(log, deps.HTTPClient, deps.DB, deps.HMACSecrets, deps.InsecureDev))
 		}
@@ -254,7 +274,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	}
 	log.Info("outbox optional handlers registered",
 		zap.Int("registered", len(optional)),
-		zap.Bool("metadata_export_wired", deps != nil && deps.DB != nil && deps.MetadataDir != ""),
+		zap.Bool("metadata_export_wired", metadataExportHandler != nil),
 		zap.Bool("delivery_wired", deps != nil && (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev)),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs != nil),
 	)
