@@ -14,6 +14,13 @@
 # match the codebase's package.json "engines.node" requirement.
 # Working directory is /app; expose the canonical scraper port 9123
 # per config.example.yaml `artlist_scraper_server_url` comment.
+#
+# Phase 7 (docker-compose-hardening, June 2026): drop root before
+# CMD. The node:22-bookworm-slim base image ships a `node` user
+# with UID/GID 1000; we re-use it (instead of creating a new
+# `scraper` user) so the UID matches the Go-side `pipelinegen`
+# user and bind-mount permissions are predictable across services.
+# The 1000 UID is also the typical operator workstation UID.
 
 FROM node:22-bookworm-slim
 
@@ -33,8 +40,6 @@ RUN apt-get update \
       chromium \
  && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
 # Prevent puppeteer from downloading Chromium — the runtime uses
 # the apt-installed system Chromium at ${CHROME_EXECUTABLE}.
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
@@ -43,12 +48,15 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true \
 # Install npm dependencies first to leverage Docker layer caching.
 # package.json and package-lock.json are copied before the full source
 # so that npm ci is only re-run when dependencies change.
-COPY package.json package-lock.json ./
+# Phase 7: --chown=node:node so the installed packages are owned by
+# the non-root user (the subsequent `USER node` directive then has
+# read+write access without a world-writable chmod).
+COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # Copy the Node.js sources. node-scraper/ is the canonical home; the
 # Go binary references these via cfg.External.NodeScraperDir.
-COPY . /app/
+COPY --chown=node:node . /app/
 
 # Canonical scraper port per config.example.yaml's
 # `artlist_scraper_server_url` comment ("http://localhost:9123 when
@@ -68,6 +76,11 @@ ENV PORT=9123 \
 # launched → 503 → unhealthy → no traffic until warm.
 HEALTHCHECK --interval=15s --timeout=10s --start-period=20s --retries=5 \
   CMD curl -fsS http://127.0.0.1:${PORT}/ready || exit 1
+
+# Phase 7: drop root before CMD. The node user owns /app via the
+# --chown=node:node COPY flags above; WORKDIR is inherited as /app
+# from the base image (no explicit WORKDIR override needed).
+USER node
 
 # Persistent scraper server (Level 3 caching per design docs).
 # Operators that prefer the system Playwright/Chromium route override

@@ -1,5 +1,26 @@
 # docker-compose.yml — PipelineGen production stack with separated runtime roles.
 #
+# Phase 7 (docker-compose-hardening, June 2026) hardening:
+#   * Qdrant version pinned (qdrant/qdrant:v1.18.2) — no more `:latest`
+#   * Internal services (qdrant, artlist-scraper) use `expose:` instead
+#     of `ports:` — only published to the `backend` network, not the
+#     host. The server keeps its `ports:` mapping (must be reachable
+#     from the operator workstation / CI runner).
+#   * Single secret mechanism: the `secrets/pipelinegen.env` file is
+#     loaded via `env_file:` ONLY (the previous `./secrets/...:ro` volume
+#     mount is REMOVED). Operators who prefer a Docker-native secret
+#     store (Docker Swarm secrets, k8s Secret, AWS SM) can swap the
+#     env_file: for a `secrets:` block in a follow-up PR — the
+#     contract is "env_file xor volume, never both".
+#   * vLLM moved to docker-compose.gpu.yml with `profiles: [gpu]`
+#     opt-in. Operators with NVIDIA hardware + nvidia-container-toolkit
+#     pass `--profile gpu` to start the LLM inference service.
+#   * All services run as the non-root `pipelinegen` user (UID/GID
+#     1000) via the `user:` directive; the entrypoint wrapper
+#     (docker-entrypoint.sh, copied in the Dockerfile) re-chowns
+#     named-volume mount points on first boot so the non-root user
+#     can write SQLite DBs + asset cache.
+#
 # Services:
 #
 #   - pipelinegen-server : HTTP server on port 8000, mode=server (HTTP only,
@@ -10,9 +31,9 @@
 #                          against the server broker via /internal/v1/*. Contains
 #                          ffmpeg, yt-dlp, and python3 for media processing jobs.
 #
-#   - qdrant             : vector store for semantic search (ports 6333/6334).
+#   - qdrant             : vector store for semantic search (expose only).
 #
-#   - artlist-scraper    : persistent Node.js Artlist scraper (port 9123).
+#   - artlist-scraper    : persistent Node.js Artlist scraper (expose only).
 #
 # Volumes:
 #   - pipelinegen-data   : SQLite DB + asset_metadata + cache + downloads.
@@ -23,10 +44,11 @@
 # Networking:
 #   - All services share the `backend` network.
 #
-# Security contract (PR-B):
+# Security contract (PR-B + Phase 7):
 #   VELOX_WORKER_TOKEN MUST be set in `secrets/pipelinegen.env` and reach
-#   BOTH containers via the `env_file:` block. Server reads it for
-#   WorkerAuth verification on /internal/v1/*. Worker sends it as
+#   BOTH containers via the `env_file:` block (single mechanism — no
+#   volume mount for the secrets file). Server reads it for WorkerAuth
+#   verification on /internal/v1/*. Worker sends it as
 #   `Authorization: Bearer $VELOX_WORKER_TOKEN` via jobbrokerclient.
 
 services:
@@ -41,6 +63,12 @@ services:
     image: pipelinegen-server:latest
     container_name: pipelinegen-server
     restart: unless-stopped
+    # Phase 7: run as the non-root `pipelinegen` user (UID/GID 1000).
+    # The Dockerfile's USER directive already sets this, but the
+    # explicit `user:` here documents the contract for operators
+    # reading the compose file and protects against a future Dockerfile
+    # change that accidentally reverts USER.
+    user: "1000:1000"
     depends_on:
       - qdrant
       - artlist-scraper
@@ -49,7 +77,6 @@ services:
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro
-      - ./secrets/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
     environment:
       VELOX_HOST: "0.0.0.0"
       VELOX_PORT: "8000"
@@ -57,8 +84,18 @@ services:
       VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
       VELOX_VECTOR_SEARCH_COLLECTION: "media_assets"
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
+    # Phase 7: env_file ONLY (no volume mount for secrets). The
+    # `required: false` flag (docker compose v2.24+) makes the
+    # env_file optional so `docker compose config` does not error
+    # in environments where the operator has not yet created
+    # secrets/pipelinegen.env (e.g., fresh clone, CI lint, smoke
+    # dry-runs). The Go server refuses to boot with placeholder
+    # tokens anyway (see AGENTS.md "Admin token" invariant), so a
+    # missing file is a fail-closed condition at runtime even when
+    # compose parses the file.
     env_file:
-      - ./secrets/pipelinegen.env
+      - path: ./secrets/pipelinegen.env
+        required: false
     command: ["--mode", "server", "--config", "/etc/pipelinegen/config.yaml"]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
@@ -85,39 +122,45 @@ services:
     # standalone. WorkerAuth on /internal/v1 enforces worker-token-only
     # access (admin token is rejected).
     restart: unless-stopped
+    # Phase 7: non-root user (matches the server).
+    user: "1000:1000"
     depends_on:
       pipelinegen-server:
         condition: service_healthy
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro
-      - ./secrets/pipelinegen.env:/etc/pipelinegen/pipelinegen.env:ro
     environment:
       VELOX_MASTER_URL: "http://pipelinegen-server:8000"
       VELOX_LOG_LEVEL: "info"
       VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
+    # Phase 7: env_file ONLY.
     env_file:
-      - ./secrets/pipelinegen.env
-    command: ["--config", "/etc/pipelinegen/config.yaml"]
+      - path: ./secrets/pipelinegen.env
+        required: false
+    command: ["--config", "/app/config/config.yaml"]
     networks:
       - backend
 
   qdrant:
-    # Phase 1 audit fix (PR ref fix/artlist-container-runtime):
-    # Qdrant is an internal vector store — server + worker reach it
-    # via the `backend` Docker network. `expose` keeps the host
-    # network namespace clean (no port collision risk with another
-    # Qdrant on the workstation) while leaving the image pinned
-    # to :latest for now. Future PR (Phase 6) will pin to a
-    # :v1.13.0 digest; the audit also flagged `latest` as a supply-
-    # chain risk that will be tracked separately.
-    image: qdrant/qdrant:latest
+    # Phase 7: pinned to v1.18.2 (June 2026 latest stable per
+    # qdrant/qdrant Docker Hub). No more `:latest` — every compose
+    # invocation now resolves the same storage migration path.
+    image: qdrant/qdrant:v1.18.2
     container_name: pipelinegen-qdrant
     restart: unless-stopped
+    # Phase 7: `expose:` (internal only) instead of `ports:`. The
+    # server connects to qdrant on the `backend` network at
+    # http://qdrant:6333; operators who need direct qdrant access
+    # for debugging can `docker compose run --rm --service-ports qdrant`
+    # to publish the port on demand.
     expose:
       - "6333"
       - "6334"
+    # Phase 7: non-root user (qdrant image ships a uid 1000 user
+    # `qdrant`; the explicit `user:` documents the contract).
+    user: "1000:1000"
     volumes:
       - qdrant-storage:/qdrant/storage
     networks:
@@ -129,59 +172,25 @@ services:
       dockerfile: Dockerfile.scraper
     container_name: pipelinegen-artlist
     restart: unless-stopped
-    # Phase 1 audit fix (PR ref fix/artlist-container-runtime):
-    # this service is internal-only — pipelinegen-server is the sole
-    # consumer. `expose` keeps port 9123 on the `backend` network
-    # without binding it on the host loopback (where it would
-    # collide with another Chromium-using tool on the workstation).
+    # Phase 7: `expose:` (internal only) instead of `ports:`. The
+    # server connects to the scraper on the `backend` network at
+    # http://artlist-scraper:9123; same debugging escape hatch as
+    # qdrant via `--service-ports`.
     expose:
       - "9123"
+    # Phase 7: non-root user (the node:22-bookworm-slim base image's
+    # `node` user, UID/GID 1000).
+    user: "1000:1000"
     environment:
       PORT: "9123"
       PERSISTENT: "1"
-      # Bind on all interfaces inside the container so peer
-      # services can reach it.
-      HOST: "0.0.0.0"
     networks:
       - backend
-
-  # vLLM server — continuous batching LLM inference engine.
-  # Uncomment and configure when USE_VLLM=true is set.
-  # Requires NVIDIA GPU and nvidia-container-toolkit.
-  # Model download on first start (~8GB for gemma-2-4b).
-  #
-  # vllm:
-  #   image: vllm/vllm-openai:latest
-  #   container_name: pipelinegen-vllm
-  #   restart: unless-stopped
-  #   # runtime: nvidia    # uncomment for GPU access
-  #   # deploy:
-  #   #   resources:
-  #   #     reservations:
-  #   #       devices:
-  #   #         - driver: nvidia
-  #   #           count: all
-  #   #           capabilities: [gpu]
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - vllm-models:/root/.cache/huggingface
-  #   environment:
-  #     HUGGING_FACE_HUB_TOKEN: ""  # set for gated models (e.g. Gemma, Llama)
-  #   command: >
-  #     --model google/gemma-2-4b-it
-  #     --max-model-len 32768
-  #     --dtype auto
-  #     --gpu-memory-utilization 0.90
-  #   networks:
-  #     - backend
 
 volumes:
   pipelinegen-data:
     driver: local
   qdrant-storage:
-    driver: local
-  vllm-models:
     driver: local
 
 networks:

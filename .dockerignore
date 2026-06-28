@@ -15,3 +15,9 @@ coverage.html
 profiles
 sessions
 deliverables
+# Phase 7 (docker-compose-hardening, June 2026): defensive exclusion
+# of the secrets directory from the build context. docker-compose.yml
+# loads secrets via `env_file:` (NOT a volume mount), so the secrets
+# file is not needed in the build context. Excluding it here prevents
+# accidental leakage if a future COPY step is added to a Dockerfile.
+secrets

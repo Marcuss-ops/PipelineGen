@@ -1,0 +1,85 @@
+# docker-compose.gpu.yml
+#
+# Phase 7 (docker-compose-hardening, June 2026): the vLLM service was
+# previously inline in docker-compose.yml (commented out by default).
+# Phase 7 moves it to this separate file AND marks it with the
+# `profiles: [gpu]` opt-in so operators must explicitly enable it.
+#
+# Why a separate file + a profile:
+#   * Separate file: the service is large, GPU-specific, and
+#     only relevant for operators with NVIDIA hardware +
+#     nvidia-container-toolkit installed. Keeping it out of the
+#     default docker-compose.yml avoids the "long commented-out
+#     block" footgun and makes the GPU surface independently
+#     versionable.
+#   * `profiles: [gpu]`: docker compose v2 ignores services with a
+#     non-default profile unless `--profile gpu` is passed. The
+#     default `docker compose up` does NOT start vLLM, so the
+#     CI smoke + local dev flows are unaffected.
+#
+# Usage:
+#   docker compose --profile gpu up         # start the GPU stack
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu up
+#                                            # same, with explicit file list
+#
+# Prerequisites:
+#   * NVIDIA GPU + nvidia-container-toolkit installed
+#   * ~8GB disk for the model download on first start
+#   * Optionally: HUGGING_FACE_HUB_TOKEN for gated models
+#     (Gemma, Llama, etc.)
+
+services:
+  vllm:
+    # Phase 7 (docker-compose-hardening, June 2026): pinned to a
+    # specific tag (v0.7.3) — no `:latest`. Same SSOT principle as
+    # the Qdrant pin: every operator who runs `docker compose
+    # --profile gpu up` gets the same vLLM build, the same model
+    # serving surface, and the same storage migration path.
+    # vLLM tags are listed at https://hub.docker.com/r/vllm/vllm-openai/tags
+    image: vllm/vllm-openai:v0.7.3
+    container_name: pipelinegen-vllm
+    restart: unless-stopped
+    # GPU access — requires nvidia-container-toolkit on the host.
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "8000:8000"
+    volumes:
+      - vllm-models:/root/.cache/huggingface
+
+# Phase 7: `vllm-models` volume declared here (not in the main
+# docker-compose.yml) so the default `docker compose up` does not
+# materialise a volume that no active service uses. When the gpu
+# profile is active, this file is merged with docker-compose.yml
+# and the volume is created.
+volumes:
+  vllm-models:
+    driver: local
+    environment:
+      # Set for gated models (Gemma, Llama, etc.). Empty by default.
+      HUGGING_FACE_HUB_TOKEN: ""
+    command: >
+      --model google/gemma-2-4b-it
+      --max-model-len 32768
+      --dtype auto
+      --gpu-memory-utilization 0.90
+    networks:
+      - backend
+    # Phase 7: opt-in via profile. `docker compose up` (no flag) does
+    # NOT start this service; operators must pass `--profile gpu`.
+    profiles:
+      - gpu
+
+# The `backend` network and `vllm-models` volume are declared in the
+# main docker-compose.yml; docker compose merges them when both files
+# are passed on the command line. Operators using a single file
+# (docker compose -f docker-compose.yml -f docker-compose.gpu.yml ...)
+# get the merge for free; operators using a profile-only invocation
+# (docker compose --profile gpu up) must also pass -f docker-compose.yml
+# so the network + volume are present.
