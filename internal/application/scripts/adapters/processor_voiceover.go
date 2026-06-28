@@ -204,3 +204,15 @@ type VoiceoverService interface {
 	Generate(ctx context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error)
 	GenerateWithDestination(ctx context.Context, text, lang, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error)
 }
+
+// Compile-time assertion: *voiceover.Service satisfies adapters.VoiceoverService
+// directly. Step 9 / PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 / B-3 CUTOVER
+// (June 2026): deletes the previous `voiceoverSvcAdapter` wrapper that lived
+// in internal/app/wire_script.go. The structural match holds because the
+// concrete *voiceover.Service's Generate and GenerateWithDestination methods
+// already return the typed *voiceover.VoiceoverResult (post-Step 7 M2 typed
+// return). Drift in either side of this contract now fails the BUILD at this
+// line instead of silently returning interface{} / panicking at runtime —
+// AGENTS.md Pattern 0 (port abstraction layer, June 2026) "compile-time
+// assertions catch signature drift at compile, not at first panic runtime".
+var _ VoiceoverService = (*voiceover.Service)(nil)

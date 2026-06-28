@@ -1385,16 +1385,19 @@
       owner: scripts/archcheck plus voiceover-stream maintainer
       owner_capability: internal/application/voiceover
       target: Wave 21 PR-VOICEOVER-RECOVERY V2-V3 sequence (BACKFILL typed-port, then B-3 CUTOVER consumer migration)
+      scope: "Voiceover typed-port push can now resume per original V1→V2→V5→V7 plan"
       deadline: 2026-07-10
-      status: shipped_through_B2_closure_pending_B3_cutover
-      tracking_issue: internal/application/voiceover/ports.go and internal/application/voiceover/usecase.go and internal/app/build_bundles_voiceover.go
+      status: shipped_through_B3_cutover_pending_B4_contract
+      tracking_issue: internal/application/voiceover/ports.go and internal/application/voiceover/usecase.go and internal/app/build_bundles_voiceover.go and internal/app/wire_script.go and internal/application/scripts/adapters/processor_voiceover.go
       acceptance:
         - 'B-2 BACKFILL port introduced in ports.go declares VoiceoverGenerator interface matching main Service.Generate shape (positional fields plus VoiceoverResult return)'
         - 'Compile-time assertion var underscore VoiceoverGenerator equals Service pointer compiles clean (Go implicit-interface structural satisfaction)'
         - 'Use-case adapter in usecase.go declares GenerateVoiceoverUseCase with ServiceDeps containing Generator field plus Logger field plus fail-fast nil-check'
         - '1-a-1 delegate Execute method delegates to Generator.Generate with NO business orchestration additions at B-2 BACKFILL scope'
         - 'Wire-up in build_bundles_voiceover.go materialises GenerateVoiceoverUseCase before return statement; zero call-site changes per B-2 scope'
-        - 'CUTOVER pending B-3 consumer flip plus B-4 contract removal of back-compat aliases'
+        - 'B-3 CUTOVER (Step 9, June 2026) deletes the previous voiceoverSvcAdapter wrapper from wire_script.go; voiceover processor accepts root.Domains.VoiceoverService (*voiceover.Service) directly because the structural match holds'
+        - 'B-3 CUTOVER adds compile-time assertion var underscore adapters.VoiceoverService equals Service pointer nil inside processor_voiceover.go locking the typed-port contract at the consumption seam'
+        - 'B-4 CONTRACT pending removal of back-compat type aliases (domain.VoiceoverResult equals domain.Result) plus verification that no external consumers reach through the legacy wire shape'
       notes: 'AUDIT scope NOT compile-recovery. B-2 step closure ships a typed-port WITHOUT changing wire-shape (uses actual main Service.Generate signature positional shape, NOT the blueprint GenerateVoiceoverCommand struct). Sibling to PR-VOICEOVER-RECOVERY V1..V7 sequence per AGENTS.md Pattern 0 plus Godlike/07 migration sequence compatibility.'
       cross_refs:
         ag_ents_pattern0: AGENTS.md Pattern 0 (Port abstraction layer, June 2026)
