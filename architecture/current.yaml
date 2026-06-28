@@ -1245,6 +1245,21 @@
         - AGENTS.md Pattern 0
         - godlike/07 schema
 
+    # Wave 21 / PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28 - Forward reference
+    # record per lo Option X alias unblock (domain.VoiceoverResult = Result).
+    # Questa entry è GENERATA automaticamente al push del commit
+    # fix(domain): [option-x] add VoiceoverResult type alias for typed port unbreak.
+    # Chiude il branch corrente del voiceover typed-port chain NON sostituendo la
+    # wave più profonda PR-VOICEOVER-RECOVERY (V1..V7); piuttosto sblocca
+    # immediatamente il build su main mentre Wave 21 PR-G.2 BACKFILL settlement
+    # (deadline 2026-07-10) esegue il deep typed-port push.
+    - id: PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28
+      title: "Voiceover typed-port SIMPLE alias unblock (Step 1 Option X) - tactical domain.VoiceoverResult = Result"
+      owner: scripts/archcheck + voiceover-stream maintainer
+      status: pending
+      deadline: 2026-07-10
+      tracking_issue: "internal/domain/voiceover/result.go#type-voiceoverresult-alias"
+
   cross_refs:
     ownership: architecture/ownership.yaml (application_scripts.target_subdirs)
     policy: architecture/policy.yaml::max_files_per_package=40
