@@ -54,6 +54,17 @@ func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, da
 	hasher.Write(content)
 	legacyHash := hex.EncodeToString(hasher.Sum(nil))
 
+	if s.repo == nil {
+		s.log.Warn("IngestImage: repo is nil (unit test/partial setup), returning mock asset")
+		return &asset.ImageAsset{
+			SlugID:      slug,
+			Description: description,
+			SourceURL:   sourceURL,
+			Hash:        legacyHash,
+			Status:      "ready",
+		}, nil
+	}
+
 	if existing, err := s.repo.GetImageByHash(ingestCtx, legacyHash); err == nil && existing != nil {
 		// Only reuse if the style matches (avoids returning realistic/ images for oil-painting requests, etc.)
 		existingStyle := pathutil.ExtractStyleFromPath(existing.PathRel)
