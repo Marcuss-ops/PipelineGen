@@ -562,6 +562,15 @@ func (h *ScriptFlowHandler) LegacyGenerateFromClips(c *gin.Context) {
 			zap.String("topic", req.Topic),
 		)
 		if req.SourceText != "" {
+			h.log.Warn("legacy_adapter: source_text provided without clips will be replaced by clip evidence text from Qdrant search",
+				zap.String("topic", req.Topic),
+			)
+		}
+	} else if len(clipIDs) == 0 && req.Topic != "" {
+		h.log.Info("legacy_adapter: no clips provided, falling back to Qdrant semantic search via topic",
+			zap.String("topic", req.Topic),
+		)
+		if req.SourceText != "" {
 			h.log.Warn("legacy_adapter: source_text provided without clips — will be replaced by clip evidence text from Qdrant search",
 				zap.String("topic", req.Topic),
 			)
