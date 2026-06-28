@@ -309,6 +309,20 @@ func (s *Service) processLanguage(
 			item.SearchText = semResult.SearchText
 		}
 	}
+
+	// PR-VO-B2 (June 2026): safely merge caller-supplied request metadata
+	// into the per-language meta map. Reserved key precedence: every key
+	// already in `meta` (core pipeline keys + semantic tagger outputs)
+	// wins over caller-supplied values. Collisions surface as warn-log
+	// events, never silent drops. StyleGroup is injected verbatim from
+	// dest.StyleGroup when non-empty so the style-cohort selector lands
+	// in the Drive metadata.json manifest under the canonical key
+	// `style_group`. Replaces the previous flat-copy which could
+	// overwrite semantic_tagger outputs with caller keys that had the
+	// same name (e.g. consumer-supplied `search_text` masking the
+	// semantic_tagger's text).
+	mergeUserMetadata(meta, dest, req.Metadata, s.log)
+
 	metaJSON, _ := json.Marshal(meta)
 
 	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the previous
@@ -589,6 +603,12 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 		return nil, err
 	}
 
+	// PR-VO-B2 (June 2026): forward StyleGroup into the resolver so the
+	// per-call resolution path records the original style-cohort selector.
+	// The resolver is a pure plumbing layer (no generative behaviour), so
+	// StyleGroup is treated as opaque routing metadata — it is NOT parsed,
+	// validated, or mutated by the resolver. See domain/asset::ResolveRequest
+	// for the canonical type annotation.
 	resolved, err := s.assetDestResolver.Resolve(ctx, &asset.ResolveRequest{
 		Source:          "voiceover",
 		Group:           dest.Group,
@@ -596,17 +616,80 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 		FolderPath:      dest.FolderPath,
 		SubfolderName:   dest.SubfolderName,
 		CreateSubfolder: dest.CreateSubfolder,
+		StyleGroup:      dest.StyleGroup,
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// PR-VO-B2 (June 2026): mirror the StyleGroup from the request side
+	// into the resolved side. The resolver does NOT expose StyleGroup on
+	// ResolveResult (resolver is a folder-mapping concern, not a
+	// style-routing concern), so the value is consumed from
+	// DestinationRequest and re-pinned on ResolvedDestination for
+	// downstream consumers (processLanguage, job envelopes, Drive manifest).
+	// If a future caller constructs ResolvedDestination directly and
+	// forgets to populate StyleGroup, the per-language meta map will
+	// simply omit the key — the omission is observable in metadata.json
+	// and logged at the optional warn site in mergeUserMetadata.
 	return &ResolvedDestination{
 		FolderID:   resolved.FolderID,
 		FolderPath: resolved.FolderPath,
 		DriveLink:  resolved.DriveLink,
+		StyleGroup: dest.StyleGroup,
 	}, nil
 }
 
 // GeneratePromo translates text to multiple languages via Ollama then generates
 // a voiceover for each. This replaces scripts/generate_promo_voiceovers.py.
+
+// mergeUserMetadata injects StyleGroup from a resolved destination and merges
+// caller-supplied request metadata into the per-language meta map without
+// silently overwriting any system-owned key.
+//
+// Contract (PR-VO-B2, June 2026):
+//
+//   - meta is mutated in place (the caller already builds the map; this
+//     helper extends it, never replaces it).
+//   - StyleGroup injection: when dest != nil && dest.StyleGroup != "" the
+//     key `style_group` lands on meta verbatim from the resolved value,
+//     matching the canonical naming used by the per-asset metadata.json
+//     manifest (downstream consumers — Qdrant re-rankers, style-cohort
+//     analytics, audit replay — read this exact key from the manifest).
+//   - User metadata merge: every (k, v) not already present in meta lands
+//     verbatim. Collisions log warn and skip the user value rather than
+//     overwriting the core key. Test coverage at
+//     process_metadata_test.go::TestMergeUserMetadata pins this contract.
+//
+// Why this is a separate helper instead of inline code: every future
+// voiceover field addition will fold into the core-key set, so the same
+// reserved-key precedence rule applies. A non-helper version invites drift
+// between the marshalling order (semantic tagger → user metadata) and the
+// precedence rule. Isolating it here makes the rule explicit and testable.
+//
+// Side-effect contract: dropped keys surface as logs at warn level — never
+// silent. The PR-VO-B2 investigation surfaced exactly two silent-drop
+// vectors in the previous design: (a) caller-supplied keys overwriting
+// semantic_tagger outputs with the same name, and (b) StyleGroup never
+// reaching the manifest. Both are fixed here.
+func mergeUserMetadata(meta map[string]any, dest *ResolvedDestination, userMetadata map[string]any, log *zap.Logger) {
+	if meta == nil {
+		return
+	}
+	if dest != nil && dest.StyleGroup != "" {
+		meta["style_group"] = dest.StyleGroup
+	}
+	if len(userMetadata) == 0 {
+		return
+	}
+	for k, v := range userMetadata {
+		if _, exists := meta[k]; exists {
+			if log != nil {
+				log.Warn("mergeUserMetadata: dropped user metadata key colliding with core key",
+					zap.String("key", k))
+			}
+			continue
+		}
+		meta[k] = v
+	}
+}

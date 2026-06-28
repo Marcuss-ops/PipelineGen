@@ -120,7 +120,18 @@ type ResolveRequest struct {
 	AssetType       string // "clip", "stock", "artlist", "image", "voiceover"
 	ProjectID       string
 	FolderName      string
-	Metadata        map[string]any
+	// StyleGroup (PR-VO-B2, June 2026) is forwarded through the
+	// resolver so the per-call resolution can record the original
+	// style-cohort selector against the resolved destination. The
+	// resolver is a pure plumbing layer (it does NOT generate
+	// StyleGroup on its own); the value is set by the caller and
+	// echoed back through ResolvedDestination in the caller-supplied
+	// pattern (resolveDestination does `resolved.StyleGroup =
+	// dest.StyleGroup` after the resolver returns). ResolveResult
+	// deliberately does NOT carry it: the resolver is a folder-
+	// mapping concern, not a style-routing concern.
+	StyleGroup string
+	Metadata   map[string]any
 }
 
 // ResolveResult contains the resolved destination information.

@@ -37,13 +37,24 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 		payload["remove_silence"] = *r.RemoveSilence
 	}
 	if r.Destination != nil {
-		payload["destination"] = map[string]any{
+		// PR-VO-B2 (June 2026): style_group is serialised into the
+		// destination sub-map when non-empty so a worker that re-hydrates
+		// the BatchRequest from JSON recovers the full routing intent
+		// (Group + FolderID/FolderPath + SubfolderName + StyleGroup).
+		// omitempty at the field layer + presence check here keeps the
+		// payload identical for legacy callers (no style_group key
+		// appears at all when StyleGroup is unset).
+		destPayload := map[string]any{
 			"group":            r.Destination.Group,
 			"folder_id":        r.Destination.FolderID,
 			"folder_path":      r.Destination.FolderPath,
 			"subfolder_name":   r.Destination.SubfolderName,
 			"create_subfolder": r.Destination.CreateSubfolder,
 		}
+		if r.Destination.StyleGroup != "" {
+			destPayload["style_group"] = r.Destination.StyleGroup
+		}
+		payload["destination"] = destPayload
 	}
 	if len(r.Metadata) > 0 {
 		payload["metadata"] = r.Metadata
@@ -52,11 +63,30 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 }
 
 type DestinationRequest struct {
-	Group           string `json:"group,omitempty"`
-	FolderID        string `json:"folder_id,omitempty"`
-	FolderPath      string `json:"folder_path,omitempty"`
-	SubfolderName   string `json:"subfolder_name,omitempty"`
-	CreateSubfolder bool   `json:"create_subfolder,omitempty"`
+	// Group is the human-readable Drive category name (e.g. "boxe").
+	Group string `json:"group,omitempty"`
+	// FolderID is the explicit Drive folder ID. Empty means "resolve from
+	// Group / SubfolderName via the canonical GroupsResolver tree".
+	FolderID string `json:"folder_id,omitempty"`
+	// FolderPath is the readable path mirror (informational; resolver
+	// is the authority for the actual folder structure).
+	FolderPath string `json:"folder_path,omitempty"`
+	// SubfolderName is the optional subfolder to create/use. Validated
+	// by DestinationRequest.Validate (PR-VO-A4) so a path-traversal
+	// payload cannot escape.
+	SubfolderName string `json:"subfolder_name,omitempty"`
+	// CreateSubfolder controls whether the resolver creates a new
+	// subfolder when the name doesn't yet exist.
+	CreateSubfolder bool `json:"create_subfolder,omitempty"`
+	// StyleGroup (PR-VO-B2, June 2026) is the canonical selector that
+	// buckets voiceovers into a "style cohort" — a coarse-grained
+	// routing tag alongside Group (specific folder) and SubfolderName
+	// (leaf subfolder). Surfaced in the per-asset metadata.json
+	// manifest under the key `style_group` so downstream consumers
+	// (Qdrant re-rankers, style-cohort analytics, audit replay) can
+	// recover the original selection verbatim. omitempty so legacy
+	// callers (no field set) don't carry a bogus empty key.
+	StyleGroup string `json:"style_group,omitempty"`
 }
 
 // Validate runs the security-relevant bounds-checks on a request that
@@ -136,6 +166,13 @@ type ResolvedDestination struct {
 	FolderID   string
 	FolderPath string
 	DriveLink  string
+	// StyleGroup (PR-VO-B2, June 2026) carries the StyleGroup from
+	// the originating DestinationRequest through the resolver without
+	// round-tripping through ResolveResult. The resolver is a folder
+	// mapping layer, not a style-routing layer, so we set it from the
+	// caller-supplied destination after the resolver returns — see
+	// resolveDestination in process.go.
+	StyleGroup string
 }
 
 // Promo types moved to workflow/promo (PR 6, June 2026).
