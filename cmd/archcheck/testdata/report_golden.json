@@ -1,0 +1,437 @@
+{
+  "passed": false,
+  "mode": "target-tree-dry-run",
+  "policy_path": "architecture/policy.yaml",
+  "scan_root": ".",
+  "phase": "0",
+  "policy_snapshot": {
+    "MaxFilesPerPackage": 40,
+    "MaxLinesPerFile": 500,
+    "CmdMainMaxLines": 200,
+    "MaxConstructorDeps": 8,
+    "ForbiddenTopLevelDirs": [
+      "service",
+      "repository",
+      "models",
+      "utils",
+      "helpers"
+    ],
+    "KernelSubzones": [
+      "asset",
+      "job",
+      "script",
+      "event",
+      "identity",
+      "errors"
+    ],
+    "Capabilities": [
+      "assets",
+      "artlist",
+      "youtube",
+      "scripts",
+      "images",
+      "voiceover",
+      "content",
+      "channels",
+      "jobs",
+      "system"
+    ],
+    "PlatformSubzones": [
+      "config",
+      "sqlite",
+      "drive",
+      "qdrant",
+      "ffmpeg",
+      "process",
+      "filesystem",
+      "observability",
+      "httpserver",
+      "ollama",
+      "nvidia",
+      "youtube"
+    ],
+    "LegacyInternalRoots": [
+      "api",
+      "app",
+      "application",
+      "domain",
+      "infrastructure"
+    ],
+    "TargetInternalRoots": [
+      "app",
+      "kernel",
+      "capabilities",
+      "platform"
+    ],
+    "DataOwnershipDoc": "docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md",
+    "LegacyPolicyDoc": "docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md",
+    "CIGatesDoc": "docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md",
+    "AgentPlaybookDoc": "docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md",
+    "RemovalDoc": "docs/architecture/godlike/13_FEATURE_REMOVAL_CHECKLIST.md",
+    "KnownGrandfathered": [
+      "internal/application/scripts (55 files) — in_progress to capability/scripts split",
+      "internal/application/images (25 files) — in_progress to capability/images split",
+      "internal/application/youtube (43 files) — in_progress to capability/youtube split",
+      "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)",
+      "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
+    ],
+    "StaleProseStems": [
+      "compose_voiceover",
+      "module_artlist",
+      "module_fullimages",
+      "compose_content",
+      "compose_images",
+      "module_ingest",
+      "module_jobs",
+      "module_stock",
+      "module_youtube"
+    ]
+  },
+  "summary": {
+    "total_violations": 39,
+    "by_reason": {
+      "constructor_deps": 9,
+      "file_size": 26,
+      "pkg_size": 2,
+      "thin_command": 2
+    },
+    "by_severity": {
+      "warn": 39
+    }
+  },
+  "violations": [
+    {
+      "file": "internal/api/assets/soundeffect/handler.go",
+      "line": 72,
+      "actual_count": 9,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/api/server.go",
+      "line": 110,
+      "actual_count": 10,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 10 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/application/assets/deletion/deletion.go",
+      "line": 50,
+      "actual_count": 11,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 11 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/application/assets/sourcing/service.go",
+      "line": 32,
+      "actual_count": 15,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 15 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/application/clips/clip_ops.go",
+      "line": 203,
+      "actual_count": 9,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/application/images/service.go",
+      "line": 151,
+      "actual_count": 17,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 17 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/application/jobs/worker.go",
+      "line": 141,
+      "actual_count": 9,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/application/voiceover/service.go",
+      "line": 88,
+      "actual_count": 12,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 12 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/infrastructure/drive/store.go",
+      "line": 113,
+      "actual_count": 9,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "cmd/admin/cleanup.go",
+      "actual_lines": 554,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "cmd/admin/qdrant_readiness.go",
+      "actual_lines": 1466,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "cmd/admin/reconcile_qdrant.go",
+      "actual_lines": 530,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "cmd/archcheck/main.go",
+      "actual_lines": 782,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/api/assets/voiceover/handler.go",
+      "actual_lines": 565,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/api/script/handler_legacy_adapters.go",
+      "actual_lines": 626,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/app/build_bundles_process.go",
+      "actual_lines": 562,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/app/composition.go",
+      "actual_lines": 550,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/app/module_media.go",
+      "actual_lines": 650,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/app/module_sources.go",
+      "actual_lines": 521,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/app/wire_script.go",
+      "actual_lines": 910,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/assets/providers/aggregator.go",
+      "actual_lines": 1004,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/assets/providers/registry.go",
+      "actual_lines": 544,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/assets/sourcing/service.go",
+      "actual_lines": 597,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/clips/bulk_upload_worker.go",
+      "actual_lines": 644,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/clips/clip_ops.go",
+      "actual_lines": 900,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/mediasearch/service.go",
+      "actual_lines": 552,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/qdrant/legacyaudit/legacyaudit.go",
+      "actual_lines": 660,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/qdrant/reconciler/service.go",
+      "actual_lines": 578,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/application/workerdoctor/default_probes.go",
+      "actual_lines": 629,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/repository.go",
+      "actual_lines": 523,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/outbox/repository.go",
+      "actual_lines": 859,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/infrastructure/observability/metrics.go",
+      "actual_lines": 729,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/infrastructure/qdrant/collection_manager.go",
+      "actual_lines": 598,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/infrastructure/qdrant/verifier.go",
+      "actual_lines": 572,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/platform/config/types.go",
+      "actual_lines": 526,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "package": "internal/app",
+      "actual_count": 46,
+      "allowed_count": 40,
+      "matched_rule": "max_files_per_package",
+      "rule": "pkg_size",
+      "severity": "warn"
+    },
+    {
+      "package": "internal/infrastructure/qdrant",
+      "actual_count": 46,
+      "allowed_count": 40,
+      "matched_rule": "max_files_per_package",
+      "rule": "pkg_size",
+      "severity": "warn"
+    },
+    {
+      "file": "cmd/archcheck/main.go",
+      "actual_lines": 782,
+      "max_lines": 200,
+      "matched_rule": "cmd_main_max_lines",
+      "rule": "thin_command",
+      "severity": "warn",
+      "note": "command binaries must be thin (root ctx + config + compose + mode + shutdown)"
+    },
+    {
+      "file": "cmd/worker/main.go",
+      "actual_lines": 349,
+      "max_lines": 200,
+      "matched_rule": "cmd_main_max_lines",
+      "rule": "thin_command",
+      "severity": "warn",
+      "note": "command binaries must be thin (root ctx + config + compose + mode + shutdown)"
+    }
+  ],
+  "grandfathered_known": null
+}
