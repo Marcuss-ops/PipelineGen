@@ -779,7 +779,7 @@ func TestLegacyGenerateFromClipsRequest_ToEnvelope_AliasPassThrough(t *testing.T
 		env := req.toEnvelope()
 		if !env.Items[0].Output.GenerateSceneImages {
 			t.Fatalf("Output.GenerateSceneImages = false, want true "+
-				"(enable_scene_images alias must drive the canonical slot)",
+				"(enable_scene_images alias must drive the canonical slot): got %v",
 				env.Items[0].Output.GenerateSceneImages)
 		}
 	})

@@ -233,7 +233,7 @@ func (cm *CollectionManager) VerifyCandidate(ctx context.Context, candidate stri
 	diff := CompareSchema(cm.schema, info)
 	if !diff.Compatible {
 		return fmt.Errorf("%w for %q: missing_vectors=%v dimension_mismatches=%d distance_mismatches=%v",
-			ErrSchemaIncompatible{Diff: diff}, candidate,
+			&ErrSchemaIncompatible{Diff: diff}, candidate,
 			diff.MissingVectors, len(diff.DimensionMismatches), diff.DistanceMismatches)
 	}
 	cm.markVerified(candidate)

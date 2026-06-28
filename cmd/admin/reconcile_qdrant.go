@@ -44,12 +44,11 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 )
 
-// (database/sql is required for sql.ErrNoRows in PR 11 fail-closed branch of outboxRepairAdapter.EnqueueReindex)
+// (database/sql is required for outboxRepairAdapter.db which is *sql.DB — the OpenSQLiteDB return type)
 
 // reconcileQdrantDeps holds the parsed flags for runReconcileQdrant.
 type reconcileQdrantDeps struct {
@@ -405,49 +404,32 @@ type outboxRepairAdapter struct {
 // package does not pick up the indexing.go dependency for what is
 // really a 3-line COALESCE pattern; if the priority changes,
 // the change propagates here + there.
-func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID string) error {
+//
+// PR 11 (June 2026, follow-up): the content_hash is now PASSED BY
+// THE CALLER, not fetched here. The canonical reconciler flow
+// (internal/application/qdrant/reconciler/service.go) already
+// calls assets.SourceVersionFor(...) once per asset and threads
+// the value here, so duplicating the COALESCE priority chain
+// (metadata_json.$.content_hash → metadata_json.$.file_hash →
+// media_assets.file_hash) inside this adapter is misuse-prone.
+// Callers MUST hand in a non-empty contentHash; the adapter is
+// fail-closed on empty (deterministic event_key requires a
+// fingerprint). See
+// internal/infrastructure/database/sqlite/assets/source_version.go
+// + source_version_test.go for the regression pin across all
+// four priority slots (including the legacy top-level column).
+func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID, contentHash string) error {
 	if assetID == "" {
 		return errors.New("outboxRepairAdapter.EnqueueReindex: assetID must not be empty")
+	}
+	if contentHash == "" {
+		return errors.New("outboxRepairAdapter.EnqueueReindex: contentHash must not be empty — PR 11 contract (deterministic event_key requires a fingerprint; caller must pre-fetch via assets.SourceVersionFor before invoking)")
 	}
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // standard commit-or-rollback idiom
-
-	// PR 11 (June 2026, follow-up): atomic content_hash capture
-	// INSIDE the tx, routed through assets.SourceVersionFor — the
-	// canonical SQL helper that BOTH this call site AND the
-	// IndexingHandler consumer import. Future drift in the
-	// priority chain (metadata_json.$.content_hash →
-	// metadata_json.$.file_hash → media_assets.file_hash) is now
-	// structurally impossible without changing one function.
-	// See
-	// internal/infrastructure/database/sqlite/assets/source_version.go
-	// + source_version_test.go for the regression pin across all
-	// four priority slots (including the legacy top-level column).
-	//
-	// The pre-PR-11-followup sequence duplicated the COALESCE chain
-	// here AND walked the consumer side over *asset.Asset accessors
-	// (the latter's Asset.FileHash() reads the SAME metadata slot
-	// as JSON file_hash — effectively skipping the legacy tier 3).
-	// The replacement helper honours all three tiers in SQL so
-	// backfilled pre-metadata-json rows from legacy ingest tooling
-	// are correctly fingerprinted.
-	//
-	// Empty result → fail-closed (deterministic event_key cannot
-	// be derived without a fingerprint; emitting a placeholder
-	// key would mask real content drift between reconcile runs).
-	contentHash, err := assets.SourceVersionFor(ctx, tx, assetID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("outboxRepairAdapter.EnqueueReindex: asset %s not found in media_assets (PR 11 — fail-closed: cannot derive deterministic event_key for a missing row): %w", assetID, err)
-	}
-	if err != nil {
-		return fmt.Errorf("read content_hash for %s: %w", assetID, err)
-	}
-	if contentHash == "" {
-		return fmt.Errorf("outboxRepairAdapter.EnqueueReindex: asset %s has empty content_hash fallback chain (metadata_json.$.content_hash / metadata_json.$.file_hash / media_assets.file_hash all empty — PR 11 fail-closed: deterministic event_key requires a fingerprint)", assetID)
-	}
 
 	// Light parity bump: refresh updated_at so monitors can see the
 	// reconcile-repair touched the row. We do NOT mutate source_version
