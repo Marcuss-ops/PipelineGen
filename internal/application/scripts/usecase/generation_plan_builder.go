@@ -170,6 +170,10 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []string {
 	// PR 7: clip_bindings MUST run before document so the doc
 	// builder sees the canonical bindings (see comment above).
 	pp = append(pp, "clip_bindings")
+	// stock_association is unconditional (BestEffort, no-op when
+	// Qdrant is unavailable). Runs after clip_bindings so it can
+	// fall back to scene.Bindings.Clip.DriveLink.
+	pp = append(pp, "stock_association")
 	if out.GenerateDocument {
 		pp = append(pp, "document")
 	}
