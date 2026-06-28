@@ -531,6 +531,10 @@ type CategoryChannel struct {
 	LeaseOwner          string `json:"lease_owner,omitempty"`
 	LeaseUntil          string `json:"lease_until,omitempty"`
 
+	// PR 5 (June 2026): incremental sync cursor — tracks the last video ID
+	// processed so the monitor can resume from where it left off.
+	LastCursor string `json:"last_cursor,omitempty"`
+
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }

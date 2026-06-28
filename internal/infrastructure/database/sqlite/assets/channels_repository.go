@@ -214,14 +214,14 @@ func scanFields(scanner interface{ Scan(dest ...any) error }) (*asset.CategoryCh
 	ch := &asset.CategoryChannel{}
 	var createdAt, updatedAt sql.NullString
 	var nextCheckAt, lastCheckedAt sql.NullString
-	var lastError, lastSuccessAt, leaseOwner, leaseUntil sql.NullString
+	var lastError, lastSuccessAt, leaseOwner, leaseUntil, lastCursor sql.NullString
 	err := scanner.Scan(&ch.ID, &ch.Category, &ch.ChannelURL, &ch.ChannelName,
 		&ch.Keywords, &ch.MinViews, &ch.MaxClipDuration, &ch.DriveFolderID,
 		&ch.SemanticKeywords, &ch.MinSemanticScore, &ch.PlaylistEnd,
 		&ch.CheckInterval, &ch.MaxVideosPerRun, &ch.Priority,
 		&ch.LookbackDays, &ch.MaxSegments, &ch.SegmentPrompt,
 		&ch.Enabled, &nextCheckAt, &lastCheckedAt,
-		&ch.ConsecutiveFailures, &lastError, &lastSuccessAt, &leaseOwner, &leaseUntil,
+		&ch.ConsecutiveFailures, &lastError, &lastSuccessAt, &leaseOwner, &leaseUntil, &lastCursor,
 		&createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
@@ -232,6 +232,7 @@ func scanFields(scanner interface{ Scan(dest ...any) error }) (*asset.CategoryCh
 	ch.LastSuccessAt = lastSuccessAt.String
 	ch.LeaseOwner = leaseOwner.String
 	ch.LeaseUntil = leaseUntil.String
+	ch.LastCursor = lastCursor.String
 	ch.CreatedAt = createdAt.String
 	ch.UpdatedAt = updatedAt.String
 	return ch, nil
