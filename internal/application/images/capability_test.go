@@ -11,6 +11,7 @@ func TestCapabilityResolution_NilSafe(t *testing.T) {
 	for _, cap := range []Capability{
 		CapImageGenNvidia,
 		CapRemoteImageGen,
+		CapImageGenChrome,
 	} {
 		if got := s.CapabilityResolution(cap); got != StatusNotImplemented {
 			t.Errorf("nil receiver for %s: got %s, want %s", cap, got, StatusNotImplemented)
@@ -25,11 +26,12 @@ func TestCapabilityResolution_NilSafe(t *testing.T) {
 // availability — handlers + the diagnostic endpoint must see
 // distinct statuses for these 5 capabilities.
 func TestCapabilityResolution_TruthfulMapping(t *testing.T) {
-	s := &Service{} // zero-valued: nvidiaAPIKey == "", remoteImageEndpointURL == ""
+	s := &Service{} // zero-valued: nvidiaAPIKey == "", remoteImageEndpointURL == "", imageGen == nil
 
 	want := map[Capability]CapabilityStatus{
 		CapImageGenNvidia: StatusMissingDependency, // NVIDIA_API_KEY not set
 		CapRemoteImageGen: StatusMissingDependency, // VELOX_REMOTE_IMAGE_ENDPOINT not set
+		CapImageGenChrome: StatusMissingDependency, // imageGen not wired
 	}
 	for cap, want := range want {
 		if got := s.CapabilityResolution(cap); got != want {
@@ -51,11 +53,9 @@ func TestCapabilityResolution_NvidiaKeyAvailable(t *testing.T) {
 	if got := s.CapabilityResolution(CapRemoteImageGen); got != StatusMissingDependency {
 		t.Errorf("CapRemoteImageGen: got %s, want %s", got, StatusMissingDependency)
 	}
-	// Stubs unchanged.
-	for _, cap := range []Capability{} {
-		if got := s.CapabilityResolution(cap); got != StatusNotImplemented {
-			t.Errorf("capability %s: got %s, want %s (stubs unchanged by NVIDIA key)", cap, got, StatusNotImplemented)
-		}
+	// Chrome still missing (not wired).
+	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusMissingDependency {
+		t.Errorf("CapImageGenChrome: got %s, want %s", got, StatusMissingDependency)
 	}
 }
 
@@ -69,7 +69,20 @@ func TestCapabilityResolution_NvidiaKeyPlaceholder(t *testing.T) {
 	}
 }
 
-// TestCapabilityResolution_RemoteURLAvailable: Setting
+// TestCapabilityResolution_ChromeAvailable: Wiring an ImageGenerator
+// flips CapImageGenChrome to StatusAvailable. Uses a non-nil dummy to
+// satisfy the ImageGenerator interface.
+func TestCapabilityResolution_ChromeAvailable(t *testing.T) {
+	s := &Service{imageGen: &ChromeImageProvider{}}
+
+	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusAvailable {
+		t.Errorf("CapImageGenChrome with wired provider: got %s, want %s", got, StatusAvailable)
+	}
+	// Other capabilities unchanged.
+	if got := s.CapabilityResolution(CapImageGenNvidia); got != StatusMissingDependency {
+		t.Errorf("CapImageGenNvidia: got %s, want %s", got, StatusMissingDependency)
+	}
+}
 // remoteImageEndpointURL on the Service flips CapRemoteImageGen to
 // StatusAvailable; other capabilities retain their wiring.
 func TestCapabilityResolution_RemoteURLAvailable(t *testing.T) {
@@ -83,23 +96,24 @@ func TestCapabilityResolution_RemoteURLAvailable(t *testing.T) {
 	}
 }
 
-// TestAllCapabilities_ContainsAllFiveCapabilities: The AllCapabilities
+// TestAllCapabilities_ContainsAllCapabilities: The AllCapabilities
 // map must contain EVERY Capability constant (not just a subset) so
 // the diagnostic endpoint + future consumers can iterate over it
 // without holding a parallel list.
-func TestAllCapabilities_ContainsAllFiveCapabilities(t *testing.T) {
+func TestAllCapabilities_ContainsAllCapabilities(t *testing.T) {
 	s := &Service{} // zero-valued
 	all := s.AllCapabilities()
 
 	for _, cap := range []Capability{
 		CapImageGenNvidia,
 		CapRemoteImageGen,
+		CapImageGenChrome,
 	} {
 		if _, ok := all[cap]; !ok {
 			t.Errorf("AllCapabilities missing entry for %s", cap)
 		}
 	}
-	if len(all) != 2 {
-		t.Errorf("AllCapabilities length = %d, want 2 (one per known Capability)", len(all))
+	if len(all) != 3 {
+		t.Errorf("AllCapabilities length = %d, want 3 (one per known Capability)", len(all))
 	}
 }

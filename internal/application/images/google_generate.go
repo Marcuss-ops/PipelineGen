@@ -3,28 +3,27 @@ package images
 import (
 	"bytes"
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
+	"os"
 	"strings"
-	"sync"
-	"time"
-
-	"go.uber.org/zap"
-	slides "google.golang.org/api/slides/v1"
-	"google.golang.org/api/option"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	driveauth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// GenerateSmartImage generates an AI image exclusively via Google Slides.
-// It stores every successfully generated file using the existing ingest pipeline.
+// ErrImageGenNotImplemented is the honest error returned by GenerateSmartImage
+// and GenerateSmartImageWithAccount. The Google Slides API path has been removed
+// because it only produced slide thumbnails containing text, not real AI images.
+// The real AI generation pipeline (Playwright → Chrome → slides.new → Nano Banana Pro)
+// will be re-introduced via async jobs (image.generate.google) and the worker system
+// in FASE 3-8 of the image generation refactoring plan.
+var ErrImageGenNotImplemented = fmt.Errorf("image generation via Google Slides API has been removed: it produced only slide thumbnails, not AI-generated images. This endpoint will be replaced by the async image.generate.google job pipeline (pending FASE 3-8)")
+
+// GenerateSmartImage generates an AI image via the injected ImageGenerator port.
+// When imageGen is nil (not wired), returns ErrImageGenNotImplemented.
+// When wired (e.g. ChromeImageProvider), delegates generation and then ingests
+// the result through the normal media_assets pipeline.
 func (s *Service) GenerateSmartImage(
 	ctx context.Context,
 	subject string,
@@ -39,7 +38,10 @@ func (s *Service) GenerateSmartImage(
 	return s.GenerateSmartImageWithAccount(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive, "", "")
 }
 
-// GenerateSmartImageWithAccount generates an AI image exclusively via Google Slides with optional account and project metadata.
+// GenerateSmartImageWithAccount generates an AI image via the injected
+// ImageGenerator port. When imageGen is nil (not wired), returns
+// ErrImageGenNotImplemented. The account and projectID parameters are
+// reserved for future multi-account Google Slides support (FASE 7).
 func (s *Service) GenerateSmartImageWithAccount(
 	ctx context.Context,
 	subject string,
@@ -50,177 +52,95 @@ func (s *Service) GenerateSmartImageWithAccount(
 	width, height int,
 	model string,
 	skipDrive bool,
-	account string,
-	projectID string,
+	_, _ string, // account, projectID — reserved for FASE 7 multi-account
 ) (*asset.ImageAsset, error) {
+	if s.imageGen == nil {
+		return nil, ErrImageGenNotImplemented
+	}
+
 	cleanPrompt := pickImagePrompt(subject, topic, prompts)
 	if cleanPrompt == "" {
 		return nil, fmt.Errorf("missing image prompt")
 	}
 
-	// Check if this image has already been generated and is in the DB
-	if s.repo != nil && s.repo.DB() != nil {
-		// Escape LIKE wildcards in prompt to prevent false dedup matches
-		escapedPrompt := strings.ReplaceAll(strings.ReplaceAll(cleanPrompt, "%", "\\%"), "_", "\\_")
-		descPattern := "%for prompt: " + escapedPrompt
-		var img asset.ImageAsset
-		var name, urlVal, tagsJSON, metaJSON, createdAtStr, fileHash, localPath, driveFileID sql.NullString
-		err := s.repo.DB().QueryRowContext(ctx, `
-			SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
-			FROM media_assets
-			WHERE media_type = 'image' AND name LIKE ?
-			LIMIT 1
-		`, descPattern).Scan(&img.SlugID, &name, &urlVal, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID)
-		if err == nil {
-			existingStyle := pathutil.ExtractStyleFromPath(localPath.String)
-			if style == "" || existingStyle == style {
-				s.log.Info("REUSING already generated image from database",
-					zap.String("prompt", cleanPrompt),
-					zap.String("style", existingStyle),
-				)
-				img.Description = name.String
-				img.SourceURL = urlVal.String
-				img.Hash = fileHash.String
-				img.PathRel = localPath.String
-				img.DriveFileID = driveFileID.String
-				if createdAtStr.Valid {
-					img.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)
-				}
-				if tagsJSON.Valid && tagsJSON.String != "" {
-					_ = json.Unmarshal([]byte(tagsJSON.String), &img.Tags)
-				}
-				if metaJSON.Valid && metaJSON.String != "" {
-					img.MetadataJSON = metaJSON.String
-				}
-				return &img, nil
-			}
-			s.log.Info("GenerateSmartImage: cache hit but style mismatch, re-generating",
-				zap.String("requested_style", style),
-				zap.String("cached_style", existingStyle),
-			)
-		}
-	}
-
-	// Real Google Slides Generation Flow
-	if s.cfg == nil {
-		return nil, fmt.Errorf("config not available")
-	}
-
-	s.log.Info("Google Slides: starting generation", zap.String("prompt", cleanPrompt), zap.String("account", account), zap.String("project_id", projectID))
-
-	// Get HTTP client from auth
-	httpClient, err := driveauth.NewGoogleHTTPClient(ctx, s.cfg.Paths.CredentialsFile, s.cfg.Paths.TokenFile, "https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/presentations")
+	// Delegate to the injected ImageGenerator port.
+	// OutputPath is empty here (sync endpoint); the provider chooses a temp path.
+	result, err := s.imageGen.Generate(ctx, GenerateImageRequest{
+		Prompt: cleanPrompt,
+		Style:  style,
+		Width:  width,
+		Height: height,
+		Model:  model,
+		Tags:   tags,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to init google client: %w", err)
+		return nil, fmt.Errorf("image generation failed: %w", err)
 	}
 
-	slidesSvc, err := slides.NewService(ctx, option.WithHTTPClient(httpClient))
-	if err != nil {
-		return nil, fmt.Errorf("failed to init google slides service: %w", err)
+	// Ingest the generated image through the normal pipeline
+
+	return s.ingestGeneratedImage(ctx, result, style, tags, skipDrive)
+}
+
+// ingestGeneratedImage ingests a GeneratedImage result into the canonical
+// media_assets pipeline (local storage, Drive upload, DB record).
+//
+// FASE 9 (June 2026): when result.OutputPath is set (canonical workspace
+// path), the file is opened directly for zero-copy ingest. Falls back to
+// in-memory Data bytes for backward compatibility (sync endpoints).
+func (s *Service) ingestGeneratedImage(
+	ctx context.Context,
+	result *GeneratedImage,
+	style string,
+	tags []string,
+	skipDrive bool,
+) (*asset.ImageAsset, error) {
+	if result == nil {
+		return nil, fmt.Errorf("generated image result is nil")
 	}
 
-	// 1. Create presentation
-	presentation, err := slidesSvc.Presentations.Create(&slides.Presentation{
-		Title: "Velox Image Gen Slide",
-	}).Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create presentation: %w", err)
-	}
-
-	// Cleanup presentation on function exit (so we don't pollute user's Google Drive)
-	defer func() {
-		if s.driveSvc != nil {
-			s.log.Debug("Google Slides: cleaning up presentation", zap.String("id", presentation.PresentationId))
-			_ = s.driveSvc.Files.Delete(presentation.PresentationId).Do()
-		}
-	}()
-
-	if len(presentation.Slides) == 0 {
-		return nil, fmt.Errorf("created presentation has no slides")
-	}
-	slideID := presentation.Slides[0].ObjectId
-
-	// 2. Add text box to slide with the prompt
-	requests := []*slides.Request{
-		{
-			CreateShape: &slides.CreateShapeRequest{
-				ObjectId:  "textBoxId",
-				ShapeType: "TEXT_BOX",
-				ElementProperties: &slides.PageElementProperties{
-					PageObjectId: slideID,
-					Size: &slides.Size{
-						Height: &slides.Dimension{Magnitude: 400, Unit: "PT"},
-						Width:  &slides.Dimension{Magnitude: 600, Unit: "PT"},
-					},
-					Transform: &slides.AffineTransform{
-						ScaleX:     1,
-						ScaleY:     1,
-						TranslateX: 100,
-						TranslateY: 100,
-						Unit:       "PT",
-					},
-				},
-			},
-		},
-		{
-			InsertText: &slides.InsertTextRequest{
-				ObjectId: "textBoxId",
-				Text:     cleanPrompt,
-			},
-		},
-	}
-	_, err = slidesSvc.Presentations.BatchUpdate(presentation.PresentationId, &slides.BatchUpdatePresentationRequest{
-		Requests: requests,
-	}).Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to add text to slide: %w", err)
-	}
-
-	// 3. Get Thumbnail URL of the slide
-	thumbnail, err := slidesSvc.Presentations.Pages.GetThumbnail(presentation.PresentationId, slideID).Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get slide thumbnail: %w", err)
-	}
-
-	// 4. Download thumbnail image bytes
-	req, err := http.NewRequestWithContext(ctx, "GET", thumbnail.ContentUrl, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download thumbnail: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("thumbnail download returned status %d", resp.StatusCode)
-	}
-
-	imgData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read thumbnail bytes: %w", err)
-	}
-
-	slug := textutil.Slugify(subject)
-	if slug == "" {
-		slug = textutil.Slugify(cleanPrompt)
-	}
+	slug := textutil.Slugify(result.PromptUsed)
 	if len(slug) > 50 {
 		slug = slug[:50]
 	}
 
-	filename := fmt.Sprintf("slides_%d.png", time.Now().Unix())
-	description := fmt.Sprintf("AI generated image via Google Slides for prompt: %s", cleanPrompt)
+	filename := result.PromptUsed
+	if len(filename) > 80 {
+		filename = filename[:80]
+	}
+	filename = textutil.Slugify(filename) + "." + result.Format
+
+	description := fmt.Sprintf("AI generated image via Chrome/Playwright for prompt: %s", result.PromptUsed)
+
+	source := result.Provider
+	if source == "" {
+		source = "google-slides"
+	}
+
+	// Canonical file-based ingest: open the workspace file directly instead
+	// of passing in-memory bytes. Zero-copy into IngestImage → media_assets.
+	var dataReader io.Reader = bytes.NewReader(result.Data)
+	if result.OutputPath != "" {
+		f, err := os.Open(result.OutputPath)
+		if err != nil {
+			return nil, fmt.Errorf("ingestGeneratedImage: failed to open output path %s: %w", result.OutputPath, err)
+		}
+		defer f.Close()
+		dataReader = f
+	}
+
+	if result.OutputPath == "" && len(result.Data) == 0 {
+		return nil, fmt.Errorf("generated image has no data and no output path")
+	}
 
 	return s.IngestImage(
 		ctx,
 		slug,
 		style,
-		"google-slides",
-		bytes.NewReader(imgData),
+		result.SourceHash,
+		dataReader,
 		filename,
-		"google-slides",
+		source,
 		description,
 		tags,
 		skipDrive,
@@ -228,6 +148,9 @@ func (s *Service) GenerateSmartImageWithAccount(
 	)
 }
 
+// pickImagePrompt extracts the most specific prompt from a list of prompts
+// or constructs one from subject+topic.
+// KEPT: will be reused by the future Playwright-based ChromeImageProvider (FASE 3-8).
 func pickImagePrompt(subject, topic string, prompts []string) string {
 	for _, p := range prompts {
 		if p = strings.TrimSpace(p); p != "" {
@@ -248,83 +171,4 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 	default:
 		return ""
 	}
-}
-
-type BatchImageItem struct {
-	Subject   string
-	Topic     string
-	Style     string
-	Prompts   []string
-	Tags      []string
-	Width     int
-	Height    int
-	Model     string
-	SkipDrive bool
-	Account   string
-	ProjectID string
-}
-
-// GenerateSmartImageBatchParallel generates multiple Google Slides images concurrently with worker parallelism limit.
-func (s *Service) GenerateSmartImageBatchParallel(
-	ctx context.Context,
-	items []BatchImageItem,
-	concurrency int,
-) ([]*asset.ImageAsset, error) {
-	if len(items) == 0 {
-		return nil, nil
-	}
-	if concurrency <= 0 {
-		concurrency = 4
-	}
-
-	results := make([]*asset.ImageAsset, len(items))
-	errs := make([]error, len(items))
-	sem := make(chan struct{}, concurrency)
-	var wg sync.WaitGroup
-
-	for i, item := range items {
-		wg.Add(1)
-		go func(idx int, itm BatchImageItem) {
-			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-ctx.Done():
-				errs[idx] = ctx.Err()
-				return
-			}
-
-			img, err := s.GenerateSmartImageWithAccount(
-				ctx,
-				itm.Subject,
-				itm.Topic,
-				itm.Style,
-				itm.Prompts,
-				itm.Tags,
-				itm.Width,
-				itm.Height,
-				itm.Model,
-				itm.SkipDrive,
-				itm.Account,
-				itm.ProjectID,
-			)
-			if err != nil {
-				errs[idx] = err
-			} else {
-				results[idx] = img
-			}
-		}(i, item)
-	}
-
-	wg.Wait()
-
-	var firstErr error
-	for _, err := range errs {
-		if err != nil {
-			firstErr = err
-			break
-		}
-	}
-
-	return results, firstErr
 }

@@ -65,6 +65,7 @@ func buildImagesService(
 		voMetaWriter,
 		ingestSvc,
 		dispatcher,
+		imgservice.NewChromeImageProvider(cfg.Paths.PythonScriptsDir, 3, log), // FASE 8: 3 persistent profiles, per-profile queue
 		log,
 	)
 

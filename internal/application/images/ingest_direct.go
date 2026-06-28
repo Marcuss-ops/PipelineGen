@@ -7,12 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -172,29 +169,12 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		return nil, fmt.Errorf("failed to add image to repository: %w", err)
 	}
 
-	// Determine search text for vector indexing
+	// Determine search text for the asset record.
 	searchText := description
 	if taggerErr == nil && metaResult != nil && metaResult.Payload != nil && metaResult.Payload.SearchText != "" {
 		searchText = metaResult.Payload.SearchText
 	}
-
-	// PG-034 (June 2026): vector indexing call site kept as a no-op
-	// (s.indexAssetInVectorStore is now a no-op stub). The DB-side
-	// embedding JSON was already persisted earlier in the pipeline via
-	// UpdateEmbeddingData, so the canonical metadata survives in SQLite
-	// even without a vector-store backend. The function call is
-	// preserved so the legacy image-vector-indexing goroutine contract
-	// continues to hold — callers may add new behaviors behind the
-	// indexAssetInVectorStore seam without changing this site.
-	asyncCtx, asyncCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-	concurrent.SafeGo("image-vector-indexing", func() {
-		defer asyncCancel()
-		driveLink := ""
-		if driveFileID != "" {
-			driveLink = storedrive.FileURLFromID(driveFileID)
-		}
-		s.indexAssetInVectorStore(asyncCtx, hash, source, searchText, relPath, driveLink, style, "image", searchText, tags)
-	})
+	_ = searchText
 
 	return asset, nil
 }

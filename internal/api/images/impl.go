@@ -2,7 +2,8 @@ package images
 
 import (
 	"bytes"
-	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"
@@ -22,10 +25,11 @@ import (
 type ImagesHandler struct {
 	service   *imgservice.Service
 	ingestSvc *ingest.Service
+	jobsSvc   domainjob.Service
 }
 
-func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service) *ImagesHandler {
-	return &ImagesHandler{service: service, ingestSvc: ingestSvc}
+func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jobsSvc domainjob.Service) *ImagesHandler {
+	return &ImagesHandler{service: service, ingestSvc: ingestSvc, jobsSvc: jobsSvc}
 }
 
 func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
@@ -47,6 +51,8 @@ type UploadRequest struct {
 	Tags    []string `json:"tags"`
 }
 
+// GenerateNvidiaRequest is the legacy request type for POST /api/images/generate.
+// REMOVAL: pending Step 5 cleanup — no longer bound by Generate handler (Step 2).
 type GenerateNvidiaRequest struct {
 	Prompt    string   `json:"prompt" binding:"required"`
 	Model     string   `json:"model"`
@@ -58,14 +64,50 @@ type GenerateNvidiaRequest struct {
 	ProjectID string   `json:"project_id,omitempty"`
 }
 
+// GenerateBatchRequest is the async batch image generation request (FASE 3, June 2026).
+// Each item becomes an independent image.generate.google job; concurrency is
+// controlled server-side by the worker pool, not by the client.
 type GenerateBatchRequest struct {
-	Items       []GenerateNvidiaRequest `json:"items" binding:"required"`
-	Concurrency int                     `json:"concurrency"`
+	// RequestID is an optional caller-supplied identifier for correlation.
+	RequestID string `json:"request_id,omitempty"`
+	// Items is the list of images to generate (required, min 1).
+	Items []GenerateBatchItem `json:"items" binding:"required,min=1"`
+}
+
+// GenerateBatchItem describes a single image to generate in a batch.
+type GenerateBatchItem struct {
+	// Prompt is the natural-language description of the desired image.
+	Prompt string `json:"prompt" binding:"required"`
+	// Style is the visual style (e.g. "cinematic", "anime").
+	Style string `json:"style,omitempty"`
+	// Width and Height are the desired output dimensions (default 1920x1080).
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
+	// Model is the AI model override (empty = provider default).
+	Model string `json:"model,omitempty"`
+	// Tags are metadata labels to attach to the generated asset.
+	Tags []string `json:"tags,omitempty"`
 }
 
 type AnimateRequest struct {
 	ImageHash string `json:"image_hash" binding:"required"`
 	Duration  int    `json:"duration"`
+}
+
+// generateBatchID creates a short unique batch identifier.
+func generateBatchID() string {
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("imgbatch_%d", time.Now().UnixNano())
+	}
+	return "imgbatch_" + hex.EncodeToString(b)
+}
+
+// batchJobResponse is the per-job entry in the 202 response.
+type batchJobResponse struct {
+	JobID    string `json:"job_id"`
+	Position int    `json:"position"`
+	Status   string `json:"status"`
 }
 
 // Upload permette di aggiungere manualmente un'immagine tramite URL
@@ -158,136 +200,90 @@ func (h *ImagesHandler) Sync(c *gin.Context) {
 	apiutil.OK(c, gin.H{"message": "Synchronization complete (Local + Drive)"})
 }
 
-// Generate genera un'immagine AI: prova Google Flow (primario), fallback NVIDIA.
+// Generate genera un'immagine AI.
+// Deprecato: la Google Slides API (slidesSvc.Presentations.Create/BatchUpdate/GetThumbnail)
+// è stata rimossa perché produceva solo thumbnail testuali, non immagini AI.
+// L'endpoint verrà ricostruito come job asincrono image.generate.google (FASE 3-8).
 func (h *ImagesHandler) Generate(c *gin.Context) {
-	var req GenerateNvidiaRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
-		return
-	}
-
-	// Truthful capability gate (fix(images): expose truthful capability
-	// availability). GenerateSmartImage falls back from Remote to NVIDIA,
-	// so EITHER being StatusAvailable suffices. If BOTH are missing we
-	// surface 503 (configurable dep absent) rather than returning a 200
-	// with an empty asset. If either is NotImplemented we surface 501.
-	nvidiaStatus := h.service.CapabilityResolution(imgservice.CapImageGenNvidia)
-	remoteStatus := h.service.CapabilityResolution(imgservice.CapRemoteImageGen)
-	if nvidiaStatus == imgservice.StatusNotImplemented || remoteStatus == imgservice.StatusNotImplemented {
-		c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
-			"error":         "image generation capability not implemented",
-			"nvidia_status": nvidiaStatus,
-			"remote_status": remoteStatus,
-		})
-		return
-	}
-	if nvidiaStatus != imgservice.StatusAvailable && remoteStatus != imgservice.StatusAvailable {
-		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
-			"error":         "image generation services unavailable: configure NVIDIA_API_KEY or VELOX_REMOTE_IMAGE_ENDPOINT",
-			"nvidia_status": nvidiaStatus,
-			"remote_status": remoteStatus,
-		})
-		return
-	}
-
-	// Create a long-lived context for AI generation
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 6*time.Minute)
-	defer cancel()
-
-	// Default to 1920x1080 for YouTube format if not specified
-	if req.Width == 0 {
-		req.Width = 1920
-	}
-	if req.Height == 0 {
-		req.Height = 1080
-	}
-
-	// Always upload to Drive via the common pipeline
-	skipDrive := false
-	asset, err := h.service.GenerateSmartImageWithAccount(
-		ctx,
-		req.Prompt,           // subject
-		"",                   // topic (vuoto, usiamo solo il prompt)
-		req.Style,            // style
-		[]string{req.Prompt}, // prompts
-		req.Tags,
-		req.Width,
-		req.Height,
-		req.Model,
-		skipDrive,
-		req.Account,
-		req.ProjectID,
-	)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"prompt": req.Prompt,
-		"model":  req.Model,
-		"style":  req.Style,
-		"image": gin.H{
-			"hash":          asset.Hash,
-			"path_rel":      asset.PathRel,
-			"source_url":    asset.SourceURL,
-			"url_full":      "/assets/" + asset.PathRel,
-			"desc":          asset.Description,
-			"tags":          asset.Tags,
-			"drive_link":    h.service.FormatDriveLink(asset.DriveFileID),
-			"drive_file_id": asset.DriveFileID,
-		},
+	c.AbortWithStatusJSON(http.StatusNotImplemented, gin.H{
+		"error":   "image generation endpoint has been removed",
+		"message": imgservice.ErrImageGenNotImplemented.Error(),
 	})
 }
 
-// GenerateBatch genera concorrentemente un batch di immagini AI in parallelismo su Chrome.
+// GenerateBatch accetta un batch di prompt e li trasforma in job asincroni.
+// Ogni item diventa un job image.generate.google indipendente.
+// La risposta è 202 Accepted con batch_id e lista dei job creati.
+//
+// FASE 3 (June 2026): la vecchia implementazione sincrona (Google Slides API)
+// è stata rimossa. Questo endpoint ora orchestra il sistema di job asincroni.
 func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 	var req GenerateBatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
-	if len(req.Items) == 0 {
-		apiutil.BadRequest(c, "items list cannot be empty")
+
+	if h.jobsSvc == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"error": "job service not wired — image generation requires the async job system",
+		})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Minute)
-	defer cancel()
+	batchID := generateBatchID()
+	if req.RequestID != "" {
+		batchID = req.RequestID + "_" + batchID
+	}
 
-	batchItems := make([]imgservice.BatchImageItem, len(req.Items))
-	for i, itm := range req.Items {
-		w := itm.Width
-		if w == 0 {
-			w = 1920
+	// Apply defaults
+	for i := range req.Items {
+		if req.Items[i].Width == 0 {
+			req.Items[i].Width = 1920
 		}
-		heightVal := itm.Height
-		if heightVal == 0 {
-			heightVal = 1080
-		}
-		batchItems[i] = imgservice.BatchImageItem{
-			Subject:   itm.Prompt,
-			Style:     itm.Style,
-			Prompts:   []string{itm.Prompt},
-			Tags:      itm.Tags,
-			Width:     w,
-			Height:    heightVal,
-			Model:     itm.Model,
-			SkipDrive: false,
-			Account:   itm.Account,
-			ProjectID: itm.ProjectID,
+		if req.Items[i].Height == 0 {
+			req.Items[i].Height = 1080
 		}
 	}
 
-	assets, err := h.service.GenerateSmartImageBatchParallel(ctx, batchItems, req.Concurrency)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
+	jobs := make([]batchJobResponse, len(req.Items))
+	for i, item := range req.Items {
+		position := i
+		correlationID := fmt.Sprintf("%s_%d", batchID, position)
+
+		payload := map[string]any{
+			"batch_id": batchID,
+			"position": position,
+			"prompt":   item.Prompt,
+			"style":    item.Style,
+			"width":    item.Width,
+			"height":   item.Height,
+			"model":    item.Model,
+			"tags":     item.Tags,
+		}
+
+		enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &domainjob.EnqueueRequest{
+			Type:          appjobs.TypeImageGenerateGoogle,
+			CorrelationID: correlationID,
+			Payload:       payload,
+			MaxRetries:    2,
+		})
+		if err != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job %d/%d: %w", i+1, len(req.Items), err))
+			return
+		}
+
+		jobs[i] = batchJobResponse{
+			JobID:    enqueued.ID,
+			Position: position,
+			Status:   string(enqueued.Status),
+		}
 	}
 
-	apiutil.OK(c, gin.H{
-		"total":  len(assets),
-		"images": assets,
+	c.JSON(http.StatusAccepted, gin.H{
+		"batch_id": batchID,
+		"accepted": len(jobs),
+		"jobs":     jobs,
 	})
 }
 

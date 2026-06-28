@@ -2,54 +2,31 @@ package images
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"go.uber.org/zap"
 )
 
-func TestRealGoogleSlidesImageGen(t *testing.T) {
-	if os.Getenv("RUN_REAL_SLIDES_TEST") != "true" {
-		t.Skip("Skipping real Slides API test. Set RUN_REAL_SLIDES_TEST=true to run.")
+// TestGenerateSmartImage_ReturnsNotImplemented verifies that GenerateSmartImage
+// returns ErrImageGenNotImplemented after the Google Slides API removal.
+func TestGenerateSmartImage_ReturnsNotImplemented(t *testing.T) {
+	s := &Service{}
+	_, err := s.GenerateSmartImage(context.Background(), "test", "", "", nil, nil, 1920, 1080, "", false)
+	if err == nil {
+		t.Fatal("expected ErrImageGenNotImplemented, got nil")
 	}
-
-	cfg := config.Get()
-	dir, _ := os.Getwd()
-	repoRoot := filepath.Join(dir, "..", "..", "..")
-	cfg.Paths.CredentialsFile = filepath.Join(repoRoot, "credentials.json")
-	cfg.Paths.TokenFile = filepath.Join(repoRoot, "token.json")
-	cfg.Storage.TempDir = filepath.Join(repoRoot, "tmp")
-	cfg.Storage.DataDir = filepath.Join(repoRoot, "data")
-
-	log, _ := zap.NewDevelopment()
-
-	s := &Service{
-		cfg:     cfg,
-		log:     log,
-		tempDir: cfg.Storage.TempPath(),
+	if err != ErrImageGenNotImplemented {
+		t.Fatalf("expected ErrImageGenNotImplemented, got %v", err)
 	}
-
-	ctx := context.Background()
-	// Run real generation. Set skipDrive=true to focus on Slides API + download.
-	asset, err := s.GenerateSmartImage(ctx, "Automated Test Slide", "", "", nil, []string{"test-slides"}, 1920, 1080, "", true)
-	if err != nil {
-		t.Fatalf("Failed to generate real slides image: %v", err)
-	}
-
-	t.Logf("Real Slides Image Generated successfully!")
-	t.Logf("Asset description: %s", asset.Description)
-	t.Logf("Path: %s", asset.PathRel)
 }
 
-func TestGenerateSmartImageBatchParallel_Empty(t *testing.T) {
+// TestGenerateSmartImageWithAccount_ReturnsNotImplemented verifies the same for
+// the WithAccount variant.
+func TestGenerateSmartImageWithAccount_ReturnsNotImplemented(t *testing.T) {
 	s := &Service{}
-	res, err := s.GenerateSmartImageBatchParallel(context.Background(), nil, 2)
-	if err != nil {
-		t.Fatalf("expected nil error for empty batch, got %v", err)
+	_, err := s.GenerateSmartImageWithAccount(context.Background(), "test", "", "", nil, nil, 1920, 1080, "", false, "", "")
+	if err == nil {
+		t.Fatal("expected ErrImageGenNotImplemented, got nil")
 	}
-	if len(res) != 0 {
-		t.Fatalf("expected 0 results, got %d", len(res))
+	if err != ErrImageGenNotImplemented {
+		t.Fatalf("expected ErrImageGenNotImplemented, got %v", err)
 	}
 }

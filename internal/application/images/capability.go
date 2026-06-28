@@ -19,11 +19,17 @@ package images
 //     nvidiaAPIKey + cfg.Concurrency.MaxConcurrentNvidiaGenerations)
 //   - CapRemoteImageGen    — Remote Google Flow image gen (depends on
 //     remoteImageEndpointURL)
+//   - CapImageGenChrome    — Chrome/Playwright image gen (depends on
+//     imageGen ImageGenerator being wired — FASE 2, June 2026)
 type Capability string
 
 const (
 	CapImageGenNvidia Capability = "image_gen_nvidia"
 	CapRemoteImageGen Capability = "remote_image_gen"
+	// CapImageGenChrome mirrors the RequiredCapabilities entry in
+	// internal/application/jobs/registry.go::Compose() TypeImageGenerateGoogle.
+	// Keep the string value in sync across both declaration sites.
+	CapImageGenChrome Capability = "image_gen_chrome"
 )
 
 // CapabilityStatus is the explicit availability flag for a capability.
@@ -69,6 +75,13 @@ func (s *Service) CapabilityResolution(cap Capability) CapabilityStatus {
 			return StatusMissingDependency
 		}
 		return StatusAvailable
+	case CapImageGenChrome:
+		// Available when an ImageGenerator (ChromeImageProvider) is wired.
+		// No env-var dependency — the provider is injected at composition time.
+		if s.imageGen == nil {
+			return StatusMissingDependency
+		}
+		return StatusAvailable
 	default:
 		return StatusNotImplemented
 	}
@@ -83,5 +96,6 @@ func (s *Service) AllCapabilities() map[Capability]CapabilityStatus {
 	return map[Capability]CapabilityStatus{
 		CapImageGenNvidia: s.CapabilityResolution(CapImageGenNvidia),
 		CapRemoteImageGen: s.CapabilityResolution(CapRemoteImageGen),
+		CapImageGenChrome: s.CapabilityResolution(CapImageGenChrome),
 	}
 }
