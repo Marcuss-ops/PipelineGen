@@ -583,6 +583,17 @@ the snapshot table above.
   transitions, identity drift, path safety, accounting correctness),
   per-PR contract details, tests pinned, and future-work pointers
   (PR-VO-B1+B2, PR-VO-B3, PR-VO-C1).
+- **PR-VO-B1-C1 P0→P1 hardening (`73c44aca` → `c2867b90`)** — voiceover
+  P1 closure across B1, B2, B3, C1. The "Future P1/P2 work" pointer
+  in `docs/voiceover/p0-bundle-A1-A6.md` is fully resolved by this
+  bundle; future work now lives in `docs/voiceover/p1-bundle-B1-C1.md`.
+  See [`docs/voiceover/p1-bundle-B1-C1.md`](docs/voiceover/p1-bundle-B1-C1.md)
+  for the per-commit index, cumulative risk coverage (Drive upload
+  boundary, group/locale identity, sync dedupe key, HTTP endpoint
+  unification), per-PR contract details (DriveUploaderPort, StyleGroup
+  propagation, BCP-47/compact locale parser, destination.kind routing
+  + RFC 8594 Sunset), tests pinned, architectural patterns reaffirmed,
+  and forward-pointer to PR-VO-D1/D2/D3 + E1.
 
 ---
 
