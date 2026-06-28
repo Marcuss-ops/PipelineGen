@@ -16,31 +16,35 @@ def main():
 
     print("Launching browser with session profile...")
     with sync_playwright() as p:
+        sf = "data/google_slides_storage.json"
+        storage_state_arg = sf if os.path.exists(sf) else None
+
         context = p.chromium.launch_persistent_context(
             "data/google_slides_session_profile",
             headless=not args.headful,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
             ]
         )
-        sf = "data/google_slides_storage.json"
-        if os.path.exists(sf):
-            with open(sf) as f:
-                sdata = json.load(f)
-                if "cookies" in sdata:
-                    context.add_cookies(sdata["cookies"])
-
+        context.add_init_script("delete navigator.__proto__.webdriver")
         page = context.new_page()
         print("Navigating to slides.new...")
         page.goto("https://slides.new", wait_until="domcontentloaded")
         time.sleep(5)
 
-        print("Clicking insert-generated-image card...")
-        btn = page.locator('button.insert-generated-image, [data-view-id="insert-generated-image"], div:has-text("Nano Banana Pro")').last
-        btn.click(force=True)
-        time.sleep(2)
+        try:
+            print("Clicking insert-generated-image card...")
+            btn = page.locator('button.insert-generated-image, [data-view-id="insert-generated-image"], div:has-text("Nano Banana Pro")').last
+            btn.click(force=True)
+            time.sleep(2)
+        except Exception as e:
+            os.makedirs("tmp", exist_ok=True)
+            page.screenshot(path="tmp/failure_screenshot.png")
+            print("Saved failure screenshot to tmp/failure_screenshot.png")
+            raise e
 
         print(f"Entering AI image prompt: '{args.prompt}'...")
         ta = page.locator('.image-synthesis textarea, textarea').first
