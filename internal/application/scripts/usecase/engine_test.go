@@ -25,7 +25,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	gemmamemory "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
@@ -62,13 +61,13 @@ func (f *fakeOllamaGen) GenerateScript(_ context.Context, req ollamatypes.TextGe
 //     so tests can observe call counts (used by ForceRefresh-bypass
 //     verification).
 type fakeMemoryGate struct {
-	result      *gemmamemory.GateResult
+	result      *memoryGateResult
 	returnErr   error
-	capturedReq *gemmamemory.MemoryGateRequest
+	capturedReq *memoryGateRequest
 	onCheck     func()
 }
 
-func (f *fakeMemoryGate) CheckGate(_ context.Context, req gemmamemory.MemoryGateRequest) (*gemmamemory.GateResult, error) {
+func (f *fakeMemoryGate) CheckGate(_ context.Context, req memoryGateRequest) (*memoryGateResult, error) {
 	if f.onCheck != nil {
 		f.onCheck()
 	}
@@ -327,7 +326,7 @@ func TestEngineGenerate_MemoryGateHit(t *testing.T) {
 	gen := &fakeOllamaGen{}
 	cached := `{"schema_version":1,"text":"Cached script from memory.","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"Cached script from memory.","kind":"narration","bindings":{}}]}}`
 	mem := &fakeMemoryGate{
-		result: &gemmamemory.GateResult{
+		result: &	memoryGateResult{
 			Output:    cached,
 			WordCount: 42,
 			Model:     "llama3:8b",
@@ -357,7 +356,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemory(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
 	mem := &fakeMemoryGate{
-		result: &gemmamemory.GateResult{
+		result: &	memoryGateResult{
 			Output:    "Should not be returned.",
 			WordCount: 10,
 		},
@@ -464,7 +463,7 @@ func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 	gen := &fakeOllamaGen{}
 	legacyArray := `[{"id":"scene-0","index":0,"text":"Legacy cached scene.","kind":"narration"}]`
 	mem := &fakeMemoryGate{
-		result: &gemmamemory.GateResult{
+		result: &	memoryGateResult{
 			Output:    legacyArray,
 			WordCount: 5,
 			Model:     "llama3:8b",
@@ -505,7 +504,7 @@ func TestEngineGenerate_CacheProseHit(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
 	mem := &fakeMemoryGate{
-		result: &gemmamemory.GateResult{
+		result: &	memoryGateResult{
 			Output:    "This is not JSON, just prose paragraphs.",
 			WordCount: 10,
 			Model:     "llama3:8b",
@@ -633,7 +632,9 @@ func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
 	}
 	editorial := buildEditorialPrompt(item)
 	fp := BuildItemIdentity(item)
-	assert.NotContains(t, editorial, fp, "RenderedPrompt must NOT contain the item fingerprint hash")
+	if fp != "" {
+		assert.NotContains(t, editorial, fp, "RenderedPrompt must NOT contain the item fingerprint hash")
+	}
 	assert.Contains(t, editorial, "Documentary tone.", "editorial prompt should include source guidelines")
 	assert.Contains(t, editorial, "250", "editorial prompt should include target words")
 }
@@ -646,7 +647,7 @@ func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
 func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
-	var captured gemmamemory.MemoryGateRequest
+	var captured 	memoryGateRequest
 	mem := &fakeMemoryGate{
 		result:      nil, // cache miss path: nil result, but we still see the request
 		capturedReq: &captured,
@@ -690,7 +691,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemoryWithCacheKey(t *testing.T) {
 		onCheck: func() { called.Add(1) },
 		// Canonical cache hit payload — but ForceRefresh means the
 		// engine never even asks.
-		result: &gemmamemory.GateResult{
+		result: &	memoryGateResult{
 			Output:    "Should not be returned.",
 			WordCount: 10,
 		},

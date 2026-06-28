@@ -605,7 +605,7 @@ func (s *ClipOpsService) Verify(ctx context.Context, source, clipID string) *Ver
 // Static scopes (per AGENTS.md + pre-PR-3 handler contract):
 //   - "all"      — wildcard (cleanup every source)
 //   - "voiceover" — voiceover-source cleanup (separate voiceovers table;
-//                   AssetMutationDispatcher does not write to it)
+//     AssetMutationDispatcher does not write to it)
 //   - "images"   — images-source cleanup
 //
 // Dynamic scopes (provider-registered: youtube / artlist /

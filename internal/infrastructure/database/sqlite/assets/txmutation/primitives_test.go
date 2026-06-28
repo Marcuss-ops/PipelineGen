@@ -7,17 +7,17 @@
 //
 // QDRANT-purge-child-keys (June 2026, PR 4) closure:
 //
-//   The previous HardDeleteTx loop ran `DELETE FROM <table> WHERE id = ?`
-//   for every child. That was wrong for tables whose FK column to
-//   media_assets is `asset_id` (NOT the PK `id`). The fix introduced
-//   the explicit `childDelete{table, column}` map. These tests pin the
-//   new behaviour against the production columns (asset_locations +
-//   asset_processing + asset_versions all use asset_id).
+//	The previous HardDeleteTx loop ran `DELETE FROM <table> WHERE id = ?`
+//	for every child. That was wrong for tables whose FK column to
+//	media_assets is `asset_id` (NOT the PK `id`). The fix introduced
+//	the explicit `childDelete{table, column}` map. These tests pin the
+//	new behaviour against the production columns (asset_locations +
+//	asset_processing + asset_versions all use asset_id).
 //
-//   asset_dedupe (legacy fossil) was dropped from the deletion map
-//   intentionally — see the long-form rationale on
-//   hardDeleteChildTables in primitives.go. These tests do not
-//   recreate it.
+//	asset_dedupe (legacy fossil) was dropped from the deletion map
+//	intentionally — see the long-form rationale on
+//	hardDeleteChildTables in primitives.go. These tests do not
+//	recreate it.
 package txmutation
 
 import (
@@ -48,10 +48,10 @@ import (
 //
 // Schema:
 //
-//   media_assets(id TEXT PK, lifecycle_state TEXT, qdrant_point_state TEXT)
-//   asset_locations(id INTEGER PK, asset_id TEXT)
-//   asset_processing(id INTEGER PK, asset_id TEXT, step TEXT)
-//   asset_versions(id INTEGER PK, asset_id TEXT, version_number INTEGER)
+//	media_assets(id TEXT PK, lifecycle_state TEXT, qdrant_point_state TEXT)
+//	asset_locations(id INTEGER PK, asset_id TEXT)
+//	asset_processing(id INTEGER PK, asset_id TEXT, step TEXT)
+//	asset_versions(id INTEGER PK, asset_id TEXT, version_number INTEGER)
 //
 // Note: the production schema for these tables carries additional
 // columns and constraints (CHECKs, FK references, indexes). Stripping

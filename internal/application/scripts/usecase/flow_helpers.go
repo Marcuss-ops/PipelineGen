@@ -727,7 +727,6 @@ func minInt(a, b int) int {
 	return b
 }
 
-
 // NewGenerateEnqueueRequest builds the request for the unified generate endpoint.
 // Phase 1b stub.
 func NewGenerateEnqueueRequest(payload any) any { return payload }

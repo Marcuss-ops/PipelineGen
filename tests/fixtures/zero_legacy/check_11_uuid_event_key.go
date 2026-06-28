@@ -11,22 +11,22 @@
 // The fixture provides THREE functions so the self-check validates all
 // three Check 11 patterns:
 //
-//   1. badUuidEventKeyInline      — single-line shape (caught by the
-//                                   `eventKey.*uuid\.NewString` pattern).
-//   2. badUuidEventKeyForward     — multi-line shape with `eventKey` on
-//                                   line N and `eventID := uuid.NewString()`
-//                                   on line N+1 (caught by the
-//                                   `eventKey[^\n]*\n...\nuuid\.NewString`
-//                                   pattern).
-//   3. badUuidEventKeyReverse     — multi-line shape with the
-//                                   `uuid.NewString()` call on a line
-//                                   ABOVE the `eventKey` assignment,
-//                                   matching the exact production code
-//                                   shape at
-//                                   cmd/admin/reconcile_qdrant.go:413-414
-//                                   (caught by the reverse
-//                                   `uuid\.NewString[^\n]*\n...\neventKey`
-//                                   pattern).
+//  1. badUuidEventKeyInline      — single-line shape (caught by the
+//     `eventKey.*uuid\.NewString` pattern).
+//  2. badUuidEventKeyForward     — multi-line shape with `eventKey` on
+//     line N and `eventID := uuid.NewString()`
+//     on line N+1 (caught by the
+//     `eventKey[^\n]*\n...\nuuid\.NewString`
+//     pattern).
+//  3. badUuidEventKeyReverse     — multi-line shape with the
+//     `uuid.NewString()` call on a line
+//     ABOVE the `eventKey` assignment,
+//     matching the exact production code
+//     shape at
+//     cmd/admin/reconcile_qdrant.go:413-414
+//     (caught by the reverse
+//     `uuid\.NewString[^\n]*\n...\neventKey`
+//     pattern).
 //
 // The multi-line shape is the dangerous one because stashing the random
 // UUID in an intermediate variable before appending it to eventKey is a

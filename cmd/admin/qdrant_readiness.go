@@ -1,6 +1,6 @@
 // cmd/admin/qdrant_readiness.go — production-shaped readiness gate (PR 15, June 2026).
 //
-// PR 15 — Readiness production-shaped
+// # PR 15 — Readiness production-shaped
 //
 // The previous qdrant-readiness command built a synthetic correct router
 // (api.NewRouter + stubAuthPort + stubRatePort + stubFeaturesPort +
@@ -18,20 +18,20 @@
 //
 // Removed stubs (all gone in PR 15):
 //   - stubOutboxRouter        — replaced by checkRoutesReal
-//                               (real handler injected from root)
+//     (real handler injected from root)
 //   - stubMediaSearchRouter   — replaced by checkRoutesReal
-//                               (real handler injected from root)
+//     (real handler injected from root)
 //   - stubAuthPort            — replaced by a real AuthSecurityPort
-//                               constructed from cfg.Security
+//     constructed from cfg.Security
 //   - stubRatePort            — replaced by a real RateLimitPort
-//                               constructed from cfg.Security
+//     constructed from cfg.Security
 //   - stubFeaturesPort        — replaced by a real FeatureFlagsPort
-//                               constructed from cfg.FeatureFlags
+//     constructed from cfg.FeatureFlags
 //   - noOpQdrantLister        — replaced by *qdrant.Reconciler
-//                               backed by production *qdrant.Client
-//                               and *qdrant.SQLiteAssetStore
+//     backed by production *qdrant.Client
+//     and *qdrant.SQLiteAssetStore
 //   - noOpSQLiteReconcileReader — replaced by repository.ClipsRepo
-//                               (production SQLite reader)
+//     (production SQLite reader)
 package main
 
 import (
@@ -49,14 +49,14 @@ import (
 	"go.uber.org/zap"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
+	app "github.com/Marcuss-ops/PipelineGen/internal/app"
 	middlewareports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/legacyaudit"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/qdrant/reconciler"
-	app "github.com/Marcuss-ops/PipelineGen/internal/app"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -172,19 +172,19 @@ type compositionRoot struct {
 //
 // PR 15 — 9 user-specified keys, alphabetical from the spec:
 //
-//   "dead_letters_zero"             (production outbox status check)
-//   "dispatcher_really_built"       (root.Outbox.Dispatcher != nil)
-//   "legacy_cleanup_clean"          (per-channel SQL aggregate)
-//   "production_sqlite_reader"      (root.Repos.ClipsRepo != nil)
-//   "qdrant_active_collection_real" (real client + GetAliasTarget +
-//                                    CompareActiveCollection)
-//   "real_routes_present"           (real router built from production
-//                                    handlers, not stubs)
-//   "scan_reconciler_complete"      (real qdrant.Reconciler dry-run
-//                                    against SQLite + Qdrant)
-//   "server_production_constructor" (root != nil AND every required
-//                                    bundle non-nil)
-//   "worker_real_state"             (root.Outbox.EventsPool != nil)
+//	"dead_letters_zero"             (production outbox status check)
+//	"dispatcher_really_built"       (root.Outbox.Dispatcher != nil)
+//	"legacy_cleanup_clean"          (per-channel SQL aggregate)
+//	"production_sqlite_reader"      (root.Repos.ClipsRepo != nil)
+//	"qdrant_active_collection_real" (real client + GetAliasTarget +
+//	                                 CompareActiveCollection)
+//	"real_routes_present"           (real router built from production
+//	                                 handlers, not stubs)
+//	"scan_reconciler_complete"      (real qdrant.Reconciler dry-run
+//	                                 against SQLite + Qdrant)
+//	"server_production_constructor" (root != nil AND every required
+//	                                 bundle non-nil)
+//	"worker_real_state"             (root.Outbox.EventsPool != nil)
 //
 // Plus the pre-existing "delivery_signer" check (HMAC secret >= 16)
 // as a backwards-compat key because the existing test suite asserts

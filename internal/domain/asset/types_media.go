@@ -518,6 +518,19 @@ type CategoryChannel struct {
 	// SegmentPrompt is a custom prompt for the AI segment finder.
 	SegmentPrompt string `json:"segment_prompt,omitempty"`
 
+	// PR 2 (June 2026): monitoring state columns. category_channels is now
+	// the single source of truth; the JSON fallback is removed.
+	Enabled       int    `json:"enabled,omitempty"`
+	NextCheckAt   string `json:"next_check_at,omitempty"`
+	LastCheckedAt string `json:"last_checked_at,omitempty"`
+
+	// PR 3 (June 2026): scheduler state for persistent single-ticker scheduling.
+	ConsecutiveFailures int    `json:"consecutive_failures,omitempty"`
+	LastError           string `json:"last_error,omitempty"`
+	LastSuccessAt       string `json:"last_success_at,omitempty"`
+	LeaseOwner          string `json:"lease_owner,omitempty"`
+	LeaseUntil          string `json:"lease_until,omitempty"`
+
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }

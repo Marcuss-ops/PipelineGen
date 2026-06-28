@@ -65,6 +65,9 @@ type CurateNoClipsError struct {
 	ResultCount int
 }
 
+// Unwrap returns the ErrCurateNoClips sentinel so errors.Is matches.
+func (e *CurateNoClipsError) Unwrap() error { return ErrCurateNoClips }
+
 // Error implements the error interface.
 func (e *CurateNoClipsError) Error() string {
 	if e == nil {

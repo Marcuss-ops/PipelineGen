@@ -26,11 +26,14 @@ import (
 // repository, per the Capability Standard rule that ports must be
 // consumer-owned first.
 type Repository interface {
-	// ListAll returns every category↔channel association in the store.
+	// ListAll returns every category-channel association in the store.
 	ListAll(ctx context.Context) ([]*asset.CategoryChannel, error)
 	// ListCategories returns the distinct set of categories that have
 	// at least one channel assigned.
 	ListCategories(ctx context.Context) ([]string, error)
+	// ListEnabled returns all enabled channels (enabled=1). Used by the
+	// channel monitor to discover which channels to check.
+	ListEnabled(ctx context.Context) ([]*asset.CategoryChannel, error)
 	// GetByID returns a single channel association by its primary key.
 	// Returns a wrapped not-found error when the id is unknown.
 	GetByID(ctx context.Context, id string) (*asset.CategoryChannel, error)
@@ -66,12 +69,20 @@ type Channel struct {
 	LookbackDays     int    `json:"LookbackDays"`
 	MaxSegments      int    `json:"MaxSegments"`
 	SegmentPrompt    string `json:"SegmentPrompt,omitempty"`
+	Enabled          int    `json:"Enabled,omitempty"`
+	NextCheckAt      string `json:"NextCheckAt,omitempty"`
+	LastCheckedAt    string `json:"LastCheckedAt,omitempty"`
 	CreatedAt        string `json:"CreatedAt,omitempty"`
 	UpdatedAt        string `json:"UpdatedAt,omitempty"`
 }
 
 // ListAllResult is the result payload of Service.ListAll.
 type ListAllResult struct {
+	Channels []Channel `json:"channels"`
+}
+
+// ListEnabledResult is the result payload of Service.ListEnabled.
+type ListEnabledResult struct {
 	Channels []Channel `json:"channels"`
 }
 
@@ -89,6 +100,11 @@ type ListCategoriesResult struct {
 // If ID is empty, Service derives a deterministic ID via the
 // configured IDGenerator (sha256(category+":"+url)[:8] formatted
 // as <category>_<hex> when DefaultIDGenerator is in use).
+//
+// Fields that distinguish "not set" from an explicit zero use *int:
+//   - PlaylistEnd: nil=use default, 0=all videos, >0=count
+//   - MaxVideosPerRun: nil=use default, 0=no limit, >0=limit
+//   - LookbackDays: nil=use default, 0=no lookback, >0=days
 type UpsertChannelCommand struct {
 	ID               string
 	Category         string
@@ -100,11 +116,11 @@ type UpsertChannelCommand struct {
 	DriveFolderID    string
 	SemanticKeywords []string
 	MinSemanticScore int
-	PlaylistEnd      int
+	PlaylistEnd      *int
 	CheckInterval    string
-	MaxVideosPerRun  int
+	MaxVideosPerRun  *int
 	Priority         int
-	LookbackDays     int
+	LookbackDays     *int
 	MaxSegments      int
 	SegmentPrompt    string
 }

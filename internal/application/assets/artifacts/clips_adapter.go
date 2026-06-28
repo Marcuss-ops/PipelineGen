@@ -26,10 +26,10 @@ type ClipsRegistry struct {
 	// (QDRANT-002 PR7). Required for the media_assets UPSERT path so
 	// the production write emits the matching outbox_events row in
 	// the same tx (v1 conflation invariant).
-	dispatcher  mutations.AssetMutationDispatcher
-	querySvc    *asset.Service
-	locations   asset.LocationRepository
-	processing  asset.ProcessingRepository
+	dispatcher mutations.AssetMutationDispatcher
+	querySvc   *asset.Service
+	locations  asset.LocationRepository
+	processing asset.ProcessingRepository
 }
 
 // NewClipsRegistry is the canonical ctor. PR 7 (June 2026) added a 6th
@@ -151,10 +151,10 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		if rec.Status == "failed" {
 			_ = r.processing.Start(ctx, rec.ID, step)
 			_ = r.processing.Fail(ctx, rec.ID, step, rec.Error)
-	} else if rec.Status == "ACTIVE" || rec.Status == "completed" {
-		_ = r.processing.Start(ctx, rec.ID, step)
-		_ = r.processing.Complete(ctx, rec.ID, step)
-	} else {
+		} else if rec.Status == "ACTIVE" || rec.Status == "completed" {
+			_ = r.processing.Start(ctx, rec.ID, step)
+			_ = r.processing.Complete(ctx, rec.ID, step)
+		} else {
 			_ = r.processing.Start(ctx, rec.ID, step)
 		}
 	}
@@ -269,9 +269,9 @@ func detailsToMediaRecord(details *asset.Details) *MediaRecord {
 				break
 			} else if proc.Status == asset.StatusRunning {
 				rec.Status = "processing"
-		} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
-			rec.Status = "ACTIVE"
-		}
+			} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
+				rec.Status = "ACTIVE"
+			}
 		}
 	}
 	if rec.Status == "" {

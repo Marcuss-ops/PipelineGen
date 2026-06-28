@@ -4,16 +4,16 @@
 // subcommands into a single qdrant-maintenance surface with three modes:
 //
 //  1. audit           — classification only (dry-run, no mutations).
-//                        Runs legacyaudit.Classify over all 8 categories
-//                        and prints the full report.
+//     Runs legacyaudit.Classify over all 8 categories
+//     and prints the full report.
 //  2. repair-locators — strip legacy drive_link / local_path payload keys.
-//                        Uses the canonical LocatorCleaner to delete the
-//                        keys from the Qdrant payload without touching
-//                        the asset or its vectors.
+//     Uses the canonical LocatorCleaner to delete the
+//     keys from the Qdrant payload without touching
+//     the asset or its vectors.
 //  3. delete-invalid  — delete assets whose points hit non-locator
-//                        categories (1–6, 8). Dispatches via the
-//                        canonical outbox.Dispatcher.EnqueueAndDelete
-//                        path — NEVER direct DELETE FROM media_assets.
+//     categories (1–6, 8). Dispatches via the
+//     canonical outbox.Dispatcher.EnqueueAndDelete
+//     path — NEVER direct DELETE FROM media_assets.
 //
 // Policy (per user spec, Issue 12): locator payload keys are repairable,
 // not automatically deletable. Points whose ONLY audit finding is
@@ -244,10 +244,10 @@ func runQdrantMaintenance(args []string) error {
 
 	if deps.JSON {
 		out := map[string]any{
-			"applied":  applied,
-			"total":    len(assetIDs),
-			"skipped":  len(assetIDs) - applied,
-			"audit":    report.Audit,
+			"applied":    applied,
+			"total":      len(assetIDs),
+			"skipped":    len(assetIDs) - applied,
+			"audit":      report.Audit,
 			"collection": report.Collection,
 		}
 		b, _ := json.Marshal(out)

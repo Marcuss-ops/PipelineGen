@@ -1,23 +1,24 @@
 // Package admin (purge_test.go) — gate tests for PurgeService.HardDeleteClip.
 //
 // QDRANT-purge-child-keys (June 2026, PR 4) closure:
-//   The HardDeleteClip gate (lifecycle_state='DELETED' AND
-//   qdrant_point_state='absent') is enforced in the adapter layer,
-//   NOT in txmutation.HardDeleteTx (per AGENTS.md layering rule —
-//   the primitive is the physics, the adapter is the gate). This
-//   file pins the gate's accept/reject matrix against the production
-//   PurgeService constructor (`NewPurgeService(repo, log)`) so a
-//   future refactor that bypasses the gate trips the test.
 //
-//   The companion admission-success test (TestHardDeleteClip_Gate_Success)
-//   shows the full gate-passes-then-txmutation-deletes flow in one
-//   end-to-end assertion: the parent row + the 3 child rows
-//   (asset_locations / asset_processing / asset_versions) are all
-//   gone after HardDeleteClip commits.
+//	The HardDeleteClip gate (lifecycle_state='DELETED' AND
+//	qdrant_point_state='absent') is enforced in the adapter layer,
+//	NOT in txmutation.HardDeleteTx (per AGENTS.md layering rule —
+//	the primitive is the physics, the adapter is the gate). This
+//	file pins the gate's accept/reject matrix against the production
+//	PurgeService constructor (`NewPurgeService(repo, log)`) so a
+//	future refactor that bypasses the gate trips the test.
 //
-//   The (lifecycle_state, qdrant_point_state) permutations are
-//   table-driven so adding a new edge case (e.g. lifecycle_state in
-//   {ready, deleted} vs DELETED) is a single-row edit.
+//	The companion admission-success test (TestHardDeleteClip_Gate_Success)
+//	shows the full gate-passes-then-txmutation-deletes flow in one
+//	end-to-end assertion: the parent row + the 3 child rows
+//	(asset_locations / asset_processing / asset_versions) are all
+//	gone after HardDeleteClip commits.
+//
+//	The (lifecycle_state, qdrant_point_state) permutations are
+//	table-driven so adding a new edge case (e.g. lifecycle_state in
+//	{ready, deleted} vs DELETED) is a single-row edit.
 package admin
 
 import (
@@ -36,10 +37,10 @@ import (
 // that PurgeService.HardDeleteClip queries + the txmutation primitive
 // deletes:
 //
-//   media_assets(id PK, lifecycle_state, qdrant_point_state)
-//   asset_locations(asset_id)  → PR 4 explicit FK column, not PK id
-//   asset_processing(asset_id) → PR 4 explicit FK column, not PK id
-//   asset_versions(asset_id)   → PR 4 explicit FK column
+//	media_assets(id PK, lifecycle_state, qdrant_point_state)
+//	asset_locations(asset_id)  → PR 4 explicit FK column, not PK id
+//	asset_processing(asset_id) → PR 4 explicit FK column, not PK id
+//	asset_versions(asset_id)   → PR 4 explicit FK column
 //
 // The schema is intentionally minimal — the production schema
 // carries additional columns and constraints, but HardDeleteClip's

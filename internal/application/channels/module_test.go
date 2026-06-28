@@ -52,6 +52,9 @@ func (s *stubRepo) Upsert(_ context.Context, ch *asset.CategoryChannel) error {
 	s.stored[ch.ID] = ch
 	return nil
 }
+func (s *stubRepo) ListEnabled(_ context.Context) ([]*asset.CategoryChannel, error) {
+	return s.ListAll(nil)
+}
 func (s *stubRepo) Delete(_ context.Context, id string) error {
 	delete(s.stored, id)
 	return nil

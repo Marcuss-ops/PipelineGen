@@ -31,8 +31,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 func main() {

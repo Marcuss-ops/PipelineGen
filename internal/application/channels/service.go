@@ -150,6 +150,16 @@ func (s *Service) ListAll(ctx context.Context) (ListAllResult, error) {
 	return ListAllResult{Channels: fromDomainList(rows)}, nil
 }
 
+// ListEnabled returns all enabled channels. Used by the channel monitor
+// to discover which channels to check.
+func (s *Service) ListEnabled(ctx context.Context) (ListEnabledResult, error) {
+	rows, err := s.repo.ListEnabled(ctx)
+	if err != nil {
+		return ListEnabledResult{}, err
+	}
+	return ListEnabledResult{Channels: fromDomainList(rows)}, nil
+}
+
 // ListCategories returns the distinct set of categories with at
 // least one channel assigned.
 func (s *Service) ListCategories(ctx context.Context) (ListCategoriesResult, error) {
@@ -261,7 +271,6 @@ func (s *Service) toDomain(cmd UpsertChannelCommand) *asset.CategoryChannel {
 		ChannelName:   cmd.ChannelName,
 		MinViews:      cmd.MinViews,
 		DriveFolderID: cmd.DriveFolderID,
-		LookbackDays:  cmd.LookbackDays,
 		SegmentPrompt: cmd.SegmentPrompt,
 	}
 	// Normalize nil slices to empty so json.Marshal emits "[]" (not
@@ -289,10 +298,12 @@ func (s *Service) toDomain(cmd UpsertChannelCommand) *asset.CategoryChannel {
 	ch.MaxClipDuration = applyDefaultPositive(cmd.MaxClipDuration, Default.MaxClipDuration)
 	ch.Priority = applyDefaultPositive(cmd.Priority, Default.Priority)
 	ch.MaxSegments = applyDefaultPositive(cmd.MaxSegments, Default.MaxSegments)
-	ch.MaxVideosPerRun = applyDefaultPositive(cmd.MaxVideosPerRun, Default.MaxVideosPerRun)
+	ch.MaxVideosPerRun = applyDefaultIntPtr(cmd.MaxVideosPerRun, Default.MaxVideosPerRun)
 	ch.MinSemanticScore = applyDefaultPositive(cmd.MinSemanticScore, Default.MinSemanticScore)
-	ch.PlaylistEnd = applyDefaultPositive(cmd.PlaylistEnd, Default.PlaylistEnd)
+	ch.PlaylistEnd = applyDefaultIntPtr(cmd.PlaylistEnd, Default.PlaylistEnd)
+	ch.LookbackDays = applyDefaultIntPtr(cmd.LookbackDays, 0)
 	ch.CheckInterval = applyDefaultString(cmd.CheckInterval, Default.CheckInterval)
+
 	return ch
 }
 
@@ -318,6 +329,9 @@ func fromDomain(ch *asset.CategoryChannel) Channel {
 		LookbackDays:     ch.LookbackDays,
 		MaxSegments:      ch.MaxSegments,
 		SegmentPrompt:    ch.SegmentPrompt,
+		Enabled:          ch.Enabled,
+		NextCheckAt:      ch.NextCheckAt,
+		LastCheckedAt:    ch.LastCheckedAt,
 		CreatedAt:        ch.CreatedAt,
 		UpdatedAt:        ch.UpdatedAt,
 	}
@@ -332,12 +346,34 @@ func fromDomainList(rows []*asset.CategoryChannel) []Channel {
 }
 
 func extractChannelName(url string) string {
+	url = normalizeURL(url)
 	url = strings.TrimSuffix(url, "/videos")
 	url = strings.TrimSuffix(url, "/")
 	if idx := strings.LastIndex(url, "/"); idx >= 0 {
 		return url[idx+1:]
 	}
 	return url
+}
+
+// normalizeURL strips query parameters, fragments, and normalizes the scheme
+// so equivalent YouTube URLs produce the same deterministic ID.
+//
+// Examples:
+//
+//	https://www.youtube.com/@TeamCoco?si=xxx → https://www.youtube.com/@TeamCoco
+//	http://youtube.com/@TeamCoco#videos     → https://youtube.com/@TeamCoco
+func normalizeURL(raw string) string {
+	// Strip fragment
+	if idx := strings.Index(raw, "#"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	// Strip query params
+	if idx := strings.Index(raw, "?"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	// Normalize scheme: http:// → https://
+	raw = strings.Replace(raw, "http://", "https://", 1)
+	return raw
 }
 
 // applyDefaultPositive returns `v` if non-zero, else `fallback`.
@@ -349,9 +385,21 @@ func applyDefaultPositive(v, fallback int) int {
 	return v
 }
 
+// applyDefaultIntPtr returns the dereferenced pointer value if non-nil,
+// otherwise the fallback. Used for fields where nil means "use default"
+// and an explicit zero has a distinct meaning (e.g. PlaylistEnd=0 = all videos).
+func applyDefaultIntPtr(p *int, fallback int) int {
+	if p == nil {
+		return fallback
+	}
+	return *p
+}
+
 func applyDefaultString(v, fallback string) string {
 	if v == "" {
 		return fallback
 	}
 	return v
 }
+
+

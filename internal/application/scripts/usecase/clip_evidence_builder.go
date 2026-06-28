@@ -41,10 +41,6 @@ func BuildClipEvidence(pack interface{}, sourceText string) *scriptpkg.ClipEvide
 	}
 
 	clipIDs := stringSlice(m["clip_ids"])
-	if len(clipIDs) == 0 {
-		return nil
-	}
-
 	clipNames := stringSlice(m["clip_names"])
 	clipNameMap := make(map[string]string, len(clipIDs))
 	for i, id := range clipIDs {
@@ -53,12 +49,60 @@ func BuildClipEvidence(pack interface{}, sourceText string) *scriptpkg.ClipEvide
 		}
 	}
 
+	// Read missing_clip_ids from the pack (populated by
+	// ClipSourceBuilder when some requested IDs failed lookup).
+	var missingIDs []scriptpkg.MissingClipID
+	if raw, ok := m["missing_clip_ids"]; ok {
+		switch v := raw.(type) {
+		case []scriptpkg.MissingClipID:
+			if len(v) > 0 {
+				missingIDs = v
+			}
+		case []interface{}:
+			for _, item := range v {
+				if m, ok := item.(map[string]interface{}); ok {
+					id, _ := m["clip_id"].(string)
+					reason, _ := m["reason"].(string)
+					if id != "" {
+						missingIDs = append(missingIDs, scriptpkg.MissingClipID{ClipID: id, Reason: reason})
+					}
+				}
+			}
+		case []map[string]any:
+			for _, m := range v {
+				id, _ := m["clip_id"].(string)
+				reason, _ := m["reason"].(string)
+				if id != "" {
+					missingIDs = append(missingIDs, scriptpkg.MissingClipID{ClipID: id, Reason: reason})
+				}
+			}
+		case []map[string]string:
+			for _, m := range v {
+				id := m["clip_id"]
+				reason := m["reason"]
+				if id != "" {
+					missingIDs = append(missingIDs, scriptpkg.MissingClipID{ClipID: id, Reason: reason})
+				}
+			}
+		}
+		if len(missingIDs) == 0 {
+			missingIDs = nil // preserve nil for JSON omitempty
+		}
+	}
+
+	// Allow returning non-nil evidence when there are missing clip
+	// IDs even if ClipIDs is empty (the fallback-range path).
+	if len(clipIDs) == 0 && len(missingIDs) == 0 {
+		return nil
+	}
+
 	ev := &scriptpkg.ClipEvidence{
-		ClipIDs:       clipIDs,
-		ClipCount:     len(clipIDs),
-		AssembledText: strings.TrimSpace(sourceText),
-		DriveLinks:    stringMap(m["clip_drive_links"]),
-		ClipNames:     clipNameMap,
+		ClipIDs:        clipIDs,
+		ClipCount:      len(clipIDs),
+		AssembledText:  strings.TrimSpace(sourceText),
+		DriveLinks:     stringMap(m["clip_drive_links"]),
+		ClipNames:      clipNameMap,
+		MissingClipIDs: missingIDs,
 	}
 
 	// Build excluded clips from any clips in the pack that failed

@@ -23,8 +23,8 @@ import (
 // The adapter delegates JobTimeout(t) to the resolver; production wiring
 // passes jobs.Compose() (canonical *jobs.Registry).
 type clipsCfgAdapter struct {
-	cfg       *config.Config
-	timeouts  appjobs.TimeoutResolver
+	cfg      *config.Config
+	timeouts appjobs.TimeoutResolver
 }
 
 // Compile-time assertion: clipsCfgAdapter satisfies clips.ClipConfigPort.

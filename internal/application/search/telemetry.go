@@ -5,7 +5,8 @@
 // of holding a parallel stats-mut struct on their own struct.
 //
 // User spec (PR-2, June 2026):
-//   "provider stats vanno nel registro dietro un Option{Hits,Latencies}"
+//
+//	"provider stats vanno nel registro dietro un Option{Hits,Latencies}"
 //
 // The Option type is realised as BackendStats (a typed struct holding
 // Hits + Latencies in one place, NOT two decoupled maps). The

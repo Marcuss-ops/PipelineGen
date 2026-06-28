@@ -39,9 +39,9 @@ type auditBlock struct {
 	ManifestVersion string `yaml:"manifest_version"`
 	TotalRecords    int    `yaml:"total_records"`
 	ByStatus        struct {
-		Removed     int `yaml:"removed"`
-		InProgress  int `yaml:"in_progress"`
-		Keep        int `yaml:"keep"`
+		Removed    int `yaml:"removed"`
+		InProgress int `yaml:"in_progress"`
+		Keep       int `yaml:"keep"`
 	} `yaml:"by_status"`
 	ByMigrationPhase map[string]int `yaml:"by_migration_phase"`
 	CIGateImpact     string         `yaml:"ci_gate_impact"`

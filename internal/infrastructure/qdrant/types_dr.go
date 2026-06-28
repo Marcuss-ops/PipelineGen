@@ -24,8 +24,9 @@ type SnapshotDescription = qdrantdr.SnapshotDescription
 // the reaper commit 07292503 fixed in the qdrant.reaper path).
 //
 // Per-point shape mirrors Qdrant REST:
-//   `id`      — point ID (string or int; the reaper handles strings)
-//   `payload` — map[string]interface{} of payload fields to merge in
+//
+//	`id`      — point ID (string or int; the reaper handles strings)
+//	`payload` — map[string]interface{} of payload fields to merge in
 type PointPayload struct {
 	ID      string                 `json:"id"`
 	Payload map[string]interface{} `json:"payload"`

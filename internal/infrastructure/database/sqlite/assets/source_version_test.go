@@ -236,7 +236,7 @@ func TestSourceVersionFor_AcceptsSQLTx(t *testing.T) {
 //
 // Contrast with TestSourceVersionFor_AllTiersEmpty above, which
 // uses `{}` (json_extract returns SQL NULL, full chain fall-through
-// to the literal `''`). The two corners are distinct bugs that
+// to the literal `”`). The two corners are distinct bugs that
 // mirror the user-data shape; both matter.
 func TestSourceVersionFor_JsonEmptyStringShortCircuits(t *testing.T) {
 	t.Parallel()

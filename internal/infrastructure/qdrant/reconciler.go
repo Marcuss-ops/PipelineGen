@@ -218,7 +218,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 			// argument (added when the per-tenant admin CLI lands).
 			// Until then, WorkspaceMismatch remains 0 so the gate
 			// cannot false-block on a multi-tenant collection.
-		_ = pt.Payload // (pt.Payload is still consumed below for lifecycle parity.)
+			_ = pt.Payload // (pt.Payload is still consumed below for lifecycle parity.)
 
 			// Lifecycle parity: SQLite's COALESCE(lifecycle_state,
 			// 'ready') must match payload["lifecycle_state"]. The

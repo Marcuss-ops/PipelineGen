@@ -31,14 +31,14 @@ import (
 // Type aliases — preserve the public API of `package scripts` while
 // routing to the canonical `adapters` package.
 type (
-	ProcessorPolicy        = adapters.ProcessorPolicy
-	PostProcessor          = adapters.PostProcessor
-	PostProcessResult      = adapters.PostProcessResult
-	ProcessInput           = adapters.ProcessInput
-	PostProcessorRegistry  = adapters.PostProcessorRegistry
-	PipelineResult         = adapters.PipelineResult
-	SceneImage             = adapters.SceneImage
-	SceneVoiceover         = adapters.SceneVoiceover
+	ProcessorPolicy       = adapters.ProcessorPolicy
+	PostProcessor         = adapters.PostProcessor
+	PostProcessResult     = adapters.PostProcessResult
+	ProcessInput          = adapters.ProcessInput
+	PostProcessorRegistry = adapters.PostProcessorRegistry
+	PipelineResult        = adapters.PipelineResult
+	SceneImage            = adapters.SceneImage
+	SceneVoiceover        = adapters.SceneVoiceover
 )
 
 // PostProcessArtifact lives in the dto package (compat_types.go)
@@ -56,10 +56,10 @@ const (
 
 // Var re-exports (package-level functions live in adapters).
 var (
-	DefaultPolicyFor              = adapters.DefaultPolicyFor
-	NewPostProcessorRegistry      = adapters.NewPostProcessorRegistry
-	NewClipBindingsProcessor      = adapters.NewClipBindingsProcessor
-	NewClipSourceBuilderForTest   = usecase.NewClipSourceBuilderForTest
+	DefaultPolicyFor               = adapters.DefaultPolicyFor
+	NewPostProcessorRegistry       = adapters.NewPostProcessorRegistry
+	NewClipBindingsProcessor       = adapters.NewClipBindingsProcessor
+	NewClipSourceBuilderForTest    = usecase.NewClipSourceBuilderForTest
 	BuildClipSpecSceneDocumentHTML = adapters.BuildClipSpecSceneDocumentHTML
 	// BuildClipEvidence re-exports the canonical clip-evidence
 	// builder from the usecase package so the test

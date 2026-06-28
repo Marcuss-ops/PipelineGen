@@ -23,21 +23,21 @@ import (
 // legacyScene is the internal representation of a single scene element
 // from the legacy JSON array output format.
 type legacyScene struct {
-	Index              int    `json:"index"`
-	Text               string `json:"text"`
-	Content            string `json:"content"` // alternate field name
-	Title              string `json:"title"`
-	Kind               string `json:"kind"`
-	ClipID             string `json:"clip_id"`
-	ClipTitle          string `json:"clip_title"`
-	DriveLink          string `json:"drive_link"`
-	ImageID            string `json:"image_id"`
-	ImagePrompt        string `json:"image_prompt"`
-	ImageURL           string `json:"image_url"`
-	ImageStatus        string `json:"image_status"`
-	VoiceoverStatus    string `json:"voiceover_status"`
-	VoiceoverLink      string `json:"voiceover_link"`
-	VoiceoverDurationMs int64 `json:"voiceover_duration_ms"`
+	Index               int    `json:"index"`
+	Text                string `json:"text"`
+	Content             string `json:"content"` // alternate field name
+	Title               string `json:"title"`
+	Kind                string `json:"kind"`
+	ClipID              string `json:"clip_id"`
+	ClipTitle           string `json:"clip_title"`
+	DriveLink           string `json:"drive_link"`
+	ImageID             string `json:"image_id"`
+	ImagePrompt         string `json:"image_prompt"`
+	ImageURL            string `json:"image_url"`
+	ImageStatus         string `json:"image_status"`
+	VoiceoverStatus     string `json:"voiceover_status"`
+	VoiceoverLink       string `json:"voiceover_link"`
+	VoiceoverDurationMs int64  `json:"voiceover_duration_ms"`
 }
 
 // convertLegacyArray converts legacy array-shaped JSON bytes to a

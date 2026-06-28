@@ -36,11 +36,11 @@ var DefaultReaperKeys = []string{}
 var ErrNilClient = errors.New("reaper: qdrant client is nil")
 
 const (
-	StatusRunning  = "running"
-	StatusOK       = "ok"
-	StatusNoop     = "noop"
-	StatusPartial  = "partial"
-	StatusFailed   = "failed"
+	StatusRunning = "running"
+	StatusOK      = "ok"
+	StatusNoop    = "noop"
+	StatusPartial = "partial"
+	StatusFailed  = "failed"
 )
 
 // MaxReaperBatchSize is the Qdrant REST scroll-page ceiling. The
@@ -84,19 +84,19 @@ type ReaperOptions struct {
 
 // ReaperResult is the outcome of a Reap run.
 type ReaperResult struct {
-	RunID           string    `json:"run_id"`
-	Collection      string    `json:"collection"`
-	KeysRedacted    []string  `json:"keys_redacted"`
-	PointsScanned   int       `json:"points_scanned"`
-	PointsAffected  int       `json:"points_affected"`
-	StartedAt       time.Time `json:"started_at"`
-	CompletedAt     time.Time `json:"completed_at"`
-	Status          string    `json:"status"`
-	DryRun          bool      `json:"dry_run"`
-	Errors          []string  `json:"errors,omitempty"`
-	AffectedSample  []string  `json:"affected_sample,omitempty"`
-	FailedSample    []string  `json:"failed_sample,omitempty"`
-	BatchCapped     int       `json:"batch_capped"`
+	RunID          string    `json:"run_id"`
+	Collection     string    `json:"collection"`
+	KeysRedacted   []string  `json:"keys_redacted"`
+	PointsScanned  int       `json:"points_scanned"`
+	PointsAffected int       `json:"points_affected"`
+	StartedAt      time.Time `json:"started_at"`
+	CompletedAt    time.Time `json:"completed_at"`
+	Status         string    `json:"status"`
+	DryRun         bool      `json:"dry_run"`
+	Errors         []string  `json:"errors,omitempty"`
+	AffectedSample []string  `json:"affected_sample,omitempty"`
+	FailedSample   []string  `json:"failed_sample,omitempty"`
+	BatchCapped    int       `json:"batch_capped"`
 	// AuditPersisted is true iff ReaperOptions.DB was non-nil AND the
 	// INSERT into qdrant_cleanup_audit succeeded. Operators watching
 	// dashboards key off this flag to detect audit-path regressions.

@@ -197,15 +197,21 @@ func (cm *CollectionManager) RollbackAlias(ctx context.Context, currentTarget, r
 func (cm *CollectionManager) CreateSnapshot(ctx context.Context, collection string) (*SnapshotDescription, error) {
 	cm.log.Info("creating snapshot", zap.String("collection", collection))
 	snap, err := cm.client.CreateSnapshot(ctx, collection)
-	if err != nil { return nil, fmt.Errorf("create snapshot %q: %w", collection, err) }
+	if err != nil {
+		return nil, fmt.Errorf("create snapshot %q: %w", collection, err)
+	}
 	cm.log.Info("snapshot created", zap.String("collection", collection), zap.String("name", snap.Name), zap.Int64("size", snap.Size))
 	return snap, nil
 }
 
 func (cm *CollectionManager) ListSnapshots(ctx context.Context) ([]SnapshotDescription, error) {
 	target, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
-	if err != nil { return nil, fmt.Errorf("get active collection: %w", err) }
-	if target == "" { return nil, fmt.Errorf("no active collection for alias %q", cm.schema.RuntimeAlias) }
+	if err != nil {
+		return nil, fmt.Errorf("get active collection: %w", err)
+	}
+	if target == "" {
+		return nil, fmt.Errorf("no active collection for alias %q", cm.schema.RuntimeAlias)
+	}
 	return cm.client.ListSnapshots(ctx, target)
 }
 
@@ -339,7 +345,6 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 	}
 	return result, nil
 }
-
 
 // createPhysicalCollection creates the collection with vector config from the manifest.
 func (cm *CollectionManager) createPhysicalCollection(ctx context.Context, name string) error {

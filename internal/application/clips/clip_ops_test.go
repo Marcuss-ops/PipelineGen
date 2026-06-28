@@ -221,7 +221,6 @@ func TestClipOps_Cleanup_Deep_EnqueuesSystemCleanupJob(t *testing.T) {
 	require.Equal(t, 0, cleanup.cleanupHits, "deep-mode must NOT fall through to CleanupOrphanFiles")
 }
 
-
 // TestClipOps_Cleanup_ShallowPlain_BaseActiveKey pins the
 // un-suffixed base case: DryRun=false AND Deep=false →
 // activeKey = "system_maintenance_manual" (the 4-way suffix ladder

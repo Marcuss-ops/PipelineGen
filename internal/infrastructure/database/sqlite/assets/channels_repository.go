@@ -35,8 +35,8 @@ func (r *ChannelsRepository) Upsert(ctx context.Context, ch *asset.CategoryChann
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO category_channels (id, category, channel_url, channel_name, keywords, min_views, max_clip_duration, drive_folder_id,
 			semantic_keywords, min_semantic_score, playlist_end, check_interval, max_videos_per_run, priority, lookback_days, max_segments, segment_prompt,
-			created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			enabled, next_check_at, last_checked_at, consecutive_failures, last_error, last_success_at, lease_owner, lease_until, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			category = EXCLUDED.category,
 			channel_url = EXCLUDED.channel_url,
@@ -54,12 +54,29 @@ func (r *ChannelsRepository) Upsert(ctx context.Context, ch *asset.CategoryChann
 			lookback_days = EXCLUDED.lookback_days,
 			max_segments = EXCLUDED.max_segments,
 			segment_prompt = EXCLUDED.segment_prompt,
+			enabled = EXCLUDED.enabled,
+			next_check_at = EXCLUDED.next_check_at,
+			last_checked_at = EXCLUDED.last_checked_at,
+			consecutive_failures = EXCLUDED.consecutive_failures,
+			last_error = EXCLUDED.last_error,
+			last_success_at = EXCLUDED.last_success_at,
+			lease_owner = EXCLUDED.lease_owner,
+			lease_until = EXCLUDED.lease_until,
 			updated_at = EXCLUDED.updated_at
 	`, ch.ID, ch.Category, ch.ChannelURL, ch.ChannelName, ch.Keywords,
 		ch.MinViews, ch.MaxClipDuration, ch.DriveFolderID, ch.SemanticKeywords,
 		ch.MinSemanticScore, ch.PlaylistEnd, ch.CheckInterval, ch.MaxVideosPerRun, ch.Priority,
-		ch.LookbackDays, ch.MaxSegments, ch.SegmentPrompt, ch.CreatedAt, ch.UpdatedAt)
+		ch.LookbackDays, ch.MaxSegments, ch.SegmentPrompt, ch.Enabled, toNullString(ch.NextCheckAt), toNullString(ch.LastCheckedAt),
+		ch.ConsecutiveFailures, toNullString(ch.LastError), toNullString(ch.LastSuccessAt), toNullString(ch.LeaseOwner), toNullString(ch.LeaseUntil),
+		ch.CreatedAt, ch.UpdatedAt)
 	return err
+}
+
+func toNullString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
 }
 
 // ListByCategory returns all channels for a given category.
@@ -67,7 +84,8 @@ func (r *ChannelsRepository) ListByCategory(ctx context.Context, category string
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, category, channel_url, channel_name, keywords, min_views, max_clip_duration, drive_folder_id,
 			semantic_keywords, min_semantic_score, playlist_end, check_interval, max_videos_per_run, priority,
-			lookback_days, max_segments, segment_prompt, created_at, updated_at
+			lookback_days, max_segments, segment_prompt, enabled, next_check_at, last_checked_at,
+			consecutive_failures, last_error, last_success_at, lease_owner, lease_until, created_at, updated_at
 		FROM category_channels
 		WHERE category = ?
 		ORDER BY channel_name ASC, channel_url ASC
@@ -85,7 +103,8 @@ func (r *ChannelsRepository) ListAll(ctx context.Context) ([]*asset.CategoryChan
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, category, channel_url, channel_name, keywords, min_views, max_clip_duration, drive_folder_id,
 			semantic_keywords, min_semantic_score, playlist_end, check_interval, max_videos_per_run, priority,
-			lookback_days, max_segments, segment_prompt, created_at, updated_at
+			lookback_days, max_segments, segment_prompt, enabled, next_check_at, last_checked_at,
+			consecutive_failures, last_error, last_success_at, lease_owner, lease_until, created_at, updated_at
 		FROM category_channels
 		ORDER BY category ASC, channel_name ASC, channel_url ASC
 	`)
@@ -125,11 +144,32 @@ func (r *ChannelsRepository) GetByID(ctx context.Context, id string) (*asset.Cat
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, category, channel_url, channel_name, keywords, min_views, max_clip_duration, drive_folder_id,
 			semantic_keywords, min_semantic_score, playlist_end, check_interval, max_videos_per_run, priority,
-			lookback_days, max_segments, segment_prompt, created_at, updated_at
+			lookback_days, max_segments, segment_prompt, enabled, next_check_at, last_checked_at,
+			consecutive_failures, last_error, last_success_at, lease_owner, lease_until, created_at, updated_at
 		FROM category_channels
 		WHERE id = ?
 	`, id)
 	return scanRow(row)
+}
+
+// ListEnabled returns all enabled channels (enabled=1). Used by the
+// channel monitor to discover which channels to check.
+func (r *ChannelsRepository) ListEnabled(ctx context.Context) ([]*asset.CategoryChannel, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, category, channel_url, channel_name, keywords, min_views, max_clip_duration, drive_folder_id,
+			semantic_keywords, min_semantic_score, playlist_end, check_interval, max_videos_per_run, priority,
+			lookback_days, max_segments, segment_prompt, enabled, next_check_at, last_checked_at,
+			consecutive_failures, last_error, last_success_at, lease_owner, lease_until, created_at, updated_at
+		FROM category_channels
+		WHERE enabled = 1
+		ORDER BY category ASC, channel_name ASC, channel_url ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanRows(rows)
 }
 
 // Delete removes a channel association by ID.
@@ -173,15 +213,25 @@ func scanRow(row *sql.Row) (*asset.CategoryChannel, error) {
 func scanFields(scanner interface{ Scan(dest ...any) error }) (*asset.CategoryChannel, error) {
 	ch := &asset.CategoryChannel{}
 	var createdAt, updatedAt sql.NullString
+	var nextCheckAt, lastCheckedAt sql.NullString
+	var lastError, lastSuccessAt, leaseOwner, leaseUntil sql.NullString
 	err := scanner.Scan(&ch.ID, &ch.Category, &ch.ChannelURL, &ch.ChannelName,
 		&ch.Keywords, &ch.MinViews, &ch.MaxClipDuration, &ch.DriveFolderID,
 		&ch.SemanticKeywords, &ch.MinSemanticScore, &ch.PlaylistEnd,
 		&ch.CheckInterval, &ch.MaxVideosPerRun, &ch.Priority,
 		&ch.LookbackDays, &ch.MaxSegments, &ch.SegmentPrompt,
+		&ch.Enabled, &nextCheckAt, &lastCheckedAt,
+		&ch.ConsecutiveFailures, &lastError, &lastSuccessAt, &leaseOwner, &leaseUntil,
 		&createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
+	ch.NextCheckAt = nextCheckAt.String
+	ch.LastCheckedAt = lastCheckedAt.String
+	ch.LastError = lastError.String
+	ch.LastSuccessAt = lastSuccessAt.String
+	ch.LeaseOwner = leaseOwner.String
+	ch.LeaseUntil = leaseUntil.String
 	ch.CreatedAt = createdAt.String
 	ch.UpdatedAt = updatedAt.String
 	return ch, nil

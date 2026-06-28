@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
@@ -104,28 +103,7 @@ func (m *ChannelMonitor) matchSemantically(ctx context.Context, videoURL string,
 		}
 
 		transcript = strings.Join(transcriptLines, " ")
-
-		// Save to cache for next time (async, non-blocking)
-		if transcript != "" && m.db != nil {
-			concurrent.SafeGoFunc("monitor-transcript-save", struct {
-				ID  string
-				Txt string
-			}{ID: videoID, Txt: transcript}, func(arg struct {
-				ID  string
-				Txt string
-			}) {
-				// AGENTS.md §7 post-write save ctx — monitor transcript
-				// save must survive the monitor tick ctx so the DB
-				// write completes even after the tick is cancelled.
-				saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				defer cancel()
-				if err := m.saveTranscriptCache(saveCtx, arg.ID, arg.Txt); err != nil {
-					m.log.Warn("failed to cache transcript",
-						zap.String("video_id", arg.ID),
-						zap.Error(err))
-				}
-			})
-		}
+		// PR 2 (June 2026): transcript save-to-cache removed (db field removed from ChannelMonitor).
 	}
 
 	// Limit transcript length to avoid context overflow (first 8000 chars)
@@ -192,52 +170,15 @@ Rules:
 	return result.Score, result.MatchedKeyword, nil
 }
 
-// regexRemoveVTTHeader removes the WEBVTT header and metadata from VTT content.
-func (m *ChannelMonitor) loadTranscriptCache(ctx context.Context, videoID string) (string, error) {
-	if m.db == nil {
-		return "", fmt.Errorf("no db available")
-	}
-
-	var transcript string
-	var cachedAt string
-	err := m.db.QueryRowContext(ctx, `
-		SELECT transcript_text, cached_at FROM transcript_cache WHERE video_id = ?
-	`, videoID).Scan(&transcript, &cachedAt)
-	if err != nil {
-		return "", err
-	}
-
-	// Check TTL: 7 days
-	if cachedAt != "" {
-		cachedTime, parseErr := time.Parse("2006-01-02 15:04:05", cachedAt)
-		if parseErr == nil && time.Since(cachedTime) > 7*24*time.Hour {
-			// Stale — delete asynchronously and return miss
-			concurrent.SafeGoFunc("monitor-transcript-cleanup", videoID, func(id string) {
-				// AGENTS.md §7 post-write save ctx — monitor transcript
-				// cleanup is a post-write operation; the DB delete must
-				// finish even after the tick ctx is cancelled.
-				delCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				defer cancel()
-				if _, err := m.db.ExecContext(delCtx, "DELETE FROM transcript_cache WHERE video_id = ?", id); err != nil {
-					m.log.Warn("failed to delete stale transcript cache",
-						zap.String("video_id", id), zap.Error(err))
-				}
-			})
-			return "", fmt.Errorf("cache stale")
-		}
-	}
-
-	return transcript, nil
+// loadTranscriptCache returns a cached transcript for videoID.
+// PR 2 (June 2026): DB access removed from ChannelMonitor; transcript
+// cache is no longer available. Always returns cache-miss.
+func (m *ChannelMonitor) loadTranscriptCache(_ context.Context, _ string) (string, error) {
+	return "", fmt.Errorf("transcript cache unavailable (db removed per PR 2)")
 }
 
 // saveTranscriptCache stores a transcript in the cache.
-func (m *ChannelMonitor) saveTranscriptCache(ctx context.Context, videoID, transcript string) error {
-	if m.db == nil {
-		return nil
-	}
-	_, err := m.db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO transcript_cache (video_id, transcript_text, cached_at)
-		VALUES (?, ?, datetime('now'))
-	`, videoID, transcript)
-	return err
+// PR 2 (June 2026): DB access removed from ChannelMonitor; no-op stub.
+func (m *ChannelMonitor) saveTranscriptCache(_ context.Context, _, _ string) error {
+	return nil
 }

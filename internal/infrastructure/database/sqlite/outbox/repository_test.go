@@ -90,7 +90,9 @@ func TestIndexEventKey_DistinguishesHashesSamePrefix(t *testing.T) {
 // constraint.
 //
 // The accepted shape is:
-//   "index:<asset_id>:<full_content_hash>:<embedding_model>:<embedding_version>:<collection_version>"
+//
+//	"index:<asset_id>:<full_content_hash>:<embedding_model>:<embedding_version>:<collection_version>"
+//
 // Matches the legacy media_index_outbox unique-key semantics for
 // migration continuity (the prior outbox_events table that
 // repository.go replaced was keyed on the same tuple).

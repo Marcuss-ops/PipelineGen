@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
@@ -175,12 +176,17 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 	if runScheduler {
 		if cfg.Jobs.EnableChannelMonitor {
-			channelMon = monitor.NewChannelMonitor(cfg, root.Repos.ClipsRepo, log,
-				root.Domains.YoutubeClipService, root.DB.DB, root.AI.OllamaClient)
+			// PR 2 (June 2026): channels are loaded exclusively from
+			// category_channels via channels.Service. The raw *sql.DB is
+			// replaced by the canonical channels service which is the
+			// single source of truth for channel configuration.
+			channelsSvc := channels.NewService(
+				channels.NewRepositoryAdapter(assets.NewChannelsRepository(root.DB.DB)),
+				log,
+			)
+			channelMon = monitor.NewChannelMonitor(cfg, root.Repos.ClipsRepo, channelsSvc, log,
+				root.Domains.YoutubeClipService, root.AI.OllamaClient)
 
-			// Channel monitor uses the primary *sql.DB internally,
-			// already exposed via root.DB. Repo wiring happens against
-			// the same handle, no separate plumbing needed (PG-011).
 			sqRepo := assets.NewSearchQueriesRepository(root.DB.DB)
 			channelMon.SetSearchQueriesRepo(sqRepo)
 			log.Info("Search queries repo wired to channel monitor")

@@ -2,7 +2,7 @@
 // top-level request envelope for all script generation. It replaces
 // the fragmented per-endpoint request types with a single contract.
 //
-//   GenerationEnvelopeV2 → [{GenerationItemV2 → SourceSpec + ScriptSpec + OutputSpec}]
+//	GenerationEnvelopeV2 → [{GenerationItemV2 → SourceSpec + ScriptSpec + OutputSpec}]
 //
 // A single-item envelope maps to the previous /generate-from-clips,
 // /generate-with-images, /generate-from-catalog, and /curate flows.
@@ -21,7 +21,7 @@ import (
 // each item via the shared precedence chain, and executes them
 // through the unified pipeline:
 //
-//   normalize → validate → resolve source → build plan → generate → postprocess → result
+//	normalize → validate → resolve source → build plan → generate → postprocess → result
 type GenerationEnvelopeV2 struct {
 	// Version is the envelope schema version. Always 2 for V2.
 	Version int `json:"version"`
@@ -167,5 +167,3 @@ func DecodeEnvelopeV2(raw json.RawMessage) (*GenerationEnvelopeV2, error) {
 	}
 	return &env, nil
 }
-
-

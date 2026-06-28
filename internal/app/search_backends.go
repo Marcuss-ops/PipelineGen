@@ -449,7 +449,6 @@ func BuildCanonicalSearchFanOut(opts SearchBackendBuildOpts) (search.SearchFanOu
 	return search.NewSearchFanOut(agg), reg, nil
 }
 
-
 // ── Internal helpers ───────────────────────────────────────────────────
 
 // translateCaps maps the providers.Capability enum into the

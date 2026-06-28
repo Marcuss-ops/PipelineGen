@@ -68,13 +68,13 @@ func TestNewServerWithHealth_RegistersInternalMediaRoutes(t *testing.T) {
 // (NewServerWithHealth with all 9 params) — NOT NewRouter — so this
 // test catches the exact supervision bug:
 //
-//   If the routes are mounted via server.SetOutboxHandler /
-//   server.SetMediasearchHandler SCREENED OUT of Setup() (because
-//   Setup() runs during the constructor, before the post-Setup
-//   setters are invoked), the gin engine never receives a
-//   HandlerFunc for the three paths. The post-Setup setter pattern
-//   silently drops them, and Gin itself returns 404 for any request
-//   to a path that has no HandlerFunc.
+//	If the routes are mounted via server.SetOutboxHandler /
+//	server.SetMediasearchHandler SCREENED OUT of Setup() (because
+//	Setup() runs during the constructor, before the post-Setup
+//	setters are invoked), the gin engine never receives a
+//	HandlerFunc for the three paths. The post-Setup setter pattern
+//	silently drops them, and Gin itself returns 404 for any request
+//	to a path that has no HandlerFunc.
 //
 // The previous release shipped with that bug: cmd/server/main.go
 // called server.SetOutboxHandler / server.SetMediasearchHandler
@@ -114,15 +114,15 @@ func TestNewServerWithHealth_RegistersOutboxAndMediaSearchRoutes_ProductionShape
 	gin.SetMode(gin.TestMode)
 
 	server := NewServerWithHealth(
-		nil, // cfg — fallback branch; structural + 500-on-WA assertions
-		nil, // registry
-		nil, // workerHandler
-		nil, // internalMediaHandler — not in scope for PR 3
+		nil,                      // cfg — fallback branch; structural + 500-on-WA assertions
+		nil,                      // registry
+		nil,                      // workerHandler
+		nil,                      // internalMediaHandler — not in scope for PR 3
 		fakeOutboxHandler{},      // outboxHandler     — QDRANT-002
 		fakeMediaSearchHandler{}, // mediasearchHandler — QDRANT-004
-		nil, // lifecycle
-		nil, // healthSvc
-		nil, // readyChecker
+		nil,                      // lifecycle
+		nil,                      // healthSvc
+		nil,                      // readyChecker
 	)
 
 	engine := server.GetRouter()

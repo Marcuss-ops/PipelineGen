@@ -40,6 +40,10 @@ func (a *RepositoryAdapter) ListAll(ctx context.Context) ([]*asset.CategoryChann
 	return a.repo.ListAll(ctx)
 }
 
+func (a *RepositoryAdapter) ListEnabled(ctx context.Context) ([]*asset.CategoryChannel, error) {
+	return a.repo.ListEnabled(ctx)
+}
+
 func (a *RepositoryAdapter) ListCategories(ctx context.Context) ([]string, error) {
 	return a.repo.ListCategories(ctx)
 }

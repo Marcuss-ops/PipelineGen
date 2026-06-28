@@ -124,7 +124,7 @@ type AssetsBundle struct {
 	// pre-built slots rather than constructing its own — see the
 	// package doc on the AssetsBundle struct above for the
 	// single-instance invariant.
-	SearchFanOut         search.SearchFanOut
+	SearchFanOut          search.SearchFanOut
 	SearchBackendRegistry *search.BackendRegistry
 }
 
@@ -328,17 +328,17 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		VoiceoverRepo:  bundle.VoiceoverRepo,
 		ImagesRepo:     bundle.ImageRepo,
 		FolderMemSvc:   folderMemSvc,
-		ProcessRunner: processRunnerAdapter,
-		Dispatcher:    clipsDispatcherPort,
+		ProcessRunner:  processRunnerAdapter,
+		Dispatcher:     clipsDispatcherPort,
 		// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): pass
 		// the SSOT mutations dispatcher to the unified clips handler so
 		// the ReprocessUseCase (constructed inside NewHandler) routes
 		// its media_assets UPSERT through the canonical outbox+tx path.
 		MutationsDispatcher: mutationsDisp,
-		EnrichUC:      enrichUC,
-		SearchSvc:      searchAggregator,
-		BulkUploadWorker: bulkUploadWorker,
-		ClipOpsService:   clipOpsSvc,
+		EnrichUC:            enrichUC,
+		SearchSvc:           searchAggregator,
+		BulkUploadWorker:    bulkUploadWorker,
+		ClipOpsService:      clipOpsSvc,
 	}, idemHandler)
 
 	var drivePort appstorage.DrivePort

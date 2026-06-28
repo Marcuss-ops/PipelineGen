@@ -120,6 +120,6 @@ func (h *HealthProbe) CheckQdrant(ctx context.Context) healthport.CheckResult {
 //   - the readiness-barrier Probe contract (`Probe(context.Context) error`)
 //   - the /health endpoint QdrantChecker contract (`CheckQdrant(context.Context) CheckResult`)
 var (
-	_ interface{ Probe(context.Context) error }                              = (*HealthProbe)(nil)
-	_ healthport.QdrantChecker                                                = (*HealthProbe)(nil)
+	_ interface{ Probe(context.Context) error } = (*HealthProbe)(nil)
+	_ healthport.QdrantChecker                  = (*HealthProbe)(nil)
 )

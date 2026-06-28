@@ -20,11 +20,11 @@ import (
 // test fixtures in scriptflow_usecase_test.go and the rest of the
 // usecase test surface).
 type (
-	GenerateManyResult      = usecase.GenerateManyResult
-	GenerateManyItemResult  = usecase.GenerateManyItemResult
-	GenerateManySummary     = usecase.GenerateManySummary
-	GenerateManyUseCase     = usecase.GenerateManyUseCase
-	NormalizationConfig     = adapters.NormalizationConfig
+	GenerateManyResult     = usecase.GenerateManyResult
+	GenerateManyItemResult = usecase.GenerateManyItemResult
+	GenerateManySummary    = usecase.GenerateManySummary
+	GenerateManyUseCase    = usecase.GenerateManyUseCase
+	NormalizationConfig    = adapters.NormalizationConfig
 )
 
 var (

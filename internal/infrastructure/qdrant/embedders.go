@@ -257,11 +257,11 @@ func (a *audioEmbedderAdapter) EmbedAudio(ctx context.Context, audioPaths []stri
 // shorter canonical form stored in IndexSchema (e.g. "siglip-...").
 //
 // The comparison is:
-//   1. Exact match (sidecar model == schema model).
-//   2. Last-component match: everything after the final "/" is compared
-//      against the schema model name. This handles the common case where
-//      the Python sidecar uses "google/siglip-so400m-patch14-384" while
-//      IndexSchema stores "siglip-so400m-patch14-384".
+//  1. Exact match (sidecar model == schema model).
+//  2. Last-component match: everything after the final "/" is compared
+//     against the schema model name. This handles the common case where
+//     the Python sidecar uses "google/siglip-so400m-patch14-384" while
+//     IndexSchema stores "siglip-so400m-patch14-384".
 func modelNameMatches(sidecarModel, schemaModel string) bool {
 	if sidecarModel == schemaModel {
 		return true

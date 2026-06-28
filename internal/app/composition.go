@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -33,7 +33,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"

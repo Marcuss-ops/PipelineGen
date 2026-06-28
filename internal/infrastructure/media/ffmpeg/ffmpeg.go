@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Processor ───────────────────────────────────────────────────────────
@@ -50,8 +50,6 @@ type (
 	CutJob                 = types.CutJob
 	WatermarkOptions       = types.WatermarkOptions
 )
-
-
 
 // FormatSec formats a float64 seconds value as "SSS.mmm" for ffmpeg timestamps.
 func FormatSec(sec float64) string {
