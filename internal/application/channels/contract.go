@@ -42,6 +42,10 @@ type Repository interface {
 	// Delete removes a channel association by ID. Idempotent: deleting
 	// a missing id returns nil (matches the existing infra behaviour).
 	Delete(ctx context.Context, id string) error
+	// MarkChecked updates the scheduling columns (next_check_at,
+	// last_checked_at, last_error, last_success_at, consecutive_failures)
+	// after a channel-sync check completes. PR 3 (June 2026).
+	MarkChecked(ctx context.Context, cmd MarkCheckedCommand) error
 }
 
 // Channel is the result DTO returned by Service.List* /
@@ -145,4 +149,14 @@ type BulkUpsertResult struct {
 // handler return a meaningful response body without re-querying.
 type DeleteResult struct {
 	Deleted Channel `json:"deleted"`
+}
+
+// MarkCheckedCommand records the outcome of a channel-sync check.
+// PR 3 (June 2026): the monitor + job handler call Service.MarkChecked
+// after each channel sync to update scheduling state.
+type MarkCheckedCommand struct {
+	ID          string
+	NextCheckAt string
+	Success     bool
+	LastError   string
 }

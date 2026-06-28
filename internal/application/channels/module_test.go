@@ -59,6 +59,9 @@ func (s *stubRepo) Delete(_ context.Context, id string) error {
 	delete(s.stored, id)
 	return nil
 }
+func (s *stubRepo) MarkChecked(_ context.Context, _ MarkCheckedCommand) error {
+	return nil
+}
 
 func TestBuild_ReturnsErrorOnNilRepository(t *testing.T) {
 	_, err := Build(Dependencies{Logger: zap.NewNop()})

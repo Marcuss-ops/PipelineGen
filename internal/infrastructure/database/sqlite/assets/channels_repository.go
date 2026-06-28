@@ -191,6 +191,28 @@ func (r *ChannelsRepository) CountByCategory(ctx context.Context, category strin
 	return count, err
 }
 
+// MarkChecked updates the scheduling columns after a channel-sync check
+// completes. PR 3 (June 2026). Takes individual params to avoid importing
+// application-layer command types (infra layer must be leaf).
+func (r *ChannelsRepository) MarkChecked(ctx context.Context, id, nextCheckAt, lastError string, success bool) error {
+	now := timeutil.FormatRFC3339(time.Now())
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE category_channels
+		SET next_check_at = ?,
+		    last_checked_at = ?,
+		    last_error = CASE WHEN ? = '' THEN last_error ELSE ? END,
+		    last_success_at = CASE WHEN ? THEN ? ELSE last_success_at END,
+		    consecutive_failures = CASE WHEN ? THEN 0 ELSE consecutive_failures + 1 END,
+		    updated_at = ?
+		WHERE id = ?
+	`, nextCheckAt, now,
+		lastError, lastError,
+		success, now,
+		success,
+		now, id)
+	return err
+}
+
 // scanRows scans multiple rows into CategoryChannel slices.
 func scanRows(rows *sql.Rows) ([]*asset.CategoryChannel, error) {
 	var results []*asset.CategoryChannel

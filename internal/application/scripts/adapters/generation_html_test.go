@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -24,7 +24,7 @@ import (
 func TestBuildGenerationDocumentHTML_RendersTitleAndScenes(t *testing.T) {
 	t.Parallel()
 
-	html := scripts.BuildGenerationDocumentHTML(
+	html := adapters.BuildGenerationDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{
 			SchemaVersion: 1,
 			Text:          "Scene one prose.\n\nScene two prose.",
@@ -93,7 +93,7 @@ func TestBuildGenerationDocumentHTML_RendersTitleAndScenes(t *testing.T) {
 func TestBuildGenerationDocumentHTML_RendersEntities(t *testing.T) {
 	t.Parallel()
 
-	html := scripts.BuildGenerationDocumentHTML(
+	html := adapters.BuildGenerationDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: "Body."},
 		"Script",
 		"en",
@@ -128,7 +128,7 @@ func TestBuildGenerationDocumentHTML_RendersEntities(t *testing.T) {
 func TestBuildGenerationDocumentHTML_NoEntities_NoHeader(t *testing.T) {
 	t.Parallel()
 
-	html := scripts.BuildGenerationDocumentHTML(
+	html := adapters.BuildGenerationDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: "Body."},
 		"Script",
 		"en",
@@ -146,7 +146,7 @@ func TestBuildGenerationDocumentHTML_NoEntities_NoHeader(t *testing.T) {
 func TestBuildGenerationDocumentHTML_RendersVideoMetadata(t *testing.T) {
 	t.Parallel()
 
-	html := scripts.BuildGenerationDocumentHTML(
+	html := adapters.BuildGenerationDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: "Body."},
 		"Script",
 		"en",
@@ -185,7 +185,7 @@ func TestBuildGenerationDocumentHTML_RendersVideoMetadata(t *testing.T) {
 // nil-model behaviour: empty string with a nil receiver.
 func TestBuildGenerationDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 	t.Parallel()
-	html := scripts.BuildGenerationDocumentHTML(nil, "t", "en", nil, nil)
+	html := adapters.BuildGenerationDocumentHTML(nil, "t", "en", nil, nil)
 	if html != "" {
 		t.Errorf("expected empty string for nil model, got %d chars", len(html))
 	}
@@ -196,7 +196,7 @@ func TestBuildGenerationDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 func TestBuildGenerationDocumentHTML_LocalisedChapterLabel(t *testing.T) {
 	t.Parallel()
 
-	html := scripts.BuildGenerationDocumentHTML(
+	html := adapters.BuildGenerationDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{
 			SchemaVersion: 1,
 			SpecScene: scriptpkg.SpecSceneOutput{
@@ -220,7 +220,7 @@ func TestBuildGenerationDocumentHTML_LocalisedChapterLabel(t *testing.T) {
 // valid (empty body) HTML doc.
 func TestBuildGenerationDocumentHTML_EmptyModelMinimal(t *testing.T) {
 	t.Parallel()
-	html := scripts.BuildGenerationDocumentHTML(
+	html := adapters.BuildGenerationDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{SchemaVersion: 1},
 		"", "en", nil, nil,
 	)
@@ -241,7 +241,7 @@ func TestBuildGenerationDocumentHTML_EmptyModelMinimal(t *testing.T) {
 func TestBuildClipSpecSceneDocumentHTML_RendersDriveLinks(t *testing.T) {
 	t.Parallel()
 
-	html := scripts.BuildClipSpecSceneDocumentHTML(
+	html := adapters.BuildClipSpecSceneDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{
 			SchemaVersion: 1,
 			SpecScene: scriptpkg.SpecSceneOutput{

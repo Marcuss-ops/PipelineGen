@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -173,7 +174,7 @@ func TestNormalizeItemNil(t *testing.T) {
 }
 
 func TestNormalizeEnvelopeNil(t *testing.T) {
-	result := scripts.NormalizeEnvelope(nil, defaultCfg())
+	result := adapters.NormalizeEnvelope(nil, defaultCfg())
 	if result != nil {
 		t.Errorf("expected nil from nil envelope, got %v", result)
 	}
@@ -181,7 +182,7 @@ func TestNormalizeEnvelopeNil(t *testing.T) {
 
 func TestNormalizeEnvelopeEmpty(t *testing.T) {
 	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: nil}
-	result := scripts.NormalizeEnvelope(env, defaultCfg())
+	result := adapters.NormalizeEnvelope(env, defaultCfg())
 	if result != nil {
 		t.Errorf("expected nil from empty envelope, got %d items", len(result))
 	}
@@ -602,7 +603,7 @@ func TestSingleBatchParityNormalization(t *testing.T) {
 		Items:   []scriptpkg.GenerationItemV2{textItem()},
 		Preset:  scriptpkg.PresetCustom,
 	}
-	normalized := scripts.NormalizeEnvelope(env, cfg)
+	normalized := adapters.NormalizeEnvelope(env, cfg)
 	batchItem := normalized[0]
 
 	if batchItem.Language != single.Language {
@@ -810,7 +811,7 @@ func TestBuildEnvelopeIdentitySingleItem(t *testing.T) {
 		Items:   []scriptpkg.GenerationItemV2{item},
 	}
 
-	envID := scripts.BuildEnvelopeIdentity(env)
+	envID := adapters.BuildEnvelopeIdentity(env)
 	itemID := scripts.BuildItemIdentity(item)
 
 	if envID != itemID {
@@ -832,7 +833,7 @@ func TestBuildEnvelopeIdentityMultiItem(t *testing.T) {
 		Items:   []scriptpkg.GenerationItemV2{item1, item2},
 	}
 
-	envID := scripts.BuildEnvelopeIdentity(env)
+	envID := adapters.BuildEnvelopeIdentity(env)
 	if len(envID) != 16 {
 		t.Errorf("multi-item envelope identity should be 16 hex chars, got %d: %q",
 			len(envID), envID)
@@ -848,11 +849,11 @@ func TestBuildEnvelopeIdentityMultiItem(t *testing.T) {
 }
 
 func TestBuildEnvelopeIdentityNil(t *testing.T) {
-	if id := scripts.BuildEnvelopeIdentity(nil); id != "" {
+	if id := adapters.BuildEnvelopeIdentity(nil); id != "" {
 		t.Errorf("nil envelope should return empty identity: got %q", id)
 	}
 	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: nil}
-	if id := scripts.BuildEnvelopeIdentity(env); id != "" {
+	if id := adapters.BuildEnvelopeIdentity(env); id != "" {
 		t.Errorf("empty-items envelope should return empty identity: got %q", id)
 	}
 }
