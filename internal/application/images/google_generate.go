@@ -5,12 +5,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -75,11 +80,58 @@ func (s *Service) GenerateSmartImage(
 		}
 	}
 
-	// Style application from registry was removed alongside the Google Slides
-	// stub (PR June 2026). The capability never had a real implementation.
-	_ = style // suppress unused parameter; style was consumed by now-removed registry call
+	// Real Google Slides click automation flow
+	s.log.Info("Google Slides: starting Playwright click automation", zap.String("prompt", cleanPrompt))
 
-	return nil, fmt.Errorf("google slides image generation was removed (capability never implemented); use NVIDIA image generation instead")
+	tempOut := filepath.Join(s.tempDir, fmt.Sprintf("slides_temp_%d.png", time.Now().Unix()))
+	// Ensure temp directory exists
+	if err := os.MkdirAll(s.tempDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.Remove(tempOut)
+
+	scriptPath := filepath.Join(s.scriptsDir, "bridges", "generate_slide_click.py")
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		scriptPath = "scripts/generate_slide_click.py" // fallback
+	}
+
+	cmd := exec.CommandContext(ctx, "python3", scriptPath, "--prompt", cleanPrompt, "--output", tempOut)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		s.log.Error("Google Slides click automation script failed", zap.Error(err), zap.String("output", string(output)))
+		return nil, fmt.Errorf("google slides automation failed: %w (output: %s)", err, string(output))
+	}
+
+	imgFile, err := os.Open(tempOut)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open generated slide image: %w", err)
+	}
+	defer imgFile.Close()
+
+	slug := textutil.Slugify(subject)
+	if slug == "" {
+		slug = textutil.Slugify(cleanPrompt)
+	}
+	if len(slug) > 50 {
+		slug = slug[:50]
+	}
+
+	filename := fmt.Sprintf("slides_%d.png", time.Now().Unix())
+	description := fmt.Sprintf("AI generated image via Google Slides for prompt: %s", cleanPrompt)
+
+	return s.IngestImage(
+		ctx,
+		slug,
+		style,
+		"google-slides",
+		imgFile,
+		filename,
+		"google-slides",
+		description,
+		tags,
+		skipDrive,
+		false,
+	)
 }
 
 func pickImagePrompt(subject, topic string, prompts []string) string {
