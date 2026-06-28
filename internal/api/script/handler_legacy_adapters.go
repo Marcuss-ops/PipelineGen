@@ -207,6 +207,22 @@ func (r *LegacyGenerateFromClipsRequest) toEnvelope() domainScript.GenerationEnv
 	if len(clipIDs) > 0 {
 		item.Source.Type = domainScript.SourceClips
 		item.Source.ClipIDs = clipIDs
+	} else if r.Topic != "" {
+		// Auto-search mode (PR June 2026): when no explicit clips are
+		// provided, fall back to Qdrant semantic search using the topic
+		// as the query. The SearchSourceResolver picks up SourceSearch
+		// and performs hybrid Qdrant search, builds ClipEvidence, and
+		// feeds it to the engine.
+		//
+		// Depends on Qdrant being wired at composition time. When Qdrant
+		// is unavailable, the job fails at Phase 3 with a clear
+		// "semantic search service not configured" error.
+		//
+		// num_clips doubles as max_clips: the search resolver caps
+		// results at MaxClips (default 10 when NumClips is 0).
+		item.Source.Type = domainScript.SourceSearch
+		item.Source.Query = r.Topic
+		item.Source.MaxClips = r.NumClips
 	}
 	item.Source.NumClips = r.NumClips
 	item.ScriptParams.SentencesPerImage = r.SentencesPerImage
@@ -520,10 +536,10 @@ func (h *ScriptFlowHandler) LegacyGenerateFromClips(c *gin.Context) {
 	}
 
 	clipIDs, derived := req.deriveClipIDs()
-	if len(clipIDs) == 0 {
+	if len(clipIDs) == 0 && req.Topic == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"ok":    false,
-			"error": "generate-from-clips requires at least one clip_id or one clips[] entry",
+			"error": "generate-from-clips requires at least one clip_id, one clips[] entry, or a topic for auto-search",
 		})
 		return
 	}
@@ -541,6 +557,15 @@ func (h *ScriptFlowHandler) LegacyGenerateFromClips(c *gin.Context) {
 			zap.Int("derived", derived),
 			zap.Int("total", len(clipIDs)),
 		)
+	} else if len(clipIDs) == 0 && req.Topic != "" {
+		h.log.Info("legacy_adapter: no clips provided, falling back to Qdrant semantic search via topic",
+			zap.String("topic", req.Topic),
+		)
+		if req.SourceText != "" {
+			h.log.Warn("legacy_adapter: source_text provided without clips — will be replaced by clip evidence text from Qdrant search",
+				zap.String("topic", req.Topic),
+			)
+		}
 	}
 
 	env := req.toEnvelope()
