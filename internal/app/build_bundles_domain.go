@@ -312,7 +312,15 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// PersistenceProcessor. RepositoryAdapter is still constructed
 	// here because wireScriptFlow(BuildRepoBundle) uses it for
 	// PersistenceProcessor registration (see wire_script.go).
-	engine := usecase.NewEngine(scriptGen, memorySvc, log)
+	//
+	// TODO #8 (drift-fix PR): wrap *adapters.Service in the local
+	// MemoryCacheAdapter so it satisfies the narrow memoryCache
+	// interface (memoryCache uses LOCAL lowercase memoryGateRequest /
+	// memoryGateResult types in engine.go; adapters.Service uses
+	// the uppercase MemoryGateRequest / GateResult types). The
+	// wrapper is the contained seam for this cross-package type
+	// mismatch — see memory_cache_adapter.go for rationale.
+	engine := usecase.NewEngine(scriptGen, usecase.NewMemoryCacheAdapter(memorySvc), log)
 
 	return &AIBundle{
 		OllamaClient:  ollamaClient,

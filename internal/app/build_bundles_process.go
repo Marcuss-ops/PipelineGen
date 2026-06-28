@@ -31,6 +31,7 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -200,9 +201,30 @@ func startDriveBackgroundFolders(
 // port referenced from outbox.Deps must statically implement its
 // concrete so a future refactor misses the compile, not the first
 // outbox replay.
+// Compile-time assertions for QDRANT-003 wiring + PR 3
+// (fix/qdrant-outbox-fail-closed). Per AGENTS.md Pattern 0 the
+// composition root is where the typed-port contract is enforced: every
+// port referenced from outbox.Deps must statically implement its
+// concrete so a future refactor misses the compile, not the first
+// outbox replay.
+//
+// TODO #8 (June 2026) drift-fix: the canonical
+// `internal/infrastructure/database/sqlite/assets` package is
+// imported here as `sqassets` (matching the existing convention in
+// build_bundles_core.go and the rest of the composition root). The
+// previously-bare `assets.ClipsRepository` reference at line 205
+// was an UNIMPORTED symbol — this file pre-existing-did-not-compile
+// because no local `assets` or `sqassets` alias was set. Renaming
+// the assertion to `sqassets.ClipsRepository` plus adding the
+// import pins static conformance for jobsoutbox.AssetDeleter exactly
+// like the previous code intended. The corresponding direct
+// assignment at the AssetDeleter wiring site (`outboxDeps.AssetDeleter
+// = repos.ClipsRepo`, gated on `cfg.Qdrant.Enabled && repos.ClipsRepo
+// != nil`) is type-safe because the assertion below proves the
+// static conformance.
 var (
 	_ clipindexer.VectorStoreIndexer = (*qdrant.IndexWriter)(nil)
-	_ jobsoutbox.AssetDeleter        = (*assets.ClipsRepository)(nil)
+	_ jobsoutbox.AssetDeleter        = (*sqassets.ClipsRepository)(nil)
 )
 
 // BuildProcessBundle builds media-processing adapters. driveUploader
@@ -420,9 +442,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// with "no handler for event type X". Fail-closed wiring: only
 	// when cfg.Qdrant.Enabled AND ClipsRepo is present.
 	if cfg.Qdrant.Enabled && repos.ClipsRepo != nil {
-		if deleter, ok := repos.ClipsRepo.(jobsoutbox.AssetDeleter); ok {
-			outboxDeps.AssetDeleter = deleter
-		}
+		outboxDeps.AssetDeleter = repos.ClipsRepo
 	}
 	// PR 3 fix/qdrant-outbox-fail-closed (#4 + #5): core handlers are
 	// fail-closed when Qdrant is enabled. The previous
