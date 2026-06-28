@@ -611,7 +611,10 @@ func (h *ScriptFlowHandler) enqueueDeprecated(c *gin.Context, env domainScript.G
 	}
 
 	req := jobs.NewGenerateEnqueueRequest(env)
-	enqueuedJob, err := jobs.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log)
+	// Issue 4 (June 2026, P1): pass h.registry so MaxRetries is sourced
+	// from registry.DefaultMaxRetries(script.generate) instead of the
+	// pre-Issue-4 hard-coded 3-retry fallback.
+	enqueuedJob, err := jobs.EnqueueGenerationJob(c.Request.Context(), h.jobsSvc, req, h.log, h.registry)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
