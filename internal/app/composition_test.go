@@ -4,7 +4,8 @@
 // decomposition in composition.go. It complements (does NOT replace):
 //   - wire_test.go: end-to-end smoke via WireServices (no per-bundle field
 //     assertions, no goroutine assertions, no ordering assertions).
-//   - module_jobs_test.go: focused BuildJobsBundle field + nil-input checks.
+//   - TestBuildJobsBundle_FieldsAreNonNil: focused BuildJobsBundle field
+//     + nil-input checks (cross-validates the canary assertions below).
 //
 // What this file adds:
 //  1. TestComposition_NilObligatory_NewComposition — every bundle in the
@@ -176,7 +177,8 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.NotNil(t, root.AI.MemoryService, "root.AI.MemoryService")
 	require.NotNil(t, root.AI.ScriptEngine, "root.AI.ScriptEngine")
 
-	// JobsBundle canaries (4 fields; cross-validates module_jobs_test.go).
+	// JobsBundle canaries (4 fields; cross-validated by
+	// TestBuildJobsBundle_FieldsAreNonNil).
 	require.NotNil(t, root.Jobs.Repo, "root.Jobs.Repo")
 	require.NotNil(t, root.Jobs.Dispatcher, "root.Jobs.Dispatcher")
 	require.NotNil(t, root.Jobs.Service, "root.Jobs.Service")
@@ -199,7 +201,8 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 }
 
 // TestComposition_NilObligatory_BuildRepoBundle tests BuildRepoBundle in
-// isolation — mirrors the focused-builder pattern in module_jobs_test.go.
+// isolation — mirrors the focused-builder pattern in
+// TestBuildJobsBundle_FieldsAreNonNil.
 // RepoBundle is the canonical leaf (no other-bundle deps).
 func TestComposition_NilObligatory_BuildRepoBundle(t *testing.T) {
 	chdirToProjectRoot(t)
@@ -262,9 +265,9 @@ func TestComposition_NilObligatory_BuildSearchBundle(t *testing.T) {
 }
 
 // TestComposition_NilObligatory_BuildJobsBundle cross-validates the
-// canonical module_jobs_test.go::TestBuildJobsBundle_FieldsAreNonNil so a
-// regression in either file is detected by both. Drift between the two
-// is a signal that one side has been updated without the other.
+// canonical TestBuildJobsBundle_FieldsAreNonNil so a regression in either
+// file is detected by both. Drift between the two is a signal that one
+// side has been updated without the other.
 func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 	chdirToProjectRoot(t)
 

@@ -1151,6 +1151,14 @@
           - "alias count `rg 'type \\w+ = (generation|usecases|postprocess|source|curation|persistence)\\.\\w+' internal/application/scripts/` ≤ 25"
       - id: PR-G.3
         title: CUTOVER (consumer migration)
+        status: closed
+        closed_in_commit: |
+          Step 6 PR-G.3 CUTOVER. See commit body for full deliverable list
+          (baseline JSON audit_ledger rename + composition_test.go 4 prose
+          retires + scripts-side pkg_size retirement).
+          Effective CI impact: zero — Phase 0 archcheck --strict is
+          report-only; this commit does NOT flip any enforcement
+          (PR-G.4 carries the residual work streams).
         description: |
           internal/app/wire_script.go and internal/api/script/handler_flow.go
           switch from scripts.X to direct subpkg.X references. internal/app
