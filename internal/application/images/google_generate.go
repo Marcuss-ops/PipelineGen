@@ -95,7 +95,15 @@ func (s *Service) GenerateSmartImage(
 		scriptPath = "scripts/generate_slide_click.py" // fallback
 	}
 
-	cmd := exec.CommandContext(ctx, "python3", scriptPath, "--prompt", cleanPrompt, "--output", tempOut)
+	profileDir := "data/google_slides_profile"
+	if s.cfg != nil {
+		profileDir = filepath.Join(s.cfg.Storage.DataDir, "google_slides_profile")
+	}
+	if abs, err := filepath.Abs(profileDir); err == nil {
+		profileDir = abs
+	}
+
+	cmd := exec.CommandContext(ctx, "python3", scriptPath, "--prompt", cleanPrompt, "--output", tempOut, "--profile-dir", profileDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		s.log.Error("Google Slides click automation script failed", zap.Error(err), zap.String("output", string(output)))

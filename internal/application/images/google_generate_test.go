@@ -17,6 +17,7 @@ func TestRealGoogleSlidesImageGen(t *testing.T) {
 	cfg := config.Get()
 	cfg.Paths.PythonScriptsDir = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/scripts"
 	cfg.Storage.TempDir = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/tmp"
+	cfg.Storage.DataDir = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data"
 
 	log, _ := zap.NewDevelopment()
 
