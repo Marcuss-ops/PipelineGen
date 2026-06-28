@@ -1447,6 +1447,95 @@
     sequence". Operator-owned PR landings migrate code site-by-site
     with cross-reference back to this entry's sub_task IDs.
 
+
+# ── Wave 24 — Target Repository Structure bootstrap (in_progress) ──────────
+
+- id: 24
+  title: Target Repository Structure bootstrap (pure EXPAND)
+  status: in_progress
+  verified_zero: false
+  description: |
+    EXPAND phase for the target tree in
+    docs/architecture/godlike/02_TARGET_STRUCTURE.md. Slice 24.1 lands the
+    skeletal package directories (internal/kernel/<x>/ + internal/capabilities
+    root + internal/platform root) plus architecture/deprecations.yaml and
+    generated/ audit-artifact placeholders. NO renames. NO file moves. NO
+    imports from production code into the new packages. Follows the
+    EXPAND-first rule of docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
+    and the "One task solves one responsibility" rule of
+    docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md.
+  slice_log:
+    - id: 24.1
+      title: Skeleton scaffold + deprecation manifest + Wave tracker entry
+      date: 2026-06-26
+      files_added:
+        - internal/kernel/asset/doc.go
+        - internal/kernel/job/doc.go
+        - internal/kernel/script/doc.go
+        - internal/kernel/event/doc.go
+        - internal/kernel/identity/doc.go
+        - internal/kernel/errors/doc.go
+        - internal/capabilities/doc.go
+        - internal/platform/doc.go
+        - architecture/deprecations.yaml
+        - architecture/generated/README.md
+        - docs/generated/README.md
+      files_modified:
+        - architecture/current.yaml
+      files_not_touched:
+        - "internal/domain/** (canonical until Wave 24 BACKFILL)"
+        - "internal/application/** (canonical until per-capability BACKFILL)"
+        - "internal/infrastructure/** (canonical until per-platform BACKFILL)"
+        - "cmd/archgen/** (deferred — needs populated registry)"
+        - "scripts/ci/ + scripts/tools/ split (deferred — .github/workflows path churn)"
+        - "internal/platform/config (only existing Phase-0 subzone; stays)"
+  target_dirs:
+    - internal/kernel
+    - internal/kernel/asset
+    - internal/kernel/job
+    - internal/kernel/script
+    - internal/kernel/event
+    - internal/kernel/identity
+    - internal/kernel/errors
+    - internal/capabilities
+    - internal/platform
+    - architecture/generated
+    - docs/generated
+  rule: |
+    EXPAND-only in Wave 24. The new internal/kernel/<x>/, internal/capabilities,
+    and internal/platform packages MUST NOT be imported by production code
+    until the corresponding backing migration wave moves the first CUTOVER
+    into this root and the architecture/deprecations.yaml manifest gains its
+    first DEP-* row per docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md.
+  next_slices_recommended:
+    - id: 24.2
+      title: First kernel extraction (asset or job — whichever has ≥2 consumers first)
+      kind: capability_partial_move
+    - id: 24.3
+      title: First platform relocation (drive or process — pure rename + import rewrite)
+      kind: capability_partial_move
+    - id: 24.4
+      title: First capability vertical slice (scripts or jobs, full module.go + contract.go + service.go + http.go + jobs.go + events.go + repository.go + adapters.go)
+      kind: capability_full_move
+  exit_gate: |
+    internal/kernel/{asset,job,script,event,identity,errors}/doc.go exist
+    (one each, package names asset/job/script/event/identity/errors
+    respectively);
+    internal/capabilities/doc.go declares package capabilities;
+    internal/platform/doc.go declares package platform;
+    architecture/deprecations.yaml present with version: 1 and
+    deprecations: [];
+    architecture/generated/README.md and docs/generated/README.md present;
+    rg 'github\\.com/.*/internal/kernel' internal/application internal/domain
+    internal/infrastructure internal/app internal/api -g '*.go' returns
+    zero; rg 'github\\.com/.*/internal/capabilities' (same globs) returns
+    zero (excluding this Wave 24 entry's doc strings); rg imports of
+    internal/platform from non-platform code returns zero lines outside
+    internal/platform/config (which is the existing legal Phase-0 subzone);
+    go build ./... exits 0; go vet ./... exits 0; go run ./cmd/archcheck
+    exits 0 (Phase 0 report-only); the focused-gate passes do not gain new
+    violations from Slice 24.1.
+
 ---
 # ── Document #2/3: Post-cascade operational followups (June 2026) ─────────
 post_cascade_followups:
