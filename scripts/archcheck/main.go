@@ -6,7 +6,7 @@
 // legacy surface (database/sql in api/application/domain, interface{}
 // growth, dependency setters, type aliases, fake 501 routes,
 // handlers reaching for *sql.DB, Python legacy writers, etc.) under a
-// committed monotone-decreasing baseline.
+// committed monotone-decreasing bl.
 //
 // Companion binary: **cmd/archcheck** is the **target-tree** half —
 // for its role description, see cmd/archcheck/main.go's package doc.
@@ -27,7 +27,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -40,6 +39,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	bl "github.com/Marcuss-ops/PipelineGen/scripts/archcheck/baseline"
 )
 
 func main() {
@@ -90,126 +91,37 @@ func main() {
 // not a check op. If rg is missing in the environment the operator
 // will see check-rule violations in the seeded baseline — that's a
 // signal to install rg locally and re-run rather than commit a
-// poisoned baseline.
+// poisoned bl.
 func runSeedBaseline() {
-	if _, err := os.Stat(phase0BaselinePath); err == nil {
-		fmt.Fprintf(os.Stderr, "archcheck: seed-baseline refused: %s already exists; remove it first or use --ratchet --future-ratchet to compare\n", phase0BaselinePath)
+	if _, err := os.Stat(bl.File); err == nil {
+		fmt.Fprintf(os.Stderr, "archcheck: seed-baseline refused: %s already exists; remove it first or use --ratchet --future-ratchet to compare\n", bl.File)
 		os.Exit(2)
 	}
-	if _, err := phase0SeedBaseline(); err != nil {
+	// Compute the 5 Phase 0 actuals locally (in package main) and pass
+	// them to bl.Seed() as a struct. The baseline package cannot
+	// call these check functions directly (different package, no
+	// visibility into the 5 check functions), so dependency injection
+	// is the cleanest path. Pass `nil` for the baseline slice: the
+	// seed path computes the actual set from scratch, the diff
+	// regressions/stale are discarded.
+	ibActual, _, _ := checkInterfaceBraceGrowth(nil)
+	sdActual, _, _ := checkSetterDetector(nil)
+	taActual, _, _ := checkTypeAliasCrossPkg(nil)
+	frActual, _, _ := checkFakeRoute(nil)
+	hdActual, _, _ := checkHandlerToDB(nil)
+	actuals := bl.Actuals{
+		InterfaceBraces:     ibActual,
+		Setters:             sdActual,
+		TypeAliasesCrossPkg: taActual,
+		FakeRoutes:          frActual,
+		HandlersToDB:        hdActual,
+	}
+	if _, err := bl.Seed(actuals); err != nil {
 		fmt.Fprintf(os.Stderr, "archcheck: seed-baseline failed: %v\n", err)
 		os.Exit(2)
 	}
-	fmt.Fprintf(os.Stdout, "{\"seeded\":%q,\"path\":%q}\n", time.Now().UTC().Format(time.RFC3339), phase0BaselinePath)
+	fmt.Fprintf(os.Stdout, "{\"seeded\":%q,\"path\":%q}\n", time.Now().UTC().Format(time.RFC3339), bl.File)
 	os.Exit(0)
-}
-
-func runFocusedChecks() Report {
-	checks := map[string]int{}
-	violations := []string{}
-
-	apiStats, apiViolations := checkAPIInfrastructureImports()
-	checks["api_infrastructure_imports"] = apiStats["violations"]
-	checks["api_infrastructure_imports_actual"] = apiStats["actual"]
-	checks["api_infrastructure_imports_allowed"] = apiStats["allowed"]
-	checks["api_infrastructure_allowlist_stale"] = apiStats["stale"]
-	violations = append(violations, apiViolations...)
-
-	yamlVerifiedOK, yamlVerifiedTotal, yamlViolations := checkMigrationYAML()
-	checks["migration_yaml_done_waves_total"] = yamlVerifiedTotal
-	checks["migration_yaml_done_waves_with_verified_zero_true"] = yamlVerifiedOK
-	violations = append(violations, yamlViolations...)
-
-	ownershipMissing, ownershipViolations := checkOwnershipYAML()
-	checks["ownership_yaml_missing_paths"] = ownershipMissing
-	violations = append(violations, ownershipViolations...)
-
-	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
-	checks["python_legacy_writer_violations"] = pythonWriterViolations
-	violations = append(violations, pythonWriterFindings...)
-
-	depStats, depViolations := checkDeprecations()
-	for k, v := range depStats {
-		checks[k] = v
-	}
-	violations = append(violations, depViolations...)
-
-	// Wave 19 (PR1 — observation only): surface capability-direction
-	// edge counts. NO violations emitted (would break the active
-	// Wave 14-18 ratchet until the baseline is agreed). PR2+ will
-	// promote the counts to hard gates via allowlist-based subtraction.
-	atiStats, atiViolations := checkApplicationToInfrastructure()
-	checks["application_to_infrastructure_files"] = atiStats["actual"]
-	violations = append(violations, atiViolations...)
-
-	cciStats, cciViolations := checkCrossCapabilityImport()
-	checks["cross_capability_import_pairs"] = cciStats["actual"]
-	violations = append(violations, cciViolations...)
-
-	return Report{
-		Passed:            len(violations) == 0,
-		FocusedGatePassed: len(violations) == 0,
-		Mode:              "focused",
-		Commit:            "ci/archcheck-hard-fail",
-		Checks:            checks,
-		Violations:        violations,
-	}
-}
-
-func runRatchetChecks() Report {
-	checks := map[string]int{}
-	violations := []string{}
-
-	apiStats, apiViolations := checkAPIInfrastructureImports()
-	checks["api_infrastructure_imports"] = apiStats["violations"]
-	checks["api_infrastructure_imports_actual"] = apiStats["actual"]
-	checks["api_infrastructure_imports_allowed"] = apiStats["allowed"]
-	checks["api_infrastructure_allowlist_stale"] = apiStats["stale"]
-	violations = append(violations, apiViolations...)
-
-	sqlStats, sqlViolations := checkDatabaseSQLGate()
-	checks["database_sql_actual"] = sqlStats["actual"]
-	checks["database_sql_baseline"] = sqlStats["baseline"]
-	checks["database_sql_regressions"] = sqlStats["regressions"]
-	violations = append(violations, sqlViolations...)
-
-	yamlVerifiedOK, yamlVerifiedTotal, yamlViolations := checkMigrationYAML()
-	checks["migration_yaml_done_waves_total"] = yamlVerifiedTotal
-	checks["migration_yaml_done_waves_with_verified_zero_true"] = yamlVerifiedOK
-	violations = append(violations, yamlViolations...)
-
-	ownershipMissing, ownershipViolations := checkOwnershipYAML()
-	checks["ownership_yaml_missing_paths"] = ownershipMissing
-	violations = append(violations, ownershipViolations...)
-
-	pythonWriterViolations, pythonWriterFindings := checkPythonLegacyWriterGate()
-	checks["python_legacy_writer_violations"] = pythonWriterViolations
-	violations = append(violations, pythonWriterFindings...)
-
-	depStats, depViolations := checkDeprecations()
-	for k, v := range depStats {
-		checks[k] = v
-	}
-	violations = append(violations, depViolations...)
-
-	// Wave 19 (PR1 — observation only). See runFocusedChecks for rationale.
-	atiStats, atiViolations := checkApplicationToInfrastructure()
-	checks["application_to_infrastructure_files"] = atiStats["actual"]
-	violations = append(violations, atiViolations...)
-
-	cciStats, cciViolations := checkCrossCapabilityImport()
-	checks["cross_capability_import_pairs"] = cciStats["actual"]
-	violations = append(violations, cciViolations...)
-
-	return Report{
-		Passed:            len(violations) == 0,
-		FocusedGatePassed: len(violations) == 0,
-		Mode:              "ratchet",
-		Commit:            "ci/archcheck-hard-fail",
-		LegacyBudget:      0,
-		Checks:            checks,
-		Violations:        violations,
-	}
 }
 
 func checkAPIInfrastructureImports() (map[string]int, []string) {
@@ -232,7 +144,7 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 			if allowErr != nil {
 				return stats, []string{fmt.Sprintf("checkAPIInfrastructureImports: load allowlist: %v", allowErr)}
 			}
-			staleAllowlist := subtractSet(allowlist, actual)
+			staleAllowlist := bl.SubtractSet(allowlist, actual)
 			stats["allowed"] = len(allowlist)
 			stats["stale"] = len(staleAllowlist)
 			stats["violations"] = len(staleAllowlist)
@@ -245,7 +157,7 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 		stats["violations"] = -1
 		return stats, []string{fmt.Sprintf("checkAPIInfrastructureImports: rg failed: %v", err)}
 	}
-	actual := normalizePaths(splitNonEmpty(string(out)))
+	actual := bl.NormalizePaths(splitNonEmpty(string(out)))
 
 	allowlist, err := loadAllowlist("docs/migrations/api-infrastructure-imports-allowlist.txt")
 	if err != nil {
@@ -253,8 +165,8 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 		return stats, []string{fmt.Sprintf("checkAPIInfrastructureImports: load allowlist: %v", err)}
 	}
 
-	staleAllowlist := subtractSet(allowlist, actual)
-	violations := subtractSet(actual, allowlist)
+	staleAllowlist := bl.SubtractSet(allowlist, actual)
+	violations := bl.SubtractSet(actual, allowlist)
 	for _, stale := range staleAllowlist {
 		violations = append(violations, "stale allowlist entry with no matching API infrastructure import: "+stale)
 	}
@@ -302,12 +214,12 @@ func checkApplicationToInfrastructure() (map[string]int, []string) {
 		stats["violations"] = -1
 		return stats, []string{fmt.Sprintf("checkApplicationToInfrastructure: rg failed: %v", err)}
 	}
-	actual := normalizePaths(splitNonEmpty(string(out)))
+	actual := bl.NormalizePaths(splitNonEmpty(string(out)))
 	stats["actual"] = len(actual)
 	// PR1 observation-only: no violations emitted (would break active
-	// Wave 14-18 ratchet). PR2 promotes the edge to hard-gate via
-	// subtractSet(actual, allowlist) — see Wave 19 description in
-	// architecture/current.yaml.
+	// Wave 14-18 ratchet). The edge-counter stays zero-promotion until
+	// PR3 promotes the rule to hard-gate via bl.SubtractSet(actual, allowlist)
+	// (see Wave 19 description in architecture/current.yaml).
 	return stats, nil
 }
 
@@ -502,10 +414,10 @@ func checkDatabaseSQLGate() (map[string]int, []string) {
 		return stats, []string{fmt.Sprintf("checkDatabaseSQLGate: rg failed: %v", err)}
 	}
 
-	actual := normalizePaths(splitNonEmpty(string(out)))
-	baseline := normalizePaths(databaseSQLLegacyBaseline)
-	added := subtractSet(actual, baseline)
-	removed := subtractSet(baseline, actual)
+	actual := bl.NormalizePaths(splitNonEmpty(string(out)))
+	baseSet := bl.NormalizePaths(databaseSQLLegacyBaseline)
+	added := bl.SubtractSet(actual, baseSet)
+	removed := bl.SubtractSet(baseSet, actual)
 	stats["actual"] = len(actual)
 	stats["regressions"] = len(added)
 
@@ -514,7 +426,7 @@ func checkDatabaseSQLGate() (map[string]int, []string) {
 		violations = append(violations, "new database/sql import in api/application/domain: "+path)
 	}
 	if len(removed) > 0 {
-		stats["baseline"] = len(baseline) - len(removed)
+		stats["baseline"] = len(baseSet) - len(removed)
 	}
 	return stats, violations
 }
@@ -543,7 +455,7 @@ func loadAllowlist(path string) ([]string, error) {
 		out = append(out, trimmed)
 	}
 	sort.Strings(out)
-	return normalizePaths(out), nil
+	return bl.NormalizePaths(out), nil
 }
 
 func splitNonEmpty(s string) []string {
@@ -556,35 +468,6 @@ func splitNonEmpty(s string) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func normalizePaths(paths []string) []string {
-	seen := make(map[string]bool, len(paths))
-	var out []string
-	for _, p := range paths {
-		norm := filepath.ToSlash(strings.TrimSpace(p))
-		if norm == "" || seen[norm] {
-			continue
-		}
-		seen[norm] = true
-		out = append(out, norm)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func subtractSet(actual, allowed []string) []string {
-	allowedSet := make(map[string]bool, len(allowed))
-	for _, a := range allowed {
-		allowedSet[a] = true
-	}
-	var diff []string
-	for _, a := range actual {
-		if !allowedSet[a] {
-			diff = append(diff, a)
-		}
-	}
-	return diff
 }
 
 // databaseSQLLegacyBaseline captures the pre-gate db/sql surface that still
@@ -795,103 +678,6 @@ func checkOwnershipYAML() (int, []string) {
 //      verified_zero: true.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// phase0BaselinePath is the committed monotone-decreasing baseline for
-// the 5 Phase 0 rules. Each rule reads only its own section; the file
-// is regenerated by the operator-only `--seed-baseline` flag (see main()
-// dispatch). The tool does NOT auto-write the baseline: missing-file
-// cases are surfaced as a hard-error violation in runPhase0Checks().
-const phase0BaselinePath = "scripts/archcheck/phase0_baseline.json"
-
-// phase0Baseline is the JSON shape of scripts/archcheck/phase0_baseline.json.
-// Each section is a list of rg-shaped strings (path or path:line:text),
-// normalized and sorted. The `_meta` block records when the baseline
-// was last regenerated; it is informational only.
-type phase0Baseline struct {
-	InterfaceBraces     []string `json:"interface_braces"`
-	Setters             []string `json:"setters"`
-	TypeAliasesCrossPkg []string `json:"type_aliases_cross_pkg"`
-	FakeRoutes          []string `json:"fake_routes"`
-	HandlersToDB        []string `json:"handlers_to_db"`
-	Meta                struct {
-		GeneratedAtRFC3339 string `json:"generated_at"`
-		Note               string `json:"note,omitempty"`
-	} `json:"_meta"`
-}
-
-// runPhase0Checks runs the 5 Phase 0 rules and compares against the
-// committed baseline. It returns stats and the violation list (which
-// during the minor cycle contains only REGRESSIONS — new entries vs
-// the committed baseline, NOT existing entries). If the baseline file
-// is missing, the function returns a hard-error stack instructing the
-// operator to run --seed-baseline (no auto-seed: the tool refuses to
-// silently write a possibly-poisoned baseline if rg is missing or the
-// environment is non-representative).
-func runPhase0Checks() (map[string]int, []string) {
-	checks := map[string]int{}
-	violations := []string{}
-
-	// Hard-error guard: the committed baseline file MUST exist before
-	// --future-ratchet can run. PR-A deliberately does NOT auto-seed
-	// because rg availability varies across environments — auto-seeding
-	// a baseline that was computed against missing/broken rg would
-	// silently turn future CI runs red once rg IS available and the
-	// actual set pops above the poisoned baseline. The operator path
-	// is explicit: `go run ./scripts/archcheck --seed-baseline` writes
-	// a fresh baseline, then `git add` + commit. The hard-error below
-	// is ONE multi-line string (consumer-agnostic; CI dashboards that
-	// re-format, sort, or dedup violations will not lose leading
-	// whitespace fragments).
-	if _, err := os.Stat(phase0BaselinePath); os.IsNotExist(err) {
-		return checks, []string{
-			"phase0_baseline.json missing — PR-A bootstrap incomplete\n" +
-				"  fix: go run ./scripts/archcheck --seed-baseline && git add scripts/archcheck/phase0_baseline.json && git commit\n" +
-				"  ref: scripts/archcheck/main.go::phase0BaselinePath + scripts/ci-architectural-checks.sh header comment",
-		}
-	}
-
-	// Standard ratchet compare: actual vs baseline, fail on regressions.
-	baseline, err := loadPhase0Baseline()
-	if err != nil {
-		return checks, []string{fmt.Sprintf("phase0: load baseline: %v", err)}
-	}
-
-	ibActual, ibViolations, ibStats := checkInterfaceBraceGrowth(baseline.InterfaceBraces)
-	for k, v := range ibStats {
-		checks[k] = v
-	}
-	violations = append(violations, ibViolations...)
-
-	sdActual, sdViolations, sdStats := checkSetterDetector(baseline.Setters)
-	for k, v := range sdStats {
-		checks[k] = v
-	}
-	violations = append(violations, sdViolations...)
-
-	taActual, taViolations, taStats := checkTypeAliasCrossPkg(baseline.TypeAliasesCrossPkg)
-	for k, v := range taStats {
-		checks[k] = v
-	}
-	violations = append(violations, taViolations...)
-
-	frActual, frViolations, frStats := checkFakeRoute(baseline.FakeRoutes)
-	for k, v := range frStats {
-		checks[k] = v
-	}
-	violations = append(violations, frViolations...)
-
-	hdActual, hdViolations, hdStats := checkHandlerToDB(baseline.HandlersToDB)
-	for k, v := range hdStats {
-		checks[k] = v
-	}
-	violations = append(violations, hdViolations...)
-
-	// Suppress unused-var warnings (the actual sets are not directly
-	// needed inside the violation loop here; baseline compare already
-	// surfaces both regressions AND dimension stats in `checks`).
-	_, _, _, _, _ = ibActual, sdActual, taActual, frActual, hdActual
-	return checks, violations
-}
-
 // ── Phase 0 rule 1: interface{} growth ────────────────────────────────────
 
 // checkInterfaceBraceGrowth uses go/parser + go/ast to count only
@@ -914,15 +700,12 @@ func checkInterfaceBraceGrowth(baseline []string) (actual []string, violations [
 	actual = walkASTForInterfaceAny()
 	stats["phase0_interface_braces_actual"] = len(actual)
 
-	// Regressions: entries in actual that are NOT in the baseline.
-	added := subtractSet(actual, baseline)
+	added, stale := bl.Compare(actual, baseline)
+
 	stats["phase0_interface_braces_regressions"] = len(added)
 	for _, line := range added {
 		violations = append(violations, "phase0 interface{}/any growth: "+line)
 	}
-
-	// Stale: entries in the baseline that no longer appear in the code.
-	stale := subtractSet(baseline, actual)
 	stats["phase0_interface_braces_stale"] = len(stale)
 	for _, entry := range stale {
 		violations = append(violations, "phase0 interface{} baseline stale (path or type no longer present): "+entry)
@@ -1082,7 +865,7 @@ func checkSetterDetector(baseline []string) (actual []string, violations []strin
 	}
 	actual = splitNonEmpty(strings.TrimRight(string(out), "\n"))
 	stats["phase0_setters_actual"] = len(actual)
-	added := subtractSet(actual, baseline)
+	added := bl.SubtractSet(actual, baseline)
 	stats["phase0_setters_regressions"] = len(added)
 	for _, line := range added {
 		violations = append(violations, "phase0 dependency setter introduced: "+line)
@@ -1114,7 +897,7 @@ func checkTypeAliasCrossPkg(baseline []string) (actual []string, violations []st
 	}
 	actual = splitNonEmpty(strings.TrimRight(string(out), "\n"))
 	stats["phase0_type_aliases_cross_pkg_actual"] = len(actual)
-	added := subtractSet(actual, baseline)
+	added := bl.SubtractSet(actual, baseline)
 	stats["phase0_type_aliases_cross_pkg_regressions"] = len(added)
 	for _, line := range added {
 		violations = append(violations, "phase0 cross-package type alias: "+line)
@@ -1149,7 +932,7 @@ func checkFakeRoute(baseline []string) (actual []string, violations []string, st
 	}
 	actual = splitNonEmpty(strings.TrimRight(string(out), "\n"))
 	stats["phase0_fake_routes_actual"] = len(actual)
-	added := subtractSet(actual, baseline)
+	added := bl.SubtractSet(actual, baseline)
 	stats["phase0_fake_routes_regressions"] = len(added)
 	for _, line := range added {
 		violations = append(violations, "phase0 fake route (501) introduced: "+line)
@@ -1186,9 +969,9 @@ func checkHandlerToDB(baseline []string) (actual []string, violations []string, 
 	if err != nil && !execErrIsNoMatch(err) {
 		return actual, []string{fmt.Sprintf("checkHandlerToDB: rg failed: %v", err)}, stats
 	}
-	actual = normalizePaths(splitNonEmpty(string(out)))
+	actual = bl.NormalizePaths(splitNonEmpty(string(out)))
 	stats["phase0_handlers_to_db_actual"] = len(actual)
-	added := subtractSet(actual, baseline)
+	added := bl.SubtractSet(actual, baseline)
 	stats["phase0_handlers_to_db_regressions"] = len(added)
 	for _, path := range added {
 		violations = append(violations, "phase0 handler file reaches into database/sql: "+path)
@@ -1198,66 +981,6 @@ func checkHandlerToDB(baseline []string) (actual []string, violations []string, 
 }
 
 // ── Baseline helpers ──────────────────────────────────────────────────────
-
-// loadPhase0Baseline reads scripts/archcheck/phase0_baseline.json and
-// returns the decoded struct. The baseline file MUST exist when this
-// helper is called (the missing-file case is handled upstream in
-// runPhase0Checks() with a hard-error rather than auto-seeding).
-//
-// Sanity check: any section that decodes as nil (e.g. a partial baseline
-// where someone hand-edited the JSON and removed an array) is forced
-// to []string{} so subtractSet() has a safe comparison side.
-func loadPhase0Baseline() (phase0Baseline, error) {
-	var b phase0Baseline
-	text, err := os.ReadFile(phase0BaselinePath)
-	if err != nil {
-		return b, fmt.Errorf("read %s: %w", phase0BaselinePath, err)
-	}
-	if err := json.Unmarshal(text, &b); err != nil {
-		return b, fmt.Errorf("decode %s: %w", phase0BaselinePath, err)
-	}
-	// Force any nil section to []string{} so subtractSet is safe.
-	if b.InterfaceBraces == nil {
-		b.InterfaceBraces = []string{}
-	}
-	if b.Setters == nil {
-		b.Setters = []string{}
-	}
-	if b.TypeAliasesCrossPkg == nil {
-		b.TypeAliasesCrossPkg = []string{}
-	}
-	if b.FakeRoutes == nil {
-		b.FakeRoutes = []string{}
-	}
-	if b.HandlersToDB == nil {
-		b.HandlersToDB = []string{}
-	}
-	return b, nil
-}
-
-// phase0SeedBaseline computes the current actual state of all 5 rules
-// and writes a fresh scripts/archcheck/phase0_baseline.json. The
-// returned struct mirrors the file content so callers can use it for
-// stats accounting without re-reading the file.
-func phase0SeedBaseline() (phase0Baseline, error) {
-	var b phase0Baseline
-	b.InterfaceBraces, _, _ = checkInterfaceBraceGrowth(nil)
-	b.Setters, _, _ = checkSetterDetector(nil)
-	b.TypeAliasesCrossPkg, _, _ = checkTypeAliasCrossPkg(nil)
-	b.FakeRoutes, _, _ = checkFakeRoute(nil)
-	b.HandlersToDB, _, _ = checkHandlerToDB(nil)
-	b.Meta.GeneratedAtRFC3339 = time.Now().UTC().Format(time.RFC3339)
-	b.Meta.Note = "Phase 0 (PR-A) baseline seeded by the operator via the `--seed-baseline` flag (operator-only; main() intercepts before the normal Mode dispatch). Promote-to-required follow-up PR will tighten this baseline to zero (or fold the 5 rules into runRatchetChecks() once the minor cycle ends)."
-	marshalled, err := json.MarshalIndent(b, "", "  ")
-	if err != nil {
-		return b, fmt.Errorf("encode seed baseline: %w", err)
-	}
-	marshalled = append(marshalled, '\n')
-	if err := os.WriteFile(phase0BaselinePath, marshalled, 0644); err != nil {
-		return b, fmt.Errorf("write seed baseline: %w", err)
-	}
-	return b, nil
-}
 
 func checkOwnershipRef(ref string, violations *[]string) {
 	ref = strings.TrimSpace(strings.Trim(ref, `"'`))
