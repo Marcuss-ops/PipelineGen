@@ -1,4 +1,4 @@
-// Package scripts — processor_clip_bindings_doc_json_diff_test.go (PR 7, June 2026).
+// Package adapters_test — processor_clip_bindings_doc_json_diff_test.go (PR 7, June 2026).
 //
 // BEHAVIORAL BYTE-LEVEL DIFF TEST: pins the user's stated PR 7 invariant
 // — "Diff test tra doc generato e JSON deve essere vuoto" — by comparing
@@ -25,7 +25,14 @@
 //  5. Marshal model.SpecScene to JSON bytes (the response writer's wire shape).
 //  6. Extract per-scene drive_links from BOTH byte streams.
 //  7. Assert scene-by-scene equality: docLink[i] == wireLink[i].
-package scripts
+//
+// PR-G.2 BACKFILL (June 2026): package moved from `scripts` (root facade)
+// to `adapters_test` (external). The ClipBindingsProcessor /
+// ProcessInput / BuildClipSpecSceneDocumentHTML / BuildClipEvidence
+// symbols are no longer reached via the `scripts.` facade; they are
+// imported directly from the canonical `adapters` and `usecase`
+// subpackages. The test's assertions are unchanged.
+package adapters_test
 
 import (
 	"context"
@@ -37,6 +44,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -111,7 +120,7 @@ type docSpecDoc struct {
 // this byte-level test (the rendered HTML would miss the canonical
 // drive links).
 func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
-	ev := BuildClipEvidence(map[string]any{
+	ev := usecase.BuildClipEvidence(map[string]any{
 		// PR 6 canonical: URLs keyed by the canonical (Drive file
 		// ID) the user typed, NOT by any internal asset.ID.
 		"clip_ids":   []string{"drive-file-A", "drive-file-B", "drive-file-C", "drive-file-D"},
@@ -143,8 +152,8 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 		NumClips:     4,
 	}
 
-	p := NewClipBindingsProcessor(zap.NewNop())
-	if _, err := p.Process(context.Background(), plan, ProcessInput{
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Scenes: scenes},
 	}); err != nil {
 		t.Fatalf("process error = %v", err)
@@ -160,7 +169,7 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 	model := &scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},
 	}
-	docHTML := BuildClipSpecSceneDocumentHTML(model, "PR 7 Test Title", ev)
+	docHTML := adapters.BuildClipSpecSceneDocumentHTML(model, "PR 7 Test Title", ev)
 
 	// ── JSON response writer view: marshal the actual wire shape. ──
 	wireRaw, err := json.Marshal(model.SpecScene)

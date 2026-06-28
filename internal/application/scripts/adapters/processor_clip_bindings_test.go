@@ -12,7 +12,7 @@
 // verifies the binder therefore NEVER sees the dropped IDs
 // (since BuildClipEvidence silently excludes them from
 // ClipIDs).
-package scripts
+package adapters_test
 
 import (
 	"context"
@@ -21,6 +21,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -45,7 +47,7 @@ import (
 // not appear in any scene's bound ClipID — those IDs are in
 // MissingClipIDs, not in ClipIDs.
 func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
-	ev := BuildClipEvidence(map[string]any{
+	ev := usecase.BuildClipEvidence(map[string]any{
 		"clip_ids":         []string{"clip-a"},
 		"clip_names":       []string{"Clip A"},
 		"clip_drive_links": map[string]string{"clip-a": "https://drive.google.com/a"},
@@ -97,8 +99,8 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 		NumClips:     3, // request more than the resolved count → binder cycles the single resolved ID
 	}
 
-	p := NewClipBindingsProcessor(zap.NewNop())
-	if _, err := p.Process(context.Background(), plan, ProcessInput{SpecScene: model.SpecScene}); err != nil {
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}
 
@@ -133,7 +135,7 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 // cycle. Combined with the single-resolved test above, this
 // pins both endpoints of "binder respect resolved set only".
 func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
-	ev := BuildClipEvidence(map[string]any{
+	ev := usecase.BuildClipEvidence(map[string]any{
 		"clip_ids":   []string{"clip-a", "clip-b", "clip-c"},
 		"clip_names": []string{"A", "B", "C"},
 		"clip_drive_links": map[string]string{
@@ -167,8 +169,8 @@ func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 		ClipEvidence: ev,
 		NumClips:     3,
 	}
-	p := NewClipBindingsProcessor(zap.NewNop())
-	if _, err := p.Process(context.Background(), plan, ProcessInput{SpecScene: model.SpecScene}); err != nil {
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}
 
@@ -227,7 +229,7 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 		internalAssetID = "internal-asset-789"
 	)
 
-	ev := BuildClipEvidence(map[string]any{
+	ev := usecase.BuildClipEvidence(map[string]any{
 		// PR 6 contract: ClipIDs holds the canonical (Drive
 		// file ID), NOT the internal asset.ID. Pre-PR-6 this
 		// slice would have been [internalAssetID].
@@ -283,8 +285,8 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 		ClipEvidence: ev,
 		NumClips:     3,
 	}
-	p := NewClipBindingsProcessor(zap.NewNop())
-	if _, err := p.Process(context.Background(), plan, ProcessInput{SpecScene: model.SpecScene}); err != nil {
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}
 
@@ -324,7 +326,7 @@ func TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6(t *testing.T) {
 		driveFileA = "drive-file-A"
 		driveFileB = "drive-file-B"
 	)
-	ev := BuildClipEvidence(map[string]any{
+	ev := usecase.BuildClipEvidence(map[string]any{
 		"clip_ids": nil, // empty → triggers fallback range over DriveLinks
 		"clip_drive_links": map[string]string{
 			driveFileA: "https://drive.google.com/" + driveFileA,
@@ -358,8 +360,8 @@ func TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6(t *testing.T) {
 		ClipEvidence: ev,
 		NumClips:     2,
 	}
-	p := NewClipBindingsProcessor(zap.NewNop())
-	if _, err := p.Process(context.Background(), plan, ProcessInput{SpecScene: model.SpecScene}); err != nil {
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	if _, err := p.Process(context.Background(), plan, adapters.ProcessInput{SpecScene: model.SpecScene}); err != nil {
 		t.Fatalf("process error = %v", err)
 	}
 
