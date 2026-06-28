@@ -1,0 +1,13 @@
+{
+  "_doc": "Golden-file schema for scripts/archcheck/snapshot_test.go. Each top-level entry maps a Report JSON field to its expected JSON type. Values are placeholder type names ('bool', 'string', 'object', 'array', 'int') — actual data is dynamic and not asserted. Update this file in the same PR that changes the Report struct (report.go) or the encoder; the test will catch silent drift on the next CI run. The _optional list declares fields that MAY be absent from the encoded JSON because they carry `json:\",omitempty\"` (e.g. focused_gate_passed when false, legacy_budget when zero). Schema-conformance tests accept the absence of any key in _optional.",
+  "passed": "bool",
+  "focused_gate_passed": "bool",
+  "mode": "string",
+  "commit": "string",
+  "checks": "object",
+  "violations": "array",
+  "_optional": [
+    "focused_gate_passed",
+    "legacy_budget"
+  ]
+}

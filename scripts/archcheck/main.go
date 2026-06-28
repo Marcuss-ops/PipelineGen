@@ -43,38 +43,28 @@ import (
 )
 
 func main() {
-	ratchet := flag.Bool("ratchet", false, "run the ratchet architectural gate (allowlist + baseline)")
-	futureRatchet := flag.Bool("future-ratchet", false, "additionally run Phase 0 PR-A baseline-on-baseline rules (grace cycle before promotion to required)")
-	seedBaseline := flag.Bool("seed-baseline", false, "explicitly seed scripts/archcheck/phase0_baseline.json from current actual state and exit 0 (operator-only; intended once per minor cycle at PR-A bootstrapping)")
-	flag.Parse()
+	cfg, err := ParseCommandLine(os.Args[1:], os.Stderr)
+	if err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		}
+		os.Exit(2)
+	}
 
-	if *seedBaseline {
-		// Operator-only path: write a fresh baseline from current rg
-		// actuals and exit 0. Independent of --ratchet / --future-ratchet
-		// because it is a snapshot op, not a check op. If rg is missing
-		// in the environment the operator will see check-rule violations
-		// in the seeded baseline — that's a signal to install rg locally
-		// and re-run rather than commit a poisoned baseline.
-		if _, err := os.Stat(phase0BaselinePath); err == nil {
-			fmt.Fprintf(os.Stderr, "archcheck: seed-baseline refused: %s already exists; remove it first or use --ratchet --future-ratchet to compare\n", phase0BaselinePath)
-			os.Exit(2)
-		}
-		_, err := phase0SeedBaseline()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "archcheck: seed-baseline failed: %v\n", err)
-			os.Exit(2)
-		}
-		fmt.Fprintf(os.Stdout, "{\"seeded\":%q,\"path\":%q}\n", time.Now().UTC().Format(time.RFC3339), phase0BaselinePath)
-		os.Exit(0)
+	if cfg.Mode == ModeSeedBaseline {
+		runSeedBaseline()
+		return
 	}
 
 	var report Report
-	if *ratchet {
+	switch cfg.Mode {
+	case ModeRatchet:
 		report = runRatchetChecks()
-	} else {
+	default:
 		report = runFocusedChecks()
 	}
-	if *futureRatchet {
+
+	if cfg.FutureRatchet {
 		phase0Stats, phase0Violations := runPhase0Checks()
 		for k, v := range phase0Stats {
 			report.Checks[k] = v
@@ -84,10 +74,8 @@ func main() {
 		report.Mode = report.Mode + "-future-ratchet"
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(report); err != nil {
-		fmt.Fprintf(os.Stderr, "archcheck: encode report: %v\n", err)
+	if err := EncodeReport(&report); err != nil {
+		fmt.Fprintf(os.Stderr, "archcheck: %v\n", err)
 		os.Exit(2)
 	}
 
@@ -96,24 +84,24 @@ func main() {
 	}
 }
 
-// Report is the JSON contract for scripts/archcheck consumers.
-//
-// The schema is intentionally minimal (`Checks map[string]int` +
-// `Violations []string`) so dashboards and `jq` pipelines reading the
-// report are stable. The Wave 19 PR2-1 edge-graph emission
-// (`application_to_infrastructure_edges`, `cross_capability_import_edges`)
-// is tracked separately under architecture/current.yaml and not yet
-// wired in this struct — the field was prototyped and reverted; a
-// follow-up PR will reintroduce it under `report.graphs` after the
-// ratchet allowlist for those edges is committed.
-type Report struct {
-	Passed            bool           `json:"passed"`
-	FocusedGatePassed bool           `json:"focused_gate_passed,omitempty"`
-	Mode              string         `json:"mode"`
-	Commit            string         `json:"commit"`
-	LegacyBudget      int            `json:"legacy_budget,omitempty"`
-	Checks            map[string]int `json:"checks"`
-	Violations        []string       `json:"violations"`
+// runSeedBaseline is the operator-only path: write a fresh phase 0
+// baseline from the current rg actuals and exit 0. Independent of
+// the ratchet / future-ratchet flags because it is a snapshot op,
+// not a check op. If rg is missing in the environment the operator
+// will see check-rule violations in the seeded baseline — that's a
+// signal to install rg locally and re-run rather than commit a
+// poisoned baseline.
+func runSeedBaseline() {
+	if _, err := os.Stat(phase0BaselinePath); err == nil {
+		fmt.Fprintf(os.Stderr, "archcheck: seed-baseline refused: %s already exists; remove it first or use --ratchet --future-ratchet to compare\n", phase0BaselinePath)
+		os.Exit(2)
+	}
+	if _, err := phase0SeedBaseline(); err != nil {
+		fmt.Fprintf(os.Stderr, "archcheck: seed-baseline failed: %v\n", err)
+		os.Exit(2)
+	}
+	fmt.Fprintf(os.Stdout, "{\"seeded\":%q,\"path\":%q}\n", time.Now().UTC().Format(time.RFC3339), phase0BaselinePath)
+	os.Exit(0)
 }
 
 func runFocusedChecks() Report {
