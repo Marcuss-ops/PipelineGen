@@ -7,6 +7,7 @@ import (
 
 	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 type BatchRequest struct {
@@ -146,9 +147,12 @@ func normalizeBatchRequest(req *BatchRequest) *BatchRequest {
 	if req.FilenameTemplate == "" {
 		req.FilenameTemplate = "{slug}_{lang}.mp3"
 	}
-	if req.Strategy == "" {
-		req.Strategy = "verify"
-	}
+	// PR-VO-A2: route through the canonical asset.PipelineStrategy normaliser so
+	// process.go's `req.Strategy == "replace"` branch matches the single source of
+	// truth for the three production strategies (verify / skip / replace). Unknown
+	// inputs collapse to "verify" — the read-through-cache default — which is the
+	// historically documented "no force" behaviour of NormalizeStrategy.
+	req.Strategy = string(asset.NormalizeStrategy(req.Strategy, false))
 	if len(req.Languages) == 0 {
 		req.Languages = []string{"en"}
 	}
