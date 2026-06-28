@@ -123,10 +123,8 @@ func TestAggregate_OwnershipMatchesCommitted(t *testing.T) {
 		t.Fatalf("read committed file: %v", err)
 	}
 	if !bytes.Equal(got, committed) {
-		t.Fatalf("regenerated output differs from committed architecture/ownership.generated.yaml
-"+
-			"(regenerated=%d bytes, committed=%d bytes)
-",
+		t.Fatalf("regenerated output differs from committed architecture/ownership.generated.yaml\n"+
+			"(regenerated=%d bytes, committed=%d bytes)\n",
 			len(got), len(committed))
 	}
 }
