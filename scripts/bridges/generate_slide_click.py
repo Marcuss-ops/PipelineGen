@@ -42,11 +42,19 @@ def main():
             ],
             "no_viewport": True,
         }
-        if os.path.exists(storage_path):
-            kwargs["storage_state"] = storage_path
         if channel:
             kwargs["channel"] = channel
         context = p.chromium.launch_persistent_context(**kwargs)
+
+        if os.path.exists(storage_path):
+            try:
+                import json
+                with open(storage_path, "r", encoding="utf-8") as sf:
+                    sdata = json.load(sf)
+                    if "cookies" in sdata:
+                        context.add_cookies(sdata["cookies"])
+            except Exception as e:
+                print(f"Cookie load note: {e}")
 
         page = context.new_page()
         
