@@ -1,7 +1,21 @@
 // Package scripts — engine_test.go exercises Engine.Generate with
-// fake implementations of scriptOllamaGenerator, memoryGateChecker, and
-// ScriptRepository so the full parameter-resolution, caching, save-to-db,
-// and error paths can be validated without a real LLM or database.
+// fake implementations of scriptOllamaGenerator and memoryGateChecker so
+// the full parameter-resolution, caching, decode, and error paths can be
+// validated without a real LLM or database.
+//
+// TODO #8 (June 2026): engine_test.go drift cleaned — fakeScriptRepo
+// deleted (post-PR 5: Engine no longer has a `repo ScriptRepository`
+// field; PersistenceProcessor is the single writer). The dead fake's
+// 11 methods were referencing types that drifted away in earlier PRs
+// (ScriptStockMatchRecord, ScriptGenerationLog, ScriptOutlineSectionRecord,
+// ScriptResearchSource — defined in adapters/repository.go but only
+// referenced by the dead fake). Local memory-gate type names lowercased
+// to memoryGateRequest / memoryGateResult so fakeMemoryGate.CheckGate
+// satisfies the narrow interface declared in engine.go (memoryGateChecker).
+// This is consistent with the Phase 1c TODO in engine.go that flagged
+// the package-local types as the canonical contract for the usecase
+// package; aligning the test unblocks production wiring when the
+// memory gate adapter lands.
 //
 // AGENT-3 (June 2026): Engine uses narrow interfaces (scriptOllamaGenerator,
 // memoryGateChecker) defined in engine.go alongside the compile-time
@@ -60,14 +74,21 @@ func (f *fakeOllamaGen) GenerateScript(_ context.Context, req ollamatypes.TextGe
 //   - onCheck (callable) — fires unconditionally before any return,
 //     so tests can observe call counts (used by ForceRefresh-bypass
 //     verification).
+//
+// TODO #8 (June 2026): field types lowercased to memoryGateResult /
+// memoryGateRequest (the local narrow types declared in engine.go) so
+// the fake's CheckGate method satisfies the memoryGateChecker
+// interface. The compile-time assertion in engine.go
+// (`var _ memoryGateChecker = (memoryCache)(nil)`) confirms the
+// production narrow shape.
 type fakeMemoryGate struct {
-	result      *MemoryGateResult
+	result      *memoryGateResult
 	returnErr   error
-	capturedReq *MemoryGateRequest
+	capturedReq *memoryGateRequest
 	onCheck     func()
 }
 
-func (f *fakeMemoryGate) CheckGate(_ context.Context, req MemoryGateRequest) (*MemoryGateResult, error) {
+func (f *fakeMemoryGate) CheckGate(_ context.Context, req memoryGateRequest) (*memoryGateResult, error) {
 	if f.onCheck != nil {
 		f.onCheck()
 	}
@@ -78,52 +99,6 @@ func (f *fakeMemoryGate) CheckGate(_ context.Context, req MemoryGateRequest) (*M
 		return nil, f.returnErr
 	}
 	return f.result, nil
-}
-
-// fakeScriptRepo is a ScriptRepository for SaveToDB tests.
-type fakeScriptRepo struct {
-	saveCalls  atomic.Int32
-	lastRecord *ScriptRecord
-	returnID   int64
-	returnErr  error
-}
-
-func (f *fakeScriptRepo) SaveScript(_ context.Context, rec *ScriptRecord, _ []ScriptSectionRecord, _ []ScriptStockMatchRecord) (int64, error) {
-	f.saveCalls.Add(1)
-	f.lastRecord = rec
-	if f.returnErr != nil {
-		return 0, f.returnErr
-	}
-	return f.returnID, nil
-}
-
-func (f *fakeScriptRepo) UpdateScriptFinalContent(context.Context, int64, string, int, string, string, string, string, int) error {
-	return nil
-}
-func (f *fakeScriptRepo) SaveGenerationLog(_ context.Context, _ ScriptGenerationLog) error {
-	return nil
-}
-func (f *fakeScriptRepo) SaveOutlineSections(_ context.Context, _ int64, _ []ScriptOutlineSectionRecord) error {
-	return nil
-}
-func (f *fakeScriptRepo) SaveResearchSources(_ context.Context, _ int64, _ []ScriptResearchSource) error {
-	return nil
-}
-func (f *fakeScriptRepo) NextVersionForTopic(_ context.Context, _, _, _ string) (int, error) {
-	return 1, nil
-}
-func (f *fakeScriptRepo) GetSectionByID(_ context.Context, _ int64) (*ScriptSectionRecord, error) {
-	return nil, nil
-}
-func (f *fakeScriptRepo) GetScriptByID(_ int64) (*ScriptRecord, []ScriptSectionRecord, []ScriptStockMatchRecord, error) {
-	return nil, nil, nil, nil
-}
-func (f *fakeScriptRepo) GetAdjacentSections(_ context.Context, _ int64, _ int) (*ScriptSectionRecord, *ScriptSectionRecord, error) {
-	return nil, nil, nil
-}
-func (f *fakeScriptRepo) UpdateSectionContent(_ context.Context, _ int64, _ string) error { return nil }
-func (f *fakeScriptRepo) ListScripts(_ context.Context, _ ScriptListFilter) ([]*ScriptRecord, error) {
-	return nil, nil
 }
 
 // v1CanonicalFixtureText is the prose used as the default V1 `text`
@@ -326,7 +301,7 @@ func TestEngineGenerate_MemoryGateHit(t *testing.T) {
 	gen := &fakeOllamaGen{}
 	cached := `{"schema_version":1,"text":"Cached script from memory.","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"Cached script from memory.","kind":"narration","bindings":{}}]}}`
 	mem := &fakeMemoryGate{
-		result: &MemoryGateResult{
+		result: &memoryGateResult{
 			Output:    cached,
 			WordCount: 42,
 			Model:     "llama3:8b",
@@ -356,7 +331,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemory(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
 	mem := &fakeMemoryGate{
-		result: &MemoryGateResult{
+		result: &memoryGateResult{
 			Output:    "Should not be returned.",
 			WordCount: 10,
 		},
@@ -381,11 +356,23 @@ func TestEngineGenerate_ForceRefreshBypassesMemory(t *testing.T) {
 // TestEngineGenerate_DoesNotPersist (PR 5, June 2026): the engine
 // must NEVER call ScriptRepository.SaveScript. Persistence is the
 // single-writer contract of PersistenceProcessor; the engine is no
-// longer involved even when plan.SaveToDB=true. Acceptance: a
-// counter-bearing fake repo is injected via reflect-set (the engine
-// struct no longer has a `repo` field, so injection requires the
-// narrow-interface seam — see the assertion that the counter is
-// always 0 across many calls).
+// longer involved even when plan.SaveToDB=true.
+//
+// TODO #8 (June 2026): the prior version of this test used a counter-
+// bearing fakeScriptRepo to assert zero calls. fakeScriptRepo was
+// deleted from this file (Engine.repo field is gone since PR 5), so
+// the test no longer has a counter to inspect. The test's persistence-
+// avoidance invariant is now enforced by the Go type system (Engine
+// has no `repo` field → no possible SaveScript call from this struct),
+// which is a stronger guarantee than the runtime counter. The test is
+// preserved as an end-to-end sanity loop: 5 fresh generations succeed
+// with the expected cache status and never panic, which is what an
+// injected repo would have protected against.
+//
+// Pre-PR 5 (June 2026): a counter-bearing fake repo was injected via
+// reflect-set (the engine struct no longer has a `repo` field, so
+// injection requires the narrow-interface seam — see the assertion
+// that the counter is always 0 across many calls).
 func TestEngineGenerate_DoesNotPersist(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
@@ -463,7 +450,7 @@ func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 	gen := &fakeOllamaGen{}
 	legacyArray := `[{"id":"scene-0","index":0,"text":"Legacy cached scene.","kind":"narration"}]`
 	mem := &fakeMemoryGate{
-		result: &MemoryGateResult{
+		result: &memoryGateResult{
 			Output:    legacyArray,
 			WordCount: 5,
 			Model:     "llama3:8b",
@@ -504,7 +491,7 @@ func TestEngineGenerate_CacheProseHit(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
 	mem := &fakeMemoryGate{
-		result: &MemoryGateResult{
+		result: &memoryGateResult{
 			Output:    "This is not JSON, just prose paragraphs.",
 			WordCount: 10,
 			Model:     "llama3:8b",
@@ -641,13 +628,13 @@ func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
 
 // TestEngineGenerate_FeedsCacheKeyToMemoryGate asserts that the
 // canonical CacheKey (computed by script.BuildCacheKey in the use
-// case) propagates through to MemoryGateRequest.CacheKey when the
+// case) propagates through to memoryGateRequest.CacheKey when the
 // engine reads the plan. PR 2 keeps the legacy Title/Language/Mode
 // fields for backwards compat alongside the new CacheKey field.
 func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
-	var captured MemoryGateRequest
+	var captured memoryGateRequest
 	mem := &fakeMemoryGate{
 		result:      nil, // cache miss path: nil result, but we still see the request
 		capturedReq: &captured,
@@ -672,7 +659,7 @@ func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
 	// PR 1).
 	_, err := e.Generate(context.Background(), plan)
 	require.NoError(t, err)
-	assert.Equal(t, "deadbeefcafef00d", captured.CacheKey, "CacheKey from plan must propagate to MemoryGateRequest")
+	assert.Equal(t, "deadbeefcafef00d", captured.CacheKey, "CacheKey from plan must propagate to memoryGateRequest")
 	assert.Equal(t, "CacheKey Wiring", captured.Title)
 	assert.Equal(t, "en", captured.Language)
 	assert.Equal(t, "text", captured.Mode)
@@ -691,7 +678,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemoryWithCacheKey(t *testing.T) {
 		onCheck: func() { called.Add(1) },
 		// Canonical cache hit payload — but ForceRefresh means the
 		// engine never even asks.
-		result: &MemoryGateResult{
+		result: &memoryGateResult{
 			Output:    "Should not be returned.",
 			WordCount: 10,
 		},

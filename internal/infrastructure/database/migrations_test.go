@@ -119,17 +119,22 @@ func TestMigrations_Smoke(t *testing.T) {
 	// Step (a): apply on a clean DB. RunMigrationsOnDB internally opens +
 	// closes the DB; no need to share a handle across apply passes.
 	t.Run("ApplyFirstTime", func(t *testing.T) {
-		if err := RunMigrationsOnDB(dbPath, log, targetDir); err != nil {
-			t.Fatalf("first RunMigrationsOnDB failed — wrap chain names the failing migration filename + statement index: %v", err)
-		}
+	// TODO #8 (June 2026): scope-aware smoke — targetDB="primary" so
+	// the smoke test exercises media-domain tables (jobs, scripts,
+	// media_assets, outbox_events). When the directive parsing is
+	// regressed, this test still passes but the per-scope boot tests
+	// (boot_test.go) fail loudly.
+	if err := RunMigrationsOnDB(dbPath, log, targetDir, "primary"); err != nil {
+		t.Fatalf("first RunMigrationsOnDB failed — wrap chain names the failing migration filename + statement index: %v", err)
+	}
 	})
 
 	// Step (b): a second apply must be a clean no-op (the runner sees the
 	// schema_migrations ledger already populated and skips every entry).
 	t.Run("IdempotencySecondApply", func(t *testing.T) {
-		if err := RunMigrationsOnDB(dbPath, log, targetDir); err != nil {
-			t.Fatalf("second RunMigrationsOnDB failed (idempotency broken): %v", err)
-		}
+	if err := RunMigrationsOnDB(dbPath, log, targetDir, "primary"); err != nil {
+		t.Fatalf("second RunMigrationsOnDB failed (idempotency broken): %v", err)
+	}
 	})
 
 	// Open a long-lived handle for the pragma + table checks below. We

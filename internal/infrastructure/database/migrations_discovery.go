@@ -27,10 +27,16 @@ func discoverMigrations(targetDir string) ([]migrationFile, error) {
 		if err != nil {
 			continue // skip non-migration files silently
 		}
+		fullPath := filepath.Join(targetDir, e.Name())
+		scope := "all" // safe default when the file isn't readable
+		if data, err := os.ReadFile(fullPath); err == nil {
+			scope = parseMigrationScope(data)
+		}
 		migrations = append(migrations, migrationFile{
 			version:  version,
 			filename: e.Name(),
-			path:     filepath.Join(targetDir, e.Name()),
+			path:     fullPath,
+			scope:    scope,
 		})
 	}
 
@@ -39,6 +45,106 @@ func discoverMigrations(targetDir string) ([]migrationFile, error) {
 	})
 
 	return migrations, nil
+}
+
+// parseMigrationScope reads the optional `-- database:` directive from a
+// migration file's SQL comment header. Returns the parsed scope string
+// (e.g. "primary", "observability", "primary,observability", or "all")
+// and falls back to "all" when no directive is present OR when the
+// directive references an unknown scope.
+//
+// TODO #8 (June 2026): scope-aware migrations. See migrationFile.
+//
+// Format:
+//
+//	-- database: <scope>[, <scope>...]
+//
+// Valid scope values: "primary", "observability", "all".
+// Case-insensitive (the directive is normalised to lowercase before
+// validation). The directive must be the FIRST non-blank line AND must
+// begin with `-- database:` (the exact prefix; `-- db:` and `-- target:`
+// are NOT recognised — use the full word to keep grep / git blame
+// unambiguous).
+//
+// Whitespace (spaces, tabs) inside the comma-separated list is stripped.
+// Anything outside the known-scope set falls back to "all" so a typo
+// can't quietly exclude a migration from one DB.
+func parseMigrationScope(content []byte) string {
+	// TODO #8 (June 2026): strip UTF-8 BOM (3 bytes EF BB BF) before
+	// scanning. Without this, files saved by Notepad or some VSCode
+	// configs silently default to scope="all" even when the author
+	// set a specific scope on the first line.
+	if len(content) >= 3 && content[0] == 0xEF && content[1] == 0xBB && content[2] == 0xBF {
+		content = content[3:]
+	}
+	for _, raw := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		// Skip past leading `--` comment lines (e.g. copyright /
+		// multi-line license headers) before deciding whether a
+		// directive was declared. The first non-comment, non-blank
+		// line ENDS the scan: if no directive was found by then,
+		// the default ("all") applies.
+		if !strings.HasPrefix(trimmed, "--") {
+			return "all"
+		}
+		lower := strings.ToLower(trimmed)
+		if !strings.HasPrefix(lower, "-- database:") {
+			continue
+		}
+		rest := strings.TrimSpace(trimmed[len("-- database:"):])
+		if rest == "" {
+			return "all"
+		}
+		// Validate against the known set; unknown → safe default.
+		parts := strings.Split(strings.ToLower(rest), ",")
+		for _, s := range parts {
+			s = strings.TrimSpace(s)
+			switch s {
+			case "primary", "observability", "all":
+			default:
+				return "all"
+			}
+		}
+		// Normalise whitespace + lowercase for storage.
+		var out []string
+		for _, s := range parts {
+			out = append(out, strings.TrimSpace(s))
+		}
+		return strings.Join(out, ",")
+	}
+	return "all"
+}
+
+// migrationAppliesToTargetDB tests whether the parsed migration scope
+// covers the runner's targetDB. scope is the comma-separated string
+// from the file's `-- database:` directive (or the default "all" when
+// absent); targetDB is the canonically-named DB the runner is
+// processing ("primary", "observability", or "all").
+//
+// TODO #8 (June 2026): scope-aware migrations. See migrationFile and
+// parseMigrationScope.
+//
+// Decision table:
+//   - scope == "" or scope == "all"      → applies to every targetDB
+//   - scope == "primary"                 → applies only to "primary"
+//   - scope == "observability"           → applies only to "observability"
+//   - scope == "primary,observability"   → applies to either
+//   - scope contains an unknown token    → caller (parseMigrationScope)
+//     has already fallen back to "all", so we don't see that here.
+func migrationAppliesToTargetDB(scope, targetDB string) bool {
+	scope = strings.TrimSpace(scope)
+	if scope == "" || scope == "all" {
+		return true
+	}
+	for _, s := range strings.Split(scope, ",") {
+		if strings.TrimSpace(s) == targetDB {
+			return true
+		}
+	}
+	return false
 }
 
 // validateNoDuplicateVersions returns an error if two migration files share

@@ -189,7 +189,14 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 	// jobs.db.sqlite file but expects prod to boot regardless — the
 	// runner must surface the gap, not silently no-op.
 	if dbs.jobs != nil {
-		if err := dbs.jobs.RunMigrations(log, jobsMigrationsDir); err != nil {
+		// TODO #8 (June 2026): pass targetDB="primary" — the EXPAND-OBSERVABILITY
+		// jobs DB is a split-shard of the canonical media DB and shares
+		// the same domain shape. Its peer migrations dir
+		// (migrations/sqlite_jobs/) is disjoint from migrations/sqlite/,
+		// so the scope check is a defensive no-op for the jobs DB
+		// (nothing inside jobsMigrationsDir carries a `-- database:`
+		// directive today).
+		if err := dbs.jobs.RunMigrations(log, jobsMigrationsDir, "primary"); err != nil {
 			return fmt.Errorf("jobs-db migrations: %w", err)
 		}
 	}

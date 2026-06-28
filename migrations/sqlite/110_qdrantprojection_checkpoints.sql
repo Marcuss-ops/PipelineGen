@@ -1,5 +1,11 @@
--- migrations/sqlite/105_qdrantprojection_checkpoints.sql
+-- migrations/sqlite/110_qdrantprojection_checkpoints.sql
 --
+-- TODO #8 (June 2026) — renumbered from 105_qdrantprojection_checkpoints.sql
+-- to avoid collision with 105_asset_versions.sql. The original 105 plan
+-- was renumbered out of the way (avoiding the existing
+-- 105_asset_versions.sql); this file landed at 110 instead. The header
+-- now reflects the CURRENT filename so a future grep or git blame
+-- matches reality.
 -- PR 8 (June 2026) — feat/qdrant-reindex-v2.
 -- Verdict Qdrant section #15: the previous ReindexAll loaded all
 -- media_assets.id into memory + did an in-process Cursor loop.

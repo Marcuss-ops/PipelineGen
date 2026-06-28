@@ -1,5 +1,10 @@
--- migrations/sqlite/103_qdrant_collections.sql
+-- migrations/sqlite/111_qdrant_collections.sql
 --
+-- TODO #8 (June 2026) — renumbered from 103_qdrant_collections.sql to
+-- avoid collision with 103_create_voiceovers_table.sql. The original
+-- 103 plan was renumbered out of the way; this file landed at 111.
+-- The header now reflects the CURRENT filename so a future grep or
+-- git blame matches reality.
 -- PR 9 (June 2026) — feat/qdrant-operational-readiness.
 -- Verdict Qdrant section #14: the previous retention semantics were a
 -- binary switch on RetentionDays (>0 = drop everything old, ≤0 = no-op).

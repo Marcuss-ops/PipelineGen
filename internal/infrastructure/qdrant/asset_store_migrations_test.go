@@ -17,7 +17,10 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 		t.Fatalf("resolve migrations dir: %v", err)
 	}
 
-	if err := storage.RunMigrationsOnDB(dbPath, nil, migrationsDir); err != nil {
+	// TODO #8 (June 2026): scope-aware test — targetDB="primary"
+	// matches the test body (inserts into media_assets, which is a
+	// primary-only table).
+	if err := storage.RunMigrationsOnDB(dbPath, nil, migrationsDir, "primary"); err != nil {
 		t.Fatalf("RunMigrationsOnDB: %v", err)
 	}
 
