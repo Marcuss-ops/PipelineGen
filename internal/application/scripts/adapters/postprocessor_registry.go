@@ -462,8 +462,24 @@ func (r *PostProcessorRegistry) Run(
 	}
 
 	result.Warnings = warnings
-	if requiredRequested > 0 && requiredSucceeded == 0 {
-		return result, fmt.Errorf("%w: all required postprocessor(s) failed (none succeeded): %s",
+	// Issue 3 / P0 (June 2026): the gate flipped.
+	//
+	// Pre-fix: a partial-success pattern (one Required processor
+	// succeeds + another Required processor fails) was reported as
+	// success because the gate was `requiredRequested > 0 &&
+	// requiredSucceeded == 0`. This violated the ProcessorRequired
+	// contract — any Required-class failure must abort the
+	// pipeline, regardless of how many other Required processors
+	// succeeded.
+	//
+	// The new gate is `len(requiredFails) > 0`: ANY Required-class
+	// failure (err / nil-result / empty-output / missing-registry)
+	// surfaces as a Go error wrapping
+	// scriptpkg.ErrPostprocessFailed. The pre-fix "all required
+	// failed" semantic is preserved as a strict subset (k-of-n
+	// failures now fire the gate just as well as n-of-n failures).
+	if len(requiredFails) > 0 {
+		return result, fmt.Errorf("%w: required postprocessor failure: %s",
 			scriptpkg.ErrPostprocessFailed, strings.Join(requiredFails, "; "))
 	}
 	return result, nil
