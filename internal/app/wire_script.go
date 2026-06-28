@@ -252,7 +252,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// Voiceover processor — adapted from *voiceover.Service to usecase.VoiceoverService.
+	// Voiceover processor — adapted to typed VoiceoverGenerator port.
 	if root.Domains.VoiceoverService != nil {
 		voAdapter := &voiceoverSvcAdapter{svc: root.Domains.VoiceoverService}
 		if !ppReg.Register(adapters.NewVoiceoverProcessor(voAdapter, log)) {

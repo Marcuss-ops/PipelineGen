@@ -1,69 +1,79 @@
 // Package scripts — processor_voiceover.go generates voiceovers for
 // each scene. Enabled as "voiceover" in the plan's Postprocessors list.
 //
-// PR 9 (June 2026): the legacy scene-splitters
-// (splitScriptIntoSegments / sceneCountFromPlan) were REMOVED.
-// The processor now reads scenes directly from
-// engineResult.Output.SpecScene.Scenes — the canonical structured
-// output from PR 1, validated by PR 6's ValidateAndEnrichSpecScene.
-// Each generated voiceover maps to a model-defined scene with
-// stable indexes.
+// PR 5 (June 2026): VoiceoverService (interface{} return) REPLACED by
+// VoiceoverGenerator — a typed port that takes a
+// domain.GenerateVoiceoverCommand and returns *domain.VoiceoverResult.
+// extractVoiceoverPaths and map[string]any fallbacks are REMOVED.
+// The processor now passes script_id + scene_id via domain.Reference.
+// Locale-based filename generation is gone — the server owns naming
+// via domain.BuildFilename.
 //
 // Partial failures are collected — the processor does NOT abort on
-// first error. No-op when plan has no ClipEvidence or when the model
-// output has zero scenes.
+// first error. No-op when plan has no scenes.
 package adapters
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
 )
 
-// VoiceoverProcessor generates scene voiceovers via VoiceoverService.
+// VoiceoverGenerator is the typed port for voiceover generation.
+// Production implementations call GenerateVoiceoverUseCase.Execute.
+// The port receives the fully-built domain command and returns a
+// typed result — no interface{}, no map[string]any, no type assertions.
+//
+// PR 5 (June 2026): replaces the legacy VoiceoverService (Generate +
+// GenerateWithDestination returning interface{}).
+type VoiceoverGenerator interface {
+	Generate(ctx context.Context, cmd domain.GenerateVoiceoverCommand) (*domain.VoiceoverResult, error)
+}
+
+// VoiceoverProcessor generates scene voiceovers via VoiceoverGenerator.
 // Uses engineResult.Output.SpecScene.Scenes to drive per-scene
 // voiceover generation (PR 9 contract).
 type VoiceoverProcessor struct {
-	gen VoiceoverService
+	gen VoiceoverGenerator
 	log *zap.Logger
 }
 
 // NewVoiceoverProcessor creates a VoiceoverProcessor.
 // gen must be non-nil (enforced at registration time by wire_script.go).
-func NewVoiceoverProcessor(gen VoiceoverService, log *zap.Logger) *VoiceoverProcessor {
+func NewVoiceoverProcessor(gen VoiceoverGenerator, log *zap.Logger) *VoiceoverProcessor {
 	return &VoiceoverProcessor{gen: gen, log: log}
 }
 
 func (p *VoiceoverProcessor) Name() string { return "voiceover" }
 
 // Policy classifies voiceover as ProcessorBestEffort: a missing
-// voiceover service (typed adapter nil at composition time) or a
-// runtime TTS failure degrades into a Warning, not a hard failure.
-// Voiceover is an auxiliary deliverable; per PR 2 spec: "voiceover =
-// configurabile" (best-effort is the safe default). The plan arg is
-// accepted for interface uniformity but ignored.
+// voiceover service or a runtime TTS failure degrades into a Warning,
+// not a hard failure.
 func (p *VoiceoverProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorBestEffort
 }
 
 // Process generates per-scene voiceovers. PR 9 contract: scenes come
-// directly from engineResult.Output.SpecScene.Scenes (validated by
-// ValidateAndEnrichSpecScene); no paragraph-splitting helper is
-// used.
+// directly from engineResult.Output.SpecScene.Scenes.
+//
+// PR 5 (June 2026): each call builds a domain.GenerateVoiceoverCommand
+// with Reference{ScriptID, SceneID} and delegates to the typed
+// VoiceoverGenerator port. No more interface{}, no map[string]any,
+// no extractVoiceoverPaths. The server owns the filename via
+// domain.BuildFilename.
 func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
-		return nil, fmt.Errorf("%w: voiceover processor: VoiceoverService not configured", scriptpkg.ErrPostprocessFailed)
+		return nil, fmt.Errorf("%w: voiceover processor: VoiceoverGenerator not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
-	// PR 9: scenes sourced from canonical typed MSOV1.
 	scenes := specScenesFromInput(input)
 	if len(scenes) == 0 {
 		if p.log != nil {
-			p.log.Debug("voiceover processor: no scenes to render (no specscene scenes)",
+			p.log.Debug("voiceover processor: no scenes to render",
 				zap.String("item_id", plan.ID))
 		}
 		return &PostProcessResult{}, nil
@@ -87,66 +97,45 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			sceneText = fmt.Sprintf("Scene %d", i+1)
 		}
 
-		// Sanitize the title for use in a filename, then build a
-		// scene-stable filename: {title}_{scene_id}_{lang}.mp3.
-		// VoiceoverProcessor used a local character-replacer (no .mp3,
-		// no path-traversal guard); now delegates to the canonical
-		// voiceover.SanitizeBasename which rejects path separators and
-		// normalises unsafe characters via textutil.SanitizeFilename.
-		sceneID := scene.ID
-		if sceneID == "" {
-			sceneID = fmt.Sprintf("%d", i+1)
+		// PR 5: build the typed domain command with Reference.
+		// The server owns the filename via domain.BuildFilename.
+		// Destination is passed through from the plan.
+		cmd := domain.GenerateVoiceoverCommand{
+			Text:            sceneText,
+			Locale:          domain.Locale(language),
+			ForceRegenerate: true,
+			Reference: domain.Reference{
+				ScriptID: plan.ID,
+				SceneID:  scene.ID,
+			},
 		}
-		// Sanitize sceneID too — it comes from model output and must
-		// not contain path separators or unsafe filename characters.
-		safeSceneID, serr2 := voiceover.SanitizeBasename(sceneID)
-		if serr2 != nil {
-			safeSceneID = fmt.Sprintf("s%d", i+1)
-		}
-		safeTitle, serr := voiceover.SanitizeBasename(plan.Title)
-		if serr != nil {
-			safeTitle = "scene"
-		}
-		filename := fmt.Sprintf("%s_%s_%s.mp3", safeTitle, safeSceneID, language)
-
-		// Use GenerateWithDestination when the plan carries a
-		// voiceover destination (folder_id or resolved group).
-		// Otherwise fall back to the default Generate (which
-		// honours the configured voiceover folder).
-		var result interface{}
-		var voErr error
 		if plan.VoiceoverFolderID != "" {
-			dest := &voiceover.DestinationRequest{
+			cmd.Destination = domain.DestinationRef{
 				FolderID: plan.VoiceoverFolderID,
 			}
-			result, voErr = p.gen.GenerateWithDestination(ctx, sceneText, language, filename, dest)
-		} else {
-			if plan.VoiceoverGroup != "" && p.log != nil {
-				p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id — falling back to default folder",
-					zap.String("voiceover_group", plan.VoiceoverGroup))
-			}
-			result, voErr = p.gen.Generate(ctx, sceneText, language, filename)
+		} else if plan.VoiceoverGroup != "" && p.log != nil {
+			p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id",
+				zap.String("voiceover_group", plan.VoiceoverGroup))
 		}
 
+		result, voErr := p.gen.Generate(ctx, cmd)
 		if voErr != nil {
 			warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d: %v", i, voErr))
 			voiceovers = append(voiceovers, SceneVoiceover{SceneIndex: i, Status: "failed"})
 			continue
 		}
 
-		// VoiceoverService.Generate returns interface{}; production
-		// concrete is *voiceover.VoiceoverResult.
-		link, path := extractVoiceoverPaths(result)
+		// PR 5: typed result — use fields directly, no type assertion.
 		status := "completed"
-		if link == "" && path == "" {
+		if result.DriveLink == "" && result.LocalPath == "" {
 			status = "empty_result"
 		}
 
 		voiceovers = append(voiceovers, SceneVoiceover{
 			SceneIndex: i,
 			Status:     status,
-			Link:       link,
-			LocalPath:  path,
+			Link:       result.DriveLink,
+			LocalPath:  result.LocalPath,
 		})
 	}
 
@@ -159,53 +148,9 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	}
 
 	// fix/voiceover-propagate-warnings (June 2026): propagate per-scene
-	// failures to PostProcessResult.Warnings so the canonical
-	// GenerationResult.Warnings envelope in the API response reports
-	// them. The zap log above stays — it serves operator tail/grep,
-	// while the envelope is the client-facing canonical surface.
+	// failures to PostProcessResult.Warnings.
 	return &PostProcessResult{
 		Voiceovers: voiceovers,
 		Warnings:   warnings,
 	}, nil
-}
-
-// extractVoiceoverPaths extracts DriveLink and Path from a voiceover
-// result. Handles both *voiceover.VoiceoverResult (production concrete)
-// and map[string]any (test fakes). The VoiceoverService interface returns
-// interface{}, so we type-assert to discover the concrete shape.
-func extractVoiceoverPaths(result interface{}) (link, path string) {
-	if result == nil {
-		return "", ""
-	}
-
-	// Production path: *voiceover.VoiceoverResult has DriveLink and Path
-	// as struct fields (not methods). Direct type assertion.
-	if vo, ok := result.(*voiceover.VoiceoverResult); ok {
-		return vo.DriveLink, vo.Path
-	}
-
-	// Fallback: map[string]any (test fakes).
-	if m, ok := result.(map[string]any); ok {
-		l, _ := m["drive_link"].(string)
-		p, _ := m["path"].(string)
-		return l, p
-	}
-	return "", ""
-}
-
-// ── Typed port (production adapter: voiceover.Service) ───────────────────
-
-// VoiceoverService is the canonical port for voiceover generation.
-// Production implementations live in internal/application/voiceover/
-// (concrete *voiceover.Service); stubs live in adapters/_ in
-// test fixtures. The Generate return value is interface{} because
-// production returns *voiceover.VoiceoverResult (struct) while test
-// fakes return map[string]any — extractVoiceoverPaths handles both.
-//
-// GenerateWithDestination is needed by VoiceoverProcessor when the
-// plan carries a voiceover destination (folder_id or resolved group).
-// Both production and test fakes must satisfy it.
-type VoiceoverService interface {
-	Generate(ctx context.Context, text, lang, filename string) (interface{}, error)
-	GenerateWithDestination(ctx context.Context, text, lang, filename string, dest *voiceover.DestinationRequest) (interface{}, error)
 }

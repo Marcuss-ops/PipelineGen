@@ -92,12 +92,8 @@ type ImageGenService interface {
 }
 
 // VoiceoverService narrows voiceover operations.
+// PR 5 (June 2026): typed port — takes domain.GenerateVoiceoverCommand,
+// returns *domain.VoiceoverResult. No more interface{}.
 type VoiceoverService interface {
-	Generate(ctx context.Context, text, language, filename string) (interface{}, error)
-	// GenerateWithDestination routes the voiceover to a specific Drive
-	// folder. When the plan carries VoiceoverFolderID or is resolved
-	// from VoiceoverGroup, the processor passes a DestinationRequest
-	// so the audio lands in the correct group folder instead of the
-	// default voiceover root.
-	GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (interface{}, error)
+	Generate(ctx context.Context, cmd domain.GenerateVoiceoverCommand) (*domain.VoiceoverResult, error)
 }
