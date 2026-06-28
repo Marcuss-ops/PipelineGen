@@ -86,3 +86,33 @@ type TxOutboxEnqueuer interface {
 type DriveUploaderPort interface {
 	DeleteFile(ctx context.Context, fileID string) error
 }
+
+// VoiceoverGenerator is the BACKFILL typed-port (Wave 21
+// PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2, B-2 step closure, per
+// AGENTS.md Pattern 0 — port abstraction layer, June 2026).
+//
+// Shape: matches main's *Service.Generate signature exactly (positional
+// ctx + text + language + filename). The original blueprint called for
+// a `voiceover.GenerateVoiceoverCommand` struct, but the live main shape
+// is positional — per the user's re-execution directive: "usando il type
+// del dominio attuale di main, NON blueprint".
+//
+// Back-compat note: the legacy *Service satisfies this port
+// structurally via Go's implicit-interface rule. Test doubles inject
+// stubs via ServiceDeps in usecase.go (no production behavior change).
+//
+// The VoiceoverResult return type is the package-local struct declared
+// in types.go (NOT the domain.voiceover.VoiceoverResult alias for the
+// canonical Result — those are intentionally separate types: the
+// application struct is the wire-shape for Service.Generate, the
+// domain Result is the canonical full-typed version used by other
+// Wave 21 PR-G artefacts).
+type VoiceoverGenerator interface {
+	Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error)
+}
+
+// Compile-time assertion (AGENTS.md Pattern 0): *Service must
+// structurally satisfy VoiceoverGenerator. Drift between Service.Generate
+// signature and the port contract triggers a compile error at this
+// line — preventing silent drift on the wire contract.
+var _ VoiceoverGenerator = (*Service)(nil)
