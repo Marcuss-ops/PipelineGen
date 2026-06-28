@@ -1,4 +1,4 @@
-// Package scripts — clip_evidence_builder_test.go covers the
+// Package usecase_test — clip_evidence_builder_test.go covers the
 // PR 5 (June 2026) split between resolved clip IDs and missing
 // clip IDs inside BuildClipEvidence.
 //
@@ -9,7 +9,13 @@
 //     IDs with a structured reason: "not_found" (neither DB lookup
 //     hit) or "drivenotfound" (DB hit but no DriveLink).
 //   - ClipEvidence.ClipCount always equals len(ClipIDs).
-package scripts
+//
+// PR-G.2 BACKFILL (June 2026): package moved from `scripts` (root facade)
+// to `usecase_test` (external). The test already used
+// `usecase.BuildClipEvidence(...)` exclusively (it predates the root
+// facade), so the only update is the package declaration. Test
+// assertions unchanged.
+package usecase_test
 
 import (
 	"reflect"
