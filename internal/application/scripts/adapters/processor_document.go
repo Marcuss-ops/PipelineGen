@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -66,8 +67,8 @@ func (p *DocumentProcessor) Name() string { return "document" }
 // Policy classifies document as ProcessorRequired: a missing-registered
 // document service or a runtime failure or empty DocLink output is a
 // hard failure.
-func (p *DocumentProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	return ProcessorRequired
+func (p *DocumentProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
+	return scripts.ProcessorRequired
 }
 
 // PR 5 (June 2026): signature now takes ProcessInput envelope.

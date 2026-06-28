@@ -13,8 +13,11 @@
 //   - adapters.NormalizationConfig: config-driven defaults
 //   - adapters.SourceRegistry: resolves source → ResolvedSource
 //   - Engine: calls ollama for script text
-//   - adapters.PostProcessorRegistry: runs postprocessors (entities, metadata,
-//     voiceover, images, document, persistence)
+//   - scripts.PostProcessorRegistry: runs postprocessors (entities,
+//     metadata, voiceover, images, document, persistence). Audit #6 —
+//     the canonical typed registry lives in internal/application/scripts
+//     since Phase 4 (replacing the prior adapters stub that existed
+//     only to break the inheritance build cycle in PR 0).
 //   - ports.VoiceoverGroupResolver + parent ID: optional. Set via
 //     SetVoiceoverRouting so callers passing only `voiceover_group`
 //     have their item.Output.VoiceoverFolderID populated BEFORE
@@ -26,6 +29,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -40,7 +44,7 @@ type GenerateOneUseCase struct {
 	cfg             adapters.NormalizationConfig
 	registry        *adapters.SourceRegistry
 	engine          *Engine
-	ppReg           *adapters.PostProcessorRegistry
+	ppReg           *scripts.PostProcessorRegistry
 	log             *zap.Logger
 	voGroupResolver scriptports.VoiceoverGroupResolver
 	voRootID        string
@@ -56,7 +60,7 @@ func NewGenerateOneUseCase(
 	cfg adapters.NormalizationConfig,
 	registry *adapters.SourceRegistry,
 	engine *Engine,
-	ppReg *adapters.PostProcessorRegistry,
+	ppReg *scripts.PostProcessorRegistry,
 	log *zap.Logger,
 ) *GenerateOneUseCase {
 	return &GenerateOneUseCase{

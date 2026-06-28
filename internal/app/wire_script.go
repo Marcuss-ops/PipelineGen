@@ -220,7 +220,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// PostProcessorRegistry: individually-testable postprocessors
 	// registered at composition time and frozen before use.
 	// Replaces the monolithic Pipeline.Run.
-	ppReg := adapters.NewPostProcessorRegistry(log)
+	ppReg := scripts.NewPostProcessorRegistry(log)
 
 	// Entities + Metadata: deferred — PostGenFunc callback not wired.
 	// When a plan requests these, the registry warns "not registered"
@@ -524,7 +524,7 @@ var requiredProcessorNames = []string{
 // (where composition would silently skip a Register call when the
 // underlying dep was nil, then runtime would silently skip the
 // postprocessor — leaving the script row unwritten).
-func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required []string) *scriptpkg.PlanInvalidError {
+func validateRequiredProcessors(ppReg *scripts.PostProcessorRegistry, required []string) *scriptpkg.PlanInvalidError {
 	if ppReg == nil {
 		return &scriptpkg.PlanInvalidError{
 			ItemID:  "wireScriptFlow",
@@ -541,7 +541,7 @@ func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required 
 	for _, name := range required {
 		if !ppReg.Registered(name) {
 			missing = append(missing, name)
-		} else if ppReg.LookupPolicy(name) != adapters.ProcessorRequired {
+		} else if ppReg.LookupPolicy(name) != scripts.ProcessorRequired {
 			// Defensive: composition-side invariant. A name in the
 			// required list MUST have the ProcessorRequired
 			// classification. If a future PR flips a processor's

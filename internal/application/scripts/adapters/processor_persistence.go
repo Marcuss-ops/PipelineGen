@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -73,8 +74,8 @@ func (p *PersistenceProcessor) Ready() bool {
 // PR 2 (June 2026): policy introduced together with the registry's
 // preflight gate. The plan arg is accepted for interface uniformity
 // but ignored — persistence is unconditionally required.
-func (p *PersistenceProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	return ProcessorRequired
+func (p *PersistenceProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
+	return scripts.ProcessorRequired
 }
 
 func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {

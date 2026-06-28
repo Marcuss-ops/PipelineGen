@@ -18,8 +18,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 
 	"go.uber.org/zap"
 )
@@ -41,13 +43,10 @@ func NewVoiceoverProcessor(gen VoiceoverService, log *zap.Logger) *VoiceoverProc
 func (p *VoiceoverProcessor) Name() string { return "voiceover" }
 
 // Policy classifies voiceover as ProcessorBestEffort: a missing
-// voiceover service (typed adapter nil at composition time) or a
-// runtime TTS failure degrades into a Warning, not a hard failure.
-// Voiceover is an auxiliary deliverable; per PR 2 spec: "voiceover =
-// configurabile" (best-effort is the safe default). The plan arg is
-// accepted for interface uniformity but ignored.
-func (p *VoiceoverProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	return ProcessorBestEffort
+// voiceover service or a runtime TTS failure degrades into a Warning,
+// not a hard failure.
+func (p *VoiceoverProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
+	return scripts.ProcessorBestEffort
 }
 
 // Process generates per-scene voiceovers. PR 9 contract: scenes come

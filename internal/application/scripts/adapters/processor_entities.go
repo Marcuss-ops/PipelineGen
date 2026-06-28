@@ -10,6 +10,10 @@
 // Policy is ProcessorRequired per the PR 3 spec — composition must
 // wire a backend extractor and the runtime preflight rejects plans
 // that request "entities" without one.
+//
+// Audit #6 (Phase 4): Policy() returns scripts.ProcessorPolicy
+// (canonical). See adapters/postprocessor_types.go for the cross-
+// package type normalisation rationale.
 package adapters
 
 import (
@@ -17,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -60,8 +65,8 @@ func (p *EntitiesProcessor) Ready() bool {
 // PR can read plan.OutputSpec.ExtractEntities (or similar payload)
 // and conditionally resolve. Until then, the static Required
 // classification is the canonical source.
-func (p *EntitiesProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	return ProcessorRequired
+func (p *EntitiesProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
+	return scripts.ProcessorRequired
 }
 
 // Process executes entity extraction via the typed port. The

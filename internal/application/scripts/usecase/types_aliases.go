@@ -2,9 +2,14 @@
 // to sub-packages (adapters/, dto/) during the PR-G Phase 1b melt.
 // This file is the single source of truth for bare-name references across
 // the usecase package.
+// Package usecase — types_aliases.go holds type aliases for symbols moved
+// to sub-packages (adapters/, dto/) during the PR-G Phase 1b melt.
+// This file is the single source of truth for bare-name references across
+// the usecase package.
 package usecase
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	dto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 )
@@ -12,15 +17,27 @@ import (
 // ── adapters/ aliases ──────────────────────────────────────────────
 type NormalizationConfig = adapters.NormalizationConfig
 type SourceRegistry = adapters.SourceRegistry
-type PostProcessorRegistry = adapters.PostProcessorRegistry
+
+// PostProcessorRegistry (audit #6 — single canonical): aliases the
+// typed registry in internal/application/scripts. The adapters
+// stub (a placeholder that existed only to break the inheritance
+// build cycle in PR 0) was removed in Phase 4; any future
+// reader is pointed here. The canonical Run() / ValidateRequested()
+// / Freeze() / Registered() / LookupPolicy() / Policy(none) flow
+// lives in scripts.PostProcessorRegistry.
+type PostProcessorRegistry = scripts.PostProcessorRegistry
 type PipelineResult = adapters.PipelineResult
 type ProcessInput = adapters.ProcessInput
 type FolderResolver = adapters.FolderResolver
 type ScriptRepository = adapters.ScriptRepository
 type SourceResolver = adapters.SourceResolver
 type PostProcessResult = adapters.PostProcessResult
-type ProcessorPolicy = adapters.ProcessorPolicy
-type PostProcessor = adapters.PostProcessor
+
+// PostProcessor interface lives in the canonical scripts package
+// (audit #6 — single canonical). The prior adapters.PostProcessor
+// shadow was never declared (the interface always lived in scripts),
+// so this alias redirects at the canonical home.
+type PostProcessor = scripts.PostProcessor
 type SceneImage = adapters.SceneImage
 type SceneVoiceover = adapters.SceneVoiceover
 

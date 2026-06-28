@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -62,8 +63,8 @@ func (p *ImageProcessor) Name() string { return "images" }
 // registered policy via a future PR (per PR 2 spec: "images =
 // configurabile"). The plan arg is accepted for interface uniformity
 // but ignored — images are unconditionally best-effort for now.
-func (p *ImageProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	return ProcessorBestEffort
+func (p *ImageProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
+	return scripts.ProcessorBestEffort
 }
 
 // Process generates per-scene images. PR 9 contract: scenes come

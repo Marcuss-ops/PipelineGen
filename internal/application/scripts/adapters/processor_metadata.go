@@ -9,6 +9,10 @@
 // Policy is ProcessorRequired per the PR 3 spec — composition must
 // wire a backend generator and the runtime preflight rejects plans
 // that request "metadata" without one.
+//
+// Audit #6 (Phase 4): Policy() returns scripts.ProcessorPolicy
+// (canonical). See adapters/postprocessor_types.go for the cross-
+// package type normalisation rationale.
 package adapters
 
 import (
@@ -16,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -58,8 +63,8 @@ func (p *MetadataProcessor) Name() string { return "metadata" }
 // Policy classifies metadata as ProcessorRequired. Static for now;
 // future PR can read plan.OutputSpec.GenerateMetadata (or similar
 // payload) and conditionally resolve.
-func (p *MetadataProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	return ProcessorRequired
+func (p *MetadataProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) scripts.ProcessorPolicy {
+	return scripts.ProcessorRequired
 }
 
 // Process executes metadata generation via the typed port. The

@@ -1,16 +1,52 @@
-// Package adapters — postprocessor_types.go defines the shared types
-// needed by the postprocessor adapters (processor_clip_bindings.go,
-// processor_document.go, etc.) that implement the PostProcessor interface.
+// Package adapters — postprocessor_types.go defines the shared value
+// types needed by the postprocessor adapters (processor_clip_bindings.go,
+// processor_document.go, processor_persistence.go, etc.) when they
+// implement PostProcessor defined in package scripts.
 //
-// These types mirror the canonical definitions in package scripts
-// (postprocessor_registry.go) so the adapters can compile without
-// importing the scripts package (avoiding potential circular deps).
+// Audit #6 (Phase 4, June 2026):
+//
+//   - The prior PostProcessorRegistry stub (a placeholder that existed
+//     only to break the inheritance build cycle in PR 0) was REMOVED.
+//     Production composition now uses the canonical registry in
+//     internal/application/scripts via the *scripts.PostProcessorRegistry
+//     type. See scripts.PostProcessorRegistry for Run /
+//     ValidateRequested / Freeze / Registered / LookupPolicy.
+//
+//   - The prior adapters.ProcessorPolicy shadow + its constants
+//     (ProcessorRequired / ProcessorBestEffort) was REMOVED. Every
+//     processor's Policy() method now returns scripts.ProcessorPolicy
+//     (canonical). Without this consolidation, Go's distinct-type-per-
+//     declaration rule would block the assignment
+//     `r.policies[name] = policy` inside scripts.PostProcessorRegistry
+//     .Register (where r.policies is `map[string]scripts.ProcessorPolicy`).
+//     Future processors MUST follow suit — declare
+//     `func (p *X) Policy(...) scripts.ProcessorPolicy { ... }` with
+//     `return scripts.ProcessorRequired` / `scripts.ProcessorBestEffort`.
+//
+// Adapters still consume the following value types directly, so they
+// remain in this package:
+//
+//   - SceneVoiceover / SceneImage : per-stage aggregate result slices
+//     that processor_voiceover.go + processor_clip_bindings.go build.
+//   - ProcessInput                 : the typed envelope passed to
+//     every PostProcessor.Process(...) call. Processor implementations
+//     decompose this into canonical fields (Text, WordCount, SpecScene,
+//     CacheStatus, ...).
+//   - PostProcessResult + IsEmpty  : the per-processor output struct
+//     that flows into the canonical PipelineResult aggregate.
+//   - PipelineResult               : the canonical aggregate the use
+//     case consumes after a registry.Run.
+//
+// Read references for the canonical owners:
+//
+//   - scripts.PostProcessorRegistry (canonical registry)
+//   - scripts.PostProcessorPolicy (canonical Policy enum)
+//   - scripts.ProcessorRequired / scripts.ProcessorBestEffort
+//   - scripts.PostProcessResult (the canonical envelope shape)
 package adapters
 
 import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-
-	"go.uber.org/zap"
 )
 
 // ── Per-stage result types ───────────────────────────────────────────
@@ -80,7 +116,6 @@ const (
 	ProcessorRequired   ProcessorPolicy = RequiredAll
 	ProcessorBestEffort ProcessorPolicy = BestEffort
 )
-
 // ProcessInput is the typed envelope passed to every postprocessor.
 type ProcessInput struct {
 	Text           string
@@ -144,68 +179,5 @@ type PipelineResult struct {
 	DocID            string
 	ScriptID         int64
 	AlreadyPersisted bool
-	Warnings         []string
-}
-
-// PostProcessorRegistry is a stub used by adapters.
-// The canonical registry lives in package scripts.
-//
-// PR 0 build fix: expanded stub to satisfy wire_script.go composition
-// — Register, Freeze, Registered, LookupPolicy, IsFrozen are all no-ops.
-type PostProcessorRegistry struct {
-	log    *zap.Logger
-	frozen bool
-	reg    map[string]ProcessorPolicy
-}
-
-// NewPostProcessorRegistry creates an empty stub registry.
-func NewPostProcessorRegistry(log *zap.Logger) *PostProcessorRegistry {
-	return &PostProcessorRegistry{log: log, reg: make(map[string]ProcessorPolicy)}
-}
-
-// Register is a stub that accepts any value and returns true.
-func (r *PostProcessorRegistry) Register(p interface{}) bool {
-	if r == nil {
-		return false
-	}
-	return true
-}
-
-// Freeze is a stub (no-op).
-func (r *PostProcessorRegistry) Freeze() {
-	if r != nil {
-		r.frozen = true
-	}
-}
-
-// IsFrozen reports whether Freeze was called.
-func (r *PostProcessorRegistry) IsFrozen() bool {
-	if r == nil {
-		return false
-	}
-	return r.frozen
-}
-
-// Registered reports whether a processor name has been registered.
-func (r *PostProcessorRegistry) Registered(name string) bool {
-	// PR 0 stub: always returns true so validateRequiredProcessors passes.
-	_ = name
-	return true
-}
-
-// LookupPolicy returns the policy for a registered processor.
-func (r *PostProcessorRegistry) LookupPolicy(name string) ProcessorPolicy {
-	// PR 0 stub: always returns ProcessorRequired.
-	_ = name
-	return ProcessorRequired
-}
-
-// ValidateRequested is a stub that always returns nil (no-op).
-func (r *PostProcessorRegistry) ValidateRequested(names []string) error {
-	return nil
-}
-
-// Run is a stub that returns an empty PipelineResult.
-func (r *PostProcessorRegistry) Run(ctx interface{}, plan interface{}, input ProcessInput) (*PipelineResult, error) {
-	return &PipelineResult{}, nil
+	Warnings         []string `json:"warnings,omitempty"`
 }
