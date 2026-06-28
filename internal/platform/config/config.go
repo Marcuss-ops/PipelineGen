@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // minHMACSecretLen guards against operators shipping a too-short HMAC
@@ -244,6 +246,17 @@ func (c *Config) Validate() error {
 		if hostPortConflict(c.External.NvidiaLocalNIMURL, c.GoogleAccounting.ServerURL) {
 			return fmt.Errorf("port conflict: NVIDIA NIM and Google Accounting both configured on the same host:port. Change one service's port")
 		}
+	}
+
+	// Composition-root SSOT validator (DRIFT-DEFAULTS-VALIDATE, Step 4
+	// PR6, June 2026): pin the 5 pkg/defaults SSOTs (video/voiceover/
+	// media/youtube/script) at startup so a refactor that breaks one
+	// (e.g. DefaultScriptConfig().WordsPerMinute=0 during a per-locale
+	// override experiment) fails the boot immediately. The per-domain
+	// tests in pkg/defaults catch this at `go test`; this call covers
+	// the deploy path that does not run the full test suite.
+	if err := defaults.Validate(); err != nil {
+		return fmt.Errorf("defaults SSOT validation failed: %w", err)
 	}
 
 	return nil
