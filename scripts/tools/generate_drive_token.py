@@ -9,12 +9,13 @@ from google.oauth2.credentials import Credentials
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Scopes required for Google Drive + Google Docs creation.
+# Scopes required for Google Drive + Google Docs + Google Slides creation.
 # Drive readonly is insufficient for the script doc flow because the
-# repo creates and updates documents in Google Drive.
+# repo creates and updates documents and presentations in Google Drive.
 SCOPES = [
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/presentations',
 ]
 
 def main():

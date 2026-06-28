@@ -3,6 +3,7 @@ package images
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -15,17 +16,19 @@ func TestRealGoogleSlidesImageGen(t *testing.T) {
 	}
 
 	cfg := config.Get()
-	cfg.Paths.PythonScriptsDir = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/scripts"
-	cfg.Storage.TempDir = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/tmp"
-	cfg.Storage.DataDir = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data"
+	dir, _ := os.Getwd()
+	repoRoot := filepath.Join(dir, "..", "..", "..")
+	cfg.Paths.CredentialsFile = filepath.Join(repoRoot, "credentials.json")
+	cfg.Paths.TokenFile = filepath.Join(repoRoot, "token.json")
+	cfg.Storage.TempDir = filepath.Join(repoRoot, "tmp")
+	cfg.Storage.DataDir = filepath.Join(repoRoot, "data")
 
 	log, _ := zap.NewDevelopment()
 
 	s := &Service{
-		cfg:        cfg,
-		log:        log,
-		tempDir:    cfg.Storage.TempPath(),
-		scriptsDir: "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/scripts",
+		cfg:     cfg,
+		log:     log,
+		tempDir: cfg.Storage.TempPath(),
 	}
 
 	ctx := context.Background()
