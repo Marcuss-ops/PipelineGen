@@ -155,12 +155,23 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 		zap.Duration("poll_max_backoff", cfg.Backoff.MaxBackoff),
 		zap.Float64("poll_jitter_fraction", cfg.Backoff.JitterFraction),
 		zap.Int("poll_consecutive_empty_threshold", cfg.Backoff.ConsecutiveEmptyThreshold))
-	return appjobs.NewRunner(
+	// Issue 2 / P0 (June 2026): chain the canonical per-job-type
+	// Registry so each Worker created by Runner.Start honors the
+	// declared Timeout (e.g. script.generate=60min instead of the
+	// literal 10min default) and DefaultMaxRetries (e.g. 2 instead
+	// of literal 3). Without this, the typed-port contract is empty
+	// and workers silently regress to the HC-0 hardcoded defaults.
+	// The earlier PR7 split that introduced RunnerConfig.Notifier
+	// preserved the literal-defaults behavior; this is the
+	// follow-up that finally wires the Registry.
+	runner := appjobs.NewRunner(
 		deps.root.Jobs.Repo,
 		deps.root.Jobs.Dispatcher,
 		deps.log,
 		cfg,
 	)
+	runner.WithRegistry(appjobs.Compose())
+	return runner
 }
 
 // buildJobRunnerStep returns the typed StartupStep that launches the

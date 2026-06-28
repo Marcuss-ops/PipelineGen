@@ -144,11 +144,27 @@ type RunnerConfig struct {
 
 // Runner manages a pool of Workers. Depends on the domain Repository
 // interface — NOT on the concrete *jobs.Repository.
+//
+// Issue 2 / P0 (June 2026): Runner now carries a typed config-port
+// for per-job-type timeouts + retries, sourced from *Registry. The
+// Registry is attached via the WithRegistry builder (mirrors
+// Worker.WithRegistry, HC-1 June 2026 plumbing) and propagated to
+// every Worker constructed by buildWorkers/Start. Without it, each
+// Worker would fall back to the pre-HC-1 literal 10-minute timeout
+// and literal 3-retry defaults — bypassing the typed-port contract
+// declared in jobs.Compose().
+//
+// Composition root pattern (canonical):
+//
+//	r := jobs.NewRunner(repo, dispatcher, log, cfg).
+//	    WithRegistry(jobs.Compose())
+//	r.Start(ctx)
 type Runner struct {
 	repo       job.Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	config     RunnerConfig
+	registry   *Registry
 	workers    []*Worker
 }
 
@@ -161,15 +177,50 @@ func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, config R
 	}
 }
 
+// WithRegistry attaches a typed Registry to the Runner. The Registry
+// is propagated to every Worker constructed in Start so each Worker
+// honors the per-job-type Timeout / DefaultMaxRetries values declared
+// in jobs.Compose().
+//
+// Nil-tolerant: a nil reg means the workers fall back to the legacy
+// literal defaults (10-min timeout, 3 retries), preserving test
+// fixtures that don't build a registry. Mirrors Worker.WithRegistry.
+//
+// Returns the receiver for builder-style chaining.
+//
+// Issue 2 / P0 (June 2026): this is the canonical wire-up point.
+// Composition root chains appjobs.NewRunner(...).WithRegistry(appjobs.Compose()).
+func (r *Runner) WithRegistry(reg *Registry) *Runner {
+	r.registry = reg
+	return r
+}
+
+// buildWorkers constructs the worker pool with the attached Registry
+// wired onto each Worker (via Worker.WithRegistry). Called by Start;
+// kept package-private so tests can assert the binding without
+// spinning up the poll loop.
+//
+// Issue 2 / P0 (June 2026): the WithRegistry chain here is the fix
+// surface. Pre-fix Start called NewWorker(...) directly and the
+// workers silently regressed to the HC-0 literal defaults.
+func (r *Runner) buildWorkers() []*Worker {
+	workers := make([]*Worker, 0, r.config.Workers)
+	for i := 0; i < r.config.Workers; i++ {
+		workerID := fmt.Sprintf("%s_worker-%d", workerIDPrefix, i+1)
+		w := NewWorker(workerID, r.repo, r.dispatcher, r.config.Notifier,
+			r.log, r.config.LeaseTTL, r.config.PollEvery, r.config.Backoff, r.config.JobTypes)
+		w.WithRegistry(r.registry)
+		workers = append(workers, w)
+	}
+	return workers
+}
+
 func (r *Runner) Start(ctx context.Context) {
 	r.log.Info("starting job runner", zap.Int("workers", r.config.Workers))
 
-	for i := 0; i < r.config.Workers; i++ {
-		workerID := fmt.Sprintf("%s_worker-%d", workerIDPrefix, i+1)
-		worker := NewWorker(workerID, r.repo, r.dispatcher, r.config.Notifier,
-			r.log, r.config.LeaseTTL, r.config.PollEvery, r.config.Backoff, r.config.JobTypes)
-		r.workers = append(r.workers, worker)
-		go worker.Start(ctx)
+	r.workers = r.buildWorkers()
+	for _, w := range r.workers {
+		go w.Start(ctx)
 	}
 
 	r.log.Info("job runner started", zap.Int("worker_count", len(r.workers)))
