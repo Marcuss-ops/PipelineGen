@@ -507,6 +507,9 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if domains.VoiceoverService != nil && jobs.Service != nil {
 		domains.VoiceoverService.RegisterHandler(jobs.Service)
 	}
+	if domains.ImageService != nil && jobs.Service != nil {
+		domains.ImageService.RegisterHandler(jobs.Service)
+	}
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		process.ClipIndexerService.RegisterJobHandler(jobs.Service)
 	}

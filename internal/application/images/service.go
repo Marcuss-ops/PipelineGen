@@ -89,6 +89,13 @@ type Service struct {
 	// upserts — no more silent window between BuildDomainBundle and
 	// SetDispatcher, since the field is now set in the ctor.
 	dispatcher *outbox.Dispatcher
+
+	// imageGen is the canonical port for AI image generation (FASE 2, June 2026).
+	// Injected at construction time; nil means "no provider wired" and
+	// GenerateSmartImage returns ErrImageGenNotImplemented.
+	// Concrete implementations: ChromeImageProvider (Playwright → Chrome →
+	// slides.new → Nano Banana Pro), NvidiaImageProvider (future).
+	imageGen ImageGenerator
 }
 
 type DiagnosticsReport struct {
@@ -99,6 +106,16 @@ type DiagnosticsReport struct {
 	NvidiaConfigured bool     `json:"nvidia_configured"`
 	IngestConfigured bool     `json:"ingest_configured"`
 	WikidataWorks    bool     `json:"wikidata_works"`
+	// ImageGenWired is true when an ImageGenerator port is injected
+	// (FASE 2, June 2026). False means GenerateSmartImage returns 501.
+	ImageGenWired bool `json:"image_gen_wired"`
+	// ImageGenHealthy is true when the wired ImageGenerator responds to
+	// a health ping (FASE 10, June 2026). False when the worker is down
+	// or not started. Only meaningful when ImageGenWired is true.
+	ImageGenHealthy bool `json:"image_gen_healthy"`
+	// ImageGenCooldownProfiles is the count of profiles currently in
+	// cooldown due to quota/auth errors (FASE 10).
+	ImageGenCooldownProfiles int `json:"image_gen_cooldown_profiles"`
 	// Capabilities is the truthful per-capability availability map
 	// surfaced for /api/images/diagnostics. Single source of truth:
 	// each entry is derived from Service.CapabilityResolution; HTTP
@@ -146,6 +163,7 @@ func NewService(
 	metaWriter *semantic.MetadataWriter,
 	ingestSvc *ingest.Service,
 	dispatcher *outbox.Dispatcher,
+	imageGen ImageGenerator,
 	log *zap.Logger,
 ) *Service {
 	maxNvidia := cfg.Concurrency.MaxConcurrentNvidiaGenerations
@@ -183,6 +201,7 @@ func NewService(
 		metaWriter:             metaWriter,
 		ingestSvc:              ingestSvc,
 		dispatcher:             dispatcher,
+		imageGen:               imageGen,
 	}
 
 	return s
@@ -193,15 +212,23 @@ func (s *Service) Diagnostics() DiagnosticsReport {
 	// CapabilityResolution so HTTP routes and the diagnostic field do
 	// not duplicate the nvidiaAPIKey / placeholder check. See
 	// capability.go for the resolver.
-	return DiagnosticsReport{
+	report := DiagnosticsReport{
 		OK:               s.repo != nil,
-		Services:         []string{"repo", "drive", "nvidia", "remote_image_gen"},
+		Services:         []string{"repo", "drive", "nvidia", "remote_image_gen", "chrome_playwright"},
 		RepoConfigured:   s.repo != nil,
 		DriveConfigured:  s.driveSvc != nil,
 		NvidiaConfigured: s.CapabilityResolution(CapImageGenNvidia) == StatusAvailable,
 		IngestConfigured: s.ingestSvc != nil,
+		ImageGenWired:    s.imageGen != nil,
 		Capabilities:     s.AllCapabilities(),
 	}
+
+	// FASE 10: health check and cooldown tracking for ChromeImageProvider.
+	if cp, ok := s.imageGen.(*ChromeImageProvider); ok {
+		report.ImageGenHealthy = cp.Health() == nil
+		report.ImageGenCooldownProfiles = cp.ActiveCooldownProfiles()
+	}
+	return report
 }
 
 // Log restituisce il logger interno per logging da altre componenti.

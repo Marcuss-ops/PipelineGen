@@ -333,7 +333,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		if wiring.MediaIngest != nil {
 			ingestSvc = wiring.MediaIngest.Service
 		}
-		imagesHandler = imagesapi.NewImagesHandler(root.Domains.ImageService, ingestSvc)
+		imagesHandler = imagesapi.NewImagesHandler(root.Domains.ImageService, ingestSvc, root.Jobs.Service)
 		imagesMod := module.NewRouteModule(
 			"images",
 			func() bool { return cfg.Features.ImagesEnabled },

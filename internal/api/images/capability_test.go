@@ -11,23 +11,16 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 )
 
-// TestGenerate_Returns503_WhenAllImageCapabilitiesAreMissingDependency:
-// Per the fix(images): expose truthful capability availability contract,
-// the Generate route must surface 503 (configurable dep absent) rather
-// than returning 200 with an empty asset when BOTH NVIDIA and the
-// remote image gen endpoint are missing dependencies.
-//
-// We construct an ImagesHandler with a zero-value *imgservice.Service
-// (nvidiaAPIKey == "", remoteImageEndpointURL == "") so both
-// capabilities resolve to StatusMissingDependency via the resolver.
-// The handler must short-circuit on the capability gate BEFORE any
-// image processing.
-func TestGenerate_Returns503_WhenAllImageCapabilitiesAreMissingDependency(t *testing.T) {
+// TestGenerate_Returns501_AfterSlidesAPIRemoval: After the Google Slides API
+// was removed (Step 2, June 2026), the Generate endpoint returns 501 Not
+// Implemented with the honest ErrImageGenNotImplemented message. This test
+// pins the contract so the endpoint doesn't accidentally start returning
+// fake successes again.
+func TestGenerate_Returns501_AfterSlidesAPIRemoval(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &ImagesHandler{
-		service:   &imgservice.Service{}, // zero-valued: no NVIDIA key, no remote URL
-		ingestSvc: nil,                   // Generate handler does not touch ingestSvc
+		service: &imgservice.Service{}, // zero-valued
 	}
 
 	rec := httptest.NewRecorder()
@@ -38,19 +31,14 @@ func TestGenerate_Returns503_WhenAllImageCapabilitiesAreMissingDependency(t *tes
 
 	h.Generate(c)
 
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected HTTP 503 (truthful availability), got %d. body=%s",
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected HTTP 501 (not implemented), got %d. body=%s",
 			rec.Code, rec.Body.String())
 	}
 
-	// Body must mention the missing configurable deps so the operator
-	// understands what to fix.
 	body := rec.Body.String()
-	if !strings.Contains(body, "nvidia_status") || !strings.Contains(body, "remote_status") {
-		t.Errorf("503 body should report per-capability status; got body=%s", body)
-	}
-	if !strings.Contains(body, "missing_dependency") {
-		t.Errorf("503 body should report 'missing_dependency' status; got body=%s", body)
+	if !strings.Contains(body, "image generation endpoint has been removed") {
+		t.Errorf("501 body should state endpoint removed; got body=%s", body)
 	}
 }
 

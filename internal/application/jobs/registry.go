@@ -234,6 +234,7 @@ const (
 	TypeDriveFolderSync       = "drive.folder.sync"
 	TypeMediaCurate           = job.TypeMediaCurate
 	TypeVoiceoverPromo        = job.TypeVoiceoverPromo
+	TypeImageGenerateGoogle   = "image.generate.google"
 )
 
 // Compose builds the standard registry with all known job types.
@@ -279,6 +280,14 @@ func Compose() *Registry {
 
 	// ── System ──
 	r.Register(RegistryEntry{Type: TypeSystemCleanup, Description: "System cleanup", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
+
+	// ── AI Image Generation ──
+	// FASE 2 (June 2026): ChromeImageProvider → Playwright → slides.new → Nano Banana Pro.
+	// The handler is NOT wired yet (pending FASE 6); the registry entry declares
+	// the operational parameters so the broker can accept jobs of this type.
+	// RequiredCapabilities["image_gen_chrome"] mirrors internal/application/images/capability.go::CapImageGenChrome.
+	// Keep both declaration sites in sync.
+	r.Register(RegistryEntry{Type: TypeImageGenerateGoogle, Description: "Google Slides AI image generation (Chrome + Playwright)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, RequiredCapabilities: []string{"image_gen_chrome"}})
 
 	return r
 }
