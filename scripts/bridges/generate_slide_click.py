@@ -106,24 +106,12 @@ def main():
         print("Waiting for presentation to load...")
         page.wait_for_selector("#docs-file-menu", timeout=30000)
 
-        # Dismiss any Gemini / getting started modal popups that intercept clicks
-        time.sleep(1)
-        try:
-            page.keyboard.press("Escape")
-            time.sleep(0.5)
-            close_btn = page.locator('.goog-modalpopup [aria-label="Chiudi"], .goog-modalpopup [aria-label="Close"], .goog-modalpopup-close').first
-            if close_btn.is_visible():
-                print("Dismissing Gemini / Getting Started modal popup...")
-                close_btn.click()
-        except Exception:
-            pass
-
-        # Trigger AI Image Generation via Nano Banana Pro modal card, toolbar button, or Insert menu
+        # Trigger AI Image Generation via Nano Banana Pro modal card or side panel
         print("Opening AI Image generation panel (Nano Banana Pro / Gemini)...")
         panel_opened = False
         try:
             card = page.locator('div:has-text("Nano Banana Pro"), div:has-text("studio-quality visuals"), div:has-text("Images")').last
-            card.wait_for(state="visible", timeout=5000)
+            card.wait_for(state="visible", timeout=3000)
             card.click()
             panel_opened = True
             time.sleep(2)
@@ -131,9 +119,16 @@ def main():
             pass
 
         if not panel_opened:
+            # Dismiss any blocking popups if Nano Banana Pro card was not present
+            try:
+                page.keyboard.press("Escape")
+                time.sleep(0.5)
+            except Exception:
+                pass
+
             try:
                 labs_btn = page.locator('#workspace-labs-button, [aria-label*="Gemini"], [aria-label*="visualize"], [title*="Gemini"]').first
-                labs_btn.wait_for(state="visible", timeout=5000)
+                labs_btn.wait_for(state="visible", timeout=3000)
                 labs_btn.click()
                 panel_opened = True
                 time.sleep(2)
