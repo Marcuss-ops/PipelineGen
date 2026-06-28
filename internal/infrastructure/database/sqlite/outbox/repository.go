@@ -382,6 +382,105 @@ func indexEventKey(assetID, contentHash string) string {
 	)
 }
 
+// EnqueueIndexEvent emits the canonical asset.index.requested.v1
+// envelope INSIDE a caller-owned *sql.Tx. PR-VO-A3 (Outbox-based
+// Qdrant indexing, June 2026): this method is the Voiceover path's
+// narrow entry point. swapVoiceoverRow opens a SQLite transaction
+// for the voiceovers INSERT/DELETE swap; calling EnqueueIndexEvent
+// here ensures the outbox_events INSERT is part of the SAME commit,
+// which closes the previous data-loss window where the async
+// clipping goroutine ran BEFORE the voiceover row was durably
+// persisted.
+//
+// Required inputs:
+//   - assetID: non-empty; the canonical aggregate identifier (the
+//     voiceover ID). Treated as the same shape that
+//     EnqueueAndIndex uses for media_assets IDs — the worker's
+//     handler reads it back via evt.AggregateID for log/audit and
+//     the IndexClip(ctx, assetID) call forwards it through.
+//   - contentHash: non-empty; the content fingerprint. The worker
+//     uses it as source_version for the supersede gate. An empty
+//     value is rejected because IndexingHandler surfaces an empty
+//     source_version as TERMINAL — a non-blank payload would be
+//     dead-lettered on first claim.
+//
+// Required wiring mirrors EnqueueAndIndex:
+//   - d.outboxEventsRepo: any narrow outboxEnqueuer (production:
+//     *outboxevents.Repository); nil → error returned.
+//   - d.txmgr and d.clips: NOT required here — this method is the
+//     enqueue-only path, no metadata UPSERT, no producer-side
+//     commit. The caller owns the tx and intends to call other
+//     writes in the same tx; do NOT pre-flight any of them.
+//
+// Returns: nil on successful outbox_events.Enqueue (will commit
+// when caller commits the tx); wrapped error if the enqueue fails
+// (rollback propagates from caller).
+func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, contentHash string) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.outboxEventsRepo == nil {
+		return errors.New("outbox.Dispatcher: outbox events repo not configured")
+	}
+	if assetID == "" {
+		return errors.New("outbox.Dispatcher.EnqueueIndexEvent: assetID is required")
+	}
+	if contentHash == "" {
+		return errors.New("outbox.Dispatcher.EnqueueIndexEvent: contentHash is required (supersede gate cannot function without a content fingerprint)")
+	}
+
+	eventID := uuid.NewString()
+	eventKey := indexEventKey(assetID, contentHash)
+	payload := buildIndexRequestV1(eventID, assetID, contentHash, eventKey)
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("dispatcher marshal v1 index payload %s: %w", assetID, err)
+	}
+
+	if err := d.outboxEventsRepo.Enqueue(
+		ctx, tx,
+		outboxevents.EventAssetIndexRequested,
+		assetID,
+		"media_asset",
+		string(payloadJSON),
+		eventKey,
+	); err != nil {
+		return fmt.Errorf("dispatcher enqueue outbox event %s: %w", assetID, err)
+	}
+
+	if d.log != nil {
+		d.log.Debug("dispatcher enqueued asset for outbox_events indexing via EnqueueIndexEvent (v1 envelope, caller-owned tx)",
+			zap.String("asset_id", assetID),
+			zap.String("outbox_event_id", eventID),
+			zap.String("source_version", contentHash),
+			zap.String("content_hash_prefix", shortHashPrefix(contentHash)),
+		)
+	}
+	return nil
+}
+
+// buildIndexRequestV1 is the canonical v1 envelope builder shared
+// between EnqueueAndIndex (single-shot UPSERT + enqueue) and
+// EnqueueIndexEvent (caller-tx enqueue-only). Extracted from
+// EnqueueAndIndex (PR-VO-A3, June 2026) so the two entry points
+// emit byte-identical payloads — the IndexingHandler validates both
+// against the same schema_version literal and supersede gate.
+func buildIndexRequestV1(eventID, assetID, contentHash, eventKey string) indexRequestV1 {
+	return indexRequestV1{
+		SchemaVersion:      "asset.index.requested.v1",
+		EventID:            eventID,
+		AssetID:            assetID,
+		Operation:          "UPSERT",
+		SourceVersion:      contentHash,
+		TargetIndexVersion: clipindexer.CollectionVersion(),
+		RequestedVectors:   []string{"text", "transcript"},
+		RequestedAt:        timeutil.FormatRFC3339(time.Now()),
+		EmbeddingModel:     clipindexer.EmbeddingModel(),
+		EmbeddingVersion:   clipindexer.EmbeddingModelVersion(),
+		IdempotencyKey:     eventKey,
+	}
+}
+
 // shortHashPrefix returns a short log-friendly prefix; the empty
 // string yields "" so log readers do not see a misleading
 // "(empty)" marker.

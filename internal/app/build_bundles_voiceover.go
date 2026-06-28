@@ -36,11 +36,19 @@ import (
 // buildVoiceoverService sets up the voiceover service and its repository.
 //
 // PR4-H (June 2026): SetSemanticTagger / SetTranslator / SetClipIndexer
-// setters have been removed from voiceover.NewService — the three callbacks
-// required for promo generation, translation, and post-enrichment indexing
-// are now passed as constructor arguments (semanticTagger, translator,
-// clipIndexer). This helper builds them from the canonical dependencies
-// (metaWriter + scriptGen) declared in the composition root.
+// setters have been removed from voiceover.NewService — the callbacks
+// required for promo generation, translation, and post-enrichment
+// indexing are now passed as constructor arguments.
+//
+// PR-VO-A3 (June 2026): the legacy ClipIndexFunc callback is gone —
+// the indexing handoff now flows through the canonical outbox path.
+// The voiceover swap (swapVoiceoverRow) enqueues
+// `asset.index.requested` inside its SQLite transaction via the
+// TxOutboxEnqueuer port, so the metadata UPSERT and the indexing
+// event INSERT commit atomically. The concrete adapter is the
+// production outbox.Dispatcher (passed as outboxDispatcher below),
+// structurally satisfying voiceover.TxOutboxEnqueuer via Go's
+// implicit-interface rules.
 func buildVoiceoverService(
 	ctx context.Context,
 	cfg *config.Config,
@@ -49,10 +57,11 @@ func buildVoiceoverService(
 	driveClient *gdrive.Service,
 	driveUploader *drive.Uploader,
 	assetIndexService *assetindex.Service,
-	clipIndexerService *clipindexer.Service,
+	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
 	destResolver asset.Resolver,
 	metaWriter *semantic.MetadataWriter,
 	scriptGen *ollama.Generator,
+	outboxDispatcher *outbox.Dispatcher,
 ) (*voiceover.Service, *assets.VoiceoversRepository) {
 
 	voDir := cfg.Storage.VoiceoversPath()
@@ -105,22 +114,27 @@ func buildVoiceoverService(
 		return scriptGen.TranslateText(ctx, text, targetLanguage)
 	}
 
-	// Build clip-indexer closure (optional) — used by post-enrichment
-	// to trigger embedding generation + Qdrant upsert for the voiceover
-	// asset. Wire only when the indexer service is enabled.
-	var clipIndexFn voiceover.ClipIndexFunc
-	if clipIndexerService != nil && clipIndexerService.IsEnabled() {
-		clipIndexFn = func(ctx context.Context, assetID string) error {
-			return clipIndexerService.IndexClip(ctx, assetID)
+	// PR-VO-A3: outbox enqueuer (idle if nil). The voiceover.Service
+	// guards nil — see voiceover/ports.go. Production wiring supplies
+	// the *outbox.Dispatcher; the field satisfies the TxOutboxEnqueuer
+	// port structurally (no wrapper required).
+	var outboxEnqueuer voiceover.TxOutboxEnqueuer
+	if outboxDispatcher != nil {
+		outboxEnqueuer = outboxDispatcher
+		if clipIndexerService == nil || !clipIndexerService.IsEnabled() {
+			log.Warn("voiceover service wired with outbox dispatcher but clipIndexer disabled — asset.index.requested events will be enqueued but no consumer-side indexing will execute")
 		}
-		log.Info("clip indexer wired into voiceover service for semantic search")
+	} else {
+		log.Warn("voiceover service wired WITHOUT outbox dispatcher — indexing will be SKIPPED (no asset.index.requested events emitted)")
 	}
 
 	voService := voiceover.NewService(
 		cfg, dbs.main.DB, cfg.Paths.PythonScriptsDir, voDir, log,
 		driveUploader, voLifecycle, destResolver,
-		semanticTagger, translator, clipIndexFn,
+		semanticTagger, translator, outboxEnqueuer,
 	)
+	// pylint: disable=unused
+	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	return voService, voRepo

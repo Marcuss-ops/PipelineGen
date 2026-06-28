@@ -133,11 +133,21 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	youtubeClipService := youtube.NewService(youtubeDeps)
 
+	// PR-VO-A3 (June 2026): pass the canonical outbox.Dispatcher to the
+	// voiceover service so swapVoiceoverRow can enqueue
+	// `asset.index.requested` inside the SQLite transaction that
+	// commits the new voiceovers row. The dispatcher is required (no
+	// legacy fallback): BuildDomainBundle's earlier nil-check already
+	// rejects a nil outbox.Dispatcher, so we can assert it here.
+	if outbox == nil || outbox.Dispatcher == nil {
+		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
+	}
 	voiceoverSvc, voiceoverRepo := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.DriveClient, drive.DriveUploader,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
 		voMetaWriter, ai.ScriptGen,
+		outbox.Dispatcher,
 	)
 
 	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)

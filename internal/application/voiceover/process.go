@@ -265,24 +265,17 @@ func (s *Service) processLanguage(
 	}
 	metaJSON, _ := json.Marshal(meta)
 
-	// Trigger embedding generation + Qdrant upsert (async, non-blocking).
-	// context.WithoutCancel(ctx) detaches from the caller's cancellation
-	// (e.g. HTTP handler with defer cancel()) so the goroutine survives
-	// the handler return. 2-min timeout prevents leaks.
-	if s.clipIndexer != nil && item.ID != "" {
-		concurrent.SafeGoFunc("voiceover-indexing", item.ID, func(voiceoverID string) {
-			// AGENTS.md §7 post-write save ctx — voiceover indexing
-			// background is detached from the caller ctx with a
-			// bounded 2-min timeout; the index write must complete
-			// even after the request that triggered it is cancelled.
-			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-			defer cancel()
-			if err := s.clipIndexer(indexCtx, voiceoverID); err != nil {
-				s.log.Warn("voiceover indexing failed (non-fatal)",
-					zap.String("voiceover_id", voiceoverID), zap.Error(err))
-			}
-		})
-	}
+	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the previous
+	// "fire-and-forget goroutine → clipIndexer.IndexClip" was the data-loss
+	// bug — it ran BEFORE lifecycle.ProcessAsset committed, could not retry
+	// durably, and could leave SQLite/Qdrant divergent. The enqueue now
+	// happens INSIDE swapVoiceoverRow's SQLite transaction (via the
+	// outboxEnqueuer port) so the metadata UPSERT (voiceovers row + the
+	// outbox_events row) commit atomically. Nothing to do here at this
+	// stage — the IndexClip call will run from the outbox worker after
+	// commit. The legacy concurrent.SafeGoFunc("voiceover-indexing", ...),
+	// Go's "Voice over-indexing background" goroutine, is intentionally
+	// deleted.
 
 	localPath := item.CleanedPath
 	if localPath == "" {
@@ -505,6 +498,23 @@ func (s *Service) swapVoiceoverRow(ctx context.Context, row VoiceoverSwapRow) er
 		row.Now.Format(time.RFC3339Nano), row.Now.Format(time.RFC3339Nano),
 	); err != nil {
 		return fmt.Errorf("insert new voiceovers row: %w", err)
+	}
+
+	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): enqueue the
+	// canonical `asset.index.requested` event INSIDE this SAME tx so the
+	// voiceovers INSERT and the outbox_events INSERT commit atomically.
+	// Skipped when the outboxEnqueuer port is nil (production wiring ALWAYS
+	// supplies one, but tests may construct Service{...} with the field
+	// zero-valued — same nil-guard pattern as the previous ClipIndexFunc).
+	// Skipped when FileHash is empty because the canonical envelope's
+	// supersede gate requires a content fingerprint (the worker rejects
+	// empty `source_version` as terminal and the event would be
+	// dead-lettered on first claim — see application/jobs/outbox/indexing.go
+	// IndexingHandler).
+	if s.outboxEnqueuer != nil && row.FileHash != "" {
+		if err := s.outboxEnqueuer.EnqueueIndexEvent(ctx, tx, row.ID, row.FileHash); err != nil {
+			return fmt.Errorf("enqueue outbox index event in tx: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
