@@ -50,10 +50,11 @@ def main():
                 return
 
             print("Starting OAuth2 flow...")
+            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+            os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
             flow = InstalledAppFlow.from_client_secrets_file(args.credentials, SCOPES)
             if args.manual:
                 flow.redirect_uri = "http://localhost"
-                os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
                 auth_url, _ = flow.authorization_url(
                     prompt="consent",
                     include_granted_scopes="true",
