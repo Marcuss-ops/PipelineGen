@@ -26,7 +26,6 @@
 // voiceover stage telemetry surfaces only via log emission. A
 // future PR could plumb JobTools through handleBatchJob to also
 // surface stage progress on the worker progress channel.
-/*/
 package voiceover
 
 import (

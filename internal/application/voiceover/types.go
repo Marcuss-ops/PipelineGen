@@ -63,6 +63,19 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 }
 
 type DestinationRequest struct {
+	// Kind (PR-VO-C1, June 2026) is the routing-strategy selector that
+	// tells the canonical `/api/voiceover/generate` endpoint how to
+	// interpret the rest of the DestinationRequest fields:
+	//
+	//   - "group"    : MUST use GroupsResolver to map Group → FolderID.
+	//                  Empty Group when Kind=="group" is a hard 400.
+	//   - "explicit" : MUST use the caller-supplied FolderID verbatim
+	//                  (no resolver call). Empty FolderID is a hard 400.
+	//   - "" or any other value : legacy auto-detect — if Group is set
+	//                  the resolver is consulted; if FolderID is set it
+	//                  is used directly; else the config-level voiceover
+	//                  folder is the final fallback (if configured).
+	Kind string `json:"kind,omitempty"`
 	// Group is the human-readable Drive category name (e.g. "boxe").
 	Group string `json:"group,omitempty"`
 	// FolderID is the explicit Drive folder ID. Empty means "resolve from
