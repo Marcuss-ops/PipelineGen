@@ -413,10 +413,12 @@ func TestEngineGenerate_NilPlan(t *testing.T) {
 
 // ── PR 1: decoder / scene-preservation paths ─────────────────────────────
 
-// TestEngineGenerate_DecodeFailure verifies that when the model emits
-// prose instead of canonical V1 JSON, the engine returns a typed
-// ErrModelOutputMalformed rather than silently propagating a
-// non-canonical Script string.
+// TestEngineGenerate_DecodeFailure verifies that the ModeCompatibility
+// retry (PR-FIX, June 2026) salvages plain prose from the model.
+// ModeStrict rejects bare prose → engine retries with ModeCompatibility
+// → plain-text wrapper produces a synthetic V1 with empty scenes.
+// The job no longer fails on malformed JSON; operators see salvaged
+// output with the "fresh-fallback" source label in metrics.
 func TestEngineGenerate_DecodeFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{
@@ -431,14 +433,22 @@ func TestEngineGenerate_DecodeFailure(t *testing.T) {
 	e := buildTestEngine(gen, nil)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:    "Prose Decode Failure",
+		Title:    "Prose Decode Salvage",
 		Language: "en",
 		Mode:     "text",
 	}
 
-	_, err := e.Generate(context.Background(), plan)
-	require.Error(t, err)
-	require.ErrorIs(t, err, scriptpkg.ErrModelOutputMalformed)
+	// PR-FIX (June 2026): plain prose is salvaged by ModeCompatibility.
+	// The engine no longer returns ErrModelOutputMalformed on prose;
+	// instead it wraps prose as synthetic V1 with empty scenes.
+	result, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "Plain prose without a JSON envelope.", result.Output.Text)
+	assert.Equal(t, 1, result.Output.SchemaVersion)
+	assert.Empty(t, result.Output.SpecScene.Scenes, "plain-prose wrapped output has empty scenes")
+	assert.Equal(t, "generated", result.CacheStatus)
+	assert.Equal(t, int32(1), gen.calls.Load(), "ollama must be called (fresh generation path)")
 }
 
 // TestEngineGenerate_CacheLegacyHit verifies that pre-V1 legacy-array
