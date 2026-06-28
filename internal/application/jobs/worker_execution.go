@@ -20,7 +20,19 @@
 // timeout or by the outer worker Stop. This invariant MUST be
 // preserved byte-for-byte across PR7.
 //
-// Mechanical split, zero behavior change. ONLY relocated + import-redistributed.
+// Issue 6 (June 2026, P1): added `startCancelWatcher` helper +
+// integration in runJob so user-initiated cancellation via the
+// broker (Cancel route -> Job.Status = CANCELLED) propagates
+// into jobCtx — handlers that poll ctx.Err() at phase boundaries
+// can short-circuit Ollama / voiceover / image generation calls
+// instead of continuing for the full job-timeout. The 2-second
+// poll interval balances latency-to-cancel against IsCancelled's
+// DB hit; the watcher exits when jobCtx becomes Done (which
+// happens naturally via `defer jobCancel()` regardless of whether
+// the cancel was driven by watcher or timeout).
+//
+// Mechanical split, zero behavior change for the finalizationCtx.
+// ONLY relocated + import-redistributed.
 package jobs
 
 import (
@@ -33,6 +45,56 @@ import (
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
 )
+
+// cancelPollInterval is the polling cadence for the cancel-watcher
+// goroutine. IsCancelled hits the database (w.repo.Get(jobCtx, ...))
+// so the interval must balance responsiveness against DB load —
+// 2 seconds matches the canonical lease-renewal cadence
+// (RunnerConfig.LeaseTTL / 5) and stays well below the canonical
+// 60-minute script.generate timeout so handlers observe the cancel
+// signal long before the timeout fires.
+//
+// Issue 6 (June 2026, P1): hard-coded here rather than exposed as
+// a WorkerConfig knob; the interval is operational-tunable via a
+// follow-up PR if real-world telemetry shows the chosen cadence
+// is wrong, but a single shared constant across all job types is
+// the simpler principled default.
+const cancelPollInterval = 2 * time.Second
+
+// startCancelWatcher spawns a goroutine that polls isCancelled and
+// calls jobCancel when the check returns true. The watcher exits
+// when jobCtx becomes Done — which the caller covers via
+// `defer jobCancel()`, so the goroutine always has a clean exit
+// path. Nil-tolerant isCancelled (test fixtures) is a no-op spawn.
+//
+// Issue 6 (June 2026, P1): extracted into a helper so the cancel
+// wiring can be unit-tested without spinning up the full Worker
+// machinery. Spawning the goroutine directly inside runJob would
+// make the test depend on the broker-claim loop and timing
+// (flaky); this helper lets TestStartCancelWatcher pin the
+// polling semantics in isolation before the end-to-end test
+// (TestWorker_CancelsRunningJobOnCancelSignal) covers the
+// envelope through Worker.runJob.
+func startCancelWatcher(jobCtx context.Context, jobCancel context.CancelFunc, isCancelled func() bool) {
+	if isCancelled == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(cancelPollInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-jobCtx.Done():
+				return
+			case <-ticker.C:
+				if isCancelled() {
+					jobCancel()
+					return
+				}
+			}
+		}
+	}()
+}
 
 func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	ctx, cancel := context.WithCancel(parent)
@@ -92,6 +154,16 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			return domJob != nil && domJob.Status == job.StatusCancelled
 		},
 	}
+
+	// Issue 6 (June 2026, P1): hook the cancel-watcher BEFORE
+	// Dispatcher.Dispatch so any handler entry that observes
+	// ctx.Err() can short-circuit the pipeline (Ollama / voiceover
+	// / image generation calls). Watcher exits when jobCtx becomes
+	// Done — covered by `defer jobCancel()` so goroutine has a
+	// clean exit regardless of whether the cancel was triggered by
+	// the watcher or by the timeout. Nil isCancelled (test
+	// fixtures that bypass the registry) is a no-op.
+	startCancelWatcher(jobCtx, jobCancel, tools.IsCancelled)
 
 	result, dispatchErr := w.dispatcher.Dispatch(jobCtx, j, tools)
 
