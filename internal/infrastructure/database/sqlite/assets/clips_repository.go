@@ -1,20 +1,46 @@
 package assets
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"strings"
-	"time"
 
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
+
+// ── PR1 (June 2026) — file role ───────────────────────────────────────────
+//
+// clips_repository.go is the canonical home of the *ClipsRepository
+// receiver: struct, constructors, MediaAssetColumns constant, the
+// SourceVersionQuerier (PR 11) compile-time assertion, and a
+// handful of utility accessors (Canonical, SoftDeleteFilter, Log, DB).
+//
+// Method-bearing files (PR1 strict-6 split):
+//   - clips_crud.go         Upsert, Get, GetClip, SourceVersionFor,
+//                           UpsertClip, DeleteClip, Mutate
+//   - clips_queries.go      Count (caller-filtered)
+//   - clips_resolution.go   ResolveByMediaAssetID, ResolveByYouTubeVideoID,
+//                           ResolveByDriveFileID, ResolveByExternalProviderID,
+//                           GetByDriveFileID, GetClipFolderByVideoID
+//   - clips_index_state.go  SoftDelete, SetIndexState,
+//                           DeleteClipByDriveLink
+//   - clips_transactions.go BeginTx, UpsertClipTx, SetIndexStateTx
+//   - clips_statistics.go   (intentionally empty — metric home reserved
+//                           for future unconditional aggregation methods)
+//
+// Plus the Wave 15 split already on disk:
+//   - clips_repository_queries.go   CountAll / CountIndexed / CountIndexable /
+//                                    CountPendingOutbox / CountDeadLetter /
+//                                    ListIndexedIDs / List / StreamAssetIDs /
+//                                    inClause / AdvancedSearch* aliases
+//   - clips_repository_folders.go   UpsertFolder / GetFolder /
+//                                    GetFolderByVideoID / GetFolderByPath /
+//                                    ListFolders / DriveFolderAttrs /
+//                                    LookupDriveFolderIDBySourcePath /
+//                                    UpsertDriveFolder
+//   - txmutation/ subpackage        RestoreTx / HardDeleteTx (the
+//                                    raw-mutation replacements — see
+//                                    PR-CLIP-RAW-MUTATIONS, Wave 22)
 
 // Compile-time assertion (Wave 16, June 2026; PR 11 followup
 // June 2026): *ClipsRepository statically implements
@@ -85,8 +111,8 @@ const MediaAssetColumns = `
 
 type ClipsRepository struct {
 	*AssetStoreSQLite // Wave C / Phase 3: embed LOCAL *assets.AssetStoreSQLite (the canonical infra struct) instead of legacy *asset.AssetStoreSQLite. LOCAL has the canonical Save/Get/Delete/List methods AND transitively exposes legacy receivers via its own HYBRID embed of legacy. Existing call sites like `r.AssetStoreSQLite.Save(...)` auto-resolve because the embedded-field name is unchanged.
-	db  *sql.DB
-	log *zap.Logger
+	db                *sql.DB
+	log               *zap.Logger
 }
 
 func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
@@ -99,174 +125,6 @@ func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
 
 func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *ClipsRepository {
 	return NewClipsRepository(db, log)
-}
-
-// Upsert is the canonical low-level write path that ALL production
-// callers eventually flow into (via AssetStoreSQLite.Save). It is
-// public because the canonical asset.Repository wrapper calls it;
-// the narrow API surface for callers is Upsert only.
-//
-// QDRANT-asset-mutation isolation (June 2026): Upsert itself
-// bypasses the outbox. Production callers that need vector
-// indexing MUST use outbox.Dispatcher.EnqueueAndIndex (which
-// performs the UPSERT and outbox_events INSERT in a single
-// atomic tx). Methods flagged with `//nolint:production` below
-// are dispatcher-only entry points; the CI lint in
-// scripts/ci-architectural-checks.sh bans them in
-// internal/application + internal/api paths.
-func (r *ClipsRepository) Upsert(ctx context.Context, m *asset.Asset) error {
-	return r.AssetStoreSQLite.Save(ctx, &asset.Details{Asset: m})
-}
-
-func (r *ClipsRepository) Get(ctx context.Context, id string) (*asset.Asset, error) {
-	details, err := r.AssetStoreSQLite.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if details == nil {
-		return nil, nil
-	}
-	return details.Asset, nil
-}
-
-func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
-	return r.Get(ctx, id)
-}
-
-// SourceVersionFor is the PR 11 follow-up narrow port implementation
-// consumed by the IndexingHandler source_version supersede gate.
-// Delegates to the package-level helper (source_version.go) so the
-// priority-chain semantics are owned by ONE function even though two
-// upstream callers (this method + cmd/admin inline) flow through it.
-//
-// Returns sql.ErrNoRows unchanged so the upstream consumer can
-// distinguish "row missing" from "row exists but empty fingerprint".
-// Both paths fall through to "skip the gate, let IndexClip decide";
-// the diagnostic value of distinguishing them lives in tests
-// (TestSourceVersionFor_AssetNotFoundReturnsErrNoRows).
-//
-// Note: GetClip (above) remains because IndexDeleteHandler keeps it
-// via the AssetDeleter interface — that's a separate concern
-// (deletion rather than version lookup). Removing GetClip would
-// trigger a separate refactor (AssetDeleter → AssetMutator) which
-// is out of scope for the PR 11 followup.
-func (r *ClipsRepository) SourceVersionFor(ctx context.Context, id string) (string, error) {
-	return SourceVersionFor(ctx, r.db, id)
-}
-
-func (r *ClipsRepository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
-	args := []any{}
-	conds := []string{"1=1"}
-	if filter.Source != "" {
-		conds = append(conds, "source = ?")
-		args = append(args, filter.Source)
-	}
-	if filter.MediaType != "" {
-		conds = append(conds, "media_type = ?")
-		args = append(args, filter.MediaType)
-	}
-	if len(filter.States) > 0 {
-		conds = append(conds, inClause(len(filter.States), "lifecycle_state"))
-		for _, s := range filter.States {
-			args = append(args, s)
-		}
-	}
-	query := "SELECT COUNT(*) FROM media_assets WHERE " + strings.Join(conds, " AND ")
-	var n int64
-	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
-	return n, err
-}
-
-func (r *ClipsRepository) SoftDelete(ctx context.Context, id string) error {
-	return r.AssetStoreSQLite.Delete(ctx, id)
-}
-
-// SetIndexState writes the canonical media_assets.index_state column
-// (QDRANT-002 PR6 / migration 094). Called by IndexDeleteHandler for
-// the DELETE_PENDING and DELETED transitions; the Delete path is the
-// only consumer in production today, but the method is exposed as
-// public because future worker bootstrap or operator tooling may
-// need to flip state directly (QDRANT-005 alerting followup).
-//
-// No lifecycle_state filter — the caller is responsible for picking
-// the right state at the right time. SoftDeleteFilter() is applied
-// by callers that need to exclude tombstoned rows (e.g. live
-// re-index tooling); IndexDeleteHandler does NOT need it because the
-// pre-flight already short-circuits to success on lifecycle_state in
-// {deleted, DELETED}.
-//
-// Idempotent: the column flip on an already-target-state row is a
-// no-op write; the lease-fence on the outbox handler prevents the
-// same worker from racing itself.
-func (r *ClipsRepository) SetIndexState(ctx context.Context, id string, state asset.IndexState) error {
-	if id == "" {
-		return fmt.Errorf("clips.SetIndexState: id is required")
-	}
-	if state == "" {
-		return fmt.Errorf("clips.SetIndexState: state is required (got empty string; use the canonical 7-state enum)")
-	}
-	nowStr := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET index_state = ?, index_state_updated_at = ? WHERE id = ?`,
-		string(state), nowStr, id)
-	if err != nil {
-		return fmt.Errorf("clips.SetIndexState(%s, %s): %w", id, state, err)
-	}
-	return nil
-}
-
-// SetIndexStateTx is the tx-scoped mirror of SetIndexState added in
-// QDRANT-002 PR7. Called by Dispatcher.EnqueueAndDelete to stamp
-// index_state=DELETE_PENDING atomically inside the same tx as the
-// outbox_events INSERT. The tx parameter MUST be non-nil — callers
-// passing nil get an explicit error rather than a silent fall-back
-// so a misuse shows up immediately, not in a downstream idempotency
-// short-circuit.
-//
-// Idempotency: same as SetIndexState (column flip on already-target
-// state is a no-op write). Yet each retry increments the updated_at
-// stamp — that's intentional so dashboards see the retry traffic on
-// tail-end log analysis without requiring a separate retry metric.
-//
-// Caller responsibilities (NOT enforced here because the tx is in
-// flight — caller has the context too):
-//  1. Validate state against the 7-state alphabet via state.Valid()
-//     before invoking. SetIndexStateTx returns an error on empty +
-//     any non-Valid() state for caller convenience; if PR7 callers
-//     skip the check, this method's error is the last line of
-//     defense.
-//  2. Do NOT also call SetIndexState (non-tx) on the same id inside
-//     this same logical operation. The two writes race on the tx
-//     boundary — a non-tx write before commit is invisible to
-//     readers after the tx rolls back, while a non-tx write after
-//     commit clobbers the new state silently.
-//
-// SoftDeleteFilter is NOT applied here — the producer's stamp
-// observes the actual id even if the row was previously handled,
-// so a re-emitted delete event re-stamps DELETE_PENDING on a
-// tombstoned row (the worker's pre-flight still catches the
-// already-DELETED case and short-circuits).
-func (r *ClipsRepository) SetIndexStateTx(ctx context.Context, tx *sql.Tx, id string, state asset.IndexState) error {
-	if tx == nil {
-		return fmt.Errorf("clips.SetIndexStateTx: tx is required (callers in production MUST supply the Dispatcher's tx; tests may build a tx via db.BeginTx)")
-	}
-	if id == "" {
-		return fmt.Errorf("clips.SetIndexStateTx: id is required")
-	}
-	if state == "" {
-		return fmt.Errorf("clips.SetIndexStateTx: state is required (got empty string; use the canonical 7-state enum)")
-	}
-	if !state.Valid() {
-		return fmt.Errorf("clips.SetIndexStateTx: state %q is not a canonical IndexState — call sites in production must validate", state)
-	}
-	nowStr := timeutil.FormatRFC3339(time.Now())
-	_, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET index_state = ?, index_state_updated_at = ? WHERE id = ?`,
-		string(state), nowStr, id)
-	if err != nil {
-		return fmt.Errorf("clips.SetIndexStateTx(%s, %s): %w", id, state, err)
-	}
-	return nil
 }
 
 // ── Dangerous-mutation removal — Wave 22 task 5 / PR-CLIP-RAW-MUTATIONS ───
@@ -317,421 +175,3 @@ func (r *ClipsRepository) SoftDeleteFilter() string {
 
 func (r *ClipsRepository) Log() *zap.Logger { return r.log }
 func (r *ClipsRepository) DB() *sql.DB      { return r.db }
-
-func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	return r.db.BeginTx(ctx, opts)
-}
-
-// UpsertClip upserts a clip through the low-level Save() path.
-//
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Callers that need vector
-// indexing MUST use outbox.Dispatcher.EnqueueAndIndex instead, which
-// performs the UPSERT and outbox_events INSERT in a single atomic tx.
-//
-// QDRANT-asset-mutation isolation (June 2026): //nolint:production.
-// Production callers (internal/application/**, internal/api/**)
-// MUST NOT call this directly. The legitimate callers are:
-//  1. The dispatcher itself, which wraps this call inside an
-//     outbox transaction via UpsertClipTx + emits an outbox event
-//     in the same tx (the canonical QDRANT-002 path).
-//  2. The admin tool's InternalAdminPurge adapter, when
-//     back-filling a row in a scenario where the worker pool is
-//     offline; the admin path uses `assets.ClipsRepository.Upsert`
-//     rather than this method (which is dispatcher-only).
-//  3. Tests via the dispatcher stub or a bare `&Service{}` fixture
-//     (test code paths are explicitly allowlisted by the CI lint).
-//
-// Removed from public API surfaces:
-//   - artlist.AssetStore (search_core_test only)
-//   - clips.ClipRepositoryPort (clip_ops.go only)
-//   - sourcing.ClipStorePort (sourcing/service.go only)
-//
-// Per the user's verify-the-rg-test contract:
-//
-//	`rg 'UpsertClip\(' internal/application internal/api` returns
-//	ZERO production hits (test hits allowed).
-func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *asset.Asset) error {
-	return r.Upsert(ctx, clip)
-}
-
-func (r *ClipsRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.Asset, error) {
-	return r.GetClipByDriveFileID(ctx, fileID)
-}
-
-func (r *ClipsRepository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*asset.ClipFolder, error) {
-	return r.GetFolderByVideoID(ctx, videoID)
-}
-
-// UpsertClipTx is the tx-scoped UPSERT used by outbox.Dispatcher.
-// This method IS the outbox-compliant path — it executes inside the
-// dispatcher's tx alongside the outbox_events INSERT. Callers outside
-// the dispatcher MUST supply their own outbox event in the same tx.
-func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
-	nowStr := timeutil.FormatRFC3339(time.Now())
-	tagsJSON, _ := json.Marshal(clip.Tags)
-	searchTermsJSON, _ := json.Marshal(clip.SearchTerms)
-	metadataJSON, _ := json.Marshal(clip.Metadata)
-	deletedAtStr := ""
-	if clip.DeletedAt != nil {
-		deletedAtStr = timeutil.FormatRFC3339(*clip.DeletedAt)
-	}
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO media_assets (
-			id, source, name, filename, media_type, category, group_name,
-			url, clip_page_url, thumbnail_url, duration_ms, tags, search_terms,
-			search_text, lifecycle_state, deleted_at, metadata_json,
-			created_at, updated_at, folder_id, parent_folder_id, folder_path,
-			scene_type, phash, last_used_at, quality_score, reuse_count,
-			embedding_json, visual_embedding, transcript_embedding,
-			drive_link, download_link, local_path, drive_file_id, file_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			source = excluded.source,
-			name = excluded.name,
-			filename = excluded.filename,
-			media_type = excluded.media_type,
-			category = excluded.category,
-			group_name = excluded.group_name,
-			url = excluded.url,
-			clip_page_url = excluded.clip_page_url,
-			thumbnail_url = excluded.thumbnail_url,
-			duration_ms = excluded.duration_ms,
-			tags = excluded.tags,
-			search_terms = excluded.search_terms,
-			search_text = excluded.search_text,
-			lifecycle_state = excluded.lifecycle_state,
-			deleted_at = excluded.deleted_at,
-			metadata_json = excluded.metadata_json,
-			updated_at = excluded.updated_at,
-			folder_id = excluded.folder_id,
-			parent_folder_id = excluded.parent_folder_id,
-			folder_path = excluded.folder_path,
-			scene_type = excluded.scene_type,
-			phash = excluded.phash,
-			last_used_at = excluded.last_used_at,
-			quality_score = excluded.quality_score,
-			reuse_count = excluded.reuse_count,
-			embedding_json = excluded.embedding_json,
-			visual_embedding = excluded.visual_embedding,
-			transcript_embedding = excluded.transcript_embedding,
-			drive_link = excluded.drive_link,
-			download_link = excluded.download_link,
-			local_path = excluded.local_path,
-			drive_file_id = excluded.drive_file_id,
-			file_hash = excluded.file_hash
-	`,
-		clip.ID, string(clip.Source), clip.Name, clip.Filename, string(clip.MediaType), clip.Category, clip.Group,
-		clip.SourceURL, clip.ClipPageURL, clip.ThumbnailURL, clip.Duration.Milliseconds(), string(tagsJSON), string(searchTermsJSON),
-		clip.SearchText, string(clip.LifecycleState), deletedAtStr, string(metadataJSON),
-		timeutil.FormatRFC3339(clip.CreatedAt), nowStr, clip.FolderID(), clip.ParentFolderID(), clip.FolderPath(),
-		clip.SceneType(), clip.PHash(), clip.LastUsedAt(), clip.QualityScore(), clip.ReuseCount(),
-		clip.EmbeddingJSON(), clip.VisualEmbedding(), clip.TranscriptEmbedding(),
-		clip.DriveLink(), clip.DownloadLink(), clip.LocalPath(), clip.DriveFileID(), clip.FileHash(),
-	)
-	return err
-}
-
-func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
-	return r.SoftDelete(ctx, id)
-}
-
-// Wave 22 (June 2026) PR-CLIP-RAW-MUTATIONS: HardDeleteClip REMOVED.
-// The thin wrapper that delegated to *assets.ClipsRepository.HardDelete
-// is gone. The InternalAdminPurge adapter now opens its own tx and
-// calls txmutation.HardDeleteTx directly. See architecture/deprecations.yaml.
-
-// DeleteClipByDriveLink soft-deletes by drive/download link.
-//
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. It flips lifecycle_state
-// to 'deleted' without emitting an asset.index.delete_requested event,
-// which means the Qdrant point is never cleaned up.
-//
-// Callers should use deletion.DeletionService.DeleteClip (which routes
-// through outbox.Dispatcher.EnqueueAndDelete) or call the dispatcher
-// directly.
-func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
-	driveLink = strings.TrimSpace(driveLink)
-	if driveLink == "" {
-		return fmt.Errorf("drive link is required")
-	}
-	now := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'DELETED', deleted_at = ? WHERE drive_link = ? OR download_link = ?`,
-		now, driveLink, driveLink)
-	return err
-}
-
-// Wave 15 (June 2026) split-file ownership reminder:
-//   - count helpers (CountAll, CountIndexed, CountIndexable,
-//     CountPendingOutbox, CountDeadLetter, ListIndexedIDs) and
-//     List live in clips_repository_queries.go
-//   - folder helpers (UpsertFolder, GetFolder, GetFolderByVideoID,
-//     GetFolderByPath, ListFolders, DriveFolderAttrs,
-//     LookupDriveFolderIDBySourcePath, UpsertDriveFolder) live in
-//     clips_repository_folders.go
-//   - low-level helpers (StreamAssetIDs, inClause) and the
-//     AdvancedSearch type aliases live in clips_repository_queries.go
-//
-// This file's QDRANT-001 contribution is documented in the comments
-// above (DeleteClipByDriveLink, Restore, SetIndexState,
-// SetIndexStateTx); it does NOT re-declare any methods moved by the
-// Wave 15 split.
-
-// ── Typed resolver methods (TODO #1, June 2026) ──────────────────────────
-//
-// ResolveByMediaAssetID / ResolveByYouTubeVideoID / ResolveByDriveFileID
-// / ResolveByExternalProviderID are the canonical typed DB lookups
-// consumed by internal/application/scripts/usecase/clip_resolver.go
-// (the new ports.ClipResolver adapter). They replace the legacy
-// clip_source_builder heuristic "try GetClip, then fall back to
-// GetByDriveFileID" with EXPLICIT per-ReferenceType dispatch:
-//
-//   - media_asset_id       → ResolveByMediaAssetID        (returns 0..1)
-//   - youtube_video_id     → ResolveByYouTubeVideoID      (LIKE yt_<videoID>_% fan-out)
-//   - drive_file_id        → ResolveByDriveFileID         (exact match, 0..N)
-//   - external_provider_id → ResolveByExternalProviderID  (per-provider routing)
-//
-// All four apply lifecycle_state SoftDeleteFilter so deleted assets
-// never surface as resolved evidence (consistent with the
-// SoftDelete audit contract from migration 052 + the canonical
-// SoftDeleteFilter() helper). Each returns (nil, nil)/(empty, nil)
-// for "not found" — NEVER a fake match — and propagates real DB
-// errors unchanged. Compile-time pin lives next to the adapter.
-// ResolveByMediaAssetID looks up the canonical media_assets row
-// by its primary key. Mirrors r.Get but is the typed surface for
-// the ports.ClipResolver adapter — distinguishing it from Get so
-// a future signature change (extra fields, audit stamping) only
-// ripples to the new path. Returns (nil, nil) on sql.ErrNoRows.
-func (r *ClipsRepository) ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error) {
-	if id == "" {
-		return nil, nil
-	}
-	row := r.db.QueryRowContext(ctx,
-		"SELECT "+MediaAssetColumns+" FROM media_assets WHERE id = ? AND "+r.SoftDeleteFilter()+" LIMIT 1",
-		id)
-	a, err := ScanCanonicalAssetRowPublic(row)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("clips.ResolveByMediaAssetID(%q): %w", id, err)
-	}
-	return a, nil
-}
-
-// ResolveByYouTubeVideoID expands a YouTube video id into all
-// media_assets rows whose id starts with `yt_<videoID>_`. Convention:
-// each YouTube ingest segment is persisted with id =
-// `yt_<videoID>_<start>_<n>` so a single video id fans out to N
-// rows. The resolver returns the full fan-out — the caller (TODO #3
-// backend-built skeleton) decides which subset to bind.
-//
-// Empty videoID is a noop (returns nil, nil); LIKE wildcards in the
-// input are intentionally NOT escaped at this layer — YouTube video
-// ids have a fixed 11-character base64url alphabet that does not
-// contain LIKE metacharacters (%/_), so a YtVID with a wildcard
-// would already be malformed upstream and the canonical pattern
-// misuse is unreachable from API input.
-func (r *ClipsRepository) ResolveByYouTubeVideoID(ctx context.Context, videoID string) ([]*asset.Asset, error) {
-	if videoID == "" {
-		return nil, nil
-	}
-	pattern := "yt_" + videoID + "_%"
-	rows, err := r.db.QueryContext(ctx,
-		"SELECT "+MediaAssetColumns+" FROM media_assets WHERE id LIKE ? AND "+r.SoftDeleteFilter()+" ORDER BY id ASC",
-		pattern)
-	if err != nil {
-		return nil, fmt.Errorf("clips.ResolveByYouTubeVideoID(%q): %w", videoID, err)
-	}
-	defer rows.Close()
-	out := make([]*asset.Asset, 0)
-	for rows.Next() {
-		a, err := ScanCanonicalAssetRowsPublic(rows)
-		if err != nil {
-			return nil, fmt.Errorf("clips.ResolveByYouTubeVideoID scan: %w", err)
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
-}
-
-// ResolveByDriveFileID matches media_assets.drive_file_id exactly.
-// In production today drive_file_id is unique per row (ingest
-// dedupes before insert), but the resolver returns []Asset rather
-// than *Asset so a future ingest dedup regression surfaces as "N
-// results" instead of silent first-row wins. Returns ([]Asset{}, nil)
-// on no match — distinct from the (nil, nil) of MediaAssetID.
-func (r *ClipsRepository) ResolveByDriveFileID(ctx context.Context, fileID string) ([]*asset.Asset, error) {
-	if fileID == "" {
-		return nil, nil
-	}
-	rows, err := r.db.QueryContext(ctx,
-		"SELECT "+MediaAssetColumns+" FROM media_assets WHERE drive_file_id = ? AND "+r.SoftDeleteFilter()+" ORDER BY created_at ASC",
-		fileID)
-	if err != nil {
-		return nil, fmt.Errorf("clips.ResolveByDriveFileID(%q): %w", fileID, err)
-	}
-	defer rows.Close()
-	out := make([]*asset.Asset, 0)
-	for rows.Next() {
-		a, err := ScanCanonicalAssetRowsPublic(rows)
-		if err != nil {
-			return nil, fmt.Errorf("clips.ResolveByDriveFileID scan: %w", err)
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
-}
-
-// ResolveByExternalProviderID matches by provider + external_id.
-// The provider switch mirrors the canonical pattern in
-// assetRepositoryAdapter.FindByExternalRef (repo_queries.go):
-// google_drive → drive_file_id; everything else →
-// json_extract(metadata_json, '$.external_id') with source filter.
-//
-// Empty provider or external_id is a noop. The fan-out shape
-// matches ResolveByDriveFileID for consistency.
-func (r *ClipsRepository) ResolveByExternalProviderID(ctx context.Context, provider, externalID string) ([]*asset.Asset, error) {
-	if provider == "" || externalID == "" {
-		return nil, nil
-	}
-	var q string
-	var args []any
-	if provider == "google_drive" {
-		q = "SELECT " + MediaAssetColumns + " FROM media_assets WHERE drive_file_id = ? AND " + r.SoftDeleteFilter() + " ORDER BY created_at ASC"
-		args = []any{externalID}
-	} else {
-		q = "SELECT " + MediaAssetColumns + " FROM media_assets WHERE source = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.external_id') = ? AND " + r.SoftDeleteFilter() + " ORDER BY created_at ASC"
-		args = []any{provider, externalID}
-	}
-	rows, err := r.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, fmt.Errorf("clips.ResolveByExternalProviderID(%q, %q): %w", provider, externalID, err)
-	}
-	defer rows.Close()
-	out := make([]*asset.Asset, 0)
-	for rows.Next() {
-		a, err := ScanCanonicalAssetRowsPublic(rows)
-		if err != nil {
-			return nil, fmt.Errorf("clips.ResolveByExternalProviderID scan: %w", err)
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
-}
-
-// ── PR 2 / Blocco 1 sub-PR (June 2026): Mutate dispatcher-only wrapper ───
-//
-// Mutate is the canonical single SSOT entry point for asset mutations, the
-// typed-command alternative to the legacy public methods (Upsert,
-// UpsertClip, UpsertClipTx, UpsertFolder, SoftDelete, ...). It collapses
-// the per-action method proliferation into a single audit-friendly surface
-// for future callers and is the implementation seam where future
-// dispatcher-promotion can route Mutate → outbox.Dispatcher.EnqueueAndIndex
-// without changing the caller's struct literal.
-//
-// Production callers in internal/application/** and internal/api/**
-// SHOULD prefer this entry point (or the upstream
-// AssetMutationDispatcher SSOT — `mutations.AssetMutationDispatcher`)
-// instead of the legacy methods. The legacy methods stay public for
-// adapter delegation / migration interop; CI Check 10 + the new
-// dispatch-detector extension in scripts/ci-architectural-checks.sh
-// continue to gate the legacy direct callers from production paths.
-//
-// SCOPE: WHICH ACTIONS LIVE HERE
-// AssetMutationAction = AssetMutationUpsert routes through this wrapper
-// to the current canonical UPSERT path. AssetMutationAction =
-// AssetMutationRestore | AssetMutationDelete explicitly return
-// ErrUnsupportedAction so callers cannot silently fall through to a
-// plain UPSERT:
-//
-//   - restore: production code must use
-//     AssetMutationDispatcher.EnqueueAndRestore (outbox-driven); admin
-//     tooling uses txmutation.RestoreTx (caller-owned tx).
-//   - delete: production code must use
-//     AssetMutationDispatcher.EnqueueAndDelete (outbox-driven). Admin
-//     physical-purge flows use txmutation.HardDeleteTx (caller-owned
-//     tx); the regular SoftDelete route lives at deletion.DeletionService.
-//
-// Exhaustive-enum invariant: an Action whose IsImplemented()=true MUST
-// have a switch arm in this function; otherwise the call falls into
-// default and returns ErrUnsupportedAction. The unit tests in
-// clips_repository_mutate_test.go hold this invariant by enumerating
-// ImplementedActions and asserting each one is wired.
-//
-// WHY THIS IS ADDITIVE-ONLY
-// The literal PR 2 spec asked to lowercase all the dispatcher-only primitive
-// methods (UpsertClipTx, HardDeleteTx, RestoreTx, UpsertFolder,
-// SoftDeleteFilter) and to remove the *asset.AssetStoreSQLite embedding
-// from *ClipsRepository. Both those steps are blocked today:
-//
-//  1. UpsertClipTx is called by outbox.Dispatcher (cross-package) inside
-//     its own tx-bound writer. Lowercasing it would break the canonical
-//     dispatcher (build fail) — the `//nolint:production` annotation
-//     on UpsertClip + UpsertClipTx is the existing syntactic gate.
-//  2. HardDeleteTx / RestoreTx were ALREADY removed from the receiver
-//     by PR-CLIP-RAW-MUTATIONS (Wave 22 task 5, June 2026) and live
-//     exclusively in the txmutation/ package. The package-isolation
-//     boundary is the shallower-surface property the spec implicitly
-//     asked for.
-//  3. *asset.AssetStoreSQLite embedding reflects the still-in-domain
-//     SQL primitives (PR 1 deliverable was aborted in a prior turn to
-//     preserve build green — internal/domain/asset/ still owns the
-//     embeddable store). Removing that embedding strictly requires
-//     PR 1 / Blocco 1 to land first.
-//
-// This Mutate wrapper is the additive step that lets future code use
-// the canonical typed-command surface without breaking any current
-// caller. The follow-up PR 1 (move SQL primitives out of domain) +
-// future DRIVE/EMIT-AND-INDEX wiring will switch this implementation
-// to a single-tx UPSERT + outbox_events INSERT path without changing
-// the caller's struct literal.
-//
-// Layering note: the receiver lives in
-// internal/infrastructure/database/sqlite/assets/ and consumes the
-// mutations.AssetMutationCommand type from
-// internal/application/assets/mutations/. This is the same cross-layer
-// pattern documented for the existing `jobsoutbox
-// "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"`
-// import above — the application layer owns the canonical SSOT type
-// definition, and the canonical writer infrastructure consumes it
-// without inverting the general layering direction (composition root
-// wires them).
-func (r *ClipsRepository) Mutate(ctx context.Context, cmd mutations.AssetMutationCommand) error {
-	if !cmd.Action.IsKnown() {
-		return errors.Join(mutations.ErrUnsupportedAction,
-			fmt.Errorf("clips.Mutate: unknown action %q", cmd.Action))
-	}
-	switch cmd.Action {
-	case mutations.AssetMutationUpsert:
-		if cmd.Asset == nil {
-			return fmt.Errorf("clips.Mutate: Action=%q requires non-nil Asset", cmd.Action)
-		}
-		return r.Upsert(ctx, cmd.Asset)
-	case mutations.AssetMutationRestore:
-		// Not implemented at this layer. Production must use
-		// AssetMutationDispatcher.EnqueueAndRestore; admin must use
-		// txmutation.RestoreTx (caller-owned tx). Documented intent:
-		// never silently fall through to plain UPSERT.
-		return errors.Join(mutations.ErrUnsupportedAction,
-			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndRestore (production) or txmutation.RestoreTx (admin)", cmd.Action))
-	case mutations.AssetMutationDelete:
-		// Not implemented at this layer. Production must use
-		// AssetMutationDispatcher.EnqueueAndDelete; admin must use
-		// txmutation.HardDeleteTx. Documented intent: never fall
-		// through silently.
-		return errors.Join(mutations.ErrUnsupportedAction,
-			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndDelete (production) or txmutation.HardDeleteTx (admin)", cmd.Action))
-	default:
-		// Defensive: IsKnown() returned true but a switch arm is
-		// missing (someone added a new AssetMutationAction constant
-		// to mutations/command.go without wiring it here). Returns
-		// ErrUnsupportedAction rather than silently falling through.
-		// The unit tests in clips_repository_mutate_test.go hold the
-		// exhaustive-enum invariant: every entry in
-		// mutations.ImplementedActions MUST have an explicit switch
-		// arm here.
-		return errors.Join(mutations.ErrUnsupportedAction,
-			fmt.Errorf("clips.Mutate: action %q IsImplemented()=true but switch arm is missing — regenerate ImplementedActions when adding an action arm", cmd.Action))
-	}
-}
