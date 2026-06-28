@@ -159,3 +159,65 @@ func TestEnqueueGenerationJob_NilRegistryPassesThroughZero(t *testing.T) {
 	assert.Equal(t, 0, enqueued.MaxRetries,
 		"job echoes the EnqueueRequest value (zero) -- JobsService applies its own fallback downstream")
 }
+
+// TestNewGenerateEnqueueRequest_PropagatesCorrelationID — Issue 5 /
+// P1 fix-minimo contract pin. The pre-Issue-5 NewGenerateEnqueueRequest
+// dropped env.CorrelationID silently (only Envelope was copied). The
+// fix propagates a whitespace-trimmed value so EnqueueGenerationJob
+// can forward it to the broker without the caller re-threading it.
+//
+// Two boundary contracts covered:
+//   1. Non-empty env.CorrelationID is propagated verbatim (minus
+//      whitespace trim).
+//   2. Empty / whitespace-only env.CorrelationID stays empty — the
+//      downstream corid.FromContext(ctx) fallback (verified in the
+//      EnqueueGenerationJob log path) then kicks in at helper-time,
+//      keeping the typed-closed GenerateEnqueueRequest contract
+//      intact without growing its surface.
+func TestNewGenerateEnqueueRequest_PropagatesCorrelationID(t *testing.T) {
+	env := domainScript.GenerationEnvelopeV2{
+		Version:       2,
+		Preset:        domainScript.PresetCustom,
+		CorrelationID: "  trace-abc-123  ",
+		Items: []domainScript.GenerationItemV2{
+			{
+				ID:    "item-1",
+				Title: "Test Item",
+				Source: domainScript.SourceSpec{
+					Type:       domainScript.SourceText,
+					Topic:      "trace-test-topic",
+					SourceText: "trace-test-source",
+				},
+			},
+		},
+	}
+
+	req := NewGenerateEnqueueRequest(env)
+	require.NotNil(t, req, "NewGenerateEnqueueRequest must not return nil")
+	assert.Equal(t, "trace-abc-123", req.CorrelationID,
+		"Issue 5 / P1: env.CorrelationID must propagate -- whitespace trimmed -- into GenerateEnqueueRequest.CorrelationID")
+
+	// Empty correlation: stays empty at the helper boundary. The
+	// corid.FromContext(ctx) fallback in EnqueueGenerationJob is the
+	// canonical recovery path; assert the field itself stays empty
+	// here so the typed-closed GenerateEnqueueRequest surface is
+	// honest about its inputs.
+	envEmpty := domainScript.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  domainScript.PresetCustom,
+		Items: []domainScript.GenerationItemV2{
+			{
+				ID:    "item-empty",
+				Title: "Empty Trace",
+				Source: domainScript.SourceSpec{
+					Type:       domainScript.SourceText,
+					Topic:      "empty",
+					SourceText: "empty",
+				},
+			},
+		},
+	}
+	reqEmpty := NewGenerateEnqueueRequest(envEmpty)
+	assert.Equal(t, "", reqEmpty.CorrelationID,
+		"empty env.CorrelationID stays empty at the helper boundary; EnqueueGenerationJob applies the corid fallback")
+}
