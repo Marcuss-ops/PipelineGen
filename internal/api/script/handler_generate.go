@@ -18,6 +18,7 @@ package script
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -59,6 +60,14 @@ func (h *ScriptFlowHandler) Generate(c *gin.Context) {
 	// Build a typed GenerateRequest so the generation service
 	// enqueues a script.generate job with the envelope as payload.
 	req := jobs.NewGenerateEnqueueRequest(env)
+	// Issue 5 (June 2026, P1): Stripe / AWS-SQS-style Idempotency-Key
+	// support. Header wins over any future body field — keeps a single
+	// precedence rule for future PRs. Trim is defensive; EnqueueGenerationJob
+	// also trims internally so the broker dedup path is deterministic no
+	// matter where the value originated.
+	if idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key")); idempotencyKey != "" {
+		req.ActiveKey = idempotencyKey
+	}
 	// Issue 4 (June 2026, P1): pass h.registry so MaxRetries is sourced
 	// from registry.DefaultMaxRetries(script.generate) instead of the
 	// pre-Issue-4 hard-coded 3-retry fallback.

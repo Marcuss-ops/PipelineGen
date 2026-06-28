@@ -8,12 +8,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+
+	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 
 	"go.uber.org/zap"
 )
@@ -26,9 +29,16 @@ type GenerateEnqueueRequest struct {
 }
 
 // NewGenerateEnqueueRequest wraps an envelope into an enqueue request.
+//
+// Issue 5 (June 2026, P1): propagates env.CorrelationID (whitespace
+// trimmed) into the helper-level GenerateEnqueueRequest so
+// EnqueueGenerationJob can forward it to the broker without the caller
+// threading it manually. The trim matches the canonical shape used by
+// JobsService.Enqueue's idempotency / dedup lookups.
 func NewGenerateEnqueueRequest(env domainScript.GenerationEnvelopeV2) *GenerateEnqueueRequest {
 	return &GenerateEnqueueRequest{
-		Envelope: env,
+		Envelope:      env,
+		CorrelationID: strings.TrimSpace(env.CorrelationID),
 	}
 }
 
@@ -83,12 +93,29 @@ func EnqueueGenerationJob(
 		)
 	}
 
+	// Issue 5 (P1): trim ActiveKey defensively so the helper-side
+	// Match remains deterministic regardless of caller path (HTTP header
+	// driven from handler_generate.go::Generate, internal RPC, or future
+	// CLI smoke). Whitespace in ActiveKey would cause JobsService.Enqueue's
+	// FindActiveByKey dedup lookup to silently miss a real matching
+	// active key, breaking the idempotency contract.
+	activeKey := strings.TrimSpace(req.ActiveKey)
+
+	// Context fallback for CorrelationID: if the upstream envelope set
+	// no value (e.g. CLI smoke callers using EmptyEnvelope helpers),
+	// fall back to the canonical corid trace context. Keeps trace
+	// continuity end-to-end without forcing every caller to set it.
+	correlationID := req.CorrelationID
+	if correlationID == "" {
+		correlationID = corid.FromContext(ctx)
+	}
+
 	enqueueReq := &scriptpkg.EnqueueRequest{
 		Type:          scriptpkg.TypeScriptGenerate,
 		Payload:       json.RawMessage(payload),
 		Priority:      5,
-		ActiveKey:     req.ActiveKey,
-		CorrelationID: req.CorrelationID,
+		ActiveKey:     activeKey,
+		CorrelationID: correlationID,
 	}
 
 	// Issue 4: source MaxRetries from the registry when it is wired
@@ -114,6 +141,19 @@ func EnqueueGenerationJob(
 		zap.String("job_id", enqueued.ID),
 		zap.String("status", string(enqueued.Status)),
 		zap.Int("max_retries", enqueued.MaxRetries),
+		// Issue 5: surface the resolved ActiveKey so operators can
+		// audit idempotency dedup at the log level. Empty here means
+		// the caller did not pass an Idempotency-Key header; the
+		// broker will not dedup, but the fan-out is unchanged.
+		zap.String("active_key", enqueued.ActiveKey),
+		zap.String("correlation_id", enqueued.CorrelationID),
+		// NOTE (June 2026, P1): the Stripe / AWS-SQS Idempotency-Key
+		// convention permits tenant markers in the key value, and the
+		// standard trace context may also carry tenant ids. If a future
+		// PR adds a per-tenant scrubber (e.g. application/zap.WithRedaction)
+		// or a sampling downgrade for noisy tenants, this is the seam
+		// to touch. Keeping these fields visible at INFO for now since
+		// operator dedup-audit is the load-bearing observability use case.
 	)
 	return enqueued, nil
 }
