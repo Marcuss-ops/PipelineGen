@@ -44,6 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -514,28 +515,43 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, descr
 	return nil, fmt.Errorf("GenerateSmartImage not supported through ImageProcessor")
 }
 
-// voiceoverSvcAdapter adapts *voiceover.Service → scripts.VoiceoverService.
-// The concrete Generate/GenerateWithDestination return *voiceover.VoiceoverResult;
-// the interface returns interface{}. We bridge the return-type conversion.
+// voiceoverSvcAdapter adapts *voiceover.Service → adapters.VoiceoverGenerator
+// (the typed PR 5 port). The adapter bridges the concrete *voiceover.Service
+// (which exposes legacy Generate/GenerateWithDestination methods returning
+// *voiceover.VoiceoverResult) to the typed port that takes a
+// domain.GenerateVoiceoverCommand and returns *domain.VoiceoverResult.
+//
+// M2 fix (June 2026): the prior adapter implemented the legacy
+// adapters.VoiceoverService port with `interface{}` returns. The Phase 5
+// code-reviewer flagged this as a typed-port-surface violation. This
+// version delegates to the canonical GenerateVoiceoverUseCase (via
+// Service.UseCase().Execute) which already returns *domain.VoiceoverResult
+// directly — no interface{}, no map[string]any, no type assertions, no
+// extractVoiceoverPaths.
+//
+// The typed port is what processors (VoiceoverProcessor) consume; the
+// legacy surface is gone. When the service is wired without the
+// canonical use case (legacy bootstrap path), the adapter returns a
+// typed error so composition surfaces the misconfiguration immediately
+// instead of silently producing nil results.
 type voiceoverSvcAdapter struct {
-	svc interface {
-		Generate(ctx context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error)
-		GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error)
-	}
+	svc *voiceover.Service
 }
 
-func (a *voiceoverSvcAdapter) Generate(ctx context.Context, text, language, filename string) (interface{}, error) {
+// Generate implements adapters.VoiceoverGenerator. The command is
+// passed through verbatim — VoiceoverProcessor builds the canonical
+// domain.GenerateVoiceoverCommand (Locale, Destination, Reference)
+// and the use case owns the full pipeline (validate, resolve voice,
+// resolve destination, dedup, TTS, upload, lifecycle).
+func (a *voiceoverSvcAdapter) Generate(ctx context.Context, cmd domain.GenerateVoiceoverCommand) (*domain.VoiceoverResult, error) {
 	if a == nil || a.svc == nil {
 		return nil, nil
 	}
-	return a.svc.Generate(ctx, text, language, filename)
-}
-
-func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (interface{}, error) {
-	if a == nil || a.svc == nil {
-		return nil, nil
+	uc := a.svc.UseCase()
+	if uc == nil {
+		return nil, fmt.Errorf("voiceover adapter: use case not wired (legacy service path) — compose *voiceover.Service via NewService which builds GenerateVoiceoverUseCase")
 	}
-	return a.svc.GenerateWithDestination(ctx, text, language, filename, dest)
+	return uc.Execute(ctx, cmd)
 }
 
 // semanticSearchAdapter adapts scripts.RealtimeSearchService → scripts.SemanticSearchPort.
