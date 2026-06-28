@@ -1,6 +1,6 @@
 // Package clips hosts the unified HTTP handler that owns every clip-related
 // endpoint. PR-A Phase 4 BULK consolidation: a single Handler struct carries
-// the full 14-dep surface and exposes every method previously scattered
+// the full 27-dep surface and exposes every method previously scattered
 // across handler_sources_clip_*.go in the flat sources package.
 //
 // Sub-handler fan-out (DeleteHandler, SearchHandler) is replaced by
