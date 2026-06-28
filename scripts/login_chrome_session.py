@@ -14,9 +14,43 @@ DATA_DIR = ROOT / "data"
 PROFILE_DIR = DATA_DIR / "google_slides_session_profile"
 STORAGE_FILE = DATA_DIR / "google_slides_storage.json"
 
+def import_local_chrome_session():
+    import shutil
+    home = Path.home()
+    chrome_profile = home / ".config" / "google-chrome"
+    if not chrome_profile.exists():
+        return False
+    
+    print("Found local Google Chrome profile. Copying session cookies and storage...")
+    try:
+        target_default = PROFILE_DIR / "Default"
+        os.makedirs(target_default, exist_ok=True)
+        
+        local_state_src = chrome_profile / "Local State"
+        if local_state_src.exists():
+            shutil.copy(local_state_src, PROFILE_DIR / "Local State")
+            
+        cookies_src = chrome_profile / "Default" / "Cookies"
+        if cookies_src.exists():
+            shutil.copy(cookies_src, target_default / "Cookies")
+            
+        local_storage_src = chrome_profile / "Default" / "Local Storage"
+        if local_storage_src.exists():
+            target_storage = target_default / "Local Storage"
+            if target_storage.exists():
+                shutil.rmtree(target_storage)
+            shutil.copytree(local_storage_src, target_storage)
+            
+        print("Local Chrome session imported successfully!")
+        return True
+    except Exception as e:
+        print(f"Warning importing local Chrome session: {e}")
+        return False
+
 def main():
     os.makedirs(PROFILE_DIR, exist_ok=True)
     os.makedirs(DATA_DIR, exist_ok=True)
+    import_local_chrome_session()
 
     # Clean up stale chromium lock files to prevent Error code 32 (ProcessSingleton lock)
     for lock_name in ["lockfile", "SingletonLock", "SingletonCookie", "SingletonSocket"]:
