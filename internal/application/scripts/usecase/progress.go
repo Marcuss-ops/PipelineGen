@@ -12,6 +12,14 @@
 //	85-100%: Postprocessors
 //
 // A nil ProgressTracker is a no-op — all calls silently succeed.
+// Issue 8 / P2 (June 2026): the pre-Issue-8 Phase* methods
+// formatted the message (accessing p.item) BEFORE calling Emit,
+// which panicked on a nil receiver because p.item dereference
+// happened before the nil-guard. The fix routes all Phase* methods
+// through a centralized `phase(percent, format, args...)` helper
+// that does the nil-guard FIRST, then item-prefixed formatting,
+// then Emit. The intent of the package-doc "A nil ProgressTracker
+// is a no-op" is now actually true.
 package usecase
 
 import "fmt"
@@ -48,36 +56,64 @@ func (p *ProgressTracker) Emit(percent int, message string) {
 	p.fn(percent, message)
 }
 
+// phase is a nil-safe wrapper around Emit. Each Phase* method
+// delegates here so the nil-guard + item-prefixed formatting are
+// centralized. Issue 8 / P2 (June 2026): pre-Issue-8 Phase* methods
+// accessed p.item BEFORE calling Emit, which panicked on a nil
+// receiver. The phase helper does the nil-guard FIRST, then formats
+// with `[item]` prefix, then calls Emit (which has its own nil-guard
+// for the inner ProgressFn path). The format string is the unprefixed
+// message; the `[item]` prefix is injected automatically so the
+// Phase* call sites stay a single line.
+//
+// Signature note: (percent int, format string, args ...any) instead
+// of the literal (percent int, message string) the user spec
+// described. The variadic form lets the helper own the item-prefix
+// formatting while keeping the Phase* call sites a single line each.
+// If a future Phase* needs a fully pre-formatted message without
+// the `[item]` prefix, it can call Emit directly (which is also
+// nil-safe via its own guard).
+func (p *ProgressTracker) phase(percent int, format string, args ...any) {
+	if p == nil {
+		return
+	}
+	fullArgs := append([]any{p.item}, args...)
+	msg := fmt.Sprintf("[%s] "+format, fullArgs...)
+	p.Emit(percent, msg)
+}
+
 // Phase helpers emit progress at pre-defined percentage points.
+// Each Phase* delegates to the centralized `phase` helper so the
+// nil-guard is enforced uniformly. Issue 8 / P2 (June 2026).
 
 func (p *ProgressTracker) PhaseNormalize() {
-	p.Emit(5, fmt.Sprintf("[%s] Normalizing request...", p.item))
+	p.phase(5, "Normalizing request...")
 }
 
 func (p *ProgressTracker) PhaseValidate() {
-	p.Emit(15, fmt.Sprintf("[%s] Validating parameters...", p.item))
+	p.phase(15, "Validating parameters...")
 }
 
 func (p *ProgressTracker) PhaseResolveSource() {
-	p.Emit(25, fmt.Sprintf("[%s] Resolving source material...", p.item))
+	p.phase(25, "Resolving source material...")
 }
 
 func (p *ProgressTracker) PhaseBuildPlan() {
-	p.Emit(45, fmt.Sprintf("[%s] Building generation plan...", p.item))
+	p.phase(45, "Building generation plan...")
 }
 
 func (p *ProgressTracker) PhaseGenerateStart() {
-	p.Emit(55, fmt.Sprintf("[%s] Generating script via AI...", p.item))
+	p.phase(55, "Generating script via AI...")
 }
 
 func (p *ProgressTracker) PhaseGenerateDone() {
-	p.Emit(85, fmt.Sprintf("[%s] Script generated.", p.item))
+	p.phase(85, "Script generated.")
 }
 
 func (p *ProgressTracker) PhasePostprocess(processor string) {
-	p.Emit(90, fmt.Sprintf("[%s] Running postprocessor: %s...", p.item, processor))
+	p.phase(90, "Running postprocessor: %s...", processor)
 }
 
 func (p *ProgressTracker) PhaseComplete() {
-	p.Emit(100, fmt.Sprintf("[%s] Generation complete.", p.item))
+	p.phase(100, "Generation complete.")
 }
