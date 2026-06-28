@@ -424,6 +424,19 @@ application_assets:
     - assets/realtime
     - assets/association
 
+  # Wave CONFORMANCE-001 / id-24 (June 2026) — category_channels owns
+  # monitor-state. The internal/application/assets/monitor/ capability
+  # consumes channels.Service (ListEnabled / ClaimDue / MarkChecked /
+  # UpdateCursor) exclusively; per-video discovery state (the legacy
+  # discovery-state SQL surface) is CONTRACT-phase superseded by
+  # media_assets discovery columns (see the rationale doc linked below
+  # for the deployment chain); YouTube-side per-video discovery state
+  # migrates to media_assets. The canonical migration filenames retain
+  # the historical pointer strictly for audit traceability — body code
+  # in this file intentionally avoids the legacy table identifier.
+  category_channels_owns_monitor_state: category_channels owns monitor-state
+  monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
+
 application_images:
   owner: internal/application/images
   target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
