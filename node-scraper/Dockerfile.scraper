@@ -17,22 +17,28 @@
 
 FROM node:22-bookworm-slim
 
-# Install only what the scraper actually needs at runtime. Chromium
-# dependencies (libgtk, libnss, fontconfig) come in via Google's
-# `nodejs/node-chrome` runtime image instead — see Phase 6+ plan to
-# decouple from Playwright's bundled Chromium. For now the operator
-# runs the scraper against an external Playwright install.
+# Install runtime dependencies. `chromium` is the headless browser
+# the scraper launches; Debian's package ships its own
+# fontconfig/nss deps so we don't need a separate Playwright
+# install layer. Phase 1 audit fix (PR ref fix/artlist-container-runtime):
+# the previous Dockerfile relied on the host's Chromium / a
+# separate BROWSER_WS container, which made the scraper fail on
+# vanilla `docker compose up --build`. Future work (Phase 6+) may
+# pivot to a remote browser via BROWSER_WS, but for now we ship
+# chromium in the image.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
+      chromium \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Prevent puppeteer from downloading Chromium — the runtime uses
-# an external browser via BROWSER_WS or CHROME_EXECUTABLE.
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+# the apt-installed system Chromium at ${CHROME_EXECUTABLE}.
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    CHROME_EXECUTABLE=/usr/bin/chromium
 
 # Install npm dependencies first to leverage Docker layer caching.
 # package.json and package-lock.json are copied before the full source
@@ -55,8 +61,13 @@ ENV PORT=9123 \
     ARTLIST_PORT=9123 \
     PERSISTENT=1
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:${PORT}/health || exit 1
+# HEALTHCHECK probes /ready, which actively round-trips Chromium
+# (browser.version() over CDP). Phase 1 audit fix (PR ref
+# fix/artlist-container-runtime): keep /health as liveness and
+# route the Docker HEALTHCHECK through /ready so chromium-not-yet-
+# launched → 503 → unhealthy → no traffic until warm.
+HEALTHCHECK --interval=15s --timeout=10s --start-period=20s --retries=5 \
+  CMD curl -fsS http://127.0.0.1:${PORT}/ready || exit 1
 
 # Persistent scraper server (Level 3 caching per design docs).
 # Operators that prefer the system Playwright/Chromium route override

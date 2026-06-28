@@ -11,6 +11,15 @@ const __dirname = path.dirname(__filename);
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.ARTLIST_SCRAPER_PORT || '9123', 10);
+// HOST controls the bind address. Defaults to '0.0.0.0' so the
+// scraper is reachable from sibling Docker containers
+// (e.g. http://artlist-scraper:9123 from the pipelinegen-server).
+// Set HOST=127.0.0.1 in operator-only setups where the scraper is
+// intentionally looped back to its own container.
+// Phase 1 audit fix (PR ref fix/artlist-container-runtime): the
+// legacy hardcoded '127.0.0.1' made the container unreachable
+// from any peer on the `backend` Docker network.
+const HOST = process.env.HOST || '0.0.0.0';
 const PROFILE_DIR = process.env.CHROME_PROFILE_DIR || '';
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 50;
@@ -193,6 +202,10 @@ async function handleDownload(req, res, getBrowserFn) {
 }
 
 function handleHealth(req, res) {
+  // Liveness probe only — must NOT touch Chromium (which may take
+  // seconds to launch). K8s / Docker restart loops hit /health on
+  // every tick; we want a fast, no-side-effect 200 so the container
+  // is kept up while Chromium warms in the background.
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     ok: true,
@@ -201,6 +214,36 @@ function handleHealth(req, res) {
     started_at: startedAt,
     port: PORT,
     browser_running: globalBrowser !== null,
+  }));
+}
+
+// Readiness probe — Phase 1 audit fix (PR ref fix/artlist-container-runtime).
+// Actively asks Chromium to confirm it is alive (browser.version()
+// round-trips over the DevTools protocol). Returns 200 ONLY once
+// the browser is up; 503 otherwise. This replaces the legacy
+// "/health returns 200 even when Chromium is dead" footgun which
+// caused the server to mark artlist-scraper as healthy in
+// docker-compose healthcheck checks before the first search worked.
+async function handleReady(req, res) {
+  let browserConnected = false;
+  let lastError = null;
+  try {
+    const browser = await getBrowser();
+    // browser.version() performs a live CDP roundtrip; if Chromium
+    // is dead, this throws and we surface 503.
+    await browser.version();
+    browserConnected = browser.isConnected();
+  } catch (err) {
+    lastError = err && err.message ? err.message : String(err);
+  }
+  const ready = browserConnected && lastError === null;
+  res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    ok: ready,
+    ready,
+    browser_connected: browserConnected,
+    error: lastError,
+    port: PORT,
   }));
 }
 
@@ -213,15 +256,17 @@ const server = http.createServer(async (req, res) => {
     await handleDownload(req, res, getBrowser);
   } else if (url.pathname === '/health') {
     handleHealth(req, res);
+  } else if (url.pathname === '/ready') {
+    await handleReady(req, res);
   } else {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: `Unknown path: ${url.pathname}` }));
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[artlist-server] Listening on http://127.0.0.1:${PORT}`);
-  console.log(`[artlist-server] Endpoints: POST /search, POST /download, GET /health`);
+server.listen(PORT, HOST, () => {
+  console.log(`[artlist-server] Listening on http://${HOST}:${PORT}`);
+  console.log(`[artlist-server] Endpoints: POST /search, POST /download, GET /health, GET /ready`);
   console.log(`[artlist-server] Browser will warm up on first request`);
 });
 

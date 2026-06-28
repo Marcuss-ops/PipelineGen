@@ -5,6 +5,9 @@
   "engines": {
     "node": "22.x"
   },
+  "scripts": {
+    "test": "node --test test/"
+  },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
     "puppeteer-core": "^25.2.0"
