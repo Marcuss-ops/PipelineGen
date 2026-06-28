@@ -43,6 +43,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -286,7 +287,7 @@ func runQdrantReadiness(args []string) error {
 	// outbox/mediasearch handler wires — every check reads from
 	// root. InitComposition is the canonical producer of root
 	// (mirrors what cmd/server/main.go constructs).
-	root, _, rootCleanup, err := appInitCompositionForReadiness(ctx, cfg, log)
+	root, rootCleanup, err := appInitCompositionForReadiness(ctx, cfg, log)
 	if err != nil {
 		// Root construction itself failed — readiness gate cannot
 		// proceed because server_production_constructor will fail
@@ -665,7 +666,7 @@ func checkReconcilerProduction(ctx context.Context, deps readinessDeps) checkSta
 	// readiness gate does not depend on the AppLayer ClipsRepo
 	// (which has a broader surface than Reconciler needs).
 	assetStore := qdrantAssetStoreForReconcile(deps.DB)
-	rec, err := reconciler.NewServiceFromDeps(reconciler.ServiceDeps{
+	rec := reconciler.NewServiceFromDeps(reconciler.ServiceDeps{
 		Schema: reconciler.SchemaVersions{
 			Version:           schema.Version,
 			RequiredKeys:      []string{"asset_id"},
@@ -686,9 +687,6 @@ func checkReconcilerProduction(ctx context.Context, deps readinessDeps) checkSta
 		// readiness-side code minimal.
 		Log: deps.Log,
 	})
-	if err != nil {
-		return checkStatus{Err: "reconciler construction failed: " + err.Error()}
-	}
 	// PR 10 requires opts.Collection to be set explicitly; resolve
 	// against the canonical runtime alias so the readiness dry-run
 	// scans the same collection production runs against. We use the
@@ -704,11 +702,10 @@ func checkReconcilerProduction(ctx context.Context, deps readinessDeps) checkSta
 	if collErr == nil && strings.TrimSpace(prodColl) != "" {
 		collection = prodColl
 	}
-	_, err = rec.Reconcile(ctx, reconciler.ReconcileOptions{
+	if _, err := rec.Reconcile(ctx, reconciler.ReconcileOptions{
 		Collection: collection,
 		DryRun:     true,
-	})
-	if err != nil {
+	}); err != nil {
 		return checkStatus{Err: "reconciler dry-run failed: " + err.Error()}
 	}
 	return checkStatus{Pass: true}
@@ -881,13 +878,13 @@ func (p *cfgRatePort) RateLimitEnabled() bool {
 	if p.Cfg == nil {
 		return false
 	}
-	return p.Cfg.Security.RateLimit.Enabled
+	return p.Cfg.Security.RateLimitEnabled
 }
 func (p *cfgRatePort) RateLimitRequests() int {
 	if p.Cfg == nil {
 		return 0
 	}
-	return p.Cfg.Security.RateLimit.RequestsPerMinute
+	return p.Cfg.Security.RateLimitRequests
 }
 
 func (p *cfgFeaturesPort) ArtlistEnabled() bool {
@@ -943,7 +940,7 @@ func parseQdrantVisualBackfillArgs(args []string) (qdrantVisualBackfillDeps, err
 		case a == "--json":
 			deps.JSON = true
 		case strings.HasPrefix(a, "--limit="):
-			n, err := parsePositiveFlag(a, "--limit")
+			n, err := parseStrictPositiveIntFlag(a, "--limit")
 			if err != nil {
 				return deps, err
 			}
@@ -1403,7 +1400,7 @@ func qdrantProbeAndSchema(ctx context.Context, cfg *config.Config, log *zap.Logg
 
 	schema := qdrant.DefaultV3Schema()
 	mgr := qdrant.NewCollectionManager(client, schema, log)
-	active, err := mgr.GetAliasTarget(ctx, schema.RuntimeAlias)
+	active, err := mgr.GetActiveCollection(ctx)
 	if err != nil {
 		return fmt.Errorf("resolve active collection: %w", err)
 	}
@@ -1456,9 +1453,9 @@ func tableExists(ctx context.Context, db *sql.DB, name string) bool {
 	return count > 0
 }
 
-func parsePositiveFlag(arg, name string) (int, error) {
+func parseStrictPositiveIntFlag(arg, name string) (int, error) {
 	v := strings.TrimPrefix(arg, name+"=")
-	n, err := fmt.Atoi(strings.TrimSpace(v))
+	n, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", name, err)
 	}
