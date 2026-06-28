@@ -109,4 +109,13 @@ allowlist entry requires explicit owner + deadline; transitional
 baselines default-block the lint rather than silently pass. exit 0
     (transitional baseline Wave 21 PR-G invariato).
 
+## Affirmed GREEN packages (zero-RED confirmed, post-Option-X)
+
+I seguenti package sono state diagnosticate GREEN dopo la tactical alias-unblock Option-X (services.go:97 - domain.VoiceoverResult):
+
+  1. internal/application/qdrant/dr - compilazione EXIT_CODE=0, 0 errori. Step 3 diagnostic registra che qdrant/dr builds clean (ticket PR-QDRANT-DR-COMPILE-RECOVERY proposed ma rejected per godlike/07 zero-fake-availability).
+  2. internal/application/assets/monitor - compilazione EXIT_CODE=0, 0 errori. Step 4 diagnostic (2026-06-28): 13 file canonical-owned in ownership.yaml, Wave 19 port-interface compliant (zero import diretto di internal/infrastructure), monitor state transitioned to category_channels. Literal-spec PR-ASSETS-MONITOR-COMPILE-RECOVERY (no-op) rimpiazzato con reframe PR-ASSETS-MONITOR-CONTRACT-AUDIT-2026-06-28 (audit scope), registrato Wave 21 follow_up_tickets come 6. entry.
+
+Questi due package si aggiungono al set voiceover/typed-port verde dopo Option-X alias unblock. La UNICA RED zone attuale (post-Option-X) resta PR-APP-BUNDLES-COMPILE-RECOVERY + PR-TEST-FIXTURES-RED-RECOVERY scope.
+
 Tracking: architecture/current.yaml#id-21 follow_up_tickets.PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28.
