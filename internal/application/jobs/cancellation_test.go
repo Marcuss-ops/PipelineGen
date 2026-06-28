@@ -70,11 +70,18 @@ func TestStartCancelWatcher_PollsUntilCancelFires(t *testing.T) {
 		return atomic.LoadInt32(&pollCount) > int32(cancelTrueAfter)
 	})
 
-	// Wait up to 4 seconds for ctx to become Done (worst case:
-	// spawn -> first tick at 2s -> Cancel -> Done).
+	// Wait up to 6 seconds for ctx to become Done. Worst case:
+	// spawn -> first tick at 2s (pollCount=1, returns false) ->
+	// second tick at 4s (pollCount=2, returns true, Cancel) ->
+	// Done. The 6s budget gives 2 seconds of slack past the
+	// second tick's exact-fire moment so the select-case race
+	// between timer.C and jobCtx.Done() reliably picks the
+	// Done case (a previous 4s budget was a real flake on
+	// the boundary: when timer.C fired at the same instant
+	// as the second poll, the select picked non-deterministically).
 	deadline := time.NewTicker(50 * time.Millisecond)
 	defer deadline.Stop()
-	timer := time.NewTimer(4 * time.Second)
+	timer := time.NewTimer(6 * time.Second)
 	defer timer.Stop()
 
 	for {
@@ -87,7 +94,7 @@ func TestStartCancelWatcher_PollsUntilCancelFires(t *testing.T) {
 				"watcher should have polled at least 2 times before firing cancel")
 			return
 		case <-timer.C:
-			t.Fatalf("cancel not fired within 4s; pollCount=%d ctx.Err=%v",
+			t.Fatalf("cancel not fired within 6s; pollCount=%d ctx.Err=%v",
 				atomic.LoadInt32(&pollCount), jobCtx.Err())
 		case <-deadline.C:
 			// re-check ctx in next iter
