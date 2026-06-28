@@ -38,13 +38,13 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	_ = cfg
 	assetsStore := sqassets.NewAssetStoreSQLite(dbs.main.DB, log)
 	assetsSvc := asset.NewService(assetsStore, log)
-	imageRepo := assets.NewImagesRepository(dbs.main.DB)
-	voiceoverRepo := assets.NewVoiceoversRepository(dbs.main.DB)
-	monitorsRepo := assets.NewMonitorsRepository(dbs.main.DB)
+	imageRepo := sqassets.NewImagesRepository(dbs.main.DB)
+	voiceoverRepo := sqassets.NewVoiceoversRepository(dbs.main.DB)
+	monitorsRepo := sqassets.NewMonitorsRepository(dbs.main.DB)
 	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.main.DB, log, assetsSvc.Repository())
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.main.DB)
-	sqRepo := assets.NewSearchQueriesRepository(dbs.main.DB)
+	sqRepo := sqassets.NewSearchQueriesRepository(dbs.main.DB)
 
 	// PR8: idempotency store (compiles cleanly against the port).
 	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.main.DB)
