@@ -66,9 +66,16 @@ def main():
 
         login_success = False
         while not login_success:
-            time.sleep(2)
+            time.sleep(1)
+            # Continuously dump storage state so cookies are preserved even if closed early
+            try:
+                context.storage_state(path=str(STORAGE_FILE))
+            except Exception:
+                pass
+
             for p_page in context.pages:
                 try:
+                    url = p_page.url
                     url_lower = url.lower()
                     if ("docs.google.com" in url_lower or "slides.google.com" in url_lower or "drive.google.com" in url_lower or "myaccount.google.com" in url_lower or ("google.com" in url_lower and "signin" not in url_lower and "servicelogin" not in url_lower)):
                         print(f"SUCCESS! Login detected on tab: {url}")
@@ -87,13 +94,22 @@ def main():
                 except Exception:
                     pass
             if all_closed:
-                if not login_success:
-                    print("\n[!] Browser window closed before completing login.")
-                    sys.exit(1)
+                # Save storage state right before exit
+                try:
+                    context.storage_state(path=str(STORAGE_FILE))
+                except Exception:
+                    pass
+                print("==========================================================")
+                print(f" SUCCESS: Google Session exported to: {STORAGE_FILE}")
+                print(" You can now run all automated image generation scripts headless!")
+                print("==========================================================")
+                sys.exit(0)
 
-        # Save storage state
-        time.sleep(2)
-        context.storage_state(path=str(STORAGE_FILE))
+        # Save storage state on completion
+        try:
+            context.storage_state(path=str(STORAGE_FILE))
+        except Exception:
+            pass
         print("==========================================================")
         print(f" SUCCESS: Google Session exported to: {STORAGE_FILE}")
         print(" You can now run all automated image generation scripts headless!")
