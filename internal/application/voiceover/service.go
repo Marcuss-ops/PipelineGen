@@ -21,11 +21,6 @@ import (
 // Defined as a callback to avoid circular imports with the images package.
 type SemanticTaggerFunc func(ctx context.Context, prompt, style, mediaType, generator string) (*SemanticTaggerResult, error)
 
-// ClipIndexFunc is a callback that triggers embedding generation + Qdrant upsert
-// for a given asset. Defined as a callback to avoid circular imports with clipindexer.
-// Implementations should call clipindexer.IndexClip() or equivalent.
-type ClipIndexFunc func(ctx context.Context, assetID string) error
-
 // SemanticTaggerResult mirrors the semantic tagger output for voiceover use.
 type SemanticTaggerResult struct {
 	SearchText string   `json:"search_text"`
@@ -57,19 +52,35 @@ type Service struct {
 	audioProcessor   AudioProcessor
 	lifecycleService *lifecycle.Service
 	semanticTagger   SemanticTaggerFunc
-	clipIndexer      ClipIndexFunc  // optional: triggers embedding + Qdrant upsert
-	translator       translation.TranslatorFunc // Deprecated: moved to translation pkg, kept for GeneratePromo compat
+	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the
+	// previous ClipIndexFunc callback (fire-and-forget goroutine)
+	// is gone. The TxOutboxEnqueuer port replaces it — swapVoiceoverRow
+	// now enqueues the canonical `asset.index.requested` envelope
+	// INSIDE the SQLite transaction, so the metadata INSERT and the
+	// indexing event INSERT commit atomically.
+	//
+	// May be nil at construction time; swapVoiceoverRow guards the nil
+	// case so the optional behaviour degrades to "skip indexing"
+	// (same pattern as the previous ClipIndexFunc callback).
+	outboxEnqueuer TxOutboxEnqueuer
+	translator     translation.TranslatorFunc // Deprecated: moved to translation pkg, kept for GeneratePromo compat
 }
 
 // TranslatorFunc translates text to a target language. Used by GeneratePromo.
 // Deprecated: use translation.TranslatorFunc directly.
 type TranslatorFunc = translation.TranslatorFunc
 
-// NewService constructs a voiceover.Service. The optional callbacks
-// (semanticTagger, translator, clipIndexer) are wired at construction
-// time. Pass nil for any callback that the caller does not need — the
-// service guards nil at call sites so the optional behaviour degrades
-// gracefully.
+// NewService constructs a voiceover.Service. The optional dependencies
+// (semanticTagger, translator, outboxEnqueuer) are wired at construction
+// time. Pass nil for any dependency that the caller does not need — the
+// service guards nil at every call site so the optional behaviour degrades
+// gracefully (the IGnPath test path explicitly covers the no-outbox
+// case in service_test.go).
+//
+// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the
+// clipIndexer ClipIndexFunc parameter is gone. The indexing handoff
+// now flows through outboxEnqueuer TxOutboxEnqueuer, which writes
+// inside the same SQLite transaction as swapVoiceoverRow.
 func NewService(
 	cfg *config.Config,
 	db *sql.DB,
@@ -81,7 +92,7 @@ func NewService(
 	assetDestResolver asset.Resolver,
 	semanticTagger SemanticTaggerFunc,
 	translator TranslatorFunc,
-	clipIndexer ClipIndexFunc,
+	outboxEnqueuer TxOutboxEnqueuer,
 ) *Service {
 	// Create audio asset processor
 	audioProcessor := audioasset.NewProcessor(
@@ -102,8 +113,8 @@ func NewService(
 		audioProcessor:    audioProcessor,
 		lifecycleService:  lifecycleService,
 		semanticTagger:    semanticTagger,
+		outboxEnqueuer:    outboxEnqueuer,
 		translator:        translator,
-		clipIndexer:       clipIndexer,
 	}
 }
 
