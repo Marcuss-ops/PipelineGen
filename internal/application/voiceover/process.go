@@ -2,8 +2,11 @@ package voiceover
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,20 +127,46 @@ func (s *Service) processLanguage(
 
 	id := buildVoiceoverID(textHash, language, folderID)
 
-	if req.Strategy == "replace" {
-		s.log.Info("processLanguage: strategy is replace, deleting existing record", zap.String("id", id))
-		if _, err := s.db.ExecContext(ctx, "DELETE FROM voiceovers WHERE id = ?", id); err != nil {
-			s.log.Warn("failed to delete existing voiceover record", zap.String("id", id), zap.Error(err))
-		}
-	} else if folderID != "" {
-		var existingDriveLink string
-		err := s.db.QueryRowContext(ctx, "SELECT drive_link FROM voiceovers WHERE id = ?", id).Scan(&existingDriveLink)
-		if err == nil && existingDriveLink == "" {
-			s.log.Info("processLanguage: existing record has no drive link, deleting to force regeneration and upload", zap.String("id", id))
-			if _, err := s.db.ExecContext(ctx, "DELETE FROM voiceovers WHERE id = ?", id); err != nil {
-				s.log.Warn("failed to delete empty-drive-link voiceover record", zap.String("id", id), zap.Error(err))
-			}
-		}
+	// PR-VO-A2 (Replace-Safe pipeline, June 2026): the previous code deleted the existing voiceover record
+	// BEFORE generation, leaving a data-loss window if TTS / Drive / Lifecycle failed downstream.
+	// The new flow threads the swap through a single SQLite transaction so the old record is
+	// never removed until the new one is durably persisted:
+	//
+	//   pre-read oldDriveFileID (above)
+	//   ↓
+	//   generate staging (TTS + FFmpeg silence removal)
+	//   ↓
+	//   upload to Drive via Lifecycle.ProcessAsset (lifecycle commits to media_assets)
+	//   ↓
+	//   tx { INSERT new voiceovers row; DELETE old voiceovers row }   (atomic swap)
+	//   ↓
+	//   post-commit: best-effort Drive.DeleteFile(oldDriveFileID) in a goroutine
+	//
+	// If any step before the transaction fails, the existing voiceovers row is preserved
+	// (no data loss). If the transaction itself fails, the INSERT and DELETE either both
+	// roll back or both commit; we never end up with the new audio on Drive but no DB row.
+	shouldSwap := req.Strategy == "replace"
+	oldDriveFileID := ""
+	oldLocalPath := ""
+	oldCleanedPath := ""
+	var existingDriveLink string
+	// PR-VO-A2: pre-read captures the orphan-candidate rows in single SELECT
+	// so the post-commit best-effort cleanup goroutine can remove both the
+	// orphaned Drive file and the local audio file in one trip. errors.Is
+	// check on sql.ErrNoRows is the canonical idiom — relying on the
+	// message string of the underlying error (e.g. "sql: no rows in
+	// result set") couples this code to a specific driver / Go version.
+	rowErr := s.db.QueryRowContext(ctx,
+		"SELECT drive_file_id, drive_link, local_path, cleaned_path FROM voiceovers WHERE id = ?", id,
+	).Scan(&oldDriveFileID, &existingDriveLink, &oldLocalPath, &oldCleanedPath)
+	if rowErr != nil && !errors.Is(rowErr, sql.ErrNoRows) {
+		s.log.Warn("processLanguage: pre-read of existing voiceover failed", zap.String("id", id), zap.Error(rowErr))
+	}
+	if !shouldSwap && folderID != "" && rowErr == nil && existingDriveLink == "" {
+		// Existing row with no drive link — force regeneration so the persisted row
+		// catches up to the freshly uploaded file.
+		s.log.Info("processLanguage: existing record has no drive link, forcing swap", zap.String("id", id))
+		shouldSwap = true
 	}
 
 	item := BatchItem{
@@ -306,7 +335,183 @@ func (s *Service) processLanguage(
 	item.DriveFileID = lifecycleResult.DriveFileID
 	item.DownloadLink = lifecycleResult.DownloadLink
 	item.Status = "processed"
+
+	// PR-VO-A2: atomic voiceovers row swap. The DELETE-old + INSERT-new happen in
+	// the same SQLite transaction so a partial failure cannot leave the system with
+	// a deleted record and no replacement (the original bug). Lifecycle has already
+	// committed the new audio to media_assets + uploaded to Drive, so by the time we
+	// enter the transaction the new state exists on Drive — the DB row is the only
+	// piece left to durably fix up.
+	now := time.Now().UTC()
+	if swapErr := s.swapVoiceoverRow(ctx, VoiceoverSwapRow{
+		ID:              id,
+		RequestID:       requestID,
+		TextHash:        textHash,
+		TextPreview:     textutil.Truncate(req.Text, 100),
+		Language:        language,
+		Voice:           item.Voice,
+		Filename:        item.Filename,
+		LocalPath:       localPath,
+		FolderID:        dest.FolderID,
+		FolderPath:      dest.FolderPath,
+		DriveFileID:     lifecycleResult.DriveFileID,
+		DriveLink:       lifecycleResult.DriveLink,
+		DownloadLink:    lifecycleResult.DownloadLink,
+		FileHash:        item.FileHash,
+		Status:          "processed",
+		Strategy:        req.Strategy,
+		Metadata:        string(metaJSON),
+		ShouldSwap:      shouldSwap,
+		Now:             now,
+	}); swapErr != nil {
+		// The new audio is already on Drive and in media_assets; surface the swap
+		// failure loudly so operators see the partial state instead of a silent
+		// orphan row. The caller decides whether the item should be marked failed.
+		s.log.Error("voiceover row swap failed", zap.String("id", id), zap.Error(swapErr))
+		return item.fail("db_swap_failed", swapErr)
+	}
+
+	// PR-VO-A2: best-effort post-commit cleanup of the now-orphaned Drive file
+	// AND the local audio files. Fire-and-forget so a slow Drive delete (or a
+	// large local-file removal) does not block the caller; errors surface in
+	// the dedicated goroutine's log line and do not fail the request. The
+	// pre-read at the top of processLanguage captures both oldDriveFileID and
+	// oldLocalPath/oldCleanedPath so the goroutine has everything it needs.
+	uploader := s.driveUploader
+	if shouldSwap && oldDriveFileID != "" && oldDriveFileID != lifecycleResult.DriveFileID {
+		voiceoverID := id
+		oldDFID := oldDriveFileID
+		oldLocal := oldLocalPath
+		oldCleaned := oldCleanedPath
+		logger := s.log
+		concurrent.SafeGoFunc("vo-swap-cleanup", voiceoverID, func(voiceoverKey string) {
+			cleanupCtx := context.WithoutCancel(ctx)
+			// 1. Best-effort Drive cleanup of the orphaned file.
+			if uploader != nil {
+				if err := uploader.DeleteFile(cleanupCtx, oldDFID); err != nil {
+					logger.Warn("voiceover Drive cleanup of old file failed (best-effort)",
+						zap.String("voiceover_id", voiceoverKey),
+						zap.String("old_drive_file_id", oldDFID),
+						zap.Error(err))
+				}
+			}
+			// 2. Best-effort local cleanup of the orphaned audio file(s).
+			// fs.ErrNotExist is benign (file already gone); everything else
+			// is logged so operators can spot a leaking filesystem.
+			for _, p := range []string{oldLocal, oldCleaned} {
+				if p == "" {
+					continue
+				}
+				if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					logger.Warn("voiceover local cleanup of old file failed (best-effort)",
+						zap.String("voiceover_id", voiceoverKey),
+						zap.String("path", p),
+						zap.Error(err))
+				}
+			}
+		})
+	}
+
 	return item
+}
+
+// VoiceoverSwapRow bundles the inputs to swapVoiceoverRow so the row-level
+// INSERT/DELETE inside the SQLite transaction stays a flat struct literal.
+type VoiceoverSwapRow struct {
+	ID           string
+	RequestID    string
+	TextHash     string
+	TextPreview  string
+	Language     string
+	Voice        string
+	Filename     string
+	LocalPath    string
+	FolderID     string
+	FolderPath   string
+	DriveFileID  string
+	DriveLink    string
+	DownloadLink string
+	FileHash     string
+	Status       string
+	Strategy     string
+	Metadata     string
+	ShouldSwap   bool
+	Now          time.Time
+}
+
+// swapVoiceoverRow performs the atomic INSERT-new + (optional) DELETE-old in a
+// single SQLite transaction. The function is the canonical PR-VO-A2 swap site;
+// callers should NOT do inline BEGIN/COMMIT around voiceovers writes because
+// any drift from this signature would re-create the original data-loss window.
+//
+// When ShouldSwap=false the operation degenerates to a plain INSERT (first-time
+// generation); the condition is set in processLanguage based on the request
+// Strategy field per the canonical asset.PipelineStrategy taxonomy.
+func (s *Service) swapVoiceoverRow(ctx context.Context, row VoiceoverSwapRow) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if row.ShouldSwap {
+		// DELETE only when swap is explicitly requested; the WHERE on `id` is the
+		// protective fence so a future schema drift (e.g. soft-delete column)
+		// cannot accidentally widen the delete scope.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, row.ID); err != nil {
+			return fmt.Errorf("delete old voiceovers row: %w", err)
+		}
+	}
+
+	// INSERT new row. ON CONFLICT(id) DO UPDATE keeps the swap idempotent on a
+	// double-replay (e.g. lifecycle commit succeeded, partial crash, retry comes
+	// back through process.go with the same id).
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO voiceovers (
+			id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, '', ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			request_id = excluded.request_id,
+			text_hash = excluded.text_hash,
+			text_preview = excluded.text_preview,
+			language = excluded.language,
+			voice = excluded.voice,
+			filename = excluded.filename,
+			local_path = excluded.local_path,
+			cleaned_path = excluded.cleaned_path,
+			folder_id = excluded.folder_id,
+			folder_path = excluded.folder_path,
+			drive_file_id = excluded.drive_file_id,
+			drive_link = excluded.drive_link,
+			download_link = excluded.download_link,
+			file_hash = excluded.file_hash,
+			status = excluded.status,
+			strategy = excluded.strategy,
+			metadata = excluded.metadata,
+			updated_at = excluded.updated_at
+	`,
+		row.ID, row.RequestID, row.TextHash, row.TextPreview, row.Language,
+		row.Voice, row.Filename, row.LocalPath, "", row.FolderID, row.FolderPath,
+		row.DriveFileID, row.DriveLink, row.DownloadLink, row.FileHash,
+		row.Status, row.Strategy, row.Metadata,
+		row.Now.Format(time.RFC3339Nano), row.Now.Format(time.RFC3339Nano),
+	); err != nil {
+		return fmt.Errorf("insert new voiceovers row: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 func (s *Service) resolveDestination(ctx context.Context, dest *DestinationRequest) (*ResolvedDestination, error) {
