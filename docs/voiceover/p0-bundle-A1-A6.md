@@ -119,14 +119,20 @@ engine has already spent quota.
 
 ## Future P1/P2 work (post-bundle)
 
-- **PR-VO-B1+B2** — Drive upload split (Processor=local, Lifecycle=upload) +
+- ✅ **PR-VO-B1+B2** — Drive upload split (Processor=local, Lifecycle=upload) +
   metadata/group propagation through `processLanguage` and `resolveDestination`.
-- **PR-VO-B3** — Sync dedupe by `drive_file_id` + locale regex parser
+  **Covered** by `73c44aca` (B1) + `1cdf35e6` (B2); see
+  [`docs/voiceover/p1-bundle-B1-C1.md`](p1-bundle-B1-C1.md).
+- ✅ **PR-VO-B3** — Sync dedupe by `drive_file_id` + locale regex parser
   (en_US support + case-insensitive lookup).
-- **PR-VO-C1** — Unify `/api/voiceover/generate-with-group` into
+  **Covered** by `5cd2a1a4` (B3); see
+  [`docs/voiceover/p1-bundle-B1-C1.md`](p1-bundle-B1-C1.md).
+- ✅ **PR-VO-C1** — Unify `/api/voiceover/generate-with-group` into
   `/api/voiceover/generate` via `destination.kind = "group"` option;
   deprecate old endpoint with `Deprecation` + `Sunset` warning headers
   (RFC 8594) for 90-day transition window.
+  **Covered** by `c2867b90` (C1); see
+  [`docs/voiceover/p1-bundle-B1-C1.md`](p1-bundle-B1-C1.md).
 
 ## References
 

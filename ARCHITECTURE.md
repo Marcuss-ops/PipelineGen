@@ -486,11 +486,12 @@ objective success metric.
 
 ## 12. Pointers to deeper docs
 
-All **legacy** detailed documentation that was previously scattered in `docs/` has been consolidated and removed. **Canonical capability/operations bundles** continue to live under `docs/<domain>/` — they are NOT among the consolidated duplicates; they are authoritative meta-indexes for cross-cutting P0/P1 closures that span multiple commits and were landed under the doc-only-bundle convention (Git-Lesson-2). New domain subdirectories may be added by future bundle landings (e.g. `docs/voiceover/p0-bundle-A1-A6.md` by this PR-VO-A landing).
+All **legacy** detailed documentation that was previously scattered in `docs/` has been consolidated and removed. **Canonical capability/operations bundles** continue to live under `docs/<domain>/` — they are NOT among the consolidated duplicates; they are authoritative meta-indexes for cross-cutting P0/P1 closures that span multiple commits and were landed under the doc-only-bundle convention (Git-Lesson-2). New domain subdirectories may be added by future bundle landings (e.g. `docs/voiceover/p0-bundle-A1-A6.md` by the PR-VO-A landing and `docs/voiceover/p1-bundle-B1-C1.md` by the PR-VO-B1-C1 landing).
 For all critical rules and operational guidelines, please refer to:
 - `AGENTS.md`: Critical rules (DB driver, FTS5 ban, schema boundaries, AI gen policy, agent instructions).
 - `PROJECT_GUIDE.md`: Quick start guide.
 - [`docs/voiceover/p0-bundle-A1-A6.md`](docs/voiceover/p0-bundle-A1-A6.md): Voiceover P0 hardening bundle (PR-VO-A1..A6, June 2026) — six-commit meta-index of canonical voiceover P0 risk closures (atomic state transitions, identity drift, path safety, accounting correctness). Authoritative index for "what A1..A6 do when treated as one bundle"; see `AGENTS.md § Recent cross-cutting closures (June 2026)` for the inline pointer.
+- [`docs/voiceover/p1-bundle-B1-C1.md`](docs/voiceover/p1-bundle-B1-C1.md): Voiceover P0→P1 hardening bundle (PR-VO-B1..C1, June 2026) — four-commit meta-index of canonical voiceover P1 risk closures (Drive upload boundary, group/locale identity, sync dedupe key, HTTP endpoint unification with 90-day RFC 8594 Sunset). Authoritative index for "what B1..C1 do when treated as one bundle"; closes the "Future P1/P2 work" pointer from the A bundle.
 
 
 ## 12b. Observability DB retention policy (June 2026)
