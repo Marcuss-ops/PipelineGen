@@ -419,8 +419,10 @@ func buildGenerationResult(
 		}
 
 		// Scene images — enrich SpecScene bindings.
-		if len(postResult.Scenes) > 0 {
-			for _, s := range postResult.Scenes {
+		// PR-0 build fix (June 2026): the dead `Scenes` field was
+		// removed from `adapters.PipelineResult`; canonical = `SceneImages`.
+		if len(postResult.SceneImages) > 0 {
+			for _, s := range postResult.SceneImages {
 				if s.Index < len(result.Output.SpecScene.Scenes) {
 					sc := &result.Output.SpecScene.Scenes[s.Index]
 					if sc.Bindings.Image == nil {

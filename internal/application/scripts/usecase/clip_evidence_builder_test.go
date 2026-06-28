@@ -9,7 +9,14 @@
 //     IDs with a structured reason: "not_found" (neither DB lookup
 //     hit) or "drivenotfound" (DB hit but no DriveLink).
 //   - ClipEvidence.ClipCount always equals len(ClipIDs).
-package scripts
+//
+// PR-0 build fix (June 2026): the test was in `package scripts`
+// but BuildClipEvidence lives in `package usecase` (this package).
+// The previous test file's package declaration was a leftover from
+// a pre-migration state; corrected to `package usecase` so the
+// unexported BuildClipEvidence symbol is visible. No behavior
+// change — the test exercises the same surface.
+package usecase
 
 import (
 	"reflect"

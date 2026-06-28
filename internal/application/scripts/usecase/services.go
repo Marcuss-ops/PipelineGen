@@ -4,8 +4,8 @@ package usecase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"go.uber.org/zap"
 )
 

@@ -93,11 +93,16 @@ func (r *PostProcessResult) IsEmpty() bool {
 }
 
 // PipelineResult aggregates the postprocessor outputs.
+//
+// PR 0 build fix (June 2026): the legacy `Scenes` field is REMOVED.
+// Canonical = `SceneImages`. The dual-field drift was a pre-existing
+// structural debt that confused readers; the only writer is the
+// ImageProcessor (which always populated `SceneImages`), so removing
+// the dead alias is safe and surfaces the canonical contract.
 type PipelineResult struct {
 	Entities         *scriptpkg.EntityResult
 	VideoMetadata    []scriptpkg.VideoMetadata
 	Voiceovers       []SceneVoiceover
-	Scenes           []SceneImage
 	SceneImages      []SceneImage
 	DocLink          string
 	DocID            string

@@ -24,10 +24,21 @@
 
 package qdrant
 
-import "time"
+import (
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+)
 
 // SnapshotDescription is the qdrant.REST wire representation of a
-// single collection snapshot. Used by:
+// single collection snapshot. PR-QDRANT-WIRE-MIRROR (June 2026):
+// this is a type alias for qdrantdr.SnapshotDescription — the
+// canonical domain type shared with the application-layer dr
+// package. The alias makes qdrant.SnapshotDescription,
+// qdrantdr.SnapshotDescription, and dr.SnapshotDescription the
+// same type, so the dr_adapter.go translation is a no-op pass-through.
+//
+// Used by:
 //   - client_dr.go::{Create,List}Snapshot RPC decoders
 //   - collection_manager.go::{Create,List,Restore}Snapshot wrappers
 //   - dr_adapter.go's SnapshotStoreAdapter (translates to dr.SnapshotDescription)
@@ -43,12 +54,23 @@ import "time"
 // URL — Qdrant returns the URL from a SEPARATE endpoint (GET
 // /collections/{n}/snapshots/{name}). qdrant.Client.GetSnapshotURL
 // is the canonical way to resolve a snapshot's URL when restoring.
-type SnapshotDescription struct {
-	Name         string    `json:"name"`
-	CreationTime time.Time `json:"creation_time"`
-	Size         int64     `json:"size"`
-	Checksum     string    `json:"checksum,omitempty"`
-}
+//
+// PR-0 build fix (June 2026): the previous struct definition
+// (qdrant.SnapshotDescription) was a field-for-field mirror of
+// qdrantdr.SnapshotDescription. After PR-QDRANT-WIRE-MIRROR the
+// mirror was supposed to become a type alias, but the original
+// struct definition was left in place — causing the dr_adapter.go
+// compile error (cannot use *qdrant.SnapshotDescription as
+// *dr.SnapshotDescription in return). This commit collapses the
+// mirror to an alias, matching the canonical intent.
+type SnapshotDescription = qdrantdr.SnapshotDescription
+
+// ensure the alias preserves the wire-side time import for callers
+// that referenced the old struct's fields directly via the package
+// import (the alias means callers no longer need to import time,
+// but we keep the import path stable for any downstream consumer
+// that relies on the package's import surface).
+var _ = time.Time{}
 
 // PointPayload is the per-point payload write shape used by the
 // Qdrant REST /points/payload endpoint with `merge=true`. Distinct

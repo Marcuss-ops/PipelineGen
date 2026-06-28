@@ -22,6 +22,23 @@ func NewClipBindingsProcessor(log *zap.Logger) *ClipBindingsProcessor {
 
 func (p *ClipBindingsProcessor) Name() string { return "clip_bindings" }
 
+// Policy classifies clip_bindings as ProcessorBestEffort: a missing
+// ClipEvidence (or one with zero DriveLinks) is a no-op (early
+// return at the top of Process), and the assignment is
+// deterministic and non-destructive. The plan arg is accepted for
+// interface uniformity but ignored.
+//
+// PR-0 build fix (June 2026): the Policy() method was missing from
+// the post-PR-7 refactor of processor_clip_bindings.go. Restoring
+// it is required for the struct to satisfy the PostProcessor
+// interface and to align with the other 6 processors (metadata,
+// persistence, entities, voiceover, document, images) which all
+// expose Policy(). BestEffort matches the soft policy of
+// voiceover/images (no hard-fail on missing input).
+func (p *ClipBindingsProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	return ProcessorBestEffort
+}
+
 func (p *ClipBindingsProcessor) Process(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,

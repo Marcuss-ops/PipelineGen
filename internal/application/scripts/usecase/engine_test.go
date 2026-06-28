@@ -14,6 +14,13 @@
 // PR 2 (June 2026): fakeMemoryGate extended with onCheck callback.
 // Engine reads plan.RenderedPrompt (not the legacy plan.Prompt);
 // fakeMemoryGate captures the request shape to verify CacheKey flows.
+//
+// PR-0 build fix (June 2026): the test was using lowercase
+// (memoryGateRequest, memoryGateResult) but the canonical types
+// in engine.go are uppercase (MemoryGateRequest, MemoryGateResult).
+// Case-corrected everywhere the fake struct / fields are referenced.
+// This restores the test against the canonical type names exported
+// by engine.go.
 package usecase
 
 import (
@@ -61,13 +68,13 @@ func (f *fakeOllamaGen) GenerateScript(_ context.Context, req ollamatypes.TextGe
 //     so tests can observe call counts (used by ForceRefresh-bypass
 //     verification).
 type fakeMemoryGate struct {
-	result      *memoryGateResult
+	result      *MemoryGateResult
 	returnErr   error
-	capturedReq *memoryGateRequest
+	capturedReq *MemoryGateRequest
 	onCheck     func()
 }
 
-func (f *fakeMemoryGate) CheckGate(_ context.Context, req memoryGateRequest) (*memoryGateResult, error) {
+func (f *fakeMemoryGate) CheckGate(_ context.Context, req MemoryGateRequest) (*MemoryGateResult, error) {
 	if f.onCheck != nil {
 		f.onCheck()
 	}
@@ -326,7 +333,7 @@ func TestEngineGenerate_MemoryGateHit(t *testing.T) {
 	gen := &fakeOllamaGen{}
 	cached := `{"schema_version":1,"text":"Cached script from memory.","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"Cached script from memory.","kind":"narration","bindings":{}}]}}`
 	mem := &fakeMemoryGate{
-		result: &	memoryGateResult{
+		result: &MemoryGateResult{
 			Output:    cached,
 			WordCount: 42,
 			Model:     "llama3:8b",
@@ -356,7 +363,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemory(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
 	mem := &fakeMemoryGate{
-		result: &	memoryGateResult{
+		result: &MemoryGateResult{
 			Output:    "Should not be returned.",
 			WordCount: 10,
 		},
@@ -463,7 +470,7 @@ func TestEngineGenerate_CacheLegacyHit(t *testing.T) {
 	gen := &fakeOllamaGen{}
 	legacyArray := `[{"id":"scene-0","index":0,"text":"Legacy cached scene.","kind":"narration"}]`
 	mem := &fakeMemoryGate{
-		result: &	memoryGateResult{
+		result: &MemoryGateResult{
 			Output:    legacyArray,
 			WordCount: 5,
 			Model:     "llama3:8b",
@@ -504,7 +511,7 @@ func TestEngineGenerate_CacheProseHit(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
 	mem := &fakeMemoryGate{
-		result: &	memoryGateResult{
+		result: &MemoryGateResult{
 			Output:    "This is not JSON, just prose paragraphs.",
 			WordCount: 10,
 			Model:     "llama3:8b",
@@ -647,7 +654,7 @@ func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
 func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
-	var captured 	memoryGateRequest
+	var captured MemoryGateRequest
 	mem := &fakeMemoryGate{
 		result:      nil, // cache miss path: nil result, but we still see the request
 		capturedReq: &captured,
@@ -691,7 +698,7 @@ func TestEngineGenerate_ForceRefreshBypassesMemoryWithCacheKey(t *testing.T) {
 		onCheck: func() { called.Add(1) },
 		// Canonical cache hit payload — but ForceRefresh means the
 		// engine never even asks.
-		result: &	memoryGateResult{
+		result: &MemoryGateResult{
 			Output:    "Should not be returned.",
 			WordCount: 10,
 		},
