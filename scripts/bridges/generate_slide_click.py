@@ -60,7 +60,7 @@ def main():
         
         # Navigate to create new slide
         print("Navigating to slides.new ...")
-        page.goto("https://slides.new", wait_until="networkidle")
+        page.goto("https://slides.new", wait_until="domcontentloaded")
 
         # Check if we are on login screen
         if "signin" in page.url or "login" in page.url:
