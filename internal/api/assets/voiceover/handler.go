@@ -200,7 +200,7 @@ func (h *Handler) Promo(c *gin.Context) {
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type:    "voiceover.promo",
-		Payload: req.PayloadMap(),
+		Payload: voiceover.PromoRequestPayloadMap(&req),
 	}, fmt.Sprintf("Promo voiceover enqueued (%d languages).", langCount)); ok {
 		return
 	}

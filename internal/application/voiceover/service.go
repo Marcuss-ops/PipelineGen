@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -33,6 +34,16 @@ type SemanticTaggerResult struct {
 	Mood       []string `json:"mood"`
 }
 
+// AudioProcessor is the port for TTS audio generation.
+// TODO(PR6): move to internal/application/audio/postprocessor when PR 5 use case is restored.
+// Currently bridges the concrete audioasset.Processor used by processLanguage (legacy path).
+type AudioProcessor interface {
+	Generate(ctx context.Context, input *audioasset.AudioInput) (*audioasset.AudioResult, error)
+}
+
+// Ensure concrete processor satisfies the interface.
+var _ AudioProcessor = (*audioasset.Processor)(nil)
+
 type Service struct {
 	cfg               *config.Config
 	db                *sql.DB
@@ -41,18 +52,18 @@ type Service struct {
 	log               *zap.Logger
 	driveUploader     *drive.Uploader
 	assetDestResolver asset.Resolver
-	// audioProcessor holds the concrete TTS processor from
-	// internal/infrastructure/audio/. A future hosted-TTS adapter can be
-	// swapped in via the same constructor.
-	audioProcessor   *audioasset.Processor
+	// audioProcessor holds the TTS audio processor.
+	// TODO(PR6): replace with TTSProvider port from use case when PR 5 is restored.
+	audioProcessor   AudioProcessor
 	lifecycleService *lifecycle.Service
 	semanticTagger   SemanticTaggerFunc
 	clipIndexer      ClipIndexFunc  // optional: triggers embedding + Qdrant upsert
-	translator       TranslatorFunc // optional: translates text to target language
+	translator       translation.TranslatorFunc // Deprecated: moved to translation pkg, kept for GeneratePromo compat
 }
 
 // TranslatorFunc translates text to a target language. Used by GeneratePromo.
-type TranslatorFunc func(ctx context.Context, text, targetLanguage string) (string, error)
+// Deprecated: use translation.TranslatorFunc directly.
+type TranslatorFunc = translation.TranslatorFunc
 
 // NewService constructs a voiceover.Service. The optional callbacks
 // (semanticTagger, translator, clipIndexer) are wired at construction
