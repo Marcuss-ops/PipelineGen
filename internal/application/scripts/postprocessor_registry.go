@@ -24,6 +24,7 @@ package scripts
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	dto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
 
@@ -40,6 +41,13 @@ type (
 	SceneVoiceover         = adapters.SceneVoiceover
 )
 
+// PostProcessArtifact lives in the dto package (compat_types.go)
+// as the historical accumulator name used by tests and the image /
+// voiceover processors. The root `scripts` package re-exports it
+// here so callers can use `scripts.PostProcessArtifact` without
+// importing the dto subpackage.
+type PostProcessArtifact = dto.PostProcessArtifact
+
 // Const re-exports.
 const (
 	ProcessorRequired   = adapters.ProcessorRequired
@@ -48,9 +56,11 @@ const (
 
 // Var re-exports (package-level functions live in adapters).
 var (
-	DefaultPolicyFor             = adapters.DefaultPolicyFor
-	NewPostProcessorRegistry     = adapters.NewPostProcessorRegistry
-	NewClipSourceBuilderForTest  = usecase.NewClipSourceBuilderForTest
+	DefaultPolicyFor              = adapters.DefaultPolicyFor
+	NewPostProcessorRegistry      = adapters.NewPostProcessorRegistry
+	NewClipBindingsProcessor      = adapters.NewClipBindingsProcessor
+	NewClipSourceBuilderForTest   = usecase.NewClipSourceBuilderForTest
+	BuildClipSpecSceneDocumentHTML = adapters.BuildClipSpecSceneDocumentHTML
 	// BuildClipEvidence re-exports the canonical clip-evidence
 	// builder from the usecase package so the test
 	// `clip_evidence_builder_test.go` (also `package scripts`)

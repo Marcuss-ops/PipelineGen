@@ -1,4 +1,4 @@
--- Migration 101: asset_versions — sequential version history per media asset.
+-- Migration 105: asset_versions — sequential version history per media asset.
 --
 -- Tracks every version of a media asset as it is reprocessed, re-encoded,
 -- re-sourced, or re-uploaded. Each row is a snapshot of an asset's content
@@ -27,7 +27,7 @@
 -- "no such table: asset_versions" on every HardDeleteTx call.
 -- Production callers always run against a fully-migrated DB so the
 -- drift was invisible; this migration makes the post-CUTOVER-state
--- (migration-ledger equals 101) the only canonical state.
+-- (migration-ledger equals 105) the only canonical state.
 --
 -- Schema decisions (godlike/06 + 055 sibling convention):
 --   - FK to media_assets(id) ON DELETE CASCADE — strict child-table
