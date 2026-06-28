@@ -67,10 +67,14 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v7
 
-      - name: Set up Go
+      - name: Set up Go (SSOT: go.mod `go` directive)
+        # Phase 6: replaced the hardcoded '1.25.x' with
+        # go-version-file so the runner's Go toolchain tracks
+        # go.mod. The Makefile's GO_VERSION extraction and the
+        # Dockerfile's GO_VERSION ARG parse the same source.
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.x'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Build server binary

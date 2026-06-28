@@ -3,7 +3,7 @@
 # PipelineGen multi-target Dockerfile.
 #
 # Multi-stage build with three runtime targets:
-#   1) builder         — shared Go compiler (golang:1.25-bookworm, CGO enabled).
+#   1) builder         — shared Go compiler (golang:${GO_VERSION}-bookworm, CGO enabled).
 #   2) server-runtime  — HTTP server only (ca-certificates + curl).
 #   3) worker-runtime  — background job executor (ffmpeg + yt-dlp + python3).
 #   4) admin-runtime   — one-shot admin CLI (sqlite3 + jq + python3).
@@ -16,7 +16,17 @@
 # never use.
 
 # ─── builder ─────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS builder
+# Phase 6 (ci/full-repository-gate, June 2026): Go version SSOT.
+# The canonical Go toolchain version is parsed from go.mod's `go`
+# directive by the Makefile (GO_VERSION), the GitHub Actions setup-go
+# steps (go-version-file: 'go.mod'), and the preflight check (which
+# asserts this ARG exists + the FROM line uses ${GO_VERSION}). The
+# Dockerfile consumes it via the GO_VERSION build arg (defaulted to
+# the value matching the current go.mod so `docker build .` without
+# `--build-arg` still works). Operators that need a different pin
+# pass `--build-arg GO_VERSION=1.26` etc.
+ARG GO_VERSION=1.25
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS builder
 ARG TARGETOS=linux
 ARG TARGETPLATFORM
 ARG VERSION=dev

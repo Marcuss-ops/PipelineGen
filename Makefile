@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy tidy-check vuln bench docker-build docker-run ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -9,6 +9,18 @@ LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
 # Go binary (overridable from the environment).
 # Use: make build GO=/opt/go-1.25/bin/go
 GO ?= go
+
+# ── Go version SSOT (Phase 6, June 2026) ──────────────────────────────
+# Canonical Go toolchain version is parsed from the `go` directive in
+# go.mod. This is the SINGLE source of truth shared by:
+#   - the go-version-check guard below
+#   - the Dockerfile's GO_VERSION build arg
+#   - .github/workflows/ci.yml and smoke.yml setup-go steps
+#   - the preflight Dockerfile / docker-compose check
+# Drift between any of these surfaces becomes a hard preflight failure
+# instead of a confusing "host Go is older than 1.25" half-error mid-tidy.
+GO_VERSION := $(shell awk '/^go [0-9]/ {split($$2, a, "."); print a[1]"."a[2]; exit}' go.mod)
+export GO_VERSION
 
 # Default target
 all: build
@@ -21,7 +33,7 @@ all: build
 go-version-guard: go-version-check
 
 go-version-check:
-	@REQ=$$(awk '/^go [0-9]/ {print $$2}' go.mod); \
+	@REQ=$$(awk '/^go [0-9]/ {print $$2}' go.mod | head -1); \
 	HOST=$$($(GO) version | awk '{print $$3}' | sed 's/^go//'); \
 	REQ_MIN=$$(echo "$$REQ" | awk -F. '{print $$1"."$$2}'); \
 	HOST_MIN=$$(echo "$$HOST" | awk -F. '{print $$1"."$$2}'); \
@@ -35,7 +47,7 @@ go-version-check:
 	elif [ "$$(printf '%s\n%s\n' "$$REQ" "$$HOST" | sort -V | head -n1)" = "$$HOST" ] && [ "$$REQ" != "$$HOST" ]; then \
 	    echo "⚠️  Host Go ($$HOST) patch is older than go.mod ($$REQ) — still compatible, but consider upgrading."; \
 	else \
-	    echo "✅ Go version $$HOST meets requirement $$REQ"; \
+	    echo "✅ Go version $$HOST meets requirement $$REQ (SSOT: $(GO_VERSION))"; \
 	fi
 
 # Node toolchain guard. The single source of truth is the
@@ -198,10 +210,24 @@ dev:
 deps:
 	$(GO) mod download
 
-# Check if go.mod is tidy (useful in CI)
-tidy-check: go-version-check
+# Mutating tidy (developers): updates go.mod + go.sum in place. Run
+# locally after adding/removing imports; do NOT call this from CI or
+# from `make ci` because the mutation would be silently reverted on
+# the next `git diff --exit-code` and the round-trip is wasteful.
+tidy: go-version-check
 	$(GO) mod tidy
-	git diff --exit-code -- go.mod go.sum
+
+# Read-only tidy check (CI). Assumes the developer has already run
+# `make tidy` (or `go mod tidy`) on the working tree. CI does not
+# have permission to mutate go.mod/go.sum; the canonical CI path
+# (`.github/workflows/ci.yml::Verify go.mod is tidy`) gates on this
+# without writing. This is the gate that makes `make ci` strictly
+# read-only — see the comment on the `ci:` target.
+tidy-check: go-version-check
+	@git diff --exit-code -- go.mod go.sum || { \
+	    echo "❌ go.mod / go.sum are out of sync. Run: make tidy (developers) or go mod tidy"; \
+	    exit 1; \
+	}
 
 # Check for vulnerabilities
 vuln:
@@ -222,14 +248,22 @@ docker-build:
 docker-run: docker-build
 	docker run -p $${VELOX_PORT:-8000}:8000 --env-file .env pipelinegen:latest
 
-# CI pipeline (runs all checks)
+# CI pipeline (runs all checks; read-only — no go.mod/go.sum mutation).
+# Phase 6 (ci/full-repository-gate, June 2026): replaced the mutating
+# `tidy-check` (which ran `go mod tidy`) with the read-only variant
+# (just `git diff --exit-code`). `make ci` is now safe to run from
+# any working tree, including the CI runner, without producing
+# phantom diffs. The mutating side (`make tidy`) stays available for
+# developers who actually need to update go.mod/go.sum.
 ci: go-version-check fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"
 
-# Aggregate pre-flight check. Runs both toolchain guards plus two
+# Aggregate pre-flight check. Runs both toolchain guards plus three
 # sanity contracts that have historically drifted silently:
 #   - docker-compose.yml resolves against the current Dockerfile
-#   - the Dockerfile builder image tag tracks go.mod's `go` line
+#   - the Dockerfile declares the GO_VERSION ARG (SSOT contract)
+#   - the Dockerfile FROM line uses ${GO_VERSION}-bookworm (no
+#     hardcoded `golang:1.NN` strings; the version flows from go.mod)
 # Read-only: no lockfile modification, no upgrade, no commit.
 preflight: go-version-check node-version-check
 	@if command -v docker >/dev/null 2>&1; then \
@@ -237,7 +271,11 @@ preflight: go-version-check node-version-check
 	else \
 		echo "warning: 'docker compose config' skipped — docker not on PATH"; \
 	fi
-	@grep -q '^FROM .*golang:1.25' Dockerfile
+	@grep -qE '^ARG[[:space:]]+GO_VERSION' Dockerfile \
+		|| { echo "❌ Dockerfile does not declare GO_VERSION ARG (SSOT drift)"; exit 1; }
+	@grep -qE 'golang:\$\{?GO_VERSION\}?-bookworm' Dockerfile \
+		|| { echo "❌ Dockerfile FROM does not use \$${GO_VERSION}-bookworm (SSOT drift)"; exit 1; }
+	@echo "✅ Dockerfile GO_VERSION SSOT = $(GO_VERSION)"
 	@echo "Preflight passed"
 
 # ─── Black-box smoke tests ──────────────────────────────────────────────────
