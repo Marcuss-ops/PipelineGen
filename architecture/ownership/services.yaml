@@ -1,0 +1,7 @@
+# PipelineGen — split ownership section: services
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+

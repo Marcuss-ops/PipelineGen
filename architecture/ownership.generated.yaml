@@ -1,13 +1,9 @@
-# PipelineGen — Canonical Ownership Map
-# -----------------------------------------------------------------------------
-# Each capability has exactly ONE canonical owner. This file is the SSOT for
-# "where does X live?". When waves reach their exit gates, this map is the source
-# of truth; migration.yaml tracks the actual progress.
-#
-# Status: target architecture (post Onda 17). Real-state drift is tracked in
-# migration.yaml. Last baseline: cleanup-wave-00-final.
-#
-# CI Gate: validated by scripts/ci-architectural-checks.sh Check 22.
+# PipelineGen — split ownership section: modules
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
 # -----------------------------------------------------------------------------
 
 version: 2
@@ -135,6 +131,13 @@ module_route_map:
 # ── Job Type → Handler Map (SSOT for background jobs) ────────────────────────
 # Each job type must have exactly ONE handler. The CI gate enforces:
 #   1. No job type is registered more than once.
+
+# PipelineGen — split ownership section: jobs
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
 #   2. Every handler is owned by exactly one module.
 job_handler_map:
   - job_type: script.generate_from_clips
@@ -167,6 +170,19 @@ job_handler_map:
 
 # ── Canonical Service Construction (SSOT) ────────────────────────────────────
 # Each canonical service is constructed EXACTLY ONCE. The CI gate enforces
+
+# PipelineGen — split ownership section: services
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+# PipelineGen — split ownership section: application
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
 # no duplicate NewService/NewEngine/NewPipeline calls across modules.
 canonical_services:
   - service: Engine
@@ -469,6 +485,12 @@ application_lessons:
   rationale: Lesson generation; produces Markdown/PDF deliverables.
   target_subdirs: [lessons]
 
+# PipelineGen — split ownership section: infrastructure
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
 # ── Infrastructure (adapters to external systems) ────────────────────────────
 
 infrastructure_db:
@@ -520,6 +542,12 @@ infrastructure_config:
   owner: internal/platform/config
   rationale: Resolved configuration + folder IDs.
   rule: ONLY place where os.Getenv (env-driven config) is allowed (alongside cmd/* binaries).
+
+# PipelineGen — split ownership section: packages
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
 
 # ── Shared leaf utilities ────────────────────────────────────────────────────
 
@@ -619,107 +647,3 @@ pkg_workerstats:
     fails with `undefined: job.WorkerHardwareStats`) — canonical POJO
     does not yet exist on `main` HEAD; must land before sampler can
     be wired into the heartbeat handler.
-
-cross_project_refs:
-  heyavatar:
-    kind: cross_project_reference
-    repo_path: C:/Users/pater/Pyt/Heyavatar
-    cleanup_wave_ref: architecture/migration.yaml#wave-18
-    todo_ref: heyavatar/TODO.md (Cleanup legacy (June 2026) section)
-    cleanup_date: 2026-06-24
-    n_files_removed: 16
-    n_directories_removed: 2
-    no_pipelinegen_files_changed: true
-    canonical_owners_after_cleanup:
-      - heyavatar/providers/compositing/opencv_face/compositor.OpenCVFaceCompositor
-      - heyavatar/providers/musetalk/adapter/engine.MuseTalkAdapter
-      - heyavatar/providers/liveportrait/adapter/engine.LivePortraitAdapter
-      - heyavatar/src/application/render_cached_avatar.render_cached_avatar
-    contract_status_post_cleanup:
-      removed:
-        - heyavatar/contracts/lip_sync_engine (orphan)
-        - heyavatar/contracts/motion_repository (orphan)
-        - heyavatar/contracts/body_asset_provider (orphan -- precompute chain removed)
-      retained:
-        - heyavatar/contracts/avatar_engine (canonical)
-        - heyavatar/contracts/compositor (canonical)
-        - heyavatar/contracts/quality_checker (canonical)
-
-# ── Lint Gates (CI ratchet, Wave 20 cross-reference) ───────────────────────
-# Cross-reference: architecture/current.yaml::Wave 20 (QDRANT-005D hygiene).
-#
-# Each CI ratchet gate has exactly ONE owning script file. The ratchet
-# enforces:
-#   1. Every gate is exposed by scripts/ci-architectural-checks.sh.
-#   2. Every Check carries explicit exit semantics + structured log line
-#      + FAIL remediation text.
-#   3. Each gate's allowlist (where applicable) is a separate file under
-#      docs/architecture/godlike/ or docs/migrations/.
-#
-# Maintenance cadence: when a Check is added/modified, update this block
-# in the same commit (single-source-of-truth principle per
-# docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
-# §"One owner per fact").
-lint_gates:
-  - check: 5
-    name: same-package duplicate-type-declaration lint
-    owner_script: scripts/ci-architectural-checks.sh (Check 5 block — duplicate-types)
-    gate_maintainer: qdrant-hygiene work stream (RW-PROD-013 dependency chain)
-    allowlist: docs/architecture/godlike/duplicate-types-allowlist.txt
-    log_line_on_pass: "Check 5: 0 same-package type-redeclarations detected across internal/"
-    references_business_rule: QDRANT-RECOVERY-001 forward-prevention
-    references_ticket: docs/operations/05-qdrant-redeclaration-recovery.md
-    owner_wave: 20
-    rationale: |
-      Go cannot distinguish file-level types from package-level types —
-      two .go files in the SAME package declaring `type X struct{...}`
-      produces a build error: "<X> redeclared in this block". This
-      lint catches the pattern at pre-CI time so a new type
-      declaration cannot land with a colliding same-package symbol.
-      Historically observed as the SnapshotDescription / PointPayload
-      duplicate in internal/infrastructure/qdrant/types.go + types_dr.go,
-      fixed by commits 2b67d701 + 38187ded (see docs/operations/05).
-    documented_exceptions: |
-      The wire-mirror + canonical-in-application pattern (e.g.
-      qdrant.SnapshotDescription (wire in types_dr.go) +
-      dr.SnapshotDescription (canonical application-layer in
-      internal/application/qdrant/dr/types.go)) is NOT a same-package
-      redeclaration — Go's package = (directory, name) tuple
-      distinguishes them. The lint enforces zero; the allowlist
-      exists ONLY for transitional cases per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
-      §"Zero-baseline rule".
-
-# ── Wave 20 owner (QDRANT-005D hygiene) ─────────────────────────────────────
-# Cross-reference: architecture/current.yaml::id-20.
-wave_qdrant_005d_hygiene:
-  owner: qdrant-hygiene work stream
-  owner_secondary: scripts/ci-architectural-checks.sh maintainer
-  rationale: |
-    Forward-prevention half of QDRANT-RECOVERY-001. Owns:
-      (a) Check 5 maintenance (scripts/ci-architectural-checks.sh same-
-          package duplicate-type-declaration lint block);
-      (b) docs/architecture/godlike/duplicate-types-allowlist.txt
-          population cadence (initial: empty; populated ONLY for
-          transitional cases per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
-          §"Zero-baseline rule");
-      (c) the Go-side remediation that switches the AWK lens from
-          (package_name) only → the canonical Go-package identity
-          tuple (directory_path, package_name) to clear the
-          current_count of ~14 cross-directory same-package-NAME
-          false-positives;
-      (d) the canonical note append to
-          docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
-          explaining why Go cannot distinguish file-level type
-          from package-level type and the wire-mirror + canonical-
-          in-application cycle-break requires lint enforcement.
-  blocked_by: ["16"]
-  follow_up_ticket: docs/operations/05-qdrant-redeclaration-recovery.md
-  cross_refs:
-    wave: architecture/current.yaml#id-20
-    lint_gates_entry: lint_gates[check=5]
-  registration_record: |
-    Wave 20 entry (architecture/current.yaml#id-20) + this section +
-    the matching lint_gates entry were registered in the same commit
-    on origin/main per docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
-    §"One owner per fact" (owner registration and wave entry are
-    the same fact from two views).

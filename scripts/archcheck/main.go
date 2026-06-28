@@ -728,7 +728,7 @@ func topLevelWaveBlocks(raw string) []string {
 var ownershipPathPattern = regexp.MustCompile(`(?m)^\s+(?:owner|location):\s+([^#\n]+)`)
 
 func checkOwnershipYAML() (int, []string) {
-	const path = "architecture/ownership.yaml"
+	const path = "architecture/ownership.generated.yaml"
 	text, err := os.ReadFile(path)
 	if err != nil {
 		return -1, []string{fmt.Sprintf("checkOwnershipYAML: read %s: %v", path, err)}

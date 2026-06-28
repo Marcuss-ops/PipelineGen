@@ -1,0 +1,57 @@
+# PipelineGen — split ownership section: infrastructure
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+# ── Infrastructure (adapters to external systems) ────────────────────────────
+
+infrastructure_db:
+  owner: internal/infrastructure/database/sqlite
+  rule: ONLY place where Go SQL drivers / SQLite schema live.
+
+infrastructure_drive:
+  owner: internal/infrastructure/drive
+  rationale: Google Drive uploader + DocClient.
+  migrated_from: internal/upload/drive
+
+infrastructure_files:
+  owner: internal/infrastructure/files
+  rationale: Filesystem utilities (path, hash, JSON I/O).
+
+infrastructure_process:
+  owner: internal/infrastructure/process
+  rationale: External command execution (yt-dlp, ffmpeg wrappers).
+  rule: ONLY place where os/exec is allowed.
+
+infrastructure_ai:
+  owner: internal/infrastructure/ai
+  sub_dirs: [ai/ollama, ai/reranker, ai/vlm, ai/images]
+
+
+infrastructure_media:
+  owner: internal/infrastructure/media/processor
+  rationale: yt-dlp, ffmpeg, download, normalization, temporary filesystem.
+  migrated_from: internal/media/mediaasset
+
+infrastructure_jobs:
+  owner: internal/infrastructure/jobs
+  rationale: Local in-process broker (replaces internal/application/jobbroker/local).
+  target_subdirs: [jobs/local]
+  decomposed_into:
+    jobs_local:
+      owner: internal/infrastructure/jobs/local
+    jobs_remote_clients:
+      owner: internal/infrastructure/remote
+      clients:
+        - assettransferclient   # HTTP client for asset transfer (worker side)
+        - jobbrokerclient       # HTTP client for job broker (worker side)
+
+infrastructure_observability:
+  owner: internal/infrastructure/observability
+  rationale: metrics, tracing, health checks.
+
+infrastructure_config:
+  owner: internal/platform/config
+  rationale: Resolved configuration + folder IDs.
+  rule: ONLY place where os.Getenv (env-driven config) is allowed (alongside cmd/* binaries).

@@ -1,0 +1,307 @@
+# PipelineGen — split ownership section: application
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
+
+# no duplicate NewService/NewEngine/NewPipeline calls across modules.
+canonical_services:
+  - service: Engine
+    constructor: NewScriptEngine
+    location: internal/app/composition.go::BuildAIBundle
+  - service: Pipeline
+    constructor: NewPipeline
+    location: internal/app/wire_script.go
+  - service: MemoryService (gemmamemory)
+    constructor: NewService
+    location: internal/app/composition.go::BuildAIBundle
+  - service: ScriptRepository
+    constructor: NewRepositoryAdapter
+    location: internal/app/wire_script.go
+  - service: ClipSourceBuilder
+    constructor: wireClipSourceBuilder
+    location: internal/app/wire_script.go
+  - service: MediaCurator
+    constructor: wireMediaCurator
+    location: internal/app/wire_script.go
+  - service: SemaphoreUseCase
+    constructor: NewSemaphoreUseCase
+    location: internal/app/wire_script.go
+  - service: PrewarmUseCase
+    constructor: NewPrewarmUseCase
+    location: internal/app/wire_script.go
+  - service: DocumentsUseCase
+    constructor: NewDocumentsUseCase
+    location: internal/app/wire_script.go
+  - service: SceneBuilderUseCase
+    constructor: NewSceneBuilderUseCase
+    location: internal/app/wire_script.go
+  - service: PostGenUseCase
+    constructor: NewPostGenUseCase
+    location: internal/app/wire_script.go
+  - service: PipelineUseCase
+    constructor: NewPipelineUseCase
+    location: internal/app/wire_script.go
+  - service: GenerateBatchUseCase
+    constructor: NewGenerateBatchUseCase
+    location: internal/app/wire_script.go
+  - service: CacheEvictionUseCase
+    constructor: NewCacheEvictionUseCase
+    location: internal/app/wire_script.go
+  - service: SectionRegenerator
+    constructor: NewSectionRegenerator
+    location: internal/app/wire_script.go
+  - service: ImageService
+    constructor: buildImagesService
+    location: internal/app/build_bundles_images.go
+  - service: VoiceoverService
+    constructor: buildVoiceoverService
+    location: internal/app/build_bundles_voiceover.go
+  - service: BooksService
+    constructor: buildBooksService
+    location: internal/app/build_bundles_books.go
+  - service: ArtlistService
+    constructor: NewService
+    location: internal/app/module_sources.go
+  - service: YouTubeClipService
+    constructor: NewYouTubeService
+    location: internal/app/composition.go::BuildDomainBundle
+  - service: RealtimeService
+    constructor: NewService
+    location: internal/app/composition.go::BuildDomainBundle
+  - service: CatalogSyncService
+    constructor: NewService
+    location: internal/app/composition.go::BuildSyncBundle
+  - service: AssetTreeService
+    constructor: NewService
+    location: internal/app/registry.go::initAssetServices
+  - service: AssetIndexService
+    constructor: NewService
+    location: internal/app/registry.go::initAssetServices
+  - service: ClipIndexerService
+    constructor: NewClipIndexerService
+    location: internal/app/composition.go::BuildProcessBundle
+  - service: MediaProcessor
+    constructor: initMediaProcessor
+    location: internal/app/registry.go
+  - service: MaintenanceService
+    constructor: NewService
+    location: internal/app/registry.go
+  - service: ProviderRegistry
+    constructor: NewRegistry
+    location: internal/app/composition.go::BuildSearchBundle
+  - service: OutboxDispatcher
+    constructor: NewDispatcher
+    location: internal/app/composition.go::BuildOutboxBundle
+  - service: JobService (jobs.Service)
+    constructor: NewService
+    location: internal/app/composition.go::BuildJobsBundle
+  - service: AppJobRunner (jobs.Runner)
+    constructor: buildJobRunner
+    location: internal/app/lifecycle_job_runner.go
+    step_constructor: buildJobRunnerStep  # typed-lifecycle helper, PR4.8
+    step_name: job-runner
+    step_required: true
+    step_appended_last: true  # TestLifecycle_JobRunnerLast invariant
+  - service: JobFacade (jobs.Facade)
+    constructor: NewFacade
+    location: internal/app/composition.go::BuildJobsBundle
+  - service: DeletionService
+    constructor: NewDeletionService
+    location: internal/app/composition.go::BuildMaintBundle
+  - service: HealthService
+    constructor: NewService
+    location: internal/app/composition.go::BuildUtilityBundle
+  - service: ReadyChecker
+    constructor: NewReadyChecker
+    location: internal/app/bootstrap.go
+
+allowed_internal_roots:
+  - api
+  - app
+  - application
+  - domain
+  - infrastructure
+
+# ── Transport (HTTP) ─────────────────────────────────────────────────────────
+
+http_entrypoint:
+  owner: cmd/server
+  rationale: Composition root + main() for the HTTP server binary.
+
+http_transport:
+  owner: internal/api
+  rule: api imports ONLY application + domain. Never infrastructure/database/sql, never os/exec, never google.golang.org/api/drive/v3.
+  target_subdirs:
+    - api/assets
+    - api/content
+    - api/images
+    - api/jobs
+    - api/scripts
+    - api/system
+    - api/middleware
+    - api/transport
+
+# ── Composition ──────────────────────────────────────────────────────────────
+
+composition_root:
+  owner: internal/app
+  rule: Only place where concrete adapters (DB, Drive, exec) are instantiated.
+  target_files: [app.go, bootstrap.go, lifecycle.go, shutdown.go, modules/*.go]
+
+# ── Domain (canonical contracts + types) ─────────────────────────────────────
+
+domain_job:
+  owner: internal/domain/job
+  rationale: Job, Lease, WorkerSession, WorkerCapabilities, WorkerCredentials, Store, ScriptGenerationPayload.
+  migrated_from:
+    - internal/domain/worker
+    - internal/contracts/scriptjobs
+    - internal/jobs/domain_types.go
+    - internal/jobs/domain_commands.go
+
+domain_script:
+  owner: internal/domain/script
+  rationale: Script, Plan, GenerationSpec, Payload, Codec error types.
+
+domain_asset:
+  owner: internal/domain/asset
+  rationale: Asset, Artifact, Delivery, Location, LifecycleState, Processor, Destination, EmbeddingPort, AudioPort.
+  absorbs_from_core_wave_4C:
+    - Repository (from internal/core/assetop)
+    - Processor (from internal/core/processor)
+    - Destination (from internal/core/destination)
+    - EmbeddingPort (from internal/core/embedding)
+    - AudioPort (from internal/core/audio)
+  migrated_from:
+    - internal/domain/media
+    - internal/assets
+    - internal/artifacts
+    - internal/core/assetop
+    - internal/core/audio
+    - internal/core/destination
+    - internal/core/embedding
+    - internal/core/processor
+    - internal/core/scoring
+
+# STATUS: HISTORICAL — Wave 4C completed (June 2026). Core ports now live in
+# internal/domain/asset/. This section kept for audit trail only.
+# domain_core_ports (REMOVED — internal/core/ no longer exists)
+
+# ── Application (use cases) ──────────────────────────────────────────────────application_jobs:
+  owner: internal/application/jobs
+  rationale: Job registry + worker execution + claims + lease + payloads + codec + outbox dispatcher.
+  # Sub-fragment of Wave 5 PR3, closed June 2026:
+  #   - The broader PR3 (Store / StartJob / RequeueResult aliases in
+  #     internal/application/jobs/types.go) had already been collapsed
+  #     upstream at commit 21269fbf.
+  #   - This repo's commit e49c8a43 certifies the
+  #     script.generate_from_clips sub-fragment under that parent gate.
+  #
+  # State after the script.generate_from_clips closure:
+  #   1. internal/domain/job/job.go::77 (TypeClipScriptGenerate) is the SOLE
+  #      canonical declaration of the job-type identity.
+  #   2. Legacy duplicates at
+  #        internal/domain/script/spec.go::JobTypeGenerateFromClips
+  #        internal/application/jobs/registry.go::TypeClipScriptGenerate
+  #      were deleted outright (no back-compat aliases were kept).
+  #   3. The timeout-map literal at internal/application/jobs/worker.go was
+  #      re-keyed through the typed constant job.TypeClipScriptGenerate.
+  #
+  # See architecture/migration.yaml::5_PR3 for the parent ratchet entry.
+  target_subdirs:
+    - jobs/assets         # worker asset ops (renamed from old application/workerassets)
+    - jobs/outbox         # outbox dispatcher (migrated from internal/outboxhandlers in Wave 5)
+
+application_scripts:
+  owner: internal/application/scripts
+  rationale: Script-generation orchestration. Production files owned by
+    1 root facade + 6 capability-bounded subpackage. Each subpackage
+    exposes ≤ 17 production files (well under policy.yaml
+    ::max_files_per_package=40). The 53-production-file mega-package
+    state (June 2026) is being unwound in PR-G (4-phase migration
+    EXPAND → BACKFILL → CUTOVER → CONTRACT per godlike/07).
+  target_subdirs:  # PR-G.1 EXPAND registered 2026-06-27
+    - scripts/curation       # NEW per PR-G; owns MediaCurator + clip ports + scene stubs
+    - scripts/generation     # NEW per PR-G; owns Engine + Pipeline + html + enqueue + job
+    - scripts/persistence    # NEW per PR-G; owns ScriptRepository contract + adapter
+    - scripts/postprocess    # NEW per PR-G; owns PostprocessorRegistry + 7 processor_*.go
+    - scripts/source         # NEW per PR-G; owns SourceRegistry + 6 source_resolver_*.go
+    - scripts/usecases       # NEW per PR-G; owns 9 use-case entry points
+    - scripts/memory         # existing (text-normalize helper)
+    - scripts/gemmamemory    # existing (gemma-based caching layer)
+    - scripts/compat         # existing (legacy array→ModelScriptOutputV1 bridge)
+  pr_g_status: in_progress (PR-G.1 EXPAND landed 2026-06-27;
+    PR-G.2 BACKFILL pending; deadline 2026-07-10)
+  current_drift: internal/application/scriptflow/ directory eliminated
+    (flat-merged into internal/application/scripts/). The 5 pre-existing
+    aspirational subdirs in the older target_subdirs list (batch,
+    documents, generate, jobs, scenes) were NEVER materialised on disk
+    and have been dropped from the canonical list. The 6 NEW subpackage
+    entries above replace them.
+  cross_refs:
+    plan: architecture/current.yaml#id-21 (Wave 21 PR-G.1 EXPAND block)
+    policy: architecture/policy.yaml::max_files_per_package=40
+
+application_assets:
+  owner: internal/application/assets
+  rationale: Catalog, indexing, classification, providers registry, association & realtime search.
+  target_subdirs:
+    - assets/catalog
+    - assets/tree
+    - assets/index
+    - assets/resolve
+    - assets/ingest
+    - assets/classification
+    - assets/enrichment
+    - assets/ontology
+    - assets/sync
+    - assets/monitor
+    - assets/providers/{artlist,youtube,stock}
+    - assets/realtime
+    - assets/association
+
+  # Wave CONFORMANCE-001 / id-24 (June 2026, owner PipelineGen Agent) —
+  # category_channels owns monitor-state. Day-1 ship landed via cherry-pick
+  # 1826d344 (forwarding 0907ec8a):
+  #   A1.3 — status=completed (cmd/admin/backfill_monitored_sources_to_
+  #          category_channels.go); one-shot backfill of legacy
+  #          `monitored_sources` rows into `category_channels` via
+  #          channels.Service.UpsertBulk + zero-drift cross-run assertion.
+  #   A2.1 — status=removed (seed-channels entrypoint + JSON config
+  #          removed; migration_phase=CONTRACT; synchronous-with-
+  #          backfill closure; replacement=channels.Service via canonical
+  #          POST /channels/bulk-upsert).
+  # The internal/application/assets/monitor/ capability consumes
+  # channels.Service (ListEnabled / ClaimDue / MarkChecked / UpdateCursor)
+  # exclusively; per-video discovery state (the legacy discovery-state
+  # SQL surface) is CONTRACT-phase superseded by media_assets discovery
+  # columns (see the rationale doc linked below for the deployment chain);
+  # YouTube-side per-video discovery state migrates to media_assets. The
+  # canonical migration filenames retain the historical pointer strictly
+  # for audit traceability — body code in this file intentionally avoids
+  # the legacy table identifier. Future closure: migration 110 ships
+  # atomically (deadline 2026-08-31, Wave CONFORMANCE-001 close); see
+  # architecture/current.yaml#id-24 follow_up_tickets for A1.3 / A2.1
+  # details + transitional baseline (2 ARCH-ALLOWLIST files per
+  # docs/migrations/monitored-sources-allowlist.txt).
+  category_channels_owns_monitor_state: category_channels owns monitor-state
+  monitor_state_rationale_doc: docs/architecture/godlike/migration_109_rationale.md
+
+application_images:
+  owner: internal/application/images
+  target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
+
+application_voiceover:
+  owner: internal/application/voiceover
+  target_subdirs: [voiceover/service, voiceover/sync]
+
+application_books:
+  owner: internal/application/books
+  rationale: Books + lessons; produces Markdown/PDF deliverables.
+  target_subdirs: [books]
+
+application_lessons:
+  owner: internal/application/lessons
+  rationale: Lesson generation; produces Markdown/PDF deliverables.
+  target_subdirs: [lessons]
