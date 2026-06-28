@@ -571,6 +571,19 @@ vince (1) ma è necessario aprire una PR di sincronizzazione come
 quella che ha prodotto questa tabella (vedi storico commit di giugno
 2026).
 
+### Recent cross-cutting closures (June 2026)
+
+This sub-section tracks P0/P1 closures that span architecture + atomicity
++ accounting — not wave migration per se. Wave-only entries stay in
+the snapshot table above.
+
+- **PR-VO-A P0 hardening (`e149e1ab` → `602114bc`)** — voiceover P0 closure
+  across A1..A6. See [`docs/voiceover/p0-bundle-A1-A6.md`](docs/voiceover/p0-bundle-A1-A6.md)
+  for the per-commit index, cumulative risk coverage (atomic state
+  transitions, identity drift, path safety, accounting correctness),
+  per-PR contract details, tests pinned, and future-work pointers
+  (PR-VO-B1+B2, PR-VO-B3, PR-VO-C1).
+
 ---
 
 ## Core Contracts

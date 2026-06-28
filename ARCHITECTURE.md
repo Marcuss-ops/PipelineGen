@@ -486,10 +486,11 @@ objective success metric.
 
 ## 12. Pointers to deeper docs
 
-All detailed documentation previously under `docs/` has been consolidated and removed.
+All **legacy** detailed documentation that was previously scattered in `docs/` has been consolidated and removed. **Canonical capability/operations bundles** continue to live under `docs/<domain>/` — they are NOT among the consolidated duplicates; they are authoritative meta-indexes for cross-cutting P0/P1 closures that span multiple commits and were landed under the doc-only-bundle convention (Git-Lesson-2). New domain subdirectories may be added by future bundle landings (e.g. `docs/voiceover/p0-bundle-A1-A6.md` by this PR-VO-A landing).
 For all critical rules and operational guidelines, please refer to:
 - `AGENTS.md`: Critical rules (DB driver, FTS5 ban, schema boundaries, AI gen policy, agent instructions).
 - `PROJECT_GUIDE.md`: Quick start guide.
+- [`docs/voiceover/p0-bundle-A1-A6.md`](docs/voiceover/p0-bundle-A1-A6.md): Voiceover P0 hardening bundle (PR-VO-A1..A6, June 2026) — six-commit meta-index of canonical voiceover P0 risk closures (atomic state transitions, identity drift, path safety, accounting correctness). Authoritative index for "what A1..A6 do when treated as one bundle"; see `AGENTS.md § Recent cross-cutting closures (June 2026)` for the inline pointer.
 
 
 ## 12b. Observability DB retention policy (June 2026)
