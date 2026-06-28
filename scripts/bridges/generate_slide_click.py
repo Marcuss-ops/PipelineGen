@@ -156,10 +156,26 @@ def main():
             prompt_input.fill(args.prompt)
             time.sleep(0.5)
 
-            # Click Create / Genera button
-            print("Clicking Create/Genera button...")
-            create_btn = page.locator('button:has-text("Crea"), button:has-text("Create"), button:has-text("Genera")').first
-            create_btn.click()
+            # Select 16:9 aspect ratio if available
+            print("Selecting 16:9 aspect ratio...")
+            try:
+                aspect_btn = page.locator('button:has-text("16:9"), [aria-label*="16:9"], div:has-text("16:9"), span:has-text("16:9")').first
+                if aspect_btn.is_visible():
+                    aspect_btn.click()
+                    time.sleep(0.5)
+            except Exception as e:
+                print(f"Note selecting 16:9 aspect ratio: {e}")
+
+            # Click Create / Genera button or press Enter
+            print("Submitting prompt (Clicking Create/Genera & pressing Enter)...")
+            try:
+                create_btn = page.locator('button:has-text("Crea"), button:has-text("Create"), button:has-text("Genera")').last
+                if create_btn.is_visible():
+                    create_btn.click()
+                else:
+                    prompt_input.press("Enter")
+            except Exception:
+                prompt_input.press("Enter")
 
             print("Waiting for AI image generation to complete (approx 10-15s)...")
             time.sleep(12)
