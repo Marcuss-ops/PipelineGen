@@ -42,3 +42,14 @@ func TestRealGoogleSlidesImageGen(t *testing.T) {
 	t.Logf("Asset description: %s", asset.Description)
 	t.Logf("Path: %s", asset.PathRel)
 }
+
+func TestGenerateSmartImageBatchParallel_Empty(t *testing.T) {
+	s := &Service{}
+	res, err := s.GenerateSmartImageBatchParallel(context.Background(), nil, 2)
+	if err != nil {
+		t.Fatalf("expected nil error for empty batch, got %v", err)
+	}
+	if len(res) != 0 {
+		t.Fatalf("expected 0 results, got %d", len(res))
+	}
+}
