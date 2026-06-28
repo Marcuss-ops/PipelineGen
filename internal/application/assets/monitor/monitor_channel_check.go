@@ -2,112 +2,65 @@ package monitor
 
 import (
 	"context"
-	"fmt"
-	"os/exec"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"go.uber.org/zap"
 )
 
 // checkChannel checks a single channel for new videos.
-func (m *ChannelMonitor) checkChannel(ctx context.Context, channel ChannelConfig, cfg *MonitorConfig) {
-	var dateAfter string
-	lookbackMode := channel.LookbackDays > 0
-	if lookbackMode {
+// PR 4 (June 2026): uses m.ytdlp.ListChannelVideos() (JSON structured output)
+// instead of exec.Command + --print text parsing.
+// PR 7 (June 2026): uses channels.Channel DTO directly; MonitorConfig removed.
+func (m *ChannelMonitor) checkChannel(ctx context.Context, channel channels.Channel) {
+	listReq := downloader.ListChannelVideosRequest{ChannelURL: channel.ChannelURL}
+
+	if channel.LookbackDays > 0 {
 		sinceDate := time.Now().AddDate(0, 0, -channel.LookbackDays)
-		dateAfter = sinceDate.Format("20060102")
-		m.log.Info("lookback mode: scanning videos since", zap.String("url", channel.URL), zap.Int("lookback_days", channel.LookbackDays), zap.String("date_after", dateAfter))
+		listReq.DateAfter = sinceDate.Format("20060102")
+		m.log.Info("lookback mode", zap.String("url", channel.ChannelURL), zap.Int("lookback_days", channel.LookbackDays))
 	} else {
-		playlistEnd := effectivePlaylistEnd(channel, cfg.PlaylistEnd)
+		playlistEnd := effectivePlaylistEnd(channel, DefaultPlaylistEnd)
+		listReq.PlaylistEnd = playlistEnd
 		if playlistEnd == 0 {
-			m.log.Info("full scan mode: fetching ALL videos from channel", zap.String("url", channel.URL))
-		} else {
-			m.log.Debug("scanning recent videos", zap.String("url", channel.URL), zap.Int("playlist_end", playlistEnd))
+			m.log.Info("full scan mode", zap.String("url", channel.ChannelURL))
 		}
 	}
 
-	args := []string{
-		"--flat-playlist",
-		"--print", "%(id)s %(title)s %(view_count)s %(duration)s",
-	}
-
-	if lookbackMode {
-		args = append(args, "--dateafter", dateAfter)
-	} else {
-		playlistEnd := effectivePlaylistEnd(channel, cfg.PlaylistEnd)
-		args = append(args, "--playlist-end", fmt.Sprintf("%d", playlistEnd))
-	}
-
-	if cfg.CookiesPath != "" {
-		args = append(args, "--cookies", cfg.CookiesPath)
-	}
-
-	args = append(args, channel.URL)
-
-	cmd := exec.Command(cfg.YtdlpPath, args...)
-	output, err := cmd.Output()
+	videos, err := m.ytdlp.ListChannelVideos(ctx, listReq)
 	if err != nil {
-		m.log.Error("Failed to fetch channel videos", zap.String("url", channel.URL), zap.Error(err))
+		m.log.Error("Failed to fetch channel videos", zap.String("url", channel.ChannelURL), zap.Error(err))
 		return
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	m.log.Info("Fetched channel videos", zap.String("url", channel.ChannelURL), zap.Int("count", len(videos)))
+
 	concurrency := 5
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	var acceptedCount atomic.Int32
 
-	for _, line := range lines {
-		line := line
+	for _, video := range videos {
+		video := video
 		if channel.MaxVideosPerRun > 0 && acceptedCount.Load() >= int32(channel.MaxVideosPerRun) {
 			break
 		}
-
 		sem <- struct{}{}
 		wg.Add(1)
 		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					m.log.Error("panic in video processing worker", zap.Any("recover", r), zap.String("line", line))
-				}
-			}()
 			defer wg.Done()
 			defer func() { <-sem }()
-
+			if r := recover(); r != nil {
+				m.log.Error("panic in video processing worker", zap.Any("recover", r), zap.String("video_id", video.ID))
+			}
 			if channel.MaxVideosPerRun > 0 && acceptedCount.Load() >= int32(channel.MaxVideosPerRun) {
 				return
 			}
-
-			m.processVideoLine(ctx, line, channel, cfg, &acceptedCount)
+			m.processVideo(ctx, video, channel, &acceptedCount)
 		}()
 	}
-
 	wg.Wait()
-}
-
-// ensureChannelFolders validates and creates per-channel subfolders on Drive.
-func (m *ChannelMonitor) ensureChannelFolders(ctx context.Context, channels []ChannelConfig) {
-	if m.youtubeSvc == nil {
-		return
-	}
-	for _, ch := range channels {
-		if ch.DriveFolderID == "" {
-			m.log.Warn("channel has no drive_folder_id, skipping", zap.String("url", ch.URL))
-			continue
-		}
-		channelHandle := extractChannelHandle(ch.URL)
-		if channelHandle == "" {
-			m.log.Warn("could not extract channel handle from URL", zap.String("url", ch.URL))
-			continue
-		}
-		folderID, err := m.youtubeSvc.GetOrCreateChannelFolder(ctx, channelHandle, ch.DriveFolderID)
-		if err != nil {
-			m.log.Warn("failed to ensure channel folder on Drive", zap.String("channel", channelHandle), zap.Error(err))
-		} else {
-			m.log.Info("channel folder ready on Drive", zap.String("channel", channelHandle), zap.String("folder_id", folderID))
-		}
-	}
 }
