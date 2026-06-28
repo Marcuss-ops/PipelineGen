@@ -243,21 +243,17 @@ func (s *Service) processLanguage(
 	filename = filepath.Base(safePath)
 	item.Filename = filename // keep persisted metadata in sync with sanitized path
 
-	// Build audio input for processor
+	// Build audio input for processor. PR-VO-B1 (June 2026): the
+	// previous Destination assignment is gone — Processor writes
+	// local FS only; the resolved Drive destination flows directly
+	// from dest into lifecycle.FinalizeInput{FolderID,FolderPath}
+	// (Step 2 of lifecycle.ProcessAsset does the upload).
 	audioInput := &audioasset.AudioInput{
 		Text:          req.Text,
 		Language:      language,
 		OutputDir:     outputDir,
 		Filename:      filename,
 		RemoveSilence: ptrutil.BoolDefault(req.RemoveSilence, false),
-	}
-	if dest != nil && dest.FolderID != "" {
-		audioInput.Destination = &asset.ResolveRequest{
-			Source:     "voiceover",
-			FolderID:   dest.FolderID,
-			FolderPath: dest.FolderPath,
-			Group:      dest.Group,
-		}
 	}
 
 	// Generate audio via audioasset processor

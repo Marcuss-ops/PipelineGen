@@ -50,6 +50,16 @@ import (
 // production outbox.Dispatcher (passed as outboxDispatcher below),
 // structurally satisfying voiceover.TxOutboxEnqueuer via Go's
 // implicit-interface rules.
+//
+// PR-VO-B1 (June 2026): voiceover.DriveUploaderPort is now the
+// narrow Drive surface voiceover consumes (DeleteFile only, used by
+// processLanguage's post-commit cleanup goroutine). The production
+// concrete *drive.Uploader is wrapped by newVoiceoverDriveAdapter
+// in adapters_voiceover_drive.go because the canonical layering
+// rule forbids infrastructure/drive from importing
+// application/voiceover. The port is structurally satisfied by
+// the wrapper via Go's implicit-interface rules, with a nil-safe
+// factory (returns nil when up is unwired).
 func buildVoiceoverService(
 	ctx context.Context,
 	cfg *config.Config,
@@ -131,7 +141,7 @@ func buildVoiceoverService(
 
 	voService := voiceover.NewService(
 		cfg, dbs.main.DB, cfg.Paths.PythonScriptsDir, voDir, log,
-		driveUploader, voLifecycle, destResolver,
+		newVoiceoverDriveAdapter(driveUploader), voLifecycle, destResolver,
 		semanticTagger, translator, outboxEnqueuer,
 	)
 	// pylint: disable=unused

@@ -1,28 +1,40 @@
 package audioasset
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-
+// AudioInput is the input to Processor.Generate. PR-VO-B1 (June 2026):
+// the previous `Destination *asset.ResolveRequest` field is gone.
+// Processor writes ONLY to local FS; the resolved Drive destination
+// flows from voiceover.processLanguage to Lifecycle.ProcessAsset
+// directly (which performs Step 2 upload). AudioInput keeps the
+// fields Processor actually consumes.
 type AudioInput struct {
 	Text          string
 	Language      string
 	Voice         string // optional: overrides auto-detected voice (passed as --voice)
 	Filename      string
 	OutputDir     string
-	Destination   *asset.ResolveRequest
 	Strategy      string // "replace", "skip", "fail"
 	RemoveSilence bool
 	UseStdin      bool // pipe text via stdin instead of --text (avoids OS arg limits)
 }
 
 // AudioResult carries the outcome of a single TTS generation.
+//
 // PR-VO-A1 (June 2026, Lost Voice): the canonical TTS voice identifier
-// returned by scripts/bridges/tts_edge.py lives in `Voice` only (captured
-// in processor.go from the bridge's stdout JSON). Consumers MUST read
-// Voice — no parallel fields.
+// returned by scripts/bridges/tts_edge.py lives in `Voice` only
+// (captured in processor.go from the bridge's stdout JSON).
+//
+// PR-VO-B1 (June 2026, Drive upload split): DriveLink and DriveFileID
+// are zero-valued when Processor returns. Lifecycle.ProcessAsset (Step
+// 2 in internal/application/assets/lifecycle/service.go) fills them
+// after Generate returns. AudioResult keeps the fields for back-compat
+// with callers that read both, but consumers should rely on
+// lifecycleResult for the Drive surface.
 type AudioResult struct {
 	LocalPath   string
 	CleanedPath string
 	FileHash    string
+	// DriveLink / DriveFileID: always zero from audioasset.Processor;
+	// Lifecycle fills. Deprecated for direct read on Processor output.
 	DriveLink   string
 	DriveFileID string
 	Status      string

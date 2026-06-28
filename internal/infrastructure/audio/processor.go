@@ -12,33 +12,38 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
+// Processor — PR-VO-B1 (June 2026): the previous direct Drive
+// coupling has been removed. Processor writes ONLY to the local
+// filesystem; the Drive upload belongs to Lifecycle (which already
+// owns Step 2 of ProcessAsset in internal/application/assets/lifecycle/
+// service.go). voiceover.go now calls NewProcessor with only
+// (pythonScriptsDir, log) and the audioasset package no longer
+// imports infrastructure/drive or domain/asset.
 type Processor struct {
-	pythonScriptsDir  string
-	driveUploader     *drive.Uploader
-	assetDestResolver asset.Resolver
-	log               *zap.Logger
+	pythonScriptsDir string
+	log              *zap.Logger
 }
 
+// NewProcessor constructs a Processor. The previous driveUploader and
+// assetDestResolver arguments are intentionally gone — Processor
+// handles local FS only (TTS generation + optional FFmpeg silence
+// removal + MD5 hash). Drive upload is owned by Lifecycle.
 func NewProcessor(
 	pythonScriptsDir string,
-	driveUploader *drive.Uploader,
-	assetDestResolver asset.Resolver,
 	log *zap.Logger,
 ) *Processor {
 	return &Processor{
-		pythonScriptsDir:  pythonScriptsDir,
-		driveUploader:     driveUploader,
-		assetDestResolver: assetDestResolver,
-		log:               log,
+		pythonScriptsDir: pythonScriptsDir,
+		log:              log,
 	}
 }
 
+// Generate runs TTS over the configured Python bridge + (optionally)
+// FFmpeg silence removal. Local FS only; no Drive interaction.
 func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResult, error) {
 	result := &AudioResult{}
 
@@ -135,7 +140,7 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		}
 	}
 
-	// 4. Compute hash
+	// 3. Compute hash
 	if result.LocalPath != "" {
 		hash, err := hashutil.HashFile(result.LocalPath, md5.New())
 		if err != nil {
@@ -145,43 +150,21 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		}
 	}
 
-	// 4. Upload to Drive if destination is provided
-	if input.Destination != nil && p.driveUploader != nil {
-		resolved, err := p.assetDestResolver.Resolve(ctx, input.Destination)
-		if err != nil {
-			p.log.Warn("destination resolution failed", zap.Error(err))
-		} else if resolved.FolderID != "" {
-			driveLink, fileID, err := p.uploadToDrive(ctx, result.LocalPath, resolved.FolderID, filepath.Base(result.LocalPath))
-			if err != nil {
-				p.log.Warn("drive upload failed", zap.Error(err))
-			} else {
-				result.DriveLink = driveLink
-				result.DriveFileID = fileID
-				result.Status = "uploaded"
-			}
-		}
-	}
-
-	if result.Status == "" {
-		result.Status = "processed"
-	}
-
+	// 4. Drive upload is the Lifecycle's responsibility, not the
+	// Processor's. PR-VO-B1 (June 2026) removed the inline upload
+	// code path entirely. voiceover.processLanguage hands the
+	// local file off to lifecycle.ProcessAsset (Step 2 in
+	// internal/application/assets/lifecycle/service.go performs the
+	// Drive upload with the folder ID + filename). AudioResult
+	// keeps DriveLink/DriveFileID fields as zero-value (Lifecycle
+	// fills them after Generate returns).
+	//
+	// result.Status is set to "generated" at line above and
+	// optionally overridden to "cleaned" by the silence-removal
+	// block — it's never empty here. The previous defensive
+	// fallback `if result.Status == "" { Status = "processed" }`
+	// was deleted in PR-VO-B1 because it is unreachable after the
+	// Drive upload removal (the upload path was the only place that
+	// could reset Status without restoring it).
 	return result, nil
-}
-
-func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filename string) (string, string, error) {
-	if p.driveUploader == nil {
-		return "", "", fmt.Errorf("drive uploader not configured")
-	}
-
-	result, err := p.driveUploader.UploadFile(ctx, filePath, folderID, filename)
-	if err != nil {
-		return "", "", fmt.Errorf("drive upload failed: %w", err)
-	}
-
-	p.log.Info("audio file uploaded to drive",
-		zap.String("file_id", result.FileID),
-	)
-
-	return result.WebViewLink, result.FileID, nil
 }

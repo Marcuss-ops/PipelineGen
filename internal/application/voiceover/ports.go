@@ -1,20 +1,24 @@
-// Package voiceover — port interface for transactional outbox enqueue
-// (AGENTS.md Pattern 0, June 2026).
+// Package voiceover — narrow port interfaces for out-of-package
+// dependencies (AGENTS.md Pattern 0, June 2026).
 //
-// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the canonical
-// `asset.index.requested` enqueue site moved INTO swapVoiceoverRow's
-// SQLite transaction. The metadata UPSERT (voiceovers row) and the
-// outbox event INSERT (asset.index.requested) now commit atomically —
-// no orphan events, no orphan embeddings, no async goroutine race.
+// Two ports live here:
 //
-// The service no longer reads from a ClipIndexFunc callback. It emits
-// the canonical v1 envelope through this narrow port interface inside
-// the caller-owned *sql.Tx.
+//  1. TxOutboxEnqueuer — PR-VO-A3 (June 2026, outbox-based Qdrant
+//     indexing). The canonical `asset.index.requested` enqueue site
+//     moved INTO swapVoiceoverRow's SQLite transaction. The metadata
+//     UPSERT (voiceovers row) and the outbox event INSERT
+//     (asset.index.requested) now commit atomically — no orphan
+//     events, no orphan embeddings, no async goroutine race.
 //
-// The production concrete is *outbox.Dispatcher, which satisfies the
-// interface structurally via Go's implicit-interface rules; no code
-// in the voiceover package imports the infrastructure layer. Tests
-// substitute a stub that records EnqueueIndexEvent invocations.
+//  2. DriveUploaderPort — PR-VO-B1 (June 2026, Drive upload split).
+//     voiceover.Service now reaches Drive only through this narrowed
+//     port. Processor writes local FS only; Lifecycle owns the upload;
+//     voiceover uses the port exclusively for the post-commit cleanup
+//     DeleteFile.
+//
+// Layout note: voiceover never imports the SDK. Production concretes
+// satisfy these ports by structural conformance (Go's implicit
+// interface rules). Tests substitute stubs that record invocations.
 package voiceover
 
 import (
@@ -47,4 +51,38 @@ type TxOutboxEnqueuer interface {
 	// non-empty; the canonical dispatcher rejects empty hashes
 	// because the supersede gate cannot function without them.
 	EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, contentHash string) error
+}
+
+// DriveUploaderPort is the narrow Drive surface the voiceover service
+// uses directly. PR-VO-B1 (June 2026): voiceover previously held a
+// *drive.Uploader field; the constructor now takes this port. The
+// production concrete is *drive.Uploader (wrapped by
+// app/voiceoverDriveAdapter because the canonical layering rule
+// forbids infrastructure/drive from importing
+// internal/application/voiceover).
+//
+// Today's single exposure is DeleteFile: swapVoiceoverRow's
+// post-commit cleanup goroutine (processLanguage's
+// replace-mode orphan eviction) routes an OLD voiceover's Drive
+// file through this port. Adding new methods is permitted but
+// should follow the same narrow-target practice — one method per
+// Drive operation the voiceover service actually calls, no
+// pre-emptive methods.
+//
+// Behavior shift note (PR-VO-B1): the previous audioasset.Processor
+// ran an inline Drive upload with **log-warn best-effort** semantics
+// (failure swallowed, status remained "generated"/"cleaned"). The
+// new design routes the upload through Lifecycle.ProcessAsset
+// (Step 2 in internal/application/assets/lifecycle/service.go)
+// which **fails-fast** with `lifecycle_failed`. This is an
+// intentional hardening of the obsolete silent-upload path — the
+// caller now sees Drive upload failures instead of an orphan file
+// that the rest of the pipeline silently passed.
+//
+// Nil-safe: processLanguage guards nil at the call site and
+// short-circuits the cleanup goroutine. The production wiring in
+// internal/app/build_bundles_voiceover.go always supplies a
+// non-nil adapter.
+type DriveUploaderPort interface {
+	DeleteFile(ctx context.Context, fileID string) error
 }
