@@ -373,10 +373,31 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// fallbacks. Bare prose and legacy arrays both produce
 	// ErrModelOutputMalformed. The cache-replay path uses
 	// ModeCompatibility (declared fallback with Prometheus metrics).
+	//
+	// PR-FIX (June 2026): when ModeStrict rejects the model output
+	// (e.g. duplicate scene IDs, missing keys, invalid kinds),
+	// retry once with ModeCompatibility — the cascading fallback
+	// (V1 → legacy array → plain-text wrapper) salvages the
+	// generation instead of failing the entire job. The
+	// ModeCompatibility source label is "fresh-fallback" so
+	// operators can distinguish true cache-replay fallbacks
+	// from retry-after-strict-failure fallbacks.
 	scanner := &jsonextract.Scanner{Mode: jsonextract.ModeStrict}
 	output, decodeErr := scanner.Scan([]byte(genResult.Script), "fresh")
 	if decodeErr != nil {
-		return nil, fmt.Errorf("engine: model output decode failed: %w", decodeErr)
+		if e.log != nil {
+			e.log.Warn("engine: ModeStrict decode failed, retrying with ModeCompatibility",
+				zap.Error(decodeErr))
+		}
+		scanner.Mode = jsonextract.ModeCompatibility
+		output, decodeErr = scanner.Scan([]byte(genResult.Script), "fresh-fallback")
+		if decodeErr != nil {
+			return nil, fmt.Errorf("engine: model output decode failed (strict + compatibility): %w", decodeErr)
+		}
+		if e.log != nil {
+			e.log.Info("engine: ModeCompatibility fallback succeeded",
+				zap.Int("word_count", genResult.WordCount))
+		}
 	}
 
 	// PR 3 (June 2026): stamp engine-side provenance fields onto
