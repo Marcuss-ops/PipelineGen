@@ -1173,6 +1173,78 @@
           - "bash scripts/ci-architectural-checks.sh exit 0"
           - "go run ./cmd/archcheck --strict exit 0 (PR-G.4 enables the strict-mode promotion)"
           - "verified_zero: true set on this Wave 21 entry"
+  # Wave 21 / PR-MANIFEST-STREAM-RECOVERY — Forward reference for the
+  # Manifest cutover PR 1–8 recovery ticket (out-of-scope di voiceover typed
+  # port, presente sul branch cancellato 26562107). Tracciato come follow-up
+  # perché: (a) AGENTS.md Agent Execution Playbook "One task solves one
+  # responsibility" proibisce di mescolare recovery manifest nei commit voiceover
+  # V1..V7; (b) Wave 21 PR-G mega-package split (deadline 2026-07-10) è un
+  # prerequisite per MANIFEST-V2 BACKFILL (la recovery attraversa i package
+  # boundaries che PR-G.2 sta spostando via git mv); (c) owner_capability
+  # interno è `internal/application/assets/manifest/`, package nuovo sotto
+  # internal/application/assets/ che richiede prima il V1 EXPAND tipi+porti
+  # canonici via M-V1 acceptance.
+  follow_up_tickets:
+    - id: PR-MANIFEST-STREAM-RECOVERY
+      title: "MANIFEST-STREAM-RECOVERY — Manifest cutover PR 1–8 (recovery from deleted voiceover-typed-port-m2 branch)"
+      owner_capability: internal/application/assets/manifest
+      status: pending
+      deadline: 2026-07-10
+      tracking_issue: "docs/operations/tickets/MANIFEST-STREAM-RECOVERY.md"
+      acceptance: |
+        5-PR atomic recovery cycle (M-V1 EXPAND → M-V2 BACKFILL → M-V3 CUTOVER
+        single-pr-converged → M-V4 PR 6 hardening test matrix → M-V5 PR 7
+        true upload-then-replace + PR 8 4 e2e tests) con deadline 2026-07-10
+        allineata a Wave 21 PR-G mega-package split. Ogni PR atomic-GREEN al
+        landing; deprecation records in architecture/deprecations.yaml per
+        ogni vecchio call-site sostituito (godlike/07 §Migration sequence).
+      notes: |
+        12 commit del branch cancellato 26562107 coperti:
+          - M-V1 copre: nessuno (V1 è nuovo EXPAND).
+          - M-V2 BACKFILL copre: #2 build-fix field tipizzato (87d33830).
+          - M-V3 CUTOVER copre: #3..#7 (5 commit ripetuti "wire canonical
+            manifest service + cutover adapters") collassati in 1 PR.
+          - M-V4 hardening copre: #9, #10, #11 (PR 6 test matrix).
+          - M-V5 contract copre: #8 PR 7 true upload-then-replace + #12 PR 8
+            4 e2e integration tests.
+        Recovery residua:
+          - #1 W14 PR 2 handler wiring (4698d981) — WIP storico, sostituito
+            da M-V3 CUTOVER. WIP committato pre-EXPAND; nessun porting
+            letterale necessario.
+        Vincolo ordering: MANIFEST-V2 BACKFILL NON può atterrare PRIMA di
+        Wave 21 PR-G.2 BACKFILL settlement (deadline 2026-07-10).
+      deliverables:
+        - id: docs/operations/tickets/MANIFEST-STREAM-RECOVERY.md
+          kind: ticket_file
+          title: "Ticketing canonical (this tracker entry's tracking_issue)"
+          status: pending
+        - id: architecture/ownership.yaml::application_assets_manifest
+          kind: ownership_yaml_entry
+          title: "Canonical owner della capability `internal/application/assets/manifest/`"
+          status: pending
+          produces_at: M-V1 EXPAND
+        - id: architecture/deprecations.yaml
+          kind: deprecation_records
+          title: "Record per ogni vecchio call-site manifest sostituito da M-V3 CUTOVER (godlike/07 schema)"
+          status: pending
+          produces_at: M-V3 CUTOVER
+
+    # Wave 21 / PR-VOICEOVER-RECOVERY — Forward reference for the voiceover
+    # typed-port recovery ticket. Sister wave di PR-MANIFEST-STREAM-RECOVERY
+    # (stesso PR-G deadline 2026-07-10). Tracciato come follow-up per AGENTS.md
+    # Git-Lesson-2 direct-to-main: 7 PR incrementali V1..V7.
+    - id: PR-VOICEOVER-RECOVERY
+      title: "Voiceover typed-port recovery — 7 PR incrementali V1..V7 (EXPAND-BACKFILL-CUTOVER-CONTRACT) per AGENTS.md Git-Lesson-2 direct-to-main, replaces deleted fix/voiceover-typed-port-m2 branch tip 26562107"
+      owner_capability: internal/application/voiceover
+      target: "see in-repo TODO list / suggested followups for V1..V7 step-by-step"
+      deadline: 2026-07-10
+      status: pending
+      dependency: "architecture/deprecations.yaml#PR-VOICEOVER-LEGACY-ENDPOINTS-410 (blocker per V4 endpoint collapse)"
+      cross_refs:
+        - Wave 21 PR-G
+        - AGENTS.md Pattern 0
+        - godlike/07 schema
+
   cross_refs:
     ownership: architecture/ownership.yaml (application_scripts.target_subdirs)
     policy: architecture/policy.yaml::max_files_per_package=40
