@@ -249,7 +249,17 @@ func TestLegacyGenerateFromClips_StockFallback_OnClipSource(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &jobShell))
 	require.Equal(t, async.JobID, jobShell.JobID)
 	assert.Equal(t, "script.generate", jobShell.Type)
-	assert.Equal(t, "completed", jobShell.Status)
+	// Canonical job-status enum string from internal/domain/job/job.go:
+	// StatusSucceeded = "SUCCEEDED". The cannedJobService.Get returns
+	// jobservice.StatusSucceeded and GetJobFullStatus writes job.Status
+	// verbatim into the JSON shell, so the wire-level status is
+	// "SUCCEEDED". Pre-canonicalisation handlers used the lowercase
+	// "completed" string — that legacy spelling is no longer emitted
+	// from this endpoint. The veloxclient surface (pkg/veloxclient/types.go
+	// StatusCompleted) still uses "completed" for client-side comparison,
+	// but the /api/script/jobs/:job_id/full wire shape carries the
+	// canonical "SUCCEEDED".
+	assert.Equal(t, "SUCCEEDED", jobShell.Status)
 
 	// ── Assert: result.items[0].spec_scene.scenes[*].bindings.stock ─
 	var result struct {

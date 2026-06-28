@@ -62,22 +62,34 @@ type wireScene struct {
 // ── Doc-side mirror ─────────────────────────────────────────────────────────
 //
 // BuildClipSpecSceneDocumentHTML renders a `<h2>SpecScene JSON</h2><pre>...
-// </pre>` block whose inner content is a json.MarshalIndent of an
-// internal sceneDoc typed shape. The mirror here matches that shape.
+// </pre>` block whose inner content is a json.MarshalIndent of the
+// canonical scriptpkg.SpecSceneOutput shape. The mirrors here match
+// that exact shape so the parse path is faithful end-to-end:
+//
+//	SpecSceneOutput { version, scenes: [SpecScene { index, kind, text,
+//	    bindings: SceneBindings { clip: ClipBinding { drive_link,
+//	    clip_id, clip_title, … } } }] }
 //
 // docSpecDocRendererVersion is the schema version the doc builder
 // is expected to embed in the rendered JSON. If a future refactor
 // to BuildClipSpecSceneDocumentHTML bumps the version (e.g. a
 // `prompt` field gets added), this test will assert against the
-// unchanged version and fail loudly — the docSpecDoc mirror above
+// unchanged version and fail loudly — the docSpecDoc mirror below
 // would otherwise silently drop or add empty fields, and the
-// per-scene drive_links sanity check would still pass on a
-// degraded doc stream (parser-tolerant).
+// per-scene drive_link sanity check would still pass on a degraded
+// doc stream (parser-tolerant).
 const docSpecDocRendererVersion = 1
 
+type docClip struct {
+	ClipID    string `json:"clip_id"`
+	DriveLink string `json:"drive_link,omitempty"`
+}
+type docSceneBindings struct {
+	Clip *docClip `json:"clip,omitempty"`
+}
 type docSceneDoc struct {
-	Index      int      `json:"index"`
-	DriveLinks []string `json:"drive_links"`
+	Index    int              `json:"index"`
+	Bindings docSceneBindings `json:"bindings"`
 }
 type docSpecDoc struct {
 	Version int           `json:"version"`
@@ -139,8 +151,14 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 	}
 
 	// ── Doc builder view: render BUILDS the actual HTML body. ──
+	// SpecScene.Version is set to 1 (canonical schema version per
+	// internal/domain/script/model_output.go::SpecSceneOutput.Validate)
+	// so the renderer's MarshalIndent emits "version": 1, not the
+	// default int zero value. The docSpecDocRendererVersion=1 pin
+	// below asserts this canonical invariant — without Version=1 on
+	// the fixture the test would falsely fail with "got 0 expected 1".
 	model := &scriptpkg.ModelScriptOutputV1{
-		SpecScene: scriptpkg.SpecSceneOutput{Scenes: scenes},
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},
 	}
 	docHTML := BuildClipSpecSceneDocumentHTML(model, "PR 7 Test Title", ev)
 
@@ -204,8 +222,9 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 // `<h2>SpecScene JSON</h2><pre>...</pre>` block that the doc renderer
 // embeds (rendered via json.MarshalIndent in
 // BuildClipSpecSceneDocumentHTML), parses its inner JSON via the
-// docSceneDoc/docSpecDoc typed mirror, and returns the per-scene
-// `drive_links[0]` sequence. Errors fail the test.
+// docSpecDoc/docSceneDoc/docSceneBindings/docClip typed mirror, and
+// returns the per-scene `bindings.clip.drive_link` sequence. Errors
+// fail the test.
 //
 // Implementation choice: regex match the FIRST `<pre>` block (the
 // only one the renderer emits) and unescape the four HTML
@@ -226,6 +245,7 @@ func extractDocLinksFromDocHTML(t *testing.T, html string, numScenes int) []stri
 	// JSON bytes; unescape the four escapes it produces so
 	// json.Unmarshal can re-parse the inner block.
 	inner := matches[1]
+	inner = strings.ReplaceAll(inner, "&#34;", `"`)
 	inner = strings.ReplaceAll(inner, "&quot;", `"`)
 	inner = strings.ReplaceAll(inner, "&amp;", "&")
 	inner = strings.ReplaceAll(inner, "&lt;", "<")
@@ -255,11 +275,11 @@ func extractDocLinksFromDocHTML(t *testing.T, html string, numScenes int) []stri
 	}
 	out := make([]string, 0, numScenes)
 	for _, ds := range docDoc.Scenes {
-		if len(ds.DriveLinks) == 0 {
+		if ds.Bindings.Clip == nil {
 			out = append(out, "")
 			continue
 		}
-		out = append(out, ds.DriveLinks[0])
+		out = append(out, ds.Bindings.Clip.DriveLink)
 	}
 	return out
 }
