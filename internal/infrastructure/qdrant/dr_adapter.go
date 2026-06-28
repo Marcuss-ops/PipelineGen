@@ -6,11 +6,14 @@
 // dr.SnapshotStore / AliasSwitcher / CollectionCreator / Verifier /
 // DRMetrics / RetentionExecutor ports.
 //
-// PR-QDRANT-WIRE-MIRROR (June 2026): SnapshotDescription, RetentionConfig,
-// and RetentionResult were unified in internal/domain/qdrantdr/. Both
-// sides now share the same type (type alias in both packages).
-// Field-by-field translation functions are removed — the adapters pass
-// through directly.
+// PR-QDRANT-WIRE-MIRROR (June 2026): the canonical DR/snapshot types
+// (SnapshotDescription, RetentionConfig, RetentionResult) live in
+// internal/domain/qdrantdr/ and are aliased through dr/. The wire-side
+// REST decoders in qdrant/types_dr.go keep a distinct struct family
+// (JSON tags mirror qdrantdr/, but Go treats them as separate types)
+// so the RPC decoders in client_dr.go don't pull in any application
+// dependency. The adapters below bridge the two at the boundary
+// via snapshotToDr / retentionToDr (see helpers).
 //
 // Compile-time assertions on every adapter catch drift between the
 // dr/ port surface and the qdrant surface at build time.
@@ -29,8 +32,7 @@ import (
 
 // SnapshotStoreAdapter exposes qdrant.Client snapshot methods to dr's
 // SnapshotStore port. Stateless — pass the same Client through every
-// call. After PR-QDRANT-WIRE-MIRROR, no translation needed (both sides
-// share the canonical qdrantdr.SnapshotDescription).
+// call. Field-by-field translation lives in snapshotToDr (see below).
 type SnapshotStoreAdapter struct {
 	client *Client
 }
@@ -43,11 +45,47 @@ func NewSnapshotStoreAdapter(client *Client) *SnapshotStoreAdapter {
 var _ dr.SnapshotStore = (*SnapshotStoreAdapter)(nil)
 
 func (a *SnapshotStoreAdapter) CreateSnapshot(ctx context.Context, collection string) (*dr.SnapshotDescription, error) {
-	return a.client.CreateSnapshot(ctx, collection)
+	snap, err := a.client.CreateSnapshot(ctx, collection)
+	if err != nil {
+		return nil, err
+	}
+	if snap == nil {
+		return nil, nil
+	}
+	out := snapshotToDr(*snap)
+	return &out, nil
 }
 
 func (a *SnapshotStoreAdapter) ListSnapshots(ctx context.Context, collection string) ([]dr.SnapshotDescription, error) {
-	return a.client.ListSnapshots(ctx, collection)
+	snaps, err := a.client.ListSnapshots(ctx, collection)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dr.SnapshotDescription, len(snaps))
+	for i := range snaps {
+		out[i] = snapshotToDr(snaps[i])
+	}
+	return out, nil
+}
+
+// snapshotToDr converts the wire-side qdrant.SnapshotDescription (used
+// by client_dr.go REST decoders) to the canonical dr.SnapshotDescription
+// (alias for qdrantdr.SnapshotDescription). Field shapes are identical
+// (Name / CreationTime / Size / Checksum); the copy is required because
+// Go does not auto-convert between distinct named types in different
+// packages.
+//
+// PR-0 build cleanup (June 2026): re-introduced after the PR-QDRANT-WIRE-MIRROR
+// merge dropped the translation under a false-equivalence assumption —
+// the wire type and canonical type are distinct Go types despite
+// matching fields and JSON tags.
+func snapshotToDr(s SnapshotDescription) dr.SnapshotDescription {
+	return dr.SnapshotDescription{
+		Name:         s.Name,
+		CreationTime: s.CreationTime,
+		Size:         s.Size,
+		Checksum:     s.Checksum,
+	}
 }
 
 func (a *SnapshotStoreAdapter) DeleteSnapshot(ctx context.Context, collection, snapshotName string) error {
