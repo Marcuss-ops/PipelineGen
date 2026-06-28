@@ -1697,6 +1697,262 @@
     exits 0 (Phase 0 report-only); the focused-gate passes do not gain new
     violations from Slice 24.1.
 
+# ── Wave 25 — CONFORMANCE-001: Monitor-state SoT consolidation (in_progress, June 2026) ──
+# Triggers: cherry-pick 1826d344 (forwarding commit 0907ec8a) landed on
+# local main in June 2026 ship:
+#   - cmd/admin/seed_channels.go + config/channel_monitor_config.json REMOVED
+#     (delete one-shot JSON import → canonical channels CRUD API).
+#   - cmd/admin/backfill_monitored_sources_to_category_channels.go NEW
+#     (one-shot backfill of `monitored_sources` legacy rows into
+#     `category_channels` per A1.3).
+#   - migrations/sqlite/109_add_media_assets_discovery_columns.sql NEW
+#     (4 columns + 3 partial indexes on media_assets; per-video
+#     discovery state destination for the YouTube-side migration per A2.1).
+#   - docs/architecture/godlike/migration_109_rationale.md NEW (rationale
+#     + policy refs + AC list for graduation to CONTRACT 110).
+#   - docs/migrations/monitored-sources-allowlist.txt NEW (per-source-file
+#     marker registry for the 2 transitional
+#     `// ARCH-ALLOWLIST: monitored-sources-readonly` sites in
+#     internal/infrastructure/database/sqlite/assets/).
+#   - architecture/ownership.yaml: added category_channels_owns_monitor_state
+#     + monitor_state_rationale_doc pointer.
+#
+# Why this wave is independent of Wave 16/20/22/23/24:
+#   - Wave 16 is zero-redundancy strict-mode. Wave 25 is data-ownership
+#     consolidation, NOT alias-cleanup.
+#   - Wave 20 / Wave 22 are hygiene gates (Check 5, Check 35 no-cancel).
+#     Wave 25 is data ownership, NOT hygiene.
+#   - Wave 21 is mega-package split (PR-G). Wave 25 touches
+#     internal/application/assets/monitor/ + internal/application/channels/
+#     + cmd/admin/ + migrations/sqlite/ — none of which are in PR-G scope.
+#
+# Two A-tier tickets formalize the day-1 ship:
+#   A1.3 — category_channels backfill CLI; status=completed day-1.
+#   A2.1 — seed-channels one-shot compatibility entrypoint removal;
+#     status=removed (CONTRACT phase; synchronous-with-backfill removal;
+#     NO deprecation window per user classification).
+- id: 25
+  title: "CONFORMANCE-001 — Monitor-state SoT consolidation"
+  status: in_progress
+  verified_zero: false
+  description: |
+    Data-ownership consolidation of channel-monitor state across the
+    project: `category_channels` is the canonical SoT per
+    docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md §"One owner
+    per fact". The legacy `monitored_sources` table is superseded in
+    two roles:
+
+      1. CHANNEL-LEVEL monitor-state (owner: `category_channels`,
+         service surface: `channels.Service` via
+         ListEnabled / ClaimDue / MarkChecked / UpdateCursor / GetByID).
+         All five `internal/application/assets/monitor/*.go` files
+         route through channels.Service exclusively; ZERO references
+         to MonitorsRepository or monitored_sources SQL.
+
+      2. PER-VIDEO discovery-state (owner: `media_assets` via the new
+         columns + partial indexes from migration 109). The YouTube-side
+         MonitorsStoreAdapter wraps the legacy MonitorsRepository SQL
+         until migration 110 (A2.1 followup ship contract) lands
+         atomically. The adapter is the ONLY remaining monitored_sources
+         reader in production code post-cherry-pick.
+  rule: |
+    Canonical monitor-state MUST trace to exactly ONE of:
+      (1) `category_channels` table owned by `channels.Service`
+          (channel-level: ListEnabled/ClaimDue/MarkChecked/UpdateCursor;
+          CRUD: UpsertBulk/Get/Toggle).
+      (2) `media_assets` table owned by
+          `MediaAssetDiscoveryRepository` (per-video discovery state:
+          external_id / discovered_via / discovered_at /
+          monitored_source_id; QDRANT-002 bypass per
+          docs/architecture/godlike/migration_109_rationale.md).
+    `monitored_sources` table is FORBIDDEN as a runtime source.
+    Transitional exemption: the 2 source files in
+    internal/infrastructure/database/sqlite/assets/ carrying the
+    `// ARCH-ALLOWLIST: monitored-sources-readonly` magic marker
+    (per docs/migrations/monitored-sources-allowlist.txt) are the
+    ONLY audited production readers until migration 110 + the
+    media_assets backfill CLI (A2.1 followup ship contract) lands.
+  blocked_by: []
+  target_metrics:
+    monitored_sources_readers_in_production_code: 0  # final target
+    category_channels_canonical_owner_drift: 0
+    media_assets_discovery_state_drift: 0
+  exit_gate: |
+    * A1.3: status=completed; verified by CLI run on
+      data/snapshots/pre-TIMESTAMP.db with zero-drift cross-run
+      assertion in
+      cmd/admin/backfill_monitored_sources_to_category_channels.go.
+    * A2.1: status=removed, migration_phase=CONTRACT; verified via
+      `rg 'runSeedChannels|SeedChannels' --glob '!*_test.go' .`
+      returning ZERO hits post-cherry-pick (confirmed at Step 7).
+    * Migration 109 applies cleanly (idempotent via IF NOT EXISTS)
+      + ledger row in schema_migrations with correct SHA256 +
+      all 4 columns + 3 indexes verified present.
+    * MediaAssetDiscoveryRepository written with the QDRANT-002
+      bypass rationale godoc.
+    * Migration 110 (future ship, separate commit on main) lands
+      atomically: git rm of the 2 ARCH-ALLOWLIST files +
+      monitored-sources-allowlist.txt deletion + media_assets
+      backfill CLI + adapter ACL removal on the YouTube-side.
+    Until migration 110 lands, verified_zero stays false; the
+    transitional baseline allowlist
+    docs/migrations/monitored-sources-allowlist.txt holds the
+    2 file markers (per its REMOVAL PLAN section).
+  transitional_baselines:
+    note: |
+      Per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+      §"Zero-baseline rule", the final count is zero post-migration
+      110. Until that lands, 2 files in
+      internal/infrastructure/database/sqlite/assets/ carry the
+      `// ARCH-ALLOWLIST: monitored-sources-readonly` magic marker:
+        1. monitors_repository.go (5 methods + ctor + struct)
+        2. monitors_types.go (5 DTO + mappers)
+      These 2 files are the ONLY audited production readers of the
+      monitored_sources table post-cherry-pick; all other monitor-*
+      consumers route through channels.Service.
+    owner: PipelineGen Agent (Wave CONFORMANCE-001 / id-25 owner)
+    owner_secondary: scripts/ci-architectural-checks.sh maintainer
+    deadline: 2026-08-31  # Wave CONFORMANCE-001 close
+    current_count: 2
+    expected_post_remediation_count: 0
+    remediation_target: |
+      Migration 110 (separate commit on main) lands atomically:
+        (a) git rm monitors_repository.go + monitors_types.go +
+            docs/migrations/monitored-sources-allowlist.txt;
+            schema_migrations gains row 110.
+        (b) cmd/admin/backfill_monitored_sources_to_media_assets.go
+            ships with zero-drift cross-run assertion (mirrors
+            A1.3's category_channels CLI shape).
+        (c) internal/app/build_bundles_* loses newMonitorsStoreAdapter
+            wiring; reroute updateMonitoredSourceStatus to a typed
+            port writing directly to media_assets.
+        (d) Allowlist docs/migrations/monitored-sources-allowlist.txt
+            atomically deleted; marker comment removed from all
+            source files.
+  ci_impact_at_landing: |
+    On local main after this wave entry registers:
+    - cmd/admin CLI happy path unchanged (seed-channels already gone
+      from availableCommands and main.go switch; lockstep-removed by
+      the cherry-pick).
+    - TestAdminCommands_AreRegistered: assertion logic is sound by
+      inspection (cherry-pick removed 'seed-channels' from BOTH the
+      availableCommands array AND the main.go switch in lockstep);
+      full test run is BLOCKED at pristine HEAD by pre-existing
+      internal/app/ compile cascade (out-of-scope for this wave).
+    - rg 'runSeedChannels|SeedChannels' --glob '!*_test.go' . → ZERO
+      (confirmed at Step 7 of the seed-channels removal plan).
+  completed_through_W25_a13_category_channels_backfill:
+    - "cmd/admin/backfill_monitored_sources_to_category_channels.go NEW (mirrors the rationale doc reference at migration_109_rationale.md § Backfill CLI line 95)"
+    - "config/channel_monitor_config.json + cmd/admin/seed_channels.go REMOVED via cherry-pick 1826d344 (forwarding 0907ec8a)"
+    - "architecture/ownership.yaml gained category_channels_owns_monitor_state + monitor_state_rationale_doc pointer to migration_109_rationale.md"
+    - "docs/architecture/godlike/migration_109_rationale.md NEW — Wave CONFORMANCE-001 / id-25 header + QDRANT-002 rationale + AC list for graduation to CONTRACT 110"
+    - "docs/migrations/monitored-sources-allowlist.txt NEW — per-source-file marker registry for the 2 transitional ARCH-ALLOWLIST: monitored-sources-readonly sites"
+    - "internal/application/channels/{module,service}.go godocs: updated cross-references from cmd/admin/seed_channels.go → backfill_monitored_sources_to_category_channels.go"
+    - "internal/api/script/handler_legacy_adapters.go: gofmt -w canonicalized (cherry-pick only — no semantic drift in the topic-fallback else-branch resolution)"
+  completed_through_W25_a13_target_sealing:
+    - "rg 'runSeedChannels|SeedChannels' --glob '!*_test.go' . → ZERO hits (verified at Step 7)"
+    - "cmd/admin/admin_test.go structure inspected: TestAdminCommands_AreRegistered + TestAdminCommands_NoLegacyImports intact; assertion logic presumed PASS (registry consistency preserved lockstep across cherry-pick)"
+  follow_up_tickets:
+    - id: A1.3
+      title: "A1.3 — cmd/admin/backfill_monitored_sources_to_category_channels CLI ships day-1"
+      owner_capability: cmd/admin + internal/application/channels
+      status: completed
+      migration_phase: CONTRACT  # BACKFILL step completed via CLI run; CUTOVER pre-existing
+      shipped_in_commit: "1826d344 (cherry-pick of 0907ec8a, June 2026)"
+      target: |
+        One-shot admin CLI that reads `monitored_sources` (legacy
+        channel-config SoT) and writes to `category_channels` via
+        channels.Service.UpsertBulk. Zero-drift cross-run assertion:
+        UpsertBulk runs TWICE; drift = post2 - post1 = 0; non-zero
+        drift fails loud (exit 2). CLI emits Pre/Post rowcount
+        snapshots for operator audit.
+      notes: |
+        BACKFILL step (ChannelConfig data → category_channels) is
+        complete day-1 via this CLI. Channel-level monitor-state is
+        fully canonical: channels.Service owns; `monitored_sources`
+        is read-only archive. The YouTube-side per-video discovery
+        state migrates separately to media_assets (A2.1 followup).
+      deliverables:
+        - id: cmd/admin/backfill_monitored_sources_to_category_channels.go
+          kind: cli_source
+          title: "One-shot backfill CLI with cross-run zero-drift assertion"
+          status: shipped
+        - id: internal/application/channels/service.go
+          kind: canonical_service
+          title: "UpsertBulk + IDFor canonical methods (already shipped; CLI consumer added)"
+          status: shipped
+    - id: A2.1
+      title: "A2.1 — cmd/admin/seed_channels.go + config/channel_monitor_config.json removal (CONTRACT phase)"
+      owner_capability: cmd/admin + internal/application/channels
+      status: removed
+      migration_phase: CONTRACT
+      replacement: "channels.Service via canonical POST /channels/bulk-upsert"
+      classification: |
+        active one-shot compatibility entrypoint → durable data
+        backfilled (A1.3 CLI ran day-1) → CUTOVER already existing
+        toward channels.Service/API (CRUD/bulk endpoint live
+        pre-cherry-pick) → CONTRACT immediate (synchronous-with-
+        backfill removal; NO deprecation window).
+      shipped_in_commit: "1826d344 (cherry-pick of 0907ec8a, June 2026)"
+      target: |
+        Delete the legacy cmd/admin seed_channels entrypoint source
+        + the JSON config file it consumed. Synchronous-with-backfill
+        closure: A1.3 CLI's UpsertBulk achieves BACKFILL step
+        (durable data moved to canonical SoT) which instantly permits
+        contractual-removal of the JSON-driven import entrypoint.
+        NO deprecation window.
+      notes: |
+        Until migration 110 ships, A2.1's CONTRACT phase is reached
+        at the entrypoint layer (one-shot CLI gone) but the underlying
+        `monitored_sources` table stays as a read-only archive (2
+        source files carry the ARCH-ALLOWLIST marker per
+        docs/migrations/monitored-sources-allowlist.txt). This is
+        intentional: the table is in a non-default quiescent state
+        and only the YouTube adapter reads it (until migration 110
+        establishes the media_assets destination for per-video state
+        and atomically deletes the marker files).
+      classification_anti_pattern_checks:
+        - "NOT `zero readers` — A2.1 has 2 transitional readers (the marker files) until migration 110 closes them."
+        - "NOT `test fixture only` — the marker files are production sources consumed by the YouTube-side MonitorsStoreAdapter."
+        - "NOT `deprecation window` — A2.1 is synchronous-with-backfill; no coesistenza JSON+DB period."
+      deliverables:
+        - id: cmd/admin/seed_channels.go
+          kind: cli_source_removed
+          title: "REMOVED via cherry-pick 1826d344 (git rm)"
+          status: removed
+        - id: config/channel_monitor_config.json
+          kind: config_file_removed
+          title: "REMOVED via cherry-pick 1826d344 (git rm)"
+          status: removed
+        - id: cmd/admin/main.go::availableCommands
+          kind: command_registration_audit
+          title: "'seed-channels' removed from availableCommands list AND main.go switch case IN LOCKSTEP — preserves TestAdminCommands_AreRegistered inspection-verified GREEN"
+          status: completed
+        - id: docs/architecture/godlike/migration_109_rationale.md
+          kind: rationale_doc
+          title: "Documents the Wave CONFORMANCE-001 / id-25 audit trail + AC list for graduation to CONTRACT 110"
+          status: shipped
+  cross_refs:
+    wave: architecture/current.yaml#id-25
+    ownership: architecture/ownership.yaml::application_assets.category_channels_owns_monitor_state
+    rationale_doc: docs/architecture/godlike/migration_109_rationale.md
+    allowlist_file: docs/migrations/monitored-sources-allowlist.txt
+    policy: architecture/policy.yaml (Wave CONFORMANCE-001 → id-25 closure sequence)
+    operational_readiness: docs/operations/04-remote-worker-production-readiness-tickets.md
+    future_closure_target: migration 110 (separate commit, post-deadline 2026-08-31)
+  registration_record: |
+    Wave 25 entry (architecture/current.yaml#id-25) registered on
+    local main via this Step 8 commit per the EXPAND-side audit
+    pattern from docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md
+    §"Migration sequence". The follow_up_tickets block carries the
+    canonical A1.3 / A2.1 ticket IDs that the rationale doc references
+    at docs/architecture/godlike/migration_109_rationale.md § POLICY
+    REFERENCES line 77 (`architecture/current.yaml — id-25
+    follow_up_tickets`). The 2 ARCH-ALLOWLIST: monitored-sources-
+    readonly files (per docs/migrations/monitored-sources-allowlist.txt)
+    are the in-flight transitional artifact; the marker + this
+    wave entry trend to ZERO post-migration 110.
+
 ---
 # ── Document #2/3: Post-cascade operational followups (June 2026) ─────────
 post_cascade_followups:

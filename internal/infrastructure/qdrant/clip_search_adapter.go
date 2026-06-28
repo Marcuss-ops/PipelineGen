@@ -175,8 +175,3 @@ func validateScope(workspaceID string, isSystem bool) error {
 	}
 	return nil
 }
-
-// Ensure the alias to usecase.ClipSearchQuery compiles; see
-// source_resolver_curate.go where the type alias orchestrates
-// the consolidation PR 5 introduced.
-var _ = usecase.ClipSearchQuery{}

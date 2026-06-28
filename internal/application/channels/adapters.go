@@ -63,3 +63,11 @@ func (a *RepositoryAdapter) Delete(ctx context.Context, id string) error {
 func (a *RepositoryAdapter) MarkChecked(ctx context.Context, cmd MarkCheckedCommand) error {
 	return a.repo.MarkChecked(ctx, cmd.ID, cmd.NextCheckAt, cmd.LastError, cmd.Success)
 }
+
+func (a *RepositoryAdapter) ClaimDue(ctx context.Context, cmd ClaimDueCommand) ([]*asset.CategoryChannel, error) {
+	return a.repo.ClaimDue(ctx, cmd.Now, cmd.WorkerID, cmd.LeaseUntil, cmd.Limit)
+}
+
+func (a *RepositoryAdapter) UpdateCursor(ctx context.Context, cmd UpdateCursorCommand) error {
+	return a.repo.UpdateCursor(ctx, cmd.ID, cmd.Cursor)
+}

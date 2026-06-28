@@ -213,6 +213,79 @@ func (r *ChannelsRepository) MarkChecked(ctx context.Context, id, nextCheckAt, l
 	return err
 }
 
+// ClaimDue atomically claims channels that are due for checking.
+// PR 5 (June 2026): lease-based scheduling. Takes individual params to
+// avoid importing application-layer command types (infra layer must be leaf).
+func (r *ChannelsRepository) ClaimDue(ctx context.Context, nowStr, workerID, leaseUntil string, limit int) ([]*asset.CategoryChannel, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id FROM category_channels
+		WHERE enabled = 1
+		  AND (next_check_at IS NULL OR next_check_at = '' OR next_check_at <= ?)
+		  AND (lease_until IS NULL OR lease_until = '' OR lease_until < ?)
+		ORDER BY next_check_at ASC
+		LIMIT ?
+	`, nowStr, nowStr, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var claimedIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		claimedIDs = append(claimedIDs, id)
+	}
+	rows.Close()
+
+	nowFormatted := timeutil.FormatRFC3339(time.Now())
+	for _, id := range claimedIDs {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE category_channels SET lease_owner = ?, lease_until = ?, updated_at = ? WHERE id = ?
+		`, workerID, leaseUntil, nowFormatted, id); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	var result []*asset.CategoryChannel
+	for _, id := range claimedIDs {
+		ch, err := r.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if ch != nil {
+			result = append(result, ch)
+		}
+	}
+	return result, nil
+}
+
+// UpdateCursor updates the incremental sync cursor for a channel.
+// PR 5 (June 2026): tracks the last video ID processed. Takes individual
+// params to avoid importing application-layer command types.
+func (r *ChannelsRepository) UpdateCursor(ctx context.Context, id, cursor string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE category_channels SET last_cursor = ?, updated_at = ? WHERE id = ?
+	`, cursor, timeutil.FormatRFC3339(time.Now()), id)
+	return err
+}
+
 // scanRows scans multiple rows into CategoryChannel slices.
 func scanRows(rows *sql.Rows) ([]*asset.CategoryChannel, error) {
 	var results []*asset.CategoryChannel

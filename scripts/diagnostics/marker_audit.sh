@@ -325,7 +325,7 @@ EXIT=$?
 # Final note (skip in --quiet since CI parses the OK/FAIL line)
 if [[ "$QUIET" == "0" && "$EXIT" == "0" && "${word_count:-0}" -lt 100 ]]; then
     echo
-    echo -e "${DIM}hint: body has <100 words — likely gemma2:2b cold-start. Check \`data/logs/pipelinegen.log\` for the 'marker normalization applied' line; try MODEL=qwen2.5:7b for richer prose.${RESET}"
+    echo -e "${DIM}hint: body has <100 words — likely gemma2:2b cold-start. Check \`data/logs/pipelinegen.log\` for the 'marker normalization applied' line; for richer prose, set MODEL=gemma2:9b (cold-starts once, stays warm).${RESET}"
 fi
 if [[ "$QUIET" == "0" && "$EXIT" == "0" ]]; then
     echo

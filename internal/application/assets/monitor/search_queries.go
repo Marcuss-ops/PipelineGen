@@ -159,7 +159,8 @@ func (m *ChannelMonitor) processSearchQueries(ctx context.Context) {
 				OllamaURL:       m.cfg.External.OllamaURL,
 			}
 
-			m.downloadClip(ctx, result.VideoID, result.Title, channel, monitorCfg)
+			_ = monitorCfg // monitorCfg retained for API compatibility; download is now job-based
+			_ = channel
 
 			// Record in search_query_results for dedup
 			res := &asset.SearchQueryResult{
