@@ -97,7 +97,10 @@ func clearAndReapply(dbPath, migrationsDir string, logger *zap.Logger) error {
 	}
 	logger.Info("cleared schema_migrations; re-applying all migrations")
 
-	if err := storage.RunMigrationsOnDB(dbPath, logger, migrationsDir); err != nil {
+	// TODO #8 (June 2026): scope-aware seed — the fixture is the
+	// canonical primary DB; pass targetDB="primary" so primary-only
+	// migrations (e.g. 109) are included in the reapply pass.
+	if err := storage.RunMigrationsOnDB(dbPath, logger, migrationsDir, "primary"); err != nil {
 		return fmt.Errorf("RunMigrationsOnDB: %w", err)
 	}
 
