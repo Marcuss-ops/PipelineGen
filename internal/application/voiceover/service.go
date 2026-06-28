@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
@@ -45,7 +44,12 @@ type Service struct {
 	pythonScriptsDir  string
 	outputDir         string
 	log               *zap.Logger
-	driveUploader     *drive.Uploader
+	// driveUploader is a narrow structural port (PR-VO-B1, June 2026):
+	// voiceover no longer imports infrastructure/drive. DeleteFile
+	// is the only method the service uses today (post-commit cleanup
+	// of OLD voiceover Drive files in replace-mode). The production
+	// concrete *drive.Uploader is wrapped by app/voiceoverDriveAdapter.
+	driveUploader     DriveUploaderPort
 	assetDestResolver asset.Resolver
 	// audioProcessor holds the TTS audio processor.
 	// TODO(PR6): replace with TTSProvider port from use case when PR 5 is restored.
@@ -87,18 +91,21 @@ func NewService(
 	pythonScriptsDir string,
 	outputDir string,
 	log *zap.Logger,
-	driveUploader *drive.Uploader,
+	driveUploader DriveUploaderPort,
 	lifecycleService *lifecycle.Service,
 	assetDestResolver asset.Resolver,
 	semanticTagger SemanticTaggerFunc,
 	translator TranslatorFunc,
 	outboxEnqueuer TxOutboxEnqueuer,
 ) *Service {
-	// Create audio asset processor
+	// Create audio asset processor. PR-VO-B1 (June 2026): the
+	// driveUploader + assetDestResolver arguments are gone — the
+	// Processor now writes ONLY to local FS, the Drive upload is
+	// Lifecycle's responsibility. See
+	// internal/infrastructure/audio/processor.go for the matching
+	// NewProcessor signature.
 	audioProcessor := audioasset.NewProcessor(
 		pythonScriptsDir,
-		driveUploader,
-		assetDestResolver,
 		log,
 	)
 
