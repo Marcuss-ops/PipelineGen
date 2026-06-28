@@ -299,6 +299,22 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: failed to register clip_bindings processor (composition bug or duplicate name)")
 	}
 
+	// Stock association processor — wraps Qdrant searcher for
+	// per-scene vector search over stock-indexed assets. BestEffort
+	// policy: a missing or failing stock search does not block the
+	// pipeline. Falls back to the scene's Clip.DriveLink when no
+	// stock match is found.
+	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
+		if ollamaClient := gen.GetClient(); ollamaClient != nil {
+			embedder := qdrant.NewTextEmbedderAdapter(ollamaClient)
+			stockSearchPort := qdrant.NewStockSearchAdapter(root.Process.QdrantSearcher, embedder, "text", log)
+			if !ppReg.Register(adapters.NewStockAssociationProcessor(stockSearchPort, log)) {
+				return fmt.Errorf("wireScriptFlow: failed to register stock_association processor (composition bug or duplicate name)")
+			}
+			log.Info("StockAssociationProcessor wired (Qdrant + Ollama embedder)")
+		}
+	}
+
 	// Freeze the source registry — no more resolvers after composition.
 	sourceReg.Freeze()
 	ppReg.Freeze()

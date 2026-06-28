@@ -296,6 +296,11 @@ type SceneBindings struct {
 
 	// Voiceover binds this scene to a generated voiceover audio track.
 	Voiceover *VoiceoverBinding `json:"voiceover,omitempty"`
+
+	// Stock binds this scene to a semantically associated stock
+	// footage asset, found by vector search. When no stock matches
+	// the scene text, falls back to the Clip.DriveLink.
+	Stock *StockBinding `json:"stock,omitempty"`
 }
 
 // ── Clip binding ───────────────────────────────────────────────────
@@ -365,6 +370,33 @@ type VoiceoverBinding struct {
 
 	// DurationMs is the audio duration in milliseconds.
 	DurationMs int64 `json:"duration_ms,omitempty"`
+}
+
+// ── Stock binding ──────────────────────────────────────────────────
+
+// StockBinding binds a scene to a semantically associated stock
+// footage asset. Populated by the stock_association postprocessor
+// which searches Qdrant per-scene and falls back to the clip
+// drive link when no stock match is found.
+type StockBinding struct {
+	// AssetID is the canonical media_assets.id of the matched stock.
+	AssetID string `json:"asset_id,omitempty"`
+
+	// Name is the human-readable name of the stock asset.
+	Name string `json:"name,omitempty"`
+
+	// Source identifies the provider (artlist|youtube|stock).
+	Source string `json:"source,omitempty"`
+
+	// DriveLink is the Google Drive URL of the stock asset.
+	DriveLink string `json:"drive_link,omitempty"`
+
+	// Score is the cosine-similarity from the vector search.
+	Score float64 `json:"score,omitempty"`
+
+	// Fallback is true when the drive_link comes from the scene's
+	// ClipBinding.DriveLink because no stock match was found.
+	Fallback bool `json:"fallback,omitempty"`
 }
 
 // ── Model output errors ────────────────────────────────────────────
