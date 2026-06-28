@@ -205,7 +205,7 @@ var readinessCheck = map[string]func(context.Context, readinessDeps) checkStatus
 }
 
 func runBackfillVisualEmbeddings(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
@@ -256,7 +256,7 @@ func runBackfillVisualEmbeddings(args []string) error {
 }
 
 func runQdrantReadiness(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

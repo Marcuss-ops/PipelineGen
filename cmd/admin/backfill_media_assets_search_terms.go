@@ -34,7 +34,7 @@ import (
 )
 
 func runBackfillMediaAssetsSearchTerms(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

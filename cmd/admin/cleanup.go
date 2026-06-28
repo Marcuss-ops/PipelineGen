@@ -51,7 +51,7 @@ func runCleanupOrphans(args []string) error {
 		return err
 	}
 
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func runCleanupAllOrphans(args []string) error {
 		return err
 	}
 
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 		return err
 	}
 
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
@@ -306,7 +306,7 @@ func runCleanupStockOrphans(args []string) error {
 		return err
 	}
 
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
@@ -382,7 +382,7 @@ func runCleanupStockOrphans(args []string) error {
 // canonical DeletionService.DeleteClip handles all sources through the
 // single ClipsRepo.
 func runDeleteSpecificFolders(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
@@ -475,7 +475,7 @@ func runDeleteSpecificFolders(args []string) error {
 }
 
 func runSyncAllDrive(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
@@ -528,7 +528,7 @@ func runSyncAllDrive(args []string) error {
 }
 
 func runTestYouTube(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

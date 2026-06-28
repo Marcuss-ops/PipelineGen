@@ -21,9 +21,15 @@ import (
 func runDBMigrations(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("db migrations", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "./data", "root data directory")
-	fs.Parse(args)
+	// Phase 3 audit #4: strip --app-config before fs.Parse (FlagSet is
+	// not aware of it; would otherwise reject it as unknown flag).
+	// LoadConfigOrExit operates on the ORIGINAL args so the
+	// canonical --app-config <path> is consumed by the loader
+	// before any subcommand-specific flags are read.
+	fs.Parse(StripAppConfig(args))
 
-	fullCfg := config.Get()
+	// Phase 3 audit #4: --app-config is mandatory.
+	fullCfg := LoadConfigOrExit(args)
 	if *dataDir != "" && *dataDir != "./data" {
 		fullCfg.Storage.DataDir = *dataDir
 	}

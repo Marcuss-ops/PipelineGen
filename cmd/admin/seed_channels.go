@@ -23,7 +23,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	// platform/config import removed (audit #4 — fix/admin-config-fail-closed):
+	// cfg is *config.Config but the type resolves through the function
+	// return signature (LoadConfigOrExit). Field access (cfg.Storage.FullPath)
+	// does not require the package identifier at the call site.
 
 	"go.uber.org/zap"
 )
@@ -43,7 +46,14 @@ func runSeedChannels(args []string) error {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
-	cfg := config.Get()
+	// Phase 3 audit #4: --app-config is mandatory for DB writes.
+	// LoadConfigOrExit prints to stderr and exits with code 2 on any
+	// config error, preventing silent fallback to defaults+env that
+	// would route seed-channels against the wrong media.db.sqlite.
+	// The existing --config flag below carries the channel-monitor
+	// JSON file (a different concept with the same name); the new
+	// --app-config flag carries the canonical PipelineGen config.yaml.
+	cfg := LoadConfigOrExit(args)
 
 	dbPath := cfg.Storage.FullPath("media/media.db.sqlite")
 	log.Info("opening database", zap.String("path", dbPath))

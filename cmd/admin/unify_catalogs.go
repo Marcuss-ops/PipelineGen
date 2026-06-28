@@ -9,11 +9,19 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	// platform/config import removed (audit #4 — fix/admin-config-fail-closed):
+	// cfg resolves to *config.Config via the LoadConfigOrExit return type;
+	// field access (cfg.Storage.DataDir) doesn't need the package identifier
+	// at the call site.
 )
 
 func runUnifyCatalogs(args []string) error {
-	cfg := config.Get()
+	// Phase 3 audit #4: --app-config is mandatory for migrate / unify
+	// operations against prod DB. LoadConfigOrExit exits with code 2 on
+	// missing flag, missing file, malformed YAML, or Validate failure,
+	// preventing the legacy silent-fallback-to-defaults behaviour that
+	// previously caused unify-catalogs to operate on the wrong DB path.
+	cfg := LoadConfigOrExit(args)
 	dataDir := cfg.Storage.DataDir
 
 	mediaPath := dataDir + "/" + storage.DBMedia

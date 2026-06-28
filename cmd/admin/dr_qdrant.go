@@ -75,7 +75,7 @@ func parseDrQdrantDispatcher(args []string) (drQdrantDispatcher, error) {
 // Failure mode for dr-qdrant itself: if qdrant.enabled=false in
 // config, runDrQdrant fails with a clear configuration-error line.
 func runDrQdrant(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

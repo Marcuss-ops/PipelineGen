@@ -10,7 +10,7 @@ import (
 // Loading the YAML directly keeps this read-only admin command independent
 // from the full runtime composition graph.
 func runListStyles(args []string) error {
-	_, _, cleanup, err := appLogger()
+	_, _, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

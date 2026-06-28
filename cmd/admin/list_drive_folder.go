@@ -77,7 +77,10 @@ func runListDriveFolder(args []string) error {
 		return err
 	}
 
-	cfg, log, cleanup, err := appLogger()
+	// Phase 3 audit #4: --app-config is mandatory. LoadConfigOrExit (via
+	// appLoggerFromArgs) refuses to silently fall back to defaults on a
+	// missing or broken config file.
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

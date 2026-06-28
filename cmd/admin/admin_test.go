@@ -240,6 +240,74 @@ func extractImportBlock(src string) string {
 	return b.String()
 }
 
+// TestNoSilentConfigGetInAdminCli — Phase 3 audit #4 (fix/admin-config-fail-closed).
+//
+// Fail-closed contract: every cmd/admin/*.go file (production-critical
+// admin subcommands) MUST NOT call config.Get() — the legacy
+// silent-fallback-to-defaults helper that the audit banned. Two
+// exceptions are documented in cmd/admin/utils.go:
+//
+//   - cmd/admin/gen_api_docs.go — constructs a test-grade *config.Config
+//     inline (no DB / Drive mutations; only used by extractRoutes for
+//     doc generation). This is a comment-cited exception in utils.go.
+//
+// Verification walks every *.go file in cmd/admin/, strips comments,
+// and fails on any direct call to config.Get(). A future regression
+// that re-introduces a silent-fallback path trips this gate, forcing
+// a deliberate review rather than swapping the whole postprocess
+// pipeline's error envelope.
+//
+// Note: --app-config plumbing lives in cmd/admin/utils.go
+// (LoadConfigOrExit) and is exercised by TestTryLoadConfigFromArgs_*;
+// this gate is the production-shape guarantee that the plumbing is
+// actually USED, not merely present.
+func TestNoSilentConfigGetInAdminCli(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("glob cmd/admin: %v", err)
+	}
+
+	// Ephemeral exception: gen_api_docs.go builds a *config.Config
+	// inline (no config.Get() call) — see header docstring on
+	// cmd/admin/utils.go for rationale.
+	ephemeralAllowList := map[string]bool{
+		"gen_api_docs.go": true, // explicit exception, see utils.go docstring
+	}
+
+	configGetRe := regexp.MustCompile(`\bconfig\.Get\s*\(`)
+
+	for _, fname := range files {
+		if strings.HasSuffix(fname, "_test.go") {
+			continue
+		}
+		if ephemeralAllowList[fname] {
+			continue
+		}
+		src, err := os.ReadFile(fname)
+		if err != nil {
+			t.Fatalf("read %s: %v", fname, err)
+		}
+		contents := string(src)
+		// Restrict to the import + body sections to avoid matching
+		// the literal "config.Get()" inside Go doc comments.
+		// Crude but safe: skip every line whose first non-whitespace
+		// char is `/`. Production code lines never start with `/`
+		// in Go.
+		for _, line := range strings.Split(contents, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") {
+				continue
+			}
+			if configGetRe.MatchString(line) {
+				t.Errorf(
+					"file %s calls config.Get() — audit #4 (fix/admin-config-fail-closed) bans silent fallback in production-critical admin subcommands; replace with LoadConfigOrExit(args) from cmd/admin/utils.go (only the documented ephemeral exception in gen_api_docs.go is permitted; see cmd/admin/utils.go docstring)",
+					fname,
+				)
+			}
+		}
+	}
+}
+
 // Sanity: ensure the test file can see the banned imports listed above
 // (avoids accidental deletion of the gate strings in the future).
 func TestNoLegacyImports_gateStringsAreIntact(t *testing.T) {

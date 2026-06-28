@@ -190,7 +190,7 @@ func timestampedTargetCollection(base string, now time.Time) string {
 // logged a warning and continued; the new flow aborts the alias switch
 // and returns *qdrant.ErrAliasSwitchNotReady.
 func runReindexQdrant(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

@@ -24,13 +24,24 @@ func runDBBackup(ctx context.Context, args []string) error {
 	dataDir := fs.String("data-dir", "./data", "root data directory")
 	src := fs.String("src", "", "source DB path (default: resolved primary)")
 	out := fs.String("out", "", "output backup path (required)")
-	fs.Parse(args)
+	// Phase 3 audit #4: strip --app-config before fs.Parse (FlagSet is
+	// not aware of it; would otherwise reject it as unknown flag).
+	// LoadConfigOrExit operates on the ORIGINAL args so the
+	// canonical --app-config <path> is consumed by the loader
+	// before any subcommand-specific flags are read.
+	fs.Parse(StripAppConfig(args))
 
 	if *out == "" {
 		return fmt.Errorf("-out is required")
 	}
 
-	fullCfg := config.Get()
+	// Phase 3 audit #4: --app-config is mandatory. LoadConfigOrExit
+	// prints "admin: error loading config..." to stderr and exits
+	// with code 2 on flag-missing / file-missing / malformed YAML /
+	// Validate failure. The silent-fallback-to-defaults behaviour
+	// of the legacy config.Get() is banned for production-critical
+	// admin ops (audit #4 — fix/admin-config-fail-closed).
+	fullCfg := LoadConfigOrExit(args)
 	if *dataDir != "" && *dataDir != "./data" {
 		fullCfg.Storage.DataDir = *dataDir
 	}

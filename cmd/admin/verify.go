@@ -59,7 +59,7 @@ func runVerifyArtlistPipeline(args []string) error {
 	fmt.Println("=== Artlist Pipeline Verification Tool ===")
 	fmt.Println()
 
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

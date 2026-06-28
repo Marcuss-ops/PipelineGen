@@ -21,7 +21,7 @@ func runBackfillMissing(args []string) error {
 		return err
 	}
 
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

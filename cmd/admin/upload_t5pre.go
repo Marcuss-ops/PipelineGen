@@ -16,17 +16,25 @@ import (
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	// platform/config import removed (audit #4 — fix/admin-config-fail-closed):
+	// the fail-closed flow is owned by cmd/admin/utils.go::LoadConfigOrExit so
+	// every production-critical subcommand routes through the same canonical
+	// chain (--app-config / GetFromPath / Validate / exit 2 on error).
 )
 
-func runUploadT5Pre(_ []string) error {
+func runUploadT5Pre(args []string) error {
 	log, cleanup, err := productionLogger()
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
 	defer cleanup()
 
-	cfg := config.Get()
+	// Phase 3 audit #4: --app-config is mandatory. LoadConfigOrExit
+	// prints "admin: error loading config..." to stderr and exits with
+	// code 2 on flag-missing / file-missing / malformed YAML / Validate
+	// failure. The silent-fallback-to-defaults behaviour of the legacy
+	// config.Get() is banned for production-critical admin ops.
+	cfg := LoadConfigOrExit(args)
 
 	ctx := cmdContext()
 	driveSvc, err := drive.NewDriveServiceFromFiles(ctx, cfg)

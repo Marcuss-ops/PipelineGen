@@ -122,7 +122,7 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 //  6. Run Service.Reconcile.
 //  7. Pretty-print (or JSON-only) the resulting ReconcileReport.
 func runReconcileQdrant(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}

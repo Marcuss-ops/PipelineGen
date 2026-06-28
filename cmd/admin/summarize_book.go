@@ -51,7 +51,7 @@ func runSummarizeBook(args []string) error {
 		return fmt.Errorf("missing required flag: --file")
 	}
 
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := appLoggerFromArgs(args)
 	if err != nil {
 		return err
 	}
