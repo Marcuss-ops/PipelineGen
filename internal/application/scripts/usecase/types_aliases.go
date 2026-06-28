@@ -18,35 +18,31 @@ type ProcessInput = adapters.ProcessInput
 type FolderResolver = adapters.FolderResolver
 type ScriptRepository = adapters.ScriptRepository
 type SourceResolver = adapters.SourceResolver
-type PostProcessResult = adapters.PostProcessResult
-type ProcessorPolicy = adapters.ProcessorPolicy
-type PostProcessor = adapters.PostProcessor
-type SceneImage = adapters.SceneImage
-type SceneVoiceover = adapters.SceneVoiceover
-
-const (
-	ProcessorRequired   = adapters.ProcessorRequired
-	ProcessorBestEffort = adapters.ProcessorBestEffort
-)
-
-// ScriptRecord / ScriptSectionRecord — the native types are
-// declared in section_regen.go (usecase package). Re-exports
-// of the canonical adapters types below cover the remaining
-// types used by the engine_test.go fake repo.
-type (
-	ScriptStockMatchRecord     = adapters.ScriptStockMatchRecord
-	ScriptGenerationLog        = adapters.ScriptGenerationLog
-	ScriptOutlineSectionRecord = adapters.ScriptOutlineSectionRecord
-	ScriptResearchSource       = adapters.ScriptResearchSource
-)
 
 // ── adapters/ function aliases ─────────────────────────────────────
+//
+// P0.7 / P0.8 (June 2026): DecodeModelOutput and LegacyArrayToOutput
+// were REMOVED from the adapters package when the JSON extraction
+// pipeline migrated to `internal/application/scripts/jsonextract/`
+// (single Scanner with Mode controls; canonical
+// jsonextract.NewScanner(mode).Scan(raw, source) returning
+// `*scriptpkg.ModelScriptOutputV1`, plus unexported
+// `convertLegacyArray` for backward-compat fallback). The old
+// top-level decoders had 0 callers after migration, so the usecase
+// aliases are deleted instead of re-pointed to the stateful new API
+// (which has a different signature and no clean 1:1 alias).
 var (
 	NormalizeItem                  = adapters.NormalizeItem
 	SerializeEntityResultRoundTrip = dto.SerializeEntityResultRoundTrip
 )
 
-// ── dto/ aliases ───────────────────────────────────────────────────
-
-// (LegacyArrayToOutput and DecodeModelOutput removed in P0.8 —
-// replaced by jsonextract.Scanner.)
+// ── Note ───────────────────────────────────────────────────────────
+//
+// `dto.SerializeEntityResultRoundTrip` is the only `dto/` symbol that
+// appears as a top-level alias at this layer; it lives inside the
+// `var` block above alongside the `adapters/` aliases. Any future
+// `dto/` re-export that needs this surface should follow the same
+// convention (one consolidated `var` block, documentation in this
+// header). The previous `dto/ aliases` section header was retired
+// when the legacy `adapters.DecodeModelOutput` /
+// `adapters.LegacyArrayToOutput` aliases moved out.

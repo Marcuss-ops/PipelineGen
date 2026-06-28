@@ -122,7 +122,7 @@ func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*ass
 		args = append(args, filter.WorkspaceID)
 	}
 
-	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE " +
+	query := "SELECT " + MediaAssetColumns + " FROM media_assets WHERE " +
 		strings.Join(conds, " AND ") + " ORDER BY created_at DESC"
 	if filter.Limit > 0 {
 		query += " LIMIT ?"

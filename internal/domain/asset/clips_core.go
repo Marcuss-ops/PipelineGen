@@ -1,17 +1,28 @@
+// Package asset — clip_folders and clip_manifests (Wave C / Phase 2 slim).
+//
+// Phase 2 (Wave C / Blocco 1 Asset SSOT, June 2026): the 9 SQL
+// receivers that used to live here
+// (UpsertFolder/DeleteFolder/GetFolder/GetFolderByVideoID/ListByFolderID/
+// ListByFolderPath/CountByFolderID/ListFolders/SearchFolders) are now
+// canonical on the LOCAL infra `*assets.AssetStoreSQLite`
+// (internal/infrastructure/database/sqlite/assets/folder_queries.go)
+// and reached via HYBRID-embed promotion through the legacy struct.
+//
+// This file now carries ONLY the canonical domain types
+// (ClipFolder/ClipManifest/ClipFolderStats/ClipManifestItem) and the
+// `ClipManifestItem.UnmarshalJSON` parser. No SQL primitives, no
+// `database/sql` import — acceptance rg `\bdatabase/sql\b` returns 0
+// when combined with Phase 3.
 package asset
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
-
-	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// ClipFolder represents a folder containing multiple clips from the same source
+// ClipFolder represents a folder containing multiple clips from the same source.
 type ClipFolder struct {
 	ID               string    `json:"id"`
 	Source           string    `json:"source"` // youtube, stock, etc.
@@ -33,7 +44,7 @@ type ClipFolder struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
-// ClipManifest represents the JSON manifest for a clip folder
+// ClipManifest represents the JSON manifest for a clip folder.
 type ClipManifest struct {
 	ID              string             `json:"id"`
 	FolderID        string             `json:"folder_id"`
@@ -48,7 +59,7 @@ type ClipManifest struct {
 	Clips           []ClipManifestItem `json:"clips"`
 }
 
-// ClipFolderStats represents aggregated statistics for the folder
+// ClipFolderStats represents aggregated statistics for the folder.
 type ClipFolderStats struct {
 	ClipCount      int `json:"clip_count"`
 	ProcessedCount int `json:"processed_count"`
@@ -56,53 +67,54 @@ type ClipFolderStats struct {
 	SkippedCount   int `json:"skipped_count"`
 }
 
-// ClipManifestItem represents a clip entry in the manifest
+// ClipManifestItem represents a clip entry in the manifest. See the
+// UnmarshalJSON method for the legacy `tags` shape compatibility.
 type ClipManifestItem struct {
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	RawName           string   `json:"raw_name,omitempty"`
-	CleanTitle        string   `json:"clean_title,omitempty"`
-	ShortTitle        string   `json:"short_title,omitempty"`
-	Start             string   `json:"start"`
-	End               string   `json:"end"`
-	StartSeconds      int      `json:"start_seconds"`
-	EndSeconds        int      `json:"end_seconds"`
-	DurationSeconds   int      `json:"duration_seconds"`
-	Filename          string   `json:"filename,omitempty"`
-	LocalPath         string   `json:"local_path,omitempty"`
-	DriveLink         string   `json:"drive_link,omitempty"`
-	FileHash          string   `json:"file_hash,omitempty"`
-	Status            string   `json:"status"`
-	Tags              []string `json:"tags,omitempty"`
-	SourceTags        []string `json:"source_tags,omitempty"`
-	ClipTags          []string `json:"clip_tags,omitempty"`
-	SearchKeywords    []string `json:"search_keywords,omitempty"`
-	EmbeddingText     string   `json:"embedding_text,omitempty"`
-	VideoTitle        string   `json:"video_title,omitempty"`
-	Channel           string   `json:"channel,omitempty"`
-	Description       string   `json:"description,omitempty"`
-	RawTranscript     string   `json:"raw_transcript,omitempty"`
-	Transcript        string   `json:"transcript,omitempty"`
-	CleanTranscript   string   `json:"clean_transcript,omitempty"`
-	ClipSummary       string   `json:"clip_summary,omitempty"`
-	Hook              string   `json:"hook,omitempty"`
-	Topics            []string `json:"topics,omitempty"`
-	Speakers          []string `json:"speakers,omitempty"`
-	People            []string `json:"people,omitempty"`
-	MentionedPeople   []string `json:"mentioned_people,omitempty"`
-	QualityScore      float64  `json:"quality_score,omitempty"`
-	SearchVisibility  string   `json:"search_visibility,omitempty"`
-	DuplicateGroupID  string   `json:"duplicate_group_id,omitempty"`
-	DuplicateOf       string   `json:"duplicate_of,omitempty"`
-	IsDuplicate       bool     `json:"is_duplicate,omitempty"`
-	IsBestVersion     bool     `json:"is_best_version,omitempty"`
-	DuplicateReason   string   `json:"duplicate_reason,omitempty"`
-	DuplicateScore    float64  `json:"duplicate_score,omitempty"`
-	TopicClusterID    string   `json:"topic_cluster_id,omitempty"`
-	TopicClusterLabel string   `json:"topic_cluster_label,omitempty"`
-	TopicClusterSize  int      `json:"topic_cluster_size,omitempty"`
-	TopicClusterRank  int      `json:"topic_cluster_rank,omitempty"`
-	YouTubeURL        string   `json:"youtube_url,omitempty"`
+	ID                string
+	Name              string
+	RawName           string
+	CleanTitle        string
+	ShortTitle        string
+	Start             string
+	End               string
+	StartSeconds      int
+	EndSeconds        int
+	DurationSeconds   int
+	Filename          string
+	LocalPath         string
+	DriveLink         string
+	FileHash          string
+	Status            string
+	Tags              []string
+	SourceTags        []string
+	ClipTags          []string
+	SearchKeywords    []string
+	EmbeddingText     string
+	VideoTitle        string
+	Channel           string
+	Description       string
+	RawTranscript     string
+	Transcript        string
+	CleanTranscript   string
+	ClipSummary       string
+	Hook              string
+	Topics            []string
+	Speakers          []string
+	People            []string
+	MentionedPeople   []string
+	QualityScore      float64
+	SearchVisibility  string
+	DuplicateGroupID  string
+	DuplicateOf       string
+	IsDuplicate       bool
+	IsBestVersion     bool
+	DuplicateReason   string
+	DuplicateScore    float64
+	TopicClusterID    string
+	TopicClusterLabel string
+	TopicClusterSize  int
+	TopicClusterRank  int
+	YouTubeURL        string
 }
 
 // UnmarshalJSON accepts both the legacy string-encoded JSON array and the new
@@ -275,217 +287,3 @@ func (c *ClipManifestItem) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
-
-func (s *AssetStoreSQLite) UpsertFolder(ctx context.Context, folder *ClipFolder) error {
-	now := time.Now()
-	// Compute search key: lowercase group + folder path, remove spaces
-	searchKey := strings.ToLower(folder.Group + " " + folder.FolderPath)
-	searchKey = strings.ReplaceAll(searchKey, " ", "")
-
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO clip_folders (id, source, source_url, video_id, folder_id, folder_path,
-			local_folder_path, group_name, manifest_txt_path, manifest_json_path,
-			clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at, search_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			source=excluded.source, source_url=excluded.source_url, video_id=excluded.video_id,
-			folder_id=excluded.folder_id, folder_path=excluded.folder_path,
-			local_folder_path=excluded.local_folder_path, group_name=excluded.group_name,
-			manifest_txt_path=excluded.manifest_txt_path, manifest_json_path=excluded.manifest_json_path,
-			clip_count=excluded.clip_count, processed_count=excluded.processed_count,
-			failed_count=excluded.failed_count, skipped_count=excluded.skipped_count,
-			last_error=excluded.last_error, metadata=excluded.metadata, updated_at=excluded.updated_at,
-			search_key=excluded.search_key
-		`, folder.ID, folder.Source, folder.SourceURL, folder.VideoID, folder.FolderID, folder.FolderPath,
-		folder.LocalFolderPath, folder.Group, folder.ManifestTXTPath, folder.ManifestJSONPath,
-		folder.ClipCount, folder.ProcessedCount, folder.FailedCount, folder.SkippedCount, folder.LastError, folder.Metadata,
-		timeutil.FormatRFC3339(folder.CreatedAt), timeutil.FormatRFC3339(now), searchKey)
-
-	return err
-}
-
-// DeleteFolder deletes a clip folder by its ID.
-func (s *AssetStoreSQLite) DeleteFolder(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("clip folder id is required")
-	}
-
-	_, err := s.db.ExecContext(ctx, "DELETE FROM clip_folders WHERE id = ?", id)
-	return err
-}
-
-// GetFolder retrieves a clip folder by ID
-func (s *AssetStoreSQLite) GetFolder(ctx context.Context, id string) (*ClipFolder, error) {
-	query := buildClipFolderQuery("") + " WHERE id = ? LIMIT 1"
-	row := s.db.QueryRowContext(ctx, query, id)
-
-	var folder ClipFolder
-	var createdAt, updatedAt string
-	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
-		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
-		&folder.ManifestJSONPath, &folder.ClipCount, &folder.ProcessedCount, &folder.FailedCount,
-		&folder.SkippedCount, &folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
-
-	if err != nil {
-		return nil, err
-	}
-
-	folder.CreatedAt = timeutil.ParseRFC3339(createdAt)
-	folder.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
-
-	return &folder, nil
-}
-
-// GetFolderByVideoID retrieves a clip folder by video ID
-func (s *AssetStoreSQLite) GetFolderByVideoID(ctx context.Context, videoID string) (*ClipFolder, error) {
-	query := buildClipFolderQuery("") + " WHERE video_id = ? LIMIT 1"
-	row := s.db.QueryRowContext(ctx, query, videoID)
-
-	var folder ClipFolder
-	var createdAt, updatedAt string
-	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
-		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
-		&folder.ManifestJSONPath, &folder.ClipCount, &folder.ProcessedCount, &folder.FailedCount,
-		&folder.SkippedCount, &folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
-
-	if err != nil {
-		return nil, err
-	}
-
-	folder.CreatedAt = timeutil.ParseRFC3339(createdAt)
-	folder.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
-
-	return &folder, nil
-}
-
-// ListByFolderID returns all clips for a given folder ID (canonical column after migration 059).
-func (s *AssetStoreSQLite) ListByFolderID(ctx context.Context, folderID string) ([]*Asset, error) {
-	query := buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
-	rows, err := s.db.QueryContext(ctx, query, folderID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var clips []*Asset
-	for rows.Next() {
-		clip, err := scanCanonicalAssetRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		clips = append(clips, clip)
-	}
-	return clips, rows.Err()
-}
-
-// ListByFolderPath returns all clips for a given folder path (canonical column).
-func (s *AssetStoreSQLite) ListByFolderPath(ctx context.Context, folderPath string) ([]*Asset, error) {
-	query := buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
-	rows, err := s.db.QueryContext(ctx, query, folderPath)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var clips []*Asset
-	for rows.Next() {
-		clip, err := scanCanonicalAssetRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		clips = append(clips, clip)
-	}
-	return clips, rows.Err()
-}
-
-// CountByFolderID returns the number of clips in a folder (folder_id is a canonical column).
-func (s *AssetStoreSQLite) CountByFolderID(ctx context.Context, folderID string) (int, error) {
-	query := "SELECT COUNT(*) FROM media_assets WHERE folder_id = ?"
-	row := s.db.QueryRowContext(ctx, query, folderID)
-	var count int
-	err := row.Scan(&count)
-	return count, err
-}
-
-// ListFolders returns all clip folders, optionally filtered by source
-func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*ClipFolder, error) {
-	query := buildClipFolderQuery(source)
-	if source != "" {
-		query += " ORDER BY updated_at DESC"
-	} else {
-		query += " ORDER BY updated_at DESC"
-	}
-	args := []any{}
-	if source != "" {
-		args = append(args, source)
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var folders []*ClipFolder
-	for rows.Next() {
-		var folder ClipFolder
-		var createdAt, updatedAt string
-		err := rows.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID,
-			&folder.FolderID, &folder.FolderPath, &folder.LocalFolderPath, &folder.Group,
-			&folder.ManifestTXTPath, &folder.ManifestJSONPath, &folder.ClipCount,
-			&folder.ProcessedCount, &folder.FailedCount, &folder.SkippedCount,
-			&folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
-		if err != nil {
-			return nil, err
-		}
-		folder.CreatedAt = timeutil.ParseRFC3339(createdAt)
-		folder.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
-		folders = append(folders, &folder)
-	}
-	return folders, rows.Err()
-}
-
-// SearchFolders searches clip folders by keyword in source_url, video_id, group_name, or folder_path
-// Uses LIKE search.
-func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([]*ClipFolder, error) {
-	columns := []string{"source_url", "video_id", "group_name", "folder_path"}
-	keywords := strings.Fields(keyword)
-	if len(keywords) == 0 {
-		keywords = []string{keyword}
-	}
-
-	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
-	if conditionSQL == "" {
-		return []*ClipFolder{}, nil
-	}
-
-	query := buildClipFolderQuery("") + " WHERE " + conditionSQL + " ORDER BY updated_at DESC"
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var folders []*ClipFolder
-	for rows.Next() {
-		var folder ClipFolder
-		var createdAt, updatedAt string
-		err := rows.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID,
-			&folder.FolderID, &folder.FolderPath, &folder.LocalFolderPath, &folder.Group,
-			&folder.ManifestTXTPath, &folder.ManifestJSONPath, &folder.ClipCount,
-			&folder.ProcessedCount, &folder.FailedCount, &folder.SkippedCount,
-			&folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
-		if err != nil {
-			return nil, err
-		}
-		folder.CreatedAt = timeutil.ParseRFC3339(createdAt)
-		folder.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
-		folders = append(folders, &folder)
-	}
-	return folders, rows.Err()
-}
-
-// GetFolderChildren returns all clips that are children of the given parent_folder_id.
-// parent_folder_id is stored in metadata_json.
-// Pass an empty string to get root folders.

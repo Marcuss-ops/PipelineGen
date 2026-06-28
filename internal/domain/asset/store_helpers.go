@@ -1,12 +1,49 @@
+// Package asset — Store interface contracts + AssetStoreSQLite marker
+// + Service ctor (Wave C / Phase 3 slim, Phase 4 unification).
+//
+// Phase 3 (Wave C / Blocco 1 Asset SSOT, June 2026): the SQL
+// receivers and `database/sql` import were moved to Local infra.
+//
+// Phase 4 (June 2026): the `localMediaAssetColumns` mirror const,
+// the `buildMediaAssetQuery` + `buildClipFolderQuery` helpers, and the
+// previously-implicit `clipFolderColumns` legacy const they referenced
+// were REMOVED from this domain file. Canonical home:
+// `internal/infrastructure/database/sqlite/assets/clips_repository.go`
+// exports `MediaAssetColumns` + `ClipFolderColumns`; the production
+// query builders stay in the same-package infra scope
+// (`internal/infrastructure/database/sqlite/assets/store_helpers.go`).
+//
+// What moved to Local infra (Phase 3):
+//
+//   - 4 receivers (GetFolderChildren/FindByPHash/MarkUsed/MarkClipsUsed) →
+//     internal/infrastructure/database/sqlite/assets/store_helpers.go
+//   - 9 Store-CRD receivers (Get/Save/Delete/List) on `*AssetStoreSQLite` →
+//     internal/infrastructure/database/sqlite/assets/asset_store.go
+//     (asset_repository_adapter + summary_query)
+//   - `db *sql.DB` field on `*AssetStoreSQLite` (Local infra owns the
+//     connection handle via embed; the legacy struct no longer needs
+//     the field — its presence was an artefact of the pre-Phase-3
+//     moved-from-Local/dual-struct shape)
+//
+// The 4 factory method receivers (AssetRepository/LocationRepository/
+// ProcessingRepository/VersionRepository) STAY on the legacy struct
+// so the domain Service type-switches against the unexported
+// `assetStoreAdapter` interface (defined in store_core.go) without
+// importing Local infra. They return nil in the legacy struct because
+// the adapter structs (locationRepositoryAdapter/versionRepositoryAdapter/
+// processingRepositoryAdapter/assetRepositoryAdapter) moved to
+// Local infra; Local's `*sqassets.AssetStoreSQLite` declares its own
+// concrete factory methods that shadow the legacy stubs and produce
+// the real adapters.
+//
+// NO stdlib database/sql import, NO fmt/time/timeutil imports. Phase 3
+// acceptance: zero stdlib database/sql and sqlite3 hits in this
+// domain package.
 package asset
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
-	"time"
 
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
 
@@ -78,30 +115,50 @@ type DeliveryStore interface {
 	ListPending(ctx context.Context) ([]*Delivery, error)
 }
 
-// ── AssetStoreSQLite ────────────────────────────────────────────────
+// ── AssetStoreSQLite (legacy marker for HYBRID embed promotion) ────
 
-// AssetStoreSQLite is the SQLite-backed implementation of the Store interface.
-// It also provides folder, location, processing, and version repositories.
+// AssetStoreSQLite is the SQLite-backed implementation marker kept in
+// domain for backwards naming compatibility AND the HYBRID embed
+// promotion contract (Local infra embeds this struct to inherit the
+// nil-returning factory stubs below; Local's own concrete receivers
+// shadow the stubs).
+//
+// Wave C / Phase 3 (June 2026): the legacy struct no longer owns the
+// SQLite connection handle. Local `*sqassets.AssetStoreSQLite` owns
+// `db *sql.DB`; the legacy struct's only state is the logger (Local
+// shadows it via its own `log *zap.Logger` field on the outer struct).
+//
+// Ctor signature change: `NewAssetStoreSQLite(log *zap.Logger)` (no
+// db parameter) — production callers MUST construct via
+// `sqassets.NewAssetStoreSQLite(*sql.DB, *zap.Logger)`. The legacy
+// ctor is preserved only for the Local infra embed sites in
+// `internal/infrastructure/database/sqlite/assets/{asset_store,clips_repository}.go`.
 type AssetStoreSQLite struct {
-	db  *sql.DB
 	log *zap.Logger
 }
 
-// NewAssetStoreSQLite creates a new AssetStoreSQLite with the given database and logger.
-func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
+// NewAssetStoreSQLite creates a new AssetStoreSQLite marker with the
+// given logger. Production callers should use the Local ctor
+// `sqassets.NewAssetStoreSQLite(*sql.DB, *zap.Logger)` which embeds
+// this struct AND owns the db handle.
+func NewAssetStoreSQLite(log *zap.Logger) *AssetStoreSQLite {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &AssetStoreSQLite{db: db, log: log}
+	return &AssetStoreSQLite{log: log}
 }
 
 // ── Service Class ───────────────────────────────────────────────────
 
+// Service is the high-level facade that wraps a Store implementation
+// and exposes Repository accessors that type-switch against the
+// unexported assetStoreAdapter interface (declared in store_core.go).
 type Service struct {
 	store Store
 	log   *zap.Logger
 }
 
+// NewService creates a new Service wrapping the given Store.
 func NewService(store Store, log *zap.Logger) *Service {
 	if log == nil {
 		log = zap.NewNop()
@@ -109,104 +166,58 @@ func NewService(store Store, log *zap.Logger) *Service {
 	return &Service{store: store, log: log}
 }
 
+// Get delegates to the wrapped Store.
 func (s *Service) Get(ctx context.Context, id string) (*Details, error) {
 	return s.store.Get(ctx, id)
 }
 
+// List delegates to the wrapped Store.
 func (s *Service) List(ctx context.Context, filter Filter) ([]*Summary, error) {
 	return s.store.List(ctx, filter)
 }
 
+// Save delegates to the wrapped Store.
 func (s *Service) Save(ctx context.Context, details *Details) error {
 	return s.store.Save(ctx, details)
 }
 
+// Delete delegates to the wrapped Store.
 func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.store.Delete(ctx, id)
 }
 
-func (s *Service) Repository() Repository {
-	if sqliteStore, ok := s.store.(*AssetStoreSQLite); ok {
-		return sqliteStore.AssetRepository()
-	}
-	return nil
-}
-
-func (s *Service) LocationRepository() LocationRepository {
-	if sqliteStore, ok := s.store.(*AssetStoreSQLite); ok {
-		return sqliteStore.LocationRepository()
-	}
-	return nil
-}
-
-func (s *Service) ProcessingRepository() ProcessingRepository {
-	if sqliteStore, ok := s.store.(*AssetStoreSQLite); ok {
-		return sqliteStore.ProcessingRepository()
-	}
-	return nil
-}
-
-func (s *Service) VersionRepository() VersionRepository {
-	if sqliteStore, ok := s.store.(*AssetStoreSQLite); ok {
-		return sqliteStore.VersionRepository()
-	}
-	return nil
-}
-
-// mediaAssetColumns defines the columns selected from media_assets table.
+// ── nil-returning factory stubs (HYBRID embed promotion) ────────────
 //
-// PR 1 (June 2026, Lifecycle state SSOT): the legacy `status` column
-// is RETIRED as part of the canonical-lifecycle rewrite. Migration
-// 101 normalises the data; migration 102 drops the column in
-// production. The projection here reads lifecycle_state directly,
-// so callers always observe the canonical-cased value at lookup
-// time (the legacy COALESCE(status, …) fallback path is gone).
-// For fresh test fixtures that never had the `status` column,
-// removing it from the projection keeps SELECT — Scan alignment
-// exact (the matching scanner in clips_repository.go has already
-// dropped the corresponding destination).
-const mediaAssetColumns = `
-	id,
-	COALESCE(source, '') AS source,
-	COALESCE(name, '') AS name,
-	COALESCE(tags, '[]') AS tags,
-	COALESCE(tags_norm, '') AS tags_norm,
-	COALESCE(embedding_json, '[]') AS embedding_json,
-	COALESCE(duration_ms, 0) AS duration_ms,
-	COALESCE(url, '') AS url,
-	COALESCE(media_type, '') AS media_type,
-	COALESCE(local_path, '') AS local_path,
-	COALESCE(relative_path, '') AS relative_path,
-	COALESCE(drive_file_id, '') AS drive_file_id,
-	COALESCE(folder_id, '') AS drive_folder_id,
-	COALESCE(drive_link, '') AS drive_link,
-	COALESCE(download_link, '') AS download_link,
-	COALESCE(file_hash, '') AS file_hash,
-	COALESCE(metadata_json, '{}') AS metadata_json,
-	COALESCE(visual_embedding, '[]') AS visual_embedding,
-	COALESCE(transcript_embedding, '[]') AS transcript_embedding,
-	created_at,
-	COALESCE(updated_at, '') AS updated_at,
-	COALESCE(width, 0) AS width,
-	COALESCE(height, 0) AS height,
-	COALESCE(lifecycle_state, 'ACTIVE') AS lifecycle_state,
-	COALESCE(deleted_at, '') AS deleted_at,
-	COALESCE(folder_id, '') AS folder_id,
-	COALESCE(parent_folder_id, '') AS parent_folder_id,
-	COALESCE(folder_path, '') AS folder_path,
-	COALESCE(category, '') AS category,
-	COALESCE(group_name, '') AS group_name,
-	COALESCE(filename, '') AS filename,
-	COALESCE(error, '') AS error,
-	COALESCE(thumb_url, '') AS thumb_url,
-	COALESCE(phash, '') AS phash,
-	COALESCE(search_text, '') AS search_text,
-	COALESCE(scene_type, '') AS scene_type,
-	COALESCE(quality_score, 0.0) AS quality_score,
-	COALESCE(reuse_count, 0) AS reuse_count,
-	COALESCE(last_used_at, '') AS last_used_at`
+// The four factory methods stay on the legacy struct so it satisfies
+// the `assetStoreAdapter` interface (store_core.go) — they return nil
+// in legacy execution paths. Local infra's
+// `*sqassets.AssetStoreSQLite` declares its own concrete versions of
+// these four methods, which shadow the legacy stubs and produce the
+// real adapters.
+//
+// Why not delete these stubs: deleting them would break the
+// `assetStoreAdapter` interface type-switch from going through struct
+// embedding cleanly, plus regression tests in other packages may
+// still construct legacy `*asset.AssetStoreSQLite` directly (and the
+// legacy type would then lack the constructor-dispatch methods even
+// after the LOCAL embed removed it).
+func (s *AssetStoreSQLite) AssetRepository() Repository {
+	return nil
+}
 
-const clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
+func (s *AssetStoreSQLite) LocationRepository() LocationRepository {
+	return nil
+}
+
+func (s *AssetStoreSQLite) ProcessingRepository() ProcessingRepository {
+	return nil
+}
+
+func (s *AssetStoreSQLite) VersionRepository() VersionRepository {
+	return nil
+}
+
+// ── Soft-delete filter (canonical SSOT, PR 1) ───────────────────────
 
 // SoftDeleteFilter returns the canonical SQL fragment that excludes
 // soft-deleted rows from query results.
@@ -218,109 +229,16 @@ const clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, C
 // Compatibility with the pre-101 lower-case value is dropped because
 // no production writer emits it anymore and migration 101 is a hard
 // pre-condition for the canonical enum to be SSOT.
+//
+// Phase 4 unification: the column projections (`mediaAssetColumns`,
+// `clipFolderColumns`) and the SQL query builders
+// (`buildMediaAssetQuery`, `buildClipFolderQuery`, `clipSearchColumns`)
+// that previously mirrored here are REMOVED. The canonical home is
+// `internal/infrastructure/database/sqlite/assets/clips_repository.go`
+// (`MediaAssetColumns`, `ClipFolderColumns` — now exported) and
+// `internal/infrastructure/database/sqlite/assets/store_helpers.go`
+// (the production query builders). Domain retains the soft-delete
+// SSOT only — no SQL primitives, no `database/sql` import.
 func SoftDeleteFilter() string {
 	return "lifecycle_state != 'DELETED'"
-}
-
-func buildMediaAssetQuery(source string) string {
-	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE " + SoftDeleteFilter()
-	if source != "" && source != "all" && source != "unified" {
-		query += " AND source = ?"
-	}
-	return query
-}
-
-func buildClipFolderQuery(source string) string {
-	query := "SELECT " + clipFolderColumns + " FROM clip_folders"
-	if source != "" && source != "all" && source != "unified" {
-		query += " WHERE source = ?"
-	}
-	return query
-}
-
-func clipSearchColumns() []string {
-	return []string{
-		"tags",
-		"name",
-		"search_text",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.clean_title')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.clip_summary')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.hook')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.topics')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.speakers')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.mentioned_people')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.people')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.clip_tags')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.search_keywords')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text')",
-	}
-}
-
-func (s *AssetStoreSQLite) GetFolderChildren(ctx context.Context, parentID string) ([]*Asset, error) {
-	query := `SELECT ` + mediaAssetColumns + `
-		FROM media_assets
-		WHERE ` + SoftDeleteFilter() + ` AND parent_folder_id = ?
-		ORDER BY name ASC`
-
-	rows, err := s.db.QueryContext(ctx, query, parentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var clips []*Asset
-	for rows.Next() {
-		clip, err := scanCanonicalAssetRows(rows)
-		if err != nil {
-			s.log.Error("failed to scan clip", zap.Error(err))
-			continue
-		}
-		clips = append(clips, clip)
-	}
-
-	return clips, rows.Err()
-}
-
-// FindByPHash searches for a clip with the given perceptual hash (canonical column after migration 059).
-// Returns the clip ID if found, empty string if not.
-func (s *AssetStoreSQLite) FindByPHash(ctx context.Context, phash string) (string, error) {
-	if phash == "" {
-		return "", nil
-	}
-	var id string
-	query := `SELECT id FROM media_assets WHERE phash = ? AND ` + SoftDeleteFilter() + ` LIMIT 1`
-	err := s.db.QueryRowContext(ctx, query, phash).Scan(&id)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("FindByPHash: %w", err)
-	}
-	return id, nil
-}
-
-// MarkUsed marks a clip as used, incrementing reuse_count and setting last_used_at
-// on the canonical columns (migration 059).
-func (s *AssetStoreSQLite) MarkUsed(ctx context.Context, clipID string) error {
-	if clipID == "" {
-		return nil
-	}
-	now := timeutil.FormatRFC3339(time.Now())
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE media_assets
-		SET reuse_count = reuse_count + 1,
-		    last_used_at = ?
-		WHERE id = ?
-	`, now, clipID)
-	return err
-}
-
-// MarkClipsUsed marks multiple clips as used in a single operation.
-func (s *AssetStoreSQLite) MarkClipsUsed(ctx context.Context, clipIDs []string) error {
-	for _, id := range clipIDs {
-		if err := s.MarkUsed(ctx, id); err != nil {
-			return err
-		}
-	}
-	return nil
 }

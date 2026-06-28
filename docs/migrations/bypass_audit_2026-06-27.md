@@ -167,11 +167,28 @@ Task 3 (media-curate + youtube + ai):
 | file:line | bucket | reason |
 |---|---|---|
 | internal/infrastructure/database/sqlite/outbox/repository.go:588 | tx primitive | comment-only (`// repo.UpsertClip(...)`) inside the dispatcher; documentation, not a call |
-| internal/infrastructure/database/sqlite/assets/clips_repository.go:336 | tx primitive | the `UpsertClip` method definition on `*ClipsRepository` |
-| internal/application/assets/mutations/primitives.go:72 | tx primitive | comment inside the interface (`UpsertClip(ctx, clip)` docblock) |
-| internal/application/assets/mutations/primitives.go:89 | tx primitive | interface method declaration on `AssetMutationPrimitives` |
-| internal/application/assets/providers/artlist/service_test.go:60 | test | test fixture |
-| internal/application/assets/providers/artlist/dispatcher_stub_test.go:55 | test | test stub delegate |
+| internal/infrastructure/database/sqlite/assets/clips_repository.go | tx primitive | the `UpsertClip` method definition on `*ClipsRepository` (line shifts as the file grows; the audit doc's stale `:336` reference is no longer accurate post-PR 2 / Blocco 1 sub-PR which injected the `Mutate` typed-command wrapper + bumped imports) |
+| internal/application/assets/mutations/primitives.go | tx primitive | the interface method declaration on `AssetMutationPrimitives` |
+| internal/application/assets/providers/artlist/service_test.go | test | test fixture |
+| internal/application/assets/providers/artlist/dispatcher_stub_test.go | test | test stub delegate |
+
+> **Audit-doc drift correction (PR 2 / Blocco 1 sub-PR, June 2026)**:
+> The pre-PR-2 audit snapshot listed the `UpsertClip` definition at
+> `clips_repository.go:336`. After PR 2 / Blocco 1 sub-PR landed the
+> new `Mutate(ctx, mutations.AssetMutationCommand)` typed-command
+> wrapper (with `errors` + `mutations` imports added), the line
+> numbers in `clips_repository.go` shifted by ~30 lines. The
+> `:336` literal in this audit doc is therefore stale. The
+> **structural** content of the rg2 bucket is unchanged —
+> `UpsertClip` is still a public method on `*ClipsRepository`,
+> still consumed only by the dispatcher (cross-package), the
+> dispatcher stub, and tests. The new canonical entry point
+> `Mutate(ctx, mutations.AssetMutationCommand)` (where Action is
+> one of `upsert` | `index` | `restore` | `delete`) is an
+> ADDITIVE surface that future code SHOULD use; the existing
+> methods remain for adapter delegation. Re-runnning the rg audit
+> query with shifted line numbers is part of the post-merge CI
+> pass.
 
 ### rg3 `\.Restore\(` — restore-path callers
 

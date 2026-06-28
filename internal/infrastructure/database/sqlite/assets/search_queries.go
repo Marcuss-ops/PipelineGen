@@ -1,0 +1,309 @@
+// Package assets — search SQL queries (Wave C: moved from
+// internal/domain/asset/search_core.go).
+//
+// AdvancedSearchRequest/AdvancedSearchResult/SearchRequest/SearchResult/
+// Searcher/EntityExtraction* types stay in domain (canonical contracts).
+// The 4 SQL receivers migrate here.
+package assets
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
+)
+
+// ── SQL receivers (migrated from search_core.go) ─────────────────────
+
+// SearchClips searches clips by tag or name.
+//
+// Layered strategy:
+//
+//  1. Fast path: indexed clip_search_terms table (O(log n) per term).
+//  2. Fallback: LIKE on tags, name and richer metadata fields (AND
+//     semantics).
+//  3. Recursive fallback: OR semantics when AND yields zero results.
+//
+// Results are scored by keyword match quality, quality score,
+// duplicate penalty and sponsor penalty (see scoreClips).
+//
+// Package layout: related but distinct search paths live in dedicated
+// files:
+//
+//   - search_queries.go — SearchClips + SearchClipsAdvanced (this file).
+//   - search_terms_queries.go — SearchByTerms + fetchClipsByIDs
+//     (indexed lookup).
+//   - search_queries.go SearchStockByKeywords (source='stock' shortcut).
+//   - clip_list_queries.go — list ops + LastUpdatedAtForTerm.
+func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) ([]*asset.Asset, error) {
+	keywords := strings.Fields(tag)
+	if len(keywords) == 0 {
+		keywords = []string{tag}
+	}
+
+	// Fast path: use indexed search terms table.
+	clips, err := s.SearchByTerms(ctx, source, keywords, 50)
+	if err == nil && len(clips) > 0 {
+		scored := asset.ScoreClips(clips, keywords)
+		return scored, nil
+	}
+
+	// Fallback: LIKE on tags, name, and richer metadata fields.
+	columns := clipSearchColumns()
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*asset.Asset{}, nil
+	}
+
+	query := buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
+
+	finalArgs := []any{}
+	if source != "" && source != "all" && source != "unified" {
+		finalArgs = append(finalArgs, source)
+	}
+	finalArgs = append(finalArgs, args...)
+
+	rows, err := s.db.QueryContext(ctx, query, finalArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*asset.Asset
+	for rows.Next() {
+		clip, err := ScanCanonicalAssetRowsPublic(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, clip)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(results) > 0 {
+		return asset.ScoreClips(results, keywords), nil
+	}
+
+	if len(keywords) > 1 {
+		orCondition, orArgs := sqlutil.BuildFallbackLikeConditionsOR(keywords, columns)
+		if orCondition != "" {
+			orQuery := buildMediaAssetQuery(source) + " AND (" + orCondition + ")"
+			orFinalArgs := []any{}
+			if source != "" && source != "all" && source != "unified" {
+				orFinalArgs = append(orFinalArgs, source)
+			}
+			orFinalArgs = append(orFinalArgs, orArgs...)
+
+			orRows, err := s.db.QueryContext(ctx, orQuery, orFinalArgs...)
+			if err != nil {
+				return nil, err
+			}
+			defer orRows.Close()
+
+			for orRows.Next() {
+				clip, err := ScanCanonicalAssetRowsPublic(orRows)
+				if err != nil {
+					return nil, err
+				}
+				results = append(results, clip)
+			}
+			if err := orRows.Err(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return asset.ScoreClips(results, keywords), nil
+}
+
+// SearchClipsByKeywords searches clips by keywords using LIKE on the
+// media_assets table.
+func (s *AssetStoreSQLite) SearchClipsByKeywords(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error) {
+	if len(keywords) == 0 {
+		return []*asset.Asset{}, nil
+	}
+
+	columns := clipSearchColumns()
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*asset.Asset{}, nil
+	}
+
+	query := fmt.Sprintf("%s AND (%s) LIMIT ?", buildMediaAssetQuery(source), conditionSQL)
+	finalArgs := []any{}
+	if source != "" && source != "all" && source != "unified" {
+		finalArgs = append(finalArgs, source)
+	}
+	finalArgs = append(finalArgs, args...)
+	finalArgs = append(finalArgs, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, finalArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*asset.Asset
+	for rows.Next() {
+		clip, err := ScanCanonicalAssetRowsPublic(rows)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
+// SearchClipsAdvanced searches clips with structured filters.
+func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.AdvancedSearchRequest) (*asset.AdvancedSearchResult, error) {
+	if req.Limit <= 0 {
+		req.Limit = 50
+	}
+	if req.Limit > 500 {
+		req.Limit = 500
+	}
+
+	conditions := []string{SoftDeleteFilter()}
+	args := []any{}
+
+	if req.Source != "" && req.Source != "all" {
+		conditions = append(conditions, "source = ?")
+		args = append(args, req.Source)
+	}
+
+	if req.Category != "" {
+		conditions = append(conditions, "category = ?")
+		args = append(args, req.Category)
+	}
+
+	if req.Q != "" {
+		keywords := strings.Fields(req.Q)
+		if len(keywords) > 0 {
+			columns := clipSearchColumns()
+			cond, kwArgs := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+			if cond != "" {
+				conditions = append(conditions, "("+cond+")")
+				args = append(args, kwArgs...)
+			}
+		}
+	}
+
+	if req.MinDuration > 0 {
+		conditions = append(conditions, "duration_ms >= ?")
+		args = append(args, req.MinDuration*1000)
+	}
+	if req.MaxDuration > 0 {
+		conditions = append(conditions, "duration_ms <= ?")
+		args = append(args, req.MaxDuration*1000)
+	}
+
+	if req.HasTranscript {
+		conditions = append(conditions, "(search_text IS NOT NULL AND search_text != '')")
+	}
+
+	if req.HasDriveLink {
+		conditions = append(conditions, "(drive_link != '' OR download_link != '')")
+	}
+
+	if req.CreatedAfter != "" {
+		conditions = append(conditions, "created_at >= ?")
+		args = append(args, req.CreatedAfter)
+	}
+	if req.CreatedBefore != "" {
+		conditions = append(conditions, "created_at <= ?")
+		args = append(args, req.CreatedBefore)
+	}
+
+	whereClause := strings.Join(conditions, " AND ")
+
+	countQuery := "SELECT COUNT(*) FROM media_assets WHERE " + whereClause
+	var total int
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count query: %w", err)
+	}
+
+	sortField := "created_at"
+	if req.SortBy != "" {
+		switch req.SortBy {
+		case "duration":
+			sortField = "duration_ms"
+		case "name":
+			sortField = "name"
+		case "source":
+			sortField = "source"
+		}
+	}
+	sortDir := "DESC"
+	if req.SortAsc {
+		sortDir = "ASC"
+	}
+
+	dataQuery := fmt.Sprintf("SELECT %s FROM media_assets WHERE %s ORDER BY %s %s LIMIT ? OFFSET ?",
+		MediaAssetColumns, whereClause, sortField, sortDir)
+	dataArgs := append(args, req.Limit, req.Offset)
+
+	rows, err := s.db.QueryContext(ctx, dataQuery, dataArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("data query: %w", err)
+	}
+	defer rows.Close()
+
+	var clips []*asset.Asset
+	for rows.Next() {
+		clip, err := ScanCanonicalAssetRowsPublic(rows)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+
+	return &asset.AdvancedSearchResult{
+		Clips:  clips,
+		Total:  total,
+		Limit:  req.Limit,
+		Offset: req.Offset,
+	}, rows.Err()
+}
+
+// SearchStockByKeywords searches stock clips by keywords using LIKE on
+// the media_assets table. The source is hard-coded to 'stock'.
+func (s *AssetStoreSQLite) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*asset.Asset, error) {
+	if len(keywords) == 0 {
+		return []*asset.Asset{}, nil
+	}
+
+	columns := clipSearchColumns()
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*asset.Asset{}, nil
+	}
+
+	query := fmt.Sprintf(`
+		SELECT %s
+		FROM media_assets
+		WHERE source = 'stock' AND `+SoftDeleteFilter()+` AND (%s)
+		LIMIT ?`,
+		MediaAssetColumns,
+		conditionSQL,
+	)
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*asset.Asset
+	for rows.Next() {
+		clip, err := ScanCanonicalAssetRowsPublic(rows)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}

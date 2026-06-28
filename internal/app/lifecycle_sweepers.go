@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
@@ -100,7 +101,7 @@ func runDedupSweep(ctx context.Context, clipsRepo *assets.ClipsRepository, log *
 	rows, err := clipsRepo.DB().QueryContext(ctx, `
 		SELECT json_extract(metadata_json, '$.youtube_video_id') AS vid, COUNT(*) AS n
 		FROM media_assets
-		WHERE `+clipsRepo.SoftDeleteFilter()+`
+		WHERE `+asset.SoftDeleteFilter()+`
 		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') IS NOT NULL
 		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') != ''
 		GROUP BY vid

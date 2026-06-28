@@ -1,4 +1,9 @@
-package asset
+// Package assets — clip/tag SQL queries (Wave C: moved from
+// internal/domain/asset/tags.go).
+//
+// After Wave C, the source `internal/domain/asset/tags.go` is deleted
+// (no types reside in it). The 8 SQL receivers migrate here.
+package assets
 
 import (
 	"context"
@@ -6,7 +11,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
+
+// ── SQL receivers (migrated from tags.go) ────────────────────────────
 
 // BulkAddTags adds a set of tags to multiple clips efficiently.
 //
@@ -15,9 +24,9 @@ import (
 // Callers should route through the outbox.Dispatcher with a re-index
 // event instead of mutating tags in isolation.
 //
-// Today this is called from the BulkTagsUseCase (API handler path); a
-// future PR should replace it with a dispatcher.EnqueueAndIndex call
-// that re-indexes the affected assets after the tag change.
+// Today this is called from the BulkTagsUseCase (API handler path);
+// a future PR should replace it with a dispatcher.EnqueueAndIndex
+// call that re-indexes the affected assets after the tag change.
 func (s *AssetStoreSQLite) BulkAddTags(ctx context.Context, ids []string, tags []string) error {
 	if len(ids) == 0 || len(tags) == 0 {
 		return nil
@@ -117,16 +126,15 @@ func (s *AssetStoreSQLite) BulkRemoveTags(ctx context.Context, ids []string, tag
 	return tx.Commit()
 }
 
-// GetClipByFolderAndFilename retrieves a clip by folder and filename (canonical columns after migration 059).
-func (s *AssetStoreSQLite) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*Asset, error) {
+// GetClipByFolderAndFilename retrieves a clip by folder + filename.
+func (s *AssetStoreSQLite) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*asset.Asset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_id = ? AND filename = ? LIMIT 1"
 	row := s.db.QueryRowContext(ctx, query, folderID, filename)
-	return s.scanCanonicalAssetRow(row)
+	return ScanCanonicalAssetRowPublic(row)
 }
 
-// GetClip retrieves a clip by ID. PR1: delegates to canonical assetrepo,
-// which returns (nil, assets.ErrSoftDeleted) for soft-deleted assets.
-func (s *AssetStoreSQLite) GetClip(ctx context.Context, id string) (*Asset, error) {
+// GetClip retrieves a clip by ID. Delegates to canonical Get.
+func (s *AssetStoreSQLite) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
 	det, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -137,9 +145,10 @@ func (s *AssetStoreSQLite) GetClip(ctx context.Context, id string) (*Asset, erro
 	return det.Asset, nil
 }
 
-// GetClipByDriveFileID finds a clip by Drive file ID (searches canonical columns drive_file_id, drive_link, download_link).
+// GetClipByDriveFileID finds a clip by Drive file ID (searches
+// canonical columns drive_file_id, drive_link, download_link).
 // Returns nil, nil if not found.
-func (s *AssetStoreSQLite) GetClipByDriveFileID(ctx context.Context, fileID string) (*Asset, error) {
+func (s *AssetStoreSQLite) GetClipByDriveFileID(ctx context.Context, fileID string) (*asset.Asset, error) {
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
 		return nil, fmt.Errorf("drive file id is required")
@@ -148,15 +157,16 @@ func (s *AssetStoreSQLite) GetClipByDriveFileID(ctx context.Context, fileID stri
 	pattern := "%" + fileID + "%"
 	query := buildMediaAssetQuery("") + " AND (drive_link LIKE ? OR download_link LIKE ? OR drive_file_id LIKE ?) LIMIT 1"
 	row := s.db.QueryRowContext(ctx, query, pattern, pattern, pattern)
-	clip, err := s.scanCanonicalAssetRow(row)
+	clip, err := ScanCanonicalAssetRowPublic(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return clip, err
 }
 
-// FindClipsByHash returns all clips with the given file hash (canonical column after migration 059).
-func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]*Asset, error) {
+// FindClipsByHash returns all clips with the given file hash
+// (canonical column after migration 059).
+func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]*asset.Asset, error) {
 	query := buildMediaAssetQuery("") + " AND file_hash = ?"
 	rows, err := s.db.QueryContext(ctx, query, hash)
 	if err != nil {
@@ -164,9 +174,9 @@ func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]
 	}
 	defer rows.Close()
 
-	var clips []*Asset
+	var clips []*asset.Asset
 	for rows.Next() {
-		clip, err := scanCanonicalAssetRows(rows)
+		clip, err := ScanCanonicalAssetRowsPublic(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -175,8 +185,9 @@ func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]
 	return clips, rows.Err()
 }
 
-// GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id (canonical column).
-func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*Asset, error) {
+// GetAllWithDriveFileID returns all clips that have a non-empty
+// drive_file_id (canonical column).
+func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*asset.Asset, error) {
 	query := buildMediaAssetQuery("") + " AND drive_file_id IS NOT NULL AND drive_file_id != ''"
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
@@ -184,9 +195,9 @@ func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*Asset,
 	}
 	defer rows.Close()
 
-	var clips []*Asset
+	var clips []*asset.Asset
 	for rows.Next() {
-		clip, err := scanCanonicalAssetRows(rows)
+		clip, err := ScanCanonicalAssetRowsPublic(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -195,11 +206,10 @@ func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*Asset,
 	return clips, rows.Err()
 }
 
-// UpdateDriveFileID updates the drive_file_id for a clip (canonical column).
+// UpdateDriveFileID updates the drive_file_id for a clip (canonical
+// column).
 //
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. drive_file_id changes
-// may affect indexing (the dispatcher uses it for event_key construction).
-// Callers should route through the outbox.Dispatcher.
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX.
 func (s *AssetStoreSQLite) UpdateDriveFileID(ctx context.Context, clipID, fileID string) error {
 	clipID = strings.TrimSpace(clipID)
 	fileID = strings.TrimSpace(fileID)
@@ -213,9 +223,7 @@ func (s *AssetStoreSQLite) UpdateDriveFileID(ctx context.Context, clipID, fileID
 
 // UpdateFileHash updates the file_hash for a clip (canonical column).
 //
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. file_hash changes affect
-// the dispatcher's supersede gate (event_key includes the content hash).
-// Callers should route through the outbox.Dispatcher.
+// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX.
 func (s *AssetStoreSQLite) UpdateFileHash(ctx context.Context, clipID, hash string) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
 	return err
