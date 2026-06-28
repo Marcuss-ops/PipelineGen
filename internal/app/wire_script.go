@@ -409,6 +409,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		ScriptsRepo:           scriptsRepoAdapter,
 		Memory:                memorySvc,
 		Jobs:                  root.Jobs.Facade,
+		// Issue 4 (June 2026, P1): wire the canonical job-type Registry
+		// so EnqueueGenerationJob sources MaxRetries from
+		// registry.DefaultMaxRetries(script.generate) instead of the
+		// pre-Issue-4 hard-coded 3-retry fallback.
+		Registry:              appjobs.Compose(),
 		AdminToken:            adminToken,
 		DriveFolderClient:     driveFolderClient,
 		DocumentCreator:       documentCreator,

@@ -46,10 +46,20 @@ const MaxPayloadSize = 1 << 20 // 1 MB
 // PR-B: repo field is the canonical job.JobBroker port, not the concrete
 // *sqljobs.SQLiteStore. Any future broker adapter (e.g. PostgreSQL) can be
 // injected without touching this file.
+//
+// Issue 4 (June 2026, P1): optional `registry *Registry` carries the
+// per-job-type default retries. Wired via the fluent WithRegistry(reg)
+// builder (mirrors the HC-1 Worker.WithRegistry precedent) so the
+// legacy NewService(repo, dispatcher, log) signature stays stable for
+// tests that don't depend on the registry. When attached, the
+// Enqueue()-side MaxRetries fallback is the registry default for
+// REGISTERED job types; UNREGISTERED types keep the legacy 3-retry
+// safety net (the check is `s.registry.IsRegistered(j.Type)`).
 type Service struct {
 	repo       job.JobBroker
 	dispatcher *Dispatcher
 	log        *zap.Logger
+	registry   *Registry
 
 	// enqueueMu serializes FindActiveByKey + Create to prevent the
 	// race where two concurrent Enqueue calls both find no existing
@@ -68,12 +78,80 @@ type statsProvider interface {
 // NewService constructs the Service from the canonical job.JobBroker port.
 // Composition root injects *sqljobs.SQLiteStore today; future PR-`postgres`
 // injects *pgbroker.Store (declared via `var _ job.JobBroker = (*pgbroker.Store)(nil)`).
+//
+// Issue 4 (June 2026, P1): the registry is NOT a required constructor arg
+// — attach it via the fluent WithRegistry(reg) builder. Nil-tolerant at
+// runtime: when no registry is attached the Enqueue() MaxRetries fallback
+// keeps the pre-Issue-4 hard-coded default of 3 for ANY job type (legacy
+// safety net preserved for test fixtures that don't wire the registry).
 func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger) *Service {
 	return &Service{
 		repo:       repo,
 		dispatcher: dispatcher,
 		log:        log,
 	}
+}
+
+// WithRegistry attaches the canonical job-type *Registry to this Service.
+// When attached, the Enqueue()-side MaxRetries fallback uses the registry's
+// per-job-type DefaultMaxRetries value for any REGISTERED job type and
+// keeps the legacy hard-coded 3 only for UNREGISTERED types. Mirrors the
+// HC-1 Worker.WithRegistry(reg *Registry) precedent.
+//
+// Issue 4 (June 2026, P1): nil-tolerant. Passing nil clears the field
+// (test fixture path). Calling WithRegistry multiple times reassigns
+// (last writer wins), which is unsafe-but-tolerated composition-only.
+func (s *Service) WithRegistry(reg *Registry) *Service {
+	if s == nil {
+		return s
+	}
+	s.registry = reg
+	return s
+}
+
+// hasRegistry reports whether this Service has a registry attached AND
+// the registry has the given job type registered. Used by Enqueue() to
+// gate the MaxRetries fallback so the legacy 3-retry safety net still
+// fires for unregistered types.
+func (s *Service) hasRegistry(jobType string) bool {
+	if s == nil || s.registry == nil {
+		return false
+	}
+	return s.registry.IsRegistered(jobType)
+}
+
+// resolveMaxRetries encodes the Issue 4 (June 2026, P1) MaxRetries
+// fallback semantic in a single testable helper. Enqueue() delegates
+// to this helper so the logic is decoupled from repo/dispatcher
+// concerns (test fixtures only need &Service{} filled in).
+//
+// Three-way semantics, in priority order:
+//
+//  1. currentMR < 0  → 0      (explicit "no retries" sentinel —
+//     pre-Issue-4 behaviour preserved verbatim; the worker treats 0
+//     as "do not retry").
+//
+//  2. currentMR > 0  → currentMR  (caller pre-set value preserved
+//     verbatim; registry is the fallback, not an override).
+//
+//  3. currentMR == 0 → registry.DefaultMaxRetries(jobType) when
+//     a registry is attached AND the type is REGISTERED; otherwise
+//     the legacy hard-coded 3-retry safety net.
+//
+// Nil-service / nil-registry paths are covered by the
+// `s.hasRegistry` guard inside the third branch.
+func (s *Service) resolveMaxRetries(jobType string, currentMR int) int {
+	if currentMR < 0 {
+		return 0
+	}
+	if currentMR > 0 {
+		return currentMR
+	}
+	// currentMR == 0 — resolve via registry when attached and registered.
+	if s.hasRegistry(jobType) {
+		return s.registry.DefaultMaxRetries(jobType)
+	}
+	return 3
 }
 
 // RegisterHandler registers a handler for the given job type.
@@ -213,12 +291,12 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		CorrelationID: req.CorrelationID,
 	}
 
-	// Backward-compatible default: MaxRetries == 0 means 3 retries.
-	if j.MaxRetries == 0 {
-		j.MaxRetries = 3
-	} else if j.MaxRetries < 0 {
-		j.MaxRetries = 0
-	}
+	// Issue 4 (June 2026, P1): MaxRetries fallback is now registry-aware.
+	// Delegate to the testable resolveMaxRetries helper so the semantic
+	// lock is pinned in registry_wiring_test.go without requiring a live
+	// repo/dispatcher fixture. See that file for the documented three-way
+	// semantic and the negative-sentinel preservation contract.
+	j.MaxRetries = s.resolveMaxRetries(j.Type, j.MaxRetries)
 
 	if j.Payload == nil || len(j.Payload) == 0 || string(j.Payload) == "null" {
 		j.Payload = json.RawMessage("{}")

@@ -629,7 +629,14 @@ func BuildJobsBundle(db *storage.SQLiteDB, log *zap.Logger) (*JobsBundle, error)
 
 	repo := sqljobs.NewSQLiteStore(db.DB, log)
 	dispatcher := appjobs.NewDispatcher()
-	svc := appjobs.NewService(repo, dispatcher, log)
+	// Issue 4 (June 2026, P1): attach the canonical job-type Registry
+	// so Enqueue() routes the MaxRetries fallback through the registry
+	// for REGISTERED job types (script.generate -> DefaultMaxRetries=2)
+	// and keeps the legacy hard-coded 3-retry safety net only for
+	// UNREGISTERED types. Mirrors the HC-1 Runner.WithRegistry(reg) and
+	// Worker.WithRegistry(reg) plumbing that landed in Issues 2 + the
+	// existing HC-1 typed-port chain (TimeoutResolver for worker timeouts).
+	svc := appjobs.NewService(repo, dispatcher, log).WithRegistry(appjobs.Compose())
 
 	// *appjobs.Service satisfies the domain job.Service interface directly.
 	// No facade needed — consumers declare their dependency as job.Service

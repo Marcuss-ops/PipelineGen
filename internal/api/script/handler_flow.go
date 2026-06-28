@@ -33,6 +33,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -78,6 +79,15 @@ type ScriptFlowHandler struct {
 	documentCreator   DocumentCreator
 	jobsSvc           jobservice.Service
 	scriptsRepo       usecase.ScriptRepository
+	// Issue 4 (June 2026, P1): registry is the canonical job-type
+	// Registry, attached at composition time so EnqueueGenerationJob
+	// can source MaxRetries from registry.DefaultMaxRetries(jType)
+	// instead of the pre-Issue-4 hard-coded 3-retry fallback.
+	// Optional (nil-tolerant) so legacy test fixtures that don't
+	// wire the registry keep working — EnqueueGenerationJob leaves
+	// MaxRetries=0 in that case and the JobsService fallback (now
+	// registry-aware) becomes the safety net.
+	registry *appjobs.Registry
 	memorySvc         *adapters.Service
 	harvestSvc        AutoHarvestService
 	driveFolderID     string
@@ -112,6 +122,12 @@ type ScriptFlowDeps struct {
 	ScriptsRepo usecase.ScriptRepository
 	Memory      *adapters.Service
 	Jobs        jobservice.Service
+	// Issue 4 (June 2026, P1): optional canonical job-type registry
+	// used by EnqueueGenerationJob to source MaxRetries from
+	// registry.DefaultMaxRetries(jType). Optional — nil preserves
+	// the legacy hard-coded 3-retry fallback path through the
+	// JobsService. Composition root will pass appjobs.Compose().
+	Registry *appjobs.Registry
 
 	AdminToken            string
 	DriveFolderClient     DriveFolderClient
@@ -160,6 +176,11 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		log:               log,
 		clipServices:      clipSvc,
 		insightBuilder:    NewScriptInsightBuilder(log, 12, clipSvc),
+		// Issue 4 (June 2026, P1): plumb the typed *appjobs.Registry
+		// through to the enqueue helpers so MaxRetries is sourced from
+		// registry.DefaultMaxRetries(script.generate)=2 instead of the
+		// pre-Issue-4 hard-coded 3-retry fallback.
+		registry: deps.Registry,
 	}
 
 	return h
