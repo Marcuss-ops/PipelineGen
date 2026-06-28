@@ -149,6 +149,18 @@ func (e *ErrSchemaIncompatible) Error() string {
 		len(e.Diff.MissingVectors), len(e.Diff.DimensionMismatches))
 }
 
+// NewErrSchemaIncompatible is the canonical constructor for
+// ErrSchemaIncompatible. Use this in call sites that pass the typed
+// error to a fmt.Errorf %w wrap (e.g. VerifyCandidate) so the
+// pointer-vs-value type contract is fixed at the constructor
+// boundary rather than re-litigated at every wrap site. Defensive
+// against future drift: if Diff is ever migrated to SchemaDiff
+// value-type, only this constructor changes — the wrap sites
+// continue to compile.
+func NewErrSchemaIncompatible(diff *SchemaDiff) *ErrSchemaIncompatible {
+	return &ErrSchemaIncompatible{Diff: diff}
+}
+
 // ErrCollectionNotFound is returned when a collection doesn't exist.
 type ErrCollectionNotFound struct {
 	Name string
