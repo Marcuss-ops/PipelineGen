@@ -441,8 +441,9 @@ func compositionBundleSourceFiles(t *testing.T) []string {
 // Process swapped (Outbox now BEFORE Process) and a new buildQdrantDeps
 // pre-phase introduced to feed BuildOutboxBundle's ClipIndexerService +
 // QdrantDeleter deps. Confirmed DAG:
-//   qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd) ->
-//     domains(reads process+outbox) -> sync/maint/utility.
+//
+//	qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd) ->
+//	  domains(reads process+outbox) -> sync/maint/utility.
 var frozenCompositionSequence = []string{
 	"BuildRepoBundle(",
 	"BuildSearchBundle(",

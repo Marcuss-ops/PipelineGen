@@ -38,7 +38,10 @@ import (
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
+	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -292,7 +295,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// satisfy `ppReg.Register`. The new signature is
 	// `(ctx, plan, input ProcessInput) (*PostProcessResult, error)`
 	// and the processor is the canonical single-owned binding assigner.
-	if !ppReg.Register(scripts.NewClipBindingsProcessor(log)) {
+	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
 		return fmt.Errorf("wireScriptFlow: failed to register clip_bindings processor (composition bug or duplicate name)")
 	}
 
@@ -530,34 +533,30 @@ func (a *voiceoverSvcAdapter) GenerateWithDestination(ctx context.Context, text,
 }
 
 // semanticSearchAdapter adapts scripts.RealtimeSearchService → scripts.SemanticSearchPort.
-type semanticSearchAdapter struct {
-	realtime usecase.RealtimeSearchService
-}
+type	semanticSearchAdapter struct {
+		realtime usecase.RealtimeSearchService
+	}
 
-// SearchByText delegates to RealtimeSearchService.SearchClips.
-// source and mediaType are passed as empty strings because
-// SourceSpec carries no source/mediaType fields — the search
-// resolver matches across all sources and all media types.
-// Language is not used by the current realtime implementation.
-func (a *semanticSearchAdapter) SearchByText(ctx context.Context, query string, limit int, language string) ([]scriptports.SemanticSearchResult, error) {
-	if a == nil || a.realtime == nil {
-		return nil, nil
+	// SearchByText delegates to RealtimeSearchService.SearchClips.
+	func (a *semanticSearchAdapter) SearchByText(ctx context.Context, query string, limit int, language string) ([]usecase.SemanticSearchResult, error) {
+		if a == nil || a.realtime == nil {
+			return nil, nil
+		}
+		minScore := 0.0
+		matches, err := a.realtime.SearchClips(ctx, query, "", "", limit, minScore)
+		if err != nil {
+			return nil, err
+		}
+		results := make([]usecase.SemanticSearchResult, 0, len(matches))
+		for _, m := range matches {
+			results = append(results, usecase.SemanticSearchResult{
+				ClipID: m.ID,
+				Name:   m.Name,
+				Score:  m.Score,
+			})
+		}
+		return results, nil
 	}
-	minScore := 0.0
-	matches, err := a.realtime.SearchClips(ctx, query, "", "", limit, minScore)
-	if err != nil {
-		return nil, err
-	}
-	results := make([]scriptports.SemanticSearchResult, 0, len(matches))
-	for _, m := range matches {
-		results = append(results, scriptports.SemanticSearchResult{
-			ClipID: m.ID,
-			Name:   m.Name,
-			Score:  m.Score,
-		})
-	}
-	return results, nil
-}
 
 // driveFolderAdapterImpl wraps *drive.Uploader as scriptapi.DriveFolderClient.
 type driveFolderAdapterImpl struct {

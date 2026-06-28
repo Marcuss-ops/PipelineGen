@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
-	healthapp	"github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	healthapp "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 )
@@ -67,8 +67,8 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 	// Build the health Service with infra checkers pointing at the temp DB.
 	svc := healthapp.NewService(healthapp.ServiceDeps{
 		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
-		Drive:  infrahealth.NewDriveChecker("", ""),                                          // no Drive creds → applicable=false
-		Qdrant: nil, // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
+		Drive:  infrahealth.NewDriveChecker("", ""), // no Drive creds → applicable=false
+		Qdrant: nil,                                 // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
 		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
 	})
 

@@ -369,8 +369,8 @@ func (fakeClipsRepo) IsClipsRepoNonNilMarker()   {}
 // ── Compile-time wire assertions ────────────────────────────────────────
 
 var (
-	_ dispatcherBuilt        = (*fakeDispatcher)(nil)
-	_ poolBuilt              = (*fakePool)(nil)
-	_ sqliteReader           = (*fakeClipsRepo)(nil)
-	_ ginRoutesRegisterable   = (*fakeRoutesHandler)(nil)
+	_ dispatcherBuilt       = (*fakeDispatcher)(nil)
+	_ poolBuilt             = (*fakePool)(nil)
+	_ sqliteReader          = (*fakeClipsRepo)(nil)
+	_ ginRoutesRegisterable = (*fakeRoutesHandler)(nil)
 )

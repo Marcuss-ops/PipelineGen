@@ -193,4 +193,3 @@ type VectorConfig struct {
 type ConfigPort interface {
 	VectorConfig() VectorConfig
 }
-

@@ -13,8 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"go.uber.org/zap"

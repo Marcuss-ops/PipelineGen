@@ -192,14 +192,14 @@ func FromSessionCertIdentity(s *appjobs.WorkerSession, cert *appjobs.WorkerCertI
 		return &CertReport{SchemaVersion: 1, Capabilities: capabilityTypes}
 	}
 	r := &CertReport{
-		WorkerID:              s.WorkerID,
-		Hostname:              hostname,
-		WorkerVersion:         workerVersion,
-		SessionID:             s.SessionID,
-		SessionExpiresAt:      s.SessionExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		SchemaVersion:         1,
-		Capabilities:          capabilityTypes,
-		Hardware:              s.Hardware,
+		WorkerID:         s.WorkerID,
+		Hostname:         hostname,
+		WorkerVersion:    workerVersion,
+		SessionID:        s.SessionID,
+		SessionExpiresAt: s.SessionExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		SchemaVersion:    1,
+		Capabilities:     capabilityTypes,
+		Hardware:         s.Hardware,
 	}
 	if cert != nil {
 		r.CertFingerprintSHA256 = cert.FingerprintSHA256

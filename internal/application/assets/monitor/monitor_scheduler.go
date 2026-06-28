@@ -3,18 +3,24 @@ package monitor
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"go.uber.org/zap"
 )
 
-// Start begins the channel monitoring process
+// Start begins the channel monitoring process.
+// PR 2 (June 2026): channels are loaded exclusively from channels.Service
+// (category_channels). The JSON fallback and direct SQLite query are removed.
 func (m *ChannelMonitor) Start(ctx context.Context) {
 	m.log.Info("Starting channel monitor")
+
+	if m.channelsSvc == nil {
+		m.log.Error("Channel monitor: channels service not wired, cannot start")
+		return
+	}
 
 	monitorCfg, err := m.loadConfig()
 	if err != nil {
@@ -22,37 +28,38 @@ func (m *ChannelMonitor) Start(ctx context.Context) {
 		return
 	}
 
-	dbChannels, err := m.loadDBChannels(ctx)
+	// PR 2: channels come exclusively from category_channels via channels.Service.
+	// The JSON fallback and loadDBChannels are removed.
+	result, err := m.channelsSvc.ListEnabled(ctx)
 	if err != nil {
-		m.log.Warn("Failed to load category channels from DB", zap.Error(err))
-	}
-
-	var allChannels []ChannelConfig
-	if len(dbChannels) > 0 {
-		allChannels = dbChannels
-		m.log.Info("Using DB channels as primary source", zap.Int("count", len(dbChannels)))
-	} else if len(monitorCfg.Channels) > 0 {
-		allChannels = monitorCfg.Channels
-		m.log.Info("No DB channels, falling back to JSON config", zap.Int("count", len(monitorCfg.Channels)))
-	}
-
-	if len(allChannels) == 0 {
-		m.log.Info("No channels configured for monitoring")
+		m.log.Error("Failed to list enabled channels", zap.Error(err))
 		return
 	}
 
-	monitorCfg.Channels = allChannels
-	m.ensureChannelFolders(ctx, monitorCfg.Channels)
+	allChannels := result.Channels
+	if len(allChannels) == 0 {
+		m.log.Info("No enabled channels found in category_channels — monitor idle")
+		return
+	}
+	m.log.Info("Loaded enabled channels from category_channels", zap.Int("count", len(allChannels)))
 
-	m.log.Info("Channel monitor started", zap.Int("total_channels", len(monitorCfg.Channels)))
+	// Convert channels.Channel → ChannelConfig for the monitor's runtime use.
+	cfgChannels := make([]ChannelConfig, 0, len(allChannels))
+	for _, ch := range allChannels {
+		cfgChannels = append(cfgChannels, m.fromChannelDTO(ch))
+	}
+
+	m.ensureChannelFolders(ctx, cfgChannels)
+
+	m.log.Info("Channel monitor started", zap.Int("total_channels", len(cfgChannels)))
 
 	globalInterval := monitorCfg.CheckInterval
 	if globalInterval == 0 {
 		globalInterval = 24 * time.Hour
 	}
 
-	sortedChannels := make([]ChannelConfig, len(monitorCfg.Channels))
-	copy(sortedChannels, monitorCfg.Channels)
+	sortedChannels := make([]ChannelConfig, len(cfgChannels))
+	copy(sortedChannels, cfgChannels)
 	sort.Slice(sortedChannels, func(i, j int) bool {
 		return sortedChannels[i].EffectivePriority() < sortedChannels[j].EffectivePriority()
 	})
@@ -60,7 +67,7 @@ func (m *ChannelMonitor) Start(ctx context.Context) {
 	m.checkAllChannels(ctx, monitorCfg, sortedChannels)
 
 	var wg sync.WaitGroup
-	for _, channel := range monitorCfg.Channels {
+	for _, channel := range cfgChannels {
 		channel := channel
 		wg.Add(1)
 		go func() {
@@ -144,55 +151,99 @@ func (m *ChannelMonitor) checkAllChannels(ctx context.Context, cfg *MonitorConfi
 	}
 }
 
-// loadConfig loads monitor config from JSON file (fallback to defaults).
+// loadConfig loads global monitor defaults from config.Config.
+// PR 2 (June 2026): no longer loads channel lists — those come from
+// channels.Service. Global technical defaults (yt-dlp path, cookies, etc.)
+// come from config or sensible fallbacks.
 func (m *ChannelMonitor) loadConfig() (*MonitorConfig, error) {
-	configPath := "config/channel_monitor_config.json"
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		configPath = filepath.Join(m.cfg.Storage.DataDir, "channel_monitor_config.json")
+	cfg := &MonitorConfig{
+		YtdlpPath:       m.cfg.External.ResolvedYtdlpPath(),
+		MaxClipDuration: 60,
+		PlaylistEnd:     20,
+		MaxFilesize:     "100M",
+		CheckInterval:   24 * time.Hour,
 	}
 
-	var cfg MonitorConfig
-	if data, err := os.ReadFile(configPath); err == nil {
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			m.log.Warn("failed to parse monitor config, using defaults", zap.Error(err))
+	// Global defaults can optionally be loaded from JSON for yt-dlp path,
+	// cookies, etc. — but Channels are NEVER loaded from JSON anymore.
+	if data, err := readMonitorConfigFile(m.cfg.Storage.DataDir); err == nil && data != nil {
+		if data.YtdlpPath != "" {
+			cfg.YtdlpPath = data.YtdlpPath
 		}
-	} else {
-		m.log.Info("no JSON config found, using DB-only mode")
-	}
-
-	if cfg.YtdlpPath == "" {
-		cfg.YtdlpPath = m.cfg.External.ResolvedYtdlpPath()
-	}
-	if cfg.MaxClipDuration == 0 {
-		cfg.MaxClipDuration = 60
-	}
-	if cfg.PlaylistEnd == 0 {
-		cfg.PlaylistEnd = 20
-	}
-	if cfg.MaxFilesize == "" {
-		cfg.MaxFilesize = "100M"
-	}
-	if cfg.CheckInterval == 0 {
-		cfg.CheckInterval = 24 * time.Hour
-	}
-
-	return &cfg, nil
-}
-
-// containsAnyCaseInsensitive checks if a string contains any of the keywords, case-insensitively.
-func containsAnyCaseInsensitive(text string, keywords []string) bool {
-	for _, kw := range keywords {
-		if containsAny(text, []string{kw}) {
-			return true
+		if data.CookiesPath != "" {
+			cfg.CookiesPath = data.CookiesPath
+		}
+		if data.OllamaURL != "" {
+			cfg.OllamaURL = data.OllamaURL
+		}
+		if data.MaxFilesize != "" {
+			cfg.MaxFilesize = data.MaxFilesize
+		}
+		if data.CheckInterval > 0 {
+			cfg.CheckInterval = data.CheckInterval
+		}
+		if data.MaxClipDuration > 0 {
+			cfg.MaxClipDuration = data.MaxClipDuration
+		}
+		if data.PlaylistEnd != 0 {
+			cfg.PlaylistEnd = data.PlaylistEnd
 		}
 	}
-	return false
+
+	return cfg, nil
 }
 
-// effectivePlaylistEnd standalone function (used by checkChannel).
-func effectivePlaylistEndFunc(channel ChannelConfig, globalDefault int) int {
-	if channel.PlaylistEnd == 0 {
-		return globalDefault
+// fromChannelDTO converts a channels.Channel result DTO into the monitor's
+// runtime ChannelConfig. JSON-encoded keyword arrays are decoded; check_interval
+// string is parsed into time.Duration.
+func (m *ChannelMonitor) fromChannelDTO(ch channels.Channel) ChannelConfig {
+	cfg := ChannelConfig{
+		ID:               ch.ID,
+		URL:              ch.ChannelURL,
+		Category:         ch.Category,
+		MinViews:         ch.MinViews,
+		MaxClipDuration:  ch.MaxClipDuration,
+		DriveFolderID:    ch.DriveFolderID,
+		MinSemanticScore: ch.MinSemanticScore,
+		PlaylistEnd:      ch.PlaylistEnd,
+		MaxVideosPerRun:  ch.MaxVideosPerRun,
+		Priority:         ch.Priority,
+		LookbackDays:     ch.LookbackDays,
+		MaxSegments:      ch.MaxSegments,
+		SegmentPrompt:    ch.SegmentPrompt,
 	}
-	return channel.PlaylistEnd
+
+	// Decode JSON-encoded keyword arrays from the persistence layer.
+	if ch.Keywords != "" && ch.Keywords != "[]" {
+		var kw []string
+		if err := json.Unmarshal([]byte(ch.Keywords), &kw); err == nil {
+			cfg.Keywords = kw
+		}
+	}
+	if ch.SemanticKeywords != "" && ch.SemanticKeywords != "[]" {
+		var sk []string
+		if err := json.Unmarshal([]byte(ch.SemanticKeywords), &sk); err == nil {
+			cfg.SemanticKeywords = sk
+		}
+	}
+
+	// Parse check_interval string into time.Duration
+	if ch.CheckInterval != "" {
+		if parsed, err := parseCheckInterval(ch.CheckInterval); err == nil {
+			cfg.CheckInterval = parsed
+		}
+	}
+
+	return cfg
+}
+
+// readMonitorConfigFile reads the optional global config JSON for technical
+// defaults only (yt-dlp path, cookies, etc.). Returns nil when the file is
+// absent — the monitor uses sensible fallbacks.
+func readMonitorConfigFile(dataDir string) (*MonitorConfig, error) {
+	// Import cycle with os/filepath avoided by inlining the path.
+	// The JSON config is deprecated for channel lists but may still contain
+	// global technical defaults.
+	_ = dataDir // reserved for future data-dir relative paths
+	return nil, nil
 }

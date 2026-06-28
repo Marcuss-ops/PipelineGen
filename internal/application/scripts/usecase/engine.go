@@ -273,10 +273,10 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 						zap.Int("word_count", result.WordCount))
 				}
 				// P0.8 (June 2026): jsonextract.Scanner in ModeCompatibility —
-			// cascading fallback: V1 → legacy array → plain-text wrapper.
-			// All fallbacks are declared and measured via Prometheus counters.
-			scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
-			output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
+				// cascading fallback: V1 → legacy array → plain-text wrapper.
+				// All fallbacks are declared and measured via Prometheus counters.
+				scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
+				output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
 				if decodeErr != nil {
 					return nil, decodeErr
 				}

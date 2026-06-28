@@ -1,7 +1,7 @@
 // Package qdrant — payload_mapper_test.go pins the canonical
 // lifecycle key chosen by QDRANT-004 PR2 (June 2026):
 //
-//   "lifecycle_state"
+//	"lifecycle_state"
 //
 // Both the writer (BuildPayload) and all readers (search_adapter.go,
 // clip_search_adapter.go, mediasearch hydration, clip_update.go

@@ -19,7 +19,6 @@
 package channels
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -93,23 +92,40 @@ func (h *Handler) GetByID(c *gin.Context) {
 	apiutil.OK(c, out)
 }
 
-// UpsertRequest is the JSON body for creating or updating a channel
-// association. Transport-side mirror of the persistence model — the
-// handler translates this to channels.UpsertChannelCommand before
-// calling Service.Upsert. Keep this struct's JSON shape byte-for-byte
-// compatible with the previous asset.CategoryChannel output.
+// UpsertRequest is the JSON body for creating or updating a single channel
+// (POST /channels) or a bulk channel entry (POST /channels/bulk-upsert).
+// Single and bulk share the same wire shape per PR 1 (June 2026).
+//
+// ID is optional: when empty, the service derives a deterministic ID from
+// category + channel_url.
+//
+// Keywords and SemanticKeywords are typed as []string — the handler passes
+// them directly to the service; the service marshals them to JSON for
+// SQLite persistence.
+//
+// Pointer fields (PlaylistEnd, MaxVideosPerRun, LookbackDays) distinguish
+// "not set" (nil, service applies default) from an explicit zero:
+//   - PlaylistEnd: nil=default, 0=all videos, >0=count
+//   - MaxVideosPerRun: nil=default, 0=no limit, >0=limit
+//   - LookbackDays: nil=default, 0=no lookback, >0=days
 type UpsertRequest struct {
-	ID               string `json:"id" binding:"required"`
-	Category         string `json:"category" binding:"required"`
-	ChannelURL       string `json:"channel_url" binding:"required"`
-	ChannelName      string `json:"channel_name,omitempty"`
-	Keywords         string `json:"keywords,omitempty"`
-	MinViews         int    `json:"min_views,omitempty"`
-	MaxClipDuration  int    `json:"max_clip_duration,omitempty"`
-	DriveFolderID    string `json:"drive_folder_id,omitempty"`
-	SemanticKeywords string `json:"semantic_keywords,omitempty"`
-	MinSemanticScore int    `json:"min_semantic_score,omitempty"`
-	PlaylistEnd      int    `json:"playlist_end,omitempty"`
+	ID               string   `json:"id,omitempty"`
+	Category         string   `json:"category" binding:"required"`
+	ChannelURL       string   `json:"channel_url" binding:"required"`
+	ChannelName      string   `json:"channel_name,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
+	MinViews         int      `json:"min_views,omitempty"`
+	MaxClipDuration  int      `json:"max_clip_duration,omitempty"`
+	DriveFolderID    string   `json:"drive_folder_id,omitempty"`
+	SemanticKeywords []string `json:"semantic_keywords,omitempty"`
+	MinSemanticScore int      `json:"min_semantic_score,omitempty"`
+	PlaylistEnd      *int     `json:"playlist_end,omitempty"`
+	CheckInterval    string   `json:"check_interval,omitempty"`
+	MaxVideosPerRun  *int     `json:"max_videos_per_run,omitempty"`
+	Priority         int      `json:"priority,omitempty"`
+	LookbackDays     *int     `json:"lookback_days,omitempty"`
+	MaxSegments      int      `json:"max_segments,omitempty"`
+	SegmentPrompt    string   `json:"segment_prompt,omitempty"`
 }
 
 // Upsert creates or updates a channel association. The handler
@@ -122,20 +138,24 @@ func (h *Handler) Upsert(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
-	keywords := splitJSONArray(req.Keywords)
-	semanticKeywords := splitJSONArray(req.SemanticKeywords)
 	out, err := h.svc.Upsert(c.Request.Context(), UpsertChannelCommand{
 		ID:               req.ID,
 		Category:         req.Category,
 		ChannelURL:       req.ChannelURL,
 		ChannelName:      req.ChannelName,
-		Keywords:         keywords,
+		Keywords:         req.Keywords,
 		MinViews:         req.MinViews,
 		MaxClipDuration:  req.MaxClipDuration,
 		DriveFolderID:    req.DriveFolderID,
-		SemanticKeywords: semanticKeywords,
+		SemanticKeywords: req.SemanticKeywords,
 		MinSemanticScore: req.MinSemanticScore,
 		PlaylistEnd:      req.PlaylistEnd,
+		CheckInterval:    req.CheckInterval,
+		MaxVideosPerRun:  req.MaxVideosPerRun,
+		Priority:         req.Priority,
+		LookbackDays:     req.LookbackDays,
+		MaxSegments:      req.MaxSegments,
+		SegmentPrompt:    req.SegmentPrompt,
 	})
 	if err != nil {
 		h.log.Error("failed to upsert channel", zap.Error(err))
@@ -173,31 +193,9 @@ func (h *Handler) Delete(c *gin.Context) {
 // ── Bulk upsert ────────────────────────────────────────────────
 
 // BulkUpsertRequest is the JSON body for bulk creating/updating channels.
+// Each entry uses the same UpsertRequest shape as the single endpoint.
 type BulkUpsertRequest struct {
-	Channels []BulkChannelRequest `json:"channels" binding:"required,min=1"`
-}
-
-// BulkChannelRequest is a single channel in a bulk upsert. Mirrors
-// the persistence model field-for-field; the handler converts to
-// UpsertChannelCommand below.
-type BulkChannelRequest struct {
-	ID               string `json:"id"`
-	Category         string `json:"category" binding:"required"`
-	ChannelURL       string `json:"channel_url" binding:"required"`
-	ChannelName      string `json:"channel_name,omitempty"`
-	Keywords         string `json:"keywords,omitempty"`
-	MinViews         int    `json:"min_views,omitempty"`
-	MaxClipDuration  int    `json:"max_clip_duration,omitempty"`
-	DriveFolderID    string `json:"drive_folder_id,omitempty"`
-	SemanticKeywords string `json:"semantic_keywords,omitempty"`
-	MinSemanticScore int    `json:"min_semantic_score,omitempty"`
-	PlaylistEnd      int    `json:"playlist_end,omitempty"`
-	CheckInterval    string `json:"check_interval,omitempty"`
-	MaxVideosPerRun  int    `json:"max_videos_per_run,omitempty"`
-	Priority         int    `json:"priority,omitempty"`
-	LookbackDays     int    `json:"lookback_days,omitempty"`
-	MaxSegments      int    `json:"max_segments,omitempty"`
-	SegmentPrompt    string `json:"segment_prompt,omitempty"`
+	Channels []UpsertRequest `json:"channels" binding:"required,min=1"`
 }
 
 // BulkUpsert creates or updates multiple channels in a single request.
@@ -217,11 +215,11 @@ func (h *Handler) BulkUpsert(c *gin.Context) {
 			Category:         ch.Category,
 			ChannelURL:       ch.ChannelURL,
 			ChannelName:      ch.ChannelName,
-			Keywords:         splitJSONArray(ch.Keywords),
+			Keywords:         ch.Keywords,
 			MinViews:         ch.MinViews,
 			MaxClipDuration:  ch.MaxClipDuration,
 			DriveFolderID:    ch.DriveFolderID,
-			SemanticKeywords: splitJSONArray(ch.SemanticKeywords),
+			SemanticKeywords: ch.SemanticKeywords,
 			MinSemanticScore: ch.MinSemanticScore,
 			PlaylistEnd:      ch.PlaylistEnd,
 			CheckInterval:    ch.CheckInterval,
@@ -246,25 +244,4 @@ func (h *Handler) BulkUpsert(c *gin.Context) {
 		"updated": res.Updated,
 		"errors":  res.Errors,
 	})
-}
-
-// ── Internal helper ────────────────────────────────────────────
-
-// splitJSONArray decodes a JSON-encoded string array (e.g. "[\"a\",\"b\"]")
-// into a []string. Returns an empty slice when raw is empty or
-// malformed; the channel domain never needs anything beyond "valid
-// array or empty". The handler uses this to translate the wire shape
-// (string) into the typed []string the Service command expects.
-func splitJSONArray(raw string) []string {
-	if raw == "" {
-		return []string{}
-	}
-	var out []string
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return []string{}
-	}
-	if out == nil {
-		return []string{}
-	}
-	return out
 }

@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"sort"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -250,9 +249,10 @@ func chapterLabel(language string) string {
 }
 
 // BuildClipSpecSceneDocumentHTML renders the clip-aware document body
-// used by generate-from-clips. It emits the compact SpecScene JSON
-// structure documented by the legacy route: every scene gets a
-// drive_links array derived from the resolved clip evidence.
+// used by generate-from-clips. It emits the canonical SpecScene JSON
+// structure (SpecSceneOutput) instead of a legacy format with
+// description/drive_links arrays. Every scene uses the canonical
+// Bindings.Clip.DriveLink and Bindings.Clip.ClipTitle fields.
 func BuildClipSpecSceneDocumentHTML(
 	model *scriptpkg.ModelScriptOutputV1,
 	title string,
@@ -262,66 +262,7 @@ func BuildClipSpecSceneDocumentHTML(
 		return ""
 	}
 
-	type sceneDoc struct {
-		ID          string   `json:"id"`
-		Index       int      `json:"index"`
-		Text        string   `json:"text"`
-		Kind        string   `json:"kind"`
-		Description string   `json:"description,omitempty"`
-		DriveLinks  []string `json:"drive_links,omitempty"`
-	}
-	type specDoc struct {
-		Version int        `json:"version"`
-		Scenes  []sceneDoc `json:"scenes"`
-	}
-
-	doc := specDoc{
-		Version: model.SpecScene.Version,
-		Scenes:  make([]sceneDoc, 0, len(model.SpecScene.Scenes)),
-	}
-
-	clipIDs := canonicalClipIDs(evidence)
-	totalScenes := len(model.SpecScene.Scenes)
-	for i := range model.SpecScene.Scenes {
-		scene := model.SpecScene.Scenes[i]
-		var links []string
-		var desc string
-
-		if scene.Bindings.Clip != nil && scene.Bindings.Clip.DriveLink != "" {
-			links = append(links, scene.Bindings.Clip.DriveLink)
-			if evidence != nil && scene.Bindings.Clip.ClipID != "" {
-				if name := strings.TrimSpace(evidence.ClipNames[scene.Bindings.Clip.ClipID]); name != "" {
-					desc = name
-				}
-			}
-		} else if len(clipIDs) > 0 && evidence != nil {
-			clipID := clipIDs[i%len(clipIDs)]
-			if link := strings.TrimSpace(evidence.DriveLinks[clipID]); link != "" {
-				links = append(links, link)
-			}
-			if name := strings.TrimSpace(evidence.ClipNames[clipID]); name != "" {
-				desc = name
-			}
-		}
-
-		kind := string(scene.Kind)
-		if i == 0 && (kind == "" || kind == "clip" || kind == "narration") {
-			kind = "intro"
-		} else if i == totalScenes-1 && (kind == "" || kind == "clip" || kind == "narration") {
-			kind = "outro"
-		}
-
-		doc.Scenes = append(doc.Scenes, sceneDoc{
-			ID:          scene.ID,
-			Index:       scene.Index,
-			Text:        scene.Text,
-			Kind:        kind,
-			Description: desc,
-			DriveLinks:  links,
-		})
-	}
-
-	raw, err := json.MarshalIndent(doc, "", "  ")
+	raw, err := json.MarshalIndent(model.SpecScene, "", "  ")
 	if err != nil {
 		return ""
 	}
@@ -335,21 +276,6 @@ func BuildClipSpecSceneDocumentHTML(
 	b.WriteString(html.EscapeString(string(raw)))
 	b.WriteString("</pre></body></html>")
 	return b.String()
-}
-
-func canonicalClipIDs(evidence *scriptpkg.ClipEvidence) []string {
-	if evidence == nil {
-		return nil
-	}
-	if len(evidence.ClipIDs) > 0 {
-		return evidence.ClipIDs
-	}
-	clipIDs := make([]string, 0, len(evidence.DriveLinks))
-	for id := range evidence.DriveLinks {
-		clipIDs = append(clipIDs, id)
-	}
-	sort.Strings(clipIDs)
-	return clipIDs
 }
 
 // BuildSectionDocHTML renders a sectioned HTML document from a flat

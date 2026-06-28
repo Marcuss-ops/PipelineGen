@@ -256,8 +256,8 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		existingClip.SetDriveFileID(item.DriveFileID)
 		existingClip.SetFileHash(item.FileHash)
 		existingClip.SetDownloadLink(item.DownloadLink)
-	existingClip.SetMetadataString("status", "processed")
-	existingClip.LifecycleState = asset.StateActive
+		existingClip.SetMetadataString("status", "processed")
+		existingClip.LifecycleState = asset.StateActive
 		existingClip.Source = "artlist"
 		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
 		bridge, err := o.svc.newDispatchBridge()

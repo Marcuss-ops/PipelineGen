@@ -15,12 +15,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"

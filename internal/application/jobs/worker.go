@@ -104,7 +104,7 @@ type BackoffConfig struct {
 //
 // Polling surface (PR-Polling / ADR §D6.5):
 //   - BaseInterval is the canonical PollEvery (the first-claim cadence
-//     + the post-successful-claim reset cadence). Set by the runner
+//   - the post-successful-claim reset cadence). Set by the runner
 //     via RunnerConfig.PollEvery.
 //   - MaxBackoff / JitterFraction / ConsecutiveEmptyThreshold are the
 //     backoff knobs (RunnerConfig.Backoff). Together they implement
@@ -117,27 +117,27 @@ type BackoffConfig struct {
 //
 // HC-1 (June 2026) additions:
 //   - reg     *Registry      — the typed config-port for per-job-type
-//                              execution timeouts. Set via WithRegistry()
-//                              at composition time. If nil, the worker
-//                              falls back to the canonical 10-minute
-//                              default for every job type.
+//     execution timeouts. Set via WithRegistry()
+//     at composition time. If nil, the worker
+//     falls back to the canonical 10-minute
+//     default for every job type.
 //   - timeouts TimeoutMap    — cached snapshot of reg.Compose() taken
-//                              at WithRegistry() time. The worker's
-//                              runJob path indexes this map by j.Type;
-//                              a zero value falls through to the
-//                              canonical default.
+//     at WithRegistry() time. The worker's
+//     runJob path indexes this map by j.Type;
+//     a zero value falls through to the
+//     canonical default.
 type Worker struct {
-	id        string
-	repo      job.Store
+	id         string
+	repo       job.Store
 	dispatcher *Dispatcher
-	log       *zap.Logger
-	leaseTTL  time.Duration
-	pollEvery time.Duration
-	backoff   BackoffConfig
-	types     []string
-	notifier  QueueNotifier
-	reg       *Registry
-	timeouts  TimeoutMap
+	log        *zap.Logger
+	leaseTTL   time.Duration
+	pollEvery  time.Duration
+	backoff    BackoffConfig
+	types      []string
+	notifier   QueueNotifier
+	reg        *Registry
+	timeouts   TimeoutMap
 }
 
 // NewWorker constructs a Worker.

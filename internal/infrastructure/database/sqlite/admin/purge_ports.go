@@ -53,13 +53,13 @@ var ErrUnavailable = errors.New("admin: purge primitive unavailable")
 //
 // Acceptable callers (allowlist for the CI lint):
 //   - cmd/admin/**/*                                : the canonical
-//                                                    CLI-driven admin.
+//     CLI-driven admin.
 //   - scripts/diagnostics/marker_audit.sh           : offline DR drill.
 //   - internal/infrastructure/database/sqlite/admin/*_test.go
-//                                                  : unit tests for
-//                                                    the adapter that
-//                                                    satisfies this
-//                                                    interface.
+//     : unit tests for
+//     the adapter that
+//     satisfies this
+//     interface.
 //
 // Implementation MUST live at
 // `internal/infrastructure/database/sqlite/admin/purge.go` and call

@@ -17,14 +17,14 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/sync"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
@@ -156,7 +156,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// see composition.go DomainBundle for rationale. Both stay typed-nil
 	// (package removed in commit d61068b3).
 	var realtimeMatcher assetsapi.RealtimeMatcher
-	var realtimeSearch scriptcore.RealtimeSearchService
+	var realtimeSearch usecase.RealtimeSearchService
 
 	// autotagVectorStore removed during the bundle simplification
 	// deleted. The autotag service no longer takes a vector-store indexer;
@@ -166,7 +166,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	// Wave 15 (June 2026): typed-nil for scriptcore.AssocSearchService —
 	// replaces the preceding `interface{}` carrier.
-	var assocService scriptcore.AssocSearchService
+	var assocService usecase.AssocSearchService
 	log.Info("association service unavailable — package removed from remote")
 
 	lessonsS := lessonsSvc.NewService(
@@ -302,7 +302,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// PersistenceProcessor. RepositoryAdapter is still constructed
 	// here because wireScriptFlow(BuildRepoBundle) uses it for
 	// PersistenceProcessor registration (see wire_script.go).
-	engine := scriptcore.NewEngine(scriptGen, memorySvc, log)
+	engine := usecase.NewEngine(scriptGen, memorySvc, log)
 
 	return &AIBundle{
 		OllamaClient:  ollamaClient,

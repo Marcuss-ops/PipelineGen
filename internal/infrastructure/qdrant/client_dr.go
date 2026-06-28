@@ -4,12 +4,13 @@
 // the merge-payload helper consumed by the reaper.
 //
 // RC references (Qdrant spec):
-//   POST   /collections/{n}/snapshots              → CreateSnapshot
-//   GET    /collections/{n}/snapshots              → ListSnapshots
-//   GET    /collections/{n}/snapshots/{name}       → GetSnapshotURL
-//   DELETE /collections/{n}/snapshots/{name}       → DeleteSnapshot
-//   PUT    /collections/{n}/snapshots/recover      → RestoreSnapshot
-//   POST   /collections/{n}/points/payload?wait=true → OverwritePayload (merge=true)
+//
+//	POST   /collections/{n}/snapshots              → CreateSnapshot
+//	GET    /collections/{n}/snapshots              → ListSnapshots
+//	GET    /collections/{n}/snapshots/{name}       → GetSnapshotURL
+//	DELETE /collections/{n}/snapshots/{name}       → DeleteSnapshot
+//	PUT    /collections/{n}/snapshots/recover      → RestoreSnapshot
+//	POST   /collections/{n}/points/payload?wait=true → OverwritePayload (merge=true)
 //
 // Scope notation (June 2026): the first 5 methods above are PR3 deliverable
 // (DR/snapshots). OverwritePayload is **PR3 scope-adjacent** — it ships here
@@ -20,14 +21,14 @@
 // be deleted independently.
 //
 // QDRANT-005C PR3 invariants (June 2026):
-//   * CreateSnapshot is idempotent within Qdrant: repeated POST with same
+//   - CreateSnapshot is idempotent within Qdrant: repeated POST with same
 //     collection reuses the same snapshot on disk, returns the same Name.
-//   * RestoreSnapshot's destination collection is REPLACED in place —
+//   - RestoreSnapshot's destination collection is REPLACED in place —
 //     the Qdrant REST docs warn that this is destructive. The caller
 //     (dr.RestoreService) MUST run ReindexVerifier.VerifyReindex BEFORE
 //     flipping the runtime alias to the restored collection.  This
 //     closes the silent-partial-restore outage class.
-//   * OverwritePayload uses merge=true so a partial-payload call LEAVES
+//   - OverwritePayload uses merge=true so a partial-payload call LEAVES
 //     the canonical point vector intact. This was the upstream fix
 //     in commit 07292503 — previously UpsertPoints had been used, which
 //     nulled vectors on partial payload and corrupted the index.

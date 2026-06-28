@@ -91,18 +91,18 @@ func SetLogger(log *zap.Logger) {
 //
 // Inlining the column makes the FK contract explicit per table:
 //
-//   {asset_locations,  asset_id}  — verified by migration 055
-//   {asset_processing, asset_id}  — verified by migration 058
-//   {asset_versions,   asset_id}  — verified by migration 105
+//	{asset_locations,  asset_id}  — verified by migration 055
+//	{asset_processing, asset_id}  — verified by migration 058
+//	{asset_versions,   asset_id}  — verified by migration 105
 //
-//   asset_dedupe is intentionally OMITTED (was previously in the
-//   list with `column = id`). There is no `CREATE TABLE asset_dedupe`
-//   migration in the entire migrations/sqlite tree (the closest
-//   reference is the application-layer DedupeService at
-//   internal/application/assets/assetop/dedupe.go, which is in-memory
-//   policy — not a SQL table). Keeping `asset_dedupe` in the loop
-//   would force every purge into `no such table: asset_dedupe` on
-//   fresh installs. The fossil is decommissioned.
+//	asset_dedupe is intentionally OMITTED (was previously in the
+//	list with `column = id`). There is no `CREATE TABLE asset_dedupe`
+//	migration in the entire migrations/sqlite tree (the closest
+//	reference is the application-layer DedupeService at
+//	internal/application/assets/assetop/dedupe.go, which is in-memory
+//	policy — not a SQL table). Keeping `asset_dedupe` in the loop
+//	would force every purge into `no such table: asset_dedupe` on
+//	fresh installs. The fossil is decommissioned.
 //
 // The (Table, Column) structure makes a future ledger-style child
 // table (e.g. asset_audit, keyed on `aggregate_id`) a single-line
@@ -258,5 +258,6 @@ func RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
 // compile unit; the import block is reserved for the future
 // concurrency-affordance (per-id fan-out delete) that will land with
 // PR-QDRANT-005D. The blank import keeps the package gofmt-clean.
+//
 //nolint:unused
 var _ = sync.Mutex{}

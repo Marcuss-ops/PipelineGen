@@ -1,9 +1,9 @@
 package monitor
 
 import (
-	"database/sql"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -20,8 +20,12 @@ const (
 	PriorityCold   = 3
 )
 
-// ChannelConfig represents a monitored YouTube channel
+// ChannelConfig represents a monitored YouTube channel.
+// PR 2 (June 2026): the JSON list of channels is removed; channels are now
+// loaded exclusively from category_channels via channels.Service.ListEnabled().
+// This struct remains the runtime config the monitor uses per channel.
 type ChannelConfig struct {
+	ID               string        `json:"id"`
 	URL              string        `json:"url"`
 	Category         string        `json:"category"`
 	Keywords         []string      `json:"keywords"`
@@ -47,28 +51,30 @@ func (c *ChannelConfig) EffectivePriority() int {
 	return PriorityNormal
 }
 
-// MonitorConfig holds the full monitor configuration
+// MonitorConfig holds global monitor configuration (yt-dlp path, cookies, etc.).
+// PR 2 (June 2026): the Channels field is removed — channels come exclusively
+// from category_channels via channels.Service. This struct only holds global
+// technical defaults.
 type MonitorConfig struct {
-	CheckInterval   time.Duration   `json:"check_interval"`
-	VideoTimeframe  string          `json:"video_timeframe"`
-	StockRootID     string          `json:"stock_root_id"`
-	YtdlpPath       string          `json:"ytdlp_path"`
-	CookiesPath     string          `json:"cookies_path"`
-	MaxClipDuration int             `json:"max_clip_duration"`
-	PlaylistEnd     int             `json:"playlist_end"`
-	MaxFilesize     string          `json:"max_filesize"`
-	OllamaURL       string          `json:"ollama_url"`
-	Channels        []ChannelConfig `json:"channels"`
+	CheckInterval   time.Duration `json:"check_interval"`
+	YtdlpPath       string        `json:"ytdlp_path"`
+	CookiesPath     string        `json:"cookies_path"`
+	MaxClipDuration int           `json:"max_clip_duration"`
+	PlaylistEnd     int           `json:"playlist_end"`
+	MaxFilesize     string        `json:"max_filesize"`
+	OllamaURL       string        `json:"ollama_url"`
 }
 
-// ChannelMonitor handles periodic YouTube channel monitoring
+// ChannelMonitor handles periodic YouTube channel monitoring.
+// PR 2 (June 2026): removed db *sql.DB; channels are loaded from
+// channels.Service, which is the single canonical source.
 type ChannelMonitor struct {
 	cfg               *config.Config
 	clipsRepo         *assets.ClipsRepository
+	channelsSvc       *channels.Service
 	log               *zap.Logger
 	stopCh            chan struct{}
 	youtubeSvc        *youtube.Service
-	db                *sql.DB
 	searchQueriesRepo *assets.SearchQueriesRepository
 	ollamaClient      *client.Client
 	globalSem         chan struct{}
@@ -76,7 +82,9 @@ type ChannelMonitor struct {
 }
 
 // NewChannelMonitor creates a new channel monitor.
-func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, log *zap.Logger, youtubeSvc *youtube.Service, db *sql.DB, ollamaClient *client.Client) *ChannelMonitor {
+// PR 2 (June 2026): channelsSvc replaces raw *sql.DB as the single source
+// for channel configuration.
+func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, channelsSvc *channels.Service, log *zap.Logger, youtubeSvc *youtube.Service, ollamaClient *client.Client) *ChannelMonitor {
 	maxChannels := cfg.Concurrency.MaxConcurrentChannelChecks
 	if maxChannels <= 0 {
 		maxChannels = 1
@@ -84,10 +92,10 @@ func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, lo
 	return &ChannelMonitor{
 		cfg:          cfg,
 		clipsRepo:    clipsRepo,
+		channelsSvc:  channelsSvc,
 		log:          log,
 		stopCh:       make(chan struct{}),
 		youtubeSvc:   youtubeSvc,
-		db:           db,
 		ollamaClient: ollamaClient,
 		globalSem:    make(chan struct{}, maxChannels),
 	}

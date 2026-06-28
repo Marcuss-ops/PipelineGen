@@ -117,9 +117,9 @@ type JobsConfig struct {
 	// for sustained periods (idle Workers accumulating backoff = the
 	// queue is empty AND jobs are not being enqueued; useful BUT -
 	// normally operators see this on a steady-state worker pool).
-	PollMaxBackoff                     string  `yaml:"poll_max_backoff" env:"VELOX_POLL_MAX_BACKOFF" default:"60s"`
-	PollJitterFraction                 float64 `yaml:"poll_jitter_fraction" env:"VELOX_POLL_JITTER_FRACTION" default:"0.5"`
-	PollConsecutiveEmptyBeforeBackoff  int     `yaml:"poll_consecutive_empty_before_backoff" env:"VELOX_POLL_CONSECUTIVE_EMPTY_BEFORE_BACKOFF" default:"3"`
+	PollMaxBackoff                    string  `yaml:"poll_max_backoff" env:"VELOX_POLL_MAX_BACKOFF" default:"60s"`
+	PollJitterFraction                float64 `yaml:"poll_jitter_fraction" env:"VELOX_POLL_JITTER_FRACTION" default:"0.5"`
+	PollConsecutiveEmptyBeforeBackoff int     `yaml:"poll_consecutive_empty_before_backoff" env:"VELOX_POLL_CONSECUTIVE_EMPTY_BEFORE_BACKOFF" default:"3"`
 
 	// ProgressCoalesceWindow gates the per-jobID in-memory coalescing
 	// of broker.Progress(...) calls (PR-Progress / ADR-0002 §D6.4, June 2026).
@@ -167,7 +167,7 @@ type JobsConfig struct {
 	// layouts (e.g. a network-mounted queue DB for multi-node prep).
 	// The override is a string substitution, not a remap; operators
 	// who need the jobs DB on a different volume set the path explicitly.
-	SplitDBEnabled bool `yaml:"split_db_enabled" env:"VELOX_SPLIT_DB_ENABLED" default:"false"`
+	SplitDBEnabled bool   `yaml:"split_db_enabled" env:"VELOX_SPLIT_DB_ENABLED" default:"false"`
 	JobsDBPath     string `yaml:"jobs_db_path" env:"VELOX_JOBS_DB_PATH" default:""`
 
 	// LegacyAliasEnabled (FOR FUTURE PR-Queue-Split-LEGACY) — when true,

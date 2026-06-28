@@ -97,9 +97,9 @@ func (e *GenerationError) Unwrap() error { return ErrGenerationFailed }
 // PostprocessError carries the structured details behind
 // ErrPostprocessFailed.
 type PostprocessError struct {
-	ItemID     string
-	Processor  string // "document", "images", "voiceover", "entities", "metadata"
-	Inner      error
+	ItemID    string
+	Processor string // "document", "images", "voiceover", "entities", "metadata"
+	Inner     error
 }
 
 func (e *PostprocessError) Error() string {

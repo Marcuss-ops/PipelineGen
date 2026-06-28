@@ -674,5 +674,4 @@ var (
 		Name: "curate_legacy_invocations_total",
 		Help: "Monotonic counter for the deprecated MediaCurator.Curate entry point (DL-CURATIONTYPES-001). Spec name: curate_legacy_invocations_per_day — derive via increase(...[1d]). Removal gate: 0 for 30 consecutive days. Source label: provider/source string, bounded by static caller set.",
 	}, []string{"source"})
-
 )

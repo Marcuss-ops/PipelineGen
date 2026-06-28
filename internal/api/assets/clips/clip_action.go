@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

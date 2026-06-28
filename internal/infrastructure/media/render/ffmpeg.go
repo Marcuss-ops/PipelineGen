@@ -7,8 +7,8 @@
 // process.Run() invocation.
 //
 // Import-boundary invariant (AGENTS.md Pattern 0 + Pattern 8):
-//   * internal/application/** MUST NOT import this package.
-//   * This package MAY import internal/application/assets/providers/stock
+//   - internal/application/** MUST NOT import this package.
+//   - This package MAY import internal/application/assets/providers/stock
 //     to satisfy `StockRenderer` (port-side types live in the application
 //     layer; the infrastructure adapts to them). This is the standard
 //     hexagonal architecture: application owns the port, infrastructure

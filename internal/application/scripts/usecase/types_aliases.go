@@ -43,11 +43,10 @@ type (
 // ── adapters/ function aliases ─────────────────────────────────────
 var (
 	NormalizeItem                  = adapters.NormalizeItem
-	DecodeModelOutput              = adapters.DecodeModelOutput
 	SerializeEntityResultRoundTrip = dto.SerializeEntityResultRoundTrip
 )
 
 // ── dto/ aliases ───────────────────────────────────────────────────
 
-// compat aliases for legacy support
-var LegacyArrayToOutput = adapters.LegacyArrayToOutput
+// (LegacyArrayToOutput and DecodeModelOutput removed in P0.8 —
+// replaced by jsonextract.Scanner.)

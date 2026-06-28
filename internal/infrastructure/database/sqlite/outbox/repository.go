@@ -498,7 +498,7 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 		// the lifecycle_state flip AND the outbox row are
 		// unobservable to readers. Asserted by
 		// TestEnqueueAndDelete_RollbackPreservesAtomicity.
-	if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 		UPDATE media_assets
 		   SET lifecycle_state = 'DELETE_PENDING'
 		 WHERE id = ?

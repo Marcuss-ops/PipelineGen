@@ -38,10 +38,10 @@ const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMut
 
 // Handler manages sound effect generation via Python synth + ffmpeg.
 type Handler struct {
-	clipsRepo              sfxports.ClipRepositoryPort
-	driveUploader          sfxports.DriveUploaderPort
-	metaWriter             sfxports.SemanticMetadataWriterPort
-	resolver               sfxports.DestinationResolverPort
+	clipsRepo     sfxports.ClipRepositoryPort
+	driveUploader sfxports.DriveUploaderPort
+	metaWriter    sfxports.SemanticMetadataWriterPort
+	resolver      sfxports.DestinationResolverPort
 	// dispatcher (PR 6, June 2026, codex/qdrant-api-writers-fail-closed):
 	// the canonical narrow port sfxports.DispatcherPort wrapping the
 	// production *outbox.Dispatcher. Required for the Generate write

@@ -105,11 +105,11 @@ func NewScanner(mode Mode) *Scanner {
 //
 // ModeCompatibility:
 //  1. Extract JSON from raw bytes.
-//  2a. Try unmarshal as V1 object → if OK and valid, return.
-//  2b. Try unmarshal as legacy array → convert to V1, bump
-//      LegacyArrayFallbackTotal{source}, return.
-//  2c. Wrap raw bytes as plain-text V1, bump
-//      PlainTextFallbackTotal, return.
+//     2a. Try unmarshal as V1 object → if OK and valid, return.
+//     2b. Try unmarshal as legacy array → convert to V1, bump
+//     LegacyArrayFallbackTotal{source}, return.
+//     2c. Wrap raw bytes as plain-text V1, bump
+//     PlainTextFallbackTotal, return.
 //  3. All fail → error wrapping script.ErrModelOutputMalformed.
 //
 // The source label is passed to the Prometheus counters so

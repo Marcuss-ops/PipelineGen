@@ -12,6 +12,7 @@ import (
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	mutations "github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"

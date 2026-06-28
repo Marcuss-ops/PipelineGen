@@ -356,8 +356,8 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 	}
 	var result struct {
 		Result struct {
-			Points          []scrollPoint `json:"points"`
-			NextPageOffset  *string       `json:"next_page_offset"`
+			Points         []scrollPoint `json:"points"`
+			NextPageOffset *string       `json:"next_page_offset"`
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -668,5 +668,3 @@ func (c *Client) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("qdrant HTTP %d: %s", resp.StatusCode, string(body))
 }
-
-

@@ -6,7 +6,7 @@
 // single test surface that exercises jsonextract.Scanner in the
 // appropriate mode. ModeStrict rejects bare prose; ModeCompatibility
 // wraps it (declared fallback, Prometheus-measured).
-package scripts_test
+package adapters_test
 
 import (
 	"encoding/json"

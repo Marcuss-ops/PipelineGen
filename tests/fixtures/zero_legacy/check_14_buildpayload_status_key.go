@@ -17,7 +17,7 @@ type assetShim struct {
 // canonical key is "lifecycle_state" sourced from asset.LifecycleState.
 func badBuildPayload(asset *assetShim) map[string]interface{} {
 	return map[string]interface{}{
-		"status":     asset.Status,         // anti-pattern: legacy payload key
+		"status":     asset.Status, // anti-pattern: legacy payload key
 		"asset_id":   "asset-1",
 		"media_type": "video",
 	}

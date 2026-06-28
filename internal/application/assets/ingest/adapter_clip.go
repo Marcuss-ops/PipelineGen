@@ -158,10 +158,10 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 		if rec.Status == "failed" {
 			_ = a.processing.Start(ctx, rec.ID, step)
 			_ = a.processing.Fail(ctx, rec.ID, step, rec.Error)
-	} else if rec.Status == "ACTIVE" || rec.Status == "completed" {
-		_ = a.processing.Start(ctx, rec.ID, step)
-		_ = a.processing.Complete(ctx, rec.ID, step)
-	} else {
+		} else if rec.Status == "ACTIVE" || rec.Status == "completed" {
+			_ = a.processing.Start(ctx, rec.ID, step)
+			_ = a.processing.Complete(ctx, rec.ID, step)
+		} else {
 			_ = a.processing.Start(ctx, rec.ID, step)
 		}
 	}
@@ -321,9 +321,9 @@ func detailsToMediaRecord(details *asset.Details) *artifacts.MediaRecord {
 				break
 			} else if proc.Status == asset.StatusRunning {
 				rec.Status = "processing"
-		} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
-			rec.Status = "ACTIVE"
-		}
+			} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
+				rec.Status = "ACTIVE"
+			}
 		}
 	}
 	if rec.Status == "" {

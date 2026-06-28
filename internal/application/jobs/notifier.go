@@ -12,7 +12,7 @@
 //     internal/app/lifecycle_job_runner.go (the composition-root
 //     wiring site), both verify that *sqljobs.SQLiteStore satisfies
 //     the canonical interface. SQLiteStore does so via its Subscribe
-//     + Broadcast methods that delegate to a private `*notifier`
+//   - Broadcast methods that delegate to a private `*notifier`
 //     channel (the unexported struct implementation living in
 //     queue_notifier.go — see that file for the mutex + chan detail).
 //   - Cross-package alias (not re-declaration) keeps the two contract
@@ -42,6 +42,7 @@
 //     (RunnerConfig.Notifier wires the composition-root SQLiteStore)
 //   - internal/application/jobs/types.go (RunnerConfig carries the
 //     port as a struct member)
+//
 // Nil-safety: nil port = typed-nil interface value; concrete callers
 // pattern-match `if notifier == nil { return SKIP }` rather than
 // calling methods on the nil interface.
