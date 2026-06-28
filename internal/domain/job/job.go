@@ -79,6 +79,7 @@ const (
 	TypeDriveFolderSync        = "drive.folder.sync"
 	TypeMediaCurate            = "media.curate"
 	TypeVoiceoverPromo         = "voiceover.promo"
+	TypeYouTubeChannelSync     = "youtube.channel.sync"
 )
 
 // Job is the canonical domain entity for a job in the system.

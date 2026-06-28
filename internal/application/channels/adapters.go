@@ -59,3 +59,7 @@ func (a *RepositoryAdapter) Upsert(ctx context.Context, ch *asset.CategoryChanne
 func (a *RepositoryAdapter) Delete(ctx context.Context, id string) error {
 	return a.repo.Delete(ctx, id)
 }
+
+func (a *RepositoryAdapter) MarkChecked(ctx context.Context, cmd MarkCheckedCommand) error {
+	return a.repo.MarkChecked(ctx, cmd.ID, cmd.NextCheckAt, cmd.LastError, cmd.Success)
+}

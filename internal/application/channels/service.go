@@ -238,6 +238,15 @@ func (s *Service) UpsertBulk(ctx context.Context, cmd BulkUpsertChannelsCommand)
 	return res, nil
 }
 
+// MarkChecked updates scheduling state after a channel-sync check
+// completes. Delegates to Repository.MarkChecked. PR 3 (June 2026).
+func (s *Service) MarkChecked(ctx context.Context, cmd MarkCheckedCommand) error {
+	if cmd.ID == "" {
+		return fmt.Errorf("channels.MarkChecked: id is required")
+	}
+	return s.repo.MarkChecked(ctx, cmd)
+}
+
 // Delete removes a single channel by ID. Returns the channel as it
 // existed before the delete so the HTTP handler can echo it back
 // without re-querying.
