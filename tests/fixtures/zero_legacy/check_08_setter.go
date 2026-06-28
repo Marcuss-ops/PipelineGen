@@ -11,6 +11,19 @@ package fixture
 
 type serverShim struct{}
 
+// SetOutboxHandler / SetMediasearchHandler are defined on serverShim
+// so the init() block below can call them — without these methods the
+// fixture has no surface for the lint to match against, breaking the
+// compile.
+//
+// Return type is `error` (idiomatic for setters that may signal
+// rejection in production) because the original fixture assigns the
+// result to `_ =` — that assignment only compiles when the method
+// returns at least one value. The blank-discard pattern keeps the
+// demo call readable while the methods themselves stay inert.
+func (s *serverShim) SetOutboxHandler(_ any) error      { return nil }
+func (s *serverShim) SetMediasearchHandler(_ any) error { return nil }
+
 // Forbidden: production code calling .SetOutboxHandler or
 // .SetMediasearchHandler after server construction. The canonical
 // constructor NewServerWithHealth accepts these handlers as params.

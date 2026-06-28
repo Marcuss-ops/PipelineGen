@@ -22,6 +22,16 @@ func NewClipBindingsProcessor(log *zap.Logger) *ClipBindingsProcessor {
 
 func (p *ClipBindingsProcessor) Name() string { return "clip_bindings" }
 
+// Policy classifies clip_bindings as ProcessorBestEffort: a nil or
+// empty ClipEvidence is a no-op (Process returns early with empty
+// result) rather than a hard fail. Matches the in-body comment that
+// the processor "is a no-op when plan.ClipEvidence is nil/empty".
+// Pair with `clip_bindings` in defaultPolicyByName so the
+// LookupPolicy override path stays consistent.
+func (p *ClipBindingsProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	return ProcessorBestEffort
+}
+
 func (p *ClipBindingsProcessor) Process(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
