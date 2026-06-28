@@ -21,7 +21,6 @@ def main():
         print(f"Launching browser with profile: {args.profile_dir} ...")
         context = p.chromium.launch_persistent_context(
             user_data_dir=args.profile_dir,
-            channel="chrome",
             headless=not args.headful,
             args=[
                 "--disable-blink-features=AutomationControlled",
