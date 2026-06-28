@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -41,6 +42,8 @@ func BuildVoiceoverDestination(
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
 	groupsResolver *voiceover.GroupsResolver,
 ) *voiceover.DestinationRequest {
+	voiceoverFolderID = clips.ExtractDriveFolderID(strings.TrimSpace(voiceoverFolderID))
+	voRootID = clips.ExtractDriveFolderID(strings.TrimSpace(voRootID))
 	subfolderName := textutil.SlugifyWithMax(title, 40)
 
 	if folderID := strings.TrimSpace(voiceoverFolderID); folderID != "" {

@@ -23,6 +23,7 @@ type (
 	GenerateManyResult      = usecase.GenerateManyResult
 	GenerateManyItemResult  = usecase.GenerateManyItemResult
 	GenerateManySummary     = usecase.GenerateManySummary
+	GenerateManyUseCase     = usecase.GenerateManyUseCase
 	NormalizationConfig     = adapters.NormalizationConfig
 )
 

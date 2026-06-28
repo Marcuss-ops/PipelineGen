@@ -175,7 +175,6 @@ const mediaAssetColumns = `
 	COALESCE(duration_ms, 0) AS duration_ms,
 	COALESCE(url, '') AS url,
 	COALESCE(media_type, '') AS media_type,
-	COALESCE(lifecycle_state, 'ACTIVE') AS status,
 	COALESCE(local_path, '') AS local_path,
 	COALESCE(relative_path, '') AS relative_path,
 	COALESCE(drive_file_id, '') AS drive_file_id,
