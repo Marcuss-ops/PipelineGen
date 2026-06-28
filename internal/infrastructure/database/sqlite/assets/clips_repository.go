@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
@@ -41,7 +43,7 @@ import (
 // qdrant/search_adapter.go::var _ appsearch.VectorStorePort = ...
 var _ jobsoutbox.SourceVersionQuerier = (*ClipsRepository)(nil)
 
-const mediaAssetColumns = `
+const MediaAssetColumns = `
 	id,
 	COALESCE(source, '') AS source,
 	COALESCE(name, '') AS name,
@@ -82,14 +84,14 @@ const mediaAssetColumns = `
 	COALESCE(last_used_at, '') AS last_used_at`
 
 type ClipsRepository struct {
-	*asset.AssetStoreSQLite
+	*AssetStoreSQLite // Wave C / Phase 3: embed LOCAL *assets.AssetStoreSQLite (the canonical infra struct) instead of legacy *asset.AssetStoreSQLite. LOCAL has the canonical Save/Get/Delete/List methods AND transitively exposes legacy receivers via its own HYBRID embed of legacy. Existing call sites like `r.AssetStoreSQLite.Save(...)` auto-resolve because the embedded-field name is unchanged.
 	db  *sql.DB
 	log *zap.Logger
 }
 
 func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
 	return &ClipsRepository{
-		AssetStoreSQLite: asset.NewAssetStoreSQLite(db, log),
+		AssetStoreSQLite: NewAssetStoreSQLite(db, log),
 		db:               db,
 		log:              log,
 	}
@@ -306,13 +308,11 @@ func (r *ClipsRepository) Canonical() *ClipsRepository {
 }
 
 func (r *ClipsRepository) SoftDeleteFilter() string {
-	// PR 1 (June 2026, Lifecycle state SSOT): historical rows are
-	// rewritten to canonical UPPERCASE by migration 101; writers no
-	// longer emit lowercase 'deleted'. SoftDeleteFilter reduces to a
-	// single equality check so future writers that re-introduce a
-	// legacy stray casing surface immediately as a migration 101
-	// failure rather than as a silent filter bypass.
-	return "lifecycle_state != 'DELETED'"
+	// Phase 4 unification (June 2026): thin-wrapper that delegates
+	// to the canonical asset.SoftDeleteFilter — the single SSOT for
+	// the soft-delete SQL fragment. PR 1 (Lifecycle state SSOT)
+	// semantics live on the canonical function in domain/asset.
+	return asset.SoftDeleteFilter()
 }
 
 func (r *ClipsRepository) Log() *zap.Logger { return r.log }
@@ -476,3 +476,119 @@ func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink s
 // above (DeleteClipByDriveLink, Restore, SetIndexState,
 // SetIndexStateTx); it does NOT re-declare any methods moved by the
 // Wave 15 split.
+
+// ── PR 2 / Blocco 1 sub-PR (June 2026): Mutate dispatcher-only wrapper ───
+//
+// Mutate is the canonical single SSOT entry point for asset mutations, the
+// typed-command alternative to the legacy public methods (Upsert,
+// UpsertClip, UpsertClipTx, UpsertFolder, SoftDelete, ...). It collapses
+// the per-action method proliferation into a single audit-friendly surface
+// for future callers and is the implementation seam where future
+// dispatcher-promotion can route Mutate → outbox.Dispatcher.EnqueueAndIndex
+// without changing the caller's struct literal.
+//
+// Production callers in internal/application/** and internal/api/**
+// SHOULD prefer this entry point (or the upstream
+// AssetMutationDispatcher SSOT — `mutations.AssetMutationDispatcher`)
+// instead of the legacy methods. The legacy methods stay public for
+// adapter delegation / migration interop; CI Check 10 + the new
+// dispatch-detector extension in scripts/ci-architectural-checks.sh
+// continue to gate the legacy direct callers from production paths.
+//
+// SCOPE: WHICH ACTIONS LIVE HERE
+// AssetMutationAction = AssetMutationUpsert routes through this wrapper
+// to the current canonical UPSERT path. AssetMutationAction =
+// AssetMutationRestore | AssetMutationDelete explicitly return
+// ErrUnsupportedAction so callers cannot silently fall through to a
+// plain UPSERT:
+//
+//   - restore: production code must use
+//     AssetMutationDispatcher.EnqueueAndRestore (outbox-driven); admin
+//     tooling uses txmutation.RestoreTx (caller-owned tx).
+//   - delete: production code must use
+//     AssetMutationDispatcher.EnqueueAndDelete (outbox-driven). Admin
+//     physical-purge flows use txmutation.HardDeleteTx (caller-owned
+//     tx); the regular SoftDelete route lives at deletion.DeletionService.
+//
+// Exhaustive-enum invariant: an Action whose IsImplemented()=true MUST
+// have a switch arm in this function; otherwise the call falls into
+// default and returns ErrUnsupportedAction. The unit tests in
+// clips_repository_mutate_test.go hold this invariant by enumerating
+// ImplementedActions and asserting each one is wired.
+//
+// WHY THIS IS ADDITIVE-ONLY
+// The literal PR 2 spec asked to lowercase all the dispatcher-only primitive
+// methods (UpsertClipTx, HardDeleteTx, RestoreTx, UpsertFolder,
+// SoftDeleteFilter) and to remove the *asset.AssetStoreSQLite embedding
+// from *ClipsRepository. Both those steps are blocked today:
+//
+//  1. UpsertClipTx is called by outbox.Dispatcher (cross-package) inside
+//     its own tx-bound writer. Lowercasing it would break the canonical
+//     dispatcher (build fail) — the `//nolint:production` annotation
+//     on UpsertClip + UpsertClipTx is the existing syntactic gate.
+//  2. HardDeleteTx / RestoreTx were ALREADY removed from the receiver
+//     by PR-CLIP-RAW-MUTATIONS (Wave 22 task 5, June 2026) and live
+//     exclusively in the txmutation/ package. The package-isolation
+//     boundary is the shallower-surface property the spec implicitly
+//     asked for.
+//  3. *asset.AssetStoreSQLite embedding reflects the still-in-domain
+//     SQL primitives (PR 1 deliverable was aborted in a prior turn to
+//     preserve build green — internal/domain/asset/ still owns the
+//     embeddable store). Removing that embedding strictly requires
+//     PR 1 / Blocco 1 to land first.
+//
+// This Mutate wrapper is the additive step that lets future code use
+// the canonical typed-command surface without breaking any current
+// caller. The follow-up PR 1 (move SQL primitives out of domain) +
+// future DRIVE/EMIT-AND-INDEX wiring will switch this implementation
+// to a single-tx UPSERT + outbox_events INSERT path without changing
+// the caller's struct literal.
+//
+// Layering note: the receiver lives in
+// internal/infrastructure/database/sqlite/assets/ and consumes the
+// mutations.AssetMutationCommand type from
+// internal/application/assets/mutations/. This is the same cross-layer
+// pattern documented for the existing `jobsoutbox
+// "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"`
+// import above — the application layer owns the canonical SSOT type
+// definition, and the canonical writer infrastructure consumes it
+// without inverting the general layering direction (composition root
+// wires them).
+func (r *ClipsRepository) Mutate(ctx context.Context, cmd mutations.AssetMutationCommand) error {
+	if !cmd.Action.IsKnown() {
+		return errors.Join(mutations.ErrUnsupportedAction,
+			fmt.Errorf("clips.Mutate: unknown action %q", cmd.Action))
+	}
+	switch cmd.Action {
+	case mutations.AssetMutationUpsert:
+		if cmd.Asset == nil {
+			return fmt.Errorf("clips.Mutate: Action=%q requires non-nil Asset", cmd.Action)
+		}
+		return r.Upsert(ctx, cmd.Asset)
+	case mutations.AssetMutationRestore:
+		// Not implemented at this layer. Production must use
+		// AssetMutationDispatcher.EnqueueAndRestore; admin must use
+		// txmutation.RestoreTx (caller-owned tx). Documented intent:
+		// never silently fall through to plain UPSERT.
+		return errors.Join(mutations.ErrUnsupportedAction,
+			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndRestore (production) or txmutation.RestoreTx (admin)", cmd.Action))
+	case mutations.AssetMutationDelete:
+		// Not implemented at this layer. Production must use
+		// AssetMutationDispatcher.EnqueueAndDelete; admin must use
+		// txmutation.HardDeleteTx. Documented intent: never fall
+		// through silently.
+		return errors.Join(mutations.ErrUnsupportedAction,
+			fmt.Errorf("clips.Mutate: Action=%q is not implemented at this layer — route via AssetMutationDispatcher.EnqueueAndDelete (production) or txmutation.HardDeleteTx (admin)", cmd.Action))
+	default:
+		// Defensive: IsKnown() returned true but a switch arm is
+		// missing (someone added a new AssetMutationAction constant
+		// to mutations/command.go without wiring it here). Returns
+		// ErrUnsupportedAction rather than silently falling through.
+		// The unit tests in clips_repository_mutate_test.go hold the
+		// exhaustive-enum invariant: every entry in
+		// mutations.ImplementedActions MUST have an explicit switch
+		// arm here.
+		return errors.Join(mutations.ErrUnsupportedAction,
+			fmt.Errorf("clips.Mutate: action %q IsImplemented()=true but switch arm is missing — regenerate ImplementedActions when adding an action arm", cmd.Action))
+	}
+}

@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	idemsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/idempotency"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
@@ -36,12 +36,12 @@ import (
 func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*RepoBundle, error) {
 	_ = ctx
 	_ = cfg
-	assetsStore := asset.NewAssetStoreSQLite(dbs.main.DB, log)
+	assetsStore := sqassets.NewAssetStoreSQLite(dbs.main.DB, log)
 	assetsSvc := asset.NewService(assetsStore, log)
 	imageRepo := assets.NewImagesRepository(dbs.main.DB)
 	voiceoverRepo := assets.NewVoiceoversRepository(dbs.main.DB)
 	monitorsRepo := assets.NewMonitorsRepository(dbs.main.DB)
-	clipsRepo := assets.NewClipsRepositoryCanonical(dbs.main.DB, log, assetsSvc.Repository())
+	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.main.DB, log, assetsSvc.Repository())
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.main.DB)
 	sqRepo := assets.NewSearchQueriesRepository(dbs.main.DB)
@@ -69,7 +69,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	assetIndexRepo := assetindex.NewRepository(dbs.main.DB)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
 
-	assetTreeRepo, err := assets.NewAssetTreeRepository(dbs.main.DB, log)
+	assetTreeRepo, err := sqassets.NewAssetTreeRepository(dbs.main.DB, log)
 	if err != nil {
 		return nil, fmt.Errorf("init asset tree repository: %w", err)
 	}
@@ -78,7 +78,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, fmt.Errorf("assettree service is nil after construction")
 	}
 
-	clipsRepos := map[string]*assets.ClipsRepository{
+	clipsRepos := map[string]*sqassets.ClipsRepository{
 		"youtube": repos.ClipsRepo,
 		"stock":   repos.ClipsRepo,
 		"artlist": repos.ClipsRepo,

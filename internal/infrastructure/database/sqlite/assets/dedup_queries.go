@@ -1,4 +1,15 @@
-package asset
+// Package assets — dedup helpers (Wave A: moved from
+// internal/domain/asset/dedup.go).
+//
+// These queries are used by the new clip registration endpoints
+// (register-from-youtube, upload-video) to avoid creating duplicate
+// MediaAsset records for the same source content. All queries
+// exclude soft-deleted clips via lifecycle_state column.
+//
+// Wave C / Phase 3 fix: dropped the unused `internal/domain/asset`
+// import — the SQL receivers migrated to Local infra and do not
+// reference any domain symbol directly.
+package assets
 
 import (
 	"context"
@@ -9,39 +20,29 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── Dedup helpers ───────────────────────────────────────────────────────
+// FindByYouTubeVideoID returns the ID of the most recent non-deleted
+// clip registered from the given YouTube video ID. The match is
+// exact on metadata_json.youtube_video_id.
 //
-// These queries are used by the new clip registration endpoints
-// (register-from-youtube, upload-video) to avoid creating duplicate
-// MediaAsset records for the same source content.
+// Returns ("", nil) if no matching clip exists — this is a normal
+// case for first-time registration, not an error.
 //
-// All queries exclude soft-deleted clips via lifecycle_state column.
-
-// FindByYouTubeVideoID returns the ID of the most recent non-deleted clip
-// that was registered from the given YouTube video ID. The match is exact
-// on `metadata_json.youtube_video_id`.
-//
-// Returns ("", nil) if no matching clip exists — this is a normal case
-// for first-time registration, not an error.
-//
-// Pass hasSegment=true to further restrict the match to clips extracted
-// from a specific segment (startSec, endSec). When hasSegment is false,
-// the function returns the most recent clip for the video regardless of
-// any stored start/end. Segment boundaries are compared as integer
-// milliseconds to avoid float-stringification bugs (e.g. "0" vs "0.0").
+// Pass hasSegment=true to further restrict the match to clips
+// extracted from a specific segment (startSec, endSec). When
+// hasSegment is false, the function returns the most recent clip
+// for the video regardless of any stored start/end. Segment
+// boundaries are compared as integer milliseconds to avoid
+// float-stringification bugs (e.g. "0" vs "0.0").
 func (s *AssetStoreSQLite) FindByYouTubeVideoID(ctx context.Context, videoID string, hasSegment bool, startSec, endSec float64) (string, error) {
 	videoID = strings.TrimSpace(videoID)
 	if videoID == "" {
 		return "", nil
 	}
-
 	var (
 		query string
 		args  []any
 	)
 	if hasSegment {
-		// Integer-millisecond comparison is robust to JSON's string
-		// representation: round(0.0*1000) = 0, round(30.0*1000) = 30000.
 		startMS := int64(startSec * 1000)
 		endMS := int64(endSec * 1000)
 		query = `SELECT id FROM media_assets
@@ -71,10 +72,8 @@ func (s *AssetStoreSQLite) FindByYouTubeVideoID(ctx context.Context, videoID str
 }
 
 // FindByFileHash returns the ID of the most recent non-deleted clip
-// with the given MD5 file_hash. Used by upload-video to skip re-registration
-// of an identical file.
-//
-// Returns ("", nil) if no match.
+// with the given MD5 file_hash. Used by upload-video to skip
+// re-registration of an identical file.
 func (s *AssetStoreSQLite) FindByFileHash(ctx context.Context, fileHash string) (string, error) {
 	fileHash = strings.TrimSpace(fileHash)
 	if fileHash == "" {
@@ -94,10 +93,9 @@ func (s *AssetStoreSQLite) FindByFileHash(ctx context.Context, fileHash string) 
 	return id, nil
 }
 
-// FindBySourceURL returns the ID of the most recent non-deleted clip
-// registered with the given external URL (metadata_json.source_url or
-// metadata_json.youtube_url). Catches duplicate YouTube submissions that
-// happen to use a different format (youtu.be vs youtube.com?v=).
+// FindBySourceURL returns the ID of the most recent non-deleted
+// clip registered with the given external URL (metadata_json
+// .source_url or .youtube_url).
 func (s *AssetStoreSQLite) FindBySourceURL(ctx context.Context, url string) (string, error) {
 	url = strings.TrimSpace(url)
 	if url == "" {
@@ -118,8 +116,9 @@ func (s *AssetStoreSQLite) FindBySourceURL(ctx context.Context, url string) (str
 	return id, nil
 }
 
-// FindByName returns the ID of the most recent non-deleted clip with the given name.
-// Used for name collision warnings during registration.
+// FindByName returns the ID of the most recent non-deleted clip
+// with the given name. Used for name collision warnings during
+// registration.
 func (s *AssetStoreSQLite) FindByName(ctx context.Context, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -139,9 +138,9 @@ func (s *AssetStoreSQLite) FindByName(ctx context.Context, name string) (string,
 	return id, nil
 }
 
-// FindDuplicatesByYouTubeID returns clip IDs (most recent first) that share
-// the same youtube_video_id as the given one. Used by the post-hoc dedup
-// sweeper to find candidates for merging/cleanup.
+// FindDuplicatesByYouTubeID returns clip IDs (most recent first)
+// that share the same youtube_video_id as the given one. Used by
+// the post-hoc dedup sweeper to find candidates for merging/cleanup.
 //
 // Excludes the given excludeID from results.
 func (s *AssetStoreSQLite) FindDuplicatesByYouTubeID(ctx context.Context, videoID string, excludeID string) ([]string, error) {

@@ -107,6 +107,20 @@ internal/api/assets/handler_searchqueries.go
 # Each migration PR MUST remove the file from this section in the same
 # commit (atomic: code migration + allowlist removal).
 #
+# ZERO-BASELINE ANNOTATIONS (Wave 24 / Blocco 1 re-scan, 2026-06-28):
+# Per AGENTS.md §8 zero-baseline rule, each entry below carries an
+# associated owner + deadline annotation as a HEADER-LINE COMMENT BLOCK
+# (1-3 lines above the path). DO NOT append trailing inline comments
+# to the path line — the gate's `comm -13` parses each non-comment
+# line as a FULL STRING and matches it against the rg output (bare
+# path-only). Trailing comments would silently exclude the path from
+# the comm key and the line becomes a regression-failure signal.
+# Deadlines are per-batch:
+#   - Task 2 batch (handlers + core app workers): 2026-07-15
+#   - Task 3 batch (media-curate + youtube + ai): 2026-07-22
+# Migration PR MUST land BEFORE the deadline; missing the deadline
+# surfaces the entry in the next Wave 24 re-scan as overdue.
+#
 # Migration plan (per architecture/current.yaml Wave 22):
 #   * task 2 (handlers): rewrite api/assets/clips/* + api/assets/soundeffect
 #     to call AssetMutationDispatcher.EnqueueAndIndex instead of
@@ -118,8 +132,9 @@ internal/api/assets/handler_searchqueries.go
 #     AssetMutationDispatcher consumer.
 
 # task 2 (handlers)
+# owner=@api-team; deadline=2026-07-15; task 2 (handlers); migration=Task 2 dispatcher EnqueueAndIndex
 internal/api/assets/clips/bulk_upload_worker.go
-# MIXED: L296 clip → dispatcher, L305/L440 voiceover → voiceover narrow port
+# owner=@api-team; deadline=2026-07-15; MIXED: L296 clip→dispatcher; L305/L440 voiceover→voiceover narrow port
 internal/api/assets/clips/clip_ops.go
 
 # PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the four
@@ -137,10 +152,14 @@ internal/api/assets/clips/clip_ops.go
 #   internal/api/assets/soundeffect/handler.go (Generate method only)
 
 # task 2 (application-layer workers)
+# owner=@app-team; deadline=2026-07-15; task 2 (application-layer); migration=Task 2 dispatcher EnqueueAndIndex
 internal/application/clips/clip_ops.go
+# owner=@app-team; deadline=2026-07-15; task 2 (application-layer); migration=Task 2 dispatcher EnqueueAndIndex
 internal/application/clips/enrich.go
+# owner=@app-team; deadline=2026-07-15; MIXED: clip→dispatcher; locations→asset_locations narrow port (separate wave)
 # MIXED: L73/L229 clip → dispatcher; L86/L100 locations → asset_locations narrow port
 internal/application/assets/ingest/adapter_clip.go
+# owner=@app-team; deadline=2026-07-15; MIXED: clip→dispatcher; locations→asset_locations narrow port (separate wave)
 # MIXED: L62 clip → dispatcher; L75/L89 locations → asset_locations narrow port
 internal/application/assets/artifacts/clips_adapter.go
 
@@ -164,12 +183,42 @@ internal/application/assets/artifacts/clips_adapter.go
 # in a future wave, not PR 7.
 
 # task 3 (media-curate + youtube + ai)
+# owner=@ai-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/assets/providers/artlist/semantic_enricher.go
+# owner=@ai-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/images/nvidia_animate.go
+# owner=@video-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/extraction/intelligence.go
+# owner=@video-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/metadata/service.go
+# owner=@video-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/orchestrator.go
+# owner=@ai-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
 internal/infrastructure/ai/autotag/autotag.go
+
+# BUCKET 1.5: Pending verification (NOT in the allowlist proper).
+# These 3 files were surfaced by the 2026-06-28 re-scan as newly-discovered
+# hits NOT in baseline 2026-06-27.md. Per the post-review critical-flag
+# policy (code-reviewer-minimax-m3 round 1), entries are NOT
+# pre-classified into the allowlist until verification confirms the target
+# table. Listed here as COMMENT REFERENCES ONLY (no path lines follow);
+# see docs/migrations/bypass_audit_2026-06-28.md §"Bucket 1.5 —
+# Pending verification" for the canonical 3-roster + verification plan +
+# 48h fall-back to either migrate or file as Bucket 3.
+#
+# Verification roster (canonical reference):
+#   - internal/api/assets/clips/clip_update.go          (verify by @api-team; due 2026-06-30)
+#   - internal/api/assets/clips/clip_enrich.go          (verify by @api-team; due 2026-06-30)
+#   - internal/application/scripts/usecase/clip_source_builder.go (verify by @app-team; due 2026-06-30)
+#
+# Classification fallback (post-verification):
+#   (a) target=media_assets → migrate to AssetMutationDispatcher.EnqueueAndIndex
+#       and remove from any allowlist; PR deadline 2026-07-02.
+#   (b) target=non-media (search_queries/voiceovers/channels/asset_locations/
+#       assetindex/scripts) → ADD to Bucket 3 with owner+deadline; tracks
+#       same per-entry annotation pattern as Bucket 4.
+#   (c) target=other/uncertain → escalate to ARCH review via
+#       docs/architecture/current.yaml follow-ups.
 
 # ── Bucket 4: Tests (test — no action; pre-excluded by rg glob) ────────
 # Tests are excluded from rg output by `--glob '!**/*_test.go'`; these

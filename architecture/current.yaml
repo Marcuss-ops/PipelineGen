@@ -1517,6 +1517,167 @@
     - id: 24.4
       title: First capability vertical slice (scripts or jobs, full module.go + contract.go + service.go + http.go + jobs.go + events.go + repository.go + adapters.go)
       kind: capability_full_move
+
+  # Blocco 1 / Wave-24 followup tickets (registered 2026-06-28 after PR 1/PR 2/PR 3
+  # of the Asset SSOT subwave shipped). Three open decisions are recorded here
+  # per AGENTS.md §8 zero-baseline rule: each ticket carries owner + deadline +
+  # status + acceptance criterion + evidence (file:line + comment quote).
+  # The naming decision is a sibling entry to architecture/deprecations.yaml
+  # #open_questions (see OPEN-W24-BLOCK1-NAMING-DECISION below) where the team
+  # vote on `Dispatcher` vs `Service` is logged.
+  follow_up_tickets:
+    - id: PR-W24-BLOCK1-NAMING-DECISION
+      title: "Final naming: AssetMutationDispatcher vs AssetMutationService"
+      owner: scripts/archcheck + mutations package maintainer (@mutations-team)
+      owner_capability: internal/application/assets/mutations
+      status: open
+      deadline: 2026-07-15
+      tracking_issue: "architecture/current.yaml#id-24 follow_up_tickets.PR-W24-BLOCK1-NAMING-DECISION"
+      acceptance: |
+        (a) Operator team votes on the canonical name (recorded in
+        architecture/deprecations.yaml#open_questions.OPEN-W24-BLOCK1-NAMING-DECISION);
+        (b) EITHER the rename PR (Dispatcher→Service, all 99 hits updated with single
+        atomic commit) OR the freeze-on-name PR (no rename; document the choice in
+        this ticket's notes) lands before 2026-07-15;
+        (c) Check 7's `mutations.AssetMutationDispatcher` reference at
+        scripts/ci-bypass-audit.sh and Check 5's `mutations.AssetMutationDispatcher`
+        reference at scripts/ci-architectural-checks.sh are updated atomically with
+        whichever PR ships.
+      target: |
+        Resolve the open naming question between
+        `mutations.AssetMutationDispatcher` (current canonical; 99 hits across
+        internal/ + cmd/) and a hypothetical rename to
+        `mutations.AssetMutationService` (0 hits; no current code path).
+        Open question sibling entry carries the rationale for both names.
+      evidence:
+        - file: internal/application/assets/mutations/dispatcher.go
+          line: 1
+          quote: "// Package mutations — AssetMutationDispatcher canonical interface."
+          role: "canonical package-level name annotation"
+        - file: internal/application/assets/mutations/dispatcher.go
+          line: 150
+          quote: "type AssetMutationDispatcher interface {"
+          role: "canonical interface type-name declaration site"
+        - file: internal/infrastructure/database/sqlite/outbox/repository.go
+          line: 760
+          quote: "var _ mutations.AssetMutationDispatcher = (*Dispatcher)(nil)"
+          role: "compile-time assertion (outbox concrete adapter implements the canonical SSOT) — 99 hits across internal/ + cmd/ derive from this single canonical declaration"
+      notes: |
+        `AssetMutationService` is NOT present anywhere in the codebase today
+        (`rg 'AssetMutationService' internal/ cmd/ scripts/` returns 0 hits on
+        2026-06-28). The naming question is a forward-looking operator decision
+        with two reasonable answers; the canonical rationale document lives at
+        architecture/deprecations.yaml#open_questions.OPEN-W24-BLOCK1-NAMING-DECISION
+        and is left open for team vote. Either decision keeps semantics correct;
+        cost asymmetry is the deciding factor (rename cost: 99 file:line edits;
+        freeze cost: 0).
+
+    - id: PR-W24-BLOCK1-PR3-SCOPE
+      title: "PR 3 scanner scope decision: MediaScanner fingerprint + future-iteration plan"
+      owner: scripts/archcheck + filesystem scanner maintainer (@files-team)
+      owner_capability: internal/infrastructure/files
+      status: open
+      deadline: 2026-07-15
+      tracking_issue: "architecture/current.yaml#id-24 follow_up_tickets.PR-W24-BLOCK1-PR3-SCOPE"
+      acceptance: |
+        (a) PR 3 scope is recorded: `MediaScanner` interface +
+        `ScanRequest{Root, Extensions, Limit, IncludeMetadata, IncludeTranscript}` +
+        `ScannedFile{Path, Hash, MetadataSibling, TranscriptSibling}` +
+        `LocalFilesystemScanner` (using `filepath.WalkDir` + ModTime-DESC sort +
+        cancellation-aware) + `NewLocalFilesystemScanner() MediaScanner` factory.
+        (b) Backward-compat surface is documented: zero callers consume the
+        interface today so the canonical contract is FREE to evolve without
+        deprecation entries. (c) Option (iii) filesystem + S3 backing concrete is
+        documented as a deferred future PR (the canonical surface supports it
+        through the interface; the LocalFilesystemScanner concrete is
+        filesystem-only).
+      target: |
+        Record PR 3's shipped scope (canonical MediaScanner surface +
+        filesystem-only concrete) and pre-decide the future-iteration surface
+        for non-filesystem backings. The interface shape is intentionally
+        narrow (Root + Extensions + Limit + sibling-probes) so future concretes
+        (S3, GCS, archive tar, fuse) compose without surface break.
+      evidence:
+        - file: internal/infrastructure/files/scanner.go
+          line: 3
+          quote: "// scanner.go — canonical MediaScanner surface (Wave 24 / PR 3 of"
+          role: "canonical surface annotation (the 'PR 3 of' marker confirms the scope decision is owned by PR 3 of Blocco 1)"
+        - file: internal/infrastructure/files/scanner.go
+          line: 22-25
+          quote: "//   - MediaScanner interface   : Scan(ctx, ScanRequest) ([]ScannedFile, error)\n//   - LocalFilesystemScanner  : concrete impl using filepath.WalkDir"
+          role: "API surface shape (interface + concrete + factory)"
+        - file: internal/infrastructure/files/scanner.go
+          line: 89-112
+          quote: "type MediaScanner interface {\n... surrounding types: ScanRequest{Root, Extensions, Limit, IncludeMetadata, IncludeTranscript} + ScannedFile{Path, Hash, MetadataSibling, TranscriptSibling}"
+          role: "canonical interface + DTO shapes (per PR 3 spec from user) — frozen contract for future concretes"
+      notes: |
+        PR 3 shipped on 2026-06-28 (filesystem scanner migration: domain
+        `MediaFile` + `ScanDirectory` removed from `internal/domain/asset/clips_list.go`,
+        abstract surface moved to `internal/infrastructure/files/scanner.go`).
+        Zero production callers consume `MediaScanner` today (rg returns 0 hits
+        outside `internal/infrastructure/files/scanner.go` + its test file),
+        so the canonical contract is FREE to evolve without a deprecation record.
+        Decision is recorded retrospectively to lock PR 3's contribution to the
+        Wave 24 tracker; future PRs (4+) carry concrete implementations only.
+
+    - id: PR-W24-BLOCK1-PR-ORDER
+      title: "PR ordering: PR 1 (ABORTED) → PR 2 sub-PR (Mutate) → PR 3 (scanner) → PR 4+ roadmap"
+      owner: scripts/archcheck + Asset SSOT workstream owner (@pipelinegen-agent)
+      owner_capability: internal/infrastructure/database/sqlite/assets
+      status: open
+      deadline: 2026-07-15
+      tracking_issue: "architecture/current.yaml#id-24 follow_up_tickets.PR-W24-BLOCK1-PR-ORDER"
+      acceptance: |
+        (a) The shipped-order ledger of PRs in the Blocco 1 Asset SSOT subwave is
+        corroborated against git log + documented as a chronological record in
+        this ticket's notes block. (b) PR 4+ candidates are listed with explicit
+        dependencies; (c) blockers (W14-PR2 close-out, asset store embedding removal)
+        are recorded to gate PR 4 from landing until the blockers close.
+      target: |
+        Reconcile the PR sequence against shipped reality and document the PR 4+
+        roadmap so future agents see the full dependency graph.
+          PR 1 (ABORTED, June 2026): *asset.AssetStoreSQLite embedding removal
+            was structurally blocked (the embedding is the precondition for the
+            `UpsertFolder` + `SoftDeleteFilter` canonical-tails; removing the
+            embedding without a producer replacement is a regression).
+          PR 2 sub-PR (SHIPPED, June 2026): `Mutate(ctx, mutations.AssetMutationCommand)`
+            typed-command wrapper on *assets.ClipsRepository + Check 10b
+            forward-prevention gate. Add +1 to dispatcher's surface; 0 to
+            production. PR 2 achieved the SAFE-ADDITIVE form of the literal
+            PR 2 spec (lowercase + cross-package barriers blocked; new typed
+            wrapper covers the forward path).
+          PR 3 (SHIPPED, June 2026): filesystem scanner migration (domain
+            `MediaFile` + `ScanDirectory` → infrastructure `MediaScanner`).
+          PR 4+ candidates (BLOCKED on W14-PR2 close-out + asset store embedding
+            resolution):
+              (i) remove the *asset.AssetStoreSQLite embedding (Block 1 PR 1
+                  deliverable; currently ABORTED);
+              (ii) collapse 3-adapter pattern (clips.ClipRepositoryPort 13 methods,
+                   youtubeports.ClipStorePort 9 methods, sfxports.ClipRepositoryPort
+                   1 method) onto a single Mutate shape — requires port rename
+                   upstream and is structurally blocked today;
+              (iii) future concretes for MediaScanner (S3, GCS, archive tar) — see
+                    PR-W24-BLOCK1-PR3-SCOPE.
+      evidence:
+        - file: internal/infrastructure/database/sqlite/assets/clips_repository.go
+          line: 302
+          quote: "// AssetMutationDispatcher (3-method, not Primitives), is unaffected."
+          role: "evidence PR 1 was ABORTED (AssetStoreSQLite embedding not yet removed; the comment is from the unsigned Dispatcher context that PR 1's deliverable would replace)"
+        - file: internal/application/assets/mutations/command.go
+          line: 82
+          quote: "//     still AssetMutationDispatcher.EnqueueAndIndex at a higher layer)."
+          role: "evidence PR 2 sub-PR SHIPPED (Mutate typed-command wrapper landed; the comment cross-references the higher-layer Dispatcher route)"
+        - file: internal/infrastructure/files/scanner.go
+          line: 3
+          quote: "// scanner.go — canonical MediaScanner surface (Wave 24 / PR 3 of"
+          role: "evidence PR 3 SHIPPED (filesystem scanner migration; the 'PR 3 of' marker in the comment header is the canonical reference)"
+      notes: |
+        The user explicitly accepted PR 1 as structurally blocked during the
+        original PR 1 spec (the embedding removal cannot land without a
+        producer replacement; PR 2 sub-PR delivered the closest safe-additive
+        alternative). PR 4+ is in discovery — the dependency graph above is
+        the authoritative roadmap; future agents should NOT bypass W14-PR2
+        close-out before re-enabling PR 1's deliverable.
   exit_gate: |
     internal/kernel/{asset,job,script,event,identity,errors}/doc.go exist
     (one each, package names asset/job/script/event/identity/errors

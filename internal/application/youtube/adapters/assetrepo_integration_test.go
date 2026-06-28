@@ -24,7 +24,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // pr12bYoutubeSchema mirrors the production schema: CanonicalMediaAssetsSchema
@@ -62,8 +62,8 @@ func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsReposit
 	db = drive.NewTestDBWithSchema(t, pr12bYoutubeSchema)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
-	clipsRepo = assets.NewClipsRepository(db, log)
-	assetStore := asset.NewAssetStoreSQLite(db, log)
+	clipsRepo = sqassets.NewClipsRepository(db, log)
+	assetStore := sqassets.NewAssetStoreSQLite(db, log)
 	assetRepo = assetStore.AssetRepository()
 	return
 }

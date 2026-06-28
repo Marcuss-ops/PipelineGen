@@ -7,9 +7,35 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// scoreClips scores and sorts clips based on keyword match quality, quality score,
-// duplicate penalty, sponsor penalty, and search visibility.
-func scoreClips(clips []*Asset, keywords []string) []*Asset {
+// ScoreClips scores and sorts clips based on keyword match quality,
+// quality score, duplicate penalty, sponsor penalty, and search
+// visibility.
+//
+// Wave C (Blocco 1 Asset SSOT, June 2026): this variant is the
+// canonical public export. Cross-package callers reach the algorithm
+// through this name (see `internal/infrastructure/database/sqlite/assets
+// /search_queries.go::SearchClips`). The package-internal impl
+// `scoreClipsInternal` carries the actual logic; keeping both names
+// exports a stable public surface while leaving the package free to
+// refactor internals (e.g. extract scoring-config knobs) without
+// breaking callers that depend on the canonical name.
+//
+// Returns a fresh slice — input is not mutated.
+func ScoreClips(clips []*Asset, keywords []string) []*Asset {
+	return scoreClipsInternal(clips, keywords)
+}
+
+// scoreClipsInternal is the package-internal impl; ScoreClips is the
+// canonical public export so callers outside the asset package (e.g.
+// the infra Wave C `assets` package — search_queries.go) can reach
+// it without inverting the dependency. The logic is identical; only
+// the export name changed.
+//
+// Wave C (Blocco 1 Asset SSOT, June 2026): promotion to public
+// surface to support the SQL receiver migration. The two-name
+// distinction is documented here for grep-ability and to keep
+// future contributors from re-introducing an unexported duplicate.
+func scoreClipsInternal(clips []*Asset, keywords []string) []*Asset {
 	type scoredClip struct {
 		clip  *Asset
 		score float64
