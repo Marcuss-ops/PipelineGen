@@ -54,12 +54,17 @@ func (f *fakeImageGen) SearchAndDownload(_ context.Context, _, _, _, _ string, _
 // ── Voiceover processor fakes ─────────────────────────────────────
 
 type fakeVoiceoverGen struct {
-	results []map[string]any
+	// Step 7 (June 2026) — M2 typed-port remediation: results is
+	// now []*voiceover.VoiceoverResult (canonical typed shape) instead
+	// of []map[string]any. Both production concrete *voiceover.Service
+	// and the test fakes return the same typed pointer — the processor
+	// reads Path + DriveLink as struct fields with no type assertion.
+	results []*voiceover.VoiceoverResult
 	errs    []error
 	calls   atomic.Int32
 }
 
-func (f *fakeVoiceoverGen) Generate(_ context.Context, _, _, _ string) (interface{}, error) {
+func (f *fakeVoiceoverGen) Generate(_ context.Context, _, _, _ string) (*voiceover.VoiceoverResult, error) {
 	i := int(f.calls.Add(1) - 1)
 	if i >= len(f.results) {
 		return nil, errors.New("unexpected call index")
@@ -70,7 +75,7 @@ func (f *fakeVoiceoverGen) Generate(_ context.Context, _, _, _ string) (interfac
 	return f.results[i], nil
 }
 
-func (f *fakeVoiceoverGen) GenerateWithDestination(_ context.Context, _, _, _ string, _ *voiceover.DestinationRequest) (interface{}, error) {
+func (f *fakeVoiceoverGen) GenerateWithDestination(_ context.Context, _, _, _ string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
 	return f.Generate(context.Background(), "", "", "")
 }
 
@@ -221,7 +226,7 @@ func TestVoiceoverProcessorNilGen(t *testing.T) {
 
 func TestVoiceoverProcessorNoScenes(t *testing.T) {
 	t.Parallel()
-	gen := &fakeVoiceoverGen{results: []map[string]any{{"drive_link": "http://vo1", "path": "/tmp/vo1.mp3"}}}
+	gen := &fakeVoiceoverGen{results: []*voiceover.VoiceoverResult{{DriveLink: "http://vo1", Path: "/tmp/vo1.mp3"}}}
 	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(0)
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(model))
@@ -234,7 +239,7 @@ func TestVoiceoverProcessorNoScenes(t *testing.T) {
 
 func TestVoiceoverProcessorNilModel(t *testing.T) {
 	t.Parallel()
-	gen := &fakeVoiceoverGen{results: []map[string]any{{"drive_link": "http://vo1", "path": "/tmp/vo1.mp3"}}}
+	gen := &fakeVoiceoverGen{results: []*voiceover.VoiceoverResult{{DriveLink: "http://vo1", Path: "/tmp/vo1.mp3"}}}
 	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nil))
 	if err != nil {
@@ -248,7 +253,7 @@ func TestVoiceoverProcessorNilModel(t *testing.T) {
 func TestVoiceoverProcessorSuccess(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
-		results: []map[string]any{{"drive_link": "http://vo.mp3", "path": "/tmp/scene-1.mp3"}},
+		results: []*voiceover.VoiceoverResult{{DriveLink: "http://vo.mp3", Path: "/tmp/scene-1.mp3"}},
 	}
 	proc := adapterspkg.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(1)
@@ -266,8 +271,8 @@ func TestVoiceoverProcessorSuccess(t *testing.T) {
 func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
-		results: []map[string]any{
-			{"drive_link": "http://vo1.mp3", "path": "/tmp/s1.mp3"},
+		results: []*voiceover.VoiceoverResult{
+			{DriveLink: "http://vo1.mp3", Path: "/tmp/s1.mp3"},
 			nil,
 		},
 		errs: []error{nil, errors.New("synthesis timeout")},

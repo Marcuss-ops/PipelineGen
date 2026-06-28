@@ -113,7 +113,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		// voiceover destination (folder_id or resolved group).
 		// Otherwise fall back to the default Generate (which
 		// honours the configured voiceover folder).
-		var result interface{}
+		var result *voiceover.VoiceoverResult
 		var voErr error
 		if plan.VoiceoverFolderID != "" {
 			dest := &voiceover.DestinationRequest{
@@ -134,9 +134,21 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			continue
 		}
 
-		// VoiceoverService.Generate returns interface{}; production
-		// concrete is *voiceover.VoiceoverResult.
-		link, path := extractVoiceoverPaths(result)
+		// Step 7 (June 2026) — M2 typed-port remediation: process
+		// the typed *voiceover.VoiceoverResult directly. Path and
+		// DriveLink are direct struct field reads (no type assertion,
+		// no extractVoiceoverPaths). Result is nil-tolerant in case
+		// the underlying service returns (nil, nil) — status flips to
+		// "empty_result" matching pre-Step-7 behaviour. The "empty_result"
+		// sentinel is preserved because the canonical envelope in
+		// PostProcessResult.Voiceovers[i].Status needs a distinct value
+		// from "completed" (with a real DriveLink/Path pair) AND from
+		// "failed" (when Generate returned a non-nil err).
+		link, path := "", ""
+		if result != nil {
+			link = result.DriveLink
+			path = result.Path
+		}
 		status := "completed"
 		if link == "" && path == "" {
 			status = "empty_result"
@@ -169,43 +181,26 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	}, nil
 }
 
-// extractVoiceoverPaths extracts DriveLink and Path from a voiceover
-// result. Handles both *voiceover.VoiceoverResult (production concrete)
-// and map[string]any (test fakes). The VoiceoverService interface returns
-// interface{}, so we type-assert to discover the concrete shape.
-func extractVoiceoverPaths(result interface{}) (link, path string) {
-	if result == nil {
-		return "", ""
-	}
-
-	// Production path: *voiceover.VoiceoverResult has DriveLink and Path
-	// as struct fields (not methods). Direct type assertion.
-	if vo, ok := result.(*voiceover.VoiceoverResult); ok {
-		return vo.DriveLink, vo.Path
-	}
-
-	// Fallback: map[string]any (test fakes).
-	if m, ok := result.(map[string]any); ok {
-		l, _ := m["drive_link"].(string)
-		p, _ := m["path"].(string)
-		return l, p
-	}
-	return "", ""
-}
-
 // ── Typed port (production adapter: voiceover.Service) ───────────────────
 
 // VoiceoverService is the canonical port for voiceover generation.
 // Production implementations live in internal/application/voiceover/
 // (concrete *voiceover.Service); stubs live in adapters/_ in
-// test fixtures. The Generate return value is interface{} because
-// production returns *voiceover.VoiceoverResult (struct) while test
-// fakes return map[string]any — extractVoiceoverPaths handles both.
+// test fixtures (processor_voiceover_test.go + processor_images_voiceover_test.go).
+//
+// Step 7 / PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28 M2 typed-port
+// remediation (June 2026): both methods now return the canonical
+// typed *voiceover.VoiceoverResult (NOT interface{}). The Process body
+// reads result.Path + result.DriveLink directly — no type assertion,
+// no extractVoiceoverPaths helper. Companion back-compat alias
+// `domain.VoiceoverResult = domain.Result` lives at
+// internal/domain/voiceover/result.go for waves-cross safety during
+// Wave 21 PR-G.2 BACKFILL settlement (deadline 2026-07-10).
 //
 // GenerateWithDestination is needed by VoiceoverProcessor when the
 // plan carries a voiceover destination (folder_id or resolved group).
 // Both production and test fakes must satisfy it.
 type VoiceoverService interface {
-	Generate(ctx context.Context, text, lang, filename string) (interface{}, error)
-	GenerateWithDestination(ctx context.Context, text, lang, filename string, dest *voiceover.DestinationRequest) (interface{}, error)
+	Generate(ctx context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error)
+	GenerateWithDestination(ctx context.Context, text, lang, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error)
 }

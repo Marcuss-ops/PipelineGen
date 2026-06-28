@@ -1256,9 +1256,62 @@
     - id: PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28
       title: "Voiceover typed-port SIMPLE alias unblock (Step 1 Option X) - tactical domain.VoiceoverResult = Result"
       owner: scripts/archcheck + voiceover-stream maintainer
-      status: pending
+      owner_capability: internal/application/voiceover
+      status: shipped
       deadline: 2026-07-10
       tracking_issue: "internal/domain/voiceover/result.go#type-voiceoverresult-alias"
+      completed_in_commit: "Step 7 closure - refactor(voiceover): [M2] type voiceoverSvcAdapter return as *voiceover.VoiceoverResult (no interface{})"
+      completion_notes: |
+        Step 7 (June 2026) closes PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28
+        M2 typed-port remediation across 5 files (4 Go + 1 wave-tracker entry):
+
+          1. internal/app/wire_script.go:
+             voiceoverSvcAdapter.Generate / GenerateWithDestination return
+             types flipped from (interface{}, error) to
+             (*voiceover.VoiceoverResult, error). Adapter stays as a thin
+             nil-tolerant seam (returns through unchanged).
+
+          2. internal/application/scripts/adapters/processor_voiceover.go:
+             VoiceoverService interface signature now matches
+             *voiceover.Service directly (typed return). Process method
+             reads result.Path + result.DriveLink as struct fields (no
+             type assertion). DELETE extractVoiceoverPaths helper function
+             (was handling both *voiceover.VoiceoverResult and
+             map[string]any test fakes via runtime type assertion).
+
+          3. internal/application/scripts/adapters/processor_voiceover_test.go:
+             stubVoiceoverService methods return typed literal
+             &voiceover.VoiceoverResult{Path: ..., DriveLink: ...} instead
+             of map[string]any{"path": ..., "drive_link": ...}.
+
+          4. internal/application/scripts/adapters/processor_images_voiceover_test.go:
+             fakeVoiceoverGen.results field type changed from
+             []map[string]any to []*voiceover.VoiceoverResult; methods'
+             return type matches; 4 test call sites updated to use struct
+             literal (TestVoiceoverProcessorNoScenes / NilModel / Success
+             / PartialFailure).
+
+        Sibling follow-ups still pending (NOT closed by this PR):
+
+          - PR-VOICEOVER-RECOVERY V1..V7 (deadline 2026-07-10) — full
+            typed-port chain via EXPAND / BACKFILL / CUTOVER / CONTRACT
+            godlike/07 sequence.
+          - PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 (B-3 CUTOVER
+            pending) — use case Consumer migration to GenerateVoiceoverUseCase
+            wired in Step 8 PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 B-2
+            BACKFILL.
+          - PR-APP-BUNDLES-COMPILE-RECOVERY + PR-TEST-FIXTURES-RED-RECOVERY
+            + PR-ASSETS-MONITOR-CONTRACT-AUDIT-2026-06-28 +
+            PR-MIGRATIONS-PREFIX-AUDIT-2026-06-28 — separately tracked,
+            independent of Step 7 closure.
+      context.WithoutCancel_audit: |
+        Step 7 introduces NO new context.Background() / context.WithoutCancel
+        sites. Per AGENTS.md scope discipline, no ARCH-ALLOWLIST marker
+        additions are needed for this PR.
+      cross_refs:
+        step_8: architecture/current.yaml#id-21 follow_up_tickets.PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 (sibling — Wave 21 B-2 BACKFILL closure)
+        ag_ents_pattern0: AGENTS.md Pattern 0 (Port abstraction layer, June 2026)
+        wave_21_pr_g2: architecture/current.yaml id-21 wave_21 exit_gate PR-G.2 BACKFILL window
 
     # Wave 21 / PR-APP-BUNDLES-COMPILE-RECOVERY - Follow-up per la RED zone
     # internal/app/build_bundles_*.go + composition.go. Diagnosticata post-Option-X

@@ -63,18 +63,22 @@ type stubVoiceoverService struct {
 	callCount  int
 }
 
-func (s *stubVoiceoverService) Generate(_ context.Context, text, lang, filename string) (interface{}, error) {
+func (s *stubVoiceoverService) Generate(_ context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error) {
 	s.callCount++
 	if err, ok := s.failOnCall[s.callCount-1]; ok && err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"path":       "/tmp/" + filename,
-		"drive_link": "https://drive.example.test/" + filename,
+	// Step 7 (June 2026) — typed stub: returns the canonical
+	// *voiceover.VoiceoverResult struct directly instead of a
+	// map[string]any literal. The processor now reads Path + DriveLink
+	// as struct fields (no type assertion needed).
+	return &voiceover.VoiceoverResult{
+		Path:      "/tmp/" + filename,
+		DriveLink: "https://drive.example.test/" + filename,
 	}, nil
 }
 
-func (s *stubVoiceoverService) GenerateWithDestination(_ context.Context, text, lang, filename string, _ *voiceover.DestinationRequest) (interface{}, error) {
+func (s *stubVoiceoverService) GenerateWithDestination(_ context.Context, text, lang, filename string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
 	return s.Generate(context.Background(), text, lang, filename)
 }
 
