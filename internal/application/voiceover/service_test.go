@@ -1,7 +1,9 @@
 package voiceover
 
 import (
+	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -9,6 +11,7 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 func TestNormalizeBatchRequestDefaults(t *testing.T) {
@@ -287,4 +290,62 @@ func TestResolvedDestinationDefaults(t *testing.T) {
 	assert.Empty(t, d.FolderID)
 	assert.Empty(t, d.FolderPath)
 	assert.Empty(t, d.DriveLink)
+}
+
+// PR-VO-A4 (path-traversal fix, June 2026): pinning the GenerateBatch
+// fail-fast contract for the path-traversal attack vector set.
+// Service{} zero-value is sufficient because the path-traversal
+// rejection in DestinationRequest.Validate runs BEFORE any field
+// access (audio processor, lifecycle service, db handle).
+// A future refactor that moves the Validate call after service-field
+// usage would break this test loudly — that's the audit pin.
+func TestGenerateBatch_RejectsPathTraversalPayload(t *testing.T) {
+	attacks := []string{
+		"..",
+		"../etc",
+		"/etc/passwd",
+		"subfolder/../sibling",
+		".." + string(filepath.Separator) + "windows",
+		strings.Repeat("a", 201), // length cap
+	}
+	for _, sub := range attacks {
+		t.Run("attack-"+sub, func(t *testing.T) {
+			s := &Service{
+				// zap.NewNop() returns a logger that silently discards all
+				// log entries — required because Service{}.log is nil and
+				// s.log.Warn() panics on a nil receiver. We do NOT need a
+				// live DB / audioProcessor / lifecycleService because the
+				// Validate() guard fires BEFORE any field access.
+				log: zap.NewNop(),
+			}
+			req := &BatchRequest{
+				Text:      "hello world",
+				Languages: []string{"en"},
+				Strategy:  "replace",
+				Destination: &DestinationRequest{
+					SubfolderName:   sub,
+					CreateSubfolder: true,
+				},
+			}
+			resp, err := s.GenerateBatch(context.Background(), req)
+			if resp != nil {
+				t.Errorf("attack %q: GenerateBatch must return nil response, got %#v", sub, resp)
+			}
+			assert.Error(t, err, "attack %q: GenerateBatch must reject", sub)
+			if err == nil {
+				return
+			}
+			// The exact error word varies (reserved/separator/traversal) but
+			// every reject must mention subfolder_name OR a recognisable
+			// substring. Defensive: tolerate pkg/pathutil wording drift by
+			// allowing any of the canonical reject verbs.
+			msg := err.Error()
+			if !strings.Contains(msg, "subfolder_name") &&
+				!strings.Contains(msg, "traversal") &&
+				!strings.Contains(msg, "reserved") &&
+				!strings.Contains(msg, "separator") {
+				t.Errorf("attack %q: error %q must mention subfolder_name/traversal/reserved/separator", sub, msg)
+			}
+		})
+	}
 }

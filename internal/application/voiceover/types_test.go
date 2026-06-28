@@ -1,6 +1,9 @@
 package voiceover
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBatchRequestPayloadMapIncludesDestinationAndMetadata(t *testing.T) {
 	removeSilence := true
@@ -142,5 +145,69 @@ func TestNormalizeBatchRequest_FillsEmptyFilenameTemplate(t *testing.T) {
 	normalized := normalizeBatchRequest(req)
 	if normalized.FilenameTemplate == "" {
 		t.Fatalf("normalize must fill FilenameTemplate when caller leaves it empty; got \"\"")
+	}
+}
+
+// PR-VO-A4 (path-traversal fix, June 2026): pinning the canonical
+// validation contract for DestinationRequest. The shape is:
+//
+//   - SubfolderName empty  → nil (legitimate "no subfolder" signal)
+//   - SubfolderName passes pkg/pathutil.SanitizeSubfolderSegment  → nil
+//   - SubfolderName fails the segment sanitiser  → wrapped error
+//
+// Coverage extends the pkg/pathutil tests so callers that bind via
+// Gin / ShouldBindJSON see the same reject surface at the request
+// boundary (no need to redrive the attack vectors here).
+func TestDestinationRequest_Validate_BoundaryContract(t *testing.T) {
+	cases := []struct {
+		name      string
+		subfolder string
+		wantErr   bool
+	}{
+		// Empty / nil-safe path — legitimate "no subfolder" signal.
+		{"empty-subfolder-passes", "", false},
+		// Accepts sanitisation-clean names.
+		{"simple-ascii-passes", "intro", false},
+		{"hyphenated-passes", "v1-q4", false},
+		{"underscored-passes", "scene_one", false},
+		{"unicode-passes", "日本", false},
+		{"mixed-spaces-passes", "Foo Bar 2024", false},
+		// Rejects the canonical path-traversal vector set. The exact
+		// substring inside err.Error() is intentionally NOT pinned here;
+		// pkg/pathutil/pathutil_test.go pins it. We only pin "Validate
+		// returns an error" so a future relax verifier over there
+		// doesn't accidentally break this contract.
+		{"reserved-dot-rejected", "..", true},
+		{"reserved-parent-rejected", ".", true},
+		{"leading-slash-rejected", "/etc", true},
+		{"leading-backslash-rejected", "\\windows", true},
+		{"embedded-slash-rejected", "subfolder/sibling", true},
+		{"embedded-backslash-rejected", "subfolder\\sibling", true},
+		{"double-dot-prefix-rejected", "../foo", true},
+		{"nul-byte-rejected", "foo\x00bar", true},
+		{"length-cap-rejected", strings.Repeat("a", 201), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &DestinationRequest{SubfolderName: tc.subfolder}
+			err := r.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate(%q) expected error, got nil", tc.subfolder)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate(%q) unexpected error: %v", tc.subfolder, err)
+			}
+		})
+	}
+}
+
+// TestDestinationRequest_Validate_NilSafe: a nil *DestinationRequest
+// must short-circuit nil-error. This covers callers that build the
+// struct via batch helpers and may hand a nil when SubfolderName is
+// absent AND the whole struct is initialised lazily.
+func TestDestinationRequest_Validate_NilSafe(t *testing.T) {
+	var d *DestinationRequest
+	if err := d.Validate(); err != nil {
+		t.Fatalf("(*nil)(DestinationRequest).Validate() must be nil-safe; got %v", err)
 	}
 }
