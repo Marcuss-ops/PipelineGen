@@ -34,6 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -110,6 +111,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
+	hashAdapter := hashutil.NewHashAdapter()
 	youtubeDeps := youtube.ServiceDeps{
 		Cfg:               buildYouTubeRuntimeConfig(cfg),
 		Log:               log,
@@ -127,6 +129,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		DriveFolderMgr:    driveFolderMgr,
 		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
 		SearchRunner:      searchRunnerAdapter,
+		HashSvc:            hashAdapter,
 	}
 	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
 		return nil, fmt.Errorf("compose youtube: %w", err)
