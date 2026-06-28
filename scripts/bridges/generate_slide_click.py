@@ -11,26 +11,38 @@ def main():
     parser.add_argument("--output", required=True, help="Output PNG file path")
     parser.add_argument("--profile-dir", default="data/google_slides_profile", help="Path to persistent browser profile")
     parser.add_argument("--headful", action="store_true", help="Run browser in headful mode (needed for first login)")
+    parser.add_argument("--use-system-chrome", action="store_true", help="Use active system Chrome profile and installation")
     args = parser.parse_args()
 
+    profile_dir = args.profile_dir
+    channel = None
+    if args.use_system_chrome:
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        if local_app_data:
+            profile_dir = os.path.join(local_app_data, "Google", "Chrome", "User Data")
+            channel = "chrome"
+
     # Ensure profile directory exists
-    os.makedirs(args.profile_dir, exist_ok=True)
+    os.makedirs(profile_dir, exist_ok=True)
 
     with sync_playwright() as p:
         # Open browser with persistent context
-        print(f"Launching browser with profile: {args.profile_dir} ...")
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=args.profile_dir,
-            headless=not args.headful,
-            args=[
+        print(f"Launching browser with profile: {profile_dir} ...")
+        kwargs = {
+            "user_data_dir": profile_dir,
+            "headless": not args.headful,
+            "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--password-store=basic",
                 "--use-mock-keychain",
             ],
-            no_viewport=True
-        )
+            "no_viewport": True,
+        }
+        if channel:
+            kwargs["channel"] = channel
+        context = p.chromium.launch_persistent_context(**kwargs)
 
         page = context.new_page()
         
