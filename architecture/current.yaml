@@ -1260,6 +1260,31 @@
       deadline: 2026-07-10
       tracking_issue: "internal/domain/voiceover/result.go#type-voiceoverresult-alias"
 
+    # Wave 21 / PR-APP-BUNDLES-COMPILE-RECOVERY - Follow-up per la RED zone
+    # internal/app/build_bundles_*.go + composition.go. Diagnosticata post-Option-X
+    # alias unblock + Step 3 qdrant/dr discovery (qdrant/dr builds clean, RED
+    # zones sono sul WireApp+CompositionRoot non sul qdrant capability surface).
+    - id: PR-APP-BUNDLES-COMPILE-RECOVERY
+      title: 'internal/app/build_bundles_*.go + composition.go compile recovery (12 undefined + 1 type mismatch)'
+      owner_capability: internal/app
+      target: 'fix each undefined symbol (assets, outbox, jobsoutbox) + repos.ClipsRepo interface conversion + memorySvc type assignment'
+      deadline: 2026-07-10
+      status: pending
+      tracking_issue: 'internal/app/build_bundles_*.go + composition.go'
+      acceptance: 'Full go build ./... exit 0 + Wave 21 PR-G mega-package split coesistente. Un commit atomic per ciascuna RED fix; diff size <=30 lines. Owner-driven EXPAND-BACKFILL-CUTOVER sequenza (godlike/07).'
+      notes: 'Site-by-site compile break post-Option-X: composition.go lines 118, 202 undefined jobsoutbox; build_bundles_voiceover.go line 64 undefined outbox; build_bundles_core.go lines 41-47 undefined assets; build_bundles_process.go line 205 undefined assets; build_bundles_process.go line 423 repos.ClipsRepo non-interface mismatch; build_bundles_domain.go line 315 memorySvc type assignment contrarian. Per ciascuno: ASCII diagnostic + minimal alias/import/type-assertion fix.'
+
+    # Wave 21 / PR-TEST-FIXTURES-RED-RECOVERY - Follow-up per la RED zone
+    # tests/fixtures/zero_legacy/check_*.go. Diagnosticata post-Option-X alias.
+    - id: PR-TEST-FIXTURES-RED-RECOVERY
+      title: 'tests/fixtures/zero_legacy/check_*.go compile recovery (assetShim redeclaration + undefined context + missing serverShim fields)'
+      owner_capability: scripts/ci-architectural-checks.sh + tests/fixtures maintainer
+      target: 'deduplicate assetShim across fixtures + import context + add fields to serverShim'
+      deadline: 2026-07-10
+      status: pending
+      tracking_issue: 'tests/fixtures/zero_legacy/'
+      acceptance: 'go test tests/fixtures/... exit 0 (fixtures compilano e tests runnano) + minimal-diff atomic per check_*.go. Ciascun commit <=30 lines.'
+      notes: 'Site-by-site compile break post-Option-X: check_14_buildpayload_status_key.go line 11 + check_12_payload_mapper_status.go line 11 assetShim redeclared in this block (cross-file same-package duplication, Wave 20 PR-I transitional baseline ~14 collisions); check_09_nil_dispatcher.go lines 11, 22 undefined context (manca import context); check_08_setter.go lines 19-20 s.SetOutboxHandler + s.SetMediasearchHandler undefined (campi mancanti su serverShim struct).'
   cross_refs:
     ownership: architecture/ownership.yaml (application_scripts.target_subdirs)
     policy: architecture/policy.yaml::max_files_per_package=40
