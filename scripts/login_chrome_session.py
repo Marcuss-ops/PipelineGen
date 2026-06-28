@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
-PROFILE_DIR = DATA_DIR / "google_slides_profile"
+PROFILE_DIR = DATA_DIR / "google_slides_session_profile"
 STORAGE_FILE = DATA_DIR / "google_slides_storage.json"
 
 def main():
