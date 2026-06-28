@@ -191,13 +191,26 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		sourceReg.Register(scriptpkg.SourceCatalog, usecase.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
 	}
 
-	// Search resolver: wired via semanticSearchAdapter bridging
-	// root.Domains.RealtimeSearch (usecase.RealtimeSearchService)
-	// to scriptports.SemanticSearchPort. SourceSearch sources now
+	// ── Qdrant embedder (shared by SemanticSearchPort and ClipSearchPort) ──
+	var ollamaEmbedder qdrant.TextEmbedder
+	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
+		if ollamaClient := gen.GetClient(); ollamaClient != nil {
+			ollamaEmbedder = qdrant.NewTextEmbedderAdapter(ollamaClient)
+		}
+	}
+
+	// Search resolver: wired via Qdrant SemanticSearchPort directly,
+	// bypassing the removed realtime package. SourceSearch sources
 	// resolve through Qdrant semantic search.
-	if root.Domains.RealtimeSearch != nil && clipSourceBuilder != nil {
-		searchAdapter := &semanticSearchAdapter{realtime: root.Domains.RealtimeSearch}
-		sourceReg.Register(scriptpkg.SourceSearch, usecase.NewSearchSourceResolver(searchAdapter, clipSourceBuilder, log))
+	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil && clipSourceBuilder != nil {
+		searchPort := &qdrantSemanticSearchPort{
+			searcher:   root.Process.QdrantSearcher,
+			embedder:   ollamaEmbedder,
+			vectorName: "text",
+			log:        log,
+		}
+		sourceReg.Register(scriptpkg.SourceSearch, usecase.NewSearchSourceResolver(searchPort, clipSourceBuilder, log))
+		log.Info("SourceSearch resolver wired (Qdrant + Ollama embedder)")
 	}
 
 	// Curate resolver (PR E, June 2026): extracted from MediaCurator.
@@ -208,15 +221,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// Wire ClipSearchPort when Qdrant is enabled (PJ-CURATE-1, June 2026).
-	// Ollama client serves as the embedder via qdrant.NewTextEmbedderAdapter.
-	// Constructed once and shared between CurateSourceResolver and MediaCurator.
+	// Reuses ollamaEmbedder (constructed above for SemanticSearchPort).
 	var clipSearchPort scriptports.ClipSearchPort
-	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
-		if ollamaClient := gen.GetClient(); ollamaClient != nil {
-			embedder := qdrant.NewTextEmbedderAdapter(ollamaClient)
-			clipSearchPort = qdrant.NewClipSearchAdapter(root.Process.QdrantSearcher, embedder, "text", log)
-			log.Info("ClipSearchPort wired (Qdrant + Ollama embedder)")
-		}
+	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil {
+		clipSearchPort = qdrant.NewClipSearchAdapter(root.Process.QdrantSearcher, ollamaEmbedder, "text", log)
+		log.Info("ClipSearchPort wired (Qdrant + Ollama embedder)")
 	}
 	if curateResolver != nil && clipSearchPort != nil {
 		// clipSearchPort is the canonical ports.ClipSearchPort built by
@@ -703,31 +712,69 @@ func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, descr
 	return nil, fmt.Errorf("GenerateSmartImage not supported through ImageProcessor")
 }
 
-// semanticSearchAdapter adapts scripts.RealtimeSearchService → scripts.SemanticSearchPort.
-type	semanticSearchAdapter struct {
-		realtime usecase.RealtimeSearchService
+// ── Qdrant SemanticSearchPort ────────────────────────────────────────
+//
+// qdrantSemanticSearchPort implements usecase.SemanticSearchPort
+// directly against the Qdrant Searcher (via SearchByText), bypassing
+// the removed realtime package. SourceSearch sources resolve through
+// Qdrant semantic search. Replaces the dead semanticSearchAdapter
+// which depended on the nil root.Domains.RealtimeSearch.
+type qdrantSemanticSearchPort struct {
+	searcher   *qdrant.Searcher
+	embedder   qdrant.TextEmbedder
+	vectorName string
+	log        *zap.Logger
+}
+
+// SearchByText implements usecase.SemanticSearchPort.
+func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query string, limit int, language string) ([]usecase.SemanticSearchResult, error) {
+	if p == nil || p.searcher == nil || p.embedder == nil {
+		return nil, nil
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return []usecase.SemanticSearchResult{}, nil
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	minScore := 0.5
+
+	results, err := p.searcher.SearchByText(ctx, query, p.embedder, p.vectorName, limit, minScore)
+	if err != nil {
+		return nil, fmt.Errorf("qdrant semantic search: %w", err)
 	}
 
-	// SearchByText delegates to RealtimeSearchService.SearchClips.
-	func (a *semanticSearchAdapter) SearchByText(ctx context.Context, query string, limit int, language string) ([]usecase.SemanticSearchResult, error) {
-		if a == nil || a.realtime == nil {
-			return nil, nil
+	out := make([]usecase.SemanticSearchResult, 0, len(results))
+	for _, r := range results {
+		assetID := qdrantPayloadStr(r.Payload, "asset_id")
+		if assetID == "" {
+			continue
 		}
-		minScore := 0.0
-		matches, err := a.realtime.SearchClips(ctx, query, "", "", limit, minScore)
-		if err != nil {
-			return nil, err
-		}
-		results := make([]usecase.SemanticSearchResult, 0, len(matches))
-		for _, m := range matches {
-			results = append(results, usecase.SemanticSearchResult{
-				ClipID: m.ID,
-				Name:   m.Name,
-				Score:  m.Score,
-			})
-		}
-		return results, nil
+		out = append(out, usecase.SemanticSearchResult{
+			ClipID: assetID,
+			Name:   qdrantPayloadStr(r.Payload, "name"),
+			Score:  r.Score,
+		})
 	}
+	return out, nil
+}
+
+// qdrantPayloadStr reads a string-valued key from a Qdrant payload map.
+func qdrantPayloadStr(payload map[string]interface{}, key string) string {
+	if payload == nil {
+		return ""
+	}
+	v, ok := payload[key]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
 
 // ── ClipSearchPort type bridge (TODO #8 drift-fix, June 2026) ──────────
 //
