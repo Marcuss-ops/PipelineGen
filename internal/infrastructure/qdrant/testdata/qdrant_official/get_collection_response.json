@@ -1,0 +1,42 @@
+{
+  "result": {
+    "status": "green",
+    "optimizer_status": "ok",
+    "vectors_count": 1064,
+    "points_count": 1064,
+    "segments_count": 1,
+    "config": {
+      "params": {
+        "vectors": {
+          "text":       { "size": 768, "distance": "Cosine" },
+          "transcript": { "size": 768, "distance": "Cosine" },
+          "visual":     { "size": 768, "distance": "Cosine" },
+          "audio":      { "size": 512, "distance": "Cosine" }
+        },
+        "sparse_vectors": {
+          "bm25_text": { "modifier": "bm25" }
+        }
+      }
+    },
+    "payload_schema": {
+      "workspace_id":               { "data_type": "keyword" },
+      "lifecycle_state":            { "data_type": "keyword" },
+      "source":                     { "data_type": "keyword" },
+      "media_type":                 { "data_type": "keyword" },
+      "language":                   { "data_type": "keyword" },
+      "category":                   { "data_type": "keyword" },
+      "style":                      { "data_type": "keyword" },
+      "channel_id":                 { "data_type": "keyword" },
+      "license":                    { "data_type": "keyword" },
+      "index_version":              { "data_type": "keyword" },
+      "embedding_version_text":     { "data_type": "keyword" },
+      "embedding_version_visual":   { "data_type": "keyword" },
+      "duration_ms":                { "data_type": "integer" },
+      "created_at":                 { "data_type": "datetime" },
+      "updated_at":                 { "data_type": "datetime" },
+      "deleted_at":                 { "data_type": "datetime" }
+    }
+  },
+  "status": "ok",
+  "time": 0.000456
+}

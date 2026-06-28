@@ -107,9 +107,24 @@ type ProcessBundle struct {
 	MediaProcessor     asset.Processor
 	ClipIndexerService *clipindexer.Service
 	VLMClient          *vlm.Client
-	// QDRANT-003 (June 2026): canonical Qdrant adapters.
+	// QDRANT-003 (June 2026): canonical Qdrant adapters. All fields
+	// are sourced from qd.Runtime in BuildProcessBundle (PR 4) — there
+	// is exactly ONE *qdrant.Client per process.
 	CollectionManager *qdrant.CollectionManager
-	QdrantDeleter     qdrant.QdrantDeleter
+	// QdrantDeleter is the outbox.VectorPointDeleter port satisfied by
+	// qd.Runtime.Writer. Renamed from qdrant.QdrantDeleter in PR 4
+	// (was a duplicate infra-side interface; consolidated to the
+	// application-layer port per AGENTS.md Pattern 0).
+	QdrantDeleter     jobsoutbox.VectorPointDeleter
+	// QdrantRuntime is the canonical facade (PR 4, refactor/single-qdrant-runtime).
+	// Exposed as a first-class field on ProcessBundle so callers can read
+	// any subsystem directly via root.Process.QdrantRuntime.{Client,Writer,
+	// Searcher,Manager,Health,Cleaner} without going through the
+	// individually-named fields above. The individually-named fields are
+	// kept (one-to-one with the named subsystems) for backward-compat
+	// with wire_services.go + composition_test.go canary assertions;
+	// they all point into the SAME *QdrantRuntime instance.
+	QdrantRuntime *qdrant.QdrantRuntime
 	// QDRANT-004 (June 2026): search.VectorStorePort for the mediasearch API.
 	// Populated by BuildProcessBundle when Qdrant is enabled.
 	// Wave 15 (June 2026): typed port per AGENTS.md Pattern 0 — replaces
@@ -119,14 +134,16 @@ type ProcessBundle struct {
 	// QDRANT-005 Fase 1 (June 2026): direct *qdrant.Client for diagnostics
 	// (CountPoints). Populated by BuildProcessBundle when Qdrant is enabled.
 	QdrantClient *qdrant.Client
-	// QDRANT-005 Fase 2 (June 2026): optional QdrantHealthProbe interface{}
-	// that satisfies the lifecycle readiness probe contract
-	// (`Probe(context.Context) error`). The concrete runtime binding is
-	// constructed by BuildProcessBundle from the same *qdrant.Client
-	// when Qdrant is enabled; exposed as `any` here so the wire step in
-	// wire_services.go can type-assert without forcing every composition
-	// path to import qdrant (see PR for layering).
-	QdrantHealthProbe any
+	// QDRANT-005 Fase 2 (June 2026): canonical QdrantHealthProbe.
+	// Concretely typed (PR 4, June 2026, refactor/single-qdrant-runtime)
+	// as *qdrant.HealthProbe — compile-time assertions at
+	// internal/infrastructure/qdrant/health.go satisfy both the
+	// readiness-barrier Probe contract AND the /health endpoint
+	// healthport.QdrantChecker contract, so the loose `any` carrier
+	// the pre-PR4 ProcessBundle field had is replaced. nil-safe when
+	// Qdrant is disabled (use IsNil-checks at call sites; see
+	// wire_services.go::WireServices which assigns into AppDeps).
+	QdrantHealthProbe *qdrant.HealthProbe
 	// QDRANT-005 Fase 3 (June 2026): canonical LocatorCleaner for
 	// scrubbing legacy drive_link / local_path payload keys from
 	// historical Qdrant points. Constructed alongside the client
@@ -149,22 +166,40 @@ type ProcessBundle struct {
 // qd.QdrantDeleter; BuildProcessBundle consumes outbox.OutboxBundle +
 // qd after that and constructs MediaProcessor inline.
 //
-// The 2-field shape is deliberate — only what BuildOutboxBundle needs
+// The 3-field shape is deliberate — only what BuildOutboxBundle needs
 // is exported from the pre-phase. The remaining ProcessBundle fields
-// (VLMClient, QdrantClient, CollectionManager, VectorSvc,
-// QdrantHealthProbe, LocatorCleaner, QdrantSearcher, MediaProcessor)
+// (VLMClient, CollectionManager, VectorSvc, QdrantSearcher, MediaProcessor)
 // stay in BuildProcessBundle because none of them depend on
 // outbox.Dispatcher — they can be constructed inline once BuildOutboxBundle
 // returns the canonical dispatcher.
 //
+// PR 4 (June 2026, refactor/single-qdrant-runtime): the canonical
+// *qdrant.QdrantRuntime is exposed via qd.Runtime so BuildProcessBundle
+// can wire its ProcessBundle fields (CollectionManager, VectorSvc,
+// QdrantSearcher, LocatorCleaner) from the SAME *Client and *IndexSchema
+// that the outbox used. There is exactly ONE qdrant.NewClient(...) call
+// per process — see composition_test.go::TestComposition_FrozenClientConstructionSites.
+//
 // QdrantDeleter is the canonical typed port per AGENTS.md Pattern 0.
-// Nil when Qdrant is disabled OR when ClipIndexer is disabled
-// (IndexWriter is gated on both cfg.Qdrant.Enabled AND
-// clipIndexerService.IsEnabled()). BuildOutboxBundle's
-// `if qd.QdrantDeleter != nil` guard absorbs nil safely.
+// Back-compat alias: kept as a typed field on QdrantDeps so existing
+// PR 3 composition tests (composition_test.go::TestComposition_QdrantEnabled*
+// that read qd.QdrantDeleter) keep compiling. The type is now
+// jobsoutbox.VectorPointDeleter (PR 4 consolidated the previous
+// qdrant.QdrantDeleter and outbox.QdrantDeleter interface pair into
+// this single application-layer port; the compile-time assertion in
+// internal/infrastructure/qdrant/index_writer.go pins the conformance).
+// Nil when Qdrant is disabled. BuildOutboxBundle's `if qd.QdrantDeleter != nil`
+// guard absorbs nil safely.
 type QdrantDeps struct {
+	Runtime            *qdrant.QdrantRuntime
 	ClipIndexerService *clipindexer.Service
-	QdrantDeleter      qdrant.QdrantDeleter
+	// Deprecated: prefer qd.Runtime.Writer for new code. Retained as
+	// a typed back-compat alias so existing PR 3 fail-closed tests
+	// (composition_test.go::TestComposition_QdrantEnabledNoClipIndexer_*
+	// reads qd.QdrantDeleter) keep compiling. Removal planned for
+	// follow-up PR-CASCADE-001 once the pre-existing
+	// scripts/usecase/types_aliases.go cascade is cleared.
+	QdrantDeleter jobsoutbox.VectorPointDeleter
 }
 
 // AIBundle owns script generation, engine, and memory.
@@ -277,7 +312,14 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 // by BuildOutboxBundle (QDRANT-003 — IndexWriter as QdrantDeleter + the
 // canonical ClipIndexerService).
 //
-// The 2 fields returned here are exactly what BuildOutboxBundle reads.
+// PR 4 (June 2026, refactor/single-qdrant-runtime): the body now
+// delegates Client/Writer/Searcher/Manager/Health/Cleaner/Mapper/Store
+// construction to qdrant.NewRuntime — there is exactly ONE qdrant.NewClient
+// call per process (was previously called from BOTH buildQdrantDeps and
+// BuildProcessBundle; the second invocation created a redundant Client
+// that wire responses could drift apart on under future changes).
+//
+// The 3 fields returned here are exactly what BuildOutboxBundle reads.
 // The remaining Qdrant-derived adapters (CollectionManager, VectorSvc,
 // LocatorCleaner, QdrantHealthProbe, QdrantSearcher, QdrantClient
 // itself) stay in BuildProcessBundle — none of them depend on
@@ -287,9 +329,8 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 // Wire-time invariant: buildQdrantDeps MUST NOT start goroutines
 // (composition_test.go::TestComposition_NoGoroutinesSpawned_FrozenSiteCount
 // pins the no-spawn shape of every builder name matching Build\w+Bundle in
-// source). clipindexer.NewService + qdrant.NewClient + qdrant.NewIndexWriter
-// + qdrant.NewPayloadMapper all return struct values without spawning
-// goroutines, so this body is in scope.
+// source). clipindexer.NewService + qdrant.NewRuntime all return struct
+// values without spawning goroutines, so this body is in scope.
 //
 // PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): replaces the
 // PR-7 deferred-hydration strategy (hydrateMediaProcessor +
@@ -308,34 +349,56 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, lo
 		DBPath:                dbs.main.Path(),
 	}, dbs.main, dbs.main.Path(), log)
 
-	var qdrantDeleter qdrant.QdrantDeleter
+	var runtime *qdrant.QdrantRuntime
 	if cfg.Qdrant.Enabled {
-		if clipIndexerService.IsEnabled() {
-			qdrantCfg := &qdrant.Config{
+		var rerr error
+		runtime, rerr = qdrant.NewRuntime(qdrant.RuntimeConfig{
+			QdrantCfg: &qdrant.Config{
 				BaseURL: cfg.Qdrant.BaseURL,
 				APIKey:  cfg.Qdrant.APIKey,
 				Timeout: cfg.Qdrant.Timeout,
-			}
-			schema := qdrant.DefaultV3Schema()
-			qdrantClient := qdrant.NewClient(qdrantCfg, log)
-			assetStore := qdrant.NewSQLiteAssetStore(dbs.main.DB)
-			mapper := qdrant.NewPayloadMapper(assetStore, log)
-			indexWriter := qdrant.NewIndexWriter(qdrantClient, schema, mapper, log)
-			qdrantDeleter = indexWriter
-			clipIndexerService.SetVectorStore(indexWriter)
-			log.Info("QDRANT-003: IndexWriter wired as clipindexer VectorStoreIndexer",
-				zap.String("runtime_alias", schema.RuntimeAlias))
+			},
+			DB:     dbs.main.DB,
+			Logger: log,
+		})
+		if rerr != nil {
+			return nil, fmt.Errorf("buildQdrantDeps: qdrant.NewRuntime: %w", rerr)
+		}
+		// PR 3 fix/qdrant-outbox-fail-closed (#3 from verdict Qdrant):
+		// IndexWriter is now constructed when Qdrant is enabled, regardless
+		// of the ClipIndexer sidecar's IsEnabled bit. The previous
+		// `cfg.Qdrant.Enabled && clipIndexerService.IsEnabled()` AND-gate
+		// silently dropped the QdrantDeleter port whenever the ClipIndexer
+		// service was disabled — the IndexDeleteHandler then dead-lettered
+		// every asset.index.delete_requested event because both
+		// QdrantDeleter and the paired AssetDeleter slot were nil at
+		// registration time. Decoupled semantics: Qdrant-enabled →
+		// Qdrant and IndexWriter always present. ClipIndexer is the sidecar
+		// path (writes via the AI server) and stays independent of the
+		// outbox deletion path.
+		if clipIndexerService.IsEnabled() {
+			clipIndexerService.SetVectorStore(runtime.Writer)
+			log.Info("QDRANT-003 PR4: IndexWriter (from QdrantRuntime) wired as clipindexer VectorStoreIndexer",
+				zap.String("runtime_alias", runtime.Schema.RuntimeAlias))
 		} else {
-			log.Info("QDRANT-003: ClipIndexer disabled — IndexWriter skipped (buildQdrantDeps pre-phase)")
+			log.Info("QDRANT-003 PR4: Qdrant enabled, ClipIndexer disabled — QdrantRuntime constructed for IndexDeleteHandler path; VectorStore not wired into clipindexer service")
 		}
 	} else {
-		log.Info("QDRANT-003: Qdrant disabled — no IndexWriter wired (buildQdrantDeps pre-phase)")
+		log.Info("QDRANT-003: Qdrant disabled — no QdrantRuntime wired (buildQdrantDeps pre-phase)")
 	}
 
-	return &QdrantDeps{
+	qd := &QdrantDeps{
+		Runtime:            runtime,
 		ClipIndexerService: clipIndexerService,
-		QdrantDeleter:      qdrantDeleter,
-	}, nil
+	}
+	// PR 4: VectorPointDeleter port satisfied directly by runtime.Writer
+	// (compile-time assertion in internal/infrastructure/qdrant/index_writer.go
+	// pins the conformance: `_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`).
+	// No runtime `interface{}` cast needed.
+	if runtime != nil {
+		qd.QdrantDeleter = runtime.Writer
+	}
+	return qd, nil
 }
 
 // NewComposition composes all bundles in dependency order and returns the

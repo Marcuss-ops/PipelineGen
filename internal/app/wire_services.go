@@ -321,19 +321,21 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if registryWiring.Assets != nil {
 		internalMediaHandler = registryWiring.Assets.InternalMediaHandler
 	}
-	// QDRANT-005 (June 2026): bind the Qdrant liveness probe into the
-	// lifecycle readiness barrier so /ready actually checks Qdrant
-	// reachability instead of relying solely on DB+Drive. Constructed
-	// only when Qdrant is enabled; nil-safe when disabled.
+	// QDRANT-005 (June 2026) PR 4 (refactor/single-qdrant-runtime):
+	// bind the Qdrant liveness probe into the lifecycle readiness
+	// barrier so /ready actually checks Qdrant reachability instead of
+	// relying solely on DB+Drive. Constructed only when Qdrant is
+	// enabled; nil-safe when disabled.
+	//
+	// PR 4 typed ProcessBundle.QdrantHealthProbe as *qdrant.HealthProbe
+	// (was `any` pre-PR4). The concrete type satisfies the probe
+	// contract via the compile-time assertion in
+	// internal/infrastructure/qdrant/health.go (`_ interface{ Probe(...) error }
+	// = (*HealthProbe)(nil)`); the runtime type-assertion
+	// `if p, ok := ... .(...) ...; ok` is gone.
 	var qdrantProbe interface{ Probe(context.Context) error }
-	if cfg.Qdrant.Enabled && root != nil && root.AI != nil && root.Process != nil {
-		// The probe port is satisfied by qdrant.NewHealthProbe at the
-		// composition site when the qdrant package is wired. When the
-		// qdrant capability is not compiled in, this stays nil and the
-		// lifecycle barrier auto-skips it.
-		if p, ok := root.Process.QdrantHealthProbe.(interface{ Probe(context.Context) error }); ok {
-			qdrantProbe = p
-		}
+	if cfg.Qdrant.Enabled && root != nil && root.Process != nil {
+		qdrantProbe = root.Process.QdrantHealthProbe
 	}
 	return &AppDeps{
 		Registry:             registryWiring.Registry,

@@ -1,17 +1,28 @@
 // Package qdrant — ClipSearchAdapter adapts the application-level
-// ports.ClipSearchPort to the qdrant.Searcher primitives
-// (SearchByText for the no-filter fast path; Search with explicit
-// filter must-clauses for filtered queries).
+// ports.ClipSearchPort to the qdrant.Searcher primitives.
 //
-// PJ-CURATE-1 (June 2026): the previous MediaCurator fell back to
-// text-only whenever req.HintClipIDs was empty. This adapter
-// reinstates an opt-in semantic-search leg (caller passes
-// allows the curate path to produce
-// curated clip IDs without caller-side seeding.
+// PR 5 (June 2026, fix/qdrant-tenant-scope): rewritten on top of
+// qdrant.CompileQdrantFilter so the curate search path is
+// cross-tenant isolated by default. Previous shape
+// (buildCurateClipFilter) hard-coded lifecycle_state = ACTIVE and
+// silently dropped the workspace clause (the pre-PR5 curate path
+// owned no caller-side workspace scope and there was no obvious
+// owner for that scope). PR 5 makes the workspace MUST-clause
+// non-optional via the ClipSearchQuery.{WorkspaceID, IsSystem}
+// fields added to ports.ClipSearchQuery; the adapter rejects
+// empty workspace + IsSystem=false here so the failure surfaces
+// typed rather than as a silent zero-hit.
 //
-// Per AGENTS.md Pattern 0, this is the ONLY place that imports
-// both application-level scripts types and qdrant infra types
-// (Hexagonal port pattern).
+// Performance note: the pre-PR5 fast path (SearchByText with no
+// filter) is replaced by an unconditional embed + filtered Search
+// because the workspace clause is a hard requirement now. The
+// extra round-trip is acceptable on the curate path (which is
+// not user-hot-path); the canonical /mediasearch search is
+// unaffected.
+//
+// Per AGENTS.md Pattern 0, this is the ONLY place that imports both
+// application-level scripts types and qdrant infra types (Hexagonal
+// port pattern).
 package qdrant
 
 import (
@@ -21,6 +32,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -39,8 +51,10 @@ type clipSearchAdapter struct {
 }
 
 // NewClipSearchAdapter constructs the ClipSearchPort implementation.
-// embedder is required (SearchByText is embed-then-ANN; the filtered
-// path embeds then calls Search with explicit must-clauses).
+// embedder is required because the curate path always pays the
+// embed cost (the post-PR5 algorithm unconditionally issues a
+// Search with a workspace + lifecycle filter, so the no-filter
+// SearchByText fast path is retired).
 // vectorName is the dense vector channel name (e.g. "text") whose
 // dimensions the embedder is expected to produce. Both are
 // supplied by the composition root (wire_script.go).
@@ -57,8 +71,15 @@ func NewClipSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName 
 var _ ports.ClipSearchPort = (*clipSearchAdapter)(nil)
 
 // SearchClips implements ports.ClipSearchPort.
-//   - No filter set → SearchByText (embed + ANN in one call, fast path).
-//   - Any filter set → embed then Search with explicit must-clauses.
+//
+// Fail-closed tenant contract (PR 5 §8):
+//
+//   - WorkspaceID="" && IsSystem=false → typed error
+//     ("workspace required or IsSystem=true explicit").
+//   - WorkspaceID="default" → typed error (reserved sentinel).
+//   - Otherwise → CompileQdrantFilter emits the canonical
+//     workspace + lifecycle filter and Search runs against the
+//     runtime alias.
 func (a *clipSearchAdapter) SearchClips(ctx context.Context, q ports.ClipSearchQuery) ([]ports.ClipSearchHit, error) {
 	if a == nil || a.searcher == nil {
 		return nil, fmt.Errorf("clip search adapter: searcher not configured")
@@ -70,30 +91,40 @@ func (a *clipSearchAdapter) SearchClips(ctx context.Context, q ports.ClipSearchQ
 	if query == "" {
 		return []ports.ClipSearchHit{}, nil
 	}
+	// Tenant guard — fail-closed before any embed cost.
+	if err := validateScope(q.WorkspaceID, q.IsSystem); err != nil {
+		return nil, err
+	}
+
 	limit := defaults.Int(q.Limit, 20)
 	minScore := q.MinScore
 	if minScore == 0 {
 		minScore = 0.5
 	}
-	hasFilter := strings.TrimSpace(q.Source) != "" ||
-		strings.TrimSpace(q.Category) != "" ||
-		strings.TrimSpace(q.MediaType) != ""
 
-	if !hasFilter {
-		// Fast path: SearchByText does embed + ANN in one call.
-		results, err := a.searcher.SearchByText(ctx, query, a.embedder, a.vectorName, limit, minScore)
-		if err != nil {
-			return nil, fmt.Errorf("clip search: %w", err)
-		}
-		return convertClipHits(results), nil
-	}
-
-	// Filtered path: embed + Search with explicit Qdrant filter.
+	// Always pay the embed + filter cost; the pre-PR5 no-filter
+	// fast path is gone because the canonical workspace +
+	// lifecycle must-clauses are non-optional post-PR5.
 	vec, err := a.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("clip search embed: %w", err)
 	}
-	filt := buildCurateClipFilter(q.Source, q.Category, q.MediaType)
+
+	filt, err := CompileQdrantFilter(
+		search.SearchScope{
+			WorkspaceID: q.WorkspaceID,
+			IsSystem:    q.IsSystem,
+		},
+		search.AssetFilter{
+			Source:    q.Source,
+			Category:  q.Category,
+			MediaType: q.MediaType,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("clip search: compile filter: %w", err)
+	}
+
 	results, err := a.searcher.Search(ctx, SearchRequest{
 		QueryVector: vec,
 		VectorName:  a.vectorName,
@@ -122,46 +153,30 @@ func convertClipHits(results []SearchResult) []ports.ClipSearchHit {
 	return out
 }
 
-// buildCurateClipFilter matches the worker_search path filter shape:
-// "source"/"category"/"media_type" matched value + canonical
-// lifecycle_state = ACTIVE. Keeps curate results consistent with the
-// canonical /internal/v1/media/search filter contract.
-//
-// PR 1 — Lifecycle state SSOT (June 2026): the lifecycle filter is
-// the canonical ACTIVE match only. Pre-PR1 the waterfall was {active,
-// searchable}; both legacy values are pruned by migration 101. The
-// delegate to qdrant.buildLifecycleAwareFilter is intentionally
-// avoided here to keep this function testable without depending on
-// the Search/HybridSearch path — curate is the only fan-out that
-// owns no caller-side workspace, so we hardcode the workspace-id
-// clause as "not present" and let the canonical builder plumbing be
-// exercised from search_adapter.go.
-//
-// Mirrors search_adapter.go::filter-must construction so curate
-// returns the same set of points the search endpoint would.
-func buildCurateClipFilter(source, category, mediaType string) map[string]interface{} {
-	must := make([]map[string]interface{}, 0, 4)
-	if s := strings.TrimSpace(source); s != "" {
-		must = append(must, map[string]interface{}{
-			"key":   "source",
-			"match": map[string]interface{}{"value": s},
-		})
+// validateScope is the per-adapter fail-closed gate on the
+// WorkspaceID field. Mirrors qdrant.CompileQdrantFilter's invariant
+// so the rejection happens BEFORE any embed cost (cheap failure)
+// rather than AFTER (an actual embed round-trip then a wasted
+// network-filter call). The sentinel "default" string is the
+// pre-tenancy convention (see mediasearch.WorkspaceContext); it
+// matches the same ErrMissingWorkspace surface that production
+// search uses so the error contract is uniform across the two
+// search entry points.
+func validateScope(workspaceID string, isSystem bool) error {
+	if isSystem {
+		return nil
 	}
-	if c := strings.TrimSpace(category); c != "" {
-		must = append(must, map[string]interface{}{
-			"key":   "category",
-			"match": map[string]interface{}{"value": c},
-		})
+	trimmed := strings.TrimSpace(workspaceID)
+	if trimmed == "" {
+		return fmt.Errorf("clip search adapter: WorkspaceID is required (set IsSystem=true for admin/reconcile/snapshot paths)")
 	}
-	if m := strings.TrimSpace(mediaType); m != "" {
-		must = append(must, map[string]interface{}{
-			"key":   "media_type",
-			"match": map[string]interface{}{"value": m},
-		})
+	if trimmed == "default" {
+		return fmt.Errorf(`clip search adapter: WorkspaceID is the reserved "default" sentinel; set a real workspace or IsSystem=true`)
 	}
-	must = append(must, map[string]interface{}{
-		"key":   "lifecycle_state",
-		"match": map[string]interface{}{"value": "ACTIVE"},
-	})
-	return map[string]interface{}{"must": must}
+	return nil
 }
+
+// Ensure the alias to usecase.ClipSearchQuery compiles; see
+// source_resolver_curate.go where the type alias orchestrates
+// the consolidation PR 5 introduced.
+var _ = usecase.ClipSearchQuery{}

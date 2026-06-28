@@ -1,4 +1,4 @@
-// Package scripts_test — model_output_decoder_test.go exercises the
+// Package adapters_test — model_output_decoder_test.go exercises the
 // unified jsonextract.Scanner in both ModeStrict and ModeCompatibility.
 //
 // P0.8 (June 2026): merged the old DecodeModelOutput (canonical decoder)
@@ -6,6 +6,12 @@
 // single test surface that exercises jsonextract.Scanner in the
 // appropriate mode. ModeStrict rejects bare prose; ModeCompatibility
 // wraps it (declared fallback, Prometheus-measured).
+//
+// PR1 follow-up: package name normalised from `scripts_test` to
+// `adapters_test` so this file can coexist with `compat_adapters.go`
+// (which declares `package adapters`). The previous `scripts_test`
+// declaration triggered a Go build error when the test file was
+// compiled alongside the production file in the same directory.
 package adapters_test
 
 import (

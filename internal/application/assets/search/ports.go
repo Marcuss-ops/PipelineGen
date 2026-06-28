@@ -116,13 +116,16 @@ type VectorSearchResult struct {
 
 // HybridSearchRequest combines dense and sparse vectors for hybrid search.
 //
-// QDRANT-004 PR1 (June 2026): SparseVector is the client-side BM25
-// tokenization result. The orchestrator (mediasearch.Service) owns BM25
-// generation; the adapter (qdrant.searchAdapter) projects it into the
-// infrastructure-level Qdrant request unchanged. Mode=hybrid with
-// SparseVector == nil OR SparseVectorName == "" is a programming error
-// and must fail closed (ErrHybridRequiresSparse) before reaching the
-// adapter — never silently degrade to ANN.
+// PR2 (fix/qdrant-bm25-indexing): server-side BM25 inference is the
+// canonical strategy. The orchestrator passes the raw query text via
+// SparseText (plus SparseModel, defaulting to "qdrant/bm25"); Qdrant
+// then tokenizes + weights + projects the sparse vector on the server.
+// The legacy client-side raw vector (SparseVector) is retained ONLY
+// for diagnostic + bulk-from-csv flows that already have a
+// pre-computed SparseVector; live retrieval MUST go through
+// SparseText. Mode=hybrid with SparseVectorName == "" AND
+// SparseVector == nil is a programming error and must fail closed
+// (ErrHybridRequiresSparse) before reaching the adapter.
 type HybridSearchRequest struct {
 	QueryText            string
 	DenseVector          []float32
@@ -130,14 +133,26 @@ type HybridSearchRequest struct {
 	TranscriptVector     []float32
 	TranscriptVectorName string
 	SparseVectorName     string
-	SparseVector         *bm25.SparseVector
-	Limit                int
-	MinScore             float64
-	Source               string
-	Category             string
-	MediaType            string
-	Language             string
-	WorkspaceID          string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	// SparseText (PR2 preferred): raw text that Qdrant tokenizes
+	// server-side via the SparseModel. When non-empty, the adapter
+	// projects it before sending the query; this is the canonical
+	// path for live retrieval.
+	SparseText string
+	// SparseModel is the inference model used to project SparseText
+	// into a sparse vector server-side. Empty falls back to
+	// "qdrant/bm25" (Qdrant server-side default).
+	SparseModel string
+	// SparseVector (PR2 legacy): pre-computed sparse vector from the
+	// deprecated client-side bm25.Tokenize. Used only when SparseText
+	// is empty.
+	SparseVector  *bm25.SparseVector
+	Limit         int
+	MinScore      float64
+	Source        string
+	Category      string
+	MediaType     string
+	Language      string
+	WorkspaceID   string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
 }
 
 // ── Local search ports ────────────────────────────────────────────────

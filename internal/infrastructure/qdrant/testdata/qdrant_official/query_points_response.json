@@ -1,0 +1,37 @@
+{
+  "result": {
+    "points": [
+      {
+        "id": "7e9b1c8a-2d4f-4e6a-9c0b-1f2e3d4c5b6a",
+        "score": 0.9134,
+        "payload": {
+          "asset_id": "asset-7e9b1c8a",
+          "source": "youtube",
+          "category": "tutorial",
+          "media_type": "video",
+          "language": "en",
+          "lifecycle_state": "ACTIVE",
+          "workspace_id": "ws-prod-001"
+        },
+        "version": 1234567890
+      },
+      {
+        "id": "1a2b3c4d-5e6f-4789-a012-bcdef0123456",
+        "score": 0.8765,
+        "payload": {
+          "asset_id": "asset-1a2b3c4d",
+          "source": "youtube",
+          "category": "tutorial",
+          "media_type": "video",
+          "language": "it",
+          "lifecycle_state": "ACTIVE",
+          "workspace_id": "ws-prod-001"
+        },
+        "version": 1234567891
+      }
+    ],
+    "next_page_offset": null
+  },
+  "status": "ok",
+  "time": 0.012345
+}

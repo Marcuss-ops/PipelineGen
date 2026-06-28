@@ -167,6 +167,3 @@ type AudioEmbedder interface {
 	EmbedAudio(ctx context.Context, audioPaths []string) ([][]float32, error)
 }
 
-// ── QDRANT-003: SearchAdapter moved to search_adapter.go ─────────────
-// The SearchAdapter that bridges qdrant.Searcher → search.VectorStorePort
-// now lives in search_adapter.go with full DTO conversion and filter building.

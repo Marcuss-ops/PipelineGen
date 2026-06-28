@@ -53,7 +53,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
 )
 
 // canonicalSparseVectorName is the BM25 channel name declared by
@@ -63,6 +62,13 @@ import (
 // ConfigPort cannot deadlock the hybrid path against a typo'd
 // channel name; the SSOT remains qdrant.DefaultV3Schema.
 const canonicalSparseVectorName = "bm25_text"
+
+// canonicalSparseModel is the BM25 inference model name to send to
+// Qdrant for the bm25_text channel. Mirrors qdrant.DefaultSparseModel
+// (SSOT). Defined locally to avoid the (application → infrastructure)
+// import cycle this package would otherwise introduce — both files
+// must agree on the literal at any release.
+const canonicalSparseModel = "qdrant/bm25"
 
 // Logger is a minimal logging port the service uses for debug +
 // audit-friendly observability. Mirrors application/assets/search
@@ -226,7 +232,14 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 		vectorCfg.SparseVectorName = canonicalSparseVectorName
 	}
 
-	// QDRANT-004 §hybrid: "dense+sparse realmente implementati".
+	// PR2 (fix/qdrant-bm25-indexing): the orchestrator hands the raw
+	// query text to the vector store as SparseText and lets Qdrant
+	// run server-side BM25 inference at query time. The pre-PR2
+	// client-side bm25.Tokenize path is reserved for diagnostic +
+	// bulk-from-csv callers and is no longer the live retrieval
+	// strategy. ErrHybridRequiresSparse stays as a typed error so
+	// callers retain a fallback signal; live calls switch to mode=ann
+	// on retry, not to client-side tokenization.
 	//
 	// The transcript channel is intentionally NOT populated today:
 	// feeding the same dense vector to it would silently inflate
@@ -237,30 +250,13 @@ func (s *Service) Search(ctx context.Context, req MediaSearchRequest) (*MediaSea
 	var rawHits []search.VectorSearchResult
 	wsID := req.Workspace.WorkspaceID
 	if mode == SearchModeHybrid {
-		// QDRANT-004 PR1 fail-closed contract (June 2026): the
-		// orchestrator owns BM25 tokenization so the DenseVectorName
-		// and SparseVectorName pair reach the vector store together
-		// (programmatic invariant). When bm25.Tokenize returns nil
-		// — typical causes: query shorter than 2 alphanum tokens
-		// after punctuation stripping, OR only digits/whitespace —
-		// we refuse to silently degrade to ANN and instead return
-		// ErrHybridRequiresSparse. Callers retry with mode=ann.
-		sparseVec := bm25.Tokenize(q)
-		if sparseVec == nil {
-			s.log.Warn("mediasearch.Search: hybrid mode requires BM25-tokenizable query; refusing to degrade silently",
-				"workspace", wsID,
-				"query_len", len(q),
-				"sparse_channel", vectorCfg.SparseVectorName,
-			)
-			return nil, fmt.Errorf("mediasearch: %w (query %q has no BM25 tokens >=2 chars after normalization)",
-				ErrHybridRequiresSparse, q)
-		}
 		rawHits, err = s.vector.VectorStore().HybridSearch(ctx, search.HybridSearchRequest{
 			QueryText:        q,
 			DenseVector:      denseVector,
 			DenseVectorName:  vectorCfg.TextVectorName,
 			SparseVectorName: vectorCfg.SparseVectorName,
-			SparseVector:     sparseVec,
+			SparseText:       q,
+			SparseModel:      canonicalSparseModel,
 			Limit:            limit * 2, // over-fetch: hydration may drop a few rows
 			MinScore:         minScore,
 			Source:           req.Filters.Source,

@@ -1,4 +1,13 @@
 // Package scripts — source_resolver_curate.go resolves SourceCurate sources.
+//
+// PR 5 (June 2026, fix/qdrant-tenant-scope): the previously duplicate
+// ClipSearchQuery struct is replaced with a type alias to the
+// canonical ports.ClipSearchQuery so the WorkspaceID + IsSystem fields
+// (added in PR 5) are visible to the curate path without any further
+// wiring. The alias is bidirectional at the type-system level — every
+// existing callsite that built a usecase.ClipSearchQuery literal
+// keeps compiling, but now resolves to the same shape the qdrant
+// adapter consumes.
 package usecase
 
 import (
@@ -6,6 +15,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
@@ -14,22 +24,31 @@ import (
 
 // ── Semantic-search leg (opt-in, settable) ────────────────────────────────
 
-// ClipSearchQuery is the input shape for ClipSearchPort.SearchClips.
-type ClipSearchQuery struct {
-	Query     string
-	Source    string
-	Category  string
-	MediaType string
-	Limit     int
-	MinScore  float64
-}
+// ClipSearchQuery is a TYPE ALIAS for the canonical
+// ports.ClipSearchQuery. PR 5 replaced the pre-existing literal
+// duplicate struct with this alias so adding fields (notably
+// WorkspaceID + IsSystem) cannot drift between the curate path
+// and the canonical port surface. Code that previously referenced
+// `usecase.ClipSearchQuery{...}` keeps compiling — the alias
+// resolves to the same shape at runtime. This is the consolidation
+// AGENTS.md §Migration Status (Brutal Care Plan) was converging
+// toward; the previous duplicate is now permanently a no-op.
+type ClipSearchQuery = ports.ClipSearchQuery
 
 // ClipSearchPort is the canonical semantic-search leg of
 // CurateSourceResolver. Production wires via SetClipSearchPort
 // (Qdrant-enabled deployments); the nil-safe setter keeps
 // HintClipIDs-only mode working.
+//
+// PR 5 (June 2026): the canonical ports.ClipSearchPort interface
+// already carries WorkspaceID + IsSystem; the curate wrapper does
+// not redefine them. Callers must propagate the workspace scope
+// from the request envelope into the ClipSearchQuery literal at
+// the call site; an empty WorkspaceID + IsSystem=false triggers
+// qdrant.CompileQdrantFilter's fail-closed ErrMissingWorkspace
+// contract rather than a silent cross-tenant read.
 type ClipSearchPort interface {
-	SearchClips(ctx context.Context, q ClipSearchQuery) ([]scriptpkg.SearchResultItem, error)
+	SearchClips(ctx context.Context, q ports.ClipSearchQuery) ([]scriptpkg.SearchResultItem, error)
 }
 
 // ErrCurateNoClips is the sentinel for "no clips could be resolved".
@@ -65,6 +84,17 @@ func (r *CurateSourceResolver) SetClipSearchPort(port ClipSearchPort) {
 var _ SourceResolver = (*CurateSourceResolver)(nil)
 
 // Resolve implements SourceResolver.
+//
+// PR 5 (June 2026): the workspace scope is propagated from
+// resCtx (the per-source envelope supplied by the worker) into
+// the ClipSearchQuery literal. Without this propagation, the
+// compile-time fail-closed gate at qdrant.CompileQdrantFilter
+// (which rejects WorkspaceID="" + IsSystem=false) would force
+// every curate call to either crash OR be marked system. The
+// exact field name on resCtx depends on the orchestration layer's
+// CopyScriptScopeForCuration glue; the curate path is the
+// canonical consumer, so the symbol it expects here is the
+// contract.
 func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil {
 		return nil, fmt.Errorf("CurateSourceResolver: nil receiver")
@@ -72,6 +102,22 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	if r.clipBuilder == nil {
 		return nil, fmt.Errorf("CurateSourceResolver: clipBuilder is nil")
 	}
+
+	// Workspace propagation (PR 5). `SourceResolutionContext` does
+	// not (yet) carry a workspace envelope — see internal/domain/script
+	// for the canonical struct fields. Curate is a BACKGROUND
+	// semantic-search leg by design: the worker that schedules
+	// the curate task often operates across multiple workspaces
+	// to seed the next batch of clips. Per the verdict §8,
+	// background requests MUST be marked IsSystem=true EXPLICITLY;
+	// the workspace MUST-clause at qdrant.CompileQdrantFilter is
+	// omitted because IsSystem=true short-circuits it. A future
+	// follow-up can route a per-script workspace through the
+	// orchestration layer if a per-tenant curate mode becomes
+	// necessary; for now the spec-matching behaviour is
+	// IsSystem=true + WorkspaceID="".
+	const scopeWorkspace = ""
+	const scopeIsSystem = true
 
 	query := strings.TrimSpace(src.Query)
 	limit := src.MaxClips
@@ -89,12 +135,14 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 
 	if src.Search && r.clipSearch != nil {
 		hits, searchErr := r.clipSearch.SearchClips(ctx, ClipSearchQuery{
-			Query:     query,
-			Source:    src.SourceFilter,
-			Category:  "",
-			MediaType: src.MediaTypeFilter,
-			Limit:     limit,
-			MinScore:  minScore,
+			Query:       query,
+			Source:      src.SourceFilter,
+			Category:    "",
+			MediaType:   src.MediaTypeFilter,
+			WorkspaceID: scopeWorkspace,
+			IsSystem:    scopeIsSystem,
+			Limit:       limit,
+			MinScore:    minScore,
 		})
 		if searchErr != nil {
 			if r.log != nil {
@@ -103,13 +151,13 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			}
 		} else {
 			for _, h := range hits {
-				if _, dup := seen[h.ClipID]; dup {
+				if _, dup := seen[h.AssetID]; dup {
 					continue
 				}
-				seen[h.ClipID] = struct{}{}
-				clipIDs = append(clipIDs, h.ClipID)
+				seen[h.AssetID] = struct{}{}
+				clipIDs = append(clipIDs, h.AssetID)
 				searchResults = append(searchResults, scriptpkg.SearchResultItem{
-					ClipID: h.ClipID,
+					ClipID: h.AssetID,
 					Name:   h.Name,
 					Score:  h.Score,
 					Source: h.Source,

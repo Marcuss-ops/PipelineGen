@@ -25,9 +25,13 @@ import (
 )
 
 // HealthProbe is the canonical Qdrant readiness check used by the
-// lifecycle barrier. Construct via NewHealthProbe; the qdrant
-// package's own Client holds the configured base URL + API key
-// (apiKey is sent as the X-Api-Key header on every request).
+// lifecycle barrier.
+//
+// PR1 — fix/qdrant-wire-contracts: the probe now calls the configured
+// Client via Client.doRequest so the api-key header is set by the SINGLE
+// shared transport (was previously duplicated here as X-Api-Key). The
+// probe still holds its own *http.Client for a per-call Timeout ceiling
+// — the defense-in-depth invariant from earlier versions is intact.
 type HealthProbe struct {
 	client  *Client
 	http    *http.Client
@@ -65,8 +69,16 @@ func NewHealthProbe(client *Client) *HealthProbe {
 // the configured Qdrant base. Returns nil on HTTP 200, an error
 // otherwise. The probe NEVER reads SQLite — qdrant liveness is the
 // only thing under check. The configured API key (if any) is sent
-// on every request via the X-Api-Key header so an api_key-protected
-// Qdrant server doesn't return 401 on a healthy deployment.
+// on every request by Client.doRequest via the api-key header so an
+// api_key-protected Qdrant server doesn't return 401 on a healthy
+// deployment.
+//
+// PR1: the probe delegates to Client.doRequest (rather than building
+// its own http.NewRequest) so there is exactly ONE place that sets
+// the api-key header. Previously the probe reimplemented auth as
+// `req.Header.Set("X-Api-Key", key)`, which used a different header
+// capitalization than the Client and could drift apart under future
+// changes.
 func (h *HealthProbe) Probe(ctx context.Context) error {
 	if h == nil || h.client == nil {
 		return fmt.Errorf("qdrant: health probe not configured (nil client)")
@@ -74,23 +86,21 @@ func (h *HealthProbe) Probe(ctx context.Context) error {
 	if h.http == nil {
 		h.http = &http.Client{Timeout: h.probeTO}
 	}
-	url := h.client.BaseURL() + "/collections"
 	pCtx, cancel := context.WithTimeout(ctx, h.probeTO)
 	defer cancel()
-	req, err := http.NewRequestWithContext(pCtx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("qdrant health: build request: %w", err)
-	}
-	if key := h.client.APIKey(); key != "" {
-		req.Header.Set("X-Api-Key", key)
-	}
-	resp, err := h.http.Do(req)
+	url := h.client.BaseURL() + "/collections"
+	resp, err := h.client.DoWithHTTPClient(pCtx, h.http, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("qdrant health: request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("qdrant health: HTTP %d", resp.StatusCode)
+		return &APIError{
+			Operation: "HealthProbe.Probe",
+			Status:    resp.StatusCode,
+			Message:   fmt.Sprintf("qdrant health: HTTP %d", resp.StatusCode),
+			Retryable: classifyRetryability(resp.StatusCode),
+		}
 	}
 	return nil
 }

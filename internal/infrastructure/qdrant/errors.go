@@ -1,6 +1,141 @@
 package qdrant
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+// ── Wire-level error DTO (PR1 — fix/qdrant-wire-contracts) ───────────
+//
+// APIError is the canonical typed wrapper for any non-2xx response from
+// the Qdrant REST surface. PR1 eliminates the previous `fmt.Errorf`
+// pattern (which lost status, retryability, and operation context) and
+// replaces it with a single typed value every call site can route
+// through. Retryable is computed once at parse time from the Status +
+// operation kind; callers should use apiError.Retryable rather than
+// re-deriving retry classification from error strings.
+//
+// Contract:
+//   - Operation: client method name (e.g. "GetCollection", "UpsertPoints").
+//   - Status: raw HTTP status code returned by Qdrant.
+//   - Message: human-readable summary (typically Qdrant's status + message
+//     fields extracted from the response body, or a body-truncation if the
+//     body was unreadable).
+//   - Body: full or truncated response body for diagnostics. NEVER includes
+//     the api-key header — the http transport strips it before populating
+//     this value.
+//   - Retryable: true iff a caller should retry this exact error. Default
+//     policy:
+//       - 5xx (500/502/503/504)        → retryable
+//       - 408 / 429                    → retryable
+//       - 4xx (except 408/429)         → not retryable (client error)
+//       - Network/IO failures upstream → retryable (we record Status=0).
+//
+// The retry policy is intentionally conservative: the wire-level truth
+// is the *status*, not any heuristic from the body. Retry decisions
+// downstream (proxy retry, jobs.Service, etc.) should consult
+// APIError.Retryable rather than parsing the message string.
+type APIError struct {
+	Operation string
+	Status    int
+	Message   string
+	Body      string
+	Retryable bool
+}
+
+// Error implements the error interface. Format mirrors the pre-PR1
+// behaviour so call-site log lines stay recognisable, but adds the
+// operation + status fields for grep-friendly diagnostics:
+//
+//	qdrant.GetCollection: HTTP 404: collection "media_assets_v3" not found
+func (e *APIError) Error() string {
+	if e == nil {
+		return "<nil APIError>"
+	}
+	op := e.Operation
+	if op == "" {
+		op = "qdrant"
+	}
+	if e.Status == 0 {
+		return fmt.Sprintf("%s: %s", op, e.Message)
+	}
+	return fmt.Sprintf("%s: HTTP %d: %s", op, e.Status, e.Message)
+}
+
+// Unwrap returns the underlying cause (always nil here — APIError is a
+// leaf value). Retained so future revisions can wrap an inner error
+// without breaking errors.Is/errors.As chains.
+func (e *APIError) Unwrap() error { return nil }
+
+// IsRetryable is variadic overload for the typed-error world: callers
+// can do `if err := errors.As(err, &apiErr); apiErr != nil && apiErr.Retryable { ... }`
+// OR can keep using the package-level IsRetryable(err) helper that also
+// covers the lowercase sentinel errors (ErrCollectionNotFound, etc.).
+func (e *APIError) IsRetryable() bool {
+	if e == nil {
+		return false
+	}
+	return e.Retryable
+}
+
+// classifyRetryability maps the Qdrant HTTP status to the wire-level
+// retryability hint populated into APIError.Retryable.
+//
+// Network/timeout failures upstream of Qdrant report Status=0 and are
+// unconditionally retryable — the request never reached the server, so
+// the only failure mode is transient.
+func classifyRetryability(status int) bool {
+	switch {
+	case status == 0: // upstream network/timeout — request never reached Qdrant
+		return true
+	case status == http.StatusRequestTimeout: // 408
+		return true
+	case status == http.StatusTooManyRequests: // 429
+		return true
+	case status >= 500 && status <= 599:
+		return true
+	default:
+		return false
+	}
+}
+
+// readBounded caps the body bytes we retain in APIError.Body. Raw Qdrant
+// error responses are typically <1KB but a misconfigured proxy or an
+// attacker pushed body could be MBs — caps prevent log-cardinality
+// surprises and accidental PII capture.
+const maxAPIBodyBytes = 4096
+
+// newAPIErrorFromResponse is the canonical constructor used by
+// Client.parseError. It centralises the body read + status classification.
+func newAPIErrorFromResponse(op string, resp *http.Response) error {
+	if resp == nil {
+		return &APIError{
+			Operation: op,
+			Status:    0,
+			Message:   "nil response",
+			Retryable: true,
+		}
+	}
+	body := readAPIBody(resp.Body)
+	return &APIError{
+		Operation: op,
+		Status:    resp.StatusCode,
+		Message:   body, // legacy behaviour: "HTTP %d: <body>"
+		Body:      body,
+		Retryable: classifyRetryability(resp.StatusCode),
+	}
+}
+
+func readAPIBody(r io.Reader) string {
+	if r == nil {
+		return ""
+	}
+	limited := io.LimitReader(r, maxAPIBodyBytes)
+	data, _ := io.ReadAll(limited)
+	return string(data)
+}
 
 // ── Sentinel errors ──────────────────────────────────────────────────
 
@@ -106,12 +241,28 @@ func (e *ErrSparseRequired) Error() string {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-// IsRetryable returns true for errors that should be retried (HTTP timeout, 5xx, etc.).
+// IsRetryable returns true for errors that should be retried
+// (HTTP timeout, 5xx, network blip). PR1 extended the helper to
+// consult APIError.Retryable when the error carries the typed
+// wire-level shape so the centralised status-to-retryability map
+// (classifyRetryability) is the single source of truth.
+//
+// Decision order:
+//  1. nil → false
+//  2. errors.As into *APIError → use APIError.Retryable verbatim
+//  3. errors.As into the lower-case sentinel errors mapped via
+//     isPermanent (schema mismatches, NaN, dimension mismatches,
+//     channel-unavailable, empty vector) → false
+//  4. everything else → true (caller-declared "transient" errors)
+//     — same behaviour as pre-PR1 to avoid breaking existing tiers
 func IsRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
-	// Schema and validation errors are permanent.
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr != nil {
+		return apiErr.Retryable
+	}
 	if isPermanent(err) {
 		return false
 	}

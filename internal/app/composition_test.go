@@ -429,6 +429,142 @@ func compositionBundleSourceFiles(t *testing.T) []string {
 
 // ── 3. freeze-ordering ───────────────────────────────────────────────────
 
+// ── 5. PR 4 single-runtime invariants (refactor/single-qdrant-runtime) ─
+
+// frozenQdrantClientSites pins PR 4 (June 2026,
+// refactor/single-qdrant-runtime) section #2 acceptance criterion:
+// exactly ONE qdrant.NewClient(...) call in production composition paths
+// (internal/app/*.go excluding _test.go). The QdrantRuntime facade is the
+// single construction site; BuildProcessBundle + buildQdrantDeps both
+// source from qd.Runtime.Client after the refactor.
+//
+// If a future PR adds a second qdrant.NewClient(...) call in production
+// paths, the test fails and the author must either:
+// (a) Promote the new client into QdrantRuntime via a new field +
+//
+//	builder method (preferred); or
+//
+// (b) Update frozenQdrantClientSites and document the rationale
+//
+//	in the PR description (e.g. a sidecar that cannot share the
+//	canonical runtime because of Https-only Network config).
+const frozenQdrantClientSites = 1
+
+// frozenQdrantDefaultV3SchemaSites pins PR 4 section #2 acceptance
+// criterion: exactly ONE qdrant.DefaultV3Schema() call in production
+// composition paths. The QdrantRuntime facade is the single source;
+// ProcessBundle, BuildOutboxBundle, IndexWriter, CollectionManager all
+// share runtime.Schema.
+const frozenQdrantDefaultV3SchemaSites = 1
+
+// frozenQdrantNewRuntimeSites pins PR 4: exactly ONE qdrant.NewRuntime
+// construction site. composition.go::buildQdrantDeps is the canonical
+// caller; BuildProcessBundle reads the same runtime via qd.Runtime.
+const frozenQdrantNewRuntimeSites = 1
+
+// TestComposition_FrozenClientConstructionSites verifies that qdrant.NewClient(...)
+// is called from exactly one site in production composition paths. The
+// pre-PR4 state had TWO sites (composition.go::buildQdrantDeps +
+// build_bundles_process.go::BuildProcessBundle) — source-level count
+// was 2. After PR 4 QdrantRuntime.NewRuntime owns the single site.
+func TestComposition_FrozenClientConstructionSites(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	files := compositionBundleSourceFiles(t)
+	matches := 0
+	for _, f := range files {
+		src, _ := os.ReadFile(f)
+		matches += strings.Count(string(src), "qdrant.NewClient(")
+	}
+	require.Equalf(t, frozenQdrantClientSites, matches,
+		"PR 4: qdrant.NewClient(%d expected call sites in internal/app/*.go; found %d. QdrantRuntime.NewRuntime is the single construction site. Add the subsystem to QdrantRuntime rather than constructing a second Client — see composition_test.go::TestComposition_FrozenClientConstructionSites for the acceptance criterion.",
+		frozenQdrantClientSites, matches)
+}
+
+// TestComposition_FrozenIndexSchemaSites verifies that qdrant.DefaultV3Schema()
+// is called from exactly one site in production composition paths. The
+// pre-PR4 state had TWO sites (composition.go::buildQdrantDeps +
+// build_bundles_process.go::BuildProcessBundle) — both constructed
+// their own IndexSchema, so the schema-version ratchet could drift
+// between the two (one might pin V3 + sparse, the other V3 + dense-only).
+// After PR 4 the runtime holds a single Schema instance shared by
+// every subsystem.
+func TestComposition_FrozenIndexSchemaSites(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	files := compositionBundleSourceFiles(t)
+	matches := 0
+	for _, f := range files {
+		src, _ := os.ReadFile(f)
+		matches += strings.Count(string(src), "qdrant.DefaultV3Schema(")
+	}
+	require.Equalf(t, frozenQdrantDefaultV3SchemaSites, matches,
+		"PR 4: qdrant.DefaultV3Schema(%d expected call site in internal/app/*.go; found %d. QdrantRuntime.NewRuntime is the single construction site. Promote schema wiring through runtime.Schema rather than calling DefaultV3Schema twice.",
+		frozenQdrantDefaultV3SchemaSites, matches)
+}
+
+// TestComposition_FrozenNewRuntimeSites verifies that qdrant.NewRuntime(...)
+// is called from exactly one site in production composition paths.
+// composition.go::buildQdrantDeps is the canonical constructor.
+// BuildProcessBundle + BuildOutboxBundle + any future bundle must
+// source the runtime via qd.Runtime, never build their own.
+func TestComposition_FrozenNewRuntimeSites(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	files := compositionBundleSourceFiles(t)
+	matches := 0
+	for _, f := range files {
+		src, _ := os.ReadFile(f)
+		matches += strings.Count(string(src), "qdrant.NewRuntime(")
+	}
+	require.Equalf(t, frozenQdrantNewRuntimeSites, matches,
+		"PR 4: qdrant.NewRuntime(%d expected call site in internal/app/*.go; found %d. composition.go::buildQdrantDeps is the canonical constructor; other bundles must read runtime via QdrantDeps.Runtime rather than re-constructing.",
+		frozenQdrantNewRuntimeSites, matches)
+}
+
+// TestComposition_FrozenQdrantHealthProbeAny verifies PR 4 section #6
+// acceptance criterion: `QdrantHealthProbe any` (the loose type-assertion
+// escape hatch) is gone. After PR 4 ProcessBundle.QdrantHealthProbe is
+// concretely typed as *qdrant.HealthProbe.
+func TestComposition_FrozenQdrantHealthProbeAny(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	files := compositionBundleSourceFiles(t)
+	matches := 0
+	for _, f := range files {
+		src, _ := os.ReadFile(f)
+		matches += strings.Count(string(src), "QdrantHealthProbe any")
+	}
+	require.Equalf(t, 0, matches,
+		"PR 4: `QdrantHealthProbe any` must NOT appear in internal/app/*.go (acceptance criterion #2 of #6). Replace with *qdrant.HealthProbe concrete; the compile-time assertion in internal/infrastructure/qdrant/health.go pins the Probe contract.")
+}
+
+// TestComposition_FrozenVectorPointDeleterPort verifies PR 4 acceptance
+// criterion #1 of #6: there is exactly ONE VectorPointDeleter port
+// definition in internal/, declared in
+// internal/application/jobs/outbox/ports.go per AGENTS.md Pattern 0.
+//
+// The previous state had TWO duplicate `QdrantDeleter` interfaces
+// (one in internal/infrastructure/qdrant/types.go and one local to
+// internal/application/jobs/outbox/index_delete.go) — both deleted
+// by PR 4. The source-level search here uses the concrete port name
+// to canonicalise the count.
+func TestComposition_FrozenVectorPointDeleterPort(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	files := compositionBundleSourceFiles(t)
+	matches := 0
+	for _, f := range files {
+		src, _ := os.ReadFile(f)
+		matches += strings.Count(string(src), "type VectorPointDeleter interface")
+	}
+	require.Equalf(t, 1, matches,
+		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/app/*.go; found %d. The canonical port lives in internal/application/jobs/outbox/ports.go per AGENTS.md Pattern 0.",
+		matches)
+}
+
+// ── 3. freeze-ordering ─────────────────────────────────────────────────
+
 // frozenCompositionSequence is the canonical NewComposition build order.
 // The order encodes the dependency graph; runs left-to-right produce a
 // fully-resolved ComposeRoot. Any reordering instruction that does not
@@ -482,6 +618,210 @@ func TestComposition_FreezeOrdering_BuildSequence(t *testing.T) {
 			"%s appears out-of-order or absent in NewComposition body (last index=%d, this index=%d); reorder+update frozenCompositionSequence in lockstep or this signals a dependency-graph regression.",
 			name, prev, idx)
 		prev = idx
+	}
+}
+
+// ── 4. PR 3 fail-closed invariants (fix/qdrant-outbox-fail-closed) ──────
+
+// TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired
+// pins PR 3 (#3 from verdict Qdrant): with cfg.Qdrant.Enabled=true
+// AND cfg.ClipIndexer.Enabled=false, buildQdrantDeps still builds
+// the canonical IndexWriter so qd.QdrantDeleter is non-nil and
+// IndexDeleteHandler's delete path stays valid. The ClipIndexer
+// Service stays constructed but its IsEnabled bit reflects
+// ClipIndexer.Enabled=false so SetVectorStore is a no-op for the AI
+// sidecar. The previous `cfg.Qdrant.Enabled &&
+// clipIndexerService.IsEnabled()` AND-gate silently dropped the
+// QdrantDeleter port whenever the ClipIndexer sidecar was disabled,
+// dead-lettering every asset.index.delete_requested at runtime.
+//
+// PR 3 #3 decoupled those gates: index writer is built when
+// Qdrant is enabled, regardless of the ClipIndexer sidecar's
+// IsEnabled bit.
+func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	dataDir := t.TempDir()
+	cfg := minimalConfig(dataDir)
+	cfg.Qdrant.Enabled = true       // Qdrant feature ON
+	cfg.ClipIndexer.Enabled = false // sidecar OFF (the decoupling under test)
+	log := zaptest.NewLogger(t)
+
+	dbs, err := initDatabases(cfg, log)
+	require.NoError(t, err, "initDatabases")
+	t.Cleanup(func() {
+		if dbs != nil && dbs.main != nil {
+			_ = dbs.main.Close()
+		}
+	})
+
+	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, log)
+	require.NoError(t, err)
+	require.NotNil(t, qd, "buildQdrantDeps must return a non-nil QdrantDeps")
+	require.NotNil(t, qd.QdrantDeleter,
+		"PR 3: QdrantDeleter must be wired even when ClipIndexer is disabled (verdict Qdrant #3)")
+	require.NotNil(t, qd.ClipIndexerService,
+		"ClipIndexer service is always constructed (composition root always returns it)")
+	require.False(t, qd.ClipIndexerService.IsEnabled(),
+		"the service's IsEnabled bit must reflect ClipIndexer.Enabled=false")
+}
+
+// TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed pins
+// PR 3 #4 + #5: with cfg.Qdrant.Enabled=true but repos.ClipsRepo=nil,
+// BuildOutboxBundle MUST abort boot via RegisterCoreHandlers's
+// fail-closed contract. AssetDeleter=nil is one of the four mandatory
+// core deps (alongside indexer / SourceVersionQuerier / QdrantDeleter);
+// the previous log.Warn("failed to register outbox events handlers")
+// silently downgraded the wiring bug to a runtime dead-letter on the
+// first asset.index.requested event. The composed error message must
+// name the missing dep so operators can grep the boot log.
+func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	dataDir := t.TempDir()
+	cfg := minimalConfig(dataDir)
+	cfg.Qdrant.Enabled = true
+	cfg.ClipIndexer.Enabled = false
+	log := zaptest.NewLogger(t)
+
+	dbs, err := initDatabases(cfg, log)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if dbs != nil && dbs.main != nil {
+			_ = dbs.main.Close()
+		}
+	})
+
+	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
+	require.NoError(t, err)
+
+	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, log)
+	require.NoError(t, err)
+	require.NotNil(t, qd.QdrantDeleter)
+
+	jobsBundle, err := BuildJobsBundle(dbs.main, log)
+	require.NoError(t, err)
+
+	// Force a nil AssetDeleter dep at the BuildOutboxBundle call site
+	// by zeroing ClipsRepo. The fact that the *assets.ClipsRepository
+	// also implements SourceVersionQuerier means BOTH gates fire here,
+	// which is fine: the first required-dep error is still surfaced,
+	// and the fail-closed semantic (BuildOutboxBundle returning err)
+	// is the contract under test, regardless of WHICH dep was first
+	// to trigger.
+	repos.ClipsRepo = nil
+
+	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle)
+	require.Error(t, err,
+		"PR 3: cfg.Qdrant.Enabled=true + nil ClipsRepo must abort BuildOutboxBundle (fail-closed at boot, never warn-as-warning)")
+	require.Contains(t, err.Error(), "core outbox handlers",
+		"error must originate from RegisterCoreHandlers so operators grep distinctively:\n\tgot: %v", err)
+}
+
+// PR 7 #7.1 — chore/remove-qdrant-legacy freeze test.
+// The legacy internal/infrastructure/qdrant/reconciler.go (and
+// its now-absent reconciler_test.go) were deleted. This test
+// pins both the file-existence AND zero-stale-callers invariant
+// so future commits cannot silently re-introduce the type.
+//
+// The canonical reconciler lives at
+// internal/application/qdrant/reconciler/.
+func TestComposition_FrozenQdrantReconcilerDeleted(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	// (1) The deleted file path must NOT exist.
+	const reconcilerPath = "internal/infrastructure/qdrant/reconciler.go"
+	if _, err := os.Stat(reconcilerPath); err == nil {
+		t.Fatalf("PR 7 #7.1: %s must NOT exist (deleted in chore/remove-qdrant-legacy; canonical path is internal/application/qdrant/reconciler/)", reconcilerPath)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("PR 7 #7.1: unexpected stat error for %s: %v", reconcilerPath, err)
+	}
+
+	// (2) Zero call sites of the OLD constructor in internal/app/*.go.
+	// Any match means a caller was reintroduced without restoring
+	// the deleted file (build would break on `go build ./...`).
+	files := compositionBundleSourceFiles(t)
+	newReconcilerCalls := 0
+	for _, f := range files {
+		src, _ := os.ReadFile(f)
+		newReconcilerCalls += strings.Count(string(src), "qdrant.NewReconciler(")
+	}
+	require.Equalf(t, 0, newReconcilerCalls,
+		"PR 7 #7.1: `qdrant.NewReconciler` call sites in internal/app/*.go must equal 0; found %d. The OLD reconciler was deleted; callers must migrate to internal/application/qdrant/reconciler/.",
+		newReconcilerCalls)
+}
+
+// PR 6 #1 (refactor/qdrant-index-document) — canonical Qdrant
+// wire-shape freeze test. The IndexDocument / IndexedMetadata /
+// EmbeddingArtifact / VectorChannel types declared in
+// internal/infrastructure/qdrant/index_document.go are the canonical
+// airlock vocabulary. If any of these MOVE or get RENAMED, update
+// this test AND index_document.go's doctrine comment together.
+//
+// The forbidden-fields SSOT (ForbiddenIndexDocumentFields) lives in
+// the same file; a future PR adding a new forbidden field must update
+// BOTH the slice declaration AND this freeze-test marker.
+func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
+	chdirToProjectRoot(t)
+
+	const file = "internal/infrastructure/qdrant/index_document.go"
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("PR 6 #1: canonical wire-shape file %s must exist (created in refactor/qdrant-index-document): %v", file, err)
+	}
+
+	body := string(src)
+
+	// Exactly-one declaration of each canonical type — a future split
+	// across multiple files MUST update this freeze-test alongside.
+	for _, marker := range []string{
+		"type IndexDocument struct",
+		"type VectorChannel string",
+		"type EmbeddingArtifact struct",
+		"type IndexedMetadata struct",
+		"var ForbiddenIndexDocumentFields = []string{",
+	} {
+		n := strings.Count(body, marker)
+		require.Equalf(t, 1, n,
+			"PR 6 #1: marker %q expected exactly once in %s; found %d. If you ADDED/RENAMED a canonical type, update this freeze-test AND index_document.go's doctrine comment in lockstep.",
+			marker, file, n)
+	}
+
+	// The canonical VectorChannel constants (ChannelText, etc.) must
+	// each be declared exactly once. The marker pattern matches
+	// "\tConstName VectorChannel" inside the const block.
+	for _, ch := range []string{"ChannelText", "ChannelTranscript", "ChannelVisual", "ChannelAudio", "ChannelBM25Text"} {
+		pattern := "\t" + ch + " VectorChannel"
+		n := strings.Count(body, pattern)
+		require.Equalf(t, 1, n,
+			"PR 6 #1: canonical channel constant %q expected exactly once in %s; found %d. The channel vocabulary is the writer↔search-adapter contract.",
+			ch, file, n)
+	}
+
+	// BuildPayloadFromDocument (the canonical writer-side payload
+	// emitter) must exist exactly once in the qdrant package.
+	files := compositionBundleSourceFiles(t)
+	emitterCount := 0
+	for _, f := range files {
+		if !strings.Contains(f, "internal/infrastructure/qdrant/") {
+			continue
+		}
+		b, _ := os.ReadFile(f)
+		emitterCount += strings.Count(string(b), "func BuildPayloadFromDocument")
+	}
+	require.Equalf(t, 1, emitterCount,
+		"PR 6 #1: exactly 1 `func BuildPayloadFromDocument` declaration expected in internal/infrastructure/qdrant/*.go; found %d. The canonical writer-side payload emitter lives in payload_mapper.go.",
+		emitterCount)
+
+	// The forbidden-fields SSOT slice must contain EXACTLY the SSOT
+	// markers (3 entries today: Status, DriveLink, LocalPath). If a
+	// future PR adds a new forbidden field, append it to the slice
+	// in index_document.go AND update this freeze-test list.
+	for _, forbidden := range []string{"\"Status\"", "\"DriveLink\"", "\"LocalPath\""} {
+		n := strings.Count(body, forbidden)
+		require.Equalf(t, 1, n,
+			"PR 6 #1: forbidden field %q expected exactly once in ForbiddenIndexDocumentFields SSOT; found %d",
+			forbidden, n)
 	}
 }
 

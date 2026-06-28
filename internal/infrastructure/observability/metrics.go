@@ -53,9 +53,61 @@ var (
 		Help: "Total number of Qdrant vector search operations",
 	}, []string{"vector_name", "status"})
 
+	// ── QDRANT-006 PR 9 (June 2026): unified qdrant_request_* metrics ──
+	// The previous Qdrant{Search,Upsert,Errors}* trio only covered a subset
+	// of operations. Operators wanted a single panel for end-to-end
+	// visibility: latency p99 by operation AND failure rate by status,
+	// across the full method surface (GetCollection, UpsertPoints, ...).
+	//
+	// Labels:
+	//   - operation: the canonical op* constant from qdrant/client.go
+	//     (opGetCollection, opListCollections, opUpsertPoints, ...).
+	//     Cardinality is bounded by the const set (~14 values).
+	//   - status: "ok" | "<http_code>" (e.g. "404", "503", "429"). The
+	//     "ok" label aggregates every 2xx response so the success rate
+	//     query avoids per-code cardinality inflation.
+	//
+	// Operators alert on:
+	//   - rate(qdrant_request_total{status!="ok"}[5m]) > 0 (proxy for
+	//     non-2xx pressure);
+	//   - p99 latency > probe timeout (probe-timeout threshold per
+	//     health.go's 5s ceiling).
+	QdrantRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "qdrant_request_duration_seconds",
+		Help:    "Duration of every Qdrant REST request, by canonical operation and HTTP status label (ok/<code>). Operators alert on p99 > health-probe threshold (5s).",
+		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	}, []string{"operation", "status"})
+
+	QdrantRequestTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "qdrant_request_total",
+		Help: "Total number of Qdrant REST requests, by canonical operation and HTTP status label (ok/<code>). Pair with qdrant_request_duration_seconds for end-to-end SLO dashboards.",
+	}, []string{"operation", "status"})
+
+	// QdrantRequestCircuitOpen gauges the lightweight circuit breaker
+	// state (0 = closed, 1 = half-open, 2 = open). Operators alert on
+	// qdrant_request_circuit_open_gauge == 2 sustained > 1m.
+	QdrantRequestCircuitOpen = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "qdrant_request_circuit_open_gauge",
+		Help: "Qdrant client circuit-breaker state by breaker scope (0=closed, 1=half-open, 2=open). Operators alert on ==2 sustained > 1m.",
+	}, []string{"scope"})
+
 	QdrantUpsertTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "qdrant_upsert_total",
 		Help: "Total number of Qdrant upsert operations",
+	}, []string{"status"})
+
+	// QdrantReindexDocumentsTotal — PR 8 / feat/qdrant-reindex-v2.
+	// Outcome-labelled counter for the reindex pipeline. Status values:
+	//   ok    — upsert succeeded + payload verified
+	//   retry — transient failure, classifier permissively tried again
+	//   dlq   — validation failed, document went to qdrantprojection_dlq
+	//   error — non-recoverable failure during this batch
+	// Operators alert on `rate(qdrant_reindex_documents_total{status="error"}[5m]) > 0`
+	// AND on `dlq / ok > 0.01` (DLQ-to-success ratio) to surface silent
+	// validator drift.
+	QdrantReindexDocumentsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "qdrant_reindex_documents_total",
+		Help: "Total number of documents processed by the qdrant reindex pipeline, labelled by outcome (ok|retry|dlq|error). Pair with qdrant_reindex_documents_total for SLO dashboards.",
 	}, []string{"status"})
 
 	QdrantCollectionSize = promauto.NewGaugeVec(prometheus.GaugeOpts{

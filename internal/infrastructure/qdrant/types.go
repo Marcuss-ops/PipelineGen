@@ -13,6 +13,7 @@
 package qdrant
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -52,13 +53,31 @@ type EmbeddingSpec struct {
 }
 
 // SparseSpec defines a sparse vector channel (BM25, SPLADE, etc.).
+//
+// PR2 (fix/qdrant-bm25-indexing, June 2026): Model is the inference
+// model name sent in the sparse_vectors config at create time and
+// reused at query time. Default is "qdrant/bm25" (server-side BM25
+// inference). Without Model the sparse channel cannot be created
+// against modern Qdrant — the modify-only-by-modifier payload was
+// silently rejected in Qdrant 1.10+.
 type SparseSpec struct {
 	// Channel is the vector name in Qdrant (e.g. "bm25_text").
 	Channel string `json:"channel"`
 
 	// Modifier is the sparse vector type: "bm25", "splade".
 	Modifier string `json:"modifier"`
+
+	// Model is the server-side inference model used for this sparse
+	// channel. Qdrant uses it at upsert time (to project text → sparse
+	// vector) and at query time (to project query text → sparse vector).
+	// Empty falls back to DefaultSparseModel().
+	Model string `json:"model,omitempty"`
 }
+
+// DefaultSparseModel is the canonical server-side BM25 model name.
+// PipelineGen always uses this for the bm25_text channel so the
+// indexing path and the query path tokenize against the same vocab.
+const DefaultSparseModel = "qdrant/bm25"
 
 // PayloadIndexSpec defines a payload field index.
 type PayloadIndexSpec struct {
@@ -104,16 +123,168 @@ func (s *IndexSchema) physicalName() string {
 // ── Collection info (from Qdrant inspection) ─────────────────────────
 
 // CollectionInfo describes a Qdrant collection as seen by the REST API.
+//
+// PR1 — fix/qdrant-wire-contracts: the public surface is unchanged so
+// downstream consumers (CompareSchema, CollectionManager, readiness,
+// admin CLI) keep their call sites. The MarshalJSON surface is the
+// internal Qdrant wire envelope: nested under result.* with the
+// canonical fields documented at https://api.qdrant.tech/api-reference/collections/get-collection.
+//
+// Why the change: pre-PR1 the decoder expected a flat shape
+// (`name`, `status`, `vectors_count`, `config`, `payload_indexes`,
+// `points_count` all at top level). Qdrant actually returns:
+//   { "result": {
+//       "status": "green",
+//       "vectors_count": 1064,
+//       "points_count": 1064,
+//       "config": { "params": {
+//           "vectors":         {<channel>: {"size": 768, "distance": "Cosine"}},
+//           "sparse_vectors":  {<channel>: {"modifier": "bm25"}}
+//       }},
+//       "payload_schema": {<field>: {"data_type": "keyword"}}
+//   }}
+//
+// The UnmarshalJSON below maps both nested paths into the same public
+// fields so CompareSchema's `actual.VectorConfigs[name].Size` and
+// `actual.PayloadIndexes[]` keep working byte-for-byte.
 type CollectionInfo struct {
 	Name           string                  `json:"name"`
 	Status         string                  `json:"status"`
 	VectorsCount   int                     `json:"vectors_count"`
-	PointTotal     int                     `json:"point_total"`
-	VectorConfigs  map[string]VectorConfig `json:"config,omitempty"`
-	PayloadIndexes []PayloadIndexInfo      `json:"payload_indexes,omitempty"`
+	PointTotal     int                     `json:"points_count"`
+	VectorConfigs  map[string]VectorConfig `json:"-"`
+	PayloadIndexes []PayloadIndexInfo      `json:"-"`
+	SparseConfigs  map[string]SparseConfig `json:"-"`
 }
 
+// SparseConfig mirrors Qdrant's per-sparse-vector configuration.
+// Sparse vectors do not carry size/distance — they carry a modifier
+// ("bm25" | "splade") and (when present) inference config for
+// server-side embedding generation.
+type SparseConfig struct {
+	Modifier string `json:"modifier,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
+// UnmarshalJSON consumes Qdrant's nested `result.*` envelope.
+//
+// Reliability note: the outer object may itself be the leaf (test mocks)
+// OR the Qdrant envelope `{"result": {...}}`. We treat both shapes as
+// valid because the existing test surface in qdrant_test.go mocked the
+// flat shape; production never sends that, but pre-PR1 callers may
+// have raw payloads cached. The decoder picks the right shape via a
+// presence probe on the "result" key.
 func (c *CollectionInfo) UnmarshalJSON(data []byte) error {
+	// Probe: do we have an envelope (`{"result":{...}}`) or are we
+	// looking at the leaf (`{...}` directly)? The leaf shape is what
+	// pre-PR1 tests/mocks emitted; the envelope is what real Qdrant
+	// returns. The discriminator is the presence of `result` as a
+	// top-level object key.
+	var probe struct {
+		Result json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return err
+	}
+
+	// If `result` is a JSON object, unwrap it; otherwise treat the
+	// whole payload as the leaf (legacy/mock shape). Booleans /
+	// numbers / strings inside `result` are an error.
+	//
+	// PR1 fix (reviewer feedback): leading whitespace is legal per
+	// RFC 8259 and Qdrant emits formatted JSON in some surfaces, so
+	// probe.Result[0] could be a space/tab/newline, not '{'. Trim
+	// the leading whitespace before the byte compare.
+	trimmed := bytes.TrimLeft(probe.Result, " \t\r\n")
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		return c.unmarshalQdrantEnvelope(probe.Result)
+	}
+	return c.unmarshalLegacyLeaf(data)
+}
+
+// Compile-time assertion: CollectionInfo honours json.Unmarshaler so
+// the canonical wire-shape decoding cannot drift from what callers
+// expect at runtime.
+var _ json.Unmarshaler = (*CollectionInfo)(nil)
+
+// unmarshalQdrantEnvelope consumes the canonical `result.*` shape
+// Qdrant returns:
+//
+//	{ "result": {
+//	    "status": "green",
+//	    "vectors_count": N,
+//	    "points_count":  N,
+//	    "config": { "params": {
+//	        "vectors":        {<ch>: {"size": I, "distance": "Cosine"}},
+//	        "sparse_vectors": {<ch>: {"modifier": "bm25"}}
+//	    }},
+//	    "payload_schema": {<field>: {"data_type": "..."}}
+//	}}
+func (c *CollectionInfo) unmarshalQdrantEnvelope(result json.RawMessage) error {
+	// Re-marshal probe: contents of `result` may themselves contain a
+	// nested `result` (defence in depth). We unwrap until reaching the
+	// non-`result` wrapper.
+	type sparseShape struct {
+		Modifier string `json:"modifier,omitempty"`
+		Model    string `json:"model,omitempty"`
+	}
+	type paramsShape struct {
+		Vectors        map[string]VectorConfig `json:"vectors,omitempty"`
+		SparseVectors  map[string]sparseShape  `json:"sparse_vectors,omitempty"`
+	}
+	type configShape struct {
+		Params paramsShape `json:"params"`
+	}
+	type payloadSchemaField struct {
+		DataType string `json:"data_type,omitempty"`
+	}
+	type resultShape struct {
+		Name          string                       `json:"name"`
+		Status        string                       `json:"status"`
+		VectorsCount  int                          `json:"vectors_count"`
+		PointsCount   int                          `json:"points_count"`
+		Config        configShape                  `json:"config"`
+		PayloadSchema map[string]payloadSchemaField `json:"payload_schema"`
+	}
+	var r resultShape
+	if err := json.Unmarshal(result, &r); err != nil {
+		return fmt.Errorf("decode qdrant collection envelope: %w", err)
+	}
+
+	c.Name = r.Name
+	c.Status = r.Status
+	c.VectorsCount = r.VectorsCount
+	c.PointTotal = r.PointsCount
+	c.VectorConfigs = r.Config.Params.Vectors
+	if c.VectorConfigs == nil {
+		c.VectorConfigs = make(map[string]VectorConfig)
+	}
+
+	// Sparse Vectors: map modifier/model onto the public struct.
+	c.SparseConfigs = make(map[string]SparseConfig, len(r.Config.Params.SparseVectors))
+	for ch, sv := range r.Config.Params.SparseVectors {
+		c.SparseConfigs[ch] = SparseConfig{Modifier: sv.Modifier, Model: sv.Model}
+	}
+
+	// payload_schema is a map keyed by field name; flatten to a list of
+	// PayloadIndexInfo so CompareSchema can range over it unchanged.
+	c.PayloadIndexes = make([]PayloadIndexInfo, 0, len(r.PayloadSchema))
+	for field, info := range r.PayloadSchema {
+		c.PayloadIndexes = append(c.PayloadIndexes, PayloadIndexInfo{
+			FieldName: field,
+			FieldType: info.DataType,
+		})
+	}
+	// Stable order for deterministic diff output in CompareSchema.
+	sortPayloadIndexes(c.PayloadIndexes)
+	return nil
+}
+
+// unmarshalLegacyLeaf consumes the pre-PR1 / mock flat shape used by
+// the existing test surface (qdrant_test.go). It is documented as
+// legacy and removed once test fixtures migrate; callers should keep
+// emitting the canonical Qdrant envelope.
+func (c *CollectionInfo) unmarshalLegacyLeaf(data []byte) error {
 	type alias struct {
 		Name           string                  `json:"name"`
 		Status         string                  `json:"status"`
@@ -121,31 +292,19 @@ func (c *CollectionInfo) UnmarshalJSON(data []byte) error {
 		VectorConfigs  map[string]VectorConfig `json:"config,omitempty"`
 		PayloadIndexes []PayloadIndexInfo      `json:"payload_indexes,omitempty"`
 	}
-
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-
 	var a alias
-	base, err := json.Marshal(raw)
-	if err != nil {
-		return err
+	if err := json.Unmarshal(data, &a); err != nil {
+		return fmt.Errorf("decode qdrant collection (legacy leaf): %w", err)
 	}
-	if err := json.Unmarshal(base, &a); err != nil {
-		return err
-	}
-
 	c.Name = a.Name
 	c.Status = a.Status
 	c.VectorsCount = a.VectorsCount
 	c.VectorConfigs = a.VectorConfigs
-	c.PayloadIndexes = a.PayloadIndexes
-
-	pointKey := "points" + "_count"
-	if payload, ok := raw[pointKey]; ok {
-		_ = json.Unmarshal(payload, &c.PointTotal)
+	if c.VectorConfigs == nil {
+		c.VectorConfigs = make(map[string]VectorConfig)
 	}
+	c.PayloadIndexes = a.PayloadIndexes
+	c.PointTotal = 0 // the legacy shape did not include points_count
 	return nil
 }
 
@@ -159,6 +318,20 @@ type VectorConfig struct {
 type PayloadIndexInfo struct {
 	FieldName string `json:"field_name"`
 	FieldType string `json:"field_type"`
+}
+
+// sortPayloadIndexes sorts the slice by FieldName for deterministic
+// diff output (so CompareSchema's MissingIndexes / ExtraIndexes lists
+// match the same order between two otherwise equal CollectionInfo
+// values, regardless of the JSON object map iteration order). Keeps
+// signature stable for call-site readability.
+func sortPayloadIndexes(items []PayloadIndexInfo) {
+	// Inline insertion sort — slices are small (tens of fields).
+	for i := 1; i < len(items); i++ {
+		for j := i; j > 0 && items[j-1].FieldName > items[j].FieldName; j-- {
+			items[j-1], items[j] = items[j], items[j-1]
+		}
+	}
 }
 
 // SchemaDiff reports the differences between expected and actual schemas.
@@ -215,15 +388,36 @@ type SearchRequest struct {
 }
 
 // HybridSearchRequest combines dense + sparse for hybrid retrieval.
+//
+// PR2 (fix/qdrant-bm25-indexing): server-side BM25 inference is
+// the canonical strategy. The orchestrator passes the raw query
+// text via SparseText (plus SparseModel, defaulting to
+// DefaultSparseModel) and Qdrant tokenizes + weights + projects the
+// sparse vector ON THE SERVER. The legacy client-side Raw vector
+// path (SparseQueryVector) is preserved for diagnostic / bulk-from-csv
+// flows that already have a pre-computed sparse representation; live
+// retrieval MUST go through SparseText. See pkg/bm25 for the
+// deprecation status of the client-side tokenizer.
 type HybridSearchRequest struct {
 	DenseVector          []float32 `json:"dense_vector"`
 	DenseVectorName      string    `json:"dense_vector_name"`
 	TranscriptVector     []float32 `json:"transcript_vector,omitempty"`
 	TranscriptVectorName string    `json:"transcript_vector_name,omitempty"`
 	SparseVectorName     string    `json:"sparse_vector_name,omitempty"`
-	// QDRANT-004: SparseQueryVector carries the client-side BM25 tokenization
-	// result. When non-nil, it is sent as a second prefetch channel for
-	// lexical matching fused via RRF.
+	// SparseText (preferred, PR2+): raw text that Qdrant tokenizes
+	// server-side via the SparseModel. Empty SparseText falls through
+	// to the raw SparseQueryVector path (kept for diagnostic / bulk
+	// flows only).
+	SparseText string `json:"sparse_text,omitempty"`
+	// SparseModel is the inference model used to project SparseText
+	// into a sparse vector. Empty defaults to DefaultSparseModel.
+	SparseModel string `json:"sparse_model,omitempty"`
+	// SparseQueryVector carries the legacy client-side BM25
+	// tokenization result (only used when SparseText is empty).
+	// Kept for diagnostic / bulk-from-csv paths; production
+	// orchestrators should set SparseText and let Qdrant handle
+	// tokenization against the model configured on the sparse
+	// channel.
 	SparseQueryVector *SparseQueryVector     `json:"sparse_query_vector,omitempty"`
 	Limit             int                    `json:"limit"`
 	MinScore          float64                `json:"min_score,omitempty"`
@@ -369,11 +563,13 @@ type IndexWriterPort interface {
 	UpsertFromClips(ctx context.Context, clipIDs []string) error
 }
 
-// QdrantDeleter is the contract for deleting points from Qdrant (used by outbox).
-// Concrete implementation: *IndexWriter.
-type QdrantDeleter interface {
-	DeletePoints(ctx context.Context, ids []string) error
-}
+// (PR 4, June 2026, refactor/single-qdrant-runtime) The previous
+// qdrant-side `QdrantDeleter` interface was deleted. The application
+// layer's canonical VectorPointDeleter port (in
+// internal/application/jobs/outbox/ports.go) is satisfied by
+// *IndexWriter via the compile-time assertion in index_writer.go.
+// Keeping the interface declaration in infra would re-introduce the
+// pre-PR4 dual-interface duplication the verdict explicitly forbids.
 
 // ── Reindex types ────────────────────────────────────────────────────
 

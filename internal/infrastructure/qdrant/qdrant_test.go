@@ -634,17 +634,29 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 					},
 				},
 			})
-		// Physical collection exists and is compatible.
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3_e5_768":
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": map[string]interface{}{
-					"status": "green",
-					"config": map[string]interface{}{
-						"text":   map[string]interface{}{"size": float64(768), "distance": "Cosine"},
-						"visual": map[string]interface{}{"size": float64(768), "distance": "Cosine"},
+	// Physical collection exists and is compatible — issue the
+	// canonical Qdrant wire envelope (PR1 — fix/qdrant-wire-contracts):
+	// `result.config.params.vectors` instead of the legacy flat
+	// `config` map. The mock intentionally exercises the nested
+	// decoder path so the test cannot silently pass via the
+	// unmarshalLegacyLeaf fallback.
+	case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_v3_e5_768":
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"result": map[string]interface{}{
+				"status":        "green",
+				"vectors_count": 2.0,
+				"points_count":  42.0,
+				"config": map[string]interface{}{
+					"params": map[string]interface{}{
+						"vectors": map[string]interface{}{
+							"text":   map[string]interface{}{"size": float64(768), "distance": "Cosine"},
+							"visual": map[string]interface{}{"size": float64(768), "distance": "Cosine"},
+						},
 					},
 				},
-			})
+				"payload_schema": map[string]interface{}{},
+			},
+		})
 		// PUT collection — should NOT be called.
 		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_e5_768":
 			createCalls++

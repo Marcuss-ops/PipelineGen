@@ -194,9 +194,15 @@ func startDriveBackgroundFolders(
 	return nil
 }
 
-// Compile-time assertions for QDRANT-003 wiring.
+// Compile-time assertions for QDRANT-003 wiring + PR 3
+// (fix/qdrant-outbox-fail-closed). Per AGENTS.md Pattern 0 the
+// composition root is where the typed-port contract is enforced: every
+// port referenced from outbox.Deps must statically implement its
+// concrete so a future refactor misses the compile, not the first
+// outbox replay.
 var (
 	_ clipindexer.VectorStoreIndexer = (*qdrant.IndexWriter)(nil)
+	_ jobsoutbox.AssetDeleter        = (*assets.ClipsRepository)(nil)
 )
 
 // BuildProcessBundle builds media-processing adapters. driveUploader
@@ -259,48 +265,38 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		Weight:    cfg.VLM.Weight,
 	})
 
-	// QDRANT-005 Phase 1 Blocker 2 (June 2026): Qdrant client, health
-	// probe, locator cleaner, searcher, search adapter, and collection
-	// manager are created when cfg.Qdrant.Enabled == true, regardless of
-	// whether the clip indexer is enabled. PR 8 (June 2026): the
-	// IndexWriter construction moved to composition.go::buildQdrantDeps.
-	// Here we only build the QdrantClient and the adapters that depend
-	// on it (CollectionManager, VectorSvc, HealthProbe, LocatorCleaner,
-	// Searcher). ClipIndexerService + QdrantDeleter are reused from
-	// qd.ClipIndexerService + qd.QdrantDeleter.
-	var collectionMgr *qdrant.CollectionManager
-	var vectorSvc assetsearch.VectorStorePort
-	var qdrantClient *qdrant.Client
-	var qdrantHealthProbe any
-	var locatorCleaner *qdrant.LocatorCleaner
-	var qdrantSearcher *qdrant.Searcher
+	// QDRANT-005 Phase 1 Blocker 2 (June 2026): Qdrant subsystems are
+	// sourced from qd.Runtime (PR 4, June 2026,
+	// refactor/single-qdrant-runtime) so there is exactly ONE
+	// *qdrant.Client + ONE *IndexSchema per process. Pre-PR4 the
+	// BuildProcessBundle body had its OWN qdrant.NewClient + DefaultV3Schema
+	// call, second to the ones in composition.go::buildQdrantDeps — the
+	// two *Clients were distinct pointer values (so wire_only
+	// invariants like api-key header could silently drift between the
+	// two) but functionally identical. After PR 4 all subsystems
+	// read from the runtime. nil qd.Runtime → all subsystems nil
+	// (Qdrant disabled feature flag).
+	var (
+		collectionMgr    *qdrant.CollectionManager
+		vectorSvc        assetsearch.VectorStorePort
+		qdrantClient     *qdrant.Client
+		qdrantHealthProbe *qdrant.HealthProbe
+		locatorCleaner    *qdrant.LocatorCleaner
+		qdrantSearcher    *qdrant.Searcher
+	)
 
-	if cfg.Qdrant.Enabled {
-		qdrantCfg := &qdrant.Config{
-			BaseURL: cfg.Qdrant.BaseURL,
-			APIKey:  cfg.Qdrant.APIKey,
-			Timeout: cfg.Qdrant.Timeout,
-		}
-		schema := qdrant.DefaultV3Schema()
-		qdrantClient = qdrant.NewClient(qdrantCfg, log)
+	if qd.Runtime != nil {
+		collectionMgr    = qd.Runtime.Manager
+		vectorSvc        = qd.Runtime.SearchAdapter
+		qdrantClient     = qd.Runtime.Client
+		qdrantHealthProbe = qd.Runtime.Health
+		locatorCleaner   = qd.Runtime.Cleaner
+		qdrantSearcher   = qd.Runtime.Searcher
 
-		// Health probe + locator cleaner: always active when Qdrant is on.
-		qdrantHealthProbe = qdrant.NewHealthProbe(qdrantClient)
-		locatorCleaner = qdrant.NewLocatorCleaner(qdrantClient, schema, log)
-
-		// Searcher + SearchAdapter + CollectionManager: always active.
-		searcher := qdrant.NewSearcher(qdrantClient, schema, log)
-		searchAdapter := qdrant.NewSearchAdapter(searcher, log)
-		vectorSvc = searchAdapter
-		collectionMgr = qdrant.NewCollectionManager(qdrantClient, schema, log)
-
-		// Expose searcher for wire_script.go ClipSearchPort construction.
-		qdrantSearcher = searcher
-
-		log.Info("QDRANT-005: HealthProbe + LocatorCleaner wired (Qdrant enabled, BuildProcessBundle)",
+		log.Info("QDRANT-005 PR4: HealthProbe + LocatorCleaner + Searcher + CollectionManager sourced from single QdrantRuntime (BuildProcessBundle)",
 			zap.String("qdrant_url", cfg.Qdrant.BaseURL),
-			zap.String("schema_version", schema.Version))
-		log.Info("QDRANT-004: Searcher + SearchAdapter wired for mediasearch API (BuildProcessBundle)")
+			zap.String("schema_version", qd.Runtime.Schema.Version))
+		log.Info("QDRANT-004 PR4: VectorStorePort sourced from single QdrantRuntime.SearchAdapter (BuildProcessBundle)")
 	} else {
 		log.Info("QDRANT-003: Qdrant disabled — no Qdrant components wired (BuildProcessBundle)")
 	}
@@ -311,6 +307,7 @@ func BuildProcessBundle(ctx context.Context, cfg *config.Config, dbs *databases,
 		VLMClient:          vlmClient,
 		CollectionManager:  collectionMgr,
 		QdrantDeleter:      qd.QdrantDeleter,
+		QdrantRuntime:      qd.Runtime, // PR 4: first-class facade exposed at ProcessBundle level
 		VectorSvc:          vectorSvc,
 		QdrantClient:       qdrantClient,
 		QdrantHealthProbe:  qdrantHealthProbe,
@@ -343,25 +340,15 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 	outboxEventsRepo := outboxevents.NewRepository(dbs.main.DB)
 
-	multiClipsUp := outbox.NewMultiClipsUpserter(
-		map[string]outbox.ClipsUpserter{
-			"youtube": repos.ClipsRepo,
-			"stock":   repos.ClipsRepo,
-			"artlist": repos.ClipsRepo,
-		},
-		repos.ClipsRepo,
-		log,
-	)
-	// QDRANT-002 PR7: wire *assets.ClipsRepository as the
-	// ClipsStateWriter (same concrete that already implements
-	// ClipsUpserter — methods are partitioned by go-type, not by
-	// runtime class). Per-state dispatching is unnecessary post
-	// PR2.6 media_assets consolidation because every per-source
-	// shim funnels into the same SQLite table.
-	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
-	outboxTxMgr := outbox.NewManager(dbs.main.DB, log)
-	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log)
-	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
+	// PR 3 fix/qdrant-outbox-fail-closed BL-1 fix: dispatcher
+	// construction moved to AFTER the fail-closed handler
+	// registration (see below). The previous order constructed the
+	// dispatcher + ClipsStateWriter BEFORE the fail-closed check, so
+	// when repos.ClipsRepo was nil the call returned an internal
+	// panic (NewDispatcher / NewMultiClipsUpserter panic on nil
+	// inputs) instead of the typed error the fail-closed contract
+	// requires. The dispatcher block is now anchored after
+	// RegisterOptionalHandlers.
 
 	eventsRegistry := outboxevents.NewHandlerRegistry()
 
@@ -409,21 +396,69 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		Jobs:                 jobs.Service,
 		SourceVersionQuerier: sourceQuerier,
 	}
-	// QDRANT-003 PR8: wire qd.QdrantDeleter (IndexWriter built by
-	// composition.go::buildQdrantDeps) as outbox.Deps.QdrantDeleter for
-	// index.delete_requested events. The previous `process.QdrantDeleter`
-	// indirection is gone — qd directly satisfies the jobsoutbox port via
-	// the static-implementation contract at
-	// internal/infrastructure/qdrant/index_writer.go (compile-time
-	// assertion at the top of this file pins the conformance).
+	// PR 4 (June 2026, refactor/single-qdrant-runtime): wire
+	// qd.QdrantDeleter (outbox.VectorPointDeleter; == qd.Runtime.Writer
+	// when Qdrant is enabled) directly into outbox.Deps.VectorPointDeleter.
+	// The previous `interface{}` cast `qd.QdrantDeleter.(jobsoutbox.QdrantDeleter)`
+	// is gone: the compile-time assertion at
+	// internal/infrastructure/qdrant/index_writer.go pins the
+	// conformance (`_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`),
+	// and qd.QdrantDeleter's field type is already
+	// jobsoutbox.VectorPointDeleter so direct assignment is type-safe.
 	if qd.QdrantDeleter != nil {
-		if deleter, ok := qd.QdrantDeleter.(jobsoutbox.QdrantDeleter); ok {
-			outboxDeps.QdrantDeleter = deleter
+		outboxDeps.VectorPointDeleter = qd.QdrantDeleter
+	}
+	// PR 3 fix/qdrant-outbox-fail-closed (#4): wire the canonical
+	// AssetDeleter so IndexDeleteHandler has BOTH its dep slots
+	// populated. *assets.ClipsRepository statically implements the
+	// local outbox.AssetDeleter port (compile-time assertion at the
+	// top of this file pins GetClip + SoftDelete + SetIndexState
+	// conformance). Before this wiring, IndexDeleteHandler
+	// registered in a partially-wired state whenever
+	// Qdrant.Enabled=true but composer's ClipsRepo wiring failed —
+	// every asset.index.delete_requested event then dead-lettered
+	// with "no handler for event type X". Fail-closed wiring: only
+	// when cfg.Qdrant.Enabled AND ClipsRepo is present.
+	if cfg.Qdrant.Enabled && repos.ClipsRepo != nil {
+		if deleter, ok := repos.ClipsRepo.(jobsoutbox.AssetDeleter); ok {
+			outboxDeps.AssetDeleter = deleter
 		}
 	}
-	if err := jobsoutbox.RegisterAll(eventsRegistry, log, qd.ClipIndexerService, outboxDeps); err != nil {
-		log.Warn("failed to register outbox events handlers", zap.Error(err))
+	// PR 3 fix/qdrant-outbox-fail-closed (#4 + #5): core handlers are
+	// fail-closed when Qdrant is enabled. The previous
+	// `log.Warn("failed to register outbox events handlers", err)`
+	// silently downgraded a wiring bug to a runtime dead-letter on
+	// the first asset.index.requested event. Now: cfg.Qdrant.Enabled
+	// AND any core dep missing → return err which BuildOutboxBundle
+	// propagates up to NewComposition so an operator
+	// misconfiguration aborts boot rather than running with a broken
+	// outbox.
+	if cfg.Qdrant.Enabled {
+		if err := jobsoutbox.RegisterCoreHandlers(eventsRegistry, log, qd.ClipIndexerService, outboxDeps); err != nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: register core outbox handlers (fail-closed): %w", err)
+		}
 	}
+	// Optional handlers: best-effort. Missing deps here are logged
+	// and skipped; missing deps do NOT abort boot (delivery,
+	// metadata_export, provider_sync are non-essential at boot).
+	if err := jobsoutbox.RegisterOptionalHandlers(eventsRegistry, log, outboxDeps); err != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register optional outbox handlers: %w", err)
+	}
+
+	// ── Dispatcher + pool construction (post fail-closed). ────────
+	multiClipsUp := outbox.NewMultiClipsUpserter(
+		map[string]outbox.ClipsUpserter{
+			"youtube": repos.ClipsRepo,
+			"stock":   repos.ClipsRepo,
+			"artlist": repos.ClipsRepo,
+		},
+		repos.ClipsRepo,
+		log,
+	)
+	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
+	outboxTxMgr := outbox.NewManager(dbs.main.DB, log)
+	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log)
+	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
 	cfgPoll := 500 * time.Millisecond
 	if cfg.Outbox.PollIntervalMs > 0 {

@@ -26,10 +26,11 @@
 //   - stubRatePort            — replaced by a real RateLimitPort
 //     constructed from cfg.Security
 //   - stubFeaturesPort        — replaced by a real FeatureFlagsPort
-//     constructed from cfg.FeatureFlags
-//   - noOpQdrantLister        — replaced by *qdrant.Reconciler
+//     constructed from cfg.FeatureFlags//   - noOpQdrantLister        — replaced by qdrantReconcilerListerAdapter
 //     backed by production *qdrant.Client
 //     and *qdrant.SQLiteAssetStore
+//     (PR 7 #7.1: old *qdrant.Reconciler deleted;
+//     canonical path is internal/application/qdrant/reconciler/)
 //   - noOpSQLiteReconcileReader — replaced by repository.ClipsRepo
 //     (production SQLite reader)
 package main
@@ -180,8 +181,9 @@ type compositionRoot struct {
 //	                                 CompareActiveCollection)
 //	"real_routes_present"           (real router built from production
 //	                                 handlers, not stubs)
-//	"scan_reconciler_complete"      (real qdrant.Reconciler dry-run
-//	                                 against SQLite + Qdrant)
+//	"scan_reconciler_complete"      (qdrantReconcilerListerAdapter dry-run
+//	                                 against SQLite + Qdrant; the legacy
+//	                                 *qdrant.Reconciler was deleted in PR 7)
 //	"server_production_constructor" (root != nil AND every required
 //	                                 bundle non-nil)
 //	"worker_real_state"             (root.Outbox.EventsPool != nil)
@@ -626,9 +628,14 @@ func checkRoutesReal(_ context.Context, deps readinessDeps) checkStatus {
 }
 
 // checkReconcilerProduction: production-shaped. Replaces
-// noOpQdrantLister + noOpSQLiteReconcileReader with the canonical
-// *qdrant.Reconciler.Reconcile dry-run, which exercises the real
+// noOpQdrantLister + noOpSQLiteReconcileReader with the
+// qdrantReconcilerListerAdapter dry-run, which exercises the real
 // Client.ScrollPoints + assetStore.ListAllAssetIDs machinery.
+//
+// PR 7 #7.1 note: the legacy *qdrant.Reconciler (in
+// internal/infrastructure/qdrant/reconciler.go) was deleted in
+// chore/remove-qdrant-legacy (June 2026). The canonical
+// reconciler service lives at internal/application/qdrant/reconciler/.
 //
 // Fails hard on schema/assetStore/Client nil (the production
 // canonical real-wiring invariants). The reconciler service is a

@@ -702,19 +702,26 @@ func TestSearch_PostQueryGuard_PassesSearchableStates(t *testing.T) {
 	}
 }
 
-// ── QDRANT-004 PR1: hybrid fail-closed contract ───────────────────────
+// ── QDRANT-004 PR2: server-side BM25 wire shape + canonical fallback ───
 //
-// PR1 (June 2026): mode=hybrid must produce real dense+sparse retrieval
-// OR return ErrHybridRequiresSparse. The orchestrator cannot silently
-// degrade to ANN. These tests pin the contract at the service boundary.
+// PR2 (June 2026): the orchestrator hands the raw query text to the
+// vector store as HybridSearchRequest.SparseText so Qdrant runs the
+// BM25 inference server-side via the "qdrant/bm25" model. There is NO
+// client-side bm25.Tokenize path on the retrieval hot path —
+// pkg/bm25 is reserved for diagnostic + bulk-from-csv callers. These
+// tests pin the wire shape at the service boundary so a regression
+// that re-introduces client-side tokenization (or drops SparseText
+// on the wire) is caught here, in service-level tests, before the
+// downstream qdrant.Searcher enforces prefix-mismatch via
+// ErrSparseRequired.
 
-// TestSearch_HybridPassesSparseVectorToStore pin that the orchestrator
-// computes BM25 client-side and propagates the SparseVector &
-// SparseVectorName through the HybridSearchRequest. Without this
-// assertion a regression that drops SparseVector on the wire would
-// fail through qdrant.Searcher.HybridSearch (defence-in-depth) but go
-// undetected in service-level tests.
-func TestSearch_HybridPassesSparseVectorToStore(t *testing.T) {
+// TestSearch_HybridPassesSparseTextToStore pins PR2: the
+// orchestrator propagates the raw query text as SparseText and the
+// canonical model name as SparseModel. SparseVector (client-side
+// pre-tokenization) MUST stay empty on the retrieval path; if it
+// isn't, client-side bm25.Tokenize has leaked back into hot-path
+// calls.
+func TestSearch_HybridPassesSparseTextToStore(t *testing.T) {
 	var captured search.HybridSearchRequest
 	store := &fakeStore{
 		hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
@@ -742,51 +749,71 @@ func TestSearch_HybridPassesSparseVectorToStore(t *testing.T) {
 	if resp.Count != 1 {
 		t.Fatalf("Count = %d, want 1", resp.Count)
 	}
-	if captured.SparseVector == nil {
-		t.Fatal("SparseVector must be populated by orchestrator; got nil")
+	if captured.SparseText != "alpha test" {
+		t.Errorf("SparseText = %q, want %q (raw query text for server-side BM25)", captured.SparseText, "alpha test")
+	}
+	if captured.SparseModel != "qdrant/bm25" {
+		t.Errorf("SparseModel = %q, want %q (canonicalSparseModel)", captured.SparseModel, "qdrant/bm25")
 	}
 	if captured.SparseVectorName != "bm25_text" {
 		t.Errorf("SparseVectorName = %q, want %q", captured.SparseVectorName, "bm25_text")
 	}
-	if len(captured.SparseVector.Indices) == 0 || len(captured.SparseVector.Values) == 0 {
-		t.Errorf("SparseVector must carry non-empty Indices/Values; got %+v", captured.SparseVector)
+	// PR2 invariant: orchestrator does NOT pre-tokenize. SparseVector
+	// must stay zero on the live retrieval path; if it isn't,
+	// pkg/bm25.Tokenize has leaked back into hot-path calls.
+	// SparseVector is *bm25.SparseVector (pointer); accessing .Indices
+	// on a nil pointer would panic, so the assertion is the inverse:
+	// the field must stay nil on the live retrieval path.
+	if captured.SparseVector != nil {
+		t.Errorf("SparseVector MUST be nil on PR2 retrieval path (server-side BM25 took over); got %+v", captured.SparseVector)
 	}
 }
 
-// TestSearch_HybridFailsClosedOnNoBM25Tokens encodes the fail-closed
-// rule: queries that BM25 cannot tokenize (all tokens <2 chars after
-// normalisation — e.g. "a", "??", "12 34") MUST return
-// ErrHybridRequiresSparse. They cannot be silently downgraded to ANN.
-func TestSearch_HybridFailsClosedOnNoBM25Tokens(t *testing.T) {
-	store := &fakeStore{}
+// TestSearch_HybridServerSide_NoFailClosedOnShortTokens encodes
+// the PR2 wire-shape rule: queries that the pre-PR2 client-side
+// bm25.Tokenize could not handle (e.g. all tokens <2 chars) MUST NOT
+// fail-closed anymore — server-side BM25 handles arbitrary text.
+// Callers no longer see ErrHybridRequiresSparse on the live path;
+// that sentinel is reserved for future "Qdrant lacks the model"
+// staging scenarios per pkg/bm25's Deprecated marker.
+func TestSearch_HybridServerSide_NoFailClosedOnShortTokens(t *testing.T) {
+	var captured search.HybridSearchRequest
+	store := &fakeStore{
+		hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
+			captured = req
+			return []search.VectorSearchResult{{AssetID: "ok", Score: 0.5, SearchText: "a"}}, nil
+		},
+	}
 	vec := storeFn(&fakeVector{
 		vc: search.VectorConfig{
 			TextVectorName:   "text",
 			SparseVectorName: "bm25_text",
 		},
 	}, store)
-	svc := NewService(vec, &fakeRead{}, &fakeDeliver{}, Config{}, &captureLogger{})
+	read := &fakeRead{rows: map[string]MediaAsset{"ok": {ID: "ok", Name: "OK"}}}
+	svc := NewService(vec, read, &fakeDeliver{}, Config{}, &captureLogger{})
 
 	_, err := svc.Search(context.Background(), MediaSearchRequest{
 		Query:     "a",
 		Mode:      SearchModeHybrid,
 		Workspace: WorkspaceContext{WorkspaceID: "w1"},
 	})
-	if err == nil {
-		t.Fatal("expected ErrHybridRequiresSparse for non-tokenizable query, got nil")
+	if err != nil {
+		t.Fatalf("PR2: server-side BM25 must not fail-closed on short tokens; got %v", err)
 	}
-	if !errors.Is(err, ErrHybridRequiresSparse) {
-		t.Errorf("error %v does not wrap ErrHybridRequiresSparse", err)
+	if captured.SparseText != "a" {
+		t.Errorf("SparseText = %q, want %q (raw query text always wired under PR2)", captured.SparseText, "a")
+	}
+	if captured.SparseModel != "qdrant/bm25" {
+		t.Errorf("SparseModel = %q, want %q (canonical model always wired)", captured.SparseModel, "qdrant/bm25")
 	}
 }
 
 // TestSearch_HybridFailsClosedOnEmptySparseChannel asserts that a
-// VectorConfig WITHOUT a SparseVectorName cannot execute a hybrid
-// request — even when BM25 succeeds. The orchestrator must fall back
-// to canonicalSparseVectorName ("bm25_text") so this scenario stays
-// valid; this test pins the canonical fallback as part of the
-// service contract.
-func TestSearch_HybridFailsClosedOnEmptySparseChannel(t *testing.T) {
+// VectorConfig WITHOUT a SparseVectorName falls back to the canonical
+// "bm25_text" channel. Wired through SparseText + SparseModel
+// (PR2 server-side) rather than the pre-PR2 client-side SparseVector.
+func TestSearch_Hybrid_CanonicalFallbackOnEmptySparseChannel(t *testing.T) {
 	var captured search.HybridSearchRequest
 	store := &fakeStore{
 		hybridFn: func(ctx context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
@@ -815,7 +842,10 @@ func TestSearch_HybridFailsClosedOnEmptySparseChannel(t *testing.T) {
 	if captured.SparseVectorName != "bm25_text" {
 		t.Errorf("SparseVectorName = %q, want %q (canonical fallback)", captured.SparseVectorName, "bm25_text")
 	}
-	if captured.SparseVector == nil {
-		t.Error("SparseVector must be populated even when VectorConfig.SparseVectorName was empty (canonical fallback covers channel)")
+	if captured.SparseText != "meaningful query here" {
+		t.Errorf("SparseText = %q, want %q (raw query text always wired)", captured.SparseText, "meaningful query here")
+	}
+	if captured.SparseModel != "qdrant/bm25" {
+		t.Errorf("SparseModel = %q, want %q (canonical model always wired)", captured.SparseModel, "qdrant/bm25")
 	}
 }

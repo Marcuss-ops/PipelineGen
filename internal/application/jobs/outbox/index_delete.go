@@ -50,16 +50,17 @@ import (
 // instead of silently retrying on what looks like a routine failure.
 const DeleteRequestSchemaVersion = "asset.index.delete_requested.v1"
 
-// QdrantDeleter is the minimum surface the IndexDeleteHandler needs to
-// remove Qdrant points. Declared locally so the handler does NOT import
-// infrastructure/qdrant directly (mirrors the DeliveryHandler's
-// *http.Client surface pattern).
+// VectorPointDeleter is satisfied by *qdrant.IndexWriter (see the
+// compile-time assertion at
+// internal/infrastructure/qdrant/index_writer.go). The interface
+// itself lives in ports.go per AGENTS.md Pattern 0 — application-layer
+// consumers MUST NOT redeclare it locally. PR 4 (refactor/single-qdrant-runtime)
+// consolidated the previous pair of duplicated `QdrantDeleter`
+// declarations (one in infra/qdrant/types.go and one local here)
+// into this single port.
 //
-// The production concrete is *qdrant.Service from
-// internal/infrastructure/qdrant which satisfies this signature exactly.
-type QdrantDeleter interface {
-	DeletePoints(ctx context.Context, assetIDs []string) error
-}
+// Production concrete: *qdrant.IndexWriter from
+// internal/infrastructure/qdrant which satisfies the signature exactly.
 
 // AssetDeleter is the minimum surface for reading the current asset
 // state (pre-flight idempotency check) and writing the soft-delete +
@@ -107,13 +108,14 @@ type indexDeleteRequestV1 struct {
 
 // IndexDeleteHandler is the real handler for asset.index.delete_requested.v1.
 //
-// Both QdrantDeleter and AssetDeleter are required for production wiring
-// (BuildOutboxBundle populates them from *qdrant.Service and
-// *assets.ClipsRepository respectively). Tests pass in-memory stubs that
+// Both VectorPointDeleter and AssetDeleter are required for production wiring
+// (BuildOutboxBundle populates the deleter field from
+// qd.Runtime.Writer — see composition.go — and the assetDeleter from
+// *assets.ClipsRepository). Tests pass in-memory stubs that
 // satisfy the local interfaces.
 type IndexDeleteHandler struct {
 	log           *zap.Logger
-	qdrantDeleter QdrantDeleter
+	qdrantDeleter VectorPointDeleter
 	assetDeleter  AssetDeleter
 }
 
@@ -121,7 +123,7 @@ type IndexDeleteHandler struct {
 // nop logger. Either deleter nil is a programming error — the handler
 // guards each call site with a nil-check so partial wiring degrades to
 // "depend on the other" rather than crashing.
-func NewIndexDeleteHandler(log *zap.Logger, qdrantDeleter QdrantDeleter, assetDeleter AssetDeleter) *IndexDeleteHandler {
+func NewIndexDeleteHandler(log *zap.Logger, qdrantDeleter VectorPointDeleter, assetDeleter AssetDeleter) *IndexDeleteHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}

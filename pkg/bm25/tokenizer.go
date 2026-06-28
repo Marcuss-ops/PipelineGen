@@ -1,3 +1,11 @@
+// Deprecated: LEGACY — client-side BM25 tokenization kept only for
+// diagnostic / bulk-from-csv paths. Live indexing and querying now
+// go through Qdrant server-side BM25 inference ("qdrant/bm25"). The
+// raw {indices, values} SparseVector shape is preserved for callers
+// that already have a pre-computed sparse representation; new code
+// MUST pass the raw query text via qdrant.HybridSearchRequest.SparseText
+// and let Qdrant tokenize against the model pinned on the channel.
+//
 // Package bm25 provides a client-side BM25 tokenizer for Qdrant sparse
 // vector search. It converts query text into the sparse vector format
 // that Qdrant expects for hybrid (dense + sparse) retrieval via RRF fusion.

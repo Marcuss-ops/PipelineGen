@@ -61,15 +61,15 @@ import (
 // jobs.Service for drive|youtube). nil → drive|youtube events
 // fail-open as retryable errors so the outbox pool retries — no
 // silent ack.
-//
-// QdrantDeleter: QdrantDeleter for the IndexDeleteHandler (real
-// DELETE-points onto Qdrant via the canonical *qdrant.Service). nil
-// → IndexDeleteHandler is skipped; events then dead-letter with "no
-// handler for event type X" in the pool's pool log.
-//
-// AssetDeleter: AssetDeleter for the IndexDeleteHandler (real
-// media_assets soft-delete via *assets.ClipsRepository). nil →
-// IndexDeleteHandler is skipped (same effect as QdrantDeleter nil).
+//	// VectorPointDeleter: outbox.VectorPointDeleter for the
+	// IndexDeleteHandler (real DELETE-points onto Qdrant via the
+	// canonical *qdrant.IndexWriter from QdrantRuntime.Writer).
+	// nil → IndexDeleteHandler is skipped; events then dead-letter
+	// with "no handler for event type X" in the pool's pool log.
+	//
+	// AssetDeleter: AssetDeleter for the IndexDeleteHandler (real
+	// media_assets soft-delete via *assets.ClipsRepository). nil →
+	// IndexDeleteHandler is skipped (same effect as VectorPointDeleter nil).
 //
 // SourceVersionQuerier: SourceVersionQuerier for the IndexingHandler
 // pre-flight supersede gate (real media_assets source_version via
@@ -88,7 +88,7 @@ type Deps struct {
 	HMACSecrets          [][]byte
 	InsecureDev          bool
 	Jobs                 JobsEnqueuer
-	QdrantDeleter        QdrantDeleter
+	VectorPointDeleter   VectorPointDeleter
 	AssetDeleter         AssetDeleter
 	SourceVersionQuerier SourceVersionQuerier
 }
@@ -98,88 +98,165 @@ type Deps struct {
 
 // RegisterAll wires the canonical set of handlers into the registry.
 //
+// Deprecated: production code MUST call RegisterCoreHandlers (when
+// cfg.Qdrant.Enabled) and RegisterOptionalHandlers directly so a
+// missing core dep aborts boot rather than producing a runtime
+// dead-letter on the first indexed event. RegisterAll is retained as
+// a back-compat wrapper for legacy tests that exercise partial wiring
+// without fail-closed semantics — pre-PR-3 callers get the same
+// best-effort behavior (missing core deps are LOGGED at Info and
+// skipped, never returned as an error). See PR 3
+// (fix/qdrant-outbox-fail-closed) for the failure-mode context that
+// drove the split.
+//
 // Parameters:
 //   - registry : the HandlerRegistry to populate.
 //   - log      : zap logger — nil-safe (handlers use zap.NewNop on nil).
 //   - indexer  : IndexClipper dependency for the IndexingHandler.
-//     Pass nil to skip the IndexingHandler (tests, partial
-//     wiring). The handler is optional, not mandatory.
-//   - deps     : Deps bundle. Each field is optional; the corresponding
-//     handler is registered as long as its CRITICAL field is
-//     present (DB for metadata_export, HTTPClient or DB for
-//     delivery, Jobs for provider_sync's drive|youtube path,
-//     HMACSecrets OR InsecureDev for delivery).
+//     Pass nil to skip the IndexingHandler (tests, partial wiring).
+//   - deps     : Deps bundle. Each field is optional; the
+//     corresponding handler is registered as long as its dependency
+//     is present.
 //
-// Returns: the first registration error (duplicate event type, nil
-// handler, empty EventType).
+// Returns: the error from RegisterOptionalHandlers (core registration
+// errors are swallowed so legacy callers observe the original
+// "Warning-only" behaviour).
 func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps) error {
 	if registry == nil {
 		return fmtError("outbox RegisterAll: registry is nil")
 	}
-	realHandlers := []outboxevents.Handler{
-		&WorkflowStepCompletedHandler{log: log},
-		&WorkflowStepFailedHandler{log: log},
+	// Best-effort core registration: legacy callers expect no fatal
+	// error so missing deps are LOGGED not returned.
+	coreHandlers := []outboxevents.Handler{}
+	if indexer != nil && deps != nil && deps.SourceVersionQuerier != nil {
+		coreHandlers = append(coreHandlers, NewIndexingHandler(indexer, deps.SourceVersionQuerier, log))
+	} else {
+		log.Info("outbox RegisterAll (legacy): IndexingHandler skipped (missing indexer or SourceVersionQuerier)")
 	}
-
-	// IndexClipper-backed IndexingHandler is optional (gated on
-	// indexer != nil). SourceVersionQuerier is wired best-effort when
-	// non-nil so the source_version supersede gate activates — nil
-	// is acceptable in tests + partial wiring windows; pool will
-	// simply skip the supersede gate (IndexClip's own internal
-	// indexed_content_hash check still runs as a fallback).
-	if indexer != nil {
-		realHandlers = append(realHandlers, &IndexingHandler{
-			indexer:       indexer,
-			sourceQuerier: depsOrNil(deps).SourceVersionQuerier,
-			log:           log,
-		})
+	if deps != nil && deps.VectorPointDeleter != nil && deps.AssetDeleter != nil {
+		coreHandlers = append(coreHandlers, NewIndexDeleteHandler(log, deps.VectorPointDeleter, deps.AssetDeleter))
+	} else {
+		log.Info("outbox RegisterAll (legacy): IndexDeleteHandler skipped (missing VectorPointDeleter or AssetDeleter)")
 	}
-
-	// The three real outbox handlers. Each is registered if its CRITICAL
-	// dependencies are present. We never substitute a stub — a missing
-	// dependency just means the handler is skipped (so the outbox pool
-	// reports "no handler for event type X" in dead_letter for events
-	// that arrive during the wiring window).
-	if deps != nil {
-		if deps.DB != nil && deps.MetadataDir != "" {
-			realHandlers = append(realHandlers, NewMetadataExportHandler(log, deps.DB, deps.MetadataDir))
-		}
-		// DeliveryHandler wires whenever a DB OR HTTPClient is available
-		// so callers opt-in by setting the critical deps; we also gate
-		// on HMACSecrets OR InsecureDev to avoid silently shipping
-		// unsigned POSTs in production.
-		if (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev) {
-			realHandlers = append(realHandlers, NewDeliveryHandler(log, deps.HTTPClient, deps.DB, deps.HMACSecrets, deps.InsecureDev))
-		}
-	}
-
-	// ProviderSyncHandler needs only the logger + jobs (jobs can be nil:
-	// the handler refuses drive|youtube events with a retryable error in
-	// that case, never silently acks).
-	realHandlers = append(realHandlers, NewProviderSyncHandler(log, depsOrNil(deps).Jobs))
-
-	// IndexDeleteHandler (QDRANT-002 PR2) needs BOTH the Qdrant deleter
-	// and the assets deleter. Both non-nil → register; either nil →
-	// skip. Events arriving during the partial-wiring window will
-	// dead-letter with "no handler for event type X" — correct loud
-	// failure mode.
-	if deps != nil && deps.QdrantDeleter != nil && deps.AssetDeleter != nil {
-		realHandlers = append(realHandlers, NewIndexDeleteHandler(log, deps.QdrantDeleter, deps.AssetDeleter))
-	}
-
-	for _, h := range realHandlers {
+	for _, h := range coreHandlers {
 		if err := registry.Register(h); err != nil {
 			return err
 		}
 	}
+	return RegisterOptionalHandlers(registry, log, deps)
+}
 
-	log.Info("outbox handlers registered (real handlers only — no stubs)",
-		zap.Int("registered", len(realHandlers)),
-		zap.Bool("delivery_wired", deps != nil && (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev)),
+// RegisterCoreHandlers wires handlers that MUST be present when
+// cfg.Qdrant.Enabled is true (verdict Qdrant section #5, PR 3
+// fix/qdrant-outbox-fail-closed). Missing any mandatory dep returns a
+// typed error so BuildOutboxBundle aborts boot instead of warning.
+//
+//	Mandatory deps when cfg.Qdrant.Enabled:
+//
+//   - indexer (IndexClipper; production concrete is *clipindexer.Service).
+//   - deps.SourceVersionQuerier (production concrete is
+//     *assets.ClipsRepository — IndexingHandler source-version
+//     supersede gate cannot run without it).
+//   - deps.VectorPointDeleter (production concrete is
+//     *qdrant.IndexWriter from QdrantRuntime.Writer — PR 4
+//     consolidated the previous QdrantDeleter type into this single
+//     outbox.VectorPointDeleter port; IndexDeleteHandler cannot
+//     issue Qdrant DELETE-points without it).
+//   - deps.AssetDeleter (production concrete is *assets.ClipsRepository
+//     — IndexDeleteHandler cannot tombstone the SQLite row without
+//     it).
+//
+// Operators reading the error get the literal name of the missing dep
+// so a grep of the boot log finds it instantly. The handler list is
+// NOT registered on failure so the caller can retry without
+// accumulating duplicates.
+//
+// Returns: nil on success, an error naming the first missing
+// dependency otherwise.
+func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps) error {
+	if registry == nil {
+		return fmtError("outbox RegisterCoreHandlers: registry is nil")
+	}
+	if indexer == nil {
+		return fmtError("outbox RegisterCoreHandlers: IndexingHandler mandatory dep missing (indexer=nil; buildQdrantDeps did not construct a ClipIndexer service)")
+	}
+	if deps == nil {
+		return fmtError("outbox RegisterCoreHandlers: deps is nil (composition omitted outbox.Deps — wiring bug)")
+	}
+	if deps.SourceVersionQuerier == nil {
+		return fmtError("outbox RegisterCoreHandlers: IndexingHandler source-version gate cannot run (SourceVersionQuerier=nil; ClipsRepo was nil at BuildOutboxBundle call site despite cfg.Qdrant.Enabled=true)")
+	}
+	if deps.VectorPointDeleter == nil {
+		return fmtError("outbox RegisterCoreHandlers: IndexDeleteHandler cannot run (VectorPointDeleter=nil; Qdrant enabled but no IndexWriter built from buildQdrantDeps)")
+	}
+	if deps.AssetDeleter == nil {
+		// Reachable root cause: ClipsRepo was nil at the BuildOutboxBundle
+		// call site despite cfg.Qdrant.Enabled=true. The compound message
+		// previously listed "OR Qdrant.Enabled=false" which is unreachable
+		// because BuildOutboxBundle gates RegisterCoreHandlers behind
+		// `if cfg.Qdrant.Enabled`.
+		return fmtError("outbox RegisterCoreHandlers: IndexDeleteHandler cannot run (AssetDeleter=nil; ClipsRepo was nil at BuildOutboxBundle call site despite cfg.Qdrant.Enabled=true)")
+	}
+	core := []outboxevents.Handler{
+		NewIndexingHandler(indexer, deps.SourceVersionQuerier, log),
+		NewIndexDeleteHandler(log, deps.VectorPointDeleter, deps.AssetDeleter),
+	}
+	for _, h := range core {
+		if err := registry.Register(h); err != nil {
+			return err
+		}
+	}
+	log.Info("outbox core handlers registered (fail-closed contract when cfg.Qdrant.Enabled)",
+		zap.Int("registered", len(core)),
+	)
+	return nil
+}
+
+// RegisterOptionalHandlers wires handlers that tolerate missing
+// dependencies (best-effort). Missing deps are logged at Info and
+// skipped — registration never aborts on these.
+//
+// Optional handlers today:
+//
+//   - WorkflowStepCompletedHandler / WorkflowStepFailedHandler (no
+//     deps; always wired).
+//   - MetadataExportHandler (deps.DB + deps.MetadataDir).
+//   - DeliveryHandler (deps.HTTPClient OR deps.DB; plus HMACSecrets
+//     OR InsecureDev).
+//   - ProviderSyncHandler (only Jobs — nil Jobs → drive|youtube events
+//     fail with retryable error inside the handler, never silently
+//     ack).
+//
+// Returns: the first registration error. The handler list is NOT
+// registered on failure; this keeps semantics compatible with
+// RegisterCoreHandlers.
+func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, deps *Deps) error {
+	if registry == nil {
+		return fmtError("outbox RegisterOptionalHandlers: registry is nil")
+	}
+	optional := []outboxevents.Handler{
+		&WorkflowStepCompletedHandler{log: log},
+		&WorkflowStepFailedHandler{log: log},
+	}
+	if deps != nil {
+		if deps.DB != nil && deps.MetadataDir != "" {
+			optional = append(optional, NewMetadataExportHandler(log, deps.DB, deps.MetadataDir))
+		}
+		if (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev) {
+			optional = append(optional, NewDeliveryHandler(log, deps.HTTPClient, deps.DB, deps.HMACSecrets, deps.InsecureDev))
+		}
+	}
+	optional = append(optional, NewProviderSyncHandler(log, depsOrNil(deps).Jobs))
+	for _, h := range optional {
+		if err := registry.Register(h); err != nil {
+			return err
+		}
+	}
+	log.Info("outbox optional handlers registered",
+		zap.Int("registered", len(optional)),
 		zap.Bool("metadata_export_wired", deps != nil && deps.DB != nil && deps.MetadataDir != ""),
+		zap.Bool("delivery_wired", deps != nil && (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev)),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs != nil),
-		zap.Bool("index_delete_wired", deps != nil && deps.QdrantDeleter != nil && deps.AssetDeleter != nil),
-		zap.Bool("index_supersede_wired", deps != nil && deps.SourceVersionQuerier != nil),
 	)
 	return nil
 }
