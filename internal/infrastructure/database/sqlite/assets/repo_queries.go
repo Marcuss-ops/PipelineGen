@@ -134,6 +134,20 @@ func (s *AssetStoreSQLite) AssetRepository() asset.Repository {
 	return &assetRepositoryAdapter{store: s}
 }
 
+// Repository returns the canonical Repository adapter, satisfying
+// the asset.assetStoreAdapter interface (which expects Repository(),
+// not AssetRepository()).
+//
+// Step 1 fix (June 2026): the type-assertion in
+// asset.Service.Repository() casts s.store.(assetStoreAdapter) and
+// calls a.Repository(). Before this shadow method, AssetStoreSQLite
+// only exposed AssetRepository() — the interface match failed
+// silently (typed-nil), causing "AssetRepo is required but not wired"
+// at every YouTube service composition.
+func (s *AssetStoreSQLite) Repository() asset.Repository {
+	return s.AssetRepository()
+}
+
 // ── listAssetsByFilter helper ────────────────────────────────────────
 
 func (s *AssetStoreSQLite) listAssetsByFilter(ctx context.Context, filter asset.Filter) ([]*asset.Asset, error) {
