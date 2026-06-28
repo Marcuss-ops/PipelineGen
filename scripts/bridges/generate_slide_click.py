@@ -106,6 +106,18 @@ def main():
         print("Waiting for presentation to load...")
         page.wait_for_selector("#docs-file-menu", timeout=30000)
 
+        # Dismiss any Gemini / getting started modal popups that intercept clicks
+        time.sleep(1)
+        try:
+            page.keyboard.press("Escape")
+            time.sleep(0.5)
+            close_btn = page.locator('.goog-modalpopup [aria-label="Chiudi"], .goog-modalpopup [aria-label="Close"], .goog-modalpopup-close').first
+            if close_btn.is_visible():
+                print("Dismissing Gemini / Getting Started modal popup...")
+                close_btn.click()
+        except Exception:
+            pass
+
         # Let's locate the default title textbox and click it
         print("Locating title box...")
         # In Google Slides, the default layouts have textboxes. Let's look for editables.
