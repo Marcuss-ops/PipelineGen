@@ -462,7 +462,21 @@ func assetLifecycle(s string) asset.LifecycleState { return assetLifecycleT(s) }
 
 // assetLifecycleT lives in test_helpers below; defined as a static
 // wrapper to avoid importing domain/asset at the test-top.
-func assetLifecycleT(s string) assetT { return assetT(s) }
+//
+// TODO(historic drift fix, June 2026): the previous return type
+// `assetT` (== `lifecycleAlias` == `string`) caused a vet failure
+// in `assetLifecycle` above: `cannot use assetLifecycleT(s) (value
+// of string type assetT) as asset.LifecycleState value in return
+// statement`. Go treats `string` and `asset.LifecycleState` (a typed
+// string in the domain package) as distinct types, so a `string ->
+// asset.LifecycleState` implicit conversion does not work even
+// though both names share an underlying representation. The fix is
+// to make `assetLifecycleT` return `asset.LifecycleState` directly.
+// `assetT` / `lifecycleAlias` aliases remain because `assetLifecycleT2`
+// (also a dead helper) still references them — full dead-helper
+// cleanup is the cosmetic TODO already at the footer of this file
+// and not in scope for THIS drift fix.
+func assetLifecycleT(s string) asset.LifecycleState { return asset.LifecycleState(s) }
 
 // assetT is the test-local alias of the domain LifecycleState type.
 // Aliasing here (rather than importing domain/asset) keeps the test
