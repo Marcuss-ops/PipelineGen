@@ -192,10 +192,17 @@ func (s *Service) processLanguage(
 	item.FileHash = result.FileHash
 	item.DriveLink = result.DriveLink
 	item.DriveFileID = result.DriveFileID
-	item.Voice = language
-	// Use the actual voice profile from the TTS processor instead of language code
-	if result.VoiceProfile != "" {
-		item.Voice = result.VoiceProfile
+	// PR-VO-A1 (Lost Voice): single canonical source from
+	// scripts/bridges/tts_edge.py stdout (captured as result.Voice in
+	// internal/infrastructure/audio/processor.go).
+	item.Voice = result.Voice
+	if item.Voice == "" {
+		// Bridge returned no voice — log so the degraded mode is
+		// observable in production logs; fall back to language so the
+		// persisted row is still inspectable.
+		s.log.Warn("PR-VO-A1 fallback: bridge returned empty Voice, using language code",
+			zap.String("language", language))
+		item.Voice = language
 	}
 	item.Status = result.Status
 
