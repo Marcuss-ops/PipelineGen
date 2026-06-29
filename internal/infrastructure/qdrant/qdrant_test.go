@@ -160,7 +160,7 @@ func TestSchemaValidate_EmptySparseChannel(t *testing.T) {
 			{Channel: "text", Dimensions: 768, Distance: "Cosine"},
 		},
 		SparseVectors: []SparseSpec{
-			{Channel: "", Modifier: "bm25"},
+			{Channel: "", Modifier: "idf"},
 		},
 	}
 	err := s.Validate()
@@ -179,7 +179,7 @@ func TestSchemaValidate_DuplicateSparseChannel(t *testing.T) {
 			{Channel: "text", Dimensions: 768, Distance: "Cosine"},
 		},
 		SparseVectors: []SparseSpec{
-			{Channel: "bm25_text", Modifier: "bm25"},
+			{Channel: "bm25_text", Modifier: "idf"},
 		},
 	}
 	s.DenseVectors = append(s.DenseVectors, EmbeddingSpec{Channel: "bm25_text", Dimensions: 768, Distance: "Cosine"})
@@ -428,7 +428,7 @@ func TestCompareSchema_SparseVectorExpected(t *testing.T) {
 			{Channel: "text", Dimensions: 768, Distance: "Cosine"},
 		},
 		SparseVectors: []SparseSpec{
-			{Channel: "bm25_text", Modifier: "bm25"},
+			{Channel: "bm25_text", Modifier: "idf"},
 		},
 	}
 

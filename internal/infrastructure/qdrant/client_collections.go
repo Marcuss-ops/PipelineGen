@@ -68,6 +68,12 @@ func (c *Client) CreateCollection(ctx context.Context, name string, vectors map[
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusConflict {
+		// Idempotent: collection already exists (e.g. from a previous
+		// failed startup attempt). Not an error — metadata was written
+		// but startup aborted before alias promotion.
+		return nil
+	}
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)
 	}
