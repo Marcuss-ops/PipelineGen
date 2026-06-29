@@ -91,26 +91,23 @@ Track job progress via the `/api/jobs` endpoints.
 
 ## 📝 Documentation
 
-La documentazione canonica del progetto è concentrata in due soli file markdown
-alla radice del repository. Le directory `docs/` legacy sono state rimosse
-in June 2026 e consolidate in `ARCHITECTURE.md` (regole operative e tracker
-di migrazione) + `AGENTS.md` (regole per agenti AI e pattern canonici).
+For the meta-question *"what's authoritative here?"* — which doc is
+canonical for which topic, and which are read-only historical references
+— see [**`CANONICAL.md`**](./CANONICAL.md).
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md): **Canonical** — architettura di sistema,
-  data flow, registry dei moduli, comandi day-1, ownership dei layer
-  (`api → application → domain → infrastructure → pkg`). Include anche
-  il piano di migrazione attivo (`architecture/current.yaml`) e la
-  canonical ownership map ([`architecture/ownership.generated.yaml`](architecture/ownership.generated.yaml) — aggregated view of [`architecture/ownership/*.yaml`](architecture/ownership/) (per-section split, dc6add3e)).
-- [AGENTS.md](./AGENTS.md): **Canonical** — regole critiche del sistema
-  (driver SQLite, ban FTS5, schema boundaries, policy generazione AI,
-  admin token env-var, Istruzioni per agenti AI, Git Lessons).
-- [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Getting started in italiano.
-- [docs/api/ACTIVE_API_GENERATED.md](./docs/api/ACTIVE_API_GENERATED.md):
-  Snapshot auto-generato delle route HTTP attualmente registrate
-  (rigenerabile con `./admin gen-api-docs`).
+Per-doc landing pages:
 
-Per approfondimenti storici sulle migrazioni Wave X → Wave 17 (es.
-perché certe directory sono state rimosse, mapping prima→dopo)
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — system diagram, data flow,
+  module registry, day-1 commands, ownership dei layer
+  (`api → application → domain → infrastructure → pkg`).
+- [AGENTS.md](./AGENTS.md) — agent rules (DB driver, FTS5 ban,
+  schema boundaries, AI generation policy, Git workflow lessons).
+- [PROJECT_GUIDE.md](./PROJECT_GUIDE.md) — quick start in italiano.
+- [docs/api/ACTIVE_API_GENERATED.md](./docs/api/ACTIVE_API_GENERATED.md)
+  — auto-generated snapshot of currently-registered HTTP routes
+  (regenerable with `./admin gen-api-docs`).
+
+Per la migrazione Wave X → Wave 17 (stato attivo / storico),
 vedi `architecture/current.yaml` (ratchet tracker verificabile
 via `bash scripts/ci-architectural-checks.sh`).
 
