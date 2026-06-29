@@ -456,9 +456,11 @@ func (m *PayloadMapper) IndexDocumentToPoint(doc *IndexDocument, schema *IndexSc
 			vectors[string(channel)] = artifact.Values
 		case ChannelBM25Text:
 			if doc.SearchText == "" {
-				m.log.Debug("sparse channel: no search_text in doc, channel dropped",
-					zap.String("asset_id", doc.AssetID),
-					zap.String("channel", string(channel)))
+				if m.log != nil {
+					m.log.Debug("sparse channel: no search_text in doc, channel dropped",
+						zap.String("asset_id", doc.AssetID),
+						zap.String("channel", string(channel)))
+				}
 				continue
 			}
 			vectors[string(channel)] = map[string]interface{}{
