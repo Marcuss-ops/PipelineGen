@@ -78,7 +78,7 @@ type ScriptFlowHandler struct {
 	driveFolderClient DriveFolderClient
 	documentCreator   DocumentCreator
 	jobsSvc           jobservice.Service
-	scriptsRepo       usecase.ScriptRepository
+	scriptsRepo       adapters.ScriptRepository
 	// Issue 4 (June 2026, P1): registry is the canonical job-type
 	// Registry, attached at composition time so EnqueueGenerationJob
 	// can source MaxRetries from registry.DefaultMaxRetries(jType)
@@ -122,7 +122,7 @@ type ScriptFlowDeps struct {
 	MediaCurator      *scriptdto.MediaCurator
 	Harvest           AutoHarvestService
 
-	ScriptsRepo usecase.ScriptRepository
+	ScriptsRepo adapters.ScriptRepository
 	Memory      *adapters.Service
 	Jobs        jobservice.Service
 		// Issue 4 (June 2026, P1): optional canonical job-type registry
