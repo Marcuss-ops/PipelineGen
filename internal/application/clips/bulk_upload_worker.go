@@ -124,23 +124,23 @@ func NewBulkUploadWorker(
 func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	// HC-1 (June 2026): per-job-type timeout resolves through the
 	// typed config-port (ClipConfigPort.JobTimeout → adapter
-	// → *jobs.Registry.JobTimeout). The hard-coded `2*time.Hour`
-	// literal was deleted in HC-1; the operator override layer
-	// now lives in registry.go::Compose().
+	// → *jobs.Registry.JobTimeout). cfg is mandatory — the
+	// constructor (NewBulkUploadWorker) accepts it unconditionally
+	// and production wiring in module_media.go always supplies
+	// non-nil cfg. A nil cfg at runtime is a misconfiguration
+	// surfaced as an explicit error (no silent fallback).
 	//
-	// HC-1 code-review nil-cfg guard (consistent with the canonical
-	// 10-minute default in clipsCfgAdapter.JobTimeout). This guard
-	// protects ONLY test fixtures that pass cfg=nil to
-	// NewBulkUploadWorker; production wiring in
-	// internal/app/module_media.go::WireAssets unconditionally
-	// supplies non-nil cfg via newClipsCfgAdapter(cfg, appjobs.Compose()).
-	const defaultTimeout = 10 * time.Minute
-	jobTimeout := defaultTimeout
-	if w.cfg != nil {
-		jobTimeout = w.cfg.JobTimeout(appjobs.TypeBulUploadYouTubeClips)
-		if jobTimeout <= 0 {
-			jobTimeout = defaultTimeout
-		}
+	// P0.4 (June 2026): the local `const defaultTimeout = 10*time.Minute`
+	// fallback is REMOVED. The canonical fallback lives in the
+	// clipsCfgAdapter.JobTimeout (internal/app/clips_adapters_cfg.go)
+	// which returns 10 minutes when the resolver is nil or returns 0.
+	// The worker trusts the typed port and does not second-guess it.
+	if w.cfg == nil {
+		return nil, fmt.Errorf("bulk upload worker: cfg not configured (ClipConfigPort is nil — production wiring must supply non-nil cfg)")
+	}
+	jobTimeout := w.cfg.JobTimeout(appjobs.TypeBulUploadYouTubeClips)
+	if jobTimeout <= 0 {
+		return nil, fmt.Errorf("bulk upload worker: job timeout for %q resolved to %v (non-positive — check registry configuration)", appjobs.TypeBulUploadYouTubeClips, jobTimeout)
 	}
 	ctx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()
