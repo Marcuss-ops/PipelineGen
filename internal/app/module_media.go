@@ -15,8 +15,6 @@ import (
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -28,8 +26,6 @@ import (
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -40,14 +36,12 @@ import (
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -66,69 +60,6 @@ var toolCheckerAdapter = infraassets.NewToolCheckerAdapter()
 // Used by system handler to check database health.
 var dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
 
-// AssetsBundle is the capability bundle for the unified Assets module.
-// PR4d-chunk2 (June 2026): wraps 10 cross-bundle reads of WireAssets.
-// ClipIndexerService moved INTO the bundle (was a direct arg in earlier
-// draft); RealtimeService moved OUT (single-use, fits clean as a 10th
-// direct arg). AssetTreeService + AssetIndexService stay inside since they
-// have multiple uses (deletion svc + handler ctor).
-//
-// PR8 (June 2026): gain IdempotencyStore (typed port, principally for
-// the bundle's compile-time port assertion) and IdempotencyStoreHandler
-// (the gin.HandlerFunc constructed once at WireRegistry and threaded
-// through here). The cleanup goroutine is owned by
-// ComposeRoot.IdempotencyMiddleware (single instance per app), NOT
-// constructed inside WireAssets — keeps the registry-level lifecycle
-// simple and avoids double-ticker leaks.
-//
-// Wave 21 PR 9/10 (June 2026): MediasearchService + WorkspaceID are
-// composition inputs for the canonical SearchAggregator. The
-// semantic backend activates only when WorkspaceID is non-empty
-// (QDRANT-004 tenant-isolation gate).
-//
-// PR-2 (June 2026): SearchFanOut + SearchBackendRegistry are
-// pre-built by WireRegistry via BuildCanonicalSearchFanOut and
-// stamped into the bundle BEFORE WireAssets runs. WireAssets
-// consumes these slots rather than constructing its own — the
-// canonical SearchFanOut is a SINGLE shared instance, so stats
-// counters aggregate across every search entry-point (YouTube
-// /api/media/clips/search + Assets /api/clips/search/advanced +
-// Mediasearch + FindDuplicates) rather than fragmenting across
-// per-handler instances.
-//
-// Wave 19 cross-capability rule: module_media.go is itself a
-// composition-only bridge; the heavy cross-cap import dance
-// (search ↔ providers ↔ mediasearch ↔ assets.ClipsRepository)
-// is OWNED by internal/app/search_backends.go and surfaces here
-// only as a typed slot.
-type AssetsBundle struct {
-	ClipsRepo               *assets.ClipsRepository
-	VoiceoverRepo           *assets.VoiceoversRepository
-	ImageRepo               *assets.ImagesRepository
-	Assets                  *asset.Service
-	DriveClient             *gdrive.Service
-	AssetTreeService        *assettree.Service
-	AssetIndexService       *assetindex.Service
-	MediaProcessor          asset.Processor
-	CatalogSyncService      *catalogsync.Service
-	ClipIndexerService      *clipindexer.Service
-	IdempotencyStore        middleware.IdempotencyStore
-	IdempotencyStoreHandler gin.HandlerFunc
-	// Wave 21 PR 9/10 (June 2026): composition inputs for the
-	// canonical SearchAggregator. MediasearchService + WorkspaceID
-	// activate the semantic backend (QDRANT-004 tenant-isolation
-	// gate requires a non-default workspace); empty disables it.
-	MediasearchService *mediasearch.Service
-	SearchWorkspaceID  string
-	// PR-2 (June 2026): SearchFanOut + SearchBackendRegistry are
-	// pre-built by WireRegistry. WireAssets MUST consume these
-	// pre-built slots rather than constructing its own — see the
-	// package doc on the AssetsBundle struct above for the
-	// single-instance invariant.
-	SearchFanOut          search.SearchFanOut
-	SearchBackendRegistry *search.BackendRegistry
-}
-
 // AssetsWiring holds the Assets module wiring.
 type AssetsWiring struct {
 	Module               module.Module
@@ -144,15 +75,13 @@ type AssetsWiring struct {
 	// wrapping the canonical Aggregator). Exposed via this
 	// wiring handle so other consumers (diagnostics + future
 	// Health probes) read the SHARED instance rather than
-	// constructing a parallel one. == bundle.SearchFanOut alias.
+	// constructing a parallel one. == deps.Search.SearchFanOut alias.
 	SearchFanOut search.SearchFanOut
 }
 
 // WireAssets creates the unified Assets handler and module.
 //
-// PR4d-chunk2 (June 2026): takes *AssetsBundle + 8 narrow direct args
-// (VectorStore, JobsBundle, voiceoverSvc, voiceoverSync, realtimeSvc,
-// catalogRepo, maintenanceSvc). ClipIndexer is in the bundle now.
+// PR4d-chunk2 (June 2026): takes *AssetsModuleDeps + 8 narrow direct args
 // PR3 (June 2026): providerRegistry added for constructor injection
 // (replaces post-construction SetProviderRegistry).
 // Wave 16 (June 2026): realtimeSvc typed to `assetsapi.RealtimeMatcher`
@@ -164,49 +93,51 @@ type AssetsWiring struct {
 // remain in the signature because BuildSearchBackends consumes
 // providerRegistry (cross-capability bridge to providers.Registry),
 // and the future Wave 22 follow-ups may reuse catalogRepo.
-func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, jobs *JobsBundle, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, realtimeSvc assetsapi.RealtimeMatcher, catalogRepo *catalog.Repository, maintenanceSvc *maintenance.Service, providerRegistry *providers.Registry, dispatcher *outbox.Dispatcher) (*AssetsWiring, error) {
 	// PG-034 (June 2026): vectorStore arg removed — Qdrant capability deleted.
 	var driveUploader *driveutil.Uploader
-	if bundle.DriveClient != nil {
-		driveUploader = &driveutil.Uploader{Service: bundle.DriveClient, Log: log}
+	if deps.Delivery.DriveClient != nil {
+		driveUploader = &driveutil.Uploader{Service: deps.Delivery.DriveClient, Log: log}
 	}
 	var assetRepo asset.Repository
-	if bundle.Assets != nil {
-		assetRepo = bundle.Assets.Repository()
+	if deps.Core.Assets != nil {
+		assetRepo = deps.Core.Assets.Repository()
 	}
 
 	// ── Wave 21 PR 10 (June 2026): canonical SearchAggregator
 	//    + the PR-2 SearchFanOut decorator wrapping it are
 	//    pre-built by WireRegistry and stamped onto
-	//    bundle.SearchFanOut + bundle.SearchBackendRegistry.
+	//    deps.Search.SearchFanOut + deps.Search.SearchBackendRegistry.
 	//    WireAssets CONSUMES the pre-built instance — it does
 	//    not construct its own. The single shared instance
 	//    invariant guarantees stats counters aggregate across
 	//    every search entry-point (YouTube + Assets + Mediasearch
 	//    + FindDuplicates) instead of fragmenting per-handler.
-	//    See AssetsBundle package doc for the rationale.
+	//    See AssetsModuleDeps package doc in assets_core.go for the
+	//    sub-area regrouping rationale (Core 8 + Search 5 +
+	//    Delivery 1 + Background 2; P0-2 commit 1).
 	//    The legacy clipssearch.Service + appsearchsvc.Service
 	//    wirings are gone (PR-10 CUTOVER delivered). The
 	//    aggregator is the SSOT for the Search capability; see
 	//    architecture/deprecations.yaml records PR-SEARCH-LEGACY-*
 	//    + the new PR-SEARCH-LEGACY-PROVIDERS-AGGREGATOR.
-	searchBackends := bundle.SearchBackendRegistry
-	searchFanOut := bundle.SearchFanOut
+	searchBackends := deps.Search.SearchBackendRegistry
+	searchFanOut := deps.Search.SearchFanOut
 	if searchFanOut == nil {
 		// Composition-bug guard: WireRegistry is required to
-		// stamp bundle.SearchFanOut BEFORE WireAssets runs. A
+		// stamp deps.Search.SearchFanOut BEFORE WireAssets runs. A
 		// nil slot is a wiring-time defect; surface it here as
 		// a fail-closed error instead of letting downstream
 		// handlers silently degrade to 503 on every Search call.
-		return nil, fmt.Errorf("WireAssets: bundle.SearchFanOut is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)")
+		return nil, fmt.Errorf("WireAssets: deps.Search.SearchFanOut is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)")
 	}
 	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
 	log.Info("WireAssets: consumed pre-built canonical SearchFanOut",
 		zap.Int("backends", len(searchBackends.All())))
 
-	folderMemSvc := foldermemory.NewService(log, bundle.ClipsRepo)
+	folderMemSvc := foldermemory.NewService(log, deps.Core.ClipsRepo)
 	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
-	deletionSvc := deletion.NewDeletionService(bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo, bundle.VoiceoverRepo, bundle.ImageRepo, driveUploader, bundle.AssetTreeService, bundle.AssetIndexService, dispatcher, log)
+	deletionSvc := deletion.NewDeletionService(deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.VoiceoverRepo, deps.Core.ImageRepo, driveUploader, deps.Core.AssetTreeService, deps.Core.AssetIndexService, dispatcher, log)
 
 	// PR8 (June 2026): idemHandler is passed in from WireRegistry (see
 	// registry.go). WireAssets does NOT construct its own Idempotency
@@ -215,8 +146,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// shutdown). A nil idemHandler (e.g. nil-store test fixture) is
 	// tolerated; the handler wrappers fall through to pass-through.
 	var idemHandler gin.HandlerFunc = func(c *gin.Context) { c.Next() }
-	if bundle.IdempotencyStore != nil {
-		idemHandler = bundle.IdempotencyStoreHandler
+	if deps.Background.IdempotencyStore != nil {
+		idemHandler = deps.Background.IdempotencyStoreHandler
 	}
 
 	// PR12c (June 2026): wire the dispatcher's port, NOT the concrete
@@ -249,7 +180,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	//   (b) the media.enrich worker registered below, which the
 	//       handlers now enqueue to instead of spawning goroutines
 	//       with context.WithoutCancel.
-	enrichUC := appclips.NewEnrichUseCase(assetRepo, bundle.ClipIndexerService, metaWriter, log)
+	enrichUC := appclips.NewEnrichUseCase(assetRepo, deps.Search.ClipIndexerService, metaWriter, log)
 	// W14 PR2 slice 3 (June 2026): construct the BulkUploadWorker
 	// from typed ports so the handler never imports infra for the
 	// bulk-upload job path. The concrete adapters already exist in
@@ -267,8 +198,8 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// in bulk_upload_worker.go::HandleJob).
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		newClipsDriveAdapter(driveUploader),
-		newClipsRepoAdapter(bundle.ClipsRepo),
-		newClipsIndexerAdapter(bundle.ClipIndexerService),
+		newClipsRepoAdapter(deps.Core.ClipsRepo),
+		newClipsIndexerAdapter(deps.Search.ClipIndexerService),
 		newClipsHashAdapter(),
 		newClipsCfgAdapter(cfg, appjobs.Compose()),
 		mutationsDisp,
@@ -279,15 +210,14 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// DriveUploader, IndexDispatcher, Config, and TreeBuilder are type aliases
 	// of the parent clips.* ports (ClipDriveUploaderPort, etc.) so the existing
 	// adapters satisfy them directly. ArtifactServicePort is nil — the concrete
-	// *artifacts.Service is not yet wired in the AssetsBundle; the use case
-	// surfaces ErrArtifactServiceUnavailable at Execute time, matching the
+	// *artifacts.Service is not yet wired in AssetsModuleDeps.Core; the use case
 	// current production behaviour (UploadVideoClip returns 500).
 	uploadUC := appupload.NewUseCase(appupload.UseCaseDeps{
 		Artifact:      nil, // *artifacts.Service not in bundle yet
 		DriveUploader: newClipsDriveAdapter(driveUploader),
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),
-		TreeBuilder:   newClipsAssetTreeAdapter(bundle.AssetTreeService),
+		TreeBuilder:   newClipsAssetTreeAdapter(deps.Core.AssetTreeService),
 		JobsSvc:       jobs.Facade,
 		ProcessRunner: processRunnerAdapter,
 		Log:           log,
@@ -302,10 +232,10 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// already match the clips.CleanupServicePort contract).
 	clipsOpsPorts := newClipsAdapterBundle(
 		cfg, log,
-		bundle.ClipsRepo, bundle.ClipsRepo, bundle.ClipsRepo,
-		bundle.VoiceoverRepo, bundle.ImageRepo,
-		driveUploader, metaWriter, bundle.ClipIndexerService,
-		folderMemSvc, bundle.AssetTreeService,
+		deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo,
+		deps.Core.VoiceoverRepo, deps.Core.ImageRepo,
+		driveUploader, metaWriter, deps.Search.ClipIndexerService,
+		folderMemSvc, deps.Core.AssetTreeService,
 		nil, // vectorSvc removed PG-034
 		// HC-1 (June 2026): pass the typed TimeoutResolver (canonical
 		// impl: appjobs.Compose() — *jobs.Registry) so the cfg adapter
@@ -330,19 +260,19 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// by the Aggregator's 4-key dedup + ranking pipeline.
 
 	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-		ClipsRepo: bundle.ClipsRepo,
+		ClipsRepo: deps.Core.ClipsRepo,
 		AssetRepo:      assetRepo,
 		DeletionSvc:    deletionSvc,
 		DriveUploader:  driveUploader,
-		MediaProcessor: bundle.MediaProcessor,
-		AssetTreeSvc:   bundle.AssetTreeService,
+		MediaProcessor: deps.Core.MediaProcessor,
+		AssetTreeSvc:   deps.Core.AssetTreeService,
 		MetaWriter:     metaWriter,
-		ClipIndexer:    bundle.ClipIndexerService,
+		ClipIndexer:    deps.Search.ClipIndexerService,
 		JobsSvc:        jobs.Facade,
 		Cfg:            cfg,
 		Log:            log,
-		VoiceoverRepo:  bundle.VoiceoverRepo,
-		ImagesRepo:     bundle.ImageRepo,
+		VoiceoverRepo:  deps.Core.VoiceoverRepo,
+		ImagesRepo:     deps.Core.ImageRepo,
 		FolderMemSvc:   folderMemSvc,
 		ProcessRunner:  processRunnerAdapter,
 		Dispatcher:     clipsDispatcherPort,
@@ -358,18 +288,18 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		drivePort = &storageDriveAdapter{up: driveUploader}
 	}
 	storageSvc := appstorage.NewService(drivePort, &zapLogAdapter{log})
-	storageHandler := assetstorage.NewHandler(storageSvc, jobs.Facade, bundle.CatalogSyncService, log)
+	storageHandler := assetstorage.NewHandler(storageSvc, jobs.Facade, deps.Core.CatalogSyncService, log)
 
 	// ── PR 3 (June 2026): diagnostics + search wired with real ports ─
 	// Diagnostics: IndexHealth via realtime.Service + AssetStats via ClipsRepository.
 	// QDRANT-005 Fase 1 (June 2026): diagIndexHealthAdapter rewired with
-	// real SQLite + Qdrant deps. Nil-tolerant — when bundle.ClipsRepo is
+	// real SQLite + Qdrant deps. Nil-tolerant — when deps.Core.ClipsRepo is
 	// nil the handler falls back to 503.
 	var diagSvc *appdiag.Service
-	if bundle.ClipsRepo != nil {
+	if deps.Core.ClipsRepo != nil {
 		diagSvc = appdiag.NewService(
-			&diagIndexHealthAdapter{clips: bundle.ClipsRepo, qdrant: nil, collectionName: ""},
-			&diagAssetStatsAdapter{clips: bundle.ClipsRepo},
+			&diagIndexHealthAdapter{clips: deps.Core.ClipsRepo, qdrant: nil, collectionName: ""},
+			&diagAssetStatsAdapter{clips: deps.Core.ClipsRepo},
 			&zapDiagLogAdapter{log: log},
 		)
 	}
@@ -412,7 +342,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	// composition: when dispatcher is nil (test fixtures, partial
 	// deploys), the handler returns 503 to the operator. Production
 	// wiring in cmd/server always supplies a non-nil dispatcher.
-	sfxClips := &sfxClipsRepoAdapter{repo: bundle.ClipsRepo}
+	sfxClips := &sfxClipsRepoAdapter{repo: deps.Core.ClipsRepo}
 	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
 	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
 	var sfxDriveUp sfxports.DriveUploaderPort
@@ -424,7 +354,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
-	registerSvc := newAssetRegisterService(cfg, log, bundle.ClipsRepo, driveUploader, bundle.AssetTreeService, providerRegistry, clipsHandler, dispatcher)
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsHandler, dispatcher)
 	// PR8: register receives the same shared idempotency handler as clips.
 	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
 

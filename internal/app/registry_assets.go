@@ -9,10 +9,10 @@
 //  1. Construct maintenanceSvc (depends on root.Maint.DeletionSvc +
 //     root.Search.AssetIndexService/AssetTreeService + root.Jobs + DB.DB).
 //  2. Construct voiceover wrapper from root.Domains.VoiceoverService.
-//  3. Construct assetsBundle (consumes wiring.searchFanOut +
+//  3. Construct assetsDeps (consumes wiring.searchFanOut +
 //     wiring.searchBackends + wiring.idempotencyHandler).
 //  4. RegisterHandler on maintenanceSvc (early-failure annotation).
-//  5. Call WireAssets(cfg, log, assetsBundle, ...).
+//  5. Call WireAssets(cfg, log, assetsDeps, ...).
 //  6. Register Assets module on success.
 //  7. Backfill maintenanceSvc.SetDeletionService(aw.DeletionSvc) so the
 //     maintenance handlers can complete their deletion requests through
@@ -59,32 +59,48 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		voiceoverService = root.Domains.VoiceoverService
 	}
 
-	assetsBundle := &AssetsBundle{
-		ClipsRepo:               root.Repos.ClipsRepo,
-		VoiceoverRepo:           root.Repos.VoiceoverRepo,
-		ImageRepo:               root.Repos.ImageRepo,
-		Assets:                  root.Repos.Assets,
-		DriveClient:             root.Drive.DriveClient,
-		AssetTreeService:        root.Search.AssetTreeService,
-		AssetIndexService:       root.Search.AssetIndexService,
-		MediaProcessor:          root.Process.MediaProcessor,
-		CatalogSyncService:      root.Sync.CatalogSync,
-		ClipIndexerService:      root.Process.ClipIndexerService,
-		IdempotencyStore:        root.Repos.IdempotencyStore,
-		IdempotencyStoreHandler: wiring.idempotencyHandler,
-		// PR-2 (June 2026): the canonical SearchFanOut is stamped
-		// onto the bundle BEFORE WireAssets runs. WireAssets
-		// consumes the pre-built slot rather than constructing
-		// its own (single shared instance invariant — see
-		// AssetsBundle package doc).
-		SearchFanOut:          wiring.searchFanOut,
-		SearchBackendRegistry: wiring.searchBackends,
+	// P0-2 commit 1 (June 2026): AssetsBundle renamed to
+	// AssetsModuleDeps + regrouped by 4 real capability areas
+	// (Core/Search/Delivery/Background). The 16 fields are kept
+	// with identical names; the only change is grouping. See
+	// assets_core.go for the sub-struct shape + regrouping
+	// rationale.
+	assetsDeps := &AssetsModuleDeps{
+		Core: CoreDeps{
+			ClipsRepo:          root.Repos.ClipsRepo,
+			VoiceoverRepo:      root.Repos.VoiceoverRepo,
+			ImageRepo:          root.Repos.ImageRepo,
+			Assets:             root.Repos.Assets,
+			AssetTreeService:   root.Search.AssetTreeService,
+			AssetIndexService:  root.Search.AssetIndexService,
+			MediaProcessor:     root.Process.MediaProcessor,
+			CatalogSyncService: root.Sync.CatalogSync,
+		},
+		Search: SearchDeps{
+			ClipIndexerService: root.Process.ClipIndexerService,
+			// MediasearchService + SearchWorkspaceID default to
+			// zero value (nil + empty) in production; the
+			// canonical SearchAggregator is wired with the
+			// pre-built deps.Search.SearchFanOut (stamped by
+			// WireRegistry). The typed slots live here for
+			// future Wave 21 PR-9/10 follow-up that re-routes
+			// tenant-isolation through AssetsBundle.
+			SearchFanOut:          wiring.searchFanOut,
+			SearchBackendRegistry: wiring.searchBackends,
+		},
+		Delivery: DeliveryDeps{
+			DriveClient: root.Drive.DriveClient,
+		},
+		Background: BackgroundDeps{
+			IdempotencyStore:        root.Repos.IdempotencyStore,
+			IdempotencyStoreHandler: wiring.idempotencyHandler,
+		},
 	}
 	// Wave 16 (June 2026): WireAssets realtimeSvc is typed
 	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
 	// Pass-through is direct: DomainBundle.RealtimeMatcher → WireAssets
 	// (typed-to-typed, no auto-bridge required).
-	aw, err := WireAssets(cfg, log, assetsBundle, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
+	aw, err := WireAssets(cfg, log, assetsDeps, root.Jobs, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, root.Repos.CatalogRepo, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
 	if err != nil || aw == nil {
 		return nil
 	}
