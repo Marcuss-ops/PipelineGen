@@ -2147,3 +2147,5 @@ bash "$(dirname "$0")/ci/architecture/checks/15_file_size.sh" || { echo "Step 6 
 
 # Check 16: <=39 productive files per package (transitional allowlist qdrant)
 bash "$(dirname "$0")/ci/architecture/checks/16_package_size.sh" || { echo "Step 6 check 16 (package size) failed"; exit 1; }
+# Check 43: forbid .DB() chain outside infrastructure (P1.6, June 2026)
+bash "$(dirname "$0")/ci/architecture/checks/43_db_chain_outside_infra.sh" || { echo "Check 43 (DB chain) failed"; exit 1; }
