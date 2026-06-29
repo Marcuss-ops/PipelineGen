@@ -45,6 +45,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"google.golang.org/api/drive/v3"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -106,6 +107,10 @@ type SearchDeps struct {
 // because they're cheap to construct and have no cross-module sharing.
 type DeliveryDeps struct {
 	DriveClient *drive.Service
+	// Publisher is the canonical Drive upload canal (FASE 5, June 2026).
+	// All endpoints and jobs that write to Drive MUST use Publisher.Publish
+	// instead of calling DriveUploader or FolderManager directly.
+	Publisher delivery.Publisher
 }
 
 // BackgroundDeps is the Assets-module background/middleware bundle
