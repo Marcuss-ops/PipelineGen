@@ -219,15 +219,12 @@ func (a *RetentionExecutorAdapter) Apply(ctx context.Context, cfg dr.RetentionCo
 	return *res, nil
 }
 
-func (a *RetentionExecutorAdapter) CleanupWithConfig(ctx context.Context, cfg dr.RetentionConfig) (dr.RetentionResult, error) {
+func (a *RetentionExecutorAdapter) CleanupWithConfig(ctx context.Context, cfg dr.RetentionConfig) (*dr.RetentionResult, error) {
 	res, err := a.cm.CleanupWithConfig(ctx, cfg)
 	if err != nil {
-		return dr.RetentionResult{}, err
+		return nil, err
 	}
-	if res == nil {
-		return dr.RetentionResult{}, nil
-	}
-	return *res, nil
+	return res, nil
 }
 
 // ── PromDRMetricsAdapter ─────────────────────────────────────────────

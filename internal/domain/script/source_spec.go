@@ -207,21 +207,65 @@ type ResolvedSource struct {
 // ClipEvidence is the assembled clip context produced by a clip
 // resolver. It is the canonical shape passed from any clip-based
 // source (clips, catalog, search) to the engine.
+//
+// Issue #2 (June 2026): the contract now distinguishes three clip
+// populations instead of the previously-ambiguous single
+// "ClipIDs" (which conflated "resolved with transcript" with
+// "renderable into Drive-link-requiring surfaces"). The resolution
+// pipeline populates:
+//
+//   - AcceptedClipIDs: clips resolved into the clips table AND
+//     carrying usable transcript text. Drives prompt construction
+//     (engine grounding), the SpecScene validator's allow-list,
+//     the clip-bindings processor, and any consumer that needs
+//     the textual context. The cardinality is independent of
+//     RequireDriveLink: text-only generation (RequireDriveLink=
+//     false) keeps clips without DriveLink here; document/scene-
+//     image generation (RequireDriveLink=true) filters them to
+//     MissingClipIDs instead.
+//
+//   - RenderableClipIDs: subset of AcceptedClipIDs that
+//     ADDITIONALLY carry a non-empty DriveLink. Drives consumers
+//     that need to embed the asset (document body, image
+//     generation, voiceover reference). Always a subset (or empty)
+//     of AcceptedClipIDs; never larger.
+//
+//   - MissingClipIDs: requested IDs that did NOT resolve into
+//     usable evidence. Includes both lookup failures
+//     (MissingClipReasonNotFound) and Drive-link-missing-when-
+//     required infrastructure failures
+//     (MissingClipReasonDriveNotFound). Distinct from Excluded
+//     (which is a post-resolution quality step): MISSING records
+//     lookup outcomes; EXCLUDED records filter outcomes.
+//
+//   - Excluded: post-resolution quality filters (transcript too
+//     short, quality score below threshold, policy drop). NEVER
+//     carries a Drive-not-found reason — that distinction is the
+//     Issue #2 contract fix (the old implementation appended
+//     MissingClipReasonDriveNotFound to Excluded, conflating
+//     infrastructure failures with quality filters; resolved
+//     post-Issue #2 by ClipSourceBuilder's bucket-flip).
 type ClipEvidence struct {
-	// ClipIDs is the final list of clip IDs effectively resolved by
-	// the lookup chain (GetClip → fallback to GetByDriveFileID).
-	// PR 5 (June 2026): only IDs whose target clip has BOTH a row
-	// in the clips table AND a non-empty DriveLink populate this
-	// field. Requested-but-unresolved IDs surface in MissingClipIDs
-	// (below) instead, with a structured reason. Downstream
-	// consumers (engine grounding, spec-scene validator,
-	// clip-bindings processor, HTML rendering) read this set as
-	// the canonical "scene input" and bind only to it.
-	ClipIDs []string `json:"clip_ids"`
+	// AcceptedClipIDs is the final list of clip IDs effectively
+	// resolved by the lookup chain AND carrying usable transcript
+	// text. Issue #2 (June 2026): renamed from the previously-
+	// ambiguous "ClipIDs" to make the contract explicit — this
+	// field is the prompt-grounding set, not the rendering set.
+	// JSON key "accepted_clip_ids" (was "clip_ids", breaking per
+	// AGENTS.md posture — internal struct, clean break).
+	AcceptedClipIDs []string `json:"accepted_clip_ids"`
 
-	// ClipCount is len(ClipIDs). Kept as a typed field for
-	// monitoring and operator dashboards so a missing/empty array
-	// cannot accidentally appear as 0-without-explanation.
+	// RenderableClipIDs is the subset of AcceptedClipIDs that
+	// additionally carry a non-empty DriveLink — i.e. clips that
+	// can be embedded into the document body, fed as image
+	// prompts, or referenced from voiceover. Always a subset (or
+	// empty when RequireDriveLink=false and resolved clips lacked
+	// DriveLinks). Added in Issue #2 (June 2026).
+	RenderableClipIDs []string `json:"renderable_clip_ids,omitempty"`
+
+	// ClipCount is len(AcceptedClipIDs). Kept as a typed field
+	// for monitoring and operator dashboards so a missing/empty
+	// array cannot accidentally appear as 0-without-explanation.
 	ClipCount int `json:"clip_count"`
 
 	// AssembledText is the concatenated transcript/description text

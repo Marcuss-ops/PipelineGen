@@ -158,10 +158,11 @@ func BuildClipFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) 
 	add("stext", src.SourceText)
 
 	// Evidence fields (when clips were resolved).
+	// Issue #2 (June 2026): ClipIDs renamed → AcceptedClipIDs.
 	if ev != nil {
-		if len(ev.ClipIDs) > 0 {
-			sorted := make([]string, len(ev.ClipIDs))
-			copy(sorted, ev.ClipIDs)
+		if len(ev.AcceptedClipIDs) > 0 {
+			sorted := make([]string, len(ev.AcceptedClipIDs))
+			copy(sorted, ev.AcceptedClipIDs)
 			sort.Strings(sorted)
 			add("evclips", strings.Join(sorted, ","))
 		}
