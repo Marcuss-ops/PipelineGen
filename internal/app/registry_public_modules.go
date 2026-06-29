@@ -62,16 +62,22 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 // job.Service (orchestrator) AND the JobStatsReader port (via the
 // runtime type-assertion GetStats helper).
 func registerJobs(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
-	jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
-	jobsMod := module.NewRouteModule(
-		"jobs",
-		func() bool { return true },
-		"/jobs",
-		jobsHandler,
-		log,
-	)
+	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
+		Service:     root.Jobs.Service,
+		Stats:       root.Jobs.Service, // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
+		EnabledFunc: func() bool { return true }, // jobs is always on in production
+		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-13 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return fmt.Errorf("wire registry: jobs: %w", err)
+	}
+	jd, ok := jobsDescriptor.(*jobsapi.JobsDescriptor)
+	if !ok || jd == nil {
+		return fmt.Errorf("wire registry: jobs: jobs.Build returned unexpected descriptor type %T (want *jobsapi.JobsDescriptor)", jobsDescriptor)
+	}
 	log.Info("created Jobs module")
-	return tryRegisterModuleStrict(registry, log, jobsMod, WithRegistrationPoint("register.Jobs"))
+	return tryRegisterModuleStrict(registry, log, jd, WithRegistrationPoint("register.Jobs"))
 }
 
 // registerImages wires the /images route module. Consumes

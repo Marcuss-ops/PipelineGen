@@ -213,15 +213,37 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 
 // registerJobsRoute registers the /jobs route module. Inlined from the
 // pre-PR4 "1) Jobs" numbered block.
+//
+// Blocco C1-Step 13 (June 2026): Jobs capability is now built via
+// the canonical jobs.Build(deps) (api.Descriptor, error) contract,
+// matching the artlist / youtube / clips / stock / voiceover /
+// soundeffect / register / diagnostics / search precedent. The
+// Handler is constructed inside Build and captured by the
+// returned JobsDescriptor's Module closure. The composition site
+// type-asserts ONCE to *jobs.JobsDescriptor (fail-closed) and
+// reuses the concrete for the tryRegisterModuleStrict call (the
+// concrete *JobsDescriptor satisfies api.Descriptor structurally).
+// The jobs capability has no non-HTTP consumer in the codebase
+// (the 7 routes /jobs/* are the entire public surface, reachable
+// only via HTTP), so the Descriptor surface is the smallest
+// possible — just `Module` field + forwarder methods (matches the
+// stock / voiceover / soundeffect / register / diagnostics /
+// search precedent exactly).
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
-	jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
-	jobsMod := module.NewRouteModule(
-		"jobs",
-		func() bool { return true },
-		"/jobs",
-		jobsHandler,
-		log,
-	)
+	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
+		Service:     root.Jobs.Service,
+		Stats:       root.Jobs.Service, // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
+		EnabledFunc: func() bool { return true }, // jobs is always on in production
+		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-13 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return fmt.Errorf("wire registry: jobs: %w", err)
+	}
+	jd, ok := jobsDescriptor.(*jobsapi.JobsDescriptor)
+	if !ok || jd == nil {
+		return fmt.Errorf("wire registry: jobs: jobs.Build returned unexpected descriptor type %T (want *jobsapi.JobsDescriptor)", jobsDescriptor)
+	}
 	log.Info("created Jobs module")
-	return tryRegisterModuleStrict(registry, log, jobsMod, WithRegistrationPoint("register.Jobs"))
+	return tryRegisterModuleStrict(registry, log, jd, WithRegistrationPoint("register.Jobs"))
 }
