@@ -52,7 +52,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
 
 // fakeScriptHistoryRepo satisfies usecase.ScriptRepository with two
@@ -137,9 +136,8 @@ func (f *fakeScriptHistoryRepo) FindScriptByIdempotencyKey(_ context.Context, _,
 
 // Compile-time assertion: fakeScriptHistoryRepo satisfies the
 // canonical script-repository contract consumed by ScriptHistoryHandler
-// (the alias resolves to adapters.ScriptRepository per
-// internal/application/scripts/usecase/types_aliases.go).
-var _ usecase.ScriptRepository = (*fakeScriptHistoryRepo)(nil)
+// (Contract: internal/application/scripts/adapters.ScriptRepository).
+var _ adapters.ScriptRepository = (*fakeScriptHistoryRepo)(nil)
 
 // newParentChildScriptHistoryRouter wires a /scripts router with two
 // scripts in the fake repo: a root (id=1, no parent of its own) and

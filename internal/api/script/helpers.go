@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/contextutil"
@@ -56,12 +57,12 @@ func withPostWriteContext(parent context.Context, log *zap.Logger, op string) (c
 
 // ScriptHistoryHandler handles script history endpoints.
 type ScriptHistoryHandler struct {
-	repo usecase.ScriptRepository
+	repo adapters.ScriptRepository
 	log  *zap.Logger
 }
 
 // NewScriptHistoryHandler creates a new script history handler.
-func NewScriptHistoryHandler(repo usecase.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
+func NewScriptHistoryHandler(repo adapters.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
 	return &ScriptHistoryHandler{
 		repo: repo,
 		log:  log,
