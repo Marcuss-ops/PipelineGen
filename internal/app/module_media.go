@@ -367,7 +367,42 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// (constructed above). The legacy cross-provider Service
 	// (appsearchsvc.Service) was deleted in PR 10 — see
 	// PR-SEARCH-LEGACY-CROSSPROVIDER deprecation record.
-	searchHandler := assetsearch.NewHandler(searchAggregator, log)
+	//
+	// Blocco C1-Step 11 (June 2026): Search capability is now
+	// built via the canonical search.Build(deps)
+	// (api.Descriptor, error) contract, matching the artlist /
+	// youtube / clips / stock / voiceover / soundeffect /
+	// register / diagnostics precedent. The Handler is
+	// constructed inside Build and captured by the returned
+	// SearchDescriptor's Module closure. The composition site
+	// type-asserts ONCE to *search.SearchDescriptor
+	// (fail-closed) and reuses the concrete for the
+	// assetsapi.NewModule(..., Search: sd, ...) call (the
+	// concrete *SearchDescriptor satisfies api.Descriptor
+	// structurally). The search capability has no non-HTTP
+	// consumer in the codebase (POST /search is the entire
+	// public surface, reachable only via HTTP), so the
+	// Descriptor surface is the smallest possible — just
+	// `Module` field + forwarder methods (matches the stock /
+	// voiceover / soundeffect / register / diagnostics
+	// precedent exactly).
+	//
+	// The *search.Aggregator is constructed at the composition
+	// root from the pre-built SearchBackends + ZapLogAdapter
+	// per AGENTS.md Pattern 0 — the api/ layer never builds it.
+	searchDescriptor, err := assetsearch.Build(assetsearch.Dependencies{
+		Aggregator:  searchAggregator,
+		EnabledFunc: func() bool { return true }, // search is always on in production
+		ModuleOpts:  nil,                          // no per-feature middleware (matches pre-Step-11 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: search.Build: %w", err)
+	}
+	sd, ok := searchDescriptor.(*assetsearch.SearchDescriptor)
+	if !ok || sd == nil {
+		return nil, fmt.Errorf("WireAssets: search.Build returned unexpected descriptor type %T (want *assetsearch.SearchDescriptor)", searchDescriptor)
+	}
 	if diagSvc != nil {
 		log.Info("diagnostics and search services wired with production ports")
 	} else {
@@ -532,7 +567,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
 		Storage:     storageHandler,
 		Diagnostics: dd,
-		Search:      searchHandler,
+		Search:      sd,
 		Clips:       clipsDesc,
 		Voiceover:   vd,
 		SoundEffect: sd,

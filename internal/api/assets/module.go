@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 )
 
@@ -17,7 +16,6 @@ import (
 type Dependencies struct {
 	// PR 2: thin transport handlers
 	Storage *storage.Handler
-	Search  *search.Handler
 
 	// Blocco C1-Step 10 (June 2026): Diagnostics is now an
 	// api.Descriptor (the canonical Build contract surface)
@@ -38,6 +36,26 @@ type Dependencies struct {
 	// (matches the stock / voiceover / soundeffect / register
 	// precedent exactly).
 	Diagnostics api.Descriptor
+
+	// Blocco C1-Step 11 (June 2026): Search is now an
+	// api.Descriptor (the canonical Build contract surface)
+	// instead of a raw *search.Handler. The composition root
+	// threads the *search.SearchDescriptor returned by
+	// search.Build(...) here; the descriptor's
+	// RegisterRoutes(rg) forwarder delegates to the embedded
+	// api.Module which captures the Handler in its closure
+	// (the Module name "search" + empty prefix "" preserve
+	// the pre-Step-11 routing shape — the single route mounts
+	// directly on the parent /api/media group, matching
+	// /api/media/search URL verbatim). The search capability
+	// has no non-HTTP consumer in the codebase (the cross-
+	// provider search surface reaches the canonical
+	// search.Aggregator directly, not via the api/search
+	// Handler), so the Descriptor surface is the smallest
+	// possible — just `Module` field + forwarder methods
+	// (matches the stock / voiceover / soundeffect / register /
+	// diagnostics precedent exactly).
+	Search api.Descriptor
 
 	// Blocco C1-Step 5 (June 2026): Clips is now an api.Descriptor
 	// (the canonical Build contract surface) instead of a raw
@@ -136,7 +154,14 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.Diagnostics.RegisterRoutes(r)
 	}
 
-	// Search operations (cross-provider keyword search)
+	// Search operations (cross-provider keyword search).
+	// Blocco C1-Step 11 (June 2026): the search Descriptor
+	// owns its own Module; the assets module passes the parent
+	// /api/media group straight through (no more inline
+	// r.Group("") wrap — the descriptor's SearchDescriptor
+	// forwarder delegates to the embedded api.Module which
+	// mounts the single route directly on the parent group,
+	// preserving the public URL /api/media/search verbatim).
 	if m.deps.Search != nil {
 		m.deps.Search.RegisterRoutes(r)
 	}
