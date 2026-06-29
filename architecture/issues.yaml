@@ -1,0 +1,40 @@
+# PipelineGen — Open Technical Issues
+# -----------------------------------------------------------------------------
+# Single-source-of-truth for in-flight technical bug tickets (June 2026).
+# Schema per entry (strict, no narrative):
+#   id, title, status, owner?, deadline?, blocker?, linked_issues?
+# Status ∈ {pending, in_progress, done}. owner/deadline OMITTED when absent
+# in canonical source — AGENTS.md §7 NO_FAKE_AVAILABILITY / zero-legacy.
+#
+# Cross-references:
+#   - architecture/current.yaml        (active waves + Wave 22 ticket refs)
+#   - architecture/deprecations.yaml   (BACKFILL / CONTRACT records)
+# -----------------------------------------------------------------------------
+
+- id: ADAPTERS-FAIL-PRE9-12
+  title: "Resolve 4 pre-existing Go test FAILs introduced in commit 72e1d5c9 (BACKFILL residue)"
+  status: pending
+  owner: internal/application/scripts/adapters
+
+- id: PR-CONTEXT-NO-CANCEL-CI-GATE
+  title: "Promote context.Background/WithoutCancel exemption families to a dedicated CI gate"
+  status: pending
+  deadline: 2026-07-15
+  linked_issues:
+    - 22
+
+- id: Q1-noopMetrics-NowFunc-orphan
+  title: "Re-home noopMetrics and NowFunc out of internal/application/qdrant/dr/types.go (declarations used only by dr/restore.go)"
+  status: pending
+
+- id: Q2-stubExecutor-CleanupWithConfig-mismatch
+  title: "Migrate stubExecutor.CleanupWithConfig in internal/application/qdrant/dr/snapshot_test.go from value to pointer return after dr_adapter.go flipped the RetentionExecutor port signature"
+  status: pending
+
+- id: Q3-ClipIDs-AcceptedClipIDs-audit
+  title: "Audit stale ClipIDs references in scripts/adapters tests after the ClipEvidence.ClipIDs acceptance rename"
+  status: pending
+
+- id: SSOT-script-defaults-drift
+  title: "Reconcile pkg/defaults/script.go (WPM=140, DefaultLanguage=it) with generation_normalizer.go (WPM=150, Language=en)"
+  status: pending
