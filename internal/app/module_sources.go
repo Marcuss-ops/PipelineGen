@@ -13,6 +13,7 @@ import (
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	mutations "github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
@@ -70,7 +71,7 @@ type ArtlistWiring struct {
 // the canonical UpsertClip + IndexClip path stays wired in production).
 // Returns ArtlistWiring with Resolver populated so caller can use the
 // clipresolver for ScriptFlow late-binding without round-tripping.
-func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, dispatcher *outbox.Dispatcher) (*ArtlistWiring, error) {
+func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundle *ArtlistBundle, dispatcher *outbox.Dispatcher, publisher delivery.Publisher) (*ArtlistWiring, error) {
 	// QDRANT-002 PR7: dispatcher is now an unconditional requirement.
 	// The legacy "UpsertClip + IndexClip fallback when dispatcher is
 	// nil" was wrong-by-design: a nil dispatcher at runtime means the
@@ -152,7 +153,7 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 		log.Info("wired semantic enricher (MetadataWriter port) with canonical outbox.Dispatcher — production canonical path active (QDRANT-002 PR7)")
 	}
 
-	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, enricher, driveManager, dispatcher, log)
+	artlistSvc, err := wireArtlistService(cfg, bundle, artlistLifecycle, assetDestResolver, clipIndexerSvc, enricher, driveManager, dispatcher, publisher, log)
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err
@@ -266,6 +267,7 @@ func wireArtlistService(
 	enricher artlistPkg.MetadataWriter,
 	driveManager artlistPkg.DriveFolderManager,
 	dispatcher *outbox.Dispatcher,
+	publisher delivery.Publisher,
 	log *zap.Logger,
 ) (*artlistPkg.Service, error) {
 	// PR2.6: wireArtlistService uses the named-sub-structs shape for
@@ -281,6 +283,7 @@ func wireArtlistService(
 			Indexer:            clipIndexerSvc,   // *clipindexer.Service implements Indexer
 			MetadataWriter:     enricher,
 			DriveFolderManager: driveManager, // *drive.DriveFolderManagerAdapter wraps bundle.DriveClient
+			Publisher:          publisher,     // canonical Drive publisher (FASE 8)
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
 			Cfg:        cfg,
@@ -338,6 +341,7 @@ type StockBundle struct {
 	YoutubeClipService *ytService.Service
 	ClipIndexerService *clipindexer.Service
 	Dispatcher         *outbox.Dispatcher
+	Publisher          delivery.Publisher
 }
 
 // StockPipelineWiring holds the StockPipeline module wiring.
@@ -418,9 +422,10 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	}
 
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
-		Cfg:   cfg,
-		Log:   log,
-		Drive: bundle.DriveClient,
+		Cfg:       cfg,
+		Log:       log,
+		Drive:     bundle.DriveClient,
+		Publisher: bundle.Publisher,
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:  bundle.ClipsRepo,
 			AssetIndex: bundle.AssetIndexService,

@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
@@ -105,11 +106,12 @@ type MediaDeps struct {
 // hazard that swapped the canonical ingestion path on every
 // composition-time race in WireStockPipeline.
 type Deps struct {
-	Cfg     *config.Config
-	Log     *zap.Logger
-	Drive   *gdrive.Service
-	Storage StorageDeps
-	Media   MediaDeps
+	Cfg       *config.Config
+	Log       *zap.Logger
+	Drive     *gdrive.Service
+	Publisher delivery.Publisher
+	Storage   StorageDeps
+	Media     MediaDeps
 	// DELIBERATELY FLAT — YouTube + Jobs are cross-cutting fields, intentionally
 	// NOT nested under a sub-group. They are conceptually distinct from the
 	// Storage (DB stack) and Media (PR6 ports + semantic enrichment) buckets
@@ -143,8 +145,9 @@ type Deps struct {
 type Service struct {
 	cfg      *config.Config
 	log      *zap.Logger
-	driveSvc *gdrive.Service
-	driveUp  *driveup.Uploader
+	driveSvc  *gdrive.Service
+	driveUp   *driveup.Uploader
+	publisher delivery.Publisher
 	ytdlp    *downloader.YTDLPDownloader
 	// cutter + renderer are the PR6 ports. Initialised at ctor time so
 	// every method sees either a non-nil port or an error from NewService;
@@ -232,10 +235,11 @@ func NewService(deps Deps) (*Service, error) {
 
 	v := deps.Cfg.Video.WithDefaults()
 	return &Service{
-		cfg:      deps.Cfg,
-		log:      deps.Log,
-		driveSvc: deps.Drive,
-		driveUp:  &driveup.Uploader{Service: deps.Drive, Log: deps.Log},
+		cfg:       deps.Cfg,
+		log:       deps.Log,
+		driveSvc:  deps.Drive,
+		driveUp:   &driveup.Uploader{Service: deps.Drive, Log: deps.Log},
+		publisher: deps.Publisher,
 		ytdlp:    downloader.NewYTDLP(deps.Cfg),
 		cutter:   deps.Media.Cutter,
 		renderer: deps.Media.Renderer,

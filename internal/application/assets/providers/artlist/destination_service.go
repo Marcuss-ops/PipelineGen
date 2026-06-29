@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -29,8 +30,17 @@ type DestinationInfo struct {
 // "inietta porte invece di concrezioni" for artlist: the only remaining
 // raw-SDK reach-through in the artlist package was this struct +
 // drive.EnsureFolderPath. Both are gone post-PR2.7.
+// PublisherPort is the narrow port for folder-only resolution via the
+// canonical Publisher. Satisfied by delivery.Publisher (via an adapter
+// in the composition root). Used by ResolveDestination to replace the
+// legacy driveManager.EnsureFolder call (FASE 8).
+type PublisherPort interface {
+	ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error)
+}
+
 type DestinationService struct {
-	driveManager DriveFolderManager
+	driveManager DriveFolderManager // deprecated: kept for legacy fallback
+	publisher    PublisherPort      // canonical folder resolution (FASE 8)
 	cfg          *config.Config
 }
 
@@ -45,7 +55,7 @@ type DestinationService struct {
 // without making any Drive calls — same nil-tolerance behaviour callers
 // already depended on.
 func NewDestinationService(svc *Service) *DestinationService {
-	return &DestinationService{driveManager: svc.driveFolderManager, cfg: svc.cfg}
+	return &DestinationService{driveManager: svc.driveFolderManager, publisher: svc.publisher, cfg: svc.cfg}
 }
 
 // ResolveDestination risolve la cartella Drive per un termine
@@ -68,20 +78,40 @@ func (d *DestinationService) ResolveDestination(ctx context.Context, term, rootF
 		}, nil
 	}
 
-	// Build segment list: only prepend "Artlist" when resolving from the media root.
-	segments := []string{folderName}
-	isMediaRoot := d.cfg != nil && (rootFolderID == d.cfg.Drive.MediaRootFolder || rootFolderID == "")
-	if isMediaRoot {
-		segments = append([]string{"Artlist"}, segments...)
-	}
-
-	// PR2.7: call the port's EnsureFolder directly (was drive.EnsureFolderPath).
-	// textutil.SafeName sanitises the term so it matches the canonical name
-	// DriveFolderManagerAdapter.findOrCreateFolder uses (exact name match —
-	// the legacy *drive.Uploader.GetOrCreateFolder fuzzy fallback is gone).
-	folderID, err := d.driveManager.EnsureFolder(ctx, rootFolderID, segments...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ensure folder path: %w", err)
+	// FASE 8: use canonical Publisher.ResolveFolder when available.
+	// The DestinationArtlist registry policy maps to cfg.Drive.ArtlistFolder()
+	// as root + [term] as path segments. When rootFolderID is the media root
+	// or empty, let the registry resolve the Artlist root naturally. When a
+	// specific rootFolderID is provided, pass it as RootFolderOverride.
+	var folderID string
+	if d.publisher != nil {
+		pubReq := delivery.PublishRequest{
+			Destination: delivery.DestinationArtlist,
+			Group:       folderName,
+		}
+		isMediaRoot := d.cfg != nil && (rootFolderID == d.cfg.Drive.MediaRootFolder || rootFolderID == "")
+		if !isMediaRoot {
+			pubReq.RootFolderOverride = rootFolderID
+		}
+		fid, err := d.publisher.ResolveFolder(ctx, pubReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve folder via Publisher: %w", err)
+		}
+		folderID = fid
+	} else if d.driveManager != nil {
+		// Legacy fallback
+		segments := []string{folderName}
+		isMediaRoot := d.cfg != nil && (rootFolderID == d.cfg.Drive.MediaRootFolder || rootFolderID == "")
+		if isMediaRoot {
+			segments = append([]string{"Artlist"}, segments...)
+		}
+		fid, err := d.driveManager.EnsureFolder(ctx, rootFolderID, segments...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to ensure folder path: %w", err)
+		}
+		folderID = fid
+	} else {
+		folderID = rootFolderID
 	}
 
 	return &DestinationInfo{
