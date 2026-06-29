@@ -62,6 +62,12 @@ func (s *stubRepo) Delete(_ context.Context, id string) error {
 func (s *stubRepo) MarkChecked(_ context.Context, _ MarkCheckedCommand) error {
 	return nil
 }
+func (s *stubRepo) ClaimDue(_ context.Context, _ ClaimDueCommand) ([]*asset.CategoryChannel, error) {
+	return nil, nil
+}
+func (s *stubRepo) UpdateCursor(_ context.Context, _ UpdateCursorCommand) error {
+	return nil
+}
 
 func TestBuild_ReturnsErrorOnNilRepository(t *testing.T) {
 	_, err := Build(Dependencies{Logger: zap.NewNop()})

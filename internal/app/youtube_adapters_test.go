@@ -6,7 +6,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 
@@ -24,13 +24,13 @@ func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
 	var nilRunner *stubSearchRunner
 	var runner youtubeports.SearchRunnerPort = nilRunner // typed-nil
 
-	deps := youtube.ServiceDeps{
+	deps := youtubeapp.ServiceDeps{
 		SearchRunner:  runner,
 		AssetRepo:     &stubAssetRepo{},
 		VideoPipeline: &stubVideoPipeline{},
 	}
 	// MediaProcessor is intentionally missing (nil).
-	err := youtube.ValidateServiceDeps(deps)
+	err := youtubeapp.ValidateServiceDeps(deps)
 	require.Error(t, err, "ValidateServiceDeps should reject typed-nil SearchRunner")
 	assert.True(t, portutil.IsNilPort(runner), "precondition: runner should be typed-nil")
 	assert.True(t, runner != nil, "precondition: typed-nil runner should != nil (Go semantics)")
@@ -39,7 +39,7 @@ func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
 // TestYouTubeComposition_ValidDepsBuildSuccessfully verifies that a fully
 // wired ServiceDeps passes validation and can construct a Service.
 func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
-	deps := youtube.ServiceDeps{
+	deps := youtubeapp.ServiceDeps{
 		Cfg:            youtubetypes.RuntimeConfig{},
 		Log:            zap.NewNop(),
 		SearchRunner:   &stubSearchRunner{},
@@ -48,10 +48,10 @@ func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
 		MediaProcessor: &stubMediaProcessor{},
 	}
 
-	err := youtube.ValidateServiceDeps(deps)
+	err := youtubeapp.ValidateServiceDeps(deps)
 	require.NoError(t, err, "fully wired deps should pass validation")
 
-	svc := youtube.NewService(deps)
+	svc := youtubeapp.NewService(deps)
 	require.NotNil(t, svc, "NewService should return non-nil with valid deps")
 
 	// Smoke: optional port methods should not panic.
@@ -68,41 +68,41 @@ func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
 func TestYouTubeComposition_AllRequiredDepsRejectsNil(t *testing.T) {
 	tests := []struct {
 		name    string
-		mutate  func(*youtube.ServiceDeps)
+		mutate  func(*youtubeapp.ServiceDeps)
 		wantMsg string
 	}{
 		{
 			name:    "nil SearchRunner",
-			mutate:  func(d *youtube.ServiceDeps) { d.SearchRunner = nil },
+			mutate:  func(d *youtubeapp.ServiceDeps) { d.SearchRunner = nil },
 			wantMsg: "SearchRunner",
 		},
 		{
 			name:    "nil AssetRepo",
-			mutate:  func(d *youtube.ServiceDeps) { d.AssetRepo = nil },
+			mutate:  func(d *youtubeapp.ServiceDeps) { d.AssetRepo = nil },
 			wantMsg: "AssetRepo",
 		},
 		{
 			name:    "nil VideoPipeline",
-			mutate:  func(d *youtube.ServiceDeps) { d.VideoPipeline = nil },
+			mutate:  func(d *youtubeapp.ServiceDeps) { d.VideoPipeline = nil },
 			wantMsg: "VideoPipeline",
 		},
 		{
 			name:    "nil MediaProcessor",
-			mutate:  func(d *youtube.ServiceDeps) { d.MediaProcessor = nil },
+			mutate:  func(d *youtubeapp.ServiceDeps) { d.MediaProcessor = nil },
 			wantMsg: "MediaProcessor",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := youtube.ServiceDeps{
+			deps := youtubeapp.ServiceDeps{
 				SearchRunner:   &stubSearchRunner{},
 				AssetRepo:      &stubAssetRepo{},
 				VideoPipeline:  &stubVideoPipeline{},
 				MediaProcessor: &stubMediaProcessor{},
 			}
 			tc.mutate(&deps)
-			err := youtube.ValidateServiceDeps(deps)
+			err := youtubeapp.ValidateServiceDeps(deps)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantMsg)
 		})

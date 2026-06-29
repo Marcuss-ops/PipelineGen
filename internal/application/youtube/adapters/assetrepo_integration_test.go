@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema
 // and registers teardown. Returns the canonical asset.Repository wrapper
 // (the SOLE writer in PR1.6).
-func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *assets.ClipsRepository, assetRepo asset.Repository) {
+func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqassets.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewTestDBWithSchema(t, pr12bYoutubeSchema)
 	t.Cleanup(func() { _ = db.Close() })
