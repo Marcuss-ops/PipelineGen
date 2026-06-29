@@ -88,15 +88,15 @@
     ]
   },
   "summary": {
-    "total_violations": 39,
+    "total_violations": 38,
     "by_reason": {
       "constructor_deps": 9,
-      "file_size": 26,
+      "file_size": 25,
       "pkg_size": 2,
       "thin_command": 2
     },
     "by_severity": {
-      "warn": 39
+      "warn": 38
     }
   },
   "violations": [
@@ -209,14 +209,6 @@
     {
       "file": "cmd/admin/reconcile_qdrant.go",
       "actual_lines": 530,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "cmd/archcheck/main.go",
-      "actual_lines": 782,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -399,14 +391,6 @@
       "severity": "warn"
     },
     {
-      "package": "internal/app",
-      "actual_count": 46,
-      "allowed_count": 40,
-      "matched_rule": "max_files_per_package",
-      "rule": "pkg_size",
-      "severity": "warn"
-    },
-    {
       "package": "internal/infrastructure/qdrant",
       "actual_count": 46,
       "allowed_count": 40,
@@ -415,8 +399,16 @@
       "severity": "warn"
     },
     {
+      "package": "internal/app",
+      "actual_count": 46,
+      "allowed_count": 40,
+      "matched_rule": "max_files_per_package",
+      "rule": "pkg_size",
+      "severity": "warn"
+    },
+    {
       "file": "cmd/archcheck/main.go",
-      "actual_lines": 782,
+      "actual_lines": 337,
       "max_lines": 200,
       "matched_rule": "cmd_main_max_lines",
       "rule": "thin_command",
