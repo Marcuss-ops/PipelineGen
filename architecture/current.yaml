@@ -45,12 +45,30 @@
 
 - id: 0
   title: Baseline snapshot
-  status: in_progress
+  status: done
   artifacts:
-    - architecture/ownership.yaml
+    - architecture/ownership/modules.yaml
+    - architecture/ownership/jobs.yaml
+    - architecture/ownership/services.yaml
+    - architecture/ownership/application.yaml
+    - architecture/ownership/infrastructure.yaml
+    - architecture/ownership/packages.yaml
+    - architecture/ownership.generated.yaml
     - architecture/current.yaml
     - docs/migrations/api-infrastructure-imports-allowlist.txt
   exit_gate: "All artifacts present; archcheck focused gate passes."
+  completed_through_W0_baseline_split:
+    - "Monolithic architecture/ownership.yaml REMOVED (dc6add3e refactor, June 2026)"
+    - "6 per-section files CREATED under architecture/ownership/*.yaml"
+    - "Governance keys (cross_project_refs, lint_gates, wave_qdrant_005d_hygiene) EXTRACTED to architecture/policy.yaml (One owner per fact)"
+    - "Deterministic artifact architecture/ownership.generated.yaml GENERATED via cmd/architecture-aggregate"
+  follow_up_tickets:
+    - id: PR-ARCHITECTURE-MD-OWNERSHIP-DRIFT
+      title: "Update ARCHITECTURE.md to document the 6-file ownership split vs generated monolithic view"
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-07-10
+      target: "ARCHITECTURE.md conceptually references the legacy monolithic ownership.yaml; update text to reflect the cmd/architecture-aggregate generator chain and the 6 per-section sources."
 
 # ── Wave 14 — API compaction (in_progress) ───────────────────────────────────
 
