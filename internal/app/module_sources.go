@@ -448,48 +448,90 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 }
 
 // YouTubeClipWiring holds the YouTube Clip module wiring.
+//
+// Blocco C1-Step 4 (June 2026): Handler field removed. The HTTP Handler
+// is constructed inside `ytsources.Build(deps)` and captured by the
+// returned YouTubeDescriptor's Module closure. No caller (composition
+// root, tests, internal services) needs to read the raw
+// `*YouTubeClipHandler` outside the package — matches the artlist /
+// channels precedent of dropping the explicit Handler field in favor of
+// descriptor-only wiring.
 type YouTubeClipWiring struct {
-	Handler *ytsources.YouTubeClipHandler
 	Module  api.Module
 	Service *ytService.Service
 }
 
-// WireYouTubeClip creates the YouTube Clip handler and module.
+// WireYouTubeClip creates the YouTube Clip service + descriptor via the
+// canonical `ytsources.Build(deps Dependencies) (api.Descriptor, error)`
+// entrypoint (Blocco C1-Step 4, June 2026).
 //
-// PR4d-chunk2 (June 2026): takes 4 direct narrow args (no bundle —
-// only 4 cross-bundle reads, no coherence warrant for a bundle).
-// PG-003 (June 2026): clipsRepo (still typed *assets.ClipsRepository
-// at the wiring seam) is passed through the canonical
-// newClipStoreAdapter(...) helper defined in youtube_adapters.go. The
-// handler depends on the typed youtubeports.ClipStorePort only; the
-// helper itself preserves `if h.clipsRepo != nil` semantics in the
-// handler because newClipStoreAdapter(nil) returns a nil interface.
-// PR8 (June 2026): added idempotencyMiddleware arg — installed by
-// YouTubeClipHandler on POST /clips/process.
-// PR-CLIP-YT-REGISTRY-CLEANUP (June 2026, this PR): providerRegistry
-// arg removed — the handler is now transport-only against the canonical
-// clip-repo; the providers.Registry dispatch concern lives in
-// root.Search.ProviderRegistry and is published via
-// youtubeadapter.NewAdapter inside WireRegistry→pr.Freeze().
-// S3d (June 2026): searchAggregator arg appended last so SearchAdvanced
-// + Stats can route through the canonical providers.SearchAggregator.
-// The aggregator is constructed in WireRegistry via
-// providers.NewSearchAggregator(root.Search.ProviderRegistry).
+// The composition root has the only knowledge of `cfg.Features.YouTubeEnabled`
+// and the canonical typed-narrow ports (`*assets.ClipsRepository`,
+// `appassets.ToolChecker`, providers.SearchAggregator, …). Build maps
+// those onto the typed-narrow `ytsources.Dependencies` struct.
+//
+// The canonical late-bind `ytSvc.RegisterHandler(jobs)` step stays at the
+// end of WireYouTubeClip (matches the artlist pattern at the end of
+// wireArtlistService — the late-bind lands AFTER the Service is fully
+// constructed; no Descriptor slot is exposed today because DescriptorJobs
+// contract is reserved for capabilities that own worker-side logic via
+// the Build return shape itself).
+//
+// nil-tolerant: when ytSvc is nil, returns nil + nil error so the
+// composition root's tolerant skip path stays intact (the bundle can
+// be wired with optional deps missing and the capability does not
+// inline-mount its routes).
 func WireYouTubeClip(cfg *config.Config, log *zap.Logger, ytSvc *ytService.Service, jobFacade jobdomain.Service, jobs *appjobs.Service, clipsRepo *assets.ClipsRepository, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchAggregator *providers.SearchAggregator) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(ytSvc, log, jobFacade, newClipStoreAdapter(clipsRepo), toolChecker, idempotencyMiddleware, searchAggregator)
-	var mod api.Module
-	if ytSvc != nil {
-		mod = api.NewRouteModule(
-			"clips",
-			func() bool { return cfg.Features.YouTubeEnabled },
-			"/clips",
-			handler,
-			log,
-		)
-		log.Info("created Clips module")
-		ytSvc.RegisterHandler(jobs)
+	if ytSvc == nil {
+		return nil, nil // tolerated: module is skipped
 	}
-	return &YouTubeClipWiring{Handler: handler, Module: mod, Service: ytSvc}, nil
+	descriptor, err := wireYouTubeClipModule(cfg, ytSvc, jobFacade, clipsRepo, toolChecker, idempotencyMiddleware, searchAggregator, log)
+	if err != nil {
+		return nil, fmt.Errorf("WireYouTubeClip: %w", err)
+	}
+	yd, typeAssertOk := descriptor.(*ytsources.YouTubeDescriptor)
+	if !typeAssertOk || yd == nil {
+		return nil, fmt.Errorf("WireYouTubeClip: ytsources.Build returned unexpected descriptor type %T (want *ytsources.YouTubeDescriptor)", descriptor)
+	}
+	// Canonical late-bind step: route the YouTube service's worker
+	// handlers (extraction, channel sync, …) into jobs.Service at
+	// composition time. Stays outside the Build contract because
+	// today's YouTube Descriptor does NOT register its own job slot
+	// (no DescriptorJobs implementation); the registration happens
+	// once per process via the canonical service.RegisterHandler(jobs).
+	ytSvc.RegisterHandler(jobs)
+	return &YouTubeClipWiring{Module: yd.Module, Service: ytSvc}, nil
+}
+
+// wireYouTubeClipModule composes the YouTube HTTP module by delegating
+// to the canonical `ytsources.Build(deps Dependencies) (api.Descriptor, error)`
+// entrypoint. The composition root has the only knowledge of
+// `cfg.Features.YouTubeEnabled`; this function maps that onto the
+// typed-narrow Dependencies.
+//
+// Always returns (non-nil descriptor, nil error) when ytSvc is non-nil;
+// the caller (WireYouTubeClip) handles the nil-tolerance path before
+// reaching this helper.
+//
+// Note: the `*appjobs.Service` (`jobs` arg of WireYouTubeClip) is
+// consumed by the late-bind `ytSvc.RegisterHandler(jobs)` step at the
+// end of WireYouTubeClip — it is intentionally NOT threaded through
+// this helper because Build does not register any job-handler slot
+// (the YouTube Descriptor does not implement DescriptorJobs). Mirrors
+// the artlist pattern where `bundle.Jobs.Service.RegisterHandler(artlistSvc.HandleJob)`
+// stays at the WireArtlist-service step, NOT inside the Build contract.
+func wireYouTubeClipModule(cfg *config.Config, ytSvc *ytService.Service, jobFacade jobdomain.Service, clipsRepo *assets.ClipsRepository, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchAggregator *providers.SearchAggregator, log *zap.Logger) (api.Descriptor, error) {
+	return ytsources.Build(ytsources.Dependencies{
+		Service:          ytSvc,
+		Jobs:             jobFacade, // NewYouTubeClipHandler accepts jobservice.Service (jobFacade implements it)
+		ClipStorePort:    newClipStoreAdapter(clipsRepo),
+		ToolChecker:      toolChecker,
+		Idempotency:      idempotencyMiddleware,
+		SearchAggregator: searchAggregator,
+		EnabledFunc:      func() bool { return cfg.Features.YouTubeEnabled },
+		ModuleOpts:       nil, // no per-feature middleware for the clips capability (matches pre-Step-4 wiring);
+		Logger:           log,
+	})
 }
 
 // FullImagesWiring holds the FullImages module wiring.

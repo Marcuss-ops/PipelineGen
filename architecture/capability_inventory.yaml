@@ -183,9 +183,9 @@ api_capabilities:
     concrete_constructors: []
   - name: assets/youtube
     path: internal/api/assets/youtube
-    has_build_signature: false
+    has_build_signature: true
     direct_register_calls: []
-    concrete_constructors: []
+    concrete_constructors: []  # gated by internal/api/assets/youtube/gate_test.go (no infrastructure imports); Blocco C1-Step 4 (June 2026): youtube now exposes the canonical `Build(deps Dependencies) (api.Descriptor, error)` signature (pattern parity with Blocco C1-Step 3 artlist precedent)
   - name: content
     path: internal/api/content
     has_build_signature: false
