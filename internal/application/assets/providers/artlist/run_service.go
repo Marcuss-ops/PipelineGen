@@ -45,7 +45,14 @@ func (o *RunOrchestratorService) GetRunTag(ctx context.Context, runID string) (*
 // RunTag esegue la pipeline Artlist per un termine di ricerca.
 // La pipeline è suddivisa in stage chiaramente separati per testabilità:
 //
-//	DiscoverClips → ResolveDestination → BuildProcessInputs → ProcessBatch → PersistResults → EnrichAsync → IndexAsync
+//	DiscoverClips → ResolveDestination → BuildProcessInputs → ProcessBatch → PersistResults → IndexAsync
+//
+// P0.6 (June 2026): the previous EnrichAsync stage was deleted from the
+// sequence. Background fire-and-forget enrichment violated the
+// no-fake-availability rule (godlike/07) because failures could not be
+// surfaced to the pipeline caller. P0.18 will reintroduce structured
+// outbox-driven enrichment in a successive wave (see
+// architecture/current.yaml#P0.18 for the ticket index).
 func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error) {
 	resp := &RunTagResponse{
 		OK:        true,
@@ -105,9 +112,11 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 		return resp, err
 	}
 
-	// Stages 5-7: Post-processing (persist, enrich, index)
+	// Stage 5: Post-processing (persist). Stage 6 is a documented no-op
+	// kept for sequence continuity — the canonical dispatcher took over
+	// indexing inside stagePersistResults (see stageIndexAsync for the
+	// no-op contract).
 	o.stagePersistResults(ctx, resp)
-	o.stageEnrichAsync(ctx, resp)
 	o.stageIndexAsync(ctx, resp)
 
 	processedCount := resp.Processed

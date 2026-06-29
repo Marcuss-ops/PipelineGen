@@ -84,12 +84,21 @@ type ScriptAssetSuggestion struct {
 }
 
 // ScriptArtlistClipSuggestion pairs an artlist phrase with matching clips.
+//
+// TranslationError (PR 0.6, June 2026) is the explicit error marker
+// for the artlist-phrase → English translation step. Non-empty when
+// the translator call (artlistSearchPhrase) failed or returned an
+// empty string. When populated, Clips is intentionally empty (no
+// silent fallback to the original phrase — godlike/07
+// no-fake-availability). Phrase stays populated with the
+// user-supplied input so the API response remains contract-stable.
 type ScriptArtlistClipSuggestion struct {
-	Phrase     string                  `json:"phrase"`
-	Clips      []ScriptAssetSuggestion `json:"clips"`
-	FolderLink string                  `json:"folder_link"`
-	FolderName string                  `json:"folder_name"`
-	FolderID   string                  `json:"folder_id"`
+	Phrase           string                  `json:"phrase"`
+	Clips            []ScriptAssetSuggestion `json:"clips"`
+	FolderLink       string                  `json:"folder_link"`
+	FolderName       string                  `json:"folder_name"`
+	FolderID         string                  `json:"folder_id"`
+	TranslationError string                  `json:"translation_error,omitempty"`
 }
 
 // ScriptPhraseClipSuggestion pairs a key phrase with matching clips.
@@ -265,13 +274,28 @@ func SearchArtlistClips(ctx context.Context, svc ClipServices, title string, phr
 	}
 
 	results := concurrent.ParallelMap(validPhrases, concurrency, func(idx int, phrase string) artlistPhraseResult {
-		enPhrase := artlistSearchPhrase(ctx, svc, phrase)
+		// Resolve the Drive folder before the translation step: that
+		// lookup only needs the user-supplied phrase and is unaffected
+		// by translation success/failure. If the translation then
+		// fails, the suggestion still carries FolderLink/FolderID/Name
+		// for the operator audit trail.
 		folderLink, folderName, folderID := resolveArtlistFolderForPhrase(ctx, svc, phrase)
 		suggestion := ScriptArtlistClipSuggestion{
 			Phrase:     phrase,
 			FolderLink: folderLink,
 			FolderName: folderName,
 			FolderID:   folderID,
+		}
+		enPhrase, txErr := artlistSearchPhrase(ctx, svc, phrase)
+		if txErr != nil {
+			// P0.6 (June 2026): silent translation failure is banned
+			// (godlike/07). Surface the error on the suggestion and
+			// intentionally leave Clips empty / do not enqueue a
+			// background job with the original phrase. The user-
+			// supplied Phrase stays populated so the API response is
+			// contract-stable (callers can decide whether to retry).
+			suggestion.TranslationError = txErr.Error()
+			return artlistPhraseResult{suggestion: suggestion, valid: true}
 		}
 		cq := contextualQuery(title, enPhrase)
 		clips := SearchScriptAssets(ctx, svc, []string{cq, enPhrase}, artlistTarget, 2)
@@ -292,19 +316,38 @@ func SearchArtlistClips(ctx context.Context, svc ClipServices, title string, phr
 	return out
 }
 
-func artlistSearchPhrase(ctx context.Context, svc ClipServices, phrase string) string {
-	if svc.Translator == nil || strings.TrimSpace(phrase) == "" {
-		return phrase
+// artlistSearchPhrase translates an artlist phrase to "english" so the
+// downstream Qdrant search runs over the canonical English form.
+//
+// Per P0.6 (June 2026) the silent-success "fallback to input phrase" anti-pattern
+// was removed (godlike/07 no-fake-availability). On translator error or empty
+// translation output, this function now returns ("", err) — the caller
+// decides what to do (e.g. surface via ScriptArtlistClipSuggestion.TranslationError
+// and skip the search).
+func artlistSearchPhrase(ctx context.Context, svc ClipServices, phrase string) (string, error) {
+	if svc.Translator == nil {
+		return "", fmt.Errorf("artlist translator not configured")
+	}
+	if strings.TrimSpace(phrase) == "" {
+		return "", fmt.Errorf("artlist phrase is empty")
 	}
 	translated, err := svc.Translator.TranslateTextWithModel(ctx, phrase, "english", svc.MetadataModel)
-	if err != nil || strings.TrimSpace(translated) == "" {
+	if err != nil {
 		if svc.Logger != nil {
-			svc.Logger.Debug("artlist phrase translation failed, keeping original",
+			svc.Logger.Debug("artlist phrase translation failed",
 				zap.String("phrase", phrase),
 				zap.Error(err),
 			)
 		}
-		return phrase
+		return "", fmt.Errorf("artlist phrase translation: %w", err)
+	}
+	if strings.TrimSpace(translated) == "" {
+		if svc.Logger != nil {
+			svc.Logger.Debug("artlist phrase translation returned empty",
+				zap.String("phrase", phrase),
+			)
+		}
+		return "", fmt.Errorf("artlist phrase translation returned empty output for %q", phrase)
 	}
 	if svc.Logger != nil {
 		svc.Logger.Debug("artlist phrase translated for Qdrant search",
@@ -312,7 +355,7 @@ func artlistSearchPhrase(ctx context.Context, svc ClipServices, phrase string) s
 			zap.String("english", translated),
 		)
 	}
-	return translated
+	return translated, nil
 }
 
 func resolveArtlistFolderForPhrase(ctx context.Context, svc ClipServices, phrase string) (string, string, string) {

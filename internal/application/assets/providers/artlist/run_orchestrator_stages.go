@@ -272,34 +272,6 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 	}
 }
 
-// stageEnrichAsync launches semantic enrichment in the background for processed clips.
-// We rehydrate the clip from the canonical clipRepository.GetClip (after
-// stagePersistResults has written fresh item values) instead of building
-// an inline &models.MediaAsset{} allocation. This drops one of the few
-// remaining direct constructions of the legacy type in the artlist path.
-func (o *RunOrchestratorService) stageEnrichAsync(ctx context.Context, resp *RunTagResponse) {
-	if o.svc.metadataWriter == nil {
-		return
-	}
-	for _, item := range resp.Items {
-		if item.Status == "media_process_failed" || item.Status == "dry_run" {
-			continue
-		}
-		existing, err := o.svc.assetStore.Get(ctx, item.ClipID)
-		if err != nil {
-			o.svc.log.Warn("stageEnrichAsync: artlistRepo.GetClip failed",
-				zap.String("clip_id", item.ClipID), zap.Error(err))
-			continue
-		}
-		if existing == nil {
-			o.svc.log.Debug("stageEnrichAsync: clip absent in DB",
-				zap.String("clip_id", item.ClipID))
-			continue
-		}
-		o.svc.metadataWriter.EnrichAsync(ctx, existing, resp.Term)
-	}
-}
-
 // stageIndexAsync is a no-op. The canonical dispatcher (required) handles
 // indexing atomically in stagePersistResults via Dispatch. This stage
 // exists only as a documented no-op for callers that used to rely on the

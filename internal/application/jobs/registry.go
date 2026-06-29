@@ -403,6 +403,12 @@ const (
 	TypeDriveFolderSync       = "drive.folder.sync"
 	TypeMediaCurate           = job.TypeMediaCurate
 	TypeVoiceoverPromo        = job.TypeVoiceoverPromo
+	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
+	// parent voiceover.generate handler via FanoutVoiceoversUseCase
+	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is
+	// regulated by the registry's per-job-type Concurrency field
+	// (configured at compose time), NOT by goroutines inside the API.
+	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
 	TypeYouTubeChannelSync    = job.TypeYouTubeChannelSync
 	TypeImageGenerateGoogle   = "image.generate.google"
 )
@@ -448,6 +454,7 @@ func Compose() *Registry {
 	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeVoiceoverGenerate, Description: "Voiceover single generation (per-batch command, Blocco 4 typed-port cutover)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Type: TypeVoiceoverGenerateItem, Description: "Voiceover per-language child (P0.3 fan-out: parent voiceover.generate schedules 1 job per (language, voice) pair; concurrency 4 = sibling throttle)", Timeout: 10 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 	r.Register(JobPolicy{Type: TypeSubtitleGenerate, Description: "Subtitle generation", Timeout: 10 * time.Minute, DefaultMaxRetries: 2})
 
 	// ── Catalog / sync ──

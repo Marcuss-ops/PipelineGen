@@ -251,8 +251,13 @@ type Indexer interface {
 // the port realises the contract per use case, the orchestration lives
 // in the application.
 type MetadataWriter interface {
+	// Enrich performs synchronous semantic enrichment and persists the
+	// metadata back to AssetStore atomically. The previous fire-and-forget
+	// EnrichAsync method was removed in P0.6 (June 2026) — see
+	// docs/architecture/godlike/07 for the no-fake-availability reasoning.
+	// P0.18 will introduce the structured outbox-driven replacement
+	// in a successive wave.
 	Enrich(ctx context.Context, clip *asset.Asset, term string) error
-	EnrichAsync(ctx context.Context, clip *asset.Asset, term string)
 }
 
 // Dispatcher is the port for the media_index_outbox that atomically

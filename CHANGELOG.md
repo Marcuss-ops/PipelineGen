@@ -343,6 +343,220 @@ count (dto.Metric writeback pattern) for admin/diagnostic surfaces.
 
 ---
 
+### Added
+
+**[P0.3, Wave 21, Commit 1]** Voiceover canonical parent + child job
+topology — `voiceover.generate` enqueues N per-language child jobs
+(`voiceover.generate_item`), one per (language, voice) pair. Worker-pool
+per-capability concurrency replaces the previous in-process goroutine
+fan-out inside the use case.
+
+- **New canonical job type** `voiceover.generate_item`
+  (registered in `internal/domain/job/job.go::TypeVoiceoverGenerateItem`
+  and re-exported via `internal/application/jobs/registry.go`).
+  Registry entry: `Concurrency: 4, Timeout: 10m, DefaultMaxRetries: 2`.
+  The Concurrency field caps sibling parallelism once the in-process
+  broker semaphore upgrade lands (PR-VO-D, follow-up wave).
+
+- **`GenerateVoiceoverItemCommand`** is the canonical payload for
+  the per-child job. Carries ONLY the data the child needs:
+  `ParentJobID` + `RequestID` + `Text` + `Language` + `Voice` +
+  `Filename` (pre-computed by parent) + `TextHash` (pre-computed by
+  parent) + `Destination` + `Strategy` + `RemoveSilence` + `Metadata`.
+  The child re-resolves destination so a transient resolver hiccup
+  doesn't force the parent to re-run.
+
+- **`FanoutVoiceoversUseCase`** is the parent-side scheduler. It
+  validates the parent command, computes filenames + textHash via a
+  shared package-local helper (no dual-implementation drift), then
+  enqueues N voiceover.generate_item jobs in sequence. children share
+  RequestID + TextHash. The parent job's `Job.WorkflowID` field is
+  also set to the parent_job_id so future aggregator queries
+  (`jobs WHERE workflow_id = ?`) return siblings without descending
+  into payload JSON. **Partial fan-out returns err** — godlike/07
+  no-fake-availability: parent dispatcher marks the parent job FAILED
+  when any child enqueue fails, NO silent success.
+
+- **`ProcessOneVoiceoverUseCase`** is the per-language executor.
+  Holds a *voiceover.Service (canonical production surface) and
+  delegates the single-language flow to `voService.GenerateBatch`
+  with a single-language `BatchRequest`. Preserve the legacy
+  3-state `RemoveSilence` semantic (nil | *bool(false) | *bool(true))
+  so the "caller didn't set it" signal survives across the
+  parent → child boundary. Future BACKFILL PR can migrate
+  this dispatcher to call `GenerateVoiceoversUseCase.processOneLanguage`
+  once the full 7-port surface is extracted; for P0.3, the
+  voService.GenerateBatch path is the canonical SSOT.
+
+- **`GenerateItemJobHandler`** is the per-language child worker
+  handler. Holds the typed-port ProcessOneUseCase (Ports-only
+  dependency per AGENTS.md Pattern 0). On cross-cutting failure
+  (validate, dest resolve, no-items), surfaces both `err` AND a
+  result map carrying `status: "failed"` so the aggregator (Commit 2)
+  can correlate.
+
+- **`GenerateJobHandler`** (parent) rewritten to dispatch ONLY to
+  `FanoutVoiceoversUseCase.Execute(ctx, parentJobID, *cmd)`. The
+  legacy in-process `executor.Run`-with-goroutines path is gone —
+  the new contract is goroutine-free inside the API: NO goroutines
+  ever spawn from the parent's HandleJob path.
+
+Files touched:
+
+- `internal/domain/job/job.go` — added `TypeVoiceoverGenerateItem`.
+- `internal/application/voiceover/command.go` — added
+  `GenerateVoiceoverItemCommand` + `Validate()`.
+- `internal/application/voiceover/process_one_usecase.go` — NEW;
+  per-language executor.
+- `internal/application/voiceover/jobs/fanout_usecase.go` — NEW;
+  parent-side scheduler.
+- `internal/application/voiceover/jobs/fanout_usecase_test.go` —
+  NEW; 7 unit tests.
+- `internal/application/voiceover/jobs/generate_item_handler.go` —
+  NEW; per-child worker handler.
+- `internal/application/voiceover/jobs/generate_item_handler_test.go` —
+  NEW; 4 unit tests.
+- `internal/application/voiceover/jobs/generate_handler.go` —
+  parent handler rewritten to dispatch via FanoutUseCase.
+- `internal/application/jobs/registry.go` — exported
+  `TypeVoiceoverGenerateItem`; registered in `Compose()` with
+  `Concurrency: 4`.
+- `internal/app/build_bundles_domain.go` — constructs
+  `ProcessOneVoiceoverUseCase` from voService.
+- `internal/app/composition.go` — `DomainBundle` gains
+  `VoiceoverProcessOne` + `VoiceoverGenerateItemHandler` fields;
+  late-binding block constructs FanoutUseCase + parent + child
+  handlers and registers both with jobs.Service.
+- `internal/app/voiceover_wiring_test.go` — boot smoke test now
+  verifies BOTH `voiceover.generate` AND `voiceover.generate_item`
+  have handlers after Register (regression guard against future
+  refactors that drop the parent-child chain).
+
+**Forward-pointer (Commit 2, deferred):** the COMPLETED/PARTIAL/FAILED
+final-state aggregation THE parent closes its lifecycle AFTER all
+children reach terminal status. That lands in Commit 2 via the
+canonical outbox events + an aggregator worker that reads each
+child's terminal event and tallies the parent's final Result. The
+parent job currently reports SUCCEEDED on enqueue-complete (the
+intermediate state) — Commit 2 will RE-finalise based on outbox
+events with completed (all ok) / partial (≥1 ok, ≥1 failed) / failed
+(all failed) semantics, mapping to the canonical 7-state kernel
+status: SUCCEEDED + result.partial = true (final succeeded with
+partial flag) / SUCCEEDED (all ok) / FAILED (all failed).
+
+**[P0.6 (June 2026), Wave 21]** Voiceover / Artlist P0 cleanup
+(`AGENTS.md Active Concerns #11` CLOSED). Two-part closure removing the
+two remaining godlike/07 silent-success patterns in the
+Voiceover / Artlist slice.
+
+- **P0.6 Parte A — EnrichAsync fire-and-forget capability removed**
+  (`internal/application/assets/providers/artlist/`):
+
+  - **Port signature** — `MetadataWriter.EnrichAsync` deleted from
+    `ports.go:255`. Only `Enrich` (synchronous) remains.
+  - **Concrete impl** — `SemanticEnricher.EnrichAsync` deleted (incl.
+    `concurrent.SafeGo` goroutine + `context.WithoutCancel` +
+    30s timeout deps); `pkg/concurrent` import cleanup.
+  - **Stage wrapper** — `stageEnrichAsync(ctx, *RunTagResponse)`
+    function deleted from `run_orchestrator_stages.go` (25-line
+    function plus doc comment).
+  - **External call sites replaced** — no fake-success anywhere:
+    - `run_service.go:48` sequence comment updated to remove
+      `EnrichAsync` from the pipeline flow + added forward-pointer
+      to P0.18.
+    - `run_service.go:110` `o.stageEnrichAsync(ctx, resp)` call
+      deleted.
+    - `search_core.go:204–208` replaced with a documented log+drop
+      block (no fake-success: caller surfaces the deprecation
+      instead of letting in-process fire-and-forget silently
+      elevate failures to success).
+
+- **P0.6 Parte B — silent-success translator fallbacks replaced**:
+
+  - `internal/domain/script/generation_result.go` —
+    `scriptpkg.VideoMetadata.TranslationStatus string
+    `json:"translation_status,omitempty"`` field added with
+    triple-state semantics (`"translated"` /
+    `"untranslated"` / `""` legacy backward-compat).
+  - `internal/application/scripts/dto/metadata.go` —
+    `MetadataTranslator` interface (Pattern 0 port, 2 methods;
+    `*ollama.Generator` satisfies implicitly) replaces the
+    `*ollama.Generator` direct dep. Function signature
+    `GenerateVideoMetadata(ctx, generator *ollama.Generator, ...)`
+    becomes
+    `GenerateVideoMetadata(ctx, generator MetadataTranslator, ...)`.
+    All 3 silent fallback sites removed:
+    1. Title: `meta.Title = title` (on err) → empty + status
+       downgrade.
+    2. Description: `meta.Description = enDesc` (on err) → empty.
+    3. Tags: `translatedTags = append(...)` fallback to source tag
+       → empty + status downgrade.
+    `enOK := err == nil && (desc != "" || len(tags) > 0)` guards
+    against the silent empty-payload success variant (LLM returns
+    no err but empty payload).
+  - `internal/application/scripts/usecase/flow_helpers.go`:
+    `ScriptArtlistClipSuggestion.TranslationError string
+    `json:"translation_error,omitempty"`` field added.
+    `artlistSearchPhrase(ctx, svc, phrase) string` →
+    `artlistSearchPhrase(ctx, svc, phrase) (string, error)`.
+    In `SearchArtlistClips`'s `concurrent.ParallelMap`
+    callback the translate error is now propagated via
+    `suggestion.TranslationError` and the Qdrant search is
+    intentionally skipped (no silent fallback to the original
+    phrase).
+
+- **TDD coverage** — 8 new tests across 2 new files, 4 mock
+  stubs (3 in `dto/metadata.go`, 2 in `usecase/flow_helpers.go`):
+
+  - `internal/application/scripts/dto/metadata_test.go` — NEW;
+    5 tests + 4 mock stubs
+    (`mockTranslatorSuccess`, `mockTranslatorFailingTranslate`,
+    `mockTranslatorFailingAll`,
+    `mockTranslatorEmptyPayload`). Tests order-independent via
+    `indexByLanguage` helper (concurrent.SafeGoFunc scheduling
+    nondeterministic):
+    1. `TestGenerateVideoMetadata_TranslationFailureDropsOriginal`
+       (canonical regression: 4 languages, asserts no original
+       text leaks across `it`/`es`/`fr`).
+    2. `TestGenerateVideoMetadata_HappyPathPreservesTranslation`
+       (positive control: en + it).
+    3. `TestGenerateVideoMetadata_EnglishLLMFailureMarksUntranslated`
+       (`enOK=false` → untranslated).
+    4. `TestGenerateVideoMetadata_NilGeneratorReturnsEmpty`
+       (nil short-circuit guard).
+    5. `TestGenerateVideoMetadata_EnglishLLMEmptyPayloadMarksUntranslated`
+       (silent empty-payload success variant).
+  - `internal/application/scripts/usecase/flow_helpers_test.go`
+    — NEW; 3 tests + 2 stub translators
+    (`stubFailingTranslator`, `stubStubTranslator`):
+    1. `TestArtlistSearchPhrase_TranslationFailureReturnsExplicitError`
+       (per-call gate).
+    2. `TestArtlistSearchPhrase_NilTranslatorReturnsExplicitError`
+       (nil-translator gate).
+    3. `TestSearchArtlistClips_TranslationFailurePropagatesToCaller`
+       (caller-level gate: surface error + skip Qdrant search).
+
+8 modified files + 2 new test files. Verify gate:
+`go test ./internal/application/scripts/dto/... ./internal/application/scripts/usecase/... -count=3`
+stable GREEN across 3 runs (no flakiness from goroutine scheduling).
+
+**Backward-compat** — `TranslationStatus` field uses `omitempty`
+so legacy test fixtures that pre-date the closure emit identical
+JSON. Manual `[]scriptpkg.VideoMetadata{Language: "...", Title: "...",
+...}` constructors at
+`internal/application/scripts/usecase/generate_one_usecase.go:467`
++ `internal/application/scripts/adapters/generation_html_test.go:154`
+round-trip cleanly (zero-value status → field omitted).
+
+**Forward-pointer (P0.18, successive wave, see
+`architecture/current.yaml#P0.18`)** — structured outbox-driven
+enrichment replaces the deleted `EnrichAsync` capability. Until then,
+search ingestion stores only the raw clip metadata and a separate
+`/enrich` job handles semantic payload population. Filed
+separately, not in this closure.
+
+---
+
 ## Earlier (June 2026 wave)
 
 See ARCHITECTURE.md §"Migration Status (Brutal Care Plan)" for the

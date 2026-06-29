@@ -247,6 +247,16 @@ type DomainBundle struct {
 	// the full Drive/destResolver/outbox/lifecycle/repo/audio/db
 	// chain is wired; nil when any link is missing.
 	VoiceoverGenerateHandler *voiceoverjobs.GenerateJobHandler
+	// PR-VOICEOVER-PARENT-CHILD-FANOUT (P0.3, June 2026): the
+	// per-language child use case (ProcessOneVoiceoverUseCase) and
+	// the per-job-type child handler (GenerateItemJobHandler for
+	// job.TypeVoiceoverGenerateItem). ProcessOneUseCase is populated
+	// in BuildDomainBundle; the child handler is constructed and
+	// registered at the late-bindings block in NewComposition
+	// (alongside the parent GenerateJobHandler that FanoutVoiceoversUseCase
+	// + jobs.Service wire in).
+	VoiceoverProcessOne        *voiceover.ProcessOneVoiceoverUseCase
+	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
 }
 
 // OutboxBundle aggregates the canonical ingestion-path outbox dispatcher and
@@ -534,6 +544,27 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		log.Warn("voiceover.generate handler NOT registered (typed-port chain incomplete — Drive / destResolver / outbox / lifecycle / repo / audio / db must all be wired)",
 			zap.Bool("generate_handler_built", domains.VoiceoverGenerateHandler != nil),
 			zap.Bool("jobs_service_available", jobs.Service != nil))
+	}
+	// PR-VOICEOVER-PARENT-CHILD-FANOUT (P0.3, June 2026): construct the
+	// parent GenerateJobHandler (Fanout-bound) and the child
+	// GenerateItemJobHandler (per-language) at composition time, where
+	// jobs.Service is available for both FanoutUseCase construction AND
+	// the late-binding Register calls. Idempotent — second pass logs the
+	// `already registered` warning via the existing Dispatcher
+	// double-Register protection.
+	if jobs.Service != nil && domains.VoiceoverProcessOne != nil {
+		fanout := voiceoverjobs.NewFanoutVoiceoversUseCase(voiceoverjobs.FanoutDeps{
+			JobsService: jobs.Service,
+			Logger:      log,
+		})
+		parentHandler := voiceoverjobs.NewGenerateJobHandler(fanout, log)
+		parentHandler.Register(jobs.Service)
+		domains.VoiceoverGenerateHandler = parentHandler
+
+		childHandler := voiceoverjobs.NewGenerateItemJobHandler(domains.VoiceoverProcessOne, log)
+		childHandler.Register(jobs.Service)
+		domains.VoiceoverGenerateItemHandler = childHandler
+		log.Info("P0.3 voiceover handlers wired: parent voiceover.generate + child voiceover.generate_item")
 	}
 	if domains.ImageService != nil && jobs.Service != nil {
 		domains.ImageService.RegisterHandler(jobs.Service)

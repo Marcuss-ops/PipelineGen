@@ -29,8 +29,16 @@ type Record struct {
 	Error           string
 	Strategy        string
 	Metadata        string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// Fingerprint is the P0.4 deterministic cache key for the
+	// pre-TTS idempotence gate. Computed by
+	// voiceover.ComputeVoiceoverFingerprint (sha256 over workspace +
+	// text_hash + language + voice + destination_signature +
+	// remove_silence + provider_version). Empty for legacy rows
+	// predating migration 113 — those are cache-MISS on the first
+	// P0.4 lookup.
+	Fingerprint string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type VoiceoversRepository struct {
@@ -61,8 +69,8 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 			id, request_id, text_hash, text_preview, language, voice, filename,
 			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
 			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			error, strategy, metadata, fingerprint, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			request_id = excluded.request_id,
 			text_hash = excluded.text_hash,
@@ -83,11 +91,13 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 			error = excluded.error,
 			strategy = excluded.strategy,
 			metadata = excluded.metadata,
+			fingerprint = excluded.fingerprint,
 			updated_at = excluded.updated_at
 	`, rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
 		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
 		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.DurationSeconds,
-		rec.Status, rec.Error, rec.Strategy, rec.Metadata, timeutil.FormatRFC3339(rec.CreatedAt), now)
+		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
+		timeutil.FormatRFC3339(rec.CreatedAt), now)
 
 	return err
 }
@@ -258,13 +268,13 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 			id, request_id, text_hash, text_preview, language, voice, filename,
 			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
 			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			error, strategy, metadata, fingerprint, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
 		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
 		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.DurationSeconds,
-		rec.Status, rec.Error, rec.Strategy, rec.Metadata,
+		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
 		timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt),
 	)
 	return err
@@ -277,6 +287,57 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 // at the use-case boundary.
 func (r *VoiceoversRepository) PreReadByID(ctx context.Context, id string) (*Record, error) {
 	return r.GetByID(ctx, id)
+}
+
+// FindByFingerprint looks up voiceover rows by exact P0.4 fingerprint
+// match (cache-key match for the pre-TTS idempotence gate). Returns
+// the FIRST matching row sorted by created_at DESCENDING (most
+// recent first when replace-mode swaps have produced 2+ rows).
+//
+// P0.4 idempotence contract: callers MUST filter on status before
+// accepting the row as a cache hit (see voiceover.IsReusableStatus —
+// completed | partial | uploaded → reuse; failed | processing |
+// generated → cache MISS). The repository deliberately does NOT
+// filter: callers have different reuse semantics and a hard-coded
+// SQL filter would force a fork.
+//
+// Empty fingerprint → returns (nil, nil) (legacy rows predating
+// migration 113 → cache-MISS, which is correct: their fingerprint
+// column is NULL).
+func (r *VoiceoversRepository) FindByFingerprint(ctx context.Context, fingerprint string) (*Record, error) {
+	if fingerprint == "" {
+		return nil, nil
+	}
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
+			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), COALESCE(fingerprint, ''), created_at, updated_at
+		FROM voiceovers
+		WHERE fingerprint = ?
+		ORDER BY created_at DESC LIMIT 1
+	`, fingerprint)
+
+	var rec Record
+	var createdAt, updatedAt string
+	err := row.Scan(
+		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
+		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink, &rec.FileHash,
+		&rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy, &rec.Metadata,
+		&rec.Fingerprint, &createdAt, &updatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	rec.CreatedAt = timeutil.ParseRFC3339(createdAt)
+	rec.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
+	return &rec, nil
 }
 
 func (r *VoiceoversRepository) GetByDriveFileID(ctx context.Context, fileID string) (*Record, error) {

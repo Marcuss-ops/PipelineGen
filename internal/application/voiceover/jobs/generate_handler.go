@@ -1,9 +1,18 @@
-// Package jobs is the per-job-type handler subpackage for the voiceover
-// capability. It hosts the dedicated handler for the new single
-// voiceover.generate job type (Blocco 4 EXPAND, June 2026): one job
-// per request, dispatched through the typed-port
-// GenerateVoiceoversUseCase (Ports-only dependency per AGENTS.md
+// Package jobs — generate_handler.go (PR-VOICEOVER-PARENT-CHILD-FANOUT, P0.3, June 2026).
+//
+// GenerateJobHandler is the per-job-type handler subpackage for the
+// voiceover capability. It hosts the dedicated handler for the new
+// single voiceover.generate job type (Blocco 4 EXPAND, June 2026):
+// one job per request, dispatched through the typed-port
+// FanoutVoiceoversUseCase (Ports-only dependency per AGENTS.md
 // Pattern 0).
+//
+// P0.3 architectural shift (June 2026): the parent GenerateJobHandler
+// no longer fans out N languages via goroutines inside the use case
+// (executor.Run sem channel pool). Instead it fans out N child jobs
+// (one per language+voice pair, job.TypeVoiceoverGenerateItem) via
+// the canonical job broker. The worker pool's per-job-type
+// Concurrency field regulates sibling concurrency.
 //
 // godlike/07 EXPAND phase — this commit extends the system without
 // removing the legacy voiceover.batch + voiceover.promo registrations
@@ -27,28 +36,35 @@ import (
 	"go.uber.org/zap"
 )
 
+// FanoutUseCase aliases voiceover.Jobs.FanoutVoiceoversUseCase
+// (stage-typed-port: parent handlers reference the fan-out use case
+// from the canonical sub-package; no infrastructure imports leak
+// here).
+type FanoutUseCase = FanoutVoiceoversUseCase
+
 // GenerateJobHandler is the dedicated handler for the
-// voiceover.generate single job type. Holds the
-// *voiceover.GenerateVoiceoversUseCase and dispatches ONLY to its
-// Execute(ctx, cmd) method.
+// voiceover.generate parent job type. Holds the typed-port
+// FanoutUseCase and dispatches ONLY to its
+// Execute(ctx, parentJobID, *cmd) method. NO goroutines are spawned
+// here (PR-VOICEOVER-PARENT-CHILD-FANOUT P0.3 invariant).
 //
 // Why a dedicated handler (vs extending the legacy
-// voiceover.Service.HandleJob switch): the new GenerateVoiceoversUseCase
-// is a typed-port use case (Blocco 2) — its handler must NOT carry the
-// legacy Service's per-type switch semantics. Sibling handlers
+// voiceover.Service.HandleJob switch): the new FanoutVoiceoversUseCase
+// is a typed-port use case — its handler must NOT carry the legacy
+// Service's per-type switch semantics. Sibling handlers
 // (voiceover.batch, voiceover.promo) remain on the legacy path until
 // the CUTOVER step removes them.
 type GenerateJobHandler struct {
-	useCase *voiceover.GenerateVoiceoversUseCase
+	useCase *FanoutVoiceoversUseCase
 	logger  *zap.Logger
 }
 
-// NewGenerateJobHandler constructs the handler. logger is nil-safe
-// via zap.NewNop() (mirrors the voiceover use case constructor
-// convention).
-func NewGenerateJobHandler(useCase *voiceover.GenerateVoiceoversUseCase, logger *zap.Logger) *GenerateJobHandler {
+// NewGenerateJobHandler constructs the handler. useCase is mandatory
+// (panic on nil — fail-fast per AGENTS.md WireUp pattern). Logger is
+// optional (nil-safe via zap.NewNop()).
+func NewGenerateJobHandler(useCase *FanoutVoiceoversUseCase, logger *zap.Logger) *GenerateJobHandler {
 	if useCase == nil {
-		panic("voiceover.Jobs.NewGenerateJobHandler: useCase is required (GenerateVoiceoversUseCase)")
+		panic("voiceover.Jobs.NewGenerateJobHandler: useCase is required (FanoutVoiceoversUseCase)")
 	}
 	if logger == nil {
 		logger = zap.NewNop()
@@ -60,10 +76,12 @@ func NewGenerateJobHandler(useCase *voiceover.GenerateVoiceoversUseCase, logger 
 }
 
 // Register binds the handler to the canonical jobs.Service dispatch
-// for the voiceover.generate job type. The composition root owns
-// WHEN this is called (post-bundle construction, pre-Freeze) so
-// the dependency injection of Service + UseCase is centralised in
-// internal/app/build_bundles_voiceover.go.
+// for the voiceover.generate parent job type.
+//
+// Composition root owns WHEN this is called (post-bundle construction,
+// pre-Freeze). Dep injection of Service + UseCase is centralised in
+// internal/app/build_bundles_voiceover.go (B-2 BACKFILL) and the
+// late-bindings block of internal/app/composition.go.
 //
 // Godlike/07: registering alongside the legacy voiceover.batch +
 // voiceover.promo handlers is the EXPAND shape — no removal. Both
@@ -83,27 +101,23 @@ func (h *GenerateJobHandler) Register(jobsSvc *appjobs.Service) {
 		zap.String("job_type", appjobs.TypeVoiceoverGenerate))
 }
 
-// HandleJob processes a voiceover.generate job from the queue.
+// HandleJob processes a voiceover.generate parent job from the queue.
 //
-// Dispatch contract (per the EXPAND step scope): HandleJob dispatches
-// ONLY to GenerateVoiceoversUseCase.Execute — no business logic
-// augments the use case. Per-language error reporting flows back
-// through Execute's VoiceoverItemResult.StatusFailed entries, NOT
-// via the (map, error) return. The dispatcher stores the resultMap
-// in job.Result JSON for downstream observability.
-//
-// Error mapping:
+// P0.3 dispatch contract:
 //   - json.Unmarshal failure → (nil, err): dispatcher marks job FAILED.
-//   - Execute cross-cutting failure (validate, dest resolve,
-//     executor setup) → (nil, err): dispatcher marks job FAILED.
-//   - Execute partial failure → (resultMap, nil): resultMap.PerLanguage
-//     carries per-item status; resultMap.OK=false so callers correlate
-//     "0..N items failed" without raising a job-level error.
+//   - cmd.Validate failure → (resultMap, err): dispatcher marks job FAILED.
+//   - Fanout partial enqueue failure → (resultMap, err): dispatcher
+//     marks job FAILED (godlike/07 — partial fan-out = parent failure,
+//     NO silent success). The resultMap still carries the per-language
+//     status so operators see which siblings enqueued + which failed.
+//   - Fanout full enqueue success → (resultMap, nil): dispatcher
+//     marks job SUCCEEDED. Commit 2's aggregator then RE-finalises
+//     the parent based on outbox events from the children.
 //
 // Progress: tools.Progress is called once at start (5%) and once at
-// end (100%). The per-language progress + parallelism wiring lives in
-// Blocco 3 (executor.Run accepts a ProgressFunc but the use case
-// does not yet wire one — Block 7 followup).
+// end (100%). Per-child progress wiring lives in the new child
+// handler (GenerateItemJobHandler) — the parent no longer iterates
+// languages in-process.
 func (h *GenerateJobHandler) HandleJob(
 	ctx context.Context,
 	j *appjobs.Job,
@@ -113,7 +127,7 @@ func (h *GenerateJobHandler) HandleJob(
 		zap.String("job_id", j.ID))
 
 	if h.hasProgress(tools) {
-		tools.Progress(5, "starting voiceover.generate execution")
+		tools.Progress(5, "starting voiceover.generate fan-out")
 	}
 
 	var cmd voiceover.GenerateVoiceoversCommand
@@ -121,73 +135,65 @@ func (h *GenerateJobHandler) HandleJob(
 		return nil, fmt.Errorf("voiceover.generate: unmarshal payload: %w", err)
 	}
 
-	res, err := h.useCase.Execute(ctx, &cmd)
+	res, err := h.useCase.Execute(ctx, j.ID, &cmd)
 	if err != nil {
-		h.logger.Error("voiceover.generate cross-cutting failure",
+		h.logger.Error("voiceover.generate fan-out failure",
 			zap.String("job_id", j.ID),
+			zap.Int("enqueued", res.EnqueuedCount),
+			zap.Int("failed_enqueue", res.FailedEnqueueCount),
 			zap.Error(err))
-		return nil, fmt.Errorf("voiceover.generate: execute: %w", err)
+		if h.hasProgress(tools) {
+			tools.Progress(100, "voiceover.generate fan-out failed")
+		}
+		// Surface the partial-success result map so operators can
+		// correlate which siblings enqueued + which failed. The
+		// dispatcher still marks the parent job FAILED because err != nil.
+		return toFanoutResultMap(res, j.ID), fmt.Errorf("voiceover.generate: fanout: %w", err)
 	}
 
 	if h.hasProgress(tools) {
-		tools.Progress(100, "voiceover.generate completed")
+		tools.Progress(100, "voiceover.generate fan-out complete")
 	}
 
-	// Per-item status failures surface in res.PerLanguage (with
-	// res.OK=false). We return (resultMap, nil) so the dispatcher
-	// marks the job SUCCEEDED — operators correlate per-item errors
-	// via result.FailedCount and job.Result JSON payload.
-	return toResultMap(res), nil
+	// Full enqueue success: dispatcher marks parent SUCCEEDED. The
+	// Commit 2 aggregator will later re-finalise the parent status
+	// based on outbox events emitted by each child (SUCCEEDED +
+	// (success_count, failed_count, total) for completed / partial; or
+	// FAILED if all children failed).
+	return toFanoutResultMap(res, j.ID), nil
 }
 
 // hasProgress is the nil-safe guard for the JobTools Progress callback.
-// Both tools and its Progress field may be nil depending on the
-// dispatcher surface (e.g. tests + history-replay code paths).
 func (h *GenerateJobHandler) hasProgress(tools *appjobs.JobTools) bool {
 	return tools != nil && tools.Progress != nil
 }
 
-// toResultMap serialises a GenerateVoiceoversResult into the
-// map[string]any shape that the jobs.Dispatcher writes into
-// job.Result JSON. Field names mirror the GenerateVoiceoversResult
-// struct's JSON tags so a downstream consumer can unmarshal it back
-// into a typed result for ops dashboards.
-func toResultMap(res *voiceover.GenerateVoiceoversResult) map[string]any {
+// toFanoutResultMap serialises a FanoutResult into the
+// map[string]any shape the jobs.Dispatcher writes into job.Result
+// JSON. Field names mirror the FanoutResult struct's JSON tags so
+// the Commit 2 aggregator can unmarshal a parent job's result back
+// into a typed FanoutResult.
+func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 	if res == nil {
-		return nil
+		return map[string]any{
+			"ok":           false,
+			"parent_job_id": parentJobID,
+			"enqueued_count": 0,
+		}
 	}
-	perLang := make([]map[string]any, 0, len(res.PerLanguage))
-	for _, item := range res.PerLanguage {
-		perLang = append(perLang, map[string]any{
-			"id":            item.ID,
-			"language":      item.Language,
-			"voice":         item.Voice,
-			"status":        item.Status,
-			"error":         item.Error,
-			"filename":      item.Filename,
-			"local_path":    item.LocalPath,
-			"cleaned_path":  item.CleanedPath,
-			"drive_file_id": item.DriveFileID,
-			"drive_link":    item.DriveLink,
-			"file_hash":     item.FileHash,
-		})
+	pid := res.ParentJobID
+	if pid == "" {
+		pid = parentJobID
 	}
 	m := map[string]any{
-		"ok":            res.OK,
-		"request_id":    res.RequestID,
-		"total_outputs": res.TotalOutputs,
-		"success_count": res.SuccessCount,
-		"failed_count":  res.FailedCount,
-		"per_language":  perLang,
-	}
-	if res.Error != "" {
-		m["error"] = res.Error
-	}
-	if !res.StartedAt.IsZero() {
-		m["started_at"] = res.StartedAt.UTC().Format("2006-01-02T15:04:05.000000000Z")
-	}
-	if !res.CompletedAt.IsZero() {
-		m["completed_at"] = res.CompletedAt.UTC().Format("2006-01-02T15:04:05.000000000Z")
+		"ok":                   res.OK,
+		"parent_job_id":        pid,
+		"request_id":           res.RequestID,
+		"total_outputs":        res.TotalOutputs,
+		"enqueued_count":       res.EnqueuedCount,
+		"failed_enqueue_count": res.FailedEnqueueCount,
+		"child_job_ids":        res.ChildJobIDs,
+		"per_language":         res.PerLanguage,
 	}
 	return m
 }

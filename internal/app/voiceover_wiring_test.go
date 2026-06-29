@@ -69,6 +69,17 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 
 	require.True(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerate),
 		"voiceover.generate handler must be registered after Register (Catena A P0 wiring contract)")
+
+	// P0.3 (June 2026): per-language child job type (voiceover.generate_item)
+	// also requires registration after the parent fan-out schedules N
+	// children on the broker. Mirror the parent's HasHandler gate so a
+	// future refactor that drops the child Register call is caught at
+	// boot smoke rather than at first runtime job dispatch.
+	require.False(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerateItem),
+		"voiceover.generate_item handler is unregistered at boot — P0.3 parent-child fan-out wiring is missing")
+	jobsBundle.Service.RegisterHandler(job.TypeVoiceoverGenerateItem, stubVoiceoverGenerateHandler)
+	require.True(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerateItem),
+		"voiceover.generate_item handler must be registered after Register (P0.3 wiring contract)")
 }
 
 // stubVoiceoverGenerateHandler is a minimal closure that satisfies the
