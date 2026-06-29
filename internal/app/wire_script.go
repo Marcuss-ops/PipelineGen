@@ -24,6 +24,19 @@
 // MediaCurator now depends on GenerateOneUseCase, which requires normCfg /
 // sourceReg / ppReg to already exist. The handler receives a fully-populated
 // mediaCurator instead of nil.
+//
+// FASE 2.A PR2 (June 2026): source-resolver adapters + curation-layer
+// adapter extracted to wire_script_sources.go +
+// wire_script_curation.go. Wire_script.go stays purely orchestration.
+//
+// FASE 2.A PR3 (June 2026): post-processor registration block extracted
+// to wire_script_postprocess.go; infrastructure
+// adapter types (driveFolderAdapterImpl, docCreatorImpl) +
+// composition validators (validateScriptGenerateWiring,
+// validateRequiredProcessors, requiredProcessorNames) extracted to
+// wire_script_adapters.go. wireScriptFlow is now a pure-routing
+// orchestrator (wiring → use cases → job handler → handler →
+// module registration) with no inline post-processor loop.
 
 package app
 
@@ -46,13 +59,9 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -63,6 +72,15 @@ import (
 // Returns an error if module registration fails on duplicate-name or
 // frozen-registry (Registries-and-SSOT §"Uniqueness" — composition
 // fails closed on duplicate module names, propagated up to WireRegistry).
+//
+// FASE 2.A PR3 (June 2026): after construction of ppReg the
+// orchestrator delegates all canonical postprocessor registrations
+// (persistence / document / images / voiceover / entities / metadata /
+// clip_bindings / stock_association) to
+// registerScriptPostProcessors in wire_script_postprocess.go. The
+// orchestrator owns ppReg construction + ppReg.Freeze() +
+// post-freeze required-processors validation; the registration
+// cluster lives in the dedicated helper.
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
 	// Phase 2 activation (June 2026) — ImageService is now OPTIONAL:
 	// text-only script generation no longer requires ImageService to be
@@ -125,12 +143,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		MetadataModel: metaModel,
 	}
 
-	// ── Drive folder client adapter ────────────────────────────────────
+	// ── Drive folder client adapter (impl in wire_script_adapters.go) ─
 	driveFolderClient := &driveFolderAdapterImpl{
 		uploader: root.Drive.DriveUploader,
 	}
 
-	// ── Document creator adapter ───────────────────────────────────────
+	// ── Document creator adapter (impl in wire_script_adapters.go) ───
 	documentCreator := &docCreatorImpl{
 		docClient:     root.Drive.DocClient,
 		log:           log,
@@ -152,9 +170,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		gen, usecase.NewMemoryCacheAdapter(memorySvc), log,
 	)
 
-	// ── Unified generation pipeline (PR8, June 2026) ───────────────────
+	// ── Unified generation pipeline (PR8, June 2026; PR3 orchestration) ─
 	// Constructed BEFORE the handler so mediaCurator can consume oneUC.
-	//   SourceRegistry (4 resolvers) → PostProcessorRegistry →
+	//   SourceRegistry (5 resolvers) → PostProcessorRegistry →
 	//   GenerateOneUseCase → GenerateManyUseCase → GenerateJobHandler
 	// Registered for script.generate — replaces the deleted
 	// PipelineUseCase.RegisterJobs block removed in PR7.
@@ -201,7 +219,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Search resolver: wired via Qdrant SemanticSearchPort directly,
 	// bypassing the removed realtime package. SourceSearch sources
-	// resolve through Qdrant semantic search.
+	// resolve through Qdrant semantic search. The
+	// qdrantSemanticSearchPort adapter lives in wire_script_sources.go.
 	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil && clipSourceBuilder != nil {
 		searchPort := &qdrantSemanticSearchPort{
 			searcher:   root.Process.QdrantSearcher,
@@ -222,131 +241,31 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Wire ClipSearchPort when Qdrant is enabled (PJ-CURATE-1, June 2026).
 	// Reuses ollamaEmbedder (constructed above for SemanticSearchPort).
+	// clipSearchPortAdapter (in wire_script_sources.go) bridges
+	// scriptports.ClipSearchPort → usecase.ClipSearchPort with
+	// AssetID → ClipID field-mapping.
 	var clipSearchPort scriptports.ClipSearchPort
 	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil {
 		clipSearchPort = qdrant.NewClipSearchAdapter(root.Process.QdrantSearcher, ollamaEmbedder, "text", log)
 		log.Info("ClipSearchPort wired (Qdrant + Ollama embedder)")
 	}
 	if curateResolver != nil && clipSearchPort != nil {
-		// clipSearchPort is the canonical ports.ClipSearchPort built by
-		// qdrant.NewClipSearchAdapter (returns []ports.ClipSearchHit).
-		// curateResolver.SetClipSearchPort wants the typed usecase.ClipSearchPort
-		// whose SearchClips returns []scriptpkg.SearchResultItem. The
-		// struct-field bridge at the bottom of this file maps
-		// AssetID → ClipID + threading Name/Score/Source. Without this
-		// adapter the curate resolver sees a wrong-typed port and the
-		// build breaks with the "wrong type for method SearchClips"
-		// mismatch.
 		curateResolver.SetClipSearchPort(&clipSearchPortAdapter{port: clipSearchPort})
 	}
 
-	// PostProcessorRegistry: individually-testable postprocessors
-	// registered at composition time and frozen before use.
-	// Replaces the monolithic Pipeline.Run.
+	// PostProcessorRegistry: post-processor registrations moved to
+	// wire_script_postprocess.go::registerScriptPostProcessors (PR3,
+	// June 2026). The orchestrator owns ppReg construction +
+	// freeze; the registration cluster lives in the dedicated
+	// helper so wireScriptFlow stays a pure-routing shape.
 	ppReg := adapters.NewPostProcessorRegistry(log)
 
-	// Entities + Metadata: deferred — PostGenFunc callback not wired.
-	// When a plan requests these, the registry warns "not registered"
-	// and skips cleanly. PR 8 wires the callback.
-
-	// Document processor.
-	var genDocsSvc *usecase.DocumentsService
-	if root.Drive.DocClient != nil {
-		genDocsSvc = usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
-		if !ppReg.Register(adapters.NewDocumentProcessor(genDocsSvc, nil)) {
-			return fmt.Errorf("wireScriptFlow: failed to register document processor (composition bug)")
-		}
-	}
-
-	// Persistence processor (PR 5: now the single persistence owner;
-	// engine no longer writes to SQLite. Constructor takes the
-	// logger for idempotency-hit / replay diagnostics).
-	if !ppReg.Register(adapters.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
-		return fmt.Errorf("wireScriptFlow: failed to register persistence processor (composition bug or duplicate name)")
-	}
-
-	// Image processor — adapted from *imgservice.Service to usecase.ImageGenService.
-	if root.Domains.ImageService != nil {
-		imgAdapter := &imageGenSvcAdapter{svc: root.Domains.ImageService}
-		if !ppReg.Register(adapters.NewImageProcessor(imgAdapter, log)) {
-			return fmt.Errorf("wireScriptFlow: failed to register image processor")
-		}
-	}
-
-	// Voiceover processor — direct inject *voiceover.Service into the
-	// scripts.VoiceoverService port. Step 9 / B-3 CUTOVER (June 2026)
-	// removes the previous voiceoverSvcAdapter seam: *voiceover.Service's
-	// Generate and GenerateWithDestination methods already satisfy the
-	// typed VoiceoverService interface structurally, so no wrapper is
-	// needed. The composing nil-check (root.Domains.VoiceoverService != nil)
-	// was historically preserved by the adapter's a == nil || a.svc == nil
-	// guards; direct injection keeps the same nil-safety contract because
-	// the nil-check precedes the NewVoiceoverProcessor call here. The
-	// typed-port contract is locked at compile time by
-	// `var _ adapters.VoiceoverService = (*voiceover.Service)(nil)` in
-	// internal/application/scripts/adapters/processor_voiceover.go
-	// (catches signature drift at build time, not runtime).
-	if root.Domains.VoiceoverService != nil {
-		if !ppReg.Register(adapters.NewVoiceoverProcessor(root.Domains.VoiceoverService, log)) {
-			return fmt.Errorf("wireScriptFlow: failed to register voiceover processor")
-		}
-	}
-
-	// PR 3 (June 2026): Entities + Metadata processors, now both
-	// ProcessorRequired per the spec. Adapters are nil-tolerant at
-	// runtime (graceful-degradation) and the runtime preflight will
-	// fail-fast when a plan requests these processors without a
-	// real service wired through the composition root. The
-	// composition-time validateRequiredProcessors call below
-	// confirms both names are registered; the runtime preflight
-	// confirms they succeed for any plan that requests them.
-	//
-	// Both adapters take nil-tolerant interfaces, so composition
-	// succeeds even when no real backend is wired in a test
-	// fixture. Production deploys should provide a real
-	// EntityScriptExtractor and ollama.Generator via root points
-	// (future PR; tracked separately).
-	entityAdapter := adapters.NewEntityExtractionAdapter(nil)
-	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
-		return fmt.Errorf("wireScriptFlow: failed to register entities processor")
-	}
-	metadataAdapter := adapters.NewMetadataGenerationAdapter(nil, metaModel)
-	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
-		return fmt.Errorf("wireScriptFlow: failed to register metadata processor")
-	}
-
-	// PR 7 (June 2026): register ClipBindingsProcessor so the
-	// postprocessor walk produces ONE canonical set of scene-clip
-	// bindings consumed by both the Google Doc builder (via
-	// DocumentProcessor) AND the JSON response writer (via
-	// result.Output.SpecScene.Scenes). BestEffort policy means a
-	// missing-registered observation is a warning, not a hard
-	// fail; the processor is a no-op when plan.ClipEvidence is
-	// nil/empty so text-only paths are unaffected. The previous
-	// pre-PR-7 registration was dropped because the processor's
-	// signature `(ctx, plan, model, *PostProcessArtifact)` drifted
-	// from the canonical PostProcessor interface and could not
-	// satisfy `ppReg.Register`. The new signature is
-	// `(ctx, plan, input ProcessInput) (*PostProcessResult, error)`
-	// and the processor is the canonical single-owned binding assigner.
-	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
-		return fmt.Errorf("wireScriptFlow: failed to register clip_bindings processor (composition bug or duplicate name)")
-	}
-
-	// Stock association processor — wraps Qdrant searcher for
-	// per-scene vector search over stock-indexed assets. BestEffort
-	// policy: a missing or failing stock search does not block the
-	// pipeline. Falls back to the scene's Clip.DriveLink when no
-	// stock match is found.
-	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
-		if ollamaClient := gen.GetClient(); ollamaClient != nil {
-			embedder := qdrant.NewTextEmbedderAdapter(ollamaClient)
-			stockSearchPort := qdrant.NewStockSearchAdapter(root.Process.QdrantSearcher, embedder, "text", log)
-			if !ppReg.Register(adapters.NewStockAssociationProcessor(stockSearchPort, log)) {
-				return fmt.Errorf("wireScriptFlow: failed to register stock_association processor (composition bug or duplicate name)")
-			}
-			log.Info("StockAssociationProcessor wired (Qdrant + Ollama embedder)")
-		}
+	// Register all canonical postprocessors on ppReg (persistence,
+	// document, images, voiceover, entities, metadata, clip_bindings,
+	// stock_association). On any Register fail-fast error, wrap with
+	// the wireScriptFlow: prefix for fail-closed composition.
+	if err := registerScriptPostProcessors(ppReg, root, cfg, log, scriptsRepoAdapter, metaModel); err != nil {
+		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 
 	// Freeze the source registry — no more resolvers after composition.
@@ -354,12 +273,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	ppReg.Freeze()
 
 	// PR 2 (June 2026): post-freeze invariant — every canonical
-	// ProcessorRequired name MUST be registered. Names that the
-	// composition attempted to register but couldn't (because the
-	// dependency was nil, e.g. DocClient missing) are caught here.
-	// Composition fails closed; the operator sees a clear error
-	// instead of runtime panics on the first plan that requested
-	// the missing processor.
+	// ProcessorRequired name MUST be registered. The validator itself
+	// moved to wire_script_adapters.go (PR3). Composition fails
+	// closed; the operator sees a clear error instead of runtime
+	// panics on the first plan that requested the missing processor.
 	if err := validateRequiredProcessors(ppReg, requiredProcessorNames); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
@@ -417,10 +334,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	log.Info("registered script.generate job handler (unified pipeline, PR8)")
 
 	// Issue 7 / P1 (June 2026): post-registration fail-fast on the
-	// 3 wiring invariants. Missing any of (a) Registry / (b) Broker
-	// / (c) worker-capable is a composition bug that must abort
-	// startup so the server does not come up with a non-functional
-	// pipeline.
+	// 3 wiring invariants. The validator moved to
+	// wire_script_adapters.go (PR3); the orchestrator keeps the
+	// call site.
 	if err := validateScriptGenerateWiring(root, log); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
@@ -433,20 +349,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// Issue 9 / P2 (June 2026): construct a *jobsapi.JobsHandler
 	// so the script route /api/script/jobs/:job_id/full can
 	// delegate to JobsHandler.GetFull via the JobFullStatus port.
-	// The same constructor pattern is used in registerJobs
-	// (registry_public_modules.go); we duplicate the pointer here
-	// so the script handler has a stable reference WITHOUT a
-	// cross-module import (the script module consumes the
-	// handler through a narrow port interface, not via a
-	// direct import of internal/api/jobs). Admin-token gate is
-	// preserved because the script route group runs
-	// RequireAdminToken(h) before this handler — see
-	// internal/api/script/handler_flow.go::GetJobFullStatus.
 	jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
 
 	// PR-FIX (June 2026): lightweight clip-name searcher for
-	// GET /script/clips/search?q= discovery endpoint. Bridges
-	// the SQLite ClipsRepository → scriptapi.ClipSearcher.
+	// GET /script/clips/search?q= discovery endpoint. The
+	// clipsNameSearchAdapter impl lives in wire_script_sources.go.
 	var clipsSearcher scriptapi.ClipSearcher
 	if root.Repos.ClipsRepo != nil {
 		clipsSearcher = &clipsNameSearchAdapter{repo: root.Repos.ClipsRepo}
@@ -458,28 +365,17 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		Section:       sectionRegen,
 		CacheEviction: cacheEvictionUC,
 		Image:         root.Domains.ImageService,
-		// Wave 16 (June 2026): ScriptFlowDeps.Realtime + Association are
-		// typed ports — `usecase.RealtimeSearchService` and
-		// `usecase.AssocSearchService`. DomainBundle.RealtimeSearch +
-		// AssocService fields (typed in Wave 15 Onda 3) feed them
-		// directly — typed-to-typed assignment, no auto-bridge.
-		Realtime:              root.Domains.RealtimeSearch,
-		Association:           root.Domains.AssocService,
-		Voiceover:             root.Domains.VoiceoverService,
-		AssetTree:             root.Search.AssetTreeService,
-		ClipSourceBuilder:     clipSourceBuilder,
-		MediaCurator:          mediaCurator,
-		Harvest:               harvestSvc,
-		ScriptsRepo:           scriptsRepoAdapter,
-		Memory:                memorySvc,
-		Jobs:                  root.Jobs.Facade,
-		// Issue 9 / P2 (June 2026): narrow port for the
-		// /api/script/jobs/:job_id/full delegator. The
-		// JobsHandler.GetFull method is the canonical
-		// implementation; the script route forwards to
-		// it via the port (no logic duplication, no
-		// cross-module import).
-		JobFullStatus:         jobsHandler,
+		Realtime:      root.Domains.RealtimeSearch,
+		Association:   root.Domains.AssocService,
+		Voiceover:     root.Domains.VoiceoverService,
+		AssetTree:     root.Search.AssetTreeService,
+		ClipSourceBuilder: clipSourceBuilder,
+		MediaCurator:  mediaCurator,
+		Harvest:       harvestSvc,
+		ScriptsRepo:   scriptsRepoAdapter,
+		Memory:        memorySvc,
+		Jobs:          root.Jobs.Facade,
+		JobFullStatus: jobsHandler,
 		// Issue 4 (June 2026, P1): wire the canonical job-type Registry
 		// so EnqueueGenerationJob sources MaxRetries from
 		// registry.DefaultMaxRetries(script.generate) instead of the
@@ -504,195 +400,3 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	)
 	return tryRegisterModule(registry, log, mod)
 }
-
-// ── Composition validation: script.generate wiring must be complete ───
-
-// validateScriptGenerateWiring enforces the 3 canonical invariants
-// for `script.generate` to be considered ready for production
-// traffic. Issues 7 / P1 (June 2026): the pre-Issue-7 wireScriptFlow
-// only log.Warn'd on missing broker / registration failure, which
-// silently let the server come up without a working
-// script.generate handler. Composition must fail closed so the
-// operator sees a clear restart-required message instead of a
-// runtime regression.
-//
-// The 3 invariants:
-//
-//	(a) Registry has the type. Looks up appjobs.Compose().IsRegistered
-//	    for script.generate -- the canonical job-type registry built
-//	    in module_media.go::BuildJobsBundle.
-//
-//	(b) Broker has the handler. The handler-registration itself is
-//	    the proof: RegisterJobs just successfully pushed the handler
-//	    into the broker. A nil Jobs service at this point means the
-//	    gate at line ~N (above) should have already tripped -- the
-//	    explicit re-check here is defense in depth.
-//
-//	(c) At least one worker in the cluster is configured to claim
-//	    script.generate jobs. The cluster may advertise the
-//	    worker-types list via root.Jobs.WorkerTypes (forward-looking
-//	    field; nil-tolerant while clusters in-flight don't expose
-//	    it). When the list is exposed and script.generate is missing,
-//	    the validator surfaces it; when the list is nil (legacy /
-//	    cluster not yet exposing WorkerTypes), the check is skipped
-//	    and operators must rely on the canonical worker.ExportTypes
-//	    audit at runtime.
-//
-// Returns the FIRST failing invariant as a typed wireScriptFlow
-// error so the composition root can wrap it consistently with the
-// other composition validators (validateRequiredProcessors,
-// etc.). Tests pin the fail-fast contract in
-// internal/application/scripts/jobs/generation_job_test.go.
-func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
-	// (a) Registry has the type. Direct query against the canonical
-	//     composition-time registry. The registry is frozen after
-	//     Compose(); this query is branch-free.
-	reg := appjobs.Compose()
-	if !reg.IsRegistered(jobpkg.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", jobpkg.TypeScriptGenerate)
-	}
-
-	// (b) Broker has the handler. The RegisterJobs success above is
-	//     the primary proof; this explicit re-check via the canonical
-	//     broker query Service.HasHandler is the defence-in-depth
-	//     invariant for the composition root. If a future refactor
-	//     decouples RegisterJobs from the call site (or reorders the
-	//     two calls), this check still surfaces the "no handler for
-	//     script.generate" regression.
-	if root == nil || root.Jobs == nil || root.Jobs.Service == nil {
-		return fmt.Errorf("script.generate wiring (b): Jobs service is nil; the gate above should have tripped")
-	}
-	if !root.Jobs.Service.HasHandler(jobpkg.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", jobpkg.TypeScriptGenerate)
-	}
-
-	// (c) At least one worker in the cluster is configured to claim
-	//     script.generate. Forward-looking TODO: when JobsBundle
-	//     exposes a WorkerTypes field, uncomment the check below.
-	//     Until then, the operator must rely on Worker.ExportTypes
-	//     runtime audit.
-	if log != nil {
-		log.Info("validateScriptGenerateWiring: WorkerTypes not exposed yet; (c) check skipped (forward-looking TODO)",
-			zap.String("job_type", jobpkg.TypeScriptGenerate))
-	}
-
-	if log != nil {
-		log.Info("validateScriptGenerateWiring: script.generate wiring complete",
-			zap.String("job_type", jobpkg.TypeScriptGenerate))
-	}
-	return nil
-}
-
-// ── Composition validation: required processors MUST register ────────
-
-// requiredProcessorNames is the canonical list of postprocessor names
-// that MUST be registered for a script pipeline to be considered
-// production-ready. Composition aborts if any name below is missing.
-//
-// PR 2 (June 2026): the list mirrors the static ProcessorRequired
-// classification declared by each concrete processor. Persistence
-// is the single owner of script-table writes (PR 5); Document is
-// the canonical doc-creation deliverable. Images / Voiceover /
-// Entities / Metadata are ProcessorBestEffort (spec: "configurabile"
-// or "best_effort or required based on payload") and not part of
-// this list — if they are present at runtime, Run warns; if they
-// are absent at runtime, Run warns. Either way, composition does
-// NOT fail on them.
-var requiredProcessorNames = []string{
-	"persistence",
-	"document",
-	// PR 3 (June 2026): Entities and Metadata are now
-	// ProcessorRequired per the user spec. The canonical
-	// Composition-time validator fails closed if they are
-	// not registered; the runtime preflight fails closed if
-	// a plan requests them and the registry has no adapter.
-	"entities",
-	"metadata",
-}
-
-// validateRequiredProcessors checks the post-freeze registry for
-// every required processor name. Composition fails-closed: if any
-// required name is missing, returns a typed error so the operator
-// sees a clear restart-required message instead of silent runtime
-// panics on the first plan that requested the missing processor.
-//
-// Returns a *scriptpkg.PlanInvalidError when one or more required
-// processors are missing from the registry. Caller is the
-// composition root, which wraps this with a context string.
-//
-// PR 2 (June 2026): gate that closes the "non-canonical WriteScript
-// to dragnet" gap left by the previous partial-registration pattern
-// (where composition would silently skip a Register call when the
-// underlying dep was nil, then runtime would silently skip the
-// postprocessor — leaving the script row unwritten).
-func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required []string) *scriptpkg.PlanInvalidError {
-	if ppReg == nil {
-		return &scriptpkg.PlanInvalidError{
-			ItemID:  "wireScriptFlow",
-			Details: []string{"preflight: postprocessor registry is nil"},
-		}
-	}
-	if !ppReg.IsFrozen() {
-		return &scriptpkg.PlanInvalidError{
-			ItemID:  "wireScriptFlow",
-			Details: []string{"preflight: postprocessor registry must be frozen before required-processors validation"},
-		}
-	}
-	var missing []string
-	for _, name := range required {
-		if !ppReg.Registered(name) {
-			missing = append(missing, name)
-		} else if ppReg.LookupPolicy(name) != adapters.ProcessorRequired {
-			// Defensive: composition-side invariant. A name in the
-			// required list MUST have the ProcessorRequired
-			// classification. If a future PR flips a processor's
-			// policy to BestEffort, this check surfaces the
-			// dependency drift loudly — the operator MUST update
-			// requiredProcessorNames to match.
-			missing = append(missing, name+" (registered with non-required policy)")
-		}
-	}
-	if len(missing) == 0 {
-		return nil
-	}
-	return &scriptpkg.PlanInvalidError{
-		ItemID:  "wireScriptFlow",
-		Details: []string{"preflight: required postprocessor(s) not registered at composition: " + strings.Join(missing, ", ")},
-	}
-}// (FASE 2.A PR2 — the source + curation adapter types moved out of
-// this file. See wire_script_sources.go (qdrantSemanticSearchPort,
-// clipSearchPortAdapter, clipsNameSearchAdapter, qdrantPayloadStr)
-// and wire_script_curation.go (imageGenSvcAdapter). The remaining
-// adapters below are infrastructure-bridging types specific to
-// the script-flow composition path.)
-
-// driveFolderAdapterImpl wraps *drive.Uploader as scriptapi.DriveFolderClient.
-type driveFolderAdapterImpl struct {
-	uploader *drive.Uploader
-}
-
-func (a *driveFolderAdapterImpl) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	if a == nil || a.uploader == nil {
-		return "", nil
-	}
-	return a.uploader.GetOrCreateFolder(ctx, name, parentID)
-}
-
-// docCreatorImpl wraps drive.DocClient as scriptapi.DocumentCreator.
-type docCreatorImpl struct {
-	docClient     drive.DocClient
-	log           *zap.Logger
-	driveFolderID string
-}
-
-func (d *docCreatorImpl) CreateDoc(ctx context.Context, title, content, folderID string) (string, string) {
-	if d == nil || d.docClient == nil {
-		return "", ""
-	}
-	docsSvc := usecase.NewDocumentsService(d.docClient, d.log, d.driveFolderID)
-	resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
-		return input, nil // raw ID assumed (caller resolved beforehand)
-	}
-	return docsSvc.CreateDoc(ctx, title, content, resolveFolder, folderID)
-}
-
