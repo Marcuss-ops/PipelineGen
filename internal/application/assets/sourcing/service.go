@@ -4,11 +4,13 @@
 // the legacy public methods (RegisterFromYouTube, BatchRegisterFromYouTube,
 // SyncDriveFolder, LocalToDrive) to the corresponding sub-package service.
 //
-// P0-1 / commit 4 (this commit): LocalImporter extracted (LocalToDrive now
-// delegates). Shared `jobs JobsPort` + `scanner FileScannerPort` fields
-// remain on the façade as proxy for the localimport sub-service's deps
-// (commit 5 lifts them to the composition root for a 5-arg façade ctor
-// with all sub-services + log).
+// P0-1 / commit 5 (this final commit): façade cleaned up. NewService takes
+// 5 args (4 sub-services + Logger; was 14 historically, 4 after commit 1,
+// 5 after commit 2, 6 after commit 3, 7 after commit 4). The proxy
+// `jobs` and `scanner` fields are dropped — they were only consumed by
+// LocalToDrive (now delegated to localimport) and SyncDriveFolder (now
+// delegated to drivesync). The composition root injects jobs + scanner
+// DIRECTLY into localimport.NewService / drivesync.NewService instead.
 //
 // Per AGENTS.md Pattern 8 (API package: thin transport only) the façade
 // has no business logic; delegation is one line per method.
@@ -19,11 +21,9 @@ import (
 	"fmt"
 )
 
-// Service is the SourcingService façade. After P0-1 / commit 4 the ctor
-// takes 7 args: 4 sub-services + JobsPort + FileScannerPort (proxy for
-// localimport) + Logger. Commit 5 collapses to 5 args (no jobs/scanner
-// in the façade; composition root injects them directly into
-// localimport.NewService).
+// Service is the SourcingService façade. After P0-1 / commit 5 the ctor
+// takes 5 args — 4 sub-services + Logger. The god Service's 14-dep ctor
+// is now fully distributed across 4 typed use-case packages.
 type Service struct {
 	// P0-1 / commit 1: YouTube sub-service.
 	youtube YouTubeRegistrar
@@ -34,40 +34,29 @@ type Service struct {
 	// P0-1 / commit 3: DriveFolderSynchronizer sub-service.
 	drivesync DriveFolderSynchronizer
 
-	// P0-1 / commit 4 (this commit): LocalImporter sub-service.
+	// P0-1 / commit 4: LocalImporter sub-service.
 	localimport LocalImporter
-
-	// Proxy ports for localimport's deps (jobs + scanner). Commit 5
-	// drops these from the façade; jobs/scanner move to the
-	// composition root where they're injected directly into
-	// localimport.NewService.
-	jobs    JobsPort
-	scanner FileScannerPort
 
 	log Logger
 }
 
-// NewService creates a SourcingService façade. After commit 4 NewService
-// takes 7 args: youtube + batch + drivesync + localimport sub-services,
-// JobsPort + FileScannerPort (still needed as proxy until commit 5),
-// Logger.
+// NewService creates a SourcingService façade. After commit 5 NewService
+// takes 5 args: youtube + batch + drivesync + localimport sub-services +
+// Logger. JobsPort + FileScannerPort live with the sub-packages that
+// need them (drivesync + localimport) and are no longer proxied here.
 func NewService(
 	yt YouTubeRegistrar,
 	batch BatchRegistrar,
 	drivesync DriveFolderSynchronizer,
 	localimport LocalImporter,
-	jobs JobsPort,
-	scanner FileScannerPort,
 	log Logger,
 ) *Service {
 	return &Service{
-		youtube:    yt,
-		batch:      batch,
-		drivesync:  drivesync,
+		youtube:     yt,
+		batch:       batch,
+		drivesync:   drivesync,
 		localimport: localimport,
-		jobs:       jobs,
-		scanner:    scanner,
-		log:        log,
+		log:         log,
 	}
 }
 
