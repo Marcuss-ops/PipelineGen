@@ -7,7 +7,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"go.uber.org/zap"
 
@@ -23,7 +22,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) {
 	if jobsSvc == nil {
 		return
 	}
-	jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, s.HandleJob)
+	jobsSvc.RegisterHandler(jobservice.TypeYouTubeClipExtract, ytjobs.NewJobHandler(s, s.log).HandleJob)
 	s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobservice.TypeYouTubeClipExtract))
 
 	// rebuild_search_text needs Clips to be wired so the rebuild can
@@ -69,11 +68,3 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *jobservice.
 	return ytjobs.HandleRebuildSearchTextJob(deps, ctx, j, tools)
 }
 
-// HandleJob processes a YouTube clip extraction job from the job queue.
-// Phase 1b stub: delegates to the extraction capability.
-func (s *Service) HandleJob(ctx context.Context, j *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
-	_ = ctx
-	_ = j
-	_ = tools
-	return nil, fmt.Errorf("youtube: HandleJob not yet wired (Phase 1b) — use extraction capability directly")
-}
