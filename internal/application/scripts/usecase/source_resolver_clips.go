@@ -82,6 +82,9 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		OrderingStrategy:   src.OrderingStrategy,
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
 		MinTranscriptWords: ptrutil.DerefOr(src.MinTranscriptWords, 0),
+		// P0 #3 (June 2026): DriveLink required only when caller
+		// wants document or scene images.
+		RequireDriveLink: resCtx.RequireDriveLink,
 	}
 
 	return buildResolvedClipSource(ctx, r.clipBuilder, src, resolvedClipParams{

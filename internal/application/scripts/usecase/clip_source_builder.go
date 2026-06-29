@@ -70,6 +70,13 @@ type ClipGenerationOptions struct {
 	StyleInstructions  string
 	MinQualityScore    float64
 	MinTranscriptWords int
+	// RequireDriveLink controls whether clips without a Drive link
+	// are excluded from the resolved set. When true (caller wants
+	// document or scene images), clips without DriveLink go into
+	// excludedClips. When false (text-only generation), missing
+	// DriveLink is tolerated.
+	// P0 #3 (June 2026).
+	RequireDriveLink bool
 }
 
 func NewClipSourceBuilder(
@@ -143,8 +150,17 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	clipNames := make([]string, 0, len(uniqueIDs))
 	canonicalIDs := make([]string, 0, len(uniqueIDs))
 	var missingClipIDs []scriptpkg.MissingClipID
+	var excludedClips []scriptpkg.ExcludedClip
 	clipToCanonical := make(map[string]string, len(uniqueIDs))
 	var sourceTextBuilder strings.Builder
+
+	// P0 #3 (June 2026): determine whether DriveLink is required.
+	// When false (text-only generation), clips without Drive links
+	// are still accepted — only transcript + metadata are needed.
+	requireDriveLink := true
+	if opts != nil {
+		requireDriveLink = opts.RequireDriveLink
+	}
 
 	for _, id := range uniqueIDs {
 		clip, err := clipsRepo.GetClip(ctx, id)
@@ -177,6 +193,23 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			})
 			continue
 		}
+
+		// P0 #3: check DriveLink before accepting the clip.
+		// When DriveLink is required and the clip lacks one,
+		// exclude it (but keep metadata for logging).
+		hasDriveLink := clip.DriveLink() != ""
+		if requireDriveLink && !hasDriveLink {
+			excludedClips = append(excludedClips, scriptpkg.ExcludedClip{
+				ClipID: id,
+				Reason: scriptpkg.MissingClipReasonDriveNotFound,
+			})
+			if c.log != nil {
+				c.log.Warn("clip source builder: clip lacks drive link (excluded)",
+					zap.String("clip_id", id))
+			}
+			continue
+		}
+
 		clips = append(clips, clip)
 		canonicalIDs = append(canonicalIDs, id)
 		clipToCanonical[clip.ID] = id
@@ -212,6 +245,11 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		sourceTextBuilder.WriteString("\n")
 	}
 
+	// P0 #3: when DriveLink is required and ALL resolved clips were
+	// excluded (lacked DriveLink), fail with a clear error.
+	if len(clips) == 0 && len(excludedClips) > 0 {
+		return nil, nil, "", fmt.Errorf("clip source builder: all %d resolved clips lack drive links", len(excludedClips))
+	}
 	if len(clips) == 0 {
 		return nil, nil, "", fmt.Errorf("clip source builder: no clips found for the provided IDs")
 	}
@@ -261,6 +299,8 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		Style:      tone,
 	}
 
+	// P0 #3: build DriveLinks from accepted clips only (all have
+	// DriveLink when requireDriveLink is true).
 	clipDriveLinks := make(map[string]string, len(clips))
 	for _, clip := range clips {
 		if link := clip.DriveLink(); link != "" {
@@ -271,11 +311,6 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			clipDriveLinks[canonicalID] = link
 		}
 	}
-	// PR 6: when clips resolved but ALL lack drive links, fail
-	// with a typed error so the caller can surface drivenotfound.
-	if len(clipDriveLinks) == 0 && len(clips) > 0 {
-		return nil, nil, "", fmt.Errorf("clip source builder: all resolved clips lack drive links")
-	}
 
 	// Build pack with clip data.
 	pack := map[string]any{
@@ -283,6 +318,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		"clip_names":       clipNames,
 		"clip_drive_links": clipDriveLinks,
 		"missing_clip_ids": missingClipIDs,
+		"excluded_clips":   excludedClips,
 		"num_clips": func() int {
 			if opts != nil && opts.NumClips > 0 {
 				return opts.NumClips

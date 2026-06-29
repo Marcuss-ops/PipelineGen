@@ -311,6 +311,10 @@ func buildResolutionContext(item scriptpkg.GenerationItemV2) scriptpkg.SourceRes
 		NumClips:      item.Source.NumClips,
 		SegmentWords:  item.ScriptParams.SegmentWords,
 		SegmentTopics: append([]string(nil), item.ScriptParams.SegmentTopics...),
+		// P0 #3 (June 2026): DriveLink is only required when the
+		// caller wants document or scene images. For text-only
+		// generation, clips without Drive links are still usable.
+		RequireDriveLink: item.Output.GenerateDocument || item.Output.GenerateSceneImages,
 	}
 }
 

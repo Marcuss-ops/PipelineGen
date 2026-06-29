@@ -155,6 +155,16 @@ type SourceResolutionContext struct {
 
 	// SegmentTopics is an ordered list of topics to cover per segment.
 	SegmentTopics []string `json:"segment_topics,omitempty"`
+
+	// RequireDriveLink tells the clip resolver whether clips MUST have
+	// a Drive link to be included in the resolved set. When false
+	// (the caller only wants text generation — no document, no scene
+	// images), clips without Drive links are still accepted because
+	// only transcript + metadata are needed.
+	//
+	// P0 #3 (June 2026): computed from item.Output.GenerateDocument ||
+	// item.Output.GenerateSceneImages in buildResolutionContext.
+	RequireDriveLink bool `json:"-"`
 }
 
 // ResolvedSource is the output of a SourceResolver. It carries the
