@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -196,15 +196,25 @@ artlist:
 dev:
 	air
 
-# Run Google Accounting service
-# Usage: make google-accounting-run
-google-accounting-run:
-	cd google-accounting && uvicorn main:app --reload --port 8000
-
-# Run Comic Video Maker service
-# Usage: make comic-video-maker-run
-comic-video-maker-run:
-	cd comic-video-maker && npm run dev
+# ─── Removed targets (Blocco 1.2, June 2026) ──────────────────────────────────
+# Two target definitions were stripped from this Makefile because they were
+# the wrong integration mechanism for the referenced projects:
+#
+#   - google-accounting-run: orphaned. The `google-accounting/` directory
+#     is NOT present on main, so the recipe always failed at `cd` with
+#     "No such file or directory".
+#
+#   - comic-video-maker-run: `comic-video-maker/` IS present on main, so
+#     the project is still in use. But integrating it as a target in this
+#     root Makefile is the WRONG mechanism — when a developer needs to run
+#     comic-video-maker locally, they should `cd comic-video-maker &&
+#     npm run dev` directly, OR the project should be reintroduced as
+#     a docker-compose service / explicit git submodule.
+#
+# Phasing rule (binding): a top-level service that has its own
+# subdirectory MUST live as a separate service / submodule / Compose
+# component, NEVER as a target in this root Makefile. Reintroduce with
+# one of those mechanisms if the project becomes canonical again.
 
 # Install dependencies (download only, no go.mod modification)
 deps:
