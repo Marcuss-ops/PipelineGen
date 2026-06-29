@@ -86,6 +86,18 @@ func extractAuthToken(c *gin.Context) string {
 // non-empty, equal length, and byte-equal — computed in constant time
 // via crypto/subtle.ConstantTimeCompare.
 func compareTokens(provided, expected string) bool {
+	// PR 14 (June 2026): trim whitespace on both sides.
+	// Systemd's Environment= directive may carry trailing spaces
+	// or invisible characters that become part of the token value.
+	// The caller (Auth) already trims the provided token via
+	// extractAuthToken, but the expected token from cfg.Security
+	// was NOT trimmed — a length mismatch in the byte-exact
+	// comparison below silently rejected every request.
+	// TrimSpace here mirrors the RequireAdminToken trimming
+	// on the expected-token side, and is a defence-in-depth
+	// against any future whitespace-injection vector.
+	provided = strings.TrimSpace(provided)
+	expected = strings.TrimSpace(expected)
 	if provided == "" || expected == "" {
 		return false
 	}
