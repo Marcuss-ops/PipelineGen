@@ -1,83 +1,49 @@
 // Package scripts — preset_resolver.go applies preset semantics to
-// a GenerationItemV2. The only canonical preset that adds flags is
-// "with_images"; "batch" and "custom" are pass-through.
+// a GenerationItemV2.
+//
+// As of issue 8 / Step 3 (June 2026): the canonical implementation
+// lives in internal/application/scripts/adapters/generation_normalizer.go
+// (per AGENTS.md Pattern 8 — adapters/ is the canonical dependency
+// boundary for the normalized script pipeline because it also owns
+// applyConfigDefaults and applySafetyDefaults, the other two layers
+// of the single precedence chain). This file is preserved as a thin
+// wrapper so existing callers that imported usecase.ApplyPreset
+// (e.g. tests via the `scripts` import alias) keep working; new
+// callers should reference adapters.ApplyPreset directly.
+//
+// The canonical semantic table is in
+// docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md §6
+// "Required preset semantics" and covers the 5 documented presets
+// (custom, with_images, full_media, catalog, search) plus
+// pass-through for batch / unknown / empty Preset values.
 //
 // PR 8 (June 2026) precedence contract:
 //
 //	caller explicit > preset > config > safety
 //
-// PR 8 (June 2026) preset semantics update:
-//
-//	"with_images" previously forced ON  scene_images + voiceover + document
-//	                     and forced OFF entities + metadata. That was
-//	                     wrong: it overwrote caller intent and
-//	                     silently re-shaped bodies that had no image
-//	//                     concept.
-//
-//	"with_images" now ONLY enables scene_images. Voiceover, document,
-//	entities, and metadata are caller-controlled (with the standard
-//	caller > preset > config > safety precedence via the existing
-//	OutputSpec bool contract).
-//
-//	A caller who wants voiceover alongside with_images sets
-//	GenerateVoiceover explicitly; a caller who wants to disable
-//	images sets GenerateSceneImages=false and the preset no longer
-//	fights them.
-//
-//	Note: Go bool zero-value is false, so the preset cannot
-//	distinguish "caller omitted" from "caller set false". The
-//	preset applies its sole override (scene_images) only when
-//	the caller left it at zero, matching the per-field flag
-//	contract documented in generation_normalizer.go.
+// PR 8 narrowing note: `with_images` no longer forces voiceover /
+// document / entities / metadata. Only the canonical
+// `adapters.ApplyPreset` knows the current row-by-row semantics;
+// this wrapper inherits all of those guarantees by delegation.
 package usecase
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// ApplyPreset applies the given preset's overrides to the item.
-// Fields already set by the caller are NOT overwritten.
+// ApplyPreset is a thin wrapper that delegates to the canonical
+// implementation in internal/application/scripts/adapters/. The
+// adapter is the single source of truth for the full 5-preset
+// semantics (custom / with_images / full_media / catalog / search
+// + pass-through for batch / unknown / empty). This wrapper exists
+// for backward compatibility with pre-Step-3 callers.
 //
-// "with_images":
-//   - Output.GenerateSceneImages -> true (if caller didn't set)
-//   - ScriptParams.SentencesPerImage -> 8 (if 0)
-//   - ScriptParams.ImagesPerScene   -> 2 (if 0)
-//
-// "with_images" does NOT modify:
-//   - GenerateVoiceover
-//   - GenerateDocument
-//   - ExtractEntities
-//   - GenerateMetadata
-//   - VoiceoverGroup/Folder
-//
-// "batch", "custom", empty: pass-through (no overrides).
+// Caller fields are NEVER overwritten; the wrapper inherits the
+// nil-safe behavior (a nil item returns without mutation),
+// idempotence (re-running with the same inputs is a no-op), and
+// the caller > preset > config > safety precedence from the
+// canonical implementation.
 func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
-	if item == nil {
-		return
-	}
-	switch preset {
-	case scriptpkg.PresetWithImages:
-		// Force ON: scene images (sole preset responsibility).
-		item.Output.GenerateSceneImages = true
-
-		// Sensible defaults for scene image sizing. PR 8: images
-		// get smaller and faster without inflating into voiceover
-		// territory.
-		if item.ScriptParams.SentencesPerImage <= 0 {
-			item.ScriptParams.SentencesPerImage = 8
-		}
-		if item.ScriptParams.ImagesPerScene <= 0 {
-			item.ScriptParams.ImagesPerScene = 2
-		}
-
-		// PR 8: respect caller for voiceover, document, entities,
-		// metadata. The preset resists the urge to "helpfully"
-		// chain these on.
-		// Caller > preset precedence (already enforced by leaving
-		// these fields alone); the normalizer fills safety
-		// defaults if the caller left them at zero.
-
-	default:
-		// batch, custom, empty -> pass-through.
-	}
+	adapters.ApplyPreset(item, preset)
 }
