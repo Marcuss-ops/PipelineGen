@@ -628,10 +628,13 @@ func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
 		Tone:     "neutral",
 	}
 	editorial := buildEditorialPrompt(item)
-	fp := BuildItemIdentity(item)
-	if fp != "" {
-		assert.NotContains(t, editorial, fp, "RenderedPrompt must NOT contain the item fingerprint hash")
-	}
+	// P0 #1 (June 2026): BuildClipFingerprint replaces the Phase 1b
+	// stub BuildItemIdentity. The editorial prompt must never contain
+	// the source fingerprint — that was the pre-PR 2 anti-pattern
+	// where the model prompt WAS the fingerprint hash.
+	fp := BuildClipFingerprint(item.Source, nil)
+	assert.NotEmpty(t, fp, "fingerprint must be non-empty after P0 #1 fix")
+	assert.NotContains(t, editorial, fp, "RenderedPrompt must NOT contain the item fingerprint hash")
 	assert.Contains(t, editorial, "Documentary tone.", "editorial prompt should include source guidelines")
 	assert.Contains(t, editorial, "250", "editorial prompt should include target words")
 }

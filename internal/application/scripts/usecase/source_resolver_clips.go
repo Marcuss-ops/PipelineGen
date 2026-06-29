@@ -6,6 +6,11 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,21 +96,86 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 
 // computeSourceFingerprint builds a deterministic fingerprint from
 // the source spec and resolved evidence.
+//
+// P0 #1 (June 2026): replaced the Phase 1b stub (which always returned
+// "") with a real hash that includes clip IDs, transcript policy,
+// ordering strategy, quality thresholds, and evidence text. This
+// prevents cache-key collisions between requests with different clip
+// sets but identical title/language/model/sizing.
 func computeSourceFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) string {
-	return BuildItemIdentity(scriptpkg.GenerationItemV2{
-		Source: src,
-	})
+	return BuildClipFingerprint(src, ev)
 }
 
-// BuildItemIdentity constructs an identity string for a generation item.
-// Phase 1b stub — full implementation lands when the canonical
-// model-output contract consolidates (godlike/06 §metadata, see
-// internal/application/scripts/usecase/clip_evidence_builder.go for
-// the parallel construction pattern). The current stub returns an
-// empty string so callers receive a stable key surface even before
-// the canonical algorithm is wired; downstream cache-lookup is
-// expected to short-circuit on empty key.
+// BuildClipFingerprint computes a deterministic fingerprint from the
+// clip-relevant fields of a SourceSpec and resolved ClipEvidence.
+// Two requests with different clip sets, transcript policies, or
+// ordering strategies MUST produce different fingerprints so the
+// cache key (which includes SourceFingerprint as its first component)
+// does not collide.
+//
+// Hashed fields (order is fixed for determinism):
+//   - Clip IDs (sorted)
+//   - Transcript policy
+//   - Ordering strategy
+//   - Min quality score
+//   - Min transcript words
+//   - Evidence: ClipIDs (sorted), AssembledText
+//   - Topic + SourceText (for text sources where ev is nil)
+func BuildClipFingerprint(src scriptpkg.SourceSpec, ev *scriptpkg.ClipEvidence) string {
+	h := sha256.New()
+	add := func(key, val string) {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return
+		}
+		io.WriteString(h, key)
+		io.WriteString(h, "=")
+		io.WriteString(h, val)
+		io.WriteString(h, "|")
+	}
+
+	// Clip IDs from the source spec (sorted for determinism).
+	if len(src.ClipIDs) > 0 {
+		sorted := make([]string, len(src.ClipIDs))
+		copy(sorted, src.ClipIDs)
+		sort.Strings(sorted)
+		add("clips", strings.Join(sorted, ","))
+	}
+	add("tp", src.TranscriptPolicy)
+	add("order", src.OrderingStrategy)
+	if src.MinQualityScore != nil && *src.MinQualityScore > 0 {
+		add("minq", strconv.FormatFloat(*src.MinQualityScore, 'f', -1, 64))
+	}
+	if src.MinTranscriptWords != nil && *src.MinTranscriptWords > 0 {
+		add("mintw", strconv.Itoa(*src.MinTranscriptWords))
+	}
+
+	// Text-source fields (when ev is nil — pure text generation).
+	add("topic", src.Topic)
+	add("stext", src.SourceText)
+
+	// Evidence fields (when clips were resolved).
+	if ev != nil {
+		if len(ev.ClipIDs) > 0 {
+			sorted := make([]string, len(ev.ClipIDs))
+			copy(sorted, ev.ClipIDs)
+			sort.Strings(sorted)
+			add("evclips", strings.Join(sorted, ","))
+		}
+		add("atext", ev.AssembledText)
+	}
+
+	sum := h.Sum(nil)
+	// First 16 hex chars (64 bits), matching the convention in
+	// adapters/generation_identity.go and domain/script/cache_key.go.
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// BuildItemIdentity is a backward-compatible wrapper that computes the
+// fingerprint for a GenerationItemV2 by delegating to BuildClipFingerprint.
+// It preserves the pre-P0#1 call signature for existing callers in the
+// adapters package tests. The canonical identity function with the full
+// item shape lives in adapters/generation_identity.go.
 func BuildItemIdentity(item scriptpkg.GenerationItemV2) string {
-	_ = item
-	return ""
+	return BuildClipFingerprint(item.Source, nil)
 }
