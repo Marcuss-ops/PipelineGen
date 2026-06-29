@@ -49,13 +49,10 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	assert.True(t, routeMap["POST /api/artlist/run"], "POST /api/artlist/run should be registered")
 	assert.True(t, routeMap["GET /api/artlist/runs/:run_id"], "GET /api/artlist/runs/:run_id should be registered")
 	assert.True(t, routeMap["GET /api/artlist/stats"], "GET /api/artlist/stats should be registered")
-	assert.True(t, routeMap["POST /api/artlist/search/live"], "POST /api/artlist/search/live should be registered")
 
 	// Clips routes should be under /api/clips/
 	assert.True(t, routeMap["POST /api/clips/process"], "POST /api/clips/process should be registered")
 	assert.True(t, routeMap["GET /api/clips/info"], "GET /api/clips/info should be registered")
-	assert.True(t, routeMap["GET /api/clips/search"], "GET /api/clips/search should be registered")
-	assert.True(t, routeMap["POST /api/clips/search"], "POST /api/clips/search should be registered")
 
 	// Jobs routes should be under /api/jobs/
 	assert.True(t, routeMap["GET /api/jobs"], "GET /api/jobs should be registered")
@@ -63,7 +60,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	assert.True(t, routeMap["GET /api/jobs/:id"], "GET /api/jobs/:id should be registered")
 
 	// Media routes should be under /api/media/
-	assert.True(t, routeMap["GET /api/media/search"], "GET /api/media/search should be registered")
+	assert.True(t, routeMap["POST /api/media/search"], "POST /api/media/search should be registered")
 
 	// Ensure routes are NOT at wrong paths (without module prefix)
 	assert.False(t, routeMap["POST /api/run"], "POST /api/run should NOT be registered (missing artlist prefix)")
@@ -192,18 +189,15 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 		group.POST("/run", func(c *gin.Context) {})
 		group.GET("/runs/:run_id", func(c *gin.Context) {})
 		group.GET("/stats", func(c *gin.Context) {})
-		group.POST("/search/live", func(c *gin.Context) {})
 	case "clips":
 		group.POST("/process", func(c *gin.Context) {})
 		group.GET("/info", func(c *gin.Context) {})
-		group.GET("/search", func(c *gin.Context) {})
-		group.POST("/search", func(c *gin.Context) {})
 	case "jobs":
 		group.GET("", func(c *gin.Context) {})
 		group.POST("", func(c *gin.Context) {})
 		group.GET("/:id", func(c *gin.Context) {})
 	case "media":
-		group.GET("/search", func(c *gin.Context) {})
+		group.POST("/search", func(c *gin.Context) {})
 	}
 }
 

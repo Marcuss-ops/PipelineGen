@@ -100,7 +100,8 @@ func (sh *SearchHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc
 
 	// Write routes (idempotency-protected per PR8, June 2026)
 	r.POST("/:source/clips/:id/status", idem, sh.ClipStatus)
-	r.POST("/search/advanced", idem, sh.AdvancedSearch)
+	// POST /search/advanced removed — Blocco A2 consolidation (June 2026).
+	// Unified search is now at POST /api/media/search.
 }
 
 // ─── MOVED FROM clip_search.go (deleted in this commit) ───

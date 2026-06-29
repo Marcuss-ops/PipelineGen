@@ -31,9 +31,9 @@ func NewScraperHandler(nodeScraperDir string, processRunner appassets.ProcessRun
 
 // RegisterRoutes registers /api/scraper routes.
 //
-//	POST /api/scraper/search
 func (h *ScraperHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/search", h.Search)
+	// POST /search removed — Blocco A2 consolidation (June 2026).
+	// Unified search is now at POST /api/media/search.
 }
 
 type searchRequest struct {
