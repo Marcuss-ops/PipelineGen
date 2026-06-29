@@ -116,3 +116,168 @@ type VoiceoverGenerator interface {
 // signature and the port contract triggers a compile error at this
 // line — preventing silent drift on the wire contract.
 var _ VoiceoverGenerator = (*Service)(nil)
+
+// ────────────────────────────────────────────────────────────────────────
+// PR-VOICEOVER-COMMAND-EXTRACT (Blocco 2, June 2026): 7 canonical ports.
+// ────────────────────────────────────────────────────────────────────────
+//
+// The new GenerateVoiceoversUseCase.Execute path depends ONLY on these
+// ports (Pattern 0 — port abstraction layer, June 2026). Each port
+// exposes a single, narrow method so test doubles can swap one port
+// at a time without faking the wider surface.
+//
+// Layout note: the new ports are declared in this file (not split
+// per-port) so the package's narrow port surface stays discoverable
+// in one place. The package-level imports already cover context +
+// database/sql; adding them here avoids dragging in any new dependency.
+// The use case Execute enforces mandatory ports at construction time
+// (panic on nil — fail-fast per AGENTS.md WireUp pattern).
+
+// TTSProvider is the canonical port for text-to-speech synthesis.
+// The production concrete is *audioasset.Processor (lowered from
+// internal/infrastructure/audio so voiceover never imports the
+// infrastructure package directly).
+type TTSProvider interface {
+	Synthesize(ctx context.Context, input TTSInput) (TTSOutput, error)
+}
+
+// TTSInput is the canonical wire-shape the use case passes to
+// TTSProvider.Synthesize. Mirrors audioasset.AudioInput fields so a
+// future thin adapter is a one-line forward.
+type TTSInput struct {
+	Text          string
+	Language      string
+	Voice         string
+	Filename      string
+	OutputDir     string
+	RemoveSilence bool
+}
+
+// TTSOutput is the canonical return shape.
+type TTSOutput struct {
+	LocalPath   string
+	CleanedPath string
+	Voice       string
+	FileHash    string
+}
+
+// DestinationResolver is the canonical port for resolving the wire
+// DestinationRequest into the canonical ResolvedDestination (folder +
+// path + style-group). The production concrete is Service.resolveDestination
+// (already implemented in metadata.go).
+type DestinationResolver interface {
+	Resolve(ctx context.Context, dest *DestinationRequest) (*ResolvedDestination, error)
+}
+
+// AudioPostProcessor is the canonical port for post-TTS audio cleanup
+// (silence removal via ffmpeg). Nil-safe at the use case boundary —
+// only invoked when cmd.RemoveSilence == true.
+type AudioPostProcessor interface {
+	Process(ctx context.Context, input AudioPostInput) (AudioPostOutput, error)
+}
+
+// AudioPostInput is the canonical input shape.
+type AudioPostInput struct {
+	LocalPath string
+	OutputDir string
+	Filename  string
+}
+
+// AudioPostOutput carries the cleaned-path surface.
+type AudioPostOutput struct {
+	CleanedPath string
+}
+
+// AssetLifecycle is the canonical port for the Drive upload +
+// persistence flow. The production concrete is *lifecycle.Service
+// (PR-VO-B1 hardened; ProcessAsset rejects on upload failure).
+//
+// We surface a narrower Upload entry (NOT the full ProcessAsset) so
+// the use case only needs the upload+persist return — the
+// duplicate-check step is owned by Lifecycle and the use case trusts
+// its result.
+type AssetLifecycle interface {
+	Upload(ctx context.Context, input AssetUploadInput) (AssetUploadOutput, error)
+}
+
+// AssetUploadInput is the canonical wire-shape.
+type AssetUploadInput struct {
+	ID         string
+	LocalPath  string
+	Filename   string
+	FolderID   string
+	FolderPath string
+	Metadata   string
+	FileHash   string
+	Source     string
+	Name       string
+}
+
+// AssetUploadOutput carries the post-upload Drive surface.
+type AssetUploadOutput struct {
+	DriveLink    string
+	DriveFileID  string
+	DownloadLink string
+	FileHash     string
+}
+
+// VoiceoverRepository is the canonical port for the voiceovers SQLite
+// row operations. The use case calls InsertTx + DeleteByIDTx inside
+// the PR-VO-A2 atomic swap tx; the production concrete is
+// *assets.VoiceoversRepository (from
+// internal/infrastructure/database/sqlite/assets/).
+//
+// Why PreReadByID is a SEPARATE method (not part of Validate-then-Upload):
+// the use case calls PreReadByID BEFORE opening the atomic tx so it can
+// capture the OLD row's orphan paths for the post-commit cleanup
+// goroutine that fires after the swap commits.
+type VoiceoverRepository interface {
+	InsertTx(ctx context.Context, tx *sql.Tx, rec *VoiceoverRecord) error
+	DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error
+	PreReadByID(ctx context.Context, id string) (*VoiceoverRecord, error)
+}
+
+// VoiceoverRecord is the canonical column-set for the voiceovers
+// table (matches registry_adapter.go Record + the INSERT in
+// stages.go::finalizeStage).
+type VoiceoverRecord struct {
+	ID           string
+	RequestID    string
+	TextHash     string
+	TextPreview  string
+	Language     string
+	Voice        string
+	Filename     string
+	LocalPath    string
+	CleanedPath  string
+	FolderID     string
+	FolderPath   string
+	DriveFileID  string
+	DriveLink    string
+	DownloadLink string
+	FileHash     string
+	Status       string
+	Error        string
+	Strategy     string
+	Metadata     string
+	CreatedAt    string
+	UpdatedAt    string
+}
+
+// TransactionalOutbox is the canonical port for emitting the
+// asset.index.requested.v1 envelope inside the caller's tx.
+//
+// Functionally identical to the existing TxOutboxEnqueuer interface
+// (single EnqueueIndexEvent method) — declared here as a
+// back-compat alias so the new use case can type-assert against the
+// same production concrete *outbox.Dispatcher already wired in
+// build_bundles_voiceover.go.
+type TransactionalOutbox = TxOutboxEnqueuer
+
+// Logger is intentionally NOT defined as an interface here — the
+// canonical codebase-wide logging surface is *zap.Logger (used across
+// every application-layer package). The use case constructor accepts
+// *zap.Logger directly and nil-safes it via zap.NewNop(). Re-aliasing
+// at this layer would only add drift surface; we keep the canonical
+// concrete type so the use case is consistent with the rest of the
+// codebase.
