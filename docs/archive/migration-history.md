@@ -4,7 +4,7 @@
 #
 # This file is **read-only narrative**. Operational state lives in
 # `architecture/current.yaml`; programming references live in
-# `architecture/ownership.yaml`. Treat this archive as the audit trail
+# `architecture/ownership.yaml` (legacy monolithic, archived June 2026 — replaced by the 6-file split in commit `dc6add3e`; canonical source at `architecture/ownership/` + aggregated view at `architecture/ownership.generated.yaml`). Treat this archive as the audit trail
 # behind each `status: done` wave.
 #
 # Conventions preserved from the original current.yaml:

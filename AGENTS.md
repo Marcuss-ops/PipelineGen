@@ -32,7 +32,7 @@ The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER
   wave di consolidamento (status monotone-decreasing, ogni wave ha
   `exit_gate` zero-based). È il single source of truth per
   "abbiamo finito la wave X?".
-- **architecture/ownership.yaml**: "qual è il canonical owner di X?"
+- **[architecture/ownership.generated.yaml](architecture/ownership.generated.yaml)** (aggregated view rebuilt by `cmd/architecture-aggregate` from the [architecture/ownership/*.yaml](architecture/ownership/) per-section split, dc6add3e): "qual è il canonical owner di X?"
   per ogni capability (regole di layering + assorbimenti da wave).
 - **docs/api/ACTIVE_API_GENERATED.md**: auto-generato via
   `./admin gen-api-docs`; CI-failed se non committato (vedi
@@ -552,7 +552,7 @@ in flight (8, 10, 11, 12), consultare la sezione corrispondente in
 **Truth sources** (in ordine di autorità):
 1. `architecture/current.yaml` — stato canonico per wave + exit-gate
    (Wave 14-18 + Wave 0 attive; Wave 1-13 archiviate).
-2. `architecture/ownership.yaml` — chi possiede ogni package canonico.
+2. [`architecture/ownership.generated.yaml`](architecture/ownership.generated.yaml) (aggregated view) — chi possiede ogni package canonico; i 6 file per-section (application/infrastructure/jobs/modules/packages/services) vivono in [`architecture/ownership/`](architecture/ownership/).
 3. `docs/migrations/api-infrastructure-imports-allowlist.txt` — ratchet
    canonico monotone-decreasing per le violazioni `internal/api` →
    `internal/infrastructure` grand-parented; `go run ./scripts/archcheck`

@@ -82,7 +82,7 @@ Equivalente al voiceover V-cycle (V1..V7), ma con scope strettamente manifest-st
 - Crea `internal/application/assets/manifest/types.go` con `ManifestEntry`, `ManifestEntry.Builder`, `ManifestError`, `ManifestConflict`. Zero implementazioni; solo tipi.
 - Crea `internal/application/assets/manifest/ports.go` con `type ManifestService interface { Upload(ctx, cmd ManifestUploadCommand) (ManifestEntry, error); Reconcile(ctx, entries []ManifestEntry) (ReconcileReport, error); SamePathConcurrent(ctx, ...) ... }`.
 - Compile-time assertion: `var _ ManifestService = (ManifestServicePort)(nil)`.
-- Aggiorna `architecture/ownership.yaml::application_assets_manifest.canonical_files` con i due nuovi file.
+- Aggiorna `architecture/ownership/application.yaml::application_assets_manifest.canonical_files` (canonical owner per-application facade contracts, post-dc6add3e) con i due nuovi file.
 - ZERO call-site / wire-up touched.
 
 ### M-V2 — `BACKFILL typed ManifestService port on ArtlistBundle` 🟢 Low
@@ -153,7 +153,7 @@ Quando `MANIFEST-V5` atterra e gli e2e test sono verdi, l'entry sopra viene ruot
 
 - Blueprint cache reference: `/tmp/voiceover-blueprint/` (read-only, post Land non più considerato source-of-truth).
 - Wave tracker canonical pointer: `architecture/current.yaml#id-21 follow_up_tickets.PR-MANIFEST-STREAM-RECOVERY`.
-- Ownership canonical pointer: `architecture/ownership.yaml::application_assets_manifest.canonical_files` (a V1 EXPAND).
+- Ownership canonical pointer: `architecture/ownership/application.yaml::application_assets_manifest.canonical_files` (post-dc6add3e; a V1 EXPAND).
 - AGENTS.md Agent Execution Playbook: §"One task solves one responsibility".
 - godlike/07 §"Migration sequence" (EXPAND → BACKFILL → CUTOVER → CONTRACT).
 - godlike/08 §"Zero-baseline rule" (transitional_baselines require owner + deadline; ogni PR MANIFEST-V* deve rispettare).

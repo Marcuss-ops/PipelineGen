@@ -28,7 +28,7 @@ pkg/                    leaf utilities
 
 1. `ARCHITECTURE.md` — sistema diagramma, data flow, ownership dei layer,
    canonical structure definition of done (§1–§13).
-2. `architecture/ownership.yaml` — mappa canonica
+2. `architecture/ownership/*.yaml` + `architecture/ownership.generated.yaml` — mappa canonica (per-section split, dc6add3e; il generated è la concatenazione deterministica dei 6 file per-section via `cmd/architecture-aggregate`)
    "qual è il proprietario di X?" (single source of truth per capability).
 3. `architecture/current.yaml` — tracker ratchet delle wave di
    consolidamento (status monotone-decreasing, exit gate per wave).

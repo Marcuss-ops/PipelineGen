@@ -189,4 +189,4 @@ Dopo merge di Check 5 (`scripts/ci-architectural-checks.sh`) le regole 1 e 2 son
 
 - Replacement per il pattern attuale `wire-mirror-in-infra + canonical-in-application`: il forward vede un unico file `internal/application/qdrant/dr/types.go` che possiede i tipi canonicamente. L'infrastruttura importa semplicemente `dr` invece di duplicare le struct. Lo stato di cycle-break è già rispettato (vedi `dr_adapter.go::Cycle break` comment block).
 - Snapshot di audit corrente (2026-06-27): tutti i criteri di accettazione PASS, le attività di forward-prevention OPEN.
-- Owner suggerito per la wave QDRANT-005D hygiene: stessa code-ownership di `architecture/ownership.yaml::wave_qdrant_005d_hygiene`. Se non esiste ancora, da registrare al primo commit di forward-prevention.
+- Owner suggerito per la wave QDRANT-005D hygiene: stessa code-ownership di `architecture/ownership/infrastructure.yaml::infrastructure_qdrant` (subzone post-dc6add3e split). Se la chiave `wave_qdrant_005d_hygiene` non esiste ancora nel file per-section (era nel legacy monolithic `architecture/ownership.yaml`), da registrare al primo commit di forward-prevention.

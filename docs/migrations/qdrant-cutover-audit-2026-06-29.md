@@ -106,7 +106,7 @@ The BACKFILL phase must complete **before** any CUTOVER commit to avoid build-br
 
 - `architecture/current.yaml` Wave 24 entry (pending; this audit is the prerequisite).
 - `architecture/deprecations.yaml` #9 PR-QDRANT-WIRE-MIRROR (SnapshotDescription canonical home).
-- `architecture/ownership.yaml` gains per-sub-package rows on CUTOVER completion (the Tier-1 commit already establishes these as canonical homes).
+- `architecture/ownership/infrastructure.yaml` (qdrant subzone per dc6add3e split) gains per-sub-package rows on CUTOVER completion (the Tier-1 commit already establishes these as canonical homes); the aggregated canonical view at [`architecture/ownership.generated.yaml`](../../architecture/ownership.generated.yaml) reflects these per-sub-package rows.
 
 ## Cross-references
 

@@ -38,7 +38,7 @@ Specific consequences:
 
 4. **Qdrant metrics** (`qdrant_reconciler_*`, `qdrant_alias_*`) stay consumed via the `PromMetricsAdapter` pattern: domain logic emits domain events, adapter translates to `observability`-package metric vars. This mirrors the canonical Qdrant projection sequence: domain state in SQLite → outbox record → outbox dispatcher emits → adapter bumps the metric.
 
-5. **Reconciler ownership** of metric names stays in `internal/infrastructure/observability/`. The Wave-20 OWNERSHIP entry (`architecture/ownership.yaml::lint_gates[check=5]`) names the `qdrant-hygiene` workstream as the registered owner, but the metric var itself lives in the observability package.
+5. **Reconciler ownership** of metric names stays in `internal/infrastructure/observability/`. The Wave-20 OWNERSHIP entry (`architecture/policy.yaml::lint_gates[check=5]` — `lint_gates` governance keys moved from the legacy monolithic `architecture/ownership.yaml` to `architecture/policy.yaml` per godlike/06 SSOT rule) names the `qdrant-hygiene` workstream as the registered owner, but the metric var itself lives in the observability package.
 
 ## Consequences
 
@@ -86,6 +86,6 @@ Reject status quo. The dep-chain rule for RW-PROD-013 → RW-PROD-016 explicitly
 
 - `docs/operations/04-remote-worker-production-readiness-tickets.md` — RW-PROD-013, RW-PROD-016 ticket text.
 - `docs/operations/worker-certification-checklist.md` §3 — gates that consume the metrics/log keys.
-- `architecture/ownership.yaml::lint_gates[check=5]` — registered owner for the Wave-20 hygiene work.
+- `architecture/policy.yaml::lint_gates[check=5]` — registered owner for the Wave-20 hygiene work (post-dc6add3e; `architecture/ownership.yaml` is the legacy monolithic; superseded).
 - `architecture/current.yaml::id=20` — Wave 20 with `deliverables[4 items]` incl. this ADR.
 - `architecture/deprecations.yaml` — no record; this ADR does not deprecate anything.

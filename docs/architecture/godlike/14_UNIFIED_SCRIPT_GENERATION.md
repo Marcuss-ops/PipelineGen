@@ -753,7 +753,7 @@ The migration is DONE only when every item below is true.
 - [ ] `GenerationEnvelopeV2` is the only durable script-generation command.
 - [ ] `ResolvedGenerationPlan` is the only internal execution plan.
 - [ ] `GenerationResult` and `GenerationEnvelopeResult` are the only durable result contracts.
-- [ ] Contract ownership is documented in `architecture/ownership.yaml`.
+- [ ] Contract ownership is documented in [`architecture/ownership/application.yaml`](../../../architecture/ownership/application.yaml) (canonical owner for `application_*` + `domain_*` keys per dc6add3e split). See also the aggregated canonical view at [`architecture/ownership.generated.yaml`](../../../architecture/ownership.generated.yaml).
 - [ ] No durable generation command/result uses `map[string]any`, broad `any` or `interface{}`.
 
 ### API and jobs

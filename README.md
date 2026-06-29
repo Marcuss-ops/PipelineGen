@@ -100,7 +100,7 @@ di migrazione) + `AGENTS.md` (regole per agenti AI e pattern canonici).
   data flow, registry dei moduli, comandi day-1, ownership dei layer
   (`api → application → domain → infrastructure → pkg`). Include anche
   il piano di migrazione attivo (`architecture/current.yaml`) e la
-  mappa di ownership canonica (`architecture/ownership.yaml`).
+  canonical ownership map ([`architecture/ownership.generated.yaml`](architecture/ownership.generated.yaml) — aggregated view of [`architecture/ownership/*.yaml`](architecture/ownership/) (per-section split, dc6add3e)).
 - [AGENTS.md](./AGENTS.md): **Canonical** — regole critiche del sistema
   (driver SQLite, ban FTS5, schema boundaries, policy generazione AI,
   admin token env-var, Istruzioni per agenti AI, Git Lessons).
