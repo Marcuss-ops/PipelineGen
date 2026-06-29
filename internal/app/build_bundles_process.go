@@ -1,32 +1,38 @@
-// Package app — Drive bundle construction (split out from composition.go
-// in commit ci/composition-split wave-1 of the 5-commit refactor for
-// problem #8).
+// Package app — Process + Outbox bundle construction (FASE 2.B PR1, June 2026).
 //
-// This file owns the Drive adapters + MediaStore derivation + StyleRegistry
-// loading for the canonical Google Drive integration. Extracted from
-// composition.go so bundle debt is split per AGENTS.md Pattern 5 (1 concept
-// per focused file) and BuildDriveBundle's own body remains pure (no
-// concurrent goroutine spawns — composition_test.go::
-// TestComposition_NoGoroutinesSpawned_FrozenSiteCount).
+// Originally this file also owned the Drive bundle construction
+// (BuildDriveBundle + startDriveBackgroundFolders), which PR1 extracted to:
+//   - internal/app/build_bundles_drive.go   (BuildDriveBundle — Drive client
+//     + folder resolver init, MediaStore derivation, StyleRegistry load)
+//   - internal/app/build_drive_startup.go  (startDriveBackgroundFolders —
+//     Drive folder bootstrap, AC validation, retry warmup)
 //
-// commit ci/composition-split wave-1 (June 2026): replaced the legacy
-// post-ctor setter pair (`mediaStore.SetAssetTree + SetTreeSource`) with
-// a single `drive.NewStoreWithOptions(..., drive.StoreOptions{AssetTree,
-// TreeSources})` call so the dependency graph lands at the ctor boundary.
+// This file now owns ONLY:
+//   - BuildProcessBundle (Qdrant-derivable media: MediaProcessor,
+//     ClipIndexerService, VLMClient, Qdrant subsystems, search ports)
+//   - BuildOutboxBundle (canonical ingestion-path outbox.Dispatcher +
+//     outbox_events.Pool, registration of core + optional handlers)
+//   - startOutboxEventsPool (SafeGo launchers: pool Start + drain on
+//     ctx.Done())
+//   - Qdrant compile-time assertions (clipindexer.VectorStoreIndexer +
+//     jobsoutbox.AssetDeleter) — composition-time port conformance per
+//     AGENTS.md Pattern 0.
+//
+// Each of these bundle constructors corresponds to ONE bundle concept
+// per AGENTS.md Pattern 5 (no half-bundles, no `Build*And*` composites).
+// PR1 is MOVE-only: zero logic changes in this file, zero call-site
+// changes anywhere in the codebase.
 package app
 
 import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
@@ -44,159 +50,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
-// BuildDriveBundle constructs the Drive adapters + MediaStore + DestResolver.
-// Loads StyleRegistry at the top so ensureStyleDriveFolders (called via the
-// returned startDriveBackgroundFolders closure) receives the non-nil pointer.
-//
-// PR9-A (June 2026): BuildDriveBundle returns an IOpaqueStartFunc closure
-// that defers side-effecting initialisation (Drive folder validation,
-// style-folder pre-creation, storage directory creation) to the lifecycle.
-// The bundle itself is fully populated on return.
-func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, search *SearchBundle) (*DriveBundle, IOpaqueStartFunc, error) {
-	styleRegistry, _ := generation.NewStyleRegistry("config/generation_styles.yaml")
-
-	docClient, err := drive.NewDocClient(ctx, cfg.GetCredentialsPath(), cfg.GetTokenPath())
-	if err != nil {
-		log.Warn("Docs client not initialized", zap.Error(err))
-	}
-
-	driveClient, err := drive.NewDriveServiceFromFiles(ctx, cfg)
-	if err != nil {
-		log.Warn("Google Drive client not initialized", zap.Error(err))
-	}
-
-	// PG-011-residual-cleanup (June 2026): the previous
-	// resolveRuntimeDestinations function (a no-op alias for
-	// configOnlyDestinations — both pre-existing branches converged
-	// on the same cfg-derived *DriveDestinations) was deleted;
-	// dests is now derived once, unconditionally. driveClient
-	// remains a dependency for driveUploader construction, the
-	// mediaStore block below, and the startClosure's folder
-	// validation, but it is no longer threaded through a
-	// dests-resolution alias that ignored it.
-	var driveUploader *drive.Uploader
-	var dests = configOnlyDestinations(cfg)
-	if driveClient != nil {
-		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
-	}
-
-	var mediaStore *drive.Store
-	var destResolver asset.Resolver
-	if driveClient != nil {
-		storageResolver := drive.NewResolver(
-			drive.MediaRoot(cfg.Storage.MediaPath()),
-			drive.DriveRoot(dests.RootFolder()),
-		)
-
-		// Construct the StoreOptions at the ctor boundary — no post-ctor
-		// SetAssetTree / SetTreeSource calls. TreeSources maps Drive folder
-		// IDs to their logical tree source names.
-		storeOpts := drive.StoreOptions{}
-		if search != nil && search.AssetTreeService != nil {
-			storeOpts.AssetTree = search.AssetTreeService
-			storeOpts.TreeSources = map[string]string{
-				dests.ImagesFolder(): "image",
-			}
-			log.Info("mediaStore: Drive roots configured",
-				zap.String("images_folder_id", dests.ImagesFolder()))
-		}
-
-		mediaStore = drive.NewStoreWithOptions(
-			storageResolver,
-			driveUploader,
-			dests.RootFolder(),
-			dests.ImagesFolder(),
-			"", // VideoAIRoot removed (PR June 2026) — pass empty string
-			dests.SoundEffectsRoot,
-			log,
-			storeOpts,
-		)
-
-		destResolver = drive.NewDestinationResolver(mediaStore)
-	}
-
-	// PR9-A (June 2026): side-effecting initialisation is delegated to
-	// startDriveBackgroundFolders (defined below). Package-level function
-	// so the source-level goroutine-count freeze test reports zero spawns
-	// in BuildDriveBundle's own body.
-	// Lifecycle-runtime-ownership (June 2026): now returns error so
-	// serverLifecycle.Start can abort on required folder validation failure.
-	startClosure := func() error {
-		return startDriveBackgroundFolders(ctx, cfg, driveClient, driveUploader, dests, styleRegistry, log)
-	}
-
-	return &DriveBundle{
-		DriveClient:   driveClient,
-		DriveUploader: driveUploader,
-		DocClient:     docClient,
-		DriveDests:    dests,
-		MediaStore:    mediaStore,
-		DestResolver:  destResolver,
-		StyleRegistry: styleRegistry,
-	}, startClosure, nil
-}
-
-// startDriveBackgroundFolders performs the side-effecting Drive init that
-// was previously inlined in BuildDriveBundle (PR9-A, June 2026). It
-// pre-creates style folders on Drive, validates critical Drive folder
-// paths, and ensures local storage directories exist.
-//
-// Lifecycle-runtime-ownership (June 2026): now returns error on required
-// folder validation failure. Style folder creation remains async (background
-// after readiness passes). Local storage directory creation errors are
-// logged as warnings (they are non-fatal).
-//
-// Invoked by the lifecycle after WireRegistry completes, before the HTTP
-// server begins accepting requests.
-func startDriveBackgroundFolders(
-	ctx context.Context,
-	cfg *config.Config,
-	driveClient *gdrive.Service,
-	driveUploader *drive.Uploader,
-	dests *DriveDestinations,
-	styleRegistry *generation.StyleRegistry,
-	log *zap.Logger,
-) error {
-	// Style folder pre-creation: async after readiness (optional).
-	if driveClient != nil && dests.ImagesFolder() != "" && dests.ImagesFolder() != dests.MediaRoot {
-		concurrent.SafeGo("drive-style-folders", func() {
-			ensureStyleDriveFolders(ctx, driveUploader, dests.ImagesFolder(), styleRegistry, log)
-		})
-		log.Info("Style Drive folders using Images root", zap.String("folder_id", dests.ImagesFolder()))
-	}
-
-	// Required folder validation: synchronous, returns error on failure.
-	if driveClient != nil {
-		for name, folderID := range map[string]string{
-			"images": dests.ImagesFolder(),
-		} {
-			if folderID == "" {
-				continue
-			}
-			if _, err := driveClient.Files.Get(folderID).Fields("id, name").Context(ctx).Do(); err != nil {
-				return fmt.Errorf("required Drive folder %q (id=%s) validation failed: %w", name, folderID, err)
-			}
-			log.Info("Drive folder validated",
-				zap.String("folder_name", name), zap.String("folder_id", folderID))
-		}
-	}
-
-	// Local storage directories: optional (logged as warnings).
-	for _, dir := range []string{
-		cfg.Storage.DataDir, cfg.Storage.VoiceoversPath(), cfg.Storage.AssetsPath(),
-		cfg.Storage.DownloadsPath(), cfg.Storage.BackupsPath(), cfg.Storage.TempPath(),
-		cfg.Storage.AnimationsPath(), cfg.Storage.YoutubeClipsPath(),
-		cfg.Storage.ArtlistPath(), cfg.Storage.ImagesPath(),
-	} {
-		if dir == "" {
-			continue
-		}
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			log.Warn("Failed to create storage directory", zap.String("path", dir), zap.Error(err))
-		}
-	}
-	return nil
-}
+// FASE 2.B PR1 (June 2026): BuildDriveBundle + startDriveBackgroundFolders
+// moved to build_bundles_drive.go + build_drive_startup.go respectively.
+// Both functions are referenced by composition.go::NewComposition via
+// `package app`-level visibility (cross-file within the same package).
+// The remaining bundle constructors below take a *drive.Uploader argument
+// (BuildProcessBundle) — drive is therefore still imported in this file
+// but only as a parameter type, no construction logic here.
 
 // Compile-time assertions for QDRANT-003 wiring + PR 3
 // (fix/qdrant-outbox-fail-closed). Per AGENTS.md Pattern 0 the
