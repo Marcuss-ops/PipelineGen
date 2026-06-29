@@ -168,7 +168,7 @@ api_capabilities:
     concrete_constructors: []
   - name: assets/stock
     path: internal/api/assets/stock
-    has_build_signature: false
+    has_build_signature: true       # module.go exposes `func Build(deps Dependencies) (api.Descriptor, error)` (Blocco C1-Step 6, June 2026); the existing *Handler (which owns /run + /search-and-run over *stockpipeline.StockUseCase) is reused as Descriptor via the Module closure. Pattern parity with `assets/artlist` (C1-Step 3) + `assets/youtube` (C1-Step 4) + `assets/clips` (C1-Step 5). The Descriptor surface is the smallest in the tree today — only `Module` field, no `Handler` / `Service` field (no non-HTTP consumer; the use case is internal to stockpipeline).
     direct_register_calls: []
     concrete_constructors: []
   - name: assets/storage
