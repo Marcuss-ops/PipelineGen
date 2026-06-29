@@ -1,14 +1,17 @@
 // Package usecase_test — clip_source_builder_test.go (June 2026).
 //
 // Stub-based unit tests for the canonical-ID contract introduced in PR 6.
-// These tests pin the invariant that the resolved IDs in the pack and the
-// keys of clip_drive_links are the canonical = REQUESTED IDs, not the
+// These tests pin the invariant that the resolved IDs in the evidence and the
+// keys of DriveLinks are the canonical = REQUESTED IDs, not the
 // asset's internal ID. Production *assets.ClipsRepository is intentionally
 // NOT wired here — the clipsResolverPort interface and
 // NewClipSourceBuilder constructor let unit tests inject a stub
 // (passing nil for ollamaClient) that returns clips with deliberate
 // clip.ID != DriveFileID mismatches.
 //
+// P1 #6 (June 2026): BuildClipEvidence removed; BuildClipContext
+// returns *scriptpkg.ClipEvidence directly. Tests read evidence fields
+// instead of map[string]any pack keys.
 // P1 #7 (June 2026): NewClipSourceBuilderForTest removed; tests use
 // the canonical NewClipSourceBuilder with nil ollamaClient.
 //
@@ -24,11 +27,6 @@
 // Pre-PR-6 the second case silently broke every DriveLinks[xxx] lookup,
 // because clip_drive_links was keyed by clip.ID (the internal ID the user
 // never typed).
-//
-// PR-G.2 BACKFILL (June 2026): package moved from `scripts` (root facade)
-// to `usecase_test` (external). P1 #7: tests use the canonical
-// NewClipSourceBuilder (with nil ollamaClient) instead of the
-// now-removed NewClipSourceBuilderForTest.
 package usecase_test
 
 import (
@@ -83,23 +81,11 @@ func newAssetWithDriveLink(internalID, driveID, name, driveLink string) *asset.A
 	return a
 }
 
-// readPack is a small helper that re-asserts the first return of
-// BuildClipContext to the typed pack shape. Fails the test on a type
-// mismatch — that's a build break we want to catch.
-func readPack(t *testing.T, raw interface{}) map[string]any {
-	t.Helper()
-	pack, ok := raw.(map[string]any)
-	if !ok {
-		t.Fatalf("pack is %T, want map[string]any", raw)
-	}
-	return pack
-}
-
 // TestClipSourceBuilder_Canonical_DriveFileIDRequested_PR6 is the
 // load-bearing test of the PR 6 invariant: when the caller supplies a
 // Drive file ID and the stub returns a clip whose internal asset.ID
-// differs from that Drive file ID, the pack's clip_ids and
-// clip_drive_links keys MUST be the supplied Drive file ID, NOT the
+// differs from that Drive file ID, ClipEvidence.ClipIDs and
+// DriveLinks keys MUST be the supplied Drive file ID, NOT the
 // internal asset.ID. The previous (pre-PR-6) bug was that DriveLinks
 // were keyed by clip.ID — so a caller that typed "1ABC_XYZ" got back a
 // map keyed by "internal-789", and every DriveLinks["1ABC_XYZ"] lookup
@@ -122,39 +108,29 @@ func TestClipSourceBuilder_Canonical_DriveFileIDRequested_PR6(t *testing.T) {
 
 	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
 
-	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{driveFileID}, nil)
+	ev, _, _, err := b.BuildClipContext(context.Background(), []string{driveFileID}, nil)
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)
 	}
-	pack := readPack(t, packRaw)
-
-	clipIDs, ok := pack["clip_ids"].([]string)
-	if !ok {
-		t.Fatalf("pack.clip_ids is %T, want []string", pack["clip_ids"])
-	}
-	if len(clipIDs) != 1 || clipIDs[0] != driveFileID {
-		t.Fatalf("pack.clip_ids = %v, want [%q]", clipIDs, driveFileID)
+	if ev == nil {
+		t.Fatal("evidence is nil")
 	}
 
-	links, ok := pack["clip_drive_links"].(map[string]string)
-	if !ok {
-		t.Fatalf("pack.clip_drive_links is %T, want map[string]string", pack["clip_drive_links"])
+	if len(ev.ClipIDs) != 1 || ev.ClipIDs[0] != driveFileID {
+		t.Fatalf("ev.ClipIDs = %v, want [%q]", ev.ClipIDs, driveFileID)
 	}
-	if got, found := links[driveFileID]; !found {
-		t.Fatalf("clip_drive_links DOES NOT key by canonical Drive file ID %q; keys = %v", driveFileID, keysOf(links))
+
+	if got, found := ev.DriveLinks[driveFileID]; !found {
+		t.Fatalf("DriveLinks DOES NOT key by canonical Drive file ID %q; keys = %v", driveFileID, keysOf(ev.DriveLinks))
 	} else if got != driveLink {
-		t.Fatalf("clip_drive_links[%q] = %q, want %q", driveFileID, got, driveLink)
+		t.Fatalf("DriveLinks[%q] = %q, want %q", driveFileID, got, driveLink)
 	}
-	if _, leaked := links[internalID]; leaked {
-		t.Fatalf("clip_drive_links MUST NOT key by internal asset.ID %q; pre-PR-6 leak detected", internalID)
+	if _, leaked := ev.DriveLinks[internalID]; leaked {
+		t.Fatalf("DriveLinks MUST NOT key by internal asset.ID %q; pre-PR-6 leak detected", internalID)
 	}
 
-	missing, ok := pack["missing_clip_ids"].([]scriptpkg.MissingClipID)
-	if !ok {
-		t.Fatalf("pack.missing_clip_ids is %T, want []scriptpkg.MissingClipID", pack["missing_clip_ids"])
-	}
-	if len(missing) != 0 {
-		t.Fatalf("pack.missing_clip_ids = %v, want [] (the only requested ID resolved via byDrive fallback)", missing)
+	if len(ev.MissingClipIDs) != 0 {
+		t.Fatalf("MissingClipIDs = %v, want nil (the only requested ID resolved via byDrive fallback)", ev.MissingClipIDs)
 	}
 }
 
@@ -180,46 +156,40 @@ func TestClipSourceBuilder_Canonical_AssetIDRequested_PR6(t *testing.T) {
 	}
 
 	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
-	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{assetID}, nil)
+	ev, _, _, err := b.BuildClipContext(context.Background(), []string{assetID}, nil)
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)
 	}
-	pack := readPack(t, packRaw)
+	if ev == nil {
+		t.Fatal("evidence is nil")
+	}
 
-	clipIDs, ok := pack["clip_ids"].([]string)
-	if !ok {
-		t.Fatalf("pack.clip_ids is %T, want []string", pack["clip_ids"])
+	if len(ev.ClipIDs) != 1 || ev.ClipIDs[0] != assetID {
+		t.Fatalf("ev.ClipIDs = %v, want [%q]", ev.ClipIDs, assetID)
 	}
-	if len(clipIDs) != 1 || clipIDs[0] != assetID {
-		t.Fatalf("pack.clip_ids = %v, want [%q]", clipIDs, assetID)
-	}
-	links, ok := pack["clip_drive_links"].(map[string]string)
-	if !ok {
-		t.Fatalf("pack.clip_drive_links is %T, want map[string]string", pack["clip_drive_links"])
-	}
+	links := ev.DriveLinks
 	if got, ok := links[assetID]; !ok || got != driveLink {
-		t.Fatalf("clip_drive_links[%q] = (%q, %v), want (%q, true)", assetID, got, ok, driveLink)
+		t.Fatalf("DriveLinks[%q] = (%q, %v), want (%q, true)", assetID, got, ok, driveLink)
 	}
 }
 
 // TestClipSourceBuilder_Missing_NotFound_PR6 pins PR 5 + PR 6
 // interaction: an ID that both lookups miss ends up in
-// missing_clip_ids with reason "not_found", and is dropped from
+// MissingClipIDs with reason "not_found", and is dropped from
 // resolved set. The resolved-only discipline from PR 5 must survive
 // canonical-keying from PR 6.
 func TestClipSourceBuilder_Missing_NotFound_PR6(t *testing.T) {
 	stub := &stubClipsResolver{} // empty: any lookup returns (nil, err)
 
 	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
-	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{"ghost"}, nil)
+	ev, _, _, err := b.BuildClipContext(context.Background(), []string{"ghost"}, nil)
 	if err == nil {
 		t.Fatalf("BuildClipContext returned nil error for an all-missing request; want err")
 	}
 	// All requested IDs dropped → caller returns typed error before
-	// reaching pack construction (SourceResolutionError pathway). The
-	// pack is nil in this branch, so no further assertions on pack.
-	if packRaw != nil {
-		t.Fatalf("pack = %v, want nil when zero clips resolved", packRaw)
+	// reaching evidence construction. The evidence is nil in this branch.
+	if ev != nil {
+		t.Fatalf("ev = %v, want nil when zero clips resolved", ev)
 	}
 }
 
@@ -236,22 +206,22 @@ func TestClipSourceBuilder_Missing_DriveNotFound_PR6(t *testing.T) {
 	}
 
 	b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
-	packRaw, _, _, err := b.BuildClipContext(context.Background(), []string{orphanID}, nil)
+	ev, _, _, err := b.BuildClipContext(context.Background(), []string{orphanID}, nil)
 	if err == nil {
 		t.Fatalf("expected error for all-missing-after-DriveLink-check; got nil")
 	}
-	if packRaw != nil {
-		t.Fatalf("pack = %v, want nil when zero clips resolved (drivenotfound)", packRaw)
+	if ev != nil {
+		t.Fatalf("ev = %v, want nil when zero clips resolved (drivenotfound)", ev)
 	}
 }
 
 // TestClipSourceBuilder_Missing_MixedResolutions_PR6 covers the
 // realistic mixed batch: one Drive-file-ID clip (canonical mismatch),
 // one missing-from-DB clip, and one well-resolved clip. Confirms:
-//   - resolved clip_ids uses canonical IDs only
-//   - missing_clip_ids carries both reasons with correct IDs
-//   - clip_drive_links keys by canonical
-//   - clip_count == len(clip_ids)
+//   - resolved ClipIDs uses canonical IDs only
+//   - MissingClipIDs carries both reasons with correct IDs
+//   - DriveLinks keys by canonical
+//   - ClipCount == len(ClipIDs)
 func TestClipSourceBuilder_Missing_MixedResolutions_PR6(t *testing.T) {
 	// Drive-file-ID mismatch case.
 	canonicalA := "driveFile-AAA"
@@ -266,7 +236,7 @@ func TestClipSourceBuilder_Missing_MixedResolutions_PR6(t *testing.T) {
 	}
 
 	builder := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
-	packRaw, _, _, err := builder.BuildClipContext(
+	ev, _, _, err := builder.BuildClipContext(
 		context.Background(),
 		[]string{canonicalA, "missing-X", "clipB"},
 		nil,
@@ -274,44 +244,34 @@ func TestClipSourceBuilder_Missing_MixedResolutions_PR6(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)
 	}
-	pack := readPack(t, packRaw)
-
-	clipIDs, ok := pack["clip_ids"].([]string)
-	if !ok {
-		t.Fatalf("pack.clip_ids is %T, want []string", pack["clip_ids"])
+	if ev == nil {
+		t.Fatal("evidence is nil")
 	}
+
 	wantClipIDs := []string{canonicalA, "clipB"} // resolved-only, canonical-keyed
-	if !equalStringSlices(clipIDs, wantClipIDs) {
-		t.Fatalf("pack.clip_ids = %v, want %v (resolved-only, driveFile ID preserved as canonical)", clipIDs, wantClipIDs)
+	if !equalStringSlices(ev.ClipIDs, wantClipIDs) {
+		t.Fatalf("ev.ClipIDs = %v, want %v (resolved-only, driveFile ID preserved as canonical)", ev.ClipIDs, wantClipIDs)
 	}
 
-	links, ok := pack["clip_drive_links"].(map[string]string)
-	if !ok {
-		t.Fatalf("pack.clip_drive_links is %T, want map[string]string", pack["clip_drive_links"])
+	if got, ok := ev.DriveLinks[canonicalA]; !ok || got != "https://drive/a" {
+		t.Fatalf("DriveLinks[%q] = (%q, %v), want (https://drive/a, true)", canonicalA, got, ok)
 	}
-	if got, ok := links[canonicalA]; !ok || got != "https://drive/a" {
-		t.Fatalf("clip_drive_links[%q] = (%q, %v), want (https://drive/a, true)", canonicalA, got, ok)
+	if got, ok := ev.DriveLinks["clipB"]; !ok || got != "https://drive/b" {
+		t.Fatalf("DriveLinks[%q] = (%q, %v), want (https://drive/b, true)", "clipB", got, ok)
 	}
-	if got, ok := links["clipB"]; !ok || got != "https://drive/b" {
-		t.Fatalf("clip_drive_links[%q] = (%q, %v), want (https://drive/b, true)", "clipB", got, ok)
-	}
-	if _, leaked := links["internal-AAA"]; leaked {
-		t.Fatalf("clip_drive_links MUST NOT key by internal-AAA; PR 6 leak detected")
+	if _, leaked := ev.DriveLinks["internal-AAA"]; leaked {
+		t.Fatalf("DriveLinks MUST NOT key by internal-AAA; PR 6 leak detected")
 	}
 
-	missing, ok := pack["missing_clip_ids"].([]scriptpkg.MissingClipID)
-	if !ok {
-		t.Fatalf("pack.missing_clip_ids is %T, want []scriptpkg.MissingClipID", pack["missing_clip_ids"])
+	if len(ev.MissingClipIDs) != 1 {
+		t.Fatalf("MissingClipIDs has %d entries, want 1 (missing-X only); got %v", len(ev.MissingClipIDs), ev.MissingClipIDs)
 	}
-	if len(missing) != 1 {
-		t.Fatalf("missing_clip_ids has %d entries, want 1 (missing-X only); got %v", len(missing), missing)
-	}
-	if missing[0].ClipID != "missing-X" || missing[0].Reason != scriptpkg.MissingClipReasonNotFound {
-		t.Fatalf("missing entry = %+v, want {ClipID: missing-X, Reason: %q}", missing[0], scriptpkg.MissingClipReasonNotFound)
+	if ev.MissingClipIDs[0].ClipID != "missing-X" || ev.MissingClipIDs[0].Reason != scriptpkg.MissingClipReasonNotFound {
+		t.Fatalf("missing entry = %+v, want {ClipID: missing-X, Reason: %q}", ev.MissingClipIDs[0], scriptpkg.MissingClipReasonNotFound)
 	}
 
-	if cc, _ := pack["clip_count"].(int); cc != 2 {
-		t.Fatalf("clip_count = %d, want 2", cc)
+	if ev.ClipCount != 2 {
+		t.Fatalf("ClipCount = %d, want 2", ev.ClipCount)
 	}
 }
 

@@ -45,7 +45,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -120,18 +119,24 @@ type docSpecDoc struct {
 // this byte-level test (the rendered HTML would miss the canonical
 // drive links).
 func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
-	ev := usecase.BuildClipEvidence(map[string]any{
+	ev := &scriptpkg.ClipEvidence{
 		// PR 6 canonical: URLs keyed by the canonical (Drive file
 		// ID) the user typed, NOT by any internal asset.ID.
-		"clip_ids":   []string{"drive-file-A", "drive-file-B", "drive-file-C", "drive-file-D"},
-		"clip_names": []string{"Clip A", "Clip B", "Clip C", "Clip D"},
-		"clip_drive_links": map[string]string{
+		ClipIDs:   []string{"drive-file-A", "drive-file-B", "drive-file-C", "drive-file-D"},
+		ClipCount: 4,
+		ClipNames: map[string]string{
+			"drive-file-A": "Clip A",
+			"drive-file-B": "Clip B",
+			"drive-file-C": "Clip C",
+			"drive-file-D": "Clip D",
+		},
+		DriveLinks: map[string]string{
 			"drive-file-A": "https://drive.google.com/file/d/drive-file-A/view",
 			"drive-file-B": "https://drive.google.com/file/d/drive-file-B/view",
 			"drive-file-C": "https://drive.google.com/file/d/drive-file-C/view",
 			"drive-file-D": "https://drive.google.com/file/d/drive-file-D/view",
 		},
-	}, "")
+	}
 	if ev == nil {
 		t.Fatal("evidence = nil")
 	}

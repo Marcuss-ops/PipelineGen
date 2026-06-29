@@ -215,7 +215,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		RequireDriveLink: resCtx.RequireDriveLink,
 	}
 
-	pack, narrativePlan, sourceText, buildErr := r.clipBuilder.BuildClipContext(ctx, clipIDs, opts)
+	clipEvidence, narrativePlan, sourceText, buildErr := r.clipBuilder.BuildClipContext(ctx, clipIDs, opts)
 	if buildErr != nil {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceCurate,
@@ -226,8 +226,6 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	}
 
 	_ = narrativePlan
-
-	clipEvidence := BuildClipEvidence(pack, sourceText)
 
 	title := resCtx.Title
 	if title == "" {

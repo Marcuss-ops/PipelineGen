@@ -21,7 +21,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -36,15 +35,15 @@ import (
 // observe the synthesised kind distribution through result.
 func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 	t.Run("engages_when_scenes_empty_and_text_present_N3", func(t *testing.T) {
-		ev := usecase.BuildClipEvidence(map[string]any{
-			"clip_ids":   []string{"clip-a", "clip-b", "clip-c"},
-			"clip_names": []string{"A", "B", "C"},
-			"clip_drive_links": map[string]string{
+		ev := &scriptpkg.ClipEvidence{
+			ClipIDs:   []string{"clip-a", "clip-b", "clip-c"},
+			ClipNames: map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
+			DriveLinks: map[string]string{
 				"clip-a": "https://drive.google.com/a",
 				"clip-b": "https://drive.google.com/b",
 				"clip-c": "https://drive.google.com/c",
 			},
-		}, "")
+		}
 		if ev == nil {
 			t.Fatal("BuildClipEvidence returned nil")
 		}
@@ -107,10 +106,11 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 		for _, id := range clipIDs {
 			drvLinks[id] = "https://drive.google.com/" + id
 		}
-		ev := usecase.BuildClipEvidence(map[string]any{
-			"clip_ids":         clipIDs,
-			"clip_drive_links": drvLinks,
-		}, "")
+		ev := &scriptpkg.ClipEvidence{
+			ClipIDs:    clipIDs,
+			ClipNames:  make(map[string]string),
+			DriveLinks: drvLinks,
+		}
 		if ev == nil {
 			t.Fatal("BuildClipEvidence returned nil")
 		}
@@ -145,10 +145,11 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 	})
 
 	t.Run("N2_both_clips_no_intro_outro_bleed", func(t *testing.T) {
-		ev := usecase.BuildClipEvidence(map[string]any{
-			"clip_ids":         []string{"clip-a", "clip-b"},
-			"clip_drive_links": map[string]string{"clip-a": "u1", "clip-b": "u2"},
-		}, "")
+		ev := &scriptpkg.ClipEvidence{
+			ClipIDs:   []string{"clip-a", "clip-b"},
+			ClipNames: map[string]string{},
+			DriveLinks: map[string]string{"clip-a": "u1", "clip-b": "u2"},
+		}
 		plan := &scriptpkg.ResolvedGenerationPlan{
 			ClipEvidence: ev,
 			NumClips:     2,
@@ -178,10 +179,11 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 	})
 
 	t.Run("skips_when_text_empty_preserves_noop", func(t *testing.T) {
-		ev := usecase.BuildClipEvidence(map[string]any{
-			"clip_ids":         []string{"clip-a"},
-			"clip_drive_links": map[string]string{"clip-a": "https://drive.google.com/a"},
-		}, "")
+		ev := &scriptpkg.ClipEvidence{
+			ClipIDs:   []string{"clip-a"},
+			ClipNames: map[string]string{},
+			DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
+		}
 		plan := &scriptpkg.ResolvedGenerationPlan{
 			ClipEvidence: ev,
 			NumClips:     1,
@@ -227,10 +229,11 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 	})
 
 	t.Run("preserves_existing_scenes_no_heuristic", func(t *testing.T) {
-		ev := usecase.BuildClipEvidence(map[string]any{
-			"clip_ids":         []string{"clip-a"},
-			"clip_drive_links": map[string]string{"clip-a": "https://drive.google.com/a"},
-		}, "")
+		ev := &scriptpkg.ClipEvidence{
+			ClipIDs:   []string{"clip-a"},
+			ClipNames: map[string]string{},
+			DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
+		}
 		plan := &scriptpkg.ResolvedGenerationPlan{
 			ClipEvidence: ev,
 			NumClips:     1,

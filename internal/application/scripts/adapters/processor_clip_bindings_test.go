@@ -1,4 +1,4 @@
-// Package scripts — processor_clip_bindings_test.go pins the
+// Package adapters_test — processor_clip_bindings_test.go pins the
 // PR 5 (June 2026) contract that the clip-scene binding
 // processor honours ONLY the resolved ClipEvidence.ClipIDs
 // set, and never binds to IDs that ended up in
@@ -7,11 +7,8 @@
 // PR 5 contract: pre-PR-5 the Pack's `clip_ids` slot was the
 // dedup'd requested set (so any missing ID stayed in there and
 // the binder happily bound scenes to orphan IDs). PR 5
-// rewires the resolver so Pack's `clip_ids` is resolved-only
-// and MissingClipIDs carries the structured reason. This test
-// verifies the binder therefore NEVER sees the dropped IDs
-// (since BuildClipEvidence silently excludes them from
-// ClipIDs).
+// rewires the resolver so ClipEvidence.ClipIDs is resolved-only
+// and MissingClipIDs carries the structured reason.
 package adapters_test
 
 import (
@@ -22,7 +19,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -51,17 +47,15 @@ import (
 // "missing-b"/"missing-c" must not appear in any scene's bound
 // ClipID — those IDs are in MissingClipIDs, not in ClipIDs.
 func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
-	ev := usecase.BuildClipEvidence(map[string]any{
-		"clip_ids":         []string{"clip-a"},
-		"clip_names":       []string{"Clip A"},
-		"clip_drive_links": map[string]string{"clip-a": "https://drive.google.com/a"},
-		"missing_clip_ids": []scriptpkg.MissingClipID{
+	ev := &scriptpkg.ClipEvidence{
+		ClipIDs:   []string{"clip-a"},
+		ClipCount: 1,
+		ClipNames: map[string]string{"clip-a": "Clip A"},
+		DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
+		MissingClipIDs: []scriptpkg.MissingClipID{
 			{ClipID: "missing-b", Reason: scriptpkg.MissingClipReasonNotFound},
 			{ClipID: "missing-c", Reason: scriptpkg.MissingClipReasonDriveNotFound},
 		},
-	}, "")
-	if ev == nil {
-		t.Fatal("evidence = nil (BuildClipEvidence refused the pack)")
 	}
 	if len(ev.ClipIDs) != 1 || ev.ClipIDs[0] != "clip-a" {
 		t.Fatalf("ClipIDs = %v, want [clip-a]", ev.ClipIDs)
@@ -135,20 +129,18 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 // modulo cycling anti-pattern is removed — extra scenes beyond
 // the clip count get no binding to surface LLM mismatches.
 func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
-	ev := usecase.BuildClipEvidence(map[string]any{
-		"clip_ids":   []string{"clip-a", "clip-b", "clip-c"},
-		"clip_names": []string{"A", "B", "C"},
-		"clip_drive_links": map[string]string{
+	ev := &scriptpkg.ClipEvidence{
+		ClipIDs:    []string{"clip-a", "clip-b", "clip-c"},
+		ClipCount:  3,
+		ClipNames:  map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
+		DriveLinks: map[string]string{
 			"clip-a": "https://drive.google.com/a",
 			"clip-b": "https://drive.google.com/b",
 			"clip-c": "https://drive.google.com/c",
 		},
-		"missing_clip_ids": []scriptpkg.MissingClipID{
+		MissingClipIDs: []scriptpkg.MissingClipID{
 			{ClipID: "missing-x", Reason: scriptpkg.MissingClipReasonNotFound},
 		},
-	}, "")
-	if ev == nil {
-		t.Fatal("evidence = nil")
 	}
 
 	// 5 scenes, 3 resolved clips — P0 #2: only first 3 scenes
@@ -228,21 +220,19 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 		internalAssetID = "internal-asset-789"
 	)
 
-	ev := usecase.BuildClipEvidence(map[string]any{
+	ev := &scriptpkg.ClipEvidence{
 		// PR 6 contract: ClipIDs holds the canonical (Drive
 		// file ID), NOT the internal asset.ID. Pre-PR-6 this
 		// slice would have been [internalAssetID].
-		"clip_ids":   []string{canonicalDriveFileID},
-		"clip_names": []string{"Clip via Drive File ID"},
-		"clip_drive_links": map[string]string{
+		ClipIDs:    []string{canonicalDriveFileID},
+		ClipCount:  1,
+		ClipNames:  map[string]string{canonicalDriveFileID: "Clip via Drive File ID"},
+		DriveLinks: map[string]string{
 			canonicalDriveFileID: driveURL,
 			// Defensive: ensure no one accidentally keys by
 			// asset.ID. If a future refactor reintroduces
 			// asset.ID-keyed DriveLinks, this test catches it.
 		},
-	}, "")
-	if ev == nil {
-		t.Fatal("evidence = nil (BuildClipEvidence refused the canonical pack)")
 	}
 	if !reflect.DeepEqual(ev.ClipIDs, []string{canonicalDriveFileID}) {
 		t.Fatalf("ClipIDs = %v, want [%q] (canonical is the Drive file ID, NOT %q)",
@@ -321,18 +311,15 @@ func TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6(t *testing.T) {
 		driveFileA = "drive-file-A"
 		driveFileB = "drive-file-B"
 	)
-	ev := usecase.BuildClipEvidence(map[string]any{
-		"clip_ids": nil, // empty → P0 #2: binder returns early, no fallback
-		"clip_drive_links": map[string]string{
+	ev := &scriptpkg.ClipEvidence{
+		// empty ClipIDs → P0 #2: binder returns early, no fallback
+		DriveLinks: map[string]string{
 			driveFileA: "https://drive.google.com/" + driveFileA,
 			driveFileB: "https://drive.google.com/" + driveFileB,
 		},
-		"missing_clip_ids": []scriptpkg.MissingClipID{
+		MissingClipIDs: []scriptpkg.MissingClipID{
 			{ClipID: driveFileA, Reason: scriptpkg.MissingClipReasonDriveNotFound},
 		},
-	}, "")
-	if ev == nil {
-		t.Fatal("evidence = nil")
 	}
 
 	model := &scriptpkg.ModelScriptOutputV1{

@@ -41,17 +41,17 @@ func (f *fakeClipSearch) SearchClips(_ context.Context, _ ClipSearchQuery) ([]sc
 
 // fakeClipBuilder implements clipContextBuilder for tests.
 type fakeClipBuilder struct {
-	pack       interface{}
+	ev         *scriptpkg.ClipEvidence
 	plan       *NarrativePlan
 	sourceText string
 	returnErr  error
 }
 
-func (f *fakeClipBuilder) BuildClipContext(_ context.Context, _ []string, _ *ClipGenerationOptions) (interface{}, *NarrativePlan, string, error) {
+func (f *fakeClipBuilder) BuildClipContext(_ context.Context, _ []string, _ *ClipGenerationOptions) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error) {
 	if f.returnErr != nil {
 		return nil, nil, "", f.returnErr
 	}
-	return f.pack, f.plan, f.sourceText, nil
+	return f.ev, f.plan, f.sourceText, nil
 }
 
 // recordClipBuilder wraps fakeClipBuilder and captures the
@@ -64,7 +64,7 @@ type recordClipBuilder struct {
 	lastOpts *ClipGenerationOptions
 }
 
-func (r *recordClipBuilder) BuildClipContext(_ context.Context, ids []string, opts *ClipGenerationOptions) (interface{}, *NarrativePlan, string, error) {
+func (r *recordClipBuilder) BuildClipContext(_ context.Context, ids []string, opts *ClipGenerationOptions) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error) {
 	r.lastOpts = opts
 	return r.fakeClipBuilder.BuildClipContext(context.Background(), ids, opts)
 }
@@ -79,12 +79,12 @@ func makeClipSearchHits(ids ...string) []scriptpkg.SearchResultItem {
 	return hits
 }
 
-func makePackForIDs(ids []string) map[string]any {
-	return map[string]any{
-		"clip_ids":         ids,
-		"clip_names":       ids,
-		"clip_count":       len(ids),
-		"clip_drive_links": map[string]string{},
+func makePackForIDs(ids []string) *scriptpkg.ClipEvidence {
+	return &scriptpkg.ClipEvidence{
+		ClipIDs:    ids,
+		ClipNames:  make(map[string]string, len(ids)),
+		DriveLinks: map[string]string{},
+		ClipCount:  len(ids),
 	}
 }
 
@@ -143,7 +143,7 @@ func TestCurateResolver_NilBuilder(t *testing.T) {
 
 func TestCurateResolver_EmptyQueryAndHints(t *testing.T) {
 	t.Parallel()
-	r := makeTestCurateResolver(&recordClipBuilder{fakeClipBuilder: fakeClipBuilder{pack: makePackForIDs(nil)}})
+	r := makeTestCurateResolver(&recordClipBuilder{fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs(nil)}})
 	_, err := r.Resolve(context.Background(), srcSpec("", nil, false, false), makeTestResCtx())
 	var srcErr *scriptpkg.SourceResolutionError
 	if !errors.As(err, &srcErr) || srcErr.ResultCount != 0 {
@@ -154,8 +154,7 @@ func TestCurateResolver_EmptyQueryAndHints(t *testing.T) {
 func TestCurateResolver_HintClipIDsOnly(t *testing.T) {
 	t.Parallel()
 	ids := []string{"A", "B", "C"}
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		pack:       makePackForIDs(ids),
+	r := makeTestCurateResolver(&fakeClipBuilder{ev:       makePackForIDs(ids),
 		sourceText: "hint clip text",
 	})
 	resolved, err := r.Resolve(context.Background(), srcSpec("", ids, false, false), makeTestResCtx())
@@ -173,8 +172,7 @@ func TestCurateResolver_HintClipIDsOnly(t *testing.T) {
 func TestCurateResolver_SearchHitsOnly(t *testing.T) {
 	t.Parallel()
 	ids := []string{"A", "B"}
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		pack:       makePackForIDs(ids),
+	r := makeTestCurateResolver(&fakeClipBuilder{ev:       makePackForIDs(ids),
 		sourceText: "search hit text",
 	})
 	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A", "B")})
@@ -189,8 +187,7 @@ func TestCurateResolver_SearchHitsOnly(t *testing.T) {
 
 func TestCurateResolver_SearchAndHints_UnionDedup(t *testing.T) {
 	t.Parallel()
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		pack:       makePackForIDs([]string{"A", "B", "C", "D"}),
+	r := makeTestCurateResolver(&fakeClipBuilder{ev:       makePackForIDs([]string{"A", "B", "C", "D"}),
 		sourceText: "union text",
 	})
 	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A", "B", "C")})
@@ -206,7 +203,7 @@ func TestCurateResolver_SearchAndHints_UnionDedup(t *testing.T) {
 
 func TestCurateResolver_NoClips_AllowTextOnlyFalse_ReturnsError(t *testing.T) {
 	t.Parallel()
-	r := makeTestCurateResolver(&fakeClipBuilder{pack: makePackForIDs(nil)})
+	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(nil)})
 	r.SetClipSearchPort(&fakeClipSearch{hits: nil})
 	_, err := r.Resolve(context.Background(), srcSpec("no-results", nil, true, false), makeTestResCtx())
 	var srcErr *scriptpkg.SourceResolutionError
@@ -220,7 +217,7 @@ func TestCurateResolver_NoClips_AllowTextOnlyFalse_ReturnsError(t *testing.T) {
 
 func TestCurateResolver_NoClips_AllowTextOnlyTrue_EmptyClipList(t *testing.T) {
 	t.Parallel()
-	r := makeTestCurateResolver(&fakeClipBuilder{pack: makePackForIDs(nil)})
+	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(nil)})
 	r.SetClipSearchPort(&fakeClipSearch{hits: nil})
 	resolved, err := r.Resolve(context.Background(), srcSpec("empty", nil, true, true), makeTestResCtx())
 	if err != nil {
@@ -237,8 +234,7 @@ func TestCurateResolver_NoClips_AllowTextOnlyTrue_EmptyClipList(t *testing.T) {
 func TestCurateResolver_SearchError_FallsBackToHints(t *testing.T) {
 	t.Parallel()
 	ids := []string{"hint-A", "hint-B"}
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		pack:       makePackForIDs(ids),
+	r := makeTestCurateResolver(&fakeClipBuilder{ev:       makePackForIDs(ids),
 		sourceText: "fallback text",
 	})
 	r.SetClipSearchPort(&fakeClipSearch{returnErr: errors.New("qdrant down")})
@@ -254,8 +250,7 @@ func TestCurateResolver_SearchError_FallsBackToHints(t *testing.T) {
 func TestCurateResolver_SearchTrue_NoPort_FallsBackToHints(t *testing.T) {
 	t.Parallel()
 	ids := []string{"only-hint"}
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		pack:       makePackForIDs(ids),
+	r := makeTestCurateResolver(&fakeClipBuilder{ev:       makePackForIDs(ids),
 		sourceText: "hint-only",
 	})
 	// No port wired.
@@ -284,8 +279,7 @@ func TestCurateResolver_BuilderError_Propagates(t *testing.T) {
 
 func TestCurateResolver_SearchResultsPopulated(t *testing.T) {
 	t.Parallel()
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		pack:       makePackForIDs([]string{"SRC-A", "SRC-B"}),
+	r := makeTestCurateResolver(&fakeClipBuilder{ev:       makePackForIDs([]string{"SRC-A", "SRC-B"}),
 		sourceText: "results text",
 	})
 	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("SRC-A", "SRC-B")})
@@ -314,7 +308,7 @@ func TestCurateResolver_ItalianLanguage_NotFromGuidelines(t *testing.T) {
 	t.Parallel()
 	ids := []string{"A"}
 	rec := &recordClipBuilder{
-		fakeClipBuilder: fakeClipBuilder{pack: makePackForIDs(ids)},
+		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs(ids)},
 	}
 	r := makeTestCurateResolver(rec)
 
@@ -358,7 +352,7 @@ func TestCurateResolver_TargetWordsFromResCtx(t *testing.T) {
 	t.Parallel()
 	ids := []string{"A"}
 	rec := &recordClipBuilder{
-		fakeClipBuilder: fakeClipBuilder{pack: makePackForIDs(ids)},
+		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs(ids)},
 	}
 	r := makeTestCurateResolver(rec)
 
@@ -378,8 +372,7 @@ func TestCurateResolver_TargetWordsFromResCtx(t *testing.T) {
 func TestCurateResolver_TitleFromResCtx(t *testing.T) {
 	t.Parallel()
 	ids := []string{"A"}
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		pack:       makePackForIDs(ids),
+	r := makeTestCurateResolver(&fakeClipBuilder{ev:       makePackForIDs(ids),
 		sourceText: "text",
 	})
 
@@ -403,7 +396,7 @@ func TestCurateResolver_SearchHitsAndClipHints_Dedup(t *testing.T) {
 	// Builder returns the merged pack; we want to observe that the
 	// resolver did NOT pass duplicates to the builder.
 	rec := &recordClipBuilder{
-		fakeClipBuilder: fakeClipBuilder{pack: makePackForIDs([]string{"A", "B", "C"})},
+		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs([]string{"A", "B", "C"})},
 	}
 	r := makeTestCurateResolver(rec)
 	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A", "B")})
