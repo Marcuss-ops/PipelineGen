@@ -17,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/drivesync"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/localimport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -82,11 +83,17 @@ func newAssetRegisterService(
 	// + log. Future composition sites will inject a real JobsPort adapter.
 	drvSvc := drivesync.NewService(nil, &zapSourcingLogger{log: log})
 
-	// 6-arg façade (was 14 historically). JobsPort + FileScannerPort
-	// stay on the façade until commit 4 lifts them to the localimport
-	// sub-package. The drivesync sub-service (commit 3, this commit)
-	// replaces the SyncDriveFolder inline path.
-	return sourcing.NewService(ytSvc, batchSvc, drvSvc, nil, nil, &zapSourcingLogger{log: log})
+	// P0-1 / commit 4 (this commit): LocalImporter sub-service.
+	// 3-dep ctor: jobs + scanner + log (all nil at this composition site
+	// today; preserves historical behaviour — file-scanner-not-configured
+	// and jobs-port-not-configured errors fire when CLI invokes them in
+	// dry-run or non-dry-run paths respectively).
+	localSvc := localimport.NewService(nil, nil, &zapSourcingLogger{log: log})
+
+	// 7-arg façade (was 14 historically). JobsPort + FileScannerPort
+	// stay on the façade as proxy for localimport until commit 5 lifts
+	// them to the composition root.
+	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, nil, nil, &zapSourcingLogger{log: log})
 }
 
 // ── youtube v2 adapters ───────────────────────────────────────────────────────
@@ -115,6 +122,12 @@ var (
 	// composition root is the only place where both sourcing and
 	// drivesync are reachable without a cycle.
 	_ sourcing.DriveFolderSynchronizer = (*drivesync.Service)(nil)
+	// P0-1 / commit 4 (this commit): localimport.Service implements
+	// sourcing.LocalImporter. Composition root transitively imports
+	// both sourcing and localimport (the latter is a sub-package of
+	// the former; sourcing itself never imports localimport, so no
+	// cycle).
+	_ sourcing.LocalImporter = (*localimport.Service)(nil)
 )
 
 // youtubeIndexDispatcherAdapter implements youtube.IndexDispatcherPort by
