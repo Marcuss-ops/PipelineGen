@@ -229,11 +229,19 @@ internal/api/_dummy_archcheck_regression.go
 # tree between the fast-forward and the conditional cleanup; this entry
 # closes the gap (housekeeping precondition for the next wave).
 .wave23_*
-
-# Scratch quarantine - never-tracked prior in-progress work (P0.4/P0.3 voiceover)
-docs/notes/scratch/
-
-
 # Scratch quarantine - never-tracked prior in-progress work (P0.4 / P0.3 voiceover scratch)
 # Moved 2026-06-29 as part of P0.6 closure so canonical main stays build-clean.
 docs/notes/scratch/
+
+# PR-A (June 2026): anti-reintro gate for diagnostic / snapshot artefacts
+# that historically leaked into the working tree during mega-batch
+# commits (the paste audit `tmp-diag` family). Patterns are
+# subdir-safe via the trailing `/` (anchored to root) and case-sensitive
+# (matches the rg-dir basename, NOT a substring of a longer name like
+# `make-tmp-diag.sh`). CI enforcement lives in
+# scripts/ci-architectural-checks.sh::Check 36 (forward-prevention gate,
+# mirrors Check 5 / Check 8 alignment).
+.tmp-diag/
+tmp-diag/
+CURRENT_*.go
+TODO[0-9]*.go

@@ -408,3 +408,93 @@ func sourceOrAll(s string) string {
 	}
 	return s
 }
+
+// ── providersBridgeToSearch — composition-only bridge helper ────────────────────
+//
+// PR-SEARCH-AGGREGATOR-LEGACY (EXPAND phase, June 2026): the legacy
+// providers.SearchAggregator (internal/application/assets/providers/
+// aggregator.go; NewSearchAggregator ctor + Aggregate method +
+// HashQuery branch + ProviderStats/AggregateStats types) is being
+// migrated to the canonical *search.Aggregator
+// (internal/application/search/aggregator.go).
+//
+// This function is the COMPOSITION-ONLY bridge that lets the
+// migration proceed handler-by-handler (BACKFILL per godlike/07
+// §"Migration sequence") WITHOUT a single 6-file diff that can only
+// land on a topic branch:
+//
+//	EXPAND  (this PR)        : ship this bridge helper + deprecation
+//	                           record. ZERO callsite changes. CI
+//	                           stays GREEN on origin/main because
+//	                           the bridge is additive (no
+//	                           constructor is replaced, no field
+//	                           type is flipped, no file is
+//	                           git-rm'd).
+//	BACKFILL (next PRs)      : handler-by-handler body rewrites
+//	                           from providers.AggregateOptions →
+//	                           search.Query. Each migrated handler
+//	                           flips its field type to
+//	                           *search.Aggregator in the same
+//	                           commit. The bridge is documented as
+//	                           precedent-only at the composition
+//	                           layer; new handlers MUST consume
+//	                           *search.Aggregator directly per
+//	                           AGENTS.md Pattern 0.
+//	CUTOVER (single PR)      : git rm aggregator.go +
+//	                           aggregator_test.go; migrate the 7
+//	                           legacy tests to
+//	                           internal/application/search/
+//	                           cross_provider_test.go via canonical
+//	                           Search() API (test stubs need full
+//	                           rewrites — providers.SearchQuery /
+//	                           AggregateOptions have no direct
+//	                           equivalent in canonical).
+//	CONTRACT (later PR)     : Check 37 in
+//	                           scripts/ci-architectural-checks.sh
+//	                           gates re-introduction.
+//
+// The bridge wraps every provider.SearchProvider in the input
+// registry as a search.SearchBackend (providerSearchBackend is
+// declared above in this file; the canonical wiring is
+// search.CapVideo + per-provider backend caps). The result is a
+// fresh *search.Aggregator. Future S3c PRs that flip the handler
+// field types consume the bridge's return value directly; the
+// bridge itself STAYS in this file across the migration as the
+// single composition-only seam.
+//
+// IMPORTANT: this helper is composition-only (lives in
+// internal/app /). Per Wave 19 cross-capability rule the search
+// package stays stdlib-only; any new handler-level direct
+// consumption of *providers.SearchAggregator from
+// internal/application/* is forbidden.
+// providersBridgeToSearch wraps a *providers.Registry into the canonical
+// *search.Aggregator. The implementation REUSES BuildSearchBackends
+// (declared above in this file) so future Freeze / register-shape
+// changes cannot drift between this bridge and the canonical helper.
+// ClipsRepo / MediasearchSvc / WorkspaceID are intentionally left
+// nil/empty so only the provider-side backends register — that
+// matches the legacy providers.SearchAggregator scope (provider-only
+// fan-out; local + semantic live in dedicated adapters registered
+// by the canonical WireRegistry path).
+func providersBridgeToSearch(reg *providers.Registry, log *zap.Logger) (*search.Aggregator, error) {
+	if reg == nil {
+		return nil, fmt.Errorf("providersBridgeToSearch: registry is nil (composition root must call WireRegistry -> Freeze() before this helper)")
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	backendReg, err := BuildSearchBackends(SearchBackendBuildOpts{
+		Logger:      log,
+		ProviderReg: reg,
+		// ClipsRepo: nil, MediasearchSvc: nil, WorkspaceID: "" —
+		// BuildSearchBackends skips those branches when nil/empty,
+		// so the bridge only registers provider-side backends.
+	})
+	if err != nil {
+		log.Error("providersBridgeToSearch: BuildSearchBackends failed (fail-closed)", zap.Error(err))
+		return nil, fmt.Errorf("providersBridgeToSearch: %w", err)
+	}
+	log.Info("providersBridgeToSearch completed (provider-bridge only; local+semantic live on canonical WireRegistry)",
+		zap.Int("provider_backends", len(backendReg.All())))
+	return search.NewAggregator(backendReg, &zapSearchLogAdapter{log: log}), nil
+}
