@@ -17,20 +17,19 @@ import (
 
 // ── ClipSourceBuilder ───────────────────────────────────────────────────
 
-// clipsResolverPort is the narrow resolver interface that
-// ClipSourceBuilder consumes. *assets.ClipsRepository satisfies it
-// in production; unit tests inject a hand-rolled stub.
-//
-// P1 #7 (June 2026): the production constructor now accepts
-// clipsResolverPort instead of the concrete *assets.ClipsRepository,
-// removing the SQLite infra import from the use case layer.
-type clipsResolverPort interface {
-	GetClip(ctx context.Context, id string) (*asset.Asset, error)
-	GetByDriveFileID(ctx context.Context, id string) (*asset.Asset, error)
+// typedClipResolverPort is the typed resolver interface that
+// ClipSourceBuilder consumes. It replaces the legacy clipsResolverPort
+// (GetClip + GetByDriveFileID heuristic) with explicit per-type dispatch.
+// *assets.ClipsRepository satisfies it in production via its
+// ResolveByMediaAssetID / ResolveByDriveFileID methods (TODO #1 CUTOVER,
+// June 2026). Unit tests inject a hand-rolled stub.
+type typedClipResolverPort interface {
+	ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error)
+	ResolveByDriveFileID(ctx context.Context, fileID string) ([]*asset.Asset, error)
 }
 
 type ClipSourceBuilder struct {
-	clipsRepo    clipsResolverPort
+	clipsRepo    typedClipResolverPort
 	ollamaClient interface{} // *client.Client
 	reranker     interface{}
 	log          *zap.Logger
@@ -62,16 +61,17 @@ type ClipGenerationOptions struct {
 }
 
 // NewClipSourceBuilder creates a ClipSourceBuilder backed by the
-// supplied clip resolver. In production, the concrete
-// *assets.ClipsRepository (satisfying clipsResolverPort) is wired
+// supplied typed clip resolver. In production, the concrete
+// *assets.ClipsRepository (satisfying typedClipResolverPort) is wired
 // by internal/app/wire_script.go. Unit tests pass a hand-rolled
 // stub directly — no separate test-only constructor is needed.
 //
-// P1 #7 (June 2026): parameter changed from *assets.ClipsRepository
-// to clipsResolverPort, removing the SQLite infra import from the
-// use case layer.
+// TODO #1 CUTOVER (June 2026): parameter changed from clipsResolverPort
+// (GetClip + GetByDriveFileID) to typedClipResolverPort (ResolveByMediaAssetID
+// + ResolveByDriveFileID), switching from heuristic fallback to explicit
+// per-type dispatch.
 func NewClipSourceBuilder(
-	clipsRepo clipsResolverPort,
+	clipsRepo typedClipResolverPort,
 	ollamaClient interface{},
 	log *zap.Logger,
 ) *ClipSourceBuilder {
@@ -177,27 +177,35 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	}
 
 	for _, id := range uniqueIDs {
-		clip, err := clipsRepo.GetClip(ctx, id)
+		// TODO #1 CUTOVER (June 2026): typed dispatch replaces the
+		// legacy GetClip → GetByDriveFileID heuristic. First try
+		// the canonical media_assets.id column; if not found, try
+		// drive_file_id. The two-phase fallback preserves existing
+		// behavior while using the typed ResolveBy* methods.
+		clip, err := clipsRepo.ResolveByMediaAssetID(ctx, id)
 		if err != nil {
 			if c.log != nil {
-				c.log.Warn("clip source builder: failed to fetch clip",
+				c.log.Warn("clip source builder: failed to fetch clip by media asset id",
 					zap.String("clip_id", id),
 					zap.Error(err))
 			}
 		}
 		if clip == nil {
-			clip, err = clipsRepo.GetByDriveFileID(ctx, id)
-			if err != nil {
+			list, driveErr := clipsRepo.ResolveByDriveFileID(ctx, id)
+			if driveErr != nil {
 				if c.log != nil {
 					c.log.Warn("clip source builder: failed to fetch clip by drive file id",
 						zap.String("clip_id", id),
-						zap.Error(err))
+						zap.Error(driveErr))
 				}
 				missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
 					ClipID: id,
 					Reason: scriptpkg.MissingClipReasonNotFound,
 				})
 				continue
+			}
+			if len(list) > 0 {
+				clip = list[0]
 			}
 		}
 		if clip == nil {

@@ -3,10 +3,10 @@
 // *assets.ClipsRepository (this PR adds the typed methods).
 //
 // TODO #1 (June 2026, refactor/generate-from-clips): the legacy
-// clip_source_builder.clipsResolverPort admitted a "try media_assets.id,
-// then fall back to drive_file_id" heuristic that silently mixed
-// identifier layers. This adapter swaps that for EXPLICIT
-// per-ReferenceType dispatch — there is no fall-back, only:
+// clip_source_builder.clipsResolverPort (now typedClipResolverPort)
+// admitted a "try media_assets.id, then fall back to drive_file_id"
+// heuristic that silently mixed identifier layers. This adapter swaps
+// that for EXPLICIT per-ReferenceType dispatch — there is no fall-back, only:
 //
 //   RefTypeMediaAssetID        → ResolveByMediaAssetID
 //   RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (LIKE yt_<videoID>_% fan-out)

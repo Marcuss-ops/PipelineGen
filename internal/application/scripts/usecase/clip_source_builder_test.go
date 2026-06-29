@@ -4,7 +4,7 @@
 // These tests pin the invariant that the resolved IDs in the evidence and the
 // keys of DriveLinks are the canonical = REQUESTED IDs, not the
 // asset's internal ID. Production *assets.ClipsRepository is intentionally
-// NOT wired here — the clipsResolverPort interface and
+// NOT wired here — the typedClipResolverPort interface and
 // NewClipSourceBuilder constructor let unit tests inject a stub
 // (passing nil for ollamaClient) that returns clips with deliberate
 // clip.ID != DriveFileID mismatches.
@@ -43,27 +43,28 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// stubClipsResolver is a hand-rolled clipsResolverPort stub that
+// stubClipsResolver is a hand-rolled typedClipResolverPort stub that
 // independently maps two lookup tables: byID (primary, asset.ID) and
-// byDrive (fallback, DriveFileID). Unknown IDs return (nil, err). Tests
-// can populate only one side to exercise the canonical-ID matrix.
+// byDrive (fallback, DriveFileID). Unknown IDs return (nil, err) or
+// (nil, err) for ResolveByMediaAssetID/ResolveByDriveFileID respectively.
+// Tests can populate only one side to exercise the canonical-ID matrix.
 type stubClipsResolver struct {
 	byID    map[string]*asset.Asset
 	byDrive map[string]*asset.Asset
 }
 
-func (s *stubClipsResolver) GetClip(_ context.Context, id string) (*asset.Asset, error) {
+func (s *stubClipsResolver) ResolveByMediaAssetID(_ context.Context, id string) (*asset.Asset, error) {
 	if clip, ok := s.byID[id]; ok {
 		return clip, nil
 	}
-	return nil, errors.New("stubClipsResolver.GetClip: not found")
+	return nil, errors.New("stubClipsResolver.ResolveByMediaAssetID: not found")
 }
 
-func (s *stubClipsResolver) GetByDriveFileID(_ context.Context, id string) (*asset.Asset, error) {
-	if clip, ok := s.byDrive[id]; ok {
-		return clip, nil
+func (s *stubClipsResolver) ResolveByDriveFileID(_ context.Context, fileID string) ([]*asset.Asset, error) {
+	if clip, ok := s.byDrive[fileID]; ok {
+		return []*asset.Asset{clip}, nil
 	}
-	return nil, errors.New("stubClipsResolver.GetByDriveFileID: not found")
+	return nil, errors.New("stubClipsResolver.ResolveByDriveFileID: not found")
 }
 
 // newAssetWithDriveLink constructs a clip whose internal ID differs from
