@@ -54,29 +54,6 @@ type DocumentCreator interface {
 	CreateDoc(ctx context.Context, title, content, folderID string) (docURL, docID string)
 }
 
-// JobFullStatusHandler is the narrow port for the canonical
-// /api/script/jobs/:job_id/full delegator.
-//
-// It is satisfied structurally by *jobsapi.JobsHandler
-// (which exposes `GetFull(c *gin.Context)`); the script
-// module does NOT import the jobs package directly — the
-// composition root (internal/app/wire_script.go) wires the
-// concrete handler through ScriptFlowDeps.JobFullStatus.
-//
-// Issue 9 / P2 (June 2026): collapses the duplicated
-// script-side job status response shape into the canonical
-// /api/jobs/:id/full handler. The pre-Issue-9 script handler
-// had its own GetJobFullStatus body (calls jobsSvc.Get +
-// jobsSvc.ListEvents + return script-shaped response) which
-// duplicated the jobs module's GetFull logic with only a
-// different response wrapper. The delegator removes the
-// duplication AND preserves the admin-token gate that the
-// script route already has (middleware runs before the
-// handler call).
-type JobFullStatusHandler interface {
-	GetFull(c *gin.Context)
-}
-
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 type ScriptFlowHandler struct {
@@ -101,13 +78,6 @@ type ScriptFlowHandler struct {
 	driveFolderClient DriveFolderClient
 	documentCreator   DocumentCreator
 	jobsSvc           jobservice.Service
-	// Issue 9 / P2 (June 2026): narrow port for the
-	// /api/script/jobs/:job_id/full delegator. The
-	// script route's /full handler calls this port
-	// instead of reimplementing the jobs.GetFull logic
-	// with a different response wrapper. See
-	// JobFullStatusHandler doc above.
-	jobFullStatus     JobFullStatusHandler
 	scriptsRepo       usecase.ScriptRepository
 	// Issue 4 (June 2026, P1): registry is the canonical job-type
 	// Registry, attached at composition time so EnqueueGenerationJob
@@ -155,15 +125,7 @@ type ScriptFlowDeps struct {
 	ScriptsRepo usecase.ScriptRepository
 	Memory      *adapters.Service
 	Jobs        jobservice.Service
-	// Issue 9 / P2 (June 2026): narrow port for the
-	// canonical /api/script/jobs/:job_id/full
-	// delegator. The composition root wires a
-	// *jobsapi.JobsHandler here so the script route
-	// delegates the /full fetch to the same handler
-	// the jobs module exposes at /api/jobs/:id/full.
-	// Optional (nil-tolerant for test fixtures; the
-	// GetJobFullStatus method keeps a no-op guard).
-	JobFullStatus JobFullStatusHandler		// Issue 4 (June 2026, P1): optional canonical job-type registry
+		// Issue 4 (June 2026, P1): optional canonical job-type registry
 		// used by EnqueueGenerationJob to source MaxRetries from
 		// registry.DefaultMaxRetries(jType). Optional — nil preserves
 		// the legacy hard-coded 3-retry fallback path through the
@@ -214,7 +176,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		driveFolderClient: deps.DriveFolderClient,
 		documentCreator:   deps.DocumentCreator,
 		jobsSvc:           deps.Jobs,
-		jobFullStatus:     deps.JobFullStatus,
 		scriptsRepo:       deps.ScriptsRepo,
 		memorySvc:         deps.Memory,
 		harvestSvc:        deps.Harvest,
@@ -247,21 +208,13 @@ type AdminTokenProvider interface {
 
 // ── Route registration ──────────────────────────────────────────────────────
 
+// registerJobRoutes mounts the canonical script job-status route.
+// Blocco B (June 2026): /api/script/jobs/:id/full alias removed —
+// the canonical route is /api/jobs/:id/full (mounted by the Jobs module).
 func (h *ScriptFlowHandler) registerJobRoutes(r *gin.RouterGroup) {
-	// Issue 9 / P2 followup (June 2026): the /full route
-	// DELEGATES to JobsHandler.GetFull (which reads
-	// `c.Param("id")`). To keep the delegator a zero-rewrite
-	// forward, the route param here MUST be named "id" — the
-	// same name the Jobs module uses at /api/jobs/:id/full.
-	// Pre-Issue-9 the param was "job_id" which broke the
-	// delegator (empty "id" → JobsHandler.GetFull 404'd).
-	// The non-/full route is also aligned to "id" for the
-	// same reason (consistency + future-proofing if the
-	// non-/full route is also collapsed in a follow-up).
 	jobs := r.Group("")
 	jobs.Use(RequireAdminToken(h))
 	jobs.GET("/jobs/:id", h.GetJobStatus)
-	jobs.GET("/jobs/:id/full", h.GetJobFullStatus)
 }
 
 // RequireAdminToken wraps middleware.RequireAdminToken accepting the local
@@ -370,40 +323,11 @@ func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, con
 
 // ── Job endpoints ───────────────────────────────────────────────────────────
 
-// GetJobFullStatus is the Issue 9 / P2 (June 2026) thin
-// delegator that forwards the /api/script/jobs/:job_id/full
-// fetch to the canonical Jobs module handler. The
-// composition root wires the JobsHandler.GetFull method
-// through ScriptFlowDeps.JobFullStatus; the script route
-// here only validates the port is wired (nil-guard) and
-// then calls it. All the actual job-fetch + event-list +
-// response-shape logic lives in *jobsapi.JobsHandler.GetFull
-// (internal/api/jobs/impl.go) — zero duplication.
-//
-// Admin-token gate: the route group has
-// `RequireAdminToken(h)` applied BEFORE this handler runs,
-// so the admin-token protection is preserved (the Jobs
-// module's own /api/jobs/:id/full route is admin-token-free;
-// a naive 307 redirect here would bypass the gate; the
-// delegator avoids that footgun).
-func (h *ScriptFlowHandler) GetJobFullStatus(c *gin.Context) {
-	if h.jobFullStatus == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "jobs full status handler not initialized")
-		return
-	}
-	h.jobFullStatus.GetFull(c)
-}
-
 func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	if h.jobsSvc == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
 		return
 	}
-	// Issue 9 / P2 followup (June 2026): the route is
-	// registered as /jobs/:id (see registerJobRoutes), so
-	// the param name is "id" not "job_id". Pre-Issue-9 the
-	// script route used :job_id; the rename aligns with the
-	// canonical JobsHandler route /api/jobs/:id contract.
 	jobID := strings.TrimSpace(c.Param("id"))
 	if jobID == "" {
 		apiutil.BadRequest(c, "job id is required")

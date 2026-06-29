@@ -46,7 +46,6 @@ import (
 	"strings"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -346,11 +345,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		gen.SetMetadataModel(metaModel)
 	}
 
-	// Issue 9 / P2 (June 2026): construct a *jobsapi.JobsHandler
-	// so the script route /api/script/jobs/:job_id/full can
-	// delegate to JobsHandler.GetFull via the JobFullStatus port.
-	jobsHandler := jobsapi.NewJobsHandler(root.Jobs.Service, root.Jobs.Service, log)
-
 	// PR-FIX (June 2026): lightweight clip-name searcher for
 	// GET /script/clips/search?q= discovery endpoint. The
 	// clipsNameSearchAdapter impl lives in wire_script_sources.go.
@@ -361,26 +355,21 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Construct handler ──────────────────────────────────────────────
 	handler := scriptapi.NewScriptFlowHandler(scriptapi.ScriptFlowDeps{
-		Engine:        engine,
-		Section:       sectionRegen,
-		CacheEviction: cacheEvictionUC,
-		Image:         root.Domains.ImageService,
-		Realtime:      root.Domains.RealtimeSearch,
-		Association:   root.Domains.AssocService,
-		Voiceover:     root.Domains.VoiceoverService,
-		AssetTree:     root.Search.AssetTreeService,
-		ClipSourceBuilder: clipSourceBuilder,
-		MediaCurator:  mediaCurator,
-		Harvest:       harvestSvc,
-		ScriptsRepo:   scriptsRepoAdapter,
-		Memory:        memorySvc,
-		Jobs:          root.Jobs.Facade,
-		JobFullStatus: jobsHandler,
-		// Issue 4 (June 2026, P1): wire the canonical job-type Registry
-		// so EnqueueGenerationJob sources MaxRetries from
-		// registry.DefaultMaxRetries(script.generate) instead of the
-		// pre-Issue-4 hard-coded 3-retry fallback.
-		Registry:              appjobs.Compose(),
+		Engine:              engine,
+		Section:             sectionRegen,
+		CacheEviction:       cacheEvictionUC,
+		Image:               root.Domains.ImageService,
+		Realtime:            root.Domains.RealtimeSearch,
+		Association:         root.Domains.AssocService,
+		Voiceover:           root.Domains.VoiceoverService,
+		AssetTree:           root.Search.AssetTreeService,
+		ClipSourceBuilder:   clipSourceBuilder,
+		MediaCurator:        mediaCurator,
+		Harvest:             harvestSvc,
+		ScriptsRepo:         scriptsRepoAdapter,
+		Memory:              memorySvc,
+		Jobs:                root.Jobs.Facade,
+		Registry:            appjobs.Compose(),
 		AdminToken:            adminToken,
 		DriveFolderClient:     driveFolderClient,
 		DocumentCreator:       documentCreator,

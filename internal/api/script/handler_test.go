@@ -128,7 +128,6 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		{"POST", "/api/script/generate-batch"},
 		{"POST", "/api/script/curate"},
 		{"GET", "/api/script/jobs/:id"},
-		{"GET", "/api/script/jobs/:id/full"},
 		{"POST", "/api/script/:id/sections/:section_id/regenerate"},
 		{"POST", "/api/script/cache/evict"},
 	}

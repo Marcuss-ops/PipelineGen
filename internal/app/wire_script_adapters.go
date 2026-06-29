@@ -48,8 +48,7 @@
 //     populates the ppReg that validateRequiredProcessors scans.
 //   - internal/api/script: ScriptFlowDeps.DriveFolderClient +
 //     DocumentCreator (the typed-port shapes both adapters
-//     implement), ScriptFlowDeps.JobFullStatus (the handler-side
-//     consumer of validateScriptGenerateWiring's fail-closed invariant).
+//     implement).
 //   - internal/infrastructure/drive: *drive.Uploader +
 //     drive.DocClient (the concrete services the adapters wrap).
 //   - internal/application/scripts/usecase: NewDocumentsService
