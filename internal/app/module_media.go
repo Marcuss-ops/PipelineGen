@@ -375,21 +375,18 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 	}
 
 	// ── PR 4 (June 2026): extract voiceover, soundeffect, register ─
-	// Voiceover: GroupsResolver is built here for the standalone handler.
-	var groupsResolver *voiceoverpkg.GroupsResolver
-	if bundle.AssetTreeService != nil {
-		gr, grErr := voiceoverpkg.NewGroupsResolver(bundle.AssetTreeService, log)
-		if grErr != nil {
-			log.Warn("voiceover groups_resolver not initialized (PR4)", zap.Error(grErr))
-		} else {
-			groupsResolver = gr
-		}
-	}
-	defaultVoiceoverRoot := cfg.Drive.VoiceoverRootFolder
-	if defaultVoiceoverRoot != "" {
-		log.Info("voiceover groups_resolver enabled (PR4)", zap.String("root", defaultVoiceoverRoot))
-	}
-	voiceoverHandler := assetvoice.NewHandler(voiceoverSvc, voiceoverSync, jobs.Facade, groupsResolver, defaultVoiceoverRoot, log)
+	// Blocco 4 EXPAND slim (June 2026): the standalone voiceover handler
+	// is now async-only via the voiceover.generate job (the canonical
+	// /generate route binds GenerateVoiceoversCommand + enqueues via
+	// jobsSvc). GroupsResolver + VoiceoverRootFolder are no longer
+	// referenced in this module layer — the legacy /groups +
+	// /generate-with-group routes were removed at this commit; future
+	// BACKFILL commits can re-register them via
+	// addVoiceoverDeprecationHeader without wiring groupsResolver back
+	// here. voiceoverSvc + voiceoverSync remain in WireAssets's signature
+	// for forward compatibility with future BACKFILL/CUTOVER migration
+	// waves (godlike/07 EXPAND/BACKFILL/CUTOVER/CONTRACT).
+	voiceoverHandler := assetvoice.NewHandler(jobs.Facade, log)
 
 	// SoundEffect: wrapped repos + uploader + metaWriter + dispatcher via
 	// sfxports adapters. PG-003 (June 2026) replaced the four concrete
