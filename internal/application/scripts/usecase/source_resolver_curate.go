@@ -215,7 +215,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		RequireDriveLink: resCtx.RequireDriveLink,
 	}
 
-	clipEvidence, narrativePlan, sourceText, buildErr := r.clipBuilder.BuildClipContext(ctx, clipIDs, opts)
+	clipEvidence, resolvedTitle, sourceText, buildErr := r.clipBuilder.BuildClipContext(ctx, clipIDs, opts)
 	if buildErr != nil {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceCurate,
@@ -225,9 +225,12 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		}
 	}
 
-	_ = narrativePlan
-
-	title := resCtx.Title
+	// P1 #9 (June 2026): resolvedTitle is the plan-derived title from
+	// BuildClipContext. Fall back to the resolution context title.
+	title := strings.TrimSpace(resolvedTitle)
+	if title == "" {
+		title = resCtx.Title
+	}
 	if title == "" {
 		title = query
 	}

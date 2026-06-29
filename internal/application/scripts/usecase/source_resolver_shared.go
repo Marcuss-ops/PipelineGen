@@ -25,9 +25,9 @@ import (
 // ── Shared types (Phase 2 hydration plumbing) ──────────────────────────
 
 type clipContextBuilder interface {
-	// P1 #6 (June 2026): returns *scriptpkg.ClipEvidence directly
-	// instead of interface{} pack.
-	BuildClipContext(ctx context.Context, clipIDs []string, opts *ClipGenerationOptions) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error)
+	// P1 #9 (June 2026): second return is the resolved title string
+	// (was *NarrativePlan — only plan.Title was ever consumed).
+	BuildClipContext(ctx context.Context, clipIDs []string, opts *ClipGenerationOptions) (*scriptpkg.ClipEvidence, string, string, error)
 }
 
 type resolvedClipParams struct {
@@ -55,7 +55,7 @@ func buildResolvedClipSource(
 	p resolvedClipParams,
 	log *zap.Logger,
 ) (*scriptpkg.ResolvedSource, error) {
-	evidence, plan, sourceText, buildErr := builder.BuildClipContext(ctx, p.clipIDs, p.opts)
+	evidence, resolvedTitle, sourceText, buildErr := builder.BuildClipContext(ctx, p.clipIDs, p.opts)
 	if buildErr != nil {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  p.sourceType,
@@ -65,10 +65,9 @@ func buildResolvedClipSource(
 		}
 	}
 
-	title := ""
-	if plan != nil {
-		title = plan.Title
-	}
+	// P1 #9 (June 2026): resolvedTitle is the plan-derived title from
+	// BuildClipContext. Fall back to the resolver-supplied title.
+	title := strings.TrimSpace(resolvedTitle)
 	if title == "" {
 		title = strings.TrimSpace(p.titleFallback)
 	}
