@@ -50,8 +50,14 @@ import (
 // root.Jobs.Facade (the same path used pre-PR4d). WireArtlist remains the
 // canonical owner of the clipresolver construction; ArtlistWiring no longer
 // needs to expose it.
+//
+// Blocco C1-Step 3 (June 2026): Handler field removed. The HTTP Handler
+// is constructed inside `artsources.Build(deps)` and captured by the
+// returned ArtlistDescriptor's Module closure. No caller (composition
+// root, tests, internal services) needs to read the raw `*ArtlistHandler`
+// outside the package — matches the channels precedent of dropping the
+// explicit Handler field in favor of descriptor-only wiring.
 type ArtlistWiring struct {
-	Handler *artsources.ArtlistHandler
 	Module  api.Module
 	Service *artlistPkg.Service
 }
@@ -152,30 +158,40 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 		return nil, err
 	}
 	clipResolver := wireClipResolver(cfg, bundle, clipCatalogRepo, presetsConfig, log)
-	handler := wireArtlistHandler(cfg, artlistSvc, bundle, clipResolver, log)
-	var mod api.Module
-	if artlistSvc != nil && handler != nil {
-		mod = api.NewRouteModule(
-			"artlist",
-			func() bool { return cfg.Features.ArtlistEnabled },
-			"/artlist",
-			handler,
-			log,
-			api.WithMiddleware(middleware.FeatureFlagChecker("Artlist", cfg.Features.ArtlistEnabled)),
-		)
-		log.Info("created Artlist module")
+	descriptor, err := wireArtlistModule(cfg, artlistSvc, bundle, clipResolver, log)
+	if err != nil {
+		log.Warn("Failed to build Artlist module", zap.Error(err))
+		return nil, err
 	}
-	return &ArtlistWiring{Handler: handler, Module: mod, Service: artlistSvc}, nil
+	ad, _ := descriptor.(*artsources.ArtlistDescriptor)
+	var mod api.Module
+	if ad != nil {
+		mod = ad.Module
+		log.Info("created Artlist module via Build contract (Blocco C1-Step 3)")
+	}
+	return &ArtlistWiring{Module: mod, Service: artlistSvc}, nil
 }
 
-func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bundle *ArtlistBundle, clipResolver interface{}, log *zap.Logger) *artsources.ArtlistHandler {
+// wireArtlistModule composes the Artlist HTTP module by delegating to
+// the canonical `artsources.Build(deps Dependencies) (api.Descriptor, error)`
+// entrypoint (Blocco C1-Step 3, June 2026). The composition root has
+// the only knowledge of `cfg.Features.ArtlistEnabled` and the
+// FeatureFlagChecker middleware; this function maps those onto the
+// typed narrow Dependencies.
+//
+// nil-tolerant: when artlistSvc is nil, returns nil + nil error so
+// upstream WireArtlist's tolerant skip path stays intact (the bundle
+// can be wired with optional deps missing and the capability does not
+// inline-mount its routes).
+func wireArtlistModule(cfg *config.Config, artlistSvc *artlistPkg.Service, bundle *ArtlistBundle, clipResolver interface{}, log *zap.Logger) (api.Descriptor, error) {
 	if artlistSvc == nil {
-		return nil
+		return nil, nil // tolerated: module is skipped
 	}
 	// The clipresolver package was removed from remote (commit
-	// d61068b3). wireClipResolver returns nil typed as interface{}. The ArtlistHandler constructor expects a typed
-	// ClipResolverPort; perform a safe type assertion so the typed nil
-	// is forwarded (handler stays nil-tolerant and short-circuits).
+	// d61068b3). wireClipResolver returns nil typed as interface{}.
+	// The ArtlistHandler constructor expects a typed ClipResolverPort;
+	// perform a safe type assertion so the typed nil is forwarded
+	// (handler stays nil-tolerant and short-circuits).
 	var resolver artsources.ClipResolverPort
 	if val, ok := clipResolver.(artsources.ClipResolverPort); ok {
 		resolver = val
@@ -187,7 +203,19 @@ func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, bund
 	// the handler's `if h.cfg != nil` discipline if any caller adds a
 	// short-circuit path.
 	cfgPort := newArtlistConfigAdapter(cfg)
-	return artsources.NewArtlistHandler(artlistSvc, bundle.CatalogSyncService, bundle.Jobs.Facade, resolver, "node-scraper", log, cfgPort)
+	return artsources.Build(artsources.Dependencies{
+		Service:        artlistSvc,
+		CatalogSync:    bundle.CatalogSyncService,
+		Jobs:           bundle.Jobs.Facade,
+		ClipResolver:   resolver,
+		NodeScraperDir: "node-scraper",
+		CfgPort:        cfgPort,
+		EnabledFunc:    func() bool { return cfg.Features.ArtlistEnabled },
+		ModuleOpts: []api.ModuleOption{
+			api.WithMiddleware(middleware.FeatureFlagChecker("Artlist", cfg.Features.ArtlistEnabled)),
+		},
+		Logger: log,
+	})
 }
 
 // wireArtlistLifecycle builds the Artlist capability's lifecycle
