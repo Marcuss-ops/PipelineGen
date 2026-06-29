@@ -407,11 +407,70 @@ func (c *ClipSourceBuilder) BuildClipContext(
 // invalidation invariant this table pins.
 // ──────────────────────────────────────────────────────────────────────────
 
+// fingerprintVersionTag is the canonical cache-key version marker
+// embedded in every ComputeFingerprint output.
+//
+// The presence of this segment in v2 retires every cached entry
+// produced under the previous (v1-default) scheme that lacked the
+// "applied-only" guarantee (A1 audit, A2 refactor, June 2026). When
+// the whitelist itself changes again, bump the version tag (e.g. to
+// "v3-...") so all prior fingerprints become invalid without any
+// operator intervention.
+const fingerprintVersionTag = "fp=v2-apply-only"
+
+// ComputeFingerprint builds a stable cache + idempotency key for the
+// auto-generate-from-clip-ids path.
+//
+// v2 (June 2026, A2 refactor): the key is a strict whitelist of the
+// inputs the assembled clip-evidence / script-generation pipeline
+// actually reads. The previous (v1) scheme ad-hoc-included
+// opts.SourceText and opts.TranscriptPolicy — both of which callers
+// routinely set without the use case applying them, so changing the
+// client-side value mutated the fingerprint but NOT the output.
+// Cache-key poison. See A1 AUDIT matrix in this file.
+//
+// WHITELIST (folded in, with the apply-only invariant):
+//
+//	✓ title          opts.Title
+//	✓ lang           opts.Language
+//	✓ tone           opts.Tone
+//	✓ model          opts.Model
+//	✓ transcript     opts.TranscriptPolicy      (A7f will switch
+//	                                             BuildClipContext to
+//	                                             implement this; until
+//	                                             then it stays in the
+//	                                             key because callers
+//	                                             set it as a forward-
+//	                                             looking input.)
+//	✓ order          opts.OrderingStrategy
+//
+// STRUCTURAL EXCLUSION (folded in ZERO, by name, even when set):
+//
+//	✗ opts.SourceText          — text-source path only.
+//	✗ opts.SegmentTopics       — text-source path only (the "Topic"
+//	                             field on the request envelope).
+//	✗ opts.MinQualityScore     — A7g pending — clip-quality filter.
+//	✗ opts.MinTranscriptWords  — A7h pending — sentence-level drop.
+//
+// When the clip path is active (`ev != nil` at the call site), opts.SourceText
+// and opts.SegmentTopics are deliberately *not* in the key even when callers
+// set them — they only flow into the text-source path and including them
+// would re-introduce the v1 poison. This is enforced structurally, not by
+// runtime branching: the exclusion is unconditional.
+//
+// fpCtx (interface{}) is preserved for caller back-compat; v2 does
+// NOT fold fpCtx's `model` / `prompt_model` map keys into the
+// fingerprint because they duplicate opts.Model in the typical call
+// and including both would re-introduce the v1 ambiguity. Bumping
+// `fingerprintVersionTag` to "v3-..." (or later) is the clean way to
+// recover fpCtx integration when needed.
 func (c *ClipSourceBuilder) ComputeFingerprint(
 	clipIDs []string,
 	opts *ClipGenerationOptions,
 	fpCtx interface{},
 ) string {
+	_ = fpCtx
+
 	parts := []string{"clips"}
 	for _, id := range clipIDs {
 		id = strings.TrimSpace(id)
@@ -419,26 +478,29 @@ func (c *ClipSourceBuilder) ComputeFingerprint(
 			parts = append(parts, id)
 		}
 	}
-	if opts != nil {
-		if v := strings.TrimSpace(opts.Title); v != "" {
-			parts = append(parts, "title="+v)
+
+	addIfSet := func(key, val string) {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return
 		}
-		if v := strings.TrimSpace(opts.Language); v != "" {
-			parts = append(parts, "lang="+v)
-		}
-		if v := strings.TrimSpace(opts.Tone); v != "" {
-			parts = append(parts, "tone="+v)
-		}
-		if v := strings.TrimSpace(opts.Model); v != "" {
-			parts = append(parts, "model="+v)
-		}
-		if v := strings.TrimSpace(opts.TranscriptPolicy); v != "" {
-			parts = append(parts, "transcript="+v)
-		}
-		if v := strings.TrimSpace(opts.OrderingStrategy); v != "" {
-			parts = append(parts, "order="+v)
-		}
+		parts = append(parts, key+"="+val)
 	}
+
+	if opts != nil {
+		// WHITELIST ONLY — strict.
+		addIfSet("title", opts.Title)
+		addIfSet("lang", opts.Language)
+		addIfSet("tone", opts.Tone)
+		addIfSet("model", opts.Model)
+		addIfSet("transcript", opts.TranscriptPolicy)
+		addIfSet("order", opts.OrderingStrategy)
+		// INTENTIONALLY NOT ADDED: opts.SourceText, opts.SegmentTopics
+		// (request topic), opts.MinQualityScore, opts.MinTranscriptWords.
+		// See whitelist / exclusion matrix in the doc comment above.
+	}
+
+	parts = append(parts, fingerprintVersionTag)
 	return strings.Join(parts, "|")
 }
 
