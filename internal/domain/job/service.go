@@ -1,51 +1,34 @@
+// Package job — Service + EnqueueRequest type aliases (Phase A.2).
+//
+// Production definitions of Service (the canonical job-management
+// interface) and EnqueueRequest live in internal/kernel/job/. This
+// file re-exports them as type aliases for back-compat with 107
+// import sites in the codebase. Go's type aliases resolve
+// transparently: `job.Service` and `kerneljob.Service` are the same
+// type as far as the compiler and runtime are concerned.
+//
+// EnqueueTyped[T] (the generic helper for typed-payload enqueue)
+// stays in domain/job: it bridges the kernel/service interface with
+// stdlib marshaling and is consumed by api/handlers without taking
+// on kernel-cross-zone imports of its own.
 package job
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-// Service is the canonical job-system contract presented to every
-// consumer in PipelineGen. It is a Go interface — consumers declare
-// their dependency as `job.Service` (interface value, not pointer-to-
-// interface) and the composition root injects the concrete
-// *application/jobs.Service, which satisfies this interface directly.
-//
-// Pre-June-2026 this package held a concrete struct facade with
-// delegate function pointers. That facade has been eliminated in
-// favour of a plain interface + compile-time assertion in the
-// application layer (`var _ job.Service = (*appjobs.Service)(nil)`).
-type Service interface {
-	Enqueue(ctx context.Context, req *EnqueueRequest) (*Job, error)
-	Get(ctx context.Context, id string) (*Job, error)
-	Cancel(ctx context.Context, id string) error
-	List(ctx context.Context, filter Filter) ([]Job, error)
-	IsTerminal(status Status) bool
-	RegisterHandler(jobType string, handler any) error
-	ListEvents(ctx context.Context, jobID string) ([]Event, error)
-	// Retry re-enqueues a failed or retry-waiting job, returning the
-	// fresh Job entity (new leasing cycle, retry_count reset).
-	// PR-0 (June 2026): promoted from concrete-only helper to
-	// canonical service surface — api layer's JobsHandler.Retry calls
-	// this through the interface so the api package doesn't leak
-	// *appjobs.Service concrete.
-	Retry(ctx context.Context, id string) (*Job, error)
-}
+// ── Type aliases to canonical kernel/job types (Phase A.2) ──────────
 
-// EnqueueRequest is the typed payload handed to Service.Enqueue.
-//
-// The fields map 1-1 to the Job columns written by the SQLite enqueue.
-type EnqueueRequest struct {
-	Type          string
-	Payload       any
-	CorrelationID string
-	MaxRetries    int
-	Priority      int
-	Project       string
-	ActiveKey     string
-	VideoName     string
-}
+type (
+	// Service is the canonical job-system contract (see kernel/job.Service).
+	Service = kerneljob.Service
+	// EnqueueRequest is the typed payload handed to Service.Enqueue.
+	EnqueueRequest = kerneljob.EnqueueRequest
+)
 
 // EnqueueTyped is a deterministic, type-safe alternative to Enqueue.
 //
