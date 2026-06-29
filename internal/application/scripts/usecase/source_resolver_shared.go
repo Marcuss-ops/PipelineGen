@@ -16,12 +16,6 @@ import (
 
 // ── Helpers (PR 5 — shared between all clip-aware resolvers) ───────────────
 
-// BuildClipEvidence converts a clip pack + source text into a typed
-// *scriptpkg.ClipEvidence. Returns nil when both inputs are empty
-// (caller treats nil evidence as "no clip context"). PR 5: real
-// implementation lands when the canonical model-output contract
-// consolidates (godlike/06 §metadata).
-
 // computeSourceFingerprint is the deterministic cache-key component
 // derived from SourceSpec + ClipEvidence. PR 5 stub: real hashing
 // lives in the engine's cache-key derivation; this is the resolver-
@@ -31,7 +25,9 @@ import (
 // ── Shared types (Phase 2 hydration plumbing) ──────────────────────────
 
 type clipContextBuilder interface {
-	BuildClipContext(ctx context.Context, clipIDs []string, opts *ClipGenerationOptions) (pack interface{}, plan *NarrativePlan, sourceText string, err error)
+	// P1 #6 (June 2026): returns *scriptpkg.ClipEvidence directly
+	// instead of interface{} pack.
+	BuildClipContext(ctx context.Context, clipIDs []string, opts *ClipGenerationOptions) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error)
 }
 
 type resolvedClipParams struct {
@@ -59,7 +55,7 @@ func buildResolvedClipSource(
 	p resolvedClipParams,
 	log *zap.Logger,
 ) (*scriptpkg.ResolvedSource, error) {
-	pack, plan, sourceText, buildErr := builder.BuildClipContext(ctx, p.clipIDs, p.opts)
+	evidence, plan, sourceText, buildErr := builder.BuildClipContext(ctx, p.clipIDs, p.opts)
 	if buildErr != nil {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  p.sourceType,
@@ -68,8 +64,6 @@ func buildResolvedClipSource(
 			Inner:       fmt.Errorf("clip context build failed: %w", buildErr),
 		}
 	}
-
-	evidence := BuildClipEvidence(pack, sourceText)
 
 	title := ""
 	if plan != nil {

@@ -105,7 +105,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	ctx context.Context,
 	clipIDs []string,
 	opts *ClipGenerationOptions,
-) (interface{}, *NarrativePlan, string, error) {
+) (*scriptpkg.ClipEvidence, *NarrativePlan, string, error) {
 	if c == nil {
 		return nil, nil, "", fmt.Errorf("clip source builder: not constructed")
 	}
@@ -245,18 +245,14 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	}
 
 	title := "script"
-	language := ""
 	tone := ""
 	targetWords := 0
-	model := ""
 	if opts != nil {
 		if v := strings.TrimSpace(opts.Title); v != "" {
 			title = v
 		}
-		language = strings.TrimSpace(opts.Language)
 		tone = strings.TrimSpace(opts.Tone)
 		targetWords = opts.TargetWords
-		model = strings.TrimSpace(opts.Model)
 	}
 
 	sectionCount := len(clipNames)
@@ -302,36 +298,31 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		}
 	}
 
-	// Build pack with clip data.
-	pack := map[string]any{
-		"clip_ids":         canonicalIDs,
-		"clip_names":       clipNames,
-		"clip_drive_links": clipDriveLinks,
-		"missing_clip_ids": missingClipIDs,
-		"excluded_clips":   excludedClips,
-		"num_clips": func() int {
-			if opts != nil && opts.NumClips > 0 {
-				return opts.NumClips
-			}
-			return 0
-		}(),
-		"segment_words": func() int {
-			if opts != nil {
-				return opts.SegmentWords
-			}
-			return 0
-		}(),
-		"segment_topics": func() []string {
-			if opts != nil {
-				return append([]string(nil), opts.SegmentTopics...)
-			}
-			return nil
-		}(),
-		"title":      title,
-		"language":   language,
-		"tone":       tone,
-		"model":      model,
-		"clip_count": len(clips),
+	// Build clip name map (clip_id → name) for evidence.
+	clipNameMap := make(map[string]string, len(canonicalIDs))
+	for i, id := range canonicalIDs {
+		if i < len(clipNames) && clipNames[i] != "" {
+			clipNameMap[id] = clipNames[i]
+		}
+	}
+
+	// P1 #6 (June 2026): Build ClipEvidence directly instead of an
+	// untyped map[string]any pack + separate BuildClipEvidence call.
+	ev := &scriptpkg.ClipEvidence{
+		ClipIDs:        canonicalIDs,
+		ClipCount:      len(canonicalIDs),
+		AssembledText:  strings.TrimSpace(sourceTextBuilder.String()),
+		DriveLinks:     clipDriveLinks,
+		ClipNames:      clipNameMap,
+		Excluded:       excludedClips,
+		MissingClipIDs: missingClipIDs,
+	}
+	// Preserve nil for JSON omitempty.
+	if len(ev.MissingClipIDs) == 0 {
+		ev.MissingClipIDs = nil
+	}
+	if len(ev.Excluded) == 0 {
+		ev.Excluded = nil
 	}
 
 	if c.log != nil {
@@ -341,7 +332,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			zap.Int("source_text_chars", sourceTextBuilder.Len()))
 	}
 
-	return pack, plan, sourceTextBuilder.String(), nil
+	return ev, plan, sourceTextBuilder.String(), nil
 }
 
 func (c *ClipSourceBuilder) ComputeFingerprint(
