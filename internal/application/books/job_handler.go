@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
@@ -65,50 +66,93 @@ func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *appjobs.Jo
 }
 
 // driveToDrive uploads output files to Google Drive if the Python script
-// didn't already do so (fallback). Only runs if driveUploader is configured
-// and Drive URLs are missing from the result. Updates result with new URLs.
+// didn't already do so (fallback). Uses the canonical Publisher (FASE 6)
+// when available; falls back to legacy driveUpload for backward compat.
 func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result *ProcessResult) {
-	if s.driveUpload == nil {
+	publisher := s.publisher
+	driveUpload := s.driveUpload
+
+	if publisher == nil && driveUpload == nil {
 		return
 	}
 
-	// Determine target Drive folder
+	// Determine target Drive folder (legacy fallback only)
 	folderID := req.DriveFolderID
 	if folderID == "" {
 		folderID = s.driveFolder
 	}
-	if folderID == "" {
+	if publisher == nil && folderID == "" {
 		s.log.Debug("no drive folder configured, skipping upload")
 		return
 	}
 
 	// Upload .txt output if missing from Drive
 	if result.DriveDocURL == "" && result.OutputPath != "" {
-		uploadResult, err := s.driveUpload.UploadFile(ctx, result.OutputPath, folderID, filepath.Base(result.OutputPath))
-		if err != nil {
-			s.log.Warn("Drive upload failed for .txt",
-				zap.String("path", result.OutputPath),
-				zap.Error(err))
+		if publisher != nil {
+			pubReq := delivery.PublishRequest{
+				Destination:       delivery.DestinationBook,
+				LocalPath:         result.OutputPath,
+				Filename:          filepath.Base(result.OutputPath),
+				RootFolderOverride: folderID,
+			}
+			pubResult, err := publisher.Publish(ctx, pubReq)
+			if err != nil {
+				s.log.Warn("Drive publish failed for .txt",
+					zap.String("path", result.OutputPath),
+					zap.Error(err))
+			} else {
+				result.DriveDocURL = pubResult.WebViewLink
+				s.log.Info("published .txt to Drive",
+					zap.String("path", result.OutputPath),
+					zap.String("file_id", pubResult.FileID))
+			}
 		} else {
-			result.DriveDocURL = uploadResult.WebViewLink
-			s.log.Info("uploaded .txt to Drive",
-				zap.String("path", result.OutputPath),
-				zap.String("file_id", uploadResult.FileID))
+			uploadResult, err := driveUpload.UploadFile(ctx, result.OutputPath, folderID, filepath.Base(result.OutputPath))
+			if err != nil {
+				s.log.Warn("Drive upload failed for .txt",
+					zap.String("path", result.OutputPath),
+					zap.Error(err))
+			} else {
+				result.DriveDocURL = uploadResult.WebViewLink
+				s.log.Info("uploaded .txt to Drive",
+					zap.String("path", result.OutputPath),
+					zap.String("file_id", uploadResult.FileID))
+			}
 		}
 	}
 
 	// Upload .pdf output if missing from Drive
 	if result.DrivePDFURL == "" && result.PDFPath != "" {
-		uploadResult, err := s.driveUpload.UploadFile(ctx, result.PDFPath, folderID, filepath.Base(result.PDFPath))
-		if err != nil {
-			s.log.Warn("Drive upload failed for .pdf",
-				zap.String("path", result.PDFPath),
-				zap.Error(err))
+		if publisher != nil {
+			pubReq := delivery.PublishRequest{
+				Destination:       delivery.DestinationBook,
+				LocalPath:         result.PDFPath,
+				Filename:          filepath.Base(result.PDFPath),
+				RootFolderOverride: folderID,
+			}
+			pubResult, err := publisher.Publish(ctx, pubReq)
+			if err != nil {
+				s.log.Warn("Drive publish failed for .pdf",
+					zap.String("path", result.PDFPath),
+					zap.Error(err))
+			} else {
+				result.DrivePDFURL = pubResult.WebViewLink
+				s.log.Info("published .pdf to Drive",
+					zap.String("path", result.PDFPath),
+					zap.String("file_id", pubResult.FileID))
+			}
 		} else {
-			result.DrivePDFURL = uploadResult.WebViewLink
-			s.log.Info("uploaded .pdf to Drive",
-				zap.String("path", result.PDFPath),
-				zap.String("file_id", uploadResult.FileID))
+			uploadResult, err := driveUpload.UploadFile(ctx, result.PDFPath, folderID, filepath.Base(result.PDFPath))
+			if err != nil {
+				s.log.Warn("Drive upload failed for .pdf",
+					zap.String("path", result.PDFPath),
+					zap.Error(err))
+			} else {
+				result.DrivePDFURL = uploadResult.WebViewLink
+				s.log.Info("uploaded .pdf to Drive",
+					zap.String("path", result.PDFPath),
+					zap.String("file_id", uploadResult.FileID))
+			}
 		}
 	}
 }

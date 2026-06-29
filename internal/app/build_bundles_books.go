@@ -9,6 +9,7 @@ package app
 import (
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -19,7 +20,7 @@ import (
 //
 // PR4-H (June 2026): the SetDriveUploader setter was removed; driveUploader
 // is now wired via the books.NewService constructor.
-func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driveUploader *drive.Uploader, voiceoverSvc *voiceover.Service) *books.Service {
+func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driveUploader *drive.Uploader, voiceoverSvc *voiceover.Service, publisher delivery.Publisher) *books.Service {
 	booksSvc := books.NewService(
 		&books.Config{
 			Enabled:       cfg.Books.Enabled,
@@ -28,7 +29,7 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, driv
 			DriveFolderID: cfg.Drive.BooksFolder(),
 		},
 		dbs.main.DB, cfg.Drive.BooksFolder(), log,
-		voiceoverSvc, driveUploader,
+		voiceoverSvc, driveUploader, publisher,
 	)
 	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
 	return booksSvc

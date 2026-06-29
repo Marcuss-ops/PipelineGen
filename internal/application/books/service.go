@@ -17,6 +17,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -37,20 +38,28 @@ func DefaultConfig() *Config {
 	}
 }
 
+// PublisherPort is the narrow dependency for Drive uploads in the books
+// capability. Satisfied by delivery.Publisher (via an adapter in the
+// composition root). nil means Drive is disabled.
+type PublisherPort interface {
+	Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error)
+}
+
 type Service struct {
 	db           *sql.DB
 	cfg          *Config
 	log          *zap.Logger
 	scriptPath   string
 	driveFolder  string
-	driveUpload  *drive.Uploader
+	driveUpload  *drive.Uploader // deprecated: kept for drive.go download operations
+	publisher    PublisherPort   // canonical Drive upload path (FASE 6)
 	voiceoverSvc *voiceover.Service
 }
 
 // NewService constructs a books.Service. Drive uploader is wired via
 // constructor injection; the post-construction SetDriveUploader setter was
 // removed in PR4-H Commit 3.
-func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc *voiceover.Service, driveUploader *drive.Uploader) *Service {
+func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverSvc *voiceover.Service, driveUploader *drive.Uploader, publisher PublisherPort) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
@@ -71,6 +80,7 @@ func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, vo
 		driveFolder:  driveFolder,
 		voiceoverSvc: voiceoverSvc,
 		driveUpload:  driveUploader,
+		publisher:    publisher,
 	}
 }
 

@@ -153,7 +153,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		outbox.Dispatcher,
 	)
 
-	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc)
+	booksSvc := buildBooksService(cfg, dbs, log, drive.DriveUploader, voiceoverSvc, drive.Publisher)
 
 	ingestSvc := buildIngestService(cfg, log, dbs, drive.DriveClient, repos, search, mutationsDisp)
 
