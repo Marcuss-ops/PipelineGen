@@ -6,6 +6,12 @@
 # Status ∈ {pending, in_progress, done}. owner/deadline OMITTED when absent
 # in canonical source — AGENTS.md §7 NO_FAKE_AVAILABILITY / zero-legacy.
 #
+# linked_issues reference form (CANONICAL):
+#   - numeric (wave-ref)   e.g. linked_issues: [22]      (PR-CONTEXT-NO-CANCEL-CI-GATE)
+#   - Q-prefix (ticket)    e.g. linked_issues: [Q4-CATALOGSYNC-DispatcherPath]
+# Both forms coexist in the same field; the schema above documents both.
+# Q-prefix is preferred for forward-references to other entries in this file.
+#
 # Cross-references:
 #   - architecture/current.yaml        (active waves + Wave 22 ticket refs)
 #   - architecture/deprecations.yaml   (BACKFILL / CONTRACT records)
@@ -16,10 +22,10 @@
   status: done
   owner: internal/application/scripts/adapters
   linked_issues:
-    - Q4-CATALOGSYNC-FAIL
-    - Q5-PROVIDERS-TIMEOUTS
-    - Q6-ARTLIST-FAIL
-    - Q7-YOUTUBE-EXTRACTION-PHASE1C
+    - Q4-CATALOGSYNC-DispatcherPath
+    - Q5-PROVIDERS-SearchAggregator
+    - Q6-ARTLIST-DispatcherRoutes
+    - Q7-YOUTUBE-ExtractionPhase1c
 
 - id: PR-CONTEXT-NO-CANCEL-CI-GATE
   title: "Promote context.Background/WithoutCancel exemption families to a dedicated CI gate"
@@ -50,22 +56,22 @@
   title: "Reconcile pkg/defaults/script.go (WPM=140, DefaultLanguage=it) with generation_normalizer.go (WPM=150, Language=en)"
   status: pending
 
-- id: Q4-CATALOGSYNC-FAIL
-  title: "Resolve TestUpsertPreservingExisting_DispatcherPath and _FolderSkipsOutbox failures in internal/application/assets/catalogsync surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+- id: Q4-CATALOGSYNC-DispatcherPath
+  title: "Resolve TestUpsertPreservingExisting_DispatcherPath and _FolderSkipsOutbox failures in internal/application/assets/catalogsync"
   status: pending
   owner: internal/application/assets/catalogsync
 
-- id: Q5-PROVIDERS-TIMEOUTS
-  title: "Resolve TestSearchAggregator_* failures and timeouts (e.g. TestSearchAggregator_SlowProviderTimeout took 5s surface) in internal/application/assets/providers surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+- id: Q5-PROVIDERS-SearchAggregator
+  title: "Resolve TestSearchAggregator_* failures and timeouts in internal/application/assets/providers"
   status: pending
   owner: internal/application/assets/providers
 
-- id: Q6-ARTLIST-FAIL
-  title: "Resolve TestArtlistPR12b_DispatcherRoutesWritesThroughRepo, TestArtlistSearchRequest and related failures in internal/application/assets/providers/artlist surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+- id: Q6-ARTLIST-DispatcherRoutes
+  title: "Resolve TestArtlistPR12b_DispatcherRoutesWritesThroughRepo, TestArtlistSearchRequest and related dispatcher-route failures in internal/application/assets/providers/artlist"
   status: pending
   owner: internal/application/assets/providers/artlist
 
-- id: Q7-YOUTUBE-EXTRACTION-PHASE1C
-  title: "Port full extraction pipeline to ExtractionService (Phase 1c) to fix TestExtract_ReturnsContextDeadlineExceededIfContextExpired in internal/application/youtube/usecase surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+- id: Q7-YOUTUBE-ExtractionPhase1c
+  title: "Port full extraction pipeline to ExtractionService (Phase 1c) to fix TestExtract_ReturnsContextDeadlineExceededIfContextExpired in internal/application/youtube/usecase"
   status: pending
   owner: internal/application/youtube/usecase
