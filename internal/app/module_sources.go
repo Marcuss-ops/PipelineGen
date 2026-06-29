@@ -341,8 +341,17 @@ type StockBundle struct {
 }
 
 // StockPipelineWiring holds the StockPipeline module wiring.
+//
+// Blocco C1-Step 6 (June 2026): Handler field removed. The HTTP Handler
+// is constructed inside `stock.Build(deps)` and captured by the
+// returned StockDescriptor's Module closure. No caller (composition
+// root, tests, internal services) needs to read the raw `*stock.Handler`
+// outside the package — matches the artlist / youtube / clips precedent
+// of dropping the explicit Handler field in favor of descriptor-only
+// wiring. The pre-Step-6 `Handler` field has no non-HTTP consumer in
+// the codebase (/run + /search-and-run are the entire public surface,
+// both reachable via HTTP).
 type StockPipelineWiring struct {
-	Handler *stock.Handler
 	Module  api.Module
 	Service *stockpipeline.Service
 }
@@ -434,17 +443,34 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, bundle *StockBundle)
 	// handler holds only the use case + logger; the dispatch decision
 	// (async-vs-sync, jobs-required 503) lives in stockpipeline.StockUseCase.
 	useCase := stockpipeline.NewStockUseCase(svc, bundle.JobFacade, log)
-	handler := stock.NewHandler(useCase, log)
-	stockEnabled := cfg != nil && cfg.Features.StockPipelineEnabled
-	mod := api.NewRouteModule(
-		"stock-pipeline",
-		func() bool { return stockEnabled },
-		"/stock-pipeline",
-		handler,
-		log,
-	)
+	// Blocco C1-Step 6 (June 2026): Stock capability is now built via
+	// the canonical stock.Build(deps) (api.Descriptor, error) contract,
+	// matching the artlist / youtube / clips precedent. The HTTP Handler
+	// is constructed inside Build and captured by the returned
+	// StockDescriptor's Module closure. The composition site
+	// type-asserts ONCE to *stock.StockDescriptor (fail-closed) and
+	// reuses the concrete for the StockPipelineWiring.Module field
+	// (which satisfies api.Module structurally). The canonical
+	// late-bind svc.RegisterHandler(bundle.Jobs) step stays at the
+	// end (matches the artlist + youtube pattern — service-side job
+	// registration lives outside the Build contract because the Stock
+	// Descriptor does not register its own job slot today; no
+	// DescriptorJobs implementation, no Descriptor.Service field).
+	descriptor, err := stock.Build(stock.Dependencies{
+		UseCase:     useCase,
+		EnabledFunc: func() bool { return cfg != nil && cfg.Features.StockPipelineEnabled },
+		ModuleOpts:  nil, // no per-feature middleware for the stock capability (matches pre-Step-6 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireStockPipeline: stock.Build: %w", err)
+	}
+	sd, ok := descriptor.(*stock.StockDescriptor)
+	if !ok || sd == nil {
+		return nil, fmt.Errorf("WireStockPipeline: stock.Build returned unexpected descriptor type %T (want *stock.StockDescriptor)", descriptor)
+	}
 	svc.RegisterHandler(bundle.Jobs)
-	return &StockPipelineWiring{Handler: handler, Module: mod, Service: svc}, nil
+	return &StockPipelineWiring{Module: sd.Module, Service: svc}, nil
 }
 
 // YouTubeClipWiring holds the YouTube Clip module wiring.
