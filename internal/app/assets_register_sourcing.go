@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -69,10 +70,15 @@ func newAssetRegisterService(
 		&zapSourcingLogger{log: log},
 	)
 
-	// 4-arg façade (was 14 historically). The JobsPort + FileScannerPort
+	// P0-1 / commit 2: BatchRegistrar sub-service wraps YouTubeRegistrar
+	// with a 2-dep ctor (yt + log). Composition follows the YouTube
+	// sub-package construction.
+	batchSvc := batch.NewService(ytSvc, &zapSourcingLogger{log: log})
+
+	// 5-arg façade (was 14 historically). The JobsPort + FileScannerPort
 	// stay on the façade for the not-yet-extracted SyncDriveFolder +
-	// LocalToDrive methods which are still inline.
-	return sourcing.NewService(ytSvc, nil, nil, &zapSourcingLogger{log: log})
+	// LocalToDrive methods which are still inline until commits 3-4.
+	return sourcing.NewService(ytSvc, batchSvc, nil, nil, &zapSourcingLogger{log: log})
 }
 
 // ── youtube v2 adapters ───────────────────────────────────────────────────────
@@ -90,6 +96,12 @@ var (
 	// for the (*youtube.Service) reference; youtube imports sourcing
 	// for shared types like RegisterClipCommand — cycle).
 	_ sourcing.YouTubeRegistrar = (*youtube.Service)(nil)
+	// P0-1 / commit 2: batch.Service implements sourcing.BatchRegistrar.
+	// Same drift-guard rationale as the YouTube assertion above; the
+	// composition root can transitively import both sourcing and batch
+	// without re-introducing the cycle (batch is a sub-package of
+	// sourcing; sourcing does not import batch).
+	_ sourcing.BatchRegistrar = (*batch.Service)(nil)
 )
 
 // youtubeIndexDispatcherAdapter implements youtube.IndexDispatcherPort by

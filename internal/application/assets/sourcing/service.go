@@ -20,13 +20,19 @@ import (
 	"strings"
 )
 
-// Service is the SourcingService façade. After P0-1 / commit 1 the ctor
-// takes 4 args (was 14 historically); by commit 5 it takes 4 SUB-SERVICE
-// handles + Log = 5 args total. The internal struct mirrors the ctor.
+// Service is the SourcingService façade. After P0-1 / commit 2 the ctor
+// takes 5 args; the YouTube sub-service (commit 1) and the new Batch
+// sub-service (this commit) are injected as interfaces, while jobs +
+// scanner stay on the façade until commits 3-4 lift them to drivesync
+// and localimport sub-packages. Commit 5 (P0-1 last) reduces the
+// signature to all sub-services + log = 5 args.
 type Service struct {
 	// P0-1 / commit 1: YouTube sub-service is built externally by the
 	// composition root and injected as a YouTubeRegistrar interface.
 	youtube YouTubeRegistrar
+
+	// P0-1 / commit 2: BatchRegistrar sub-service (this commit).
+	batch BatchRegistrar
 
 	// Shared ports consumed by the not-yet-extracted sub-cases. Will be
 	// removed when Sync (commit 3) and LocalImport (commit 4) move to
@@ -38,20 +44,19 @@ type Service struct {
 	log Logger
 }
 
-// NewService creates a SourcingService façade. Until P0-1 fully lands
-// (commits 2-4) NewService takes 4 args: the YouTubeRegistrar
-// sub-service, the JobsPort (shared by Sync/Local), the FileScannerPort
-// (Local only), and the Logger. Commit 5 (P0-1 last) reduces the
-// signature to (youtube, batch, drivesync, local, log) — i.e. 5 args
-// where each arg is a sub-service interface.
+// NewService creates a SourcingService façade. After commit 2 NewService
+// takes 5 args: youtube + batch sub-services, JobsPort (for Sync/Local
+// until commits 3-4 lift them), FileScannerPort (Local only), Logger.
 func NewService(
 	yt YouTubeRegistrar,
+	batch BatchRegistrar,
 	jobs JobsPort,
 	scanner FileScannerPort,
 	log Logger,
 ) *Service {
 	return &Service{
 		youtube: yt,
+		batch:   batch,
 		jobs:    jobs,
 		scanner: scanner,
 		log:     log,
@@ -70,12 +75,11 @@ func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipComma
 }
 
 // BatchRegisterFromYouTube processes a batch of clip registration
-// commands sequentially, delegating each to the YouTube sub-package.
-// Behavior matches the historical BatchRegisterFromYouTube. Sub-package
-// extraction (P0-1 / commit 2) will lift this into a focused
-// batch.Service that wraps the YouTubeRegistrar.
+// commands sequentially, delegating to the batch sub-package service
+// (P0-1 / commit 2). The legacy inline loop has moved to
+// internal/application/assets/sourcing/batch/service.go::Service.BatchRegister.
 func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []RegisterClipCommand) *BatchRegisterResult {
-	if s == nil || s.youtube == nil {
+	if s == nil || s.batch == nil {
 		return &BatchRegisterResult{
 			OK:      false,
 			Total:   len(commands),
@@ -83,67 +87,7 @@ func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []Regis
 			Results: make([]BatchClipResult, len(commands)),
 		}
 	}
-
-	log := s.log
-	results := make([]BatchClipResult, len(commands))
-	var succeeded, failed int
-
-	log.Info("starting batch registration", "service", "sourcing", "clips", len(commands))
-	for i, cmd := range commands {
-		res, err := s.youtube.Register(ctx, cmd)
-		br := BatchClipResult{Name: cmd.Name}
-		if err != nil {
-			br.Error = err.Error()
-			results[i] = br
-			failed++
-			log.Info("batch clip processed",
-				"index", i+1,
-				"total", len(commands),
-				"name", cmd.Name,
-				"ok", false,
-				"error", err.Error(),
-			)
-			continue
-		}
-		if res == nil {
-			br.Error = "empty registration result"
-			results[i] = br
-			failed++
-			continue
-		}
-		br.OK = res.OK
-		br.ClipID = res.ClipID
-		br.Duplicate = res.Duplicate
-		if res.Duplicate {
-			br.OK = false
-		}
-		if !res.OK && res.Message != "" {
-			br.Error = res.Message
-		}
-		results[i] = br
-		if br.OK || br.Duplicate {
-			succeeded++
-		} else {
-			failed++
-		}
-		log.Info("batch clip processed",
-			"index", i+1,
-			"total", len(commands),
-			"name", cmd.Name,
-			"ok", br.OK,
-			"duplicate", br.Duplicate,
-			"error", br.Error,
-		)
-	}
-
-	log.Info("batch registration completed", "service", "sourcing", "succeeded", succeeded, "failed", failed)
-	return &BatchRegisterResult{
-		OK:        true,
-		Total:     len(commands),
-		Succeeded: succeeded,
-		Failed:    failed,
-		Results:   results,
-	}
+	return s.batch.BatchRegister(ctx, commands)
 }
 
 // SyncDriveFolder enqueues a catalog sync job for the given Drive folder.
