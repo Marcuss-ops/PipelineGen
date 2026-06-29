@@ -63,7 +63,7 @@ type SparseSpec struct {
 	// Channel is the vector name in Qdrant (e.g. "bm25_text").
 	Channel string `json:"channel"`
 
-	// Modifier is the sparse vector type: "bm25", "splade".
+	// Modifier is the sparse vector type: "idf", "splade".
 	Modifier string `json:"modifier"`
 
 	// Model is the server-side inference model used for this sparse

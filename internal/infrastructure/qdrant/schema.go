@@ -65,7 +65,7 @@ func DefaultV3Schema() *IndexSchema {
 			// because server-side BM25 inference requires a model
 			// pinned in the channel config. DefaultSparseModel is the
 			// single source of truth for the inference model name.
-			{Channel: "bm25_text", Modifier: "bm25", Model: DefaultSparseModel},
+			{Channel: "bm25_text", Modifier: "idf", Model: DefaultSparseModel},
 		},		PayloadIndexes: []PayloadIndexSpec{
 		{FieldName: "workspace_id", FieldType: "keyword"},
 		// QDRANT-004 PR2 (June 2026): lifecycle_state is the SINGLE
@@ -194,6 +194,24 @@ func CompareSchema(expected *IndexSchema, actual *CollectionInfo) *SchemaDiff {
 				})
 				diff.Compatible = false
 			}
+		}
+	}
+
+	// Check actual sparse vectors in addition to dense ones.
+	// PR 14 (June 2026): Qdrant 1.18+ returns sparse vectors in a
+	// separate `config.params.sparse_vectors` object, not inside
+	// `config.params.vectors`. CollectionInfo.UnmarshalJSON already
+	// decodes them into SparseConfigs; CompareSchema must consume
+	// that map too so bm25_text (and any future sparse channel)
+	// doesn't show up as a missing vector.
+	if actual.SparseConfigs != nil {
+		for name := range actual.SparseConfigs {
+			_, expected := expectedVecs[name]
+			if !expected {
+				diff.ExtraVectors = append(diff.ExtraVectors, name)
+				continue
+			}
+			delete(expectedVecs, name)
 		}
 	}
 

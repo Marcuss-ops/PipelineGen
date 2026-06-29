@@ -55,7 +55,14 @@ func (c *Client) GetAliasTarget(ctx context.Context, alias string) (string, erro
 			Aliases []aliasEntry `json:"aliases"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(bodyBytes, &env); err == nil && len(env.Result.Aliases) > 0 {
+	// PR 14 (June 2026): removed the len(env.Result.Aliases) > 0 guard.
+	// When the canonical envelope decode succeeds (err == nil), we know
+	// the response is the {"result": {"aliases": [...]}} shape. If aliases
+	// is empty, the alias doesn't exist — return "" cleanly instead of
+	// falling through to the legacy flat-shape decoder, which would crash
+	// on "cannot unmarshal object into []aliasEntry" when result is an
+	// object with an empty aliases slice.
+	if err := json.Unmarshal(bodyBytes, &env); err == nil {
 		for _, a := range env.Result.Aliases {
 			if a.AliasName == alias {
 				return a.CollectionName, nil
