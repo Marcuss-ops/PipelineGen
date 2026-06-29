@@ -47,10 +47,10 @@
     {
       "urgency": "primary",
       "rule": "cmd_main_max_lines",
-      "failing_entries": "cmd/archcheck/main.go, cmd/worker/main.go (both >200 lines)",
-      "owner": "cmd-binaries maintainers stream",
+      "failing_entries": "cmd/worker/main.go (349 lines > 200-line cap; cmd/archcheck/main.go reduced to 44 lines in FASE 1.C PR4 — drift fixed 2026-06-29 Phase 0, see audit_ledger.cmd_archcheck_drift_resolved)",
+      "owner": "cmd-binaries maintainers stream (P1-3 follow-up covers cmd/worker/main.go)",
       "deadline": "2026-08-01",
-      "removal_trigger": "Both cmd/<bin>/main.go ≤200 lines (cmd/archcheck --strict thin_command rule reports zero)."
+      "removal_trigger": "All cmd/<bin>/main.go ≤200 lines (currently only cmd/worker/main.go at 349; cmd/archcheck/main.go already at 44 — drift resolved per audit_ledger.cmd_archcheck_drift_resolved)."
     },
     {
       "urgency": "deferred",
@@ -75,14 +75,29 @@
       ],
       "removal_trigger_met": "Split into 8 subpackages (adapters/ contracts/ dto/ events/ jobs/ jsonextract/ ports/ usecase/); root contains zero .go files; total files per subpackage under cap-40.",
       "schema_note": "This ledger entry carries 7 of 11 godlike/07 deprecation-record fields: id (synthesized: PR-G.2-BACKFILL-RETIRE), owner_capability (PR-G mega-package split work stream), replacement (adapters/+contracts/+dto/+events/+jobs/+jsonextract/+ports/+usecase/), introduction_date (2026-06-22 — first transitional baseline registration), removal_date (2026-06-28 — five days early vs. 2026-07-10 deadline), tracking_issue (PR-G.2 BACKFILL ticket, see architecture/current.yaml), compatibility_test (go build ./... + go vet ./... + go test ./internal/application/scripts/... all GREEN; archival — no live readers post-Step-5)). Three fields elided: exact_symbol (single mega-package, no symbol-level deprecation), file:line (whole-package move, not file-by-file), usage_metric (zero consumer reads post-Step-5 — verify via rg 'Marcuss-ops/PipelineGen/internal/application/scripts\"$' --glob '!*test*' . returning 0). Ledger format is NON-canonical — migrated to godlike/07 deprecation-record shape on next wave."
-    },
-    {
+    },    {
       "ledger_kind": "non_member_retired",
       "rule": "max_files_per_package",
       "package": "internal/application/youtube",
       "was_count": "43 per prior narrative (was NOT a transitional_baselines member; prior baseline JSON referenced it descriptively in description field only)",
       "retired_from_reference": "Step 6 PR-G.3 CUTOVER (commit pending); description string dropped the youtube reference",
       "schema_note": "Was never a rules-bearing member; the prior baseline JSON description text mentioned it but it was never in `transitional_baselines.failing_packages`. This ledger row exists to record the audit decision (per godlike/07 §zero-legacy deprecation-record discipline) that the prior mention was non-binding and not a transitional baseline entry."
+    },
+    {
+      "ledger_kind": "transitional_retired",
+      "ledger_id": "cmd_archcheck_drift_resolved",
+      "rule": "cmd_main_max_lines",
+      "file": "cmd/archcheck/main.go",
+      "was_count_lines": 996,
+      "now_count_lines": 44,
+      "was_deadline": "2026-08-01",
+      "was_owner": "cmd-binaries maintainers stream",
+      "retired_by": "Phase 0 baseline drift correction (2026-06-29)",
+      "retired_in_commit_chain": [
+        "FASE 1.C PR1-PR4 (June 2026): monolitico 996-LoC cmd/archcheck/main.go split into cmd/archcheck/{runner.go,policy/{model,load}.go,report/model.go,scan/{packages,roots,documents,constructors}.go}; entry-point collapses to flag parsing + Run() dispatch only."
+      ],
+      "removal_trigger_met": "cmd/archcheck/main.go reduced to 44 lines (≤200 cap) AND cmd/archcheck --strict thin_command rule reports zero for this entry",
+      "schema_note": "Ledger row carries 7 of 11 godlike/07 deprecation-record fields per the canonical schema: id (cmd_archcheck_drift_resolved), owner_capability (cmd-binaries maintainers stream), replacement (cmd/archcheck/{runner.go,policy/,report/,scan/}/), introduction_date (2026-06-29), removal_date (2026-06-29 same-day PR fix), tracking_issue (Phase 0 baseline refresh per architecture/current.yaml#id-0), compatibility_test (go run ./cmd/archcheck --strict exits 0 + bash scripts/ci-architectural-checks.sh exits 0 + cmd/archcheck/testdata/report_golden.json snapshot test GREEN). Three fields elided: exact_symbol (one file split into focused package layout, not symbol-level deprecation), file:line (whole-file refactor into cmd/archcheck/{policy,report,scan,runner}.go subpackages, not single-line), usage_metric (zero ship-blockers — verify via rg 'cmd/archcheck/main.go' . returning only canonical comment references; the FASE 1.C split landed pre-Phase-0 and this drift correction is documentation-only)."
     }
   ]
 }
