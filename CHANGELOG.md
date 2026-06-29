@@ -11,6 +11,89 @@ the canonical ARCHITECTURE.md section that owns the change.
 
 ### Fixed
 
+**[Issue 8, ApplyPreset closure]** `fix(script)` — `ApplyPreset` now
+implements all 5 documented presets per
+`docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md` §6 "Required
+preset semantics". The Phase 1b stub
+`(item, preset) { _ = item; _ = preset }` is now the canonical entry point
+for every preset flow.
+
+  - **5-preset semantics** (commit `4a5006c9`,
+    `internal/application/scripts/adapters/generation_normalizer.go::ApplyPreset`):
+    - `custom` — pass-through (caller fills every flag explicitly; preset
+      is a convenience for producing an explicit canonical request).
+    - `with_images` — `Output.GenerateSceneImages = true`;
+      `ScriptParams.SentencesPerImage = 8` and `ScriptParams.ImagesPerScene
+      = 2` only if caller left them at zero (caller precedence).
+      Does NOT touch voiceover / document / entities / metadata.
+    - `full_media` — `Output.GenerateSceneImages = true` AND
+      `Output.GenerateVoiceover = true`, independently, ONLY if the
+      caller left the corresponding field at zero (per-field caller
+      precedence).
+      **Semantic shift**: switched from atomic-gate (only when
+      BOTH are off, enable both) to per-field (each field toggled
+      independently) when the TDD test
+      `TestApplyPresetFullMedia_OverridesOnlyZeroValues` surfaced
+      the mismatch with doc §6 row 3, which says
+      "images and voiceover enabled explicitly" and is consistent with
+      the per-field semantics used by all other presets.
+      Test naming (`OverridesOnlyZeroValues`) pinned this.
+    - `catalog` / `search` — pass-through (handler binds `source.kind`
+      upstream; preset must not touch Source).
+    - `batch` / empty / unknown preset literal — pass-through (defensive
+      default; no warning).
+  - **Duplicate collapse** (commit `24ad4ffa`):
+    `internal/application/scripts/usecase/preset_resolver.go::ApplyPreset`
+    was a duplicate of the canonical implementation that only handled
+    `with_images` (PR-8 narrowed). Refactored into a thin wrapper that
+    delegates to `adapters.ApplyPreset(item, preset)` per AGENTS.md
+    Pattern 8 ("API package: thin transport only" — `adapters/` is the
+    dependency boundary). Import direction is uni-directional
+    `usecase → adapters`; verified non-cyclic
+    (`adapters/generation_normalizer.go` does NOT import `usecase`).
+    Tests in `internal/application/scripts/adapters/normalizer_plan_tests_test.go`
+    that called `scripts.ApplyPreset(...)` continue to pass via the
+    wrapper (forwarding ensures identical observable behaviour).
+  - **TDD coverage** (commit `5c3b1faf`,
+    `internal/application/scripts/adapters/normalizer_plan_tests_test.go`):
+    5 new tests appended after `TestApplyPresetNilItem`:
+    - `TestApplyPresetFullMedia_DoesNothingWhenExplicit` — caller sets
+      BOTH → preset is a no-op (caller wins).
+    - `TestApplyPresetFullMedia_EnablesBothByDefault` — caller leaves
+      BOTH at zero → preset enables both.
+    - `TestApplyPresetFullMedia_OverridesOnlyZeroValues` — per-field
+      precedence: scenario A `images=true, voiceover=false` → enable
+      voiceover only; scenario B symmetric.
+    - `TestApplyPresetCatalog_PassThrough` — empty item remains
+      untouched on Source/Output/Source.Kind even if zero clips.
+    - `TestApplyPresetSearch_PassThrough` — same pattern.
+    Field-by-field assertions are used for Catalog/Search because
+    `SourceSpec` and `OutputSpec` contain `[]string` (not
+    `==`-comparable in Go); existing `reflect.DeepEqual` style retained
+    where structure allows.
+  - **Legacy handler audit** (`internal/api/script/handler_legacy_adapters.go`,
+    lines 219 / 428 / 504): all 3 `domainScript.PresetCustom` bindings
+    verified as **semantically correct** — caller fill
+    `Source.Kind` + flags + content explicitly for every endpoint, so
+    `custom` (pass-through) is appropriate:
+    - Line 219 — `LegacyGenerateFromClips` →
+      `POST /api/script/generate-from-clips` (SourceClips from
+      `ClipIDs` / `Clips` body field).
+    - Line 428 — `LegacyGenerateBatch` → multi-item text (SourceText
+      per topic).
+    - Line 504 — `LegacyCurate` → `POST /api/script/curate`
+      (SourceCurate from Query / Filters).
+
+  **Caveat (closure, tracked follow-up):** the canonical `go build ./...`
+  for `internal/app/module_media.go:334:3` is broken on `main` by a
+  pre-existing regression (obsolete `MutationsDispatcher` literal in
+  the `clips.Deps` struct — the field was removed in a recent commit
+  but not propagated to the wire composition literal). This regression
+  is OUT OF SCOPE for Issue 8 (the fix is owned by a separate ticket
+  and does not block the impl + test + wrapper commits from being
+  canonical). The Issue 8 closure is recorded in AGENTS.md
+  `Active Concerns #10` (CLOSED) and in this CHANGELOG entry.
+
 **[Step 6, b612ae9b]** Qdrant 1.18.2 compatibility — 4 deploy-time bugs fixed:
   - Collection verification tolerance for newly-created collections
     (race between `EnsureSchema` and `GetCollection`).
