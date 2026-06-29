@@ -129,6 +129,83 @@ http_entrypoint:
   owner: cmd/server
   rationale: Composition root + main() for the HTTP server binary.
 
+# ── Architecture governance (CLI tool) ───────────────────────────────────────
+# Added FASE 1.C PR1 (June 2026): cmd/archcheck is the canonical
+# target-tree governance binary — the permanent half of PipelineGen's
+# architectural gating. Sister binary to scripts/archcheck/ (the
+# transient legacy-burndown ratchet, owned by a separate workstream).
+# cmd/archcheck reads architecture/policy.yaml, walks the project
+# tree, and emits a JSON violation report on stdout. Phase 0 is
+# report-only; --strict promotes to a hard gate.
+
+# FASE 1.C PR1 (June 2026) split cmd/archcheck/main.go (996 LOC) into
+# cmd/archcheck/{policy,report}/{model,load}.go + the scan* function
+# family still in main.go (PR2-PR4 will move scans into scan/*.go and
+# the orchestration into runner.go). The package boundary is
+# `package policy` + `package report` (separate Go packages) with no
+# cyclic imports — the architectural snapshot test
+# (cmd/archcheck/runner_test.go) locks the refactor's behavior
+# preservation by golden-file comparison against
+# cmd/archcheck/testdata/report_golden.json.
+archcheck_cli:
+  owner: scripting
+  rationale: |
+    cmd/archcheck is the canonical target-tree governance binary. It
+    reads architecture/policy.yaml (flat key:value, stdlib-parseable,
+    intentionally NOT gopkg.in/yaml.v3) and walks the project tree
+    to enforce the 11 rules in the policy:
+      - max_files_per_package / max_lines_per_file / cmd_main_max_lines
+      - max_constructor_deps (8 per the CI-gates godlike/08 doc)
+      - forbidden_top_level_dirs (service, repository, models, utils, helpers)
+      - kernel_subzones (asset, job, script, event, identity, errors)
+      - capabilities + platform_subzones (forward-looking)
+      - legacy_internal_roots + target_internal_roots (migration tracker)
+      - data_ownership_doc / legacy_policy_doc / ci_gates_doc /
+        agent_playbook_doc / removal_doc (5 godlike/ canonical docs)
+      - known_grandfathered (Phase 0 report-only; Phase 1+ gates)
+      - stale_prose_paths (pre-Wave-16 path-stem detector)
+    Phase 0 emits a JSON report on stdout and exits 0 regardless
+    of violations; --strict promotes any violation to os.Exit(1)
+    for Phase N hard-gate promotion.
+  rule: |
+    cmd/archcheck is the canonical target-tree validator. The on-disk
+    enforcement lives in this binary (NOT in scripts/archcheck/,
+    which is the LEGACY-BURNDOWN ratchet — see the scripts/archcheck/
+    doc for the scope split). Stdlib only — no gopkg.in/yaml.v3
+    import (the flat policy format is intentionally simple). The
+    report JSON contract (`passed`, `mode`, `policy_path`,
+    `scan_root`, `phase`, `policy_snapshot`, `summary`, `violations`,
+    `grandfathered_known`) is the public API; downstream CI
+    dashboards and jq pipelines depend on every key. Adding a
+    field is safe; renaming or removing a field is a breaking
+    change.
+  target_files:
+    - cmd/archcheck/main.go              # CLI dispatch + scan* function family (PR2-PR4 will move scans)
+    - cmd/archcheck/runner.go            # PR4: CheckSpec dispatch + phase 0 report-only mode
+    - cmd/archcheck/policy/model.go      # PR1: Policy struct + Constraint/OwnerRef/Rule forward-looking types
+    - cmd/archcheck/policy/load.go       # PR1: stdlib-only policy.yaml parser
+    - cmd/archcheck/report/model.go      # PR1: Report/Violation/Summary JSON types + Finding/Severity/Suggestion forward-looking
+    - cmd/archcheck/scan/packages.go     # PR2: directory walking + module identification
+    - cmd/archcheck/scan/constructors.go # PR3: 8-dep cap scanner
+    - cmd/archcheck/scan/roots.go        # PR2: top-level dir whitelist + banned helpers/utils/models
+    - cmd/archcheck/scan/documents.go    # PR2: arch docs pointer consistency
+    - cmd/archcheck/runner_test.go       # PR1: golden-file snapshot test
+    - cmd/archcheck/testdata/report_golden.json  # PR1: snapshot golden file
+  cross_refs:
+    policy: architecture/policy.yaml
+    ownership: architecture/ownership.generated.yaml (this file)
+    sister_binary: scripts/archcheck/  # LEGACY-BURNDOWN ratchet (sister binary, separate ownership)
+    north_star: docs/architecture/godlike/01_NORTH_STAR.md
+    ci_gates_doc: docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
+    wave_ref: architecture/current.yaml#id-16  # Wave 16 KEEP_BOTH decision
+  current_drift: |
+    Post-FASE 1.C PR1 state: main.go is 782 LOC (down from 996).
+    The file_size rule for cmd/archcheck/main.go now reports
+    actual_lines=782 (was 996) — this is the EXPECTED outcome of
+    the PR1 split. The file_size violation itself is NOT
+    eliminated; that requires PR4's runner.go + main.go trim to
+    ≤100 LOC. PR2-PR4 will continue the cut.
+
 http_transport:
   owner: internal/api
   rule: api imports ONLY application + domain. Never infrastructure/database/sql, never os/exec, never google.golang.org/api/drive/v3.
