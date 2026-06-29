@@ -24,6 +24,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -222,7 +223,6 @@ func (uc *GenerateOneUseCase) Execute(
 		for _, pp := range plan.Postprocessors {
 			tracker.PhasePostprocess(pp)
 		}
-		ppStart := time.Now()
 		var ppErr error
 		// PR 5: build the typed adapters.ProcessInput envelope from the
 		// engine result. PersistenceProcessor consumes the typed
@@ -248,10 +248,35 @@ func (uc *GenerateOneUseCase) Execute(
 				Inner:     ppErr,
 			}
 		}
-		// Approximate per-postprocessor timing.
-		ppMs := time.Since(ppStart).Milliseconds()
-		for _, pp := range plan.Postprocessors {
-			timings.PostprocessMs[pp] = ppMs / int64(len(plan.Postprocessors))
+		// Issue #3 (June 2026): stream per-processor wall-clock timing
+		// straight from the registry's StageDurations map. Upstream
+		// `Run()` in PostProcessorRegistry records `elapsed =
+		// time.Since(start)` for every enabled processor in the
+		// loop (success + nil-result + error paths at
+		// postprocessor_registry.go around lines 497, 513, 524). The
+		// previous uniform-division approximation
+		// (`ppMs / int64(len(plan.Postprocessors))`) hid real
+		// per-stage variance in the timings payload — Issue #3
+		// replaces it with the registry's authoritative per-stage
+		// measurement so `GenerationTimings.PostprocessMs` reflects
+		// actual elapsed wall-clock for each processor that ran.
+		//
+		// `maps.Clone` (Go 1.21+) copies the map header so future
+		// mutations on the registry side cannot reach into the
+		// timings payload (defensive against the pipeline later
+		// sharing the same map reference).
+		//
+		// Empty-or-nil StageDurations guard: when the loop
+		// short-circuited (empty `Postprocessors` list) or every
+		// requested processor was missing-registered (registry
+		// doesn't write a StageDurations entry for skipped names)
+		// the StageDurations map stays empty — `timings.PostprocessMs`
+		// keeps its zero-init from the line above so consumers
+		// reading `len(timings.PostprocessMs) == 0` continue to see
+		// "no postprocessing happened" without an explicit zero
+		// sentinel.
+		if postResult != nil && len(postResult.StageDurations) > 0 {
+			timings.PostprocessMs = maps.Clone(postResult.StageDurations)
 		}
 	}
 
