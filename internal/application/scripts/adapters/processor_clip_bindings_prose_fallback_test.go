@@ -267,10 +267,14 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 			t.Errorf("scene[1].Bindings.Clip = %v, want nil (P0 #2: extra scenes unbound)",
 				model.SpecScene.Scenes[1].Bindings.Clip.ClipID)
 		}
-		// Heuristic MUST NOT trigger when scenes pre-exist (pre-FASE-3
-		// contract preserved verbatim).
-		if !result.IsEmpty() {
-			t.Errorf("result.IsEmpty() = false; want true (heuristic must NOT engage when scenes pre-exist)")
+		// P1 #10 (June 2026): IsEmpty() now returns false even when
+		// heuristic did NOT engage — the binder sets Changed=true
+		// because it mutated input.SpecScene.Scenes (bound clips,
+		// cleared unbound scenes). The contract pin is that
+		// SynthesizedScenes is empty (heuristic NOT engaged) while
+		// IsEmpty() is false (mutative work happened).
+		if result.IsEmpty() {
+			t.Errorf("result.IsEmpty() = true; want false (Changed=true because clips were bound)")
 		}
 		if len(result.SynthesizedScenes) > 0 {
 			t.Errorf("SynthesizedScenes = %v, want empty (heuristic must NOT engage when scenes pre-exist)",

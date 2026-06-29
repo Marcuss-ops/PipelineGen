@@ -27,6 +27,7 @@ type countingProcessor struct {
 	warnings  []string                // PR 2 (June 2026): populated into PostProcessResult.Warnings
 	resultNil bool                    // PR 2 (June 2026): when true, returns (nil, nil) to exercise nil-handling
 	empty     bool                    // PR 2 (June 2026): when true, returns empty PostProcessResult
+	changed   bool                    // P1 #10 (June 2026): set on result when true
 }
 
 func (p *countingProcessor) Name() string { return p.name }
@@ -59,9 +60,9 @@ func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGene
 		return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
 	}
 	if p.docID != "" {
-		return &adapterspkg.PostProcessResult{DocID: p.docID, DocLink: "https://docs.example.com/" + p.docID, Warnings: p.warnings}, nil
+		return &adapterspkg.PostProcessResult{DocID: p.docID, DocLink: "https://docs.example.com/" + p.docID, Changed: p.changed, Warnings: p.warnings}, nil
 	}
-	return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
+	return &adapterspkg.PostProcessResult{Changed: p.changed, Warnings: p.warnings}, nil
 }
 
 // ── Registration ───────────────────────────────────────────────────
