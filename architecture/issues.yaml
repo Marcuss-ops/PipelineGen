@@ -27,12 +27,12 @@
   title: "Re-home noopMetrics and NowFunc out of internal/application/qdrant/dr/types.go (declarations used only by dr/restore.go)"
   status: pending
 
-- id: Q2-stubExecutor-CleanupWithConfig-mismatch
+- id: Q2-stubExecutor-pointer-mismatch
   title: "Migrate stubExecutor.CleanupWithConfig in internal/application/qdrant/dr/snapshot_test.go from value to pointer return after dr_adapter.go flipped the RetentionExecutor port signature"
   status: pending
 
 - id: Q3-ClipIDs-AcceptedClipIDs-audit
-  title: "Audit stale ClipIDs references in scripts/adapters tests after the ClipEvidence.ClipIDs acceptance rename"
+  title: "Audit stale ClipIDs references in scripts/adapters tests after the ClipEvidence.ClipIDs -> AcceptedClipIDs rename"
   status: pending
 
 - id: PLATFORM-HTTPSERVER-OWNER-MISMATCH
