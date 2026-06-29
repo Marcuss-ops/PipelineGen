@@ -1,4 +1,5 @@
-// PR-VO-C1 (June 2026): deprecation contract smoke tests.
+// PR-VO-C1 (June 2026, refreshed by Block 6): deprecation contract
+// smoke tests.
 //
 // Coverage scope (intentionally narrow):
 //
@@ -6,26 +7,39 @@
 //   - addVoiceoverDeprecationHeader response headers (RFC 9745 +
 //     RFC 8594 + RFC 8288 Link rel=successor-version).
 //   - legacyVoiceoverRouteInvocationsTotal Prometheus counter.
-//   - LegacyVoiceoverDeprecationCount readback.
+//   - LegacyVoiceoverDeprecationCount readback (now multi-label per
+//     Block 6 refresh — iterates {generate, sync, generate-with-group}).
+//
+// Block 6 label-set refresh (June 2026):
+//
+//   The counter's PINNED test label is the legacy "generate-with-group"
+//   value. This is INTENTIONAL — the test exercises the
+//   backwards-compat dashboard series that operators wired during
+//   PR-VO-C1's 90-day Sunset window (2026-06-28 → 2026-09-26). The
+//   legacy label value is CONTRACTED at PR-VO-E1 (post-Sunset); when
+//   that commit lands, this test's label string is updated in lockstep
+//   and the fixture is migrated to the canonical "generate" label.
 //
 // OUT of scope for this file (deferred to follow-up):
 //
 //   - Full handler-level integration tests driving the complete
-//     request flow (POST /generate-with-group returning 200 +
-//     headers; POST /generate with destination.kind="group"
-//     returning 200 without headers). These tests require the
-//     Handler struct to be constructed with stubbed
-//     groupsResolver / service / jobsSvc / syncService —
-//     infrastructure that does not currently exist for this handler
-//     directory (the existing gate_test.go only walks static
-//     prohibited-pattern walks, not behavior). The follow-up
-//     PR-VO-C2 will add a stub-package in
+//     request flow (POST /generate with destination.kind="group"
+//     returning 202 without headers; POST /generate with
+//     destination.kind="explicit" returning 202 without headers).
+//     These tests require the Handler struct to be constructed with
+//     a stubbed jobsSvc — infrastructure that does not currently
+//     exist for this handler directory (the existing gate_test.go
+//     only walks static prohibited-pattern walks, not behavior).
+//     The follow-up PR-VO-D3 will add a stub-package in
 //     internal/api/assets/voiceover/stub/ and full handler tests.
 //
 // Why this contract is pinned NOW: the Sunset header is a security
 // boundary (cross-team timing contract). A future drift that
 // changes the header shape or the constant value is a HARD break.
-// The three tests below pin every observable.
+// The tests below pin every observable on the legacy
+// generate-with-group path; the canonical Block 6 reality is
+// documented at
+// docs/voiceover/blocco-6-confirmation.md + handler.go header.
 package voiceover
 
 import (

@@ -45,27 +45,66 @@ import (
 // Sunset, RFC 8594)".
 const voiceoverSunsetDate = "Sat, 26 Sep 2026 00:00:00 GMT"
 
-// legacyVoiceoverRouteInvocationsTotal is the per-route Prometheus
-// counter that tracks how many times the deprecated
-// /generate-with-group endpoint has been invoked since process start.
-// Operators expose this via /metrics or admin dashboards to identify
-// clients that haven't migrated to the canonical /generate endpoint
-// with destination.kind="group". Mirrors the
-// handler_legacy_adapters.go::legacyRouteInvocationsTotal pattern
-// (Wave 21 Wave 25 + PR-VO-C1, June 2026).
+// legacyVoiceoverRouteInvocationsTotal is the per-operation Prometheus
+// counter that tracks voiceover operations under the BACKFILL/CUTOVER
+// window (Block 6, June 2026). The label set has been refreshed to
+// align with the post-Block-4 EXPAND canonical surface:
+//
+//   - "generate" — canonical async POST /api/voiceover/generate
+//     (handler.go Generate). The destination.kind=group|explicit
+//     distinction lives in the PAYLOAD field of GenerateVoiceoversCommand,
+//     NOT in this counter. /groups resolution moved out of the HTTP
+//     handler at Block 4 EXPAND and is now owned by the use case layer
+//     (AGENTS.md Pattern 8 thin-transport rule).
+//   - "sync" — emitted by
+//     internal/application/assets/reconciliation/voiceover/service.go,
+//     invoked EXCLUSIVELY via cmd/admin/cleanup.go:507 after the
+//     Block 4 EXPAND slim removed the handler /sync route. There is
+//     no longer any HTTP surface for /sync — admin CLI only.
+//   - "generate-with-group" — DEPRECATED (legacy HTTP route removed
+//     from RegisterRoutes at Block 4 EXPAND). Label value retained
+//     briefly for backwards-compat dashboard series during the
+//     2026-06-28 → 2026-09-26 Sunset window; CONTRACTED at PR-VO-E1.
+//
+// At this Block 6 confirmation commit, NO code path emits the counter:
+// /generate is the canonical surface (not a deprecated legacy route)
+// and /sync is admin-only (not network-reachable). Future BACKFILL
+// observability commits may add a log-tap watchdog; the help text
+// and LegacyVoiceoverDeprecationCount iteration list are
+// pre-documented so dashboards can be wired earlier than emission.
+//
+// Operators expose this counter via /metrics or admin dashboards.
+// Mirrors handler_legacy_adapters.go::legacyRouteInvocationsTotal
+// pattern (Wave 21 + PR-VO-C1, June 2026).
 var legacyVoiceoverRouteInvocationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "legacy_voiceover_route_invocations_total",
-	Help: "Monotonic counter for deprecated voiceover routes, labelled by route name.",
+	Help: "Monotonic counter for voiceover canonical operations tracked under the BACKFILL/CUTOVER window, labelled by operation name. Known label values: generate, sync. (deprecated: generate-with-group — retained for legacy dashboard series during the 2026-09-26 Sunset window, contracted at PR-VO-E1).",
 }, []string{"route"})
 
 // LegacyVoiceoverDeprecationCount returns the cumulative invocation
-// count across the deprecated voiceover routes by reading the
+// count across the voiceover operations tracked under the
+// BACKFILL/CUTOVER window (Block 6, June 2026) by reading the
 // legacyVoiceoverRouteInvocationsTotal prometheus counter (dto.Metric
 // writeback pattern). Exposed for admin/diagnostic surfaces so the
-// PR-VO-C1 sunset deadline can be tracked against live usage.
+// PR-VO-C1 Sunset deadline can be tracked against live usage.
+//
+// Block 6 — refreshed label set (one-owner-per-fact, godlike/06):
+//
+//   - "generate"             — POST /api/voiceover/generate
+//                              (canonical Block 4 EXPAND surface).
+//   - "sync"                 — cmd admin cleanup /sync path
+//                              (cmd/admin/cleanup.go:507 only;
+//                              no HTTP route reachable from
+//                              external clients).
+//   - "generate-with-group"  — DEPRECATED legacy HTTP route
+//                              (removed at Block 4 EXPAND slim);
+//                              label value retained for backwards-
+//                              compat dashboard series during the
+//                              2026-09-26 Sunset window; CONTRACTED
+//                              at PR-VO-E1.
 func LegacyVoiceoverDeprecationCount() int64 {
 	var total int64
-	for _, route := range []string{"generate-with-group"} {
+	for _, route := range []string{"generate", "sync", "generate-with-group"} {
 		counter, err := legacyVoiceoverRouteInvocationsTotal.GetMetricWithLabelValues(route)
 		if err != nil {
 			continue
