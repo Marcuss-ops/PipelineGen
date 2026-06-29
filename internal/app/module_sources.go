@@ -163,13 +163,12 @@ func WireArtlist(ctx context.Context, cfg *config.Config, log *zap.Logger, bundl
 		log.Warn("Failed to build Artlist module", zap.Error(err))
 		return nil, err
 	}
-	ad, _ := descriptor.(*artsources.ArtlistDescriptor)
-	var mod api.Module
-	if ad != nil {
-		mod = ad.Module
-		log.Info("created Artlist module via Build contract (Blocco C1-Step 3)")
+	ad, typeAssertOk := descriptor.(*artsources.ArtlistDescriptor)
+	if !typeAssertOk || ad == nil {
+		return nil, fmt.Errorf("WireArtlist: artsources.Build returned unexpected descriptor type %T (want *artsources.ArtlistDescriptor)", descriptor)
 	}
-	return &ArtlistWiring{Module: mod, Service: artlistSvc}, nil
+	log.Info("created Artlist module via Build contract (Blocco C1-Step 3)")
+	return &ArtlistWiring{Module: ad.Module, Service: artlistSvc}, nil
 }
 
 // wireArtlistModule composes the Artlist HTTP module by delegating to
@@ -188,10 +187,10 @@ func wireArtlistModule(cfg *config.Config, artlistSvc *artlistPkg.Service, bundl
 		return nil, nil // tolerated: module is skipped
 	}
 	// The clipresolver package was removed from remote (commit
-	// d61068b3). wireClipResolver returns nil typed as interface{}.
-	// The ArtlistHandler constructor expects a typed ClipResolverPort;
-	// perform a safe type assertion so the typed nil is forwarded
-	// (handler stays nil-tolerant and short-circuits).
+	// d61068b3). wireClipResolver returns nil typed as interface{};
+	// the safe type assertion forwards a typed-nil into Build, and
+	// the resulting ArtlistHandler stays nil-tolerant and short-
+	// circuits the /recommend route at request time.
 	var resolver artsources.ClipResolverPort
 	if val, ok := clipResolver.(artsources.ClipResolverPort); ok {
 		resolver = val
@@ -211,7 +210,7 @@ func wireArtlistModule(cfg *config.Config, artlistSvc *artlistPkg.Service, bundl
 		NodeScraperDir: "node-scraper",
 		CfgPort:        cfgPort,
 		EnabledFunc:    func() bool { return cfg.Features.ArtlistEnabled },
-		ModuleOpts: []api.ModuleOption{
+		ModuleOpts: []api.RouteModuleOption{
 			api.WithMiddleware(middleware.FeatureFlagChecker("Artlist", cfg.Features.ArtlistEnabled)),
 		},
 		Logger: log,
