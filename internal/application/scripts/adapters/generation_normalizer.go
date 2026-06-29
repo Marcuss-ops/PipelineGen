@@ -228,9 +228,88 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	}
 }
 
-// ApplyPreset applies a generation preset to the item.
-// Phase 1b stub: real implementation was in the old mega-package.
+// ApplyPreset applies a generation preset's documented overrides to
+// the item, before the config-defaults and safety-defaults layers
+// run. Per §6 "Required preset semantics" of
+// docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md, each
+// preset has a single canonical row in the table; this function is
+// the body of that row.
+//
+// Caller fields are NEVER overwritten: the preset only fills in
+// zero-valued fields when its doc row says so. The full precedence
+// chain (this function is just the "preset" step) is:
+//
+//	caller explicit > preset > config > safety default
+//
+// The function is idempotent (re-running it with the same inputs
+// produces no further change) and nil-safe (a nil item returns
+// without mutating anything).
+//
+// Summary by case (see doc §6 for the canonical rows):
+//
+//	custom     → pass-through (no overrides)
+//	with_images → GenerateSceneImages=true; SentencesPerImage=8,
+//	               ImagesPerScene=2 only when caller left them at zero
+//	full_media → if caller left BOTH scene_images and voiceover off,
+//	              enable both atomically; otherwise pass-through
+//	catalog    → pass-through (handler binds source.kind=catalog upstream)
+//	search     → pass-through (handler binds source.kind=search upstream)
+//	batch / unknown / empty → pass-through
 func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
-	_ = item
-	_ = preset
+	if item == nil {
+		return
+	}
+	switch preset {
+	case scriptpkg.PresetCustom:
+		// §6 row 1: custom | none | none.
+		// Caller filled every flag explicitly; preset must not touch.
+	case scriptpkg.PresetWithImages:
+		// §6 row 2: with_images | none | images.enabled=true only.
+		//
+		// Enable scene images. Voiceover / document / entities /
+		// metadata stay caller-controlled — the preset never alters
+		// them silently (per doc §6 last line). Sizing defaults fill
+		// in only when caller left them at zero (caller precedence
+		// via OutputSpec bool contract).
+		item.Output.GenerateSceneImages = true
+		if item.ScriptParams.SentencesPerImage <= 0 {
+			item.ScriptParams.SentencesPerImage = 8
+		}
+		if item.ScriptParams.ImagesPerScene <= 0 {
+			item.ScriptParams.ImagesPerScene = 2
+		}
+	case scriptpkg.PresetFullMedia:
+		// §6 row 3: full_media | none | images and voiceover enabled
+		// explicitly.
+		//
+		// Atomic enable: only when caller has BOTH scene_images and
+		// voiceover off, the preset flips both on as a coherent
+		// full-media package. If caller set either explicitly, the
+		// preset does not override — caller intent wins (caller >
+		// preset > config > safety). Entities, metadata and document
+		// remain caller-controlled.
+		if !item.Output.GenerateSceneImages && !item.Output.GenerateVoiceover {
+			item.Output.GenerateSceneImages = true
+			item.Output.GenerateVoiceover = true
+		}
+	case scriptpkg.PresetCatalog:
+		// §6 row 4: catalog | source.kind=catalog | none.
+		//
+		// Pass-through. The HTTP handler (`handler_legacy_adapters.go`
+		// §6 catalog endpoints) binds source.kind=SourceCatalog on the
+		// item before ApplyPreset runs; the preset carries the intent
+		// without altering the field again.
+	case scriptpkg.PresetSearch:
+		// §6 row 5: search | source.kind=search | none.
+		//
+		// Pass-through. The HTTP handler (`handler_legacy_adapters.go`
+		// §6 search endpoints) binds source.kind=SourceSearch on the
+		// item before ApplyPreset runs; the preset carries the intent
+		// without altering the field again.
+	default:
+		// batch, unknown, empty Preset → pass-through.
+		// `TestApplyPresetBatchPassThrough` exercises path with
+		// Preset("batch") as a plain string; an empty Preset also
+		// arrives here from callers that did not bind one.
+	}
 }
