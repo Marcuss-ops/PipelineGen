@@ -57,6 +57,10 @@ func main() {
 		return
 	}
 
+	if cfg.Mode == ModeSymbolRefs {
+		os.Exit(runSymbolRefsChecks())
+	}
+
 	var report Report
 	switch cfg.Mode {
 	case ModeRatchet:
