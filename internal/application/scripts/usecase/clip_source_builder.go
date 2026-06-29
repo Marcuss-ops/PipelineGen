@@ -163,6 +163,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	clips := make([]*asset.Asset, 0, len(uniqueIDs))
 	clipNames := make([]string, 0, len(uniqueIDs))
 	canonicalIDs := make([]string, 0, len(uniqueIDs))
+	var renderableIDs []string // Issue #2 (June 2026): DriveLink-bearing subset of AcceptedClipIDs
 	var missingClipIDs []scriptpkg.MissingClipID
 	var excludedClips []scriptpkg.ExcludedClip
 	clipToCanonical := make(map[string]string, len(uniqueIDs))
@@ -208,20 +209,41 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			continue
 		}
 
-		// P0 #3: check DriveLink before accepting the clip.
-		// When DriveLink is required and the clip lacks one,
-		// exclude it (but keep metadata for logging).
+		// Issue #2 (June 2026): bucket flip restructured. The
+		// old code appended MissingClipReasonDriveNotFound to
+		// ExcludedClip when RequireDriveLink=true && hasDriveLink=
+		// false. That conflated two distinct resolution outcomes:
+		// (a) the asset exists but is unrenderable into Drive-
+		// consuming surfaces (infrastructure) and (b) the asset
+		// resolved but was filtered by a quality gate (filter).
+		// Post-fix: route (a) to MissingClipIDs with
+		// MissingClipReasonDriveNotFound. ExcludedClip remains
+		// reserved for (b) — quality-filter rejections. Dashboards
+		// can now bucket "asset unavailable to render" separately
+		// from "asset filtered by quality gate".
 		hasDriveLink := clip.DriveLink() != ""
 		if requireDriveLink && !hasDriveLink {
-			excludedClips = append(excludedClips, scriptpkg.ExcludedClip{
+			missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
 				ClipID: id,
 				Reason: scriptpkg.MissingClipReasonDriveNotFound,
 			})
 			if c.log != nil {
-				c.log.Warn("clip source builder: clip lacks drive link (excluded)",
+				c.log.Warn("clip source builder: clip lacks drive link (missing — Issue #2 bucket)",
 					zap.String("clip_id", id))
 			}
 			continue
+		}
+
+		// Issue #2 (June 2026): RenderableClipIDs tracking.
+		// Any accepted clip that additionally carries a DriveLink
+		// belongs to the renderable subset. Document / image /
+		// voiceover renderers iterate this set instead of the
+		// broader AcceptedClipIDs. IMPORTANT: renderableIDs only
+		// captures clips that survived the requireDriveLink gate
+		// above; when requireDriveLink=false, hasDriveLink may
+		// be true or false per-clip and we still track here.
+		if hasDriveLink {
+			renderableIDs = append(renderableIDs, id)
 		}
 
 		clips = append(clips, clip)
@@ -302,16 +324,21 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		}
 	}
 
-	// P1 #6 (June 2026): Build ClipEvidence directly instead of an
-	// untyped map[string]any pack + separate BuildClipEvidence call.
+	// Issue #2 (June 2026): Build ClipEvidence directly using the
+	// new contract. AcceptedClipIDs is the transcript-usable
+	// resolved set (renamed from the ambiguous ClipIDs).
+	// RenderableClipIDs is the DriveLink-bearing subset.
+	// ExcludedClip's MissingClipReasonDriveNotFound bucket is gone
+	// (post-fix, that reason only appears in MissingClipIDs).
 	ev := &scriptpkg.ClipEvidence{
-		ClipIDs:        canonicalIDs,
-		ClipCount:      len(canonicalIDs),
-		AssembledText:  strings.TrimSpace(sourceTextBuilder.String()),
-		DriveLinks:     clipDriveLinks,
-		ClipNames:      clipNameMap,
-		Excluded:       excludedClips,
-		MissingClipIDs: missingClipIDs,
+		AcceptedClipIDs:   canonicalIDs,
+		RenderableClipIDs: renderableIDs,
+		ClipCount:         len(canonicalIDs),
+		AssembledText:     strings.TrimSpace(sourceTextBuilder.String()),
+		DriveLinks:        clipDriveLinks,
+		ClipNames:         clipNameMap,
+		Excluded:          excludedClips,
+		MissingClipIDs:    missingClipIDs,
 	}
 	// Preserve nil for JSON omitempty.
 	if len(ev.MissingClipIDs) == 0 {
@@ -319,6 +346,9 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	}
 	if len(ev.Excluded) == 0 {
 		ev.Excluded = nil
+	}
+	if len(ev.RenderableClipIDs) == 0 {
+		ev.RenderableClipIDs = nil
 	}
 
 	if c.log != nil {

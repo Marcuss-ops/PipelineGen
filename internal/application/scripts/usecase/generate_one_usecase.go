@@ -430,7 +430,14 @@ func buildGenerationResult(
 	// for kind/text/id — the postprocessor walk never mutates those
 	// fields. The binder only touches `scene.Bindings.Clip`.
 	if engineResult.ClipEvidence != nil {
-		clipIDs := engineResult.ClipEvidence.ClipIDs
+		// Issue #2 (June 2026): ClipEvidence.ClipIDs renamed to
+		// AcceptedClipIDs (transcript-usable set). The SourceTrace
+		// field already called this AcceptedClipIDs (per legacy
+		// contract) so the assignment is semantically a 1:1
+		// pass-through — the SourceTrace field description is
+		// unchanged and now matches the ClipEvidence source by
+		// name.
+		clipIDs := engineResult.ClipEvidence.AcceptedClipIDs
 		if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
 			clipIDs = clipIDs[:plan.NumClips]
 		}

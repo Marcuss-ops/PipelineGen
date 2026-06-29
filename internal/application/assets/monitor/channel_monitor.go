@@ -4,14 +4,13 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 
 	"go.uber.org/zap"
 )
@@ -88,8 +87,6 @@ type ChannelMonitor struct {
 	jobsSvc           *jobtools.Service
 	globalSem         chan struct{}
 	searchRateLimiter *tokenBucket
-	ytdlp             *downloader.YTDLPDownloader
-	jobsSvc           *appjobs.Service
 }
 
 // NewChannelMonitor creates a new channel monitor.
@@ -110,7 +107,6 @@ func NewChannelMonitor(cfg *config.Config, clipsRepo *assets.ClipsRepository, ch
 		youtubeSvc:   youtubeSvc,
 		ollamaClient: ollamaClient,
 		globalSem:    make(chan struct{}, maxChannels),
-		ytdlp:        ytdlp,
 	}
 }
 

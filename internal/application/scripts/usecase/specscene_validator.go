@@ -2,7 +2,8 @@
 // ValidateAndEnrichSpecScene entry point. It runs BEFORE the
 // postprocessor phase in GenerateOneUseCase.Execute and:
 //  1. Rejects model-invented clip IDs (clip_id not in
-//     ClipEvidence.ClipIDs).
+//     ClipEvidence.AcceptedClipIDs — Issue #2, June 2026:
+//     field renamed from ClipIDs).
 //  2. Rejects kind=clip without a populated Clip binding.
 //  3. Rejects kind=clip with empty clip_id.
 //  4. Rejects invalid temporal range (start_ms < 0, end_ms < 0,
@@ -63,9 +64,10 @@ func ValidateAndEnrichSpecScene(
 		return &output.SpecScene, nil, nil
 	}
 
-	// Build a quick-lookup of allowed clip IDs.
-	allowedClips := make(map[string]struct{}, len(evidence.ClipIDs))
-	for _, id := range evidence.ClipIDs {
+	// Build a quick-lookup of allowed clip IDs (Issue #2, June
+	// 2026: field renamed ClipIDs → AcceptedClipIDs).
+	allowedClips := make(map[string]struct{}, len(evidence.AcceptedClipIDs))
+	for _, id := range evidence.AcceptedClipIDs {
 		allowedClips[strings.TrimSpace(id)] = struct{}{}
 	}
 
@@ -191,12 +193,13 @@ func ValidateAndEnrichSpecScene(
 
 	// Soft warning: evidence has unused clip_ids (model emitted fewer
 	// scenes than the resolved evidence). This is harmless but useful
-	// for operator dashboards.
-	if evidence != nil && len(evidence.ClipIDs) > len(output.SpecScene.Scenes) {
+	// for operator dashboards. Issue #2 (June 2026): evidence.ClipIDs
+	// renamed to AcceptedClipIDs.
+	if evidence != nil && len(evidence.AcceptedClipIDs) > len(output.SpecScene.Scenes) {
 		warnings = append(warnings,
 			fmt.Sprintf("model emitted %d scenes for %d resolved clips (unused = %d)",
-				len(output.SpecScene.Scenes), len(evidence.ClipIDs),
-				len(evidence.ClipIDs)-len(output.SpecScene.Scenes)))
+				len(output.SpecScene.Scenes), len(evidence.AcceptedClipIDs),
+				len(evidence.AcceptedClipIDs)-len(output.SpecScene.Scenes)))
 	}
 	// Soft warning: same clip_id used in 2+ scenes (operator-allowed).
 	clipUseCount := make(map[string]int, len(output.SpecScene.Scenes))

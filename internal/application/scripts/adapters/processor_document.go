@@ -73,7 +73,7 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	}
 
 	htmlContent := ""
-	if input.SourceTrace != nil && len(input.SourceTrace.ClipIDs) > 0 && len(input.SpecScene.Scenes) > 0 {
+	if input.SourceTrace != nil && len(input.SourceTrace.AcceptedClipIDs) > 0 && len(input.SpecScene.Scenes) > 0 {
 		model := &scriptpkg.ModelScriptOutputV1{
 			SchemaVersion: 1,
 			Text:          input.Text,

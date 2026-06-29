@@ -439,11 +439,15 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 
 // extractPlanClipIDs extracts clip IDs from the resolved plan's
 // ClipEvidence. Returns nil for text-only plans (no clip evidence).
+//
+// Issue #2 (June 2026): field renamed from ClipIDs to
+// AcceptedClipIDs. The LLM prompt grounding set is unchanged —
+// any transcript-usable resolved clip counts.
 func extractPlanClipIDs(plan *scriptpkg.ResolvedGenerationPlan) []string {
 	if plan == nil || plan.ClipEvidence == nil {
 		return nil
 	}
-	return plan.ClipEvidence.ClipIDs
+	return plan.ClipEvidence.AcceptedClipIDs
 }
 
 // buildClipGroundingInstructions adds clip-specific prompt guidance
@@ -455,8 +459,9 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		return ""
 	}
 
-	clipIDs := strings.Join(plan.ClipEvidence.ClipIDs, ", ")
-	requestedClips := len(plan.ClipEvidence.ClipIDs)
+	// Issue #2 (June 2026): field renamed ClipIDs → AcceptedClipIDs.
+	clipIDs := strings.Join(plan.ClipEvidence.AcceptedClipIDs, ", ")
+	requestedClips := len(plan.ClipEvidence.AcceptedClipIDs)
 	if plan.NumClips > 0 && plan.NumClips < requestedClips {
 		requestedClips = plan.NumClips
 	}

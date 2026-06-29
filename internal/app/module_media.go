@@ -25,6 +25,7 @@ import (
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
 	appstorage "github.com/Marcuss-ops/PipelineGen/internal/application/assets/storage"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	mediasearch "github.com/Marcuss-ops/PipelineGen/internal/application/mediasearch"
@@ -273,6 +274,24 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		mutationsDisp,
 		log,
 	)
+	// P1.5 (June 2026): CUTOVER — construct the upload UseCase from the
+	// canonical typed ports declared in internal/application/clips/upload/ports.go.
+	// DriveUploader, IndexDispatcher, Config, and TreeBuilder are type aliases
+	// of the parent clips.* ports (ClipDriveUploaderPort, etc.) so the existing
+	// adapters satisfy them directly. ArtifactServicePort is nil — the concrete
+	// *artifacts.Service is not yet wired in the AssetsBundle; the use case
+	// surfaces ErrArtifactServiceUnavailable at Execute time, matching the
+	// current production behaviour (UploadVideoClip returns 500).
+	uploadUC := appupload.NewUseCase(appupload.UseCaseDeps{
+		Artifact:      nil, // *artifacts.Service not in bundle yet
+		DriveUploader: newClipsDriveAdapter(driveUploader),
+		Dispatcher:    clipsDispatcherPort,
+		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),
+		TreeBuilder:   newClipsAssetTreeAdapter(bundle.AssetTreeService),
+		JobsSvc:       jobs.Facade,
+		ProcessRunner: processRunnerAdapter,
+		Log:           log,
+	})
 	// PR 2 (June 2026): construct the application-layer ClipOpsService so
 	// the HTTP handler can delegate Reconcile / Cleanup / VerifyClip to a
 	// single canonical service instead of duplicating the business logic
@@ -331,6 +350,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, bundle *AssetsBundle, jobs 
 		SearchSvc:           searchAggregator,
 		BulkUploadWorker:    bulkUploadWorker,
 		ClipOpsService:      clipOpsSvc,
+		UploadUC:            uploadUC,
 	}, idemHandler)
 
 	var drivePort appstorage.DrivePort

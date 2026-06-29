@@ -12,9 +12,10 @@ import (
 
 // ClipBindingsProcessor assigns clips from ClipEvidence to scenes.
 // Each clip maps to exactly one scene, in the canonical order from
-// plan.ClipEvidence.ClipIDs (preserving the resolver's order). Extra
-// scenes beyond the clip count receive no clip binding — this
-// surfaces LLM output mismatches instead of silently cycling clips.
+// plan.ClipEvidence.AcceptedClipIDs (Issue #2, June 2026: renamed
+// from ClipIDs; preserving the resolver's order). Extra scenes
+// beyond the clip count receive no clip binding — this surfaces
+// LLM output mismatches instead of silently cycling clips.
 type ClipBindingsProcessor struct {
 	log *zap.Logger
 }
@@ -43,7 +44,8 @@ func (p *ClipBindingsProcessor) Process(
 	if plan == nil {
 		return &PostProcessResult{}, nil
 	}
-	if plan.ClipEvidence == nil || len(plan.ClipEvidence.ClipIDs) == 0 {
+	// Issue #2 (June 2026): ClipIDs renamed to AcceptedClipIDs.
+	if plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
 		return &PostProcessResult{}, nil
 	}
 
@@ -71,7 +73,8 @@ func (p *ClipBindingsProcessor) Process(
 		if input.Text == "" {
 			return &PostProcessResult{}, nil
 		}
-		n := len(plan.ClipEvidence.ClipIDs)
+		// Issue #2 (June 2026): ClipIDs renamed → AcceptedClipIDs.
+		n := len(plan.ClipEvidence.AcceptedClipIDs)
 		if plan.NumClips > 0 && plan.NumClips < n {
 			n = plan.NumClips
 		}
@@ -84,7 +87,7 @@ func (p *ClipBindingsProcessor) Process(
 		if p.log != nil {
 			p.log.Info("clip_bindings: prose-fallback heuristic engaged",
 				zap.Int("synthesized", len(synthesized)),
-				zap.Int("clips", len(plan.ClipEvidence.ClipIDs)))
+				zap.Int("clips", len(plan.ClipEvidence.AcceptedClipIDs)))
 		}
 	}
 
@@ -93,10 +96,11 @@ func (p *ClipBindingsProcessor) Process(
 	}
 
 	// P0 #2 (June 2026): use the canonical ordered list from
-	// plan.ClipEvidence.ClipIDs instead of iterating the
+	// plan.ClipEvidence.AcceptedClipIDs instead of iterating the
 	// DriveLinks map + sort.Strings. The resolver's order is
 	// preserved; clips bind to scenes 1:1 in arrival order.
-	clipIDs := plan.ClipEvidence.ClipIDs
+	// Issue #2 (June 2026): ClipIDs renamed → AcceptedClipIDs.
+	clipIDs := plan.ClipEvidence.AcceptedClipIDs
 
 	// Respect NumClips limit.
 	if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
@@ -130,10 +134,11 @@ func (p *ClipBindingsProcessor) Process(
 	}
 
 	if p.log != nil {
+		// Issue #2 (June 2026): ClipIDs renamed to AcceptedClipIDs.
 		p.log.Info("clip_bindings: assigned clips to scenes",
 			zap.Int("scenes", len(scenes)),
 			zap.Int("clips_bound", bindCount),
-			zap.Int("clips_available", len(plan.ClipEvidence.ClipIDs)),
+			zap.Int("clips_available", len(plan.ClipEvidence.AcceptedClipIDs)),
 			zap.Int("scenes_unbound", len(scenes)-bindCount),
 			zap.Strings("clip_ids", clipIDs[:bindCount]))
 	}

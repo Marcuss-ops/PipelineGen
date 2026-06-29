@@ -135,8 +135,14 @@ type ResolvedGenerationPlan struct {
 
 // HasClips returns true when the plan carries clip evidence (the
 // source involved one or more clips).
+//
+// Issue #2 (June 2026): the field read here is
+// ClipEvidence.AcceptedClipIDs (renamed from ClipIDs). The
+// semantic stays the same — any transcript-usable resolved clip
+// counts. Use HasRenderableClips (added if needed) for the
+// DriveLink-bearing subset.
 func (p *ResolvedGenerationPlan) HasClips() bool {
-	return p.ClipEvidence != nil && len(p.ClipEvidence.ClipIDs) > 0
+	return p.ClipEvidence != nil && len(p.ClipEvidence.AcceptedClipIDs) > 0
 }
 
 // HasPostprocessor returns true when the named postprocessor is in
