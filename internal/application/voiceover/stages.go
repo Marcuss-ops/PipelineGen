@@ -1,90 +1,110 @@
-// Package voiceover — stages.go (PR-VOICEOVER-PROCESS-GO-FIX stub layer, June 2026).
+// Package voiceover — stages.go (RESTORE PR, June 2026).
 //
-// Implements the 5 symbols that process.go / service.go / job_handler.go
-// call but were undefined after the PR8 slim-orchestrator extraction:
+// Implements the per-batch orchestrator and the 3 stages that
+// process.go's processLanguage calls into:
 //
-//   - GenerateBatch    (method) — per-language orchestrator entrypoint
-//   - synthesizeStage  (method) — Stage 1: TTS via audioProcessor
-//   - destinationStage (method) — Stage 2: Drive upload via Lifecycle
-//   - finalizeStage    (method) — Stage 3: dedupe gate + atomic swap
-//                                + post-commit cleanup
-//   - mergeUserMetadata (free fn) — meta-build bridge between synthesize
-//                                  and destination
+//   - GenerateBatch    (orchestrator) — validate, normalize,
+//                                       resolve destination once,
+//                                       fan out to processLanguage
+//                                       per language, aggregate
+//                                       response
+//   - synthesizeStage  (Stage 1)      — TTS via audioProcessor,
+//                                       populates LocalPath/CleanedPath/
+//                                       Voice/FileHash
+//   - destinationStage (Stage 2)      — Drive upload via
+//                                       lifecycle.Service.ProcessAsset,
+//                                       populates DriveLink/DriveFileID/
+//                                       DownloadLink
+//   - finalizeStage    (Stage 3)      — atomic SQLite INSERT inside a
+//                                       single tx, PR-VO-A3 Outbox
+//                                       enqueue inside the same tx,
+//                                       PR-VO-B3 dedupe gate, then
+//                                       post-commit cleanup goroutine
+//                                       for replace-mode orphans
 //
-// Per AGENTS.md minimum-scope discipline AND the user-approved
-// "comprehensive fix-upstream first" gate set (vet/build/test -short must
-// be exit-0 BEFORE V4b can land), the bodies here are deliberate STUBS
-// that emit a WARN log + return clear "not implemented" errors. Any
-// caller that hits these methods at runtime fails fast with a
-// recoverable, grep-able error string instead of silently no-op'ing —
-// in line with godlike/07 §"No fake availability".
+// The 4 symbols replace the PR-VOICEOVER-PROCESS-GO-FIX build-pass-only
+// stub layer. process.go's processLanguage already wires the stage
+// calls in the correct order (synthesize → meta-build bridge →
+// destination → finalize); this file owns the bodies.
 //
-// File-placement rationale (AGENTS.md Pattern 5): process.go stays a slim
-// orchestrator (its own PR8 invariant); a separate stages.go keeps the
-// stage-bodies discoverable as a single file. The full pre-PR8 body
-// restoration is deferred to a follow-up PR RESTORE that re-hydrates
-// the 695-line pre-PR8 process.go contents into these stage method
-// shells. Re-hydrating in this PR would double-scope it (typed-port
-// lane would become typed-port+stages lane).
+// Identifier convention: the magic string "PR-VOICEOVER-RESTORE"
+// surfaces in WARN/INFO log messages so an operator can grep for
+// the restoration scope and verify which stage actually executed.
 //
-// Identifier convention: the magic string "PR-VOICEOVER-PROCESS-GO-FIX"
-// appears in every stub's error + WARN message so an operator grepping
-// log lines can immediately identify the build-pass-only checkpoint vs a
-// real run-time invocation of the restored bodies.
+// Site-detachment contracts (godlike/05 / AGENTS.md table):
+//   - cleanupOrphanVoiceover uses context.Background — post-commit
+//     save operations are exempt from the request-lifetime context
+//     (the swap has committed; cleanup MUST survive handler cancel
+//     and client disconnect so the orphan Drive file and old local
+//     audio files are released).
 package voiceover
 
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"go.uber.org/zap"
 )
 
-// stubIdent is the canonical one-shot identifier embedded in every
-// stub's log message + error string. Operators can `rg
-// stubIdent internal/` to enumerate all stub surfaces; the RESTORE PR
-// removes this constant along with the stub bodies.
-const stubIdent = "PR-VOICEOVER-PROCESS-GO-FIX"
+// restoreIdent is the canonical one-shot identifier embedded in the
+// per-stage log messages. Operators can `rg restoreIdent internal/`
+// to enumerate all restored surfaces.
+const restoreIdent = "PR-VOICEOVER-RESTORE"
 
-// GenerateBatch is the per-language orchestrator entrypoint called by
-// the single-language wrappers (Generate, GenerateWithDestination)
-// and the worker job handler (handleBatchJob).
+// truncatePreview caps the text_preview metadata field at 100 chars
+// to limit row size. Inline here (no textutil import) so stages.go
+// keeps a tight import surface.
+func truncatePreview(s string) string {
+	if len(s) <= 100 {
+		return s
+	}
+	return s[:100]
+}
+
+// GenerateBatch is the per-batch orchestrator called by the
+// single-language wrappers (Generate, GenerateWithDestination) and
+// the worker job handler (handleBatchJob).
 //
-// STUB BEHAVIOUR: returns a BatchResponse with OK=false and a clear
-// "not implemented" error. The full pre-PR8 body is deferred to the
-// RESTORE follow-up PR. See file header.
+// RESTORED body (June 2026):
 //
-// Why this is principled per AGENTS.md minimum-scope: the V4b endpoint
-// collapse only needs `r.POST("/media/voiceovers", vin.NewGenerate)`
-// to compile + register; the request handler bodies do not actually
-// invoke GenerateBatch at V4b-ship time. Reachability to this stub is
-// therefore restricted to RESTORE-time runtime testing, not the V4b
-// gate set (`go vet` / `go build` / `go test -short`).
+//  1. Path-traversal rejection on req.Destination (preserved from
+//     PR-VO-A4 so the contract test TestGenerateBatch_RejectsPathTraversalPayload
+//     continues to fire fast-closed — Validate() runs BEFORE any
+//     service-field access, only s.log is touched).
+//  2. normalizeBatchRequest — fills defaults (template, strategy, lang).
+//  3. Batch-level identifiers: requestID + textHash (computed once
+//     for the batch — both are part of the row identity so they must
+//     be stable across the per-language fan-out).
+//  4. resolveDestination once (per req.Destination) — same folder +
+//     StyleGroup for every language.
+//  5. Per-language fan-out: processLanguage is the per-language
+//     orchestrator (lives in process.go); it builds the BatchItem
+//     and calls the 3 stages under stageLog telemetry wrappers.
+//  6. Aggregate: response.OK = all items succeeded (otherwise false
+//     so the caller can distinguish partial failure from full success).
+//
+// Why this is slim: each stage owns its own scope (synthesize /
+// destination / finalize). GenerateBatch glues the per-language
+// wiring only; the heavy lifting is below.
 func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchResponse, error) {
-	// PR-VO-A4 (path-traversal rejection, June 2026): validate the
-	// inbound destination BEFORE any field access on req. The pre-PR8
-	// process.go called this gate inside processLanguage per language,
-	// but the canonical pre-PR8 GenerateBatch also called it at the
-	// entrypoint (so the entire batch fails-closed on the first
-	// traversal payload rather than per-language). The test
-	// TestGenerateBatch_RejectsPathTraversalPayload pins this contract
-	// via 6 case payloads ("..", "../etc", "/etc/passwd",
-	// "subfolder/../sibling", "..{sep}windows", long-string) — each
-	// must return (nil, err) where err mentions one of
-	// {subfolder_name, traversal, reserved, separator}.
-	//
-	// WHY this lives in the stub (not deferred to RESTORE): the
-	// PR-VO-A4 entrypoint gate was independent of the per-language
-	// stage work — it's a pre-flight request-boundary check that runs
-	// even when the orchestrator entrypoint is in stub mode. The
-	// remaining stage bodies (synthesize / destination / finalize)
-	// still defer to RESTORE, but the request validation gate is
-	// honest production code that we can land now.
+	// PR-VO-A4 (path-traversal rejection): validate the inbound
+	// destination BEFORE any field access on req. The pre-PR8
+	// process.go called this gate inside processLanguage per
+	// language, but the canonical pre-PR8 GenerateBatch also called
+	// it at the entrypoint (so the entire batch fails-closed on
+	// the first traversal payload rather than per-language). The
+	// test TestGenerateBatch_RejectsPathTraversalPayload pins this
+	// contract.
 	if req != nil && req.Destination != nil {
 		if vErr := req.Destination.Validate(); vErr != nil {
 			if s.log != nil {
 				s.log.Warn("PR-VO-A4: GenerateBatch rejected path-traversal payload",
-					zap.String("stub", stubIdent),
+					zap.String("restored", restoreIdent),
 					zap.String("subfolder_name", req.Destination.SubfolderName),
 					zap.Error(vErr))
 			}
@@ -92,24 +112,54 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		}
 	}
 
-	if s.log != nil {
-		s.log.Warn("GenerateBatch stub hit; full pre-PR8 body deferred to RESTORE PR",
-			zap.String("stub", stubIdent),
-			zap.Strings("languages", req.Languages),
-			zap.String("strategy", req.Strategy))
+	normalizeBatchRequest(req)
+
+	requestID := buildRequestID()
+	textHash := hashutil.SHA256String(req.Text)
+
+	var dest *ResolvedDestination
+	if req.Destination != nil {
+		d, err := s.resolveDestination(ctx, req.Destination)
+		if err != nil {
+			if s.log != nil {
+				s.log.Warn("GenerateBatch: resolveDestination failed",
+					zap.String("restored", restoreIdent),
+					zap.Error(err))
+			}
+			return nil, fmt.Errorf("GenerateBatch: resolve destination: %w", err)
+		}
+		dest = d
 	}
+
+	items := make([]BatchItem, 0, len(req.Languages))
+	ok := true
+	for _, lang := range req.Languages {
+		item := s.processLanguage(ctx, requestID, textHash, lang, req, dest)
+		if item.Status == "failed" {
+			ok = false
+		}
+		items = append(items, item)
+	}
+
 	return &BatchResponse{
-		OK:    false,
-		Error: fmt.Sprintf("%s stub: GenerateBatch full pre-PR8 body deferred to RESTORE PR; build-pass-only at this commit", stubIdent),
+		OK:        ok,
+		RequestID: requestID,
+		Items:     items,
 	}, nil
 }
 
-// synthesizeStage is Stage 1 (TTS via audioProcessor). Wired between
-// the stageLog("synthesize") wrappers in process.go:188-194.
+// synthesizeStage is Stage 1 (TTS via audioProcessor). Wired
+// between the stageLog("synthesize") wrappers in process.go.
 //
-// STUB BEHAVIOUR: returns the item already mutated to status="failed"
-// via item.fail(). Full pre-PR8 body (TTS invocation + audio
-// post-processing + cleaned-path compute) deferred to RESTORE PR.
+// RESTORED body: invokes s.audioProcessor.Generate with the
+// canonical AudioInput shape. On success populates LocalPath,
+// CleanedPath, Voice, FileHash on the BatchItem. On error the
+// item.fail plumbing surfaces a BatchItem with Status="tts_failed"
+// for the caller to observe.
+//
+// Note: process.go's processLanguage calls this inside stageLog
+// telemetry — durations and errors are logged at the stage-wrapper
+// level, so this method only NEEDS to surface errors, not durations.
 func (s *Service) synthesizeStage(
 	ctx context.Context,
 	item BatchItem,
@@ -118,26 +168,52 @@ func (s *Service) synthesizeStage(
 	filename string,
 	language string,
 ) BatchItem {
-	if s.log != nil {
-		s.log.Warn("synthesizeStage stub hit; full pre-PR8 body deferred to RESTORE PR",
-			zap.String("stub", stubIdent),
-			zap.String("id", item.ID),
-			zap.String("language", language))
+	if s.audioProcessor == nil {
+		return item.fail("audio_processor_unavailable",
+			fmt.Errorf("%s: audioProcessor not wired (composition root)", restoreIdent))
 	}
-	_ = ctx // ctx is reserved for the RESTORE PR's TTS invocation.
-	_ = req
-	_ = outputDir
-	_ = filename
-	return item.fail("not_implemented",
-		fmt.Errorf("%s stub: synthesizeStage full pre-PR8 body deferred to RESTORE PR", stubIdent))
+
+	removeSilence := false
+	if req.RemoveSilence != nil {
+		removeSilence = *req.RemoveSilence
+	}
+
+	input := &audioasset.AudioInput{
+		Text:          req.Text,
+		Language:      language,
+		Filename:      filename,
+		OutputDir:     outputDir,
+		RemoveSilence: removeSilence,
+	}
+
+	result, err := s.audioProcessor.Generate(ctx, input)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("synthesizeStage: TTS failed",
+				zap.String("restored", restoreIdent),
+				zap.String("language", language),
+				zap.Error(err))
+		}
+		return item.fail("tts_failed", err)
+	}
+
+	item.LocalPath = result.LocalPath
+	item.CleanedPath = result.CleanedPath
+	item.Voice = result.Voice
+	item.FileHash = result.FileHash
+	item.Status = "generated"
+	return item
 }
 
 // destinationStage is Stage 2 (Drive upload via Lifecycle). Wired
-// between the stageLog("destination") wrappers in process.go:222-228.
+// between the stageLog("destination") wrappers in process.go.
 //
-// STUB BEHAVIOUR: returns the item mutated to status="failed". Full
-// pre-PR8 body (Lifecycle.UploadOrReuse call + meta injection) deferred
-// to RESTORE PR.
+// RESTORED body: invokes s.lifecycleService.ProcessAsset with the
+// canonical FinalizeInput so the upload runs through the dedupe
+// gate + Drive uploader + persistence layer that's owned by
+// Lifecycle. On success populates DriveLink/DriveFileID.
+// DownloadLink. On error the item.fail plumbing surfaces a
+// BatchItem with Status="upload_failed".
 func (s *Service) destinationStage(
 	ctx context.Context,
 	item BatchItem,
@@ -145,25 +221,86 @@ func (s *Service) destinationStage(
 	dest *ResolvedDestination,
 	metaJSON []byte,
 ) BatchItem {
-	if s.log != nil {
-		s.log.Warn("destinationStage stub hit; full pre-PR8 body deferred to RESTORE PR",
-			zap.String("stub", stubIdent),
-			zap.String("id", item.ID))
+	if s.lifecycleService == nil {
+		return item.fail("lifecycle_unavailable",
+			fmt.Errorf("%s: lifecycleService not wired (composition root)", restoreIdent))
 	}
-	_ = ctx
-	_ = req
-	_ = dest
-	_ = metaJSON
-	return item.fail("not_implemented",
-		fmt.Errorf("%s stub: destinationStage full pre-PR8 body deferred to RESTORE PR", stubIdent))
+	if dest == nil || dest.FolderID == "" {
+		return item.fail("missing_folder_id",
+			fmt.Errorf("%s: destination has no FolderID (Stage 2 cannot upload)", restoreIdent))
+	}
+	if item.CleanedPath == "" && item.LocalPath == "" {
+		return item.fail("no_local_payload",
+			fmt.Errorf("%s: synthesizeStage produced no local path (Stage 2 cannot upload)", restoreIdent))
+	}
+
+	localPath := item.CleanedPath
+	if localPath == "" {
+		localPath = item.LocalPath
+	}
+
+	finalInput := &lifecycle.FinalizeInput{
+		ID:           item.ID,
+		Name:         truncatePreview(req.Text),
+		Filename:     item.Filename,
+		LocalPath:    localPath,
+		FolderID:     dest.FolderID,
+		FolderPath:   dest.FolderPath,
+		Source:       "voiceover",
+		Metadata:     string(metaJSON),
+		RequireDrive: true,
+	}
+
+	result, err := s.lifecycleService.ProcessAsset(ctx, finalInput, item.FileHash)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("destinationStage: lifecycle.ProcessAsset failed",
+				zap.String("restored", restoreIdent),
+				zap.String("language", item.Language),
+				zap.Error(err))
+		}
+		return item.fail("upload_failed", err)
+	}
+
+	item.DriveLink = result.DriveLink
+	item.DriveFileID = result.DriveFileID
+	item.DownloadLink = result.DownloadLink
+	item.Status = "uploaded"
+	return item
 }
 
 // finalizeStage is Stage 3 (PR-VO-B3 dedupe gate + PR-VO-A2 atomic
-// swap + post-commit cleanup goroutine). Wired between the
-// stageLog("finalize") wrappers in process.go:230-238.
+// swap + PR-VO-A3 outbox + post-commit cleanup). Wired between the
+// stageLog("finalize") wrappers in process.go.
 //
-// STUB BEHAVIOUR: returns the item mutated to status="failed". Full
-// pre-PR8 body deferred to RESTORE PR.
+// RESTORED body:
+//
+//  1. Open sqlite tx (BeginTx with parent ctx so a request cancel
+//     aborts the tx cleanly).
+//  2. PR-VO-B3 dedupe gate runs INSIDE the tx so the count query is
+//     consistent with the upcoming INSERT. Empty driveFileID
+//     short-circuits to nil (no gate).
+//  3. PR-VO-A2 atomic swap: DELETE existing same-id row, INSERT
+//     new row in the same tx. The pre-read in processLanguage
+//     already captured oldDriveFileID / oldLocalPath /
+//     oldCleanedPath for the cleanup goroutine.
+//  4. PR-VO-A3 outbox enqueue inside the same tx so the row INSERT
+//     and the index event INSERT commit atomically. Nil-safe so
+//     the indexing degrades gracefully if the composition root
+//     didn't wire the outbox.
+//  5. Commit.
+//  6. Post-commit cleanup goroutine (Strategy=="replace" ONLY) —
+//     detached from the request ctx via context.Background
+//     (per AGENTS.md post-write save exemption table) so the
+//     orphan Drive file + old local audio files are released even
+//     after the handler has cancelled or the client has
+//     disconnected.
+//
+// Why a single tx: PR-VO-A2 (Replace-Safe pipeline) requires that
+// the OLD voiceover record is never removed UNTIL the NEW one is
+// durably persisted — a separate DELETE-then-INSERT pair would
+// leave a data-loss window if TTS or Drive or Lifecycle failed
+// downstream.
 func (s *Service) finalizeStage(
 	ctx context.Context,
 	item BatchItem,
@@ -178,30 +315,137 @@ func (s *Service) finalizeStage(
 	oldLocalPath string,
 	oldCleanedPath string,
 ) BatchItem {
-	if s.log != nil {
-		s.log.Warn("finalizeStage stub hit; full pre-PR8 body deferred to RESTORE PR",
-			zap.String("stub", stubIdent),
-			zap.String("id", item.ID),
-			zap.String("language", language),
-			zap.Bool("should_swap", shouldSwap))
+	if s.db == nil {
+		return item.fail("db_unavailable",
+			fmt.Errorf("%s: db not wired (composition root)", restoreIdent))
 	}
-	_ = ctx
-	_ = requestID
-	_ = textHash
-	_ = req
-	_ = dest
-	_ = metaJSON
-	_ = oldDriveFileID
-	_ = oldLocalPath
-	_ = oldCleanedPath
-	return item.fail("not_implemented",
-		fmt.Errorf("%s stub: finalizeStage full pre-PR8 body deferred to RESTORE PR", stubIdent))
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return item.fail("tx_begin_failed",
+			fmt.Errorf("%s: BeginTx: %w", restoreIdent, err))
+	}
+	defer func() { _ = tx.Rollback() }() // safe after successful Commit
+
+	// PR-VO-B3 dedupe gate — runs INSIDE the tx so the count query
+	// is consistent with the upcoming INSERT. Defensive: an empty
+	// driveFileID short-circuits to nil (no gate).
+	if item.DriveFileID != "" {
+		if dedupe, count := applyDedupeByDriveFileID(ctx, s.db, tx, item.ID, item.DriveFileID); dedupe != nil {
+			if s.log != nil {
+				if count > 1 {
+					s.log.Info("PR-VO-B3: ambiguous dedupe match",
+						zap.String("restored", restoreIdent),
+						zap.String("item_id", item.ID),
+						zap.Int("count", count),
+						zap.String("dedupe_id", dedupe.ID))
+				} else {
+					s.log.Info("PR-VO-B3: dedupe gate matched prior row",
+						zap.String("restored", restoreIdent),
+						zap.String("item_id", item.ID),
+						zap.String("dedupe_id", dedupe.ID))
+				}
+			}
+		}
+	}
+
+	// PR-VO-A2 atomic swap: DELETE any existing row with the same id,
+	// then INSERT the new row, in the same tx. Neither is visible
+	// alone (atomic visibility = single SQLite commit).
+	if _, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, item.ID); err != nil {
+		return item.fail("db_delete_failed",
+			fmt.Errorf("%s: DELETE voiceovers: %w", restoreIdent, err))
+	}
+
+	folderID := ""
+	folderPath := ""
+	if dest != nil {
+		folderID = dest.FolderID
+		folderPath = dest.FolderPath
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	textPreview := truncatePreview(req.Text)
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO voiceovers (
+			id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, status, error, strategy,
+			metadata, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		item.ID, requestID, textHash, textPreview, language, item.Voice, item.Filename,
+		item.LocalPath, item.CleanedPath, folderID, folderPath, item.DriveFileID,
+		item.DriveLink, item.DownloadLink, item.FileHash, "generated", "",
+		req.Strategy, string(metaJSON), now, now,
+	); err != nil {
+		return item.fail("db_insert_failed",
+			fmt.Errorf("%s: INSERT voiceovers: %w", restoreIdent, err))
+	}
+
+	// PR-VO-A3 outbox enqueue: inside the same tx so the row INSERT
+	// and the index event INSERT commit atomically. Nil-safe so the
+	// behaviour degrades to "skip indexing" if the composition root
+	// didn't wire the outbox.
+	if s.outboxEnqueuer != nil && item.FileHash != "" {
+		if err := s.outboxEnqueuer.EnqueueIndexEvent(ctx, tx, item.ID, item.FileHash); err != nil {
+			return item.fail("outbox_enqueue_failed",
+				fmt.Errorf("%s: EnqueueIndexEvent: %w", restoreIdent, err))
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return item.fail("tx_commit_failed",
+			fmt.Errorf("%s: Commit: %w", restoreIdent, err))
+	}
+
+	// Post-commit cleanup for replace-mode orphans. Detached from
+	// the request ctx (per AGENTS.md post-write save exemption) so
+	// the cleanup survives handler cancel + client disconnect.
+	if shouldSwap && (oldDriveFileID != "" || oldLocalPath != "" || oldCleanedPath != "") {
+		go s.cleanupOrphanVoiceover(oldDriveFileID, oldLocalPath, oldCleanedPath)
+	}
+
+	item.Status = "completed"
+	return item
 }
 
-// mergeUserMetadata lives in metadata.go (PR-VO-B2 real body, June
-// 2026). This stages.go layer does not own the symbol — the no-op
-// stub that originally sat here was deleted when metadata.go was
-// added so the package has exactly one definition per godlike/07
-// "no fake availability" discipline. process.go, the legacy
-// processLanguage site, and process_metadata_test.go all import
-// metadata.go's implementation via the same package.
+// cleanupOrphanVoiceover removes the OLD Drive file + OLD local
+// audio files for a replace-mode voiceover swap. Detached from any
+// request context (per AGENTS.md post-write save exemption table
+// — internal/application/assets/providers/artlist/search_cache.go
+// documents the same pattern for the search-cache bump).
+//
+// Failures are logged but never propagated — the swap has already
+// committed so the canonical state is the NEW row, not the orphan.
+// Background timeout 60s covers the slowest Drive file delete
+// plus both local file removes.
+func (s *Service) cleanupOrphanVoiceover(driveFileID, oldLocalPath, oldCleanedPath string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	if driveFileID != "" && s.driveUploader != nil {
+		if err := s.driveUploader.DeleteFile(ctx, driveFileID); err != nil {
+			if s.log != nil {
+				s.log.Warn("cleanupOrphanVoiceover: Drive file delete failed",
+					zap.String("restored", restoreIdent),
+					zap.String("drive_file_id", driveFileID),
+					zap.Error(err))
+			}
+		}
+	}
+	for _, p := range []string{oldLocalPath, oldCleanedPath} {
+		if p == "" {
+			continue
+		}
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			if s.log != nil {
+				s.log.Warn("cleanupOrphanVoiceover: local file remove failed",
+					zap.String("restored", restoreIdent),
+					zap.String("path", p),
+					zap.Error(err))
+			}
+		}
+	}
+}
