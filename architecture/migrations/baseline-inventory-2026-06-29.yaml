@@ -181,12 +181,12 @@ per_directory_mapping:
       - legacy_path: internal/application/clips
         productive: 14
         test: 1
-        target_zone: capabilities/assets/clips  # sub-nested under assets; see OQ-5 for capability home
+        target_zone: capabilities/assets/clips  # sub-nested under assets; RESOLVED OQ-5
         target_path: internal/capabilities/assets/clips
-        migration_phase: pending_phase_deferred
-        blocked_by: ["W21.PR-G.2"]
-        owner_capability: internal/application/clips
-        notes: "AMBIGUOUS — no direct 'clips' slot in policy.yaml::capabilities; default home is capabilities/assets/clips (per ownership pattern + Wave CONFORMANCE-001 A2.1). Promote-to-own-top-level-capability is OPEN QUESTION OQ-5."
+        migration_phase: pending_phase_b
+        blocked_by: ["PR-APPLICATION-CLIPS-NEST-ASSETS (deadline 2026-07-10)"]
+        owner_capability: internal/capabilities/assets/clips (sub-nest)
+        notes: "RESOLVED OQ-5 (2026-06-29): default confirmed. Nesting under capability/assets/clips avoids mutating architecture/policy.yaml::capabilities list. 14 productive files vs 12 listed sub-capabilities — sub-nest is the lighter migration path."
 
       - legacy_path: internal/application/generation
         productive: 8
@@ -230,22 +230,22 @@ per_directory_mapping:
       - legacy_path: internal/application/mediasearch
         productive: 3
         test: 2
-        target_zone: capabilities/system/mediasearch  # see OQ-6 for capability home
-        target_path: internal/capabilities/system/mediasearch
-        migration_phase: pending_phase_deferred
-        blocked_by: ["W21 PR-10 CUTOVER (search aggregator) — DONE 9f7149d4"]
-        owner_capability: internal/application/mediasearch
-        notes: "AMBIGUOUS — semantic-search is cross-capability. Wave 21 PR-10 CUTOVER (commit 9f7149d4) folded clipssearch + cross-provider search + mediasearch into single aggregator; default home is capabilities/system/mediasearch (cross-capability concern). Capability-vs-jobs home trade-off is OPEN QUESTION OQ-6."
+        target_zone: capabilities/assets/mediasearch  # OVERRIDES previous capabilities/system/mediasearch default (RESOLVED OQ-6)
+        target_path: internal/capabilities/assets/mediasearch
+        migration_phase: pending_phase_b
+        blocked_by: ["PR-APPLICATION-MEDIASEARCH-NEST-ASSETS (deadline 2026-07-10)"]
+        owner_capability: internal/capabilities/assets/mediasearch (sub-nest)
+        notes: "RESOLVED OQ-6 (2026-06-29): mediasearch relocates to capability/assets/mediasearch (OVERRIDES previous default capabilities/system/mediasearch). Wave 21 PR-10 CUTOVER (commit 9f7149d4) folded clipssearch + cross-provider search into single aggregator; final home is asset-shape-relative (12 import sites: api/assets/mediasearch + assets/search/ports + delivery/signer + application/search + pkg/defaults/media.go). 'system' slot reserved for cross-capability primitives (workerdoctor, system search aggregator)."
 
       - legacy_path: internal/application/middleware
         productive: 2
         test: 0
-        target_zone: cross_cutting
-        target_path: TBD_pending_owner_decision
-        migration_phase: pending_phase_deferred
-        blocked_by: ["PHASE_A composition root shift"]
-        owner_capability: internal/application/middleware (cross-cut ports)
-        notes: "AMBIGUOUS — typed application-layer ports that cross-cut capabilities. STAYS in application/ as cross-cutting infrastructure (not a capability); formal home = TBD_pending_owner_decision. NOT migrated. See OQ-1."
+        target_zone: platform/httpserver/middleware
+        target_path: internal/platform/httpserver/middleware
+        migration_phase: pending_phase_b
+        blocked_by: ["PR-PLATFORM-HTTPSERVER-MIDDLEWARE (deadline 2026-07-25)"]
+        owner_capability: internal/platform/httpserver
+        notes: "RESOLVED OQ-1 (2026-06-29): middleware ports migrate to platform/httpserver/middleware. AuthSecurity + Idempotency + RequestLogSink + RateLimit concrete adapters stay in internal/infrastructure/database/sqlite/{idempotency,logsink} (platform adapters); ports themselves relocate."
 
       - legacy_path: internal/application/qdrant  # EMPTY TREE today
         productive: 0
@@ -299,11 +299,12 @@ per_directory_mapping:
       - legacy_path: internal/application/translation
         productive: 1
         test: 0
-        target_zone: cross_cutting
-        target_path: TBD_pending_owner_decision
-        migration_phase: pending_phase_deferred
-        owner_capability: internal/application/translation (cross-cut port)
-        notes: "AMBIGUOUS — language port that cross-cuts content + scripts. STAYS in application/ as cross-cutting; not a capability. See OQ-2."
+        target_zone: kernel/event/translation
+        target_path: internal/kernel/event/translation
+        migration_phase: pending_phase_a
+        blocked_by: ["PR-KERNEL-EVENT-TRANSLATION (deadline 2026-07-15)"]
+        owner_capability: internal/kernel/event
+        notes: "RESOLVED OQ-2 (2026-06-29): translation promotes to kernel/event subpkg. Phase A scope expansion (kernel/event subzone was previously empty; only asset/job/script had doc.go scaffolds). See owner_resolved_decisions.follow_up_tickets.PR-KERNEL-EVENT-TRANSLATION."
 
       - legacy_path: internal/application/voiceover
         productive: 13
@@ -327,11 +328,12 @@ per_directory_mapping:
       - legacy_path: internal/application/workflow  # EMPTY
         productive: 0
         test: 0
-        target_zone: TBD_pending_owner_decision
-        target_path: TBD_pending_owner_decision
-        migration_phase: pending_phase_deferred
-        owner_capability: internal/application/workflow
-        notes: "AMBIGUOUS — empty placeholder. Likely orchestration helper that disappears once scripts/ capability consolidation lands; if it persists, target zone is TBD. See OQ-3."
+        target_zone: capabilities/voiceover/promo
+        target_path: internal/capabilities/voiceover/promo
+        migration_phase: pending_phase_b
+        blocked_by: ["PR-APPLICATION-WORKFLOW-PROMO-NEST (deadline 2026-07-10)"]
+        owner_capability: internal/capabilities/voiceover
+        notes: "RESOLVED OQ-3 (2026-06-29): workflow/ subpkg nests under capability/voiceover/promo. The 3/3 consumers (voiceover/{promo.go,promopayload_test.go,types.go}) get same-package imports. Empty root workflow/ either depends-deprecates or aliases into capability/voiceover/promo."
 
       - legacy_path: internal/application/youtube  # EMPTY
         productive: 0
@@ -398,12 +400,13 @@ per_directory_mapping:
       - legacy_path: internal/domain/voiceover
         productive: 3
         test: 1
-        target_zone: kernel/script/voiceover  # nested under kernel/script; see OQ-4 for nesting vs promote
-        target_path: internal/kernel/script/voiceover
-        migration_phase: pending_phase_a
-        blocked_by: ["Phase A"]
-        owner_capability: internal/domain/voiceover
-        notes: "AMBIGUOUS — no voiceover in kernel_subzones; closest is kernel/script (script DTO pattern). Default home is kernel/script/voiceover (sub-nest). See OQ-4 for nest-vs-promote decision."
+        target_zone: capability/voiceover  # canonical home relocated; domain/voiceover becomes alias layer (RESOLVED OQ-4)
+        target_path: internal/capabilities/voiceover  # alias target after CONTRACT sweep
+        target_path_interim: internal/domain/voiceover  # stays until CONTRACT phase; PR-DOMAIN-VOICEOVER-DEPRECATE tracks the rename sweep
+        migration_phase: pending_phase_deferred  # alias-sweep POST Phase A core; not the primary Phase A target
+        blocked_by: ["PR-DOMAIN-VOICEOVER-DEPRECATE (deadline 2026-07-25)"]
+        owner_capability: internal/capabilities/voiceover
+        notes: "RESOLVED OQ-4 (2026-06-29): kernel does NOT gain a voiceover subzone. kernel_subzones in architecture/policy.yaml stays 6 (asset, job, script, event, identity, errors). domain/voiceover contracts (Result, GenerateVoiceoverCommand, errors) become ALIAS LAYER pointing at capability/voiceover, not a kernel extraction target. Phase A scope unchanged at 3 subzones (asset, job, script). Follow-up PR-DOMAIN-VOICEOVER-DEPRECATE tracks the CONTRACT alias sweep."
 
   - tld: infrastructure
     entries:
@@ -756,43 +759,140 @@ ratchet_command_post_migration_commit: |
 supersedes_drift_baseline: null  # first artifact; no predecessor
 superseded_by_future_inventory: TBD_on_migration_completion
 
-open_questions_pending_owner_decision:
+open_questions_pending_owner_decision:  # historical record; all 6 resolved 2026-06-29 — see owner_resolved_decisions below
   - id: OQ-1
+    status: resolved  # 2026-06-29
+    resolved_target: internal/platform/httpserver/middleware
     question: "Where does internal/application/middleware live when migration completes?"
     options: ["stays cross_cutting", "migrates to capabilities/system/middleware"]
-    default: stays_cross_cutting
+    pre_resolution_default: stays_cross_cutting  # REPLACED by resolved_target 2026-06-29 (audit-only)
     blocker_for: Phase B
   - id: OQ-2
+    status: resolved  # 2026-06-29
+    resolved_target: internal/kernel/event/translation
     question: "Where does internal/application/translation live when migration completes?"
     options: ["stays cross_cutting", "migrates to capabilities/system/translation"]
-    default: stays_cross_cutting
-    blocker_for: Phase B
+    pre_resolution_default: stays_cross_cutting  # REPLACED by resolved_target 2026-06-29 (audit-only)
+    blocker_for: Phase B (Phase A scope expansion via PR-KERNEL-EVENT-TRANSLATION)
   - id: OQ-3
+    status: resolved  # 2026-06-29
+    resolved_target: internal/capabilities/voiceover/promo
     question: "Where does internal/application/workflow (empty today) live when populated?"
     options: ["stays deferred", "migrates to capabilities/scripts/workflow", "migrates to capabilities/system"]
-    default: stays_deferred
+    pre_resolution_default: stays_deferred  # REPLACED by resolved_target 2026-06-29 (audit-only)
     blocker_for: Phase B
   - id: OQ-4
+    status: resolved  # 2026-06-29
+    resolved_target: internal/capabilities/voiceover (alias layer over domain/voiceover)
     question: "Where does internal/domain/voiceover live (kernel has no voiceover slot)?"
     options: ["nests kernel/script/voiceover", "promotes voiceover to kernel subzone"]
-    default: nests_kernel_script_voiceover
-    blocker_for: Phase A
+    pre_resolution_default: nests_kernel_script_voiceover  # REPLACED by resolved_target 2026-06-29 (kernel does NOT grow voiceover subzone; capability/voiceover wins)
+    blocker_for: Phase A (alias-sweep tracked under PR-DOMAIN-VOICEOVER-DEPRECATE)
   - id: OQ-5
+    status: resolved  # 2026-06-29 (default confirmed, no override)
+    resolved_target: internal/capabilities/assets/clips
     question: "Where does internal/application/clips live post-Phase B?"
     options:
       - "internal/capabilities/assets/clips (sub-nest under assets per ownership pattern)"
       - "internal/capabilities/clips (own top-level capability requires modifying architecture/policy.yaml::capabilities list)"
-    default: capabilities/assets/clips
+    pre_resolution_default: capabilities/assets/clips  # CONFIRMED by resolution 2026-06-29 (no override)
     blocker_for: Phase B
     notes: "AMBIGUOUS — clips is a search-shaped concern but lives in application/clips/ (14 productive). Today nested under assets/ in ownership.yaml. Promotion to own top-level capability swaps one of the 10 current capabilities list entries."
   - id: OQ-6
+    status: resolved  # 2026-06-29
+    resolved_target: internal/capabilities/assets/mediasearch
     question: "Where does internal/application/mediasearch live post-Phase B?"
     options:
       - "internal/capabilities/system/mediasearch (cross-capability system concern)"
       - "internal/capabilities/jobs/mediasearch (semantic search as jobs-orchestration surface)"
-    default: capabilities/system/mediasearch
+    pre_resolution_default: capabilities/system/mediasearch  # REPLACED by resolved_target 2026-06-29 (capability/assets/mediasearch wins; asset-shape relative)
     blocker_for: Phase B
-    notes: "Wave 21 PR-10 CUTOVER (commit 9f7149d4) already merged clipssearch + cross-provider + mediasearch under search aggregator. Open question is whether the future capability home lives under system (cross-cut) or jobs (orchestration surface)."
+    notes: "Wave 21 PR-10 CUTOVER (commit 9f7149d4) already merged clipssearch + cross-provider + mediasearch under search aggregator. Open question was capability-vs-jobs home trade-off; OWNER chose capability/assets/mediasearch on 2026-06-29 (asset-shape relative vs cross-capability system)."
+
+owner_resolved_decisions:
+  resolution_date: 2026-06-29
+  decision_maker: "PipelineGen owner (Buffy orchestrator + owner approval via ask_user)"
+  resolution_method: "ask_user multi-question prompt; 6 OQs × 4 options each; one selection per OQ"
+  historical_record: open_questions_pending_owner_decision  # kept above as historical record (audit-only; status:resolved markers added to each OQ-N entry below)
+  resolutions:
+    - id: OQ-1
+      selected: internal/platform/httpserver/middleware
+      rationale: >
+        Transport-adjacent: middleware ports (AuthSecurity, IdempotencyStore,
+        RequestLogSink, RateLimit) are HTTP-handler-adjacent. Co-located with
+        concrete transport adapters (sqlite/idempotency, sqlite/logsink).
+      impact: >
+        internal/application/middleware/ moves to internal/platform/httpserver/middleware/.
+        Phase B rework.
+      overrides_open_question_default: stays_cross_cutting
+
+    - id: OQ-2
+      selected: internal/kernel/event/translation
+      rationale: >
+        Translation ports (LocaleKey, Provider) are stdlib-only value objects.
+        kernel/event subzone serves as canonical home for event-shaped primitives.
+        ≥2 capabilities (content + scripts + voiceover) consume translation consumers.
+      impact: >
+        internal/application/translation/ moves to internal/kernel/event/translation/.
+        Phase A scope expansion: kernel/event subzone was previously empty; Phase A writes
+        internal/kernel/event/{translation,doc}.go and extracts application/translation types.
+      overrides_open_question_default: stays_cross_cutting
+
+    - id: OQ-3
+      selected: internal/capabilities/voiceover/promo
+      rationale: >
+        internal/application/workflow/ (empty today) hosts workflow/promo/, consumed by 3/3
+        voiceover files (promo.go, types.go, promopayload_test.go). Co-location wins.
+      impact: >
+        internal/application/workflow/promo/ moves to internal/capabilities/voiceover/promo/.
+        Empty root workflow/ either depends-deprecates or aliases.
+      overrides_open_question_default: stays_deferred
+
+    - id: OQ-4
+      selected: internal/capabilities/voiceover (alias layer over domain/voiceover)
+      rationale: >
+        Phase A kernel extraction stays at 3 subzones (asset, job, script). kernel_subzones
+        in architecture/policy.yaml stays 6 (asset, job, script, event, identity, errors).
+        domain/voiceover becomes a thin alias layer pointing at capability/voiceover, not a
+        kernel target. OWNER prefers single canonical home over kernel+capability split.
+      impact: >
+        kernel_subzones list in architecture/policy.yaml UNCHANGED. domain/voiceover contracts
+        (Result, GenerateVoiceoverCommand, errors) become alias→capability/voiceover.
+        Follow-up PR-DOMAIN-VOICEOVER-DEPRECATE tracks the CONTRACT alias sweep.
+      overrides_open_question_default: nests_kernel_script_voiceover
+
+    - id: OQ-5
+      selected: internal/capabilities/assets/clips
+      rationale: >
+        Default per ownership/application.yaml::application_clips.target_subdirs. 14 productive
+        files; sub-nest is lighter than mutating architecture/policy.yaml::capabilities list.
+      impact: >
+        Wave 21 PR-G must include capability/assets/clips subpkg. policy.yaml::capabilities
+        UNCHANGED. application/clips/ moves to internal/capabilities/assets/clips/.
+      overrides_open_question_default: none  # confirms prior default
+
+    - id: OQ-6
+      selected: internal/capabilities/assets/mediasearch
+      rationale: >
+        Mediasearch is consumed by 12 import sites: api/assets/mediasearch + assets/search/ports +
+        delivery/signer + application/search + pkg/defaults/media.go. capability/assets is the
+        closest 'asset-shape' home. 'system' slot reserved for cross-capability primitives
+        (workerdoctor, system search aggregator).
+      impact: >
+        Wave 21 PR-G must include capability/assets/mediasearch subpkg. policy.yaml::capabilities
+        UNCHANGED. application/mediasearch/ moves to internal/capabilities/assets/mediasearch/.
+      overrides_open_question_default: capabilities/system/mediasearch
+
+  follow_up_tickets_ssot_pointer:
+    note: "Co-registered in architecture/current.yaml#id-0.follow_up_tickets for godlike/06 one-owner-per-fact"
+    tickets:
+      - {id: PR-KERNEL-EVENT-TRANSLATION, blocks: [Phase A scope]}
+      - {id: PR-PLATFORM-HTTPSERVER-MIDDLEWARE, blocks: [Phase B]}
+      - {id: PR-CAPABILITIES-VOICEOVER-from-application, blocks: [Phase B]}
+      - {id: PR-DOMAIN-VOICEOVER-DEPRECATE, blocks: [Phase A close]}
+      - {id: PR-APPLICATION-WORKFLOW-PROMO-NEST, blocks: [Phase B partial]}
+      - {id: PR-APPLICATION-CLIPS-NEST-ASSETS, blocks: [Phase B partial]}
+      - {id: PR-APPLICATION-MEDIASEARCH-NEST-ASSETS, blocks: [Phase B partial]}
 
 wave_migration_dependencies:
   - wave: W14

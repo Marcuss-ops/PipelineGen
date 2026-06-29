@@ -67,8 +67,58 @@
       title: "Update ARCHITECTURE.md to document the 6-file ownership split vs generated monolithic view"
       owner_capability: architecture
       status: pending
+      introduced: 2026-06-29
       deadline: 2026-07-10
       target: "ARCHITECTURE.md conceptually references the legacy monolithic ownership.yaml; update text to reflect the cmd/architecture-aggregate generator chain and the 6 per-section sources."
+    - id: PR-KERNEL-EVENT-TRANSLATION
+      title: "Phase A scope expansion: extract application/translation into kernel/event/translation"
+      owner_capability: internal/kernel/event
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-15
+      target: "Phase A composition root shift grows kernel/event subzone (previously empty) to absorb application/translation types. Blocks: [Phase A scope]. Surfaced from owner_resolved_decisions.OQ-2."
+    - id: PR-PLATFORM-HTTPSERVER-MIDDLEWARE
+      title: "Phase B: migrate application/middleware → platform/httpserver/middleware"
+      owner_capability: internal/platform/httpserver
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-25
+      target: "Phase B application/middleware ports (AuthSecurity, IdempotencyStore, RequestLogSink, RateLimit) move to platform/httpserver/middleware. Concrete adapters stay in infrastructure/database/sqlite. Surfaced from owner_resolved_decisions.OQ-1."
+    - id: PR-CAPABILITIES-VOICEOVER-from-application
+      title: "Phase B: migrate application/voiceover → capabilities/voiceover"
+      owner_capability: internal/capabilities/voiceover
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-10
+      target: "Wave 21 PR-G home for application/voiceover (32+ import sites); companion to PR-DOMAIN-VOICEOVER-DEPRECATE."
+    - id: PR-DOMAIN-VOICEOVER-DEPRECATE
+      title: "CONTRACT phase: replace domain/voiceover with alias layer pointing at capability/voiceover"
+      owner_capability: internal/capabilities/voiceover
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-25
+      target: "domain/voiceover contracts (Result, GenerateVoiceoverCommand, errors) become aliases pointing at capability/voiceover types; no new kernel/voiceover subzone per OQ-4. Migration blocked_by: [Phase A close]. Surfaced from owner_resolved_decisions.OQ-4."
+    - id: PR-APPLICATION-WORKFLOW-PROMO-NEST
+      title: "Phase B: migrate application/workflow/promo → capabilities/voiceover/promo"
+      owner_capability: internal/capabilities/voiceover
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-10
+      target: "Workflow/promo nests under capability/voiceover per OQ-3 (3/3 consumers). Migration blocked_by: [Phase B partial]. Surfaced from owner_resolved_decisions.OQ-3."
+    - id: PR-APPLICATION-CLIPS-NEST-ASSETS
+      title: "Phase B: migrate application/clips → capabilities/assets/clips (per OQ-5 sub-nest)"
+      owner_capability: internal/capabilities/assets/clips
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-10
+      target: "Wave 21 PR-G must include capability/assets/clips subpkg; 14 productive files relocate. Migration blocked_by: [Phase B partial]. Surfaced from owner_resolved_decisions.OQ-5."
+    - id: PR-APPLICATION-MEDIASEARCH-NEST-ASSETS
+      title: "Phase B: migrate application/mediasearch → capabilities/assets/mediasearch (per OQ-6 override)"
+      owner_capability: internal/capabilities/assets/mediasearch
+      status: pending
+      introduced: 2026-06-29
+      deadline: 2026-07-10
+      target: "Wave 21 PR-G must include capability/assets/mediasearch subpkg; OVERRIDES previous default capabilities/system/mediasearch (asset-shape relative wins). Migration blocked_by: [Phase B partial]. Surfaced from owner_resolved_decisions.OQ-6."
 
 # ── Wave 14 — API compaction (in_progress) ───────────────────────────────────
 
