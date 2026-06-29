@@ -4,13 +4,11 @@
 // the legacy public methods (RegisterFromYouTube, BatchRegisterFromYouTube,
 // SyncDriveFolder, LocalToDrive) to the corresponding sub-package service.
 //
-// P0-1 / commit 3 (this commit): DriveFolderSynchronizer extracted
-// (SyncDriveFolder now delegates). The façade's `jobs JobsPort` field
-// is gone — SyncDriveFolder consumed it inline before this commit and
-// now the dep lives on the drivesync sub-service. LocalToDrive still
-// consumes both `jobs` and `scanner`; commit 4 lifts them into the
-// localimport sub-package, after which commit 5 collapses the ctor to
-// 4 sub-service handles + log (5 args).
+// P0-1 / commit 4 (this commit): LocalImporter extracted (LocalToDrive now
+// delegates). Shared `jobs JobsPort` + `scanner FileScannerPort` fields
+// remain on the façade as proxy for the localimport sub-service's deps
+// (commit 5 lifts them to the composition root for a 5-arg façade ctor
+// with all sub-services + log).
 //
 // Per AGENTS.md Pattern 8 (API package: thin transport only) the façade
 // has no business logic; delegation is one line per method.
@@ -19,52 +17,57 @@ package sourcing
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 
-// Service is the SourcingService façade. After P0-1 / commit 3 the ctor
-// takes 6 args: youtube + batch + drivesync sub-services, JobsPort +
-// FileScannerPort (still on the façade because LocalToDrive consumes
-// them inline until commit 4 lifts them to localimport), Logger.
+// Service is the SourcingService façade. After P0-1 / commit 4 the ctor
+// takes 7 args: 4 sub-services + JobsPort + FileScannerPort (proxy for
+// localimport) + Logger. Commit 5 collapses to 5 args (no jobs/scanner
+// in the façade; composition root injects them directly into
+// localimport.NewService).
 type Service struct {
-	// P0-1 / commit 1: YouTube sub-service is built externally by the
-	// composition root and injected as a YouTubeRegistrar interface.
+	// P0-1 / commit 1: YouTube sub-service.
 	youtube YouTubeRegistrar
 
 	// P0-1 / commit 2: BatchRegistrar sub-service.
 	batch BatchRegistrar
 
-	// P0-1 / commit 3 (this commit): DriveFolderSynchronizer sub-service.
+	// P0-1 / commit 3: DriveFolderSynchronizer sub-service.
 	drivesync DriveFolderSynchronizer
 
-	// Shared ports consumed by the not-yet-extracted LocalToDrive
-	// sub-case. Will be removed when LocalImport (commit 4) moves to
-	// its own sub-package.
+	// P0-1 / commit 4 (this commit): LocalImporter sub-service.
+	localimport LocalImporter
+
+	// Proxy ports for localimport's deps (jobs + scanner). Commit 5
+	// drops these from the façade; jobs/scanner move to the
+	// composition root where they're injected directly into
+	// localimport.NewService.
 	jobs    JobsPort
 	scanner FileScannerPort
 
 	log Logger
 }
 
-// NewService creates a SourcingService façade. After commit 3 NewService
-// takes 6 args: youtube/batch/drivesync sub-services, JobsPort + FileScannerPort
-// (still needed by the inline LocalToDrive method until commit 4 lifts them),
+// NewService creates a SourcingService façade. After commit 4 NewService
+// takes 7 args: youtube + batch + drivesync + localimport sub-services,
+// JobsPort + FileScannerPort (still needed as proxy until commit 5),
 // Logger.
 func NewService(
 	yt YouTubeRegistrar,
 	batch BatchRegistrar,
 	drivesync DriveFolderSynchronizer,
+	localimport LocalImporter,
 	jobs JobsPort,
 	scanner FileScannerPort,
 	log Logger,
 ) *Service {
 	return &Service{
-		youtube:   yt,
-		batch:     batch,
-		drivesync: drivesync,
-		jobs:      jobs,
-		scanner:   scanner,
-		log:       log,
+		youtube:    yt,
+		batch:      batch,
+		drivesync:  drivesync,
+		localimport: localimport,
+		jobs:       jobs,
+		scanner:    scanner,
+		log:        log,
 	}
 }
 
@@ -110,79 +113,18 @@ func (s *Service) SyncDriveFolder(ctx context.Context, cmd SyncDriveFolderComman
 	return s.drivesync.Sync(ctx, cmd)
 }
 
-// LocalToDrive scans a local folder and enqueues a bulk upload job.
-// Will move to internal/application/assets/sourcing/localimport/Service in
-// P0-1 / commit 4. Until then stays inline because no sub-package exists yet.
+// LocalToDrive delegates to the localimport sub-package service.
+// The legacy method body has moved to
+// internal/application/assets/sourcing/localimport/service.go::Service.Import.
+// Behavior is identical — the façade only changes the lookup direction.
+// Nil-svc guard at the façade boundary so test fixtures with a nil
+// localimport continue to surface the error message consistently with
+// the other 3 delegated methods.
 func (s *Service) LocalToDrive(ctx context.Context, cmd LocalToDriveCommand) (*LocalToDriveResult, error) {
-	if s.scanner == nil {
-		return nil, fmt.Errorf("file scanner not configured")
+	if s == nil || s.localimport == nil {
+		return nil, fmt.Errorf("sourcing.LocalToDrive: localimport registrar not wired (compose-time bug — check newAssetRegisterService)")
 	}
-	if strings.TrimSpace(cmd.DriveFolderID) == "" {
-		return nil, fmt.Errorf("drive_folder_id is required")
-	}
-
-	files, err := s.scanner.Scan(ctx, cmd.LocalFolder, cmd.Limit)
-	if err != nil {
-		return nil, fmt.Errorf("scan folder: %w", err)
-	}
-
-	groups := make(map[string]bool)
-	for _, f := range files {
-		g := f.GroupName
-		if g == "" {
-			g = "uncategorized"
-		}
-		groups[g] = true
-	}
-	groupNames := make([]string, 0, len(groups))
-	for g := range groups {
-		groupNames = append(groupNames, g)
-	}
-
-	s.log.Info("scanned local folder", "files", len(files), "groups", len(groups), "dry_run", cmd.DryRun)
-
-	if cmd.DryRun {
-		return &LocalToDriveResult{
-			OK: true, DryRun: true, LocalFound: len(files), Groups: groupNames,
-		}, nil
-	}
-
-	if s.jobs == nil {
-		return nil, fmt.Errorf("jobs port not configured")
-	}
-
-	source := cmd.Source
-	if source == "" {
-		source = "youtube-local"
-	}
-	conc := cmd.Concurrency
-	if conc <= 0 {
-		conc = 3
-	}
-
-	job, err := s.jobs.Enqueue(ctx, EnqueueRequest{
-		Type:    "bulk_upload_youtube_clips",
-		Project: "media",
-		Payload: JobPayload{
-			"local_folder":           cmd.LocalFolder,
-			"drive_folder_id":        strings.TrimSpace(cmd.DriveFolderID),
-			"source":                 source,
-			"subdir_as_drive_subdir": true,
-			"recursive":              true,
-			"concurrency":            conc,
-			"limit":                  cmd.Limit,
-			"file_patterns":          []string{"*.mp4"},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("enqueue: %w", err)
-	}
-
-	return &LocalToDriveResult{
-		OK: true, JobID: job.ID,
-		Message:    fmt.Sprintf("job enqueued (%d files, %d groups)", len(files), len(groups)),
-		LocalFound: len(files), Groups: groupNames,
-	}, nil
+	return s.localimport.Import(ctx, cmd)
 }
 
 // Compile-time assertion: the YouTube sub-package's Service must satisfy
