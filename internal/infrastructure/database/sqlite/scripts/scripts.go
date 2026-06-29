@@ -71,9 +71,9 @@ func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord,
 
 	for _, section := range sections {
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO script_sections (script_id, section_type, section_title, content, sort_order, word_count, status)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`, scriptID, section.SectionType, section.SectionTitle, section.Content, section.SortOrder, section.WordCount, section.Status)
+			INSERT INTO script_sections (script_id, section_type, section_title, content, sort_order, word_count, status, voiceover_link)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, scriptID, section.SectionType, section.SectionTitle, section.Content, section.SortOrder, section.WordCount, section.Status, section.VoiceoverLink)
 		if err != nil {
 			return 0, fmt.Errorf("failed to insert section: %w", err)
 		}
@@ -110,14 +110,14 @@ func (r *ScriptRepository) GetScriptByID(id int64) (*ScriptRecord, []scriptSecti
 	}
 
 	sections := []scriptSectionRow{}
-	rows, err := r.db.Query(`		SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status FROM script_sections WHERE script_id = ? ORDER BY sort_order`, id)
+	rows, err := r.db.Query(`		SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status, voiceover_link FROM script_sections WHERE script_id = ? ORDER BY sort_order`, id)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get sections: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var s scriptSectionRow
-		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status); err != nil {
+		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status, &s.VoiceoverLink); err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to scan section: %w", err)
 		}
 		sections = append(sections, s)
@@ -234,14 +234,14 @@ func (r *ScriptRepository) FindByTopic(ctx context.Context, topic, language stri
 	}
 
 	sections := []scriptSectionRow{}
-	rows, err := r.db.QueryContext(ctx, "		SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status FROM script_sections WHERE script_id = ? ORDER BY sort_order", script.ID)
+	rows, err := r.db.QueryContext(ctx, "		SELECT id, script_id, section_type, section_title, content, sort_order, word_count, status, voiceover_link FROM script_sections WHERE script_id = ? ORDER BY sort_order", script.ID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var s scriptSectionRow
-		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status); err != nil {
+		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status, &s.VoiceoverLink); err != nil {
 			return nil, nil, nil, err
 		}
 		sections = append(sections, s)

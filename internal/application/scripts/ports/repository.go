@@ -72,6 +72,7 @@ type ScriptListFilter struct {
 
 // ScriptSectionRecord is one row of the script_sections child table.
 // Kind discriminates ("preamble", "scene_narration", "cta", ...).
+// VoiceoverLink is the Drive URL of the per-scene voiceover audio.
 type ScriptSectionRecord struct {
 	ID           int64
 	ScriptID     int64
@@ -84,6 +85,11 @@ type ScriptSectionRecord struct {
 	WordCount    int
 	SortOrder    int
 	Status       string
+
+	// VoiceoverLink is the Google Drive URL of the per-scene voiceover
+	// audio file, set by the voiceover postprocessor and stored in the
+	// script_sections.voiceover_link column.
+	VoiceoverLink string
 }
 
 // ScriptStockMatchRecord maps a script to a stock clip picked from the

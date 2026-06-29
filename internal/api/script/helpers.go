@@ -161,11 +161,12 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 	sectionsResp := make([]gin.H, 0, len(sections))
 	for _, sec := range sections {
 		sectionsResp = append(sectionsResp, gin.H{
-			"id":            sec.ID,
-			"section_type":  sec.SectionType,
-			"section_title": sec.SectionTitle,
-			"content":       sec.Content,
-			"sort_order":    sec.SortOrder,
+			"id":             sec.ID,
+			"section_type":   sec.SectionType,
+			"section_title":  sec.SectionTitle,
+			"content":        sec.Content,
+			"sort_order":     sec.SortOrder,
+			"voiceover_link": sec.VoiceoverLink,
 		})
 	}
 

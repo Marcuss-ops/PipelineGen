@@ -31,8 +31,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 
 	"go.uber.org/zap"
 )
@@ -134,7 +136,8 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 		Version:  1,
 	}
 
-	scriptID, err := p.repo.SaveScript(ctx, rec, nil, nil)
+	sections := buildSectionsFromScenes(input.SpecScene.Scenes)
+	scriptID, err := p.repo.SaveScript(ctx, rec, sections, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: persistence processor: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, err)
 	}
@@ -157,6 +160,37 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 // plan.TargetWords, plan.Language). Including target_words + language
 // ensures that replays with different sizing produce a fresh row
 // instead of colliding with a previous run.
+// buildSectionsFromScenes converts SpecScene scenes into ScriptSectionRecord
+// slices, preserving voiceover links from the enriched scene bindings.
+// Used by PersistenceProcessor to populate script_sections rows so the
+// GET /api/scripts/:id response exposes per-scene voiceover links.
+func buildSectionsFromScenes(scenes []scriptpkg.SpecScene) []ports.ScriptSectionRecord {
+	if len(scenes) == 0 {
+		return nil
+	}
+	out := make([]ports.ScriptSectionRecord, 0, len(scenes))
+	for _, sc := range scenes {
+		voc := sc.Bindings.Voiceover
+		vl := ""
+		if voc != nil {
+			vl = voc.Link
+		}
+		wc := len(strings.Fields(sc.Text))
+		out = append(out, ports.ScriptSectionRecord{
+			SectionType:   string(sc.Kind),
+			SectionTitle:  sc.Title,
+			Content:       sc.Text,
+			ContentText:   sc.Text,
+			SortOrder:     sc.Index,
+			Index:         sc.Index,
+			WordCount:     wc,
+			Status:        "completed",
+			VoiceoverLink: vl,
+		})
+	}
+	return out
+}
+
 func computeIdempotencyKey(plan *scriptpkg.ResolvedGenerationPlan) string {
 	tuple := fmt.Sprintf("%s|%s|%s|%d|%s",
 		plan.ID,

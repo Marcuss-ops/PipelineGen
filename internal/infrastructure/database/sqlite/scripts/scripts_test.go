@@ -46,7 +46,8 @@ const testSchema = `
 		content TEXT,
 		sort_order INTEGER NOT NULL DEFAULT 0,
 		word_count INTEGER NOT NULL DEFAULT 0,
-		status TEXT NOT NULL DEFAULT 'completed'
+		status TEXT NOT NULL DEFAULT 'completed',
+		voiceover_link TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE TABLE script_stock_matches (

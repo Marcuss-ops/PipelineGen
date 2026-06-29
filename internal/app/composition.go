@@ -510,6 +510,20 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// registered at the post-bundle binding block. The legacy Service.RegisterHandler
 	// hook (which registered voiceover.batch + voiceover.promo) is intentionally
 	// removed here; the legacy codes will be retired in the next refactor (P0.3).
+	if domains.VoiceoverGenerateHandler != nil && jobs.Service != nil {
+		// Catena A P0 (June 2026): the canonical `voiceover.generate`
+		// job type is now backfilled with the typed-port GenerateJobHandler.
+		// The boot smoke test at internal/app/voiceover_wiring_test.go
+		// fails closed if this registration is absent — the failure mode
+		// of HEAD pre-Catena-A was /api/voiceover/generate → 202 → job
+		// queued → no consumer → silence.
+		domains.VoiceoverGenerateHandler.Register(jobs.Service)
+		log.Info("voiceover.generate handler registered (Catena A P0 wiring complete)")
+	} else {
+		log.Warn("voiceover.generate handler NOT registered (typed-port chain incomplete — Drive / destResolver / outbox / lifecycle / repo / audio / db must all be wired)",
+			zap.Bool("generate_handler_built", domains.VoiceoverGenerateHandler != nil),
+			zap.Bool("jobs_service_available", jobs.Service != nil))
+	}
 	if domains.ImageService != nil && jobs.Service != nil {
 		domains.ImageService.RegisterHandler(jobs.Service)
 	}
