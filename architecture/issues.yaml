@@ -13,8 +13,13 @@
 
 - id: ADAPTERS-FAIL-PRE9-12
   title: "Resolve 4 pre-existing Go test FAILs introduced in commit 72e1d5c9 (BACKFILL residue)"
-  status: pending
+  status: done
   owner: internal/application/scripts/adapters
+  linked_issues:
+    - Q4-CATALOGSYNC-FAIL
+    - Q5-PROVIDERS-TIMEOUTS
+    - Q6-ARTLIST-FAIL
+    - Q7-YOUTUBE-EXTRACTION-PHASE1C
 
 - id: PR-CONTEXT-NO-CANCEL-CI-GATE
   title: "Promote context.Background/WithoutCancel exemption families to a dedicated CI gate"
@@ -44,3 +49,23 @@
 - id: SSOT-script-defaults-drift
   title: "Reconcile pkg/defaults/script.go (WPM=140, DefaultLanguage=it) with generation_normalizer.go (WPM=150, Language=en)"
   status: pending
+
+- id: Q4-CATALOGSYNC-FAIL
+  title: "Resolve TestUpsertPreservingExisting_DispatcherPath and _FolderSkipsOutbox failures in internal/application/assets/catalogsync surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+  status: pending
+  owner: internal/application/assets/catalogsync
+
+- id: Q5-PROVIDERS-TIMEOUTS
+  title: "Resolve TestSearchAggregator_* failures and timeouts (e.g. TestSearchAggregator_SlowProviderTimeout took 5s surface) in internal/application/assets/providers surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+  status: pending
+  owner: internal/application/assets/providers
+
+- id: Q6-ARTLIST-FAIL
+  title: "Resolve TestArtlistPR12b_DispatcherRoutesWritesThroughRepo, TestArtlistSearchRequest and related failures in internal/application/assets/providers/artlist surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+  status: pending
+  owner: internal/application/assets/providers/artlist
+
+- id: Q7-YOUTUBE-EXTRACTION-PHASE1C
+  title: "Port full extraction pipeline to ExtractionService (Phase 1c) to fix TestExtract_ReturnsContextDeadlineExceededIfContextExpired in internal/application/youtube/usecase surfaced during ADAPTERS-FAIL-PRE9-12 verification (court-circuited per Sprint P1-4)"
+  status: pending
+  owner: internal/application/youtube/usecase
