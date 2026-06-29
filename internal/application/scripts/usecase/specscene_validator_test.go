@@ -29,7 +29,7 @@ func helperEvidence(ids ...string) *scriptpkg.ClipEvidence {
 		driveLinks[id] = "https://drive.google.com/file/d/" + id
 	}
 	return &scriptpkg.ClipEvidence{
-		ClipIDs:    ids,
+		AcceptedClipIDs: ids,
 		ClipCount:  len(ids),
 		DriveLinks: driveLinks,
 	}

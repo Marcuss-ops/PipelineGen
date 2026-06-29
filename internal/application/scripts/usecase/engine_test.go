@@ -238,7 +238,7 @@ func TestEngineGenerate_WithClips(t *testing.T) {
 		Language: "en",
 		Mode:     "clip_to_script",
 		ClipEvidence: &scriptpkg.ClipEvidence{
-			ClipIDs:   []string{"clip-a", "clip-b"},
+			AcceptedClipIDs: []string{"clip-a", "clip-b"},
 			ClipCount: 2,
 			DriveLinks: map[string]string{
 				"clip-a": "https://drive.google.com/a",
@@ -251,7 +251,7 @@ func TestEngineGenerate_WithClips(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.ClipEvidence)
-	assert.Equal(t, []string{"clip-a", "clip-b"}, result.ClipEvidence.ClipIDs)
+	assert.Equal(t, []string{"clip-a", "clip-b"}, result.ClipEvidence.AcceptedClipIDs)
 	assert.Equal(t, "https://drive.google.com/a", result.ClipEvidence.DriveLinks["clip-a"])
 }
 
@@ -272,7 +272,7 @@ func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 		SegmentTopics:  []string{"Breakfast setup", "Street reaction"},
 		RenderedPrompt: "Write about the supplied clips.",
 		ClipEvidence: &scriptpkg.ClipEvidence{
-			ClipIDs:   []string{"clip-1", "clip-2"},
+			AcceptedClipIDs: []string{"clip-1", "clip-2"},
 			ClipCount: 2,
 			DriveLinks: map[string]string{
 				"clip-1": "https://drive.google.com/file/d/clip-1/view",

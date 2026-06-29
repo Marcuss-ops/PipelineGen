@@ -624,7 +624,8 @@ func TestBuildPlanPostprocessorList(t *testing.T) {
 	plan := scripts.BuildPlan(item)
 
 	// buildPostprocessorList now auto-adds clip_bindings and
-	// stock_association. With SaveToDB, Document, and Entities
+	// stock_association BEFORE voiceover/images (P0 reorder,
+	// June 2026). With SaveToDB, Document, and Entities
 	// enabled: entities + document + persistence + clip_bindings
 	// + stock_association = 5.
 	if len(plan.Postprocessors) != 5 {
@@ -662,10 +663,11 @@ func TestBuildPlanPostprocessorListFull(t *testing.T) {
 
 	plan := scripts.BuildPlan(item)
 
-	// Full set with auto-added clip_bindings and stock_association:
-	// entities, metadata, voiceover, images, clip_bindings,
-	// stock_association, document, persistence = 8.
-	expected := []string{"entities", "metadata", "voiceover", "images", "clip_bindings", "stock_association", "document", "persistence"}
+	// Full set with auto-added clip_bindings and stock_association
+	// (now BEFORE voiceover/images — P0 reorder, June 2026):
+	// entities, metadata, clip_bindings, stock_association,
+	// voiceover, images, document, persistence = 8.
+	expected := []string{"entities", "metadata", "clip_bindings", "stock_association", "voiceover", "images", "document", "persistence"}
 	// ClipBindings + StockAssociation are appended automatically.
 	if len(plan.Postprocessors) != 8 {
 		t.Fatalf("expected 8 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
@@ -1046,7 +1048,7 @@ func TestResolvedGenerationPlanHasClips(t *testing.T) {
 
 	// Empty clip IDs → false.
 	plan = scriptpkg.ResolvedGenerationPlan{
-		ClipEvidence: &scriptpkg.ClipEvidence{ClipIDs: []string{}},
+		ClipEvidence: &scriptpkg.ClipEvidence{AcceptedClipIDs: []string{}},
 	}
 	if plan.HasClips() {
 		t.Error("empty ClipIDs should return false")
@@ -1054,7 +1056,7 @@ func TestResolvedGenerationPlanHasClips(t *testing.T) {
 
 	// Populated clip IDs → true.
 	plan = scriptpkg.ResolvedGenerationPlan{
-		ClipEvidence: &scriptpkg.ClipEvidence{ClipIDs: []string{"clip-a"}},
+		ClipEvidence: &scriptpkg.ClipEvidence{AcceptedClipIDs: []string{"clip-a"}},
 	}
 	if !plan.HasClips() {
 		t.Error("populated ClipEvidence should return true")

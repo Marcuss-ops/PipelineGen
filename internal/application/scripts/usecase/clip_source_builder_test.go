@@ -86,7 +86,7 @@ func newAssetWithDriveLink(internalID, driveID, name, driveLink string) *asset.A
 // TestClipSourceBuilder_Canonical_DriveFileIDRequested_PR6 is the
 // load-bearing test of the PR 6 invariant: when the caller supplies a
 // Drive file ID and the stub returns a clip whose internal asset.ID
-// differs from that Drive file ID, ClipEvidence.ClipIDs and
+// differs from that Drive file ID, ClipEvidence.AcceptedClipIDs and
 // DriveLinks keys MUST be the supplied Drive file ID, NOT the
 // internal asset.ID. The previous (pre-PR-6) bug was that DriveLinks
 // were keyed by clip.ID — so a caller that typed "1ABC_XYZ" got back a
@@ -118,8 +118,8 @@ func TestClipSourceBuilder_Canonical_DriveFileIDRequested_PR6(t *testing.T) {
 		t.Fatal("evidence is nil")
 	}
 
-	if len(ev.ClipIDs) != 1 || ev.ClipIDs[0] != driveFileID {
-		t.Fatalf("ev.ClipIDs = %v, want [%q]", ev.ClipIDs, driveFileID)
+	if len(ev.AcceptedClipIDs) != 1 || ev.AcceptedClipIDs[0] != driveFileID {
+		t.Fatalf("ev.AcceptedClipIDs = %v, want [%q]", ev.AcceptedClipIDs, driveFileID)
 	}
 
 	if got, found := ev.DriveLinks[driveFileID]; !found {
@@ -166,8 +166,8 @@ func TestClipSourceBuilder_Canonical_AssetIDRequested_PR6(t *testing.T) {
 		t.Fatal("evidence is nil")
 	}
 
-	if len(ev.ClipIDs) != 1 || ev.ClipIDs[0] != assetID {
-		t.Fatalf("ev.ClipIDs = %v, want [%q]", ev.ClipIDs, assetID)
+	if len(ev.AcceptedClipIDs) != 1 || ev.AcceptedClipIDs[0] != assetID {
+		t.Fatalf("ev.AcceptedClipIDs = %v, want [%q]", ev.AcceptedClipIDs, assetID)
 	}
 	links := ev.DriveLinks
 	if got, ok := links[assetID]; !ok || got != driveLink {
@@ -251,8 +251,8 @@ func TestClipSourceBuilder_Missing_MixedResolutions_PR6(t *testing.T) {
 	}
 
 	wantClipIDs := []string{canonicalA, "clipB"} // resolved-only, canonical-keyed
-	if !equalStringSlices(ev.ClipIDs, wantClipIDs) {
-		t.Fatalf("ev.ClipIDs = %v, want %v (resolved-only, driveFile ID preserved as canonical)", ev.ClipIDs, wantClipIDs)
+	if !equalStringSlices(ev.AcceptedClipIDs, wantClipIDs) {
+		t.Fatalf("ev.AcceptedClipIDs = %v, want %v (resolved-only, driveFile ID preserved as canonical)", ev.AcceptedClipIDs, wantClipIDs)
 	}
 
 	if got, ok := ev.DriveLinks[canonicalA]; !ok || got != "https://drive/a" {

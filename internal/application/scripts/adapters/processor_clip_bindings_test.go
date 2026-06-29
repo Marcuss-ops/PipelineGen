@@ -1,13 +1,13 @@
 // Package adapters_test — processor_clip_bindings_test.go pins the
 // PR 5 (June 2026) contract that the clip-scene binding
-// processor honours ONLY the resolved ClipEvidence.ClipIDs
+// processor honours ONLY the resolved ClipEvidence.AcceptedClipIDs
 // set, and never binds to IDs that ended up in
 // ClipEvidence.MissingClipIDs.
 //
 // PR 5 contract: pre-PR-5 the Pack's `clip_ids` slot was the
 // dedup'd requested set (so any missing ID stayed in there and
 // the binder happily bound scenes to orphan IDs). PR 5
-// rewires the resolver so ClipEvidence.ClipIDs is resolved-only
+// rewires the resolver so ClipEvidence.AcceptedClipIDs is resolved-only
 // and MissingClipIDs carries the structured reason.
 package adapters_test
 
@@ -24,7 +24,7 @@ import (
 
 // TestClipBindings_OnlyBindsResolvedClips_PR5 is the central
 // PR 5 contract assertion: ClipBindingsProcessor.Process must
-// only bind scenes against IDs in ClipEvidence.ClipIDs. IDs
+// only bind scenes against IDs in ClipEvidence.AcceptedClipIDs. IDs
 // in MissingClipIDs are not eligible for binding.
 //
 // P0 #2 (June 2026): updated for the no-cycling model — when
@@ -48,7 +48,7 @@ import (
 // ClipID — those IDs are in MissingClipIDs, not in ClipIDs.
 func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 	ev := &scriptpkg.ClipEvidence{
-		ClipIDs:   []string{"clip-a"},
+		AcceptedClipIDs: []string{"clip-a"},
 		ClipCount: 1,
 		ClipNames: map[string]string{"clip-a": "Clip A"},
 		DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
@@ -57,8 +57,8 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 			{ClipID: "missing-c", Reason: scriptpkg.MissingClipReasonDriveNotFound},
 		},
 	}
-	if len(ev.ClipIDs) != 1 || ev.ClipIDs[0] != "clip-a" {
-		t.Fatalf("ClipIDs = %v, want [clip-a]", ev.ClipIDs)
+	if len(ev.AcceptedClipIDs) != 1 || ev.AcceptedClipIDs[0] != "clip-a" {
+		t.Fatalf("AcceptedClipIDs = %v, want [clip-a]", ev.AcceptedClipIDs)
 	}
 	if len(ev.MissingClipIDs) != 2 {
 		t.Fatalf("MissingClipIDs = %v, want 2 entries", ev.MissingClipIDs)
@@ -130,7 +130,7 @@ func TestClipBindings_OnlyBindsResolvedClips_PR5(t *testing.T) {
 // the clip count get no binding to surface LLM mismatches.
 func TestClipBindings_CyclesAllResolvedIDs_PR5(t *testing.T) {
 	ev := &scriptpkg.ClipEvidence{
-		ClipIDs:    []string{"clip-a", "clip-b", "clip-c"},
+		AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
 		ClipCount:  3,
 		ClipNames:  map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
 		DriveLinks: map[string]string{
@@ -224,7 +224,7 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 		// PR 6 contract: ClipIDs holds the canonical (Drive
 		// file ID), NOT the internal asset.ID. Pre-PR-6 this
 		// slice would have been [internalAssetID].
-		ClipIDs:    []string{canonicalDriveFileID},
+		AcceptedClipIDs: []string{canonicalDriveFileID},
 		ClipCount:  1,
 		ClipNames:  map[string]string{canonicalDriveFileID: "Clip via Drive File ID"},
 		DriveLinks: map[string]string{
@@ -234,9 +234,9 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 			// asset.ID-keyed DriveLinks, this test catches it.
 		},
 	}
-	if !reflect.DeepEqual(ev.ClipIDs, []string{canonicalDriveFileID}) {
-		t.Fatalf("ClipIDs = %v, want [%q] (canonical is the Drive file ID, NOT %q)",
-			ev.ClipIDs, canonicalDriveFileID, internalAssetID)
+	if !reflect.DeepEqual(ev.AcceptedClipIDs, []string{canonicalDriveFileID}) {
+		t.Fatalf("AcceptedClipIDs = %v, want [%q] (canonical is the Drive file ID, NOT %q)",
+			ev.AcceptedClipIDs, canonicalDriveFileID, internalAssetID)
 	}
 	if link, ok := ev.DriveLinks[canonicalDriveFileID]; !ok || link != driveURL {
 		t.Fatalf("DriveLinks[%q] = (%q, %v), want (%q, true) "+

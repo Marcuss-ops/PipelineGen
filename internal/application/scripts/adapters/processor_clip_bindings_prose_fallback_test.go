@@ -36,7 +36,7 @@ import (
 func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 	t.Run("engages_when_scenes_empty_and_text_present_N3", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
-			ClipIDs:   []string{"clip-a", "clip-b", "clip-c"},
+			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
 			ClipNames: map[string]string{"clip-a": "A", "clip-b": "B", "clip-c": "C"},
 			DriveLinks: map[string]string{
 				"clip-a": "https://drive.google.com/a",
@@ -107,7 +107,7 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 			drvLinks[id] = "https://drive.google.com/" + id
 		}
 		ev := &scriptpkg.ClipEvidence{
-			ClipIDs:    clipIDs,
+			AcceptedClipIDs: clipIDs,
 			ClipNames:  make(map[string]string),
 			DriveLinks: drvLinks,
 		}
@@ -146,7 +146,7 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 
 	t.Run("N2_both_clips_no_intro_outro_bleed", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
-			ClipIDs:   []string{"clip-a", "clip-b"},
+			AcceptedClipIDs:   []string{"clip-a", "clip-b"},
 			ClipNames: map[string]string{},
 			DriveLinks: map[string]string{"clip-a": "u1", "clip-b": "u2"},
 		}
@@ -180,7 +180,7 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 
 	t.Run("skips_when_text_empty_preserves_noop", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
-			ClipIDs:   []string{"clip-a"},
+			AcceptedClipIDs:   []string{"clip-a"},
 			ClipNames: map[string]string{},
 			DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
 		}
@@ -230,7 +230,7 @@ func TestClipBindingsProcessor_ProseFallback(t *testing.T) {
 
 	t.Run("preserves_existing_scenes_no_heuristic", func(t *testing.T) {
 		ev := &scriptpkg.ClipEvidence{
-			ClipIDs:   []string{"clip-a"},
+			AcceptedClipIDs:   []string{"clip-a"},
 			ClipNames: map[string]string{},
 			DriveLinks: map[string]string{"clip-a": "https://drive.google.com/a"},
 		}

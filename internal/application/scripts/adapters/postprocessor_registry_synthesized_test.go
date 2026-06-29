@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
@@ -238,4 +239,149 @@ func TestRegistry_Run_NoProcessorsFinalSpecSceneUnchanged(t *testing.T) {
 	if len(result.FinalSpecScene.Scenes) != 1 || result.FinalSpecScene.Scenes[0].ID != "b-0" {
 		t.Fatalf("FinalSpecScene.Scenes mismatch (got %v)", result.FinalSpecScene.Scenes)
 	}
+}
+
+// P0 reorder (June 2026): clip_bindings MUST run BEFORE voiceover
+// and images so the prose-fallback synthesised scenes are visible
+// to artifact producers. This test uses the REAL buildPostprocessorList
+// (via BuildPlan) — not a hardcoded list — and verifies that when
+// clip_bindings synthesises scenes, the voiceover and images
+// processors downstream receive them via ProcessInput write-back.
+//
+// Pre-fix: the old order (voiceover → images → clip_bindings)
+// meant voiceover/images ran with empty scenes; the synthesised
+// bundle was only visible to document+persistence. Post-fix:
+// clip_bindings runs first and voiceover/images receive populated
+// SpecScene.Scenes.
+func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) {
+	log := zap.NewNop()
+	r := adapterspkg.NewPostProcessorRegistry(log)
+
+	// Stub processors: clip_bindings synthesises scenes from prose;
+	// voiceover + images are downstream captures.
+	synth := &synthesisingProcessor{
+		name:   "clip_bindings",
+		policy: adapterspkg.ProcessorBestEffort,
+		contributeSynth: []scriptpkg.SpecScene{
+			{ID: "syn-0", Index: 0, Kind: scriptpkg.SceneIntro, Text: "Intro"},
+			{ID: "syn-1", Index: 1, Kind: scriptpkg.SceneClip, Text: "Main"},
+		},
+	}
+	stockAssoc := &synthesisingProcessor{
+		name:   "stock_association",
+		policy: adapterspkg.ProcessorBestEffort,
+	}
+	vo := &synthesisingProcessor{
+		name:   "voiceover",
+		policy: adapterspkg.ProcessorBestEffort,
+	}
+	img := &synthesisingProcessor{
+		name:   "images",
+		policy: adapterspkg.ProcessorBestEffort,
+	}
+	r.Register(synth)
+	r.Register(stockAssoc)
+	r.Register(vo)
+	r.Register(img)
+	r.Freeze()
+
+	// Build a plan using the REAL buildPostprocessorList (via
+	// BuildPlan) with all artifact flags enabled — guarantees the
+	// order is the one the production code path produces.
+	item := scriptpkg.GenerationItemV2{
+		ID:    "item-p0-reorder",
+		Title: "P0 Reorder Test",
+		Source: scriptpkg.SourceSpec{
+			Type:       scriptpkg.SourceText,
+			Topic:      "test",
+			SourceText: "Prose-only payload simulating a gemma model output.",
+		},
+		Output: scriptpkg.OutputSpec{
+			// Only enable voiceover + images — the two artifact
+			// producers that MUST see clip_bindings' synthesised
+			// scenes. Leaving other flags false keeps the plan
+			// small (4 postprocessors) and avoids missing-
+			// registered Required-class failures.
+			GenerateVoiceover:  true,
+			GenerateSceneImages: true,
+		},
+	}
+	plan := scripts.BuildPlan(item)
+
+	// Verify the REAL order produced by buildPostprocessorList.
+	// Expected: entities, metadata, clip_bindings, stock_association,
+	//           voiceover, images, document, persistence
+	if len(plan.Postprocessors) < 4 {
+		t.Fatalf("expected at least 4 postprocessors, got %d: %v",
+			len(plan.Postprocessors), plan.Postprocessors)
+	}
+	// clip_bindings must appear before voiceover and images.
+	cbIdx := -1
+	voIdx := -1
+	imgIdx := -1
+	for i, name := range plan.Postprocessors {
+		switch name {
+		case "clip_bindings":
+			cbIdx = i
+		case "voiceover":
+			voIdx = i
+		case "images":
+			imgIdx = i
+		}
+	}
+	if cbIdx < 0 {
+		t.Fatal("clip_bindings missing from buildPostprocessorList output")
+	}
+	if voIdx < 0 {
+		t.Fatal("voiceover missing from buildPostprocessorList output")
+	}
+	if imgIdx < 0 {
+		t.Fatal("images missing from buildPostprocessorList output")
+	}
+	if cbIdx >= voIdx {
+		t.Errorf("P0 reorder: clip_bindings (idx %d) must come BEFORE voiceover (idx %d) in buildPostprocessorList output: %v",
+			cbIdx, voIdx, plan.Postprocessors)
+	}
+	if cbIdx >= imgIdx {
+		t.Errorf("P0 reorder: clip_bindings (idx %d) must come BEFORE images (idx %d) in buildPostprocessorList output: %v",
+			cbIdx, imgIdx, plan.Postprocessors)
+	}
+
+	// Run the registry with the real plan. Input has empty scenes
+	// (simulating LLM prose-only output).
+	input := adapterspkg.ProcessInput{
+		Text: "Prose-only payload simulating a gemma model output.",
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes:  nil,
+		},
+	}
+
+	result, err := r.Run(context.Background(), &plan, input)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	// The runtime assertion: voiceover and images must have seen
+	// the synthesised scenes (2 scenes from clip_bindings).
+	if len(vo.lastInputScenes) != 2 {
+		t.Fatalf("P0 reorder: voiceover saw %d scenes, want 2 (clip_bindings synth not propagated to voiceover before it ran)",
+			len(vo.lastInputScenes))
+	}
+	if len(img.lastInputScenes) != 2 {
+		t.Fatalf("P0 reorder: images saw %d scenes, want 2 (clip_bindings synth not propagated to images before it ran)",
+			len(img.lastInputScenes))
+	}
+	if vo.lastInputScenes[0].ID != "syn-0" {
+		t.Errorf("voiceover saw scene[0].ID = %q, want syn-0", vo.lastInputScenes[0].ID)
+	}
+	if img.lastInputScenes[1].Kind != scriptpkg.SceneClip {
+		t.Errorf("images saw scene[1].Kind = %q, want SceneClip", img.lastInputScenes[1].Kind)
+	}
+
+	// FinalSpecScene must carry the synthesised bundle.
+	if len(result.FinalSpecScene.Scenes) != 2 {
+		t.Fatalf("FinalSpecScene.Scenes = %d, want 2", len(result.FinalSpecScene.Scenes))
+	}
+
 }
