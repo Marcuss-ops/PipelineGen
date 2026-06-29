@@ -12,7 +12,7 @@ type fakeInternalMediaHandler struct{}
 
 func (fakeInternalMediaHandler) RegisterInternalMediaRoutes(r *gin.RouterGroup) {
 	media := r.Group("/media")
-	media.POST("/sync-drive-folder", func(c *gin.Context) {})
+	media.POST("/sync", func(c *gin.Context) {})
 }
 
 // fakeOutboxHandler mounts the QDRANT-002 production surface:
@@ -54,12 +54,12 @@ func TestNewServerWithHealth_RegistersInternalMediaRoutes(t *testing.T) {
 
 	routes := server.GetRouter().Routes()
 	for _, route := range routes {
-		if route.Method == "POST" && route.Path == "/internal/v1/media/sync-drive-folder" {
+		if route.Method == "POST" && route.Path == "/internal/v1/media/sync" {
 			return
 		}
 	}
 
-	t.Fatalf("expected POST /internal/v1/media/sync-drive-folder to be registered")
+	t.Fatalf("expected POST /internal/v1/media/sync to be registered")
 }
 
 // TestNewServerWithHealth_RegistersOutboxAndMediaSearchRoutes_ProductionShape

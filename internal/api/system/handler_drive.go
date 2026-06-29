@@ -48,7 +48,8 @@ type Reconciler interface {
 }
 
 // DriveAdminOps is the port for the small set of Drive operations the
-// admin handlers need: create folders, move files, resolve ID metadata.
+// admin handlers need: create folders, move files, list files, rename,
+// resolve ID metadata.
 // It is satisfied at composition time by the adapter wrapping
 // `*drive.Uploader`. The Google Files.Get round-trip (which the previous
 // code spelled out inline) is encapsulated inside ResolveFileInfo so the
@@ -56,14 +57,28 @@ type Reconciler interface {
 type DriveAdminOps interface {
 	GetOrCreateFolder(ctx context.Context, folderName, parentID string) (string, error)
 	MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error
+	ListFiles(ctx context.Context, folderID string) ([]DriveFileInfoDTO, error)
+	RenameFile(ctx context.Context, fileID, newName string) error
 	ResolveFileInfo(ctx context.Context, fileID string) (ResolveByIDsItem, error)
+}
+
+// DriveFileInfoDTO is the canonical file descriptor returned by ListFiles
+// on the DriveAdminOps port. Mirrors drive.DriveFileInfo sans infrastructure
+// imports (AGENTS.md Pattern 8).
+type DriveFileInfoDTO struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	MimeType       string   `json:"mime_type"`
+	WebViewLink    string   `json:"web_view_link,omitempty"`
+	WebContentLink string   `json:"web_content_link,omitempty"`
+	Parents        []string `json:"parents,omitempty"`
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-// DriveHandler handles Drive admin ops (reconcile, cleanup, folders,
-// move, resolve-by-id). It is constructed in app.WireRegistry and
-// mounted by system.Module on the /drive sub-group.
+// DriveHandler handles Drive admin ops (files, folders, move, rename,
+// reconcile, cleanup, resolve-by-id). It is constructed in app.WireRegistry
+// and mounted by system.Module on the /drive sub-group.
 type DriveHandler struct {
 	reconciler Reconciler
 	driveOps   DriveAdminOps
@@ -82,10 +97,12 @@ func NewDriveHandler(reconciler Reconciler, driveOps DriveAdminOps) *DriveHandle
 // resulting URLs are /api/drive/...
 func (h *DriveHandler) RegisterRoutes(r *gin.RouterGroup) {
 	zap.L().Info("DriveHandler.RegisterRoutes called", zap.String("handler_addr", fmt.Sprintf("%p", h)))
-	r.POST("/reconcile", h.Reconcile)
-	r.POST("/cleanup", h.Cleanup)
+	r.GET("/files", h.ListFiles)
 	r.POST("/folders", h.CreateFolders)
 	r.POST("/move", h.MoveFile)
+	r.POST("/rename", h.RenameFile)
+	r.POST("/reconcile", h.Reconcile)
+	r.POST("/cleanup", h.Cleanup)
 	r.POST("/resolve-by-id", h.ResolveByIDs)
 }
 
@@ -359,4 +376,66 @@ func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
 		"errors":         errList,
 		"error_count":    len(errList),
 	})
+}
+
+// ── ListFiles (GET /drive/files) ────────────────────────────────────────────
+
+// listFilesQuery is the query for listing Drive folder contents.
+type listFilesQuery struct {
+	FolderID string `form:"folder_id" json:"folder_id"`
+}
+
+// ListFiles lists all non-trashed files in a Drive folder.
+// GET /api/drive/files?folder_id=xxx
+func (h *DriveHandler) ListFiles(c *gin.Context) {
+	if h.driveOps == nil {
+		apiutil.Error(c, 500, "drive uploader not configured")
+		return
+	}
+	var req listFilesQuery
+	if err := c.ShouldBindQuery(&req); err != nil {
+		apiutil.BadRequest(c, "invalid query parameters: "+err.Error())
+		return
+	}
+	if req.FolderID == "" {
+		apiutil.BadRequest(c, "folder_id is required")
+		return
+	}
+	files, err := h.driveOps.ListFiles(c.Request.Context(), req.FolderID)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{
+		"ok":    true,
+		"files": files,
+		"count": len(files),
+	})
+}
+
+// ── RenameFile (POST /drive/rename) ─────────────────────────────────────────
+
+// RenameFileRequest is the payload for renaming a Drive file or folder.
+type RenameFileRequest struct {
+	FileID  string `json:"file_id" binding:"required"`
+	NewName string `json:"new_name" binding:"required"`
+}
+
+// RenameFile renames a file or folder on Drive.
+// POST /api/drive/rename
+func (h *DriveHandler) RenameFile(c *gin.Context) {
+	if h.driveOps == nil {
+		apiutil.Error(c, 500, "drive uploader not configured")
+		return
+	}
+	var req RenameFileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
+		return
+	}
+	if err := h.driveOps.RenameFile(c.Request.Context(), req.FileID, req.NewName); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"ok": true, "status": "renamed"})
 }

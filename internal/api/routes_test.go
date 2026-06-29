@@ -290,7 +290,7 @@ func TestRoutes_NoApiInternalV1Prefix(t *testing.T) {
 	}
 }
 
-// fakeInternalMediaHandlerStub is a minimal sync-drive-folder stub for
+// fakeInternalMediaHandlerStub is a minimal sync stub for
 // the antiregression test. Mirrors the production fake used elsewhere
 // in the package. The handler returns no routes — the assertion is on
 // the OUTBOX + MEDIASEARCH surface, not on the internal-media surface.

@@ -67,7 +67,7 @@ func (s *Service) SyncSource(ctx context.Context, source string) (*RootSummary, 
 //
 // Usage:
 //
-//	POST /api/media/sync-drive-folder
+//	POST /api/media/sync
 //	{ "drive_folder_id": "1ll2RlTa...", "source": "youtube", "name": "MyFolder" }
 func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, mediaType string, repo *assets.ClipsRepository) (*RootSummary, error) {
 	s.mu.Lock()

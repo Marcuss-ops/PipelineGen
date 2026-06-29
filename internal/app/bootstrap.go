@@ -79,11 +79,11 @@ type AppDeps struct {
 	Registry      *module.Registry
 	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 	// InternalMediaHandler is the QDRANT-001 server-to-server surface
-	// for /internal/v1/media/* (currently just /sync-drive-folder).
+	// for /internal/v1/media/* (currently just /sync).
 	// Same shape as WorkerHandler — narrow interface, no infra imports
 	// leak back into bootstrap.go. Wire-time: cmd/server/main.go calls
 	// server.SetInternalMediaHandler(deps.InternalMediaHandler) so the
-	// /internal/v1/media/sync-drive-folder route registers on the
+	// /internal/v1/media/sync route registers on the
 	// WorkerAuth-protected group.
 	InternalMediaHandler interface{ RegisterInternalMediaRoutes(*gin.RouterGroup) }
 	// OutboxHandler is the QDRANT-002 surface for

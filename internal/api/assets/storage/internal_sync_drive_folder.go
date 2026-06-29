@@ -1,12 +1,12 @@
 // Package storage — internal_sync_drive_folder.go provides the
-// server-to-server variant of POST /sync-drive-folder.
+// server-to-server variant of POST /sync.
 //
 // QDRANT-001 (June 2026) closure: this handler is the canonical Go-side
 // endpoint invoked by the rewritten `scripts/tools/sync_drive_qdrant.py`
 // (a pure-HTTP client, no SQLite / Qdrant / OAuth / SentenceTransformer).
 //
-//	Public admin:    POST /api/media/sync-drive-folder
-//	Server-to-server: POST /internal/v1/media/sync-drive-folder
+//	Public admin:    POST /api/media/sync
+//	Server-to-server: POST /internal/v1/media/sync
 //
 // Both routes share the same job-dispatch logic (drive.folder.sync with
 // idempotency-friendly payload). The /internal/v1/ variant additionally
@@ -41,7 +41,7 @@ type InternalSyncDriveFolderRequest struct {
 // `drive:<folder-id>:folder-sync` so retries collapse to one record.
 const idempotencyHeader = "Idempotency-Key"
 
-// InternalSyncDriveFolder handles POST /internal/v1/media/sync-drive-folder.
+// InternalSyncDriveFolder handles POST /internal/v1/media/sync.
 //
 // This is the server-to-server variant of SyncDriveFolder. Differences:
 //   - mounted under /internal/v1/ (worker/service auth, not admin)
@@ -57,7 +57,7 @@ const idempotencyHeader = "Idempotency-Key"
 func (h *Handler) InternalSyncDriveFolder(c *gin.Context) {
 	idem := strings.TrimSpace(c.GetHeader(idempotencyHeader))
 	if idem == "" {
-		apiutil.BadRequest(c, "Idempotency-Key header is required for /internal/v1/media/sync-drive-folder (QDRANT-001)")
+		apiutil.BadRequest(c, "Idempotency-Key header is required for /internal/v1/media/sync (QDRANT-001)")
 		return
 	}
 

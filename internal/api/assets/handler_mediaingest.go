@@ -39,12 +39,12 @@ func NewMediaingestHandler(service *ingest.Service, idempotencyMiddleware gin.Ha
 
 // RegisterRoutes registers /api/media routes.
 //
-//	POST /api/media/ingest  (Idempotency-Key optional)
+//	POST /api/media/import  (Idempotency-Key optional)
 func (h *MediaingestHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/ingest", h.Idempotency, h.Ingest)
+	r.POST("/import", h.Idempotency, h.Ingest)
 }
 
-// Ingest handles POST /api/media/ingest. The handler dispatches to
+// Ingest handles POST /api/media/import. The handler dispatches to
 // either an image, voiceover, clip, or stock ingest pipeline based
 // on the request kind.
 func (h *MediaingestHandler) Ingest(c *gin.Context) {
