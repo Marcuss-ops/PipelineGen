@@ -14,14 +14,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// ── Helpers (PR 5 — shared between all clip-aware resolvers) ───────────────
-
-// computeSourceFingerprint is the deterministic cache-key component
-// derived from SourceSpec + ClipEvidence. PR 5 stub: real hashing
-// lives in the engine's cache-key derivation; this is the resolver-
-// side shortcut that lets the use case log a stable fingerprint
-// without invoking the engine.
-
 // ── Shared types (Phase 2 hydration plumbing) ──────────────────────────
 
 type clipContextBuilder interface {
@@ -72,7 +64,7 @@ func buildResolvedClipSource(
 		title = strings.TrimSpace(p.titleFallback)
 	}
 
-	fingerprint := computeSourceFingerprint(src, evidence)
+	fingerprint := BuildClipFingerprint(src, evidence)
 
 	if log != nil {
 		elapsed := time.Since(p.startTime)

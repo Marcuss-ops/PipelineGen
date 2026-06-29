@@ -73,6 +73,6 @@ func (r *TextSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSp
 		SourceText: assembled.String(),
 		Language:   resCtx.Language,
 	}
-	resolved.Fingerprint = computeSourceFingerprint(src, nil)
+	resolved.Fingerprint = BuildClipFingerprint(src, nil)
 	return resolved, nil
 }
