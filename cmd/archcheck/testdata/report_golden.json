@@ -248,7 +248,7 @@
     },
     {
       "file": "internal/app/assets_register_sourcing.go",
-      "actual_lines": 544,
+      "actual_lines": 556,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
