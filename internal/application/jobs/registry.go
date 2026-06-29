@@ -383,6 +383,7 @@ const (
 	TypeMediaExtract          = "media.extract"
 	TypeMediaStock            = "media.stock"
 	TypeVoiceoverBatch        = "voiceover.batch"
+	TypeVoiceoverGenerate     = job.TypeVoiceoverGenerate
 	TypeSubtitleGenerate      = "subtitle.generate"
 	TypeRenderVideo           = "render.video"
 	TypeYouTubeUpload         = "youtube.upload"
@@ -446,6 +447,7 @@ func Compose() *Registry {
 	// ── Voiceover / subtitles ──
 	r.Register(JobPolicy{Type: TypeVoiceoverBatch, Description: "Voiceover batch generation", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeVoiceoverPromo, Description: "Voiceover promo generation (translate + generate)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Type: TypeVoiceoverGenerate, Description: "Voiceover single generation (per-batch command, Blocco 4 typed-port cutover)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeSubtitleGenerate, Description: "Subtitle generation", Timeout: 10 * time.Minute, DefaultMaxRetries: 2})
 
 	// ── Catalog / sync ──

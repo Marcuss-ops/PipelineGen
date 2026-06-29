@@ -109,6 +109,7 @@ var canonicalJobTypes = []string{
 	job.TypeDriveFolderSync,              // domain/job/job.go
 	job.TypeMediaCurate,                  // domain/job/job.go
 	job.TypeVoiceoverPromo,               // domain/job/job.go
+	job.TypeVoiceoverGenerate,            // domain/job/job.go
 	job.TypeYouTubeChannelSync,           // domain/job/job.go
 	TypeImageGenerateGoogle,              // application/jobs/registry.go (FASE 2 / June 2026)
 }

@@ -60,6 +60,7 @@ const (
 	TypeMediaExtract           = "media.extract"
 	TypeMediaStock             = "media.stock"
 	TypeVoiceoverBatch         = "voiceover.batch"
+	TypeVoiceoverGenerate      = "voiceover.generate"
 	TypeSubtitleGenerate       = "subtitle.generate"
 	TypeRenderVideo            = "render.video"
 	TypeYouTubeUpload          = "youtube.upload"
