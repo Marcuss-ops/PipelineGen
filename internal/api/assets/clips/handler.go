@@ -39,9 +39,6 @@ import (
 type Deps struct {
 	SourceResolver *artifacts.SourceResolver
 	AssetRepo      asset.Repository
-	ClipsRepo      *assets.ClipsRepository
-	StockRepo      *assets.ClipsRepository
-	ArtlistRepo    *assets.ClipsRepository
 	DeletionSvc    *deletion.DeletionService
 	DriveUploader  *drive.Uploader
 	MediaProcessor asset.Processor
@@ -131,9 +128,6 @@ type Handler struct {
 
 	sourceResolver *artifacts.SourceResolver
 	assetRepo      asset.Repository
-	clipsRepo      *assets.ClipsRepository
-	stockRepo      *assets.ClipsRepository
-	artlistRepo    *assets.ClipsRepository
 	deletionSvc    *deletion.DeletionService
 	driveUploader  *drive.Uploader
 	mediaProcessor asset.Processor
@@ -196,9 +190,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		Idempotency:         idem,
 		sourceResolver:      d.SourceResolver,
 		assetRepo:           d.AssetRepo,
-		clipsRepo:           d.ClipsRepo,
-		stockRepo:           d.StockRepo,
-		artlistRepo:         d.ArtlistRepo,
 		deletionSvc:         d.DeletionSvc,
 		driveUploader:       d.DriveUploader,
 		mediaProcessor:      d.MediaProcessor,
