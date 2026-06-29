@@ -41,7 +41,6 @@ internal/application/voiceover/ports.go  # voiceover TxOutboxEnqueuer typed-port
 # declaration in the file's own `ports.go`, adapter in
 # `internal/infrastructure/database/<feature>/`, wire in
 # `internal/app/<feature>_adapters.go`, plus tests.
-internal/application/jobs/outbox/metadata_export.go  # Wave 19 PR-Wave19-MIGRATE-A: introduce MetadataExportQueryPort + outbox/metadata_repo.go adapter; owner: agent/Codebuff; deadline: 2026-07-15
 internal/application/assets/providers/artlist/search_cache.go  # Wave 19 PR-Wave19-MIGRATE-C: ArtlistSearchCachePort + artlist cache adapter; owner: agent/Codebuff; deadline: 2026-07-15
 internal/application/scripts/adapters/gemmamemory.go  # Wave 19 PR-Wave19-MIGRATE-D: GemmamemoryPort + gemmamemory adapter (depends on internal/infrastructure/ai/gemmamemory wiring); owner: agent/Codebuff; deadline: 2026-07-15
 
