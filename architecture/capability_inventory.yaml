@@ -130,7 +130,7 @@ api_capabilities:
       - { symbol: "internal/infrastructure/drive",               file_line: "clips/ingest.go:47", is_test: false }
   - name: assets/clips
     path: internal/api/assets/clips
-    has_build_signature: false      # has Handler orchestrator only, no Build signature
+    has_build_signature: true       # module.go exposes `func Build(deps Dependencies) (api.Descriptor, error)` (Blocco C1-Step 5, June 2026); the existing *Handler orchestrator is reused as Descriptor via the Module closure (per user hint) — *ClipsDescriptor wraps `Module api.Module` + `Handler *Handler` (the latter exposed for the single non-HTTP consumer in `assets_register_sourcing.go::sourcingEnrichmentAdapter`). Pattern parity with `assets/artlist` (C1-Step 3) + `assets/youtube` (C1-Step 4).
     direct_register_calls: []
     concrete_constructors:
       - { symbol: "internal/infrastructure/database/sqlite/assets", file_line: "handler.go:39",  is_test: false }

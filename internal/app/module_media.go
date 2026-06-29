@@ -259,29 +259,56 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// map[string]AdvancedSearchRepo hand-rolled fan-out is replaced
 	// by the Aggregator's 4-key dedup + ranking pipeline.
 
-	clipsHandler := clipsapi.NewHandler(clipsapi.Deps{
-		ClipsRepo: deps.Core.ClipsRepo,
-		AssetRepo:      assetRepo,
-		DeletionSvc:    deletionSvc,
-		DriveUploader:  driveUploader,
-		MediaProcessor: deps.Core.MediaProcessor,
-		AssetTreeSvc:   deps.Core.AssetTreeService,
-		MetaWriter:     metaWriter,
-		ClipIndexer:    deps.Search.ClipIndexerService,
-		JobsSvc:        jobs.Facade,
-		Cfg:            cfg,
-		Log:            log,
-		VoiceoverRepo:  deps.Core.VoiceoverRepo,
-		ImagesRepo:     deps.Core.ImageRepo,
-		FolderMemSvc:   folderMemSvc,
-		ProcessRunner:  processRunnerAdapter,
-		Dispatcher:     clipsDispatcherPort,
-		EnrichUC:       enrichUC,
-		SearchSvc:           searchAggregator,
-		BulkUploadWorker:    bulkUploadWorker,
-		ClipOpsService:      clipOpsSvc,
-		UploadUC:            uploadUC,
-	}, idemHandler)
+	// Blocco C1-Step 5 (June 2026): Clips capability is now built via
+	// the canonical clips.Build(deps) (api.Descriptor, error) contract,
+	// matching the artlist / youtube precedent. The orchestrator
+	// *Handler is constructed inside Build and captured by the
+	// returned Module's closure. clipsDescriptor.Handler stays
+	// accessible to the one non-HTTP consumer
+	// (newAssetRegisterService → sourcingEnrichmentAdapter →
+	// handler.EnrichAndIndexClip).
+	clipsDescriptor, err := clipsapi.Build(clipsapi.Dependencies{
+		ClipsRepo:        deps.Core.ClipsRepo,
+		AssetRepo:        assetRepo,
+		DeletionSvc:      deletionSvc,
+		DriveUploader:    driveUploader,
+		MediaProcessor:   deps.Core.MediaProcessor,
+		AssetTreeSvc:     deps.Core.AssetTreeService,
+		MetaWriter:       metaWriter,
+		ClipIndexer:      deps.Search.ClipIndexerService,
+		JobsSvc:          jobs.Facade,
+		Cfg:              cfg,
+		Log:              log,
+		VoiceoverRepo:    deps.Core.VoiceoverRepo,
+		ImagesRepo:       deps.Core.ImageRepo,
+		FolderMemSvc:     folderMemSvc,
+		ProcessRunner:    processRunnerAdapter,
+		Dispatcher:       clipsDispatcherPort,
+		EnrichUC:         enrichUC,
+		SearchSvc:        searchAggregator,
+		BulkUploadWorker: bulkUploadWorker,
+		ClipOpsService:   clipOpsSvc,
+		UploadUC:         uploadUC,
+		Idempotency:      idemHandler,
+		EnabledFunc:      func() bool { return true },
+	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: clips.Build: %w", err)
+	}
+	// Blocco C1-Step 5 (June 2026): Build returns the canonical
+	// api.Descriptor surface. The Descriptor's forwarder methods
+	// (Name/Enabled/RegisterRoutes) are interface-level; the
+	// non-HTTP consumer below (sourcingEnrichmentAdapter →
+	// handler.EnrichAndIndexClip) needs the raw orchestrator
+	// *Handler, which is reachable only via the concrete
+	// *ClipsDescriptor.Handler field. Type-assert once and
+	// reuse the concrete for both consumers (the concrete
+	// *ClipsDescriptor satisfies api.Descriptor structurally,
+	// so the assetsapi.NewModule call below accepts it).
+	clipsDesc, ok := clipsDescriptor.(*clipsapi.ClipsDescriptor)
+	if !ok {
+		return nil, fmt.Errorf("WireAssets: clips.Build returned unexpected descriptor type %T (want *clipsapi.ClipsDescriptor)", clipsDescriptor)
+	}
 
 	storageHandler := assetstorage.NewHandler(jobs.Facade, deps.Core.CatalogSyncService, log)
 
@@ -349,7 +376,16 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	sfxHandler := assetsfx.NewHandler(sfxClips, sfxDriveUp, sfxMeta, sfxResolver, sfxDispatcher, cfg.Drive.SoundEffectsRootFolder, processRunnerAdapter, log)
 
 	// Register: the HTTP layer now depends on a single sourcing use case.
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsHandler, dispatcher, deps.Delivery.Publisher)
+	// Blocco C1-Step 5 (June 2026): the sourcingEnrichmentAdapter
+	// (constructed inside newAssetRegisterService) is the one
+	// non-HTTP consumer of the clips orchestrator. It calls
+	// handler.EnrichAndIndexClip(ctx, clip, source) — which the
+	// Descriptor exposes via its Handler field. threading
+	// clipsDescriptor.Handler here keeps the wrapping identical
+	// to the pre-Step-5 composition site (the function signature
+	// still takes *clipsapi.Handler; the descriptor is just a
+	// canonical accessor to the same instance).
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher)
 	// PR8: register receives the same shared idempotency handler as clips.
 	registerHandler := assetregister.NewHandler(registerSvc, log, idemHandler)
 
@@ -357,7 +393,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		Storage:     storageHandler,
 		Diagnostics: diagHandler,
 		Search:      searchHandler,
-		Clips:       clipsHandler,
+		Clips:       clipsDesc,
 		Voiceover:   voiceoverHandler,
 		SoundEffect: sfxHandler,
 		Register:    registerHandler,

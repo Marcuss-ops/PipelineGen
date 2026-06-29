@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
@@ -23,7 +23,17 @@ type Dependencies struct {
 	Storage     *storage.Handler
 	Diagnostics *diagnostics.Handler
 	Search      *search.Handler
-	Clips       *clips.Handler
+
+	// Blocco C1-Step 5 (June 2026): Clips is now an api.Descriptor
+	// (the canonical Build contract surface) instead of a raw
+	// *clips.Handler. The composition root threads the
+	// *clips.ClipsDescriptor returned by clips.Build(...) here; the
+	// descriptor's RegisterRoutes(rg) forwarder delegates to the
+	// embedded api.Module which captures the Handler orchestrator
+	// in its closure. The descriptor is the single canonical
+	// surface for the clips capability — no caller outside the
+	// package reads *clips.Handler directly anymore.
+	Clips api.Descriptor
 
 	// PR 4: extracted from SourcesHandler
 	Voiceover   *voiceover.Handler
