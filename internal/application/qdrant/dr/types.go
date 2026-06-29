@@ -11,8 +11,6 @@
 package dr
 
 import (
-	"time"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
 )
 
@@ -42,13 +40,4 @@ type VerifyReport struct {
 	Errors          []string `json:"errors,omitempty"`
 }
 
-// noopMetrics is the default DRMetrics implementation used when
-// deps.Metrics is nil. All methods are no-ops.
-type noopMetrics struct{}
 
-func (noopMetrics) RecordAliasSwitch(string, float64) {}
-func (noopMetrics) SetAliasCurrent(string, string)    {}
-
-// NowFunc is the default clock source used when deps.Now is nil.
-// Tests inject a fixed clock; production uses time.Now.
-var NowFunc = time.Now

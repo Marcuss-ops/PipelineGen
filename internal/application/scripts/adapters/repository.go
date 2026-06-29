@@ -114,7 +114,7 @@ func fromSQLiteScriptRecord(rec *sqlitescripts.ScriptRecord) *ports.ScriptRecord
 func buildSectionRows(in []ports.ScriptSectionRecord) *sqlitescripts.SectionRows {
 	b := sqlitescripts.NewSectionRows(len(in))
 	for _, s := range in {
-		b.Add(s.ID, s.ScriptID, s.SectionType, s.SectionTitle, s.Content, s.SortOrder, s.WordCount, s.Status)
+		b.Add(s.ID, s.ScriptID, s.SectionType, s.SectionTitle, s.Content, s.SortOrder, s.WordCount, s.Status, s.VoiceoverLink)
 	}
 	return b
 }
@@ -192,6 +192,7 @@ func (a *sqliteRepoAdapter) GetSectionByID(ctx context.Context, sectionID int64)
 		ID: sec.ID, ScriptID: sec.ScriptID, SectionType: sec.SectionType,
 		SectionTitle: sec.SectionTitle, Content: sec.Content,
 		SortOrder: sec.SortOrder, WordCount: sec.WordCount, Status: sec.Status,
+		VoiceoverLink: sec.VoiceoverLink,
 	}, nil
 }
 
@@ -201,12 +202,13 @@ func (a *sqliteRepoAdapter) GetScriptByID(id int64) (*ports.ScriptRecord, []port
 		return nil, nil, nil, err
 	}
 	outSections := make([]ports.ScriptSectionRecord, 0, len(sections))
-	sqlitescripts.EachSectionRow(sections, func(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string) {
+	sqlitescripts.EachSectionRow(sections, func(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string, voiceoverLink string) {
 		outSections = append(outSections, ports.ScriptSectionRecord{
 			ID: id, ScriptID: scriptID, Index: sortOrder,
 			SectionType: sectionType, SectionTitle: sectionTitle,
 			Content: content, SortOrder: sortOrder,
 			WordCount: wordCount, Status: status,
+			VoiceoverLink: voiceoverLink,
 		})
 	})
 	outMatches := make([]ports.ScriptStockMatchRecord, 0, len(matches))
@@ -230,6 +232,7 @@ func (a *sqliteRepoAdapter) GetAdjacentSections(ctx context.Context, scriptID in
 			ID: sp.ID, ScriptID: sp.ScriptID, SectionType: sp.SectionType,
 			SectionTitle: sp.SectionTitle, Content: sp.Content,
 			SortOrder: sp.SortOrder, WordCount: sp.WordCount, Status: sp.Status,
+			VoiceoverLink: sp.VoiceoverLink,
 		}
 		prev = &r
 	}
@@ -238,6 +241,7 @@ func (a *sqliteRepoAdapter) GetAdjacentSections(ctx context.Context, scriptID in
 			ID: sn.ID, ScriptID: sn.ScriptID, SectionType: sn.SectionType,
 			SectionTitle: sn.SectionTitle, Content: sn.Content,
 			SortOrder: sn.SortOrder, WordCount: sn.WordCount, Status: sn.Status,
+			VoiceoverLink: sn.VoiceoverLink,
 		}
 		next = &r
 	}

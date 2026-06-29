@@ -114,8 +114,15 @@ def main():
             for p_page in context.pages:
                 try:
                     url = p_page.url
-                    url_lower = url.lower()
-                    if ("docs.google.com" in url_lower or "slides.google.com" in url_lower or "drive.google.com" in url_lower or "myaccount.google.com" in url_lower or ("google.com" in url_lower and "signin" not in url_lower and "servicelogin" not in url_lower)):
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url)
+                    netloc = parsed.netloc.lower()
+                    path = parsed.path.lower()
+                    
+                    is_google_domain = any(domain in netloc for domain in ["docs.google.com", "slides.google.com", "drive.google.com", "myaccount.google.com"])
+                    is_clean_google = ("google.com" in netloc and "signin" not in netloc and "accounts" not in netloc)
+                    
+                    if (is_google_domain or is_clean_google) and "signin" not in path and "servicelogin" not in path and "signin" not in netloc and "accounts" not in netloc:
                         print(f"SUCCESS! Login detected on tab: {url}")
                         login_success = True
                         break

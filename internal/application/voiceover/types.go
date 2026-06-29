@@ -175,10 +175,14 @@ type VoiceoverResult struct {
 }
 
 type ResolvedDestination struct {
-	Group      string
-	FolderID   string
-	FolderPath string
-	DriveLink  string
+	Group         string
+	FolderID      string
+	FolderPath    string
+	DriveLink     string
+	// SubfolderName is the optional subfolder to create/use within
+	// the resolved folder. Used by the Drive uploader to create a
+	// per-script subfolder and upload the voiceover into it.
+	SubfolderName string
 	// StyleGroup (PR-VO-B2, June 2026) carries the StyleGroup from
 	// the originating DestinationRequest through the resolver without
 	// round-tripping through ResolveResult. The resolver is a folder

@@ -63,6 +63,9 @@ type scriptSectionRow struct {
 	SortOrder    int
 	WordCount    int
 	Status       string
+
+	// VoiceoverLink is the Drive URL of the per-scene voiceover audio.
+	VoiceoverLink string
 }
 
 // SectionRows is the canonical builder for constructing []scriptSectionRow
@@ -78,11 +81,12 @@ func NewSectionRows(cap int) *SectionRows {
 }
 
 // Add appends a row with the given field values.
-func (sr *SectionRows) Add(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string) {
+func (sr *SectionRows) Add(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string, voiceoverLink string) {
 	sr.rows = append(sr.rows, scriptSectionRow{
 		ID: id, ScriptID: scriptID, SectionType: sectionType,
 		SectionTitle: sectionTitle, Content: content,
 		SortOrder: sortOrder, WordCount: wordCount, Status: status,
+		VoiceoverLink: voiceoverLink,
 	})
 }
 
@@ -94,9 +98,9 @@ func (sr *SectionRows) Slice() []scriptSectionRow {
 // EachSectionRow calls fn for every row in the slice, passing individual
 // field values. Exported so the adapter can iterate without naming the
 // private row type.
-func EachSectionRow(rows []scriptSectionRow, fn func(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string)) {
+func EachSectionRow(rows []scriptSectionRow, fn func(id, scriptID int64, sectionType, sectionTitle, content string, sortOrder, wordCount int, status string, voiceoverLink string)) {
 	for _, r := range rows {
-		fn(r.ID, r.ScriptID, r.SectionType, r.SectionTitle, r.Content, r.SortOrder, r.WordCount, r.Status)
+		fn(r.ID, r.ScriptID, r.SectionType, r.SectionTitle, r.Content, r.SortOrder, r.WordCount, r.Status, r.VoiceoverLink)
 	}
 }
 
