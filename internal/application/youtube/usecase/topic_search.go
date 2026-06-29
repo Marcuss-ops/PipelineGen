@@ -41,17 +41,14 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 	return s.TopicSearch(ctx, query, limit, sortMode, publishedAfter)
 }
 
-// SearchLive performs a live YouTube search via the search runner port.
-// Phase 1b stub: returns empty results. Full implementation was in
-// adapters/ pre-PR5 capability extraction.
+// SearchLive performs a live YouTube search via the SearchService
+// capability (L1 in-memory cache → L2 SQLite cache → SearchRunnerPort).
+// Phase 1c (June 2026): delegates to the canonical SearchService wired at
+// construction in NewService; returns an explicit error when search is not
+// wired instead of silently returning (nil, nil).
 func (s *Service) SearchLive(ctx context.Context, query string, limit int, sortMode string) ([]asset.Asset, error) {
-	if isUnavailablePort(s.searchRunner) {
-		return nil, nil
+	if s.search == nil {
+		return nil, fmt.Errorf("youtube: search capability not wired (composition root must include SearchRunner in ServiceDeps)")
 	}
-	// Phase 1c TODO: restore real implementation tracking searchRunner hops.
-	_ = ctx
-	_ = query
-	_ = limit
-	_ = sortMode
-	return nil, nil
+	return s.search.SearchLive(ctx, query, limit, sortMode)
 }
