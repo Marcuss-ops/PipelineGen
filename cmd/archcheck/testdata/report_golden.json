@@ -131,14 +131,14 @@
       "note": "func New\u003cX\u003e(...) has 11 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
-      "file": "internal/application/assets/sourcing/service.go",
-      "line": 32,
-      "actual_count": 15,
+      "file": "internal/application/assets/sourcing/youtube/service.go",
+      "line": 48,
+      "actual_count": 9,
       "allowed_count": 8,
       "matched_rule": "max_constructor_deps",
       "rule": "constructor_deps",
       "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 15 parameters (max 8); split into smaller constructors or use a config struct"
+      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
       "file": "internal/application/clips/clip_ops.go",
@@ -215,8 +215,24 @@
       "severity": "warn"
     },
     {
-      "file": "internal/api/assets/voiceover/handler.go",
-      "actual_lines": 565,
+      "file": "internal/api/assets/clips/handler.go",
+      "actual_lines": 827,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/api/assets/clips/ingest.go",
+      "actual_lines": 537,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/api/assets/clips/ops.go",
+      "actual_lines": 848,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -224,15 +240,15 @@
     },
     {
       "file": "internal/api/script/handler_legacy_adapters.go",
-      "actual_lines": 626,
+      "actual_lines": 728,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
       "severity": "warn"
     },
     {
-      "file": "internal/app/build_bundles_process.go",
-      "actual_lines": 562,
+      "file": "internal/app/assets_register_sourcing.go",
+      "actual_lines": 544,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -240,7 +256,7 @@
     },
     {
       "file": "internal/app/composition.go",
-      "actual_lines": 550,
+      "actual_lines": 566,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -248,7 +264,7 @@
     },
     {
       "file": "internal/app/module_media.go",
-      "actual_lines": 650,
+      "actual_lines": 659,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -257,14 +273,6 @@
     {
       "file": "internal/app/module_sources.go",
       "actual_lines": 521,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "internal/app/wire_script.go",
-      "actual_lines": 910,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -281,14 +289,6 @@
     {
       "file": "internal/application/assets/providers/registry.go",
       "actual_lines": 544,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "internal/application/assets/sourcing/service.go",
-      "actual_lines": 597,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -391,15 +391,15 @@
       "severity": "warn"
     },
     {
-      "package": "internal/infrastructure/qdrant",
-      "actual_count": 46,
+      "package": "internal/app",
+      "actual_count": 56,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
       "severity": "warn"
     },
     {
-      "package": "internal/app",
+      "package": "internal/infrastructure/qdrant",
       "actual_count": 46,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",

@@ -2,129 +2,25 @@
 //
 // Per AGENTS.md Pattern 5 (June 2026): one concept per file. This file holds
 // the standalone helper functions used by the sourcing service.
+//
+// P0-1 / commit 1 (June 2026): the YouTube-specific URL parsing, query
+// builder, description builder, folder-name normaliser and indexing-status
+// helpers moved to internal/application/assets/sourcing/youtube/helpers.go
+// (the YouTubeRegistrar sub-package). Only the LocalImporter-scoped helper
+// ScanLocalMp4 remains here until P0-1 / commit 4 lifts it into
+// internal/application/assets/sourcing/localimport/helpers.go.
 package sourcing
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// ── YouTube URL helpers ─────────────────────────────────────────────────────
-
-func extractVideoIDFromURL(rawURL string) string {
-	// youtube.com/watch?v=ID
-	for _, part := range strings.Split(rawURL, "&") {
-		if strings.HasPrefix(part, "v=") || strings.Contains(part, "?v=") {
-			if idx := strings.Index(part, "v="); idx != -1 {
-				id := part[idx+2:]
-				if len(id) > 11 {
-					id = id[:11]
-				}
-				return id
-			}
-		}
-	}
-	// youtu.be/ID
-	if idx := strings.LastIndex(rawURL, "youtu.be/"); idx != -1 {
-		rest := rawURL[idx+len("youtu.be/"):]
-		if end := strings.IndexAny(rest, "?&#"); end != -1 {
-			rest = rest[:end]
-		}
-		return rest
-	}
-	return ""
-}
-
-func extractURLParam(rawURL, key string) float64 {
-	prefixes := []string{"&" + key + "=", "?" + key + "="}
-	for _, pfx := range prefixes {
-		if idx := strings.Index(rawURL, pfx); idx != -1 {
-			rest := rawURL[idx+len(pfx):]
-			for i, c := range rest {
-				if c == '&' || c == '?' || c == '#' {
-					rest = rest[:i]
-					break
-				}
-			}
-			var v float64
-			if _, err := fmt.Sscanf(rest, "%f", &v); err == nil {
-				return v
-			}
-		}
-	}
-	return 0
-}
-
-// ── Query / description builders ────────────────────────────────────────────
-
-func buildRelatedClipsQuery(name, category string, tags []string) string {
-	var parts []string
-	if cat := strings.TrimSpace(category); cat != "" {
-		parts = append(parts, cat)
-	}
-	maxTags := 2
-	for _, t := range tags {
-		if maxTags <= 0 {
-			break
-		}
-		if tt := strings.TrimSpace(t); tt != "" {
-			parts = append(parts, tt)
-			maxTags--
-		}
-	}
-	if n := strings.TrimSpace(name); n != "" {
-		parts = append(parts, n)
-	}
-	return strings.Join(parts, " ")
-}
-
-func buildDriveDescription(name, reqDesc, fetchedDesc string, tags []string, category, source, url, videoID string) string {
-	var parts []string
-	if name != "" {
-		parts = append(parts, "Name: "+name)
-	}
-	if reqDesc != "" {
-		parts = append(parts, "Description: "+reqDesc)
-	} else if fetchedDesc != "" {
-		parts = append(parts, "Description: "+fetchedDesc)
-	}
-	if category != "" {
-		parts = append(parts, "Category: "+category)
-	}
-	if source != "" {
-		parts = append(parts, "Source: "+source)
-	}
-	if len(tags) > 0 {
-		parts = append(parts, "Tags: "+strings.Join(tags, ", "))
-	}
-	if url != "" {
-		parts = append(parts, "URL: "+url)
-	}
-	if videoID != "" {
-		parts = append(parts, "VideoID: "+videoID)
-	}
-	return strings.Join(parts, "\n")
-}
-
-// ── String helpers ──────────────────────────────────────────────────────────
-
-func cleanFolderName(name string) string {
-	return strings.TrimSpace(strings.ToLower(name))
-}
-
-func indexStatus(indexed bool) string {
-	if indexed {
-		return "enqueued"
-	}
-	return "not_configured"
-}
-
-// ── File scanner helper ─────────────────────────────────────────────────────
-
 // ScanLocalMp4 scans a local directory for .mp4 files.
 // This is provided as a convenience function for FileScannerPort implementors.
+// Will move to internal/application/assets/sourcing/localimport/helpers.go
+// in P0-1 / commit 4.
 func ScanLocalMp4(root string, limit int) ([]LocalFileInfo, error) {
 	var out []LocalFileInfo
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {

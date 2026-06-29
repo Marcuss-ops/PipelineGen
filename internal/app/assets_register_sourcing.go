@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -26,6 +27,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
+// newAssetRegisterService builds the SourcingService façade. After P0-1 /
+// commit 1 (June 2026) it first constructs the YouTubeRegistrar sub-service
+// (with v2 adapters that wrap legacy ports) and then injects that, plus the
+// remaining JobsPort/FileScannerPort needed by SyncDriveFolder + LocalToDrive
+// (not yet extracted, planned in commits 3 and 4 of P0-1), into the slim
+// sourcing.NewService ctor (now 4 args, was 14 historically).
 func newAssetRegisterService(
 	cfg *config.Config,
 	log *zap.Logger,
@@ -36,27 +43,164 @@ func newAssetRegisterService(
 	clipsHandler *clipsapi.Handler,
 	dispatcher *outbox.Dispatcher,
 ) *sourcing.Service {
-	var indexDisp sourcing.IndexDispatcherPort
-	if dispatcher != nil {
-		indexDisp = &sourcingDispatcherAdapter{disp: dispatcher}
+	// Build the YouTube sub-service with v2 adapters (June 2026, P0-1 / commit 1).
+	// The 2 v2 adapters absorb 6 legacy ports (IndexDispatcher + AssetTree +
+	// Jobs + Search + Config + legacy Enrichment) into the YouTubeService's
+	// 8-port budget per architecture/policy.yaml::max_constructor_deps.
+	ytIndex := &youtubeIndexDispatcherAdapter{disp: dispatcher, tree: assetTreeSvc}
+	ytEnrich := &youtubeEnrichmentAdapter{
+		enrichment: &sourcingEnrichmentAdapter{handler: clipsHandler},
+		config:     &sourcingConfigAdapter{cfg: cfg},
+		search:     &sourcingSearchAdapter{registry: providerRegistry},
+		// jobs port intentionally nil today (composition root signature does
+		// not yet expose JobsPort; this preserves historical behaviour where
+		// SyncDriveFolder + LocalToDrive were also non-functional in this
+		// composition site, and matches what the thinker audit suggested as
+		// the conservative interpretation).
 	}
-	return sourcing.NewService(
+	ytSvc := youtube.NewService(
 		&sourcingFetchAdapter{registry: providerRegistry},
-		&sourcingDriveAdapter{uploader: driveUploader},
 		&sourcingClipStoreAdapter{repo: clipsRepo},
-		nil,
-		nil,
-		&sourcingHashAdapter{},
+		&sourcingDriveAdapter{uploader: driveUploader},
 		&sourcingTranscriberAdapter{cfg: cfg, log: log},
-		&sourcingAssetTreeAdapter{svc: assetTreeSvc},
-		&sourcingSearchAdapter{registry: providerRegistry},
-		&sourcingConfigAdapter{cfg: cfg},
-		&sourcingEnrichmentAdapter{handler: clipsHandler},
 		&sourcingMetadataAdapter{cfg: cfg, uploader: driveUploader, log: log},
-		indexDisp,
+		ytIndex,
+		ytEnrich,
 		&zapSourcingLogger{log: log},
 	)
+
+	// 4-arg façade (was 14 historically). The JobsPort + FileScannerPort
+	// stay on the façade for the not-yet-extracted SyncDriveFolder +
+	// LocalToDrive methods which are still inline.
+	return sourcing.NewService(ytSvc, nil, nil, &zapSourcingLogger{log: log})
 }
+
+// ── youtube v2 adapters ───────────────────────────────────────────────────────
+
+// Compile-time assertions: every adapter satisfies the expected
+// youtube-package v2 port. Drift between adapter and interface surfaces
+// at compile time, not at first call.
+var (
+	_ youtube.IndexDispatcherPort = (*youtubeIndexDispatcherAdapter)(nil)
+	_ youtube.EnrichmentPort      = (*youtubeEnrichmentAdapter)(nil)
+	// Drift guard: youtube.Service implements sourcing.YouTubeRegistrar.
+	// This assertion lives at the composition root (rather than in
+	// sourcing/service.go) because the latter would re-introduce the
+	// import cycle that P0-1 / commit 1 broke (sourcing imports youtube
+	// for the (*youtube.Service) reference; youtube imports sourcing
+	// for shared types like RegisterClipCommand — cycle).
+	_ sourcing.YouTubeRegistrar = (*youtube.Service)(nil)
+)
+
+// youtubeIndexDispatcherAdapter implements youtube.IndexDispatcherPort by
+// composing the legacy outbox.Dispatcher with the asset-tree service.
+//
+// Behaviour (per thinker audit June 2026 / P0-1 commit 1 correction):
+//   - Dispathcer upsert failures BUBBLE to the caller (fail-closed;
+//     preserves QDRANT-asset-mutation isolation discipline)
+//   - Asset-tree upsert failures are SWALLOWED at the adapter boundary
+//     (fail-open; mirrors the historical `_ = s.assetTree.UpsertNode(...)`
+//     warn-only behaviour of the god-method. Returns nil).
+type youtubeIndexDispatcherAdapter struct {
+	disp *outbox.Dispatcher
+	tree *assettree.Service
+}
+
+func (a *youtubeIndexDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *sourcing.ExistingClip, contentHash string) error {
+	if a.disp == nil {
+		return fmt.Errorf("youtubeIndexDispatcherAdapter: dispatcher is nil (compose-time bug — wire outbox.Dispatcher in newAssetRegisterService)")
+	}
+	if clip == nil {
+		return fmt.Errorf("youtubeIndexDispatcherAdapter: clip is nil")
+	}
+	domainAsset := fromExistingClip(clip)
+	if err := a.disp.EnqueueAndIndex(ctx, domainAsset, contentHash); err != nil {
+		return fmt.Errorf("dispatcher upsert+outbox: %w", err)
+	}
+	// Asset-tree upsert is best-effort post-dispatcher. The historical
+	// god-method called `_ = s.assetTree.UpsertNode(...)` ignoring
+	// errors and discarding the warn log; we mirror that exact
+	// behaviour in the adapter. Tree drift is a separate concern
+	// tracked by PR-ASSETS-MONITOR-CONTRACT-AUDIT-2026-06-28, not the
+	// YouTubeRegistrar flow.
+	if a.tree != nil {
+		now := time.Now().UTC()
+		node := &assetsrepo.AssetNode{
+			ID:        domainAsset.ID,
+			Source:    domainAsset.Source,
+			AssetID:   domainAsset.ID,
+			Name:      domainAsset.Name,
+			Type:      "file",
+			Path:      domainAsset.Name,
+			IsFolder:  false,
+			DriveLink: domainAsset.DriveLink(),
+			Metadata:  "{}",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		_ = a.tree.UpsertNode(ctx, node) // matches historical warn-only behaviour
+	}
+	return nil
+}
+
+// youtubeEnrichmentAdapter implements youtube.EnrichmentPort by composing
+// the legacy EnrichmentAdapter (used for the indexed-detection boolean),
+// ConfigAdapter (folder defaults), SearchAdapter (related clips), and an
+// optional JobsPort for the post-register media.enrich dispatch.
+//
+// Per thinker audit:
+//   - IndexingEnabled() returns true iff enrichment AND (jobs via this
+//     adapter has an internal nil-aware path — equivalent to historical
+//     `indexed := s.enrichment != nil && s.jobs != nil`).
+//   - DispatchPostRegister no-ops when the internal jobs port is nil
+//     (preserves historical test-fixture path which logged at Debug
+//     level rather than failing closed).
+type youtubeEnrichmentAdapter struct {
+	jobs       sourcing.JobsPort // nil today; optional wiring in future composition sites
+	enrichment sourcing.EnrichmentPort
+	search     sourcing.SearchProviderPort
+	config     sourcing.ConfigPort
+}
+
+func (a *youtubeEnrichmentAdapter) IndexingEnabled() bool {
+	// Mirrors historical `indexed := s.enrichment != nil && s.jobs != nil`.
+	// When jobs port is nil (current production composition site), this
+	// returns false and the YouTubeRegistrar falls back to "not_configured"
+	// indexing_status — matching historical behaviour for the same path.
+	return a.enrichment != nil && a.jobs != nil
+}
+
+func (a *youtubeEnrichmentAdapter) DispatchPostRegister(ctx context.Context, clipID, source, localPath string) error {
+	if a.jobs == nil {
+		return nil // matches historical fallback: log.Debug("jobs port not wired...")
+	}
+	_, err := a.jobs.Enqueue(ctx, sourcing.EnqueueRequest{
+		Type:       "media.enrich",
+		MaxRetries: 1,
+		Payload: sourcing.JobPayload{
+			"asset_id":   clipID,
+			"source":     source,
+			"local_path": localPath,
+		},
+	})
+	return err
+}
+
+func (a *youtubeEnrichmentAdapter) SearchRelated(ctx context.Context, query string, limit int) ([]sourcing.SearchCandidate, error) {
+	if a.search == nil {
+		return nil, nil
+	}
+	return a.search.Search(ctx, query, limit)
+}
+
+func (a *youtubeEnrichmentAdapter) FolderDefaults() (clipsFolder, rootFolder string) {
+	if a.config == nil {
+		return "", ""
+	}
+	return a.config.ClipsFolder(), a.config.RootFolder()
+}
+
+// ── legacy adapters reused on the YouTubeService ctor (no v2 surface needed) ─
 
 type sourcingFetchAdapter struct {
 	registry *providers.Registry
@@ -190,12 +334,6 @@ func (a *sourcingClipStoreAdapter) GetClip(ctx context.Context, id string) (*sou
 // also removed and replaced with a typed error so a missing
 // dispatcher is loud at runtime, not silent.
 
-type sourcingHashAdapter struct{}
-
-func (a *sourcingHashAdapter) MD5File(path string) (string, error) {
-	return hashutil.MD5File(path)
-}
-
 type sourcingTranscriberAdapter struct {
 	cfg *config.Config
 	log *zap.Logger
@@ -232,30 +370,6 @@ func (a *sourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath s
 		return "", "", fmt.Errorf("%s", parsed.Error)
 	}
 	return strings.TrimSpace(parsed.TranscriptFull), strings.TrimSpace(parsed.Language), nil
-}
-
-type sourcingAssetTreeAdapter struct {
-	svc *assettree.Service
-}
-
-func (a *sourcingAssetTreeAdapter) UpsertNode(ctx context.Context, node sourcing.AssetTreeNode) error {
-	if a.svc == nil {
-		return nil
-	}
-	now := time.Now().UTC()
-	return a.svc.UpsertNode(ctx, &assetsrepo.AssetNode{
-		ID:        node.ID,
-		Source:    node.Source,
-		AssetID:   node.ID,
-		Name:      node.Name,
-		Type:      "file",
-		Path:      node.Name,
-		IsFolder:  false,
-		DriveLink: node.DriveLink,
-		Metadata:  "{}",
-		CreatedAt: now,
-		UpdatedAt: now,
-	})
 }
 
 type sourcingSearchAdapter struct {
@@ -377,6 +491,8 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 
 // sourcingDispatcherAdapter adapts outbox.Dispatcher to sourcing.IndexDispatcherPort.
 // Converts sourcing.ExistingClip → asset.Asset before delegating to the dispatcher.
+// Kept for legacy callers that still reference sourcing.IndexDispatcherPort
+// directly (e.g. test fixtures and the queue-completion audit hook).
 type sourcingDispatcherAdapter struct {
 	disp *outbox.Dispatcher
 }
@@ -413,3 +529,16 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		FileHash:    c.FileHash(),
 	}
 }
+
+// Compile-time assertion retained for legacy hash adapter callers (kept
+// here for further integration tests even though the YouTubeRegistrar
+// now inlines pkg/hashutil.MD5File directly). Permits the file's
+// `*sourcingHashAdapter` to be removed in a follow-up cleanup PR if
+// confirmed unused across the production composition chain.
+type sourcingHashAdapter struct{}
+
+func (a *sourcingHashAdapter) MD5File(path string) (string, error) {
+	return hashutil.MD5File(path)
+}
+
+var _ sourcing.HashPort = (*sourcingHashAdapter)(nil)
