@@ -210,11 +210,15 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 	// canonical typed ports declared in internal/application/clips/upload/ports.go.
 	// DriveUploader, IndexDispatcher, Config, and TreeBuilder are type aliases
 	// of the parent clips.* ports (ClipDriveUploaderPort, etc.) so the existing
-	// adapters satisfy them directly. ArtifactServicePort is nil — the concrete
-	// *artifacts.Service is not yet wired in AssetsModuleDeps.Core; the use case
-	// current production behaviour (UploadVideoClip returns 500).
-	uploadUC := appupload.NewUseCase(appupload.UseCaseDeps{
-		Artifact:      nil, // *artifacts.Service not in bundle yet
+	// adapters satisfy them directly.
+	// P0.1 (June 2026): Artifact is now mandatory — the composition root
+	// wires *artifacts.Service (constructed in BuildDomainBundle) via
+	// artifactServiceAdapter (clips_adapters_artifact.go). A nil
+	// ArtifactService in CoreDeps causes NewUseCase to return error
+	// at boot time instead of silently producing HTTP 500 at request time.
+	var uploadUC *appupload.UseCase
+	uploadUC, err = appupload.NewUseCase(appupload.UseCaseDeps{
+		Artifact:      NewArtifactServiceAdapter(deps.Core.ArtifactService),
 		DriveUploader: newClipsDriveAdapter(driveUploader),
 		Publisher:     deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
@@ -224,6 +228,9 @@ func WireAssets(cfg *config.Config, log *zap.Logger, deps *AssetsModuleDeps, job
 		ProcessRunner: processRunnerAdapter,
 		Log:           log,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("WireAssets: upload.NewUseCase: %w", err)
+	}
 	// PR 2 (June 2026): construct the application-layer ClipOpsService so
 	// the HTTP handler can delegate Reconcile / Cleanup / VerifyClip to a
 	// single canonical service instead of duplicating the business logic

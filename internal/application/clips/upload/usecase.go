@@ -53,9 +53,16 @@ type UseCaseDeps struct {
 	Log           *zap.Logger
 }
 
-// NewUseCase constructs the canonical upload use case. All ports are
-// required (checked lazily at Execute time for test-friendliness).
-func NewUseCase(d UseCaseDeps) *UseCase {
+// NewUseCase constructs the canonical upload use case. Artifact and
+// Dispatcher are mandatory — a nil value fails at composition time
+// instead of returning HTTP 500 at request time (P0.1 fix, June 2026).
+func NewUseCase(d UseCaseDeps) (*UseCase, error) {
+	if d.Artifact == nil {
+		return nil, fmt.Errorf("upload.NewUseCase: Artifact is required (composition root must wire *artifacts.Service via ArtifactServicePort adapter)")
+	}
+	if d.Dispatcher == nil {
+		return nil, fmt.Errorf("upload.NewUseCase: Dispatcher is required (composition root must wire ClipIndexDispatcherPort)")
+	}
 	if d.Log == nil {
 		d.Log = zap.NewNop()
 	}
@@ -69,7 +76,7 @@ func NewUseCase(d UseCaseDeps) *UseCase {
 		jobsSvc:       d.JobsSvc,
 		processRunner: d.ProcessRunner,
 		log:           d.Log,
-	}
+	}, nil
 }
 
 // Execute runs the full clip-upload pipeline.

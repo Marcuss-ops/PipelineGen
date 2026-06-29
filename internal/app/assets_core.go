@@ -45,6 +45,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"google.golang.org/api/drive/v3"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -57,7 +58,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
-// CoreDeps is the Assets-module data-layer bundle (8 fields).
+// CoreDeps is the Assets-module data-layer bundle (9 fields).
+//
+// P0.1 (June 2026): ArtifactService added — the concrete
+// *artifacts.Service is constructed in BuildDomainBundle and
+// wired through so the upload UseCase can accept real video
+// uploads instead of always returning HTTP 500.
 //
 // The bulk of any Assets-module wire logic (clips handler + register
 // handler + sfx handler + diag handler) consumes Core. Held by
@@ -74,6 +80,9 @@ type CoreDeps struct {
 	AssetIndexService  *assetindex.Service
 	MediaProcessor     domainasset.Processor
 	CatalogSyncService *catalogsync.Service
+	// P0.1 (June 2026): the concrete artifact blob service wired
+	// from BuildDomainBundle → DomainBundle → CoreDeps.
+	ArtifactService    *artifacts.Service
 }
 
 // SearchDeps is the Assets-module search sub-system bundle (5 fields).

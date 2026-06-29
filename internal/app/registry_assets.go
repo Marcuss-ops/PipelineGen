@@ -75,6 +75,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 			AssetIndexService:  root.Search.AssetIndexService,
 			MediaProcessor:     root.Process.MediaProcessor,
 			CatalogSyncService: root.Sync.CatalogSync,
+			ArtifactService:    root.Domains.ArtifactService,
 		},
 		Search: SearchDeps{
 			ClipIndexerService: root.Process.ClipIndexerService,
