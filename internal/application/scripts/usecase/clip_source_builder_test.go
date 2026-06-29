@@ -32,12 +32,14 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -299,4 +301,117 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4 pins the
+// rune-safe truncation contract introduced in PR A4 (June 2026). The
+// previous implementation byte-truncated `excerpt[:500]`, which
+// silently split multi-byte UTF-8 codepoints (CJK ideographs,
+// supplementary-plane emoji, accented Latin) and produced invalid
+// downstream bytes. The new helper truncates by RUNES and appends
+// U+2026 HORIZONTAL ELLIPSIS, pinning four properties per case:
+//
+//  1. ev.AssembledText is well-formed UTF-8 (utf8.ValidString).
+//  2. The bytes contain no U+FFFD replacement character — the
+//     canonical fingerprint of a forced byte-cut mid-codepoint.
+//  3. The `Transcript: ...` line has the expected rune count.
+//  4. The line ends with U+2026 iff the input exceeded 500 runes.
+//
+// Inputs deliberately cover the failure modes the old code hit: pure
+// CJK (3-byte runes), pure supplementary-plane emoji (4-byte runes),
+// and an ASCII / CJK / emoji mixture where the byte-budget would have
+// landed inside a CJK character.
+//
+// Note on AssembledText: the call site runs
+// `strings.TrimSpace(sourceTextBuilder.String())` (BuildClipContext
+// ~L294-296), so the transcript line is the LAST non-whitespace
+// segment — there is no trailing "\n" terminator to find. The test
+// slices from the `  Transcript: ` prefix to end-of-string.
+func TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4(t *testing.T) {
+	ellipsis := "\u2026"
+
+	cases := []struct {
+		label                string
+		transcript           string
+		wantExcerptRunes     int
+		wantEndsWithEllipsis bool
+	}{
+		// Below the budget: untouched.
+		{"short ASCII, no truncation", "Hello world", 11, false},
+		{"exactly 500 ASCII runes, no truncation", strings.Repeat("a", 500), 500, false},
+
+		// One above the budget: truncated to 500 + U+2026 = 501 runes.
+		{"501 ASCII runes, truncated", strings.Repeat("a", 501), 501, true},
+
+		// CJK ideographs (3 bytes / rune in UTF-8): byte-truncating at
+		// 500 would split a codepoint; rune-truncation must not.
+		{"600 CJK ideographs `世`, truncated", strings.Repeat("世", 600), 501, true},
+		{"500 `界` + 100 `世`, boundary at CJK", strings.Repeat("界", 500) + strings.Repeat("世", 100), 501, true},
+
+		// 4-byte supplementary-plane emoji: each emoji is a single rune
+		// but 4 bytes. Byte-cut at 500 would fall mid-emoji.
+		{"600 emoji `😀`, truncated", strings.Repeat("😀", 600), 501, true},
+
+		// Boundary probe: 498 ASCII + 1 CJK + 100 emoji = 599 runes.
+		// The byte-budget would have landed inside either the CJK
+		// rune (splitting its 3 bytes) or one of the emoji (splitting
+		// its 4 bytes). Rune truncation must cleanly stop after the
+		// single '😀' at rune index 500.
+		{"mixed ASCII/CJK/emoji, boundary at emoji",
+			strings.Repeat("a", 498) + "界" + strings.Repeat("😀", 100), 501, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			const clipID = "clip-A4"
+			clip := &asset.Asset{ID: clipID, Name: "A4 clip"}
+			clip.SetMetadataString("transcript", tc.transcript)
+			clip.SetDriveFileID(clipID + "-drive")
+			clip.SetDriveLink("https://drive/" + clipID)
+
+			stub := &stubClipsResolver{
+				byID: map[string]*asset.Asset{clipID: clip},
+			}
+			b := usecase.NewClipSourceBuilder(stub, nil, zap.NewNop())
+			ev, _, _, err := b.BuildClipContext(context.Background(), []string{clipID}, nil)
+			if err != nil {
+				t.Fatalf("BuildClipContext: %v", err)
+			}
+			if ev == nil {
+				t.Fatal("evidence is nil")
+			}
+
+			// Property 1: assembled text must be valid UTF-8.
+			if !utf8.ValidString(ev.AssembledText) {
+				t.Fatalf("ev.AssembledText is NOT valid UTF-8 — codepoint got split: %q", ev.AssembledText)
+			}
+
+			// Property 2: no replacement character (the canonical
+			// fingerprint of a forced byte-cut mid-codepoint).
+			if strings.ContainsRune(ev.AssembledText, '\uFFFD') {
+				t.Fatalf("ev.AssembledText contains U+FFFD — multibyte codepoint was split: %q", ev.AssembledText)
+			}
+
+			// Extract the transcript line. TrimSpace at the call site
+			// means we slice prefix → EOF, not prefix → "\n".
+			const prefix = "  Transcript: "
+			i := strings.Index(ev.AssembledText, prefix)
+			if i < 0 {
+				t.Fatalf("Transcript prefix not found in: %q", ev.AssembledText)
+			}
+			start := i + len(prefix)
+			excerpt := ev.AssembledText[start:]
+
+			// Property 3: rune budget.
+			if got := utf8.RuneCountInString(excerpt); got != tc.wantExcerptRunes {
+				t.Fatalf("excerpt rune count = %d, want %d (excerpt=%q)", got, tc.wantExcerptRunes, excerpt)
+			}
+
+			// Property 4: ellipsis iff truncated.
+			gotEllipsis := strings.HasSuffix(excerpt, ellipsis)
+			if gotEllipsis != tc.wantEndsWithEllipsis {
+				t.Fatalf("excerpt ends with U+2026 = %v, want %v (excerpt=%q)", gotEllipsis, tc.wantEndsWithEllipsis, excerpt)
+			}
+		})
+	}
 }
