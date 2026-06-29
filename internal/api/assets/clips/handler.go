@@ -126,7 +126,12 @@ type Handler struct {
 	// fall through unchanged.
 	Idempotency gin.HandlerFunc
 
-	sourceResolver *artifacts.SourceResolver
+	// assetRepo (Split 1 leftover, June 2026): retained on Handler
+	// because clip_action.go::FindDuplicates (Action cluster, Split 5
+	// = future Commit 5) still references h.assetRepo directly. SearchHandler
+	// receives the same *asset.Repository instance via SearchDeps.AssetRepo;
+	// both pointers stay valid. This mirror field will be removed when Action
+	// is split out and FindDuplicates migrates onto an ActionReceiver.
 	assetRepo      asset.Repository
 	deletionSvc    *deletion.DeletionService
 	driveUploader  *drive.Uploader
@@ -137,17 +142,9 @@ type Handler struct {
 	jobsSvc        jobservice.Service
 	cfg            *config.Config
 	log            *zap.Logger
-	// voiceoverRepo is mirrored from Deps.VoiceoverRepo via NewHandler
-	voiceoverRepo *assets.VoiceoversRepository
-	// imagesRepo mirrors Deps.ImagesRepo. Same late-binding semantics.
-	imagesRepo *assets.ImagesRepository
 	// artifactSvc mirrors Deps.ArtifactSvc. Same late-binding semantics.
 	artifactSvc  *artifacts.Service
 	folderMemSvc *foldermemory.Service
-	// searchSvc mirrors Deps.SearchSvc.
-	// Wave 21 PR 10: type is *search.Aggregator (canonical Search
-	// capability). See Deps.SearchSvc note for rationale.
-	searchSvc *search.Aggregator
 	// processRunner mirrors Deps.ProcessRunner.
 	processRunner appassets.ProcessRunner
 	// dispatcher mirrors Deps.Dispatcher (now the application port
@@ -164,6 +161,15 @@ type Handler struct {
 	bulkUploadWorker *appclips.BulkUploadWorker
 	// clipOpsService owns the high-level clip ops endpoints.
 	clipOpsService *appclips.ClipOpsService
+
+	// search (Split 1, June 2026, override ADR 0009): the Search sub-handler
+	// owns the 4 clip-search routes (GET /:source/clips, GET /:source/clips/:id,
+	// POST /:source/clips/:id/status, POST /search/advanced). The 5 deps it
+	// consumes (SourceResolver, AssetRepo, VoiceoverRepo, ImagesRepo,
+	// SearchSvc) are extracted from Deps by NewHandler into a SearchDeps
+	// shape. Future sub-handlers (Ingest/Action/Ops/BulkUpload) follow the
+	// same pattern in subsequent atomic commits (2-6 of Step 5).
+	search *SearchHandler
 
 	// Use cases — business logic extracted from handlers
 	reprocessUC *appclips.ReprocessUseCase
@@ -188,7 +194,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	}
 	return &Handler{
 		Idempotency:         idem,
-		sourceResolver:      d.SourceResolver,
 		assetRepo:           d.AssetRepo,
 		deletionSvc:         d.DeletionSvc,
 		driveUploader:       d.DriveUploader,
@@ -199,17 +204,27 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		jobsSvc:             d.JobsSvc,
 		cfg:                 d.Cfg,
 		log:                 d.Log,
-		voiceoverRepo:       d.VoiceoverRepo,
-		imagesRepo:          d.ImagesRepo,
 		artifactSvc:         d.ArtifactSvc,
 		folderMemSvc:        d.FolderMemSvc,
-		searchSvc:           d.SearchSvc,
 		processRunner:       d.ProcessRunner,
 		dispatcher:          d.Dispatcher,
 		mutationsDispatcher: d.MutationsDispatcher,
 		searchAggregator:    d.SearchAggregator,
 		bulkUploadWorker:    d.BulkUploadWorker,
 		clipOpsService:      d.ClipOpsService,
+		// Split 1 (June 2026, override ADR 0009): Search sub-handler
+		// owns 4 routes. The 5 Deps fields below move into the
+		// SearchDeps shape; orchestrator Deps struct keeps the public
+		// API unchanged so the composition root signature is non-breaking.
+		// Future sub-handlers (Ingest/Action/Ops/BulkUpload) follow the
+		// same shape in subsequent atomic splits.
+		search: NewSearchHandler(SearchDeps{
+			SourceResolver: d.SourceResolver,
+			AssetRepo:      d.AssetRepo,
+			VoiceoverRepo:  d.VoiceoverRepo,
+			ImagesRepo:     d.ImagesRepo,
+			SearchSvc:      d.SearchSvc,
+		}),
 
 		// Initialize use cases
 		// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): pass the
@@ -250,13 +265,18 @@ func enrichUCOrLocal(
 	return appclips.NewEnrichUseCase(repo, indexer, mw, log)
 }
 
-// repoForSource resolves a clip source to its canonical repository.
-// Standard clip sources are resolved through the shared source resolver.
+// repoForSource resolves a clip source to its canonical repository
+// by delegating to the Search sub-handler (Split 1, June 2026).
+// Pre-Split-1 this method was the authoritative implementation;
+// post-Split-1 the impl lives on *SearchHandler (vector of cluster
+// ownership) and this thin dispatcher preserves byte-compatible
+// behaviour for callers in clip_update.go, clip_enrich.go,
+// folder.go, folder_tree.go.
 func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
-	if h.sourceResolver == nil {
+	if h.search == nil {
 		return nil
 	}
-	return h.sourceResolver.ResolveRepo(source)
+	return h.search.repoForSource(source)
 }
 
 func (h *Handler) driveRootForSource(source string) (string, string) {
@@ -315,10 +335,13 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
 	// Clip-level endpoints
 	r.POST("/:source/clips", idem, h.CreateClip)
-	r.GET("/:source/clips", h.ListClips)
-	r.GET("/:source/clips/:id", h.GetClip)
+	// Search sub-handler (Split 1, June 2026) owns these 4 routes:
+	//   GET  /:source/clips               -> ListClips       (read, no idem)
+	//   GET  /:source/clips/:id           -> GetClip         (read, no idem)
+	//   POST /:source/clips/:id/status    -> ClipStatus      (write+idem)
+	//   POST /search/advanced             -> AdvancedSearch  (write+idem)
+	h.search.RegisterRoutes(r, idem)
 	r.PATCH("/:source/clips/:id", idem, h.UpdateClip)
-	r.POST("/:source/clips/:id/status", idem, h.ClipStatus)
 	r.POST("/:source/clips/:id/verify", idem, h.VerifyClip)
 	r.POST("/:source/clips/:id/fix-hash", idem, h.HandleFixHash)
 	r.POST("/:source/clips/:id/trash", idem, h.TrashClip)
@@ -352,7 +375,4 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	// Upload endpoints (multipart body bypasses body-hash; idempotency still
 	// observes in-flight 409 + completed replay).
 	r.POST("/upload-video", idem, h.UploadVideoClip)
-
-	// Search endpoint
-	r.POST("/search/advanced", idem, h.AdvancedSearch)
 }
